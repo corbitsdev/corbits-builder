@@ -28,7 +28,7 @@
     "docker:sidecar": "docker build -f deploy/Dockerfile --target sidecar -t corbits-builder-sidecar:local .",
     "auth:bootstrap": "bun --env-file=.env.hub --conditions=intx-src apps/hub/src/setup.ts",
     "auth:emulate": "bun --env-file=.env.hub scripts/google-emulate.ts",
-    "check": "bun run lint && bun run format:check && bun run typecheck && bun run test",
+    "check": "bun run lint && bun run format:check && bun run typecheck && bun run test && bun run pins:verify",
     "lint": "bun --bun run oxlint --deny-warnings",
     "format": "bun fmt --no-script",
     "format:check": "bun fmt --no-script --check",
@@ -36,6 +36,7 @@
     "test": "bun --conditions=intx-src test ./apps/hub ./apps/web/src ./packages ./workflows ./tests/integration",
     "test:e2e": "bun --env-file=.env.hub --conditions=intx-src test ./tests/e2e",
     "vendor:verify": "bun scripts/verify-vendor.ts",
+    "pins:verify": "bun scripts/verify-pins.ts",
     "skills:react-ui": "bun scripts/react-ui-api.ts"
   },
   "dependencies": {
