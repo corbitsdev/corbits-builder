@@ -1,0 +1,440 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Northline wholesale mockup, Liquid glass</title>
+    <link rel="stylesheet" href="styles.css" />
+  </head>
+  <body>
+    <div class="app">
+      <header class="app-bar">
+        <a href="#/overview" class="app-name" data-testid="app-name-link">
+          <span class="app-mark" aria-hidden="true">N</span>
+          Northline
+        </a>
+        <nav class="app-nav" aria-label="Main">
+          <a href="#/overview" data-testid="nav-overview-link">
+            <svg class="icon" viewBox="0 0 24 24" aria-hidden="true">
+              <path d="M15 21v-8a1 1 0 0 0-1-1h-4a1 1 0 0 0-1 1v8" />
+              <path
+                d="M3 10a2 2 0 0 1 .709-1.528l7-5.999a2 2 0 0 1 2.582 0l7 5.999A2 2 0 0 1 21 10v9a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"
+              />
+            </svg>
+            Overview
+          </a>
+          <a href="#/orders" data-testid="nav-orders-link">
+            <svg class="icon" viewBox="0 0 24 24" aria-hidden="true">
+              <path
+                d="M11 21.73a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73z"
+              />
+              <path d="M12 22V12" />
+              <path d="m3.3 7 7.703 4.734a2 2 0 0 0 1.994 0L20.7 7" />
+            </svg>
+            Orders
+          </a>
+        </nav>
+        <button
+          type="button"
+          class="button button-ghost"
+          data-theme-toggle
+          data-testid="theme-toggle-button"
+        >
+          Theme
+        </button>
+      </header>
+
+      <main class="app-main">
+        <section data-screen="overview" data-testid="screen-overview">
+          <div data-state="populated" data-testid="overview-populated">
+            <div class="screen-header">
+              <div>
+                <p class="eyebrow">Thursday, 14 November</p>
+                <h1 data-testid="overview-title">Good morning, Ines</h1>
+              </div>
+              <a
+                class="button"
+                href="#/orders"
+                data-testid="overview-orders-button"
+              >
+                Review orders
+              </a>
+            </div>
+
+            <div class="stats" data-testid="overview-stats">
+              <article class="card stat">
+                <p class="stat-label">Open orders</p>
+                <p class="stat-value" data-testid="overview-open-total">18</p>
+                <p class="stat-note">4 more than last Thursday</p>
+              </article>
+              <article class="card stat">
+                <p class="stat-label">Shipping today</p>
+                <p class="stat-value" data-testid="overview-shipping-total">
+                  6
+                </p>
+                <p class="stat-note">Courier pickup at 3:30 pm</p>
+              </article>
+              <article class="card stat stat-lead">
+                <p class="stat-label">Revenue this week</p>
+                <p class="stat-value" data-testid="overview-revenue-total">
+                  $12,480
+                </p>
+                <p class="stat-note">Up 9% on last week</p>
+              </article>
+            </div>
+
+            <article class="card panel">
+              <div class="panel-header">
+                <h2>Needs attention</h2>
+                <span class="muted">Updated 2 min ago</span>
+              </div>
+              <ul class="list" data-testid="overview-attention-list">
+                <li class="list-row">
+                  <span class="badge badge-warning">Low stock</span>
+                  <span class="list-main"
+                    >Ethiopia Guji, 12 kg left for 3 orders</span
+                  >
+                  <span class="muted">Roast by Friday</span>
+                </li>
+                <li class="list-row">
+                  <span class="badge badge-danger">Overdue</span>
+                  <span class="list-main"
+                    >Invoice NL-2291 to Fig &amp; Fern, $864.00</span
+                  >
+                  <span class="muted">9 days late</span>
+                </li>
+                <li class="list-row">
+                  <span class="badge">New café</span>
+                  <span class="list-main"
+                    >Corner Table, Portland asked for a sample box</span
+                  >
+                  <span class="muted">Yesterday</span>
+                </li>
+              </ul>
+            </article>
+          </div>
+        </section>
+
+        <section data-screen="orders" data-testid="screen-orders">
+          <div data-state="populated" data-testid="orders-populated">
+            <div class="screen-header">
+              <h1 data-testid="orders-title">Orders</h1>
+              <button
+                type="button"
+                class="button"
+                data-open="new-order-dialog"
+                data-testid="orders-new-button"
+              >
+                <svg class="icon" viewBox="0 0 24 24" aria-hidden="true">
+                  <path d="M5 12h14" />
+                  <path d="M12 5v14" />
+                </svg>
+                New order
+              </button>
+            </div>
+
+            <div class="split">
+              <article class="card panel">
+                <label class="search">
+                  <svg class="icon" viewBox="0 0 24 24" aria-hidden="true">
+                    <circle cx="11" cy="11" r="8" />
+                    <path d="m21 21-4.3-4.3" />
+                  </svg>
+                  <span class="visually-hidden">Search orders</span>
+                  <input
+                    class="input"
+                    type="search"
+                    placeholder="Search by café or order number"
+                    data-search
+                    data-testid="orders-search-input"
+                  />
+                </label>
+                <div class="table-scroll">
+                  <table class="table" data-testid="orders-list">
+                    <thead>
+                      <tr>
+                        <th scope="col">Order</th>
+                        <th scope="col">Café</th>
+                        <th scope="col" class="numeric">Total</th>
+                        <th scope="col">Status</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      <tr
+                        data-row
+                        aria-selected="true"
+                        data-testid="orders-row-2318"
+                      >
+                        <td class="mono">NL-2318</td>
+                        <td>Fig &amp; Fern</td>
+                        <td class="numeric">$412.50</td>
+                        <td><span class="badge badge-info">Roasting</span></td>
+                      </tr>
+                      <tr data-row data-testid="orders-row-2317">
+                        <td class="mono">NL-2317</td>
+                        <td>Saltwater Bakery</td>
+                        <td class="numeric">$186.00</td>
+                        <td>
+                          <span class="badge badge-success">Shipped</span>
+                        </td>
+                      </tr>
+                      <tr data-row data-testid="orders-row-2316">
+                        <td class="mono">NL-2316</td>
+                        <td>Corner Table</td>
+                        <td class="numeric">$58.00</td>
+                        <td><span class="badge">Sample</span></td>
+                      </tr>
+                      <tr data-row data-testid="orders-row-2315">
+                        <td class="mono">NL-2315</td>
+                        <td>Harbour Street Café</td>
+                        <td class="numeric">$1,024.00</td>
+                        <td>
+                          <span class="badge badge-warning"
+                            >Waiting on beans</span
+                          >
+                        </td>
+                      </tr>
+                      <tr data-row data-testid="orders-row-2314">
+                        <td class="mono">NL-2314</td>
+                        <td>Little Owl</td>
+                        <td class="numeric">$264.75</td>
+                        <td>
+                          <span class="badge badge-success">Delivered</span>
+                        </td>
+                      </tr>
+                    </tbody>
+                  </table>
+                </div>
+                <p class="muted" data-no-match hidden>
+                  No orders match that search.
+                </p>
+              </article>
+
+              <aside class="card panel detail" data-testid="orders-detail">
+                <div class="panel-header">
+                  <h2 data-testid="orders-detail-title">
+                    NL-2318, Fig &amp; Fern
+                  </h2>
+                  <span class="badge badge-info">Roasting</span>
+                </div>
+                <dl class="facts">
+                  <div>
+                    <dt>Placed</dt>
+                    <dd>12 Nov, 9:14 am</dd>
+                  </div>
+                  <div>
+                    <dt>Ships</dt>
+                    <dd>Friday, 15 Nov</dd>
+                  </div>
+                  <div>
+                    <dt>Deliver to</dt>
+                    <dd>28 Alder Street, Portland</dd>
+                  </div>
+                </dl>
+                <ul class="list">
+                  <li class="list-row">
+                    <span class="list-main">Ethiopia Guji, 5 kg</span>
+                    <span class="numeric">$212.50</span>
+                  </li>
+                  <li class="list-row">
+                    <span class="list-main">House espresso, 8 kg</span>
+                    <span class="numeric">$200.00</span>
+                  </li>
+                </ul>
+                <div class="detail-actions">
+                  <button
+                    type="button"
+                    class="button"
+                    data-toast="shipped-toast"
+                    data-testid="orders-ship-button"
+                  >
+                    Mark as shipped
+                  </button>
+                  <button
+                    type="button"
+                    class="button button-outline"
+                    data-testid="orders-invoice-button"
+                  >
+                    Send invoice
+                  </button>
+                </div>
+              </aside>
+            </div>
+          </div>
+
+          <div data-state="empty" data-testid="orders-empty">
+            <div class="screen-header">
+              <h1>Orders</h1>
+            </div>
+            <div class="card empty">
+              <h2>No orders yet</h2>
+              <p>
+                When a café orders through the wholesale page, it lands here
+                ready to roast.
+              </p>
+              <button type="button" class="button" data-open="new-order-dialog">
+                Add an order by hand
+              </button>
+            </div>
+          </div>
+
+          <div data-state="loading" data-testid="orders-loading">
+            <div class="screen-header">
+              <h1>Orders</h1>
+            </div>
+            <div
+              class="card panel"
+              aria-busy="true"
+              aria-label="Loading orders"
+            >
+              <div class="skeleton skeleton-row"></div>
+              <div class="skeleton skeleton-row"></div>
+              <div class="skeleton skeleton-row"></div>
+            </div>
+          </div>
+
+          <div data-state="error" data-testid="orders-error">
+            <div class="screen-header">
+              <h1>Orders</h1>
+            </div>
+            <div class="card empty" role="alert">
+              <h2>Orders could not load</h2>
+              <p>
+                The connection dropped while reading orders. Nothing was lost.
+              </p>
+              <a
+                class="button button-outline"
+                href="#/orders"
+                data-testid="orders-retry-button"
+              >
+                Try again
+              </a>
+            </div>
+          </div>
+        </section>
+      </main>
+
+      <dialog
+        class="dialog"
+        id="new-order-dialog"
+        data-testid="orders-new-dialog"
+      >
+        <form class="form" method="dialog">
+          <h2>New order</h2>
+          <label class="field">
+            <span>Café</span>
+            <input class="input" required data-testid="orders-new-cafe-input" />
+          </label>
+          <label class="field">
+            <span>Coffee and weight</span>
+            <input
+              class="input"
+              placeholder="House espresso, 5 kg"
+              data-testid="orders-new-items-input"
+            />
+          </label>
+          <div class="form-actions">
+            <button type="button" class="button button-ghost" data-close>
+              Cancel
+            </button>
+            <button
+              type="submit"
+              class="button"
+              data-testid="orders-new-save-button"
+            >
+              Save order
+            </button>
+          </div>
+        </form>
+      </dialog>
+
+      <div class="toast" id="shipped-toast" role="status" data-open="false">
+        NL-2318 marked as shipped. Fig &amp; Fern gets the tracking link.
+      </div>
+    </div>
+
+    <script>
+      (() => {
+        const screens = [...document.querySelectorAll("[data-screen]")];
+
+        function route() {
+          const [name, state] = location.hash.replace(/^#\/?/, "").split("/");
+          const target =
+            screens.find((s) => s.dataset.screen === name) ?? screens[0];
+          for (const screen of screens) screen.hidden = screen !== target;
+
+          const states = [...target.querySelectorAll(":scope > [data-state]")];
+          const names = states.map((s) => s.dataset.state);
+          const shown = names.includes(state)
+            ? state
+            : names.includes("populated")
+              ? "populated"
+              : names[0];
+          for (const el of states) el.hidden = el.dataset.state !== shown;
+
+          for (const link of document.querySelectorAll(
+            '[data-testid^="nav-"]',
+          )) {
+            const linked = link
+              .getAttribute("href")
+              .replace(/^#\/?/, "")
+              .split("/")[0];
+            if (linked === target.dataset.screen)
+              link.setAttribute("aria-current", "page");
+            else link.removeAttribute("aria-current");
+          }
+          window.scrollTo(0, 0);
+        }
+
+        document.addEventListener("input", (event) => {
+          if (!event.target.matches("[data-search]")) return;
+          const query = event.target.value.trim().toLowerCase();
+          const panel = event.target.closest(".panel");
+          let matches = 0;
+          for (const row of panel.querySelectorAll("[data-row]")) {
+            const hit = row.textContent.toLowerCase().includes(query);
+            row.hidden = !hit;
+            if (hit) matches++;
+          }
+          panel.querySelector("[data-no-match]").hidden = matches > 0;
+        });
+
+        document.addEventListener("click", (event) => {
+          const row = event.target.closest("[data-row]");
+          if (row)
+            for (const other of row.parentElement.children)
+              other.setAttribute("aria-selected", String(other === row));
+
+          const opener = event.target.closest("[data-open]");
+          if (opener) document.getElementById(opener.dataset.open)?.showModal();
+
+          const closer = event.target.closest("[data-close]");
+          if (closer) closer.closest("dialog")?.close();
+
+          const toaster = event.target.closest("[data-toast]");
+          if (toaster) {
+            const toast = document.getElementById(toaster.dataset.toast);
+            toast.dataset.open = "true";
+            clearTimeout(toast.timer);
+            toast.timer = setTimeout(() => {
+              toast.dataset.open = "false";
+            }, 4000);
+          }
+
+          if (event.target.closest("[data-theme-toggle]")) {
+            const root = document.documentElement;
+            const dark =
+              root.classList.contains("dark") ||
+              (!root.classList.contains("light") &&
+                matchMedia("(prefers-color-scheme: dark)").matches);
+            root.classList.toggle("dark", !dark);
+            root.classList.toggle("light", dark);
+          }
+        });
+
+        addEventListener("hashchange", route);
+        route();
+      })();
+    </script>
+  </body>
+</html>

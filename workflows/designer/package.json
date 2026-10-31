@@ -1,0 +1,17 @@
+{
+  "name": "@corbits-builder/designer",
+  "version": "0.1.0",
+  "private": true,
+  "license": "SEE LICENSE IN ../../LICENSE.md",
+  "author": "Sawyer Cutler <sawyer@dirtroad.dev>",
+  "type": "module",
+  "exports": {
+    ".": "./src/workflow.ts",
+    "./agent": "./src/agent.ts",
+    "./skills": "./src/skills.ts"
+  },
+  "dependencies": {
+    "@intx/agent": "workspace:*",
+    "@intx/workflow": "workspace:*"
+  }
+}

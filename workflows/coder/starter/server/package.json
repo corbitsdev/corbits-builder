@@ -1,0 +1,16 @@
+{
+  "name": "@app/server",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "bun --watch src/index.ts",
+    "start": "NODE_ENV=production bun src/index.ts",
+    "typecheck": "tsc -p ."
+  },
+  "dependencies": {
+    "@app/shared": "workspace:*",
+    "@hono/zod-validator": "0.9.1",
+    "hono": "4.13.14",
+    "zod": "4.6.7"
+  }
+}

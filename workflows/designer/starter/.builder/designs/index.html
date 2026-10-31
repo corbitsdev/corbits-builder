@@ -1,0 +1,149 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>App name mockup</title>
+    <link rel="stylesheet" href="styles.css" />
+  </head>
+  <body>
+    <div class="app">
+      <header class="app-bar">
+        <button
+          type="button"
+          class="button button-ghost menu-button"
+          aria-expanded="false"
+          aria-label="Menu"
+          data-menu-toggle
+          data-testid="menu-button"
+        >
+          <svg
+            width="20"
+            height="20"
+            viewBox="0 0 24 24"
+            fill="none"
+            stroke="currentColor"
+            stroke-width="2"
+            stroke-linecap="round"
+            stroke-linejoin="round"
+            aria-hidden="true"
+          >
+            <path d="M4 6h16M4 12h16M4 18h16" />
+          </svg>
+        </button>
+        <a href="#/home" class="app-name" data-testid="app-name-link"
+          >App name</a
+        >
+        <nav class="app-nav" aria-label="Main">
+          <a href="#/home" data-testid="nav-home-link">Home</a>
+        </nav>
+        <button
+          type="button"
+          class="button button-ghost theme-toggle"
+          data-theme-toggle
+          data-testid="theme-toggle-button"
+        >
+          Theme
+        </button>
+      </header>
+
+      <main class="app-main">
+        <section data-screen="home" data-testid="screen-home">
+          <div data-state="populated" data-testid="home-populated">
+            <h1 data-testid="home-title">Hello, world</h1>
+          </div>
+        </section>
+      </main>
+    </div>
+
+    <script>
+      (() => {
+        const screens = [...document.querySelectorAll("[data-screen]")];
+
+        function route() {
+          const [name, state] = location.hash.replace(/^#\/?/, "").split("/");
+          const target =
+            screens.find((s) => s.dataset.screen === name) ?? screens[0];
+          for (const screen of screens) screen.hidden = screen !== target;
+
+          const states = [...target.querySelectorAll(":scope > [data-state]")];
+          const names = states.map((s) => s.dataset.state);
+          const shown = names.includes(state)
+            ? state
+            : names.includes("populated")
+              ? "populated"
+              : names[0];
+          for (const el of states) el.hidden = el.dataset.state !== shown;
+
+          for (const link of document.querySelectorAll(
+            '[data-testid^="nav-"]',
+          )) {
+            const linked = link
+              .getAttribute("href")
+              .replace(/^#\/?/, "")
+              .split("/")[0];
+            if (linked === target.dataset.screen)
+              link.setAttribute("aria-current", "page");
+            else link.removeAttribute("aria-current");
+          }
+          document
+            .querySelector("[data-menu-toggle]")
+            ?.setAttribute("aria-expanded", "false");
+          window.scrollTo(0, 0);
+        }
+
+        document.addEventListener("click", (event) => {
+          const opener = event.target.closest("[data-open]");
+          if (opener) document.getElementById(opener.dataset.open)?.showModal();
+
+          const closer = event.target.closest("[data-close]");
+          if (closer) closer.closest("dialog")?.close();
+
+          const pressed = event.target.closest("[aria-pressed]");
+          if (pressed)
+            pressed.setAttribute(
+              "aria-pressed",
+              String(pressed.getAttribute("aria-pressed") !== "true"),
+            );
+
+          const tab = event.target.closest("[role=tab]");
+          if (tab)
+            for (const sibling of tab.parentElement.querySelectorAll(
+              ":scope > [role=tab]",
+            ))
+              sibling.setAttribute("aria-selected", String(sibling === tab));
+
+          const menu = event.target.closest("[data-menu-toggle]");
+          if (menu)
+            menu.setAttribute(
+              "aria-expanded",
+              String(menu.getAttribute("aria-expanded") !== "true"),
+            );
+
+          const toaster = event.target.closest("[data-toast]");
+          if (toaster) {
+            const toast = document.getElementById(toaster.dataset.toast);
+            toast.dataset.open = "true";
+            clearTimeout(toast.timer);
+            toast.timer = setTimeout(() => {
+              toast.dataset.open = "false";
+            }, 4000);
+          }
+
+          if (event.target.closest("[data-theme-toggle]")) {
+            const root = document.documentElement;
+            const dark =
+              root.classList.contains("dark") ||
+              (!root.classList.contains("light") &&
+                matchMedia("(prefers-color-scheme: dark)").matches);
+            root.classList.toggle("dark", !dark);
+            root.classList.toggle("light", dark);
+          }
+        });
+
+        addEventListener("hashchange", route);
+        route();
+      })();
+    </script>
+  </body>
+</html>

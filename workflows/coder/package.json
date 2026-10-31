@@ -1,0 +1,22 @@
+{
+  "name": "@corbits-builder/coder",
+  "version": "0.9.0",
+  "private": true,
+  "license": "SEE LICENSE IN ../../LICENSE.md",
+  "author": "Sawyer Cutler <sawyer@dirtroad.dev>",
+  "type": "module",
+  "exports": {
+    ".": "./src/workflow.ts",
+    "./agent": "./src/agent.ts",
+    "./prompt": "./src/prompt.ts",
+    "./contract": "./src/contract.ts",
+    "./assets": "./src/assets.ts"
+  },
+  "dependencies": {
+    "@intx/agent": "workspace:*",
+    "@intx/workflow": "workspace:*"
+  },
+  "devDependencies": {
+    "@corbits/react-ui": "0.4.0"
+  }
+}
