@@ -1,0 +1,198 @@
+name: CI
+
+on:
+  pull_request:
+  merge_group:
+  push:
+    branches:
+      - main
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event_name }}-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name != 'push' }}
+
+jobs:
+  changes:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    permissions:
+      pull-requests: read
+    outputs:
+      lint: ${{ steps.filter.outputs.lint }}
+      typecheck: ${{ steps.filter.outputs.typecheck }}
+      test: ${{ steps.filter.outputs.test }}
+      e2e: ${{ steps.filter.outputs.e2e }}
+      pins: ${{ steps.filter.outputs.pins }}
+      vendor: ${{ steps.filter.outputs.vendor }}
+    steps:
+      - id: filter
+        if: github.event_name == 'pull_request'
+        uses: dorny/paths-filter@ceb8a2b8f2d89434be7ff52d3de7ec3738c5cc9d # v4.0.3
+        with:
+          filters: |
+            shared: &shared
+              - "bun.lock"
+              - "patches/**"
+              - "package.json"
+              - "tsconfig.json"
+              - ".github/**"
+            lint:
+              - *shared
+              - "apps/**"
+              - "packages/**"
+              - "workflows/**"
+              - "test/**"
+              - "scripts/**"
+              - "vendor/**"
+              - ".oxlintrc.json"
+            typecheck:
+              - *shared
+              - "apps/**"
+              - "packages/**"
+              - "workflows/**"
+              - "test/**"
+              - "scripts/**"
+              - "vendor/**"
+            test:
+              - *shared
+              - "apps/**"
+              - "packages/**"
+              - "workflows/**"
+              - "test/integration/**"
+              - "vendor/**"
+            e2e:
+              - *shared
+              - "apps/hub/**"
+              - "packages/**"
+              - "workflows/**"
+              - "test/e2e/**"
+              - "vendor/**"
+            pins:
+              - *shared
+              - "**/package.json"
+              - "scripts/verify-pins.ts"
+            vendor:
+              - *shared
+              - "vendor/**"
+              - "scripts/verify-vendor.ts"
+
+  format-check:
+    name: format:check
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: ./.github/actions/setup
+      - run: bun run format:check
+
+  # The jobs below always report so their required checks are satisfied; on a pull request the steps run only when their paths changed.
+  lint:
+    needs: changes
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    env:
+      RUN: ${{ github.event_name != 'pull_request' || needs.changes.outputs.lint == 'true' }}
+    steps:
+      - if: env.RUN == 'true'
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - if: env.RUN == 'true'
+        uses: ./.github/actions/setup
+      - if: env.RUN == 'true'
+        run: bun run lint
+
+  typecheck:
+    needs: changes
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    env:
+      RUN: ${{ github.event_name != 'pull_request' || needs.changes.outputs.typecheck == 'true' }}
+    steps:
+      - if: env.RUN == 'true'
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - if: env.RUN == 'true'
+        uses: ./.github/actions/setup
+      - if: env.RUN == 'true'
+        run: bun run typecheck
+
+  test:
+    needs: changes
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    env:
+      RUN: ${{ github.event_name != 'pull_request' || needs.changes.outputs.test == 'true' }}
+    steps:
+      - if: env.RUN == 'true'
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - if: env.RUN == 'true'
+        uses: ./.github/actions/setup
+      - if: env.RUN == 'true'
+        run: bun run test
+
+  e2e:
+    needs: changes
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    env:
+      RUN: ${{ github.event_name != 'pull_request' || needs.changes.outputs.e2e == 'true' }}
+    steps:
+      - if: env.RUN == 'true'
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - if: env.RUN == 'true'
+        uses: ./.github/actions/postgres
+      - if: env.RUN == 'true'
+        uses: ./.github/actions/setup
+      - if: env.RUN == 'true'
+        run: bun run test:e2e
+        env:
+          E2E_DB_HOST: 127.0.0.1
+          E2E_DB_PORT: 5432
+          E2E_DB_USER: postgres
+          E2E_DB_PASSWORD: postgres
+
+  pins-verify:
+    name: pins:verify
+    needs: changes
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    env:
+      RUN: ${{ github.event_name != 'pull_request' || needs.changes.outputs.pins == 'true' }}
+    steps:
+      - if: env.RUN == 'true'
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - if: env.RUN == 'true'
+        uses: ./.github/actions/setup
+      - if: env.RUN == 'true'
+        run: bun run pins:verify
+
+  vendor-verify:
+    name: vendor:verify
+    needs: changes
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    env:
+      RUN: ${{ github.event_name != 'pull_request' || needs.changes.outputs.vendor == 'true' }}
+    steps:
+      - if: env.RUN == 'true'
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - if: env.RUN == 'true'
+        uses: ./.github/actions/setup
+      - if: env.RUN == 'true'
+        run: bun run vendor:verify
