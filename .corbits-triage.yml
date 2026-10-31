@@ -1,0 +1,249 @@
+# Corbits Triage policy.
+rules:
+  - check: linked-issue
+    text: Link a GitHub or Linear issue. Open an issue for the change first, then a pull request that links it.
+    tracker: either
+    reason: Every change starts from an issue that says what and why.
+    evidence:
+      - maintainer-stated
+  - check: focused
+    text: Check the change is focused on one thing.
+    onFail: label
+    reason: One logical change per pull request.
+    evidence:
+      - maintainer-stated
+  - check: no-merge-conflicts
+    text: Flag merge conflicts with the base branch.
+    reason: A conflicted pull request cannot merge as reviewed.
+    evidence:
+      - maintainer-stated
+  - check: ci-green
+    text: CI must pass before merge.
+    reason: Format, lint, typecheck, tests, the vendor check and e2e gate every change.
+    evidence:
+      - maintainer-stated
+  - check: conventional-commits
+    text: Titles and commits follow Conventional Commits.
+    reason: Commits and pull request titles use feat/fix/chore(scope).
+    evidence:
+      - maintainer-stated
+  - check: no-forbidden-paths
+    text: Never accept dependencies, env files, build output or local data.
+    paths:
+      - "**/node_modules/**"
+      - "**/.env"
+      - "**/.env.local"
+      - "**/.env.hub"
+      - "**/.env.web"
+      - "**/dist/**"
+      - "**/*.db"
+      - tmp/**
+      - .tmp/**
+      - .data/**
+    reason: Secrets and generated files stay out of the repository.
+    evidence:
+      - maintainer-stated
+  - check: sensitive-paths
+    text: Route vendor, migration, auth and secret changes to a person; label CI and lockfile changes.
+    groups:
+      vendor: { level: high, paths: ["vendor/**", "patches/**"] }
+      schema: { level: high, paths: ["**/migrations/**", "**/*.sql"] }
+      auth:
+        {
+          level: high,
+          paths: ["**/auth/**", "**/auth.ts", "**/auth-*.ts", "**/secrets/**"],
+        }
+      ci: { level: medium, paths: [".github/**", "**/Dockerfile", "deploy/**"] }
+      locks: { level: medium, paths: ["**/bun.lock"] }
+    reason: Vendored Interchange changes are deliberate and recorded; schema and auth changes are hard to undo.
+    evidence:
+      - maintainer-stated
+  - check: hidden-content
+    text: Flag text hidden in the pull request.
+    reason: Hidden text can steer the rules a model judges.
+    evidence:
+      - maintainer-stated
+  - check: no-duplicate
+    text: Flag a pull request whose diff or commits match another open one.
+    reason: Two pull requests for the same change waste a review; the earlier one stays.
+    evidence:
+      - maintainer-stated
+  - id: no-attribution
+    check: text
+    text: Titles, descriptions and commits carry no co-author lines or AI attribution.
+    fields: [title, description, commits]
+    failWhen: contains
+    phrases:
+      - "Co-Authored-By:"
+      - "Claude-Session:"
+      - "claude.ai/code/session"
+      - "noreply@anthropic.com"
+      - "Generated with Claude"
+      - "Generated with [Claude"
+    reason: No co-author lines, session trailers or links, or generated-with footers.
+    evidence:
+      - maintainer-stated
+  - id: conventions
+    check: code-patterns
+    text: Added code has no IIFEs, promise chains, empty catches, nested ternaries, invented ?? 0 or ?? [] fallbacks, or suppression comments.
+    presets:
+      - convention
+    onFail: fail
+    reason: Errors are never swallowed; async/await with named functions throughout.
+    evidence:
+      - maintainer-stated
+  - id: errors-kept
+    check: code-patterns
+    text: Added code names every caught error and uses or rethrows it, and imports Interchange by package name.
+    patterns:
+      - id: bare-catch
+        language: typescript
+        message: A catch without a binding drops the error; check for the expected failure, or catch it and rethrow the rest.
+        rule:
+          kind: catch_clause
+          not:
+            any:
+              - has: { field: parameter, regex: "." }
+              - has: { field: body, regex: '^\{\s*\}$' }
+      - id: dropped-error
+        language: typescript
+        message: The caught error is neither used nor rethrown; check for the expected failure, or rethrow the rest.
+        rule:
+          all:
+            - kind: catch_clause
+            - has: { field: parameter, pattern: $E }
+            - not:
+                has:
+                  field: body
+                  any:
+                    - has: { stopBy: end, kind: throw_statement }
+                    - has: { stopBy: end, kind: identifier, pattern: $E }
+      - id: interchange-by-path
+        language: typescript
+        message: Reaches vendored Interchange source by path; import the @intx/* package.
+        rule:
+          kind: string_fragment
+          regex: "vendor/interchange/(packages|apps)/"
+          inside:
+            stopBy: end
+            any:
+              - kind: import_statement
+              - kind: export_statement
+              - kind: call_expression
+    onFail: fail
+    reason: A swallowed error hid failures in the live app host and the build tools; reaching into vendor/ bypasses the package boundary.
+    evidence:
+      - maintainer-stated
+  - id: interchange-owns-it
+    check: code-patterns
+    text: Added code does not sleep in a loop or open its own event stream.
+    patterns:
+      - id: hand-rolled-wait
+        language: typescript
+        message: A hand-rolled sleep; wait on an event, or on an Interchange wait, retry or timeout where one exists.
+        rule:
+          any:
+            - pattern: new Promise(($R) => setTimeout($R, $$$))
+            - pattern: new Promise($R => setTimeout($R, $$$))
+            - pattern: "new Promise(($R) => { setTimeout($R, $$$); })"
+            - pattern: Bun.sleep($$$)
+      - id: own-event-stream
+        language: typescript
+        files: [apps/web/**]
+        ignores: [apps/web/src/shared-event-source.ts]
+        message: The interface opens its own stream; use openSharedEventSource.
+        rule:
+          any:
+            - pattern: new EventSource($$$)
+            - pattern: new WebSocket($$$)
+    onFail: ask
+    reason: Interchange owns retries, waits and timeouts, and the interface shares one event stream; a person decides when another is needed.
+    evidence:
+      - maintainer-stated
+  - id: invented-fallbacks
+    check: code-patterns
+    text: Added code handles a missing value instead of inventing an empty one.
+    patterns:
+      - id: empty-fallback
+        language: typescript
+        message: Invented fallback (an empty string, list, object or zero); handle the missing value instead.
+        ignores: ["**/*.test.ts", "**/*.test.tsx", "tests/**"]
+        rule:
+          any:
+            - pattern: $X || []
+            - pattern: $X || {}
+            - pattern: $X ?? {}
+            - all:
+                - any:
+                    - pattern: $X ?? ""
+                    - pattern: $X ?? ''
+                    - pattern: $X || ""
+                    - pattern: $X || ''
+                - not:
+                    any:
+                      - inside: { kind: template_substitution }
+                      - inside:
+                          {
+                            kind: binary_expression,
+                            has: { field: operator, regex: '^\+$' },
+                          }
+                      - inside:
+                          {
+                            kind: parenthesized_expression,
+                            inside:
+                              {
+                                kind: binary_expression,
+                                has: { field: operator, regex: '^\+$' },
+                              },
+                          }
+            - all:
+                - pattern: $X || 0
+                - not:
+                    any:
+                      - inside:
+                          {
+                            kind: binary_expression,
+                            has: { field: operator, regex: "^[-+*/%]$" },
+                          }
+                      - inside:
+                          {
+                            kind: parenthesized_expression,
+                            inside:
+                              {
+                                kind: binary_expression,
+                                has: { field: operator, regex: "^[-+*/%]$" },
+                              },
+                          }
+                      - inside: { kind: augmented_assignment_expression }
+    onFail: fail
+    reason: A missing input is a failing check, never a silent default.
+    evidence:
+      - maintainer-stated
+code-review:
+  on: false
+actions:
+  pass:
+    - do: approve
+      when:
+        author:
+          - users:
+              - thegreataxios
+              - brianjfox
+  fail:
+    - do: comment
+      target:
+        body: Open an issue for this change first, then a pull request that links it.
+      when:
+        linkedIssue: false
+    - do: close
+      when:
+        linkedIssue: false
+    - do: request-changes
+      when:
+        linkedIssue: true
+  unsure:
+    - do: assign
+      target:
+        to: users
+        users:
+          - thegreataxios
