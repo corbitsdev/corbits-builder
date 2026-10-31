@@ -1,0 +1,32 @@
+{
+  "name": "@corbits-builder/schemas",
+  "version": "0.0.0",
+  "private": true,
+  "license": "SEE LICENSE IN ../../LICENSE.md",
+  "author": "Sawyer Cutler <sawyer@dirtroad.dev>",
+  "type": "module",
+  "exports": {
+    ".": "./src/source-ref.ts",
+    "./activity": "./src/activity.ts",
+    "./artifact": "./src/artifact.ts",
+    "./conversation": "./src/conversation.ts",
+    "./coordinator": "./src/coordinator.ts",
+    "./package-install": "./src/package-install.ts",
+    "./installed-workflows": "./src/installed-workflows.ts",
+    "./native-specialist": "./src/native-specialist.ts",
+    "./project": "./src/project.ts",
+    "./project-import": "./src/project-import.ts",
+    "./project-status": "./src/project-status.ts",
+    "./invitation": "./src/invitation.ts",
+    "./settings": "./src/settings.ts",
+    "./preferences": "./src/preferences.ts",
+    "./models": "./src/models.ts",
+    "./catalog": "./src/catalog.ts",
+    "./audit": "./src/audit.ts",
+    "./questions": "./src/questions.ts",
+    "./approaches": "./src/approaches.ts"
+  },
+  "dependencies": {
+    "arktype": "catalog:"
+  }
+}
