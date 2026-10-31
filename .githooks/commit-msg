@@ -1,0 +1,4 @@
+#!/bin/sh
+set -eu
+bun_bin=$(command -v bun || printf '%s' "$HOME/.bun/bin/bun")
+"$bun_bin" scripts/check-commit.ts "$1"

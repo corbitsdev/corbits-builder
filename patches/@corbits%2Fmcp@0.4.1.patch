@@ -1,0 +1,72 @@
+Local modification of @corbits/mcp 0.4.1 (LGPL-2.1-only, https://github.com/corbitsdev/corbits-mcp).
+Lets an operator mark an MCP server as confined so its destructiveHint tools on allowWithoutAsk skip the ask floor.
+Offered under LGPL-2.1-only; see THIRD_PARTY_NOTICES.md.
+
+diff --git a/dist/naming.d.ts b/dist/naming.d.ts
+index af714885aa532c246e6ee11f58488385edd86998..eafabf3f91cd33a600d33eec28e8000d53963033 100644
+--- a/dist/naming.d.ts
++++ b/dist/naming.d.ts
+@@ -19,8 +19,9 @@ export declare function toolDescription(tool: McpTool, server: string): string;
+ /**
+  * Whether `qualified` may drop below the `ask` floor: it must be on the
+  * operator's `allowWithoutAsk` list AND the remote tool must not be
+- * `destructiveHint: true` -- that flag wins no matter what is listed.
++ * `destructiveHint: true` -- that flag wins no matter what is listed,
++ * unless the operator declared the server `confined`.
+  */
+-export declare function isAskExempt(qualified: string, tool: McpTool, allowWithoutAsk: readonly string[]): boolean;
++export declare function isAskExempt(qualified: string, tool: McpTool, allowWithoutAsk: readonly string[], confined?: boolean): boolean;
+ /** App-only tools never enter model definitions or the model dispatcher. */
+ export declare function isModelVisible(tool: McpTool): boolean;
+diff --git a/dist/naming.js b/dist/naming.js
+index 9bafb24d212082836c6d0115a08fcfb63759d8aa..e51e3467a14c32414c864d75782f492d3accf3cd 100644
+--- a/dist/naming.js
++++ b/dist/naming.js
+@@ -52,10 +52,11 @@ export function toolDescription(tool, server) {
+ /**
+  * Whether `qualified` may drop below the `ask` floor: it must be on the
+  * operator's `allowWithoutAsk` list AND the remote tool must not be
+- * `destructiveHint: true` -- that flag wins no matter what is listed.
++ * `destructiveHint: true` -- that flag wins no matter what is listed,
++ * unless the operator declared the server `confined`.
+  */
+-export function isAskExempt(qualified, tool, allowWithoutAsk) {
+-    if (tool.annotations?.destructiveHint === true)
++export function isAskExempt(qualified, tool, allowWithoutAsk, confined = false) {
++    if (tool.annotations?.destructiveHint === true && !confined)
+         return false;
+     return allowWithoutAsk.includes(qualified);
+ }
+diff --git a/dist/tool.d.ts b/dist/tool.d.ts
+index ac7c1440c53f170c1fbb96123d71b697d1383e16..be8c85e1839f87585dd53a8accad99847b8bf244 100644
+--- a/dist/tool.d.ts
++++ b/dist/tool.d.ts
+@@ -11,6 +11,12 @@ export interface McpServerConfig {
+      * Omit for a server that needs no credential.
+      */
+     credentialHandle?: string;
++    /**
++     * The operator confines this server's effects to a boundary it enforces
++     * outside the model's reach (a browser limited to sandbox origins), so
++     * its `destructiveHint` tools on `allowWithoutAsk` drop below `ask` too.
++     */
++    confined?: boolean;
+ }
+ export interface McpToolsEnv extends BaseEnv {
+     /** The consumer-scoped `credentials` capability; see `tools/linear`'s `LinearEnv`. */
+diff --git a/dist/tool.js b/dist/tool.js
+index 37cc93b6c79e0e5e4622f3af6bbe53c10dce95e5..4e9e4b148887bdd742e86e1105016d25f689109d 100644
+--- a/dist/tool.js
++++ b/dist/tool.js
+@@ -50,9 +50,9 @@ export async function mcpTools(options, discoveryEnv = {}) {
+             });
+         }
+     }
+-    const definitions = discovered.map(({ qualified, tool }) => ({
++    const definitions = discovered.map(({ qualified, tool, server }) => ({
+         name: qualified,
+-        ...(isAskExempt(qualified, tool, allowWithoutAsk)
++        ...(isAskExempt(qualified, tool, allowWithoutAsk, server.confined === true)
+             ? {}
+             : { approval: "ask" }),
+     }));

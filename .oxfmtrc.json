@@ -1,0 +1,18 @@
+{
+  "printWidth": 80,
+  "trailingComma": "all",
+  "ignorePatterns": [
+    "vendor/**",
+    "workflows/designer/skills/react-ui/reference/api-*.md",
+    "**/node_modules/**",
+    "**/dist/**",
+    "bun.lock",
+    "GPL-2.0.txt",
+    "GPLv2-AI-Exception.md",
+    "LICENSE.md",
+    "THIRD_PARTY_NOTICES.md",
+    ".local/**",
+    ".env",
+    ".env.*"
+  ]
+}

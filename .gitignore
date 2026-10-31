@@ -1,0 +1,33 @@
+# Dependencies and build output
+node_modules/
+dist/
+coverage/
+*.tsbuildinfo
+.cache/
+
+# Local state: databases, run data, scratch and logs
+/data/
+.data/
+.postgres/
+.local/
+.tmp/
+/tmp/
+*.log
+*.db
+*.sqlite
+*.sqlite3
+
+# Test output
+playwright-report/
+test-results/
+
+# Environment files; only the examples are tracked
+.env
+.env.*
+!.env.example
+!/.env.*.example
+
+# Editor, OS and agent state
+.DS_Store
+.claude/
+.amp/

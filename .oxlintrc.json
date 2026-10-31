@@ -1,0 +1,19 @@
+{
+  "$schema": "./node_modules/oxlint/configuration_schema.json",
+  "ignorePatterns": ["vendor/**", "**/dist/**", "**/generated/**", "tmp/**"],
+  "options": {
+    "denyWarnings": true
+  },
+  "rules": {
+    "eslint/eqeqeq": "error",
+    "eslint/prefer-const": "error",
+    "eslint/no-var": "error",
+    "eslint/no-else-return": "error",
+    "typescript/no-explicit-any": "error",
+    "typescript/no-unnecessary-type-assertion": "error",
+    "typescript/no-confusing-non-null-assertion": "error",
+    "typescript/prefer-nullish-coalescing": "error",
+    "unicorn/require-module-specifiers": "error",
+    "import/no-cycle": "error"
+  }
+}
