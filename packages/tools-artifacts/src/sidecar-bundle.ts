@@ -32,12 +32,13 @@ export function createArtifactTools(
     throw new Error("coder_artifact_tools_need_unpack_design");
   // A writer's or reviewer's task carries every document it needs in full; a read tool sends
   // writers looking for documents that do not exist.
-  const definitions =
-    role === "coordinator"
-      ? [readDefinition, writeDefinition]
-      : role === "writer"
-        ? [writeDefinition]
-        : [readDefinition];
+  const definitions = {
+    coordinator: [readDefinition, writeDefinition],
+    writer: [writeDefinition],
+    reviewer: [readDefinition],
+    coder: [readDefinition],
+    designer: [readDefinition],
+  }[role];
   return defineTool<ArtifactToolEnv>({
     id: "@corbits-builder/artifacts/tools",
     credentials: [{ handle: HUB_CREDENTIAL_HANDLE }],
@@ -96,7 +97,12 @@ export function createArtifactTools(
                 content: JSON.stringify(receipt.artifact),
               };
             }
-            const input = ToolRead(call.arguments ?? {});
+            if (call.arguments === undefined)
+              return {
+                callId: call.id,
+                content: JSON.stringify(await artifacts.list()),
+              };
+            const input = ToolRead(call.arguments);
             if (input instanceof type.errors)
               return {
                 callId: call.id,
