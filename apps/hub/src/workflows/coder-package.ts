@@ -7,7 +7,9 @@ import {
 import { browserCatalog } from "../builds/browser-catalog.ts" with { type: "macro" };
 import { mcpTools } from "@corbits/mcp/interchange/client";
 import { mail, type MailToolEnv } from "@intx/tools-mail/sidecar-bundle";
-import { createArtifactTools } from "../artifacts/tools.ts";
+import { createArtifactTools } from "@corbits-builder/tools-artifacts/sidecar-bundle";
+import { failure } from "../artifacts/tools.ts";
+import { unpackDesign } from "../artifacts/design-bundle.ts";
 import { createSkillTools } from "../skills/tools.ts";
 import { roleInference } from "./role-inference.ts";
 import {
@@ -46,7 +48,7 @@ export async function coderPackage(
     inference: { ...source, parameters },
     // The project role child supplies the sandboxed workspace and executor.
     tools: [
-      createArtifactTools("coder"),
+      createArtifactTools("coder", { failure, unpackDesign }),
       mail,
       createSkillTools(["react-ui", "stack-docs"]),
       web,

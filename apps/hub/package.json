@@ -20,6 +20,7 @@
     "@corbits-builder/designer": "workspace:*",
     "@corbits-builder/reviewer": "workspace:*",
     "@corbits-builder/schemas": "workspace:*",
+    "@corbits-builder/tools-artifacts": "workspace:*",
     "@corbits-builder/tools-design": "workspace:*",
     "@corbits-builder/tools-hub": "workspace:*",
     "@corbits-builder/writer": "workspace:*",

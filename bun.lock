@@ -67,6 +67,7 @@
         "@corbits-builder/designer": "workspace:*",
         "@corbits-builder/reviewer": "workspace:*",
         "@corbits-builder/schemas": "workspace:*",
+        "@corbits-builder/tools-artifacts": "workspace:*",
         "@corbits-builder/tools-design": "workspace:*",
         "@corbits-builder/tools-hub": "workspace:*",
         "@corbits-builder/writer": "workspace:*",
@@ -157,6 +158,17 @@
       "name": "@corbits-builder/schemas",
       "version": "0.1.0-rc.2",
       "dependencies": {
+        "arktype": "catalog:",
+      },
+    },
+    "packages/tools-artifacts": {
+      "name": "@corbits-builder/tools-artifacts",
+      "version": "0.1.0-rc.2",
+      "dependencies": {
+        "@corbits-builder/schemas": "workspace:*",
+        "@corbits-builder/tools-hub": "workspace:*",
+        "@intx/agent": "workspace:*",
+        "@intx/types": "workspace:*",
         "arktype": "catalog:",
       },
     },
@@ -752,6 +764,8 @@
     "@corbits-builder/reviewer": ["@corbits-builder/reviewer@workspace:workflows/reviewer"],
 
     "@corbits-builder/schemas": ["@corbits-builder/schemas@workspace:packages/schemas"],
+
+    "@corbits-builder/tools-artifacts": ["@corbits-builder/tools-artifacts@workspace:packages/tools-artifacts"],
 
     "@corbits-builder/tools-design": ["@corbits-builder/tools-design@workspace:packages/tools-design"],
 

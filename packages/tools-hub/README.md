@@ -5,6 +5,8 @@ hub from inside a run. `workflowHttpJson` calls a hub route through the run's
 mediated hub credential and throws `WorkflowHttpError` on a refusal,
 `resolveWorkflowProjectScope` reads the project a run belongs to, and
 `projectScopeCode` turns a failure into the only code the model sees.
+`HubArtifactReceipt` checks a filing receipt while ignoring fields a newer
+hub adds.
 
 ## Where it fits
 
@@ -18,6 +20,7 @@ those tools.
 - `src/index.ts`: the package's exports.
 - `src/http-json.ts`: `workflowHttpJson`, `mediatedHttpJson` and
   `WorkflowHttpError`.
+- `src/artifact-receipt.ts`: `HubArtifactReceipt`.
 - `src/project-scope.ts`: `resolveWorkflowProjectScope` and
   `projectScopeCode`.
 

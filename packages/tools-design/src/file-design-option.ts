@@ -2,19 +2,13 @@ import { type } from "arktype";
 import { readFile, realpath } from "node:fs/promises";
 import { join } from "node:path";
 import type { ToolResult } from "@intx/types/runtime";
-import {
-  ArtifactReceipt,
-  DesignBundle,
-} from "@corbits-builder/schemas/artifact";
+import { DesignBundle } from "@corbits-builder/schemas/artifact";
+import { HubArtifactReceipt } from "@corbits-builder/tools-hub";
 import { designCheckFor } from "./design-check.ts";
 import { withDesignTokens } from "./design-tokens.ts";
 import { DESIGN_STYLES } from "./design-tweaks.ts";
 
 export const MAX_DESIGN_BYTES = 256 * 1024;
-
-// A deployed agent keeps the tool bundle it started with while the hub moves on; a field a newer
-// hub adds must not fail every filing of an older agent.
-const HubArtifactReceipt = ArtifactReceipt.onDeepUndeclaredKey("ignore");
 
 export const fileDesignOptionDefinition = {
   name: "file_design_option",

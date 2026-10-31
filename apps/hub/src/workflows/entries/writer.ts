@@ -1,6 +1,7 @@
 import { createWriterAgent } from "@corbits-builder/writer/agent";
 import { createWriterWorkflow } from "@corbits-builder/writer";
-import { createArtifactTools } from "../../artifacts/tools.ts";
+import { createArtifactTools } from "@corbits-builder/tools-artifacts/sidecar-bundle";
+import { failure } from "../../artifacts/tools.ts";
 import { createSkillTools } from "../../skills/tools.ts";
 import { roleInference } from "../role-inference.ts";
 import {
@@ -23,7 +24,7 @@ const agent = createWriterAgent({
   capabilities: [],
   inference: { ...source, parameters },
   tools: [
-    createArtifactTools("writer"),
+    createArtifactTools("writer", { failure }),
     createSkillTools([
       "constraints",
       "approaches",

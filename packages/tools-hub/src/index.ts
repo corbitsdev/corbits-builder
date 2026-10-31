@@ -1,3 +1,4 @@
+export { HubArtifactReceipt } from "./artifact-receipt.ts";
 export {
   mediatedHttpJson,
   WorkflowHttpError,
