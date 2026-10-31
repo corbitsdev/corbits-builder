@@ -14,6 +14,47 @@
     "typescript/no-confusing-non-null-assertion": "error",
     "typescript/prefer-nullish-coalescing": "error",
     "unicorn/require-module-specifiers": "error",
-    "import/no-cycle": "error"
-  }
+    "import/no-cycle": "error",
+    "eslint/complexity": [
+      "error",
+      {
+        "max": 40
+      }
+    ],
+    "eslint/max-params": [
+      "error",
+      {
+        "max": 6
+      }
+    ],
+    "eslint/max-nested-callbacks": [
+      "error",
+      {
+        "max": 5
+      }
+    ]
+  },
+  "overrides": [
+    {
+      "files": [
+        "apps/hub/src/auth/agent-token-bridge.ts",
+        "apps/web/src/App.tsx",
+        "apps/web/src/pages/workspace/deliverable-block.tsx",
+        "apps/web/src/pages/workspace/index.tsx",
+        "apps/web/src/pages/workspace/live-app.tsx"
+      ],
+      "rules": {
+        "eslint/complexity": "off"
+      }
+    },
+    {
+      "files": [
+        "apps/hub/src/artifacts/service.ts",
+        "apps/hub/src/projects/routes.ts"
+      ],
+      "rules": {
+        "eslint/max-params": "off"
+      }
+    }
+  ]
 }
