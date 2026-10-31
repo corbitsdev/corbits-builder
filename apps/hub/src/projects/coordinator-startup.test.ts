@@ -36,20 +36,28 @@ afterEach(() => {
   setSystemTime();
 });
 
-test("a coordinator ready after more than 120 s still starts", async () => {
-  await awaitCoordinatorReady(
-    nativeStates(["provisioning", "allocated"], 121_000),
-    "tenant",
-    "run",
-  );
-});
-
-test("a start still pending past 270 s fails", async () => {
+test("a start still pending past the limit fails and cancels the run", async () => {
+  const cancelled: string[][] = [];
   await expect(
     awaitCoordinatorReady(
-      nativeStates(["provisioning"], 271_000),
+      nativeStates(["provisioning"], 61_000),
       "tenant",
       "run",
+      60_000,
+      async (...args) => {
+        cancelled.push(args);
+      },
     ),
   ).rejects.toMatchObject({ code: "coordinator_start_failed" });
+  expect(cancelled).toEqual([["tenant", "run", "coordinator_start_timeout"]]);
+});
+
+test("a raised limit lets a 90 s start finish", async () => {
+  await awaitCoordinatorReady(
+    nativeStates(["provisioning", "allocated"], 90_000),
+    "tenant",
+    "run",
+    120_000,
+    async () => {},
+  );
 });

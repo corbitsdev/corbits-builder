@@ -147,6 +147,9 @@ docker compose --env-file .env.hub -f compose.yml -f compose.docker-sidecars.yml
   when that address is not reachable from them.
 - Per-container limits: `SIDECAR_MEMORY_BYTES`, `SIDECAR_PIDS`,
   `SIDECAR_NANO_CPUS`.
+- `COORDINATOR_START_TIMEOUT_MS` (default `60000`) is the longest a project's
+  coordinator may take to start; raise it on a slow machine, but keep it under
+  `300000`.
 
 ## Logs
 

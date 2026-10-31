@@ -22,11 +22,14 @@ import { ProjectError } from "./errors.ts";
 import type { Actor } from "../lib/actor.ts";
 
 const START_FAILED = "coordinator_start_failed";
-// Longer than the native sidecar ensure and connection stages (120 s each) normally take, and
-// shorter than the web's 5-minute request ceiling, so a failed start reaches the person who
-// created the project instead of archiving it after they stopped waiting.
-const READY_WAIT_MS = 270_000;
+const START_TIMEOUT = "coordinator_start_timeout";
 const READY_POLL_MS = 250;
+
+type CancelRun = (
+  tenantId: string,
+  runId: string,
+  reason: string,
+) => Promise<unknown>;
 
 type BoundRun = { runId: string; ended: boolean };
 
@@ -174,7 +177,12 @@ async function attach(
     runId = created.runId;
     deployed.set(key, runId);
   }
-  await ports.awaitReady({ tenantId: actor.tenantId, runId });
+  try {
+    await ports.awaitReady({ tenantId: actor.tenantId, runId });
+  } catch (error) {
+    deployed.delete(key);
+    throw error;
+  }
   try {
     await ports.bind(actor, projectId, {
       runId,
@@ -195,8 +203,10 @@ export async function awaitCoordinatorReady(
   db: DB["db"],
   tenantId: string,
   runId: string,
+  readyWaitMs: number,
+  cancel: CancelRun,
 ): Promise<void> {
-  const deadline = Date.now() + READY_WAIT_MS;
+  const deadline = Date.now() + readyWaitMs;
   for (;;) {
     const [run] = await db
       .select()
@@ -231,7 +241,12 @@ export async function awaitCoordinatorReady(
       (run && workflowRunExecutability(run) === "terminal")
     )
       throw startFailed();
-    if (Date.now() >= deadline) throw startFailed();
+    if (Date.now() >= deadline) {
+      // The hub's limit can be shorter than the native start stages, so the hub
+      // cancels what it stops waiting for instead of leaving it to claim a slot later.
+      await cancel(tenantId, runId, START_TIMEOUT);
+      throw startFailed();
+    }
     await new Promise((resolve) => setTimeout(resolve, READY_POLL_MS));
   }
 }
@@ -248,6 +263,8 @@ export function createInstalledCoordinatorStartup(
     domain: string;
     deployment: NativeSpecialistDeployment;
   }) => Promise<{ runId: string }>,
+  readyWaitMs: number,
+  cancel: CancelRun,
 ) {
   const registry = createCoordinatorRegistry(db);
   return createProjectCoordinatorStartup({
@@ -302,7 +319,13 @@ export function createInstalledCoordinatorStartup(
       }
     },
     awaitReady(args) {
-      return awaitCoordinatorReady(db, args.tenantId, args.runId);
+      return awaitCoordinatorReady(
+        db,
+        args.tenantId,
+        args.runId,
+        readyWaitMs,
+        cancel,
+      );
     },
     bind(actor, projectId, body) {
       return registry.bind(actor, projectId, body);
