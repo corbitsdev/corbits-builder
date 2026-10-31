@@ -4,7 +4,7 @@
 <h1 align="center">Builder</h1>
 <p align="center">Turn a half-baked idea into a working application, without being a developer.</p>
 <p align="center">
-  <a href="https://github.com/corbitsdev/corbits-builder/actions/workflows/ci.yml"><img alt="CI" src="https://github.com/corbitsdev/corbits-builder/actions/workflows/ci.yml/badge.svg"></a>
+  <a href="https://github.com/corbitsdev/corbits-builder/actions/workflows/test.yml"><img alt="Tests" src="https://github.com/corbitsdev/corbits-builder/actions/workflows/test.yml/badge.svg"></a>
 </p>
 <p align="center">
   <a href="https://github.com/corbitsdev/corbits-builder/blob/main/docs/USER_MANUAL.md">User manual</a> ·

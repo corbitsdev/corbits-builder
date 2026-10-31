@@ -1,0 +1,36 @@
+name: Vendor
+
+on:
+  pull_request:
+    paths:
+      - "vendor/**"
+      - "scripts/verify-vendor.ts"
+      - "bun.lock"
+      - "patches/**"
+      - "package.json"
+      - "tsconfig.json"
+      - ".github/**"
+  merge_group:
+  push:
+    branches:
+      - main
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event_name }}-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name != 'push' }}
+
+jobs:
+  vendor-verify:
+    name: vendor:verify
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: ./.github/actions/setup
+      - run: bun run vendor:verify

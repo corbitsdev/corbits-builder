@@ -1,7 +1,18 @@
-name: CI
+name: E2E
 
 on:
   pull_request:
+    paths:
+      - "apps/hub/**"
+      - "packages/**"
+      - "workflows/**"
+      - "test/e2e/**"
+      - "vendor/**"
+      - "bun.lock"
+      - "patches/**"
+      - "package.json"
+      - "tsconfig.json"
+      - ".github/**"
   merge_group:
   push:
     branches:
@@ -12,26 +23,10 @@ permissions:
   contents: read
 
 concurrency:
-  group: ci-${{ github.workflow }}-${{ github.event_name }}-${{ github.ref }}
+  group: ${{ github.workflow }}-${{ github.event_name }}-${{ github.ref }}
   cancel-in-progress: ${{ github.event_name != 'push' }}
 
 jobs:
-  check:
-    name: ${{ matrix.script }}
-    runs-on: ubuntu-24.04
-    timeout-minutes: 20
-    strategy:
-      fail-fast: false
-      matrix:
-        script:
-          [format:check, lint, typecheck, test, vendor:verify, pins:verify]
-    steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-        with:
-          persist-credentials: false
-      - uses: ./.github/actions/setup
-      - run: bun run ${{ matrix.script }}
-
   e2e:
     runs-on: ubuntu-24.04
     timeout-minutes: 20
