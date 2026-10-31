@@ -1,6 +1,6 @@
 {
   "name": "corbits-builder",
-  "version": "0.1.0-rc.2",
+  "version": "0.1.0-rc.3",
   "private": true,
   "description": "Builder turns an idea into approved documents, a design and a working web app, with agents on the model provider you choose.",
   "license": "SEE LICENSE IN LICENSE.md",
