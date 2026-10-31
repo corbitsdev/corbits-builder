@@ -14,7 +14,7 @@ concurrency:
 jobs:
   release:
     runs-on: ubuntu-24.04
-    timeout-minutes: 60
+    timeout-minutes: 10
     permissions:
       contents: write
       packages: write
@@ -39,20 +39,25 @@ jobs:
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
       - uses: docker/setup-buildx-action@f87e5991a6d7451dcb8d9637bfbc97413f497069 # v4.4.1
-      - uses: docker/build-push-action@c3c9e263c25d99ce0380d002d59b67737d91b0dc # v7.4.0
-        with:
-          context: .
-          file: deploy/Dockerfile
-          target: hub
-          push: true
-          tags: ${{ env.HUB_IMAGE }}:${{ steps.version.outputs.version }}
-      - uses: docker/build-push-action@c3c9e263c25d99ce0380d002d59b67737d91b0dc # v7.4.0
-        with:
-          context: .
-          file: deploy/Dockerfile
-          target: sidecar
-          push: true
-          tags: ${{ env.SIDECAR_IMAGE }}:${{ steps.version.outputs.version }}
+      - id: sha
+        run: echo "sha=$(git rev-parse "$GITHUB_REF_NAME^{commit}")" >> "$GITHUB_OUTPUT"
+      - env:
+          SHA: ${{ steps.sha.outputs.sha }}
+          VERSION: ${{ steps.version.outputs.version }}
+        run: |
+          channel=latest
+          if [[ "$VERSION" == 0.* || "$VERSION" == *-* ]]; then
+            channel=rc
+          fi
+          for image in "$HUB_IMAGE" "$SIDECAR_IMAGE"; do
+            if ! docker buildx imagetools inspect "$image:$SHA" > /dev/null; then
+              echo "::error::$image images for $SHA are not published yet; wait for the publish workflow on main"
+              exit 1
+            fi
+          done
+          for image in "$HUB_IMAGE" "$SIDECAR_IMAGE"; do
+            docker buildx imagetools create -t "$image:$VERSION" -t "$image:$channel" "$image:$SHA"
+          done
       - env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           VERSION: ${{ steps.version.outputs.version }}
@@ -64,7 +69,7 @@ jobs:
           - \`$HUB_IMAGE:$VERSION\`
           - \`$SIDECAR_IMAGE:$VERSION\`
 
-          [docs/SELF_HOST.md](https://github.com/$GITHUB_REPOSITORY/blob/$GITHUB_REF_NAME/docs/SELF_HOST.md) covers self-hosting; set the hub and sidecar `image:` to these refs instead of building.
+          Choose a channel with \`BUILDER_VERSION\`: \`$VERSION\` pins this release, \`rc\` follows the newest release candidate, \`latest\` the newest stable release and \`main\` every merge. [docs/SELF_HOST.md](https://github.com/$GITHUB_REPOSITORY/blob/$GITHUB_REF_NAME/docs/SELF_HOST.md) covers self-hosting.
           EOF
           prerelease=()
           if [[ "$VERSION" == 0.* || "$VERSION" == *-* ]]; then
