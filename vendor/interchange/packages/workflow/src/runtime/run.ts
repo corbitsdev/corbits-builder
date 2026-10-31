@@ -1772,9 +1772,15 @@ async function runStep(
     };
     bridgeAbort(abort, onOuter);
     let timer: ReturnType<typeof setTimeout> | undefined;
+    let timedOut = false;
     if (step.timeout !== undefined) {
       timer = setTimeout(() => {
-        stepAbort.abort();
+        timedOut = true;
+        stepAbort.abort(
+          new Error(
+            `step ${step.id} exceeded its ${String(step.timeout)} ms timeout`,
+          ),
+        );
       }, step.timeout);
     }
 
@@ -1964,6 +1970,7 @@ async function runStep(
       return output;
     } catch (cause) {
       const message = cause instanceof Error ? cause.message : String(cause);
+      const error = timedOut ? { message, code: "step-timeout" } : { message };
       const exhausted = attempt >= maxAttempts;
       let after = await reloadState(env, runId);
       // Cancellation wins over step-level failure: if the run is
@@ -2043,7 +2050,7 @@ async function runStep(
           at: env.clock().toISOString(),
           stepId: step.id,
           attempt,
-          error: { message },
+          error,
           retriesExhausted: true,
           routedTo: step.onFailure,
         };
@@ -2057,7 +2064,7 @@ async function runStep(
         at: env.clock().toISOString(),
         stepId: step.id,
         attempt,
-        error: { message },
+        error,
         retriesExhausted: exhausted,
       };
       after = await commit(env, runId, failed);
