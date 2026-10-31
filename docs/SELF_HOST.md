@@ -76,6 +76,24 @@ To create a machine account and workspace without the UI, set the
 docker compose --env-file .env.hub --project-directory . -f deploy/compose.yml --profile setup run --rm setup
 ```
 
+## Sandboxes
+
+The coder and designer run every command under bubblewrap, which needs a user
+namespace with its capabilities intact. The hub service runs with
+`seccomp=unconfined` for that; its capabilities stay dropped. Ubuntu 24.04 and
+later strip the capabilities from unprivileged user namespaces, so on such a
+host (including the Ubuntu VM that Colima runs) also turn that restriction
+off, and make it persist across reboots:
+
+```sh
+sudo sysctl -w kernel.apparmor_restrict_unprivileged_userns=0
+echo kernel.apparmor_restrict_unprivileged_userns=0 | sudo tee /etc/sysctl.d/60-builder-userns.conf
+```
+
+Without it every designer and coder tool call fails with
+`sandbox_tool_process_failed: bwrap: No permissions to create a new namespace`
+or `bwrap: setting up uid map: Permission denied`.
+
 ## Sidecars in Docker
 
 Agents run in sidecars. By default the hub starts them as processes beside

@@ -45,6 +45,13 @@ services:
     # No image name: Compose tags it after the project, so two checkouts never
     # share one image.
     <<: *hub
+    # The coder and designer run their commands under bubblewrap, which makes
+    # a user namespace for each one. Docker's default seccomp profile refuses
+    # that without CAP_SYS_ADMIN, so the hub runs without the profile and keeps
+    # its capabilities dropped. On Ubuntu 24.04 hosts the kernel must also
+    # allow it; see "Sandboxes" in docs/SELF_HOST.md.
+    security_opt:
+      - seccomp=unconfined
     ports:
       - "127.0.0.1:${PORT:-8000}:${PORT:-8000}"
       - "127.0.0.1:1455:1455"
