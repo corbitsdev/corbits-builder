@@ -45,6 +45,7 @@ import { getLogger } from "@intx/log";
 import { hexDecode, hexEncode } from "@intx/types";
 import { createProductConfig } from "./config/index.ts";
 import {
+  readCoordinatorStartTimeoutMs,
   readHubEnvironment,
   readGoogleEmulateBaseUrl,
   required,
@@ -109,6 +110,8 @@ export async function createHubRuntime(
   rawEnvironment: Record<string, string | undefined> = process.env,
 ) {
   const env = readHubEnvironment(rawEnvironment);
+  const coordinatorStartTimeoutMs =
+    readCoordinatorStartTimeoutMs(rawEnvironment);
   const handle = createDB(env.database);
   let authEmail: ReturnType<typeof createAuthEmail>;
   try {
@@ -350,6 +353,8 @@ export async function createHubRuntime(
           throw error;
         }
       },
+      coordinatorStartTimeoutMs,
+      workflows.services.workflowLifecycleService.requestCancellation,
     );
     const coordinatorUpgrades = createCoordinatorUpgrades({
       db: handle.db,

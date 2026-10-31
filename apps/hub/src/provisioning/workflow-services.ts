@@ -38,6 +38,7 @@ import {
   createDockerSidecarProvisioner,
   defaultDockerLimits,
 } from "./docker.ts";
+import { positiveInteger } from "../environment.ts";
 import { localSidecarDataRoot } from "../sidecar/data-root.ts";
 import { createHostCapacity } from "../sidecar/host-capacity.ts";
 import {
@@ -86,13 +87,6 @@ export async function createWorkflowServices(options: {
     "/api/sidecars/ws",
     options.publicURL,
   ).href.replace(/^http/, "ws");
-  const integer = (key: string, fallback: number) => {
-    const raw = environment[key];
-    const value = raw === undefined ? fallback : Number(raw);
-    if (!Number.isSafeInteger(value) || value <= 0)
-      throw new Error(`${key} must be a positive safe integer`);
-    return value;
-  };
   const adapterManifest = parseAdapterManifestEnv(
     environment["SIDECAR_ADAPTER_MANIFEST"],
   ) ?? [
@@ -121,7 +115,11 @@ export async function createWorkflowServices(options: {
   const credentialEncryptionKey = environment["CREDENTIAL_ENCRYPTION_KEY"];
   if (!credentialEncryptionKey)
     throw new Error("CREDENTIAL_ENCRYPTION_KEY is required");
-  const maxActiveDeployments = integer("SIDECAR_LOCAL_MAX_ACTIVE", 16);
+  const maxActiveDeployments = positiveInteger(
+    environment,
+    "SIDECAR_LOCAL_MAX_ACTIVE",
+    16,
+  );
   const dataRoot = localSidecarDataRoot(
     environment["HUB_DATA_DIR"] ?? "data/hub",
   );
@@ -167,12 +165,21 @@ export async function createWorkflowServices(options: {
         image: image.Id,
         adapterManifest,
         limits: {
-          memoryBytes: integer(
+          memoryBytes: positiveInteger(
+            environment,
             "SIDECAR_MEMORY_BYTES",
             defaultDockerLimits.memoryBytes,
           ),
-          pids: integer("SIDECAR_PIDS", defaultDockerLimits.pids),
-          nanoCpus: integer("SIDECAR_NANO_CPUS", defaultDockerLimits.nanoCpus),
+          pids: positiveInteger(
+            environment,
+            "SIDECAR_PIDS",
+            defaultDockerLimits.pids,
+          ),
+          nanoCpus: positiveInteger(
+            environment,
+            "SIDECAR_NANO_CPUS",
+            defaultDockerLimits.nanoCpus,
+          ),
         },
         ...(environment["SIDECAR_HUB_WS_URL"]
           ? { hubWebSocketUrl: environment["SIDECAR_HUB_WS_URL"] }

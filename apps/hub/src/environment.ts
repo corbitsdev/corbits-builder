@@ -131,6 +131,29 @@ export function readBaseURL(env: Environment): string {
   );
 }
 
+// Measured starts take seconds (3.6 s cold on a fresh install, 15 s worst over 115 dev
+// starts), so a minute leaves margin and a failed start reaches the person soon. Slow
+// machines raise it, but a failed start must still arrive before the web's 5-minute
+// request ceiling.
+export function readCoordinatorStartTimeoutMs(env: Environment): number {
+  const value = positiveInteger(env, "COORDINATOR_START_TIMEOUT_MS", 60_000);
+  if (value >= 300_000)
+    throw new Error("COORDINATOR_START_TIMEOUT_MS must be under 300000");
+  return value;
+}
+
+export function positiveInteger(
+  env: Environment,
+  name: string,
+  absent: number,
+): number {
+  const raw = env[name];
+  const value = raw === undefined ? absent : Number(raw);
+  if (!Number.isSafeInteger(value) || value <= 0)
+    throw new Error(`${name} must be a positive safe integer`);
+  return value;
+}
+
 export function readHubEnvironment(env: Environment) {
   const credentialKey = required(env, "CREDENTIAL_ENCRYPTION_KEY");
   const principalKey = required(env, "PRINCIPAL_KEY_ENCRYPTION_KEY");
