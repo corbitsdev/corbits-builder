@@ -42,6 +42,17 @@ services:
       retries: 30
   hub:
     <<: *hub
+    # The coder and designer run their commands under bubblewrap, which gives
+    # each one its own user, pid and mount namespaces with a fresh /proc.
+    # Docker's default seccomp profile refuses the namespaces without
+    # CAP_SYS_ADMIN, its AppArmor profile refuses the mount propagation, and
+    # its masked /proc paths refuse the fresh /proc, so the hub runs without
+    # those three and keeps its capabilities dropped. On Ubuntu 24.04 hosts
+    # the kernel must also allow it; see "Sandboxes" in docs/SELF_HOST.md.
+    security_opt:
+      - seccomp=unconfined
+      - apparmor=unconfined
+      - systempaths=unconfined
     ports:
       - "127.0.0.1:${PORT:-8000}:${PORT:-8000}"
       - "127.0.0.1:1455:1455"
