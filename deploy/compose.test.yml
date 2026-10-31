@@ -1,0 +1,24 @@
+# Throwaway Postgres for `bun run test:e2e`, kept out of deploy/compose.yml so
+# a deployment never needs E2E_DB_PASSWORD. Run it under its own project so it
+# never touches the development database:
+#   docker compose -p builder-e2e --env-file .env.hub --project-directory . -f deploy/compose.test.yml up -d --wait
+services:
+  test-db:
+    image: postgres:17.11-alpine@sha256:eee6c6e1b0894fa4fe0075eb054af9fd1cf39a35321c2d4110626cfe506411fb
+    environment:
+      POSTGRES_USER: corbits_builder_test
+      POSTGRES_PASSWORD: ${E2E_DB_PASSWORD:?Set E2E_DB_PASSWORD in a private environment file}
+      POSTGRES_DB: corbits_builder_test
+    ports:
+      - "127.0.0.1:${E2E_DB_PORT:-5434}:5432"
+    tmpfs:
+      - /var/lib/postgresql/data
+    healthcheck:
+      test:
+        [
+          "CMD-SHELL",
+          "pg_isready -U corbits_builder_test -d corbits_builder_test",
+        ]
+      interval: 2s
+      timeout: 3s
+      retries: 30

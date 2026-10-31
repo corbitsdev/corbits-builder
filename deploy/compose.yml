@@ -1,0 +1,59 @@
+# Run from the repo root with `--project-directory .` so compose keeps the
+# repo-named project and resolves paths from the root, and `--env-file .env.hub`
+# so the values below interpolate from it:
+#   docker compose --env-file .env.hub --project-directory . -f deploy/compose.yml up -d
+x-hub: &hub
+  build:
+    context: .
+    dockerfile: deploy/Dockerfile
+    target: hub
+  env_file: .env.hub
+  environment:
+    DB_HOST: db
+    DB_PORT: 5432
+    HOST: 0.0.0.0
+    PORT: ${PORT:-8000}
+    HUB_DATA_DIR: /app/data/hub
+    # The container uses its own database and web build, whatever .env.hub points the dev hub at.
+    DATABASE_URL: ""
+    MIGRATION_DATABASE_URL: ""
+    HUB_WEB_DIR: /app/apps/web/dist
+    BETTER_AUTH_BASE_URL: ${BETTER_AUTH_BASE_URL:-http://localhost:${PORT:-8000}}
+  depends_on:
+    db:
+      condition: service_healthy
+  volumes:
+    - hub-data:/app/data/hub
+
+services:
+  db:
+    image: postgres:17.11-alpine@sha256:eee6c6e1b0894fa4fe0075eb054af9fd1cf39a35321c2d4110626cfe506411fb
+    environment:
+      POSTGRES_USER: ${DB_USER:-corbits_builder}
+      POSTGRES_PASSWORD: ${DB_PASSWORD:?Set DB_PASSWORD}
+      POSTGRES_DB: ${DB_NAME:-corbits_builder}
+    ports:
+      - "127.0.0.1:${DB_PORT:-5433}:5432"
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U $$POSTGRES_USER -d $$POSTGRES_DB"]
+      interval: 2s
+      timeout: 3s
+      retries: 30
+  hub:
+    # No image name: Compose tags it after the project, so two checkouts never
+    # share one image.
+    <<: *hub
+    ports:
+      - "127.0.0.1:${PORT:-8000}:${PORT:-8000}"
+      - "127.0.0.1:1455:1455"
+      - "127.0.0.1:1456:1456"
+  setup:
+    <<: *hub
+    profiles: ["setup"]
+    command:
+      ["bun", "--no-env-file", "--conditions=intx-src", "apps/hub/src/setup.ts"]
+volumes:
+  postgres-data:
+  hub-data:

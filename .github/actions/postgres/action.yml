@@ -1,0 +1,10 @@
+name: Postgres
+description: The runner image's Postgres, with the password the e2e gate connects with.
+runs:
+  using: composite
+  steps:
+    # Starting the runner's own Postgres avoids Docker Hub pulls and their rate limits.
+    - run: |
+        sudo systemctl start postgresql.service
+        sudo -u postgres psql -c "ALTER USER postgres PASSWORD 'postgres';"
+      shell: bash

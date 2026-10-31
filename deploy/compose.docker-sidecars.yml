@@ -1,0 +1,15 @@
+# Lets the hub also start sidecars as containers on the host's Docker daemon:
+#   docker compose --env-file .env.hub --project-directory . -f deploy/compose.yml -f deploy/compose.docker-sidecars.yml up -d
+# Build the image on that daemon first with `bun run docker:sidecar`.
+# Access to the socket is root on the host.
+services:
+  hub:
+    environment:
+      SIDECAR_IMAGE: ${SIDECAR_IMAGE:-corbits-builder-sidecar:local}
+      SIDECAR_DOCKER_HOST: unix:///var/run/docker.sock
+    # The group that owns the socket inside the container: 0 on Docker Desktop,
+    # the host's docker group id (`getent group docker`) on Linux.
+    group_add:
+      - "${DOCKER_SOCKET_GID:-0}"
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
