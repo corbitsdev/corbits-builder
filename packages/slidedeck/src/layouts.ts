@@ -317,7 +317,7 @@ export const LIST_LEVELS = LIST_LEVEL_STYLES.map(
     `<a:lvl${index + 2}pPr marL="${LIST_INDENT * (index + 1)}" indent="${-BULLET_HANG}"><a:spcBef><a:spcPts val="400"/></a:spcBef><a:buClr><a:schemeClr val="accent1"/></a:buClr><a:buFont typeface="Arial"/><a:buChar char="${bullet}"/><a:defRPr sz="${size}"><a:solidFill><a:schemeClr val="tx1"/></a:solidFill><a:latin typeface="+mn-lt"/></a:defRPr></a:lvl${index + 2}pPr>`,
 ).join("");
 
-export function masterXml(logo: string) {
+export function masterXml(logo: string, layouts: readonly Layout[]) {
   // Layouts' untyped content placeholders inherit from the master's body; PowerPoint rejects an untyped one on the master itself.
   const content = placeholders().content.map((placeholder) =>
     placeholder.kind === "obj"
@@ -327,10 +327,12 @@ export function masterXml(logo: string) {
   const shapes = [...content, FOOTER, SLIDE_NUMBER]
     .map((placeholder, index) => templateShape(index + 2, placeholder))
     .join("");
-  const layoutIds = LAYOUT_ORDER.map(
-    (_, index) =>
-      `<p:sldLayoutId id="${2147483649 + index}" r:id="rId${index + 1}"/>`,
-  ).join("");
+  const layoutIds = layouts
+    .map(
+      (_, index) =>
+        `<p:sldLayoutId id="${2147483649 + index}" r:id="rId${index + 1}"/>`,
+    )
+    .join("");
   const level = (size: number, extra = "") =>
     `<a:lvl1pPr${extra}><a:spcBef><a:spcPts val="600"/></a:spcBef><a:buNone/><a:defRPr sz="${size}"><a:solidFill><a:schemeClr val="tx1"/></a:solidFill><a:latin typeface="+mn-lt"/></a:defRPr></a:lvl1pPr>`;
   return `${XML_DECLARATION}<p:sldMaster ${NAMESPACES}><p:cSld><p:bg><p:bgPr><a:solidFill><a:schemeClr val="bg1"/></a:solidFill><a:effectLst/></p:bgPr></p:bg><p:spTree>${GROUP_HEADER}${shapes}${logo}</p:spTree></p:cSld>${COLOR_MAP}<p:sldLayoutIdLst>${layoutIds}</p:sldLayoutIdLst><p:hf hdr="0" dt="0"/><p:txStyles><p:titleStyle><a:lvl1pPr algn="l"><a:defRPr sz="3200" b="1"><a:solidFill><a:schemeClr val="tx1"/></a:solidFill><a:latin typeface="+mj-lt"/></a:defRPr></a:lvl1pPr></p:titleStyle><p:bodyStyle>${level(2000, ' marL="0" indent="0"')}${LIST_LEVELS}</p:bodyStyle><p:otherStyle>${level(1800)}</p:otherStyle></p:txStyles></p:sldMaster>`;

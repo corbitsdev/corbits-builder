@@ -11,6 +11,7 @@ import {
   type DeckInput,
   type DeckIssue,
   type Element,
+  type Layout,
   type Link,
   type ListItem,
   type RichText,
@@ -472,12 +473,26 @@ function placedSlide(
   }
 }
 
-function slideXml(deck: Deck, slide: Slide, index: number, media: MediaStore) {
+// Keynote drops an unused Picture with Caption layout and warns about removed media on open.
+const deckLayouts = (deck: Deck) =>
+  LAYOUT_ORDER.filter(
+    (layout) =>
+      layout !== "image" ||
+      deck.slides.some((slide) => slide.layout === layout),
+  );
+
+function slideXml(
+  deck: Deck,
+  slide: Slide,
+  index: number,
+  media: MediaStore,
+  layouts: readonly Layout[],
+) {
   const part = new SlidePart(media);
   const layout = slide.layout === "free" ? "blank" : slide.layout;
   part.rels.add(
     "slideLayout",
-    `../slideLayouts/slideLayout${LAYOUT_ORDER.indexOf(layout) + 1}.xml`,
+    `../slideLayouts/slideLayout${layouts.indexOf(layout) + 1}.xml`,
   );
   const free = slide.layout === "free" ? freeSlide(slide, part) : undefined;
   if (slide.layout !== "free") placedSlide(deck, slide, index, part);
@@ -499,7 +514,7 @@ function notesXml(notes: string) {
 
 const NOTES_MASTER = `${XML_DECLARATION}<p:notesMaster ${NAMESPACES}><p:cSld><p:spTree>${GROUP_HEADER}<p:sp><p:nvSpPr><p:cNvPr id="2" name="Slide Image"/><p:cNvSpPr><a:spLocks noGrp="1" noRot="1" noChangeAspect="1"/></p:cNvSpPr><p:nvPr><p:ph type="sldImg" idx="2"/></p:nvPr></p:nvSpPr><p:spPr>${xfrm({ x: 685800, y: 1143000, w: 5486400, h: 3086100 })}<a:prstGeom prst="rect"><a:avLst/></a:prstGeom></p:spPr></p:sp><p:sp><p:nvSpPr><p:cNvPr id="3" name="Notes"/><p:cNvSpPr><a:spLocks noGrp="1"/></p:cNvSpPr><p:nvPr><p:ph type="body" sz="quarter" idx="1"/></p:nvPr></p:nvSpPr><p:spPr>${xfrm({ x: 685800, y: 4400550, w: 5486400, h: 3600450 })}<a:prstGeom prst="rect"><a:avLst/></a:prstGeom></p:spPr><p:txBody><a:bodyPr/><a:lstStyle/><a:p><a:endParaRPr lang="en-US"/></a:p></p:txBody></p:sp></p:spTree></p:cSld>${COLOR_MAP}</p:notesMaster>`;
 
-function contentTypes(deck: Deck) {
+function contentTypes(deck: Deck, layouts: readonly Layout[]) {
   const override = (part: string, type: string) =>
     `<Override PartName="/${part}" ContentType="${type}"/>`;
   return `${XML_DECLARATION}<Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types"><Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/><Default Extension="xml" ContentType="application/xml"/><Default Extension="png" ContentType="image/png"/><Default Extension="jpeg" ContentType="image/jpeg"/><Default Extension="svg" ContentType="image/svg+xml"/>${[
@@ -508,7 +523,7 @@ function contentTypes(deck: Deck) {
       "ppt/slideMasters/slideMaster1.xml",
       `${PRESENTATION}.slideMaster+xml`,
     ),
-    ...LAYOUT_ORDER.map((_, index) =>
+    ...layouts.map((_, index) =>
       override(
         `ppt/slideLayouts/slideLayout${index + 1}.xml`,
         `${PRESENTATION}.slideLayout+xml`,
@@ -549,7 +564,7 @@ function titleXml(deck: Deck) {
   return title ? `<dc:title>${escapeXml(title)}</dc:title>` : "";
 }
 
-function packageParts(deck: Deck) {
+function packageParts(deck: Deck, layouts: readonly Layout[]) {
   const root = new Relationships();
   root.add("officeDocument", "ppt/presentation.xml");
   root.add(
@@ -576,7 +591,7 @@ function packageParts(deck: Deck) {
   );
 
   return [
-    { path: "[Content_Types].xml", data: contentTypes(deck) },
+    { path: "[Content_Types].xml", data: contentTypes(deck, layouts) },
     { path: "_rels/.rels", data: root.xml() },
     {
       path: "docProps/core.xml",
@@ -611,9 +626,13 @@ function packageParts(deck: Deck) {
   ];
 }
 
-function masterParts(deck: Deck, media: MediaStore) {
+function masterParts(
+  deck: Deck,
+  media: MediaStore,
+  layouts: readonly Layout[],
+) {
   const rels = new Relationships();
-  for (const index of LAYOUT_ORDER.keys())
+  for (const index of layouts.keys())
     rels.add("slideLayout", `../slideLayouts/slideLayout${index + 1}.xml`);
   rels.add("theme", "../theme/theme1.xml");
   const logo = deck.theme.logo && media.raster(deck.theme.logo);
@@ -630,9 +649,12 @@ function masterParts(deck: Deck, media: MediaStore) {
   const notesMasterRels = new Relationships();
   notesMasterRels.add("theme", "../theme/theme2.xml");
   return [
-    { path: "ppt/slideMasters/slideMaster1.xml", data: masterXml(logoXml) },
+    {
+      path: "ppt/slideMasters/slideMaster1.xml",
+      data: masterXml(logoXml, layouts),
+    },
     { path: "ppt/slideMasters/_rels/slideMaster1.xml.rels", data: rels.xml() },
-    ...LAYOUT_ORDER.flatMap((layout, index) => [
+    ...layouts.flatMap((layout, index) => [
       {
         path: `ppt/slideLayouts/slideLayout${index + 1}.xml`,
         data: layoutXml(layout),
@@ -650,10 +672,10 @@ function masterParts(deck: Deck, media: MediaStore) {
   ];
 }
 
-function slideParts(deck: Deck, media: MediaStore) {
+function slideParts(deck: Deck, media: MediaStore, layouts: readonly Layout[]) {
   return deck.slides.flatMap((slide, index) => {
     const number = index + 1;
-    const { xml, rels, notes } = slideXml(deck, slide, index, media);
+    const { xml, rels, notes } = slideXml(deck, slide, index, media, layouts);
     if (notes === undefined)
       return [
         { path: `ppt/slides/slide${number}.xml`, data: xml },
@@ -689,10 +711,11 @@ export async function writePptx(
   if (!checked.ok) throw new DeckError(checked.issues);
   const { deck } = checked;
   const media = resolveMedia(deck, assets);
+  const layouts = deckLayouts(deck);
   const entries: ZipEntry[] = [
-    ...packageParts(deck),
-    ...masterParts(deck, media),
-    ...slideParts(deck, media),
+    ...packageParts(deck, layouts),
+    ...masterParts(deck, media, layouts),
+    ...slideParts(deck, media, layouts),
     ...media.items.map(({ name, data }) => ({
       path: `ppt/media/${name}`,
       data,

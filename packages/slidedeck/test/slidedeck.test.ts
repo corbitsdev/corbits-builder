@@ -2,7 +2,7 @@ import { expect, test } from "bun:test";
 
 import { unzip } from "@corbits/zip";
 
-import { validateDeck, writePptx } from "../src/index.ts";
+import { validateDeck, writePptx, type DeckInput } from "../src/index.ts";
 import { assets, deck } from "./fixture.ts";
 
 const XML_TOKEN =
@@ -111,6 +111,48 @@ test("the slide master's content placeholder is a typed body, which PowerPoint n
     .decode(master?.data)
     .match(/<p:ph [^>]*>/g);
   expect(placeholders).toContain('<p:ph type="body" idx="1"/>');
+});
+
+test("only a deck with an image slide carries the Picture with Caption layout, which Keynote otherwise warns about", async () => {
+  const written = async (input: DeckInput) => {
+    const parts = new Map(
+      (await unzip(await writePptx(input, assets))).map(({ path, data }) => [
+        path,
+        new TextDecoder().decode(data),
+      ]),
+    );
+    const layoutType = (path: string) =>
+      parts.get(path)?.match(/<p:sldLayout [^>]* type="(\w+)"/)?.[1];
+    const layouts = [...parts.keys()].filter((path) =>
+      /^ppt\/slideLayouts\/slideLayout\d+\.xml$/.test(path),
+    );
+    return {
+      layouts: layouts.map(layoutType),
+      listed: parts
+        .get("ppt/slideMasters/slideMaster1.xml")
+        ?.match(/<p:sldLayoutId /g)?.length,
+      slides: input.slides.map((_, index) =>
+        layoutType(
+          `ppt/slideLayouts/${parts.get(`ppt/slides/_rels/slide${index + 1}.xml.rels`)?.match(/slideLayouts\/(slideLayout\d+\.xml)/)?.[1]}`,
+        ),
+      ),
+    };
+  };
+  const withImages = await written(deck);
+  const withoutImages = await written({
+    ...deck,
+    slides: deck.slides.map((slide) =>
+      slide.layout === "image" ? { layout: "blank", body: [] } : slide,
+    ),
+  });
+
+  expect(withImages.layouts).toContain("picTx");
+  expect(withImages.listed).toBe(withImages.layouts.length);
+  expect(withoutImages.layouts).not.toContain("picTx");
+  expect(withoutImages.listed).toBe(withoutImages.layouts.length);
+  expect(withoutImages.slides).toEqual(
+    withImages.slides.map((type) => (type === "picTx" ? "blank" : type)),
+  );
 });
 
 test("a missing slide link or a list past five levels names the slide and field", () => {
