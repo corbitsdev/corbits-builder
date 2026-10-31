@@ -2,6 +2,7 @@ import { zip, type ZipEntry } from "@corbits/zip";
 
 import {
   assetKey,
+  freeElements,
   slideRegions,
   validateDeck,
   type AssetRef,
@@ -17,7 +18,14 @@ import {
   type Slide,
   type TextBlock,
 } from "./deck.ts";
-import { readImage, type ImageInfo } from "./image.ts";
+import { backgroundXml, elementXml, type Target } from "./free.ts";
+import {
+  contain,
+  coverCrop,
+  isSvg,
+  readImage,
+  type ImageInfo,
+} from "./image.ts";
 import {
   FREE_AREA,
   GROUP_HEADER,
@@ -36,6 +44,7 @@ import {
   type Placeholder,
   type Role,
 } from "./layouts.ts";
+import { timingXml, transitionXml } from "./motion.ts";
 import { COLOR_MAP, colorFill, themeXml } from "./theme.ts";
 import {
   NAMESPACES,
@@ -55,8 +64,13 @@ export class DeckError extends Error {
   }
 }
 
-type Media = { name: string; data: Uint8Array<ArrayBuffer>; info: ImageInfo };
-type AssetUse = { ref: AssetRef; path: string; slide?: number };
+/** SVG media has no info; its picture always carries a raster fallback. */
+type Media = {
+  name: string;
+  data: Uint8Array<ArrayBuffer>;
+  info: ImageInfo | undefined;
+};
+type AssetUse = { ref: AssetRef; path: string; slide?: number; svg?: true };
 
 const CONTENT_TYPE = "application/vnd.openxmlformats-officedocument";
 const PRESENTATION = `${CONTENT_TYPE}.presentationml`;
@@ -163,6 +177,14 @@ function assetUses(deck: Deck): AssetUse[] {
             path: `slides[${slide}].${path}[${index}].image`,
             slide,
           });
+    if (content.layout !== "free") continue;
+    for (const [element, path] of freeElements(content.elements, [])) {
+      if (element.type !== "image") continue;
+      const at = `slides[${slide}].elements${path.map((key) => (typeof key === "number" ? `[${key}]` : `.${key}`)).join("")}`;
+      uses.push({ ref: element.image, path: `${at}.image`, slide });
+      if (element.svg)
+        uses.push({ ref: element.svg, path: `${at}.svg`, slide, svg: true });
+    }
   }
   return uses;
 }
@@ -170,21 +192,34 @@ function assetUses(deck: Deck): AssetUse[] {
 const issueAt = ({ path, slide }: AssetUse, message: string): DeckIssue =>
   slide === undefined ? { path, message } : { slide, path, message };
 
+const mediaKey = (ref: AssetRef, svg?: true) =>
+  svg ? `svg:${assetKey(ref)}` : assetKey(ref);
+
 /** Reads every image the deck names, reporting all missing or unreadable ones at once. */
 function resolveMedia(deck: Deck, assets: Assets) {
   const byKey = new Map<string, Media>();
   const issues: DeckIssue[] = [];
   for (const use of assetUses(deck)) {
-    const key = assetKey(use.ref);
+    const key = mediaKey(use.ref, use.svg);
     if (byKey.has(key)) continue;
-    const data = assets.get(key);
+    const data = assets.get(assetKey(use.ref));
     if (!data) {
       issues.push(
         issueAt(
           use,
-          `${use.path} names asset "${key}", which was not provided`,
+          `${use.path} names asset "${assetKey(use.ref)}", which was not provided`,
         ),
       );
+      continue;
+    }
+    if (use.svg) {
+      if (isSvg(data))
+        byKey.set(key, {
+          name: `image${byKey.size + 1}.svg`,
+          data,
+          info: undefined,
+        });
+      else issues.push(issueAt(use, `${use.path} is not an SVG image`));
       continue;
     }
     const info = readImage(data);
@@ -203,35 +238,20 @@ function resolveMedia(deck: Deck, assets: Assets) {
   if (issues.length > 0) throw new DeckError(issues);
   return {
     items: [...byKey.values()],
-    get(ref: AssetRef) {
-      const media = byKey.get(assetKey(ref));
+    get(ref: AssetRef, svg?: true) {
+      const media = byKey.get(mediaKey(ref, svg));
       if (!media) throw new Error(`asset ${assetKey(ref)} was not resolved`);
       return media;
+    },
+    raster(ref: AssetRef) {
+      const { name, info } = this.get(ref);
+      if (!info)
+        throw new Error(`asset ${assetKey(ref)} is not a raster image`);
+      return { name, info };
     },
   };
 }
 type MediaStore = ReturnType<typeof resolveMedia>;
-
-function contain({ width, height }: ImageInfo, box: Box): Box {
-  const scale = Math.min(box.w / width, box.h / height);
-  const w = Math.round(width * scale);
-  const h = Math.round(height * scale);
-  return {
-    x: box.x + Math.round((box.w - w) / 2),
-    y: box.y + Math.round((box.h - h) / 2),
-    w,
-    h,
-  };
-}
-
-// Cover fills the box and crops the overflow evenly; srcRect is in thousandths of a percent per side.
-function coverCrop({ width, height }: ImageInfo, box: Box) {
-  const visible = box.w / box.h / (width / height);
-  const side = (fraction: number) => Math.round(((1 - fraction) / 2) * 100000);
-  return visible < 1
-    ? `<a:srcRect l="${side(visible)}" r="${side(visible)}"/>`
-    : `<a:srcRect t="${side(1 / visible)}" b="${side(1 / visible)}"/>`;
-}
 
 type Picture = {
   id: number;
@@ -263,6 +283,9 @@ const placeholderShape = (
 ) =>
   `<p:sp><p:nvSpPr><p:cNvPr id="${id}" name="${placeholder.name} ${id}"/><p:cNvSpPr><a:spLocks noGrp="1"/></p:cNvSpPr><p:nvPr>${placeholderTag(placeholder)}</p:nvPr></p:nvSpPr><p:spPr>${box ? xfrm(box) : ""}</p:spPr><p:txBody><a:bodyPr/><a:lstStyle/>${paragraphs}</p:txBody></p:sp>`;
 
+const LINK_OWN_COLOR =
+  '<a:extLst><a:ext uri="{A12FA001-AC4F-418D-AE19-62706E023703}"><ahyp:hlinkClr xmlns:ahyp="http://schemas.microsoft.com/office/drawing/2018/hyperlinkcolor" val="tx"/></a:ext></a:extLst>';
+
 class SlidePart {
   readonly rels = new Relationships();
   readonly shapes: string[] = [];
@@ -275,18 +298,25 @@ class SlidePart {
   }
 
   image(ref: AssetRef) {
-    const media = this.media.get(ref);
+    const media = this.media.raster(ref);
     return {
       info: media.info,
       relId: this.rels.add("image", `../media/${media.name}`),
     };
   }
 
-  hyperlink(link: Link) {
+  svg(ref: AssetRef) {
+    return this.rels.add("image", `../media/${this.media.get(ref, true).name}`);
+  }
+
+  /** With `ownColor`, the linked text keeps its colour instead of the theme's link colour in PowerPoint 2019 and later. */
+  hyperlink(link: Link, ownColor = false) {
+    const color = ownColor ? LINK_OWN_COLOR : "";
+    const close = color ? `>${color}</a:hlinkClick>` : "/>";
     if (typeof link === "string")
-      return `<a:hlinkClick r:id="${this.rels.add("hyperlink", new URL(link).href, true)}"/>`;
+      return `<a:hlinkClick r:id="${this.rels.add("hyperlink", new URL(link).href, true)}"${close}`;
     const relId = this.rels.add("slide", `slide${link + 1}.xml`);
-    return `<a:hlinkClick r:id="${relId}" action="ppaction://hlinksldjump"/>`;
+    return `<a:hlinkClick r:id="${relId}" action="ppaction://hlinksldjump"${close}`;
   }
 
   element(element: Element, box: Box) {
@@ -353,7 +383,7 @@ function stack(
 }
 
 function textContent(
-  slide: Slide,
+  slide: Exclude<Slide, { layout: "free" }>,
   part: SlidePart,
 ): Partial<Record<Role, string>> {
   switch (slide.layout) {
@@ -403,12 +433,23 @@ function imagePlaceholder(
   );
 }
 
-function slideXml(deck: Deck, slide: Slide, index: number, media: MediaStore) {
-  const part = new SlidePart(media);
-  part.rels.add(
-    "slideLayout",
-    `../slideLayouts/slideLayout${LAYOUT_ORDER.indexOf(slide.layout) + 1}.xml`,
-  );
+/** A free slide draws on the blank layout without the master's logo, footer or slide number. */
+function freeSlide(slide: Slide & { layout: "free" }, part: SlidePart) {
+  const targets = new Map<string, Target>();
+  for (const element of slide.elements)
+    part.shapes.push(elementXml(element, part, targets));
+  return {
+    background: slide.background ? backgroundXml(slide.background) : "",
+    timing: timingXml(slide.animations ?? [], targets),
+  };
+}
+
+function placedSlide(
+  deck: Deck,
+  slide: Exclude<Slide, { layout: "free" }>,
+  index: number,
+  part: SlidePart,
+) {
   const content: Partial<Record<Role, string>> = {
     ...textContent(slide, part),
     ...(deck.footer?.text && { footer: paragraph(deck.footer.text, part) }),
@@ -429,12 +470,25 @@ function slideXml(deck: Deck, slide: Slide, index: number, media: MediaStore) {
     else if (text !== undefined)
       part.shapes.push(placeholderShape(part.nextId(), placeholder, text));
   }
+}
+
+function slideXml(deck: Deck, slide: Slide, index: number, media: MediaStore) {
+  const part = new SlidePart(media);
+  const layout = slide.layout === "free" ? "blank" : slide.layout;
+  part.rels.add(
+    "slideLayout",
+    `../slideLayouts/slideLayout${LAYOUT_ORDER.indexOf(layout) + 1}.xml`,
+  );
+  const free = slide.layout === "free" ? freeSlide(slide, part) : undefined;
+  if (slide.layout !== "free") placedSlide(deck, slide, index, part);
   if (slide.notes !== undefined)
     part.rels.add("notesSlide", `../notesSlides/notesSlide${index + 1}.xml`);
+  const transition = slide.transition ? transitionXml(slide.transition) : "";
+  const masterShapes = slide.layout === "free" ? ' showMasterSp="0"' : "";
   return {
     notes: slide.notes,
     rels: part.rels,
-    xml: `${XML_DECLARATION}<p:sld ${NAMESPACES}><p:cSld><p:spTree>${GROUP_HEADER}${part.shapes.join("")}</p:spTree></p:cSld><p:clrMapOvr><a:masterClrMapping/></p:clrMapOvr></p:sld>`,
+    xml: `${XML_DECLARATION}<p:sld ${NAMESPACES}${masterShapes}><p:cSld>${free?.background ?? ""}<p:spTree>${GROUP_HEADER}${part.shapes.join("")}</p:spTree></p:cSld><p:clrMapOvr><a:masterClrMapping/></p:clrMapOvr>${transition}${free?.timing ?? ""}</p:sld>`,
   };
 }
 
@@ -448,7 +502,7 @@ const NOTES_MASTER = `${XML_DECLARATION}<p:notesMaster ${NAMESPACES}><p:cSld><p:
 function contentTypes(deck: Deck) {
   const override = (part: string, type: string) =>
     `<Override PartName="/${part}" ContentType="${type}"/>`;
-  return `${XML_DECLARATION}<Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types"><Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/><Default Extension="xml" ContentType="application/xml"/><Default Extension="png" ContentType="image/png"/><Default Extension="jpeg" ContentType="image/jpeg"/>${[
+  return `${XML_DECLARATION}<Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types"><Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/><Default Extension="xml" ContentType="application/xml"/><Default Extension="png" ContentType="image/png"/><Default Extension="jpeg" ContentType="image/jpeg"/><Default Extension="svg" ContentType="image/svg+xml"/>${[
     override("ppt/presentation.xml", `${PRESENTATION}.presentation.main+xml`),
     override(
       "ppt/slideMasters/slideMaster1.xml",
@@ -562,7 +616,7 @@ function masterParts(deck: Deck, media: MediaStore) {
   for (const index of LAYOUT_ORDER.keys())
     rels.add("slideLayout", `../slideLayouts/slideLayout${index + 1}.xml`);
   rels.add("theme", "../theme/theme1.xml");
-  const logo = deck.theme.logo && media.get(deck.theme.logo);
+  const logo = deck.theme.logo && media.raster(deck.theme.logo);
   const logoXml = logo
     ? picture({
         id: 90,

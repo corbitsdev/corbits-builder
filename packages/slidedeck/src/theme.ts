@@ -16,9 +16,19 @@ const SCHEME_COLORS: Record<ThemeColor, string> = {
 const isThemeColor = (color: string): color is ThemeColor =>
   Object.hasOwn(SCHEME_COLORS, color);
 
-/** A fill that follows the theme for a token name, or a fixed hex colour. */
-export const colorFill = (color: string) =>
-  `<a:solidFill>${isThemeColor(color) ? `<a:schemeClr val="${SCHEME_COLORS[color]}"/>` : srgb(color)}</a:solidFill>`;
+/** A colour that follows the theme for a token name, or a fixed hex colour, with an opacity below 1 as alpha. */
+export function colorXml(color: string, opacity = 1) {
+  const alpha = Math.round(opacity * 100000);
+  const [tag, value] = isThemeColor(color)
+    ? ["schemeClr", SCHEME_COLORS[color]]
+    : ["srgbClr", hex(color)];
+  return alpha < 100000
+    ? `<a:${tag} val="${value}"><a:alpha val="${alpha}"/></a:${tag}>`
+    : `<a:${tag} val="${value}"/>`;
+}
+
+export const colorFill = (color: string, opacity = 1) =>
+  `<a:solidFill>${colorXml(color, opacity)}</a:solidFill>`;
 
 export const COLOR_MAP =
   '<p:clrMap bg1="lt1" tx1="dk1" bg2="lt2" tx2="dk2" accent1="accent1" accent2="accent2" accent3="accent3" accent4="accent4" accent5="accent5" accent6="accent6" hlink="hlink" folHlink="folHlink"/>';

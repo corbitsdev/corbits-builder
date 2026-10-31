@@ -63,6 +63,9 @@ from Builder or Interchange. Images arrive as bytes in `assets`, keyed by
 - `src/layouts.ts`: the slide size, safe areas and the seven layouts with
   their placeholders, plus the slide master.
 - `src/theme.ts`: the theme from the deck's colour and font tokens.
+- `src/free.ts`: free-form slides, whose elements sit in CSS pixels on a
+  1280 by 720 canvas: text, shapes, images and groups.
+- `src/motion.ts`: slide transitions and the animation timing tree.
 - `src/write.ts`: slides, notes, media and the package parts.
 
 ## Working on it

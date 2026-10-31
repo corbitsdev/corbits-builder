@@ -1,3 +1,5 @@
+import type { Box } from "./layouts.ts";
+
 export type ImageFormat = "png" | "jpeg";
 export type ImageInfo = { format: ImageFormat; width: number; height: number };
 
@@ -40,4 +42,44 @@ function readHeader(bytes: Uint8Array): ImageInfo | undefined {
 export function readImage(bytes: Uint8Array): ImageInfo | undefined {
   const info = readHeader(bytes);
   return info && info.width > 0 && info.height > 0 ? info : undefined;
+}
+
+const PROLOG =
+  /^\uFEFF?(?:\s|<\?[\s\S]*?\?>|<!--[\s\S]*?-->|<!DOCTYPE[^[>]*(?:\[[\s\S]*?\])?\s*>)*/;
+const CHUNK = 4096;
+
+/** Whether the document's root element is <svg>, decoding only as far as the end of the prolog. */
+export function isSvg(bytes: Uint8Array) {
+  const decoder = new TextDecoder();
+  let text = "";
+  for (let at = 0; at < bytes.length; at += CHUNK) {
+    const end = at + CHUNK >= bytes.length;
+    text += decoder.decode(bytes.subarray(at, at + CHUNK), { stream: !end });
+    const rest = text.slice(PROLOG.exec(text)?.[0].length ?? 0);
+    // An unfinished comment, declaration or tag name needs the next chunk to decide.
+    if (end || (rest.length > 4 && !/^<[?!]/.test(rest)))
+      return /^<svg[\s/>]/.test(rest);
+  }
+  return false;
+}
+
+export function contain({ width, height }: ImageInfo, box: Box): Box {
+  const scale = Math.min(box.w / width, box.h / height);
+  const w = Math.round(width * scale);
+  const h = Math.round(height * scale);
+  return {
+    x: box.x + Math.round((box.w - w) / 2),
+    y: box.y + Math.round((box.h - h) / 2),
+    w,
+    h,
+  };
+}
+
+// Cover fills the box and crops the overflow evenly; srcRect is in thousandths of a percent per side.
+export function coverCrop({ width, height }: ImageInfo, box: Box) {
+  const visible = box.w / box.h / (width / height);
+  const side = (fraction: number) => Math.round(((1 - fraction) / 2) * 100000);
+  return visible < 1
+    ? `<a:srcRect l="${side(visible)}" r="${side(visible)}"/>`
+    : `<a:srcRect t="${side(1 / visible)}" b="${side(1 / visible)}"/>`;
 }

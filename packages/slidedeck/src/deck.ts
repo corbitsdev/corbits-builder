@@ -112,12 +112,269 @@ export const ImageElement = type({
 export const Element = ImageElement;
 export type Element = typeof Element.infer;
 
+/** Free-form slides are laid out in CSS pixels on this canvas, which is the slide at 96 pixels per inch. */
+export const CANVAS = { width: 1280, height: 720 } as const;
+
+const Fraction = "0 <= number <= 1";
+const Pixels = "number >= 0";
+const Side = type("'left' | 'right' | 'top' | 'bottom'");
+export type Side = typeof Side.infer;
+const Paintable = ThemeColor.or(Color);
+
+const GradientStop = type({
+  "+": "reject",
+  color: Paintable,
+  /** Percent along the gradient. */
+  at: "0 <= number <= 100",
+  "opacity?": Fraction,
+});
+
+/** A colour, or a gradient of two or more stops; a linear angle is in CSS degrees, where 180 runs top to bottom. */
+export const Paint = Paintable.or({
+  "+": "reject",
+  type: "'linear'",
+  angle: "number = 180",
+  stops: GradientStop.array().atLeastLength(2),
+}).or({
+  "+": "reject",
+  type: "'radial'",
+  stops: GradientStop.array().atLeastLength(2),
+});
+export type Paint = typeof Paint.infer;
+
+export const Border = type({
+  "+": "reject",
+  width: "number > 0",
+  color: Paintable,
+  "opacity?": Fraction,
+  dash: "'solid' | 'dash' | 'dot' = 'solid'",
+});
+export type Border = typeof Border.infer;
+
+/** An outer shadow, as CSS box-shadow describes one. */
+export const Shadow = type({
+  "+": "reject",
+  x: "number",
+  y: "number",
+  blur: Pixels,
+  spread: "number = 0",
+  color: Paintable,
+  opacity: "0 <= number <= 1 = 1",
+});
+export type Shadow = typeof Shadow.infer;
+
+/** One radius, or per corner in CSS order: top left, top right, bottom right, bottom left. */
+const Radius = type(Pixels).or([Pixels, Pixels, Pixels, Pixels]);
+export type Radius = typeof Radius.infer;
+
+/** Position and size in canvas pixels; `id` names the element for animations and for Morph. */
+const placed = {
+  "+": "reject",
+  "id?": Text,
+  x: "number",
+  y: "number",
+  w: Pixels,
+  h: Pixels,
+  /** Clockwise degrees. */
+  "rotation?": "number",
+  "opacity?": Fraction,
+  "link?": Link,
+} as const;
+
+export const FreeRun = type({
+  "+": "reject",
+  /** A newline is a line break. */
+  text: "string",
+  "font?": Font,
+  /** Pixels; PowerPoint's smallest size is one point, which is 4/3 of a pixel. */
+  "size?": "1.34 <= number <= 500",
+  "weight?": "100 <= number.integer <= 900",
+  "italic?": "boolean",
+  "underline?": "boolean",
+  "strike?": "boolean",
+  "color?": Paint,
+  /** Pixels between letters. */
+  "letterSpacing?": "-100 <= number <= 100",
+  "link?": Link,
+});
+export type FreeRun = typeof FreeRun.infer;
+
+export const FreeParagraph = type({
+  "+": "reject",
+  runs: type("string").or(FreeRun).array(),
+  align: "'left' | 'center' | 'right' | 'justify' = 'left'",
+  /** Pixels from one baseline to the next. */
+  "lineHeight?": "0 < number <= 2000",
+  spaceBefore: "0 <= number <= 2000 = 0",
+  spaceAfter: "0 <= number <= 2000 = 0",
+});
+export type FreeParagraph = typeof FreeParagraph.infer;
+
+export const TextElement = type({
+  ...placed,
+  type: "'text'",
+  paragraphs: FreeParagraph.array().atLeastLength(1),
+  anchor: "'top' | 'middle' | 'bottom' = 'top'",
+  /** Off, the text keeps the breaks it was given. */
+  wrap: "boolean = true",
+  /** Pixels; none when left out. */
+  "insets?": {
+    "+": "reject",
+    top: Pixels,
+    right: Pixels,
+    bottom: Pixels,
+    left: Pixels,
+  },
+  "fill?": Paint,
+  "border?": Border,
+  "shadow?": Shadow,
+});
+export type TextElement = typeof TextElement.infer;
+
+const shape = {
+  ...placed,
+  type: "'shape'",
+  "fill?": Paint,
+  "border?": Border,
+  "shadow?": Shadow,
+} as const;
+
+/** A line runs from the top left to the bottom right of its box, mirrored by `flip`, and draws with its border. */
+export const ShapeElement = type({ ...shape, geometry: "'rect' | 'ellipse'" })
+  .or({ ...shape, geometry: "'roundRect'", radius: Radius })
+  .or({
+    ...placed,
+    type: "'shape'",
+    geometry: "'line'",
+    "flip?": "'horizontal' | 'vertical'",
+    border: Border,
+    "shadow?": Shadow,
+  });
+export type ShapeElement = typeof ShapeElement.infer;
+
+/** `image` is a PNG or JPEG; with `svg`, viewers that read SVG draw it and the rest fall back to `image`. */
+export const PictureElement = type({
+  ...placed,
+  w: "number > 0",
+  h: "number > 0",
+  type: "'image'",
+  image: AssetRef,
+  "svg?": AssetRef,
+  fit: "'fill' | 'contain' | 'cover' = 'fill'",
+  /** Fractions of the image cut from each side; used with fit 'fill'. */
+  "crop?": {
+    "+": "reject",
+    top: Fraction,
+    right: Fraction,
+    bottom: Fraction,
+    left: Fraction,
+  },
+  "radius?": Radius,
+  "border?": Border,
+  "shadow?": Shadow,
+});
+export type PictureElement = typeof PictureElement.infer;
+
+/** How deep groups nest. */
+export const GROUP_DEPTH = 10;
+
+/** Children are in canvas pixels too; later elements, here and on the slide, draw on top. */
+export const { FreeElement } = scope({
+  TextElement,
+  ShapeElement,
+  PictureElement,
+  FreeElement: [
+    "TextElement | ShapeElement | PictureElement",
+    "|",
+    {
+      "+": "reject",
+      "id?": Text,
+      type: "'group'",
+      "opacity?": Fraction,
+      children: "FreeElement[] >= 1",
+    },
+  ],
+}).export();
+export type FreeElement = typeof FreeElement.infer;
+export type GroupElement = Extract<FreeElement, { type: "group" }>;
+
+const Milliseconds = "0 <= number.integer <= 3600000";
+
+export const Transition = type({
+  "+": "reject",
+  type: "'fade' | 'morph'",
+  duration: "100 <= number.integer <= 60000 = 700",
+}).or({
+  "+": "reject",
+  type: "'push' | 'wipe'",
+  from: Side.default("right"),
+  duration: "100 <= number.integer <= 60000 = 700",
+});
+export type Transition = typeof Transition.infer;
+
+const PATH_ARGUMENTS: Record<string, number> = { M: 2, L: 2, C: 6, Z: 0, E: 0 };
+
+/** OOXML motion path syntax: M, L, C, Z and E with numbers as fractions of the slide, relative to where the element starts. */
+const MotionPath = type("string").narrow((path, ctx) => {
+  const tokens = path.trim().split(/[\s,]+/);
+  if (tokens[0] !== "M") return ctx.mustBe("a path starting with M");
+  for (let at = 0; at < tokens.length;) {
+    const count = PATH_ARGUMENTS[tokens[at] ?? ""];
+    if (count === undefined)
+      return ctx.mustBe("a path of M, L, C, Z and E commands with numbers");
+    const numbers = tokens.slice(at + 1, at + 1 + count);
+    if (
+      numbers.length < count ||
+      numbers.some((n) => !Number.isFinite(Number(n)))
+    )
+      return ctx.mustBe(`a path whose ${tokens[at]} has ${count} numbers`);
+    at += 1 + count;
+  }
+  return true;
+});
+
+const animation = {
+  "+": "reject",
+  /** The `id` of an element directly on the same slide; a group animates as a whole. */
+  target: Text,
+  trigger: "'onClick' | 'withPrevious' | 'afterPrevious' = 'onClick'",
+  duration: "1 <= number.integer <= 3600000 = 500",
+  delay: `${Milliseconds} = 0`,
+  /** Fractions of the duration spent speeding up and slowing down. */
+  "easing?": { "+": "reject", accel: Fraction, decel: Fraction },
+  /** Times to play, or 'indefinite'. */
+  "repeat?": type("1 <= number <= 1000").or("'indefinite'"),
+} as const;
+
+/** Played in array order; each trigger is relative to the animation before it. */
+export const Animation = type({
+  ...animation,
+  effect: "'fade' | 'zoom'",
+  kind: "'entrance' | 'exit'",
+})
+  .or({
+    ...animation,
+    effect: "'fly' | 'wipe'",
+    kind: "'entrance' | 'exit'",
+    /** The edge the element enters from or exits to. */
+    side: Side,
+  })
+  .or({ ...animation, effect: "'spin'", degrees: "number = 360" })
+  .or({ ...animation, effect: "'scale'", scale: "0 < number <= 100 = 1.5" })
+  .or({ ...animation, effect: "'pulse'" })
+  .or({ ...animation, effect: "'path'", path: MotionPath });
+export type Animation = typeof Animation.infer;
+
 /** A region holds an ordered mix of blocks, which the writer stacks top to bottom. */
 export const Block = TextBlock.or(Element);
 export type Block = typeof Block.infer;
 const Blocks = Block.array();
 
-const slide = { "+": "reject", "notes?": "string" } as const;
+const slide = {
+  "+": "reject",
+  "notes?": "string",
+  "transition?": Transition,
+} as const;
 
 const Column = type({ "+": "reject", heading: Text, body: Blocks });
 
@@ -151,9 +408,17 @@ export const Slide = type({
     "caption?": "string",
     fit: Fit,
   })
-  .or({ ...slide, layout: "'blank'", body: Blocks });
+  .or({ ...slide, layout: "'blank'", body: Blocks })
+  .or({
+    ...slide,
+    layout: "'free'",
+    "background?": Paint,
+    elements: FreeElement.array(),
+    "animations?": Animation.array(),
+  });
 export type Slide = typeof Slide.infer;
-export type Layout = Slide["layout"];
+/** The layouts with placeholders; a free slide draws on the blank layout. */
+export type Layout = Exclude<Slide["layout"], "free">;
 
 export const Deck = type({
   "+": "reject",
@@ -218,35 +483,88 @@ function issueAt(path: Path, message: string): DeckIssue {
 const isObject = (value: unknown): value is Record<string, unknown> =>
   typeof value === "object" && value !== null;
 
-/** Lists nested past LIST_DEPTH, found without recursion before the schema's own recursion can overflow. */
-function deepLists(input: unknown): DeckIssue[] {
+const NESTING = [
+  {
+    key: "items",
+    limit: LIST_DEPTH,
+    noun: "lists",
+    opens: (value: Record<string, unknown>, depth: number) =>
+      depth > 0 || value.type === "list",
+  },
+  {
+    key: "children",
+    limit: GROUP_DEPTH,
+    noun: "groups",
+    opens: (value: Record<string, unknown>) => value.type === "group",
+  },
+] as const;
+
+/** Lists and groups nested past their limits, found without recursion before the schema's own recursion can overflow. */
+function deepNesting(input: unknown): DeckIssue[] {
   const issues: DeckIssue[] = [];
   const pending = [
     {
       value: isObject(input) ? input.slides : undefined,
       path: ["slides"] as Path,
-      depth: 0,
+      depths: NESTING.map(() => 0),
     },
   ];
   for (let next = pending.pop(); next; next = pending.pop()) {
-    const { value, path, depth } = next;
+    const { value, path, depths } = next;
     if (!isObject(value)) continue;
     const entries = Object.entries(value).reverse();
-    const opensList =
-      Array.isArray(value.items) && (depth > 0 || value.type === "list");
     for (const [key, child] of entries) {
       const childPath = [...path, Array.isArray(value) ? Number(key) : key];
-      if (key !== "items" || !opensList)
-        pending.push({ value: child, path: childPath, depth });
-      else if (depth < LIST_DEPTH)
-        pending.push({ value: child, path: childPath, depth: depth + 1 });
+      const level = NESTING.findIndex(
+        (nesting, index) =>
+          key === nesting.key &&
+          Array.isArray(child) &&
+          nesting.opens(value, depths[index] ?? 0),
+      );
+      const nesting = NESTING[level];
+      const depth = depths[level] ?? 0;
+      if (!nesting) pending.push({ value: child, path: childPath, depths });
+      else if (depth < nesting.limit)
+        pending.push({
+          value: child,
+          path: childPath,
+          depths: depths.map((each, index) =>
+            index === level ? each + 1 : each,
+          ),
+        });
       else
         issues.push(
-          issueAt(childPath, `nests lists deeper than ${LIST_DEPTH} levels`),
+          issueAt(
+            childPath,
+            `nests ${nesting.noun} deeper than ${nesting.limit} levels`,
+          ),
         );
     }
   }
   return issues;
+}
+
+/** Every element on a free slide with its path, groups before their children, without recursion. */
+export function* freeElements(
+  elements: readonly FreeElement[],
+  path: Path,
+): Generator<[FreeElement, Path]> {
+  const pending = elements
+    .map((element, index): [FreeElement, Path] => [element, [...path, index]])
+    .reverse();
+  for (let next = pending.pop(); next; next = pending.pop()) {
+    yield next;
+    const [element, at] = next;
+    if (element.type === "group")
+      pending.push(
+        ...element.children
+          .map((child, index): [FreeElement, Path] => [
+            child,
+            [...at, "children", index],
+          ])
+          .reverse(),
+      );
+  }
 }
 
 function* textRuns(text: RichText, path: Path): Generator<[Run, Path]> {
@@ -269,7 +587,22 @@ function* itemRuns(
   }
 }
 
-function* slideRuns(slide: Slide, index: number): Generator<[Run, Path]> {
+type Linked = { link?: Link };
+
+function* slideRuns(slide: Slide, index: number): Generator<[Linked, Path]> {
+  if (slide.layout === "free")
+    for (const [element, path] of freeElements(slide.elements, [
+      "slides",
+      index,
+      "elements",
+    ])) {
+      if (element.type !== "group") yield [element, path];
+      if (element.type !== "text") continue;
+      for (const [number, paragraph] of element.paragraphs.entries())
+        for (const [position, run] of paragraph.runs.entries())
+          if (typeof run !== "string")
+            yield [run, [...path, "paragraphs", number, "runs", position]];
+    }
   for (const region of slideRegions(slide))
     for (const [position, block] of region.blocks.entries()) {
       const path = ["slides", index, region.path, position];
@@ -278,6 +611,81 @@ function* slideRuns(slide: Slide, index: number): Generator<[Run, Path]> {
       else if (block.type === "list")
         yield* itemRuns(block.items, [...path, "items"]);
     }
+}
+
+/** Duplicate ids, animations PowerPoint cannot play, and crops and shadows it cannot draw. */
+function freeSlideIssues(slide: Slide, index: number): DeckIssue[] {
+  if (slide.layout !== "free") return [];
+  const issues: DeckIssue[] = [];
+  const ids = new Set<string>();
+  const grouped = new Set<string>();
+  const slidePath = ["slides", index, "elements"];
+  for (const [element, path] of freeElements(slide.elements, slidePath)) {
+    if (element.id !== undefined && ids.has(element.id))
+      issues.push(
+        issueAt(
+          [...path, "id"],
+          `repeats the id "${element.id}" on this slide`,
+        ),
+      );
+    if (element.id !== undefined) ids.add(element.id);
+    if (element.id !== undefined && path.length > slidePath.length + 1)
+      grouped.add(element.id);
+    if (element.type === "group") continue;
+    if (element.type === "image" && element.crop) {
+      const { top, right, bottom, left } = element.crop;
+      if (element.fit !== "fill")
+        issues.push(
+          issueAt([...path, "crop"], `needs fit 'fill', not '${element.fit}'`),
+        );
+      if (left + right >= 1 || top + bottom >= 1)
+        issues.push(
+          issueAt([...path, "crop"], "cuts away the whole image on one axis"),
+        );
+    }
+    if (
+      element.shadow &&
+      element.shadow.spread < -Math.min(element.w, element.h) / 2
+    )
+      issues.push(
+        issueAt(
+          [...path, "shadow", "spread"],
+          "shrinks the shadow past nothing; it can be no less than minus half the shorter side",
+        ),
+      );
+  }
+  let endless = false;
+  for (const [position, animation] of (slide.animations ?? []).entries()) {
+    const path = ["slides", index, "animations", position];
+    if (!ids.has(animation.target))
+      issues.push(
+        issueAt(
+          [...path, "target"],
+          `names "${animation.target}", which no element on this slide has as its id`,
+        ),
+      );
+    if (grouped.has(animation.target))
+      issues.push(
+        issueAt(
+          [...path, "target"],
+          `names "${animation.target}", which is inside a group; animate the whole group or an element directly on the slide`,
+        ),
+      );
+    if (animation.trigger === "afterPrevious" && endless)
+      issues.push(
+        issueAt(
+          [...path, "trigger"],
+          "waits for an animation that repeats indefinitely and never ends",
+        ),
+      );
+    if (animation.trigger !== "withPrevious") endless = false;
+    if (animation.repeat === "indefinite") endless = true;
+    if (animation.easing && animation.easing.accel + animation.easing.decel > 1)
+      issues.push(
+        issueAt([...path, "easing"], "has accel and decel adding up past 1"),
+      );
+  }
+  return issues;
 }
 
 function missingSlideLinks({ slides }: Deck): DeckIssue[] {
@@ -295,11 +703,14 @@ function missingSlideLinks({ slides }: Deck): DeckIssue[] {
 }
 
 export function validateDeck(input: unknown): DeckValidation {
-  const tooDeep = deepLists(input);
+  const tooDeep = deepNesting(input);
   if (tooDeep.length > 0) return { ok: false, issues: tooDeep };
   const deck = Deck(input);
   if (!(deck instanceof type.errors)) {
-    const issues = missingSlideLinks(deck);
+    const issues = [
+      ...deck.slides.flatMap(freeSlideIssues),
+      ...missingSlideLinks(deck),
+    ];
     return issues.length === 0 ? { ok: true, deck } : { ok: false, issues };
   }
   return {
