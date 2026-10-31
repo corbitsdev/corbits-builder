@@ -1,0 +1,58 @@
+.questions-card {
+  max-width: 100%;
+  min-width: 0;
+}
+
+.questions-card-fields {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-4);
+}
+
+.questions-card-question {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  min-width: 0;
+  margin: 0;
+  padding: 0;
+  border: 0;
+}
+
+/* Reads as the label IntakeForm gives a single-choice question. */
+.questions-card-question legend {
+  margin-bottom: var(--space-1);
+  padding: 0;
+  font-size: 0.875rem;
+  font-weight: 500;
+}
+
+.questions-card-option {
+  align-items: center;
+}
+
+.questions-card-other {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-2);
+}
+
+.questions-card-other .questions-card-other-input {
+  flex: 1 1 12rem;
+  min-width: 0;
+}
+
+.questions-card-settled {
+  justify-content: flex-start;
+  text-align: start;
+}
+
+.questions-card-settled > span:last-child {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.questions-card-settled-ok {
+  color: var(--ok);
+}

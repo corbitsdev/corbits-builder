@@ -1,0 +1,144 @@
+/**
+ * The Projects page: filter chips over a grid of cards. All rules are under
+ * `.library-page`.
+ */
+
+.library-page {
+  display: grid;
+  gap: var(--space-4);
+  align-content: start;
+}
+
+.library-page .library-filters {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+}
+
+.library-page .library-note {
+  margin: 0;
+  color: var(--wb-muted-foreground);
+}
+
+.library-page .library-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(14rem, 1fr));
+  gap: var(--space-4);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.library-page .library-card {
+  position: relative;
+  overflow: hidden;
+  border: 1px solid var(--wb-border);
+  border-radius: var(--radius-panel);
+  background: var(--wb-card);
+  transition: border-color 120ms ease;
+}
+
+.library-page .library-card:hover,
+.library-page .library-card:focus-within {
+  border-color: var(--wb-border-strong);
+}
+
+.library-page .library-card-open {
+  display: flex;
+  flex-direction: column;
+  width: 100%;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+.library-page .library-card-open:focus-visible {
+  outline: 2px solid var(--wb-ring);
+  outline-offset: -2px;
+}
+
+.library-page .library-card-body {
+  display: grid;
+  gap: var(--space-2);
+  padding: var(--space-3) var(--space-4) var(--space-4);
+}
+
+.library-page .library-card-title {
+  overflow: hidden;
+  font-weight: 600;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.library-page .library-card-meta {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-2);
+  padding-right: var(--space-6);
+  color: var(--wb-muted-foreground);
+  font-size: 0.8125rem;
+}
+
+.library-page .library-card-menu {
+  position: absolute;
+  right: var(--space-2);
+  bottom: var(--space-3);
+}
+
+/* Each cover mixes two theme colours into the card's own surface, so it stays
+   soft in light mode and does not glare in dark mode. */
+.library-page .library-cover {
+  --cover-1: color-mix(in oklab, var(--cover-a) 65%, var(--wb-card));
+  --cover-2: color-mix(in oklab, var(--cover-b) 45%, var(--wb-card));
+  display: block;
+  aspect-ratio: 16 / 7;
+  background: linear-gradient(
+    var(--cover-angle),
+    var(--cover-1),
+    var(--cover-2)
+  );
+}
+
+.library-page .library-cover[data-pattern="radial"] {
+  background: radial-gradient(
+    circle at var(--cover-x) var(--cover-y),
+    var(--cover-1),
+    var(--cover-2) 75%
+  );
+}
+
+.library-page .library-cover[data-pattern="stripes"] {
+  background: repeating-linear-gradient(
+    var(--cover-angle),
+    var(--cover-1) 0 14px,
+    var(--cover-2) 14px 28px
+  );
+}
+
+.library-page .library-cover[data-pattern="rings"] {
+  background: repeating-radial-gradient(
+    circle at var(--cover-x) var(--cover-y),
+    var(--cover-1) 0 12px,
+    var(--cover-2) 12px 24px
+  );
+}
+
+.library-page .library-cover[data-pattern="mesh"] {
+  background:
+    radial-gradient(
+      at var(--cover-x) var(--cover-y),
+      var(--cover-1),
+      transparent 60%
+    ),
+    radial-gradient(
+      at calc(100% - var(--cover-x)) calc(100% - var(--cover-y)),
+      var(--cover-2),
+      transparent 60%
+    ),
+    color-mix(in oklab, var(--cover-b) 15%, var(--wb-card));
+}

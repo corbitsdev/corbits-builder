@@ -1,0 +1,1986 @@
+/*
+ * Workbench light — the tokens recorded in planning/DESIGN.md, verbatim.
+ *
+ * The rules that carry meaning rather than taste: surfaces are separated by
+ * borders rather than by elevation, orange is reserved for actions and
+ * selection, and status is never carried by colour alone.
+ *
+ * The palette and the radius scale are the design system's — every --wb-*
+ * token here aliases one of its tokens rather than restating a value, which is
+ * what lets the app go dark.
+ *
+ * The real typefaces ship with the bundle. The historical mockup pulled them
+ * from Google Fonts, which section 10 names as a packaging flaw — a
+ * self-contained bundle must not depend on the network. The latin subsets are
+ * embedded instead: 56 KB for the actual design rather than a fallback stack.
+ */
+
+@font-face {
+  font-family: "Red Hat Display";
+  src: url("./fonts/red-hat-display.woff2") format("woff2");
+  /* One variable file covers the whole range the design uses. */
+  font-weight: 300 900;
+  font-style: normal;
+  font-display: swap;
+}
+
+@font-face {
+  font-family: "Space Mono";
+  src: url("./fonts/space-mono-400.woff2") format("woff2");
+  font-weight: 400;
+  font-style: normal;
+  font-display: swap;
+}
+
+@font-face {
+  font-family: "Space Mono";
+  src: url("./fonts/space-mono-700.woff2") format("woff2");
+  font-weight: 700;
+  font-style: normal;
+  font-display: swap;
+}
+
+:root {
+  /* Aliases onto the design system's tokens rather than copies of their
+     light values. A fork drifts — this one already had, with no secondary or
+     accent step at all, which is why every non-primary surface fell back to
+     the same grey — and a copy of the light palette can never go dark. These
+     follow `.dark` because they are the same variables. */
+  --wb-background: var(--background);
+  --wb-foreground: var(--foreground);
+  /* Surfaces are the page colour; the rail alone keeps the library's grey.
+     Grey cards on a white canvas read as disabled panels, not content. */
+  --wb-card: var(--background);
+  --wb-canvas: color-mix(in srgb, var(--muted) 40%, var(--background));
+  --wb-shadow: 0 1px 2px color-mix(in srgb, var(--foreground) 6%, transparent);
+  /* The rail sits on the page ground and the main pane is a raised sheet on
+     it. Corbits brand palette: Paper White ground, Pure White sheet, a
+     Bedrock Charcoal hairline; dark mode below. */
+  --wb-frame: #f2f4f5;
+  --wb-pane: #ffffff;
+  --wb-pane-shadow:
+    0 0 0 1px color-mix(in srgb, #5c5555 10%, transparent),
+    0 1px 3px color-mix(in srgb, #000000 6%, transparent);
+  --wb-muted: var(--muted);
+  --wb-muted-foreground: var(--muted-foreground);
+  --wb-border: var(--border);
+  --wb-border-strong: var(--border-strong);
+  --wb-primary: var(--primary);
+  /* The library's orange as shipped, read here on the root before `body`
+     lightens it below. */
+  --brand-primary: var(--primary);
+  --brand-primary-active: var(--primary-active);
+  --wb-ring: var(--ring);
+  --wb-okay: var(--ok);
+  --wb-destructive: var(--destructive);
+  --wb-font-ui: var(--font-sans);
+  --wb-font-mono: var(--font-mono);
+  /* mock.css pins 10px / 6px. The library derives md/lg from --radius:
+     0.5rem, so md is 8px and rounded-md on the composer fights the mock. */
+  --radius: 6px;
+  --radius-md: 6px;
+  --radius-lg: 10px;
+  --radius-panel: var(--radius-lg);
+  --radius-control: var(--radius-md);
+  --radius-tile: var(--radius-lg);
+  /* A 4px scale. Nine neighbouring panels previously used nine different
+     padding pairs — including 14 and 18, which sit on no grid at all — so no
+     two of them ever quite lined up. */
+  --space-1: 4px;
+  --space-2: 8px;
+  --space-3: 12px;
+  --space-4: 16px;
+  --space-5: 20px;
+  --space-6: 24px;
+  --space-8: 32px;
+  --space-12: 48px;
+  --target: 44px;
+  --section-max: 1320px;
+  font-family: var(--wb-font-ui);
+}
+
+/* The brand orange carries dark grey text, and dark grey on that orange is
+   legible on paper and hard on the eye. It is lightened here: towards the
+   page in light mode, towards the text colour in dark, so the text stays
+   dark on it either way and the ratio roughly doubles. Mixed from the
+   library's value rather than copied, so the library's next orange still
+   comes through. Set on `body`, under the root the library writes to. */
+body {
+  --primary: color-mix(in srgb, var(--brand-primary) 68%, var(--background));
+  --primary-active: color-mix(
+    in srgb,
+    var(--brand-primary-active) 76%,
+    var(--background)
+  );
+}
+
+:root.dark body {
+  --primary: color-mix(in srgb, var(--brand-primary) 68%, var(--foreground));
+  --primary-active: color-mix(
+    in srgb,
+    var(--brand-primary-active) 76%,
+    var(--foreground)
+  );
+}
+
+/* Night: a Pure Black ground under the theme's own page colour, edged in
+   Canvas Cream, the brand's structure colour on dark. */
+:root.dark {
+  --wb-frame: #000000;
+  --wb-pane: var(--background);
+  --wb-pane-shadow: 0 0 0 1px color-mix(in srgb, #e4d5bc 12%, transparent);
+}
+
+* {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  background: var(--wb-background);
+  color: var(--wb-foreground);
+  font-size: 0.9375rem;
+  line-height: 1.55;
+}
+
+/* In the library's base layer, so its utilities still win. Unlayered, this
+   reset beat `text-primary-foreground` on every primary button, and the
+   button's text was the page foreground: invisible in light mode, where the
+   two are the same colour, and pale beige on orange in dark. */
+@layer base {
+  button,
+  input,
+  select,
+  textarea {
+    font: inherit;
+    color: inherit;
+  }
+}
+
+/* Clickable controls show a hand. UA styles leave `button` at default, and the
+   design-system Button ships no cursor either — so every primary, ghost, crumb,
+   disclosure, and role=button tile used to look inert on hover. */
+button:not(:disabled):not([aria-disabled="true"]),
+[role="button"]:not([aria-disabled="true"]),
+a[href],
+summary,
+label[for],
+select:not(:disabled),
+input[type="button"]:not(:disabled),
+input[type="submit"]:not(:disabled),
+input[type="reset"]:not(:disabled),
+input[type="checkbox"]:not(:disabled),
+input[type="radio"]:not(:disabled),
+input[type="file"]:not(:disabled) {
+  cursor: pointer;
+}
+
+:focus-visible {
+  outline: 2px solid var(--wb-ring);
+  outline-offset: 3px;
+}
+
+/* The composer's textarea sits inside a rounded wrapper; a plain focus-visible
+   outline on the textarea itself draws a sharp rectangle inside that curve.
+   Ring the rounded wrapper instead via :focus-within, and drop the inner
+   textarea's own ring so only one outline ever shows. */
+form:has(> textarea):focus-within,
+form:has(> div > textarea):focus-within {
+  outline: 2px solid var(--wb-ring);
+  outline-offset: 2px;
+}
+
+form:has(> textarea) textarea:focus-visible,
+form:has(> div > textarea) textarea:focus-visible {
+  outline: none;
+}
+
+/* ---- App shell: a rail on the left, a filling canvas beside it ---- */
+
+.app {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  grid-template-rows: minmax(0, 1fr);
+  /* The window is the app. Nothing scrolls but the one region meant to. */
+  height: 100vh;
+  overflow: hidden;
+  background: var(--wb-frame);
+}
+
+/* A grid item defaults to min-content width, so anything wide inside — a
+   table, the stage timeline — pushes the whole page sideways instead of
+   scrolling within its own panel. */
+.app > * {
+  min-width: 0;
+}
+
+/* ---- Rail: quiet type on the frame, no rules or boxes of its own ----
+   32px rows with 16px icons on one left edge; the current row is lifted
+   onto the page surface rather than tinted. */
+
+.app-sidebar {
+  --rail-hover: color-mix(in srgb, var(--wb-foreground) 5%, transparent);
+  --rail-press: color-mix(in srgb, var(--wb-foreground) 8%, transparent);
+  grid-row: 1 / -1;
+  width: 15rem;
+  padding: 10px 8px 8px;
+  border-right: 0;
+  background: transparent;
+  transition: width 200ms cubic-bezier(0.2, 0, 0, 1);
+}
+
+.app-sidebar[data-collapsed="true"] {
+  width: 3.5rem;
+}
+
+.app-sidebar [data-slot="sidebar-header"] {
+  min-height: 40px;
+  gap: 8px;
+  margin-bottom: 8px;
+  padding: 0 2px 0 8px;
+  border: 0;
+}
+
+.app-sidebar-name {
+  flex: 1;
+  font-size: 0.875rem;
+  font-weight: 700;
+  letter-spacing: -0.01em;
+}
+
+/* The open workspace and its menu: the mark, the name, a chevron. */
+.app-sidebar-workspace {
+  display: flex;
+  flex: 1;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+  min-height: 32px;
+  margin-left: -6px;
+  padding: 4px 6px;
+  border: 0;
+  border-radius: var(--radius-panel);
+  background: transparent;
+  color: var(--wb-foreground);
+  text-align: left;
+  cursor: pointer;
+  transition: background-color 120ms ease;
+}
+
+.app-sidebar-workspace:hover,
+.app-sidebar-workspace[data-state="open"] {
+  background: var(--rail-hover);
+}
+
+.app-sidebar-workspace:focus-visible {
+  outline: 2px solid var(--wb-ring);
+  outline-offset: -2px;
+}
+
+.app-sidebar-workspace svg.app-sidebar-name {
+  flex: none;
+  width: 14px;
+  height: 14px;
+  color: var(--wb-muted-foreground);
+}
+
+.app-sidebar[data-collapsed="true"] .app-sidebar-workspace {
+  flex: none;
+  margin: 0;
+}
+
+.workspace-menu {
+  min-width: 14rem;
+}
+
+.workspace-menu-name {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.workspace-menu-check {
+  width: 14px;
+  height: 14px;
+  color: var(--wb-muted-foreground);
+}
+
+.app-sidebar [data-slot="sidebar-collapse-toggle"] {
+  width: 32px;
+  height: 32px;
+  border-radius: var(--radius-md);
+  color: var(--wb-muted-foreground);
+  transition:
+    background-color 120ms ease,
+    color 120ms ease;
+}
+
+.app-sidebar [data-slot="sidebar-collapse-toggle"]:hover {
+  background: var(--rail-hover);
+  color: var(--wb-foreground);
+}
+
+.app-sidebar [data-slot="sidebar-content"] {
+  padding: 0;
+}
+
+.app-sidebar-list {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+}
+
+/* The projects in progress sit under a thin rule; their label is for assistive tech only. */
+.app-sidebar [data-slot="sidebar-section"].app-sidebar-projects {
+  margin-top: 12px;
+  padding: 12px 0 0;
+  border-top: 1px solid var(--wb-border);
+}
+
+.app-sidebar [data-slot="sidebar-section"].app-sidebar-projects > p {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
+}
+
+.app-sidebar [data-slot="sidebar-section"] > p {
+  margin: 0 0 3px;
+  padding: 0 8px 4px;
+  font-size: 0.75rem;
+  font-weight: 700;
+  letter-spacing: 0;
+  text-transform: none;
+}
+
+.app-sidebar [data-slot="sidebar-section"] > ul {
+  gap: 1px;
+}
+
+.app-sidebar .app-sidebar-initial {
+  width: 18px;
+  height: 18px;
+  border-radius: 5px;
+  background: color-mix(in srgb, var(--wb-foreground) 7%, transparent);
+  color: inherit;
+  font-size: 0.625rem;
+}
+
+.app-sidebar [aria-current] .app-sidebar-initial {
+  background: var(--wb-foreground);
+  color: var(--wb-background);
+}
+
+/* Every row's highlight spans the rail, whatever its label's length, with
+   the main pane's corner radius. A project row's highlight is its inner
+   frame, which holds the name and the options menu together. */
+.app-sidebar li {
+  display: block;
+  width: 100%;
+}
+
+.app-sidebar [data-slot="sidebar-item"],
+.app-sidebar [data-slot="sidebar-item-row"] > div {
+  box-sizing: border-box;
+  width: 100%;
+  min-height: 32px;
+  border-radius: var(--radius-panel);
+  background: transparent;
+  color: var(--wb-muted-foreground);
+  font-size: 0.84375rem;
+  font-weight: 500;
+  line-height: 1.25;
+  transition:
+    background-color 120ms ease,
+    color 120ms ease,
+    box-shadow 120ms ease;
+}
+
+.app-sidebar [data-slot="sidebar-item"] {
+  display: flex;
+  gap: 10px;
+  padding: 5px 8px;
+  border: 0;
+  font: inherit;
+  font-size: 0.84375rem;
+  font-weight: 500;
+  text-align: left;
+  cursor: pointer;
+}
+
+.app-sidebar [data-slot="sidebar-item-row"] > div {
+  gap: 0;
+  padding-right: 4px;
+}
+
+.app-sidebar [data-slot="sidebar-item-row"] > div > button:first-child {
+  gap: 10px;
+  padding: 5px 8px;
+}
+
+.app-sidebar [data-slot="sidebar-item"] > span:first-child {
+  color: var(--wb-muted-foreground);
+  transition: color 120ms ease;
+}
+
+.app-sidebar [data-slot="sidebar-item"] svg {
+  width: 16px;
+  height: 16px;
+  stroke-width: 1.75;
+}
+
+.app-sidebar [data-slot="sidebar-item"]:hover,
+.app-sidebar [data-slot="sidebar-item-row"] > div:hover {
+  background: var(--rail-hover);
+  color: var(--wb-foreground);
+}
+
+.app-sidebar [data-slot="sidebar-item"]:hover > span:first-child {
+  color: var(--wb-foreground);
+}
+
+.app-sidebar [data-slot="sidebar-item"]:active,
+.app-sidebar [data-slot="sidebar-item-row"] > div:active {
+  background: var(--rail-press);
+}
+
+.app-sidebar [data-slot="sidebar-item"][aria-current="page"],
+.app-sidebar [data-slot="sidebar-item-row"] > div:has(> [aria-current]) {
+  background: var(--wb-background);
+  box-shadow: var(--wb-shadow);
+  color: var(--wb-foreground);
+  font-weight: 600;
+}
+
+.app-sidebar
+  [data-slot="sidebar-item"][aria-current="page"]
+  > span:first-child {
+  color: var(--wb-foreground);
+}
+
+.app-sidebar [data-slot="sidebar-item"]:focus-visible,
+.app-sidebar [data-slot="sidebar-item-row"] button:focus-visible,
+.app-sidebar [data-slot="sidebar-collapse-toggle"]:focus-visible {
+  outline: 2px solid var(--wb-ring);
+  outline-offset: -2px;
+}
+
+.app-sidebar [data-slot="sidebar-footer"] {
+  margin-top: 6px;
+  padding: 8px 0 0;
+  border-top: 1px solid color-mix(in srgb, var(--wb-border) 60%, transparent);
+}
+
+/* Collapsed: the brand mark over its toggle, and every row a centred
+   36px square, so the icon column reads as deliberate rather than clipped. */
+.app-sidebar[data-collapsed="true"] [data-slot="sidebar-header"] {
+  flex-direction: column;
+  justify-content: center;
+  gap: 6px;
+  padding: 4px 0;
+}
+
+.app-sidebar[data-collapsed="true"] .app-sidebar-name {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
+}
+
+.app-sidebar[data-collapsed="true"] [data-slot="sidebar-item"],
+.app-sidebar[data-collapsed="true"] [data-slot="sidebar-item-row"] > div {
+  width: 36px;
+  min-height: 36px;
+  margin: 0 auto;
+  padding: 0;
+}
+
+.app-sidebar[data-collapsed="true"]
+  [data-slot="sidebar-item-row"]
+  > div
+  > button:first-child {
+  justify-content: center;
+  padding: 0;
+}
+
+/* The one call to action in the rail, in the primary colour. */
+.app-sidebar [data-slot="sidebar-item"].app-sidebar-new,
+.app-sidebar [data-slot="sidebar-item"].app-sidebar-new > span:first-child {
+  color: var(--primary-emphasis, var(--wb-primary));
+}
+
+.app-sidebar [data-slot="sidebar-item"].app-sidebar-new {
+  margin-bottom: 4px;
+  background: color-mix(in srgb, var(--wb-primary) 10%, transparent);
+  box-shadow: inset 0 0 0 1px
+    color-mix(in srgb, var(--wb-primary) 45%, transparent);
+  font-weight: 600;
+}
+
+.app-sidebar [data-slot="sidebar-item"].app-sidebar-new:hover {
+  background: color-mix(in srgb, var(--wb-primary) 16%, transparent);
+}
+
+.app-sidebar [data-slot="sidebar-item"].app-sidebar-new[aria-current="page"] {
+  background: color-mix(in srgb, var(--wb-primary) 18%, transparent);
+  box-shadow: inset 0 0 0 1px var(--wb-primary);
+}
+
+/* A project row's options: the library reveals the ellipsis while the row
+   is pointed at or focused; an open menu keeps it up. */
+.app-sidebar .app-sidebar-row-menu {
+  width: 24px;
+  height: 24px;
+  color: var(--wb-muted-foreground);
+}
+
+.app-sidebar
+  [data-slot="sidebar-item-row"]
+  > div
+  > span:has(> .app-sidebar-row-menu[data-state="open"]) {
+  opacity: 1;
+}
+
+.app-sidebar .app-sidebar-row-menu:hover,
+.app-sidebar .app-sidebar-row-menu[data-state="open"] {
+  background: var(--rail-press);
+  color: var(--wb-foreground);
+}
+
+.app-sidebar[data-collapsed="true"]
+  [data-slot="sidebar-item-row"]
+  > div
+  > span {
+  display: none;
+}
+
+.app-sidebar[data-collapsed="true"]
+  [data-slot="sidebar-item-row"]
+  button
+  > span:last-child {
+  flex: none;
+  width: 0;
+}
+
+/* Phone widths: the rail stays an icon column, and opening it lays the full
+   rail over the workspace instead of squeezing it. */
+@media (max-width: 640px) {
+  .app {
+    grid-template-columns: 3.5rem minmax(0, 1fr);
+  }
+
+  .app-sidebar[data-collapsed="false"] {
+    position: fixed;
+    inset: 0 auto 0 0;
+    z-index: 40;
+    background: var(--wb-frame);
+    box-shadow: var(--wb-pane-shadow);
+  }
+}
+
+/* ---- Canvas ---- */
+
+.canvas {
+  display: flex;
+  margin: var(--space-2) var(--space-2) var(--space-2) 0;
+  border-radius: var(--radius-panel);
+  box-shadow: var(--wb-pane-shadow);
+  flex-direction: column;
+  min-width: 0;
+  min-height: 0;
+  overflow: hidden;
+  background: var(--wb-pane);
+}
+
+.wordmark {
+  font-size: 0.9375rem;
+  font-weight: 600;
+  letter-spacing: -0.01em;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* Everything beside the rail. Scrolls, except where a surface fills instead. */
+.canvas-body {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  padding: var(--space-4) var(--space-5) var(--space-6);
+  display: grid;
+  gap: var(--space-2);
+  align-content: start;
+  max-width: var(--section-max);
+  width: 100%;
+}
+
+.canvas-body.is-fill {
+  background: var(--wb-background);
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+  gap: 0;
+  padding: 0;
+  max-width: none;
+}
+
+/* The conversation log is the room's scrollport. A content-sized room lets
+   the settle spacer's height feed back into that measurement, and the page
+   grows on every resize. */
+.canvas-body.is-fill:has(> .stage-view) {
+  overflow: hidden;
+}
+
+.canvas-body.is-fill > .stage-view {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow: hidden;
+}
+
+h1 {
+  font-size: 1.75rem;
+  font-weight: 400;
+  letter-spacing: -0.01em;
+  margin: 0;
+}
+h2 {
+  font-size: 1.375rem;
+  font-weight: 400;
+  margin: 0;
+}
+/* A 1.375 / 1.0 step: adjacent levels need to be tellable apart without
+   measuring them, which is what a flat hierarchy fails at. */
+h3 {
+  font-size: 1rem;
+  font-weight: 500;
+  margin: 0;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  * {
+    animation-duration: 0.01ms !important;
+    transition-duration: 0.01ms !important;
+  }
+}
+
+.consequence {
+  color: var(--wb-muted-foreground);
+  margin: 0;
+  max-width: 72ch;
+}
+
+.version-list dd {
+  margin: 0;
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.hash {
+  font-family: var(--wb-font-mono);
+  font-size: 0.6875rem;
+  color: var(--wb-muted-foreground);
+  word-break: break-all;
+}
+
+/* A label stacked above the control it names. */
+.field {
+  display: grid;
+  gap: var(--space-2);
+}
+
+/* ---- Artifact rendering ---- */
+
+/* Not a card: the artifact body *is* the panel's content. A bordered, filled
+   box inside an already-bordered panel is the nested-card tell, and it adds a
+   frame the reader has to look past to reach the text. */
+.artifact {
+  border: 0;
+  border-top: 1px solid var(--wb-border);
+  background: var(--wb-background);
+  padding: var(--space-5) 0 0;
+  max-height: 60vh;
+  overflow: auto;
+}
+
+.artifact pre {
+  margin: 0;
+  white-space: pre-wrap;
+  word-break: break-word;
+  font-family: var(--wb-font-mono);
+  font-size: 0.8125rem;
+  line-height: 1.6;
+}
+
+.banner {
+  border: 1px solid var(--wb-border-strong);
+  background: var(--wb-card);
+  padding: var(--space-3) var(--space-4);
+  display: grid;
+  gap: var(--space-1);
+  border-radius: var(--radius-panel);
+}
+
+/* Severity reads from the words and the state label, not a coloured edge. */
+.banner.is-error {
+  border-color: var(--wb-destructive);
+}
+.banner.is-okay {
+  border-color: var(--wb-okay);
+}
+.banner p {
+  margin: 0;
+}
+.banner .banner-body {
+  margin: 0;
+}
+.banner .banner-title {
+  font-weight: 500;
+}
+
+/* The gate forms are named `row` and were unstyled outside Settings, so the
+   label, field, and button stacked down the left of a wide card. */
+.banner form.row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-end;
+  gap: var(--space-3);
+  margin-top: var(--space-2);
+}
+
+.banner form.row .field {
+  flex: 1 1 16rem;
+  max-width: 24rem;
+}
+
+.banner form.row .field input {
+  width: 100%;
+}
+
+.banner form.row button {
+  flex: none;
+}
+
+.inline-note {
+  font-size: 0.8125rem;
+  color: var(--wb-muted-foreground);
+  margin: 0;
+}
+
+/* A failed project load: calm and centered, not a raw red box. */
+.project-load-failure {
+  max-width: 32rem;
+  margin: var(--space-8) auto;
+  padding: var(--space-6);
+  display: grid;
+  justify-items: center;
+  gap: var(--space-2);
+  text-align: center;
+}
+
+.project-load-failure-title {
+  margin: 0;
+  font-size: 1rem;
+  font-weight: 600;
+}
+
+.project-load-failure p {
+  margin: 0;
+  color: var(--wb-muted-foreground);
+}
+
+.project-load-failure-actions {
+  margin-top: var(--space-2);
+  display: flex;
+  gap: var(--space-2);
+}
+
+.project-load-failure-details {
+  margin-top: var(--space-4);
+  width: 100%;
+  text-align: left;
+}
+
+.project-load-failure-details summary {
+  cursor: pointer;
+  color: var(--wb-muted-foreground);
+  font-size: 0.8125rem;
+}
+
+.project-load-failure-details pre {
+  margin: var(--space-2) 0;
+  padding: var(--space-3);
+  border: 1px solid var(--wb-border-strong);
+  border-radius: var(--radius-panel);
+  background: var(--wb-card);
+  white-space: pre-wrap;
+  word-break: break-word;
+  font-family: var(--wb-font-mono);
+  font-size: 0.8125rem;
+}
+
+/* ---- Responsive: desktop multi-panel -> tablet master-detail -> phone queue ---- */
+
+/* The rail narrows to icons rather than stacking on top of the work. Stacking
+   left a dead band beside a 240px aside and pushed the conversation below the
+   fold; the library collapses to a 56px icon rail and keeps its labels for
+   screen readers. */
+
+@media (max-width: 640px) {
+  .canvas {
+    padding: var(--space-4) var(--space-4) var(--space-8);
+  }
+  /* A filling surface (the workspace) is the page itself, edge to edge. */
+  .canvas:has(> .canvas-body.is-fill) {
+    padding: 0;
+  }
+  .artifact pre {
+    font-size: 0.75rem;
+  }
+  .version-list {
+    grid-template-columns: 1fr;
+  }
+}
+
+/* Version lists inside the hero read as grouped rows, per the mockup. */
+.version-list > div {
+  display: grid;
+  grid-template-columns: 144px minmax(0, 1fr);
+  gap: var(--space-4);
+  padding: var(--space-1) 0;
+  border-bottom: 1px solid var(--wb-border);
+}
+
+.version-list > div:last-child {
+  border-bottom: 0;
+}
+
+.version-list > div > dt,
+.version-list > div > dd {
+  margin: 0;
+}
+
+/* The conversation: transcript that grows upward, composer pinned beneath.
+   A flex column, not a grid: `.thread-head` and `.composer` already declare
+   `flex: none` (their fixed rows), and `.thread-turns` — the actual
+   scrolling element, from `@corbits/react-ui` — ships Tailwind's
+   `flex-1 min-h-0 overflow-y-auto`, which only takes effect under a flex
+   parent. Under `display: grid` those utilities were inert, so a short
+   viewport let the transcript's own min-content size push past its row
+   instead of shrinking and scrolling, overlapping the approve row beneath
+   it. */
+.stage-thread {
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  background: var(--wb-background);
+  border-right: 1px solid var(--wb-border);
+}
+
+/* ChatThread brings its own transcript layout, scrolling and message
+   treatment; this only places it in the pane's flexible row. */
+.thread-turns {
+  min-height: 0;
+  /* The conversation engine writes scrollTop and reads it back in the same
+     turn. A smooth scroll reports the old position, so each correction
+     starts another one. */
+  scroll-behavior: auto;
+}
+
+/* A turn arriving. The newest row rises into place. The reserve under a
+   settled turn is not a turn; animating it moves the measurement the
+   reserve is computed from. */
+.thread-turns [data-slot="conversation-item"]:last-child {
+  animation: turn-in var(--duration-standard, 200ms) var(--ease-out, ease) both;
+}
+
+/* The record between turns — boundaries, versions, decisions, aborts — as
+   quiet mono lines; the stage's boundary is the only one with a rule. */
+/* The line itself carries its inset and, at a boundary, its rule (see
+   workspace-layout.css), so both transcripts space it alike; the library's
+   bubble around it adds neither. */
+[data-slot="message-bubble"]:has(.conv-event) {
+  text-align: left;
+  padding: 0;
+}
+
+[data-slot="agent-turn"] > span[aria-hidden] {
+  display: none;
+}
+
+/* The specialist's turns are cards on the ground; the person's stay filled. */
+[data-slot="message-bubble"].items-start
+  > div:first-child:not(:has(.thinking)) {
+  background: var(--card);
+  border: 1px solid var(--wb-border);
+  border-radius: var(--radius-lg);
+  padding: 10px 14px;
+}
+
+@keyframes turn-in {
+  from {
+    opacity: 0;
+    transform: translateY(6px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+/* The specialist mid-sentence: a shine crossing the word, after aicss.dev's
+   thinking state. Motion says "working" where a static word says "stuck". */
+.thinking {
+  font-size: 0.875rem;
+  font-weight: 500;
+  color: transparent;
+  -webkit-text-fill-color: transparent;
+  background: linear-gradient(
+    90deg,
+    var(--wb-muted-foreground) 0%,
+    var(--wb-muted-foreground) 30%,
+    color-mix(in srgb, var(--wb-muted-foreground) 40%, transparent) 45%,
+    color-mix(in srgb, var(--wb-muted-foreground) 40%, transparent) 55%,
+    var(--wb-muted-foreground) 70%,
+    var(--wb-muted-foreground) 100%
+  );
+  background-size: 300% 100%;
+  -webkit-background-clip: text;
+  background-clip: text;
+  animation: label-shine 2.25s cubic-bezier(0.25, 0.1, 0.25, 1) infinite;
+}
+
+/* While the specialist writes, a thin ring sweeps the composer's border,
+   after aicss.dev's input. The wait is at the box, so the box says so. */
+@property --ring-angle {
+  syntax: "<angle>";
+  inherits: false;
+  initial-value: 0deg;
+}
+
+.composer > form {
+  position: relative;
+}
+
+.composer[data-working] > form::after {
+  content: "";
+  position: absolute;
+  inset: -1px;
+  border-radius: inherit;
+  padding: 2px;
+  background: conic-gradient(
+    from var(--ring-angle),
+    var(--wb-primary),
+    color-mix(in srgb, var(--wb-primary) 15%, transparent),
+    var(--wb-primary)
+  );
+  /* The mask only needs an opaque colour; which one is irrelevant. */
+  -webkit-mask:
+    linear-gradient(currentColor 0 0) content-box,
+    linear-gradient(currentColor 0 0);
+  -webkit-mask-composite: xor;
+  mask-composite: exclude;
+  animation:
+    ring-spin 1.1s linear infinite,
+    fade-in 220ms ease-out both;
+  pointer-events: none;
+}
+
+@keyframes ring-spin {
+  to {
+    --ring-angle: 360deg;
+  }
+}
+
+@keyframes fade-in {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+/* Things that appear beside the conversation settle in rather than pop. */
+
+@keyframes settle-in {
+  from {
+    opacity: 0;
+    transform: translateY(8px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+@keyframes label-shine {
+  0%,
+  18% {
+    background-position: 100% 0;
+  }
+  82%,
+  100% {
+    background-position: 0% 0;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .thread-turns {
+    scroll-behavior: auto;
+  }
+  .thread-turns [data-slot="conversation-item"]:last-child,
+  .stage-view,
+  .composer[data-working] > form::after,
+  .thinking {
+    animation: none;
+  }
+  .thinking {
+    color: var(--wb-muted-foreground);
+    -webkit-text-fill-color: currentColor;
+  }
+}
+
+.composer {
+  padding: var(--space-2) var(--space-4) var(--space-4);
+  display: grid;
+  gap: var(--space-2);
+  flex: none;
+  position: relative;
+  /* However long the text gets, the box stops at a share of the window and
+     the text scrolls inside it (#160): a `flex: none` row that outgrew the
+     column pushed the send, stop, attach and mic controls below the pane's
+     edge, where nothing could reach them. */
+  max-height: 70vh;
+  min-height: 0;
+  overflow-y: auto;
+}
+
+/* The box itself is a flex column: textarea body above, action row beneath.
+   Capping the box and letting the body scroll keeps the action row pinned
+   at every text length. The textarea's own cap is the library's 200px; a
+   short window gets less. */
+.composer .composer-box {
+  min-height: 0;
+  max-height: min(50vh, 480px);
+}
+
+.composer .composer-box [data-slot="prompt-input-toolbar"] {
+  flex: none;
+}
+
+/* The library's input row is `flex: 1 1 0%` beside a full-basis toolbar that wraps below it, and
+   with a content-sized textarea the row resolved to 0 px wide: one character per line, and the
+   box grew to fill the page. A full basis gives it the whole first line. */
+.home-page .composer-box > div:has(> textarea) {
+  flex: 1 1 100%;
+}
+
+/* The stage composer stacks its input above the toolbar, and the library's `items-end` then
+   shrank the input to its content against the right edge, placeholder and all. */
+.composer .composer-box > div:has(> textarea) {
+  align-self: stretch;
+}
+
+.composer .composer-box textarea,
+.home-page .composer-box textarea {
+  max-height: min(200px, 30vh);
+  overflow-y: auto;
+}
+
+/* The send-back picker a hold on send raises, the reviewer's notes and the
+   model profile list float above the composer, anchored to it rather than the
+   viewport. The composer scrolls its own overflow (#160), which would clip them
+   above it, so it stops while one is open (#210). */
+.composer:has(> .sbpick),
+.composer:has([data-slot="prompt-input-model-select"][data-state="open"]),
+.composer:has(.reviewer-stance[data-open]),
+.composer:has(.reviewer-stance:hover),
+.composer:has(.reviewer-stance:focus-within) {
+  overflow: visible;
+}
+
+.document {
+  border: 1px solid var(--wb-border);
+  background: var(--wb-card);
+  border-radius: var(--radius-panel);
+  /* Its own scroll. Without this the draft was merely clipped by the fill
+     region, so it could not be scrolled at all — and once anything scrolled
+     that hidden container (focusing the composer does, to reveal the input)
+     there was no way to scroll it back. */
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  overflow: hidden;
+}
+
+/* In the workspace the document pane is the grey ground the strip blends
+   into; the paper is the card inside it, and the pane — not the card —
+   carries the scroll. */
+.document-layout .document {
+  display: block;
+  border: 0;
+  border-radius: 0;
+  background: var(--card);
+  overflow-y: auto;
+}
+
+.document-header {
+  display: flex;
+  gap: var(--space-4);
+  align-items: center;
+  justify-content: space-between;
+  padding: var(--space-5) var(--space-6);
+  border-bottom: 1px solid var(--wb-border);
+  flex: none;
+}
+
+.document-header h2 {
+  font-size: 1.125rem;
+  font-weight: 500;
+}
+
+/* Tracked changes: added in green, removed in red and struck through. */
+.prose ins {
+  text-decoration: none;
+  background: color-mix(in srgb, var(--wb-okay) 18%, transparent);
+  color: color-mix(in srgb, var(--wb-okay) 60%, var(--wb-foreground));
+  border-radius: 2px;
+}
+
+.prose del {
+  background: color-mix(in srgb, var(--wb-destructive) 12%, transparent);
+  color: color-mix(in srgb, var(--wb-destructive) 70%, var(--wb-foreground));
+  text-decoration: line-through;
+  border-radius: 2px;
+}
+
+/* The document itself. Measure and rhythm are the whole job here: this is the
+   one surface in the app a person reads rather than scans. */
+.prose {
+  font-size: 0.9375rem;
+  line-height: 1.7;
+}
+
+/* The measure applies to running text, not the block: a table, code fence
+   or embedded frame inside the same document reads better at the pane's
+   full width than squeezed into the same column as the prose around it.
+   Left-aligned rather than centred: the measure lines up with the document
+   header above it, and a centred column in a wide pane reads as a mistake.
+   Wide enough that the card's own width — not this cap — is usually what
+   limits a line: 80ch left a wide empty gutter once the document pane grew
+   to take the room the proportional chat column gave up. */
+.prose > :where(h1, h2, h3, h4, h5, h6, p, ul, ol, blockquote) {
+  max-width: min(120ch, 1100px);
+}
+
+.prose > * + * {
+  margin-top: 1em;
+}
+
+.prose h2,
+.prose h3,
+.prose h4 {
+  font-weight: 500;
+  line-height: 1.3;
+}
+
+.prose > h2 {
+  font-size: 1.25rem;
+  margin-top: 2em;
+}
+.prose > h3 {
+  font-size: 1.0625rem;
+  margin-top: 1.75em;
+}
+.prose > h4 {
+  font-size: 0.9375rem;
+  margin-top: 1.5em;
+  color: var(--wb-muted-foreground);
+}
+.prose > :first-child {
+  margin-top: 0;
+}
+
+.prose ul,
+.prose ol {
+  padding-left: 1.25em;
+}
+
+.prose ul {
+  list-style: disc;
+}
+
+.prose ol {
+  list-style: decimal;
+}
+
+.prose li.task {
+  list-style: none;
+  margin-left: -1.25em;
+}
+
+.prose li + li {
+  margin-top: 0.35em;
+}
+
+.prose blockquote {
+  margin-left: 0;
+  padding-left: var(--space-4);
+  border-left: 2px solid var(--wb-border-strong);
+  color: var(--wb-muted-foreground);
+}
+
+.prose code {
+  font-family: var(--wb-font-mono);
+  font-size: 0.875em;
+  background: var(--wb-muted);
+  padding: 1px var(--space-1);
+}
+
+.prose pre {
+  background: var(--wb-muted);
+  padding: var(--space-3) var(--space-4);
+  overflow-x: auto;
+}
+
+.prose pre code {
+  background: none;
+  padding: 0;
+}
+
+/* A wide table scrolls inside its own box rather than widening the page. */
+.prose-table {
+  overflow-x: auto;
+  margin: 1em 0;
+}
+
+.prose table {
+  border-collapse: collapse;
+  font-size: 0.9375em;
+}
+
+.prose th,
+.prose td {
+  border: 1px solid var(--wb-border);
+  padding: var(--space-2) var(--space-3);
+  text-align: left;
+  vertical-align: top;
+}
+
+.prose th {
+  background: var(--wb-muted);
+  font-weight: 600;
+}
+
+.prose hr {
+  border: 0;
+  border-top: 1px solid var(--wb-border);
+  margin: 2em 0;
+}
+
+.prose ::selection {
+  background: color-mix(in srgb, var(--wb-primary) 26%, transparent);
+}
+
+@media (max-width: 640px) {
+  .version-list > div {
+    grid-template-columns: 1fr;
+    gap: var(--space-1);
+  }
+}
+
+/* Connect a model: the sign-in column's rhythm and LoginForm's heading, for
+   the one screen before the project list. */
+.model-setup {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-4);
+}
+
+.model-setup hgroup {
+  display: grid;
+  gap: var(--space-2);
+}
+
+.model-setup h1 {
+  margin: 0;
+  font-size: 1.875rem;
+  font-weight: 600;
+  line-height: 1;
+  letter-spacing: -0.015em;
+  text-wrap: balance;
+}
+
+.model-setup hgroup p,
+.model-setup-later p {
+  margin: 0;
+  color: var(--wb-muted-foreground);
+  font-size: 0.875rem;
+  line-height: 1.5;
+}
+
+.provider-tiles > button {
+  gap: var(--space-2);
+  min-height: 7.5rem;
+  padding: var(--space-4);
+  border-radius: var(--radius-md);
+  cursor: pointer;
+}
+
+.provider-tiles > button svg {
+  width: 24px;
+  height: 24px;
+  color: var(--wb-foreground);
+}
+
+.model-setup-divider {
+  margin: 0;
+  border: 0;
+  border-top: 1px solid var(--wb-border);
+}
+
+.model-setup-later {
+  display: grid;
+  justify-items: center;
+  gap: var(--space-1);
+  text-align: center;
+}
+
+/* The one look for every select and menu trigger: borderless quiet text
+   that underlines on hover, as the version menu always did. A select keeps
+   room on its right for the library's chevron. */
+.quiet-control {
+  width: auto;
+  height: auto;
+  padding: 2px 4px;
+  border: 0;
+  border-radius: 4px;
+  background: transparent;
+  box-shadow: none;
+  color: var(--wb-muted-foreground);
+  font: inherit;
+  font-size: 0.8125rem;
+  text-underline-offset: 3px;
+  cursor: pointer;
+}
+
+select.quiet-control {
+  padding-right: 22px;
+}
+
+.quiet-control:hover:not(:disabled) {
+  color: var(--wb-foreground);
+  text-decoration: underline;
+}
+
+.quiet-control:focus-visible {
+  outline: 2px solid var(--wb-ring);
+  outline-offset: 2px;
+}
+
+/* Add a model provider: stacked fields, each with its label above it. DialogBody scrolls, which
+   clips at its edge; the inset keeps focus rings inside the clip without moving the fields. */
+.provider-form {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-4);
+  margin: -4px;
+  padding: 4px;
+}
+
+.provider-field {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.provider-hint {
+  margin: 0;
+  font-size: 0.8125rem;
+  color: var(--wb-muted-foreground);
+}
+
+.provider-cards {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(9.5rem, 1fr));
+  gap: var(--space-2);
+}
+
+.provider-card {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+  padding: 10px 12px;
+  border: 1px solid var(--wb-border);
+  border-radius: var(--radius-md);
+  background: var(--wb-card);
+  color: var(--wb-foreground);
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+  transition:
+    border-color 120ms ease-out,
+    background-color 120ms ease-out;
+}
+
+.provider-card:hover:not(:disabled) {
+  border-color: var(--wb-border-strong);
+}
+
+.provider-card[aria-checked="true"] {
+  border-color: var(--wb-primary);
+  background: color-mix(in srgb, var(--wb-primary) 8%, var(--wb-card));
+  box-shadow: inset 0 0 0 1px var(--wb-primary);
+}
+
+.provider-card:focus-visible {
+  outline: 2px solid var(--wb-ring);
+  outline-offset: 2px;
+}
+
+.provider-card:disabled {
+  cursor: default;
+  opacity: 0.6;
+}
+
+.provider-card-head {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  font-size: 0.875rem;
+}
+
+.provider-card-logo {
+  display: inline-grid;
+  place-items: center;
+  flex: none;
+  width: 24px;
+  height: 24px;
+}
+
+.provider-card-logo svg {
+  width: 20px;
+  height: 20px;
+}
+
+/* A large single-question form, for the first project. */
+.ask {
+  display: grid;
+  gap: var(--space-2);
+  min-width: 0;
+}
+
+.banner-action {
+  margin-top: var(--space-1);
+}
+
+/* The generated mockup is its own page and paints on white whatever
+   theme the app wears. Height is most of the window, not a strip. */
+.design-preview {
+  width: 100%;
+  height: clamp(460px, 72vh, 1100px);
+  border: 1px solid var(--wb-border);
+  border-radius: var(--radius-md);
+  background: #fff;
+}
+
+.canvas-body.is-fill > .banner {
+  flex: none;
+  margin: var(--space-3) var(--space-4) 0;
+}
+
+/* Tabs owns the region, so the fill has to pass through it and its panel to
+   reach the conversation — otherwise the composer floats up under the last
+   message instead of sitting at the bottom of the window. */
+.canvas-body.is-fill > * {
+  flex: 1;
+  min-height: 0;
+  gap: 0;
+}
+
+.canvas-body.is-fill .document-layout {
+  flex: 1;
+  min-height: 0;
+}
+
+/* Cards are paper on the tinted canvas. */
+.canvas-body:not(.is-fill) > [data-slot="card"] {
+  background: var(--wb-background);
+  box-shadow: var(--wb-shadow);
+}
+
+/* ---- Projects: one question, then the work as cards ---- */
+.projects {
+  display: grid;
+  gap: var(--space-8);
+  max-width: 960px;
+  width: 100%;
+  margin: 0 auto;
+  padding: var(--space-8) 0 var(--space-6);
+}
+
+.start {
+  display: grid;
+  gap: var(--space-3);
+}
+
+.start h2 {
+  font-size: 1.75rem;
+  letter-spacing: -0.01em;
+}
+
+/* --- Dictation --------------------------------------------------------------
+   The microphone stands to the left of the composer, level with its send
+   button, rather than inside the input, whose layout belongs to the component
+   library. While listening the button pulses and a line under the composer
+   says so, because a live microphone must never be ambiguous. */
+.dictated {
+  display: grid;
+  gap: var(--space-1);
+  min-width: 0;
+}
+
+.dictated-row {
+  display: flex;
+  align-items: flex-end;
+  gap: var(--space-2);
+  min-width: 0;
+}
+
+.dictated-row > :last-child {
+  flex: 1;
+  min-width: 0;
+}
+
+/* Beside a plain text area the microphone sits at the top; beside a one-line
+   field, on its center line. Neither has a send button to be level with. */
+.dictated-row-start {
+  align-items: flex-start;
+}
+
+.dictated-row-center {
+  align-items: center;
+}
+
+.dictated-row-start > .dictate,
+.dictated-row-center > .dictate {
+  margin-bottom: 0;
+}
+
+/* The input's send button is 36px inside 8px of padding; the same size and
+   the same inset puts the two on one line. */
+.dictate {
+  width: 36px;
+  height: 36px;
+  margin-bottom: var(--space-2);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: var(--radius-control);
+  border: 1px solid var(--wb-border);
+  background: var(--wb-card);
+  color: var(--wb-foreground);
+  cursor: pointer;
+  flex: none;
+}
+
+.dictate svg {
+  width: 16px;
+  height: 16px;
+}
+
+.dictate:hover:not(:disabled) {
+  border-color: var(--wb-primary);
+}
+
+.dictate:disabled {
+  cursor: default;
+  opacity: 0.5;
+}
+
+/* Open: the microphone itself goes green. The waveform beside "Listening:"
+   is the input level, bar by bar, newest on the right; it moves because the
+   room does, never on its own. */
+.dictate[aria-pressed="true"] {
+  border-color: var(--wb-okay);
+  color: var(--wb-okay);
+  background: color-mix(in srgb, var(--wb-okay) 12%, var(--wb-card));
+}
+
+.dictation-state {
+  margin: 0;
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  min-height: 1.25rem;
+  font-size: 0.8125rem;
+  color: var(--wb-muted-foreground);
+}
+
+.dictation-state[role="alert"] {
+  color: var(--wb-destructive);
+}
+
+.menu-danger {
+  color: var(--wb-destructive);
+}
+
+/* ---- Settings: three sections, one column ---- */
+.settings {
+  display: grid;
+  gap: var(--space-6);
+  max-width: 880px;
+  width: 100%;
+  margin: 0 auto;
+  padding: var(--space-6) 0;
+}
+
+/* The stage's one view at a time. Fills the region and settles in on change. */
+.stage-view {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  animation: settle-in 380ms cubic-bezier(0.22, 1, 0.36, 1) both;
+}
+
+.stage-view > .banner {
+  flex: none;
+}
+
+/* KEEP: stage-view cards + stage-conversation bounds (conv) */
+/* The plain conversation stages (no fill panel of their own): the
+   specialist's current reply and the thread below it are two stacked
+   regions, and neither had a bounded height, so a long reply just grew past
+   the fold instead of scrolling — the outer `.canvas-body.is-fill` clips
+   rather than scrolls. Each region now takes its share of `.stage-view` and
+   scrolls itself, `ChatThread`'s own `flex-1 min-h-0 overflow-y-auto` only
+   takes effect once its parent is a bounded flex box. */
+.stage-view > [data-slot="card"] {
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  min-height: 0;
+  overflow: hidden;
+}
+
+.stage-view > [data-slot="card"] > div:last-child {
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  min-height: 0;
+  overflow: hidden;
+}
+
+.stage-conversation {
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  min-height: 0;
+  position: relative;
+}
+
+.stage-conversation > *:last-child {
+  flex: none;
+}
+
+/* Filling the window, a stage screen is the page, not a card on grey. */
+.canvas-body.is-fill > [data-slot="card"] {
+  background: var(--wb-background);
+  border: 0;
+  border-radius: 0;
+}
+
+/* Disabled is a state, not a faded brand colour. The library's `opacity-50`
+   over the primary fill left the send arrow at 1.63:1 against it, which reads
+   as a rendering fault rather than as "not yet". A neutral fill says the same
+   thing legibly. */
+button:disabled,
+button[aria-disabled="true"] {
+  background: var(--wb-muted);
+  color: var(--wb-muted-foreground);
+  opacity: 1;
+  cursor: not-allowed;
+}
+
+/* An enabled secondary button was the same flat muted fill as a disabled one
+   (#795, #797): the Download button turned clickable and nothing changed.
+   Everywhere in the app an enabled secondary button has a border and the
+   page's own background, so it reads as a control, and darkens on hover;
+   a disabled button of any variant stays flat, dimmed and borderless, and
+   still answers hover with its tooltip (the library's pointer-events: none
+   swallowed it). Ghost and link buttons are left as they are. */
+[data-slot="button"].bg-secondary:not(:disabled):not([aria-disabled="true"]) {
+  background: var(--wb-background);
+  color: var(--wb-foreground);
+  border: 1px solid var(--wb-border);
+}
+[data-slot="button"].bg-secondary:not(:disabled):not(
+    [aria-disabled="true"]
+  ):hover {
+  background: var(--wb-muted);
+}
+[data-slot="button"]:disabled,
+[data-slot="button"][aria-disabled="true"] {
+  border: 1px solid transparent;
+  color: color-mix(in srgb, var(--wb-muted-foreground) 70%, transparent);
+  pointer-events: auto;
+}
+
+/* An upstream bug, corrected locally: theme.css declares --input: #8a8080 in
+   both schemes, so the composer's outline and the secondary button's stay mid
+   grey while every other border darkens. Matching the rest of the frame is
+   closer to the theme's intent than reproducing its typo. */
+:root:is(.dark, .dark *) {
+  --input: var(--border-strong);
+}
+
+/* The library's message bubble fills with --muted, which reads clearly on a
+   light ground and all but vanishes on a dark one (1.17:1). A hairline gives
+   the person's own message an edge in either scheme. */
+/* Only the person's own message is a filled bubble — the library aligns that
+   one to the end — so only that one takes the edge. Bordering the specialist's
+   turns would box plain prose that is meant to sit on the ground. */
+[data-slot="message-bubble"].items-end > div:first-child {
+  border: 1px solid var(--wb-border-strong);
+}
+
+/* --- Stage 3 side by side, and the likely answers under a question --- */
+
+/* The approaches a version filed, as columns. The grid fits as many as the
+   pane's width allows and stacks the rest, so a narrow pane never scrolls
+   sideways. */
+.approaches {
+  align-self: stretch;
+  margin: var(--space-4) 0 var(--space-6);
+}
+
+.approaches-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 14rem), 1fr));
+  gap: var(--space-4);
+}
+
+.approaches .approach-card {
+  min-width: 0;
+  gap: var(--space-3);
+  padding: var(--space-4);
+  border-radius: var(--radius-panel);
+  border-color: var(--wb-border);
+  background: var(--wb-card);
+}
+
+.approaches .approach-card[data-recommended] {
+  border-color: var(--wb-border-strong);
+  background: color-mix(in srgb, var(--wb-muted) 45%, var(--wb-card));
+}
+
+.approach-badges {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-1);
+  margin-bottom: var(--space-1);
+}
+
+.approaches .approach-card p,
+.approach-points ul {
+  margin: 0;
+}
+
+.approach-points h4 {
+  margin: 0 0 var(--space-1);
+  font-size: 0.75rem;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--wb-muted-foreground);
+}
+
+.approach-points ul {
+  padding-inline-start: 1.1em;
+  list-style: disc;
+}
+
+.approach-points li + li {
+  margin-top: var(--space-1);
+}
+
+.approaches .approach-footer {
+  margin-top: auto;
+  padding-top: var(--space-2);
+}
+
+/* --- Pending turn ----------------------------------------------------------
+   The bubble stamps every message with a relative time. The one turn the host
+   has not recorded is the specialist still working; a time under it is noise. */
+.thread-turns div:has(> div > .thinking) time {
+  display: none;
+}
+
+/* --- Sidebar width ----------------------------------------------------------
+   The rail's default is a fifth of a laptop window; the conversation needs
+   it more than the two labels do. */
+[data-slot="sidebar"]:not([data-collapsed="true"]) {
+  width: 12.75rem;
+}
+
+/* Text with a disclosure widget (#678): the chevron turns when open. */
+.disclosure {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-1);
+  padding: 2px 4px;
+  border: 0;
+  background: none;
+  color: var(--wb-foreground);
+  font: inherit;
+  font-size: 0.875rem;
+  cursor: pointer;
+  border-radius: var(--radius-control);
+}
+
+.disclosure:hover {
+  background: var(--wb-muted);
+}
+
+.disclosure:focus-visible {
+  outline: 2px solid var(--wb-primary);
+  outline-offset: 2px;
+}
+
+/* ------------------------------------------------------------------ print */
+
+/* A document copied out of its pane for printing; it exists only on paper. */
+.print-sheet {
+  display: none;
+}
+
+@media print {
+  @page {
+    margin: 18mm;
+  }
+
+  /* The app's viewport-high, scrolling layout is set aside for the sheet,
+     which flows across as many pages as the document needs. */
+  html,
+  body {
+    height: auto !important;
+    overflow: visible !important;
+  }
+
+  body:has(> .print-sheet) > :not(.print-sheet) {
+    display: none !important;
+  }
+
+  /* Paper is light whatever theme the app wears, so a dark theme does not
+     print pale text. */
+  .print-sheet {
+    display: block;
+    color-scheme: light;
+    background: Canvas;
+    font-size: 11pt;
+    line-height: 1.5;
+  }
+
+  .print-sheet,
+  .print-sheet * {
+    color: CanvasText;
+  }
+
+  .print-sheet .prose {
+    font-size: inherit;
+    line-height: inherit;
+  }
+
+  .print-sheet .prose > * {
+    max-width: none;
+  }
+
+  .print-sheet .document-header {
+    margin-bottom: 8mm;
+    padding-bottom: 3mm;
+    border-bottom: 1px solid CanvasText;
+  }
+
+  .print-sheet .workspace-artifact-title {
+    margin: 0;
+    font-size: 18pt;
+    white-space: normal;
+  }
+
+  .print-sheet-status {
+    margin: 1mm 0 0;
+    font-size: 9pt;
+  }
+
+  .print-sheet :is(h1, h2, h3, h4, h5, h6) {
+    break-after: avoid;
+    break-inside: avoid;
+  }
+
+  .print-sheet :is(pre, figure, blockquote, tr, li) {
+    break-inside: avoid;
+  }
+
+  .print-sheet :is(pre, .prose-table) {
+    overflow: visible;
+  }
+
+  .print-sheet pre {
+    white-space: pre-wrap;
+  }
+}
+
+.project-info {
+  width: min(52rem, calc(100vw - 2rem));
+  max-width: none;
+}
+
+.project-info-facts {
+  margin-bottom: var(--space-4);
+}
+
+/* ---- Stage 5: the slides on screen before they are saved (#95) ---- */
+
+.slide {
+  position: relative;
+  width: 100%;
+  overflow: hidden;
+  background: var(--slide-paper);
+  color: var(--slide-ink);
+  font-family: var(--slide-body-face), sans-serif;
+  border: 1px solid var(--wb-border);
+  border-radius: var(--radius-md);
+  box-shadow: var(--wb-shadow);
+}
+
+.slide p,
+.slide ul {
+  margin: 0;
+}
+
+/* A picture in a document (#737): the PRD for people's screens, captioned. */
+.prose .prose-figure {
+  margin: 1rem 0 1.25rem;
+}
+.prose .prose-figure img {
+  display: block;
+  max-width: 100%;
+  height: auto;
+  border: 1px solid var(--wb-border, #e5e7eb);
+  border-radius: 8px;
+}
+.prose .prose-figure figcaption {
+  margin-top: 0.375rem;
+  font-size: 0.8125rem;
+  color: var(--wb-muted-foreground);
+}
+.prose .prose-missing-picture {
+  color: var(--wb-muted-foreground);
+}

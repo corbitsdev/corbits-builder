@@ -1,0 +1,91 @@
+/**
+ * The New project page: a centred prompt.
+ *
+ * All rules are under `.home-page` (or `:has(> .home-page)`) so settings
+ * rows and the workspace sheet do not share selectors.
+ */
+
+.canvas-body:has(> .home-page) {
+  padding: 0;
+  max-width: none;
+}
+
+.canvas-body:has(> .home-page) > .banner {
+  margin: var(--space-4) var(--space-6) 0;
+}
+
+.home-page {
+  display: grid;
+  align-content: start;
+  max-width: 1080px;
+  width: 100%;
+  min-height: 100%;
+  margin: 0 auto;
+  padding: var(--space-6);
+}
+
+/* The prompt is the page: centred in the pane's height, a reading width
+   wide, with the question above it. */
+.home-page .new-project {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-4);
+  width: 100%;
+  max-width: 52rem;
+  min-height: min(72vh, 640px);
+  justify-content: center;
+  margin: 0 auto;
+}
+
+.home-page .new-project-head {
+  display: grid;
+  gap: var(--space-2);
+  margin-bottom: var(--space-4);
+  text-align: center;
+}
+
+.home-page .new-project-head h1 {
+  margin: 0;
+  font-size: clamp(1.75rem, 1.2rem + 2vw, 2.5rem);
+  font-weight: 700;
+  line-height: 1.1;
+  letter-spacing: -0.015em;
+  text-wrap: balance;
+}
+
+.home-page .new-project-head p {
+  margin: 0;
+  font-size: 1.0625rem;
+  color: var(--wb-muted-foreground);
+  text-wrap: balance;
+}
+
+.home-page .new-project-actions {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: var(--space-4);
+}
+
+.home-page .new-project-actions [data-slot="button"] {
+  font-size: 0.75rem;
+  color: var(--wb-muted-foreground);
+}
+
+/* The composer is the workspace's own (workspace-layout.css), only wider:
+   the page already gives it its gutter. */
+.home-page .new-project > .composer {
+  padding: 0;
+}
+
+.home-page .new-project-actions [role="status"] {
+  font-size: 0.8125rem;
+  color: var(--wb-muted-foreground);
+}
+
+.home-page .import-confirm-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 12px;
+}

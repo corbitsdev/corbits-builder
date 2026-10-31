@@ -1,0 +1,1349 @@
+/* Persistent output workspace. Reuse the shell's semantic palette and spacing. */
+.room.workspace-room {
+  flex-direction: column;
+  overflow: hidden;
+}
+
+/* The library Panel resizes the document from its start edge, so the row is
+   the flex row it expects: the conversation takes what the panel leaves. */
+.workspace-room > .panes.workspace-split {
+  display: flex;
+  width: 100%;
+  max-width: none;
+  margin: 0;
+  overflow: hidden;
+}
+
+/* Before the first document: one centred column at a reading measure. */
+.workspace-room > .panes.workspace-split.chat-first {
+  display: flex;
+  flex-direction: column;
+  max-width: 52rem;
+  margin: 0 auto;
+}
+
+.workspace-split.chat-first > .conv {
+  flex: 1;
+  border-right: 0;
+}
+
+.workspace-split > .conv {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  border-right: 0;
+}
+
+/* The split's proportions before the person drags it. */
+.workspace-split > .workspace-artifacts {
+  width: var(--resizable-width, 58%);
+  background: var(--wb-background);
+}
+
+/* An underline strip on the pane's own surface: one hairline under the row,
+   and the open document marked by ink beneath its title, not a raised box. */
+.workspace-artifacts [data-slot="panel-header"] {
+  display: flex;
+  align-items: flex-end;
+  min-height: 0;
+  padding: 0 var(--space-4);
+  border-bottom: 1px solid color-mix(in srgb, var(--wb-border) 70%, transparent);
+  background: transparent;
+}
+
+.workspace-artifacts [data-slot="panel-tabs"] {
+  flex: 1;
+  min-width: 0;
+  gap: var(--space-1);
+  border: 0;
+  --tab-fade: 2rem;
+}
+
+/* A long row scrolls rather than squeezing its tabs, and fades at an end that hides more. */
+.workspace-artifacts [data-slot="panel-tabs"][data-more-start] {
+  mask-image: linear-gradient(to right, transparent, #000 var(--tab-fade));
+}
+
+.workspace-artifacts [data-slot="panel-tabs"][data-more-end] {
+  mask-image: linear-gradient(to left, transparent, #000 var(--tab-fade));
+}
+
+.workspace-artifacts [data-slot="panel-tabs"][data-more-start][data-more-end] {
+  mask-image: linear-gradient(
+    to right,
+    transparent,
+    #000 var(--tab-fade),
+    #000 calc(100% - var(--tab-fade)),
+    transparent
+  );
+}
+
+/* Tabs keep their size: the open or focused one shows its full name, the rest a shortened one. */
+.workspace-artifacts [data-slot="panel-tab"] {
+  flex: none;
+  height: 40px;
+  min-width: 0;
+  max-width: 9rem;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  color: var(--wb-muted-foreground);
+  box-shadow: inset 0 -2px 0 transparent;
+  transition:
+    color 120ms ease,
+    box-shadow 150ms ease-out;
+}
+
+.workspace-artifacts [data-slot="panel-tab"]:hover {
+  background: transparent;
+  color: var(--wb-foreground);
+}
+
+.workspace-artifacts [data-slot="panel-tab"][data-state="active"],
+.workspace-artifacts [data-slot="panel-tab"]:focus-within {
+  max-width: 20rem;
+}
+
+.workspace-artifacts [data-slot="panel-tab"][data-state="active"] {
+  border: 0;
+  background: transparent;
+  color: var(--wb-foreground);
+  box-shadow: inset 0 -2px 0 var(--wb-foreground);
+}
+
+.workspace-artifacts [role="tab"] {
+  gap: var(--space-2);
+  padding: 0 var(--space-2);
+  border-radius: var(--radius-md) var(--radius-md) 0 0;
+  font-size: 0.8125rem;
+  font-weight: 600;
+  letter-spacing: -0.005em;
+}
+
+.workspace-artifacts [role="tab"]:focus-visible {
+  outline: 2px solid var(--wb-ring);
+  outline-offset: -2px;
+}
+
+/* Where a document tab's menu opens: the pointer, or the tab's corner from the keyboard. */
+.document-tab-menu-anchor {
+  position: fixed;
+  width: 0;
+  height: 0;
+  pointer-events: none;
+}
+
+/* A tab chosen by pointer shows only its underline. */
+.workspace-artifacts [data-pointer-tabs] [role="tab"]:focus-visible {
+  outline: none;
+}
+
+.workspace-room-skeleton {
+  gap: var(--space-3);
+  padding: var(--space-4);
+}
+
+.workspace-skeleton-pane {
+  min-height: 16rem;
+  height: 100%;
+}
+
+.workspace-room-fault {
+  place-content: center;
+  padding: var(--space-4);
+}
+
+.workspace-loading,
+.workspace-status {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+}
+
+.workspace-artifact-empty h2 {
+  margin: 0;
+  font-size: 1rem;
+  font-weight: 600;
+}
+
+.workspace-artifact-content {
+  flex: 1;
+  min-height: 0;
+  overflow: auto;
+  overscroll-behavior: contain;
+  padding: var(--space-3) var(--space-6) var(--space-6);
+  overflow-wrap: anywhere;
+}
+
+/* Each pane is its own scroller, so the padding belongs inside it: padding on the panel sat below
+   the scroller as a band the page never reached. The foot leaves room for the last lines to scroll
+   clear of the floating bar, whose height the bar sets on its pane. */
+.workspace-artifact-content[data-slot="panel-content"] {
+  position: relative;
+  padding: 0;
+}
+
+.workspace-artifact-content
+  > [data-slot="panel-pane"]:not(.workspace-pane-fill) {
+  padding: var(--space-3) var(--space-6)
+    calc(var(--space-6) + var(--pane-bar-height, 0px));
+}
+
+.document-header {
+  display: flex;
+  align-self: stretch;
+  align-items: baseline;
+  gap: var(--space-3);
+  min-width: 0;
+}
+
+.workspace-artifact-title {
+  flex: 1;
+  min-width: 0;
+  margin: 0;
+  font-size: 1.125rem;
+  text-wrap: balance;
+}
+
+.workspace-artifact-content .prose > :where(p, ul, ol, blockquote) {
+  max-width: 75ch;
+  text-wrap: pretty;
+}
+
+.version-menu-item {
+  display: flex;
+  flex: 1;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-3);
+}
+
+/* A column per screen, wrapped to the pane and kept inside the viewport by the menu's own room. */
+.screen-menu {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-1) var(--space-2);
+  max-height: calc(
+    var(--radix-dropdown-menu-content-available-height, 80dvh) - 0.75rem
+  );
+  overflow-y: auto;
+  overscroll-behavior: contain;
+}
+
+.screen-menu-column {
+  display: flex;
+  flex-direction: column;
+  min-width: 8rem;
+}
+
+.screen-menu-column [data-slot="menu-item"] {
+  padding-block: var(--space-1);
+}
+
+.comparison-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-1);
+  margin: 0;
+  padding: 2px 4px 2px 10px;
+  border: 1px solid var(--wb-border);
+  border-radius: 999px;
+  color: var(--wb-muted-foreground);
+  font-size: 0.8125rem;
+}
+
+.comparison-chip button {
+  display: inline-flex;
+  padding: 3px;
+  border: 0;
+  border-radius: 999px;
+  background: transparent;
+  color: inherit;
+  cursor: pointer;
+}
+
+.comparison-chip button:hover {
+  background: var(--wb-muted);
+  color: var(--wb-foreground);
+}
+
+.workspace-artifact-content .gui-frame {
+  width: 100%;
+  min-height: 480px;
+  height: 65dvh;
+}
+
+.workspace-artifact-content .document-raw {
+  max-width: 100%;
+  overflow: auto;
+}
+
+.workspace-artifact-content .document-image {
+  max-width: 100%;
+  height: auto;
+}
+
+.workspace-artifact-content .deliverable-body {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: var(--space-4);
+  min-width: 0;
+}
+
+.workspace-artifact-content .btn {
+  min-height: 44px;
+  align-self: flex-start;
+}
+
+.workspace-artifact-empty {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: var(--space-2);
+  max-width: 42ch;
+  margin: var(--space-2) 0 0;
+  color: var(--wb-muted-foreground);
+}
+
+.stage-conversation > .workspace-fault {
+  padding: var(--space-2) var(--space-4);
+}
+
+/* Pinned above the messages: who works now and the person's next step, on one line. */
+.next-step-line {
+  display: flex;
+  flex-shrink: 0;
+  align-items: center;
+  gap: var(--space-2);
+  min-height: 2.75rem;
+  padding: var(--space-1) var(--space-4);
+  border-bottom: 1px solid var(--wb-border);
+  background: var(--wb-background);
+  font-size: 0.8125rem;
+}
+
+.next-step-text {
+  flex: 1;
+  min-width: 0;
+  margin: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.next-step-now {
+  color: var(--wb-muted-foreground);
+}
+
+.workspace-artifact-empty h3 {
+  color: var(--wb-foreground);
+}
+
+.workspace-artifact-empty p,
+.workspace-status,
+.workspace-fault {
+  margin: 0;
+  font-size: 0.8125rem;
+  line-height: 1.6;
+}
+
+.workspace-fault {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: var(--space-2);
+  color: var(--wb-foreground);
+}
+
+.workspace-fault .inline-note {
+  color: var(--wb-foreground);
+}
+
+.composer > .workspace-fault {
+  padding: 0;
+}
+
+.workspace-loading,
+.workspace-status {
+  min-height: 32px;
+  padding: var(--space-2) var(--space-4);
+  color: var(--wb-muted-foreground);
+  font-size: 0.8125rem;
+}
+
+.workspace-artifact-content .workspace-loading,
+.workspace-artifact-content .workspace-status,
+.workspace-artifact-content .workspace-fault {
+  padding-inline: 0;
+}
+
+.canvas-body.is-fill > .project-load-failure {
+  place-content: center;
+}
+
+.workspace-mobile-switch {
+  display: none;
+}
+
+@media (max-width: 760px) {
+  .workspace-mobile-switch {
+    display: flex;
+    flex-shrink: 0;
+    gap: var(--space-2);
+    padding: var(--space-2) var(--space-4);
+    border-bottom: 1px solid var(--wb-border);
+  }
+
+  .workspace-mobile-switch button {
+    flex: 1;
+    min-height: 44px;
+    padding: var(--space-2);
+    border-radius: var(--radius-md);
+    color: var(--wb-muted-foreground);
+    font: inherit;
+  }
+
+  .workspace-mobile-switch button[aria-pressed="true"] {
+    background: var(--wb-muted);
+    color: var(--wb-foreground);
+    font-weight: 600;
+  }
+
+  .workspace-mobile-switch button:focus-visible {
+    outline: 2px solid var(--wb-ring);
+    outline-offset: 2px;
+  }
+
+  /* One pane at a time, chosen by the switch: the document is not resized. */
+  .workspace-split > .workspace-artifacts {
+    flex: 1;
+    width: auto;
+    min-width: 0;
+    max-width: none;
+    border-inline-start: 0;
+  }
+
+  .workspace-artifacts [data-slot="panel-handle"] {
+    display: none;
+  }
+
+  .workspace-room[data-mobile-pane="conversation"] .workspace-artifacts,
+  .workspace-room[data-mobile-pane="artifacts"] .workspace-split > .conv {
+    display: none;
+  }
+
+  .workspace-artifact-content {
+    padding: var(--space-3) var(--space-4) var(--space-4);
+  }
+
+  .workspace-artifact-content
+    > [data-slot="panel-pane"]:not(.workspace-pane-fill) {
+    padding-inline: var(--space-4);
+  }
+}
+
+.comparison-chip button:focus-visible,
+.workspace-comparison-modes button:focus-visible {
+  outline: 2px solid var(--wb-ring);
+  outline-offset: 2px;
+}
+
+.device-preview {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  width: 100%;
+  margin: 0;
+}
+
+.pane-bar.pane-bar-floating,
+.pane-bar-handle {
+  position: absolute;
+  bottom: var(--space-3);
+  left: 50%;
+  margin: 0;
+  transform: translateX(-50%);
+}
+
+/* Look tweaks: a small panel over the mockup, above the floating bar. */
+.tweak-panel {
+  position: absolute;
+  bottom: calc(var(--space-3) + 3rem);
+  left: 50%;
+  z-index: 3;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  width: min(18rem, calc(100% - 2rem));
+  padding: var(--space-3);
+  border: 1px solid var(--wb-border);
+  border-radius: var(--radius-panel);
+  background: var(--wb-background);
+  box-shadow: var(--wb-shadow);
+  color: var(--wb-foreground);
+  font-size: 0.8125rem;
+  transform: translateX(-50%);
+}
+
+.tweak-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-2);
+  color: var(--wb-muted-foreground);
+}
+
+.tweak-row output {
+  font-variant-numeric: tabular-nums;
+}
+
+.tweak-row select {
+  max-width: 10rem;
+}
+
+.tweak-color {
+  width: 2rem;
+  height: 1.5rem;
+  padding: 0;
+  border: 1px solid var(--wb-border);
+  border-radius: 4px;
+  background: none;
+}
+
+.tweak-swatches {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-1);
+}
+
+.tweak-swatch {
+  width: 1.5rem;
+  height: 1.5rem;
+  padding: 0;
+  border: 1px solid var(--wb-border);
+  border-radius: 999px;
+  cursor: pointer;
+}
+
+.tweak-swatch[aria-pressed="true"] {
+  outline: 2px solid var(--wb-foreground);
+  outline-offset: 2px;
+}
+
+.tweak-swatch:focus-visible,
+.tweak-range:focus-visible {
+  outline: 2px solid var(--wb-ring);
+  outline-offset: 2px;
+}
+
+.tweak-range {
+  width: 100%;
+  accent-color: var(--wb-foreground);
+}
+
+.tweak-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: var(--space-2);
+}
+
+/* The folded bar: a small tab at the page's foot that brings the bar back. */
+.pane-bar-handle {
+  z-index: 2;
+  width: 2.5rem;
+  height: 1.25rem;
+  border: 1px solid var(--wb-border);
+  border-radius: 999px;
+  background: var(--wb-background);
+  color: var(--wb-muted-foreground);
+  opacity: 0.8;
+}
+
+.pane-bar-handle:hover {
+  opacity: 1;
+}
+
+.workspace-comparison-modes {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+}
+
+.device-bezel {
+  width: 100%;
+  border: 1px solid var(--wb-border);
+  border-radius: var(--radius-panel);
+  background: var(--wb-background);
+  overflow: hidden;
+}
+
+.device-preview-phone .device-bezel {
+  width: min(100%, 24rem);
+  margin-inline: auto;
+}
+
+.device-preview-expanded {
+  width: calc(100vw - 2rem);
+  max-width: none;
+  height: calc(100dvh - 2rem);
+  max-height: none;
+}
+
+.device-preview-expanded .device-bezel {
+  display: flex;
+  flex: 1;
+  min-height: 0;
+}
+
+.device-preview-expanded .device-preview-phone {
+  width: min(100%, 24rem);
+  margin-inline: auto;
+}
+
+.device-preview-expanded .gui-frame {
+  flex: 1;
+  width: 100%;
+  height: auto;
+  min-height: 0;
+  border: 0;
+}
+
+.workspace-comparison {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: var(--space-3);
+  width: 100%;
+  min-width: 0;
+}
+
+.passage-notes {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: var(--space-3);
+  width: 100%;
+  min-width: 0;
+}
+
+.passage-offer {
+  position: fixed;
+  z-index: 60;
+}
+
+/* A quiet line before a change to what a specialist builds from, with its two ways on. */
+.workspace-caution {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-2) var(--space-3);
+  padding-bottom: var(--space-2);
+  color: var(--wb-muted-foreground);
+  font-size: 0.8125rem;
+}
+
+.workspace-caution p {
+  margin: 0;
+  flex: 1 1 18rem;
+}
+
+.workspace-caution-actions {
+  display: flex;
+  gap: var(--space-1);
+}
+
+.workspace-replies {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+  padding-bottom: var(--space-2);
+}
+
+.live-app-status {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  min-width: 0;
+  animation: agent-activity-in 240ms cubic-bezier(0.2, 0, 0, 1);
+}
+
+.live-app {
+  position: relative;
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  min-width: 0;
+  min-height: 0;
+}
+
+/* A floating bar with a popover: the anchor carries the bar's placement, so the popover sits on
+   whatever the bar is (the pill, a wrapped pill, or the folded handle) and a press on either is
+   inside it. It spans the page so a tall popover shrinks to fit rather than leave the pane; only
+   its own children take presses. */
+.pane-bar-anchor {
+  position: absolute;
+  inset: var(--space-3) 0;
+  z-index: 3;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: flex-end;
+  gap: var(--space-2);
+  pointer-events: none;
+}
+
+.pane-bar-anchor > * {
+  pointer-events: auto;
+}
+
+.pane-bar-anchor > .pane-bar.pane-bar-floating,
+.pane-bar-anchor > .pane-bar-handle {
+  position: static;
+  flex-shrink: 0;
+  margin: 0;
+  transform: none;
+}
+
+/* A popover just above the floating bar, in the bar's border and surface, with the corner the
+   pill's ends have. It grows to its widest row before it grows taller, then scrolls. */
+.live-app-checklist {
+  display: flex;
+  flex-direction: column;
+  width: max-content;
+  min-height: 0;
+  max-width: min(44rem, calc(100% - 2rem));
+  max-height: 28rem;
+  border: 1px solid var(--wb-border);
+  border-radius: 1.25rem;
+  background: var(--wb-background);
+  box-shadow: var(--wb-shadow);
+}
+
+.live-app-checklist:focus-visible {
+  outline: 2px solid var(--wb-ring);
+  outline-offset: 2px;
+}
+
+.live-app-checklist-header {
+  display: flex;
+  flex-shrink: 0;
+  align-items: center;
+  gap: var(--space-2);
+  padding: var(--space-1) var(--space-1) var(--space-1) var(--space-4);
+  border-bottom: 1px solid var(--wb-border);
+}
+
+.live-app-checklist-header h3 {
+  margin: 0;
+  font-size: 0.875rem;
+}
+
+.live-app-checklist-progress {
+  flex: 1;
+  color: var(--wb-muted-foreground);
+  font-size: 0.75rem;
+  white-space: nowrap;
+}
+
+.live-app-checklist-items {
+  margin: 0;
+  padding: var(--space-1) var(--space-2) var(--space-2);
+  overflow: auto;
+  list-style: none;
+  font-size: 0.8125rem;
+}
+
+.live-app-checklist-row {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--space-2);
+  padding: var(--space-1) var(--space-2);
+  border-radius: var(--radius-md);
+  line-height: 1.4;
+}
+
+.live-app-checklist-row > svg {
+  flex-shrink: 0;
+  margin-top: 1px;
+  color: var(--wb-muted-foreground);
+}
+
+.live-app-checklist-items li[data-done] > .live-app-checklist-row > svg,
+.live-app-checklist-items
+  li[data-done]
+  > details
+  > .live-app-checklist-row
+  > svg {
+  color: var(--wb-foreground);
+}
+
+summary.live-app-checklist-row {
+  cursor: pointer;
+  list-style: none;
+}
+
+summary.live-app-checklist-row::-webkit-details-marker {
+  display: none;
+}
+
+summary.live-app-checklist-row:hover {
+  background: var(--wb-muted);
+}
+
+.live-app-checklist-note {
+  padding: var(--space-1) var(--space-2);
+  color: var(--wb-muted-foreground);
+}
+
+.live-app-checklist-note > :first-child > :first-child {
+  margin-top: 0;
+}
+
+.live-app-checklist-note > :first-child > :last-child {
+  margin-bottom: 0;
+}
+
+.live-app-checklist-evidence {
+  margin: 0 0 var(--space-1);
+  padding: 0 var(--space-2) 0 calc(var(--space-2) * 2 + 16px);
+  color: var(--wb-muted-foreground);
+  font-size: 0.75rem;
+  line-height: 1.45;
+}
+
+.live-app-checklist-evidence > :first-child > :first-child {
+  margin-top: 0;
+}
+
+.live-app-checklist-evidence > :first-child > :last-child {
+  margin-bottom: 0;
+}
+
+.live-app-checklist-children {
+  margin: 0;
+  padding: 0 0 0 calc(var(--space-2) + 16px);
+  list-style: none;
+}
+
+/* Every state but the running app is one centred block in the empty pane, scrolling clear of the
+   floating bar when the pane is shorter than it. */
+.live-app-state {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: var(--space-3);
+  width: min(100%, 40rem);
+  margin: auto;
+  padding: var(--space-6) var(--space-6)
+    calc(var(--space-6) + var(--pane-bar-height, 0px));
+  overflow: auto;
+}
+
+.live-app > .concept-sketching {
+  justify-content: safe center;
+  padding-bottom: calc(var(--space-6) + var(--pane-bar-height, 0px));
+  overflow: auto;
+}
+
+.live-app-state .live-app-status {
+  justify-content: center;
+}
+
+.live-app-output {
+  width: 100%;
+}
+
+.live-app-output summary {
+  margin-bottom: var(--space-2);
+  color: var(--wb-muted-foreground);
+  font-size: 0.8125rem;
+  text-align: center;
+  cursor: pointer;
+}
+
+.live-app-spinner {
+  animation: live-app-spin 1s linear infinite;
+}
+
+@keyframes live-app-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+.live-app-log {
+  width: 100%;
+  max-height: 16rem;
+  margin: 0;
+  overflow: auto;
+  padding: var(--space-3);
+  border-radius: var(--radius-panel);
+  background: var(--wb-muted);
+  font-size: 0.75rem;
+  white-space: pre-wrap;
+}
+
+@keyframes agent-activity-in {
+  from {
+    opacity: 0;
+    transform: translateY(4px);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .live-app-status,
+  .live-app-spinner {
+    animation: none;
+  }
+}
+
+/* A piece of work's outcome: the document it filed, or why it stopped. */
+.work-unit-result {
+  display: flex;
+  min-width: 0;
+  align-items: center;
+  gap: var(--space-2);
+  margin: 0;
+  font-size: 0.875rem;
+}
+
+.work-unit-result[data-state="failed"] {
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+  color: var(--wb-destructive);
+}
+
+.work-unit-ready {
+  min-width: 0;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+.work-unit-open {
+  flex: none;
+  height: auto;
+  padding: 0;
+}
+
+.work-unit-time {
+  font-variant-numeric: tabular-nums;
+}
+
+.specialist-ended-details summary {
+  display: inline;
+  cursor: pointer;
+}
+
+.specialist-ended-details {
+  overflow-wrap: anywhere;
+}
+
+.pane-bar {
+  position: sticky;
+  bottom: var(--space-3);
+  z-index: 2;
+  display: flex;
+  align-self: center;
+  align-items: center;
+  gap: 2px;
+  max-width: calc(100% - 1rem);
+  margin-top: auto;
+  padding: 3px;
+  border: 1px solid var(--wb-border);
+  border-radius: 999px;
+  background: var(--wb-background);
+}
+
+.pane-bar .pane-bar-action {
+  border-radius: 999px;
+  color: var(--wb-muted-foreground);
+  font-variant-numeric: tabular-nums;
+}
+
+.pane-bar .pane-bar-action:hover,
+.pane-bar .pane-bar-action[aria-pressed="true"] {
+  color: var(--wb-foreground);
+}
+
+.pane-bar-rule {
+  flex-shrink: 0;
+  width: 1px;
+  height: 1.25rem;
+  margin-inline: 2px;
+  background: var(--wb-border);
+}
+
+.pane-bar-tip {
+  max-width: 18rem;
+  color: var(--wb-foreground);
+  font-size: 0.8125rem;
+  font-weight: 400;
+  line-height: 1.45;
+  text-transform: none;
+  letter-spacing: normal;
+}
+
+.pane-bar-note {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-1);
+  padding: 0 var(--space-2);
+  color: var(--wb-muted-foreground);
+  font-size: 0.75rem;
+  font-weight: 500;
+  white-space: nowrap;
+}
+
+/* The only part of the bar that gives way, so a long strip scrolls inside a narrow pane. The
+   padding keeps a focused chip's ring inside the scroll box, which would clip it. */
+.pane-bar-row {
+  position: relative;
+  display: flex;
+  flex: 0 1 auto;
+  gap: 2px;
+  min-width: 0;
+  margin-block: -4px;
+  padding: 4px;
+  overflow-x: auto;
+  scrollbar-width: none;
+}
+
+.pane-bar-row > * {
+  flex-shrink: 0;
+}
+
+/* A page that fills its pane edge to edge under the tabs: no padding, card border or fixed
+   height, so the app or mockup is the whole pane and the bar floats over its foot. */
+.workspace-artifact-content:has(> .workspace-pane-fill[data-state="active"]) {
+  overflow: hidden;
+}
+
+.workspace-pane-fill {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+.workspace-pane-fill > .deliverable-body,
+.workspace-pane-fill .passage-notes {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  align-items: stretch;
+  gap: 0;
+  min-height: 0;
+}
+
+.workspace-pane-fill > .workspace-loading,
+.workspace-pane-fill > .workspace-fault,
+.workspace-pane-fill > .inline-note {
+  padding: var(--space-3) var(--space-6);
+}
+
+/* Drawn in the concept's own tokens, when it has a theme, until its designer drafts the app. */
+.concept-sketching {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: var(--space-2);
+  min-height: 0;
+  padding: var(--space-6) var(--space-4);
+  font-family: var(--sketch-font, inherit);
+  text-align: center;
+}
+
+.concept-sketch {
+  display: grid;
+  gap: var(--space-2);
+  width: min(22rem, 100%);
+  margin-bottom: var(--space-3);
+  padding: var(--space-4);
+  border: 1px solid
+    color-mix(in srgb, var(--sketch-primary, var(--wb-border)) 35%, transparent);
+  border-radius: var(--sketch-radius, var(--radius-panel));
+  background: var(--sketch-background, var(--wb-background));
+}
+
+.concept-sketch > span,
+.concept-sketch-cards > span {
+  display: block;
+  height: 0.625rem;
+  border-radius: calc(var(--sketch-radius, 0.5rem) / 2);
+  background: color-mix(
+    in srgb,
+    var(--sketch-primary, var(--wb-muted-foreground)) 22%,
+    transparent
+  );
+  animation: concept-sketch-pulse 1.8s ease-in-out infinite;
+}
+
+.concept-sketch > .concept-sketch-bar {
+  height: 1rem;
+  background: color-mix(
+    in srgb,
+    var(--sketch-primary, var(--wb-muted-foreground)) 45%,
+    transparent
+  );
+}
+
+.concept-sketch > .concept-sketch-title {
+  width: 60%;
+  height: 1.25rem;
+  animation-delay: 0.15s;
+}
+
+.concept-sketch > .concept-sketch-line {
+  animation-delay: 0.3s;
+}
+
+.concept-sketch > .concept-sketch-line-short {
+  width: 75%;
+  animation-delay: 0.45s;
+}
+
+.concept-sketch > .concept-sketch-cards {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: var(--space-2);
+  height: auto;
+  background: none;
+  animation: none;
+}
+
+.concept-sketch-cards > span {
+  height: 3.5rem;
+  animation-delay: 0.6s;
+}
+
+.concept-sketching-lead {
+  margin: 0;
+  font-weight: 600;
+}
+
+.live-app-setup-activity {
+  max-width: 32rem;
+  margin: 0;
+  overflow: hidden;
+  font-size: 0.875rem;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.concept-sketching-note {
+  margin: 0;
+  color: var(--wb-muted-foreground);
+  font-size: 0.8125rem;
+}
+
+.concept-sketching-clock {
+  font-variant-numeric: tabular-nums;
+}
+
+.concept-sketching-direction {
+  max-width: 32rem;
+  margin: 0;
+  color: var(--wb-muted-foreground);
+  font-size: 0.8125rem;
+}
+
+.concept-sketching[data-state="still"] .concept-sketch span {
+  animation: none;
+}
+
+@keyframes concept-sketch-pulse {
+  50% {
+    opacity: 0.45;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .concept-sketch span {
+    animation: none;
+  }
+}
+
+.workspace-pane-fill .device-preview {
+  flex: 1;
+  min-height: 0;
+}
+
+.workspace-pane-fill .device-bezel {
+  display: flex;
+  flex: 1;
+  min-height: 0;
+  border: 0;
+  border-radius: 0;
+}
+
+.workspace-pane-fill .device-preview-phone .device-bezel {
+  border-inline: 1px solid var(--wb-border);
+}
+
+.workspace-pane-fill .gui-frame {
+  flex: 1;
+  height: auto;
+  min-height: 0;
+}
+
+.pane-notes {
+  position: absolute;
+  top: var(--space-3);
+  left: 50%;
+  z-index: 2;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: var(--space-1);
+  max-width: calc(100% - 2rem);
+  transform: translateX(-50%);
+}
+
+.pane-notes:empty {
+  display: none;
+}
+
+.pane-notes > .inline-note {
+  margin: 0;
+  padding: 2px var(--space-3);
+  border: 1px solid var(--wb-border);
+  border-radius: 999px;
+  background: var(--wb-background);
+  font-size: 0.75rem;
+}
+
+.design-theme-gallery {
+  flex: 1;
+  min-height: 0;
+  padding: var(--space-4);
+  overflow-y: auto;
+}
+
+.design-theme-lead {
+  margin: 0 0 var(--space-3);
+  color: var(--wb-muted-foreground);
+  font-size: 0.8125rem;
+}
+
+.design-theme-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+  gap: var(--space-4);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.design-theme-card {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+  width: 100%;
+  padding: 0 0 var(--space-3);
+  overflow: hidden;
+  border: 1px solid var(--wb-border);
+  border-radius: var(--radius-md);
+  background: var(--wb-background);
+  color: var(--wb-foreground);
+  font: inherit;
+  text-align: start;
+  cursor: pointer;
+}
+
+.design-theme-card:hover {
+  border-color: var(--wb-muted-foreground);
+}
+
+.design-theme-card:focus-visible {
+  outline: 2px solid var(--wb-ring);
+  outline-offset: 2px;
+}
+
+/* The page renders at four times the card's width, desktop size, and is scaled down to fit. */
+.design-theme-thumb {
+  position: relative;
+  display: block;
+  aspect-ratio: 16 / 10;
+  margin-bottom: var(--space-2);
+  overflow: hidden;
+  border-bottom: 1px solid var(--wb-border);
+  background: var(--wb-muted);
+  pointer-events: none;
+}
+
+.workspace-artifact-content .design-theme-thumb .gui-frame {
+  position: absolute;
+  inset: 0 auto auto 0;
+  width: 400%;
+  height: 400%;
+  min-height: 0;
+  transform: scale(0.25);
+  transform-origin: 0 0;
+}
+
+.design-theme-name {
+  padding: 0 var(--space-3);
+  font-size: 0.875rem;
+  font-weight: 600;
+}
+
+.design-theme-direction {
+  padding: 0 var(--space-3);
+  overflow: hidden;
+  color: var(--wb-muted-foreground);
+  font-size: 0.75rem;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+.typed-yes {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-1) var(--space-2);
+  margin-top: var(--space-2);
+  color: var(--wb-foreground);
+  font-size: 0.875rem;
+}
+
+.typed-yes-count {
+  font-variant-numeric: tabular-nums;
+}
+
+.typed-yes-bar {
+  flex: 1 1 4rem;
+  height: 2px;
+  border-radius: 1px;
+  background: var(--wb-foreground);
+  transform-origin: left;
+  animation: typed-yes-drain linear forwards;
+}
+
+@keyframes typed-yes-drain {
+  from {
+    transform: scaleX(1);
+  }
+  to {
+    transform: scaleX(0);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .typed-yes-bar {
+    animation: none;
+    opacity: 0.4;
+  }
+}
+
+/* The conversation map's rail sits over the column's left edge; the turns start clear of it. */
+.room-thread[data-mapped]
+  > [data-slot="conversation-content"]
+  > [data-slot="conversation-column"] {
+  padding-inline-start: 2.5rem;
+}

@@ -1,0 +1,218 @@
+:root[data-ux="fine"] body,
+:root[data-ux="fine"] body * {
+  font-family:
+    "Comic Sans MS", "Chalkboard SE", "Comic Neue", cursive !important;
+}
+
+:root[data-ux="fine"] body {
+  background: #ff00d4 !important;
+  color: #3cff00 !important;
+}
+
+:root[data-ux="fine"] #app-sidebar {
+  transform: rotate(-1.5deg) translateY(7px);
+  background: #fff200 !important;
+}
+
+:root[data-ux="fine"] main,
+:root[data-ux="fine"] .settings-page {
+  transform: rotate(0.8deg) translateX(11px);
+  background: #00e5ff !important;
+}
+
+:root[data-ux="fine"] button {
+  border-radius: 0 !important;
+  background: #ff6a00 !important;
+  color: #0019ff !important;
+}
+
+.flourish-fine-banner {
+  position: fixed;
+  top: 18px;
+  left: 50%;
+  z-index: 1000;
+  transform: translateX(-50%) rotate(-3deg);
+  padding: 10px 22px;
+  border: 4px dashed #0019ff;
+  background: #fff200;
+  color: #ff0000;
+  font:
+    700 28px "Comic Sans MS",
+    "Chalkboard SE",
+    cursive;
+  pointer-events: none;
+}
+
+.flourish-logo {
+  display: inline-flex;
+}
+
+.flourish-card {
+  position: fixed;
+  left: 16px;
+  bottom: 16px;
+  z-index: 1000;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 14px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-panel);
+  background: var(--background);
+  color: var(--foreground);
+  font-size: 13px;
+  box-shadow: 0 8px 24px rgb(0 0 0 / 0.16);
+  animation: flourish-rise 240ms ease-out;
+}
+
+.flourish-card a {
+  color: inherit;
+  font-weight: 600;
+}
+
+.flourish-card-mark {
+  display: inline-flex;
+  animation: flourish-climb 1.2s ease-in-out infinite;
+}
+
+.flourish-credit {
+  display: block;
+  margin: var(--space-6) auto 0;
+  padding: 0;
+  border: 0;
+  background: none;
+  color: var(--muted-foreground);
+  font: inherit;
+  font-size: 11px;
+  opacity: 0.6;
+  cursor: pointer;
+}
+
+.flourish-credit:hover,
+.flourish-credit:focus-visible {
+  opacity: 1;
+}
+
+.flourish-swarm {
+  position: fixed;
+  inset: 0;
+  z-index: 1000;
+  overflow: hidden;
+  pointer-events: none;
+}
+
+.flourish-swarm-flyer {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: var(--size);
+  height: var(--size);
+  color: var(--foreground);
+  opacity: 0;
+  animation: flourish-fly linear both;
+}
+
+.flourish-flyer-fill,
+.flourish-flyer-fill-strong {
+  fill: var(--primary);
+  fill-opacity: 0.35;
+}
+
+.flourish-flyer-fill-strong {
+  fill-opacity: 0.75;
+}
+
+@keyframes flourish-rise {
+  from {
+    opacity: 0;
+    transform: translateY(8px);
+  }
+}
+
+@keyframes flourish-climb {
+  50% {
+    transform: translateY(-4px) rotate(-6deg);
+  }
+}
+
+@keyframes flourish-fly {
+  0% {
+    opacity: 1;
+    transform: translate(var(--from-x), var(--from-y)) rotate(0deg);
+  }
+  100% {
+    opacity: 1;
+    transform: translate(var(--to-x), var(--to-y)) rotate(var(--spin));
+  }
+}
+
+.flourish-shell {
+  position: fixed;
+  z-index: 1000;
+  display: grid;
+  place-items: center;
+  padding: var(--space-4);
+  pointer-events: none;
+  animation: flourish-shell-fade 4500ms ease-in-out both;
+}
+
+.flourish-shell-screen {
+  margin: 0;
+  padding: var(--space-4) var(--space-6);
+  border-radius: var(--radius-panel);
+  background: #111;
+  color: #e6e6e6;
+  font: 13px/1.5 var(--wb-font-mono);
+  box-shadow: 0 8px 24px rgb(0 0 0 / 0.24);
+}
+
+.flourish-shell-answer {
+  animation: flourish-shell-answer 600ms steps(1) both;
+}
+
+@keyframes flourish-shell-fade {
+  0% {
+    opacity: 0;
+  }
+  8%,
+  80% {
+    opacity: 1;
+  }
+  100% {
+    opacity: 0;
+  }
+}
+
+@keyframes flourish-shell-answer {
+  0% {
+    opacity: 0;
+  }
+  100% {
+    opacity: 1;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .flourish-card,
+  .flourish-card-mark,
+  .flourish-shell,
+  .flourish-shell-answer {
+    animation: none;
+  }
+
+  .flourish-swarm-flyer {
+    animation: flourish-flash 900ms ease-out both;
+    transform: translate(45vw, 40vh);
+  }
+}
+
+@keyframes flourish-flash {
+  0%,
+  100% {
+    opacity: 0;
+  }
+  30%,
+  70% {
+    opacity: 1;
+  }
+}

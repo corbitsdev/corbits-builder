@@ -1,0 +1,570 @@
+/**
+ * Project chrome matching mockups/project.html.
+ *
+ * Scoped to the two-pane workspace so home, onboarding and settings keep
+ * their own sheets.
+ */
+
+/* ---- two panes: proportional conversation + draft ---- */
+
+.panes {
+  flex: 1;
+  min-height: 0;
+}
+
+.canvas-body.is-fill .panes {
+  flex: 1;
+  min-height: 0;
+}
+
+/* Chat-first: before a stage has a drafted artifact, the conversation is
+   the whole page — a single centered column, generous margins either side,
+   the composer at its bottom. The split earns its keep only once there is
+   something to split against. */
+.panes.chat-first {
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  width: 100%;
+  max-width: 720px;
+  margin: 0 auto;
+}
+
+/* The column runs the full height, so the composer sits at the window's
+   foot with the thread above it, not just under the last message. */
+.panes.chat-first .conv {
+  flex: 1;
+  width: 100%;
+  border-right: 0;
+}
+
+/* The composer arrives once there is something it could send: it rises
+   into place rather than appearing. */
+.panes.chat-first .composer {
+  animation: composer-in 280ms ease-out backwards;
+}
+
+@keyframes composer-in {
+  from {
+    opacity: 0;
+    transform: translateY(16px);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .panes.chat-first .composer {
+    animation: none;
+  }
+}
+
+/* Chat-first, before the first message: center the composer (and the empty
+   note) vertically in the column, like a fresh page, rather than pinning it
+   to the bottom below mostly empty space. Once a message lands, `.conv-scroll`
+   goes back to filling the column and the composer settles to the bottom as
+   the thread grows -- the normal, already-existing layout. */
+.panes.chat-first
+  .stage-conversation:has(> .conv-scroll > .inline-note:only-child) {
+  flex: 1;
+  justify-content: center;
+}
+
+.panes.chat-first
+  .stage-conversation:has(> .conv-scroll > .inline-note:only-child)
+  .conv-scroll {
+  flex: 0 1 auto;
+  justify-content: center;
+  text-align: center;
+}
+
+.conv {
+  position: relative;
+  border-right: 1px solid var(--wb-border);
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  background: var(--wb-background);
+}
+
+.conv .stage-conversation {
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  min-height: 0;
+}
+
+.room {
+  display: flex;
+  flex: 1 1 auto;
+  min-height: 0;
+  min-width: 0;
+}
+
+.room > .panes {
+  flex: 1;
+  min-width: 0;
+}
+
+.room .room-thread {
+  display: flex;
+  flex-direction: column;
+  flex: 1 1 auto;
+  min-height: 0;
+  min-width: 0;
+}
+
+.room-mail-names {
+  display: block;
+  font-weight: 500;
+  color: var(--wb-foreground);
+}
+
+/* The row's summary uses the column's width and wraps to a second line before it cuts off. */
+.room-mail-summary {
+  display: -webkit-box;
+  overflow: hidden;
+  white-space: normal;
+  color: var(--wb-muted-foreground);
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+  line-clamp: 2;
+}
+
+.room-mail-row {
+  align-items: flex-start;
+}
+
+.room-mail-fold > summary {
+  cursor: pointer;
+  padding: var(--space-1);
+  font-size: 0.875rem;
+  color: var(--wb-muted-foreground);
+}
+
+.room-mail-turn + .room-mail-turn {
+  margin-top: var(--space-3);
+}
+
+.artifact-mention {
+  display: inline-flex;
+  align-items: center;
+  min-height: 44px;
+  min-width: 44px;
+  margin: 0;
+  padding: 0 var(--space-1);
+  border: 0;
+  background: transparent;
+  color: var(--wb-foreground);
+  font: inherit;
+  text-decoration: underline;
+  text-underline-offset: 0.15em;
+  cursor: pointer;
+}
+
+.artifact-mention:focus-visible {
+  outline: 2px solid var(--wb-foreground);
+  outline-offset: 2px;
+}
+
+/* The library's ask wears an accent wash; here it is a plain card like the conversation's others. */
+.document-decision [data-slot="tool-approval-card"] {
+  max-width: 36rem;
+  min-width: 0;
+  overflow-wrap: anywhere;
+  border-color: var(--wb-border);
+  background: var(--wb-background);
+}
+
+.document-decision [data-slot="tool-approval-card"] > header > svg {
+  color: var(--wb-muted-foreground);
+}
+
+.document-decision-what {
+  margin: 0;
+}
+
+/* The library card always renders Approve always as its second action. A card
+   that approves exact document versions cannot take a standing grant. */
+.document-decision-once
+  [data-slot="tool-approval-card"]
+  > div:last-child
+  > button:nth-child(2) {
+  display: none;
+}
+
+/* The library keeps a settled line's words from shrinking, so a long document title ran past the
+   column; it ellipsizes here, and the full line is the card's tooltip. */
+.document-decision > p > span {
+  flex-shrink: 1;
+  min-width: 0;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+/* A long document title wraps inside the card instead of running past its edge. */
+.document-decision-show {
+  align-self: flex-start;
+  max-width: 100%;
+  height: auto;
+  padding: 0;
+  white-space: normal;
+  text-align: start;
+  overflow-wrap: anywhere;
+}
+
+.document-decision-sources {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.document-decision-concepts {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-1);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.design-choice {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: var(--space-2);
+  margin: 0;
+}
+
+.design-choice > p {
+  margin: 0;
+}
+
+.design-choice-options {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.design-choice-options li {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+}
+
+.document-decision-details summary {
+  color: var(--wb-muted-foreground);
+  font-size: 0.75rem;
+  cursor: pointer;
+}
+
+/* An opened list of many versions scrolls inside the card, so the decision stays in view. */
+.document-decision-details .document-decision-sources {
+  max-height: 16rem;
+  margin-top: var(--space-1);
+  overflow-y: auto;
+}
+
+.document-decision-details p {
+  margin: var(--space-1) 0 0;
+  font-size: 0.75rem;
+}
+
+.document-decision-next {
+  margin: 0;
+  color: var(--wb-muted-foreground);
+  font-size: 0.75rem;
+}
+
+/* The log scrolls inside the room. flex-shrink 0 made its height follow the
+   settle spacer, and the spacer then grew from that new height. */
+.room .conv-scroll {
+  flex: 1 1 auto;
+  min-height: 0;
+}
+
+.deliverable-body {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+}
+
+.conv-scroll {
+  flex: 1;
+  overflow-y: auto;
+  /* Never sideways (#321): `overflow-y: auto` alone makes the x axis auto
+     too, so one child wider than the column let a trackpad gesture carry
+     the whole log to the right and hide the start of every message. */
+  overflow-x: hidden;
+  padding: var(--space-5);
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-4);
+}
+
+/* Each turn is held to the column; whatever is wide inside it scrolls or
+   clips within its own box. */
+.conv-scroll > * {
+  min-width: 0;
+  max-width: 100%;
+}
+
+.pane-switch {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+}
+
+.pane-switch {
+  padding: var(--space-3) var(--space-4);
+  border-bottom: 1px solid var(--wb-border);
+}
+
+.pane-switch button[aria-pressed="true"] {
+  border-color: var(--wb-primary);
+  color: var(--wb-primary);
+}
+
+.document-read {
+  padding: var(--space-5);
+}
+
+.document-raw,
+.diff-lines {
+  font-family: var(--wb-font-mono);
+  font-size: 12px;
+  white-space: pre-wrap;
+  margin: 0;
+}
+
+.gui-frame {
+  flex: 1 1 auto;
+  width: 100%;
+  min-height: 480px;
+  border: 0;
+  background: #fff;
+}
+
+/* ---- composer: one floating line that grows as the person types ---- */
+
+.composer {
+  border-top: 0;
+  padding: var(--space-2) var(--space-4) var(--space-4);
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  flex-shrink: 0;
+  min-height: 0;
+}
+
+/* The composer keeps a reading measure in a wide pane. */
+.stage-conversation > .composer {
+  box-sizing: border-box;
+  width: 100%;
+  max-width: 46rem;
+  margin-inline: auto;
+}
+
+/* The budget row stays above the box, and it scrolls inside its own card.
+   Uncapped, the disclosure is taller than the window and the message box
+   and the log both leave the screen. */
+.composer > .banner {
+  max-height: 8.5rem;
+  overflow-y: auto;
+}
+
+.composer > .composer-box {
+  flex-shrink: 0;
+}
+
+/* Text, microphone and send share one row; the text grows upward from one line. */
+.composer .composer-box {
+  display: flex;
+  flex-flow: row nowrap;
+  align-items: flex-end;
+  gap: var(--space-1);
+  min-width: 0;
+  border: 1px solid var(--wb-border);
+  border-radius: var(--radius-lg);
+  background: var(--wb-card);
+  padding: 6px 6px 6px var(--space-2);
+  transition: border-color 150ms;
+}
+
+.composer .composer-box:focus-within {
+  outline: none;
+  border-color: var(--wb-border-strong);
+}
+
+/* Metrics on the field, padding on textarea and mirror alike: see home-layout.css. */
+.composer .composer-box [data-slot="prompt-input-field"] {
+  align-self: center;
+  font-size: 15px;
+  line-height: 1.5;
+}
+
+.composer .composer-box :is(textarea, [data-slot="prompt-input-mirror"]) {
+  padding-block: 4px;
+}
+
+.composer .composer-box textarea {
+  width: 100%;
+  min-height: 0;
+  max-height: min(180px, 30vh);
+  display: block;
+}
+
+/* An empty box is one line tall, so a placeholder wider than the column would
+   wrap under the border; it stays on that line and ends in an ellipsis. */
+.composer .composer-box textarea:placeholder-shown {
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+.composer .composer-box textarea::placeholder {
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+.composer .composer-box [data-slot="prompt-input-toolbar"] {
+  flex: none;
+  gap: var(--space-1);
+  padding: 0;
+}
+
+/* Ink round send — never the library's primary fill. */
+.composer .composer-box [data-slot="prompt-input-submit"] {
+  width: 32px;
+  height: 32px;
+  min-width: 32px;
+  min-height: 32px;
+  padding: 0;
+  border: 0;
+  background: var(--wb-foreground);
+  color: var(--wb-background);
+  border-radius: 50%;
+  box-shadow: none;
+}
+
+.composer .composer-box [data-slot="prompt-input-submit"]:hover:not(:disabled) {
+  background: var(--wb-foreground);
+  opacity: 0.85;
+}
+
+.composer .composer-box [data-slot="prompt-input-submit"]:disabled {
+  opacity: 0.2;
+}
+
+.composer .dictated {
+  display: grid;
+  gap: var(--space-1);
+}
+
+.composer .dictate {
+  width: 32px;
+  height: 32px;
+  margin: 0;
+  border: 0;
+  border-radius: 50%;
+  background: transparent;
+  color: var(--wb-muted-foreground);
+}
+
+.composer .dictate:hover:not(:disabled) {
+  background: var(--wb-muted);
+  color: var(--wb-foreground);
+}
+
+.composer .approve button {
+  background: transparent;
+  border-color: transparent;
+  color: var(--wb-muted-foreground);
+  height: 32px;
+  padding: 0 var(--space-3);
+  gap: 6px;
+  font-size: 0.8125rem;
+  font-weight: 550;
+  border-radius: var(--radius-md);
+  transition:
+    color 0.15s,
+    border-color 0.15s,
+    background 0.15s;
+}
+
+.composer .approve button:hover:not(:disabled) {
+  color: var(--ok, var(--wb-okay));
+  border-color: color-mix(in srgb, var(--ok, var(--wb-okay)) 40%, transparent);
+  background: color-mix(in srgb, var(--ok, var(--wb-okay)) 8%, transparent);
+}
+
+@media (max-width: 900px) {
+  .panes,
+  .panes:has(> .panes-splitter) {
+    grid-template-columns: 1fr;
+    grid-template-rows: 1fr 1fr;
+  }
+
+  .conv {
+    border-right: 0;
+    border-bottom: 1px solid var(--wb-border);
+  }
+
+  /* A lone conversation runs to the window's right edge, where the guide's
+     button is fixed: the composer keeps clear of it (44px plus its inset). */
+  .panes.chat-first .composer {
+    padding-right: calc(var(--space-4) + 44px + var(--space-6));
+  }
+}
+
+/* Phone widths, from 402px: every pane takes the 16px gutter. */
+@media (max-width: 640px) {
+  .conv-scroll {
+    padding: var(--space-4);
+  }
+
+  .composer {
+    padding: var(--space-2) var(--space-3) var(--space-3);
+  }
+}
+
+/* ---- "How it will actually run": same paper as the doc pane,
+   whether nested inside .doc (stage 6) or standalone (the estimate view). */
+
+.checklist {
+  list-style: none;
+  margin: 0 0 var(--space-3);
+  padding: 0;
+}
+
+.checklist li {
+  display: flex;
+  gap: 8px;
+  align-items: baseline;
+  margin-bottom: 6px;
+}
+
+.checklist li::before {
+  font-family: var(--wb-font-mono);
+  font-size: 11px;
+}
+
+.checklist li.ok::before {
+  content: "✓";
+  color: var(--ok, var(--wb-okay));
+}
+
+.checklist li.open::before {
+  content: "○";
+  color: var(--wb-primary);
+}
+
+.checklist li.fail::before {
+  content: "✗";
+  color: var(--wb-destructive);
+}

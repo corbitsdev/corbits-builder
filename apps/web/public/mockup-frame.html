@@ -1,0 +1,28 @@
+<!doctype html>
+<!--
+  A mockup's own document. A srcdoc frame inherits the workspace's policy (script-src 'self'),
+  which blocks every inline mockup script, so a sandboxed frame loads this page instead: its
+  own policy allows inline script and no network. The workspace sends the page once; writing it
+  clears this listener, so a new page is a new frame.
+-->
+<html>
+  <head>
+    <meta charset="utf-8" />
+    <meta
+      http-equiv="Content-Security-Policy"
+      content="default-src 'none'; script-src 'unsafe-inline'; style-src 'unsafe-inline'; img-src data:; font-src data:; form-action 'none'"
+    />
+    <script>
+      addEventListener("message", (event) => {
+        const html =
+          event.source === parent ? event.data?.mockupHtml : undefined;
+        if (typeof html !== "string") return;
+        document.open();
+        document.write(html);
+        document.close();
+      });
+      parent.postMessage({ mockupReady: true }, "*");
+    </script>
+  </head>
+  <body></body>
+</html>
