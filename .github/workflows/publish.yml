@@ -1,0 +1,129 @@
+name: Publish
+
+on:
+  push:
+    branches:
+      - main
+  # Builds and scans both images without pushing them.
+  workflow_dispatch:
+
+permissions: {}
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name != 'push' }}
+
+jobs:
+  publish:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 60
+    permissions:
+      contents: read
+      packages: write
+      id-token: write
+      attestations: write
+    env:
+      PUSH: ${{ github.event_name == 'push' && github.ref == 'refs/heads/main' }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: docker/setup-qemu-action@99012661954931238ded8c8b007157a8430204e1 # v4.4.0
+      - uses: docker/setup-buildx-action@f87e5991a6d7451dcb8d9637bfbc97413f497069 # v4.4.1
+      - if: env.PUSH == 'true'
+        uses: docker/login-action@81c6f93d4bc991e510b342a00b419b3bb4efc5c6 # v4.7.0
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      # Scan what is about to publish, built for the runner's arch only; the multi-arch builds below reuse its cache.
+      - name: Sidecar image to scan
+        uses: docker/build-push-action@c3c9e263c25d99ce0380d002d59b67737d91b0dc # v7.4.0
+        with:
+          context: .
+          file: deploy/Dockerfile
+          target: sidecar
+          load: true
+          tags: corbits-builder-sidecar:scan
+          cache-from: type=gha,scope=sidecar
+      - name: Hub image to scan
+        uses: docker/build-push-action@c3c9e263c25d99ce0380d002d59b67737d91b0dc # v7.4.0
+        with:
+          context: .
+          file: deploy/Dockerfile
+          target: hub
+          load: true
+          tags: corbits-builder-hub:scan
+          cache-from: type=gha,scope=hub
+      - name: Scan sidecar image
+        uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0
+        with:
+          image-ref: corbits-builder-sidecar:scan
+          severity: CRITICAL,HIGH
+          ignore-unfixed: true
+          exit-code: 1
+      - name: Scan hub image
+        uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0
+        with:
+          image-ref: corbits-builder-hub:scan
+          severity: CRITICAL,HIGH
+          ignore-unfixed: true
+          exit-code: 1
+      - name: Sidecar image
+        id: sidecar
+        uses: docker/build-push-action@c3c9e263c25d99ce0380d002d59b67737d91b0dc # v7.4.0
+        with:
+          context: .
+          file: deploy/Dockerfile
+          target: sidecar
+          platforms: linux/amd64,linux/arm64
+          push: ${{ env.PUSH }}
+          provenance: mode=max
+          sbom: true
+          tags: |
+            ghcr.io/corbitsdev/corbits-builder-sidecar:main
+            ghcr.io/corbitsdev/corbits-builder-sidecar:${{ github.sha }}
+          labels: |
+            org.opencontainers.image.source=https://github.com/corbitsdev/corbits-builder
+            org.opencontainers.image.revision=${{ github.sha }}
+            org.opencontainers.image.version=main
+            org.opencontainers.image.title=corbits-builder-sidecar
+            org.opencontainers.image.licenses=GPL-2.0-only
+          cache-from: type=gha,scope=sidecar
+          cache-to: type=gha,scope=sidecar,mode=max
+      - name: Hub image
+        id: hub
+        uses: docker/build-push-action@c3c9e263c25d99ce0380d002d59b67737d91b0dc # v7.4.0
+        with:
+          context: .
+          file: deploy/Dockerfile
+          target: hub
+          platforms: linux/amd64,linux/arm64
+          push: ${{ env.PUSH }}
+          provenance: mode=max
+          sbom: true
+          tags: |
+            ghcr.io/corbitsdev/corbits-builder-hub:main
+            ghcr.io/corbitsdev/corbits-builder-hub:${{ github.sha }}
+          labels: |
+            org.opencontainers.image.source=https://github.com/corbitsdev/corbits-builder
+            org.opencontainers.image.revision=${{ github.sha }}
+            org.opencontainers.image.version=main
+            org.opencontainers.image.title=corbits-builder-hub
+            org.opencontainers.image.licenses=GPL-2.0-only
+          cache-from: type=gha,scope=hub
+          cache-to: type=gha,scope=hub,mode=max
+      - name: Attest sidecar image
+        if: env.PUSH == 'true'
+        uses: actions/attest-build-provenance@4d101475d8b20a2381f78447822ac1eab6504dd8 # v4.2.2
+        with:
+          subject-name: ghcr.io/corbitsdev/corbits-builder-sidecar
+          subject-digest: ${{ steps.sidecar.outputs.digest }}
+          push-to-registry: true
+      - name: Attest hub image
+        if: env.PUSH == 'true'
+        uses: actions/attest-build-provenance@4d101475d8b20a2381f78447822ac1eab6504dd8 # v4.2.2
+        with:
+          subject-name: ghcr.io/corbitsdev/corbits-builder-hub
+          subject-digest: ${{ steps.hub.outputs.digest }}
+          push-to-registry: true
