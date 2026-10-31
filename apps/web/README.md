@@ -9,7 +9,7 @@ design and watches the app being built.
 The interface reaches the hub only through its HTTP API, using the typed
 client in [`packages/client`][client] and the shared types in
 [`packages/schemas`][schemas]. It never imports the hub, Postgres or
-Drizzle; `tests/integration/architecture.test.ts` fails on that. In
+Drizzle; `test/integration/architecture.test.ts` fails on that. In
 development Vite proxies `/api` to the hub at `UI_HUB_ORIGIN`; a deployed hub
 serves the built `dist/` on its own origin.
 

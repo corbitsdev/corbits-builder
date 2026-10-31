@@ -17,7 +17,7 @@
     "skipLibCheck": true,
     "allowImportingTsExtensions": true
   },
-  "include": ["apps/hub", "scripts", "packages", "workflows", "tests"],
+  "include": ["apps/hub", "scripts", "packages", "workflows", "test"],
   "exclude": [
     "node_modules",
     "vendor",

@@ -111,27 +111,27 @@ Environment files, installs and build output never leave the workspace.
 
 ## Package layout
 
-| Path                       | Package                        | What it holds                                                    |
-| -------------------------- | ------------------------------ | ---------------------------------------------------------------- |
-| `apps/hub`                 | `@corbits-builder/hub`         | The server: routes, services, hub tools, provisioning, live app. |
-| `packages/client`          | `@corbits-builder/client`      | The typed client for the hub's API.                              |
-| `apps/web`                 | `@corbits-builder/web`         | The interface, built only on the client and the schemas.         |
-| `workflows/coordinator`    | `@corbits-builder/coordinator` | The coordinator's agent, prompt and workflow.                    |
-| `workflows/writer`         | `@corbits-builder/writer`      | The document writer and its per-kind skills.                     |
-| `workflows/reviewer`       | `@corbits-builder/reviewer`    | The document reviewer.                                           |
-| `workflows/designer`       | `@corbits-builder/designer`    | The designer, its starter, themes and skills.                    |
-| `workflows/coder`          | `@corbits-builder/coder`       | The coder, its app starter and `check-app`.                      |
-| `packages/schemas`         | `@corbits-builder/schemas`     | Types and schemas shared by the hub, client and workflows.       |
-| `vendor/interchange`       |                                | Interchange at the pinned revision.                              |
-| `deploy/`                  |                                | The Dockerfile and Compose files.                                |
-| `tests/integration`, `e2e` |                                | Cross-module and full-stack tests.                               |
+| Path                      | Package                        | What it holds                                                    |
+| ------------------------- | ------------------------------ | ---------------------------------------------------------------- |
+| `apps/hub`                | `@corbits-builder/hub`         | The server: routes, services, hub tools, provisioning, live app. |
+| `packages/client`         | `@corbits-builder/client`      | The typed client for the hub's API.                              |
+| `apps/web`                | `@corbits-builder/web`         | The interface, built only on the client and the schemas.         |
+| `workflows/coordinator`   | `@corbits-builder/coordinator` | The coordinator's agent, prompt and workflow.                    |
+| `workflows/writer`        | `@corbits-builder/writer`      | The document writer and its per-kind skills.                     |
+| `workflows/reviewer`      | `@corbits-builder/reviewer`    | The document reviewer.                                           |
+| `workflows/designer`      | `@corbits-builder/designer`    | The designer, its starter, themes and skills.                    |
+| `workflows/coder`         | `@corbits-builder/coder`       | The coder, its app starter and `check-app`.                      |
+| `packages/schemas`        | `@corbits-builder/schemas`     | Types and schemas shared by the hub, client and workflows.       |
+| `vendor/interchange`      |                                | Interchange at the pinned revision.                              |
+| `deploy/`                 |                                | The Dockerfile and Compose files.                                |
+| `test/integration`, `e2e` |                                | Cross-module and full-stack tests.                               |
 
 Workflow packages declare their agents and workflows with Interchange's
 definition exports (`@intx/agent/authoring`, `@intx/workflow/definition`).
 Cross-workspace
 imports use declared `@corbits-builder/*` exports and `workspace:*`
 dependencies;
-[tests/integration/architecture.test.ts](https://github.com/corbitsdev/corbits-builder/blob/main/tests/integration/architecture.test.ts)
+[test/integration/architecture.test.ts](https://github.com/corbitsdev/corbits-builder/blob/main/test/integration/architecture.test.ts)
 checks that code imports Interchange by package name and that the interface
 never imports the server or the database.
 

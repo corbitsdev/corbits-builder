@@ -167,7 +167,7 @@ rules:
       - id: empty-fallback
         language: typescript
         message: Invented fallback (an empty string, list, object or zero); handle the missing value instead.
-        ignores: ["**/*.test.ts", "**/*.test.tsx", "tests/**"]
+        ignores: ["**/*.test.ts", "**/*.test.tsx", "test/**"]
         rule:
           any:
             - pattern: $X || []

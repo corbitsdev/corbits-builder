@@ -128,8 +128,8 @@ change follows, whether a person or a coding agent writes it.
 - **Tests are load-bearing.** Write one when it guards an invariant (an
   approval binds to an exact version, a secret never reaches a response) or
   proves behaviour end to end through the real API. Unit tests live beside
-  their code; cross-module checks go in `tests/integration`, real service
-  tests in `tests/e2e`.
+  their code; cross-module checks go in `test/integration`, real service
+  tests in `test/e2e`.
 - **Model-agnostic.** Every role runs on any supported provider and model.
 - **No secrets.** The `.env.*.example` files are the only tracked env files.
 - **`vendor/interchange` is upstream code**, pinned at

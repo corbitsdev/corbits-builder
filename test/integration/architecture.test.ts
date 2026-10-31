@@ -63,7 +63,7 @@ test("workspace imports use declared package exports and local dependencies", as
     "apps",
     "packages",
     "workflows",
-    "tests",
+    "test",
     "scripts",
   ]) {
     for (const path of await sources(resolve(root, directory))) {
