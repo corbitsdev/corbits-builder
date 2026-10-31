@@ -5,7 +5,10 @@ import type {
   Compactor,
   ContentBlock,
   ConversationTurn,
+  InferenceError,
+  ReactorAction,
   ReactorDirector,
+  RetryPolicy,
 } from "@intx/types/runtime";
 import { REPETITION_ABORT } from "../inference/repetition.ts";
 import { CHECK_DESIGN_TOOL } from "../builds/design-check.ts";
@@ -235,6 +238,60 @@ const MAX_EMPTY_TURNS = 3;
 // After this many held replies the reply goes out as it is, so a model that cannot pass is not held forever.
 const MAX_UNCHECKED_REPLIES = 3;
 
+const TRANSIENT_ERRORS: ReadonlySet<InferenceError["category"]> = new Set([
+  "retryable",
+  "timeout",
+  "quota_exhausted",
+]);
+const RETRY_DELAYS_MS = [2_000, 8_000, 30_000];
+const TIMEOUT_RETRIES = 1;
+// Each timed-out attempt already waited minutes, and every model source the reactor fails over to
+// starts its own retries, so one call stops retrying after this long.
+const RETRY_BUDGET_MS = 5 * 60_000;
+const MAX_RETRY_AFTER_MS = 60_000;
+/** Retries an overloaded, slow or rate-limited model on a growing schedule; a rate limit's retry-after wins when longer. */
+const backoffRetryPolicy: RetryPolicy = ({ error, attempt, elapsedMs }) => {
+  const delayMs = RETRY_DELAYS_MS[attempt - 1];
+  const retryAfterMs = error.retryAfterMs ?? 0;
+  if (
+    !TRANSIENT_ERRORS.has(error.category) ||
+    delayMs === undefined ||
+    (error.category === "timeout" && attempt > TIMEOUT_RETRIES) ||
+    elapsedMs > RETRY_BUDGET_MS ||
+    retryAfterMs > MAX_RETRY_AFTER_MS
+  )
+    return { kind: "abort" };
+  return { kind: "retry", delayMs: Math.max(delayMs, retryAfterMs) };
+};
+const withBackoff = (action: ReactorAction): ReactorAction =>
+  action.type === "infer"
+    ? {
+        ...action,
+        options: { ...action.options, retryPolicy: backoffRetryPolicy },
+      }
+    : action;
+
+/** Every inference retries on backoffRetryPolicy; once it gives up, with failRun the run fails. */
+const withRetryPolicy = (
+  director: ReactorDirector,
+  failRun: boolean,
+): ReactorDirector => ({
+  decide: async (event, state, caps) => {
+    if (
+      failRun &&
+      event.type === "inference.error" &&
+      TRANSIENT_ERRORS.has(event.error.category)
+    )
+      throw new Error(
+        `model_unavailable: ${event.error.category}: ${event.error.message}`,
+      );
+    const actions = await director.decide(event, state, caps);
+    return Array.isArray(actions)
+      ? actions.map(withBackoff)
+      : withBackoff(actions);
+  },
+});
+
 // Shell edits the done gate counts as changes: redirection into a file (not 2>&1 or >/dev/null),
 // tee, sed -i, mv, cp, rm and touch.
 const SHELL_WRITE =
@@ -312,9 +369,11 @@ const unfiled = (turns: readonly ConversationTurn[]) =>
  * too long. A turn cut off with no text and no tool call is continued instead of parked, and a
  * turn that only repeats one sentence is dropped and sampled again, as is a stream the source adapter
  * cut for repeating one passage. The third such turn in one task fails the run, or with
- * replyOnRunaways is the reply. With checkBeforeDone, a final reply waits for a passing check-app
- * after the last file change; with fileBeforeDone, it waits for a filed document. The
- * model-specific numbers come from the agent definition's director config.
+ * replyOnFailure is the reply. With checkBeforeDone, a final reply waits for a passing check-app
+ * after the last file change; with fileBeforeDone, it waits for a filed document. Every inference
+ * retries an overloaded, slow or rate-limited model a few times; once that gives up, the run
+ * fails, or with replyOnFailure the error is the reply. The model-specific numbers come from the
+ * agent definition's director config.
  */
 export const compactingDirector = (packageName: string) =>
   defineDirector<{
@@ -324,8 +383,8 @@ export const compactingDirector = (packageName: string) =>
     checkBeforeDone?: boolean;
     // Whether a final reply waits for a write_artifact that filed the task's document.
     fileBeforeDone?: boolean;
-    // Whether the third runaway in one task is the reply rather than a failed run.
-    replyOnRunaways?: boolean;
+    // Whether a runaway or a model failure is the reply rather than a failed run.
+    replyOnFailure?: boolean;
   }>({
     id: `${packageName}/compacting`,
     configSchema: type({
@@ -333,7 +392,7 @@ export const compactingDirector = (packageName: string) =>
       compactAt: "0 < number < 1",
       "checkBeforeDone?": "boolean",
       "fileBeforeDone?": "boolean",
-      "replyOnRunaways?": "boolean",
+      "replyOnFailure?": "boolean",
     }),
     factory: (config, env, agent) => {
       const inner = defaultDirectorFactory({}, env, agent) as ReactorDirector;
@@ -347,14 +406,14 @@ export const compactingDirector = (packageName: string) =>
       // emits reactor.error and ends the run failed, which reaches the coordinator as a specialist
       // ended notice instead of a reply that reads as the specialist's result.
       const runaways = (caps: Parameters<ReactorDirector["decide"]>[2]) => {
-        if (config.replyOnRunaways)
+        if (config.replyOnFailure)
           return [
             caps.checkpoint("degenerate-turns"),
             caps.reply(DEGENERATE_TURNS),
           ];
         throw new Error(DEGENERATE_TURNS);
       };
-      return {
+      const director: ReactorDirector = {
         decide: async (event, state, caps) => {
           if (event.type === "message.received") degenerateTurns = 0;
           // The source adapter cut a stream that repeated one passage; nothing of the turn was kept.
@@ -462,5 +521,6 @@ export const compactingDirector = (packageName: string) =>
           return actions;
         },
       };
+      return withRetryPolicy(director, !config.replyOnFailure);
     },
   });

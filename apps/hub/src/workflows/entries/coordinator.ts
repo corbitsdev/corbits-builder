@@ -19,7 +19,7 @@ const agent = createCoordinatorAgent({
     contextWindow,
     compactAt: 0.6,
     // The coordinator's run is the project's; nothing starts a failed one again.
-    replyOnRunaways: true,
+    replyOnFailure: true,
   }),
   id: "coordinator",
   capabilities: [],
