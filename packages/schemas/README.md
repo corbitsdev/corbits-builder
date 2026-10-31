@@ -35,8 +35,8 @@ internal building blocks of the exported ones.
 ## Working on it
 
 A change here changes a wire or storage shape, so update the hub and the
-client in the same change. `bun run check` typechecks every importer and
-runs the tests.
+client in the same change. `bun run typecheck` checks every importer and
+`bun run test` runs the tests.
 
 [hub]: https://github.com/corbitsdev/corbits-builder/tree/main/apps/hub
 [client]: https://github.com/corbitsdev/corbits-builder/tree/main/packages/client

@@ -32,8 +32,8 @@ use a few of its package exports.
 The hub needs a real Postgres and reads its settings from `.env.hub`, copied
 from `.env.hub.example`; [setup][setup] covers both. `bun run dev` migrates
 the database and starts the hub with the interface, and `bun run start` runs
-the hub alone. `bun run check` runs lint, format, typechecks and tests;
-`bun run test` runs the tests alone. The
+the hub alone. `bun run lint`, `bun run format:check`, `bun run typecheck`
+and `bun run test` check it. The
 [Interchange docs map][interchange-docs] lists the Interchange doc for each
 area; read it before building on one.
 

@@ -36,8 +36,8 @@ and skills through its macros.
 ## Working on it
 
 The design contract the coder relies on is the starter's `DESIGN.md` and
-token names; change them together with the [coder][coder]. `bun run check`
-typechecks and tests it, and `bun run dev` runs it in a real project.
+token names; change them together with the [coder][coder]. `bun run typecheck` and `bun run test` cover it, and `bun run dev` runs it in a
+real project.
 
 [entry]: https://github.com/corbitsdev/corbits-builder/blob/main/apps/hub/src/workflows/entries/designer.ts
 [coordinator]: https://github.com/corbitsdev/corbits-builder/tree/main/workflows/coordinator

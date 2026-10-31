@@ -40,7 +40,7 @@ workspace, `install_packages`, `app_status`, a headless browser, Exa search,
 The starter pins `@corbits/react-ui` to the same version as this package's
 dev dependency; the digest fails the bundle when they differ. A defect in
 generated apps is fixed here, in the starter, prompt or check scripts, or in
-the hub's tools. `bun run check` typechecks and tests it, and `bun run dev`
+the hub's tools. `bun run typecheck` and `bun run test` cover it, and `bun run dev`
 runs it in a real project.
 
 [package]: https://github.com/corbitsdev/corbits-builder/blob/main/apps/hub/src/workflows/coder-package.ts

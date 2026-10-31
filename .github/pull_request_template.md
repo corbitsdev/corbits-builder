@@ -4,4 +4,4 @@
 
 ## How it was verified
 
-<!-- Commands run and what they showed, e.g. `bun run check`, `bun run test:e2e`. -->
+<!-- Commands run and what they showed, e.g. `bun run typecheck`, `bun run test:e2e`. -->

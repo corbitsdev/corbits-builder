@@ -55,9 +55,13 @@ lives under `HUB_DATA_DIR` (`data/hub`). Docker sidecars are optional
 ## Tests
 
 ```sh
-bun run check        # lint, format check, typecheck, unit and integration tests
-bun run test         # unit and integration tests only
-bun run test:e2e     # the API end to end against an isolated Postgres
+bun run lint
+bun run format:check
+bun run typecheck
+bun run test          # unit and integration tests
+bun run pins:verify   # pinned dependency versions
+bun run vendor:verify # vendored Interchange matches its manifest
+bun run test:e2e      # the API end to end against an isolated Postgres
 ```
 
 `bun run test:e2e` reads the `E2E_DB_*` values from `.env.hub`. Start its

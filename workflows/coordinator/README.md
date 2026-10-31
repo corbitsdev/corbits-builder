@@ -31,7 +31,7 @@ the hub's:
 
 ## Working on it
 
-Prompt conventions are in [AGENTS.md][agents]. `bun run check` typechecks and tests it, and
+Prompt conventions are in [AGENTS.md][agents]. `bun run typecheck` and `bun run test` cover it, and
 `bun run dev` runs it in a real project.
 
 [entry]: https://github.com/corbitsdev/corbits-builder/blob/main/apps/hub/src/workflows/entries/coordinator.ts

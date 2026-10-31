@@ -31,8 +31,8 @@ needs in full.
 ## Working on it
 
 What a document should contain lives in its skill rather than the prompt;
-prompt conventions are in [AGENTS.md][agents]. `bun run check` typechecks
-and tests it, and `bun run dev` runs it in a real project.
+prompt conventions are in [AGENTS.md][agents]. `bun run typecheck` and `bun run test` cover it, and `bun run dev` runs it in a
+real project.
 
 [entry]: https://github.com/corbitsdev/corbits-builder/blob/main/apps/hub/src/workflows/entries/writer.ts
 [coordinator]: https://github.com/corbitsdev/corbits-builder/tree/main/workflows/coordinator

@@ -31,8 +31,8 @@ serves the built `dist/` on its own origin.
 `bun run dev` starts the hub and this interface with live reload; the dev
 server reads `UI_PORT` and `UI_HUB_ORIGIN` from `.env.web`, copied from
 `.env.web.example`. Put new user-visible wording in `src/config.ts`.
-`bun run check` lints, formats, typechecks and tests it with the rest of the
-repo. Setup is in [CONTRIBUTING.md][setup].
+`bun run lint`, `bun run format:check`, `bun run typecheck` and `bun run test`
+check it with the rest of the repo. Setup is in [CONTRIBUTING.md][setup].
 
 [client]: https://github.com/corbitsdev/corbits-builder/tree/main/packages/client
 [schemas]: https://github.com/corbitsdev/corbits-builder/tree/main/packages/schemas

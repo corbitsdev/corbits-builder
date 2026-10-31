@@ -24,8 +24,8 @@ the problem brief and the document to review in full.
 ## Working on it
 
 Prompt conventions are in [AGENTS.md][agents].
-`bun run check` typechecks and tests it, and `bun run dev` runs it in a real
-project.
+`bun run typecheck` and `bun run test` cover it, and `bun run dev` runs it in a
+real project.
 
 [entry]: https://github.com/corbitsdev/corbits-builder/blob/main/apps/hub/src/workflows/entries/reviewer.ts
 [coordinator]: https://github.com/corbitsdev/corbits-builder/tree/main/workflows/coordinator

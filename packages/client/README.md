@@ -21,7 +21,7 @@ This package is a client boundary. It imports only
 ## Working on it
 
 Add a method beside the area it belongs to and keep request and response
-shapes in `packages/schemas`. `bun run check` typechecks this
+shapes in `packages/schemas`. `bun run typecheck` checks this
 workspace with the others; the API itself is proven against a running hub,
 as [DEV.md][dev] describes.
 

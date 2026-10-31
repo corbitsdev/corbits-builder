@@ -28,7 +28,6 @@
     "docker:sidecar": "docker build -f deploy/Dockerfile --target sidecar -t corbits-builder-sidecar:local .",
     "auth:bootstrap": "bun --env-file=.env.hub --conditions=intx-src apps/hub/src/setup.ts",
     "auth:emulate": "bun --env-file=.env.hub scripts/google-emulate.ts",
-    "check": "bun run lint && bun run format:check && bun run typecheck && bun run test && bun run pins:verify",
     "lint": "bun --bun run oxlint --deny-warnings",
     "format": "bun fmt --no-script",
     "format:check": "bun fmt --no-script --check",

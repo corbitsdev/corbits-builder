@@ -96,10 +96,15 @@ covers the architecture, tests and other scripts.
 
 2. Make one logical change. One change per pull request and per commit.
 
-3. Run the gate. `bun run check` must pass before and after your change:
+3. Run the gate. These must pass before and after your change:
 
    ```sh
-   bun run check   # lint, format check, typecheck, unit and integration tests
+   bun run lint
+   bun run format:check
+   bun run typecheck
+   bun run test          # unit and integration tests
+   bun run pins:verify   # pinned dependency versions
+   bun run vendor:verify # vendored Interchange matches its manifest
    ```
 
    `bun run format` fixes formatting. Changes to the hub's API also need
