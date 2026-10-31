@@ -20,6 +20,7 @@
     "@corbits-builder/designer": "workspace:*",
     "@corbits-builder/reviewer": "workspace:*",
     "@corbits-builder/schemas": "workspace:*",
+    "@corbits-builder/tools-hub": "workspace:*",
     "@corbits-builder/writer": "workspace:*",
     "@corbits/agent-token": "0.2.2",
     "@corbits/artifacts": "0.3.0",

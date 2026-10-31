@@ -11,8 +11,10 @@ import {
   type ToolRunner,
 } from "@intx/types/runtime";
 import type { RuntimeCapabilities } from "@intx/types/runtime-capabilities";
-import { resolveWorkflowProjectScope } from "../workflows/project-scope.ts";
-import { WorkflowHttpError } from "../workflows/http-json.ts";
+import {
+  resolveWorkflowProjectScope,
+  WorkflowHttpError,
+} from "@corbits-builder/tools-hub";
 import { APP_STATUS_TOOL, createCodingTools } from "./coding-tools.ts";
 import { createPosixBuildExecutor } from "./posix-sandbox.ts";
 import { browserTools } from "./browser.ts";

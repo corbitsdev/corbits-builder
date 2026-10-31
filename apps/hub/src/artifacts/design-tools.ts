@@ -8,8 +8,10 @@ import { DesignBundle } from "@corbits-builder/schemas/artifact";
 import { designCheckFor } from "../builds/design-check.ts";
 import { withDesignTokens } from "./design-tokens.ts";
 import { DESIGN_STYLES } from "./design-tweaks.ts";
-import { resolveWorkflowProjectScope } from "../workflows/project-scope.ts";
-import { workflowHttpJson } from "../workflows/http-json.ts";
+import {
+  resolveWorkflowProjectScope,
+  workflowHttpJson,
+} from "@corbits-builder/tools-hub";
 import { failure, HubArtifactReceipt } from "./tools.ts";
 
 interface DesignToolEnv extends BaseEnv {

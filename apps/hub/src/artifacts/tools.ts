@@ -15,11 +15,12 @@ import {
 } from "@corbits-builder/schemas/artifact";
 import type { WorkflowRole } from "@corbits-builder/schemas/installed-workflows";
 import { unpackDesign } from "./design-tools.ts";
+import { projectScopeFailure } from "../workflows/project-scope.ts";
 import {
-  projectScopeFailure,
   resolveWorkflowProjectScope,
-} from "../workflows/project-scope.ts";
-import { workflowHttpJson, WorkflowHttpError } from "../workflows/http-json.ts";
+  workflowHttpJson,
+  WorkflowHttpError,
+} from "@corbits-builder/tools-hub";
 
 interface ArtifactToolEnv extends BaseEnv {
   capabilities: RuntimeCapabilities;
