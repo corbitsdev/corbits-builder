@@ -66,20 +66,39 @@ test("the fixture deck writes the same bytes twice and every part reads back", a
     });
     if (!path.endsWith(".rels")) continue;
     const base = `file:///${path.replace(/_rels\/[^/]+$/, "")}`;
-    for (const [, target = ""] of xml.matchAll(/Target="([^"]+)"/g))
-      expect(paths).toContain(new URL(target, base).pathname.slice(1));
+    for (const [, target = "", external] of xml.matchAll(
+      /Target="([^"]+)"( TargetMode="External")?/g,
+    ))
+      if (external) expect(target).toMatch(/^(https?|mailto):/);
+      else expect(paths).toContain(new URL(target, base).pathname.slice(1));
   }
 });
 
 test("an invalid deck names the slide and field", () => {
   const result = validateDeck({
     ...deck,
-    slides: [deck.slides[0], { layout: "content", body: [] }],
+    slides: [
+      deck.slides[0],
+      { layout: "content", body: [] },
+      {
+        layout: "blank",
+        body: [
+          {
+            type: "paragraph",
+            text: [{ text: "Run", link: "JavaScript:alert(1)" }],
+          },
+        ],
+      },
+    ],
   });
   expect(result.ok).toBe(false);
   if (result.ok) return;
   expect(result.issues).toEqual([
     expect.objectContaining({ slide: 1, path: "slides[1].title" }),
+    expect.objectContaining({
+      slide: 2,
+      path: "slides[2].body[0].text[0].link",
+    }),
   ]);
 });
 
@@ -92,4 +111,48 @@ test("the slide master's content placeholder is a typed body, which PowerPoint n
     .decode(master?.data)
     .match(/<p:ph [^>]*>/g);
   expect(placeholders).toContain('<p:ph type="body" idx="1"/>');
+});
+
+test("a missing slide link or a list past five levels names the slide and field", () => {
+  const nested = (levels: number) => {
+    let item: unknown = "Too deep";
+    for (let level = levels - 1; level > 0; level--)
+      item = { text: `Level ${level}`, items: [item] };
+    return { layout: "blank", body: [{ type: "list", items: [item] }] };
+  };
+  const link = { text: "Appendix", link: 9 };
+  expect(
+    validateDeck({
+      ...deck,
+      slides: [
+        deck.slides[0],
+        { layout: "blank", body: [{ type: "list", items: [[link]] }] },
+      ],
+    }),
+  ).toEqual({
+    ok: false,
+    issues: [
+      {
+        slide: 1,
+        path: "slides[1].body[0].items[0][0].link",
+        message:
+          "slides[1].body[0].items[0][0].link links to slide 9, but the deck has 2 slides",
+      },
+    ],
+  });
+
+  const tooDeep = `slides[1].body[0]${".items[0]".repeat(5)}.items`;
+  for (const levels of [6, 10_000])
+    expect(
+      validateDeck({ ...deck, slides: [deck.slides[0], nested(levels)] }),
+    ).toEqual({
+      ok: false,
+      issues: [
+        {
+          slide: 1,
+          path: tooDeep,
+          message: `${tooDeep} nests lists deeper than 5 levels`,
+        },
+      ],
+    });
 });

@@ -16,13 +16,18 @@ export const escapeXml = (text: string) =>
     .replace(/>/g, "&gt;")
     .replace(/"/g, "&quot;");
 
-type Relationship = { id: string; type: string; target: string };
+type Relationship = {
+  id: string;
+  type: string;
+  target: string;
+  external: boolean;
+};
 
 const relationshipsXml = (items: readonly Relationship[]) =>
   `${XML_DECLARATION}<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">${items
     .map(
-      ({ id, type, target }) =>
-        `<Relationship Id="${id}" Type="${type.includes("://") ? type : `${RELATIONSHIP_TYPES}/${type}`}" Target="${target}"/>`,
+      ({ id, type, target, external }) =>
+        `<Relationship Id="${id}" Type="${type.includes("://") ? type : `${RELATIONSHIP_TYPES}/${type}`}" Target="${escapeXml(target)}"${external ? ' TargetMode="External"' : ""}/>`,
     )
     .join("")}</Relationships>`;
 
@@ -31,9 +36,9 @@ export class Relationships {
   readonly #items: Relationship[] = [];
 
   /** `type` is a full URI, or a name under the officeDocument relationships namespace. */
-  add(type: string, target: string) {
+  add(type: string, target: string, external = false) {
     const id = `rId${this.#items.length + 1}`;
-    this.#items.push({ id, type, target });
+    this.#items.push({ id, type, target, external });
     return id;
   }
 

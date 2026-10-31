@@ -74,14 +74,89 @@ export const deck: DeckInput = {
       title: "What Builder does",
       body: [
         paragraph("Turns an idea into approved documents."),
-        paragraph("Designs from your tokens & <brand>."),
+        {
+          type: "paragraph",
+          text: [
+            "Designs from ",
+            { text: "your tokens", bold: true, color: "primary" },
+            " & <brand>: ",
+            { text: "italic", italic: true },
+            ", ",
+            { text: "underlined", underline: true },
+            ", ",
+            { text: "struck", strike: true },
+            " and ",
+            { text: "large\ntext", size: 28, color: "#EA580C" },
+            ".",
+          ],
+        },
+        {
+          type: "list",
+          items: [
+            "Plans the work",
+            {
+              text: "Writes the documents",
+              items: [
+                "Constraints",
+                {
+                  text: "Approaches",
+                  items: [
+                    {
+                      text: "Design concepts",
+                      items: [{ text: "Theme", items: ["Tokens"] }],
+                    },
+                  ],
+                },
+              ],
+            },
+          ],
+        },
       ],
       notes: "Keep it short.\r\nTwo lines of notes.",
     },
     {
       layout: "two-column",
       title: "Inputs and outputs",
-      left: [paragraph("Idea, constraints")],
+      left: [
+        paragraph("Idea, constraints"),
+        {
+          type: "list",
+          ordered: true,
+          items: [
+            [
+              "Read the ",
+              {
+                text: "guide",
+                link: "HTTPS://corbits.dev/guide/über?a=1&b=2",
+              },
+            ],
+            {
+              text: "Describe the idea",
+              items: [
+                "Who it is for",
+                { text: "What it does", items: ["Core job"] },
+              ],
+            },
+            {
+              text: [{ text: "Ask questions", link: 7 }],
+              ordered: false,
+              items: [
+                [
+                  {
+                    text: "Email us",
+                    link: "mailto:hello@corbits.dev",
+                  },
+                ],
+              ],
+            },
+          ],
+        },
+        {
+          type: "list",
+          ordered: true,
+          items: ["Review the plan", "Approve it"],
+        },
+      ],
       right: [
         paragraph("Docs, design, app"),
         { type: "image", image: mockup },
@@ -113,7 +188,16 @@ export const deck: DeckInput = {
     },
     {
       layout: "blank",
-      body: [paragraph("Questions?")],
+      body: [
+        paragraph("Questions?"),
+        {
+          type: "list",
+          items: [
+            [{ text: "Back to the start", link: 0 }],
+            { text: "Contact", items: ["hello@corbits.dev"] },
+          ],
+        },
+      ],
       notes: "Leave time for questions.",
     },
   ],

@@ -1,8 +1,24 @@
-import type { Theme } from "./deck.ts";
+import type { Theme, ThemeColor } from "./deck.ts";
 import { XML_DECLARATION, escapeXml } from "./xml.ts";
 
 const hex = (color: string) => color.replace("#", "").toUpperCase();
 const srgb = (color: string) => `<a:srgbClr val="${hex(color)}"/>`;
+
+const SCHEME_COLORS: Record<ThemeColor, string> = {
+  primary: "accent1",
+  secondary: "accent2",
+  accent: "accent3",
+  background: "bg1",
+  text: "tx1",
+  muted: "tx2",
+};
+
+const isThemeColor = (color: string): color is ThemeColor =>
+  Object.hasOwn(SCHEME_COLORS, color);
+
+/** A fill that follows the theme for a token name, or a fixed hex colour. */
+export const colorFill = (color: string) =>
+  `<a:solidFill>${isThemeColor(color) ? `<a:schemeClr val="${SCHEME_COLORS[color]}"/>` : srgb(color)}</a:solidFill>`;
 
 export const COLOR_MAP =
   '<p:clrMap bg1="lt1" tx1="dk1" bg2="lt2" tx2="dk2" accent1="accent1" accent2="accent2" accent3="accent3" accent4="accent4" accent5="accent5" accent6="accent6" hlink="hlink" folHlink="folHlink"/>';
