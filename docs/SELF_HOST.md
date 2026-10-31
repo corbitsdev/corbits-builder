@@ -79,10 +79,11 @@ docker compose --env-file .env.hub --project-directory . -f deploy/compose.yml -
 ## Sandboxes
 
 The coder and designer run every command under bubblewrap, which needs a user
-namespace with its capabilities intact. The hub service runs with
-`seccomp=unconfined` for that; its capabilities stay dropped. Ubuntu 24.04 and
-later strip the capabilities from unprivileged user namespaces, so on such a
-host (including the Ubuntu VM that Colima runs) also turn that restriction
+namespace with its capabilities intact, mount propagation and a fresh `/proc`.
+The hub service runs with `seccomp=unconfined`, `apparmor=unconfined` and
+`systempaths=unconfined` for that; its capabilities stay dropped. Ubuntu 24.04
+and later strip the capabilities from unprivileged user namespaces, so on such
+a host (including the Ubuntu VM that Colima runs) also turn that restriction
 off, and make it persist across reboots:
 
 ```sh
