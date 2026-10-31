@@ -53,9 +53,7 @@ export async function runHostGate(
     outputLimited = false,
     total = 0;
   const stop = () => {
-    try {
-      child.kill("SIGKILL");
-    } catch {}
+    child.kill("SIGKILL");
   };
   const timer = setTimeout(() => {
     timedOut = true;

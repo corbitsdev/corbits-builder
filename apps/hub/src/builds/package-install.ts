@@ -1,6 +1,7 @@
 import { readFile } from "node:fs/promises";
 import { join } from "node:path";
 import { type } from "arktype";
+import { hasCode } from "@intx/types/has-code";
 import type { ToolCall, ToolResult, ToolRunner } from "@intx/types/runtime";
 import {
   PACKAGE_INSTALL_TOOL,
@@ -42,14 +43,21 @@ const Lockfile = type({ "workspaces?": type({ "[string]": Manifest }) });
 /** The packages bun.lock records as installed for some package of the workspace. */
 export async function installedPackages(workspace: string) {
   const names = new Set<string>();
-  let lock: typeof Lockfile.infer;
+  let parsed: unknown;
   try {
-    lock = Lockfile.assert(
-      Bun.JSONC.parse(await readFile(join(workspace, "bun.lock"), "utf8")),
+    parsed = Bun.JSONC.parse(
+      await readFile(join(workspace, "bun.lock"), "utf8"),
     );
-  } catch {
-    return names;
+  } catch (error) {
+    if (
+      (hasCode(error) && error.code === "ENOENT") ||
+      error instanceof SyntaxError
+    )
+      return names;
+    throw error;
   }
+  const lock = Lockfile(parsed);
+  if (lock instanceof type.errors) return names;
   for (const manifest of Object.values(lock.workspaces ?? {}))
     for (const field of DEPENDENCY_FIELDS)
       for (const name of Object.keys(manifest[field] ?? {})) names.add(name);
@@ -89,14 +97,19 @@ export function createPackageGate(workspace: string, executor: ToolRunner) {
         )
       ).flat();
       for (const path of manifests) {
-        let manifest: typeof Manifest.infer;
+        let parsed: unknown;
         try {
-          manifest = Manifest.assert(
-            JSON.parse(await readFile(join(workspace, path), "utf8")),
-          );
-        } catch {
-          continue;
+          parsed = JSON.parse(await readFile(join(workspace, path), "utf8"));
+        } catch (error) {
+          if (
+            (hasCode(error) && error.code === "ENOENT") ||
+            error instanceof SyntaxError
+          )
+            continue;
+          throw error;
         }
+        const manifest = Manifest(parsed);
+        if (manifest instanceof type.errors) continue;
         for (const field of DEPENDENCY_FIELDS)
           for (const [name, spec] of Object.entries(manifest[field] ?? {}))
             if (spec.startsWith("workspace:")) continue;

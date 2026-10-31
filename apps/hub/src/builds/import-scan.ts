@@ -1,6 +1,8 @@
 import { readFile } from "node:fs/promises";
 import { builtinModules } from "node:module";
 import { dirname, join, relative, resolve } from "node:path";
+import { type } from "arktype";
+import { hasCode } from "@intx/types/has-code";
 import { DEPENDENCY_FIELDS, Manifest } from "./package-install.ts";
 
 const LOADERS: Record<string, "ts" | "tsx" | "js" | "jsx"> = {
@@ -25,11 +27,19 @@ const packageOf = (specifier: string) => {
 };
 
 async function manifest(path: string) {
+  let parsed: unknown;
   try {
-    return Manifest.assert(JSON.parse(await readFile(path, "utf8")));
-  } catch {
-    return undefined;
+    parsed = JSON.parse(await readFile(path, "utf8"));
+  } catch (error) {
+    if (
+      (hasCode(error) && error.code === "ENOENT") ||
+      error instanceof SyntaxError
+    )
+      return undefined;
+    throw error;
   }
+  const found = Manifest(parsed);
+  return found instanceof type.errors ? undefined : found;
 }
 
 const declared = (found: typeof Manifest.infer | undefined) => [
@@ -47,11 +57,17 @@ export async function undeclaredImports(workspace: string, path: string) {
   if (!loader || relative(workspace, file).startsWith("..")) return undefined;
   let imported: string[];
   try {
+    const source = await readFile(file, "utf8");
     imported = new Bun.Transpiler({ loader })
-      .scanImports(await readFile(file, "utf8"))
+      .scanImports(source)
       .map((entry) => entry.path);
-  } catch {
-    // A file that does not parse yet has no imports to check; check-app says why.
+  } catch (error) {
+    const expected =
+      error instanceof BuildMessage ||
+      error instanceof AggregateError ||
+      (hasCode(error) && error.code === "ENOENT");
+    if (!expected) throw error;
+    // A file that does not parse yet, or was deleted mid-turn, has no imports to check; check-app says why.
     return undefined;
   }
   let directory = dirname(file);

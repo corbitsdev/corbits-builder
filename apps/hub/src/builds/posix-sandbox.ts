@@ -17,6 +17,7 @@ import {
 } from "@anthropic-ai/sandbox-runtime";
 import { type } from "arktype";
 import { getLogger } from "@intx/log";
+import { hasCode } from "@intx/types/has-code";
 import type { ToolCall, ToolResult } from "@intx/types/runtime";
 import { requestErrorMetadata } from "../request-error.ts";
 import type { buildPackageLayout } from "./package-layout.ts";
@@ -114,7 +115,8 @@ export function publicHostName(host: string): boolean {
   let name: string;
   try {
     name = new URL(`http://${host}/`).hostname.toLowerCase().replace(/\.$/, "");
-  } catch {
+  } catch (error) {
+    if (!(error instanceof TypeError)) throw error;
     return false;
   }
   return (
@@ -124,6 +126,11 @@ export function publicHostName(host: string): boolean {
     name !== "localhost" &&
     !name.endsWith(".localhost")
   );
+}
+
+// macOS answers EPERM, not ESRCH, when every member of the group is an unreaped zombie.
+function isGroupGone(error: unknown) {
+  return hasCode(error) && (error.code === "ESRCH" || error.code === "EPERM");
 }
 
 // Playwright launches Chrome with its own sandbox off; the macOS sandbox profile lets no process
@@ -352,7 +359,8 @@ export async function createPosixBuildExecutor(
     const kill = (child: Bun.Subprocess) => {
       try {
         process.kill(-child.pid, "SIGKILL");
-      } catch {
+      } catch (error) {
+        if (!isGroupGone(error)) throw error;
         child.kill("SIGKILL");
       }
     };
@@ -419,7 +427,8 @@ export async function createPosixBuildExecutor(
         }
         try {
           process.kill(-child.pid, "SIGKILL");
-        } catch {
+        } catch (error) {
+          if (!isGroupGone(error)) throw error;
           child.kill("SIGKILL");
         }
       };
@@ -495,129 +504,150 @@ export async function createPosixBuildExecutor(
         devApp.view().stopped === undefined
       )
         return Promise.resolve(devApp.view());
-      devAppStarting ??= (async () => {
-        await stopApp();
-        const [port, clientPort] = await Promise.all([freePort(), freePort()]);
-        const command = await SandboxManager.wrapWithSandbox(
-          `exec ${quote(executable)} run dev`,
-          "/bin/sh",
-        );
-        const child = Bun.spawn(["/bin/sh", "-c", command], {
-          cwd,
-          env: {
-            ...childEnv,
-            PORT: String(port),
-            CLIENT_PORT: String(clientPort),
-            ...(process.platform === "darwin" ? MACOS_WATCH_POLLING : {}),
-          },
-          stdin: "ignore",
-          stdout: "pipe",
-          stderr: "pipe",
-          detached: process.platform !== "linux",
-        });
-        const lines: string[] = [];
-        let stopped: string | undefined;
-        const current = () => !disposed && devApp?.process === child;
-        // `bun --filter` keeps the other half running when one exits, so the dev server still
-        // answers while its API is gone. The next file change starts the whole app again.
-        const partStopped = (name: string) => {
-          stopped = name;
-          if (!devApp || !current()) return;
-          devApp.watcher = watch(cwd, { recursive: true }, (_event, file) => {
-            if (file === null || IGNORED_CHANGES.test(file) || !current())
-              return;
-            void startApp().catch((error: unknown) =>
+      const launchDevApp = async () => {
+        try {
+          await stopApp();
+          const [port, clientPort] = await Promise.all([
+            freePort(),
+            freePort(),
+          ]);
+          const command = await SandboxManager.wrapWithSandbox(
+            `exec ${quote(executable)} run dev`,
+            "/bin/sh",
+          );
+          const child = Bun.spawn(["/bin/sh", "-c", command], {
+            cwd,
+            env: {
+              ...childEnv,
+              PORT: String(port),
+              CLIENT_PORT: String(clientPort),
+              ...(process.platform === "darwin" ? MACOS_WATCH_POLLING : {}),
+            },
+            stdin: "ignore",
+            stdout: "pipe",
+            stderr: "pipe",
+            detached: process.platform !== "linux",
+          });
+          const lines: string[] = [];
+          let stopped: string | undefined;
+          const current = () => !disposed && devApp?.process === child;
+          // `bun --filter` keeps the other half running when one exits, so the dev server still
+          // answers while its API is gone. The next file change starts the whole app again.
+          const restartAfterChange = async () => {
+            try {
+              await startApp();
+            } catch (error) {
               log.warn(
                 "Restarting the dev app after a file change failed",
                 requestErrorMetadata(error),
-              ),
-            );
-          });
-        };
-        const collect = async (stream: ReadableStream<Uint8Array>) => {
-          const decoder = new TextDecoder();
-          // The last complaint on this stream, which the frame on the next line locates.
-          let complaint: string | undefined;
-          for await (const chunk of stream)
-            for (const line of decoder
-              .decode(chunk, { stream: true })
-              .split("\n")) {
-              if (!line.trim()) continue;
-              if (lines.push(line) > 200) lines.shift();
-              const exited = PART_EXITED.exec(line);
-              if (exited && stopped === undefined) partStopped(exited[1]!);
-              if (!current()) continue;
-              const [, part = "app", said = line] = PART_LINE.exec(line) ?? [];
-              const text = said.replace(TIME_OF_DAY, "");
-              if (FRAME.test(text)) {
-                if (complaint && !RUNTIME_FRAME.test(text)) {
-                  complaints.delete(complaint);
-                  complain(`${complaint} (${text.trim()})`);
-                }
-                complaint = undefined;
-              } else
-                complaint =
-                  COMPLAINT.test(text) &&
-                  !SOURCE_LINE.test(text) &&
-                  !BARE_ERROR.test(text)
-                    ? complain(`${part}: ${text}`)
-                    : undefined;
+              );
             }
-        };
-        void Promise.all([collect(child.stdout), collect(child.stderr)]);
-        // Vite serves the client on CLIENT_PORT and proxies /api to the server on PORT.
-        const url = `http://127.0.0.1:${clientPort}`;
-        const view = (): DevApp => ({
-          url,
-          running: child.exitCode === null,
-          log: lines.slice(-40),
-          ...(stopped === undefined ? {} : { stopped }),
-        });
-        devApp = { process: child, view };
-        if (options.pageWatcher) {
-          const page = Bun.spawn(
-            [
-              "/bin/sh",
-              "-c",
-              await SandboxManager.wrapWithSandbox(
-                `exec ${[executable, "--no-env-file", pageWatcher, url].map(quote).join(" ")}`,
-                "/bin/sh",
-              ),
-            ],
-            {
-              cwd,
-              env: childEnv,
-              stdin: "pipe",
-              stdout: "pipe",
-              stderr: "ignore",
-              detached: process.platform !== "linux",
-            },
-          );
-          devApp.page = page;
-          void (async () => {
+          };
+          const partStopped = (name: string) => {
+            stopped = name;
+            if (!devApp || !current()) return;
+            devApp.watcher = watch(cwd, { recursive: true }, (_event, file) => {
+              if (file === null || IGNORED_CHANGES.test(file) || !current())
+                return;
+              void restartAfterChange();
+            });
+          };
+          const collect = async (stream: ReadableStream<Uint8Array>) => {
             const decoder = new TextDecoder();
-            for await (const chunk of page.stdout)
+            // The last complaint on this stream, which the frame on the next line locates.
+            let complaint: string | undefined;
+            for await (const chunk of stream)
               for (const line of decoder
                 .decode(chunk, { stream: true })
                 .split("\n")) {
-                if (!line.trim() || !current()) continue;
-                try {
-                  complain(
-                    `page: ${PageError.assert(JSON.parse(line)).detail}`,
-                  );
-                } catch {
-                  continue;
-                }
+                if (!line.trim()) continue;
+                if (lines.push(line) > 200) lines.shift();
+                const exited = PART_EXITED.exec(line);
+                if (exited && stopped === undefined) partStopped(exited[1]!);
+                if (!current()) continue;
+                const match = PART_LINE.exec(line);
+                const part = match?.[1] ?? "app";
+                const said = match?.[2] ?? line;
+                const text = said.replace(TIME_OF_DAY, "");
+                if (FRAME.test(text)) {
+                  if (complaint && !RUNTIME_FRAME.test(text)) {
+                    complaints.delete(complaint);
+                    complain(`${complaint} (${text.trim()})`);
+                  }
+                  complaint = undefined;
+                } else
+                  complaint =
+                    COMPLAINT.test(text) &&
+                    !SOURCE_LINE.test(text) &&
+                    !BARE_ERROR.test(text)
+                      ? complain(`${part}: ${text}`)
+                      : undefined;
               }
-          })().catch((error: unknown) =>
-            log.warn(
-              "Reading the page watcher's output failed",
-              requestErrorMetadata(error),
-            ),
-          );
+          };
+          void Promise.all([collect(child.stdout), collect(child.stderr)]);
+          // Vite serves the client on CLIENT_PORT and proxies /api to the server on PORT.
+          const url = `http://127.0.0.1:${clientPort}`;
+          const view = (): DevApp => ({
+            url,
+            running: child.exitCode === null,
+            log: lines.slice(-40),
+            ...(stopped === undefined ? {} : { stopped }),
+          });
+          devApp = { process: child, view };
+          if (options.pageWatcher) {
+            const page = Bun.spawn(
+              [
+                "/bin/sh",
+                "-c",
+                await SandboxManager.wrapWithSandbox(
+                  `exec ${[executable, "--no-env-file", pageWatcher, url].map(quote).join(" ")}`,
+                  "/bin/sh",
+                ),
+              ],
+              {
+                cwd,
+                env: childEnv,
+                stdin: "pipe",
+                stdout: "pipe",
+                stderr: "ignore",
+                detached: process.platform !== "linux",
+              },
+            );
+            devApp.page = page;
+            async function readPageReports() {
+              const decoder = new TextDecoder();
+              try {
+                for await (const chunk of page.stdout)
+                  for (const line of decoder
+                    .decode(chunk, { stream: true })
+                    .split("\n")) {
+                    if (!line.trim() || !current()) continue;
+                    let parsed: unknown;
+                    try {
+                      parsed = JSON.parse(line);
+                    } catch (error) {
+                      if (error instanceof SyntaxError) continue;
+                      throw error;
+                    }
+                    const report = PageError(parsed);
+                    if (!(report instanceof type.errors))
+                      complain(`page: ${report.detail}`);
+                  }
+              } catch (error) {
+                log.warn(
+                  "Reading the page watcher's output failed",
+                  requestErrorMetadata(error),
+                );
+              }
+            }
+            void readPageReports();
+          }
+          return view();
+        } finally {
+          devAppStarting = undefined;
         }
-        return view();
-      })().finally(() => (devAppStarting = undefined));
+      };
+      devAppStarting ??= launchDevApp();
       return devAppStarting;
     };
     // Playwright's MCP server for the coder's browser, under the same sandbox as its app and driving

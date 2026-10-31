@@ -70,8 +70,11 @@ export async function mediatedHttpJson(options: {
     let refusalCode: string | undefined;
     let issues: { path: string; message: string }[] | undefined;
     let hint: string | undefined;
+    const text = await response.text();
     try {
-      const parsed = JSON.parse(await response.text()) as {
+      const value: unknown = JSON.parse(text);
+      if (!value || typeof value !== "object") throw new SyntaxError(text);
+      const parsed = value as {
         code?: unknown;
         error?: { code?: unknown };
         issues?: unknown;
@@ -98,7 +101,8 @@ export async function mediatedHttpJson(options: {
               ]
             : [],
         );
-    } catch {
+    } catch (error) {
+      if (!(error instanceof SyntaxError)) throw error;
       // A refusal body that is not JSON carries no code.
     }
     throw new WorkflowHttpError(
