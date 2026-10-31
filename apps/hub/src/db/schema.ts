@@ -199,6 +199,9 @@ export const endedRun = pgTable("sb_ended_run", {
     .notNull()
     .references(() => project.id),
   notified: boolean("notified").notNull(),
+  // Set while the notice still waits to be delivered; null once it is settled.
+  nextAttemptAt: timestamp("next_attempt_at", { withTimezone: true }),
+  attempts: integer("attempts").notNull().default(0),
   createdAt: timestamp("created_at", { withTimezone: true })
     .notNull()
     .defaultNow(),

@@ -11,7 +11,10 @@
     "./migrate": "./src/migrate.ts",
     "./workflows/install-for-tenant": "./src/workflows/install-for-tenant.ts",
     "./config/models": "./src/config/models.ts",
-    "./settings/policy": "./src/settings/policy.ts"
+    "./settings/policy": "./src/settings/policy.ts",
+    "./db/schema": "./src/db/schema.ts",
+    "./mail/hub-mail": "./src/mail/hub-mail.ts",
+    "./projects/specialist-ended": "./src/projects/specialist-ended.ts"
   },
   "dependencies": {
     "@anthropic-ai/sandbox-runtime": "0.0.81",

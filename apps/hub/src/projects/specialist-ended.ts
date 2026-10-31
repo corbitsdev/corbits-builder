@@ -1,5 +1,5 @@
 import { join } from "node:path";
-import { and, eq, inArray, isNull } from "drizzle-orm";
+import { and, eq, inArray, isNotNull, isNull, lte, or, sql } from "drizzle-orm";
 import type { DB } from "@intx/db";
 import { workflowRun, workflowRunLaunchSpec } from "@intx/db/schema";
 import type { WorkflowRunReader } from "@intx/hub-sessions";
@@ -74,19 +74,31 @@ export async function liveSpecialistRuns(
     .map((run) => run.runId);
 }
 
+// Mirrors defaultRetryDelay in Interchange's hub-sessions workflow-dispatch-service.ts, which it does
+// not export.
+const mailRetryDelay = (attempt: number) =>
+  Math.min(500 * 2 ** Math.min(attempt, 6), 30_000);
+
+// A coordinator can take minutes to come back, so waiting for one backs off further.
+const coordinatorWaitDelay = (attempt: number) =>
+  Math.min(500 * 2 ** Math.min(attempt, 10), 300_000);
+
 /**
  * Mails a project's coordinator once when one of its specialists ends failed or cancelled with an
  * assignment it never answered. The terminal status is read from the run row on the native scheduler
- * whose reconcilers write it.
+ * whose reconcilers write it. A notice that cannot be delivered yet waits for its own next attempt,
+ * so it never holds back another project's.
  */
 export function createSpecialistEndNotices(deps: {
   db: DB["db"];
   runs: WorkflowRunReader;
   mailDirectory: string;
   mail: HubMail;
+  now?: () => Date;
 }) {
   const { db } = deps;
   return async function reconcileNext(): Promise<boolean> {
+    const now = deps.now?.() ?? new Date();
     const [ended] = await db
       .select({
         runId: workflowRun.id,
@@ -97,6 +109,7 @@ export function createSpecialistEndNotices(deps: {
         cancellationReason: workflowRun.cancellationReason,
         projectId: project.id,
         bundle: workflowRunLaunchSpec.frozenApprovalBundle,
+        attempts: endedRun.attempts,
       })
       .from(workflowRun)
       .innerJoin(project, eq(project.tenantId, workflowRun.tenantId))
@@ -108,17 +121,34 @@ export function createSpecialistEndNotices(deps: {
       .where(
         and(
           inArray(workflowRun.status, ["failed", "cancelled"]),
-          isNull(endedRun.runId),
+          or(isNull(endedRun.runId), lte(endedRun.nextAttemptAt, now)),
         ),
       )
-      .orderBy(workflowRun.endedAt)
+      .orderBy(
+        sql`${endedRun.nextAttemptAt} asc nulls first`,
+        workflowRun.endedAt,
+      )
       .limit(1);
     if (!ended) return false;
-    const record = (notified: boolean) =>
+    const settled = (notified: boolean) => ({ notified, nextAttemptAt: null });
+    const retry = (delay: (attempt: number) => number) => {
+      const attempts = (ended.attempts ?? 0) + 1;
+      return {
+        notified: false,
+        attempts,
+        nextAttemptAt: new Date(now.getTime() + delay(attempts)),
+      };
+    };
+    // A notice settled already stays settled.
+    const record = (state: ReturnType<typeof settled | typeof retry>) =>
       db
         .insert(endedRun)
-        .values({ runId: ended.runId, projectId: ended.projectId, notified })
-        .onConflictDoNothing()
+        .values({ runId: ended.runId, projectId: ended.projectId, ...state })
+        .onConflictDoUpdate({
+          target: endedRun.runId,
+          set: state,
+          where: isNotNull(endedRun.nextAttemptAt),
+        })
         .returning({ runId: endedRun.runId });
     const role = spawnedWorkflowRole(ended.bundle);
     const correlationId = role
@@ -146,15 +176,22 @@ export function createSpecialistEndNotices(deps: {
               and(
                 eq(projectCoordinator.projectId, ended.projectId),
                 eq(projectCoordinator.active, true),
+                inArray(workflowRun.status, ["deployed", "running"]),
               ),
             );
     // The hub cancels unpicked concept designers itself after the person's pick; nothing is lost.
     const unpicked = ended.cancellationReason === "design_concept_not_picked";
-    if (!role || correlationId === undefined || !coordinator || unpicked) {
-      await record(false);
+    if (!role || correlationId === undefined || unpicked) {
+      await record(settled(false));
       return true;
     }
-    if ((await record(true)).length === 0) return true;
+    // Between an upgrade's release and its bind, or while an ended coordinator stays bound until the
+    // person's next message starts another.
+    if (!coordinator) {
+      await record(retry(coordinatorWaitDelay));
+      return true;
+    }
+    if ((await record(settled(true))).length === 0) return true;
     // A writer's or reviewer's assignment is correlated as `<role>-<kind>-<runId>` by deploy_writer
     // and review_artifact.
     const prefix = role + "-";
@@ -190,14 +227,19 @@ export function createSpecialistEndNotices(deps: {
         coordinatorRunId: coordinator.runId,
         ...requestErrorMetadata(error),
       });
-      // A refusal stands; anything else is tried again on a later pass.
-      if (error instanceof HubMailError && error.status < 500)
-        await db
-          .update(endedRun)
-          .set({ notified: false })
-          .where(eq(endedRun.runId, ended.runId));
-      else await db.delete(endedRun).where(eq(endedRun.runId, ended.runId));
-      return false;
+      // A refusal stands. A coordinator that is stopping or no longer routable (409) is waited out
+      // like a missing one; anything else is tried again soon.
+      const status = error instanceof HubMailError ? error.status : 500;
+      await db
+        .update(endedRun)
+        .set(
+          status === 409
+            ? retry(coordinatorWaitDelay)
+            : status < 500
+              ? settled(false)
+              : retry(mailRetryDelay),
+        )
+        .where(eq(endedRun.runId, ended.runId));
     }
     return true;
   };
