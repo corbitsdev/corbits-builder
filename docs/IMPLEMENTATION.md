@@ -124,6 +124,8 @@ Environment files, installs and build output never leave the workspace.
 | `packages/schemas`        | `@corbits-builder/schemas`     | Types and schemas shared by the hub, client and workflows.       |
 | `vendor/interchange`      |                                | Interchange at the pinned revision.                              |
 | `deploy/`                 |                                | The Dockerfile and Compose files.                                |
+| `scripts/`                |                                | Dev and verification scripts.                                    |
+| `skills/`                 |                                | Agent skills to install Builder and drive it through its API.    |
 | `test/integration`, `e2e` |                                | Cross-module and full-stack tests.                               |
 
 Workflow packages declare their agents and workflows with Interchange's

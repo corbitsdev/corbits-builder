@@ -13,9 +13,9 @@ running with Docker Compose is in
 | `apps/hub`           | The server: a Postgres control plane, tenancy and sign-in, documents (versioned artifacts with content hashes), approvals and the glue that starts each role. It runs Interchange in-process.                                                                       |
 | `packages/client`    | A typed client for the hub's API (`@corbits-builder/client`). It never touches the database or Interchange internals.                                                                                                                                               |
 | `apps/web`           | The UI: Vite and React over that client, with its own small router in `src/routes.ts`.                                                                                                                                                                              |
-| `workflows/*`        | One package per role: its agent, prompt, tools and workflow definition.                                                                                                                                                                                             |
+| `workflows/*`        | One package per role: its agent, prompt and workflow definition; the hub supplies its tools.                                                                                                                                                                        |
 | `packages/schemas`   | Types and schemas shared by the hub, the client and the workflows.                                                                                                                                                                                                  |
-| `scripts/`           | Dev, loop and verification scripts.                                                                                                                                                                                                                                 |
+| `scripts/`           | Dev and verification scripts: pin and vendor checks, the commit check, the Google sign-in emulator and React UI API generation.                                                                                                                                     |
 | `deploy/`            | The Dockerfile and Compose files ([SELF_HOST.md](https://github.com/corbitsdev/corbits-builder/blob/main/docs/SELF_HOST.md)).                                                                                                                                       |
 
 The roles:
@@ -61,7 +61,7 @@ bun run typecheck
 bun run test          # unit and integration tests
 bun run pins:verify   # pinned dependency versions
 bun run vendor:verify # vendored Interchange matches its manifest
-bun run test:e2e      # the API end to end against an isolated Postgres
+bun run test:e2e      # model logins end to end against an isolated Postgres
 ```
 
 `bun run test:e2e` reads the `E2E_DB_*` values from `.env.hub`. Start its
@@ -101,8 +101,10 @@ real API ([CONTRIBUTING.md](https://github.com/corbitsdev/corbits-builder/blob/m
 - Providers, models, roles and profiles: `apps/hub/src/config/models.ts`;
   each model's limits: `apps/hub/src/inference/model-limits.ts`.
 - Database schema and migrations: `apps/hub/src/db/`.
-- Hub routes: `apps/hub/src/projects/`, `artifacts/`, `builds/`, `settings/`.
+- Hub routes: mounted in `apps/hub/src/app.ts`; each project's routes in
+  `apps/hub/src/projects/routes.ts`.
 - Starting and placing sidecars: `apps/hub/src/provisioning/`,
   `apps/hub/src/sidecar/`.
-- Each role's prompt and tools: `workflows/<role>/src/`.
+- Each role's prompt: `workflows/<role>/src/`. Its `defineTool` tools:
+  `apps/hub/src/` (`artifacts/`, `projects/`, `builds/`, `skills/`).
 - Interchange docs: `vendor/interchange/docs/`.
