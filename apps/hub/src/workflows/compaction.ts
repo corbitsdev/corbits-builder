@@ -252,15 +252,16 @@ const MAX_RETRY_AFTER_MS = 60_000;
 /** Retries an overloaded, slow or rate-limited model on a growing schedule; a rate limit's retry-after wins when longer. */
 const backoffRetryPolicy: RetryPolicy = ({ error, attempt, elapsedMs }) => {
   const delayMs = RETRY_DELAYS_MS[attempt - 1];
-  const retryAfterMs = error.retryAfterMs ?? 0;
+  const { retryAfterMs } = error;
   if (
     !TRANSIENT_ERRORS.has(error.category) ||
     delayMs === undefined ||
     (error.category === "timeout" && attempt > TIMEOUT_RETRIES) ||
     elapsedMs > RETRY_BUDGET_MS ||
-    retryAfterMs > MAX_RETRY_AFTER_MS
+    (retryAfterMs !== undefined && retryAfterMs > MAX_RETRY_AFTER_MS)
   )
     return { kind: "abort" };
+  if (retryAfterMs === undefined) return { kind: "retry", delayMs };
   return { kind: "retry", delayMs: Math.max(delayMs, retryAfterMs) };
 };
 const withBackoff = (action: ReactorAction): ReactorAction =>
