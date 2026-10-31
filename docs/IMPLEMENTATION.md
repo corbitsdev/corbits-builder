@@ -66,8 +66,8 @@ Skills are packed into the bundle at build time with a Bun macro.
 
 ### Hub tools
 
-The tools agents call are tool packages that reach the hub's API with the
-run's own credential:
+The tools agents call live in the hub and reach the hub's API with the run's
+own credential:
 
 - documents: `read_artifact`, `write_artifact`
   ([apps/hub/src/artifacts/tools.ts](https://github.com/corbitsdev/corbits-builder/blob/main/apps/hub/src/artifacts/tools.ts));
@@ -82,6 +82,10 @@ run's own credential:
 - workspace tools for the designer and coder (files, shell, search, package
   installs, app status, browser)
   ([apps/hub/src/builds/](https://github.com/corbitsdev/corbits-builder/blob/main/apps/hub/src/builds)).
+
+Builder's tool packages (`tools-*`) follow Interchange's tool-package
+convention (`vendor/interchange/packages/agent/CONVENTIONS.md`), and keep each
+tool's logic a plain function so a workflow action can call it directly.
 
 The coder's browser tools are Playwright's MCP server inside its sandbox,
 limited to loopback; its web search is Exa's MCP server
@@ -173,27 +177,29 @@ updates
 [vendor/interchange.manifest.json](https://github.com/corbitsdev/corbits-builder/blob/main/vendor/interchange.manifest.json).
 `bun run vendor:verify` fails on any unrecorded change.
 
-## Interchange docs map
+## Who owns what
 
-Read the doc for an area before changing code in it. All are under
-[vendor/interchange/docs/](https://github.com/corbitsdev/corbits-builder/blob/main/vendor/interchange/docs).
+Builder sits on two sets of packages it does not own. Use theirs before
+writing anything of its kind.
 
-| Area                                                 | Doc                                                    |
-| ---------------------------------------------------- | ------------------------------------------------------ |
-| Concepts: definitions, principals, offerings         | `ARCHITECTURE.md`, `IMPLEMENTATION.md`                 |
-| Definitions, triggers, gates, child workflows, loops | `WORKFLOW_AUTHORING.md`                                |
-| Warm agents, step lifecycle, mail drain, cancel      | `unified-execution-host-design.md`                     |
-| Sidecar, workflow child, harness                     | `HARNESS_DESIGN.md`                                    |
-| Inference turns, tool execution, doom loop           | `INFERENCE.md`                                         |
-| Mail transport and admission                         | `MESSAGE.md`, `INBOUND_MAIL_POLICY.md`                 |
-| Approvals, grants, credentials, definition hashes    | `AUTH.md`, `CREDENTIALS.md`                            |
-| Git repositories and tokens                          | `GIT_ACCESS.md`                                        |
-| Lifetimes, cancellation, drain, placement            | `workflow-lifecycle-policy.md`, `SIDECAR_PLACEMENT.md` |
-| Routes                                               | `ROUTES.md` (`API.md` is generated; never edit it)     |
-| Publishing the `@intx/*` packages                    | `PUBLISHING.md`                                        |
+- **Interchange** (`@intx/*`) owns running agents: workflows, triggers and
+  gates, the agent loop, tools and tool packages, directors and compaction,
+  inference providers, mail, approvals, grants and credentials, sidecars and
+  isolation, lifetimes and cancellation. Its docs are under
+  [vendor/interchange/docs/](https://github.com/corbitsdev/corbits-builder/blob/main/vendor/interchange/docs),
+  and each package documents itself in `vendor/interchange/packages/<name>/`.
+  A vendor design marked as not yet built is not a capability; confirm the
+  code exists before relying on it.
+- **Corbits packages** (`@corbits/*`) are shared across Corbits products:
+  document storage (`artifacts`), the interface kit (`react-ui`), provider
+  adapters and logins, MCP and agent tokens.
+- **Builder** owns the product on top: projects and their documents, the
+  hub's own routes and tenant state, the role workflows, prompts and skills,
+  its tool packages, product configuration and the interface.
 
-A vendor design marked as not yet built is not a capability; confirm the code
-exists in `vendor/interchange` before relying on it.
+When a change needs something that none of them clearly owns, or that one of
+the first two almost covers, raise it before building: it may belong upstream,
+as a deliberate vendor change, or in a Corbits package.
 
 `@intx/*` packages come from npm where a published version serves. A package
 is vendored only when Builder patches it or needs Interchange's main past the

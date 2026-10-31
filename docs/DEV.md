@@ -32,8 +32,8 @@ The roles:
 Each role runs on the tier its profile assigns
 ([apps/hub/src/config/models.ts](https://github.com/corbitsdev/corbits-builder/blob/main/apps/hub/src/config/models.ts)), so any
 connected provider can run any role. The project's conventions are in
-[AGENTS.md](https://github.com/corbitsdev/corbits-builder/blob/main/AGENTS.md), and the Interchange doc for each area in
-[IMPLEMENTATION.md](https://github.com/corbitsdev/corbits-builder/blob/main/docs/IMPLEMENTATION.md#interchange-docs-map).
+[AGENTS.md](https://github.com/corbitsdev/corbits-builder/blob/main/AGENTS.md), and what Interchange, Corbits packages and Builder each own in
+[IMPLEMENTATION.md](https://github.com/corbitsdev/corbits-builder/blob/main/docs/IMPLEMENTATION.md#who-owns-what).
 
 ## Model profile choice
 

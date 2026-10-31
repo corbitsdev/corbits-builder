@@ -17,9 +17,11 @@ and the
 enforce most code conventions; run them before saying the tree passes.
 These are the ones no check catches:
 
-- Build on Interchange's agent loop, retries, waits, timeouts, mail, approvals
-  and failure handling rather than reimplementing them, and read the area's
-  Interchange doc first.
+- Build on Interchange for anything it owns (agents, workflows, tools,
+  compaction, mail, approvals, credentials, isolation) rather than
+  reimplementing it, and raise what falls between Interchange, Corbits packages
+  and Builder before building it
+  ([who owns what](https://github.com/corbitsdev/corbits-builder/blob/main/docs/IMPLEMENTATION.md#who-owns-what)).
 - The interface talks to the hub through `@corbits-builder/client`.
 - A change to `vendor/interchange` is its own `(vendor)` commit that also
   updates `vendor/interchange.manifest.json`.
