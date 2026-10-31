@@ -49,7 +49,7 @@ import "./persistent-workspace.css";
 import { ProductApiError, type ProjectArtifact } from "@corbits-builder/client";
 import type { InFlightRun } from "@corbits-builder/schemas/artifact";
 import { toast } from "sonner";
-import type { ConversationTurn } from "../../api/conversation.ts";
+import { sendMessage, type ConversationTurn } from "../../api/conversation.ts";
 import { subscribeWorkflowRun } from "../../api/run-stream.ts";
 import { workspaceTenantId } from "../../api/auth.ts";
 import {
@@ -58,7 +58,6 @@ import {
   readArtifact,
 } from "../../api/artifacts.ts";
 import { documentsForPane } from "./document-read.ts";
-import { api } from "../../client.ts";
 import {
   getProject,
   restoreProject,
@@ -648,9 +647,7 @@ export function StageWorkspace({
     ]);
     if (clearComposer) setValue("");
     try {
-      // The api layer, not the raw adapter: an unbound project gets the
-      // deploy-and-bind prelude before the send lands.
-      const { message, receipt } = await api.sendMessage(projectId, text);
+      const { message, receipt } = await sendMessage(projectId, text);
       setSent((previous) =>
         previous.map((item) => (item === pending ? message : item)),
       );

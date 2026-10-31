@@ -27,7 +27,14 @@ import {
   MenuTrigger,
 } from "@corbits/react-ui/ui/menu";
 import { useEffect, useState, type ReactElement } from "react";
-import { api } from "../client.js";
+import {
+  archiveProject,
+  exportProject as exportProjectArchive,
+  exportSections,
+  renameProject,
+  restoreProject,
+  shipProject,
+} from "../api/projects.ts";
 import { Banner, Button, type NoticeAction } from "../components.jsx";
 import { Dictated } from "../dictation.jsx";
 
@@ -48,7 +55,7 @@ async function exportProject(
   project: MenuProject,
   sections: readonly ExportSection[],
 ) {
-  const { filename, archive, note } = await api.exportProject(
+  const { filename, archive, note } = await exportProjectArchive(
     project.id,
     sections,
   );
@@ -123,11 +130,7 @@ export function ProjectMenu({
           {project.archivedAt ? null : (
             <MenuItem
               onSelect={() =>
-                void act(() =>
-                  api.updateProject(project.id, {
-                    shipped: !project.shippedAt,
-                  }),
-                )
+                void act(() => shipProject(project.id, !project.shippedAt))
               }
             >
               {project.shippedAt
@@ -139,9 +142,9 @@ export function ProjectMenu({
           <MenuItem
             onSelect={() =>
               void act(() =>
-                api.updateProject(project.id, {
-                  archived: !project.archivedAt,
-                }),
+                project.archivedAt
+                  ? restoreProject(project.id)
+                  : archiveProject(project.id),
               )
             }
           >
@@ -155,7 +158,7 @@ export function ProjectMenu({
               className="menu-danger"
               onSelect={() =>
                 void act(async () => {
-                  await api.deleteProject(project.id);
+                  await archiveProject(project.id);
                   onDeleted?.();
                 })
               }
@@ -233,13 +236,13 @@ function ExportDialog({
   const [chosen, setChosen] = useState<Set<ExportSection>>(() => new Set());
   useEffect(() => {
     let current = true;
-    api.exportSections(projectId).then(
-      (sections) => {
+    async function loadSections() {
+      try {
+        const sections = await exportSections(projectId);
         if (!current) return;
         setAvailable(sections);
         setChosen(new Set(sections));
-      },
-      (cause: unknown) => {
+      } catch (cause) {
         if (!current) return;
         const planning = new Set<ExportSection>(["planning"]);
         setFailure(
@@ -249,8 +252,9 @@ function ExportDialog({
         );
         setAvailable(planning);
         setChosen(new Set(planning));
-      },
-    );
+      }
+    }
+    void loadSections();
     return () => {
       current = false;
     };
@@ -340,10 +344,18 @@ export function ProjectInfoDialog({
   const save = async () => {
     if (!dirty || saving) return;
     setSaving(true);
-    const ok = await act(() =>
-      api.updateProject(project.id, { title: nextTitle }),
-    );
+    const ok = await act(() => renameProject(project.id, nextTitle));
     setSaving(false);
+    if (ok) onClose();
+  };
+  const toggleArchived = async () => {
+    setArchiving(true);
+    const ok = await act(() =>
+      project.archivedAt
+        ? restoreProject(project.id)
+        : archiveProject(project.id),
+    );
+    setArchiving(false);
     if (ok) onClose();
   };
 
@@ -394,17 +406,7 @@ export function ProjectInfoDialog({
           <Button
             loading={archiving}
             disabled={saving}
-            onClick={() => {
-              setArchiving(true);
-              void act(() =>
-                api.updateProject(project.id, {
-                  archived: !project.archivedAt,
-                }),
-              ).then((ok) => {
-                setArchiving(false);
-                if (ok) onClose();
-              });
-            }}
+            onClick={() => void toggleArchived()}
           >
             {project.archivedAt
               ? wording.action.unarchive

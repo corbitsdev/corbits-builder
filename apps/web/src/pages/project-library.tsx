@@ -16,7 +16,7 @@ import {
 import { Ellipsis } from "lucide-react";
 import { useEffect, useRef, useState, type CSSProperties } from "react";
 import type { ProjectStage } from "@corbits-builder/schemas/project";
-import type { ProjectSummary } from "../client.js";
+import type { ProjectSummary } from "../api/types.ts";
 import type { NoticeAction } from "../components.jsx";
 import { ProjectMenu } from "./project-menu.jsx";
 import "./project-library.css";

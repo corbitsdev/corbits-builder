@@ -15,14 +15,19 @@ import {
   ShimmerText,
 } from "@corbits/react-ui";
 import { useRef, useState } from "react";
-import { api, ApiFailure } from "../client.js";
+import { ApiFailure } from "../api/types.ts";
+import {
+  createProject,
+  importProject,
+  readImportFile,
+} from "../api/projects.ts";
 import { Banner, Button } from "../components.jsx";
 import { ConnectProvider } from "./providers.jsx";
 import { NewProjectProfile } from "./profile-select.jsx";
 import { Dictated } from "../dictation.jsx";
 import { useShellReply } from "../flourish.tsx";
 import { COMPOSER_BOX_CLASS } from "./workspace/pane-classes.ts";
-import { HOME_COMPOSER_PLACEHOLDER, canStartProject } from "./home-view.js";
+import { HOME_COMPOSER_PLACEHOLDER, canStartProject } from "./home-view.ts";
 import "./home-layout.css";
 import type { ProjectImport } from "@corbits-builder/schemas/project-import";
 
@@ -53,7 +58,7 @@ export function Projects({
     setBusy("start");
     setError(null);
     try {
-      const created = await api.createProject({
+      const created = await createProject({
         problemStatement: problem.trim(),
         ...(profile === undefined ? {} : { profile }),
       });
@@ -86,7 +91,7 @@ export function Projects({
     );
   const chooseImport = async (file: File) => {
     try {
-      const body = await api.readImportFile(file);
+      const body = await readImportFile(file);
       if (body.file.documents.some((document) => document.approved))
         setPendingImport({ name: file.name, body });
       else await importFile(file.name, body, true);
@@ -105,7 +110,7 @@ export function Projects({
     const importing = toast.loading(`Importing ${name}…`);
     setBusy("import");
     try {
-      const created = await api.importProject(
+      const created = await importProject(
         withApprovals
           ? file
           : {
