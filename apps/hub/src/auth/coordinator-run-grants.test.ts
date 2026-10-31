@@ -4,7 +4,7 @@ import {
   evaluateMailAdmission,
   mailAcceptResource,
 } from "@intx/authz";
-import { DEPLOY_TOOLS } from "../projects/deploy-tools.ts";
+import { DEPLOY_TOOLS } from "@corbits-builder/tools-handoff/sidecar-bundle";
 import {
   planCoordinatorSpecialistGrants,
   type CoordinatorRunGrant,

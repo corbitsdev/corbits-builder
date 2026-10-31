@@ -69,6 +69,7 @@
         "@corbits-builder/schemas": "workspace:*",
         "@corbits-builder/tools-artifacts": "workspace:*",
         "@corbits-builder/tools-design": "workspace:*",
+        "@corbits-builder/tools-handoff": "workspace:*",
         "@corbits-builder/tools-hub": "workspace:*",
         "@corbits-builder/writer": "workspace:*",
         "@corbits/agent-token": "0.2.2",
@@ -180,6 +181,19 @@
         "@corbits-builder/tools-hub": "workspace:*",
         "@intx/agent": "workspace:*",
         "@intx/types": "workspace:*",
+        "arktype": "catalog:",
+      },
+    },
+    "packages/tools-handoff": {
+      "name": "@corbits-builder/tools-handoff",
+      "version": "0.1.0-rc.2",
+      "dependencies": {
+        "@corbits-builder/coder": "workspace:*",
+        "@corbits-builder/schemas": "workspace:*",
+        "@corbits-builder/tools-hub": "workspace:*",
+        "@intx/agent": "workspace:*",
+        "@intx/types": "workspace:*",
+        "@intx/workflow-deploy": "workspace:*",
         "arktype": "catalog:",
       },
     },
@@ -768,6 +782,8 @@
     "@corbits-builder/tools-artifacts": ["@corbits-builder/tools-artifacts@workspace:packages/tools-artifacts"],
 
     "@corbits-builder/tools-design": ["@corbits-builder/tools-design@workspace:packages/tools-design"],
+
+    "@corbits-builder/tools-handoff": ["@corbits-builder/tools-handoff@workspace:packages/tools-handoff"],
 
     "@corbits-builder/tools-hub": ["@corbits-builder/tools-hub@workspace:packages/tools-hub"],
 

@@ -125,6 +125,7 @@ Environment files, installs and build output never leave the workspace.
 | `packages/tools-design`    | `@corbits-builder/tools-design`    | The designer's design-option filing and design-check tools.      |
 | `packages/tools-hub`       | `@corbits-builder/tools-hub`       | The hub HTTP/JSON and project-scope helpers agent tools use.     |
 | `packages/tools-artifacts` | `@corbits-builder/tools-artifacts` | The document read and write tools and their logic.               |
+| `packages/tools-handoff`   | `@corbits-builder/tools-handoff`   | The coordinator's hand-off tools and their logic.                |
 | `vendor/interchange`       |                                    | Interchange at the pinned revision.                              |
 | `deploy/`                  |                                    | The Dockerfile and Compose files.                                |
 | `scripts/`                 |                                    | Dev and verification scripts.                                    |

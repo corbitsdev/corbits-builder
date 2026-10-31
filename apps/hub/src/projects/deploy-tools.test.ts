@@ -1,6 +1,7 @@
 import { expect, test } from "bun:test";
 import type { RuntimeCapabilities } from "@intx/types/runtime-capabilities";
-import { createDeployTools } from "./deploy-tools.ts";
+import { createDeployTools } from "@corbits-builder/tools-handoff/sidecar-bundle";
+import { handoffConfig } from "./handoff-config.ts";
 
 const deployment = {
   source: {
@@ -61,7 +62,7 @@ function coderSpawn(changed: Record<string, Filed>) {
         ? { resolve: async () => ({ kind: "http", fetch }) }
         : { send: async () => undefined },
   } as unknown as RuntimeCapabilities;
-  const tools = createDeployTools({
+  const tools = createDeployTools(handoffConfig, {
     tenantId: "tenant",
     projectId: "project",
     domain: "example.invalid",
@@ -163,7 +164,7 @@ test("design_app starts one designer per concept within the person's limit, each
             },
           },
   } as unknown as RuntimeCapabilities;
-  const tools = createDeployTools({
+  const tools = createDeployTools(handoffConfig, {
     tenantId: "tenant",
     projectId: "project",
     domain: "example.invalid",
@@ -270,7 +271,7 @@ function writerTools(preferences: Record<string, string> = {}) {
         ? { resolve: async () => ({ kind: "http", fetch }) }
         : { send: async () => undefined },
   } as unknown as RuntimeCapabilities;
-  const tools = createDeployTools({
+  const tools = createDeployTools(handoffConfig, {
     tenantId: "tenant",
     projectId: "project",
     domain: "example.invalid",

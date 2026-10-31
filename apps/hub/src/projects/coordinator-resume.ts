@@ -8,7 +8,8 @@ import { resumeContext, resumeMessage } from "../config/resume.ts";
 import { projectCoordinator } from "../db/schema.ts";
 import { readDurableConversationTurns } from "../mail/conversation-turns.ts";
 import type { CoordinatorRepoDirSource } from "../mail/coordinator-question.ts";
-import { awaitingApproval } from "./deploy-tools.ts";
+import { awaitingApproval } from "@corbits-builder/tools-handoff";
+import { agentDecidesApprovals } from "../config/preferences.ts";
 import { getLogger } from "@intx/log";
 import { requestErrorMetadata } from "../request-error.ts";
 import { readJson } from "../lib/json.ts";
@@ -87,7 +88,7 @@ export function createCoordinatorResumeContext(deps: {
     );
     return resumeContext({
       turns,
-      awaiting: awaitingApproval(filed, preferences).map(
+      awaiting: awaitingApproval(filed, agentDecidesApprovals(preferences)).map(
         (artifact) => artifact.title,
       ),
       withApp: filed.some((artifact) => artifact.kind === "app"),

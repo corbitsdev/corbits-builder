@@ -2,7 +2,8 @@ import { createCoordinatorAgent } from "@corbits-builder/coordinator/agent";
 import { createCoordinatorWorkflow } from "@corbits-builder/coordinator";
 import { createArtifactTools } from "@corbits-builder/tools-artifacts/sidecar-bundle";
 import { failure } from "../../artifacts/tools.ts";
-import { createDeployTools } from "../../projects/deploy-tools.ts";
+import { createDeployTools } from "@corbits-builder/tools-handoff/sidecar-bundle";
+import { handoffConfig } from "../../projects/handoff-config.ts";
 import { createSkillTools } from "../../skills/tools.ts";
 import { roleInference } from "../role-inference.ts";
 import {
@@ -27,7 +28,7 @@ const agent = createCoordinatorAgent({
   inference: { ...source, parameters },
   tools: [
     createArtifactTools("coordinator", { failure }),
-    createDeployTools(),
+    createDeployTools(handoffConfig),
     createSkillTools(["problem-brief"]),
   ],
 });

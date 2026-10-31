@@ -22,6 +22,7 @@
     "@corbits-builder/schemas": "workspace:*",
     "@corbits-builder/tools-artifacts": "workspace:*",
     "@corbits-builder/tools-design": "workspace:*",
+    "@corbits-builder/tools-handoff": "workspace:*",
     "@corbits-builder/tools-hub": "workspace:*",
     "@corbits-builder/writer": "workspace:*",
     "@corbits/agent-token": "0.2.2",

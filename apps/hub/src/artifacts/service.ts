@@ -129,10 +129,11 @@ import {
 import { designChosenNote } from "../config/design.ts";
 import { loadSettings } from "../settings/policy.ts";
 import {
+  agentDecidesApprovals,
   preferenceGuidance,
   resolvePreferences,
 } from "../config/preferences.ts";
-import { awaitingApproval } from "../projects/deploy-tools.ts";
+import { awaitingApproval } from "@corbits-builder/tools-handoff";
 import { frozenModelChoice, workflowBindings } from "../config/models.ts";
 import { materialsNote } from "../config/materials.ts";
 import { servingOffering } from "../workflows/install-for-tenant.ts";
@@ -733,9 +734,10 @@ export function createArtifactService(
         artifacts,
         inFlight,
         failed,
-        awaitingApproval: awaitingApproval(artifacts, preferences).map(
-          (item) => item.kind,
-        ),
+        awaitingApproval: awaitingApproval(
+          artifacts,
+          agentDecidesApprovals(preferences),
+        ).map((item) => item.kind),
         preferences,
         preferenceGuidance: preferenceGuidance(preferences, "coordinator"),
       };
