@@ -229,6 +229,12 @@ actions:
           - users:
               - thegreataxios
               - brianjfox
+    - do: request-review
+      target:
+        to: codeowners
+      when:
+        author:
+          - external
   fail:
     - do: comment
       target:
