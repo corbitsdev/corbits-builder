@@ -67,8 +67,9 @@ export function ApproachesComparison({
             <Card
               key={approach.id}
               className="approach-card"
-              {...(picked || (recommended && chosen === undefined)
-                ? { "data-emphasis": "" }
+              {...(recommended ? { "data-recommended": "" } : {})}
+              {...(picked || choosing === approach.id
+                ? { "data-chosen": "" }
                 : {})}
             >
               <CardHeader>
