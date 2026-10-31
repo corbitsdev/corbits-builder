@@ -12,7 +12,7 @@
  * sanitiser to keep up to date. What is not handled below renders as text.
  */
 import type { JSX, ReactNode } from "react";
-import { DEL, END, INS } from "./revisions.js";
+import { DEL, END, INS } from "./revisions.ts";
 
 /**
  * Inline spans: code, bold, italic, links, with tracked changes threaded through them.

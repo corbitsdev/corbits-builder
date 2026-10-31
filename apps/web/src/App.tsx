@@ -23,7 +23,9 @@ import {
   useState,
   useSyncExternalStore,
 } from "react";
-import { api, ApiFailure, type ProjectSummary } from "./client.js";
+import { listProjects } from "./api/projects.ts";
+import { ApiFailure, type ProjectSummary } from "./api/types.ts";
+import { singleFlight } from "./single-flight.ts";
 import type { ModelProvider } from "@corbits-builder/schemas/models";
 import {
   ArrowLeft,
@@ -433,7 +435,7 @@ export function App() {
   });
   const projectsRead = useQuery({
     queryKey: keys.projects,
-    queryFn: () => api.projects(),
+    queryFn: readProjects,
     refetchInterval: FOLD_POLL_MS,
   });
   const projects = projectsRead.data?.projects ?? NO_PROJECTS;
@@ -776,6 +778,10 @@ export function App() {
 
 const NO_PROJECTS: ProjectSummary[] = [];
 const NO_PROVIDERS: ModelProvider[] = [];
+
+const readProjects = singleFlight(async () => ({
+  projects: await listProjects("all"),
+}));
 
 /** What the home fold rests on; `refresh` re-reads all of it at once. */
 const FOLD_READS = [keys.modelCatalog, keys.projects, keys.workspaces] as const;

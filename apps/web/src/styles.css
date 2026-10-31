@@ -1776,7 +1776,8 @@ button[aria-disabled="true"] {
   background: var(--wb-card);
 }
 
-.approaches .approach-card[data-recommended] {
+.approaches .approach-card[data-chosen],
+.approaches-grid:not(:has([data-chosen])) .approach-card[data-recommended] {
   border-color: var(--wb-border-strong);
   background: color-mix(in srgb, var(--wb-muted) 45%, var(--wb-card));
 }

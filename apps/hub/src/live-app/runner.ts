@@ -4,7 +4,8 @@ import { fileURLToPath } from "node:url";
 import { getLogger } from "@intx/log";
 import { errorCode, requestErrorMetadata } from "../request-error.ts";
 import { liveAppWording } from "../config/live-app.ts";
-import type { HostReport, HostSource } from "./host.ts";
+import type { HostSource } from "./host.ts";
+import { HostReport } from "./host-report.ts";
 import type { createLiveAppProxy } from "./proxy.ts";
 
 const log = getLogger(["corbits-builder", "hub", "live-app"]);
@@ -66,7 +67,7 @@ export function createLiveAppRunner(options: {
           end !== -1;
           end = pending.indexOf("\n")
         ) {
-          run.state = JSON.parse(pending.slice(0, end)) as HostReport;
+          run.state = HostReport.assert(JSON.parse(pending.slice(0, end)));
           pending = pending.slice(end + 1);
         }
       }

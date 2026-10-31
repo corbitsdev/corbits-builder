@@ -4,7 +4,7 @@
 <h1 align="center">Builder</h1>
 <p align="center">Turn a half-baked idea into a working application, without being a developer.</p>
 <p align="center">
-  <a href="https://github.com/corbitsdev/corbits-builder/actions/workflows/test.yml"><img alt="Tests" src="https://github.com/corbitsdev/corbits-builder/actions/workflows/test.yml/badge.svg"></a>
+  <a href="https://github.com/corbitsdev/corbits-builder/actions/workflows/ci.yml"><img alt="CI" src="https://github.com/corbitsdev/corbits-builder/actions/workflows/ci.yml/badge.svg"></a>
 </p>
 <p align="center">
   <a href="https://github.com/corbitsdev/corbits-builder/blob/main/docs/USER_MANUAL.md">User manual</a> ·
@@ -41,10 +41,11 @@ Set up Builder on this machine with the corbits-builder-install skill. Use Docke
 **With Docker.**
 
 ```sh
-git clone https://github.com/corbitsdev/corbits-builder.git
-cd corbits-builder
-cp .env.hub.example .env.hub   # fill in each line marked Secret
-docker compose --env-file .env.hub --project-directory . -f deploy/compose.yml up -d --build
+mkdir builder && cd builder
+base=https://raw.githubusercontent.com/corbitsdev/corbits-builder/main
+curl -fsSLO "$base/deploy/compose.yml"
+curl -fsSL "$base/.env.hub.example" -o .env.hub   # fill in each line marked Secret
+docker compose --env-file .env.hub -f compose.yml up -d
 ```
 
 Open http://localhost:8000. Ports, logs and running on a server are in

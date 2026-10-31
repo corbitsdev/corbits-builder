@@ -1,6 +1,6 @@
 {
   "name": "corbits-builder",
-  "version": "0.0.0",
+  "version": "0.1.0-rc.2",
   "private": true,
   "description": "Builder turns an idea into approved documents, a design and a working web app, with agents on the model provider you choose.",
   "license": "SEE LICENSE IN LICENSE.md",
@@ -24,7 +24,7 @@
     "start": "exec bun --env-file=.env.hub --conditions=intx-src apps/hub/src/server.ts",
     "db:migrate": "bun --env-file=.env.hub --conditions=intx-src apps/hub/src/migrate.ts",
     "db:generate": "bun --conditions=intx-src ./node_modules/drizzle-kit/bin.cjs generate --config=apps/hub/drizzle.config.ts",
-    "docker:up": "docker compose --env-file .env.hub --project-directory . -f deploy/compose.yml up -d --build",
+    "docker:up": "docker compose --env-file .env.hub --project-directory . -f deploy/compose.yml -f deploy/compose.build.yml up -d --build",
     "docker:sidecar": "docker build -f deploy/Dockerfile --target sidecar -t corbits-builder-sidecar:local .",
     "auth:bootstrap": "bun --env-file=.env.hub --conditions=intx-src apps/hub/src/setup.ts",
     "auth:emulate": "bun --env-file=.env.hub scripts/google-emulate.ts",

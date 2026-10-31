@@ -1,0 +1,79 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - "v*.*.*"
+
+permissions: {}
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  release:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    permissions:
+      contents: write
+      packages: write
+    env:
+      HUB_IMAGE: ghcr.io/corbitsdev/corbits-builder-hub
+      SIDECAR_IMAGE: ghcr.io/corbitsdev/corbits-builder-sidecar
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - id: version
+        run: |
+          version=$(jq -r .version package.json)
+          if [ "$GITHUB_REF_NAME" != "v$version" ]; then
+            echo "::error::Tag $GITHUB_REF_NAME does not match package.json version $version"
+            exit 1
+          fi
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+      - uses: docker/login-action@81c6f93d4bc991e510b342a00b419b3bb4efc5c6 # v4.7.0
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      - uses: docker/setup-buildx-action@f87e5991a6d7451dcb8d9637bfbc97413f497069 # v4.4.1
+      - id: sha
+        run: echo "sha=$(git rev-parse "$GITHUB_REF_NAME^{commit}")" >> "$GITHUB_OUTPUT"
+      - env:
+          SHA: ${{ steps.sha.outputs.sha }}
+          VERSION: ${{ steps.version.outputs.version }}
+        run: |
+          channel=latest
+          if [[ "$VERSION" == 0.* || "$VERSION" == *-* ]]; then
+            channel=rc
+          fi
+          for image in "$HUB_IMAGE" "$SIDECAR_IMAGE"; do
+            if ! docker buildx imagetools inspect "$image:$SHA" > /dev/null; then
+              echo "::error::$image images for $SHA are not published yet; wait for the publish workflow on main"
+              exit 1
+            fi
+          done
+          for image in "$HUB_IMAGE" "$SIDECAR_IMAGE"; do
+            docker buildx imagetools create -t "$image:$VERSION" -t "$image:$channel" "$image:$SHA"
+          done
+      - env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          VERSION: ${{ steps.version.outputs.version }}
+        run: |
+          notes="$RUNNER_TEMP/notes.md"
+          cat > "$notes" <<EOF
+          Images:
+
+          - \`$HUB_IMAGE:$VERSION\`
+          - \`$SIDECAR_IMAGE:$VERSION\`
+
+          Choose a channel with \`BUILDER_VERSION\`: \`$VERSION\` pins this release, \`rc\` follows the newest release candidate, \`latest\` the newest stable release and \`main\` every merge. [docs/SELF_HOST.md](https://github.com/$GITHUB_REPOSITORY/blob/$GITHUB_REF_NAME/docs/SELF_HOST.md) covers self-hosting.
+          EOF
+          prerelease=()
+          if [[ "$VERSION" == 0.* || "$VERSION" == *-* ]]; then
+            prerelease=(--prerelease)
+          fi
+          gh release create "$GITHUB_REF_NAME" --repo "$GITHUB_REPOSITORY" --verify-tag \
+            --generate-notes --notes-file "$notes" "${prerelease[@]}"

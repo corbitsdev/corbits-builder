@@ -12,6 +12,7 @@ import { type } from "arktype";
 import { hasCode } from "@intx/types";
 import { liveAppWording } from "../config/live-app.ts";
 import { errorCode } from "../request-error.ts";
+import type { HostReport } from "./host-report.ts";
 import { parseJson } from "../lib/json.ts";
 import { writeBundle } from "../artifacts/design-tools.ts";
 import { bundleFiles, collectApp } from "../builds/app-snapshot.ts";
@@ -21,10 +22,6 @@ import {
   IGNORED_CHANGES,
 } from "../builds/posix-sandbox.ts";
 
-export type HostReport =
-  | { state: "starting"; phase: "installing" | "starting"; log: string[] }
-  | { state: "running"; url: string }
-  | { state: "failed"; error: string; log: string[] };
 export const HostSource = type({ dir: "string > 0" }).or({
   files: { "[string]": "string" },
   "binary?": { "[string]": "string" },

@@ -1,12 +1,11 @@
-# Run from the repo root with `--project-directory .` so compose keeps the
-# repo-named project and resolves paths from the root, and `--env-file .env.hub`
-# so the values below interpolate from it:
+# Runs the published images. Pass `--env-file .env.hub` so the values below,
+# BUILDER_VERSION among them, interpolate from it. From a checkout, run from the
+# repo root with `--project-directory .`; anywhere else, keep .env.hub beside
+# this file:
 #   docker compose --env-file .env.hub --project-directory . -f deploy/compose.yml up -d
+# deploy/compose.build.yml builds the images from source instead.
 x-hub: &hub
-  build:
-    context: .
-    dockerfile: deploy/Dockerfile
-    target: hub
+  image: ghcr.io/corbitsdev/corbits-builder-hub:${BUILDER_VERSION:-rc}
   env_file: .env.hub
   environment:
     DB_HOST: db
@@ -42,8 +41,6 @@ services:
       timeout: 3s
       retries: 30
   hub:
-    # No image name: Compose tags it after the project, so two checkouts never
-    # share one image.
     <<: *hub
     # The coder and designer run their commands under bubblewrap, which gives
     # each one its own user, pid and mount namespaces with a fresh /proc.

@@ -22,7 +22,10 @@ import { ProjectError } from "./errors.ts";
 import type { Actor } from "../lib/actor.ts";
 
 const START_FAILED = "coordinator_start_failed";
-const READY_WAIT_MS = 120_000;
+// Longer than the native sidecar ensure and connection stages (120 s each) normally take, and
+// shorter than the web's 5-minute request ceiling, so a failed start reaches the person who
+// created the project instead of archiving it after they stopped waiting.
+const READY_WAIT_MS = 270_000;
 const READY_POLL_MS = 250;
 
 type BoundRun = { runId: string; ended: boolean };
@@ -188,7 +191,7 @@ async function attach(
   return true;
 }
 
-async function awaitCoordinatorReady(
+export async function awaitCoordinatorReady(
   db: DB["db"],
   tenantId: string,
   runId: string,

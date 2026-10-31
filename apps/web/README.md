@@ -20,8 +20,8 @@ serves the built `dist/` on its own origin.
 - `src/pages/`: sign-in, the project library, settings and providers;
   `pages/workspace/` is the open project (conversation, documents, design
   concepts, live app).
-- `src/client.ts` and `src/api/`: the `api` object the screens call, built on
-  the typed client and the hub's routes.
+- `src/api/`: the calls the screens make, built on the typed client and the
+  hub's routes.
 - `src/queries/`: TanStack Query keys and the shared query client.
 - `public/mockup-frame.html`: the sandboxed page design mockups render in.
 - [`DESIGN.md`][design]: the workspace layout and styling contract.

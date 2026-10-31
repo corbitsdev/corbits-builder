@@ -5,13 +5,14 @@ import { type } from "arktype";
 import { errorText } from "./error-text.ts";
 import { hasCode, type CredentialCipher } from "@intx/types";
 
+const LocalSidecarManifestSchema = type({
+  sidecarId: "string",
+  hubWebSocketUrl: "string",
+  dataDir: "string",
+  token: "string",
+});
 /** The hub's one local sidecar: the identity it authenticates with and where it keeps its state. */
-export type LocalSidecarManifest = {
-  readonly sidecarId: string;
-  readonly hubWebSocketUrl: string;
-  readonly dataDir: string;
-  readonly token: string;
-};
+export type LocalSidecarManifest = typeof LocalSidecarManifestSchema.infer;
 
 /** An allocation the sidecar hosts, at the generation and under the identity the hub offered for it. */
 const LocalSidecarHold = type({
@@ -106,7 +107,7 @@ export function createLocalSidecarManifestStore({
     const text = await readOptional(manifestFile);
     if (text === null) return null;
     try {
-      const stored = JSON.parse(text) as LocalSidecarManifest;
+      const stored = LocalSidecarManifestSchema.assert(JSON.parse(text));
       return {
         ...stored,
         token: await cipher.decrypt(

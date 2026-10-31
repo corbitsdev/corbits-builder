@@ -13,10 +13,8 @@
     "./assets": "./src/assets.ts"
   },
   "dependencies": {
+    "@corbits/react-ui": "0.4.0",
     "@intx/agent": "workspace:*",
     "@intx/workflow": "workspace:*"
-  },
-  "devDependencies": {
-    "@corbits/react-ui": "0.4.0"
   }
 }

@@ -1,6 +1,6 @@
 ARG BUN_IMAGE=oven/bun:1.4.4@sha256:1d22548f177f4ff38e0c15baa3c2c46c6c2060ba2d1bc573bb4720b407548f1d
 
-FROM ${BUN_IMAGE} AS install
+FROM ${BUN_IMAGE} AS source
 WORKDIR /app
 COPY package.json bun.lock tsconfig.json ./
 COPY patches ./patches
@@ -10,7 +10,17 @@ COPY workflows ./workflows
 COPY vendor/interchange/package.json vendor/interchange/tsconfig.json vendor/interchange/tsconfig.base.json vendor/interchange/bunfig.toml ./vendor/interchange/
 COPY vendor/interchange/packages ./vendor/interchange/packages
 COPY vendor/interchange/apps/sidecar ./vendor/interchange/apps/sidecar
+
+FROM source AS install
 RUN bun install --frozen-lockfile
+
+# The hub and sidecar run on production dependencies only; build and dev tools stay in install.
+# better-auth lists drizzle-kit as an optional peer, so a production install still links it and
+# its esbuild binaries. Only migration generation uses them, and nothing at runtime imports them.
+FROM source AS deps
+RUN bun install --frozen-lockfile --production \
+ && rm -rf node_modules/.bun/drizzle-kit@* node_modules/.bun/esbuild@* \
+      node_modules/.bun/esbuild-register@* node_modules/.bun/@esbuild+* node_modules/.bun/@esbuild-kit+*
 
 FROM install AS web
 RUN bun run --cwd apps/web build
@@ -52,11 +62,11 @@ RUN apt-get update \
 # so this image keeps the hub's /app layout.
 FROM runtime AS sidecar
 WORKDIR /app
-COPY --from=install --chown=bun:bun /app/package.json ./
-COPY --from=install --chown=bun:bun /app/node_modules ./node_modules
-COPY --from=install --chown=bun:bun /app/apps/hub ./apps/hub
-COPY --from=install --chown=bun:bun /app/packages ./packages
-COPY --from=install --chown=bun:bun /app/vendor/interchange ./vendor/interchange
+COPY --from=deps --chown=bun:bun /app/package.json ./
+COPY --from=deps --chown=bun:bun /app/node_modules ./node_modules
+COPY --from=deps --chown=bun:bun /app/apps/hub ./apps/hub
+COPY --from=deps --chown=bun:bun /app/packages ./packages
+COPY --from=deps --chown=bun:bun /app/vendor/interchange ./vendor/interchange
 RUN mkdir -p /data && chown bun:bun /data
 USER bun
 WORKDIR /app/vendor/interchange
@@ -65,13 +75,13 @@ CMD ["bun", "--no-env-file", "--conditions=intx-src", "apps/sidecar/src/index.ts
 
 FROM runtime AS hub
 WORKDIR /app
-COPY --from=install --chown=bun:bun /app/package.json /app/bun.lock /app/tsconfig.json ./
-COPY --from=install --chown=bun:bun /app/node_modules ./node_modules
-COPY --from=install --chown=bun:bun /app/apps/hub ./apps/hub
+COPY --from=deps --chown=bun:bun /app/package.json /app/bun.lock /app/tsconfig.json ./
+COPY --from=deps --chown=bun:bun /app/node_modules ./node_modules
+COPY --from=deps --chown=bun:bun /app/apps/hub ./apps/hub
 COPY --from=web --chown=bun:bun /app/apps/web/dist ./apps/web/dist
-COPY --from=install --chown=bun:bun /app/packages ./packages
-COPY --from=install --chown=bun:bun /app/workflows ./workflows
-COPY --from=install --chown=bun:bun /app/vendor/interchange ./vendor/interchange
+COPY --from=deps --chown=bun:bun /app/packages ./packages
+COPY --from=deps --chown=bun:bun /app/workflows ./workflows
+COPY --from=deps --chown=bun:bun /app/vendor/interchange ./vendor/interchange
 RUN mkdir -p /app/data/hub && chown -R bun:bun /app/data
 USER bun
 ENV HOST=0.0.0.0 PORT=8000 HUB_DATA_DIR=/app/data/hub HUB_WEB_DIR=/app/apps/web/dist

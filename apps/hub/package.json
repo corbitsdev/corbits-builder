@@ -1,6 +1,6 @@
 {
   "name": "@corbits-builder/hub",
-  "version": "0.0.0",
+  "version": "0.1.0-rc.2",
   "private": true,
   "license": "SEE LICENSE IN ../../LICENSE.md",
   "author": "Sawyer Cutler <sawyer@dirtroad.dev>",
@@ -52,7 +52,6 @@
     "@vscode/ripgrep": "1.18.0",
     "arktype": "catalog:",
     "better-auth": "catalog:",
-    "drizzle-kit": "0.31.9",
     "drizzle-orm": "catalog:",
     "hono": "catalog:",
     "hono-openapi": "1.5.0",
