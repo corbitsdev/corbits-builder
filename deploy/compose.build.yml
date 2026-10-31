@@ -1,0 +1,12 @@
+# Builds the hub from this checkout instead of pulling the published image:
+#   docker compose --env-file .env.hub --project-directory . -f deploy/compose.yml -f deploy/compose.build.yml up -d --build
+x-build: &build
+  image: corbits-builder-hub:local
+  build:
+    context: .
+    dockerfile: deploy/Dockerfile
+    target: hub
+
+services:
+  hub: *build
+  setup: *build

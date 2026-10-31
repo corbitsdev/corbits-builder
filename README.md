@@ -41,10 +41,11 @@ Set up Builder on this machine with the corbits-builder-install skill. Use Docke
 **With Docker.**
 
 ```sh
-git clone https://github.com/corbitsdev/corbits-builder.git
-cd corbits-builder
-cp .env.hub.example .env.hub   # fill in each line marked Secret
-docker compose --env-file .env.hub --project-directory . -f deploy/compose.yml up -d --build
+mkdir builder && cd builder
+base=https://raw.githubusercontent.com/corbitsdev/corbits-builder/main
+curl -fsSLO "$base/deploy/compose.yml"
+curl -fsSL "$base/.env.hub.example" -o .env.hub   # fill in each line marked Secret
+docker compose --env-file .env.hub -f compose.yml up -d
 ```
 
 Open http://localhost:8000. Ports, logs and running on a server are in

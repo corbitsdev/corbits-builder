@@ -1,6 +1,6 @@
 ---
 name: corbits-builder-install
-description: Gets Builder running on this machine, from finding or cloning the checkout to the person signing up and connecting a model provider. Use whenever someone wants to install, set up, run, start, self-host or try Builder (Corbits Builder, corbitsdev/corbits-builder), with Docker Compose or with their own Postgres, or when a Builder checkout won't start. For driving projects through Builder's API once it runs, use operate-corbits-builder instead.
+description: Gets Builder running on this machine, from downloading the Compose files or cloning the checkout to the person signing up and connecting a model provider. Use whenever someone wants to install, set up, run, start, self-host or try Builder (Corbits Builder, corbitsdev/corbits-builder), with Docker Compose or with their own Postgres, or when a Builder checkout won't start. For driving projects through Builder's API once it runs, use operate-corbits-builder instead.
 ---
 
 # Install Builder
@@ -17,13 +17,7 @@ instead.
 - **Keep an existing `.env.hub`.** Its keys already encrypt stored data; new ones
   lock Builder out of it.
 
-## 1. Find the checkout
-
-Work from the root of a Builder checkout (a folder with `deploy/compose.yml`).
-If the current folder is not one, ask where it is, or clone
-`https://github.com/corbitsdev/corbits-builder.git` where the person chooses.
-
-## 2. Choose a path
+## 1. Choose a path
 
 Suggest Docker Compose if `docker info` succeeds, otherwise their own Postgres 17. Let the person decide.
 
@@ -31,6 +25,25 @@ Suggest Docker Compose if `docker info` succeeds, otherwise their own Postgres 1
 | -------------- | ---------------------- | ----------------------- |
 | Docker Compose | Docker with Compose    | `http://localhost:8000` |
 | Own Postgres   | Bun 1.4.4, Postgres 17 | `http://localhost:5173` |
+
+## 2. Get the files
+
+**Docker Compose** runs published images and needs no clone. In a folder the
+person chooses (or the one holding their existing `compose.yml`), download
+what is missing:
+
+```sh
+base=https://raw.githubusercontent.com/corbitsdev/corbits-builder/main
+curl -fsSLO "$base/deploy/compose.yml"
+curl -fsSL "$base/.env.hub.example" -o .env.hub.example
+```
+
+In a Builder checkout, download nothing: use `--project-directory . -f deploy/compose.yml`
+wherever the steps below say `-f compose.yml`.
+
+**Own Postgres** runs from a Builder checkout (a folder with `deploy/compose.yml`
+and `package.json`). If the current folder is not one, ask where it is, or clone
+`https://github.com/corbitsdev/corbits-builder.git` where the person chooses.
 
 ## 3. Write `.env.hub` and `.env.web`
 
@@ -50,9 +63,9 @@ and `DB_PORT` (5433) the Compose database's. If a port is taken, set `PORT` or
 ## 4. Start Builder
 
 **Docker Compose**:
-`docker compose --env-file .env.hub --project-directory . -f deploy/compose.yml up -d --build`
-builds and starts Builder and Postgres. It is up when the hub logs `Hub ready`
-(`docker compose --env-file .env.hub --project-directory . -f deploy/compose.yml logs hub`).
+`docker compose --env-file .env.hub -f compose.yml up -d`
+pulls and starts Builder and Postgres. It is up when the hub logs `Hub ready`
+(`docker compose --env-file .env.hub -f compose.yml logs hub`).
 
 **Own Postgres**
 ([CONTRIBUTING.md](https://github.com/corbitsdev/corbits-builder/blob/main/CONTRIBUTING.md),
@@ -78,8 +91,8 @@ Wait for them to confirm before you call it done.
 **Docker Compose**:
 
 ```sh
-docker compose --env-file .env.hub --project-directory . -f deploy/compose.yml stop   # stop, keep everything
-docker compose --env-file .env.hub --project-directory . -f deploy/compose.yml down   # remove containers, keep data
+docker compose --env-file .env.hub -f compose.yml stop   # stop, keep everything
+docker compose --env-file .env.hub -f compose.yml down   # remove containers, keep data
 ```
 
 `down -v` also deletes every account, project and stored key; run it only when

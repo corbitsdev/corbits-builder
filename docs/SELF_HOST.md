@@ -5,15 +5,22 @@ in [DEV.md](https://github.com/corbitsdev/corbits-builder/blob/main/docs/DEV.md)
 You need Docker with Compose and an API key or subscription login for at least
 one [model provider](#models).
 
-`deploy/compose.yml` runs Postgres 17 and the hub, which applies the
-migrations, then serves the API and the UI. Run every compose command from the
-repo root.
+`deploy/compose.yml` runs Postgres 17 and the published hub image, which
+applies the migrations, then serves the API and the UI. It needs no clone.
 
-## Configure
+## Install
 
 ```sh
-cp .env.hub.example .env.hub
+mkdir builder && cd builder
+base=https://raw.githubusercontent.com/corbitsdev/corbits-builder/main
+curl -fsSLO "$base/deploy/compose.yml"
+curl -fsSL "$base/.env.hub.example" -o .env.hub
 ```
+
+Replace `main` with a release tag (`v<version>`) to pin these files to that
+release. Every command below runs from this folder.
+
+## Configure
 
 Give each secret `.env.hub` marks its own random value, for example from
 `openssl rand -hex 32`; Builder refuses to start without them. Losing or
@@ -25,6 +32,11 @@ Behind a proxy or on a public domain, set `BETTER_AUTH_BASE_URL` to the URL
 people open, and `HUB_PUBLIC_URL`, `HUB_API_ORIGIN` and `UI_PUBLIC_URL` when
 they differ from it. If a port is taken, `PORT` moves Builder (default `8000`)
 and `DB_PORT` the database (default `5433`).
+
+`BUILDER_VERSION` picks the published images
+(`ghcr.io/corbitsdev/corbits-builder-hub` and `-sidecar`): `rc` (default, the
+newest release candidate), `latest` (the newest stable release), `main` (every
+merge), an exact version such as `0.1.0-rc.1`, or a full commit sha.
 
 ## Models
 
@@ -47,9 +59,9 @@ How profiles map models to roles is in
 ## Run it
 
 ```sh
-docker compose --env-file .env.hub --project-directory . -f deploy/compose.yml up -d --build   # start or update
-docker compose --env-file .env.hub --project-directory . -f deploy/compose.yml logs -f hub     # follow the logs
-docker compose --env-file .env.hub --project-directory . -f deploy/compose.yml down            # stop, keep the data
+docker compose --env-file .env.hub -f compose.yml up -d          # start
+docker compose --env-file .env.hub -f compose.yml logs -f hub    # follow the logs
+docker compose --env-file .env.hub -f compose.yml down           # stop, keep the data
 ```
 
 Open http://localhost:8000 (or your `PORT`), create an account, then add a
@@ -57,8 +69,13 @@ provider under **Settings → Providers**, or set a provider key in `.env.hub` b
 starting. With one provider, projects run on its profile; with several, each
 person picks one under **Settings → Profiles**
 ([how the choice works](https://github.com/corbitsdev/corbits-builder/blob/main/docs/DEV.md#model-profile-choice)).
-To update, pull the new commits and start it again; the hub applies new
-migrations as it starts.
+To update, or to switch channel after changing `BUILDER_VERSION`, pull the
+images and start it again; the hub applies new migrations as it starts:
+
+```sh
+docker compose --env-file .env.hub -f compose.yml pull
+docker compose --env-file .env.hub -f compose.yml up -d
+```
 
 Login with ChatGPT and Login with xAI finish by sending the browser to
 `localhost:1455` and `localhost:1456`, so they work only when the browser runs
@@ -73,8 +90,19 @@ To create a machine account and workspace without the UI, set the
 `BOOTSTRAP_*` values in `.env.hub` and run the `setup` service once:
 
 ```sh
-docker compose --env-file .env.hub --project-directory . -f deploy/compose.yml --profile setup run --rm setup
+docker compose --env-file .env.hub -f compose.yml --profile setup run --rm setup
 ```
+
+## From source
+
+In a clone, `deploy/compose.build.yml` builds the hub image from the checkout
+instead of pulling it. Run from the repo root with `.env.hub` there:
+
+```sh
+docker compose --env-file .env.hub --project-directory . -f deploy/compose.yml -f deploy/compose.build.yml up -d --build
+```
+
+`bun run docker:up` runs the same.
 
 ## Sidecars in Docker
 
@@ -83,12 +111,13 @@ itself, inside the hub container. With `SIDECAR_IMAGE` set, it can also
 start them as containers on the Docker daemon at `SIDECAR_DOCKER_HOST`.
 
 ```sh
-docker build -f deploy/Dockerfile --target sidecar -t corbits-builder-sidecar:local .
-docker compose --env-file .env.hub --project-directory . -f deploy/compose.yml -f deploy/compose.docker-sidecars.yml up -d --build
+curl -fsSLO https://raw.githubusercontent.com/corbitsdev/corbits-builder/main/deploy/compose.docker-sidecars.yml
+docker compose --env-file .env.hub -f compose.yml -f compose.docker-sidecars.yml up -d
 ```
 
-- Build the image on the daemon the hub uses; the hub checks that it exists
-  when it starts.
+- Compose pulls the sidecar image for your `BUILDER_VERSION` before the hub
+  starts, and `docker compose pull` refreshes it with the hub. From source, `bun run docker:sidecar` builds
+  `corbits-builder-sidecar:local`; set `SIDECAR_IMAGE` to it in `.env.hub`.
 - `deploy/compose.docker-sidecars.yml` mounts `/var/run/docker.sock` into the hub and
   adds the socket's group (`DOCKER_SOCKET_GID`: `0` on Docker Desktop, the
   host's `docker` group id on Linux). Access to that socket is root on the
