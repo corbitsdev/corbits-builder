@@ -68,6 +68,7 @@
         "@corbits-builder/reviewer": "workspace:*",
         "@corbits-builder/schemas": "workspace:*",
         "@corbits-builder/tools-hub": "workspace:*",
+        "@corbits-builder/tools-skills": "workspace:*",
         "@corbits-builder/writer": "workspace:*",
         "@corbits/agent-token": "0.2.2",
         "@corbits/artifacts": "0.3.0",
@@ -165,6 +166,16 @@
       "dependencies": {
         "@corbits-builder/schemas": "workspace:*",
         "@intx/types": "workspace:*",
+      },
+    },
+    "packages/tools-skills": {
+      "name": "@corbits-builder/tools-skills",
+      "version": "0.1.0-rc.2",
+      "dependencies": {
+        "@corbits-builder/designer": "workspace:*",
+        "@corbits-builder/writer": "workspace:*",
+        "@intx/agent": "workspace:*",
+        "arktype": "catalog:",
       },
     },
     "vendor/interchange/apps/sidecar": {
@@ -742,6 +753,8 @@
     "@corbits-builder/schemas": ["@corbits-builder/schemas@workspace:packages/schemas"],
 
     "@corbits-builder/tools-hub": ["@corbits-builder/tools-hub@workspace:packages/tools-hub"],
+
+    "@corbits-builder/tools-skills": ["@corbits-builder/tools-skills@workspace:packages/tools-skills"],
 
     "@corbits-builder/web": ["@corbits-builder/web@workspace:apps/web"],
 

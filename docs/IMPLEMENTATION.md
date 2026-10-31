@@ -78,7 +78,7 @@ run's own credential:
 - design filing: `file_design_option`
   ([apps/hub/src/artifacts/design-tools.ts](https://github.com/corbitsdev/corbits-builder/blob/main/apps/hub/src/artifacts/design-tools.ts));
 - skills: `read_skill`
-  ([apps/hub/src/skills/tools.ts](https://github.com/corbitsdev/corbits-builder/blob/main/apps/hub/src/skills/tools.ts));
+  ([packages/tools-skills](https://github.com/corbitsdev/corbits-builder/tree/main/packages/tools-skills));
 - workspace tools for the designer and coder (files, shell, search, package
   installs, app status, browser)
   ([apps/hub/src/builds/](https://github.com/corbitsdev/corbits-builder/blob/main/apps/hub/src/builds)).
@@ -111,23 +111,24 @@ Environment files, installs and build output never leave the workspace.
 
 ## Package layout
 
-| Path                      | Package                        | What it holds                                                    |
-| ------------------------- | ------------------------------ | ---------------------------------------------------------------- |
-| `apps/hub`                | `@corbits-builder/hub`         | The server: routes, services, hub tools, provisioning, live app. |
-| `packages/client`         | `@corbits-builder/client`      | The typed client for the hub's API.                              |
-| `apps/web`                | `@corbits-builder/web`         | The interface, built only on the client and the schemas.         |
-| `workflows/coordinator`   | `@corbits-builder/coordinator` | The coordinator's agent, prompt and workflow.                    |
-| `workflows/writer`        | `@corbits-builder/writer`      | The document writer and its per-kind skills.                     |
-| `workflows/reviewer`      | `@corbits-builder/reviewer`    | The document reviewer.                                           |
-| `workflows/designer`      | `@corbits-builder/designer`    | The designer, its starter, themes and skills.                    |
-| `workflows/coder`         | `@corbits-builder/coder`       | The coder, its app starter and `check-app`.                      |
-| `packages/schemas`        | `@corbits-builder/schemas`     | Types and schemas shared by the hub, client and workflows.       |
-| `packages/tools-hub`      | `@corbits-builder/tools-hub`   | The hub HTTP/JSON and project-scope helpers agent tools use.     |
-| `vendor/interchange`      |                                | Interchange at the pinned revision.                              |
-| `deploy/`                 |                                | The Dockerfile and Compose files.                                |
-| `scripts/`                |                                | Dev and verification scripts.                                    |
-| `skills/`                 |                                | Agent skills to install Builder and drive it through its API.    |
-| `test/integration`, `e2e` |                                | Cross-module and full-stack tests.                               |
+| Path                      | Package                         | What it holds                                                    |
+| ------------------------- | ------------------------------- | ---------------------------------------------------------------- |
+| `apps/hub`                | `@corbits-builder/hub`          | The server: routes, services, hub tools, provisioning, live app. |
+| `packages/client`         | `@corbits-builder/client`       | The typed client for the hub's API.                              |
+| `apps/web`                | `@corbits-builder/web`          | The interface, built only on the client and the schemas.         |
+| `workflows/coordinator`   | `@corbits-builder/coordinator`  | The coordinator's agent, prompt and workflow.                    |
+| `workflows/writer`        | `@corbits-builder/writer`       | The document writer and its per-kind skills.                     |
+| `workflows/reviewer`      | `@corbits-builder/reviewer`     | The document reviewer.                                           |
+| `workflows/designer`      | `@corbits-builder/designer`     | The designer, its starter, themes and skills.                    |
+| `workflows/coder`         | `@corbits-builder/coder`        | The coder, its app starter and `check-app`.                      |
+| `packages/schemas`        | `@corbits-builder/schemas`      | Types and schemas shared by the hub, client and workflows.       |
+| `packages/tools-hub`      | `@corbits-builder/tools-hub`    | The hub HTTP/JSON and project-scope helpers agent tools use.     |
+| `packages/tools-skills`   | `@corbits-builder/tools-skills` | The `read_skill` tool over the designer and writer skills.       |
+| `vendor/interchange`      |                                 | Interchange at the pinned revision.                              |
+| `deploy/`                 |                                 | The Dockerfile and Compose files.                                |
+| `scripts/`                |                                 | Dev and verification scripts.                                    |
+| `skills/`                 |                                 | Agent skills to install Builder and drive it through its API.    |
+| `test/integration`, `e2e` |                                 | Cross-module and full-stack tests.                               |
 
 Workflow packages declare their agents and workflows with Interchange's
 definition exports (`@intx/agent/authoring`, `@intx/workflow/definition`).

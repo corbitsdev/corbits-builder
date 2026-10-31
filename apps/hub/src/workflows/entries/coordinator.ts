@@ -2,7 +2,7 @@ import { createCoordinatorAgent } from "@corbits-builder/coordinator/agent";
 import { createCoordinatorWorkflow } from "@corbits-builder/coordinator";
 import { createArtifactTools } from "../../artifacts/tools.ts";
 import { createDeployTools } from "../../projects/deploy-tools.ts";
-import { createSkillTools } from "../../skills/tools.ts";
+import { createSkillTools } from "@corbits-builder/tools-skills";
 import { roleInference } from "../role-inference.ts";
 import {
   compactingDirector,

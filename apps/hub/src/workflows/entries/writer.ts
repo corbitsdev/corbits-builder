@@ -1,7 +1,7 @@
 import { createWriterAgent } from "@corbits-builder/writer/agent";
 import { createWriterWorkflow } from "@corbits-builder/writer";
 import { createArtifactTools } from "../../artifacts/tools.ts";
-import { createSkillTools } from "../../skills/tools.ts";
+import { createSkillTools } from "@corbits-builder/tools-skills";
 import { roleInference } from "../role-inference.ts";
 import {
   compactingDirector,

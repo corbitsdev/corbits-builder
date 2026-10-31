@@ -8,7 +8,7 @@ import { browserCatalog } from "../builds/browser-catalog.ts" with { type: "macr
 import { mcpTools } from "@corbits/mcp/interchange/client";
 import { mail, type MailToolEnv } from "@intx/tools-mail/sidecar-bundle";
 import { createArtifactTools } from "../artifacts/tools.ts";
-import { createSkillTools } from "../skills/tools.ts";
+import { createSkillTools } from "@corbits-builder/tools-skills";
 import { roleInference } from "./role-inference.ts";
 import {
   compactingDirector,
