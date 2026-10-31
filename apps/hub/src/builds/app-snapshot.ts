@@ -12,7 +12,10 @@ import {
   DesignDraft,
   MAX_APP_BYTES,
 } from "@corbits-builder/schemas/artifact";
-import { WorkflowHttpError, workflowHttpJson } from "../workflows/http-json.ts";
+import {
+  WorkflowHttpError,
+  workflowHttpJson,
+} from "@corbits-builder/tools-hub";
 import { INPUTS_DIRECTORY } from "../config/inputs.ts";
 
 // Installs and builds are rebuilt by setup and check-app, and .builder and the inputs come from

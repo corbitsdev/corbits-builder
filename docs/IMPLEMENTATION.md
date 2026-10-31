@@ -126,6 +126,7 @@ Environment files, installs and build output never leave the workspace.
 | `workflows/designer`      | `@corbits-builder/designer`    | The designer, its starter, themes and skills.                    |
 | `workflows/coder`         | `@corbits-builder/coder`       | The coder, its app starter and `check-app`.                      |
 | `packages/schemas`        | `@corbits-builder/schemas`     | Types and schemas shared by the hub, client and workflows.       |
+| `packages/tools-hub`      | `@corbits-builder/tools-hub`   | The hub HTTP/JSON and project-scope helpers agent tools use.     |
 | `vendor/interchange`      |                                | Interchange at the pinned revision.                              |
 | `deploy/`                 |                                | The Dockerfile and Compose files.                                |
 | `scripts/`                |                                | Dev and verification scripts.                                    |

@@ -32,7 +32,7 @@ import {
   mediatedHttpJson,
   WorkflowHttpError,
   workflowHttpJson,
-} from "../workflows/http-json.ts";
+} from "@corbits-builder/tools-hub";
 
 const AppPushAccess = type({
   path: "string",
