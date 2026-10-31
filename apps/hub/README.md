@@ -34,12 +34,12 @@ from `.env.hub.example`; [setup][setup] covers both. `bun run dev` migrates
 the database and starts the hub with the interface, and `bun run start` runs
 the hub alone. `bun run lint`, `bun run format:check`, `bun run typecheck`
 and `bun run test` check it. The
-[Interchange docs map][interchange-docs] lists the Interchange doc for each
-area; read it before building on one.
+[ownership notes][interchange-docs] say what Interchange, Corbits packages
+and the hub each own.
 
 [workflows]: https://github.com/corbitsdev/corbits-builder/tree/main/workflows
 [schemas]: https://github.com/corbitsdev/corbits-builder/tree/main/packages/schemas
 [client]: https://github.com/corbitsdev/corbits-builder/tree/main/packages/client
 [web]: https://github.com/corbitsdev/corbits-builder/tree/main/apps/web
 [setup]: https://github.com/corbitsdev/corbits-builder/blob/main/CONTRIBUTING.md#setup
-[interchange-docs]: https://github.com/corbitsdev/corbits-builder/blob/main/docs/IMPLEMENTATION.md#interchange-docs-map
+[interchange-docs]: https://github.com/corbitsdev/corbits-builder/blob/main/docs/IMPLEMENTATION.md#who-owns-what
