@@ -101,6 +101,7 @@ import { requestErrorMetadata } from "./request-error.ts";
 import { createLiveAppProxy } from "./live-app/proxy.ts";
 import { createLiveAppRunner } from "./live-app/runner.ts";
 import { mountWebUi } from "./web-ui.ts";
+import { version } from "../package.json";
 
 const log = getLogger(["corbits-builder", "hub"]);
 
@@ -569,7 +570,7 @@ export async function createHubRuntime(
     );
     mountHubOpenAPI(app, {
       config,
-      version: "0.0.0",
+      version,
       securitySchemes: {
         sessionCookie: {
           type: "apiKey",

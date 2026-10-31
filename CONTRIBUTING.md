@@ -139,6 +139,14 @@ change follows, whether a person or a coding agent writes it.
   `vendor/interchange.manifest.json`; `bun run vendor:verify` fails on
   anything unrecorded.
 
+## Releasing
+
+Maintainers bump `version` in the root, `apps/hub`, `apps/web`,
+`packages/client` and `packages/schemas` package.json files, run
+`bun install`, and merge. Then `git tag -s vX.Y.Z && git push origin vX.Y.Z`
+publishes the hub and sidecar images and the GitHub release; a 0.x version or
+one with a `-` suffix is marked a pre-release.
+
 ## Security
 
 Report vulnerabilities through [SECURITY.md](https://github.com/corbitsdev/corbits-builder/blob/main/SECURITY.md), never a public

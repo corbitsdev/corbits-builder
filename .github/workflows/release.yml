@@ -1,0 +1,74 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - "v*.*.*"
+
+permissions: {}
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  release:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 60
+    permissions:
+      contents: write
+      packages: write
+    env:
+      HUB_IMAGE: ghcr.io/corbitsdev/corbits-builder-hub
+      SIDECAR_IMAGE: ghcr.io/corbitsdev/corbits-builder-sidecar
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - id: version
+        run: |
+          version=$(jq -r .version package.json)
+          if [ "$GITHUB_REF_NAME" != "v$version" ]; then
+            echo "::error::Tag $GITHUB_REF_NAME does not match package.json version $version"
+            exit 1
+          fi
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+      - uses: docker/login-action@81c6f93d4bc991e510b342a00b419b3bb4efc5c6 # v4.7.0
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      - uses: docker/setup-buildx-action@f87e5991a6d7451dcb8d9637bfbc97413f497069 # v4.4.1
+      - uses: docker/build-push-action@c3c9e263c25d99ce0380d002d59b67737d91b0dc # v7.4.0
+        with:
+          context: .
+          file: deploy/Dockerfile
+          target: hub
+          push: true
+          tags: ${{ env.HUB_IMAGE }}:${{ steps.version.outputs.version }}
+      - uses: docker/build-push-action@c3c9e263c25d99ce0380d002d59b67737d91b0dc # v7.4.0
+        with:
+          context: .
+          file: deploy/Dockerfile
+          target: sidecar
+          push: true
+          tags: ${{ env.SIDECAR_IMAGE }}:${{ steps.version.outputs.version }}
+      - env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          VERSION: ${{ steps.version.outputs.version }}
+        run: |
+          notes="$RUNNER_TEMP/notes.md"
+          cat > "$notes" <<EOF
+          Images:
+
+          - \`$HUB_IMAGE:$VERSION\`
+          - \`$SIDECAR_IMAGE:$VERSION\`
+
+          [docs/SELF_HOST.md](https://github.com/$GITHUB_REPOSITORY/blob/$GITHUB_REF_NAME/docs/SELF_HOST.md) covers self-hosting; set the hub and sidecar `image:` to these refs instead of building.
+          EOF
+          prerelease=()
+          if [[ "$VERSION" == 0.* || "$VERSION" == *-* ]]; then
+            prerelease=(--prerelease)
+          fi
+          gh release create "$GITHUB_REF_NAME" --repo "$GITHUB_REPOSITORY" --verify-tag \
+            --generate-notes --notes-file "$notes" "${prerelease[@]}"
