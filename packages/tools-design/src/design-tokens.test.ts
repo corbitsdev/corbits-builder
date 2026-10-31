@@ -4,7 +4,7 @@ import { withDesignTokens } from "./design-tokens.ts";
 test("filed tokens come from styles.css and replace the front matter already there", async () => {
   const css = await Bun.file(
     new URL(
-      "../../../../workflows/designer/themes/retro/designs/styles.css",
+      "../../../workflows/designer/themes/retro/designs/styles.css",
       import.meta.url,
     ),
   ).text();

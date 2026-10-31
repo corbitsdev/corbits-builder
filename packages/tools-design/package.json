@@ -1,0 +1,19 @@
+{
+  "name": "@corbits-builder/tools-design",
+  "version": "0.1.0-rc.2",
+  "private": true,
+  "license": "SEE LICENSE IN ../../LICENSE.md",
+  "author": "Sawyer Cutler <sawyer@dirtroad.dev>",
+  "type": "module",
+  "exports": {
+    ".": "./src/index.ts",
+    "./sidecar-bundle": "./src/sidecar-bundle.ts"
+  },
+  "dependencies": {
+    "@corbits-builder/schemas": "workspace:*",
+    "@corbits-builder/tools-hub": "workspace:*",
+    "@intx/agent": "workspace:*",
+    "@intx/types": "workspace:*",
+    "arktype": "catalog:"
+  }
+}

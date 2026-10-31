@@ -5,7 +5,8 @@ import {
   createSidecarCodingTools,
   type CodingSidecarEnv,
 } from "../../builds/sidecar-tools.ts";
-import { createDesignTools } from "../../artifacts/design-tools.ts";
+import { createDesignTools } from "@corbits-builder/tools-design/sidecar-bundle";
+import { failure } from "../../artifacts/tools.ts";
 import { roleInference } from "../role-inference.ts";
 import {
   compactingDirector,
@@ -27,7 +28,7 @@ const agent = createDesignerAgent<CodingSidecarEnv & MailToolEnv>({
   standards: [],
   inference: { ...source, parameters },
   tools: [
-    createDesignTools(),
+    createDesignTools({ failure }),
     mail,
     createSidecarCodingTools({ approval: "allow", workspace: "design" }),
   ],

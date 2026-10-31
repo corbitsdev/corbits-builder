@@ -7,7 +7,7 @@ import { hasCode } from "@intx/types";
 import { packApp } from "../builds/app-snapshot.ts";
 import { parseJson } from "../lib/json.ts";
 import { ProjectError } from "../projects/errors.ts";
-import { DESIGN_STYLES } from "./design-tweaks.ts";
+import { DESIGN_STYLES } from "@corbits-builder/tools-design";
 import { designStarterFiles } from "@corbits-builder/designer/skills" with { type: "macro" };
 
 const STARTER_INDEX = designStarterFiles()[".builder/designs/index.html"];

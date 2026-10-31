@@ -4,7 +4,7 @@ import { setThemeTokens } from "./design-tweaks.ts";
 test("a saved primary reaches every dark rule of a shipped theme", async () => {
   const css = await Bun.file(
     new URL(
-      "../../../../workflows/designer/themes/modern-sleek/designs/styles.css",
+      "../../../workflows/designer/themes/modern-sleek/designs/styles.css",
       import.meta.url,
     ),
   ).text();

@@ -117,8 +117,11 @@ import {
   appContent,
   bundleFiles,
 } from "../builds/app-snapshot.ts";
-import { MAX_DESIGN_BYTES } from "./design-tools.ts";
-import { DESIGN_STYLES, setThemeTokens } from "./design-tweaks.ts";
+import {
+  DESIGN_STYLES,
+  MAX_DESIGN_BYTES,
+  setThemeTokens,
+} from "@corbits-builder/tools-design";
 import {
   coordinatorTweaksNote,
   designerTweaksNote,

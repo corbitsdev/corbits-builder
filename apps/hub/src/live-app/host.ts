@@ -14,7 +14,7 @@ import { liveAppWording } from "../config/live-app.ts";
 import { errorCode } from "../request-error.ts";
 import type { HostReport } from "./host-report.ts";
 import { parseJson } from "../lib/json.ts";
-import { writeBundle } from "../artifacts/design-tools.ts";
+import { writeBundle } from "../artifacts/design-bundle.ts";
 import { bundleFiles, collectApp } from "../builds/app-snapshot.ts";
 import { buildPackageLayout } from "../builds/package-layout.ts";
 import {

@@ -14,7 +14,7 @@ import {
   ArtifactReceipt,
 } from "@corbits-builder/schemas/artifact";
 import type { WorkflowRole } from "@corbits-builder/schemas/installed-workflows";
-import { unpackDesign } from "./design-tools.ts";
+import { unpackDesign } from "./design-bundle.ts";
 import { projectScopeFailure } from "../workflows/project-scope.ts";
 import {
   resolveWorkflowProjectScope,

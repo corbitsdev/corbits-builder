@@ -13,7 +13,7 @@ import {
   AppBundle,
   type ArtifactContent,
 } from "@corbits-builder/schemas/artifact";
-import { unpackDesign, writeBundle } from "../artifacts/design-tools.ts";
+import { unpackDesign, writeBundle } from "../artifacts/design-bundle.ts";
 import { bundleFiles } from "./app-snapshot.ts";
 import type { AppRepository } from "./app-repository.ts";
 import {

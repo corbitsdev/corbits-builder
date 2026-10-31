@@ -11,7 +11,7 @@ import type {
   RetryPolicy,
 } from "@intx/types/runtime";
 import { REPETITION_ABORT } from "../inference/repetition.ts";
-import { CHECK_DESIGN_TOOL } from "../builds/design-check.ts";
+import { CHECK_DESIGN_TOOL } from "@corbits-builder/tools-design";
 
 const COMPACTOR = "@corbits-builder/trim-history";
 // Old tool arguments and results longer than this are replaced by a note saying what they were. Never

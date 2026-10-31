@@ -57,7 +57,7 @@ import {
   DESIGNS,
   touchesDesigns,
   type DesignCheck,
-} from "./design-check.ts";
+} from "@corbits-builder/tools-design";
 
 // A model retries a refused absolute path verbatim until the doom guard ends the run, as with the
 // workspace path with "/" typed for "-", or "/builder" meaning ".builder". Naming the workspace path

@@ -14,7 +14,7 @@ export type DesignCheck = ReturnType<typeof createDesignCheck>;
 
 // By workspace. The designer's coding tools run the check and file_design_option waits on it; both
 // tool packages load into the one workflow child of the designer's bundle
-// (unified-execution-host-design.md, "The tool-execution locus"; build-packages.ts bundles a role).
+// (unified-execution-host-design.md, "The tool-execution locus"; the hub's build-packages.ts bundles a role).
 const checks = new Map<string, DesignCheck>();
 export const designCheckFor = (workspace: string) => checks.get(workspace);
 
