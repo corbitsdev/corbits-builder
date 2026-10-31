@@ -26,17 +26,6 @@ const security = [
 export function mountDesignThemeRoutes(app: Hono<TenantEnv>, db: DB["db"]) {
   const readable = (actor: Actor, projectId: string) =>
     authorizeProject(db, actor, projectId, "read");
-  const failure = (
-    c: { json: (body: unknown, status: 403 | 404) => Response },
-    error: unknown,
-  ) => {
-    if (error instanceof ProjectError)
-      return c.json(
-        { code: error.code, ...error.details },
-        error.status as 403 | 404,
-      );
-    throw error;
-  };
 
   app.get(
     "/:projectId/design-themes",
@@ -56,18 +45,14 @@ export function mountDesignThemeRoutes(app: Hono<TenantEnv>, db: DB["db"]) {
       },
     }),
     async (c) => {
-      try {
-        await readable(actorOf(c), c.req.param("projectId"));
-        return c.json({
-          themes: DESIGN_THEMES.map(({ id, label, direction }) => ({
-            id,
-            label,
-            direction,
-          })),
-        });
-      } catch (error) {
-        return failure(c, error);
-      }
+      await readable(actorOf(c), c.req.param("projectId"));
+      return c.json({
+        themes: DESIGN_THEMES.map(({ id, label, direction }) => ({
+          id,
+          label,
+          direction,
+        })),
+      });
     },
   );
 
@@ -92,25 +77,21 @@ export function mountDesignThemeRoutes(app: Hono<TenantEnv>, db: DB["db"]) {
       },
     }),
     async (c) => {
-      try {
-        const actor = actorOf(c);
-        await readable(actor, c.req.param("projectId"));
-        const [run] = await db
-          .select({ label: designConcept.label })
-          .from(principal)
-          .innerJoin(designConcept, eq(designConcept.runId, principal.refId))
-          .where(
-            and(
-              eq(principal.id, actor.principalId),
-              eq(designConcept.tenantId, actor.tenantId),
-            ),
-          );
-        const theme = run && themeOf(run.label);
-        if (!theme) throw new ProjectError(404, "design_theme_not_found");
-        return c.json({ files: BUNDLES[theme.id] });
-      } catch (error) {
-        return failure(c, error);
-      }
+      const actor = actorOf(c);
+      await readable(actor, c.req.param("projectId"));
+      const [run] = await db
+        .select({ label: designConcept.label })
+        .from(principal)
+        .innerJoin(designConcept, eq(designConcept.runId, principal.refId))
+        .where(
+          and(
+            eq(principal.id, actor.principalId),
+            eq(designConcept.tenantId, actor.tenantId),
+          ),
+        );
+      const theme = run && themeOf(run.label);
+      if (!theme) throw new ProjectError(404, "design_theme_not_found");
+      return c.json({ files: BUNDLES[theme.id] });
     },
   );
 
@@ -131,17 +112,13 @@ export function mountDesignThemeRoutes(app: Hono<TenantEnv>, db: DB["db"]) {
       },
     }),
     async (c) => {
-      try {
-        await readable(actorOf(c), c.req.param("projectId"));
-        const themeId = c.req.param("themeId");
-        const files = Object.hasOwn(BUNDLES, themeId)
-          ? BUNDLES[themeId]
-          : undefined;
-        if (!files) throw new ProjectError(404, "design_theme_not_found");
-        return c.json({ files });
-      } catch (error) {
-        return failure(c, error);
-      }
+      await readable(actorOf(c), c.req.param("projectId"));
+      const themeId = c.req.param("themeId");
+      const files = Object.hasOwn(BUNDLES, themeId)
+        ? BUNDLES[themeId]
+        : undefined;
+      if (!files) throw new ProjectError(404, "design_theme_not_found");
+      return c.json({ files });
     },
   );
 }

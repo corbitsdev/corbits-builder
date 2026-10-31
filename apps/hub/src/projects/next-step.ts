@@ -31,7 +31,6 @@ import type { Actor } from "../lib/actor.ts";
 import type { LiveApps } from "../live-app/runner.ts";
 import { errorCode, requestErrorMetadata } from "../request-error.ts";
 import { actorOf, authorizeProject } from "./authorization.ts";
-import { ProjectError } from "./errors.ts";
 import { workflowRoleSql } from "../workflows/spawn-role.ts";
 
 const LIVE = [...liveWorkflowRunStatuses];
@@ -364,17 +363,6 @@ export function mountProjectNextStepRoutes(
     403: { description: "Project read refused" },
     404: { description: "Project not found in tenant" },
   };
-  const failure = (
-    c: { json: (body: unknown, status: 403 | 404) => Response },
-    error: unknown,
-  ) => {
-    if (error instanceof ProjectError)
-      return c.json(
-        { code: error.code, ...error.details },
-        error.status as 403 | 404,
-      );
-    throw error;
-  };
   app.get(
     "/:projectId/next-step",
     describeRoute({
@@ -392,13 +380,9 @@ export function mountProjectNextStepRoutes(
       },
     }),
     async (c) => {
-      try {
-        return c.json(
-          await nextStep.status(actorOf(c), c.req.param("projectId")),
-        );
-      } catch (error) {
-        return failure(c, error);
-      }
+      return c.json(
+        await nextStep.status(actorOf(c), c.req.param("projectId")),
+      );
     },
   );
   app.get(
@@ -418,13 +402,9 @@ export function mountProjectNextStepRoutes(
       },
     }),
     async (c) => {
-      try {
-        return c.json(
-          await nextStep.runStates(actorOf(c), c.req.param("projectId")),
-        );
-      } catch (error) {
-        return failure(c, error);
-      }
+      return c.json(
+        await nextStep.runStates(actorOf(c), c.req.param("projectId")),
+      );
     },
   );
 }

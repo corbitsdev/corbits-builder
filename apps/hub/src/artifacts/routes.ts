@@ -56,22 +56,6 @@ export function mountArtifactRoutes(
     if (json === undefined) throw new ProjectError(400, "invalid_json");
     return json;
   };
-  const failure = (
-    c: {
-      json: (
-        body: unknown,
-        status: 400 | 403 | 404 | 409 | 413 | 503,
-      ) => Response;
-    },
-    error: unknown,
-  ) => {
-    if (error instanceof ProjectError)
-      return c.json(
-        { code: error.code, ...error.details },
-        error.status as 400 | 403 | 404 | 409 | 413 | 503,
-      );
-    throw error;
-  };
   app.get(
     "/:projectId/artifacts",
     describeRoute({
@@ -86,11 +70,7 @@ export function mountArtifactRoutes(
       },
     }),
     async (c) => {
-      try {
-        return c.json(await service.list(actorOf(c), c.req.param("projectId")));
-      } catch (error) {
-        return failure(c, error);
-      }
+      return c.json(await service.list(actorOf(c), c.req.param("projectId")));
     },
   );
   app.get(
@@ -111,13 +91,9 @@ export function mountArtifactRoutes(
       },
     }),
     async (c) => {
-      try {
-        return c.json(
-          await service.activity(actorOf(c), c.req.param("projectId")),
-        );
-      } catch (error) {
-        return failure(c, error);
-      }
+      return c.json(
+        await service.activity(actorOf(c), c.req.param("projectId")),
+      );
     },
   );
   app.get(
@@ -140,13 +116,9 @@ export function mountArtifactRoutes(
       },
     }),
     async (c) => {
-      try {
-        return c.json(
-          await service.decidedApprovals(actorOf(c), c.req.param("projectId")),
-        );
-      } catch (error) {
-        return failure(c, error);
-      }
+      return c.json(
+        await service.decidedApprovals(actorOf(c), c.req.param("projectId")),
+      );
     },
   );
   app.post(
@@ -171,17 +143,13 @@ export function mountArtifactRoutes(
       },
     }),
     async (c) => {
-      try {
-        return c.json(
-          await service.write(
-            actorOf(c),
-            c.req.param("projectId"),
-            await body(c),
-          ),
-        );
-      } catch (error) {
-        return failure(c, error);
-      }
+      return c.json(
+        await service.write(
+          actorOf(c),
+          c.req.param("projectId"),
+          await body(c),
+        ),
+      );
     },
   );
   app.get(
@@ -212,17 +180,13 @@ export function mountArtifactRoutes(
       },
     }),
     async (c) => {
-      try {
-        return c.json(
-          await service.designDraft(
-            actorOf(c),
-            c.req.param("projectId"),
-            c.req.query("concept"),
-          ),
-        );
-      } catch (error) {
-        return failure(c, error);
-      }
+      return c.json(
+        await service.designDraft(
+          actorOf(c),
+          c.req.param("projectId"),
+          c.req.query("concept"),
+        ),
+      );
     },
   );
   app.get(
@@ -245,16 +209,9 @@ export function mountArtifactRoutes(
       },
     }),
     async (c) => {
-      try {
-        return c.json(
-          await service.previousDesignDraft(
-            actorOf(c),
-            c.req.param("projectId"),
-          ),
-        );
-      } catch (error) {
-        return failure(c, error);
-      }
+      return c.json(
+        await service.previousDesignDraft(actorOf(c), c.req.param("projectId")),
+      );
     },
   );
   app.post(
@@ -282,20 +239,16 @@ export function mountArtifactRoutes(
       },
     }),
     async (c) => {
-      try {
-        const current = actorOf(c);
-        return c.json(
-          await service.saveDesignTweaks(
-            current,
-            c.req.param("projectId"),
-            await body(c),
-            (runId, content) =>
-              mailRunAsCaller(c, nativeFetch, current.tenantId, runId, content),
-          ),
-        );
-      } catch (error) {
-        return failure(c, error);
-      }
+      const current = actorOf(c);
+      return c.json(
+        await service.saveDesignTweaks(
+          current,
+          c.req.param("projectId"),
+          await body(c),
+          (runId, content) =>
+            mailRunAsCaller(c, nativeFetch, current.tenantId, runId, content),
+        ),
+      );
     },
   );
   app.post(
@@ -328,20 +281,16 @@ export function mountArtifactRoutes(
       },
     }),
     async (c) => {
-      try {
-        const current = actorOf(c);
-        return c.json(
-          await service.chooseDesign(
-            current,
-            c.req.param("projectId"),
-            await body(c),
-            (runId, content) =>
-              mailRunAsCaller(c, nativeFetch, current.tenantId, runId, content),
-          ),
-        );
-      } catch (error) {
-        return failure(c, error);
-      }
+      const current = actorOf(c);
+      return c.json(
+        await service.chooseDesign(
+          current,
+          c.req.param("projectId"),
+          await body(c),
+          (runId, content) =>
+            mailRunAsCaller(c, nativeFetch, current.tenantId, runId, content),
+        ),
+      );
     },
   );
   app.get(
@@ -362,13 +311,9 @@ export function mountArtifactRoutes(
       },
     }),
     async (c) => {
-      try {
-        return c.json(
-          await service.acceptedMaterials(actorOf(c), c.req.param("projectId")),
-        );
-      } catch (error) {
-        return failure(c, error);
-      }
+      return c.json(
+        await service.acceptedMaterials(actorOf(c), c.req.param("projectId")),
+      );
     },
   );
   app.post(
@@ -416,38 +361,34 @@ export function mountArtifactRoutes(
       },
     }),
     async (c) => {
+      const current = actorOf(c);
+      let form: FormData;
       try {
-        const current = actorOf(c);
-        let form: FormData;
-        try {
-          form = await c.req.formData();
-        } catch (error) {
-          if (!(error instanceof TypeError)) throw error;
-          throw new ProjectError(400, "invalid_form", {}, { cause: error });
-        }
-        const message = form.get("message");
-        return c.json(
-          await service.attachMaterials(
-            current,
-            c.req.param("projectId"),
-            form
-              .getAll("file")
-              .filter((value): value is File => value instanceof File),
-            typeof message === "string" ? message : "",
-            (runId, content, attachments) =>
-              mailRunAsCaller(
-                c,
-                nativeFetch,
-                current.tenantId,
-                runId,
-                content,
-                attachments,
-              ),
-          ),
-        );
+        form = await c.req.formData();
       } catch (error) {
-        return failure(c, error);
+        if (!(error instanceof TypeError)) throw error;
+        throw new ProjectError(400, "invalid_form", {}, { cause: error });
       }
+      const message = form.get("message");
+      return c.json(
+        await service.attachMaterials(
+          current,
+          c.req.param("projectId"),
+          form
+            .getAll("file")
+            .filter((value): value is File => value instanceof File),
+          typeof message === "string" ? message : "",
+          (runId, content, attachments) =>
+            mailRunAsCaller(
+              c,
+              nativeFetch,
+              current.tenantId,
+              runId,
+              content,
+              attachments,
+            ),
+        ),
+      );
     },
   );
   app.post(
@@ -474,17 +415,13 @@ export function mountArtifactRoutes(
       },
     }),
     async (c) => {
-      try {
-        return c.json(
-          await service.recordDesignConcept(
-            actorOf(c),
-            c.req.param("projectId"),
-            await body(c),
-          ),
-        );
-      } catch (error) {
-        return failure(c, error);
-      }
+      return c.json(
+        await service.recordDesignConcept(
+          actorOf(c),
+          c.req.param("projectId"),
+          await body(c),
+        ),
+      );
     },
   );
   app.get(
@@ -508,13 +445,9 @@ export function mountArtifactRoutes(
       },
     }),
     async (c) => {
-      try {
-        return c.json(
-          await service.acceptance(actorOf(c), c.req.param("projectId")),
-        );
-      } catch (error) {
-        return failure(c, error);
-      }
+      return c.json(
+        await service.acceptance(actorOf(c), c.req.param("projectId")),
+      );
     },
   );
   app.get(
@@ -535,17 +468,13 @@ export function mountArtifactRoutes(
       },
     }),
     async (c) => {
-      try {
-        return c.json(
-          await service.liveApp(
-            actorOf(c),
-            c.req.param("tenantId")!,
-            c.req.param("projectId"),
-          ),
-        );
-      } catch (error) {
-        return failure(c, error);
-      }
+      return c.json(
+        await service.liveApp(
+          actorOf(c),
+          c.req.param("tenantId")!,
+          c.req.param("projectId"),
+        ),
+      );
     },
   );
   app.post(
@@ -565,17 +494,13 @@ export function mountArtifactRoutes(
       },
     }),
     async (c) => {
-      try {
-        return c.json(
-          await service.keepLiveApp(
-            actorOf(c),
-            c.req.param("tenantId")!,
-            c.req.param("projectId"),
-          ),
-        );
-      } catch (error) {
-        return failure(c, error);
-      }
+      return c.json(
+        await service.keepLiveApp(
+          actorOf(c),
+          c.req.param("tenantId")!,
+          c.req.param("projectId"),
+        ),
+      );
     },
   );
   app.post(
@@ -611,13 +536,9 @@ export function mountArtifactRoutes(
       },
     }),
     async (c) => {
-      try {
-        return c.json(
-          await service.snapshotApp(actorOf(c), c.req.param("projectId")),
-        );
-      } catch (error) {
-        return failure(c, error);
-      }
+      return c.json(
+        await service.snapshotApp(actorOf(c), c.req.param("projectId")),
+      );
     },
   );
   app.get(
@@ -635,13 +556,9 @@ export function mountArtifactRoutes(
       },
     }),
     async (c) => {
-      try {
-        return c.json(
-          await service.appVersions(actorOf(c), c.req.param("projectId")),
-        );
-      } catch (error) {
-        return failure(c, error);
-      }
+      return c.json(
+        await service.appVersions(actorOf(c), c.req.param("projectId")),
+      );
     },
   );
   app.get(
@@ -673,33 +590,26 @@ export function mountArtifactRoutes(
       },
     }),
     async (c) => {
-      try {
-        const query = c.req.query("version");
-        const version = query === undefined ? undefined : Number(query);
-        if (
-          version !== undefined &&
-          !(Number.isInteger(version) && version > 0)
-        )
-          throw new ProjectError(400, "invalid_app_version", {
-            version: query,
-          });
-        const { filename, archive } = await service.appArchive(
-          actorOf(c),
-          c.req.param("projectId"),
-          version,
-        );
-        return new Response(archive, {
-          headers: {
-            "content-type": "application/zip",
-            "content-disposition": contentDispositionHeader(
-              "attachment",
-              filename,
-            ),
-          },
+      const query = c.req.query("version");
+      const version = query === undefined ? undefined : Number(query);
+      if (version !== undefined && !(Number.isInteger(version) && version > 0))
+        throw new ProjectError(400, "invalid_app_version", {
+          version: query,
         });
-      } catch (error) {
-        return failure(c, error);
-      }
+      const { filename, archive } = await service.appArchive(
+        actorOf(c),
+        c.req.param("projectId"),
+        version,
+      );
+      return new Response(archive, {
+        headers: {
+          "content-type": "application/zip",
+          "content-disposition": contentDispositionHeader(
+            "attachment",
+            filename,
+          ),
+        },
+      });
     },
   );
   app.get(
@@ -726,17 +636,13 @@ export function mountArtifactRoutes(
       },
     }),
     async (c) => {
-      try {
-        const version = c.req.query("version");
-        return c.json(
-          await service.read(actorOf(c), c.req.param("projectId"), {
-            artifactId: c.req.param("artifactId"),
-            ...(version === undefined ? {} : { version: Number(version) }),
-          }),
-        );
-      } catch (error) {
-        return failure(c, error);
-      }
+      const version = c.req.query("version");
+      return c.json(
+        await service.read(actorOf(c), c.req.param("projectId"), {
+          artifactId: c.req.param("artifactId"),
+          ...(version === undefined ? {} : { version: Number(version) }),
+        }),
+      );
     },
   );
   app.get(
@@ -754,13 +660,7 @@ export function mountArtifactRoutes(
       },
     }),
     async (c) => {
-      try {
-        return c.json(
-          await service.export(actorOf(c), c.req.param("projectId")),
-        );
-      } catch (error) {
-        return failure(c, error);
-      }
+      return c.json(await service.export(actorOf(c), c.req.param("projectId")));
     },
   );
   app.get(
@@ -785,32 +685,28 @@ export function mountArtifactRoutes(
       },
     }),
     async (c) => {
-      try {
-        const query = c.req.query("sections");
-        const sections = ExportSection.array()(
-          query === undefined ? EXPORT_SECTIONS : query.split(","),
-        );
-        if (sections instanceof type.errors)
-          throw new ProjectError(400, "invalid_export_sections", {
-            issues: sections.summary,
-          });
-        const { filename, archive } = await service.exportArchive(
-          actorOf(c),
-          c.req.param("projectId"),
-          sections,
-        );
-        return new Response(archive, {
-          headers: {
-            "content-type": "application/zip",
-            "content-disposition": contentDispositionHeader(
-              "attachment",
-              filename,
-            ),
-          },
+      const query = c.req.query("sections");
+      const sections = ExportSection.array()(
+        query === undefined ? EXPORT_SECTIONS : query.split(","),
+      );
+      if (sections instanceof type.errors)
+        throw new ProjectError(400, "invalid_export_sections", {
+          issues: sections.summary,
         });
-      } catch (error) {
-        return failure(c, error);
-      }
+      const { filename, archive } = await service.exportArchive(
+        actorOf(c),
+        c.req.param("projectId"),
+        sections,
+      );
+      return new Response(archive, {
+        headers: {
+          "content-type": "application/zip",
+          "content-disposition": contentDispositionHeader(
+            "attachment",
+            filename,
+          ),
+        },
+      });
     },
   );
   app.post(
@@ -836,17 +732,13 @@ export function mountArtifactRoutes(
       },
     }),
     async (c) => {
-      try {
-        return c.json(
-          await service.recordApproval(
-            actorOf(c),
-            c.req.param("projectId"),
-            await body(c),
-          ),
-        );
-      } catch (error) {
-        return failure(c, error);
-      }
+      return c.json(
+        await service.recordApproval(
+          actorOf(c),
+          c.req.param("projectId"),
+          await body(c),
+        ),
+      );
     },
   );
 }
