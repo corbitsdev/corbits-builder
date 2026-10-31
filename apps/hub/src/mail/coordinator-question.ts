@@ -1,10 +1,14 @@
 import { readdir } from "node:fs/promises";
 import { join } from "node:path";
 
+import { getLogger } from "@intx/log";
 import { reconstructDurableConversation } from "@intx/workflow-host";
 import { deriveWorkflowRunRepoId } from "@intx/workflow-deploy";
 
+import { errorCode, requestErrorMetadata } from "../request-error.ts";
 import { withCommittedAgentState } from "./committed-agent-state.ts";
+
+const log = getLogger(["corbits-builder", "hub", "coordinator-question"]);
 
 // The input park (`SignalAwaited` with `parkKind: "input"`) carries no wording:
 // the coordinator's turn reply is what reaches the person as mail, and its
@@ -28,15 +32,10 @@ export function createCoordinatorQuestionProseReader(options: {
     address: string;
     park: Record<string, unknown>;
   }): Promise<CoordinatorQuestionProse | undefined> {
-    let repoDir: string;
-    try {
-      repoDir = options.repoStore.getRepoDir({
-        kind: "workflow-run",
-        id: deriveWorkflowRunRepoId(input.address),
-      });
-    } catch {
-      return undefined;
-    }
+    const repoDir = options.repoStore.getRepoDir({
+      kind: "workflow-run",
+      id: deriveWorkflowRunRepoId(input.address),
+    });
     // The asking turn completed before the runtime committed the re-arm park,
     // so the park's own commit time bounds which turns may have asked it.
     const parkedAt = input.park["at"];
@@ -49,19 +48,10 @@ export function createCoordinatorQuestionProseReader(options: {
       | undefined;
     try {
       best = await withCommittedAgentState(repoDir, async (agentStateRoot) => {
-        let keys: string[];
-        try {
-          const entries = await readdir(agentStateRoot, {
-            withFileTypes: true,
-          });
-          keys = entries
-            .filter((entry) => entry.isDirectory())
-            .map((entry) => entry.name);
-        } catch {
-          // No durable mirror yet (the run never completed a turn): there is no
-          // committed prose to expose, and the park renders verbatim.
-          return undefined;
-        }
+        const entries = await readdir(agentStateRoot, { withFileTypes: true });
+        const keys = entries
+          .filter((entry) => entry.isDirectory())
+          .map((entry) => entry.name);
         let found:
           | { prose: string; agentKey: string; timestamp: number }
           | undefined;
@@ -74,11 +64,16 @@ export function createCoordinatorQuestionProseReader(options: {
             );
             if (snapshot === null) continue;
             turns = snapshot.turns;
-          } catch {
+          } catch (error) {
             // A corrupt mirror leaves the rest of the conversation projection
             // intact; the card falls back to the verbatim park rather than
             // guessing at wording. The reader still throws on the restore path,
             // where a lost conversation is a correctness failure.
+            log.warn("Agent conversation mirror unreadable", {
+              agentKey,
+              ...errorCode(error),
+              ...requestErrorMetadata(error),
+            });
             continue;
           }
           for (const turn of turns) {
@@ -96,7 +91,11 @@ export function createCoordinatorQuestionProseReader(options: {
         }
         return found;
       });
-    } catch {
+    } catch (error) {
+      log.warn("Coordinator question prose unreadable", {
+        ...errorCode(error),
+        ...requestErrorMetadata(error),
+      });
       return undefined;
     }
     if (best === undefined || best.prose.trim() === "") return undefined;

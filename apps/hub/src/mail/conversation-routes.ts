@@ -20,6 +20,7 @@ import { reportAuthorization } from "../projects/authorization.ts";
 import { ProjectError, projectResource } from "../projects/errors.ts";
 import { getLogger } from "@intx/log";
 import { requestErrorMetadata } from "../request-error.ts";
+import { parseJson } from "../lib/json.ts";
 import {
   createCoordinatorQuestionProseReader,
   type CoordinatorRepoDirSource,
@@ -153,12 +154,8 @@ export function createConversationRoutes(
               status: response.status,
               headers: response.headers,
             });
-          let payload: unknown;
-          try {
-            payload = JSON.parse(raw);
-          } catch {
-            return passThrough(raw);
-          }
+          const payload = parseJson(raw);
+          if (payload === undefined) return passThrough(raw);
           const { address } = selected;
           const events = (payload as { events?: unknown })["events"];
           if (Array.isArray(events)) {

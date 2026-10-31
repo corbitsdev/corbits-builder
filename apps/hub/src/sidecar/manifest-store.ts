@@ -3,7 +3,7 @@ import fs from "node:fs/promises";
 import path from "node:path";
 import { type } from "arktype";
 import { errorText } from "./error-text.ts";
-import type { CredentialCipher } from "@intx/types";
+import { hasCode, type CredentialCipher } from "@intx/types";
 
 /** The hub's one local sidecar: the identity it authenticates with and where it keeps its state. */
 export type LocalSidecarManifest = {
@@ -59,15 +59,11 @@ function manifestTokenAad(sidecarId: string): string {
   return JSON.stringify(["sidecar-manifest-token", sidecarId]);
 }
 
-function isMissing(error: unknown): boolean {
-  return error instanceof Error && "code" in error && error.code === "ENOENT";
-}
-
 async function readOptional(file: string): Promise<string | null> {
   try {
     return await fs.readFile(file, "utf8");
   } catch (error) {
-    if (isMissing(error)) return null;
+    if (hasCode(error) && error.code === "ENOENT") return null;
     throw error;
   }
 }

@@ -47,8 +47,11 @@ const addrSpec = (line: string | undefined): string | undefined => {
   if (line === undefined || line.trim() === "") return undefined;
   try {
     return extractAddrSpec(line).toLowerCase();
-  } catch {
-    return undefined;
+  } catch (error) {
+    // A header that names no single well-formed address names no participant.
+    if (error instanceof Error && error.message.startsWith("extractAddrSpec:"))
+      return undefined;
+    throw error;
   }
 };
 

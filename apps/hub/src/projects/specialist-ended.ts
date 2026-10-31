@@ -10,7 +10,7 @@ import { runFailure } from "../artifacts/service.ts";
 import { specialistEndedMessage } from "../config/specialist-ended.ts";
 import { endedRun, project, projectCoordinator } from "../db/schema.ts";
 import { HubMailError, type HubMail } from "../mail/hub-mail.ts";
-import { requestErrorMetadata } from "../request-error.ts";
+import { errorCode, requestErrorMetadata } from "../request-error.ts";
 import { spawnedWorkflowRole } from "../workflows/spawn-role.ts";
 
 const log = getLogger(["corbits-builder", "hub", "specialist-ended"]);
@@ -18,12 +18,19 @@ const log = getLogger(["corbits-builder", "hub", "specialist-ended"]);
 // The correlation id of the latest assignment the run received after its last outgoing mail; none
 // when it answered every assignment it was given.
 async function unansweredAssignment(
-  directory: string,
+  mailDirectory: string,
+  runId: string,
 ): Promise<string | undefined> {
   let entries: Awaited<ReturnType<typeof listMail>>;
   try {
-    entries = await listMail(directory);
-  } catch {
+    entries = await listMail(join(mailDirectory, runId));
+  } catch (error) {
+    // An unreadable mail store reads as answered, so the ended run is still recorded.
+    log.warn("Reading ended specialist {runId}'s mail failed", {
+      runId,
+      ...errorCode(error),
+      ...requestErrorMetadata(error),
+    });
     return undefined;
   }
   let assigned: { at: number; correlationId: string } | undefined;
@@ -115,7 +122,7 @@ export function createSpecialistEndNotices(deps: {
         .returning({ runId: endedRun.runId });
     const role = spawnedWorkflowRole(ended.bundle);
     const correlationId = role
-      ? await unansweredAssignment(join(deps.mailDirectory, ended.runId))
+      ? await unansweredAssignment(deps.mailDirectory, ended.runId)
       : undefined;
     const [coordinator] =
       correlationId === undefined

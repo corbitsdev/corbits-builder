@@ -10,6 +10,7 @@ import { idResource, type RequireGrant, type TenantEnv } from "@intx/hub-api";
 import { findRoutableById, type SidecarRouter } from "@intx/hub-sessions";
 import { getLogger } from "@intx/log";
 import { parseInferenceEvent } from "@intx/types/runtime";
+import { errorCode, requestErrorMetadata } from "./request-error.ts";
 
 const HEARTBEAT_MS = 5_000;
 const MailDelivered = type({
@@ -44,11 +45,20 @@ export function createWorkflowRunStreamRoutes(deps: {
       c.header("X-Accel-Buffering", "no");
 
       return streamSSE(c, async (stream) => {
-        const write = (event: string, data: unknown) => {
-          stream.writeSSE({ event, data: JSON.stringify(data) }).catch(() => {
-            log.error(`Workflow run stream write failed for ${runId}`);
-          });
-        };
+        async function send(message: { event: string; data: string }) {
+          try {
+            await stream.writeSSE(message);
+          } catch (error) {
+            log.error("Workflow run stream {event} write failed for {runId}", {
+              event: message.event,
+              runId,
+              ...errorCode(error),
+              ...requestErrorMetadata(error),
+            });
+          }
+        }
+        const write = (event: string, data: unknown) =>
+          void send({ event, data: JSON.stringify(data) });
         const unsubscribe = deps.sidecarRouter.subscribeAgent(
           record.address,
           (raw) => {
@@ -72,11 +82,10 @@ export function createWorkflowRunStreamRoutes(deps: {
               write("status", { routable: false });
           },
         );
-        const heartbeat = setInterval(() => {
-          stream.writeSSE({ event: "ping", data: "" }).catch(() => {
-            log.error(`Workflow run stream heartbeat failed for ${runId}`);
-          });
-        }, HEARTBEAT_MS);
+        const heartbeat = setInterval(
+          () => void send({ event: "ping", data: "" }),
+          HEARTBEAT_MS,
+        );
 
         try {
           await new Promise<void>((resolve) => {

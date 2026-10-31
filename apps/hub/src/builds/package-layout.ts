@@ -2,10 +2,8 @@ import { readFile, realpath } from "node:fs/promises";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { createRequire } from "node:module";
+import { hasCode } from "@intx/types";
 import { rgPath } from "@vscode/ripgrep";
-
-const isMissing = (error: unknown) =>
-  error instanceof Error && "code" in error && error.code === "ENOENT";
 
 // Resolve with Bun's installed package graph; source closures and npm installs
 // can place the same dependency outside the importing package's node_modules.
@@ -18,7 +16,7 @@ async function packageRoot(name: string, from: string) {
       );
       if (manifest.name === name) return { directory, manifest };
     } catch (error) {
-      if (!isMissing(error)) throw error;
+      if (!(hasCode(error) && error.code === "ENOENT")) throw error;
     }
     const parent = dirname(directory);
     if (parent === directory)
@@ -62,7 +60,7 @@ export async function buildPackageLayout() {
         if ((await realpath(join(path, name))) === entry.directory)
           roots.add(await realpath(path));
       } catch (error) {
-        if (!isMissing(error)) throw error;
+        if (!(hasCode(error) && error.code === "ENOENT")) throw error;
       }
     }
     if (known) continue;

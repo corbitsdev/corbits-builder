@@ -2,6 +2,7 @@ import { and, eq } from "drizzle-orm";
 import type { DB } from "@intx/db";
 import { principal, user } from "@intx/db/schema";
 import type { GetSession } from "@intx/hub-api";
+import { readJson } from "../lib/json.ts";
 
 type Session = NonNullable<Awaited<ReturnType<GetSession>>>;
 
@@ -61,7 +62,7 @@ export function createHubMail(
     });
     const response = await fetch(request);
     if (response.ok) return;
-    const payload: unknown = await response.json().catch(() => null);
+    const payload: unknown = await readJson(response);
     const upstream =
       payload !== null && typeof payload === "object" && "error" in payload
         ? payload.error

@@ -14,6 +14,7 @@ import {
   type TenantEnv,
 } from "@intx/hub-api";
 import type { DB } from "@intx/db";
+import { getLogger } from "@intx/log";
 import type { RepoStore, WorkflowRunReader } from "@intx/hub-sessions";
 import { TenantResponse } from "@intx/types";
 import {
@@ -43,6 +44,10 @@ import type { LiveApps } from "../live-app/runner.ts";
 import { importedProjectMessage } from "../config/import.ts";
 import { MODEL_CHOICE_REFUSALS } from "../config/models.ts";
 import { mailRunAsCaller } from "../mail/caller-mail.ts";
+import { readJson } from "../lib/json.ts";
+import { errorCode, requestErrorMetadata } from "../request-error.ts";
+
+const log = getLogger(["corbits-builder", "hub", "projects"]);
 
 type CoordinatorStart = {
   ensure: (actor: Actor, projectId: string) => Promise<boolean>;
@@ -102,7 +107,7 @@ export function nativeTenantCreation(
         body: JSON.stringify(body),
       }),
     );
-    const payload: unknown = await response.json().catch(() => null);
+    const payload: unknown = await readJson(response);
     if (response.status === 201)
       return { id: TenantResponse.assert(payload).id };
     const upstream =
@@ -131,6 +136,23 @@ function caller(c: Context<TenantEnv>): ProjectCaller {
   };
 }
 
+// The create's own failure is what the caller sees; a project left unarchived only keeps its card.
+async function archiveFailedCreate(
+  archive: (actor: Actor, projectId: string) => Promise<unknown>,
+  actor: Actor,
+  projectId: string,
+) {
+  try {
+    await archive(actor, projectId);
+  } catch (error) {
+    log.warn("Archiving failed project create {projectId} failed", {
+      projectId,
+      ...errorCode(error),
+      ...requestErrorMetadata(error),
+    });
+  }
+}
+
 // A project whose coordinator never started is archived, so the failed create
 // leaves no card behind; a retry replays the receipt and starts it again. One
 // refused only for want of a model profile stays, and starts once one resolves.
@@ -145,7 +167,7 @@ async function startNewProject(
     await start.ensure(actor, projectId);
   } catch (error) {
     if (!(error instanceof ProjectError && error.code in MODEL_CHOICE_REFUSALS))
-      await archive(actor, projectId).catch(() => undefined);
+      await archiveFailedCreate(archive, actor, projectId);
     throw error;
   }
 }
@@ -244,12 +266,8 @@ export function createProjectRoutes(
           )
         )
           return c.json({ code: "json_content_type_required" }, 415);
-        let input: unknown;
-        try {
-          input = await c.req.json();
-        } catch {
-          throw new ProjectError(400, "invalid_json");
-        }
+        const input = await readJson(c.req);
+        if (input === undefined) throw new ProjectError(400, "invalid_json");
         const read = readProjectImport(input);
         if (read instanceof type.errors)
           throw new ProjectError(400, "invalid_project_import", {
@@ -289,7 +307,7 @@ export function createProjectRoutes(
           for (const material of materials)
             await artifacts.fileMaterial(created.actor, projectId, material);
         } catch (error) {
-          await archive(created.actor, projectId).catch(() => undefined);
+          await archiveFailedCreate(archive, created.actor, projectId);
           throw error;
         }
         // The coordinator starts after filing, so its first look at the
@@ -313,7 +331,7 @@ export function createProjectRoutes(
             ),
           );
         } catch (error) {
-          await archive(created.actor, projectId).catch(() => undefined);
+          await archiveFailedCreate(archive, created.actor, projectId);
           throw error;
         }
         return c.json(ProjectImportReceipt.assert({ projectId, omitted }));
@@ -488,12 +506,8 @@ export function createProjectRoutes(
           )
         )
           return c.json({ code: "json_content_type_required" }, 415);
-        let input: unknown;
-        try {
-          input = await c.req.json();
-        } catch {
-          throw new ProjectError(400, "invalid_json");
-        }
+        const input = await readJson(c.req);
+        if (input === undefined) throw new ProjectError(400, "invalid_json");
         const result = await service.mutate(
           caller(c),
           nativeTenantCreation(c, nativeFetch),
@@ -523,8 +537,10 @@ export function createProjectRoutes(
                 result.opening,
               );
             } catch (error) {
-              await archive(result.actor, result.projectId).catch(
-                () => undefined,
+              await archiveFailedCreate(
+                archive,
+                result.actor,
+                result.projectId,
               );
               throw error;
             }

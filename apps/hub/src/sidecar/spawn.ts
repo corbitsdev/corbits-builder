@@ -1,3 +1,4 @@
+import { hasCode } from "@intx/types";
 import type {
   LocalSidecarExit,
   SpawnLocalSidecar,
@@ -28,22 +29,20 @@ const SIDECAR_ENTRY = "apps/sidecar/src/index.ts";
 const EXIT_POLL_MS = 100;
 
 function commandOf(pid: number): string | undefined {
-  try {
-    const ps = Bun.spawnSync(["ps", "-o", "command=", "-p", String(pid)], {
-      stderr: "ignore",
-    });
-    return ps.exitCode === 0 ? ps.stdout.toString() : undefined;
-  } catch {
-    return undefined;
-  }
+  const ps = Bun.spawnSync(["ps", "-o", "command=", "-p", String(pid)], {
+    stderr: "ignore",
+  });
+  return ps.exitCode === 0 ? ps.stdout.toString() : undefined;
 }
 
-function isAlive(pid: number): boolean {
+// Signals a process that is still running; false when it no longer exists.
+function sendSignal(pid: number, name: NodeJS.Signals | 0): boolean {
   try {
-    process.kill(pid, 0);
+    process.kill(pid, name);
     return true;
-  } catch {
-    return false;
+  } catch (error) {
+    if (hasCode(error) && error.code === "ESRCH") return false;
+    throw error;
   }
 }
 
@@ -57,14 +56,10 @@ export async function stopStaleLocalSidecar(
   timeoutMs: number,
 ): Promise<boolean> {
   if (!commandOf(pid)?.includes(SIDECAR_ENTRY)) return false;
-  for (const signal of ["SIGTERM", "SIGKILL"] as const) {
-    try {
-      process.kill(pid, signal);
-    } catch {
-      return true;
-    }
+  for (const name of ["SIGTERM", "SIGKILL"] as const) {
+    if (!sendSignal(pid, name)) return true;
     for (const deadline = Date.now() + timeoutMs; Date.now() < deadline;) {
-      if (!isAlive(pid)) return true;
+      if (!sendSignal(pid, 0)) return true;
       await Bun.sleep(EXIT_POLL_MS);
     }
   }

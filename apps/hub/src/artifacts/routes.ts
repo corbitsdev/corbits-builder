@@ -34,6 +34,7 @@ import {
 } from "@corbits-builder/schemas/project";
 import { actorOf } from "../projects/authorization.ts";
 import { ProjectError } from "../projects/errors.ts";
+import { readJson } from "../lib/json.ts";
 import { mailRunAsCaller } from "../mail/caller-mail.ts";
 import type { createArtifactService } from "./service.ts";
 
@@ -51,11 +52,9 @@ export function mountArtifactRoutes(
   nativeFetch?: (request: Request) => Promise<Response>,
 ) {
   const body = async (c: { req: { json(): Promise<unknown> } }) => {
-    try {
-      return await c.req.json();
-    } catch {
-      throw new ProjectError(400, "invalid_json");
-    }
+    const json = await readJson(c.req);
+    if (json === undefined) throw new ProjectError(400, "invalid_json");
+    return json;
   };
   const failure = (
     c: {
@@ -419,9 +418,13 @@ export function mountArtifactRoutes(
     async (c) => {
       try {
         const current = actorOf(c);
-        const form = await c.req.formData().catch(() => {
-          throw new ProjectError(400, "invalid_form");
-        });
+        let form: FormData;
+        try {
+          form = await c.req.formData();
+        } catch (error) {
+          if (!(error instanceof TypeError)) throw error;
+          throw new ProjectError(400, "invalid_form", {}, { cause: error });
+        }
         const message = form.get("message");
         return c.json(
           await service.attachMaterials(

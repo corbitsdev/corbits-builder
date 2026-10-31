@@ -47,8 +47,9 @@ export function materialMimeType(file: { name: string; type: string }): string {
 function utf8(bytes: Uint8Array): string | undefined {
   try {
     return new TextDecoder("utf-8", { fatal: true }).decode(bytes);
-  } catch {
-    return undefined;
+  } catch (error) {
+    if (error instanceof TypeError) return undefined;
+    throw error;
   }
 }
 

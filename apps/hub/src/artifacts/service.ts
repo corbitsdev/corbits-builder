@@ -17,7 +17,12 @@ import {
 } from "@corbits/artifacts";
 import type { DB } from "@intx/db";
 import { getLogger } from "@intx/log";
-import { base64Decode, base64Encode, validateAttachments } from "@intx/types";
+import {
+  base64Decode,
+  base64Encode,
+  hasCode,
+  validateAttachments,
+} from "@intx/types";
 import {
   WORKFLOW_RUN_REF,
   workflowRunRepoIdForAddress,
@@ -89,6 +94,7 @@ import {
 } from "../db/schema.ts";
 import type { AgentActivityTracker } from "./activity.ts";
 import type { Actor } from "../lib/actor.ts";
+import { parseJson } from "../lib/json.ts";
 import { authorizeProject } from "../projects/authorization.ts";
 import { ProjectError, projectResource } from "../projects/errors.ts";
 import { readAppRepository } from "../projects/app-repository.ts";
@@ -162,18 +168,19 @@ const appTooLarge = (error: unknown) =>
       })
     : error;
 
-const parseBundle = (content: string): unknown => {
-  try {
-    return JSON.parse(content);
-  } catch {
-    return undefined;
-  }
-};
-
 // An imported bundle's paths and a material's filename are the importer's text: none may climb
 // out of the directory it is archived under.
 const isContainedPath = (path: string) =>
   !path.startsWith("/") && !path.split(/[\\/]/).includes("..");
+
+async function isDirectory(path: string) {
+  try {
+    return (await stat(path)).isDirectory();
+  } catch (error) {
+    if (hasCode(error) && error.code === "ENOENT") return false;
+    throw error;
+  }
+}
 
 const artifactResource = (kind: string) => "sb-artifact:" + kind;
 
@@ -359,13 +366,7 @@ export function createArtifactService(
     if (!sidecarDataDir || run.address === null)
       return unavailable("not_on_local_sidecar");
     const dir = warmStepWorkspace(sidecarDataDir, run.address, run.stepId);
-    if (
-      !(await stat(dir).then(
-        (found) => found.isDirectory(),
-        () => false,
-      ))
-    )
-      return unavailable("workspace_missing");
+    if (!(await isDirectory(dir))) return unavailable("workspace_missing");
     if (!(await Bun.file(join(dir, "package.json")).exists()))
       return unavailable("package_json_missing");
     return { runId: run.runId, dir };
@@ -465,7 +466,7 @@ export function createArtifactService(
     return stored
       ? {
           name: `v${filed.version}`,
-          bundle: AppBundle.assert(parseBundle(stored.content)),
+          bundle: AppBundle.assert(parseJson(stored.content)),
         }
       : undefined;
   }
@@ -945,7 +946,8 @@ export function createArtifactService(
         throw new ProjectError(404, "design_not_found");
       if (filed) {
         const stored = await getArtifactVersion(db, filed.id, filed.version);
-        const bundle = DesignBundle(parseBundle(stored?.content ?? ""));
+        if (!stored) throw new ProjectError(409, "invalid_design");
+        const bundle = DesignBundle(parseJson(stored.content));
         if (bundle instanceof type.errors)
           throw new ProjectError(409, "invalid_design", {
             issues: bundle.summary,
@@ -1275,7 +1277,7 @@ export function createArtifactService(
       }
       if (bundled) {
         const bundle = (input.kind === "app" ? AppBundle : DesignBundle)(
-          parseBundle(input.content),
+          parseJson(input.content),
         );
         if (bundle instanceof type.errors)
           throw new ProjectError(400, "invalid_" + input.kind, {
@@ -1650,7 +1652,7 @@ export function createArtifactService(
           zip.file(`planning/${artifact.kind}.md`, stored.content);
         } else {
           const files = Object.entries(
-            DesignBundle.assert(parseBundle(stored.content)).files,
+            DesignBundle.assert(parseJson(stored.content)).files,
           );
           if (artifact.kind === "design") add("design", files);
           else if (isContainedPath(stored.title))
@@ -1730,16 +1732,18 @@ export function createArtifactService(
       } catch (error) {
         // The coordinator's token only reads runs, so a designer left without its concept would
         // hold a slot as a waiting designer; the hub stops it and the original error stands.
-        await cancelRun?.(
-          actor.tenantId,
-          input.runId,
-          "design_concept_unrecorded",
-        ).catch((cancelError: unknown) =>
+        try {
+          await cancelRun?.(
+            actor.tenantId,
+            input.runId,
+            "design_concept_unrecorded",
+          );
+        } catch (cancelError) {
           log.warn("Stopping designer run {runId} without its concept failed", {
             runId: input.runId,
             ...requestErrorMetadata(cancelError),
-          }),
-        );
+          });
+        }
         throw error;
       }
       const [stored] = await rawDB

@@ -1,5 +1,9 @@
+import { getLogger } from "@intx/log";
 import type { MiddlewareHandler } from "hono";
 import { liveAppWording } from "../config/live-app.ts";
+import { errorCode, requestErrorMetadata } from "../request-error.ts";
+
+const log = getLogger(["corbits-builder", "hub", "live-app"]);
 
 export type LiveAppScope = { tenantId: string; projectId: string };
 
@@ -74,7 +78,9 @@ export function createLiveAppProxy(options: {
         redirect: "manual",
         decompress: false,
       });
-    } catch {
+    } catch (error) {
+      // fetch rejects with a TypeError when the app is not listening.
+      if (!(error instanceof TypeError)) throw error;
       return new Response(liveAppWording.unreachable, { status: 502 });
     }
     const out = new Headers(response.headers);
@@ -98,6 +104,13 @@ export function createLiveAppProxy(options: {
     entry.server = Bun.serve<Upstream>({
       hostname: options.hostname,
       port: 0,
+      error(error) {
+        log.warn("Live app proxy request failed", {
+          ...errorCode(error),
+          ...requestErrorMetadata(error),
+        });
+        return new Response(liveAppWording.unreachable, { status: 502 });
+      },
       fetch: async (request, server) => {
         if (!(await allows(request, entry)))
           return new Response(liveAppWording.signIn, { status: 401 });

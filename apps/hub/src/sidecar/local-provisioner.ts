@@ -90,6 +90,11 @@ type ManagedProcess = {
   exited: boolean;
 };
 
+async function exits(handle: LocalSidecarProcess): Promise<true> {
+  await handle.exited;
+  return true;
+}
+
 async function exitedWithin(
   managed: ManagedProcess,
   timeoutMs: number,
@@ -100,10 +105,7 @@ async function exitedWithin(
     timer = setTimeout(resolve, timeoutMs, false);
   });
   try {
-    return await Promise.race([
-      managed.handle.exited.then(() => true),
-      timedOut,
-    ]);
+    return await Promise.race([exits(managed.handle), timedOut]);
   } finally {
     clearTimeout(timer);
   }

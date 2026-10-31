@@ -1,4 +1,5 @@
 import { fileURLToPath } from "node:url";
+import { hasCode } from "@intx/types";
 
 const sourceFiles = [
   "apps/hub/src/app.ts",
@@ -7,6 +8,13 @@ const sourceFiles = [
   "apps/hub/src/projects/authorization.ts",
 ] as const;
 const repositoryRoot = fileURLToPath(new URL("../../../", import.meta.url));
+
+// A thrown error's code, such as ENOENT, EAUTH, a Postgres SQLSTATE or isomorphic-git's
+// NotFoundError, names what failed without the message's paths; anything else it carries is left out.
+export const errorCode = (error: unknown) =>
+  hasCode(error) && /^[A-Za-z0-9][A-Za-z0-9_]{0,63}$/.test(error.code)
+    ? { errorCode: error.code }
+    : {};
 
 // Never emit error-supplied filenames, messages, causes, or custom names.
 export function requestErrorMetadata(error: unknown) {

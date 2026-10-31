@@ -2,7 +2,7 @@ import { mkdirSync } from "node:fs";
 import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { getLogger } from "@intx/log";
-import { requestErrorMetadata } from "../request-error.ts";
+import { errorCode, requestErrorMetadata } from "../request-error.ts";
 import { liveAppWording } from "../config/live-app.ts";
 import type { HostReport, HostSource } from "./host.ts";
 import type { createLiveAppProxy } from "./proxy.ts";
@@ -55,22 +55,53 @@ export function createLiveAppRunner(options: {
   }, SWEEP_MS);
   sweep.unref();
 
-  async function follow(run: Run) {
+  async function follow(projectId: string, run: Run) {
     const decoder = new TextDecoder();
     let pending = "";
-    for await (const chunk of run.child.stdout) {
-      pending += decoder.decode(chunk, { stream: true });
-      const lines = pending.split("\n");
-      pending = lines.pop() ?? "";
-      for (const line of lines) run.state = JSON.parse(line) as HostReport;
+    try {
+      for await (const chunk of run.child.stdout) {
+        pending += decoder.decode(chunk, { stream: true });
+        for (
+          let end = pending.indexOf("\n");
+          end !== -1;
+          end = pending.indexOf("\n")
+        ) {
+          run.state = JSON.parse(pending.slice(0, end)) as HostReport;
+          pending = pending.slice(end + 1);
+        }
+      }
+    } catch (error) {
+      log.warn("Reading the live app host's state failed for {projectId}", {
+        projectId,
+        ...errorCode(error),
+        ...requestErrorMetadata(error),
+      });
     }
   }
 
-  async function collect(run: Run) {
+  async function collect(projectId: string, run: Run) {
     const decoder = new TextDecoder();
-    for await (const chunk of run.child.stderr)
-      for (const line of decoder.decode(chunk, { stream: true }).split("\n"))
-        if (line.trim() && run.stderr.push(line) > 40) run.stderr.shift();
+    try {
+      for await (const chunk of run.child.stderr)
+        for (const line of decoder.decode(chunk, { stream: true }).split("\n"))
+          if (line.trim() && run.stderr.push(line) > 40) run.stderr.shift();
+    } catch (error) {
+      log.warn("Reading the live app host's stderr failed for {projectId}", {
+        projectId,
+        ...errorCode(error),
+        ...requestErrorMetadata(error),
+      });
+    }
+  }
+
+  async function failOnExit(projectId: string, run: Run) {
+    const code = await run.child.exited;
+    if (runs.get(projectId) === run && run.state.state !== "failed")
+      run.state = {
+        state: "failed",
+        error: liveAppWording.hostExited(code),
+        log: run.stderr,
+      };
   }
 
   function spawn(projectId: string, key: string) {
@@ -103,26 +134,9 @@ export function createLiveAppRunner(options: {
       lastSeen: Date.now(),
     };
     runs.set(projectId, run);
-    void follow(run).catch((error: unknown) =>
-      log.warn("Reading the live app host's state failed for {projectId}", {
-        projectId,
-        ...requestErrorMetadata(error),
-      }),
-    );
-    void collect(run).catch((error: unknown) =>
-      log.warn("Reading the live app host's stderr failed for {projectId}", {
-        projectId,
-        ...requestErrorMetadata(error),
-      }),
-    );
-    void child.exited.then((code) => {
-      if (runs.get(projectId) === run && run.state.state !== "failed")
-        run.state = {
-          state: "failed",
-          error: liveAppWording.hostExited(code),
-          log: run.stderr,
-        };
-    });
+    void follow(projectId, run);
+    void collect(projectId, run);
+    void failOnExit(projectId, run);
     return run;
   }
 

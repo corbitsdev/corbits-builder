@@ -11,6 +11,7 @@ import type { CoordinatorRepoDirSource } from "../mail/coordinator-question.ts";
 import { awaitingApproval } from "./deploy-tools.ts";
 import { getLogger } from "@intx/log";
 import { requestErrorMetadata } from "../request-error.ts";
+import { readJson } from "../lib/json.ts";
 
 const log = getLogger(["corbits-builder", "hub", "coordinator-resume"]);
 
@@ -98,20 +99,17 @@ export function createCoordinatorResumeContext(deps: {
     const runId = c.req.param("runId");
     if (c.req.method !== "POST" || !tenantId || !runId) return next();
     // A context that cannot be read must not cost the person their message.
-    const context = await heldContext(tenantId, runId).catch(
-      (error: unknown) => {
-        log.error("Resume context unavailable", {
-          runId,
-          ...requestErrorMetadata(error),
-        });
-        return undefined;
-      },
-    );
+    let context: Awaited<ReturnType<typeof heldContext>>;
+    try {
+      context = await heldContext(tenantId, runId);
+    } catch (error) {
+      log.error("Resume context unavailable", {
+        runId,
+        ...requestErrorMetadata(error),
+      });
+    }
     if (context === undefined) return next();
-    const body: unknown = await c.req.raw
-      .clone()
-      .json()
-      .catch(() => undefined);
+    const body = await readJson(c.req.raw.clone());
     if (!isRecord(body) || typeof body["content"] !== "string") return next();
     const headers = new Headers(c.req.raw.headers);
     headers.delete("content-length");

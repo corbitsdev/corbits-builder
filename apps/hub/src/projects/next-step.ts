@@ -29,7 +29,7 @@ import {
 import { projectStatusWording as text } from "../config/project-status.ts";
 import type { Actor } from "../lib/actor.ts";
 import type { LiveApps } from "../live-app/runner.ts";
-import { requestErrorMetadata } from "../request-error.ts";
+import { errorCode, requestErrorMetadata } from "../request-error.ts";
 import { actorOf, authorizeProject } from "./authorization.ts";
 import { ProjectError } from "./errors.ts";
 import { workflowRoleSql } from "../workflows/spawn-role.ts";
@@ -39,15 +39,6 @@ const log = getLogger(["corbits-builder", "hub", "next-step"]);
 // The web client polls run states every few seconds, so a run whose state cannot be read is logged
 // once per this interval rather than on every poll.
 const UNREADABLE_LOG_MS = 5 * 60 * 1000;
-// A thrown error's code, such as ENOENT or isomorphic-git's NotFoundError, names what failed
-// without the message's paths; anything else it carries is left out.
-const errorCode = (error: unknown) =>
-  error instanceof Error &&
-  "code" in error &&
-  typeof error.code === "string" &&
-  /^[A-Za-z][A-Za-z0-9_]{0,63}$/.test(error.code)
-    ? { errorCode: error.code }
-    : {};
 
 type ProjectRun = {
   runId: string;
@@ -126,22 +117,36 @@ export function createProjectNextStep(
       const kind = event.body["parkKind"];
       return kind === "input" || kind === "signal-relay" ? "idle" : "approval";
     } catch (error) {
-      const now = Date.now();
-      if (now - (unreadableLogged.get(run.runId) ?? 0) >= UNREADABLE_LOG_MS) {
-        unreadableLogged.set(run.runId, now);
-        log.error("Reading a run's latest event failed", {
-          runId: run.runId,
-          ...errorCode(error),
-          ...requestErrorMetadata(error),
-        });
-      }
+      logUnreadable(run, error);
       return "unknown";
     }
   }
 
+  function logUnreadable(run: ProjectRun, error: unknown) {
+    const now = Date.now();
+    if (now - (unreadableLogged.get(run.runId) ?? 0) < UNREADABLE_LOG_MS)
+      return;
+    unreadableLogged.set(run.runId, now);
+    log.error("Reading a run's latest event failed", {
+      runId: run.runId,
+      ...errorCode(error),
+      ...requestErrorMetadata(error),
+    });
+  }
+
+  // A failed run's own failure message stands in for an event that cannot be read.
+  async function failureEvent(run: ProjectRun) {
+    if (run.address === null) return null;
+    try {
+      return await latestEvent(run);
+    } catch (error) {
+      logUnreadable(run, error);
+      return null;
+    }
+  }
+
   async function failureReason(run: ProjectRun) {
-    const event =
-      run.address === null ? null : await latestEvent(run).catch(() => null);
+    const event = await failureEvent(run);
     const error = event?.body["error"];
     const message =
       typeof error === "object" && error !== null && "message" in error

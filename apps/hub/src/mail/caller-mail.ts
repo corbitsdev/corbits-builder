@@ -1,6 +1,7 @@
 import type { Context } from "hono";
 import type { TenantEnv } from "@intx/hub-api";
 import { ProjectError } from "../projects/errors.ts";
+import { readJson } from "../lib/json.ts";
 
 // Mail the hub sends on the person's behalf goes through the native run mail route with the
 // person's own credentials, exactly as the UI sends a message.
@@ -29,7 +30,7 @@ export async function mailRunAsCaller(
     }),
   );
   if (response.ok) return;
-  const payload: unknown = await response.json().catch(() => null);
+  const payload: unknown = await readJson(response);
   const upstream =
     payload !== null && typeof payload === "object" && "error" in payload
       ? payload.error

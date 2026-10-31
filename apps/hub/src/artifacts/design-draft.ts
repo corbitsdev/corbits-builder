@@ -3,7 +3,9 @@ import { open, realpath } from "node:fs/promises";
 import { dirname, join } from "node:path";
 import { type } from "arktype";
 import { workflowRunRepoIdForAddress } from "@intx/hub-sessions";
+import { hasCode } from "@intx/types";
 import { packApp } from "../builds/app-snapshot.ts";
+import { parseJson } from "../lib/json.ts";
 import { ProjectError } from "../projects/errors.ts";
 import { DESIGN_STYLES } from "./design-tweaks.ts";
 import { designStarterFiles } from "@corbits-builder/designer/skills" with { type: "macro" };
@@ -28,9 +30,6 @@ export function warmStepWorkspace(
   );
 }
 
-const isMissing = (error: unknown) =>
-  error instanceof Error && "code" in error && error.code === "ENOENT";
-
 // The mockup the designer is writing, keyed as the design bundle keys it (designs/...), or
 // undefined until it has an index.html. Neither .builder nor designs may be a symlink, and
 // packApp reads only regular files, so nothing outside .builder/designs is served.
@@ -41,7 +40,7 @@ export async function readDesignDraft(workspace: string) {
   try {
     actual = await realpath(designs);
   } catch (error) {
-    if (isMissing(error)) return undefined;
+    if (hasCode(error) && error.code === "ENOENT") return undefined;
     throw error;
   }
   if (actual !== join(await realpath(workspace), ".builder", "designs"))
@@ -89,17 +88,14 @@ async function readWorkspaceText(
     )
       return undefined;
   } catch (error) {
-    if (isMissing(error)) return undefined;
+    if (hasCode(error) && error.code === "ENOENT") return undefined;
     throw error;
   }
   let file;
   try {
     file = await open(target, constants.O_RDONLY | constants.O_NOFOLLOW);
   } catch (error) {
-    if (
-      isMissing(error) ||
-      (error instanceof Error && "code" in error && error.code === "ELOOP")
-    )
+    if (hasCode(error) && (error.code === "ENOENT" || error.code === "ELOOP"))
       return undefined;
     throw error;
   }
@@ -165,13 +161,7 @@ export function demoLogin(files: Readonly<Record<string, string>>) {
   const text = files[DEMO_ACCOUNT];
   if (text === undefined || text.length > MAX_DEMO_ACCOUNT_BYTES)
     return undefined;
-  let json: unknown;
-  try {
-    json = JSON.parse(text);
-  } catch {
-    return undefined;
-  }
-  const account = DemoAccount(json);
+  const account = DemoAccount(parseJson(text));
   return account instanceof type.errors
     ? undefined
     : { email: account.email, password: account.password };

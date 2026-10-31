@@ -21,7 +21,7 @@ import {
 import { withCommittedAgentState } from "./committed-agent-state.ts";
 import type { CoordinatorRepoDirSource } from "./coordinator-question.ts";
 import { getLogger } from "@intx/log";
-import { requestErrorMetadata } from "../request-error.ts";
+import { errorCode, requestErrorMetadata } from "../request-error.ts";
 
 const log = getLogger(["corbits-builder", "hub", "conversation-turns"]);
 
@@ -119,17 +119,21 @@ export async function readDurableConversationTurns(input: {
             for (const turn of snapshot.turns) collected.push(turn);
           } catch (error) {
             // One damaged agent mirror must not drop the other agents' turns.
-            log.error(
-              "Agent conversation mirror unreadable",
-              requestErrorMetadata(error),
-            );
+            log.error("Agent conversation mirror unreadable", {
+              ...errorCode(error),
+              ...requestErrorMetadata(error),
+            });
           }
         }
         return collected;
       },
     );
     return mapMirrorConversationTurns(turns ?? []);
-  } catch {
+  } catch (error) {
+    log.warn("Durable conversation unreadable", {
+      ...errorCode(error),
+      ...requestErrorMetadata(error),
+    });
     return [];
   }
 }

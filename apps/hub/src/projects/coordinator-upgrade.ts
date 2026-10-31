@@ -18,6 +18,7 @@ import { spawnedWorkflowRole } from "../workflows/spawn-role.ts";
 import { MODEL_CHOICE_REFUSALS } from "../config/models.ts";
 import { project, projectCoordinator } from "../db/schema.ts";
 import type { Actor } from "../lib/actor.ts";
+import { settle } from "../lib/serial-queue.ts";
 import { requestErrorMetadata } from "../request-error.ts";
 import { ProjectError } from "./errors.ts";
 
@@ -215,12 +216,15 @@ export function createCoordinatorUpgrades(deps: {
   function upgradeOnce(projectId: string, tenantId: string, opener?: Actor) {
     const pending = inflight.get(projectId);
     if (pending && (pending.opened || !opener)) return pending.work;
-    const work: Promise<void> = (pending?.work ?? Promise.resolve())
-      .catch(() => undefined)
-      .then(() => upgrade(projectId, tenantId, opener))
-      .finally(() => {
+    async function upgradeAfterPending(): Promise<void> {
+      try {
+        await settle(pending?.work);
+        await upgrade(projectId, tenantId, opener);
+      } finally {
         if (inflight.get(projectId)?.work === work) inflight.delete(projectId);
-      });
+      }
+    }
+    const work = upgradeAfterPending();
     inflight.set(projectId, { opened: opener !== undefined, work });
     return work;
   }

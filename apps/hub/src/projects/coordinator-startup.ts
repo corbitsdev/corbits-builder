@@ -114,11 +114,14 @@ function createProjectCoordinatorStartup(ports: CoordinatorStartupPorts) {
       const key = startKey(actor.tenantId, projectId);
       const pending = inflight.get(key);
       if (pending) return pending;
-      const work = attach(ports, deployed, key, actor, projectId).finally(
-        () => {
+      async function attachOnce() {
+        try {
+          return await attach(ports, deployed, key, actor, projectId);
+        } finally {
           inflight.delete(key);
-        },
-      );
+        }
+      }
+      const work = attachOnce();
       inflight.set(key, work);
       return work;
     },
@@ -128,10 +131,9 @@ function createProjectCoordinatorStartup(ports: CoordinatorStartupPorts) {
       deployed.delete(startKey(actor.tenantId, projectId));
       return ports.unbind(actor.tenantId, projectId);
     },
-    attached(actor: Actor, projectId: string): Promise<boolean> {
-      return ports
-        .boundRun(actor.tenantId, projectId)
-        .then((row) => row !== null && !row.ended);
+    async attached(actor: Actor, projectId: string): Promise<boolean> {
+      const row = await ports.boundRun(actor.tenantId, projectId);
+      return row !== null && !row.ended;
     },
   };
 }

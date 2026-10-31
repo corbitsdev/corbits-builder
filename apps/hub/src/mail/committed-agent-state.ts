@@ -3,11 +3,14 @@ import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { pipeline } from "node:stream";
+import { getLogger } from "@intx/log";
+import { errorCode, requestErrorMetadata } from "../request-error.ts";
 
 // Same ref the workflow-run pack receive updates. That receive stores objects
 // and advances the ref; it does not check the worktree out. A reader that
 // walks the working tree sees an empty mirror after a successful pack.
 const MIRROR_REF = "refs/heads/main";
+const log = getLogger(["corbits-builder", "hub", "agent-state"]);
 
 function capture(args: string[]): Promise<{ code: number; stdout: string }> {
   return new Promise((resolve, reject) => {
@@ -38,7 +41,13 @@ function extractArchive(repoDir: string, dest: string): Promise<number> {
     extract.stderr.resume();
     // A tar that exits early breaks the pipe; both exit codes report that, while an unhandled
     // EPIPE would take the hub down and a bare pipe() would leave git blocked on a full pipe.
-    pipeline(archive.stdout, extract.stdin, () => {});
+    pipeline(archive.stdout, extract.stdin, function logPipeFailure(error) {
+      if (error)
+        log.warn("Copying the committed agent state failed", {
+          ...requestErrorMetadata(error),
+          ...errorCode(error),
+        });
+    });
     let settled = false;
     const fail = (error: Error) => {
       if (settled) return;
