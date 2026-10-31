@@ -12,9 +12,13 @@ export const ReadSkill = type({
 // fit; a designer reading back a spilled 12000-character SKILL.md never reached its end.
 const PART_CHARS = 8000;
 
-export const describeSkill = (skills: Skills, name: string) =>
-  skills[name]?.["SKILL.md"]?.match(/^description:\s*(.+)$/m)?.[1]?.trim() ??
-  "";
+export function describeSkill(skills: Skills, name: string): string {
+  const description = skills[name]?.["SKILL.md"]
+    ?.match(/^description:\s*(.+)$/m)?.[1]
+    ?.trim();
+  if (!description) throw new Error(`skill ${name} has no description`);
+  return description;
+}
 
 export function readSkill(
   skills: Skills,
