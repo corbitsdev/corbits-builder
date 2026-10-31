@@ -1,0 +1,1 @@
+ALTER TABLE "owner_assignment" ADD COLUMN "coding_prepared" jsonb;

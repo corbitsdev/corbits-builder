@@ -1,0 +1,1 @@
+CREATE INDEX "sb_outbox_project_time_id_idx" ON "outbox" USING btree ("project_id","occurred_at","id");

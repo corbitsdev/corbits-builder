@@ -1,0 +1,1 @@
+ALTER TABLE "project" ADD COLUMN "plan" jsonb DEFAULT '{"schemaVersion":1,"outcomes":[],"deliverables":[],"checklist":[],"references":[],"blockers":[]}'::jsonb NOT NULL;

@@ -1,0 +1,1 @@
+ALTER TABLE "owner_assignment" ADD COLUMN "context_sha256" text;

@@ -1,0 +1,1 @@
+ALTER TABLE "artifact_version" ADD COLUMN "output_template" jsonb;

@@ -1,0 +1,1 @@
+ALTER TABLE "artifact_version" ADD COLUMN "section_anchors" text[] DEFAULT ARRAY[]::text[] NOT NULL;
