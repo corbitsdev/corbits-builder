@@ -1,7 +1,7 @@
 import { mkdir, readFile, writeFile, lstat } from "node:fs/promises";
 import { join } from "node:path";
 import { derivePublicKeyBytes, generateKeyPair } from "@intx/crypto";
-import { hexDecode, hexEncode } from "@intx/types";
+import { hasCode, hexDecode, hexEncode } from "@intx/types";
 
 export async function loadHubSigningKey(dataDir: string) {
   await mkdir(dataDir, { recursive: true, mode: 0o700 });
@@ -13,8 +13,7 @@ export async function loadHubSigningKey(dataDir: string) {
       mode: 0o600,
     });
   } catch (error) {
-    if (!(error instanceof Error && "code" in error && error.code === "EEXIST"))
-      throw error;
+    if (!(hasCode(error) && error.code === "EEXIST")) throw error;
   }
   const info = await lstat(file);
   if (!info.isFile() || (info.mode & 0o077) !== 0) {
