@@ -199,12 +199,13 @@ export function slideRegions(slide: Slide) {
 
 type Path = (string | number)[];
 
-const pathString = (path: Path) =>
-  path
-    .map((key, index) =>
-      typeof key === "number" ? `[${key}]` : index === 0 ? key : `.${key}`,
-    )
-    .join("");
+function pathKey(key: string | number, index: number) {
+  if (typeof key === "number") return `[${key}]`;
+  if (index === 0) return key;
+  return `.${key}`;
+}
+
+const pathString = (path: Path) => path.map(pathKey).join("");
 
 function issueAt(path: Path, message: string): DeckIssue {
   const [, slide] = path;
