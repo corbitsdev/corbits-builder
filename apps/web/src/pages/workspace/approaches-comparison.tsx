@@ -68,6 +68,9 @@ export function ApproachesComparison({
               key={approach.id}
               className="approach-card"
               {...(recommended ? { "data-recommended": "" } : {})}
+              {...(picked || choosing === approach.id
+                ? { "data-chosen": "" }
+                : {})}
             >
               <CardHeader>
                 <div className="approach-badges">
