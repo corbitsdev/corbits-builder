@@ -23,8 +23,10 @@ and checks what it gets with [`packages/schemas`][schemas].
 - `src/handoff.ts`: one function per tool.
 - `src/definitions.ts`: the tool definitions and their input schemas.
 - `src/project-hub.ts`: the project's hub routes and specialist deploys.
+- `src/documents.ts`: the filed documents a hand-off requires.
+- `src/start-once.ts`: one start at a time per specialist.
 - `src/approvals.ts`: the approvable documents and `awaitingApproval`.
-- `src/refusal.ts`: the refusals the model sees.
+- `src/refusal.ts`: `Refusal`, the refusals the model sees.
 
 ## Working on it
 

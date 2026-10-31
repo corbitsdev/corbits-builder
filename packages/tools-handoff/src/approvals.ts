@@ -15,8 +15,8 @@ export const DOCUMENT_ORDER = [
 /** The filed documents waiting on the person's request_approval at their current version. */
 export function awaitingApproval<
   T extends { kind: string; version: number; approvedVersion?: number },
->(filed: readonly T[], agentDecidesApprovals: boolean): T[] {
-  if (agentDecidesApprovals) return [];
+>(filed: readonly T[], agentApproves: boolean): T[] {
+  if (agentApproves) return [];
   return filed.filter(
     (item) =>
       (APPROVABLE as readonly string[]).includes(item.kind) &&

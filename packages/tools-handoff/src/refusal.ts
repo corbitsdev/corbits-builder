@@ -15,26 +15,6 @@ export const notApproved = (kind: string, version: number) =>
         : "; ask them with request_approval"),
   );
 
-// A turn's tool calls run concurrently (INFERENCE.md "Parallel execution"), so two starts of one
-// unbounded role in the same turn would both find it missing from inFlight.
-const starting = new Set<string>();
-export async function startOnce<T>(
-  key: string,
-  role: string,
-  start: () => Promise<T>,
-): Promise<T> {
-  if (starting.has(key))
-    throw new Refusal(
-      role + "_starting: a " + role + " is already starting for this project",
-    );
-  starting.add(key);
-  try {
-    return await start();
-  } finally {
-    starting.delete(key);
-  }
-}
-
 export function validArguments<T>(
   schema: { assert: (value: unknown) => T },
   value: unknown,
@@ -61,11 +41,9 @@ function hubRefusal(error: WorkflowHttpError): string {
   );
 }
 
-export const refusalText = (error: unknown) =>
-  error instanceof Refusal
-    ? error.message
-    : error instanceof WorkflowHttpError
-      ? hubRefusal(error)
-      : error instanceof Error
-        ? error.name + ": " + error.message
-        : String(error);
+export function refusalText(error: unknown): string {
+  if (error instanceof Refusal) return error.message;
+  if (error instanceof WorkflowHttpError) return hubRefusal(error);
+  if (error instanceof Error) return error.name + ": " + error.message;
+  return String(error);
+}

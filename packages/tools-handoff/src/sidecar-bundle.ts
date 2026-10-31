@@ -70,7 +70,7 @@ export function createDeployTools(
           try {
             return {
               callId: call.id,
-              content: askQuestions(call.arguments, config),
+              content: askQuestions(call.arguments, { config }),
             };
           } catch (error) {
             return {

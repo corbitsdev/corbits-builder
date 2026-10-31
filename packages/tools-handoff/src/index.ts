@@ -17,4 +17,4 @@ export {
   type HandoffDeps,
 } from "./handoff.ts";
 export { projectHub, type ProjectHub } from "./project-hub.ts";
-export { refusalText } from "./refusal.ts";
+export { Refusal, refusalText } from "./refusal.ts";

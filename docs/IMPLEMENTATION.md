@@ -74,7 +74,7 @@ run's own credential:
 - hand-offs and decisions: `request_approval`, `ask_questions`,
   `deploy_writer`, `review_artifact`, `design_app`, `deploy_coder`,
   `instruct_coder`
-  ([apps/hub/src/projects/deploy-tools.ts](https://github.com/corbitsdev/corbits-builder/blob/main/apps/hub/src/projects/deploy-tools.ts));
+  ([packages/tools-handoff](https://github.com/corbitsdev/corbits-builder/tree/main/packages/tools-handoff));
 - design filing: `file_design_option`
   ([packages/tools-design](https://github.com/corbitsdev/corbits-builder/tree/main/packages/tools-design));
 - skills: `read_skill`

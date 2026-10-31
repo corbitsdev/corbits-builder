@@ -17,14 +17,17 @@ import {
   RequestApproval,
   ReviewArtifact,
 } from "./definitions.ts";
-import { inputs, refsOf, required, type ProjectHub } from "./project-hub.ts";
+import { inputs, refsOf, required } from "./documents.ts";
+import type { ProjectHub } from "./project-hub.ts";
 import {
   notApproved,
   Refusal,
   refusalText,
-  startOnce,
   validArguments,
 } from "./refusal.ts";
+import { startOnce } from "./start-once.ts";
+
+const NEW_DOCUMENT_VERSION = 0;
 
 // What a hand-off needs besides its arguments: the host's config, the run's project and its hub
 // routes, and the tool call it answers.
@@ -37,7 +40,7 @@ export interface HandoffDeps {
 
 export function askQuestions(
   args: unknown,
-  config: Pick<HandoffConfig, "questionsAsked">,
+  { config }: Pick<HandoffDeps, "config">,
 ): string {
   const issue = askQuestionsIssue(validArguments(AskQuestions, args));
   if (issue) throw new Refusal("invalid_questions: " + issue);
@@ -113,6 +116,7 @@ export async function deployWriter(
       throw notApproved(kind, ref.version);
   }
   const target = byKind.get(input.kind);
+  const expectedVersion = target ? target.version : NEW_DOCUMENT_VERSION;
   const sourceRefs = [...byKind]
     .filter(
       ([kind]) =>
@@ -131,7 +135,7 @@ export async function deployWriter(
         kind: input.kind,
         briefRef,
         sourceRefs,
-        output: { expectedVersion: target?.version ?? 0 },
+        output: { expectedVersion },
         instruction:
           input.kind === "build_plan"
             ? input.instruction +
