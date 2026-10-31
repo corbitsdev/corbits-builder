@@ -139,6 +139,11 @@ export function createSpecialistEndNotices(deps: {
         nextAttemptAt: new Date(now.getTime() + delay(attempts)),
       };
     };
+    const undelivered = (status: number) => {
+      if (status === 409) return retry(coordinatorWaitDelay);
+      if (status < 500) return settled(false);
+      return retry(mailRetryDelay);
+    };
     // A notice settled already stays settled.
     const record = (state: ReturnType<typeof settled | typeof retry>) =>
       db
@@ -232,13 +237,7 @@ export function createSpecialistEndNotices(deps: {
       const status = error instanceof HubMailError ? error.status : 500;
       await db
         .update(endedRun)
-        .set(
-          status === 409
-            ? retry(coordinatorWaitDelay)
-            : status < 500
-              ? settled(false)
-              : retry(mailRetryDelay),
-        )
+        .set(undelivered(status))
         .where(eq(endedRun.runId, ended.runId));
     }
     return true;
