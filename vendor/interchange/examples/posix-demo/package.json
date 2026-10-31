@@ -1,0 +1,23 @@
+{
+  "name": "@intx/example-posix-demo",
+  "description": "Example: two agents relaying over in-process mail with POSIX and mail tools",
+  "version": "0.5.0",
+  "license": "LGPL-2.1-only",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "start": "bun --conditions=intx-src run src/cli.ts"
+  },
+  "dependencies": {
+    "@intx/agent": "workspace:*",
+    "@intx/crypto": "workspace:*",
+    "@intx/harness": "workspace:*",
+    "@intx/inference": "workspace:*",
+    "@intx/log": "workspace:*",
+    "@intx/mail-memory": "workspace:*",
+    "@intx/storage-isogit": "workspace:*",
+    "@intx/tools-mail": "workspace:*",
+    "@intx/tools-posix": "workspace:*",
+    "@intx/types": "workspace:*"
+  }
+}

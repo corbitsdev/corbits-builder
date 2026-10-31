@@ -1,0 +1,947 @@
+// Lookups that the sidecar wire layer issues against host state. These
+// are queries (one answer per question) rather than events (broadcast
+// notifications), so they live separately from the event emitter.
+//
+// Each lookup is a stateless DB or repo call. They are gathered into a
+// single struct that the hub app passes to `createSidecarRouter` as
+// `lookups`.
+
+import { eq, and, asc, inArray, isNotNull, isNull } from "drizzle-orm";
+import type { DB } from "@intx/db";
+import {
+  createApprovalStore,
+  createSignalCorrelationStore,
+  createWorkflowPendingProjectionStore,
+  createWorkflowRunStore,
+} from "@intx/db";
+import {
+  agentSession,
+  liveWorkflowRunStatuses,
+  isLiveWorkflowRunStatus,
+  sessionMail,
+  sidecarAllocation,
+  workflowRun,
+} from "@intx/db/schema";
+import { getLogger } from "@intx/log";
+import type { PackRejectReason } from "@intx/types/sidecar";
+import { signalName } from "@intx/types/signals";
+import { deriveWorkflowRunId } from "@intx/types/workflow-run-id";
+import { deriveWorkflowRunRepoId } from "@intx/workflow-deploy";
+
+import type { AgentRepoStore } from "./agent-repo";
+import { generateId } from "@intx/hub-common";
+import { RepoRemovedDuringReceiveError } from "./repo-store";
+import type {
+  SidecarLookups,
+  WorkflowRunPackSource,
+} from "./ws/sidecar-events";
+import { createWorkflowDispatchProjection } from "./workflow-dispatch-projection";
+import type { WorkflowHistoryReceiveTracker } from "./workflow-history-receives";
+import { readWorkflowRunRefTips } from "./workflow-run-restore";
+import { projectTerminalRun } from "./workflow-run-terminal-projection";
+
+const logger = getLogger(["hub", "lookups"]);
+
+// The one definition of a source that owns the deployment's allocation. The
+// unlocked pre-check and the locked recheck of a workflow-run receive both
+// use it, so the two cannot disagree.
+function sourceOwnsAllocation(
+  allocation: typeof sidecarAllocation.$inferSelect | undefined,
+  source: WorkflowRunPackSource,
+  anchorRunId: string,
+): boolean {
+  return (
+    allocation !== undefined &&
+    allocation.id === source.allocationId &&
+    allocation.anchorRunId === source.anchorRunId &&
+    source.anchorRunId === anchorRunId &&
+    allocation.status === "allocated" &&
+    allocation.generation === source.generation &&
+    allocation.ensureAcceptedGeneration === source.generation
+  );
+}
+
+// Maps a failure from either step of a workflow-run receive, prepare or the
+// locked commit, to the reason the sidecar gets, and logs it.
+function packFailureReason(
+  workflowRunRepoId: string,
+  err: unknown,
+): PackRejectReason {
+  if (err instanceof RepoRemovedDuringReceiveError) {
+    // The repository was removed during the receive, so the pack is not
+    // at fault.
+    logger.warn`Workflow-run pack rejected for ${workflowRunRepoId}: the repository was removed during the receive`;
+    return "path_violation";
+  }
+  const msg = err instanceof Error ? err.message : String(err);
+  if (msg.startsWith("path_violation")) {
+    logger.warn`Workflow-run pack rejected for ${workflowRunRepoId}: ${msg}`;
+    return "path_violation";
+  }
+  // Mirror the agent-state branch's catch-all: any other failure
+  // (transaction failures, filesystem races, a staged pack whose bytes do
+  // not match its tip, kind-handler diagnostics surfaced as Error messages,
+  // etc.) becomes a structured `corrupt` rejection so the sender can
+  // re-push, and the underlying error is logged so the cause stays traceable
+  // on the hub side.
+  logger.error`Workflow-run pack receive failed for ${workflowRunRepoId}: ${msg}`;
+  return "corrupt";
+}
+
+export type HubSessionLookupsDeps = {
+  db: DB["db"];
+  agentRepoStore: AgentRepoStore;
+  historyReceives: WorkflowHistoryReceiveTracker;
+};
+
+export function createHubSessionLookups(
+  deps: HubSessionLookupsDeps,
+): Required<
+  Omit<
+    SidecarLookups,
+    | "materializeMailTriggeredRunGrants"
+    | "mintCorrespondentGrant"
+    | "resyncCredentials"
+    | "loadRunCredentials"
+    | "resolveSenderKey"
+    | "resolveSenderKeyStrict"
+    | "resolveSenderPrincipal"
+  >
+> {
+  const { db, agentRepoStore, historyReceives } = deps;
+
+  const signalCorrelationStore = createSignalCorrelationStore(db);
+  const approvalStore = createApprovalStore(db);
+  const workflowRunStore = createWorkflowRunStore(db);
+  const pendingProjections = createWorkflowPendingProjectionStore(db);
+  const dispatchProjection = createWorkflowDispatchProjection({
+    db,
+    repoStore: agentRepoStore.repoStore,
+  });
+
+  return {
+    async lookupDeployRef() {
+      // A workflow run is a supervised workflow-process pinned forever like a
+      // native deployment: it keeps its deploy-time definition and never
+      // reconciles, so no address enrolls in the reconnect deploy-ref catch-up.
+      return null;
+    },
+
+    readWorkflowRunRefTips(agentAddress) {
+      return readWorkflowRunRefTips(agentRepoStore.repoStore, agentAddress);
+    },
+
+    async isWorkflowRunHistoryFinal(source) {
+      return db.transaction(async (tx) => {
+        // Match receive admission: a receive moves Git only while it holds
+        // the allocation lock, so this lock waits for any receive that is
+        // moving Git. A terminal anchor rejects every later receive at its
+        // locked recheck, including one that is still validating now.
+        const [allocation] = await tx
+          .select()
+          .from(sidecarAllocation)
+          .where(
+            and(
+              eq(sidecarAllocation.id, source.allocationId),
+              eq(sidecarAllocation.anchorRunId, source.anchorRunId),
+              eq(sidecarAllocation.status, "allocated"),
+              eq(sidecarAllocation.generation, source.generation),
+              eq(sidecarAllocation.ensureAcceptedGeneration, source.generation),
+            ),
+          )
+          .for("update");
+        if (allocation === undefined) return false;
+        const [anchor] = await tx
+          .select({ status: workflowRun.status })
+          .from(workflowRun)
+          .where(
+            and(
+              eq(workflowRun.id, source.anchorRunId),
+              eq(workflowRun.anchorRunId, source.anchorRunId),
+              eq(workflowRun.address, source.agentAddress),
+            ),
+          );
+        if (anchor === undefined || isLiveWorkflowRunStatus(anchor.status))
+          return false;
+        const pending = await pendingProjections.list(source.anchorRunId, tx);
+        return !pending.some(({ id }) => historyReceives.isInFlight(id));
+      });
+    },
+
+    async persistMail({ senderAddress, recipients, raw }) {
+      // The sender and recipients are run addresses, each backed by its
+      // self-anchored workflow_run; resolve each through the resolver. A mail
+      // record's `runId` is always null for a run -- it keys on the run's
+      // session instead.
+      const sender = await resolveRoutableAddress(db, senderAddress);
+      if (sender === undefined) {
+        throw new Error(
+          `No active endpoint found for sender address "${senderAddress}"`,
+        );
+      }
+      if (sender.sessionId === null) {
+        throw new Error(
+          `Endpoint ${sender.id} has no session for address "${senderAddress}"`,
+        );
+      }
+      const createdAt = new Date();
+      const senderRunId = null;
+
+      // Outbound record on the sender's session.
+      const outboundId = generateId("sessionMail");
+      const outboundRecord = {
+        id: outboundId,
+        sessionId: sender.sessionId,
+        runId: senderRunId,
+        tenantId: sender.tenantId,
+        direction: "outbound" as const,
+        status: "delivered" as const,
+        raw,
+        createdAt,
+      };
+
+      // Inbound records for each recipient that is a live endpoint.
+      // Recipients that are not (e.g. human user addresses) are skipped.
+      const recipientResults = await Promise.all(
+        recipients.map(async (addr) => {
+          const endpoint = await resolveRoutableAddress(db, addr);
+          if (endpoint === undefined) {
+            return null;
+          }
+          if (endpoint.sessionId === null) {
+            logger.warn`Active endpoint ${endpoint.id} for "${addr}" has no session; skipping inbound record`;
+            return null;
+          }
+          return { addr, endpoint, sessionId: endpoint.sessionId };
+        }),
+      );
+      const recipientEndpoints = recipientResults.filter(
+        (r): r is NonNullable<typeof r> => r !== null,
+      );
+
+      const inboundEntries = recipientEndpoints.map(
+        ({ addr, endpoint, sessionId }) => {
+          const id = generateId("sessionMail");
+          // A folded run is not an instance, so its mail records no runId.
+          const runId = null;
+          return {
+            record: {
+              id,
+              sessionId,
+              runId,
+              tenantId: endpoint.tenantId,
+              direction: "inbound" as const,
+              status: "delivered" as const,
+              raw,
+              createdAt,
+            },
+            result: {
+              id,
+              direction: "inbound" as const,
+              runId,
+              address: addr,
+              createdAt,
+            },
+          };
+        },
+      );
+
+      await db
+        .insert(sessionMail)
+        .values([outboundRecord, ...inboundEntries.map((e) => e.record)]);
+
+      return [
+        {
+          id: outboundId,
+          direction: "outbound" as const,
+          runId: senderRunId,
+          address: sender.address,
+          createdAt,
+        },
+        ...inboundEntries.map((e) => e.result),
+      ];
+    },
+
+    async registerSignalCorrelation({
+      correlationId,
+      runId,
+      anchorRunId,
+      agentAddress,
+      kind,
+      approvalSnapshot,
+    }) {
+      // Resolve tenancy and co-write both rows in one transaction so a resolver
+      // never sees a correlation without its approval or vice versa. Both
+      // inserts are idempotent on their dedup key (the signal_correlation
+      // primary key and the approval's unique correlationId), so a redelivered
+      // frame -- sidecar reconnect, workflow-log replay, supervisor restart
+      // re-emitting -- is a no-op rather than a unique-violation. `timeoutAt` is
+      // null: an agent-step suspend holds indefinitely (`parkOnSignal` is called
+      // with no timeout), so no deadline reaches this co-write.
+      await db.transaction(async (tx) => {
+        // Resolve tenancy and the run's definition from the deployment's anchor
+        // run -- the workflow_run whose id is the deployment id, which the
+        // address names. The anchor is the tenancy origin every approval needs
+        // (an approval has no agent_instance/agent/principal referent). The
+        // lookup keys off `address` (the field the wire layer's ownership gate
+        // authorized), not the frame's `anchorRunId`: that is the workflow-run
+        // repo slug the supervisor derives from the address
+        // (`deriveWorkflowRunRepoId`), cross-checked below against the slug
+        // re-derived from `agentAddress` rather than against the row id. A
+        // mismatch fails loud instead of silently writing an inconsistent pair.
+        // The FK columns take the anchor run's id (= the deployment id), which
+        // is what `signal_correlation.anchor_run_id` and `approval.anchor_run_id`
+        // reference.
+        //
+        // The resolution takes a `FOR UPDATE` row lock and runs inside the
+        // co-write transaction, gated on a live anchor run ("deployed" or
+        // "running"), so the liveness check and the inserts are atomic against a
+        // concurrent teardown that flips the anchor run terminal. The lock order
+        // is workflow_run before signal_correlation and approval; a teardown
+        // path must take the anchor-run lock before touching those rows to keep
+        // the ordering acyclic.
+        const anchor = await tx
+          .select({
+            id: workflowRun.id,
+            tenantId: workflowRun.tenantId,
+            definitionId: workflowRun.definitionId,
+          })
+          .from(workflowRun)
+          .where(
+            and(
+              eq(workflowRun.address, agentAddress),
+              inArray(workflowRun.status, [...liveWorkflowRunStatuses]),
+            ),
+          )
+          .for("update")
+          .limit(1)
+          .then((rows) => rows[0]);
+        if (anchor === undefined) {
+          throw new Error(
+            `No live workflow run for address "${agentAddress}"; cannot register signal correlation ${correlationId}`,
+          );
+        }
+        const addressSlug = deriveWorkflowRunRepoId(agentAddress);
+        if (addressSlug !== anchorRunId) {
+          throw new Error(
+            `Anchor run id mismatch registering signal correlation ${correlationId}: frame claims "${anchorRunId}" but address "${agentAddress}" derives the workflow-run repo slug "${addressSlug}"`,
+          );
+        }
+        const tenantId = anchor.tenantId;
+        const definitionId = anchor.definitionId;
+
+        // Lazily anchor the run before its correlation and approval reference
+        // it. A workflow-spawned internal run never crosses the external
+        // trigger route that mints a run principal, so its run row would
+        // otherwise not exist; ensure it here so the co-written rows have a
+        // referent. The principal is null: an internal run inherits its
+        // deployment's grants and has no principal of its own. The insert is
+        // idempotent on the run id, so a redelivered register frame -- the same
+        // redelivery the co-writes below tolerate -- is a no-op.
+        await workflowRunStore.createIfAbsent(
+          {
+            id: runId,
+            anchorRunId: anchor.id,
+            definitionId,
+            tenantId,
+            principalId: null,
+            status: "running",
+          },
+          tx,
+        );
+
+        await signalCorrelationStore.registerIfAbsent(
+          {
+            correlationId,
+            tenantId,
+            anchorRunId: anchor.id,
+            agentAddress,
+            runId,
+            signalName: signalName(correlationId),
+            kind,
+          },
+          tx,
+        );
+        await approvalStore.createIfAbsent(
+          {
+            id: generateId("approval"),
+            tenantId,
+            anchorRunId: anchor.id,
+            runId,
+            agentAddress,
+            correlationId,
+            status: "pending",
+            // The register frame guarantees the snapshot (the ask rail is its
+            // only producer), so the approver-facing columns are always
+            // populated -- never null on this path.
+            toolDefinition: {
+              name: approvalSnapshot.name,
+              description: approvalSnapshot.description,
+              inputSchema: approvalSnapshot.inputSchema,
+            },
+            toolArguments: approvalSnapshot.arguments,
+            scope: null,
+            timeoutAt: null,
+          },
+          tx,
+        );
+      });
+    },
+
+    async receiveAgentStatePack(repoId, pack, ref, commitSha) {
+      if (repoId.kind !== "agent-state") {
+        throw new Error(
+          `hub-session lookups receiveAgentStatePack received unsupported repo kind ${JSON.stringify(repoId.kind)}`,
+        );
+      }
+      const agentAddress = repoId.id;
+      const agentId = deriveWorkflowRunId(agentAddress);
+      try {
+        await agentRepoStore.receiveAgentStatePack(
+          { kind: "agent-state", id: agentId },
+          pack,
+          ref,
+          commitSha,
+        );
+      } catch (err) {
+        const msg = err instanceof Error ? err.message : String(err);
+        if (msg.startsWith("path_violation")) {
+          logger.warn`State pack rejected for ${agentAddress}: ${msg}`;
+          return { accepted: false, reason: "path_violation" as const };
+        }
+        // Any other failure from the repo subsystem reaches the
+        // WebSocket handler as an unhandled rejection unless we catch
+        // it here. Transient failures during receivePack (the agent
+        // directory being torn down concurrently with an in-flight
+        // pack write, filesystem errors mid-rename, etc.) are
+        // recoverable from the sender's perspective — the sender can
+        // re-push. Surface every such failure as a structured pack
+        // rejection (`corrupt` is the closest existing reason — from
+        // the sender's perspective the pack failed to index) and log
+        // the underlying error so the cause stays traceable on the
+        // hub side.
+        logger.error`State pack receive failed for ${agentAddress}: ${msg}`;
+        return { accepted: false, reason: "corrupt" as const };
+      }
+      return { accepted: true };
+    },
+
+    async receiveWorkflowRunPack(repoId, pack, ref, commitSha, source) {
+      if (repoId.kind !== "workflow-run") {
+        throw new Error(
+          `hub-session lookups receiveWorkflowRunPack received unsupported repo kind ${JSON.stringify(repoId.kind)}`,
+        );
+      }
+      const workflowRunRepoId = repoId.id;
+      if (deriveWorkflowRunRepoId(source.agentAddress) !== workflowRunRepoId) {
+        logger.warn`Workflow-run pack rejected for ${workflowRunRepoId}: source address does not own the repository`;
+        return { accepted: false, reason: "path_violation" as const };
+      }
+      const [anchor] = await db
+        .select({
+          id: workflowRun.id,
+          address: workflowRun.address,
+          anchorRunId: workflowRun.anchorRunId,
+          tenantId: workflowRun.tenantId,
+          definitionId: workflowRun.definitionId,
+          createdAt: workflowRun.createdAt,
+        })
+        .from(workflowRun)
+        .where(
+          and(
+            eq(workflowRun.address, source.agentAddress),
+            inArray(workflowRun.status, [...liveWorkflowRunStatuses]),
+            isNotNull(workflowRun.definitionId),
+          ),
+        )
+        .limit(1);
+      if (
+        anchor === undefined ||
+        anchor.anchorRunId !== anchor.id ||
+        anchor.address === null
+      ) {
+        logger.warn`Workflow-run pack rejected for ${workflowRunRepoId}: source address has no live deployment anchor`;
+        return { accepted: false, reason: "path_violation" as const };
+      }
+      // An unlocked read, so a fenced or stale source is turned away
+      // before it stages or validates anything. It decides nothing on its
+      // own: the same check runs again under the allocation lock before
+      // Git moves.
+      const [unlockedAllocation] = await db
+        .select()
+        .from(sidecarAllocation)
+        .where(eq(sidecarAllocation.anchorRunId, anchor.id))
+        .limit(1);
+      if (!sourceOwnsAllocation(unlockedAllocation, source, anchor.id)) {
+        logger.warn`Workflow-run pack rejected for ${workflowRunRepoId}: source connection does not own the deployment's current allocation`;
+        return { accepted: false, reason: "path_violation" as const };
+      }
+      // The repository must exist before the row does. Recovery reads a
+      // missing repository as lost history and a ref-less one as a receive
+      // that never advanced Git, so a crash between the two must leave the
+      // latter.
+      try {
+        await agentRepoStore.repoStore.initRepo(repoId);
+      } catch (err) {
+        const msg = err instanceof Error ? err.message : String(err);
+        logger.error`Workflow-run pack receive failed for ${workflowRunRepoId}: cannot initialize repository: ${msg}`;
+        return { accepted: false, reason: "corrupt" as const };
+      }
+      // Validation is the slow step, so it runs with no DB transaction open
+      // and no allocation lock held. It cannot move Git, so a failure here
+      // needs no pending row.
+      let prepared;
+      try {
+        prepared = await agentRepoStore.prepareWorkflowRunPack(
+          repoId,
+          pack,
+          ref,
+          commitSha,
+        );
+      } catch (err) {
+        return {
+          accepted: false,
+          reason: packFailureReason(workflowRunRepoId, err),
+        };
+      }
+      // The ref already holds this tip, so Git stays as it is. The receive
+      // that moved the ref to this tip runs both projections after its own
+      // ref write. When it fails after that write, recovery projects from
+      // Git.
+      if (prepared.kind === "already_applied") return { accepted: true };
+
+      // Recorded before Git can advance: Git acceptance and the run-status
+      // projection below are not atomic, and this row is the only durable
+      // trace of a projection that fails after the ref moves. It is removed
+      // here only when the receive provably left Git unchanged or every run
+      // reached a final decision; otherwise lifecycle recovery reconciles the
+      // deployment from Git and removes it.
+      const pendingId = generateId("workflowPendingProjection");
+      let newlyTerminalRuns;
+      let applied;
+      let reachedGit = false;
+      try {
+        historyReceives.begin(pendingId);
+        try {
+          await pendingProjections.open(pendingId, anchor.id);
+        } catch (err) {
+          const msg = err instanceof Error ? err.message : String(err);
+          logger.error`Workflow-run pack receive failed for ${workflowRunRepoId}: cannot record pending projection: ${msg}`;
+          return { accepted: false, reason: "corrupt" as const };
+        }
+        const received = await db.transaction(async (tx) => {
+          const [allocation] = await tx
+            .select()
+            .from(sidecarAllocation)
+            .where(eq(sidecarAllocation.anchorRunId, anchor.id))
+            .limit(1)
+            .for("update");
+          if (!sourceOwnsAllocation(allocation, source, anchor.id)) {
+            await pendingProjections.close(pendingId, tx);
+            return {
+              rejected:
+                "source connection lost the deployment's current allocation after the unlocked check",
+            } as const;
+          }
+          // Recheck under the lock: the lifecycle service records a run's
+          // outcome while holding this row, and history accepted after that
+          // would contradict the recorded outcome.
+          const [live] = await tx
+            .select({ id: workflowRun.id })
+            .from(workflowRun)
+            .where(
+              and(
+                eq(workflowRun.id, anchor.id),
+                inArray(workflowRun.status, [...liveWorkflowRunStatuses]),
+              ),
+            )
+            .limit(1);
+          if (live === undefined) {
+            await pendingProjections.close(pendingId, tx);
+            return {
+              rejected: `workflow run ${anchor.id} is no longer live`,
+            } as const;
+          }
+
+          // A release advances this same row, and the lifecycle service
+          // records an outcome under its lock. Keep the lock until the ref
+          // decision is made, so ownership cannot change between the
+          // rechecks above and the ref write.
+          reachedGit = true;
+          return { committed: await prepared.commit() } as const;
+        });
+        if ("rejected" in received) {
+          logger.warn`Workflow-run pack rejected for ${workflowRunRepoId}: ${received.rejected}`;
+          return { accepted: false, reason: "path_violation" as const };
+        }
+        applied = received.committed.kind === "applied";
+        newlyTerminalRuns =
+          received.committed.kind === "applied"
+            ? received.committed.newlyTerminalRuns
+            : [];
+      } catch (err) {
+        // A receive that reached Git keeps its pending row: the ref may have
+        // advanced before the failure, so only a Git read can prove nothing was
+        // lost. One that failed earlier provably left Git unchanged, and so
+        // did a commit that found its repository removed: that check runs
+        // before the publish. A row kept for a removed repository would make
+        // recovery report lost history on every pass.
+        if (!reachedGit || err instanceof RepoRemovedDuringReceiveError)
+          await pendingProjections.close(pendingId).catch((cause: unknown) => {
+            logger.warn`Cannot clear pending projection for ${anchor.id}: ${cause instanceof Error ? cause.message : String(cause)}`;
+          });
+        return {
+          accepted: false,
+          reason: packFailureReason(workflowRunRepoId, err),
+        };
+      } finally {
+        historyReceives.end(pendingId);
+        // A no-op after a publish. A failed removal leaves only a staging
+        // directory, which the next receive for this repository in a new
+        // Hub process removes, so it must not change the verdict.
+        await prepared.discard().catch((cause: unknown) => {
+          logger.warn`Cannot discard the staged pack for ${workflowRunRepoId}: ${cause instanceof Error ? cause.message : String(cause)}`;
+        });
+      }
+
+      // The substrate has already durably advanced the git ref by the time it
+      // returns, so the pack is accepted regardless of what happens below. The
+      // per-run status flip and principal deactivation are a downstream side
+      // effect of that durable advance, not part of accepting the pack, so the
+      // verdict stays accepted and the sidecar does not wedge re-pushing a pack
+      // that already landed. A redelivery of the same durable tip produces no
+      // newly-terminal signal, so a failed flip is not retried here; the
+      // pending row stays and lifecycle recovery projects the run from Git.
+      const now = new Date();
+      let decided = true;
+      for (const { runId, status, terminalEventJson } of newlyTerminalRuns) {
+        try {
+          const outcome = await db.transaction((tx) =>
+            projectTerminalRun(tx, workflowRunStore, {
+              anchor,
+              runId,
+              status,
+              terminalEvent: JSON.parse(terminalEventJson) as unknown,
+              now,
+            }),
+          );
+          if (outcome === "foreign")
+            logger.error`Ignoring terminal event for run ${runId}: it does not belong to source deployment ${anchor.id}`;
+        } catch (err) {
+          // Per-run isolation: a failed flip for one run must not abort the
+          // rest of the batch, and must not throw out of this method -- a throw
+          // would leave the sidecar with neither an ack nor a reject for a pack
+          // the substrate already accepted.
+          decided = false;
+          const msg = err instanceof Error ? err.message : String(err);
+          logger.error`Terminal DB flip failed for run ${runId} (deployment ${anchor.id}, target status ${status}); its projection stays pending: ${msg}`;
+        }
+      }
+      if (decided) {
+        try {
+          await pendingProjections.close(pendingId);
+        } catch (err) {
+          const msg = err instanceof Error ? err.message : String(err);
+          logger.warn`Cannot clear pending projection for ${anchor.id}: ${msg}`;
+        }
+      }
+
+      // Another receive moved the ref to or past this tip while this one
+      // validated, so Git did not change here. That receive runs the dispatch
+      // projection after its own ref write, and the periodic dispatch
+      // projection pass retries any anchor that still has unsettled
+      // dispatches.
+      if (!applied) return { accepted: true };
+
+      // Git acceptance survives projection failures. The terminal recovery pass
+      // retries these outcomes even after the allocation has been released.
+      try {
+        await dispatchProjection.project(anchor.id);
+      } catch (error) {
+        logger.error`Workflow dispatch settlement failed for ${anchor.id}: ${error instanceof Error ? error.message : String(error)}`;
+      }
+
+      return { accepted: true };
+    },
+  };
+}
+
+/**
+ * A live routing endpoint backing a run address. Each address names one
+ * self-anchored `workflow_run`, so the endpoint is always that run.
+ */
+export interface RoutableEndpoint {
+  readonly id: string;
+  readonly tenantId: string;
+  readonly address: string;
+  readonly publicKey: string | null;
+  /**
+   * The endpoint's raw run status. Resolution is `endedAt`-filtered, so a
+   * resolved endpoint is not necessarily live: a leaked run is deliberately
+   * kept routable (terminal status, null `endedAt`) to stay reachable, and the
+   * reconnect reaction reads this to keep such an endpoint routable without
+   * restoring a collector.
+   */
+  readonly status: string;
+  /**
+   * The live session backing this endpoint. A folded run has no session column,
+   * so this is the run's not-yet-ended `agent_session`, keyed by the run's
+   * principal. Transitional -- it retires when mail record-keeping moves off
+   * `agent_session`.
+   */
+  readonly sessionId: string | null;
+}
+
+/**
+ * Resolve a run address to the `workflow_run` endpoint backing it, keyed by
+ * the run's `address`. Every routable address names one self-anchored run --
+ * the deployment's anchor -- so this resolves the run's own address (the
+ * source `persistMail` depends on to record a triggered deployment's mail).
+ */
+export async function resolveRoutableAddress(
+  db: DB["db"],
+  address: string,
+): Promise<RoutableEndpoint | undefined> {
+  const runRow = await db
+    .select({
+      id: workflowRun.id,
+      tenantId: workflowRun.tenantId,
+      publicKey: workflowRun.publicKey,
+      status: workflowRun.status,
+      principalId: workflowRun.principalId,
+    })
+    .from(workflowRun)
+    .where(and(eq(workflowRun.address, address), isNull(workflowRun.endedAt)))
+    .limit(1)
+    .then((rows) => rows[0]);
+
+  if (runRow === undefined) {
+    return undefined;
+  }
+
+  return {
+    id: runRow.id,
+    tenantId: runRow.tenantId,
+    address,
+    publicKey: runRow.publicKey,
+    status: runRow.status,
+    sessionId: await resolveRunSessionId(db, runRow.principalId),
+  };
+}
+
+/**
+ * A folded run has no session column; its session is the `agent_session` keyed
+ * by the run's principal. By default this is the live (not-yet-ended) session,
+ * matching routing semantics; `includeEnded` also resolves a stopped run's
+ * ended session, which mail history needs. Returns null when the run has no
+ * principal or no matching session. Transitional, alongside
+ * `RoutableEndpoint.sessionId`.
+ */
+export async function resolveRunSessionId(
+  db: DB["db"],
+  principalId: string | null,
+  opts: { includeEnded?: boolean } = {},
+): Promise<string | null> {
+  if (principalId === null) {
+    return null;
+  }
+  // One session per run principal (invariant), so limit(1) returns the whole
+  // history; order deterministically so a hypothetical second row cannot make
+  // the pick flap. If a run ever grows multiple sessions per principal this
+  // becomes a union and limit(1) silently truncates.
+  const conditions = [eq(agentSession.principalId, principalId)];
+  if (opts.includeEnded !== true) {
+    conditions.push(isNull(agentSession.endedAt));
+  }
+  const row = await db
+    .select({ id: agentSession.id })
+    .from(agentSession)
+    .where(and(...conditions))
+    .orderBy(asc(agentSession.createdAt))
+    .limit(1)
+    .then((rows) => rows[0]);
+  return row?.id ?? null;
+}
+
+/**
+ * The folded run that owns a session, or null when the session belongs to no
+ * run. This is the inverse of `resolveRunSessionId`: a mail-read path holds a
+ * `sessionMail.sessionId` and no address, so it recovers the owning run by
+ * joining `workflow_run` to `agent_session` on their shared principal (a folded
+ * run, its session, and its launch all key on the same `instancePrincipalId`).
+ * Scoped to the tenant and routed through `workflow_run` so the returned id is
+ * proven to name a real run of this tenant -- callers key an authorization
+ * subject on it, so a session held by a non-run principal must fail closed to
+ * null rather than resolve to a fabricated subject.
+ */
+export async function resolveRunIdForSession(
+  db: DB["db"],
+  sessionId: string,
+  tenantId: string,
+): Promise<string | null> {
+  // No `endedAt` filter: a stopped run's mail must stay fetchable, so the
+  // session resolves whether or not it has ended. The run principal is minted
+  // per launch and shared 1:1 by the run and its session, so at most one row
+  // matches; order deterministically anyway so a hypothetical second row cannot
+  // make the pick flap, mirroring `resolveRunSessionId`.
+  const row = await db
+    .select({ id: workflowRun.id })
+    .from(workflowRun)
+    .innerJoin(
+      agentSession,
+      eq(agentSession.principalId, workflowRun.principalId),
+    )
+    .where(
+      and(eq(agentSession.id, sessionId), eq(workflowRun.tenantId, tenantId)),
+    )
+    .orderBy(asc(workflowRun.createdAt))
+    .limit(1)
+    .then((rows) => rows[0]);
+  return row?.id ?? null;
+}
+
+/**
+ * A folded run resolved BY ID for the instance read/interact surface, shaped
+ * into one instance-shaped record. Unlike `resolveRoutableAddress` (keyed by
+ * address, live-only), this is keyed by the path id and does NOT filter
+ * terminated rows -- a stopped run's detail, mail history, and turns are still
+ * served. Keep the two separate: routing must never reach a dead endpoint,
+ * while the read surface must still render one.
+ */
+export interface RoutableRecord {
+  readonly id: string;
+  readonly tenantId: string;
+  /** The routing address. Non-null: a run resolves here only when it owns an
+   * address. */
+  readonly address: string;
+  readonly publicKey: string | null;
+  /** Raw run status. The wire mapping onto the instance status enum is a
+   * hub-api concern, done by the response shaper. */
+  readonly status: string;
+  readonly createdAt: Date;
+  /** A run has no `updatedAt` column, so it reports `endedAt ?? createdAt`. */
+  readonly updatedAt: Date;
+  readonly endedAt: Date | null;
+  /** The folded definition this run belongs to (`workflow_definition.id`). */
+  readonly definitionId: string;
+  readonly principalId: string | null;
+  readonly kernelId: string | null;
+  readonly sidecarId: string | null;
+  /** Why the Hub failed the deployment when it lost its capacity. */
+  readonly failureCode: string | null;
+  readonly failureMessage: string | null;
+}
+
+/**
+ * Shape a run row and its already-resolved routing address into the run
+ * record. Callers decide whether the run resolves at all -- only a top-level
+ * run (`isTopLevelRun`) does -- and pass the address they have narrowed; this
+ * only maps the columns, including the run's `endedAt ?? createdAt` stand-in
+ * for the absent `updatedAt`.
+ */
+export function runRowToRoutableRecord(
+  run: {
+    id: string;
+    tenantId: string;
+    publicKey: string | null;
+    status: string;
+    createdAt: Date;
+    endedAt: Date | null;
+    definitionId: string;
+    principalId: string | null;
+    kernelId: string | null;
+    sidecarId: string | null;
+    failureCode: string | null;
+    failureMessage: string | null;
+    infrastructureFailedAt: Date | null;
+  },
+  address: string,
+): RoutableRecord {
+  // A failure the Hub decided waits on history still being reconciled, and is
+  // dropped if that history ends the run first, so only a failed run whose
+  // failure is no longer waiting reports it.
+  const reportsFailure =
+    run.status === "failed" && run.infrastructureFailedAt === null;
+  return {
+    id: run.id,
+    tenantId: run.tenantId,
+    address,
+    publicKey: run.publicKey,
+    status: run.status,
+    createdAt: run.createdAt,
+    updatedAt: run.endedAt ?? run.createdAt,
+    endedAt: run.endedAt,
+    definitionId: run.definitionId,
+    principalId: run.principalId,
+    kernelId: run.kernelId,
+    sidecarId: run.sidecarId,
+    failureCode: reportsFailure ? run.failureCode : null,
+    failureMessage: reportsFailure ? run.failureMessage : null,
+  };
+}
+
+/**
+ * A run is a top-level run -- the addressable head of a deployment -- when it
+ * owns a routing address AND self-anchors (`anchorRunId === id`). A lazy child
+ * park row anchors on its parent (`anchorRunId !== id`) and carries no address;
+ * either condition excludes it. This is the single predicate the run read
+ * surface classifies on, so the resolver and the run list cannot drift.
+ */
+export function isTopLevelRun(row: {
+  id: string;
+  address: string | null;
+  anchorRunId: string | null;
+}): boolean {
+  return row.address !== null && row.anchorRunId === row.id;
+}
+
+/**
+ * Resolve a run id to its record. A run resolves only when it is a top-level
+ * run (`isTopLevelRun`): it owns a routing address and self-anchors. A child
+ * park row (address-null, anchored on its parent) is not served here.
+ */
+export async function findRoutableById(
+  db: DB["db"],
+  id: string,
+  tenantId: string,
+): Promise<RoutableRecord | undefined> {
+  const runRow = await db
+    .select({
+      id: workflowRun.id,
+      tenantId: workflowRun.tenantId,
+      address: workflowRun.address,
+      anchorRunId: workflowRun.anchorRunId,
+      publicKey: workflowRun.publicKey,
+      status: workflowRun.status,
+      createdAt: workflowRun.createdAt,
+      endedAt: workflowRun.endedAt,
+      principalId: workflowRun.principalId,
+      kernelId: workflowRun.kernelId,
+      sidecarId: workflowRun.sidecarId,
+      definitionId: workflowRun.definitionId,
+      failureCode: workflowRun.failureCode,
+      failureMessage: workflowRun.failureMessage,
+      infrastructureFailedAt: workflowRun.infrastructureFailedAt,
+    })
+    .from(workflowRun)
+    .where(and(eq(workflowRun.id, id), eq(workflowRun.tenantId, tenantId)))
+    .limit(1)
+    .then((rows) => rows[0]);
+
+  // The `address === null` arm is redundant with `isTopLevelRun` (which already
+  // requires a non-null address) but narrows `address` from `string | null` to
+  // `string` for `runRowToRoutableRecord`, which `isTopLevelRun`'s boolean
+  // return cannot do.
+  if (
+    runRow === undefined ||
+    !isTopLevelRun(runRow) ||
+    runRow.address === null ||
+    runRow.definitionId === null
+  ) {
+    return undefined;
+  }
+  return runRowToRoutableRecord(
+    { ...runRow, definitionId: runRow.definitionId },
+    runRow.address,
+  );
+}

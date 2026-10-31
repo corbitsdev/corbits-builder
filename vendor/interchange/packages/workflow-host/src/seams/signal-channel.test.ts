@@ -1,0 +1,808 @@
+import { describe, test, expect, afterAll, beforeAll } from "bun:test";
+import fs from "node:fs";
+import os from "node:os";
+import path from "node:path";
+
+import { generateKeyPair } from "@intx/crypto";
+import type { KeyPair } from "@intx/types/runtime";
+import { createRepoStore } from "@intx/hub-sessions";
+import type {
+  AuthorizeFn,
+  KindHandler,
+  Principal,
+  RepoId,
+  ValidatePushResult,
+} from "@intx/hub-sessions";
+import type { RunState } from "@intx/workflow";
+import { emptyState } from "@intx/workflow";
+import { commitBuffered, dropChain, reloadState } from "@intx/workflow/runtime";
+
+import { createWorkflowRunRepoStore } from "../adapters/repo-store";
+import { createWorkflowHostSignalChannel } from "./signal-channel";
+
+const tempDirs: string[] = [];
+
+async function makeTempDir(prefix: string): Promise<string> {
+  const d = await fs.promises.mkdtemp(path.join(os.tmpdir(), prefix));
+  tempDirs.push(d);
+  return d;
+}
+
+let signingKey: KeyPair;
+
+beforeAll(async () => {
+  signingKey = await generateKeyPair();
+});
+
+afterAll(async () => {
+  for (const d of tempDirs.splice(0)) {
+    await fs.promises.rm(d, { recursive: true, force: true }).catch(() => {
+      /* best effort */
+    });
+  }
+});
+
+function permissiveHandler(directoryPrefix: string): KindHandler {
+  return {
+    // The signal-channel test uses an `agent-state`-shaped repo for
+    // the same reason the scheduler test does: the workflow-run kind
+    // handler is not yet registered. The signal channel does not care
+    // about the kind discriminator -- only that the substrate accepts
+    // writes under `runs/<runId>/events/`.
+    kind: "agent-state",
+    directoryPrefix,
+    validatePush(): ValidatePushResult {
+      return { ok: true };
+    },
+    onRefUpdated() {
+      /* no-op */
+    },
+  };
+}
+
+const allowAll: AuthorizeFn = () => ({ allowed: true });
+const principal: Principal = { kind: "test" };
+const REF = "refs/heads/main";
+
+type StateBox = { state: RunState };
+
+function makeStateBox(runId: string): StateBox {
+  return { state: emptyState(runId) };
+}
+
+function runtimeStoreFor(
+  substrate: Parameters<typeof createWorkflowRunRepoStore>[0]["substrate"],
+  repoId: RepoId,
+) {
+  return createWorkflowRunRepoStore({
+    substrate,
+    repoId,
+    principal,
+    ref: REF,
+  });
+}
+
+let idCounter = 0;
+function makeIdGen(prefix: string): () => string {
+  return () => {
+    idCounter += 1;
+    return `${prefix}-${String(idCounter)}`;
+  };
+}
+
+describe("workflow-host signal channel", () => {
+  test(
+    "a live SignalReceived commit resolves a waiting awaitNext",
+    async () => {
+      const dataDir = await makeTempDir("sigchan-live-");
+      const store = createRepoStore({
+        dataDir,
+        signingKey,
+        handlers: { "agent-state": permissiveHandler("workflow-runs-live") },
+        authorize: allowAll,
+      });
+      const repoId: RepoId = { kind: "agent-state", id: "deployment-live" };
+      const runId = "r-live";
+      const box = makeStateBox(runId);
+
+      const channel = createWorkflowHostSignalChannel({
+        repoStore: store,
+        runtimeStore: runtimeStoreFor(store, repoId),
+        principal,
+        repoId,
+        ref: REF,
+        runId,
+        readState: () => box.state,
+        newId: makeIdGen("sig"),
+        clock: () => new Date(),
+      });
+      try {
+        const received = channel.awaitNext("approve");
+        // Give the subscription a moment to install before the commit
+        // lands so the `from: "head"` watcher sees the post-subscribe
+        // ref-update.
+        await new Promise<void>((resolve) => {
+          setTimeout(resolve, 50);
+        });
+        await channel.deliver("approve", { ok: true }, "sig-A");
+        const out = await received;
+        expect(out.signalId).toBe("sig-A");
+        expect(out.payload).toEqual({ ok: true });
+      } finally {
+        await channel.stop();
+      }
+    },
+    { timeout: 5000 },
+  );
+
+  test(
+    "awaitNext returns immediately from unconsumedSignals (resume rehydration)",
+    async () => {
+      const dataDir = await makeTempDir("sigchan-resume-");
+      const store = createRepoStore({
+        dataDir,
+        signingKey,
+        handlers: { "agent-state": permissiveHandler("workflow-runs-resume") },
+        authorize: allowAll,
+      });
+      const repoId: RepoId = { kind: "agent-state", id: "deployment-resume" };
+      const runId = "r-resume";
+      const box = makeStateBox(runId);
+      // Seed unconsumedSignals as if a log replay observed a
+      // SignalReceived before any awaiter subscribed.
+      box.state = {
+        ...box.state,
+        unconsumedSignals: new Map([
+          ["approve", [{ id: "sig-queued", payload: { resumed: true } }]],
+        ]),
+        observedSignalIds: new Set(["sig-queued"]),
+      };
+
+      const channel = createWorkflowHostSignalChannel({
+        repoStore: store,
+        runtimeStore: runtimeStoreFor(store, repoId),
+        principal,
+        repoId,
+        ref: REF,
+        runId,
+        readState: () => box.state,
+        newId: makeIdGen("sig"),
+        clock: () => new Date(),
+      });
+      try {
+        const out = await channel.awaitNext("approve");
+        expect(out.signalId).toBe("sig-queued");
+        expect(out.payload).toEqual({ resumed: true });
+      } finally {
+        await channel.stop();
+      }
+    },
+    { timeout: 5000 },
+  );
+
+  test(
+    "AbortSignal cleanly cancels a pending awaiter and tears down its subscription",
+    async () => {
+      const dataDir = await makeTempDir("sigchan-abort-");
+      const store = createRepoStore({
+        dataDir,
+        signingKey,
+        handlers: { "agent-state": permissiveHandler("workflow-runs-abort") },
+        authorize: allowAll,
+      });
+      const repoId: RepoId = { kind: "agent-state", id: "deployment-abort" };
+      const runId = "r-abort";
+      const box = makeStateBox(runId);
+
+      const channel = createWorkflowHostSignalChannel({
+        repoStore: store,
+        runtimeStore: runtimeStoreFor(store, repoId),
+        principal,
+        repoId,
+        ref: REF,
+        runId,
+        readState: () => box.state,
+        newId: makeIdGen("sig"),
+        clock: () => new Date(),
+      });
+      try {
+        const ac = new AbortController();
+        const pending = channel.awaitNext("approve", ac.signal);
+        await new Promise<void>((resolve) => {
+          setTimeout(resolve, 25);
+        });
+        ac.abort();
+        await expect(pending).rejects.toThrow("aborted");
+
+        // After the abort, a deliver for that name must not crash the
+        // channel and a fresh awaiter must still resolve normally.
+        const second = channel.awaitNext("approve");
+        await new Promise<void>((resolve) => {
+          setTimeout(resolve, 50);
+        });
+        await channel.deliver("approve", { v: 1 }, "sig-second");
+        const out = await second;
+        expect(out.signalId).toBe("sig-second");
+        expect(out.payload).toEqual({ v: 1 });
+      } finally {
+        await channel.stop();
+      }
+    },
+    { timeout: 5000 },
+  );
+
+  test(
+    "concurrent awaiters on different names resolve independently from their own commits",
+    async () => {
+      const dataDir = await makeTempDir("sigchan-isolated-");
+      const store = createRepoStore({
+        dataDir,
+        signingKey,
+        handlers: {
+          "agent-state": permissiveHandler("workflow-runs-isolated"),
+        },
+        authorize: allowAll,
+      });
+      const repoId: RepoId = {
+        kind: "agent-state",
+        id: "deployment-isolated",
+      };
+      const runId = "r-isolated";
+      const box = makeStateBox(runId);
+
+      const channel = createWorkflowHostSignalChannel({
+        repoStore: store,
+        runtimeStore: runtimeStoreFor(store, repoId),
+        principal,
+        repoId,
+        ref: REF,
+        runId,
+        readState: () => box.state,
+        newId: makeIdGen("sig"),
+        clock: () => new Date(),
+      });
+      try {
+        const a = channel.awaitNext("approve");
+        const b = channel.awaitNext("reject");
+        await new Promise<void>((resolve) => {
+          setTimeout(resolve, 50);
+        });
+        // Deliver in reverse order to make sure the routing is by
+        // name and not by arrival order.
+        await channel.deliver("reject", { reason: "nope" }, "sig-R");
+        await channel.deliver("approve", { ok: true }, "sig-A");
+        const [resA, resB] = await Promise.all([a, b]);
+        expect(resA.signalId).toBe("sig-A");
+        expect(resA.payload).toEqual({ ok: true });
+        expect(resB.signalId).toBe("sig-R");
+        expect(resB.payload).toEqual({ reason: "nope" });
+      } finally {
+        await channel.stop();
+      }
+    },
+    { timeout: 5000 },
+  );
+
+  test(
+    "a second awaitNext on the same name after a successful resolve still receives a fresh live commit",
+    async () => {
+      const dataDir = await makeTempDir("sigchan-relive-");
+      const store = createRepoStore({
+        dataDir,
+        signingKey,
+        handlers: { "agent-state": permissiveHandler("workflow-runs-relive") },
+        authorize: allowAll,
+      });
+      const repoId: RepoId = { kind: "agent-state", id: "deployment-relive" };
+      const runId = "r-relive";
+      const box = makeStateBox(runId);
+
+      const channel = createWorkflowHostSignalChannel({
+        repoStore: store,
+        runtimeStore: runtimeStoreFor(store, repoId),
+        principal,
+        repoId,
+        ref: REF,
+        runId,
+        readState: () => box.state,
+        newId: makeIdGen("sig"),
+        clock: () => new Date(),
+      });
+      try {
+        const first = channel.awaitNext("approve");
+        await new Promise<void>((resolve) => {
+          setTimeout(resolve, 50);
+        });
+        await channel.deliver("approve", { v: 1 }, "sig-1");
+        const r1 = await first;
+        expect(r1.signalId).toBe("sig-1");
+
+        // The state machine reduces SignalReceived into
+        // observedSignalIds; mark the first id observed so the
+        // second-round subscription does not redeliver it from log
+        // replay.
+        box.state = {
+          ...box.state,
+          observedSignalIds: new Set(["sig-1"]),
+        };
+
+        // A second awaitNext on the same name must install a fresh
+        // live subscription. If startNameSubscription's natural-break
+        // path leaks the per-name entry in the subscriptions Map,
+        // this awaitNext joins the awaiter queue against a dead
+        // subscribeKind loop and the deliver below never wakes it.
+        const second = channel.awaitNext("approve");
+        await new Promise<void>((resolve) => {
+          setTimeout(resolve, 50);
+        });
+        await channel.deliver("approve", { v: 2 }, "sig-2");
+        const r2 = await Promise.race([
+          second,
+          new Promise<{ payload: unknown; signalId: string }>(
+            (_resolve, reject) => {
+              setTimeout(
+                () =>
+                  reject(
+                    new Error("timeout: second awaitNext did not resolve"),
+                  ),
+                2000,
+              );
+            },
+          ),
+        ]);
+        expect(r2.signalId).toBe("sig-2");
+        expect(r2.payload).toEqual({ v: 2 });
+      } finally {
+        await channel.stop();
+      }
+    },
+    { timeout: 10000 },
+  );
+
+  test(
+    "two awaiters on the same signal name resolve in registration order against two live commits",
+    async () => {
+      const dataDir = await makeTempDir("sigchan-fifo-");
+      const store = createRepoStore({
+        dataDir,
+        signingKey,
+        handlers: { "agent-state": permissiveHandler("workflow-runs-fifo") },
+        authorize: allowAll,
+      });
+      const repoId: RepoId = { kind: "agent-state", id: "deployment-fifo" };
+      const runId = "r-fifo";
+      const box = makeStateBox(runId);
+
+      const channel = createWorkflowHostSignalChannel({
+        repoStore: store,
+        runtimeStore: runtimeStoreFor(store, repoId),
+        principal,
+        repoId,
+        ref: REF,
+        runId,
+        readState: () => box.state,
+        newId: makeIdGen("sig"),
+        clock: () => new Date(),
+      });
+      try {
+        const first = channel.awaitNext("approve");
+        const second = channel.awaitNext("approve");
+        await new Promise<void>((resolve) => {
+          setTimeout(resolve, 50);
+        });
+        await channel.deliver("approve", { v: 1 }, "sig-A");
+        await channel.deliver("approve", { v: 2 }, "sig-B");
+        const r1 = await Promise.race([
+          first,
+          new Promise<{ payload: unknown; signalId: string }>(
+            (_resolve, reject) => {
+              setTimeout(
+                () => reject(new Error("first awaiter did not resolve")),
+                2000,
+              );
+            },
+          ),
+        ]);
+        const r2 = await Promise.race([
+          second,
+          new Promise<{ payload: unknown; signalId: string }>(
+            (_resolve, reject) => {
+              setTimeout(
+                () => reject(new Error("second awaiter did not resolve")),
+                2000,
+              );
+            },
+          ),
+        ]);
+        expect(r1.signalId).toBe("sig-A");
+        expect(r1.payload).toEqual({ v: 1 });
+        expect(r2.signalId).toBe("sig-B");
+        expect(r2.payload).toEqual({ v: 2 });
+      } finally {
+        await channel.stop();
+      }
+    },
+    { timeout: 10000 },
+  );
+
+  test(
+    "deliver is idempotent on signalId: a re-issued signalId does not duplicate the blob",
+    async () => {
+      const dataDir = await makeTempDir("sigchan-dedup-");
+      const store = createRepoStore({
+        dataDir,
+        signingKey,
+        handlers: { "agent-state": permissiveHandler("workflow-runs-dedup") },
+        authorize: allowAll,
+      });
+      const repoId: RepoId = { kind: "agent-state", id: "deployment-dedup" };
+      const runId = "r-dedup";
+      const box = makeStateBox(runId);
+
+      const channel = createWorkflowHostSignalChannel({
+        repoStore: store,
+        runtimeStore: runtimeStoreFor(store, repoId),
+        principal,
+        repoId,
+        ref: REF,
+        runId,
+        readState: () => box.state,
+        newId: makeIdGen("sig"),
+        clock: () => new Date(),
+      });
+      try {
+        await channel.deliver("approve", { v: 1 }, "sig-dup");
+        await channel.deliver("approve", { v: 2 }, "sig-dup");
+        const eventsDir = path.join(
+          store.getRepoDir(repoId),
+          "runs",
+          runId,
+          "events",
+        );
+        const entries = await fs.promises.readdir(eventsDir);
+        const matching = entries.filter((n) => /^\d+\.json$/.test(n));
+        expect(matching).toHaveLength(1);
+      } finally {
+        await channel.stop();
+      }
+    },
+    { timeout: 5000 },
+  );
+
+  test("deliver flushes a buffered event before taking the next sequence", async () => {
+    const dataDir = await makeTempDir("sigchan-buffered-");
+    const store = createRepoStore({
+      dataDir,
+      signingKey,
+      handlers: { "agent-state": permissiveHandler("workflow-runs-buffered") },
+      authorize: allowAll,
+    });
+    const repoId: RepoId = { kind: "agent-state", id: "deployment-buffered" };
+    const runId = "r-buffered";
+    const box = makeStateBox(runId);
+    const runtimeStore = runtimeStoreFor(store, repoId);
+    const at = "2026-01-01T00:00:00.000Z";
+    const channel = createWorkflowHostSignalChannel({
+      repoStore: store,
+      runtimeStore,
+      principal,
+      repoId,
+      ref: REF,
+      runId,
+      readState: () => box.state,
+      newId: makeIdGen("sig"),
+      clock: () => new Date(at),
+    });
+    try {
+      await commitBuffered({ repoStore: runtimeStore }, runId, {
+        kind: "RunStarted",
+        seq: 0,
+        at,
+        runId,
+        definitionHash: "definition",
+        trigger: { type: "manual", payload: null },
+      });
+      await channel.deliver("approve", { ok: true }, "sig-buffered");
+      const events = await runtimeStore.read(runId);
+      expect(
+        events.map((event) => ({ kind: event.kind, seq: event.seq })),
+      ).toEqual([
+        { kind: "RunStarted", seq: 1 },
+        { kind: "SignalReceived", seq: 2 },
+      ]);
+      expect(
+        (await reloadState({ repoStore: runtimeStore }, runId)).lastSeq,
+      ).toBe(2);
+    } finally {
+      await channel.stop();
+      dropChain(runId);
+    }
+  });
+
+  test("an empty buffer delivers at the durable tip and wakes a waiting awaiter", async () => {
+    const dataDir = await makeTempDir("sigchan-empty-buffer-");
+    const store = createRepoStore({
+      dataDir,
+      signingKey,
+      handlers: {
+        "agent-state": permissiveHandler("workflow-runs-empty-buffer"),
+      },
+      authorize: allowAll,
+    });
+    const repoId: RepoId = {
+      kind: "agent-state",
+      id: "deployment-empty-buffer",
+    };
+    const runId = "r-empty-buffer";
+    const box = makeStateBox(runId);
+    const runtimeStore = runtimeStoreFor(store, repoId);
+    const channel = createWorkflowHostSignalChannel({
+      repoStore: store,
+      runtimeStore,
+      principal,
+      repoId,
+      ref: REF,
+      runId,
+      readState: () => box.state,
+      newId: makeIdGen("sig"),
+      clock: () => new Date(),
+    });
+    try {
+      const received = channel.awaitNext("approve");
+      await channel.deliver("approve", { ok: true }, "sig-empty");
+      expect(await received).toEqual({
+        signalId: "sig-empty",
+        payload: { ok: true },
+      });
+      const events = await runtimeStore.read(runId);
+      expect(
+        events.map((event) => ({ kind: event.kind, seq: event.seq })),
+      ).toEqual([{ kind: "SignalReceived", seq: 0 }]);
+    } finally {
+      await channel.stop();
+      dropChain(runId);
+    }
+  });
+
+  test("a delivery after a terminal event leaves the log unchanged", async () => {
+    const dataDir = await makeTempDir("sigchan-terminal-");
+    const store = createRepoStore({
+      dataDir,
+      signingKey,
+      handlers: { "agent-state": permissiveHandler("workflow-runs-terminal") },
+      authorize: allowAll,
+    });
+    const repoId: RepoId = { kind: "agent-state", id: "deployment-terminal" };
+    const runId = "r-terminal";
+    const box = makeStateBox(runId);
+    const runtimeStore = runtimeStoreFor(store, repoId);
+    const at = "2026-01-01T00:00:00.000Z";
+    await runtimeStore.append(runId, {
+      kind: "RunFailed",
+      seq: 1,
+      at,
+      error: { message: "already failed" },
+    });
+    const channel = createWorkflowHostSignalChannel({
+      repoStore: store,
+      runtimeStore,
+      principal,
+      repoId,
+      ref: REF,
+      runId,
+      readState: () => box.state,
+      newId: makeIdGen("sig"),
+      clock: () => new Date(at),
+    });
+    try {
+      await channel.deliver("approve", { ok: true }, "sig-after-terminal");
+      const events = await runtimeStore.read(runId);
+      expect(
+        events.map((event) => ({ kind: event.kind, seq: event.seq })),
+      ).toEqual([{ kind: "RunFailed", seq: 1 }]);
+    } finally {
+      await channel.stop();
+      dropChain(runId);
+    }
+  });
+
+  test("peek reads the name queue and the matching correlation separately", async () => {
+    const dataDir = await makeTempDir("sigchan-peek-");
+    const store = createRepoStore({
+      dataDir,
+      signingKey,
+      handlers: { "agent-state": permissiveHandler("workflow-runs-peek") },
+      authorize: allowAll,
+    });
+    const repoId: RepoId = { kind: "agent-state", id: "deployment-peek" };
+    const runId = "r-peek";
+    const state: RunState = {
+      ...emptyState(runId),
+      unconsumedSignals: new Map([
+        ["go", [{ id: "sig-name", payload: { n: true } }]],
+      ]),
+      unconsumedByCorrelation: new Map([
+        [
+          "corr-1",
+          [
+            { id: "sig-stop", payload: { s: true }, signalName: "stop" },
+            { id: "sig-c", payload: { c: true }, signalName: "go" },
+          ],
+        ],
+        [
+          "corr-other",
+          [{ id: "sig-x", payload: { x: true }, signalName: "stop" }],
+        ],
+      ]),
+    };
+    const channel = createWorkflowHostSignalChannel({
+      repoStore: store,
+      runtimeStore: runtimeStoreFor(store, repoId),
+      principal,
+      repoId,
+      ref: REF,
+      runId,
+      readState: () => state,
+      newId: makeIdGen("sig"),
+      clock: () => new Date(),
+    });
+    try {
+      const named = await channel.awaitNext("go");
+      expect(named).toEqual({ payload: { n: true }, signalId: "sig-name" });
+      expect(named).not.toHaveProperty("correlationId");
+
+      const correlated = await channel.awaitNext("go", undefined, "corr-1");
+      expect(correlated).toEqual({
+        payload: { c: true },
+        signalId: "sig-c",
+        correlationId: "corr-1",
+      });
+
+      const otherName = await channel.awaitNext(
+        "stop",
+        undefined,
+        "corr-other",
+      );
+      expect(otherName.signalId).toBe("sig-x");
+
+      // The non-matching name stayed at the head of corr-1. Peek
+      // reads past it instead of handing it to the "go" awaiter.
+      const skipped = await channel.awaitNext("stop", undefined, "corr-1");
+      expect(skipped.signalId).toBe("sig-stop");
+    } finally {
+      await channel.stop();
+      dropChain(runId);
+    }
+
+    const onlyCorrelated: RunState = {
+      ...emptyState(runId),
+      unconsumedByCorrelation: new Map([
+        ["corr-1", [{ id: "sig-c2", payload: { c: 2 }, signalName: "go" }]],
+      ]),
+    };
+    const isolated = createWorkflowHostSignalChannel({
+      repoStore: store,
+      runtimeStore: runtimeStoreFor(store, repoId),
+      principal,
+      repoId,
+      ref: REF,
+      runId,
+      readState: () => onlyCorrelated,
+      newId: makeIdGen("sig"),
+      clock: () => new Date(),
+    });
+    try {
+      let nameStole = false;
+      const pending = isolated.awaitNext("go").then(
+        () => {
+          nameStole = true;
+        },
+        () => {
+          // stop() rejects the name awaiter that peek did not satisfy.
+        },
+      );
+      const correlatedHit = await isolated.awaitNext("go", undefined, "corr-1");
+      expect(correlatedHit.signalId).toBe("sig-c2");
+      expect(nameStole).toBe(false);
+      void pending;
+    } finally {
+      await isolated.stop();
+      dropChain(runId);
+    }
+  });
+
+  test("a live name waiter and a live correlated waiter do not share a delivery", async () => {
+    const dataDir = await makeTempDir("sigchan-slots-");
+    const store = createRepoStore({
+      dataDir,
+      signingKey,
+      handlers: { "agent-state": permissiveHandler("workflow-runs-slots") },
+      authorize: allowAll,
+    });
+    const repoId: RepoId = { kind: "agent-state", id: "deployment-slots" };
+    const runId = "r-slots";
+    const channel = createWorkflowHostSignalChannel({
+      repoStore: store,
+      runtimeStore: runtimeStoreFor(store, repoId),
+      principal,
+      repoId,
+      ref: REF,
+      runId,
+      readState: () => emptyState(runId),
+      newId: makeIdGen("sig"),
+      clock: () => new Date(),
+    });
+    try {
+      const named = channel.awaitNext("go");
+      const correlated = channel.awaitNext("go", undefined, "corr-1");
+
+      await channel.deliver("go", { c: true }, "sig-c", "corr-1");
+      expect(await correlated).toEqual({
+        payload: { c: true },
+        signalId: "sig-c",
+        correlationId: "corr-1",
+      });
+
+      await channel.deliver("go", { n: true }, "sig-name");
+      const namedResult = await named;
+      expect(namedResult).toEqual({
+        payload: { n: true },
+        signalId: "sig-name",
+      });
+      expect(namedResult).not.toHaveProperty("correlationId");
+    } finally {
+      await channel.stop();
+      dropChain(runId);
+    }
+  });
+
+  test("a name delivery does not resolve a correlated waiter that is already subscribed", async () => {
+    const dataDir = await makeTempDir("sigchan-name-skip-");
+    const store = createRepoStore({
+      dataDir,
+      signingKey,
+      handlers: {
+        "agent-state": permissiveHandler("workflow-runs-name-skip"),
+      },
+      authorize: allowAll,
+    });
+    const repoId: RepoId = {
+      kind: "agent-state",
+      id: "deployment-name-skip",
+    };
+    const runId = "r-name-skip";
+    const channel = createWorkflowHostSignalChannel({
+      repoStore: store,
+      runtimeStore: runtimeStoreFor(store, repoId),
+      principal,
+      repoId,
+      ref: REF,
+      runId,
+      readState: () => emptyState(runId),
+      newId: makeIdGen("sig"),
+      clock: () => new Date(),
+    });
+    try {
+      const correlated = channel.awaitNext("go", undefined, "corr-1");
+      const named = channel.awaitNext("go");
+
+      await channel.deliver("go", { n: true }, "sig-name");
+      const namedResult = await named;
+      expect(namedResult).toEqual({
+        payload: { n: true },
+        signalId: "sig-name",
+      });
+      expect(namedResult).not.toHaveProperty("correlationId");
+
+      await channel.deliver("go", { c: true }, "sig-c", "corr-1");
+      expect(await correlated).toEqual({
+        payload: { c: true },
+        signalId: "sig-c",
+        correlationId: "corr-1",
+      });
+    } finally {
+      await channel.stop();
+      dropChain(runId);
+    }
+  });
+});

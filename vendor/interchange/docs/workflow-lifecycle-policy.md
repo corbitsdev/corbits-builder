@@ -1,0 +1,381 @@
+# Workflow lifetime and capacity retention
+
+A lifecycle policy releases capacity when a workflow finishes, keeps a failed
+environment around for inspection, stops deployments that have lived too long,
+and fails deployments whose sidecar has been out of contact too long. Tenant
+and installed-workflow policy decide when those things happen. These settings
+belong to the deployment configuration, outside the workflow's executable
+definition.
+
+The policy shape, shown as TypeScript:
+
+```typescript
+type LifecycleDuration = `${number}${"s" | "m" | "h" | "d"}`;
+
+type WorkflowLifecyclePolicy = {
+  maxLifetime?: LifecycleDuration;
+  maxDisconnected?: LifecycleDuration;
+  capacityRetention?: {
+    completed?: LifecycleDuration;
+    failed?: LifecycleDuration;
+    cancelled?: LifecycleDuration;
+  };
+};
+```
+
+Both tenants and installed workflows accept a `lifecycle` field with this
+shape. The API validates durations as non-negative whole numbers with a unit,
+at most `36500d` (the same limit applies in seconds, minutes, or hours);
+`maxLifetime` and `maxDisconnected` must be greater than zero. This fixed range leaves headroom when
+a duration is added to a deployment or terminal timestamp. Omit a field to
+inherit it, or to take the platform default when it is absent throughout the
+hierarchy.
+
+A tenant config can contain:
+
+```json
+{
+  "lifecycle": {
+    "maxLifetime": "24h",
+    "maxDisconnected": "30m",
+    "capacityRetention": {
+      "completed": "0s",
+      "failed": "1h",
+      "cancelled": "0s"
+    }
+  }
+}
+```
+
+An installed workflow can shorten those limits:
+
+```json
+{
+  "lifecycle": {
+    "maxLifetime": "2h",
+    "capacityRetention": {
+      "failed": "15m"
+    }
+  }
+}
+```
+
+Tenant policy is set through `PATCH /api/tenants/:tenantId` as `config.lifecycle`.
+That request merges `config` by top-level key, so it keeps other keys such as
+`sidecarPlacement`; a `null` value removes a key. A stored key that fails
+validation, such as a `lifecycle` key saved before lifecycle policies existed,
+must be replaced or removed. Until then, reading the tenant, and deploying or
+editing a lifecycle policy anywhere in its subtree, fail with
+`409 invalid_tenant_config`, and updates that leave the key in place are
+rejected. Errors involving inherited config omit its values from the response;
+the server logs retain the validation details for administrators.
+Installed-workflow overrides are replaced through
+`PATCH /api/tenants/:tenantId/workflows/definitions/:definitionId/lifecycle`
+with a `{ "lifecycle": ... }` body. Both require management permission. Each
+revision of a workflow asset is a separate definition; an override covers every
+revision of the definition's asset, including revisions deployed later, so it
+requires management permission on every existing revision.
+
+The effective policy and deadlines are saved when the deployment is created.
+Later policy edits apply only to new deployments.
+
+Omitted fields inherit through the tenant hierarchy. Tenant values are defaults
+and ceilings: descendants and installed workflows can shorten them; values above
+an ancestor's limit are rejected when set. Tightening an ancestor never blocks
+deployment: a descendant or installed-workflow value it now exceeds is capped at
+the inherited limit when a deployment is created. Inherited limits are visible
+below the tenant that sets them: a deployment's saved policy reflects them, and
+an edit that exceeds one is rejected. A field absent throughout the
+hierarchy takes the platform default. The Hub reads each default from an
+optional environment variable at startup and refuses to start if one is not a
+valid duration or the maximum lifetime or disconnect limit is zero:
+
+| Field                         | Environment variable                   | Default |
+| ----------------------------- | -------------------------------------- | ------- |
+| `maxLifetime`                 | `WORKFLOW_DEFAULT_MAX_LIFETIME`        | `7d`    |
+| `maxDisconnected`             | `WORKFLOW_DEFAULT_MAX_DISCONNECTED`    | `15m`   |
+| `capacityRetention.completed` | `WORKFLOW_DEFAULT_RETENTION_COMPLETED` | `30m`   |
+| `capacityRetention.failed`    | `WORKFLOW_DEFAULT_RETENTION_FAILED`    | `24h`   |
+| `capacityRetention.cancelled` | `WORKFLOW_DEFAULT_RETENTION_CANCELLED` | `1h`    |
+
+The platform default is not a ceiling: a tenant or installed workflow may set a
+longer duration. To effectively disable an action, set its field to `36500d`.
+
+`maxLifetime` measures wall-clock time from creation of the deployment's anchor
+run. Provisioning and waiting count; restarts and any future hibernation do
+not reset the clock. This also covers deployments that
+never receive their first trigger. If still live at expiry, the Hub stops the
+deployment as `cancelled`, allowing a 30-second cancellation grace period before stopping the process.
+Forced stop preempts a pending cooperative cancellation. The sidecar acknowledges
+stop only after the child exits and its restart record is marked stopped, so a
+sidecar restart reports the deployment instead of reviving it; the record and
+inspection state remain until allocation cleanup undeploys it. The acknowledgement reports the tip of
+each workflow-history ref, and the sidecar pushes any commit the Hub has not
+acknowledged. The Hub confirms the stop only once it holds those tips; until
+then the stop is retried until 60 seconds past the cancellation deadline, or
+past Hub startup if that is later.
+Cancellation also marks the restart record stopped before acknowledgement when
+no supervisor remains, preventing a later sidecar restart from reviving the run.
+If the worker cannot confirm its stop, the Hub releases its allocation and waits
+for confirmed deployment removal before recording cancellation. For a run still live
+after accepted-history recovery, confirmed deployment removal is sufficient even
+if the provider's hold remains unreleased. Lifecycle records cancellation and
+abandons its unfinished dispatches with `workflow_cancelled` after recovering
+accepted history. A later provider cleanup failure stays on the allocation and
+does not fail that cancelled run or replace its dispatch reason. History the Hub
+never received is destroyed with the worker, so the recorded outcome then reflects only
+accepted history, even if the worker had committed a different one. Enforcement resumes
+after a Hub outage; the deadline does not promise an exact destruction time.
+
+`maxDisconnected` bounds how long a deployment's sidecar may be out of contact
+with the Hub. The clock starts when its connection drops and starts again when
+the Hub starts, since no sidecar can reconnect while the Hub is down; at a Hub
+start, a deployment whose first deploy has not completed gets at least the
+Hub's first-connect window, the 2 minutes a newly placed sidecar has to
+connect. A sidecar that reconnects in time keeps its deployment. Past the
+limit the Hub fails the deployment's live runs as an infrastructure loss and
+begins releasing its allocation at once. A returning sidecar regains no
+workflow routes; a cleanup disconnect timeout allows cleanup to resume on
+reconnect. Its later history is refused under the release fence, so whatever
+it did while away is discarded. A restarting sidecar restores eight deployments
+at a time before connecting. Size `maxDisconnected` for the
+[restore time](HARNESS_DESIGN.md#self-restoration) at the configured
+`SIDECAR_MAX_ACTIVE_DEPLOYMENTS`, including startup overhead, or a restart can
+exceed the deadline and fail deployments.
+
+An operator cancel, through DELETE, does not wait for a sidecar that is gone.
+The Hub sends the cancel, and after the cancellation deadline the stop. When it
+cannot send either because it holds no connection for the deployment, and the
+sidecar has been gone for 15 seconds, the Hub releases the allocation through
+its provisioner and records `workflow_cancel_unreachable`. The lifecycle
+service sets this grace with `operatorCancelReconnectGraceMs`. The time counts
+from the later of the Hub start and the last time this Hub lost the sidecar's
+connection. The Hub keeps that time only in memory. A sidecar that reconnects
+inside the grace receives the cancel as usual. An operator request after an
+expiry cancel started also uses this rule. Other failures to reach the worker,
+and every stop that expiry starts, keep the 60-second stop grace.
+
+The grace is independent of the windows in which the Hub waits for a sidecar
+to reconnect. Those windows are usually longer, but a policy can set
+`maxDisconnected` below the grace, and some cases have no window:
+
+| Case                                                        | Reconnect window                                                                               |
+| ----------------------------------------------------------- | ---------------------------------------------------------------------------------------------- |
+| First deploy not completed, after a disconnect or Hub start | The 2-minute first-connect window; at a Hub start, a later deadline the generation already has |
+| First deploy completed, after a disconnect or Hub start     | The allocation's `maxDisconnected`                                                             |
+| The sidecar's provisioner ended its reconnect window        | None                                                                                           |
+
+An operator cancel after the grace can destroy a sidecar that would
+still reconnect. That is intended: the operator asked for the run to stop. An
+operator cancel of a deployment whose current generation has never connected
+releases it on the first sweep after the grace from the Hub start. This
+includes a replacement generation that is still booting: the time its earlier
+generation lost its connection does not count. A new deployment holds no
+history yet, and a replacement restores history that the Hub already holds, so
+the release loses none.
+
+The release completes at once only when the provisioner confirms cleanup. When
+destroy reports done but does not confirm cleanup, for example when it
+releases a provider hold on a shared sidecar, the Hub waits for the sidecar's
+cleanup connection until the connect deadline. It then records
+`destroy_failed`, the capacity stays reserved, and the run is not recorded
+`cancelled`. A forced release after expiry has the same limit.
+
+On a sidecar that also hosts other work, release removes only this
+deployment's hold on the sidecar. A connected sidecar is told to undeploy the
+deployment, which stops its child as part of teardown. An unreachable copy can
+keep running past the Hub's cleanup disconnect deadline: a recorded failure
+cannot stop a disconnected process. Expiry records `destroy_failed` with
+`sidecar_cleanup_disconnect_timeout`; automatic cleanup resumes only if the
+sidecar reconnects. If the sidecar has been destroyed, operator recovery is
+required. Exhausted retries, permanent provider rejection, `provisioner_unavailable`,
+and `sidecar_cleanup_preparation_timeout` require operator recovery: after
+confirming removal outside the Hub, `POST .../capacity/recover` releases the
+allocation on the caller's word. Where cleanup
+remains, its binding allows inventory reports without restoring workflow routes.
+Removal is confirmed by an undeploy acknowledgement
+or by provider destruction that guarantees the worker and its restorable state
+cannot return.
+
+`capacityRetention` starts when the top-level run becomes terminal. Here, failure
+retains the environment for 15 minutes; success and cancellation request
+immediate release. A deployment its sidecar reports stopped on its own, because
+its workflow child ended itself or could not be restored, fails and is retained
+as a failure, so its stopped copy can be inspected. A child run finishing does not release the deployment's
+allocation. Top-level scratch survives termination for inspection until
+allocation cleanup. Retained Hub history has a separate lifetime.
+
+The Hub uses the terminal event's timestamp, bounded by run creation and Hub
+observation time. Missing or invalid timestamps use observation time. Once saved,
+the run's end time is not changed by retries.
+
+The Hub persists deadlines and reconciles due actions independently of provisioner
+calls. Expired or cancelling runs cannot start, restore, or accept new work.
+An accepted terminal event must remain discoverable for cleanup after a restart
+or a failed status projection. Cancellation and release must tolerate retries.
+Release completes only when the provider's hold is released and deployment
+cleanup is confirmed. Forced termination can leave a partial event log; the Hub
+records the confirmed outcome in the run row without fabricating workflow events.
+A failed cleanup remains visible. It reserves an active slot only while neither
+removal nor transfer to retained storage has been confirmed. The separate
+provider obligation can remain failed after the copy has freed its active slot.
+See [Release and replacement cleanup](SIDECAR_PLACEMENT.md#release-and-replacement-cleanup) and
+[Active and retained capacity](SIDECAR_PLACEMENT.md#active-and-retained-capacity).
+
+Before a workflow-run pack can advance Git, the Hub records a pending projection
+for its deployment, and removes it once every run in the pack has its status
+recorded or the receive provably left Git unchanged. Any pending projection left
+behind, for a live or finished deployment, is reconciled from Git after a
+30-second grace: the Hub records the accepted terminal outcome of every run,
+including child runs it never recorded, and then clears it. A receive still in
+progress is never reconciled, because it may advance Git after the read. A
+forced stop records `cancelled` only while no pending projection remains; until
+then the worker is still stopped but the outcome waits. Unrecoverable capacity
+loss waits the same way: the Hub records when capacity was lost, and after
+reconciliation fails only the runs still live, ending them at that time. A
+missing repository
+under a receive's pending projection is treated as unreadable history, never as
+empty history; a repository whose ref was never written provably accepted
+nothing. Reconciliation that cannot read Git backs off and retries; an explicit
+release retries the read and answers 503 while accepted history remains
+unreconciled.
+
+The Hub validates a workflow-run pack before it takes the deployment's
+allocation row, and it holds that row only while it decides and writes the
+ref. A pack that is validating therefore does not hold off a release or a stop.
+Under the row, the Hub checks again that the sending worker owns the current
+allocation and that the deployment is live. A pack that loses the race to a
+release or a recorded stop is rejected, and Git does not change.
+
+A missed sidecar connect deadline is a different decision from that capacity-loss
+record. When the committed run log is one the workflow runtime would continue,
+and it contains a park the runtime would re-attach, the Hub replaces the worker
+and restores the run onto it. Otherwise it releases the allocation and logs the
+anchor, the allocation, and the reason. Sleep with no signal park, a park that
+was not pushed to the committed ref, and an approval that was never flushed to
+the log stay on the release path: the first has no re-attachable park, and the
+other two are not visible on the committed ref. A replacement that dies while
+its initialization lease is still set is released on the next boot without
+another park classification. A destroy that cannot be retried still fails the
+run through the existing destroy-failed path. Replacing a worker does not by
+itself record that capacity was lost.
+
+Before binding replacement capacity, removal of the previous copy must be
+confirmed by undeploy or provider destruction. A returning old worker has a
+cleanup binding without workflow routes.
+
+Lifecycle reconciliation uses the shared reconciliation scheduler with eight
+independent slots per Hub. Each slot selects one run at a time, and active
+runs are excluded from further selection until their work finishes. Selection
+considers only deployments with work due: a live run that is cancelling or
+past its expiry, terminal copies awaiting retention, retained capacity whose
+release time has passed or is not yet recorded, a capacity loss waiting on
+reconciliation, and accepted history left unprojected past its grace. A
+deployment that ended without a saved policy is released only on request.
+Selection walks run IDs up to a captured upper bound, then waits one second
+before another scan. Work that becomes due during a scan can wait for the next
+one, and work that stays due, such as a cancellation waiting on its worker,
+does not cause continuous retries. A stalled run occupies one slot while the
+other slots continue processing candidates. A live run with no cancellation,
+expiry, or capacity loss to act on is not locked, so a pack receive in
+progress does not hold a slot.
+
+The lifecycle sweep sends retention requests in the background, with at most
+eight in flight per sidecar and one per allocation. Later retention scans skip
+requests already in flight and copies waiting for room on their sidecar.
+Expiry, accepted-history recovery, and confirmed retention refusals remain
+independently eligible.
+
+Dispatch outcomes are projected from Hub-owned Git after pack acceptance and
+retried independently for unresolved deliveries, even when the database has not
+yet recorded the run's terminal status or the allocation has been released.
+Each pass pins workflow history on `refs/heads/main` before reading consumed-mail
+outcomes on `refs/heads/events`. Proven deliveries are settled, recorded rejections
+retain their reason, and remaining examined deliveries are failed only after both
+histories are read and the pinned workflow history proves the run is terminal.
+History reads do not hold the database locks needed for cleanup.
+
+Forced stop, confirmed capacity release, and unrecoverable allocation failure
+mark outstanding delivery attempts `abandoned`: retries have stopped, but
+acceptance is unconfirmed. A confirmed release records abandonment even while
+accepted history is awaiting projection, without changing the run's outcome.
+Later Git evidence can resolve an abandoned delivery as settled or failed. If forced
+termination permanently lost that evidence, the delivery remains abandoned.
+Recorded rejections and settled deliveries are never overwritten by abandonment.
+Settled and failed records remain final; recovery scans pending, acknowledged,
+and abandoned records. An abandoned record stays in recovery until one scan
+reads its deployment's final history; if that scan finds no evidence, it
+remains abandoned and is not scanned again.
+Recovery scans use bounded independent slots; a stalled read occupies its own
+slot and is not duplicated by later polls.
+
+Hub delivery checks lifecycle state under the anchor run's row lock, which
+cancellation and retirement of a runnable deployment's allocation also take,
+immediately before queuing restore, deployment, mail, or signal frames on the
+socket. Pack ingestion holds only the allocation row, so a long receive does not
+delay delivery. For deployment sends, initialization reservations finish before admission;
+worker acknowledgements are awaited after the lock is released. Retries and reconnect
+replay use that same check; stop and cancellation commands remain deliverable.
+This orders new sends against cancellation but cannot recall frames already
+queued before cancellation or expiry; those frames may arrive later.
+
+An explicit release request uses the same path:
+
+```http
+POST /api/tenants/:tenantId/workflows/runs/:runId/capacity/release
+```
+
+The caller needs `manage` on `workflow-run:<runId>`, matching the existing stop
+route, and the run must belong to the tenant in the path. Deployment creation's
+`workflow:*/create` grant alone does not authorize release.
+
+Any `destroy_failed` allocation returns `409`. Otherwise, unreconciled accepted
+history returns `503` before checking whether the run is live (`409`). A terminal
+top-level run returns `202` for pending release or `204` if already released.
+Release status is available at
+`GET /api/tenants/:tenantId/workflows/runs/:runId/lifecycle`, alongside the saved
+policy, deadlines, and cleanup errors. After a cleanup disconnect timeout,
+automatic cleanup resumes only if the sidecar reconnects. If the sidecar has been
+destroyed, operator recovery is required. Exhausted retries, permanent provider
+rejection, `provisioner_unavailable`, and `sidecar_cleanup_preparation_timeout`
+require operator recovery.
+`POST /api/tenants/:tenantId/workflows/runs/:runId/capacity/recover` releases a
+`destroy_failed` allocation once removal is confirmed outside the Hub. It takes
+the allocation `generation` from the lifecycle status, requires the `recover`
+action on the run, which only the owner role holds by default, and returns `204`,
+also when it repeats a release it already made.
+The Hub does not verify removal; the allocation records the caller and the
+stopped cleanup's reason as `sidecar_cleanup_operator_released`. An allocation
+whose cleanup has not stopped, or whose generation changed, returns `409`.
+`DELETE /api/tenants/:tenantId/workflows/runs/:runId` requests
+cancellation of a live run and returns `202`; its cancellation retention
+policy then applies. The request takes only the anchor run's row lock, so it
+does not wait for a pack receive that holds the allocation row, and it reads
+no history. If accepted history holds a terminal event that the Hub has not
+recorded yet, DELETE therefore returns `202`. The Hub records the run's own
+outcome when it recovers that history, and it never records `cancelled` over
+an accepted terminal event.
+
+Beginning release removes workflow routes. The allocation reaches `released`
+only after the provider's hold is released and deployment cleanup is
+confirmed. Confirmed removal frees the active sidecar slot even if the
+provider's hold remains pending or failed. The provisioner decides whether to
+destroy the backing resources or prepare them for reuse. This fits the work on
+provisioning pre-existing capacity: another deployment could claim it when the
+provisioner binding, capabilities, and placement requirements match. The
+previous assignment, credentials, and local state must be retired or reset
+before dedicated capacity becomes available again; a shared sidecar drops a
+released deployment when the Hub undeploys it. Copies confirmed kept for
+inspection use the retained pool and free their active slot. Unconfirmed
+copies continue to reserve active capacity. Retention is a cleanup deadline,
+not a minimum preservation guarantee: manual release or infrastructure failure
+can end it earlier.
+
+The provisioner owns how long unused backing capacity stays available before
+being destroyed. The Hub's allocation reconciler requests acknowledged undeploy
+from connected sidecars independently of provider availability and releases the
+provider hold through `SidecarProvisioner.destroy()`. Either an undeploy
+acknowledgement or confirmed provider destruction proves removal.
+These duration rules do not need a separate
+workflow-aware reaping plugin. Hibernating and resuming a live run remains
+separate work, especially when it depends on files held only on the sidecar.

@@ -1,0 +1,25 @@
+{
+  "name": "@intx/example-agent-audit-log",
+  "description": "Example: an @intx/agent audit record is a real git repo with one commit per reactor cycle",
+  "version": "0.5.0",
+  "license": "LGPL-2.1-only",
+  "private": true,
+  "type": "module",
+  "exports": {
+    ".": {
+      "types": "./src/index.ts",
+      "default": "./src/index.ts"
+    }
+  },
+  "scripts": {
+    "start": "bun --conditions=intx-src run src/cli.ts"
+  },
+  "dependencies": {
+    "@intx/agent": "workspace:*",
+    "@intx/example-agent-common": "workspace:*",
+    "@intx/inference": "workspace:*",
+    "@intx/types": "workspace:*",
+    "arktype": "catalog:",
+    "isomorphic-git": "catalog:"
+  }
+}

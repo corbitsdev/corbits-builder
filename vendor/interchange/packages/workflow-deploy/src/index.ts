@@ -1,0 +1,76 @@
+// @intx/workflow-deploy -- deploy-time validation and orchestration of
+// workflows.
+//
+// Surfaces today:
+//   - capability walk: structural lift of `getRequiredEnvKeys` that
+//     emits the grant-shape declarations the operator-approval gate
+//     consumes, plus the child-grant cap that narrows a parent's
+//     grants to the resources and credential consumers the child
+//     body declares.
+//   - approval gate: consumes the walk's output plus an operator-
+//     supplied `ApprovalSet` and yields a per-step pending delta.
+//   - deploy derivation + source pinning: pure address derivation
+//     (`deriveRunAddress`, `deriveStepAddress`, `resolveStepAddress`, ...)
+//     and per-step inference-source resolution against the operator-
+//     approved grant set (`pickStepInferenceSource`, `pinInertStepSources`,
+//     `buildInertProjectionStepSources`, `buildInertBodyStepSources`), plus
+//     `collectAgentBearingStepIds` for consumers that must tell a step which
+//     can invoke inference from one merely carrying a placeholder pin.
+
+export {
+  collectMailAcceptGrants,
+  walkCapabilities,
+  type CapabilityWalkResult,
+  type GrantDeclarations,
+  type MailAcceptGrantSource,
+} from "./capability-walk";
+export {
+  collectDeclaredCredentialConsumers,
+  collectDeclaredResources,
+  filterGrantsToDeclaredResources,
+} from "./child-grant-filter";
+export {
+  approvalItemsFromSet,
+  approvalSetFromItems,
+  createApprovalSet,
+  createApprovalSetGate,
+  createApprovalSourceGate,
+  isApprovedGrantRequirement,
+  type ApprovalDecision,
+  type ApprovalSet,
+  type ApprovalSource,
+  type CapabilityApprovalGate,
+} from "./capability-approval";
+export {
+  checkCredentialBindings,
+  collectHubConsumers,
+  describeCredentialBindingViolation,
+  type CredentialBindingViolation,
+} from "./credential-binding-check";
+export { extractFoldedBody, type FoldedBody } from "./fold-synthesis";
+export {
+  enumerateInertBodies,
+  inertFlatNamespaceStepIds,
+  inertLoopBody,
+  inertNestedBodies,
+  type EnumeratedInertBody,
+  type InertBodyStepPreference,
+} from "./inert-ontrigger-bodies";
+export {
+  pickStepInferenceSource,
+  pinInertStepSources,
+  collectAgentBearingStepIds,
+  buildInertProjectionStepSources,
+  buildInertBodyStepSources,
+  buildSingleStepAgentDefinition,
+  WorkflowDefinitionInvalidError,
+  type DeployContent,
+} from "./orchestrator";
+export {
+  deriveRunAddress,
+  deriveRunAgentId,
+  deriveStepAddress,
+  resolveStepAddress,
+  deriveStepAgentId,
+  deriveWorkflowRunRepoId,
+} from "./addresses";

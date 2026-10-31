@@ -1,0 +1,65 @@
+import { type } from "arktype";
+import { grantEffects } from "./grants";
+import { ApprovalResponse } from "./approvals";
+
+const Effect = type.enumerated(...grantEffects);
+
+export const workflowRunStatuses = [
+  "deployed",
+  "running",
+  "updating",
+  "error",
+  "stopped",
+] as const;
+export type WorkflowRunStatus = (typeof workflowRunStatuses)[number];
+
+const WorkflowRunStatusType = type.enumerated(...workflowRunStatuses);
+
+export const WorkflowRunResponse = type({
+  id: "string",
+  definitionId: "string",
+  definitionName: "string",
+  tenantId: "string",
+  address: "string",
+  status: WorkflowRunStatusType.describe(
+    "Lifecycle state of this run: `deployed` (provisioned on a sidecar, not yet started), `running` (started and serving), `updating` (rolling to a new definition version), `error` (launch or runtime failure), or `stopped` (undeployed).",
+  ),
+  "publicKey?": "string | null",
+  "kernelId?": "string | null",
+  "sidecarId?": "string | null",
+  createdAt: "string",
+  updatedAt: "string",
+  "endedAt?": "string | null",
+  "failureCode?": type("string | null").describe(
+    "Why the Hub failed this run's deployment, such as `sidecar_connect_failed`; null for a run the Hub did not fail.",
+  ),
+  "failureMessage?": type("string | null").describe(
+    "The detail of `failureCode`, such as the error the sidecar reported.",
+  ),
+});
+
+export const WorkflowRunHealth = type({
+  liveness: "'ok' | 'unhealthy'",
+  readiness: "'ok' | 'not_ready' | 'unhealthy'",
+  "lastCheckedAt?": "string | null",
+});
+
+export const RunAuthorizationGrant = type({
+  resource: "string",
+  action: "string",
+  effect: Effect,
+});
+
+export const RunAuthorizationResponse = type({
+  runId: "string",
+  grants: RunAuthorizationGrant.array().describe(
+    "The run's effective authorization floor: each capability the run's principal holds with its resolved effect. A standing 'always' approval mutates the tool's committed grant in place at resolve time (approve-always sets 'allow', reject-always sets 'deny'), so a standing-resolved tool reads that effect directly. Read straight from the run's committed grants; complete for the source-ref deploy lineage (the shipping pipeline), whose committed grants carry every tool's effect. A pinned-tool deploy's ask floor is injected sidecar-side and is not reflected here.",
+  ),
+});
+
+export const RunApprovalsResponse = type({
+  runId: "string",
+  approvals: ApprovalResponse.array().describe(
+    "The run's approval decisions, newest first, across every status. A tool an operator turned into a standing allow appears here with scope 'always' and status 'approved'.",
+  ),
+});

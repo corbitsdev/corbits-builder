@@ -1,0 +1,221 @@
+import { sql } from "drizzle-orm";
+import {
+  type AnyPgColumn,
+  check,
+  index,
+  jsonb,
+  pgTable,
+  text,
+  timestamp,
+  uniqueIndex,
+} from "drizzle-orm/pg-core";
+
+import { principal } from "./principals";
+import { sidecar } from "./sidecar";
+import { tenant } from "./tenants";
+import { workflowDefinition } from "./workflow-definitions";
+
+// The non-secret projection of a deployment's credential delivery, persisted on
+// its anchor run so the reconnect resync can re-resolve current materials.
+// `credentialIds` is every credential the delivery references (inference
+// sources have no binding; bound handles do). `bindings` is the credential
+// binding descriptors (handle -> credentialId, plus the consumer allowed to use
+// it). Never holds a secret.
+export type WorkflowRunCredentialRefs = {
+  credentialIds: string[];
+  bindings: { handle: string; credentialId: string; consumer: string }[];
+  /**
+   * The consumers that declare the reserved hub handle. Their credentials are
+   * run tokens, not credential rows, so they never appear in `credentialIds`.
+   */
+  hubConsumers?: string[];
+};
+
+// The legacy mail accept rules a pre-gate deployment can hold. A deployment
+// that received mail before the gate admits its deployer as invoker and
+// its correspondents (`invoker-correspondent`); a deployment that only sent
+// mail admits its correspondents (`correspondent`).
+export const legacyMailAcceptRules = [
+  "invoker-correspondent",
+  "correspondent",
+] as const;
+
+export type LegacyMailAcceptRule = (typeof legacyMailAcceptRules)[number];
+
+/**
+ * The consumers that declare the reserved hub handle. A row without the field
+ * has none, so this is the one place that decides what its absence means.
+ */
+export function hubConsumersOf(
+  refs: WorkflowRunCredentialRefs | null | undefined,
+): readonly string[] {
+  return refs?.hubConsumers ?? [];
+}
+
+// workflow_run is the per-run authorization subject: one row per run of a
+// workflow deployment. It gives "this approval belongs to a real run of this
+// deployment" a database referent, so approvals and signal correlations anchor
+// to a run row rather than a bare run id string.
+//
+// The id is opaque and heterogeneous: a deployment's addressable top-level
+// run uses its stable mail address, while internal body-child runs use freshly
+// minted synthetic ids. Both are run identifiers, so no format is enforced on
+// the column.
+export const workflowRun = pgTable(
+  "workflow_run",
+  {
+    id: text("id").primaryKey(),
+    // The definition a run belongs to, carried by every run: a folded
+    // agent-origin run sets it at launch, and a deployment's anchor run and its
+    // child runs carry the deployment's definition. It is the run's anchor to a
+    // first-class definition. `cascade` matches `anchorRunId`'s onDelete, so
+    // deleting the definition removes its runs.
+    definitionId: text("definition_id")
+      .notNull()
+      .references(() => workflowDefinition.id, { onDelete: "cascade" }),
+    // Nullable as of the fold: a folded agent-origin run carries a
+    // `definitionId` and no deployment, while a deployment's anchor run sets
+    // this to its own id and a child run sets it to its anchor's id. It
+    // references the anchor `workflow_run` -- the run whose id equals the
+    // deployment id -- so an anchor row is self-referential. The only runtime
+    // read of the column (`resolveWorkflowPrincipalNames`) degrades gracefully
+    // when it is null.
+    anchorRunId: text("anchor_run_id").references(
+      (): AnyPgColumn => workflowRun.id,
+      { onDelete: "cascade" },
+    ),
+    tenantId: text("tenant_id")
+      .notNull()
+      .references(() => tenant.id, { onDelete: "cascade" }),
+    // Nullable by design: an internal, workflow-spawned run has no principal of
+    // its own -- it inherits the deployment's grants at read time -- so null is
+    // the honest signal for "this run has no own principal." `onDelete: "set
+    // null"` is deliberate (unlike agent_instance's principal, which uses the
+    // implicit default): deleting a run's principal nulls the column rather than
+    // wedging the run row.
+    principalId: text("principal_id").references(() => principal.id, {
+      onDelete: "set null",
+    }),
+    // A deployment's anchor run is born "deployed": the deploy->first-trigger
+    // window is live but not yet running. The first trigger reconciles the
+    // anchor and flips this column "deployed" -> "running" (see
+    // `anchorWithPrincipal`). A child run has no such window -- it exists only
+    // once execution spawns it -- so it is born "running". A run settles into a
+    // terminal status when its terminal event lands on the workflow-run ref:
+    // the hub's pack-receive path flips this column under a live-status guard so
+    // a redelivered terminal event does not re-terminate the run.
+    status: text("status", {
+      enum: ["deployed", "running", "completed", "failed", "cancelled"],
+    })
+      .notNull()
+      .default("running"),
+    // Runtime bindings a folded run carries, mirroring `agent_instance`: a
+    // folded run IS the launched instance, so it owns its routing endpoint.
+    // `address` is that endpoint -- nullable because an address-less child run
+    // routes via its deployment (a deployment's anchor run instead carries a
+    // workflow-derived address), but unique among the runs that set it (the
+    // partial unique index below). The folded launch writes `address` and
+    // `modelPreferences`; `publicKey` is persisted when the sidecar acks the
+    // deploy; no code populates `sidecarId`/`kernelId`.
+    address: text("address"),
+    publicKey: text("public_key"),
+    sidecarId: text("sidecar_id").references(() => sidecar.id, {
+      onDelete: "set null",
+    }),
+    kernelId: text("kernel_id"),
+    modelPreferences: jsonb("model_preferences"),
+    // The non-secret shape of the credential delivery this deployment resolved
+    // at deploy: the credentialIds it references and the credential binding
+    // descriptors. Set on a deployment anchor run; null for runs that carry no
+    // credential delivery. Secrets are NEVER stored here -- only ids and
+    // descriptors -- so the reconnect resync can re-resolve each id's CURRENT
+    // material from the credential table (dropping a revoked or deleted id,
+    // picking up a rotated secret) and reconcile the reconnecting child.
+    credentialRefs: jsonb("credential_refs").$type<WorkflowRunCredentialRefs>(),
+    lifecyclePolicy: jsonb("lifecycle_policy"),
+    expiresAt: timestamp("expires_at"),
+    cancellationRequestedAt: timestamp("cancellation_requested_at"),
+    // When an operator asked for the cancellation, also when an expiry
+    // cancellation started first. Null when no operator request is
+    // recorded; rows written before this column existed are null even
+    // when an operator cancelled them.
+    operatorCancellationRequestedAt: timestamp(
+      "operator_cancellation_requested_at",
+    ),
+    cancellationReason: text("cancellation_reason"),
+    cancellationDeadline: timestamp("cancellation_deadline"),
+    capacityReleaseAt: timestamp("capacity_release_at"),
+    // When unrecoverable capacity loss happened while accepted history could
+    // still settle some runs. Set on the anchor instead of failing its live
+    // runs; they are failed at this time once that history is reconciled.
+    infrastructureFailedAt: timestamp("infrastructure_failed_at"),
+    // Why the Hub failed this run. Set on the anchor when the Hub decides to
+    // fail the deployment, deferred or not, then on every live run it fails,
+    // and kept after the allocation that also records it is released.
+    failureCode: text("failure_code"),
+    failureMessage: text("failure_message"),
+    // The mail accept rule a deployment that predates the inbound mail sender
+    // gate keeps, so it stays reachable. Only the migration that adds the gate
+    // writes it, on the anchor run of each such deployment; a deployment made
+    // after the gate leaves it null and takes its rules from its own approved
+    // `mailAccept` alone. It lives on the anchor run, not in the deployment's
+    // launch-spec snapshot, so the migration leaves the grant shape the
+    // operator approved unchanged.
+    legacyMailAccept: text("legacy_mail_accept", {
+      enum: legacyMailAcceptRules,
+    }),
+    createdAt: timestamp("created_at").notNull().defaultNow(),
+    // Nullable: a run has no end time until it reaches a terminal state.
+    endedAt: timestamp("ended_at"),
+  },
+  (t) => [
+    // Supports lookups of a definition's runs, the read path folded runs use
+    // once `definitionId` is the anchor.
+    index("workflow_run_definition_idx").on(t.definitionId),
+    // A folded run owns a unique routing address, exactly like the agent
+    // instance it stands in for; a run that anchors on a deployment instead
+    // leaves `address` null and is not indexed. Partial so the many null-address
+    // rows never collide and are kept out of the index.
+    uniqueIndex("workflow_run_address_idx")
+      .on(t.address)
+      .where(sql`${t.address} is not null`),
+    // The lifecycle sweep runs every second and runs are never deleted, so its
+    // lookups use these partial indexes instead of walking every run.
+    index("workflow_run_anchor_idx")
+      .on(t.id)
+      .where(sql`${t.id} = ${t.anchorRunId}`),
+    index("workflow_run_live_anchor_idx")
+      .on(t.id)
+      .where(
+        sql`${t.id} = ${t.anchorRunId} and ${t.status} in ('deployed', 'running')`,
+      ),
+    index("workflow_run_infrastructure_failed_idx")
+      .on(t.id)
+      .where(sql`${t.infrastructureFailedAt} is not null`),
+    // Deleting a sidecar nulls this column in every run that names it, so
+    // without an index each delete walks every run.
+    index("workflow_run_sidecar_idx")
+      .on(t.sidecarId)
+      .where(sql`${t.sidecarId} is not null`),
+    check(
+      "workflow_run_legacy_mail_accept_check",
+      sql`${t.legacyMailAccept} is null or ${t.legacyMailAccept} in ('invoker-correspondent', 'correspondent')`,
+    ),
+  ],
+);
+
+// The statuses a run holds while live -- not yet settled into a terminal state.
+// A deployment anchor is born "deployed" and flips to "running" on its first
+// trigger; a child run is born "running". Every status gate that must treat a
+// live run as live tests membership here, so "which statuses count as live" has
+// a single definition rather than a `status !== "running"` scattered across the
+// workflow-run domain. The `satisfies` bound makes a drift from the column enum
+// a compile error.
+export const liveWorkflowRunStatuses = [
+  "deployed",
+  "running",
+] as const satisfies readonly (typeof workflowRun.$inferSelect)["status"][];
+
+export function isLiveWorkflowRunStatus(status: string): boolean {
+  return liveWorkflowRunStatuses.some((live) => live === status);
+}

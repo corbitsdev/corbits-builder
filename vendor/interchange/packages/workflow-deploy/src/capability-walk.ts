@@ -1,0 +1,615 @@
+// Deploy-time capability walk.
+//
+// `walkCapabilities(workflow, registry)` is the structural lift of
+// `getRequiredEnvKeys` from `@intx/agent`: the env-validation helper
+// walks each step's `AgentDefinition` to collect the env-key surface
+// the agent declares at instantiation; this walk traverses the same
+// shape and emits the grant-shape strings the deploy-time operator-
+// approval gate consumes.
+//
+// The two walks must stay structurally aligned -- a step whose
+// `AgentDefinition` would pass `validateEnv` at runtime must produce
+// the matching grant set here. The parity test in
+// `capability-walk.test.ts` is the load-bearing structural-identity
+// check for that claim.
+//
+// Grant shapes (v1):
+//   - `tool:<def.name>`              -- every tool name a factory
+//                                        declares via `definitions[i].name`
+//                                        (per definition, NOT per factory
+//                                        id, so the grant matches the
+//                                        runtime `tool:<call.name>` the
+//                                        gate authorizes against)
+//   - `director:<ref.id>`            -- resolved director ref
+//   - `capability:<name>`            -- `AgentDefinition.capabilities`
+//   - `inference.source:<id>`        -- `inference.sources[i].provider`
+//                                        with `<provider>:<model>`-style
+//                                        id (matches the existing
+//                                        InferencePreference shape)
+//   - `mail.address:<address>`       -- every workflow trigger of type
+//                                        `"mail"` (the deployment's
+//                                        right to register and receive)
+//   - `mail.send:<domain>`           -- the trigger address's domain
+//                                        (the deployment's right to
+//                                        send mail as that domain)
+//   - `mail.accept:<relation>`       -- a relational accept marker
+//                                        (`invoker`/`self`/`tenant`/
+//                                        `correspondent`)
+//                                        resolved from the definition's
+//                                        authored `mailAccept` via the
+//                                        shared relation resolver
+//   - `mail.accept:principal:<id>`   -- an explicit principal coordinate
+//                                        from `mailAccept.principals[]`
+//   - `mail.accept:asset:<id>`       -- an explicit asset coordinate
+//                                        from `mailAccept.assets[]`
+//
+// The `mail.accept:*` axis is emitted for a definition of any trigger: every
+// run has an address that mail can reach (see `collectMailAcceptGrants`).
+//
+// Wildcard semantics (e.g. `tool:@vendor/foo/*`) are intentionally
+// deferred: v1 ships explicit per-tool approvals so the operator UX
+// matches what `getRequiredEnvKeys` enforces today. When a deployment
+// accumulates enough tool factories that explicit approval is
+// unergonomic, the wildcard shape lands as an additive refinement.
+//
+// Director resolution: the walk calls `effectiveDirectorRef` so the
+// absent-director normalization stays identical between this walk and
+// `getRequiredEnvKeys`. Director factories loaded from pinned tool
+// packages via `interchange.directors` are folded into the registry by
+// the caller; this module does not synthesize that registry itself
+// because the loader is the layer that owns package materialization.
+// An unresolvable director surfaces on `unresolvedDirectors` rather
+// than raising -- the deploy flow translates that into a deploy-time
+// `"unresolvable director"` failure when it wires this output into
+// approval flow.
+
+import type {
+  AgentDefinition,
+  BaseEnv,
+  DirectorRegistry,
+  ToolDeclaration,
+} from "@intx/agent";
+import {
+  effectiveDirectorRef,
+  toolApprovalEffect,
+  UnknownDirectorIdError,
+} from "@intx/agent/authoring";
+import {
+  actionConsumer,
+  mailAcceptRelationToken,
+  mailAcceptResource,
+  resolveMailAcceptRelations,
+  toolConsumer,
+} from "@intx/authz";
+import type { GrantEffect, GrantOrigin, GrantWalkSnapshot } from "@intx/types";
+import type { MailAccept } from "@intx/types/mail-accept";
+import {
+  EXECUTABLE_STEP_DESCENT,
+  extractAgent,
+  walkNestedWorkflowSteps,
+} from "@intx/workflow/definition";
+import type { WorkflowDefinition } from "@intx/workflow/definition";
+import type { PluginToolDefinitions } from "@intx/workflow/projection";
+
+/**
+ * Grant declarations produced for a single workflow step. `grants`
+ * carries the grant-shape strings the operator-approval gate consumes.
+ *
+ * `grantEffects` maps each TOOL grant string (`tool:<def.name>`) to the
+ * effect the tool's static declaration requested: `"ask"` for a tool
+ * gated behind per-invocation approval, `"allow"` otherwise. It covers
+ * TOOL grants only -- director/capability/inference.source/mail.* grants
+ * live in `grants` and are absent from `grantEffects`.
+ *
+ * Frozen so downstream consumers cannot mutate the walk output in
+ * place.
+ */
+export interface GrantDeclarations {
+  readonly grants: readonly string[];
+  readonly grantEffects: ReadonlyMap<string, GrantEffect>;
+}
+
+/**
+ * The capability walk's result. `perStep` keys are workflow step ids;
+ * `unresolvedDirectors` lists every director id the supplied registry
+ * could not resolve across the whole walk, so the deploy flow can
+ * surface a single deploy-time failure rather than tearing down per
+ * step.
+ *
+ * `unresolvedDirectors` is a readonly array (not an optional) so
+ * callers must inspect it explicitly; an optional that resolves to
+ * `undefined` is too easy to ignore at the approval-gate site.
+ */
+export interface CapabilityWalkResult {
+  readonly perStep: ReadonlyMap<string, GrantDeclarations>;
+  readonly unresolvedDirectors: readonly string[];
+}
+
+/**
+ * Mutable accumulator threaded through the collectors while a single
+ * step is walked. `grants` is the deduplicated grant-string set;
+ * `effects` maps each TOOL grant string to its effect. The two are
+ * frozen into a `GrantDeclarations` once the step is fully walked.
+ */
+interface GrantSet {
+  readonly grants: Set<string>;
+  readonly effects: Map<string, GrantEffect>;
+  readonly credentialConsumers: Set<string>;
+}
+
+/**
+ * Fold the deployment-wide trigger grants into a step's collected
+ * agent/action/loop grants and freeze the result. Trigger grants are
+ * never TOOL grants, so they add to `grants` without touching `effects`.
+ */
+function freezeDeclarations(
+  collected: GrantSet,
+  triggerGrants: readonly string[],
+): GrantDeclarations {
+  const grants = new Set<string>(collected.grants);
+  for (const grant of triggerGrants) {
+    grants.add(grant);
+  }
+  return Object.freeze({
+    grants: Object.freeze([...grants]),
+    grantEffects: Object.freeze(new Map(collected.effects)),
+  });
+}
+
+/**
+ * Walk a workflow definition and produce per-step grant declarations.
+ *
+ * The walk visits every step's agent definition once; deployment-wide
+ * grants (the trigger-derived `mail.address:` / `mail.send:` axis and the
+ * `mail.accept:*` accept axis) are attached to every step because the
+ * workflow's mail-receive, mail-send, and mail-accept authority is a
+ * deployment-wide property -- any step can be the one whose run consumes
+ * inbound mail or generates a reply.
+ */
+export function walkCapabilities(
+  workflow: WorkflowDefinition,
+  registry: DirectorRegistry,
+  pluginDefs: PluginToolDefinitions = new Map(),
+): CapabilityWalkResult {
+  const walked = walkDefinition(workflow, registry, pluginDefs);
+  return Object.freeze({
+    perStep: walked.perStep,
+    unresolvedDirectors: Object.freeze([...walked.unresolved]),
+  });
+}
+
+/**
+ * The fields of a grant rule a run's runtime authority needs, without the
+ * storage identity (id, tenant, principal, timestamps) a host adds.
+ */
+export type RuntimeGrantRule = {
+  readonly resource: string;
+  readonly action: string;
+  readonly effect: GrantEffect;
+  readonly origin: GrantOrigin;
+  readonly conditions: Record<string, unknown> | null;
+  readonly expiresAt: null;
+};
+
+const TOOL_GRANT_PREFIX = "tool:";
+const EFFECT_GRANT_PREFIX = "effect:";
+
+/**
+ * Project a grant-walk snapshot into a run's runtime grant rules -- the
+ * `tool:<name>` and `effect:<cap>` grants the runtime enforces fail-closed.
+ * Every distinct grant string across all steps becomes one creator-origin
+ * rule with `action: invoke`. Other walk grants (`capability:`, `director:`,
+ * `inference.source:`, `mail.*`) are not runtime grants and are dropped.
+ *
+ * Tool grants carry the effect the tool's static declaration requested (`ask`
+ * for approval-gated tools, `allow` otherwise) via each step's `grantEffects`
+ * record. A tool in more than one step is emitted once; when two steps disagree
+ * on its effect, `ask` wins over `allow` so an approval-gated declaration is
+ * never silently downgraded. A tool grant with no `grantEffects` entry throws:
+ * a defaulted `allow` would silently downgrade an `ask` tool.
+ *
+ * Effect grants are always `allow` -- the `effect.requires` set names the
+ * capability floor an action needs, with no per-effect ask/allow distinction,
+ * so they are NOT routed through the `grantEffects` record (which covers tool
+ * grants only). An `effect:<cap>` in more than one step is emitted once.
+ *
+ * The `tool:` rules carry the bare tool names the walk reads from inline
+ * `agent.toolFactories`. They authorize a source-ref tool, which runs under
+ * that name; a pinned tool runs as `<bundleId>:<name>` and takes its
+ * authority from the sidecar tool-mark floor instead.
+ */
+export function runtimeGrantRules(
+  snapshot: Pick<GrantWalkSnapshot, "perStep">,
+): RuntimeGrantRule[] {
+  const effectByResource = new Map<string, GrantEffect>();
+  for (const step of snapshot.perStep) {
+    const grantEffects = new Map<string, GrantEffect>(
+      Object.entries(step.grantEffects),
+    );
+    for (const grant of step.grants) {
+      if (grant.startsWith(TOOL_GRANT_PREFIX)) {
+        const effect = grantEffects.get(grant);
+        if (effect === undefined) {
+          throw new Error(
+            `runtimeGrantRules: tool grant ${JSON.stringify(grant)} has no grantEffects entry; the grant-walk snapshot must carry an effect for every tool grant`,
+          );
+        }
+        const existing = effectByResource.get(grant);
+        if (existing === "ask" || effect === "ask") {
+          effectByResource.set(grant, "ask");
+        } else if (existing === undefined) {
+          effectByResource.set(grant, effect);
+        }
+      } else if (grant.startsWith(EFFECT_GRANT_PREFIX)) {
+        if (!effectByResource.has(grant)) {
+          effectByResource.set(grant, "allow");
+        }
+      }
+    }
+  }
+  return [...effectByResource].map(([resource, effect]) => ({
+    resource,
+    action: "invoke",
+    effect,
+    origin: "creator",
+    conditions: null,
+    expiresAt: null,
+  }));
+}
+
+/**
+ * One system-origin `credential:{id}` / `use` rule per distinct
+ * `(credentialId, consumer)` on a run's resolved credential bindings. The
+ * consumer string is copied onto `{ tool }`, the condition Gate 2 checks.
+ * Inference credentials are not in this list: they have no binding and no
+ * consumer.
+ */
+export function credentialUseGrantRules(
+  bindings: readonly { credentialId: string; consumer: string }[],
+): RuntimeGrantRule[] {
+  const seen = new Set<string>();
+  const rules: RuntimeGrantRule[] = [];
+  for (const binding of bindings) {
+    const key = `${binding.credentialId}\0${binding.consumer}`;
+    if (seen.has(key)) continue;
+    seen.add(key);
+    rules.push({
+      resource: `credential:${binding.credentialId}`,
+      action: "use",
+      effect: "allow",
+      origin: "system",
+      conditions: { tool: binding.consumer },
+      expiresAt: null,
+    });
+  }
+  return rules;
+}
+
+/**
+ * Consumer identities the definition runs, including those that appear only
+ * inside an inline nested body: `toolConsumer(factory.id)` for every tool
+ * factory, and `actionConsumer(handler)` for every action that declares
+ * credentials. This is the credential-cap input. It is not part of
+ * `CapabilityWalkResult`: those strings are not operator-facing grants.
+ * Plugin names are absent. A factory with an empty `definitions` array is
+ * still present, because the source arm keys Gate 2 on the factory id.
+ */
+export function collectCredentialConsumers(
+  workflow: WorkflowDefinition,
+  registry: DirectorRegistry,
+  pluginDefs: PluginToolDefinitions = new Map(),
+): ReadonlySet<string> {
+  return walkDefinition(workflow, registry, pluginDefs).credentialConsumers;
+}
+
+function walkDefinition(
+  workflow: WorkflowDefinition,
+  registry: DirectorRegistry,
+  pluginDefs: PluginToolDefinitions,
+): {
+  readonly perStep: Map<string, GrantDeclarations>;
+  readonly unresolved: Set<string>;
+  readonly credentialConsumers: ReadonlySet<string>;
+} {
+  const triggerGrants = [
+    ...collectTriggerGrants(workflow),
+    ...collectMailAcceptGrants(workflow),
+  ];
+  const unresolved = new Set<string>();
+  const perStep = new Map<string, GrantDeclarations>();
+  const credentialConsumers = new Set<string>();
+
+  for (const stepId of workflow.stepOrder) {
+    const primitive = workflow.steps[stepId];
+    if (primitive === undefined) {
+      throw new Error(
+        `capability walk: step ${stepId} listed in stepOrder is missing from steps`,
+      );
+    }
+    // Every top-level step gets a fresh grant set; `collectPrimitiveGrants`
+    // routes the step and any nested bodies it carries through one dispatch,
+    // so an approval covers every agent, action, and effect the step can run.
+    // The consumer set is the same object the nested visit writes into, then
+    // unioned here, so a consumer that exists only on an inline body survives.
+    const collected = emptyGrantSet();
+    collectPrimitiveGrants(
+      primitive,
+      registry,
+      pluginDefs,
+      unresolved,
+      collected,
+    );
+    perStep.set(stepId, freezeDeclarations(collected, triggerGrants));
+    for (const consumer of collected.credentialConsumers) {
+      credentialConsumers.add(consumer);
+    }
+  }
+
+  return { perStep, unresolved, credentialConsumers };
+}
+
+function emptyGrantSet(): GrantSet {
+  return {
+    grants: new Set<string>(),
+    effects: new Map(),
+    credentialConsumers: new Set<string>(),
+  };
+}
+
+/**
+ * Collect an action's `effect:<cap>` grants from its declared `requires`
+ * set. Non-action primitives contribute none.
+ */
+function collectActionGrants(
+  primitive: WorkflowDefinition["steps"][string],
+): string[] {
+  if (primitive.kind !== "action") {
+    return [];
+  }
+  const grants = new Set<string>();
+  for (const capability of primitive.effect?.requires ?? []) {
+    grants.add(`effect:${capability}`);
+  }
+  return [...grants];
+}
+
+/**
+ * Union a single primitive's grants into `collected`: its agent grants (when
+ * it carries an agent), its action `effect:<cap>` grants, and -- for a
+ * body-bearing primitive -- the grants of every step of its nested body. A
+ * loop, an inline onTrigger section, and an inline childWorkflow each run their
+ * body per the deployment, so the operator must approve everything the body can
+ * run. That is exactly `EXECUTABLE_STEP_DESCENT`: every step the deployment can
+ * execute, including the ones a lifted body owns. A `{ ref }` body is a
+ * separately-declared asset whose grants were folded in from its own inline
+ * form, so the descent skips it.
+ *
+ * Duplicate-name handling is scoped per body step: `collectAgentGrants` throws
+ * on a duplicate within a single agent, but two DIFFERENT body steps that each
+ * mint the same `tool:<name>` are distinct runtime agents (the runtime builds
+ * one agent per step), so the union across body steps is not a duplicate-name
+ * error.
+ */
+function collectPrimitiveGrants(
+  primitive: WorkflowDefinition["steps"][string],
+  registry: DirectorRegistry,
+  pluginDefs: PluginToolDefinitions,
+  unresolved: Set<string>,
+  collected: GrantSet,
+): void {
+  collectOwnGrants(primitive, registry, pluginDefs, unresolved, collected);
+  walkNestedWorkflowSteps({
+    primitive,
+    descent: EXECUTABLE_STEP_DESCENT,
+    context: "capability walk: body ",
+    visit: ({ step }) => {
+      collectOwnGrants(step, registry, pluginDefs, unresolved, collected);
+    },
+  });
+}
+
+/**
+ * Union the grants a single primitive declares in its own right -- its agent's
+ * grants and its action's `effect:<cap>` grants -- and the credential consumers
+ * it runs into `collected`, without descending into anything it nests.
+ */
+function collectOwnGrants(
+  primitive: WorkflowDefinition["steps"][string],
+  registry: DirectorRegistry,
+  pluginDefs: PluginToolDefinitions,
+  unresolved: Set<string>,
+  collected: GrantSet,
+): void {
+  const agent = extractAgent(primitive);
+  if (agent !== null) {
+    collectAgentGrants(agent, registry, pluginDefs, unresolved, collected);
+  }
+  for (const grant of collectActionGrants(primitive)) {
+    collected.grants.add(grant);
+  }
+  // Unlike a tool factory, which counts even with empty `definitions`
+  // because the source arm keys Gate 2 on its id, an action counts only when
+  // it carries a `credentials` field: that list is its declared credential
+  // surface, so an action without the field consumes nothing.
+  if (primitive.kind === "action" && primitive.credentials !== undefined) {
+    collected.credentialConsumers.add(actionConsumer(primitive.handler));
+  }
+}
+
+function collectAgentGrants(
+  agent: AgentDefinition<BaseEnv>,
+  registry: DirectorRegistry,
+  pluginDefs: PluginToolDefinitions,
+  unresolved: Set<string>,
+  collected: GrantSet,
+): void {
+  // Track the final tool names this agent has minted so a collision
+  // across the agent's factories throws here rather than surfacing as a
+  // runtime DuplicateToolError (see resolveTools in
+  // packages/agent/src/agent.ts) after the deploy has already gone out.
+  const seenToolNames = new Set<string>();
+  for (const factory of agent.toolFactories) {
+    // Gate 2 keys the consumer on the factory id, including a factory whose
+    // `definitions` array is empty and therefore emits no `tool:` grant.
+    collected.credentialConsumers.add(toolConsumer(factory.id));
+    // Intra-factory: a repeated name within one factory's declarations
+    // is a declaration bug; the runtime would collapse the two into one
+    // dispatch entry, leaving one tool unreachable. Surface it at walk
+    // time.
+    const seenInFactory = new Set<string>();
+    for (const definition of factory.definitions) {
+      if (seenInFactory.has(definition.name)) {
+        throw new DuplicateWalkToolError(definition.name, factory.id);
+      }
+      seenInFactory.add(definition.name);
+      if (seenToolNames.has(definition.name)) {
+        throw new DuplicateWalkToolError(definition.name, factory.id);
+      }
+      seenToolNames.add(definition.name);
+      emitToolGrant(definition, collected);
+    }
+  }
+  // Plugin-contributed tools. A plugin package (`agent.plugins`) exposes
+  // its tools through `env.plugins` at run time, so they never appear in
+  // `agent.toolFactories`; the loaded static `definitions` supplied by the
+  // caller carry the tool names to authorize. A plugin tool sharing a name
+  // with a factory tool (or another plugin's tool) is a real collision --
+  // both dispatch under the same bare runtime name -- so it flows through
+  // the SAME `seenToolNames` guard.
+  for (const pluginName of agent.plugins ?? []) {
+    const definitions = pluginDefs.get(pluginName);
+    if (definitions === undefined) {
+      throw new Error(
+        `capability walk: agent ${JSON.stringify(agent.id)} declares plugin ${JSON.stringify(pluginName)} but no static tool definitions were loaded for it; a declared plugin whose grant surface cannot be resolved must fail closed`,
+      );
+    }
+    for (const definition of definitions) {
+      if (seenToolNames.has(definition.name)) {
+        throw new DuplicateWalkToolError(definition.name, pluginName);
+      }
+      seenToolNames.add(definition.name);
+      emitToolGrant(definition, collected);
+    }
+  }
+  for (const capability of agent.capabilities) {
+    collected.grants.add(`capability:${capability}`);
+  }
+  for (const source of agent.inference.sources) {
+    collected.grants.add(`inference.source:${source.provider}:${source.model}`);
+  }
+  const ref = effectiveDirectorRef(agent, registry);
+  try {
+    const directorFactory = registry.resolve(ref);
+    collected.grants.add(`director:${directorFactory.id}`);
+  } catch (cause) {
+    if (!(cause instanceof UnknownDirectorIdError)) throw cause;
+    unresolved.add(ref.id);
+  }
+}
+
+/**
+ * Add a tool's `tool:<name>` grant and its authorization effect to the
+ * collected set, applying the ask-wins merge. `collected` is one GrantSet
+ * shared across every body step of a loop, so two body steps declaring the
+ * same bare tool name write the same `tool:<name>` key; a plain overwrite
+ * would let a later unmarked declaration downgrade an earlier `ask` to
+ * `allow`, so keep `ask` if either the existing or incoming effect asks.
+ * Shared by the factory-declared and plugin-contributed tool paths so both
+ * derive the effect through the one canonical `toolApprovalEffect` mapping.
+ */
+function emitToolGrant(definition: ToolDeclaration, collected: GrantSet): void {
+  const grant = `tool:${definition.name}`;
+  collected.grants.add(grant);
+  const incoming = toolApprovalEffect(definition);
+  const existing = collected.effects.get(grant);
+  collected.effects.set(
+    grant,
+    existing === "ask" || incoming === "ask" ? "ask" : incoming,
+  );
+}
+
+function collectTriggerGrants(workflow: WorkflowDefinition): string[] {
+  const grants = new Set<string>();
+  for (const trigger of workflow.triggers) {
+    if (trigger.type !== "mail") continue;
+    grants.add(`mail.address:${trigger.to}`);
+    const domain = extractDomain(trigger.to);
+    if (domain !== null) {
+      grants.add(`mail.send:${domain}`);
+    }
+  }
+  return [...grants];
+}
+
+/** The parts of a definition that decide its `mail.accept:*` approval strings. */
+export type MailAcceptGrantSource = {
+  readonly mailAccept?: MailAccept | undefined;
+};
+
+/**
+ * Emit the deployment-wide `mail.accept:*` approval strings from the
+ * definition's authored `mailAccept` field.
+ *
+ * The markers do not depend on the triggers. Every run has an address the hub
+ * routes mail to, and a run of any trigger can send mail and wait for the
+ * reply, so a workflow with no mail trigger emits its authored rules too. Every
+ * relation is opt-in (`resolveMailAcceptRelations` enables one only when
+ * authored `true`), so an absent `mailAccept` emits nothing.
+ *
+ * Relational toggles resolve through the shared `resolveMailAcceptRelations`
+ * resolver (the single home of the enablement rule -- not re-derived here) and
+ * emit id-less relation tokens. Explicit `principals`/`assets` ids emit
+ * concrete coordinates known at deploy time. Both feed the same approval-gate
+ * set membership check, which treats every grant string as opaque.
+ *
+ * The hub probe gate calls this over the inert projection to check the
+ * markers a sidecar's walk reports, so the walk and the gate derive the set
+ * from one function.
+ */
+export function collectMailAcceptGrants(
+  workflow: MailAcceptGrantSource,
+): string[] {
+  const grants = new Set<string>();
+  for (const relation of resolveMailAcceptRelations(workflow.mailAccept)) {
+    grants.add(mailAcceptRelationToken(relation));
+  }
+  for (const id of workflow.mailAccept?.principals ?? []) {
+    grants.add(mailAcceptResource("principal", id));
+  }
+  for (const id of workflow.mailAccept?.assets ?? []) {
+    grants.add(mailAcceptResource("asset", id));
+  }
+  return [...grants];
+}
+
+function extractDomain(address: string): string | null {
+  const at = address.lastIndexOf("@");
+  if (at < 0 || at === address.length - 1) {
+    return null;
+  }
+  return address.slice(at + 1);
+}
+
+/**
+ * Thrown when the walk finds two tool definitions that mint the same
+ * final `tool:<name>` grant within a single agent -- whether from a
+ * repeated name inside one factory or a collision across two of the
+ * agent's factories. Mirrors the runtime `DuplicateToolError` (see
+ * `resolveTools` in `packages/agent/src/agent.ts`), surfacing the
+ * collision at deploy time so a broken agent fails the walk instead of
+ * deploying and then crashing when `createAgent` builds it.
+ */
+export class DuplicateWalkToolError extends Error {
+  readonly toolName: string;
+  readonly factoryId: string;
+
+  constructor(toolName: string, factoryId: string) {
+    super(
+      `capability walk: duplicate tool name ${JSON.stringify(toolName)} ` +
+        `(factory ${JSON.stringify(factoryId)})`,
+    );
+    this.name = "DuplicateWalkToolError";
+    this.toolName = toolName;
+    this.factoryId = factoryId;
+  }
+}

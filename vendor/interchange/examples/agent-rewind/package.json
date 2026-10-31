@@ -1,0 +1,24 @@
+{
+  "name": "@intx/example-agent-rewind",
+  "description": "Example: rewinding an @intx/agent conversation to an older commit in a cloned contextDir",
+  "version": "0.5.0",
+  "license": "LGPL-2.1-only",
+  "private": true,
+  "type": "module",
+  "exports": {
+    ".": {
+      "types": "./src/index.ts",
+      "default": "./src/index.ts"
+    }
+  },
+  "scripts": {
+    "start": "bun --conditions=intx-src run src/cli.ts"
+  },
+  "dependencies": {
+    "@intx/agent": "workspace:*",
+    "@intx/example-agent-common": "workspace:*",
+    "@intx/inference": "workspace:*",
+    "@intx/types": "workspace:*",
+    "isomorphic-git": "catalog:"
+  }
+}

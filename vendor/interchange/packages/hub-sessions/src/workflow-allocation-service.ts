@@ -1,0 +1,1063 @@
+import { type } from "arktype";
+
+import { sha256 } from "@intx/crypto";
+import {
+  createSidecarAllocationStore,
+  createWorkflowProbeStore,
+  createWorkflowRunLaunchSpecStore,
+  resolveTenantSidecarCapabilityPolicies,
+  resolveDeploymentLifecyclePolicy,
+  canExecuteWorkflowRun,
+  resolveSourcesByOfferingIds,
+  SidecarInventoryUnavailableError,
+  type DB,
+  type DBExecutor,
+  type SidecarAllocation,
+  type WorkflowProbe,
+} from "@intx/db";
+import { grant, workflowRun } from "@intx/db/schema";
+import { eq } from "drizzle-orm";
+import { generateId } from "@intx/hub-common";
+import {
+  hexEncode,
+  lifecycleDeadline,
+  lifecycleDurationMs,
+  SidecarCapabilityRule,
+  type AdapterManifest,
+  type CredentialCipher,
+  type ResolvedWorkflowLifecyclePolicy,
+} from "@intx/types";
+import {
+  DeploymentRejectedError,
+  type FrozenApprovalBundle,
+} from "@intx/types/sidecar";
+import type { HarnessConfig } from "@intx/types/runtime";
+import type { ToolPackagePin } from "@intx/types/tool-packages";
+import type { WorkflowDefinitionSource } from "@intx/types/workflow-sources";
+import {
+  approvalItemsFromSet,
+  approvalSetFromItems,
+  buildInertProjectionStepSources,
+  deriveRunAddress,
+  deriveRunAgentId,
+} from "@intx/workflow-deploy";
+
+import type { DeployContent } from "./agent-repo";
+import {
+  adapterManifestDigest,
+  DestroySidecarResult,
+  EnsureSidecarResult,
+  type SidecarCapabilityMismatch,
+  type SidecarPluginRegistry,
+  type SidecarProvisioner,
+  type SidecarProvisionerSelection,
+} from "./sidecar-allocation";
+import {
+  SessionLaunchError,
+  type DeployPreparedCodeSourcedWorkflowParams,
+  type DeployWorkflowDefinitionResult,
+  type PreparedWorkflowDeployer,
+} from "./session-service";
+import type {
+  AllocatedSidecarTarget,
+  SidecarAllocationRouter,
+} from "./ws/sidecar-handler";
+import type { InstallAndApproveResult } from "./workflow-probe-gate";
+import { buildReferencedWorkflowSourcePins } from "./workflow-source-pins";
+import {
+  DEFAULT_SIDECAR_OPERATION_TIMEOUT_MS,
+  SidecarDeploymentHistoryPendingError,
+  SidecarDeploymentMissingError,
+  SidecarDeploymentStoppedError,
+  SidecarFirstDeployError,
+  runSidecarOperation,
+  SidecarOperationTimeoutError,
+  type SidecarReconciliationContext,
+} from "./sidecar-allocation/operation";
+
+// How long the Hub waits for history a deployment that stopped on its own
+// committed before it fails the deployment without it, and how often it looks.
+const STOPPED_HISTORY_WAIT_MS = 60_000;
+const STOPPED_HISTORY_POLL_MS = 1_000;
+
+export class WorkflowProvisioningError extends Error {
+  readonly code: string;
+
+  constructor(code: string, message: string) {
+    super(message);
+    this.name = "WorkflowProvisioningError";
+    this.code = code;
+  }
+}
+
+export type PrepareProvisionedWorkflowDeploymentArgs = {
+  readonly tenantId: string;
+  readonly anchorRunId: string;
+  readonly deploymentDomain: string;
+  /** Where the definition's bytes come from at probe time. */
+  readonly source: WorkflowDefinitionSource;
+  /** The `interchange.workflow` entry-module path the sidecar evaluates. */
+  readonly entry: string;
+  /**
+   * A `name@range` spec for the definition package. REQUIRED for the `registry`
+   * and asset-`tarball` variants; omitted for the asset-`source` variant.
+   */
+  readonly pin?: string;
+  readonly definitionAssetId: string;
+  readonly sessionId: string;
+  readonly sourceAuthorityPrincipalId: string;
+  readonly sourceOfferingIds: readonly string[];
+  readonly defaultSourceOfferingId: string;
+  readonly deployContent: DeployContent;
+  readonly toolPackagePins?: readonly ToolPackagePin[];
+};
+
+export type PreparedProvisionedWorkflowDeployment = {
+  readonly anchorRunId: string;
+  readonly deploymentAddress: string;
+  readonly allocationId: string;
+  readonly status: "pending";
+};
+
+export type WorkflowAllocationService = {
+  initialize?(): Promise<void>;
+  reconcileReleasingProbes?(): Promise<void>;
+  prepareProvisionedDeployment(
+    args: PrepareProvisionedWorkflowDeploymentArgs,
+  ): Promise<PreparedProvisionedWorkflowDeployment>;
+  deployReadyAllocation(
+    allocation: SidecarAllocation,
+    reconciliation: SidecarReconciliationContext,
+  ): Promise<DeployWorkflowDefinitionResult | null>;
+};
+
+export type WorkflowAllocationServiceDeps = {
+  readonly db: DB["db"];
+  readonly deploymentPlugins: SidecarPluginRegistry;
+  readonly probePlugins: SidecarPluginRegistry;
+  readonly preparedDeployer: PreparedWorkflowDeployer;
+  /** Decrypts tenant-owned credential bindings for provisioned deployments. */
+  readonly credentialCipher: CredentialCipher;
+  readonly probeCapabilityRules?: readonly SidecarCapabilityRule[];
+  readonly allocationRouter: Pick<
+    SidecarAllocationRouter,
+    | "detachAllocation"
+    | "fenceAllocation"
+    | "getSidecarInventory"
+    | "isAllocatedWorkflowActive"
+    | "reportedDeploymentFailure"
+    | "stoppedDeploymentHistory"
+    | "retireAllocation"
+    | "sendProbeToAllocation"
+    | "syncSidecar"
+    | "waitForAllocatedSidecar"
+    | "waitForSidecarInventory"
+  >;
+  readonly hubWebSocketUrl: string;
+  /** Fills lifecycle fields no tenant or installed workflow sets. */
+  readonly defaultLifecyclePolicy: ResolvedWorkflowLifecyclePolicy;
+  /**
+   * Operator-declared custom adapter manifest forwarded to every provisioned
+   * sidecar via the ensure request. Opaque here — the sidecar's adapter
+   * registry is the authority that admits `model_provider.plugin` values.
+   */
+  readonly adapterManifest?: AdapterManifest;
+  readonly createAllocationId?: () => string;
+  readonly createSidecarId?: () => string;
+  readonly createToken?: () => string;
+  /** One deadline for binding synchronization and connection readiness. */
+  readonly connectTimeoutMs?: number;
+  readonly operationTimeoutMs?: number;
+  readonly now?: () => Date;
+};
+
+function randomAllocationId(): string {
+  return `sal_${hexEncode(crypto.getRandomValues(new Uint8Array(16)))}`;
+}
+
+function randomSidecarId(): string {
+  return `sc_${hexEncode(crypto.getRandomValues(new Uint8Array(16)))}`;
+}
+
+function randomToken(): string {
+  return `intx_sc_${hexEncode(crypto.getRandomValues(new Uint8Array(32)))}`;
+}
+
+function selectProvisioner(
+  selection: SidecarProvisionerSelection,
+): SidecarProvisioner {
+  if (selection.ok) return selection.provisioner;
+  throw new WorkflowProvisioningError(
+    "provisioner_no_match",
+    formatProvisionerMismatches(selection.mismatches),
+  );
+}
+
+function parseEnsureResult(value: unknown): EnsureSidecarResult {
+  const result = EnsureSidecarResult(value);
+  if (result instanceof type.errors) {
+    throw new Error(
+      `Sidecar provisioner returned an invalid ensure result: ${result.summary}`,
+    );
+  }
+  return result;
+}
+
+function parseDestroyResult(value: unknown): DestroySidecarResult {
+  const result = DestroySidecarResult(value);
+  if (result instanceof type.errors) {
+    throw new Error(
+      `Sidecar provisioner returned an invalid destroy result: ${result.summary}`,
+    );
+  }
+  return result;
+}
+
+function createProvisionedHarnessConfig(args: {
+  readonly tenantId: string;
+  readonly anchorRunId: string;
+  readonly deploymentDomain: string;
+  readonly sessionId: string;
+  readonly sourceAuthorityPrincipalId: string;
+  readonly sources: HarnessConfig["sources"];
+  readonly defaultSource: string;
+}): HarnessConfig {
+  const deploymentAddress = deriveRunAddress({
+    runId: args.anchorRunId,
+    domain: args.deploymentDomain,
+  });
+  return {
+    sessionId: args.sessionId,
+    agentId: deriveRunAgentId({ runId: args.anchorRunId }),
+    tenantId: args.tenantId,
+    principalId: args.sourceAuthorityPrincipalId,
+    agentAddress: deploymentAddress,
+    systemPrompt: "",
+    tools: [],
+    grants: [],
+    sources: args.sources,
+    defaultSource: args.defaultSource,
+  };
+}
+
+export function createWorkflowAllocationService({
+  db,
+  deploymentPlugins,
+  probePlugins,
+  preparedDeployer,
+  credentialCipher,
+  probeCapabilityRules = [],
+  allocationRouter,
+  hubWebSocketUrl,
+  defaultLifecyclePolicy,
+  adapterManifest,
+  createAllocationId = randomAllocationId,
+  createSidecarId = randomSidecarId,
+  createToken = randomToken,
+  connectTimeoutMs = 120_000,
+  operationTimeoutMs = DEFAULT_SIDECAR_OPERATION_TIMEOUT_MS,
+  now = () => new Date(),
+}: WorkflowAllocationServiceDeps): WorkflowAllocationService {
+  const allocationStore = createSidecarAllocationStore(db, {
+    getSidecarInventory: allocationRouter.getSidecarInventory,
+  });
+  const probeStore = createWorkflowProbeStore(db);
+  const launchSpecStore = createWorkflowRunLaunchSpecStore(db);
+  const currentAdapterManifestDigest = adapterManifestDigest(adapterManifest);
+  const validatedProbeCapabilityRules =
+    SidecarCapabilityRule.array()(probeCapabilityRules);
+
+  if (validatedProbeCapabilityRules instanceof type.errors) {
+    throw new Error(
+      `Invalid workflow probe capability rules: ${validatedProbeCapabilityRules.summary}`,
+    );
+  }
+  const configuredProbeCapabilityRules = validatedProbeCapabilityRules.map(
+    (rule) => ({ ...rule }),
+  );
+
+  if (connectTimeoutMs <= 0) {
+    throw new Error("connectTimeoutMs must be positive");
+  }
+  if (!Number.isSafeInteger(operationTimeoutMs) || operationTimeoutMs <= 0) {
+    throw new Error("operationTimeoutMs must be a positive integer");
+  }
+
+  function matchingProvisioner(
+    probe: WorkflowProbe,
+  ): SidecarProvisioner | null {
+    const provisioner = probePlugins.getProvisioner(probe.provisionerId);
+    return provisioner !== null &&
+      provisioner.apiVersion === probe.provisionerApiVersion &&
+      provisioner.bindingFingerprint === probe.provisionerBindingFingerprint
+      ? provisioner
+      : null;
+  }
+
+  async function beginProbeRelease(
+    probe: WorkflowProbe,
+    failure?: { code: string; message: string },
+  ): Promise<WorkflowProbe | null> {
+    if (probe.status === "releasing") return probe;
+    return probeStore.transition(
+      probe.id,
+      ["pending", "provisioning", "probing"],
+      "releasing",
+      {
+        ...(failure !== undefined
+          ? {
+              failureCode: failure.code,
+              failureMessage: failure.message,
+            }
+          : {}),
+        now: now(),
+      },
+    );
+  }
+
+  const probeCleanupTasks = new Map<string, Promise<void>>();
+
+  function finishProbeRelease(
+    probe: WorkflowProbe,
+    finalStatus: "succeeded" | "failed",
+  ): Promise<void> {
+    const existing = probeCleanupTasks.get(probe.id);
+    if (existing !== undefined) return existing;
+    const task = cleanUpProbe(probe, finalStatus);
+    probeCleanupTasks.set(probe.id, task);
+    const settled = () => {
+      if (probeCleanupTasks.get(probe.id) === task)
+        probeCleanupTasks.delete(probe.id);
+    };
+    void task.then(settled, settled);
+    return task;
+  }
+
+  async function cleanUpProbe(
+    probe: WorkflowProbe,
+    finalStatus: "succeeded" | "failed",
+  ): Promise<void> {
+    const releasing = await probeStore.get(probe.id);
+    if (releasing?.status === "succeeded" || releasing?.status === "failed")
+      return;
+    if (releasing?.status !== "releasing") {
+      throw new Error(`Workflow probe ${probe.id} is not releasing`);
+    }
+    const sidecarId = releasing.sidecarId;
+    if (sidecarId !== null) {
+      const provisioner = matchingProvisioner(releasing);
+      if (provisioner === null) {
+        throw new Error(
+          `Cannot clean up workflow probe ${releasing.id}: provisioner binding ${releasing.provisionerId} is unavailable`,
+        );
+      }
+      const destroyed = parseDestroyResult(
+        await runSidecarOperation(
+          "Probe destroy",
+          operationTimeoutMs,
+          (signal) =>
+            provisioner.destroy({
+              signal,
+              allocationId: releasing.id,
+              generation: releasing.generation,
+              sidecarId,
+              ...(releasing.externalRef !== null
+                ? { externalRef: releasing.externalRef }
+                : {}),
+            }),
+        ),
+      );
+      if (destroyed.kind === "rejected") {
+        throw new Error(
+          `Provisioner ${provisioner.id} rejected probe cleanup: ${destroyed.message}`,
+        );
+      }
+      if (destroyed.cleanup === "confirmed")
+        await probeStore.retireSidecar({ sidecarId, now: now() });
+      allocationRouter.detachAllocation({
+        allocationId: releasing.id,
+        generation: releasing.generation,
+      });
+    }
+    const completed = await probeStore.transition(
+      releasing.id,
+      ["releasing"],
+      finalStatus,
+      { now: now() },
+    );
+    if (completed === null) {
+      throw new Error(
+        `Workflow probe ${releasing.id} changed before cleanup completed`,
+      );
+    }
+    allocationRouter.retireAllocation({
+      allocationId: releasing.id,
+      generation: releasing.generation,
+    });
+  }
+
+  async function releaseProbe(
+    probe: WorkflowProbe,
+    finalStatus: "succeeded" | "failed",
+    failure?: { code: string; message: string },
+  ): Promise<void> {
+    const releasing = await beginProbeRelease(probe, failure);
+    if (releasing === null) return;
+    await finishProbeRelease(releasing, finalStatus);
+  }
+
+  async function createDeployment(args: {
+    request: PrepareProvisionedWorkflowDeploymentArgs;
+    approved: InstallAndApproveResult & {
+      approval: Extract<InstallAndApproveResult["approval"], { ok: true }>;
+    };
+    provisioner: SidecarProvisioner;
+    /** Probe capacity to turn into the deployment's allocation, if any. */
+    adoptedProbe: WorkflowProbe | null;
+    adapterManifestDigest: string;
+  }): Promise<PreparedProvisionedWorkflowDeployment> {
+    const { request, approved, provisioner, adoptedProbe } = args;
+    const probeSidecarId = adoptedProbe?.sidecarId ?? null;
+    if (adoptedProbe !== null && probeSidecarId === null) {
+      throw new Error(
+        `Workflow probe ${adoptedProbe.id} has no sidecar to adopt`,
+      );
+    }
+    const allocationId = adoptedProbe?.id ?? createAllocationId();
+    const deploymentAddress = deriveRunAddress({
+      runId: request.anchorRunId,
+      domain: request.deploymentDomain,
+    });
+    const frozenApprovalBundle: FrozenApprovalBundle = {
+      source: request.source,
+      entry: request.entry,
+      projection: approved.projection,
+      closure: approved.closure,
+      approvedWireHash: approved.approval.approvedWireHash,
+      ...(approved.assetCommitSha !== undefined
+        ? { assetCommitSha: approved.assetCommitSha }
+        : {}),
+      approvedGrants: [
+        ...approvalItemsFromSet(approved.approval.approvedSurface),
+      ],
+    };
+
+    const persistDeployment = async (tx: DBExecutor) => {
+      const createdAt = now();
+      const lifecycle = await resolveDeploymentLifecyclePolicy(
+        tx,
+        request.tenantId,
+        approved.approval.definitionId,
+        defaultLifecyclePolicy,
+      );
+      await tx.insert(workflowRun).values({
+        id: request.anchorRunId,
+        tenantId: request.tenantId,
+        anchorRunId: request.anchorRunId,
+        definitionId: approved.approval.definitionId,
+        address: deploymentAddress,
+        status: "deployed",
+        lifecyclePolicy: lifecycle,
+        expiresAt: lifecycleDeadline(createdAt, lifecycle.maxLifetime),
+        createdAt,
+      });
+      const maxDisconnectedMs = lifecycleDurationMs(lifecycle.maxDisconnected);
+      await tx.insert(grant).values({
+        id: generateId("grant"),
+        tenantId: request.tenantId,
+        principalId: request.sourceAuthorityPrincipalId,
+        resource: `workflow-run:${request.anchorRunId}`,
+        action: "read",
+        effect: "allow",
+        origin: "creator",
+        createdAt,
+        updatedAt: createdAt,
+      });
+      await launchSpecStore.create(
+        {
+          anchorRunId: request.anchorRunId,
+          sessionId: request.sessionId,
+          deploymentDomain: request.deploymentDomain,
+          sourceAuthorityPrincipalId: request.sourceAuthorityPrincipalId,
+          frozenApprovalBundle,
+          grantSnapshot: approved.grantSnapshot,
+          definitionArtifactId: approved.artifactId ?? null,
+          sourceOfferingIds: [...request.sourceOfferingIds],
+          defaultSourceOfferingId: request.defaultSourceOfferingId,
+          deployContent: request.deployContent,
+          ...(request.toolPackagePins !== undefined
+            ? { toolPackagePins: [...request.toolPackagePins] }
+            : {}),
+          createdAt,
+        },
+        tx,
+      );
+      if (adoptedProbe !== null) {
+        if (probeSidecarId === null) {
+          throw new Error(`Workflow probe ${adoptedProbe.id} lost its sidecar`);
+        }
+        await allocationStore.createAdopted(
+          {
+            id: allocationId,
+            anchorRunId: request.anchorRunId,
+            tenantId: request.tenantId,
+            provisionerId: provisioner.id,
+            provisionerApiVersion: provisioner.apiVersion,
+            provisionerBindingFingerprint: provisioner.bindingFingerprint,
+            sidecarId: probeSidecarId,
+            adapterManifestDigest: args.adapterManifestDigest,
+            generation: adoptedProbe.generation,
+            ...(adoptedProbe.externalRef !== null
+              ? { externalRef: adoptedProbe.externalRef }
+              : {}),
+            connectDeadline: new Date(createdAt.getTime() + connectTimeoutMs),
+            maxDisconnectedMs,
+            now: createdAt,
+          },
+          tx,
+        );
+        const completed = await probeStore.transition(
+          adoptedProbe.id,
+          ["probing"],
+          "succeeded",
+          { now: createdAt, tx },
+        );
+        if (completed === null) {
+          throw new Error(
+            `Workflow probe ${adoptedProbe.id} changed before adoption`,
+          );
+        }
+      } else {
+        await allocationStore.createPending(
+          {
+            id: allocationId,
+            anchorRunId: request.anchorRunId,
+            tenantId: request.tenantId,
+            provisionerId: provisioner.id,
+            provisionerApiVersion: provisioner.apiVersion,
+            provisionerBindingFingerprint: provisioner.bindingFingerprint,
+            adapterManifestDigest: args.adapterManifestDigest,
+            maxDisconnectedMs,
+            now: createdAt,
+          },
+          tx,
+        );
+      }
+    };
+
+    const inventoryDeadline = performance.now() + connectTimeoutMs;
+    for (;;) {
+      try {
+        await db.transaction(persistDeployment);
+        break;
+      } catch (error) {
+        if (
+          adoptedProbe === null ||
+          !(error instanceof SidecarInventoryUnavailableError)
+        )
+          throw error;
+        // The creation transaction has rolled back before we wait. A timeout
+        // must never release the probe while an adoption can still commit.
+        const remaining = Math.ceil(inventoryDeadline - performance.now());
+        const timeout = new SidecarOperationTimeoutError(
+          "Probe adoption inventory",
+          connectTimeoutMs,
+          { cause: error },
+        );
+        if (remaining <= 0) throw timeout;
+        try {
+          await runSidecarOperation(
+            "Probe adoption inventory",
+            remaining,
+            (signal) =>
+              allocationRouter.waitForSidecarInventory(error.sidecarId, signal),
+          );
+        } catch (cause) {
+          if (cause instanceof SidecarOperationTimeoutError) throw timeout;
+          throw cause;
+        }
+      }
+    }
+
+    return {
+      anchorRunId: request.anchorRunId,
+      deploymentAddress,
+      allocationId,
+      status: "pending",
+    };
+  }
+
+  async function prepareProvisionedDeployment(
+    args: PrepareProvisionedWorkflowDeploymentArgs,
+  ): Promise<PreparedProvisionedWorkflowDeployment> {
+    if (args.sourceOfferingIds.length === 0) {
+      throw new WorkflowProvisioningError(
+        "invalid_source_offerings",
+        "Provisioned workflow deployment requires at least one catalog offering",
+      );
+    }
+    if (!args.sourceOfferingIds.includes(args.defaultSourceOfferingId)) {
+      throw new WorkflowProvisioningError(
+        "invalid_source_offerings",
+        "The default source offering must be present in the source offering chain",
+      );
+    }
+
+    const [sourceCheck, tenantPolicies] = await Promise.all([
+      resolveSourcesByOfferingIds(
+        db,
+        args.tenantId,
+        args.sourceOfferingIds,
+        credentialCipher,
+      ),
+      resolveTenantSidecarCapabilityPolicies(db, args.tenantId),
+    ]);
+    if (!sourceCheck.ok) {
+      throw new WorkflowProvisioningError(
+        "source_offering_unavailable",
+        `Catalog offering ${sourceCheck.offeringId} cannot be used by the deployment authority`,
+      );
+    }
+
+    const defaultSource = sourceCheck.sources.find(
+      (source) => source.id === args.defaultSourceOfferingId,
+    );
+    if (defaultSource === undefined) {
+      throw new WorkflowProvisioningError(
+        "invalid_source_offerings",
+        `Default offering ${args.defaultSourceOfferingId} was not resolved for deployment ${args.anchorRunId}`,
+      );
+    }
+    const probeProvisioner = selectProvisioner(
+      await probePlugins.selectProvisioner({
+        tenantPolicies,
+        probeRules: configuredProbeCapabilityRules,
+        workflowRules: [],
+      }),
+    );
+    const digest = await currentAdapterManifestDigest;
+    // The probe is assigned inside a closure, which TypeScript does not track,
+    // so a plain `let` would stay narrowed to `null` below.
+    const probeHolder: { current: WorkflowProbe | null } = { current: null };
+    async function getProbeTarget(): Promise<AllocatedSidecarTarget> {
+      const probeId = createAllocationId();
+      probeHolder.current = await probeStore.create({
+        id: probeId,
+        tenantId: args.tenantId,
+        definitionAssetId: args.definitionAssetId,
+        source: args.source,
+        entry: args.entry,
+        ...(args.pin !== undefined ? { pin: args.pin } : {}),
+        provisionerId: probeProvisioner.id,
+        provisionerApiVersion: probeProvisioner.apiVersion,
+        provisionerBindingFingerprint: probeProvisioner.bindingFingerprint,
+        adapterManifestDigest: digest,
+        now: now(),
+      });
+
+      const token = createToken();
+      const sidecarId = createSidecarId();
+      const bound = await probeStore.bindSidecar({
+        probeId,
+        sidecarId,
+        tokenHashSha256: await sha256(token),
+        now: now(),
+      });
+      if (bound === null) {
+        throw new Error(
+          `Workflow probe ${probeId} changed before provisioning`,
+        );
+      }
+      probeHolder.current = bound;
+      const allocationTarget: AllocatedSidecarTarget = {
+        allocationId: bound.id,
+        generation: bound.generation,
+      };
+      allocationRouter.fenceAllocation(bound.id, bound.generation);
+      const ensured = parseEnsureResult(
+        await runSidecarOperation(
+          "Probe ensure",
+          operationTimeoutMs,
+          (signal) =>
+            probeProvisioner.ensure({
+              signal,
+              allocationId: bound.id,
+              generation: bound.generation,
+              tenantId: bound.tenantId,
+              // The provisioner contract treats this as an opaque owner id. A
+              // probe has no workflow run, so its own id is the honest owner.
+              anchorRunId: bound.id,
+              sidecarId,
+              token,
+              hubWebSocketUrl,
+              ...(adapterManifest !== undefined ? { adapterManifest } : {}),
+            }),
+        ),
+      );
+      if (ensured.kind === "rejected") {
+        // A rejected ensure started nothing.
+        await probeStore.retireSidecar({ sidecarId, now: now() });
+        throw new WorkflowProvisioningError(ensured.code, ensured.message);
+      }
+      const probing = await probeStore.markProbing({
+        probeId,
+        ...(ensured.sidecarId !== undefined
+          ? { sidecarId: ensured.sidecarId }
+          : {}),
+        ...(ensured.externalRef !== undefined
+          ? { externalRef: ensured.externalRef }
+          : {}),
+        now: now(),
+      });
+      if (probing === null) {
+        throw new Error(`Workflow probe ${probeId} changed after provisioning`);
+      }
+      probeHolder.current = probing;
+      await runSidecarOperation(
+        "Probe connection",
+        connectTimeoutMs,
+        async (signal) => {
+          if (probing.sidecarId !== null) {
+            // Joining a reused connection may wait behind its existing work.
+            // That wait belongs to the same deadline as readiness.
+            await allocationRouter.syncSidecar(probing.sidecarId, signal);
+          }
+          signal.throwIfAborted();
+          await allocationRouter.waitForAllocatedSidecar(
+            allocationTarget,
+            connectTimeoutMs,
+            undefined,
+            signal,
+          );
+        },
+      );
+
+      return allocationTarget;
+    }
+
+    try {
+      let resultRecorded = false;
+      const approved = await preparedDeployer.installAndApproveWorkflowSource({
+        tenantId: args.tenantId,
+        source: args.source,
+        entry: args.entry,
+        ...(args.pin !== undefined ? { pin: args.pin } : {}),
+        definitionAssetId: args.definitionAssetId,
+        getProbeTarget,
+        onProbeResult: async (result) => {
+          const probe = probeHolder.current;
+          if (probe === null)
+            throw new Error("Probe result arrived without probe capacity");
+          if (
+            (await probeStore.recordResult(probe.id, result, now())) === null
+          ) {
+            throw new Error(
+              `Workflow probe ${probe.id} changed before result persistence`,
+            );
+          }
+          resultRecorded = true;
+        },
+      });
+      if (probeHolder.current !== null && !resultRecorded) {
+        throw new Error(
+          "Workflow probe completed without persisting its result",
+        );
+      }
+      if (!approved.approval.ok) {
+        throw new Error(
+          "prepareProvisionedDeployment: install did not yield an approved definition",
+        );
+      }
+      const narrowed = {
+        ...approved,
+        approval: approved.approval,
+      };
+      const config = createProvisionedHarnessConfig({
+        tenantId: args.tenantId,
+        anchorRunId: args.anchorRunId,
+        deploymentDomain: args.deploymentDomain,
+        sessionId: args.sessionId,
+        sourceAuthorityPrincipalId: args.sourceAuthorityPrincipalId,
+        sources: sourceCheck.sources,
+        defaultSource: defaultSource.id,
+      });
+      buildInertProjectionStepSources({
+        projection: approved.projection,
+        config,
+        operatorApprovals: approved.approval.approvedSurface,
+      });
+      await buildReferencedWorkflowSourcePins({
+        projection: approved.projection,
+        config,
+        operatorApprovals: approved.approval.approvedSurface,
+      });
+      const deploymentProvisioner = selectProvisioner(
+        await deploymentPlugins.selectProvisioner({
+          tenantPolicies,
+          workflowRules:
+            approved.projection.sidecarPlacement?.capabilities ?? [],
+        }),
+      );
+      const sameBinding =
+        deploymentProvisioner.id === probeProvisioner.id &&
+        deploymentProvisioner.apiVersion === probeProvisioner.apiVersion &&
+        deploymentProvisioner.bindingFingerprint ===
+          probeProvisioner.bindingFingerprint;
+      const probe = probeHolder.current;
+      const adoptedProbe = sameBinding ? probe : null;
+      if (probe !== null && adoptedProbe === null) {
+        await releaseProbe(probe, "succeeded");
+      }
+      return await createDeployment({
+        request: args,
+        approved: narrowed,
+        provisioner: deploymentProvisioner,
+        adoptedProbe,
+        adapterManifestDigest: digest,
+      });
+    } catch (error) {
+      try {
+        const probe = probeHolder.current;
+        if (probe !== null)
+          await releaseProbe(probe, "failed", {
+            code: "probe_failed",
+            message: error instanceof Error ? error.message : String(error),
+          });
+      } catch {
+        // Preserve the primary probe/provisioning error. The durable
+        // `releasing` row remains discoverable for periodic cleanup.
+      }
+      throw error;
+    }
+  }
+
+  async function deployReadyAllocation(
+    allocation: SidecarAllocation,
+    reconciliation: SidecarReconciliationContext,
+  ): Promise<DeployWorkflowDefinitionResult | null> {
+    reconciliation.signal.throwIfAborted();
+    if (
+      allocation.status !== "allocated" ||
+      allocation.ensureAcceptedGeneration !== allocation.generation
+    ) {
+      throw new Error(
+        `Allocation ${allocation.id} generation ${String(allocation.generation)} is not accepted for deployment`,
+      );
+    }
+    const allocationTarget = {
+      allocationId: allocation.id,
+      generation: allocation.generation,
+    };
+    const anchor = await db.query.workflowRun.findFirst({
+      where: eq(workflowRun.id, allocation.anchorRunId),
+      columns: {
+        publicKey: true,
+        definitionId: true,
+        status: true,
+        expiresAt: true,
+        cancellationRequestedAt: true,
+      },
+    });
+    if (anchor === undefined) {
+      throw new Error(`Allocation ${allocation.id} has no workflow anchor run`);
+    }
+    if (!canExecuteWorkflowRun(anchor, now())) return null;
+    if (await allocationRouter.isAllocatedWorkflowActive(allocationTarget)) {
+      if (anchor.publicKey !== null) return null;
+      throw new SessionLaunchError(
+        "provision",
+        new Error(
+          `Allocation ${allocation.id} has an active workflow without a completed initialization key`,
+        ),
+        true,
+      );
+    }
+    const stopped =
+      allocationRouter.reportedDeploymentFailure(allocationTarget);
+    if (stopped !== undefined) {
+      // The stopped copy may still be pushing history it committed. Failing
+      // the runs first would overwrite an outcome it recorded, so the Hub
+      // waits for that history for a while, then fails without it.
+      const history =
+        await allocationRouter.stoppedDeploymentHistory(allocationTarget);
+      if (history === undefined || history.unreceived === null)
+        throw new SidecarDeploymentStoppedError(stopped);
+      const giveUpAt = history.reportedAt.getTime() + STOPPED_HISTORY_WAIT_MS;
+      if (now().getTime() < giveUpAt) {
+        throw new SidecarDeploymentHistoryPendingError(
+          history.unreceived,
+          new Date(
+            Math.min(giveUpAt, now().getTime() + STOPPED_HISTORY_POLL_MS),
+          ),
+        );
+      }
+      throw new SidecarDeploymentStoppedError(
+        `${stopped}; history it committed that the Hub never received is lost: ${history.unreceived}`,
+      );
+    }
+    // The key commits only once the first deploy completed, so a connected
+    // sidecar that did not report the deployment no longer holds it.
+    if (anchor.publicKey !== null) {
+      throw new SidecarDeploymentMissingError(
+        allocation.id,
+        allocation.generation,
+      );
+    }
+    try {
+      if (anchor.definitionId === null) {
+        throw new Error(
+          `Allocation ${allocation.id} anchor run has no frozen workflow definition`,
+        );
+      }
+      const spec = await launchSpecStore.get(allocation.anchorRunId);
+      if (spec === null) {
+        throw new Error(
+          `Allocation ${allocation.id} has no workflow launch specification`,
+        );
+      }
+      // The frozen bundle deploys verbatim -- no re-probe. Rehydrate the
+      // approval hand-off from it: the persisted flat item list is partitioned
+      // back into the gate's `ApprovalSet`, and the frozen definition id is the
+      // anchor's own (set at prepare time from this freeze).
+      const bundle = spec.frozenApprovalBundle;
+      const approved: DeployPreparedCodeSourcedWorkflowParams["approved"] = {
+        approval: {
+          ok: true,
+          definitionId: anchor.definitionId,
+          approvedWireHash: bundle.approvedWireHash,
+          approvedSurface: approvalSetFromItems(bundle.approvedGrants),
+          projection: bundle.projection,
+        },
+        projection: bundle.projection,
+        closure: bundle.closure,
+        ...(bundle.assetCommitSha !== undefined
+          ? { assetCommitSha: bundle.assetCommitSha }
+          : {}),
+      };
+      // Re-resolve the inference chain from the catalog at launch time -- the
+      // launch spec stores offering ids, never resolved sources, so a rotated
+      // credential is picked up here and no secret was ever persisted.
+      const resolved = await resolveSourcesByOfferingIds(
+        db,
+        allocation.tenantId,
+        spec.sourceOfferingIds,
+        credentialCipher,
+      );
+      if (!resolved.ok) {
+        throw new Error(
+          `Catalog offering ${resolved.offeringId} is unavailable for allocation ${allocation.id}`,
+        );
+      }
+      const defaultSource = resolved.sources.find(
+        (source) => source.id === spec.defaultSourceOfferingId,
+      );
+      if (defaultSource === undefined) {
+        throw new Error(
+          `Default offering ${spec.defaultSourceOfferingId} was not resolved for allocation ${allocation.id}`,
+        );
+      }
+      const config = createProvisionedHarnessConfig({
+        tenantId: allocation.tenantId,
+        anchorRunId: allocation.anchorRunId,
+        deploymentDomain: spec.deploymentDomain,
+        sessionId: spec.sessionId,
+        sourceAuthorityPrincipalId: spec.sourceAuthorityPrincipalId,
+        sources: resolved.sources,
+        defaultSource: defaultSource.id,
+      });
+
+      reconciliation.signal.throwIfAborted();
+      return await preparedDeployer.deployPreparedCodeSourcedWorkflow({
+        reconciliation,
+        tenantId: allocation.tenantId,
+        anchorRunId: allocation.anchorRunId,
+        deploymentDomain: spec.deploymentDomain,
+        agentAddress: config.agentAddress,
+        source: bundle.source,
+        approved,
+        config,
+        allocationTarget,
+        credentialCipher,
+      });
+    } catch (error) {
+      // Keep capacity refusals terminal and leave uncertain deploys and lost
+      // leases to reconciliation. Only other pre-deploy failures may retry.
+      if (
+        error instanceof DeploymentRejectedError ||
+        (error instanceof SessionLaunchError && error.leakedAgent) ||
+        reconciliation.signal.aborted
+      )
+        throw error;
+      throw new SidecarFirstDeployError(error);
+    }
+  }
+
+  function cleanupFinalStatus(probe: WorkflowProbe): "succeeded" | "failed" {
+    return probe.failureCode === null ? "succeeded" : "failed";
+  }
+
+  async function reconcileReleasingProbes(): Promise<void> {
+    const failures: unknown[] = [];
+    for (const probe of await probeStore.listReleasing()) {
+      try {
+        await releaseProbe(probe, cleanupFinalStatus(probe));
+      } catch (error) {
+        failures.push(error);
+      }
+    }
+    if (failures.length > 0) {
+      throw new AggregateError(
+        failures,
+        "Failed to clean up releasing workflow probes",
+      );
+    }
+  }
+
+  async function initialize(): Promise<void> {
+    const failures: unknown[] = [];
+    for (const probe of await probeStore.listActive()) {
+      try {
+        await beginProbeRelease(
+          probe,
+          probe.status === "releasing"
+            ? undefined
+            : {
+                code: "probe_interrupted",
+                message: "Hub restarted before the workflow probe completed",
+              },
+        );
+      } catch (error) {
+        failures.push(error);
+      }
+    }
+    if (failures.length > 0) {
+      throw new AggregateError(
+        failures,
+        "Failed to mark interrupted workflow probes for cleanup",
+      );
+    }
+  }
+
+  return {
+    initialize,
+    reconcileReleasingProbes,
+    prepareProvisionedDeployment,
+    deployReadyAllocation,
+  };
+}
+
+function formatProvisionerMismatches(
+  mismatches: Readonly<Record<string, readonly SidecarCapabilityMismatch[]>>,
+): string {
+  const details = Object.entries(mismatches)
+    .sort(([left], [right]) => left.localeCompare(right))
+    .flatMap(([provisionerId, failures]) =>
+      failures.map(
+        ({ capability, expected, actual }) =>
+          `${provisionerId}: ${capability} must be ${expected}, was ${actual}`,
+      ),
+    );
+  return details.length === 0
+    ? "No sidecar provisioners are registered"
+    : `No sidecar provisioner satisfies the deployment (${details.join("; ")})`;
+}

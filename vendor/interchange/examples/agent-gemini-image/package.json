@@ -1,0 +1,21 @@
+{
+  "name": "@intx/example-agent-gemini-image",
+  "description": "Example: end-to-end Gemini image generation writing returned image bytes to disk",
+  "version": "0.5.0",
+  "license": "LGPL-2.1-only",
+  "private": true,
+  "type": "module",
+  "exports": {
+    ".": {
+      "types": "./src/index.ts",
+      "default": "./src/index.ts"
+    }
+  },
+  "scripts": {
+    "start": "bun --conditions=intx-src run src/cli.ts"
+  },
+  "dependencies": {
+    "@intx/inference": "workspace:*",
+    "@intx/types": "workspace:*"
+  }
+}

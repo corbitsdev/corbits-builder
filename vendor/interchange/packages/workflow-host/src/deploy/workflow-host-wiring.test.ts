@@ -1,0 +1,6506 @@
+import { describe, test, expect, afterEach, spyOn } from "bun:test";
+import { readFileSync } from "node:fs";
+import fs from "node:fs/promises";
+import os from "node:os";
+import path from "node:path";
+
+import { type } from "arktype";
+
+import {
+  createEd25519Crypto,
+  createNoopCredentialCipher,
+  generateKeyPair,
+} from "@intx/crypto";
+import { hexEncode } from "@intx/types";
+import type { CredentialDelivery } from "@intx/types/credential-delivery";
+import { computeWireDefinitionHash } from "@intx/types/wire-definition-hash";
+import { deriveWorkflowRunId } from "@intx/types/workflow-run-id";
+import { createInMemoryTransport } from "@intx/mail-memory";
+import { syncRemovedPathDurable } from "@intx/storage-isogit/node";
+import type { RepoId, RepoStore } from "@intx/hub-sessions";
+import {
+  ControlPayload,
+  createControlChannelSender,
+  SignedEnvelope,
+  type EventPayload,
+  type SubprocessHandle,
+  type SubprocessSpawner,
+} from "@intx/workflow-host";
+import type { WorkflowDefinition } from "@intx/workflow";
+import {
+  DEFAULT_SIDECAR_CAPACITY,
+  DeploymentRejectedError,
+  DeploymentStoppedFrame,
+  HostedIncarnation,
+  MAX_DEPLOYMENT_ERROR_LENGTH,
+  WORKFLOW_CONTROL_INITIALIZING_ERROR,
+  type AgentDeployFrame,
+} from "@intx/types/sidecar";
+import { waitUntil } from "@intx/types/testing";
+import {
+  createMemoryFrameStream,
+  createMemoryNdjsonStream,
+  createSpawnObserver,
+  createChangeNotifier,
+} from "@intx/workflow-host/testing";
+import {
+  assembleRunCredentialsSnapshot,
+  createSidecarDeployRouter,
+  createSidecarWorkflowSupervisor,
+  STEP_INFERENCE_SOURCES_ENV_KEY,
+  validateWorkflowProjection,
+  type SidecarDeployRouter,
+} from "./workflow-host-wiring";
+import { conversationStateRoot } from "../conversation-state-root";
+import {
+  createDeploymentAddressRegistry,
+  createMultistepCredentialsRouter,
+  createMultistepGrantsRouter,
+  createMultistepMailRouter,
+  createMultistepSourcesRouter,
+  type MultistepCredentialsRouter,
+  type MultistepGrantsRouter,
+  type MultistepMailRouter,
+  type MultistepSourcesRouter,
+} from "./workflow-run-pack-client";
+import {
+  scanWorkflowRunRecords,
+  markWorkflowRunRecord,
+  writeWorkflowRunRecord,
+  updateWorkflowRunRecordCredentials,
+  updateWorkflowRunRecordSources,
+  WorkflowRunRecord,
+} from "./workflow-run-record";
+
+function deriveWorkflowRunRepoId(agentAddress: string): string {
+  return agentAddress.replaceAll(/[^a-zA-Z0-9_-]/g, "-");
+}
+
+const resolvedInboundMailPolicy = {
+  clean: "admit",
+  error: "reject",
+  untrustedFrom: "reject",
+  mismatchedFrom: "reject",
+  absentFrom: "reject",
+  invalid: "reject",
+  missing: "reject",
+  unknown: "reject",
+} as const;
+
+function deployHostBindings() {
+  return {
+    deriveWorkflowRunRepoId,
+    inertFlatNamespaceStepIds: (args: {
+      definition: { readonly stepOrder: readonly string[] };
+    }) => args.definition.stepOrder,
+    sourceAssetGitDir: (gitDirRoot: string, assetId: string) =>
+      path.join(gitDirRoot, assetId),
+    readRegistries: () => new Map(),
+    resolveHostPlatform: () => ({ os: "linux", cpu: "arm64" }),
+    resolveInboundMailPolicy: () => resolvedInboundMailPolicy,
+    materializeWorkflowAssets: () => Promise.resolve(undefined),
+    maxInlineAssetPayloadBytes: 32 * 1024 * 1024,
+    multistepBinaryPath: "/fake/bin/workflow-child",
+    multistepSubprocessSpawner: (): never => {
+      throw new Error("workflow child spawner was not provided");
+    },
+    createWorkflowCache: () => ({}),
+    applyFrozenWorkflowClosure: (): never => {
+      throw new Error("frozen closure apply was not provided");
+    },
+  };
+}
+
+function createMinimalStubRepoStore(): RepoStore {
+  const stub: Partial<RepoStore> = {
+    getRepoDir(_repoId: RepoId): string {
+      return "/tmp/unused";
+    },
+    async writeTreePreservingPrefix(_p, _id, _ref, args) {
+      // The wiring test exercises signature attribution by driving a
+      // requestCancel; the merge callback runs once with an empty
+      // pre-image.
+      await args.merge(new Map());
+      return { commitSha: "stub-sha", newlyTerminalRuns: [] };
+    },
+  };
+  // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion -- test stub; the wiring test exercises only getRepoDir + writeTreePreservingPrefix
+  return new Proxy(stub as RepoStore, {
+    get(target, prop, receiver) {
+      const value = Reflect.get(target, prop, receiver);
+      if (value !== undefined) return value;
+      return () => {
+        throw new Error(
+          `stub RepoStore: ${String(prop)} not implemented for this test`,
+        );
+      };
+    },
+  });
+}
+
+// The production hook removes the run repository, and the run record inside it.
+function removeRunDirectory(dataDir: string) {
+  return async (runId: string) => {
+    const dir = path.join(dataDir, "workflow-runs", runId);
+    await fs.rm(dir, {
+      recursive: true,
+      force: true,
+    });
+    await syncRemovedPathDurable(dir);
+  };
+}
+
+describe("createSidecarWorkflowSupervisor", () => {
+  test("constructs the supervisor with the sidecar's bindings and signs CancelRequested via the host's signing key", async () => {
+    const transport = createInMemoryTransport();
+    const keyPair = await generateKeyPair();
+    const repoStore = createMinimalStubRepoStore();
+
+    const spawner: SubprocessSpawner = () => {
+      throw new Error("spawner not invoked in this test");
+    };
+
+    const wired = createSidecarWorkflowSupervisor({
+      transport,
+      repoStore,
+      signingKeySeed: keyPair.privateKey,
+      workflowRunRepoId: { kind: "workflow-run", id: "wire-test" },
+      workflowRunRef: "refs/heads/main",
+      runId: "wire-test",
+      stepCount: 1,
+      stepOrder: ["step1"],
+      deploymentMailAddress: "wire-test@example.com",
+      deriveStepAddress: ({ runId, stepId }) =>
+        `${runId}-${stepId}@example.com`,
+      substrateEnv: { DATA_DIR: "/tmp/wire" },
+      dynamicSpawnEnv: () => ({}),
+      binaryPath: "/fake/bin/workflow-child",
+      subprocessSpawner: spawner,
+    });
+
+    expect(typeof wired.supervisor.spawn).toBe("function");
+    expect(wired.getCredentialsSnapshot()).toBeNull();
+
+    const result = await wired.supervisor.requestCancel({
+      runId: "r-wire-1",
+      origin: "supervisor-operator",
+      reason: "wiring test",
+      at: "2026-01-01T00:00:00.000Z",
+    });
+    expect(result.commitSha).toBe("stub-sha");
+    expect(result.seq).toBe(1);
+  });
+
+  test("routeInbound rejects when no subscriber is registered so undelivered mail is withheld", async () => {
+    const transport = createInMemoryTransport();
+    // generateKeyPair is async; this test only exercises the
+    // mail-routing path so we synthesize a 32-byte seed without
+    // calling crypto.
+    const fakeSeed = new Uint8Array(32);
+    const repoStore = createMinimalStubRepoStore();
+    const wired = createSidecarWorkflowSupervisor({
+      transport,
+      repoStore,
+      signingKeySeed: fakeSeed,
+      workflowRunRepoId: { kind: "workflow-run", id: "inbound" },
+      workflowRunRef: "refs/heads/main",
+      runId: "inbound",
+      stepCount: 1,
+      stepOrder: ["step1"],
+      deploymentMailAddress: "inbound@example.com",
+      deriveStepAddress: ({ runId, stepId }) =>
+        `${runId}-${stepId}@example.com`,
+      substrateEnv: {},
+      dynamicSpawnEnv: () => ({}),
+      binaryPath: "/fake/bin/workflow-child",
+      subprocessSpawner: () => {
+        throw new Error("spawner not invoked in this test");
+      },
+    });
+    // Without a subscriber the delivery is not durably accepted, so
+    // routeInbound rejects: the hub-link then withholds the ack and the hub
+    // redelivers, rather than silently dropping (which under the ack model
+    // would be an acked loss).
+    await expect(
+      wired.routeInbound(new TextEncoder().encode("hello")),
+    ).rejects.toThrow(/no active mail subscriber/);
+  });
+
+  test("onRunStart fails a poisoned run and passes an unpoisoned one", async () => {
+    // A poisoned run (its `run.grants` write failed) must be rejected at the
+    // barrier rather than started under the deploy-time grant set. An
+    // unpoisoned run with a per-run grants file on disk resolves normally.
+    const tempBase = await createTempBaseDir("sidecar-poison-barrier-");
+    const anchorRunId = "dep-poison";
+    const cleanRunId = "run-clean";
+    const grantsDir = path.join(
+      tempBase,
+      "workflow-run",
+      anchorRunId,
+      "runs",
+      cleanRunId,
+    );
+    await fs.mkdir(grantsDir, { recursive: true });
+    const runGrants = [
+      { id: "g1", resource: "tool:send-mail", effect: "allow" },
+    ];
+    await fs.writeFile(
+      path.join(grantsDir, "grants.json"),
+      JSON.stringify({ grants: runGrants }),
+    );
+
+    const readStub: Partial<RepoStore> = {
+      getRepoDir(repoId: RepoId): string {
+        return path.join(tempBase, repoId.kind, repoId.id);
+      },
+    };
+    // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion -- test stub; onRunStart reads only via getRepoDir working-tree reads
+    const repoStore = new Proxy(readStub as RepoStore, {
+      get(target, prop, receiver) {
+        const value = Reflect.get(target, prop, receiver);
+        if (value !== undefined) return value;
+        return () => {
+          throw new Error(`stub RepoStore: ${String(prop)} not implemented`);
+        };
+      },
+    });
+
+    const wired = createSidecarWorkflowSupervisor({
+      transport: createInMemoryTransport(),
+      repoStore,
+      signingKeySeed: new Uint8Array(32),
+      workflowRunRepoId: { kind: "workflow-run", id: anchorRunId },
+      workflowRunRef: "refs/heads/main",
+      runId: anchorRunId,
+      stepCount: 1,
+      stepOrder: ["step-1"],
+      deploymentMailAddress: `${anchorRunId}@example.com`,
+      deriveStepAddress: ({ runId: dep, stepId }) =>
+        `${dep}-${stepId}@example.com`,
+      substrateEnv: {},
+      dynamicSpawnEnv: () => ({}),
+      binaryPath: "/fake/bin/workflow-child",
+      subprocessSpawner: () => {
+        throw new Error("spawner not invoked in this test");
+      },
+      isRunPoisoned: (runId) => runId === "run-poisoned",
+    });
+
+    await expect(
+      wired.onRunStart({ runId: "run-poisoned", anchorRunId }),
+    ).rejects.toThrow(/grants write failed/);
+
+    const snapshot = await wired.onRunStart({
+      runId: cleanRunId,
+      anchorRunId,
+    });
+    expect(snapshot?.steps).toHaveLength(1);
+    expect(snapshot?.steps[0]?.grants).toEqual(runGrants);
+  });
+});
+
+describe("createSidecarDeployRouter provision-step (no-spawn) mode", () => {
+  test("a provisionStep frame inits the repo and records the hub key without spawning", async () => {
+    const transport = createInMemoryTransport();
+    const keyPair = await generateKeyPair();
+
+    const initRepoCalls: string[] = [];
+    const recordHubKeyCalls: { address: string; hubKey: string }[] = [];
+
+    // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion -- provisionStep touches no RepoStore method; the Proxy throws if it ever does
+    const repoStore = new Proxy({} as RepoStore, {
+      get(_target, prop) {
+        return () => {
+          throw new Error(`stub RepoStore: ${String(prop)} not implemented`);
+        };
+      },
+    });
+
+    const router = createSidecarDeployRouter({
+      ...DEFAULT_SIDECAR_CAPACITY,
+      ...deployHostBindings(),
+      // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion -- provisionStep exercises only initRepo
+      sessions: {
+        initRepo: async (a: string) => {
+          initRepoCalls.push(a);
+        },
+      } as unknown as Parameters<
+        typeof createSidecarDeployRouter
+      >[0]["sessions"],
+      // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion -- provisionStep exercises only recordHubKey
+      keyStore: {
+        recordHubKey: (a: string, h: string) => {
+          recordHubKeyCalls.push({ address: a, hubKey: h });
+        },
+      } as unknown as Parameters<
+        typeof createSidecarDeployRouter
+      >[0]["keyStore"],
+      transport,
+      repoStore,
+      signingKeySeed: keyPair.privateKey,
+      credentialCipher: createNoopCredentialCipher(),
+      createAgentCrypto: createEd25519Crypto,
+      assertSourceBuildable: () => undefined,
+      registerDeployment: () => undefined,
+      removeRunRepository: async () => undefined,
+      removeAgentStateRepository: async () => undefined,
+      unregisterDeployment: () => undefined,
+      reportDeploymentRefTips: async () => ({}),
+    });
+
+    const STEP_ADDR = "run_abc-step1@example.com";
+    const HUB_KEY = "aa".repeat(32);
+    const result = await router.deploy({
+      type: "agent.deploy",
+      requestId: "deploy-test",
+      agentAddress: STEP_ADDR,
+      generation: 1,
+      agentId: "run_abc-step1",
+      hubPublicKey: HUB_KEY,
+      provisionStep: true,
+      // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion -- provisionStep never inspects config
+      config: {} as unknown as Parameters<
+        ReturnType<typeof createSidecarDeployRouter>["deploy"]
+      >[0]["config"],
+    });
+
+    // The step's agent-state repo is initialized and the hub key recorded,
+    // so the follow-up full-closure deploy pack applies into a repo and
+    // verifies against the recorded key.
+    expect(initRepoCalls).toEqual([STEP_ADDR]);
+    expect(recordHubKeyCalls).toEqual([
+      { address: STEP_ADDR, hubKey: HUB_KEY },
+    ]);
+
+    // The ack carries the sidecar principal key (the hub discards it for a
+    // workflow-derived per-step address).
+    expect(result.publicKey).toMatch(/^[0-9a-f]{64}$/);
+
+    // Nothing spawned: no supervisor, so no active address.
+    expect(heldAddresses(router)).toEqual([]);
+  });
+});
+
+// --------------------------------------------------------------------
+// Multi-step branch tests
+// --------------------------------------------------------------------
+
+// The child-process stream trio every deploy test wires. Registered here
+// rather than per test so the three streams are always reachable for
+// teardown: the deploy starts pumps that read them for as long as they stay
+// open, and a test that fails before its own teardown line leaves those pumps
+// running in a worker that is shared across files. Each test destructures
+// only the handles it drives; the rest stay owned by the reaper below, which
+// is why no test needs a `void` to silence the unused-binding rule any more.
+//
+// The exit resolver is deliberately NOT registered here. The reaper must not
+// settle an exit (see below), and a test that settles its own takes the
+// resolver off `createChildStreams()`'s return.
+const liveChildStreams: {
+  supervisorToChild: ReturnType<typeof createMemoryNdjsonStream>;
+  childToSupervisor: ReturnType<typeof createMemoryNdjsonStream>;
+  eventChildToSupervisor: ReturnType<typeof createMemoryFrameStream>;
+}[] = [];
+
+const STOPPED_TIPS = {
+  "refs/heads/main": "c".repeat(40),
+  "refs/heads/events": null,
+};
+
+// The addresses of every incarnation the router holds, whatever its state.
+function heldAddresses(router: SidecarDeployRouter): string[] {
+  return router.incarnations().map((incarnation) => incarnation.address);
+}
+
+function createChildStreams() {
+  const supervisorToChild = createMemoryNdjsonStream();
+  const childToSupervisor = createMemoryNdjsonStream();
+  const eventChildToSupervisor = createMemoryFrameStream();
+  let resolveExit: ((code: number) => void) | undefined;
+  const exited = new Promise<number>((resolve) => {
+    resolveExit = resolve;
+  });
+  // The executor above runs synchronously, so the resolver is assigned by the
+  // time anything can call this.
+  const settleExit = (code: number): void => {
+    if (resolveExit === undefined) {
+      throw new Error("exit resolver was not captured");
+    }
+    resolveExit(code);
+  };
+  liveChildStreams.push({
+    supervisorToChild,
+    childToSupervisor,
+    eventChildToSupervisor,
+  });
+  return {
+    supervisorToChild,
+    childToSupervisor,
+    eventChildToSupervisor,
+    exited,
+    resolveExit: settleExit,
+  };
+}
+
+afterEach(() => {
+  // Close both directions so the deploy's pumps unwind. Closing is
+  // idempotent, so the tests that already tear themselves down are
+  // unaffected.
+  //
+  // The exit is deliberately left unsettled. Settling it tells a supervisor
+  // whose deploy SUCCEEDED that its child died unexpectedly, which it answers
+  // by respawning -- and the spawner doubles here hand every spawn the same
+  // streams, so the replacement child reads a closed stream and dies on its
+  // handshake. The one test that settles its own exit does so after a deploy
+  // that fails mid-handshake, where there is no live supervisor to respawn.
+  for (const streams of liveChildStreams.splice(0)) {
+    streams.childToSupervisor.close();
+    streams.eventChildToSupervisor.close();
+    streams.supervisorToChild.close();
+  }
+});
+
+function createTempBaseDir(prefix: string): Promise<string> {
+  return fs.mkdtemp(path.join(os.tmpdir(), prefix));
+}
+
+// The supervisor's `parked-correlations.request` control-frame discriminator.
+// The re-emit-parked-correlations tests assert this reaches the downstream
+// (supervisor -> child) stream when Trigger B fires.
+const PARKED_REQUEST_TYPE = "parked-correlations.request";
+
+// One downstream control line is the JSON serialization of a signed envelope:
+// `{ envelope: { seq, channelId, payload }, sig }`. The re-emit tests inspect
+// `envelope.payload.type` to detect a `parked-correlations.request` without
+// verifying the signature (the supervisor's IPC public key is not exposed to
+// the test). Structurally validate the envelope-carrying shape and return the
+// payload discriminator, or `undefined` when the line is not a typed frame.
+const DownstreamFrameShape = type({
+  envelope: {
+    payload: {
+      "type?": "string",
+      "+": "ignore",
+    },
+    "+": "ignore",
+  },
+  "+": "ignore",
+});
+
+function downstreamPayloadType(line: string): string | undefined {
+  const parsed: unknown = JSON.parse(line);
+  const validated = DownstreamFrameShape(parsed);
+  if (validated instanceof type.errors) return undefined;
+  return validated.envelope.payload.type;
+}
+
+/**
+ * Build a stub RepoStore whose `getRepoDir` resolves under the supplied
+ * tempBase. The multi-step branch's `assembleCredentialsSnapshot`
+ * reads `state/grants.json` from disk -- missing files are treated as
+ * empty grants, so a freshly-created tempBase produces an empty
+ * credentials snapshot which is what the wiring test wants.
+ */
+function createSpawnTestRepoStore(tempBase: string): RepoStore {
+  const stub: Partial<RepoStore> = {
+    getRepoDir(repoId: RepoId): string {
+      return path.join(tempBase, repoId.kind, repoId.id);
+    },
+    async writeTreePreservingPrefix(_p, _id, _ref, args) {
+      await args.merge(new Map());
+      return { commitSha: "stub-sha", newlyTerminalRuns: [] };
+    },
+    // The deploy router's grants bridge writes `state/grants.json` to
+    // each step's agent-state repo before `spawn()`. Mirror the
+    // `getRepoDir` layout so the write lands where the subsequent
+    // `assembleCredentialsSnapshot` working-tree read looks for it.
+    async writeTree(_p, repoId, _ref, content) {
+      const dir = path.join(tempBase, repoId.kind, repoId.id);
+      for (const [relPath, contents] of Object.entries(content.files)) {
+        const full = path.join(dir, relPath);
+        await fs.mkdir(path.dirname(full), { recursive: true });
+        await fs.writeFile(full, contents);
+      }
+      return { commitSha: "stub-sha", newlyTerminalRuns: [] };
+    },
+  };
+  // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion -- test stub; only getRepoDir + writeTreePreservingPrefix + writeTree exercised
+  return new Proxy(stub as RepoStore, {
+    get(target, prop, receiver) {
+      const value = Reflect.get(target, prop, receiver);
+      if (value !== undefined) return value;
+      return () => {
+        throw new Error(
+          `stub RepoStore: ${String(prop)} not implemented for this test`,
+        );
+      };
+    },
+  });
+}
+
+type WorkflowProjection = NonNullable<AgentDeployFrame["workflow"]>;
+// A single source: each step's `sources` value is an ordered failover chain,
+// so the fixture element type is the chain's member.
+type InferenceSourceFixture = WorkflowProjection["sources"][string][number];
+
+type MultistepDeployArgs = {
+  sources: WorkflowProjection["sources"];
+  definition: {
+    id: string;
+    triggers: unknown[];
+    stepOrder: string[];
+    steps: Record<string, unknown>;
+  };
+  /**
+   * Override the deploy frame's `agentAddress`. Single-step projections
+   * are the agent-launch identity path: the deploy router derives the
+   * sole step's agent-state repo from `deriveWorkflowRunId(agentAddress)`, which
+   * requires the canonical `run_<id>@<domain>` shape. Tests that drive a
+   * single-step projection supply a valid instance address here; the
+   * default keeps the historical multi-step address for the multi-step
+   * tests (whose derived per-step repos do not parse the frame address).
+   */
+  agentAddress?: string;
+  /**
+   * Hub-approved wire hash to stamp on the deploy frame's workflow -- the
+   * child's `DEFINITION_HASH`. Production always stamps it, so the helper
+   * defaults to a placeholder when unset; a test exercising re-verify passes a
+   * real computed hash here instead.
+   */
+  approvedWireHash?: string;
+  /**
+   * Build a frame with NO `approvedWireHash` to exercise the deploy path's
+   * fail-loud guard (the sidecar refuses to recompute a hub-authority hash).
+   * Overrides the helper's default placeholder.
+   */
+  omitApprovedWireHash?: boolean;
+};
+
+function makeInferenceSource(id: string): InferenceSourceFixture {
+  return {
+    id,
+    provider: "anthropic",
+    baseURL: "https://api.anthropic.com",
+    credentialId: `sk-${id}`,
+    model: "claude-3-5",
+  };
+}
+
+/**
+ * Live definitions the source-ref deploy/restore path reconstructs, keyed by
+ * derived deployment id. `makeMultistepFrame` registers one per frame it builds;
+ * `buildMultistepFixture`'s default closure stub returns the matching entry so a
+ * deploy or restore evaluates the exact topology the test described. Module-level
+ * so a restore fixture built over the same on-disk data dir (a simulated
+ * restart) reads the same entry the deploy fixture registered.
+ */
+const deployDefinitionRegistry = new Map<string, WorkflowDefinition>();
+
+/**
+ * Upgrade a test's inert-ish definition to a valid LIVE definition: every step
+ * gets a real agent so the definition survives `projectLiveToInert` (a bare
+ * `{ kind: "step" }` with no agent throws). `stepOrder` is preserved verbatim,
+ * so a definition whose `stepOrder` names a step absent from `steps` still
+ * projects to the same "no such entry" throw the deploy path rejects on.
+ */
+function toLiveClosureDefinition(
+  definition: MultistepDeployArgs["definition"],
+): WorkflowDefinition {
+  const steps: Record<string, unknown> = {};
+  for (const stepId of Object.keys(definition.steps)) {
+    steps[stepId] = {
+      kind: "step",
+      id: stepId,
+      agent: {
+        id: `agent-${stepId}`,
+        systemPrompt: "sys",
+        capabilities: [],
+        toolFactories: [],
+        inference: { sources: [] },
+      },
+    };
+  }
+  // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion -- a hand-built live definition cannot satisfy the full `WorkflowDefinition` nominal type; it stands in for a real closure evaluation, exactly as the restore test's `closureDefinition` does
+  return {
+    id: definition.id,
+    triggers: definition.triggers,
+    stepOrder: definition.stepOrder,
+    steps,
+  } as unknown as WorkflowDefinition;
+}
+
+/**
+ * Build a source-ref deploy frame. The deploy lineage is source-ref only, so the
+ * frame carries NO inline `definition`: it pins each step's inference sources,
+ * the hub-approved wire hash, and a placeholder source-ref pin. The runnable
+ * definition is decoupled from the frame exactly as production decouples it --
+ * the sidecar re-materializes it through the injected `applyFrozenWorkflowClosure`.
+ * The helper registers the intended live definition (the caller's `definition`
+ * arg, upgraded so each step carries a valid agent) under the frame's derived
+ * deployment id; `buildMultistepFixture`'s default closure stub looks it up by
+ * that id, so a deploy or restore reconstructs the exact topology the caller
+ * described without threading it through the frame.
+ */
+function makeMultistepFrame(args: MultistepDeployArgs): AgentDeployFrame {
+  const agentAddress = args.agentAddress ?? "multi@example.com";
+  deployDefinitionRegistry.set(
+    deriveWorkflowRunRepoId(agentAddress),
+    toLiveClosureDefinition(args.definition),
+  );
+  return {
+    type: "agent.deploy",
+    requestId: "deploy-test",
+    agentAddress,
+    generation: 1,
+    agentId: "multi-agent",
+    hubPublicKey: "hub-pk",
+    // The wire-side HarnessConfig has many required fields. On the
+    // workflow deploy path the router reads only `config.sessionId`
+    // and `config.grants`, both of which tolerate the empty
+    // placeholder (they resolve to `undefined`), so an opaque `{}`
+    // satisfies the surface contract for these tests.
+    // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion -- the workflow path reads only config.sessionId/config.grants, which tolerate undefined
+    config: {} as AgentDeployFrame["config"],
+    workflow: {
+      sources: args.sources,
+      // Placeholder source-ref pin. The deploy/restore path re-materializes the
+      // definition through the injected closure stub, which keys off the
+      // deployment id -- not this pin's contents -- so the pin only has to be a
+      // well-formed `SourceRefPin`.
+      sourceRef: {
+        source: { kind: "registry", registry: "test-registry" },
+        closure: { schemaVersion: "1", topLevel: [], entries: [] },
+      },
+      // Production always stamps the hub-approved hash; default a placeholder
+      // so a deploy test need not compute one, and only omit it when a test
+      // explicitly exercises the fail-loud guard.
+      ...(args.omitApprovedWireHash
+        ? {}
+        : { approvedWireHash: args.approvedWireHash ?? "a".repeat(64) }),
+    },
+  };
+}
+
+function defaultMultistepSources(): WorkflowProjection["sources"] {
+  return {
+    "step-1": [makeInferenceSource("step-1")],
+    "step-2": [makeInferenceSource("step-2")],
+  };
+}
+
+describe("validateWorkflowProjection", () => {
+  test("rejects an empty stepOrder", () => {
+    expect(() =>
+      validateWorkflowProjection({
+        definition: { id: "w-1", stepOrder: [], steps: {} },
+        sources: {},
+      }),
+    ).toThrow(/stepOrder must be a non-empty array/);
+  });
+
+  test("rejects a stepId that violates STEP_ID_PATTERN", () => {
+    expect(() =>
+      validateWorkflowProjection({
+        definition: {
+          id: "w-1",
+          stepOrder: ["bad.step"],
+          steps: { "bad.step": {} },
+        },
+        sources: { "bad.step": {} },
+      }),
+    ).toThrow(/must match \^/);
+  });
+
+  test("rejects a missing sources entry for a stepOrder id", () => {
+    expect(() =>
+      validateWorkflowProjection({
+        definition: {
+          id: "w-1",
+          stepOrder: ["step-1"],
+          steps: { "step-1": {} },
+        },
+        sources: {},
+      }),
+    ).toThrow(/sources is missing entry/);
+  });
+
+  test("rejects an empty sources chain for a stepOrder id", () => {
+    expect(() =>
+      validateWorkflowProjection({
+        definition: {
+          id: "w-1",
+          stepOrder: ["step-1"],
+          steps: { "step-1": {} },
+        },
+        sources: { "step-1": [] },
+      }),
+    ).toThrow(/must be a non-empty array/);
+  });
+
+  test("rejects a non-array sources entry for a stepOrder id", () => {
+    expect(() =>
+      validateWorkflowProjection({
+        definition: {
+          id: "w-1",
+          stepOrder: ["step-1"],
+          steps: { "step-1": {} },
+        },
+        sources: { "step-1": {} },
+      }),
+    ).toThrow(/must be a non-empty array/);
+  });
+
+  test("accepts a well-formed projection", () => {
+    expect(() =>
+      validateWorkflowProjection({
+        definition: {
+          id: "w-1",
+          stepOrder: ["step-1", "step-2"],
+          steps: { "step-1": {}, "step-2": {} },
+        },
+        sources: { "step-1": [{}], "step-2": [{}] },
+      }),
+    ).not.toThrow();
+  });
+});
+
+describe("createSidecarDeployRouter multi-step branch", () => {
+  async function buildMultistepFixture(opts: {
+    spawner: SubprocessSpawner;
+    publishWorkflowInferenceEvent?: (
+      address: string,
+      generation: number,
+      event: EventPayload,
+      sessionId: string | undefined,
+    ) => void;
+    multistepBinaryPath?: string;
+    multistepSubstrateEnv?: Record<string, string>;
+    multistepMailRouter?: MultistepMailRouter;
+    multistepGrantsRouter?: MultistepGrantsRouter;
+    multistepSourcesRouter?: MultistepSourcesRouter;
+    registerDeployment?: (args: {
+      runId: string;
+      agentAddress: string;
+      generation: number;
+    }) => void;
+    /**
+     * Injectable deployment-address unregister hook. Defaults to a no-op.
+     * The self-termination retention test wires this to a real
+     * `deploymentAddressRegistry` so it can assert the reclaim does NOT
+     * remove the mapping (the buggy reclaim called this hook, which would
+     * strand the supervisor's terminal `RunFailed` commit).
+     */
+    unregisterDeployment?: (args: {
+      runId: string;
+      agentAddress: string;
+    }) => void;
+    reportDeploymentRefTips?: Parameters<
+      typeof createSidecarDeployRouter
+    >[0]["reportDeploymentRefTips"];
+    publishDeploymentStopped?: Parameters<
+      typeof createSidecarDeployRouter
+    >[0]["publishDeploymentStopped"];
+    assertSourceBuildable?: Parameters<
+      typeof createSidecarDeployRouter
+    >[0]["assertSourceBuildable"];
+    /**
+     * Reuse an existing transport instead of a fresh one. The restore
+     * tests deploy through one fixture, then build a SECOND fixture over
+     * the same on-disk data dir with a FRESH transport to model a sidecar
+     * process restart (the in-memory transport is process-local, so a
+     * restart starts with an empty registration table).
+     */
+    transport?: ReturnType<typeof createInMemoryTransport>;
+    /**
+     * Spawn ready-handshake timeout (ms) threaded to every supervisor the
+     * router constructs. The ready-timeout test uses a small value with a
+     * spawner that never drives `ready`, asserting the deploy rejects with
+     * the threaded value echoed in the message.
+     */
+    readyTimeoutMs?: number;
+    /**
+     * Fixed keypair the keyStore's `loadOrGenerateKey` returns for the head.
+     * The B-key test pins the single-step deploy ack to this agent key; when
+     * omitted a fresh keypair is minted per call as before.
+     */
+    headKeyPair?: Awaited<ReturnType<typeof generateKeyPair>>;
+    /**
+     * Injectable deployment-record source updater. The rotation-interleave tests
+     * pass a blockable/failing stub so a recycle can be driven into the
+     * rotation's persist window; omitted, the router uses the real writer.
+     */
+    updateWorkflowRunRecordSources?: typeof updateWorkflowRunRecordSources;
+    /**
+     * Injectable deployment-record credentials updater. The credentials-seal
+     * tests count or fail the seal; omitted, the router uses the real writer.
+     */
+    updateWorkflowRunRecordCredentials?: typeof updateWorkflowRunRecordCredentials;
+    multistepCredentialsRouter?: MultistepCredentialsRouter;
+    maxActiveDeployments?: number;
+    maxRetainedDeployments?: number;
+    removeRunRepository?: (runId: string) => Promise<void>;
+    deleteAgentDir?: (agentAddress: string) => Promise<void>;
+    /**
+     * Injectable closure materializer. A source-ref deploy/restore test passes
+     * a stub so the path runs without a live registry; omitted, the router
+     * uses the real `applyFrozenWorkflowClosure`.
+     */
+    applyFrozenWorkflowClosure?: Parameters<
+      typeof createSidecarDeployRouter
+    >[0]["applyFrozenWorkflowClosure"];
+  }) {
+    const transport = opts.transport ?? createInMemoryTransport();
+    const keyPair = await generateKeyPair();
+    const tempBase = await createTempBaseDir("sidecar-multistep-");
+    const repoStore = createSpawnTestRepoStore(tempBase);
+    // The deploy router's source-ref branch materializes the pinned closure
+    // under `${SIDECAR_DATA_DIR}/workflow-definition-closures/<id>/` before
+    // invoking the spawner. The test fixture defaults the data dir to a
+    // per-test mkdtemp so the wiring tests do not have to touch a real /tmp
+    // path; callers can override `SIDECAR_DATA_DIR` (and any other key) by
+    // passing `multistepSubstrateEnv`.
+    const defaultSubstrateEnv: Record<string, string> = {
+      SIDECAR_DATA_DIR: await createTempBaseDir("sidecar-multistep-data-"),
+      // Source-ref is the only deploy lineage: every deploy materializes the
+      // pin's frozen closure, and the materializer requires both substrate byte
+      // caps in the env. Default them so a deploy test need not thread them; a
+      // test that overrides `multistepSubstrateEnv` keeps these unless it sets
+      // its own.
+      SIDECAR_CACHE_MAX_BYTES: "1000000",
+      SIDECAR_REGISTRY_MAX_TARBALL_BYTES: "1000000",
+    };
+    const mergedSubstrateEnv: Record<string, string> = {
+      ...defaultSubstrateEnv,
+      ...(opts.multistepSubstrateEnv ?? {}),
+    };
+    // The source-ref deploy/restore path derives the runnable definition by
+    // materializing the pin's closure through this injected dependency. The
+    // default stub returns the live definition `makeMultistepFrame` registered
+    // under the deployment id (the last segment of the per-deployment
+    // instance dir), so the deploy/restore evaluates the exact topology the
+    // frame described. A test that hand-writes a record (no frame) or wants a
+    // bespoke closure result passes its own `applyFrozenWorkflowClosure`.
+    const defaultApplyFrozenWorkflowClosure: NonNullable<
+      Parameters<
+        typeof createSidecarDeployRouter
+      >[0]["applyFrozenWorkflowClosure"]
+    > = (applyArgs) => {
+      const deploymentId = path.basename(applyArgs.instanceDir);
+      const definition = deployDefinitionRegistry.get(deploymentId);
+      if (definition === undefined) {
+        throw new Error(
+          `test default applyFrozenWorkflowClosure: no registered definition for deploymentId ${deploymentId} (instanceDir ${applyArgs.instanceDir}). Build the deploy frame via makeMultistepFrame/singleStepFrame, or pass an explicit applyFrozenWorkflowClosure when hand-writing a record.`,
+        );
+      }
+      return Promise.resolve({
+        definition,
+        packageDir: path.join(tempBase, "closure-package", deploymentId),
+        deployDir: path.join(tempBase, "closure-deploy", deploymentId),
+      });
+    };
+    const router = createSidecarDeployRouter({
+      ...DEFAULT_SIDECAR_CAPACITY,
+      ...deployHostBindings(),
+      // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion -- the workflow path never invokes provisionAgent/persistHubPublicKey (single-step uses the narrow initRepo; the child mints its own key); the stubs throw if it does. initRepo is a no-op for the single-step head repo.
+      sessions: {
+        provisionAgent: async () => {
+          throw new Error("workflow branch must not invoke provisionAgent");
+        },
+        persistHubPublicKey: async () => {
+          throw new Error(
+            "workflow branch must not invoke persistHubPublicKey",
+          );
+        },
+        initRepo: async () => undefined,
+        deleteAgentDir: opts.deleteAgentDir ?? (async () => undefined),
+      } as unknown as Parameters<
+        typeof createSidecarDeployRouter
+      >[0]["sessions"],
+      // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion -- test stub; the single-step head deploy records the hub key for pack verification
+      keyStore: {
+        recordHubKey: () => undefined,
+        loadOrGenerateKey: async () => ({
+          keyPair: opts.headKeyPair ?? (await generateKeyPair()),
+          isNew: false,
+        }),
+        // A single-step spawn failure unwinds the recorded hub key via
+        // forgetAgent; the fixture exercises that unwind, so the stub must
+        // honor the call.
+        forgetAgent: () => undefined,
+      } as unknown as Parameters<
+        typeof createSidecarDeployRouter
+      >[0]["keyStore"],
+      transport,
+      repoStore,
+      signingKeySeed: keyPair.privateKey,
+      credentialCipher: createNoopCredentialCipher(),
+      createAgentCrypto: createEd25519Crypto,
+      assertSourceBuildable: opts.assertSourceBuildable ?? (() => undefined),
+      registerDeployment: opts.registerDeployment ?? (() => undefined),
+      removeRunRepository:
+        opts.removeRunRepository ??
+        removeRunDirectory(mergedSubstrateEnv["SIDECAR_DATA_DIR"] ?? tempBase),
+      removeAgentStateRepository: (id) =>
+        fs.rm(repoStore.getRepoDir({ kind: "agent-state", id }), {
+          recursive: true,
+          force: true,
+        }),
+      unregisterDeployment:
+        opts.unregisterDeployment ??
+        (() => {
+          /* no-op */
+        }),
+      reportDeploymentRefTips:
+        opts.reportDeploymentRefTips ?? (async () => ({})),
+      ...(opts.publishDeploymentStopped !== undefined
+        ? { publishDeploymentStopped: opts.publishDeploymentStopped }
+        : {}),
+      multistepSubprocessSpawner: opts.spawner,
+      ...(opts.multistepBinaryPath !== undefined
+        ? { multistepBinaryPath: opts.multistepBinaryPath }
+        : {}),
+      ...(opts.maxActiveDeployments !== undefined
+        ? { maxActiveDeployments: opts.maxActiveDeployments }
+        : {}),
+      ...(opts.maxRetainedDeployments !== undefined
+        ? { maxRetainedDeployments: opts.maxRetainedDeployments }
+        : {}),
+      multistepSubstrateEnv: mergedSubstrateEnv,
+      ...(opts.publishWorkflowInferenceEvent !== undefined
+        ? {
+            publishWorkflowInferenceEvent: opts.publishWorkflowInferenceEvent,
+          }
+        : {}),
+      ...(opts.multistepMailRouter !== undefined
+        ? { multistepMailRouter: opts.multistepMailRouter }
+        : {}),
+      ...(opts.multistepGrantsRouter !== undefined
+        ? { multistepGrantsRouter: opts.multistepGrantsRouter }
+        : {}),
+      ...(opts.multistepSourcesRouter !== undefined
+        ? { multistepSourcesRouter: opts.multistepSourcesRouter }
+        : {}),
+      ...(opts.readyTimeoutMs !== undefined
+        ? { readyTimeoutMs: opts.readyTimeoutMs }
+        : {}),
+      ...(opts.updateWorkflowRunRecordSources !== undefined
+        ? {
+            updateWorkflowRunRecordSources: opts.updateWorkflowRunRecordSources,
+          }
+        : {}),
+      ...(opts.updateWorkflowRunRecordCredentials !== undefined
+        ? {
+            updateWorkflowRunRecordCredentials:
+              opts.updateWorkflowRunRecordCredentials,
+          }
+        : {}),
+      ...(opts.multistepCredentialsRouter !== undefined
+        ? { multistepCredentialsRouter: opts.multistepCredentialsRouter }
+        : {}),
+      applyFrozenWorkflowClosure:
+        opts.applyFrozenWorkflowClosure ?? defaultApplyFrozenWorkflowClosure,
+    });
+    return {
+      router,
+      tempBase,
+      keyPair,
+      substrateEnv: mergedSubstrateEnv,
+      transport,
+    };
+  }
+
+  test("validates the projection, constructs SpawnOpts from the frame, drives spawn, and acks the deployment address's public key", async () => {
+    const supervisorIpcKeyPair = await generateKeyPair();
+    const childIpcKeyPair = await generateKeyPair();
+    const {
+      supervisorToChild,
+      childToSupervisor,
+      eventChildToSupervisor,
+      exited,
+      resolveExit,
+    } = createChildStreams();
+    let observedBinary: string | undefined;
+    let observedEnv: Record<string, string> | undefined;
+    // Scoped here, not to the file: `first()` must resolve with THIS
+    // fixture's spawn, not whichever spawn happened earliest in the run.
+    const spawnObserver = createSpawnObserver();
+    const spawner: SubprocessSpawner = ({ binaryPath, env }) => {
+      observedBinary = binaryPath;
+      observedEnv = env;
+      spawnObserver.record(env);
+      const handle: SubprocessHandle = {
+        pid: 7321,
+        controlWriter: supervisorToChild.writer,
+        controlReader: childToSupervisor.reader,
+        eventReader: eventChildToSupervisor.reader,
+        kill: () => {
+          childToSupervisor.close();
+          eventChildToSupervisor.close();
+          resolveExit?.(0);
+        },
+        exited,
+      };
+      return handle;
+    };
+
+    const multiDataDir = await createTempBaseDir("sidecar-multi-data-");
+    // The deployment address's own key -- what `loadOrGenerateKey` mints.
+    // Pin it so the ack assertion below is deterministic.
+    const deploymentKeyPair = await generateKeyPair();
+    const { router } = await buildMultistepFixture({
+      spawner,
+      headKeyPair: deploymentKeyPair,
+      multistepBinaryPath: "/fake/bin/multistep-workflow-child",
+      multistepSubstrateEnv: {
+        SIDECAR_DATA_DIR: multiDataDir,
+      },
+    });
+
+    // Hijack the supervisor's ipc keypair factory by routing through
+    // the test-construction surface: the router constructs the
+    // supervisor via createSidecarWorkflowSupervisor which does not
+    // expose ipcKeyPairFactory. The supervisor's default keypair is
+    // generated with generateKeyPair; the test signs the `ready` frame
+    // with whatever channelId the spawn-time env carries plus the
+    // child's keypair, and the supervisor accepts a bootstrap
+    // signature from any childPublicKey carried in the `ready` payload.
+
+    const sources = defaultMultistepSources();
+    const definition = {
+      id: "wf-router-test",
+      triggers: [{ type: "manual" }],
+      stepOrder: ["step-1", "step-2"],
+      steps: { "step-1": { kind: "step" }, "step-2": { kind: "step" } },
+    };
+    // The sidecar sources DEFINITION_HASH from the frame's hub-approved hash
+    // verbatim (never a recompute), so stamp the real wire hash and assert the
+    // child receives it.
+    const approvedWireHash = await computeWireDefinitionHash(definition);
+    const frame = makeMultistepFrame({ definition, sources, approvedWireHash });
+
+    const deployPromise = router.deploy(frame);
+
+    // Wait until the spawner has been invoked.
+    observedEnv = await spawnObserver.first();
+
+    const env = observedEnv;
+    expect(observedBinary).toBe("/fake/bin/multistep-workflow-child");
+    expect(env).toMatchObject({
+      SIDECAR_DATA_DIR: multiDataDir,
+      DEPLOYMENT_ID: "multi-example-com",
+      MAILBOX_ADDRESS: "multi@example.com",
+    });
+    expect(env.DEFINITION_HASH).toBe(approvedWireHash);
+    expect(env[STEP_INFERENCE_SOURCES_ENV_KEY]).toBe(JSON.stringify(sources));
+    expect(env.IPC_CHANNEL_ID).toMatch(/^[0-9a-f]{32}$/);
+
+    // Drive the `ready` handshake.
+    const channelId = env.IPC_CHANNEL_ID;
+    if (channelId === undefined) {
+      throw new Error("IPC_CHANNEL_ID not set in spawn-time env");
+    }
+    const childSender = createControlChannelSender({
+      privateKeySeed: childIpcKeyPair.privateKey,
+      channelId,
+      writer: {
+        write(line: string) {
+          childToSupervisor.inject(line);
+          return Promise.resolve();
+        },
+      },
+    });
+    await childSender.send({
+      type: "ready",
+      data: {
+        childPid: 7321,
+        childPublicKey: hexEncode(childIpcKeyPair.publicKey),
+      },
+    });
+
+    const result = await deployPromise;
+    // Every deployment -- single- or multi-step -- acks the deployment
+    // address's own public key, so the hub can verify ownership on
+    // reconnect. A multi-step deployment previously acked the supervisor
+    // principal key, which the hub discarded. The hex is a 64-character
+    // lowercase string.
+    expect(result.publicKey).toMatch(/^[0-9a-f]{64}$/);
+    expect(result.publicKey).toBe(hexEncode(deploymentKeyPair.publicKey));
+    void supervisorIpcKeyPair;
+  });
+
+  test("sources the child's DEFINITION_HASH from the frame's hub-approved wire hash, not a sidecar recompute", async () => {
+    const {
+      supervisorToChild,
+      childToSupervisor,
+      eventChildToSupervisor,
+      exited,
+      resolveExit,
+    } = createChildStreams();
+    let observedEnv: Record<string, string> | undefined;
+    // Scoped here, not to the file: `first()` must resolve with THIS
+    // fixture's spawn, not whichever spawn happened earliest in the run.
+    const spawnObserver = createSpawnObserver();
+    const spawner: SubprocessSpawner = ({ env }) => {
+      observedEnv = env;
+      spawnObserver.record(env);
+      return {
+        pid: 9001,
+        controlWriter: supervisorToChild.writer,
+        controlReader: childToSupervisor.reader,
+        eventReader: eventChildToSupervisor.reader,
+        kill: () => {
+          childToSupervisor.close();
+          eventChildToSupervisor.close();
+          resolveExit?.(0);
+        },
+        exited,
+      };
+    };
+
+    const multiDataDir = await createTempBaseDir("sidecar-approved-hash-");
+    const { router } = await buildMultistepFixture({
+      spawner,
+      multistepSubstrateEnv: { SIDECAR_DATA_DIR: multiDataDir },
+    });
+
+    const sources = defaultMultistepSources();
+    const definition = {
+      id: "wf-approved-hash",
+      triggers: [{ type: "manual" }],
+      stepOrder: ["step-1", "step-2"],
+      steps: { "step-1": { kind: "step" }, "step-2": { kind: "step" } },
+    };
+    // A sentinel that is deliberately NOT the wire hash of `definition`, so an
+    // assertion that the child received it proves the value came from the
+    // frame (the hub authority) and was not recomputed at the sidecar.
+    const HUB_APPROVED_HASH = "hub-approved-sentinel-hash";
+    const recomputed = await computeWireDefinitionHash(definition);
+    expect(HUB_APPROVED_HASH).not.toBe(recomputed);
+
+    const frame = makeMultistepFrame({
+      definition,
+      sources,
+      approvedWireHash: HUB_APPROVED_HASH,
+    });
+    const deployPromise = router.deploy(frame);
+
+    observedEnv = await spawnObserver.first();
+    const env = observedEnv;
+    // The child's DEFINITION_HASH is the frame's hub-approved hash, verbatim.
+    expect(env.DEFINITION_HASH).toBe(HUB_APPROVED_HASH);
+
+    // Drive the child to exit so the deploy's spawn pumps unwind, then let the
+    // deploy settle (it rejects once the child dies mid-handshake, which is
+    // fine -- the env assertion above is the subject under test).
+    const channelId = env.IPC_CHANNEL_ID;
+    if (channelId === undefined) {
+      throw new Error("IPC_CHANNEL_ID not set in spawn-time env");
+    }
+    childToSupervisor.close();
+    eventChildToSupervisor.close();
+    resolveExit?.(0);
+    await deployPromise.catch(() => undefined);
+  });
+
+  test("a second same-address deploy is rejected mid-spawn and never deletes the live run record", async () => {
+    // Pins the synchronous hold on the address. The first deploy runs its
+    // durable writes and then suspends inside supervisor.spawn awaiting the
+    // child's `ready` handshake -- the window in which its incarnation is
+    // held as deploying but has no supervisor yet. A second same-address
+    // frame arriving in that window must be rejected at the hold (its own
+    // message, distinct from the spawn-core backstop) before it touches
+    // durable state, so it cannot delete the first deploy's live record via
+    // the soft-fail catch.
+    const childIpcKeyPair = await generateKeyPair();
+    const {
+      supervisorToChild,
+      childToSupervisor,
+      eventChildToSupervisor,
+      exited,
+      resolveExit,
+    } = createChildStreams();
+    let spawnCount = 0;
+    let observedEnv: Record<string, string> | undefined;
+    // Scoped here, not to the file: `first()` must resolve with THIS
+    // fixture's spawn, not whichever spawn happened earliest in the run.
+    const spawnObserver = createSpawnObserver();
+    const spawner: SubprocessSpawner = ({ env }) => {
+      spawnCount += 1;
+      observedEnv = env;
+      spawnObserver.record(env);
+      const handle: SubprocessHandle = {
+        pid: 4242,
+        controlWriter: supervisorToChild.writer,
+        controlReader: childToSupervisor.reader,
+        eventReader: eventChildToSupervisor.reader,
+        kill: () => {
+          childToSupervisor.close();
+          eventChildToSupervisor.close();
+          resolveExit?.(0);
+        },
+        exited,
+      };
+      return handle;
+    };
+
+    const multiDataDir = await createTempBaseDir("sidecar-concurrent-deploy-");
+    const registered: string[] = [];
+    const { router } = await buildMultistepFixture({
+      spawner,
+      multistepSubstrateEnv: { SIDECAR_DATA_DIR: multiDataDir },
+      registerDeployment: ({ agentAddress }) => {
+        registered.push(agentAddress);
+      },
+    });
+
+    const sources = defaultMultistepSources();
+    const definition = {
+      id: "wf-concurrent",
+      triggers: [{ type: "manual" }],
+      stepOrder: ["step-1", "step-2"],
+      steps: { "step-1": { kind: "step" }, "step-2": { kind: "step" } },
+    };
+    const frame = makeMultistepFrame({
+      definition,
+      sources,
+      agentAddress: "run_concurrent@example.com",
+    });
+    const anchorRunId = deriveWorkflowRunRepoId(frame.agentAddress);
+    const recordFile = path.join(
+      multiDataDir,
+      "workflow-runs",
+      anchorRunId,
+      "deployment.json",
+    );
+
+    const firstDeploy = router.deploy(frame);
+    // Wait until the first deploy has spawned: its record is on disk and it
+    // is now suspended in the ready handshake with the reservation held.
+    observedEnv = await spawnObserver.first();
+    const recordBefore = await fs.readFile(recordFile, "utf8");
+    expect(recordBefore.length).toBeGreaterThan(0);
+
+    if (router.control === undefined)
+      throw new Error("router.control is undefined");
+    await expect(
+      router.control({
+        type: "workflow.control",
+        requestId: "stop-during-deploy",
+        agentAddress: frame.agentAddress,
+        generation: frame.generation,
+        runId: "run_concurrent",
+        action: "stop",
+        reason: "Lifetime expired",
+      }),
+    ).rejects.toThrow(WORKFLOW_CONTROL_INITIALIZING_ERROR);
+
+    // The loser is rejected at the hold, not the spawn-core backstop -- the
+    // hold's message is the one asserted here.
+    await expect(router.deploy(frame)).rejects.toThrow(
+      /generation 1 is deploying here/,
+    );
+    // It never reached the spawner and never deleted the live record.
+    expect(spawnCount).toBe(1);
+    const recordAfter = await fs.readFile(recordFile, "utf8");
+    expect(recordAfter).toBe(recordBefore);
+
+    // Drive the first deploy's ready handshake so it completes, then confirm
+    // the winner is the live, registered deployment.
+    const channelId = observedEnv.IPC_CHANNEL_ID;
+    if (channelId === undefined) {
+      throw new Error("IPC_CHANNEL_ID not set in spawn-time env");
+    }
+    const childSender = createControlChannelSender({
+      privateKeySeed: childIpcKeyPair.privateKey,
+      channelId,
+      writer: {
+        write(line: string) {
+          childToSupervisor.inject(line);
+          return Promise.resolve();
+        },
+      },
+    });
+    await childSender.send({
+      type: "ready",
+      data: {
+        childPid: 4242,
+        childPublicKey: Buffer.from(childIpcKeyPair.publicKey).toString("hex"),
+      },
+    });
+
+    const result = await firstDeploy;
+    expect(result.publicKey).toMatch(/^[0-9a-f]{64}$/);
+    expect(registered).toEqual([frame.agentAddress]);
+    expect(heldAddresses(router)).toEqual([frame.agentAddress]);
+  });
+
+  test("a stop reports the deployment's ref tips and a cancellation reports none", async () => {
+    const agentAddress = "run_stoptips@example.com";
+    const reported: string[] = [];
+    const { router } = await buildMultistepFixture({
+      spawner: () => {
+        throw new Error("control must not spawn");
+      },
+      reportDeploymentRefTips: async ({ agentAddress: address }) => {
+        reported.push(address);
+        return { "refs/heads/main": "main-tip", "refs/heads/events": null };
+      },
+    });
+    if (router.control === undefined)
+      throw new Error("router.control is undefined");
+    const command = {
+      type: "workflow.control",
+      requestId: "stop-tips",
+      agentAddress,
+      generation: 1,
+      runId: "run_stoptips",
+      action: "stop",
+      reason: "Lifetime expired",
+    } as const;
+
+    expect(await router.control(command)).toEqual({
+      refTips: { "refs/heads/main": "main-tip", "refs/heads/events": null },
+    });
+    expect(
+      await router.control({
+        ...command,
+        requestId: "cancel-tips",
+        action: "cancel",
+      }),
+    ).toEqual({});
+    expect(reported).toEqual([agentAddress]);
+  });
+
+  test("registers a multistepMailRouter handler against the deployment address once spawn succeeds", async () => {
+    // Drives the spawn handshake the same way the first multi-step
+    // test does, but injects a `multistepMailRouter` and asserts the
+    // deploy router registered a handler against the deployment's
+    // mail address by the time `deploy(frame)` resolves. The handler
+    // is what the sidecar hub-link's `mail.inbound` path dispatches
+    // through; without this registration, an inbound mail aimed at
+    // the deployment address falls into the legacy session path,
+    // which has no transport entry and no `sessions` row for the
+    // deployment address.
+    const childIpcKeyPair = await generateKeyPair();
+    const {
+      supervisorToChild,
+      childToSupervisor,
+      eventChildToSupervisor,
+      exited,
+      resolveExit,
+    } = createChildStreams();
+    let observedEnv: Record<string, string> | undefined;
+    // Scoped here, not to the file: `first()` must resolve with THIS
+    // fixture's spawn, not whichever spawn happened earliest in the run.
+    const spawnObserver = createSpawnObserver();
+    const spawner: SubprocessSpawner = ({ env }) => {
+      observedEnv = env;
+      spawnObserver.record(env);
+      const handle: SubprocessHandle = {
+        pid: 9123,
+        controlWriter: supervisorToChild.writer,
+        controlReader: childToSupervisor.reader,
+        eventReader: eventChildToSupervisor.reader,
+        kill: () => {
+          childToSupervisor.close();
+          eventChildToSupervisor.close();
+          resolveExit?.(0);
+        },
+        exited,
+      };
+      return handle;
+    };
+
+    const mailRouter = createMultistepMailRouter();
+    const { router } = await buildMultistepFixture({
+      spawner,
+      multistepMailRouter: mailRouter,
+    });
+
+    const sources = defaultMultistepSources();
+    const definition = {
+      id: "wf-mail-router-test",
+      triggers: [{ type: "manual" }],
+      stepOrder: ["step-1", "step-2"],
+      steps: { "step-1": { kind: "step" }, "step-2": { kind: "step" } },
+    };
+    const frame = makeMultistepFrame({ definition, sources });
+
+    const deployPromise = router.deploy(frame);
+
+    observedEnv = await spawnObserver.first();
+
+    const channelId = observedEnv.IPC_CHANNEL_ID;
+    if (channelId === undefined) {
+      throw new Error("IPC_CHANNEL_ID not set in spawn-time env");
+    }
+    const childSender = createControlChannelSender({
+      privateKeySeed: childIpcKeyPair.privateKey,
+      channelId,
+      writer: {
+        write(line: string) {
+          childToSupervisor.inject(line);
+          return Promise.resolve();
+        },
+      },
+    });
+    await childSender.send({
+      type: "ready",
+      data: {
+        childPid: 9123,
+        childPublicKey: hexEncode(childIpcKeyPair.publicKey),
+      },
+    });
+
+    await deployPromise;
+
+    // The handler must be installed against the deployment's mail
+    // address (`frame.agentAddress`), and tryRoute must claim it.
+    const claimed = mailRouter.tryRoute(
+      frame.agentAddress,
+      new Uint8Array([1, 2, 3]),
+    );
+    expect(claimed).not.toBeNull();
+    // Settle the durable promise so its resolution/rejection is not left as an
+    // unhandled rejection; this assertion only checks the address is claimed,
+    // not the enqueue outcome for this synthetic payload.
+    await claimed?.catch(() => undefined);
+  });
+
+  test("a run.grants frame writes the run's grants to runs/<runId>/grants.json in the workflow-run repo", async () => {
+    // Drives the same spawn handshake as the mail-router test, then routes
+    // a `run.grants` frame through the injected `multistepGrantsRouter` and
+    // asserts the handler the deploy router installed wrote the run's
+    // grants to `runs/<runId>/grants.json` inside the deployment's
+    // `workflow-run` repo -- sibling to the run's `runs/<runId>/events/`
+    // subtree. Nothing reads the grants back yet; the assertion is on the
+    // on-disk write (right repo, right path, right content).
+    const childIpcKeyPair = await generateKeyPair();
+    const {
+      supervisorToChild,
+      childToSupervisor,
+      eventChildToSupervisor,
+      exited,
+      resolveExit,
+    } = createChildStreams();
+    let observedEnv: Record<string, string> | undefined;
+    // Scoped here, not to the file: `first()` must resolve with THIS
+    // fixture's spawn, not whichever spawn happened earliest in the run.
+    const spawnObserver = createSpawnObserver();
+    const spawner: SubprocessSpawner = ({ env }) => {
+      observedEnv = env;
+      spawnObserver.record(env);
+      const handle: SubprocessHandle = {
+        pid: 9124,
+        controlWriter: supervisorToChild.writer,
+        controlReader: childToSupervisor.reader,
+        eventReader: eventChildToSupervisor.reader,
+        kill: () => {
+          childToSupervisor.close();
+          eventChildToSupervisor.close();
+          resolveExit?.(0);
+        },
+        exited,
+      };
+      return handle;
+    };
+
+    const grantsRouter = createMultistepGrantsRouter();
+    const { router, tempBase } = await buildMultistepFixture({
+      spawner,
+      multistepGrantsRouter: grantsRouter,
+    });
+
+    const sources = defaultMultistepSources();
+    const definition = {
+      id: "wf-grants-router-test",
+      triggers: [{ type: "manual" }],
+      stepOrder: ["step-1", "step-2"],
+      steps: { "step-1": { kind: "step" }, "step-2": { kind: "step" } },
+    };
+    const frame = makeMultistepFrame({ definition, sources });
+
+    const deployPromise = router.deploy(frame);
+
+    observedEnv = await spawnObserver.first();
+
+    const channelId = observedEnv.IPC_CHANNEL_ID;
+    if (channelId === undefined) {
+      throw new Error("IPC_CHANNEL_ID not set in spawn-time env");
+    }
+    const childSender = createControlChannelSender({
+      privateKeySeed: childIpcKeyPair.privateKey,
+      channelId,
+      writer: {
+        write(line: string) {
+          childToSupervisor.inject(line);
+          return Promise.resolve();
+        },
+      },
+    });
+    await childSender.send({
+      type: "ready",
+      data: {
+        childPid: 9124,
+        childPublicKey: hexEncode(childIpcKeyPair.publicKey),
+      },
+    });
+
+    await deployPromise;
+
+    const runId = "run-abc";
+    const stepGrants = [
+      {
+        id: "grant-1",
+        resource: "tool:send-mail",
+        action: "invoke",
+        effect: "allow",
+        origin: "creator",
+        conditions: null,
+        expiresAt: null,
+        roleId: null,
+        principalId: "prn_deployment",
+      },
+    ];
+    const routed = await grantsRouter.tryRoute(
+      {
+        type: "run.grants",
+        agentAddress: frame.agentAddress,
+        runId,
+        stepGrants,
+      },
+      true,
+    );
+    expect(routed).toBe(true);
+
+    // The write lands in the deployment's workflow-run repo at
+    // `runs/<runId>/grants.json`, the run-owned sibling of `events/`.
+    const anchorRunId = deriveWorkflowRunRepoId(frame.agentAddress);
+    const grantsFile = path.join(
+      tempBase,
+      "workflow-run",
+      anchorRunId,
+      "runs",
+      runId,
+      "grants.json",
+    );
+    const onDisk: unknown = JSON.parse(await fs.readFile(grantsFile, "utf8"));
+    expect(onDisk).toEqual({ grants: stepGrants });
+  });
+
+  // Deploy a multi-step deployment through the full spawn/ready handshake so
+  // the deploy router installs its grants handler, then hand back the pieces a
+  // grants test needs to route a `run.grants` frame and inspect the write.
+  async function deployMultistepForGrants(definitionId: string): Promise<{
+    grantsRouter: MultistepGrantsRouter;
+    agentAddress: string;
+    anchorRunId: string;
+    tempBase: string;
+  }> {
+    const childIpcKeyPair = await generateKeyPair();
+    const {
+      supervisorToChild,
+      childToSupervisor,
+      eventChildToSupervisor,
+      exited,
+      resolveExit,
+    } = createChildStreams();
+    let observedEnv: Record<string, string> | undefined;
+    // Scoped here, not to the file: `first()` must resolve with THIS
+    // fixture's spawn, not whichever spawn happened earliest in the run.
+    const spawnObserver = createSpawnObserver();
+    const spawner: SubprocessSpawner = ({ env }) => {
+      observedEnv = env;
+      spawnObserver.record(env);
+      return {
+        pid: 9124,
+        controlWriter: supervisorToChild.writer,
+        controlReader: childToSupervisor.reader,
+        eventReader: eventChildToSupervisor.reader,
+        kill: () => {
+          childToSupervisor.close();
+          eventChildToSupervisor.close();
+          resolveExit?.(0);
+        },
+        exited,
+      };
+    };
+
+    const grantsRouter = createMultistepGrantsRouter();
+    const { router, tempBase } = await buildMultistepFixture({
+      spawner,
+      multistepGrantsRouter: grantsRouter,
+    });
+
+    const definition = {
+      id: definitionId,
+      triggers: [{ type: "manual" }],
+      stepOrder: ["step-1", "step-2"],
+      steps: { "step-1": { kind: "step" }, "step-2": { kind: "step" } },
+    };
+    const frame = makeMultistepFrame({
+      definition,
+      sources: defaultMultistepSources(),
+    });
+    const deployPromise = router.deploy(frame);
+
+    observedEnv = await spawnObserver.first();
+    const channelId = observedEnv.IPC_CHANNEL_ID;
+    if (channelId === undefined) {
+      throw new Error("IPC_CHANNEL_ID not set in spawn-time env");
+    }
+    const childSender = createControlChannelSender({
+      privateKeySeed: childIpcKeyPair.privateKey,
+      channelId,
+      writer: {
+        write(line: string) {
+          childToSupervisor.inject(line);
+          return Promise.resolve();
+        },
+      },
+    });
+    await childSender.send({
+      type: "ready",
+      data: {
+        childPid: 9124,
+        childPublicKey: hexEncode(childIpcKeyPair.publicKey),
+      },
+    });
+    await deployPromise;
+
+    return {
+      grantsRouter,
+      agentAddress: frame.agentAddress,
+      anchorRunId: deriveWorkflowRunRepoId(frame.agentAddress),
+      tempBase,
+    };
+  }
+
+  test("fails the run's grants when a sender key they carry did not land", async () => {
+    // The link reports a sender key it could not cache. The run must not
+    // start under a grant whose sender its recipient cannot verify, so the
+    // handler throws and grants.json never lands.
+    const { grantsRouter, agentAddress, anchorRunId, tempBase } =
+      await deployMultistepForGrants("wf-sender-key-fault");
+
+    const runId = "run-cache-fault";
+    await expect(
+      grantsRouter.tryRoute(
+        { type: "run.grants", agentAddress, runId, stepGrants: [] },
+        false,
+      ),
+    ).rejects.toThrow(/did not land in the sender-key cache/);
+
+    const grantsFilePath = path.join(
+      tempBase,
+      "workflow-run",
+      anchorRunId,
+      "runs",
+      runId,
+      "grants.json",
+    );
+    const grantsLanded = await fs
+      .stat(grantsFilePath)
+      .then(() => true)
+      .catch(() => false);
+    expect(grantsLanded).toBe(false);
+  });
+
+  test("does not register a multistepMailRouter handler if spawn rejects", async () => {
+    const mailRouter = createMultistepMailRouter();
+    const crashSpawner: SubprocessSpawner = () => {
+      throw new Error("ENOENT: binary missing");
+    };
+    const { router } = await buildMultistepFixture({
+      spawner: crashSpawner,
+      multistepMailRouter: mailRouter,
+    });
+
+    const frame = makeMultistepFrame({
+      agentAddress: "run_crash-noreg@example.com",
+      definition: {
+        id: "wf-crash-noreg",
+        triggers: [{ type: "manual" }],
+        stepOrder: ["step-1"],
+        steps: { "step-1": { kind: "step" } },
+      },
+      sources: { "step-1": [makeInferenceSource("step-1")] },
+    });
+
+    await expect(router.deploy(frame)).rejects.toThrow(
+      /ENOENT: binary missing/,
+    );
+
+    expect(
+      mailRouter.tryRoute(frame.agentAddress, new Uint8Array([1])),
+    ).toBeNull();
+  });
+
+  test("a soft-failed deploy (spawn rejects) leaves no restore record", async () => {
+    const crashSpawner: SubprocessSpawner = () => {
+      throw new Error("ENOENT: binary missing");
+    };
+    const { router, substrateEnv } = await buildMultistepFixture({
+      spawner: crashSpawner,
+    });
+    const agentAddress = "run_softfail@example.com";
+    const frame = makeMultistepFrame({
+      agentAddress,
+      definition: {
+        id: "wf-softfail",
+        triggers: [{ type: "manual" }],
+        stepOrder: ["step-1"],
+        steps: { "step-1": { kind: "step" } },
+      },
+      sources: { "step-1": [makeInferenceSource("step-1")] },
+    });
+
+    await expect(router.deploy(frame)).rejects.toThrow(/ENOENT/);
+
+    // The record is written before the spawn, so the soft-failure catch must
+    // delete it -- a boot-time restore must not re-spawn a deploy that never
+    // completed. (A hard crash mid-spawn, by contrast, deliberately leaves
+    // the record for the restore to re-drive.)
+    const dataDir = substrateEnv.SIDECAR_DATA_DIR;
+    if (dataDir === undefined)
+      throw new Error("fixture SIDECAR_DATA_DIR unset");
+    const recordFile = path.join(
+      dataDir,
+      "workflow-runs",
+      deriveWorkflowRunRepoId(agentAddress),
+      "deployment.json",
+    );
+    expect(
+      await fs.access(recordFile).then(
+        () => true,
+        () => false,
+      ),
+    ).toBe(false);
+  });
+
+  test.each([false, true])(
+    "a failed stopped mark still attempts deletion and holds capacity only if deletion fails (%s)",
+    async (deletionFails) => {
+      const spawnError = new Error("ENOSPC: spawn failed");
+      let spawned = false;
+      const { router, substrateEnv } = await buildMultistepFixture({
+        spawner: () => {
+          spawned = true;
+          throw spawnError;
+        },
+      });
+      const agentAddress = "run_failed-mark@example.com";
+      const frame = makeMultistepFrame({
+        agentAddress,
+        definition: {
+          id: "wf-failed-mark",
+          triggers: [{ type: "manual" }],
+          stepOrder: ["step-1"],
+          steps: { "step-1": { kind: "step" } },
+        },
+        sources: { "step-1": [makeInferenceSource("step-1")] },
+      });
+      const dataDir = substrateEnv.SIDECAR_DATA_DIR;
+      if (dataDir === undefined)
+        throw new Error("fixture data directory unset");
+      const recordFile = path.join(
+        dataDir,
+        "workflow-runs",
+        deriveWorkflowRunRepoId(agentAddress),
+        "deployment.json",
+      );
+      const open = fs.open;
+      const unlink = fs.unlink;
+      let markAttempts = 0;
+      let deleteAttempts = 0;
+      const openSpy = spyOn(fs, "open").mockImplementation(
+        async (target, flags, mode) => {
+          if (spawned && String(target).startsWith(`${recordFile}.tmp.`)) {
+            markAttempts++;
+            throw new Error("ENOSPC: cannot write stopped mark");
+          }
+          return open(target, flags, mode);
+        },
+      );
+      const unlinkSpy = spyOn(fs, "unlink").mockImplementation(
+        async (target) => {
+          if (target === recordFile) {
+            deleteAttempts++;
+            if (deletionFails) throw new Error("EIO: cannot remove record");
+          }
+          return unlink(target);
+        },
+      );
+      try {
+        await expect(router.deploy(frame)).rejects.toBe(spawnError);
+        expect(markAttempts).toBe(1);
+        expect(deleteAttempts).toBe(1);
+        expect(router.incarnations()).toHaveLength(deletionFails ? 1 : 0);
+        expect(
+          await scanWorkflowRunRecords(dataDir, createNoopCredentialCipher()),
+        ).toHaveLength(deletionFails ? 1 : 0);
+      } finally {
+        openSpy.mockRestore();
+        unlinkSpy.mockRestore();
+      }
+    },
+  );
+
+  test("rejects a deploy whose step pins an unbuildable provider before spawning", async () => {
+    // The source-admission gate runs before any state is claimed or the
+    // child is spawned. A step whose pinned source names a provider the
+    // sidecar cannot build must reject the whole deploy synchronously --
+    // the admission control property -- rather than spawning a child that
+    // fails when the step's inference first resolves.
+    let spawnCount = 0;
+    const trackingSpawner: SubprocessSpawner = () => {
+      spawnCount++;
+      throw new Error("spawn must not be reached for an inadmissible source");
+    };
+    const { router } = await buildMultistepFixture({
+      spawner: trackingSpawner,
+      assertSourceBuildable: (source) => {
+        if (source.provider === "ghost-provider") {
+          throw new Error(
+            `Source provider "${source.provider}" is not registered`,
+          );
+        }
+      },
+    });
+
+    const frame = makeMultistepFrame({
+      agentAddress: "run_unbuildable@example.com",
+      definition: {
+        id: "wf-unbuildable",
+        triggers: [{ type: "manual" }],
+        stepOrder: ["step-1"],
+        steps: { "step-1": { kind: "step" } },
+      },
+      sources: {
+        "step-1": [
+          {
+            ...makeInferenceSource("step-1"),
+            provider: "ghost-provider",
+          },
+        ],
+      },
+    });
+
+    await expect(router.deploy(frame)).rejects.toThrow(
+      /ghost-provider.*not registered/,
+    );
+    expect(spawnCount).toBe(0);
+  });
+
+  test("a spawner that throws synchronously surfaces a structured rejection rather than hanging in starting", async () => {
+    // Simulates `Bun.spawn` failing to launch (binary missing,
+    // permissions error). The router must surface the rejection
+    // through `deploy(frame)` without leaving the supervisor wedged.
+    const crashSpawner: SubprocessSpawner = () => {
+      throw new Error("ENOENT: binary missing");
+    };
+
+    const { router } = await buildMultistepFixture({ spawner: crashSpawner });
+
+    const frame = makeMultistepFrame({
+      agentAddress: "run_crash@example.com",
+      definition: {
+        id: "wf-crash",
+        triggers: [{ type: "manual" }],
+        stepOrder: ["step-1"],
+        steps: { "step-1": { kind: "step" } },
+      },
+      sources: {
+        "step-1": [makeInferenceSource("step-1")],
+      },
+    });
+
+    await expect(router.deploy(frame)).rejects.toThrow(
+      /ENOENT: binary missing/,
+    );
+  });
+
+  test("rejects a malformed workflow projection at the router boundary before spawn fires", async () => {
+    let spawnerInvoked = false;
+    const spawner: SubprocessSpawner = () => {
+      spawnerInvoked = true;
+      throw new Error("spawner must not run for an invalid projection");
+    };
+
+    const { router } = await buildMultistepFixture({ spawner });
+
+    const frame = makeMultistepFrame({
+      definition: {
+        id: "wf-bad",
+        triggers: [{ type: "manual" }],
+        // stepOrder mentions a step that has no steps[] entry
+        stepOrder: ["step-1", "step-missing"],
+        steps: { "step-1": { kind: "step" } },
+      },
+      sources: {
+        "step-1": [makeInferenceSource("step-1")],
+      },
+    });
+
+    // The closure-derived definition is structurally invalid: `stepOrder` names
+    // `step-missing`, which the `steps` record does not define. Source-ref is the
+    // only deploy lineage, so the definition is projected from the materialized
+    // closure BEFORE the projection guard; the live->inert projector rejects the
+    // dangling stepOrder entry at the router boundary, before any spawn fires.
+    await expect(router.deploy(frame)).rejects.toThrow(
+      /stepOrder names "step-missing" .* the steps record has no such entry/,
+    );
+    expect(spawnerInvoked).toBe(false);
+  });
+
+  test("refuses to deploy a workflow frame carrying no approvedWireHash rather than recomputing it", async () => {
+    // The child re-verifies its own recompute against the HUB-approved wire
+    // hash. A frame that carries none is a wiring bug, not a legacy case: the
+    // sidecar must fail loud rather than substitute its own recompute, which
+    // would collapse the re-verify to a self-check. Production always stamps
+    // it, so only a malformed frame reaches this guard. Source-ref is the only
+    // deploy lineage, so the durable run record the deploy path builds before
+    // the spawn is the first gate to reject the missing hash.
+    let spawnerInvoked = false;
+    const spawner: SubprocessSpawner = () => {
+      spawnerInvoked = true;
+      throw new Error("spawner must not run for a hash-less frame");
+    };
+
+    const { router } = await buildMultistepFixture({ spawner });
+
+    const frame = makeMultistepFrame({
+      // A single-step deploy parses the frame address as a run address, so use
+      // the canonical `run_<id>@<domain>` shape to reach the approved-wire-hash
+      // guard rather than tripping address parsing first.
+      agentAddress: "run_nohash@example.com",
+      definition: {
+        id: "wf-no-hash",
+        triggers: [{ type: "manual" }],
+        stepOrder: ["step-1"],
+        steps: { "step-1": { kind: "step" } },
+      },
+      sources: { "step-1": [makeInferenceSource("step-1")] },
+      omitApprovedWireHash: true,
+    });
+
+    await expect(router.deploy(frame)).rejects.toThrow(
+      /must carry approvedWireHash/,
+    );
+    expect(spawnerInvoked).toBe(false);
+  });
+
+  test("does not drop the first upstream control frame the child sends after ready", async () => {
+    // The supervisor's `pumpUpstreamControl` consumes the same
+    // control-receive iterator `waitForReady` initialised. A buggy
+    // `waitForReady` that finalised the iterator on `ready` would
+    // silently drop the next upstream frame; a correct handoff
+    // surfaces a `recycle.request` as a real supervisor.recycle()
+    // call, which the supervisor implements by spawning a new child
+    // via the injected subprocessSpawner. Counting spawner
+    // invocations is the cleanest observable: 1 means the upstream
+    // frame was dropped; >=2 means the pump consumed it.
+    //
+    // The mock spawner serves a fresh control/event pair per call so
+    // the recycle path's own ready handshake completes; the test's
+    // child sender signs `ready` once per spawn.
+    type SpawnFixture = {
+      supervisorToChild: ReturnType<typeof createMemoryNdjsonStream>;
+      childToSupervisor: ReturnType<typeof createMemoryNdjsonStream>;
+      eventChildToSupervisor: ReturnType<typeof createMemoryFrameStream>;
+      env: Record<string, string>;
+      childIpcKeyPair: { privateKey: Uint8Array; publicKey: Uint8Array };
+    };
+    const spawnsChanges = createChangeNotifier();
+    const spawns: SpawnFixture[] = [];
+    const spawner: SubprocessSpawner = ({ env }) => {
+      const {
+        supervisorToChild,
+        childToSupervisor,
+        eventChildToSupervisor,
+        exited,
+        resolveExit,
+      } = createChildStreams();
+      const handle: SubprocessHandle = {
+        pid: 4400 + spawns.length,
+        controlWriter: supervisorToChild.writer,
+        controlReader: childToSupervisor.reader,
+        eventReader: eventChildToSupervisor.reader,
+        kill: () => {
+          childToSupervisor.close();
+          eventChildToSupervisor.close();
+          resolveExit?.(0);
+        },
+        exited,
+      };
+      // Capture the per-spawn streams synchronously so the test can
+      // drive the child side once the supervisor has wired the
+      // receiver.
+      const fixture: SpawnFixture = {
+        supervisorToChild,
+        childToSupervisor,
+        eventChildToSupervisor,
+        env,
+        // Mint a fresh child keypair per spawn; the supervisor's
+        // receiveControlChannel opens in bootstrap mode and pins on
+        // the per-spawn ready frame's `childPublicKey`.
+        childIpcKeyPair: {
+          publicKey: new Uint8Array(),
+          privateKey: new Uint8Array(),
+        },
+      };
+      spawns.push(fixture);
+      spawnsChanges.notify();
+      return handle;
+    };
+
+    const { router } = await buildMultistepFixture({ spawner });
+
+    const sources = defaultMultistepSources();
+    const definition = {
+      id: "wf-handoff",
+      triggers: [{ type: "manual" }],
+      stepOrder: ["step-1", "step-2"],
+      steps: { "step-1": { kind: "step" }, "step-2": { kind: "step" } },
+    };
+    const frame = makeMultistepFrame({ definition, sources });
+
+    // Helper to drive the child side of one spawn fixture's ready
+    // handshake, optionally chaining an upstream `recycle.request`.
+    async function driveReady(
+      fixture: SpawnFixture,
+      opts: { sendRecycleRequest: boolean },
+    ): Promise<void> {
+      const channelId = fixture.env.IPC_CHANNEL_ID;
+      if (channelId === undefined) {
+        throw new Error("IPC_CHANNEL_ID not set in spawn-time env");
+      }
+      const childIpcKeyPair = await generateKeyPair();
+      fixture.childIpcKeyPair = childIpcKeyPair;
+      const childSender = createControlChannelSender({
+        privateKeySeed: childIpcKeyPair.privateKey,
+        channelId,
+        writer: {
+          write(line: string) {
+            fixture.childToSupervisor.inject(line);
+            return Promise.resolve();
+          },
+        },
+      });
+      await childSender.send({
+        type: "ready",
+        data: {
+          childPid: 4400 + spawns.length,
+          childPublicKey: hexEncode(childIpcKeyPair.publicKey),
+        },
+      });
+      if (opts.sendRecycleRequest) {
+        await childSender.send({
+          type: "recycle.request",
+          data: { reason: "iterator-handoff-test" },
+        });
+      }
+    }
+
+    const deployPromise = router.deploy(frame);
+
+    // Wait for the first spawn to land.
+    await spawnsChanges.until(() => spawns.length > 0);
+    const first = spawns[0];
+    if (first === undefined) throw new Error("unreachable");
+    // Drive ready + immediate recycle.request on the first spawn.
+    await driveReady(first, { sendRecycleRequest: true });
+
+    // The initial deploy's spawn() resolves once `ready` lands. The
+    // supervisor's pump consumes the recycle.request and kicks off a
+    // recycle, which calls the spawner a second time.
+    await deployPromise;
+
+    // Wait for the recycle's respawn.
+    await spawnsChanges.until(() => spawns.length >= 2);
+    const second = spawns[1];
+    if (second === undefined) throw new Error("unreachable");
+    // Drive ready on the second (recycle's) spawn so the recycle path
+    // unwinds cleanly. We do not assert on this spawn's effects; the
+    // assertion below covers the iterator-handoff invariant.
+    await driveReady(second, { sendRecycleRequest: false });
+
+    expect(spawns.length).toBeGreaterThanOrEqual(2);
+  });
+
+  test("multistepSubstrateEnv reaches the spawn-time env", async () => {
+    const {
+      supervisorToChild,
+      childToSupervisor,
+      eventChildToSupervisor,
+      exited,
+      resolveExit,
+    } = createChildStreams();
+    let observedEnv: Record<string, string> | undefined;
+    // Scoped here, not to the file: `first()` must resolve with THIS
+    // fixture's spawn, not whichever spawn happened earliest in the run.
+    const spawnObserver = createSpawnObserver();
+    const spawner: SubprocessSpawner = ({ env }) => {
+      observedEnv = env;
+      spawnObserver.record(env);
+      const handle: SubprocessHandle = {
+        pid: 7600,
+        controlWriter: supervisorToChild.writer,
+        controlReader: childToSupervisor.reader,
+        eventReader: eventChildToSupervisor.reader,
+        kill: () => {
+          childToSupervisor.close();
+          eventChildToSupervisor.close();
+          resolveExit?.(0);
+        },
+        exited,
+      };
+      return handle;
+    };
+    const bootEdgeDataDir = await createTempBaseDir("sidecar-boot-edge-data-");
+    const { router } = await buildMultistepFixture({
+      spawner,
+      multistepSubstrateEnv: {
+        SIDECAR_DATA_DIR: bootEdgeDataDir,
+      },
+    });
+    const sources = defaultMultistepSources();
+    const definition = {
+      id: "wf-boot-edge",
+      triggers: [{ type: "manual" }],
+      stepOrder: ["step-1", "step-2"],
+      steps: { "step-1": { kind: "step" }, "step-2": { kind: "step" } },
+    };
+    const frame = makeMultistepFrame({ definition, sources });
+    const deployPromise = router.deploy(frame);
+    observedEnv = await spawnObserver.first();
+    expect(observedEnv.SIDECAR_DATA_DIR).toBe(bootEdgeDataDir);
+    // Round out the spawn so the test exits cleanly.
+    const channelId = observedEnv.IPC_CHANNEL_ID;
+    if (channelId === undefined) {
+      throw new Error("IPC_CHANNEL_ID missing from spawn env");
+    }
+    const childIpcKeyPair = await generateKeyPair();
+    const childSender = createControlChannelSender({
+      privateKeySeed: childIpcKeyPair.privateKey,
+      channelId,
+      writer: {
+        write(line: string) {
+          childToSupervisor.inject(line);
+          return Promise.resolve();
+        },
+      },
+    });
+    await childSender.send({
+      type: "ready",
+      data: {
+        childPid: 7600,
+        childPublicKey: hexEncode(childIpcKeyPair.publicKey),
+      },
+    });
+    await deployPromise;
+  });
+
+  test("a registerDeployment failure before spawn unwinds the slug and leaves the address claimable", async () => {
+    // The multi-step partial-state unwind for the address-registry step.
+    // `registerDeployment` runs BEFORE `supervisor.spawn` -- the replay the
+    // spawn kicks off writes through the pack-pushing facade, which must
+    // resolve the deployment-address mapping, so the mapping has to exist
+    // before the spawn. A `registerDeployment` failure therefore throws
+    // before any child is spawned; the unwind must release the slug (and
+    // reverse nothing else, since nothing after it ran). The observable
+    // evidence is that (a) NO child was spawned for the failed deploy and
+    // (b) a subsequent deploy on the SAME address succeeds, which is only
+    // possible if the slug was released.
+    const childIpcKeyPair = await generateKeyPair();
+    const spawnedHandlesChanges = createChangeNotifier();
+    const spawnedHandles: {
+      pid: number;
+      killed: boolean;
+      supervisorToChild: ReturnType<typeof createMemoryNdjsonStream>;
+      childToSupervisor: ReturnType<typeof createMemoryNdjsonStream>;
+      eventChildToSupervisor: ReturnType<typeof createMemoryFrameStream>;
+    }[] = [];
+    const observedEnvs: Record<string, string>[] = [];
+    const spawner: SubprocessSpawner = ({ env }) => {
+      observedEnvs.push(env);
+      const {
+        supervisorToChild,
+        childToSupervisor,
+        eventChildToSupervisor,
+        exited,
+        resolveExit,
+      } = createChildStreams();
+      const record = {
+        pid: 9000 + spawnedHandles.length,
+        killed: false,
+        supervisorToChild,
+        childToSupervisor,
+        eventChildToSupervisor,
+      };
+      spawnedHandles.push(record);
+      spawnedHandlesChanges.notify();
+      const handle: SubprocessHandle = {
+        pid: record.pid,
+        controlWriter: supervisorToChild.writer,
+        controlReader: childToSupervisor.reader,
+        eventReader: eventChildToSupervisor.reader,
+        kill: () => {
+          record.killed = true;
+          childToSupervisor.close();
+          eventChildToSupervisor.close();
+          resolveExit?.(0);
+        },
+        exited,
+      };
+      return handle;
+    };
+
+    let registerCallCount = 0;
+    const multiDataDir = await createTempBaseDir("sidecar-multi-unwind-");
+    const { router } = await buildMultistepFixture({
+      spawner,
+      multistepBinaryPath: "/fake/bin/multistep-workflow-child",
+      multistepSubstrateEnv: { SIDECAR_DATA_DIR: multiDataDir },
+      registerDeployment: () => {
+        registerCallCount += 1;
+        if (registerCallCount === 1) {
+          throw new Error("registerDeployment failure (synthetic)");
+        }
+      },
+    });
+
+    async function driveReadyFor(
+      handleIndex: number,
+      childPid: number,
+    ): Promise<void> {
+      await spawnedHandlesChanges.until(
+        () => spawnedHandles.length > handleIndex,
+      );
+      const env = observedEnvs[handleIndex];
+      const channelId = env?.IPC_CHANNEL_ID;
+      if (channelId === undefined) {
+        throw new Error("IPC_CHANNEL_ID missing in observed env");
+      }
+      const record = spawnedHandles[handleIndex];
+      if (record === undefined) {
+        throw new Error(`spawnedHandles[${String(handleIndex)}] missing`);
+      }
+      const childSender = createControlChannelSender({
+        privateKeySeed: childIpcKeyPair.privateKey,
+        channelId,
+        writer: {
+          write(line: string) {
+            record.childToSupervisor.inject(line);
+            return Promise.resolve();
+          },
+        },
+      });
+      await childSender.send({
+        type: "ready",
+        data: {
+          childPid,
+          childPublicKey: hexEncode(childIpcKeyPair.publicKey),
+        },
+      });
+    }
+
+    const sources = defaultMultistepSources();
+    const definition = {
+      id: "wf-unwind-test",
+      triggers: [{ type: "manual" }],
+      stepOrder: ["step-1", "step-2"],
+      steps: { "step-1": { kind: "step" }, "step-2": { kind: "step" } },
+    };
+    const frame = makeMultistepFrame({ definition, sources });
+
+    // The first deploy throws at `registerDeployment`, which now runs before
+    // `supervisor.spawn`, so it rejects WITHOUT spawning a child -- no ready
+    // handshake to drive.
+    let firstCaught: unknown;
+    try {
+      await router.deploy(frame);
+    } catch (err) {
+      firstCaught = err;
+    }
+    expect(firstCaught).toBeInstanceOf(Error);
+    expect(firstCaught instanceof Error && firstCaught.message).toMatch(
+      /registerDeployment failure \(synthetic\)/,
+    );
+
+    // No child was spawned for the failed deploy: the throw preceded spawn.
+    expect(spawnedHandles).toHaveLength(0);
+
+    // Re-deploy on the SAME address must succeed. If the unwind missed the
+    // slug release, the second deploy would surface a phantom collision. The
+    // router's public contract is that a failed deploy leaves the address
+    // claimable again. This is the first deploy that actually spawns, so its
+    // ready handshake is at index 0.
+    const secondDeploy = router.deploy(frame);
+    await driveReadyFor(0, 9000);
+    const secondResult = await secondDeploy;
+    expect(secondResult.publicKey).toMatch(/^[0-9a-f]{64}$/);
+    expect(registerCallCount).toBe(2);
+  });
+
+  // ------------------------------------------------------------------
+  // Boot-time restore of persisted workflow deployments
+  // ------------------------------------------------------------------
+
+  // A mock spawner that serves a fresh control/event channel per spawn and
+  // lets the test complete each child's `ready` handshake. Both `deploy` and
+  // `restoreWorkflowRuns` block on `supervisor.spawn` until `ready`
+  // lands, so every spawned child needs its handshake driven.
+  function makeReadyDrivingSpawner(pidBase: number) {
+    type Spawn = {
+      env: Record<string, string>;
+      supervisorToChild: ReturnType<typeof createMemoryNdjsonStream>;
+      childToSupervisor: ReturnType<typeof createMemoryNdjsonStream>;
+      eventChildToSupervisor: ReturnType<typeof createMemoryFrameStream>;
+      childSender?: ReturnType<typeof createControlChannelSender>;
+    };
+    const spawnsChanges = createChangeNotifier();
+    const spawns: Spawn[] = [];
+    // One-shot spawn failure. When armed, the NEXT spawner invocation throws
+    // instead of returning a handle, then disarms. Used to fail a recycle
+    // respawn so the supervisor tears down to `stopped` (a self-termination)
+    // without waiting on a ready-handshake timeout.
+    let failNext = false;
+    const spawner: SubprocessSpawner = ({ env }) => {
+      if (failNext) {
+        failNext = false;
+        throw new Error("makeReadyDrivingSpawner: armed spawn failure");
+      }
+      const {
+        supervisorToChild,
+        childToSupervisor,
+        eventChildToSupervisor,
+        exited,
+        resolveExit,
+      } = createChildStreams();
+      spawns.push({
+        env,
+        supervisorToChild,
+        childToSupervisor,
+        eventChildToSupervisor,
+      });
+      spawnsChanges.notify();
+      const handle: SubprocessHandle = {
+        pid: pidBase + spawns.length,
+        controlWriter: supervisorToChild.writer,
+        controlReader: childToSupervisor.reader,
+        eventReader: eventChildToSupervisor.reader,
+        kill: () => {
+          childToSupervisor.close();
+          eventChildToSupervisor.close();
+          resolveExit?.(0);
+        },
+        exited,
+      };
+      return handle;
+    };
+    async function driveReadyFor(
+      index: number,
+      opts?: { sendRecycleRequest?: boolean },
+    ): Promise<void> {
+      await spawnsChanges.until(() => spawns.length > index);
+      const spawn = spawns[index];
+      if (spawn === undefined) {
+        throw new Error(`spawn ${String(index)} missing`);
+      }
+      const channelId = spawn.env.IPC_CHANNEL_ID;
+      if (channelId === undefined) {
+        throw new Error("IPC_CHANNEL_ID missing in spawn env");
+      }
+      const childIpcKeyPair = await generateKeyPair();
+      const childSender = createControlChannelSender({
+        privateKeySeed: childIpcKeyPair.privateKey,
+        channelId,
+        writer: {
+          write(line: string) {
+            spawn.childToSupervisor.inject(line);
+            return Promise.resolve();
+          },
+        },
+      });
+      // Retain the sender so a later recycle.request (recycleRequestFor)
+      // signs with the SAME keypair the supervisor pinned from this ready.
+      spawn.childSender = childSender;
+      await childSender.send({
+        type: "ready",
+        data: {
+          childPid: pidBase + index,
+          childPublicKey: Buffer.from(childIpcKeyPair.publicKey).toString(
+            "hex",
+          ),
+        },
+      });
+      if (opts?.sendRecycleRequest === true) {
+        // Model the child asking to recycle; the supervisor's upstream pump
+        // consumes it and respawns.
+        await childSender.send({
+          type: "recycle.request",
+          data: { reason: "sources-rotation-recycle" },
+        });
+      }
+    }
+    return {
+      spawner,
+      driveReadyFor,
+      spawnCount: () => spawns.length,
+      awaitSpawnCount: (count: number) =>
+        spawnsChanges.until(() => spawns.length >= count),
+      envFor: (index: number): Record<string, string> | undefined =>
+        spawns[index]?.env,
+      // Every control frame the supervisor sent the child, in send order.
+      controlFramesFor: (index: number): ControlPayload[] =>
+        (spawns[index]?.supervisorToChild.flushed() ?? []).flatMap((line) => {
+          const signed = SignedEnvelope(JSON.parse(line));
+          if (signed instanceof type.errors) return [];
+          const payload = ControlPayload(signed.envelope.payload);
+          if (payload instanceof type.errors) return [];
+          return [payload];
+        }),
+      async recycleRequestFor(index: number): Promise<void> {
+        const sender = spawns[index]?.childSender;
+        if (sender === undefined) {
+          throw new Error(
+            `spawn ${String(index)} has no sender; drive its ready first`,
+          );
+        }
+        await sender.send({
+          type: "recycle.request",
+          data: { reason: "sources-rotation-recycle" },
+        });
+      },
+      // Arm a one-shot spawn failure for the next spawner invocation.
+      failNextSpawn(): void {
+        failNext = true;
+      },
+    };
+  }
+
+  function isRegistered(
+    transport: ReturnType<typeof createInMemoryTransport>,
+    address: string,
+  ): boolean {
+    try {
+      transport.getTransportFor(address);
+      return true;
+    } catch {
+      return false;
+    }
+  }
+
+  // The record of a deployment that stopped on its own is written after the
+  // stop, with no signal of its own, so this polls without a deadline of its
+  // own, per "Synchronizing on State, Not Time" in CONVENTIONS.md.
+  async function waitForRecord(
+    dataDir: string,
+    anchorRunId: string,
+    done: (record: Record<string, unknown> | undefined) => boolean,
+  ): Promise<Record<string, unknown> | undefined> {
+    for (;;) {
+      const record = await fs
+        .readFile(
+          path.join(dataDir, "workflow-runs", anchorRunId, "deployment.json"),
+          "utf8",
+        )
+        .then(
+          (raw): Record<string, unknown> | undefined => {
+            const parsed: unknown = JSON.parse(raw);
+            return typeof parsed === "object" && parsed !== null
+              ? Object.fromEntries(Object.entries(parsed))
+              : undefined;
+          },
+          () => undefined,
+        );
+      if (done(record)) return record;
+      await new Promise((resolve) => setTimeout(resolve, 0));
+    }
+  }
+
+  function isStopped(router: SidecarDeployRouter, address: string): boolean {
+    return router
+      .incarnations()
+      .some(
+        (incarnation) =>
+          incarnation.address === address && incarnation.state === "stopped",
+      );
+  }
+
+  function recordExists(
+    dataDir: string,
+    anchorRunId: string,
+  ): Promise<boolean> {
+    return fs
+      .access(
+        path.join(dataDir, "workflow-runs", anchorRunId, "deployment.json"),
+      )
+      .then(
+        () => true,
+        () => false,
+      );
+  }
+
+  function singleStepFrame(
+    agentAddress: string,
+    definitionId: string,
+  ): AgentDeployFrame {
+    return makeMultistepFrame({
+      agentAddress,
+      definition: {
+        id: definitionId,
+        triggers: [{ type: "manual" }],
+        stepOrder: ["step-1"],
+        steps: { "step-1": { kind: "step" } },
+      },
+      sources: { "step-1": [makeInferenceSource("step-1")] },
+    });
+  }
+
+  test("restore re-spawns a persisted single-step deployment and re-registers its head on a fresh transport", async () => {
+    const dataDir = await createTempBaseDir("sidecar-restore-restart-data-");
+    const head = "run_restart@example.com";
+
+    // First process: deploy a single-step workflow. The deploy persists a
+    // restore record under `dataDir` and materializes its `workflow.json`.
+    const first = makeReadyDrivingSpawner(9100);
+    const { router: routerA } = await buildMultistepFixture({
+      spawner: first.spawner,
+      multistepSubstrateEnv: { SIDECAR_DATA_DIR: dataDir },
+    });
+    const deployPromise = routerA.deploy(singleStepFrame(head, "wf-restart"));
+    await first.driveReadyFor(0);
+    await deployPromise;
+
+    // Second process (simulated restart): a FRESH transport (empty
+    // registration table) and fresh in-memory router state over the SAME
+    // on-disk data dir.
+    const second = makeReadyDrivingSpawner(9200);
+    const freshTransport = createInMemoryTransport();
+    const { router: routerB } = await buildMultistepFixture({
+      spawner: second.spawner,
+      transport: freshTransport,
+      multistepSubstrateEnv: { SIDECAR_DATA_DIR: dataDir },
+    });
+
+    // Nothing is registered before restore -- the restart started clean.
+    expect(isRegistered(freshTransport, head)).toBe(false);
+
+    const restorePromise = routerB.restoreWorkflowRuns();
+    await second.driveReadyFor(0);
+    await restorePromise;
+
+    // The deployment was re-spawned exactly once and its head is live again.
+    expect(second.spawnCount()).toBe(1);
+    expect(isRegistered(freshTransport, head)).toBe(true);
+  });
+
+  test("restore holds a record whose closure will not materialize as stopped and restores the rest", async () => {
+    const dataDir = await createTempBaseDir("sidecar-restore-softfail-data-");
+    const goodHead = "run_good@example.com";
+    const badHead = "run_bad@example.com";
+
+    const first = makeReadyDrivingSpawner(9300);
+    const { router: routerA } = await buildMultistepFixture({
+      spawner: first.spawner,
+      multistepSubstrateEnv: { SIDECAR_DATA_DIR: dataDir },
+    });
+    const deployGood = routerA.deploy(singleStepFrame(goodHead, "wf-good"));
+    await first.driveReadyFor(0);
+    await deployGood;
+    const deployBad = routerA.deploy(singleStepFrame(badHead, "wf-bad"));
+    await first.driveReadyFor(1);
+    await deployBad;
+
+    // Source-ref is the only deploy lineage: a restore re-materializes each
+    // record's pinned closure to derive its definition. Make the bad
+    // deployment's closure materialization fault (the pinned code no longer
+    // resolves) so its restore soft-fails, while the good one materializes and
+    // re-spawns.
+    const badDeploymentId = deriveWorkflowRunRepoId(badHead);
+    const second = makeReadyDrivingSpawner(9400);
+    const freshTransport = createInMemoryTransport();
+    const { router: routerB } = await buildMultistepFixture({
+      spawner: second.spawner,
+      transport: freshTransport,
+      multistepSubstrateEnv: { SIDECAR_DATA_DIR: dataDir },
+      applyFrozenWorkflowClosure: (applyArgs) => {
+        const deploymentId = path.basename(applyArgs.instanceDir);
+        if (deploymentId === badDeploymentId) {
+          throw new Error(
+            `closure materialization faulted for ${deploymentId}: pinned code did not resolve`,
+          );
+        }
+        const definition = deployDefinitionRegistry.get(deploymentId);
+        if (definition === undefined) {
+          throw new Error(
+            `test applyFrozenWorkflowClosure: no registered definition for ${deploymentId}`,
+          );
+        }
+        return Promise.resolve({
+          definition,
+          packageDir: path.join(dataDir, "closure-package", deploymentId),
+          deployDir: path.join(dataDir, "closure-deploy", deploymentId),
+        });
+      },
+    });
+
+    // The good deployment re-spawns (exactly one handshake to drive);
+    // scan order is filesystem-dependent, but only the good record spawns.
+    const restorePromise = routerB.restoreWorkflowRuns();
+    await second.driveReadyFor(0);
+    await restorePromise;
+
+    expect(second.spawnCount()).toBe(1);
+    expect(isRegistered(freshTransport, goodHead)).toBe(true);
+    expect(isRegistered(freshTransport, badHead)).toBe(false);
+    // The failed deployment stays reported, stopped with why, so the Hub fails
+    // and undeploys it. Its record says so too, so a later boot reports it
+    // instead of trying again.
+    const why = expect.stringMatching(
+      /^The sidecar could not restore it: closure materialization faulted/,
+    );
+    expect(
+      routerB
+        .incarnations()
+        .find((incarnation) => incarnation.address === badHead),
+    ).toEqual({
+      address: badHead,
+      generation: 1,
+      state: "stopped",
+      error: why,
+    });
+    expect(
+      await waitForRecord(dataDir, badDeploymentId, () => true),
+    ).toMatchObject({ state: "stopped", error: why });
+  });
+
+  test("restore rejects a closure-derived definition whose stepOrder names a step with no matching entry", async () => {
+    const dataDir = await createTempBaseDir("sidecar-restore-validator-data-");
+    const head = "run_validator@example.com";
+    const anchorRunId = deriveWorkflowRunRepoId(head);
+
+    // Write a well-formed source-ref record: it clears the record schema and the
+    // scan boundary, so restore reaches the projection gate. The closure it
+    // re-materializes, though, evaluates to a structurally invalid definition --
+    // its `stepOrder` names a step the `steps` record does not define. The
+    // source-ref restore arm projects the closure-derived definition
+    // (`projectLiveToInert`) before spawning, so it rejects the dangling
+    // stepOrder entry and never spawns a child for a broken definition.
+    const record: WorkflowRunRecord = {
+      version: 1,
+      agentAddress: head,
+      generation: 1,
+      definitionId: "wf-missing-step",
+      sources: { "step-1": [makeInferenceSource("step-1")] },
+      hubPublicKey: "hub-pk",
+      approvedWireHash: "a".repeat(64),
+      lineage: "source-ref",
+      sourceRef: {
+        source: { kind: "registry", registry: "test-registry" },
+        closure: { schemaVersion: "1", topLevel: [], entries: [] },
+      },
+    };
+    await writeWorkflowRunRecord(
+      dataDir,
+      anchorRunId,
+      record,
+      createNoopCredentialCipher(),
+    );
+
+    const spawner = makeReadyDrivingSpawner(9500);
+    const freshTransport = createInMemoryTransport();
+    const { router } = await buildMultistepFixture({
+      spawner: spawner.spawner,
+      transport: freshTransport,
+      multistepSubstrateEnv: { SIDECAR_DATA_DIR: dataDir },
+      applyFrozenWorkflowClosure: (applyArgs) =>
+        Promise.resolve({
+          // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion -- a hand-built live definition cannot satisfy the full WorkflowDefinition nominal type; this stands in for a closure that evaluates to a structurally invalid definition
+          definition: {
+            id: "wf-missing-step",
+            triggers: [{ type: "manual" }],
+            stepOrder: ["step-1", "step-missing"],
+            steps: {
+              "step-1": {
+                kind: "step",
+                id: "step-1",
+                agent: {
+                  id: "agent-step-1",
+                  systemPrompt: "sys",
+                  capabilities: [],
+                  toolFactories: [],
+                  inference: { sources: [] },
+                },
+              },
+            },
+          } as unknown as WorkflowDefinition,
+          packageDir: path.join(applyArgs.instanceDir, "package"),
+          deployDir: path.join(applyArgs.instanceDir, "deploy"),
+        }),
+    });
+
+    await router.restoreWorkflowRuns();
+
+    expect(spawner.spawnCount()).toBe(0);
+    expect(isRegistered(freshTransport, head)).toBe(false);
+    expect(router.incarnations()).toEqual([
+      {
+        address: head,
+        generation: 1,
+        state: "stopped",
+        error: expect.stringMatching(/^The sidecar could not restore it: /),
+      },
+    ]);
+  });
+
+  test("restore soft-skips a malformed source-ref record (missing sourceRef) at the scan boundary", async () => {
+    const dataDir = await createTempBaseDir("sidecar-restore-srcref-bad-");
+    const head = "run_srcref@example.com";
+    const deploymentId = deriveWorkflowRunRepoId(head);
+
+    // A source-ref record MUST carry a sourceRef pin + approvedWireHash -- the
+    // record schema's discriminated union on `lineage` requires them. Write a
+    // raw malformed one (lineage source-ref, none of the required fields)
+    // straight to the record path, bypassing the typed writer.
+    // `scanWorkflowRunRecords` validates against the schema and
+    // soft-skips it as corruption, so restore never reaches a spawn -- there is
+    // no bespoke source-ref guard in the restore loop to lean on.
+    const recordPath = path.join(
+      dataDir,
+      "workflow-runs",
+      deploymentId,
+      "deployment.json",
+    );
+    await fs.mkdir(path.dirname(recordPath), { recursive: true });
+    await fs.writeFile(
+      recordPath,
+      JSON.stringify({
+        version: 1,
+        agentAddress: head,
+        definitionId: "wf-srcref",
+        sources: { "step-1": [makeInferenceSource("step-1")] },
+        hubPublicKey: "hub-pk",
+        lineage: "source-ref",
+      }),
+      "utf8",
+    );
+
+    const spawner = makeReadyDrivingSpawner(9550);
+    const freshTransport = createInMemoryTransport();
+    const { router } = await buildMultistepFixture({
+      spawner: spawner.spawner,
+      transport: freshTransport,
+      multistepSubstrateEnv: { SIDECAR_DATA_DIR: dataDir },
+    });
+
+    await router.restoreWorkflowRuns();
+
+    // Rejected at the scan boundary: no child spawned, nothing registered.
+    expect(spawner.spawnCount()).toBe(0);
+    expect(isRegistered(freshTransport, head)).toBe(false);
+  });
+
+  test("deploys for different addresses apply their closures through one tarball cache", async () => {
+    const caches: unknown[] = [];
+    const { router } = await buildMultistepFixture({
+      spawner: makeReadyDrivingSpawner(9600).spawner,
+      applyFrozenWorkflowClosure: (applyArgs) => {
+        caches.push(applyArgs.cache);
+        return Promise.reject(new Error("closure left unapplied"));
+      },
+    });
+    const definition = {
+      id: "wf-shared-cache",
+      triggers: [{ type: "manual" }],
+      stepOrder: ["step-1", "step-2"],
+      steps: { "step-1": { kind: "step" }, "step-2": { kind: "step" } },
+    };
+    const sources = defaultMultistepSources();
+
+    const deploys = await Promise.allSettled([
+      router.deploy(
+        makeMultistepFrame({
+          agentAddress: "cache-one@example.com",
+          definition,
+          sources,
+        }),
+      ),
+      router.deploy(
+        makeMultistepFrame({
+          agentAddress: "cache-two@example.com",
+          definition,
+          sources,
+        }),
+      ),
+    ]);
+
+    expect(deploys.map((deploy) => deploy.status)).toEqual([
+      "rejected",
+      "rejected",
+    ]);
+    expect(caches).toHaveLength(2);
+    expect(caches[0]).toBeDefined();
+    expect(caches[0]).toBe(caches[1]);
+  });
+
+  test("undeploy removes the run repository and its record after the rest of the local state", async () => {
+    const dataDir = await createTempBaseDir("sidecar-undeploy-repository-");
+    const agentAddress = "run_undeploy_repo@example.com";
+    const runId = deriveWorkflowRunRepoId(agentAddress);
+    const copy = conversationStateRoot(dataDir, runId);
+    const record = path.join(
+      dataDir,
+      "workflow-runs",
+      runId,
+      "deployment.json",
+    );
+    await fs.mkdir(copy, { recursive: true });
+    await fs.mkdir(path.dirname(record), { recursive: true });
+    await fs.writeFile(record, "{}");
+    const exists = (target: string) =>
+      fs.access(target).then(
+        () => true,
+        () => false,
+      );
+    const removals: {
+      runId: string;
+      copyLeft: boolean;
+      recordLeft: boolean;
+    }[] = [];
+    const { router } = await buildMultistepFixture({
+      spawner: makeReadyDrivingSpawner(9650).spawner,
+      multistepSubstrateEnv: { SIDECAR_DATA_DIR: dataDir },
+      removeRunRepository: async (id) => {
+        removals.push({
+          runId: id,
+          copyLeft: await exists(copy),
+          recordLeft: await exists(record),
+        });
+        await removeRunDirectory(dataDir)(id);
+      },
+    });
+    const undeploy = router.undeploy;
+    if (undeploy === undefined) {
+      throw new Error("router.undeploy is undefined");
+    }
+
+    await undeploy({
+      type: "agent.undeploy",
+      requestId: "undeploy-repository",
+      agentAddress,
+      generation: 1,
+      reason: "test",
+    });
+
+    expect(removals).toEqual([{ runId, copyLeft: false, recordLeft: true }]);
+    expect(await exists(record)).toBe(false);
+  });
+
+  test("undeploy removes a run record that is not valid JSON", async () => {
+    const dataDir = await createTempBaseDir("sidecar-undeploy-corrupt-");
+    const agentAddress = "run_undeploy_corrupt@example.com";
+    const runId = deriveWorkflowRunRepoId(agentAddress);
+    const record = path.join(
+      dataDir,
+      "workflow-runs",
+      runId,
+      "deployment.json",
+    );
+    await fs.mkdir(path.dirname(record), { recursive: true });
+    await fs.writeFile(record, "{ torn");
+    const { router } = await buildMultistepFixture({
+      spawner: makeReadyDrivingSpawner(9652).spawner,
+      multistepSubstrateEnv: { SIDECAR_DATA_DIR: dataDir },
+      removeRunRepository: removeRunDirectory(dataDir),
+    });
+    const undeploy = router.undeploy;
+    if (undeploy === undefined) {
+      throw new Error("router.undeploy is undefined");
+    }
+
+    await undeploy({
+      type: "agent.undeploy",
+      requestId: "undeploy-corrupt",
+      agentAddress,
+      generation: 1,
+      reason: "test",
+    });
+
+    expect(
+      await fs.access(record).then(
+        () => true,
+        () => false,
+      ),
+    ).toBe(false);
+  });
+
+  test("undeploy reclaims the deployment's local conversation copy", async () => {
+    const dataDir = await createTempBaseDir("sidecar-conversation-undeploy-");
+    const agentAddress = "conversation-undeploy@example.com";
+    const copy = path.join(
+      conversationStateRoot(dataDir, deriveWorkflowRunRepoId(agentAddress)),
+      "agent-key",
+    );
+    await fs.mkdir(copy, { recursive: true });
+    await fs.writeFile(path.join(copy, "turns.json"), "[]");
+    const { router } = await buildMultistepFixture({
+      spawner: makeReadyDrivingSpawner(9620).spawner,
+      multistepSubstrateEnv: { SIDECAR_DATA_DIR: dataDir },
+    });
+    const undeploy = router.undeploy;
+    if (undeploy === undefined) {
+      throw new Error("router.undeploy is undefined");
+    }
+
+    await undeploy({
+      type: "agent.undeploy",
+      requestId: "undeploy-test",
+      agentAddress,
+      generation: 1,
+      reason: "test",
+    });
+
+    expect(
+      await fs.access(copy).then(
+        () => true,
+        () => false,
+      ),
+    ).toBe(false);
+  });
+
+  test("an undeploy that cannot reclaim some local state stays listed as tearing down and names each failure", async () => {
+    const dataDir = await createTempBaseDir("sidecar-undeploy-failures-");
+    const head = "run_undeploy_failures@example.com";
+    const runId = deriveWorkflowRunRepoId(head);
+    const spawner = makeReadyDrivingSpawner(9640);
+    const { router, transport } = await buildMultistepFixture({
+      spawner: spawner.spawner,
+      multistepSubstrateEnv: { SIDECAR_DATA_DIR: dataDir },
+    });
+    const deployPromise = router.deploy(singleStepFrame(head, "wf-failures"));
+    await spawner.driveReadyFor(0);
+    await deployPromise;
+    // A file where a directory is expected fails its removal with ENOTDIR,
+    // which `force` does not swallow.
+    for (const parent of [
+      "workflow-step-state",
+      "workflow-definition-closures",
+    ]) {
+      await fs.rm(path.join(dataDir, parent), { recursive: true, force: true });
+      await fs.writeFile(path.join(dataDir, parent), "");
+    }
+    const undeploy = router.undeploy;
+    if (undeploy === undefined) {
+      throw new Error("router.undeploy is undefined");
+    }
+
+    const undeployed = undeploy({
+      type: "agent.undeploy",
+      requestId: "undeploy-failures",
+      agentAddress: head,
+      generation: 1,
+      reason: "test",
+    });
+
+    await expect(undeployed).rejects.toThrow(
+      /^removing its step scratch failed: .*; removing its closure failed: /,
+    );
+    // The incarnation stays reported, and its record says why, so the Hub
+    // undeploys it again even across a restart.
+    expect(router.incarnations()).toEqual([
+      { address: head, generation: 1, state: "tearing-down" },
+    ]);
+    expect(isRegistered(transport, head)).toBe(false);
+    expect(
+      JSON.parse(
+        await fs.readFile(
+          path.join(dataDir, "workflow-runs", runId, "deployment.json"),
+          "utf8",
+        ),
+      ),
+    ).toMatchObject({ state: "tearing-down" });
+
+    for (const parent of [
+      "workflow-step-state",
+      "workflow-definition-closures",
+    ]) {
+      await fs.rm(path.join(dataDir, parent), { force: true });
+    }
+    await undeploy({
+      type: "agent.undeploy",
+      requestId: "undeploy-again",
+      agentAddress: head,
+      generation: 1,
+      reason: "test",
+    });
+    expect(await recordExists(dataDir, runId)).toBe(false);
+    expect(heldAddresses(router)).toEqual([]);
+  });
+
+  test("refuses to provision a step over an address it holds", async () => {
+    const dataDir = await createTempBaseDir("sidecar-provision-held-");
+    const head = "run_provision_held@example.com";
+    const spawner = makeReadyDrivingSpawner(9670);
+    const { router } = await buildMultistepFixture({
+      spawner: spawner.spawner,
+      multistepSubstrateEnv: { SIDECAR_DATA_DIR: dataDir },
+    });
+    const deployed = router.deploy(singleStepFrame(head, "wf-provision-held"));
+    await spawner.driveReadyFor(0);
+    await deployed;
+
+    await expect(
+      router.deploy({
+        ...singleStepFrame(head, "wf-provision-held"),
+        provisionStep: true,
+      }),
+    ).rejects.toThrow(/a step cannot be provisioned over it/);
+    expect(heldAddresses(router)).toEqual([head]);
+  });
+
+  test("an undeploy reclaims a step scratch a tool left without write permission", async () => {
+    const dataDir = await createTempBaseDir("sidecar-undeploy-read-only-");
+    const head = "run_undeploy_read_only@example.com";
+    const runId = deriveWorkflowRunRepoId(head);
+    const spawner = makeReadyDrivingSpawner(9660);
+    const { router } = await buildMultistepFixture({
+      spawner: spawner.spawner,
+      multistepSubstrateEnv: { SIDECAR_DATA_DIR: dataDir },
+    });
+    const deployPromise = router.deploy(singleStepFrame(head, "wf-read-only"));
+    await spawner.driveReadyFor(0);
+    await deployPromise;
+    const scratch = path.join(dataDir, "workflow-step-state", runId);
+    const modules = path.join(scratch, "workspace", "pkg", "mod");
+    await fs.mkdir(modules, { recursive: true });
+    await fs.writeFile(path.join(modules, "go.mod"), "module example\n");
+    const readOnly = [path.dirname(modules), modules];
+    for (const dir of readOnly) await fs.chmod(dir, 0o555);
+    const undeploy = router.undeploy;
+    if (undeploy === undefined) {
+      throw new Error("router.undeploy is undefined");
+    }
+
+    try {
+      await undeploy({
+        type: "agent.undeploy",
+        requestId: "undeploy-read-only",
+        agentAddress: head,
+        generation: 1,
+        reason: "test",
+      });
+
+      expect(
+        await fs.access(scratch).then(
+          () => true,
+          () => false,
+        ),
+      ).toBe(false);
+      expect(heldAddresses(router)).toEqual([]);
+    } finally {
+      for (const dir of readOnly) {
+        await fs.chmod(dir, 0o755).catch(() => undefined);
+      }
+    }
+  });
+
+  test("an undeploy removes a single-step deployment's grants repository", async () => {
+    const head = "run_undeploy_grants@example.com";
+    const spawner = makeReadyDrivingSpawner(9680);
+    const { router, tempBase } = await buildMultistepFixture({
+      spawner: spawner.spawner,
+    });
+    const deployPromise = router.deploy(singleStepFrame(head, "wf-grants"));
+    await spawner.driveReadyFor(0);
+    await deployPromise;
+    const grants = path.join(tempBase, "agent-state", "run_undeploy_grants");
+    const exists = () =>
+      fs.access(grants).then(
+        () => true,
+        () => false,
+      );
+    expect(await exists()).toBe(true);
+    const undeploy = router.undeploy;
+    if (undeploy === undefined) {
+      throw new Error("router.undeploy is undefined");
+    }
+
+    await undeploy({
+      type: "agent.undeploy",
+      requestId: "undeploy-grants",
+      agentAddress: head,
+      generation: 1,
+      reason: "test",
+    });
+
+    expect(await exists()).toBe(false);
+    expect(heldAddresses(router)).toEqual([]);
+  });
+
+  test("restore re-materializes a source-ref deployment's closure and re-spawns it as source-ref", async () => {
+    const dataDir = await createTempBaseDir("sidecar-restore-srcref-ok-");
+    const head = "run_srcref_ok@example.com";
+    const deploymentId = deriveWorkflowRunRepoId(head);
+
+    // A well-formed source-ref record: lineage source-ref with a sourceRef pin
+    // (source + closure) + approvedWireHash, exactly what the deploy path
+    // persists.
+    const record: WorkflowRunRecord = {
+      version: 1,
+      agentAddress: head,
+      generation: 1,
+      definitionId: "wf-srcref",
+      sources: { "step-1": [makeInferenceSource("step-1")] },
+      hubPublicKey: "hub-pk",
+      approvedWireHash: "a".repeat(64),
+      lineage: "source-ref",
+      sourceRef: {
+        source: { kind: "registry", registry: "test-registry" },
+        closure: { schemaVersion: "1", topLevel: [], entries: [] },
+      },
+    };
+    await writeWorkflowRunRecord(
+      dataDir,
+      deploymentId,
+      record,
+      createNoopCredentialCipher(),
+    );
+
+    // The source-ref restore arm reconstructs the definition from the
+    // re-materialized closure, NOT from the on-disk inert workflow.json. Write a
+    // DELIBERATELY-CORRUPT workflow.json to prove the arm never reads it: were
+    // the restore path to parse this file it would throw and soft-skip the
+    // record, so a successful restore below is proof the closure is the source
+    // of truth for the definition on this lineage.
+    const workflowJsonPath = path.join(
+      dataDir,
+      "assets",
+      "workflow",
+      "wf-srcref",
+      "workflow.json",
+    );
+    await fs.mkdir(path.dirname(workflowJsonPath), { recursive: true });
+    await fs.writeFile(workflowJsonPath, "}{ not valid json", "utf8");
+
+    // Stub the closure materializer: record its inputs, and return a fake
+    // package dir plus the evaluated live definition the restore arm now
+    // projects to the inert wire shape -- the SAME
+    // `WorkflowProjectionDefinition(projectLiveToInert(...))` computation the
+    // deploy path applies. The definition (not the on-disk workflow.json) is the
+    // source of truth for the restored definition, so it must be a valid live
+    // definition whose projection covers the record's sources (`step-1`).
+    const fakePackageDir = path.join(dataDir, "fake-closure-package");
+    const closureDefinition = {
+      id: "wf-srcref",
+      triggers: [{ type: "manual" }],
+      stepOrder: ["step-1"],
+      steps: {
+        "step-1": {
+          kind: "step",
+          id: "step-1",
+          agent: {
+            id: "agent-1",
+            systemPrompt: "sys",
+            capabilities: [],
+            toolFactories: [],
+            inference: { sources: [] },
+          },
+        },
+      },
+    };
+    const applyCalls: { registry: string; entryCount: number }[] = [];
+    const applyStub: NonNullable<
+      Parameters<typeof buildMultistepFixture>[0]["applyFrozenWorkflowClosure"]
+    > = (args) => {
+      if (args.source.kind !== "registry") {
+        throw new Error(
+          `applyStub expected a registry source, got ${args.source.kind}`,
+        );
+      }
+      applyCalls.push({
+        registry: args.source.registry,
+        entryCount: args.closure.entries.length,
+      });
+      return Promise.resolve({
+        // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion -- the stub stands in for a real closure evaluation; a minimal hand-built live definition cannot satisfy the full `WorkflowDefinition` nominal type
+        definition: closureDefinition as unknown as WorkflowDefinition,
+        packageDir: fakePackageDir,
+        deployDir: path.join(dataDir, "fake-deploy-dir"),
+      });
+    };
+
+    const spawner = makeReadyDrivingSpawner(9560);
+    const freshTransport = createInMemoryTransport();
+    const { router } = await buildMultistepFixture({
+      spawner: spawner.spawner,
+      transport: freshTransport,
+      multistepSubstrateEnv: {
+        SIDECAR_DATA_DIR: dataDir,
+        SIDECAR_CACHE_MAX_BYTES: "1000000",
+        SIDECAR_REGISTRY_MAX_TARBALL_BYTES: "1000000",
+      },
+      applyFrozenWorkflowClosure: applyStub,
+    });
+
+    const restorePromise = router.restoreWorkflowRuns();
+    await spawner.driveReadyFor(0);
+    await restorePromise;
+
+    // Re-materialized (the frozen closure fed to the materializer) and spawned.
+    expect(applyCalls).toEqual([{ registry: "test-registry", entryCount: 0 }]);
+    expect(spawner.spawnCount()).toBe(1);
+    expect(isRegistered(freshTransport, head)).toBe(true);
+    // The child came back on the source-ref (evaluate-the-closure) load path:
+    // the spawn env carries the freshly re-materialized closure package dir, so
+    // the child evaluates the pinned code rather than reading a definition off
+    // disk. Source-ref is the only lineage now, so the env always carries it.
+    const spawnEnv = spawner.envFor(0);
+    expect(spawnEnv?.CLOSURE_PACKAGE_DIR).toBe(fakePackageDir);
+  });
+
+  test("restore is a no-op for a deployment already live in this process", async () => {
+    const dataDir = await createTempBaseDir("sidecar-restore-guard-data-");
+    const head = "run_guard@example.com";
+
+    const spawner = makeReadyDrivingSpawner(9600);
+    const { router, transport } = await buildMultistepFixture({
+      spawner: spawner.spawner,
+      multistepSubstrateEnv: { SIDECAR_DATA_DIR: dataDir },
+    });
+
+    const deployPromise = router.deploy(singleStepFrame(head, "wf-guard"));
+    await spawner.driveReadyFor(0);
+    await deployPromise;
+    expect(spawner.spawnCount()).toBe(1);
+
+    // The record is on disk and the address is live in this same process. A
+    // restore pass must NOT spawn a second child for an address the core's
+    // double-spawn guard already owns (the transition guard the B-reroute
+    // follow-up leans on).
+    await router.restoreWorkflowRuns();
+
+    expect(spawner.spawnCount()).toBe(1);
+    expect(isRegistered(transport, head)).toBe(true);
+  });
+
+  test("a deploy of an address held here is refused without orphaning its restore record", async () => {
+    const dataDir = await createTempBaseDir("sidecar-restore-conflict-data-");
+    const head = "run_conflict@example.com";
+    const anchorRunId = deriveWorkflowRunRepoId(head);
+
+    const spawner = makeReadyDrivingSpawner(9720);
+    const { router, transport } = await buildMultistepFixture({
+      spawner: spawner.spawner,
+      multistepSubstrateEnv: { SIDECAR_DATA_DIR: dataDir },
+    });
+
+    const deployPromise = router.deploy(singleStepFrame(head, "wf-conflict"));
+    await spawner.driveReadyFor(0);
+    await deployPromise;
+
+    // The refusal fires before any overwrite; without it, deployMultiStep's
+    // catch would delete the live deployment's record and release its slug,
+    // silently breaking the next restart for a still-running agent. An
+    // identical repeat is refused too: an address is deployed once.
+    await expect(
+      router.deploy(singleStepFrame(head, "wf-conflict")),
+    ).rejects.toThrow(/generation 1 is live here/);
+    expect(spawner.spawnCount()).toBe(1);
+    expect(await recordExists(dataDir, anchorRunId)).toBe(true);
+    expect(isRegistered(transport, head)).toBe(true);
+  });
+
+  test("refuses a deploy when every active slot is reserved", async () => {
+    const dataDir = await createTempBaseDir("sidecar-incarnation-cap-");
+    const spawner = makeReadyDrivingSpawner(9790);
+    const { router } = await buildMultistepFixture({
+      spawner: spawner.spawner,
+      multistepSubstrateEnv: { SIDECAR_DATA_DIR: dataDir },
+      maxActiveDeployments: 1,
+    });
+    const held = "run_cap_held@example.com";
+    const deployed = router.deploy(singleStepFrame(held, "wf-cap"));
+    await spawner.driveReadyFor(0);
+    await deployed;
+
+    const error = await router
+      .deploy(singleStepFrame("run_cap_other@example.com", "wf-cap"))
+      .catch((cause: unknown) => cause);
+    expect(error).toBeInstanceOf(DeploymentRejectedError);
+    expect(error).toMatchObject({ code: "capacity_full" });
+    expect(
+      await recordExists(
+        dataDir,
+        deriveWorkflowRunRepoId("run_cap_other@example.com"),
+      ),
+    ).toBe(false);
+    expect(spawner.spawnCount()).toBe(1);
+    expect(heldAddresses(router)).toEqual([held]);
+    const duplicate = await router
+      .deploy(singleStepFrame(held, "wf-cap"))
+      .catch((cause: unknown) => cause);
+    expect(duplicate).not.toBeInstanceOf(DeploymentRejectedError);
+    expect(duplicate).toMatchObject({
+      message: expect.stringContaining("is live here"),
+    });
+    expect(await recordExists(dataDir, deriveWorkflowRunRepoId(held))).toBe(
+      true,
+    );
+    expect(spawner.spawnCount()).toBe(1);
+  });
+
+  function retainCommand(agentAddress: string) {
+    return {
+      type: "workflow.control",
+      requestId: `retain-${agentAddress}`,
+      action: "retain",
+      agentAddress,
+      runId: deriveWorkflowRunId(agentAddress),
+      generation: 1,
+      reason: "Keep the finished deployment",
+    } as const;
+  }
+
+  test("zero retained capacity refuses retention without freeing an unremoved copy", async () => {
+    const dataDir = await createTempBaseDir("sidecar-no-retention-");
+    const spawner = makeReadyDrivingSpawner(14900);
+    const { router } = await buildMultistepFixture({
+      spawner: spawner.spawner,
+      multistepSubstrateEnv: { SIDECAR_DATA_DIR: dataDir },
+      maxActiveDeployments: 1,
+      maxRetainedDeployments: 0,
+    });
+    const address = "run_no_retention@example.com";
+    const deploying = router.deploy(
+      singleStepFrame(address, "wf-no-retention"),
+    );
+    await spawner.driveReadyFor(0);
+    await deploying;
+    expect(await router.control(retainCommand(address))).toEqual({
+      retention: "refused",
+    });
+    expect(
+      (await scanWorkflowRunRecords(dataDir, createNoopCredentialCipher()))[0]
+        ?.record,
+    ).toMatchObject({
+      state: "stopped",
+      retention: "refused",
+    });
+    await expect(
+      router.deploy(singleStepFrame("run_next@example.com", "wf-no-retention")),
+    ).rejects.toThrow("no active deployment slot");
+  });
+
+  test("moves a stopped copy into kept capacity and persists an overflow refusal", async () => {
+    const dataDir = await createTempBaseDir("sidecar-kept-capacity-");
+    const spawner = makeReadyDrivingSpawner(15000);
+    const { router } = await buildMultistepFixture({
+      spawner: spawner.spawner,
+      multistepSubstrateEnv: { SIDECAR_DATA_DIR: dataDir },
+      maxActiveDeployments: 1,
+      maxRetainedDeployments: 1,
+    });
+    const first = "run_kept_first@example.com";
+    const second = "run_kept_second@example.com";
+    const third = "run_kept_third@example.com";
+    const deployed = router.deploy(singleStepFrame(first, "wf-kept"));
+    await spawner.driveReadyFor(0);
+    await deployed;
+    expect(await router.control(retainCommand(first))).toEqual({
+      retention: "kept",
+    });
+    expect(
+      (await scanWorkflowRunRecords(dataDir, createNoopCredentialCipher()))[0]
+        ?.record,
+    ).toMatchObject({ state: "stopped", retention: "kept" });
+    await expect(
+      router.deploy(singleStepFrame(first, "wf-kept")),
+    ).rejects.toThrow("is stopped here");
+
+    const next = router.deploy(singleStepFrame(second, "wf-kept"));
+    await spawner.driveReadyFor(1);
+    await next;
+    expect(await router.control(retainCommand(second))).toEqual({
+      retention: "refused",
+    });
+    await expect(
+      router.deploy(singleStepFrame(third, "wf-kept")),
+    ).rejects.toThrow("no active deployment slot");
+    if (router.undeploy === undefined) throw new Error("Expected undeploy");
+    await router.undeploy({
+      type: "agent.undeploy",
+      requestId: "remove-kept",
+      agentAddress: first,
+      generation: 1,
+      reason: "test",
+    });
+    // A retry cannot change an already reported refusal when a slot opens.
+    expect(await router.control(retainCommand(second))).toEqual({
+      retention: "refused",
+    });
+    const restartedSpawner = makeReadyDrivingSpawner(15010);
+    const { router: restarted } = await buildMultistepFixture({
+      spawner: restartedSpawner.spawner,
+      multistepSubstrateEnv: { SIDECAR_DATA_DIR: dataDir },
+      maxActiveDeployments: 1,
+      maxRetainedDeployments: 1,
+    });
+    await restarted.restoreWorkflowRuns();
+    expect(restartedSpawner.spawnCount()).toBe(0);
+    expect(await restarted.control(retainCommand(second))).toEqual({
+      retention: "refused",
+    });
+  });
+
+  test("retention of live, kept, and restored copies does not depend on post-terminal history", async () => {
+    const dataDir = await createTempBaseDir("sidecar-retain-history-");
+    const spawner = makeReadyDrivingSpawner(15900);
+    const head = "run_retain_history@example.com";
+    let reads = 0;
+    const reportDeploymentRefTips = async () => {
+      reads++;
+      throw new Error("Post-terminal history is unavailable");
+    };
+    const { router } = await buildMultistepFixture({
+      spawner: spawner.spawner,
+      multistepSubstrateEnv: { SIDECAR_DATA_DIR: dataDir },
+      reportDeploymentRefTips,
+    });
+    const deploying = router.deploy(singleStepFrame(head, "wf-history"));
+    await spawner.driveReadyFor(0);
+    await deploying;
+    expect(await router.control(retainCommand(head))).toEqual({
+      retention: "kept",
+    });
+    expect(await router.control(retainCommand(head))).toEqual({
+      retention: "kept",
+    });
+    const { router: restarted } = await buildMultistepFixture({
+      spawner: () => {
+        throw new Error("A retained copy must not spawn");
+      },
+      multistepSubstrateEnv: { SIDECAR_DATA_DIR: dataDir },
+      reportDeploymentRefTips,
+    });
+    await restarted.restoreWorkflowRuns();
+    expect(await restarted.control(retainCommand(head))).toEqual({
+      retention: "kept",
+    });
+    expect(reads).toBe(0);
+  });
+
+  test("concurrent retain requests cannot take the same final kept slot", async () => {
+    const dataDir = await createTempBaseDir("sidecar-concurrent-retention-");
+    const spawner = makeReadyDrivingSpawner(15100);
+    const { router } = await buildMultistepFixture({
+      spawner: spawner.spawner,
+      multistepSubstrateEnv: { SIDECAR_DATA_DIR: dataDir },
+      maxActiveDeployments: 2,
+      maxRetainedDeployments: 1,
+    });
+    const heads = ["run_retain_a@example.com", "run_retain_b@example.com"];
+    for (const [index, head] of heads.entries()) {
+      const deployed = router.deploy(singleStepFrame(head, "wf-retain"));
+      await spawner.driveReadyFor(index);
+      await deployed;
+    }
+    const outcomes = await Promise.all(
+      heads.map((head) => router.control(retainCommand(head))),
+    );
+    expect(outcomes.map((outcome) => outcome.retention).sort()).toEqual([
+      "kept",
+      "refused",
+    ]);
+    const records = await scanWorkflowRunRecords(
+      dataDir,
+      createNoopCredentialCipher(),
+    );
+    expect(records.map(({ record }) => record.retention).sort()).toEqual([
+      "kept",
+      "refused",
+    ]);
+  });
+
+  test("a retain that waited on a stop does not overwrite a concurrent undeploy's tearing-down mark", async () => {
+    const dataDir = await createTempBaseDir("retain-undeploy-race-");
+    const spawner = makeReadyDrivingSpawner(16100);
+    const { router } = await buildMultistepFixture({
+      spawner: spawner.spawner,
+      multistepSubstrateEnv: { SIDECAR_DATA_DIR: dataDir },
+      deleteAgentDir: async () => {
+        throw new Error("agent directory removal failed");
+      },
+    });
+    const head = "run_retain_race@example.com";
+    const deployed = router.deploy(singleStepFrame(head, "wf-retain-race"));
+    await spawner.driveReadyFor(0);
+    await deployed;
+    if (router.control === undefined || router.undeploy === undefined)
+      throw new Error("Expected control and undeploy");
+    const stop = router.control({
+      ...retainCommand(head),
+      requestId: "stop-first",
+      action: "stop",
+    });
+    const retain = router.control(retainCommand(head));
+    const undeploy = router.undeploy({
+      type: "agent.undeploy",
+      requestId: "release",
+      agentAddress: head,
+      generation: 2,
+      reason: "release",
+    });
+    const settled = await Promise.allSettled([stop, retain, undeploy]);
+    expect(settled.map((result) => result.status)).toEqual([
+      "fulfilled",
+      "rejected",
+      "rejected",
+    ]);
+    for (const action of ["cancel", "stop", "retain"] as const) {
+      await expect(
+        router.control({ ...retainCommand(head), action }),
+      ).rejects.toThrow("being removed");
+    }
+    expect(router.incarnations()).toEqual([
+      { address: head, generation: 1, state: "tearing-down" },
+    ]);
+    const records = await scanWorkflowRunRecords(
+      dataDir,
+      createNoopCredentialCipher(),
+    );
+    expect(records[0]?.record.state).toBe("tearing-down");
+    expect(records[0]?.record.retention).toBeUndefined();
+  });
+
+  test("a retain committed during undeploy counts the same capacity before and after restart", async () => {
+    const dataDir = await createTempBaseDir("retain-write-undeploy-");
+    const spawner = makeReadyDrivingSpawner(19100);
+    const { router } = await buildMultistepFixture({
+      spawner: spawner.spawner,
+      multistepSubstrateEnv: { SIDECAR_DATA_DIR: dataDir },
+      maxActiveDeployments: 1,
+      maxRetainedDeployments: 1,
+      deleteAgentDir: async () => {
+        throw new Error("agent directory removal failed");
+      },
+    });
+    const head = "run_retain_write_race@example.com";
+    const deployed = router.deploy(singleStepFrame(head, "wf-retain-race"));
+    await spawner.driveReadyFor(0);
+    await deployed;
+    const renamed = Promise.withResolvers<undefined>();
+    const finishWrite = Promise.withResolvers<undefined>();
+    const rename = fs.rename;
+    let intercepted = false;
+    const spy = spyOn(fs, "rename").mockImplementation(async (from, to) => {
+      await rename(from, to);
+      if (!intercepted && String(to).endsWith("deployment.json")) {
+        intercepted = true;
+        renamed.resolve(undefined);
+        await finishWrite.promise;
+      }
+    });
+    try {
+      const retain = router.control(retainCommand(head));
+      await renamed.promise;
+      if (router.undeploy === undefined) throw new Error("Expected undeploy");
+      const undeploy = router.undeploy({
+        type: "agent.undeploy",
+        requestId: "release",
+        agentAddress: head,
+        generation: 1,
+        reason: "release",
+      });
+      finishWrite.resolve(undefined);
+      const settled = await Promise.allSettled([retain, undeploy]);
+      expect(settled.map((result) => result.status)).toEqual([
+        "rejected",
+        "rejected",
+      ]);
+    } finally {
+      finishWrite.resolve(undefined);
+      spy.mockRestore();
+    }
+    const records = await scanWorkflowRunRecords(
+      dataDir,
+      createNoopCredentialCipher(),
+    );
+    expect(records[0]?.record).toMatchObject({
+      state: "tearing-down",
+      retention: "kept",
+    });
+    expect(router.incarnations()).toEqual([
+      {
+        address: head,
+        generation: 1,
+        state: "tearing-down",
+        retention: "kept",
+      },
+    ]);
+    const { router: restarted } = await buildMultistepFixture({
+      spawner: makeReadyDrivingSpawner(19110).spawner,
+      multistepSubstrateEnv: { SIDECAR_DATA_DIR: dataDir },
+      maxActiveDeployments: 1,
+      maxRetainedDeployments: 1,
+    });
+    await restarted.restoreWorkflowRuns();
+    expect(restarted.incarnations()).toEqual(router.incarnations());
+
+    // The persisted kept copy holds only a retained slot. A new live copy fits,
+    // but retaining it must refuse rather than exceed the retained limit.
+    const nextHead = "run_after_retain_race@example.com";
+    const next = router.deploy(singleStepFrame(nextHead, "wf-retain-race"));
+    await spawner.driveReadyFor(1);
+    await next;
+    expect((await router.control(retainCommand(nextHead))).retention).toBe(
+      "refused",
+    );
+  });
+
+  test("undeploy completes even when the stop it waited for fails to persist", async () => {
+    const dataDir = await createTempBaseDir("sidecar-stop-cleanup-");
+    const spawner = makeReadyDrivingSpawner(16110);
+    const { router } = await buildMultistepFixture({
+      spawner: spawner.spawner,
+      multistepSubstrateEnv: { SIDECAR_DATA_DIR: dataDir },
+    });
+    const head = "run_stop_cleanup@example.com";
+    const deployed = router.deploy(singleStepFrame(head, "wf-cleanup"));
+    await spawner.driveReadyFor(0);
+    await deployed;
+    const recordDir = path.join(
+      dataDir,
+      "workflow-runs",
+      deriveWorkflowRunRepoId(head),
+    );
+    const syncing = Promise.withResolvers<undefined>();
+    const failSync = Promise.withResolvers<undefined>();
+    const open = fs.open;
+    let intercepted = false;
+    const spy = spyOn(fs, "open").mockImplementation(
+      async (target, flags, mode) => {
+        const handle = await open(target, flags, mode);
+        if (target === recordDir && !intercepted) {
+          intercepted = true;
+          spyOn(handle, "sync").mockImplementation(async () => {
+            syncing.resolve(undefined);
+            await failSync.promise;
+            throw new Error("stop marker sync failed");
+          });
+        }
+        return handle;
+      },
+    );
+    try {
+      const stopping = router
+        .control({ ...retainCommand(head), action: "stop" })
+        .catch((error: unknown) => error);
+      await syncing.promise;
+      if (router.undeploy === undefined) throw new Error("Expected undeploy");
+      const removing = router.undeploy({
+        type: "agent.undeploy",
+        requestId: "remove",
+        agentAddress: head,
+        generation: 2,
+        reason: "release",
+      });
+      failSync.resolve(undefined);
+      expect(await stopping).toBeInstanceOf(Error);
+      await removing;
+      expect(router.incarnations()).toEqual([]);
+      expect(
+        await scanWorkflowRunRecords(dataDir, createNoopCredentialCipher()),
+      ).toEqual([]);
+    } finally {
+      failSync.resolve(undefined);
+      spy.mockRestore();
+    }
+  });
+
+  test("failed retention persistence cannot free the active slot", async () => {
+    const dataDir = await createTempBaseDir("sidecar-retention-persist-");
+    const spawner = makeReadyDrivingSpawner(15200);
+    const { router } = await buildMultistepFixture({
+      spawner: spawner.spawner,
+      multistepSubstrateEnv: { SIDECAR_DATA_DIR: dataDir },
+      maxActiveDeployments: 2,
+      maxRetainedDeployments: 1,
+    });
+    const head = "run_retain_persist@example.com";
+    const deployed = router.deploy(singleStepFrame(head, "wf-retain"));
+    await spawner.driveReadyFor(0);
+    await deployed;
+    const second = "run_retain_other@example.com";
+    const other = router.deploy(singleStepFrame(second, "wf-retain"));
+    await spawner.driveReadyFor(1);
+    await other;
+    const recordFile = path.join(
+      dataDir,
+      "workflow-runs",
+      deriveWorkflowRunRepoId(head),
+      "deployment.json",
+    );
+    const record = await fs.readFile(recordFile);
+    await fs.rm(recordFile);
+    await expect(router.control(retainCommand(head))).rejects.toThrow(
+      "retention record is missing",
+    );
+    expect(router.incarnations()).toEqual([
+      { address: head, generation: 1, state: "stopped" },
+      { address: second, generation: 1, state: "live" },
+    ]);
+    await expect(
+      router.deploy(singleStepFrame("run_other@example.com", "wf-retain")),
+    ).rejects.toThrow("no active deployment slot");
+    expect(await router.control(retainCommand(second))).toEqual({
+      retention: "kept",
+    });
+    await fs.writeFile(recordFile, record);
+    expect(await router.control(retainCommand(head))).toEqual({
+      retention: "refused",
+    });
+  });
+
+  test("restart restores all active copies even when kept records sort first", async () => {
+    const dataDir = await createTempBaseDir("sidecar-two-pool-restore-");
+    const kept = "run_a_kept@example.com";
+    const active = "run_z_active@example.com";
+    const first = makeReadyDrivingSpawner(15300);
+    const { router } = await buildMultistepFixture({
+      spawner: first.spawner,
+      multistepSubstrateEnv: { SIDECAR_DATA_DIR: dataDir },
+      maxActiveDeployments: 1,
+      maxRetainedDeployments: 1,
+    });
+    const firstDeploy = router.deploy(singleStepFrame(kept, "wf-retain"));
+    await first.driveReadyFor(0);
+    await firstDeploy;
+    await router.control(retainCommand(kept));
+    const secondDeploy = router.deploy(singleStepFrame(active, "wf-retain"));
+    await first.driveReadyFor(1);
+    await secondDeploy;
+    const second = makeReadyDrivingSpawner(15310);
+    const { router: restarted } = await buildMultistepFixture({
+      spawner: second.spawner,
+      multistepSubstrateEnv: { SIDECAR_DATA_DIR: dataDir },
+      maxActiveDeployments: 1,
+      maxRetainedDeployments: 1,
+    });
+    const restoring = restarted.restoreWorkflowRuns();
+    await second.driveReadyFor(0);
+    await restoring;
+    expect(second.spawnCount()).toBe(1);
+    expect(restarted.incarnations()).toEqual([
+      { address: kept, generation: 1, state: "stopped", retention: "kept" },
+      { address: active, generation: 1, state: "live" },
+    ]);
+  });
+
+  test.each(["active", "kept"] as const)(
+    "boot reports counts and restores nothing when the %s pool exceeds its limit",
+    async (pool) => {
+      const dataDir = await createTempBaseDir("sidecar-boot-capacity-");
+      const spawner = makeReadyDrivingSpawner(15920);
+      const { router } = await buildMultistepFixture({
+        spawner: spawner.spawner,
+        multistepSubstrateEnv: { SIDECAR_DATA_DIR: dataDir },
+        maxActiveDeployments: 2,
+        maxRetainedDeployments: 2,
+      });
+      for (const index of [0, 1]) {
+        const head = `run_boot_capacity_${String(index)}@example.com`;
+        const deploying = router.deploy(singleStepFrame(head, "wf-capacity"));
+        await spawner.driveReadyFor(index);
+        await deploying;
+        if (pool === "kept") await router.control(retainCommand(head));
+      }
+      const next = makeReadyDrivingSpawner(15930);
+      const { router: restarted } = await buildMultistepFixture({
+        spawner: next.spawner,
+        multistepSubstrateEnv: { SIDECAR_DATA_DIR: dataDir },
+        maxActiveDeployments: pool === "active" ? 1 : 2,
+        maxRetainedDeployments: pool === "kept" ? 1 : 2,
+      });
+      await expect(restarted.restoreWorkflowRuns()).rejects.toThrow(
+        pool === "active"
+          ? "2 active records (limit 1), 0 kept records (limit 2)"
+          : "0 active records (limit 2), 2 kept records (limit 1)",
+      );
+      expect(next.spawnCount()).toBe(0);
+      expect(restarted.incarnations()).toEqual([]);
+      expect(
+        await scanWorkflowRunRecords(dataDir, createNoopCredentialCipher()),
+      ).toHaveLength(2);
+    },
+  );
+
+  test.each(["write", "directory sync"] as const)(
+    "a failed teardown mark %s stops the child and preserves local state until retry",
+    async (failure) => {
+      const dataDir = await createTempBaseDir("sidecar-teardown-mark-");
+      const head = "run_teardown_mark@example.com";
+      const runId = deriveWorkflowRunRepoId(head);
+      const recordDir = path.join(dataDir, "workflow-runs", runId);
+      const recordFile = path.join(recordDir, "deployment.json");
+      const agentDir = path.join(dataDir, "agent-directory");
+      const spawner = makeReadyDrivingSpawner(15410);
+      let stopped = false;
+      const { router, tempBase, transport } = await buildMultistepFixture({
+        spawner: (args) => {
+          const child = spawner.spawner(args);
+          return {
+            ...child,
+            kill: () => {
+              stopped = true;
+              child.kill();
+            },
+          };
+        },
+        multistepSubstrateEnv: { SIDECAR_DATA_DIR: dataDir },
+        maxActiveDeployments: 1,
+        deleteAgentDir: async () => {
+          expect(stopped).toBe(true);
+          await fs.rm(agentDir, { recursive: true, force: true });
+        },
+      });
+      const deploying = router.deploy(singleStepFrame(head, "wf-mark"));
+      await spawner.driveReadyFor(0);
+      await deploying;
+      const stateDirs = [
+        agentDir,
+        path.join(dataDir, "workflow-step-state", runId),
+        path.join(dataDir, "workflow-definition-closures", runId),
+        path.join(dataDir, "workflow-definition-sources", runId),
+        path.join(dataDir, "workflow-definition-source-gits", runId),
+        conversationStateRoot(dataDir, runId),
+        path.join(tempBase, "agent-state", deriveWorkflowRunId(head)),
+        recordDir,
+      ];
+      for (const dir of stateDirs) {
+        await fs.mkdir(dir, { recursive: true });
+        await fs.writeFile(path.join(dir, "preserved"), "deployment state");
+      }
+      const open = fs.open;
+      const error = new Error(`teardown mark ${failure} failed`);
+      const spy = spyOn(fs, "open").mockImplementation(
+        async (target, flags, mode) => {
+          if (
+            failure === "write" &&
+            String(target).startsWith(`${recordFile}.tmp.`)
+          )
+            throw error;
+          const handle = await open(target, flags, mode);
+          if (failure === "directory sync" && target === recordDir)
+            spyOn(handle, "sync").mockRejectedValue(error);
+          return handle;
+        },
+      );
+      const frame = {
+        type: "agent.undeploy",
+        requestId: "failed-teardown-mark",
+        agentAddress: head,
+        generation: 1,
+        reason: "test",
+      } as const;
+      if (router.undeploy === undefined) throw new Error("Expected undeploy");
+      try {
+        await expect(router.undeploy(frame)).rejects.toThrow(
+          `marking its record failed: ${error.message}`,
+        );
+        expect(stopped).toBe(true);
+        expect(isRegistered(transport, head)).toBe(false);
+        expect(router.incarnations()).toEqual([
+          { address: head, generation: 1, state: "tearing-down" },
+        ]);
+        for (const dir of stateDirs) {
+          expect(await fs.readFile(path.join(dir, "preserved"), "utf8")).toBe(
+            "deployment state",
+          );
+        }
+        const record = WorkflowRunRecord.assert(
+          JSON.parse(await fs.readFile(recordFile, "utf8")),
+        );
+        expect(record.state).toBe(
+          failure === "directory sync" ? "tearing-down" : undefined,
+        );
+        await expect(
+          router.deploy(singleStepFrame("run_next@example.com", "wf-mark")),
+        ).rejects.toThrow("no active deployment slot");
+      } finally {
+        spy.mockRestore();
+      }
+      await router.undeploy(frame);
+      for (const dir of stateDirs) {
+        await expect(fs.stat(dir)).rejects.toMatchObject({ code: "ENOENT" });
+      }
+      expect(router.incarnations()).toEqual([]);
+    },
+  );
+
+  test("a failed state-tree sync preserves the teardown record across restart", async () => {
+    const dataDir = await createTempBaseDir("sidecar-state-tree-sync-");
+    const head = "run_state_sync@example.com";
+    const runId = deriveWorkflowRunRepoId(head);
+    const spawner = makeReadyDrivingSpawner(15420);
+    const { router } = await buildMultistepFixture({
+      spawner: spawner.spawner,
+      multistepSubstrateEnv: { SIDECAR_DATA_DIR: dataDir },
+      maxActiveDeployments: 1,
+    });
+    const deploying = router.deploy(singleStepFrame(head, "wf-sync"));
+    await spawner.driveReadyFor(0);
+    await deploying;
+    const parent = path.join(dataDir, "workflow-step-state");
+    const scratch = path.join(parent, runId);
+    await fs.mkdir(scratch, { recursive: true });
+    await fs.writeFile(path.join(scratch, "leftover"), "state");
+    const open = fs.open;
+    const spy = spyOn(fs, "open").mockImplementation(
+      async (target, flags, mode) => {
+        const handle = await open(target, flags, mode);
+        if (target === parent)
+          spyOn(handle, "sync").mockRejectedValue(
+            new Error("state-tree sync failed"),
+          );
+        return handle;
+      },
+    );
+    const frame = {
+      type: "agent.undeploy",
+      requestId: "durable-state-remove",
+      agentAddress: head,
+      generation: 1,
+      reason: "test",
+    } as const;
+    if (router.undeploy === undefined) throw new Error("Expected undeploy");
+    try {
+      await expect(router.undeploy(frame)).rejects.toThrow(
+        "state-tree sync failed",
+      );
+      await expect(fs.stat(scratch)).rejects.toThrow();
+      expect(router.incarnations()).toEqual([
+        { address: head, generation: 1, state: "tearing-down" },
+      ]);
+      expect(
+        await scanWorkflowRunRecords(dataDir, createNoopCredentialCipher()),
+      ).toHaveLength(1);
+      await expect(
+        router.deploy(singleStepFrame("run_next@example.com", "wf-sync")),
+      ).rejects.toThrow("no active deployment slot");
+    } finally {
+      spy.mockRestore();
+    }
+    const next = makeReadyDrivingSpawner(15430);
+    const { router: restarted } = await buildMultistepFixture({
+      spawner: next.spawner,
+      multistepSubstrateEnv: { SIDECAR_DATA_DIR: dataDir },
+      maxActiveDeployments: 1,
+    });
+    await restarted.restoreWorkflowRuns();
+    expect(next.spawnCount()).toBe(0);
+    expect(restarted.incarnations()).toEqual([
+      { address: head, generation: 1, state: "tearing-down" },
+    ]);
+    if (restarted.undeploy === undefined) throw new Error("Expected undeploy");
+    await restarted.undeploy(frame);
+    expect(restarted.incarnations()).toEqual([]);
+    expect(
+      await scanWorkflowRunRecords(dataDir, createNoopCredentialCipher()),
+    ).toEqual([]);
+  });
+
+  test("a failed removal sync keeps the kept slot reserved until retry succeeds", async () => {
+    const dataDir = await createTempBaseDir("sidecar-removal-sync-");
+    const spawner = makeReadyDrivingSpawner(15400);
+    const { router } = await buildMultistepFixture({
+      spawner: spawner.spawner,
+      multistepSubstrateEnv: { SIDECAR_DATA_DIR: dataDir },
+      maxActiveDeployments: 1,
+      maxRetainedDeployments: 1,
+    });
+    const kept = "run_removal_kept@example.com";
+    const active = "run_removal_active@example.com";
+    const deployed = router.deploy(singleStepFrame(kept, "wf-sync"));
+    await spawner.driveReadyFor(0);
+    await deployed;
+    await router.control(retainCommand(kept));
+    const next = router.deploy(singleStepFrame(active, "wf-sync"));
+    await spawner.driveReadyFor(1);
+    await next;
+    const open = fs.open;
+    const spy = spyOn(fs, "open").mockImplementation(
+      async (target, flags, mode) => {
+        const handle = await open(target, flags, mode);
+        if (target === path.join(dataDir, "workflow-runs"))
+          spyOn(handle, "sync").mockRejectedValue(
+            new Error("directory sync failed"),
+          );
+        return handle;
+      },
+    );
+    const undeploy = {
+      type: "agent.undeploy",
+      requestId: "durable-remove",
+      agentAddress: kept,
+      generation: 1,
+      reason: "test",
+    } as const;
+    if (router.undeploy === undefined) throw new Error("Expected undeploy");
+    try {
+      await expect(router.undeploy(undeploy)).rejects.toThrow(
+        "directory sync failed",
+      );
+      expect(router.incarnations()).toContainEqual({
+        address: kept,
+        generation: 1,
+        state: "tearing-down",
+        retention: "kept",
+      });
+      expect(await router.control(retainCommand(active))).toEqual({
+        retention: "refused",
+      });
+    } finally {
+      spy.mockRestore();
+    }
+    await router.undeploy(undeploy);
+    expect(router.incarnations()).toEqual([
+      {
+        address: active,
+        generation: 1,
+        state: "stopped",
+        retention: "refused",
+      },
+    ]);
+  });
+
+  test.each(["retain", "undeploy"])(
+    "an uncertain retained reservation is resolved by %s",
+    async (recovery) => {
+      const dataDir = await createTempBaseDir("sidecar-retention-sync-");
+      const spawner = makeReadyDrivingSpawner(15500);
+      const { router } = await buildMultistepFixture({
+        spawner: spawner.spawner,
+        multistepSubstrateEnv: { SIDECAR_DATA_DIR: dataDir },
+        maxActiveDeployments: 2,
+        maxRetainedDeployments: 1,
+      });
+      const first = "run_sync_first@example.com";
+      const second = "run_sync_second@example.com";
+      for (const [index, head] of [first, second].entries()) {
+        const deployed = router.deploy(singleStepFrame(head, "wf-sync"));
+        await spawner.driveReadyFor(index);
+        await deployed;
+      }
+      const recordDir = path.join(
+        dataDir,
+        "workflow-runs",
+        deriveWorkflowRunRepoId(first),
+      );
+      const open = fs.open;
+      const spy = spyOn(fs, "open").mockImplementation(
+        async (target, flags, mode) => {
+          const handle = await open(target, flags, mode);
+          if (target === recordDir)
+            spyOn(handle, "sync").mockRejectedValue(
+              new Error("retention sync failed"),
+            );
+          return handle;
+        },
+      );
+      try {
+        await expect(router.control(retainCommand(first))).rejects.toThrow(
+          "retention sync failed",
+        );
+        expect(
+          JSON.parse(
+            await fs.readFile(path.join(recordDir, "deployment.json"), "utf8"),
+          ),
+        ).toMatchObject({ retention: "kept" });
+        expect(router.incarnations()).toContainEqual({
+          address: first,
+          generation: 1,
+          state: "stopped",
+        });
+        // A later missing-record result must not discard the earlier uncertain reservation.
+        const recordFile = path.join(recordDir, "deployment.json");
+        const record = await fs.readFile(recordFile);
+        await fs.rm(recordFile);
+        await expect(router.control(retainCommand(first))).rejects.toThrow(
+          "retention record is missing",
+        );
+        await fs.writeFile(recordFile, record);
+        expect(await router.control(retainCommand(second))).toEqual({
+          retention: "refused",
+        });
+      } finally {
+        spy.mockRestore();
+      }
+      if (recovery === "undeploy") {
+        if (router.undeploy === undefined) throw new Error("Expected undeploy");
+        await router.undeploy({
+          type: "agent.undeploy",
+          requestId: "remove-uncertain-retention",
+          agentAddress: first,
+          generation: 1,
+          reason: "test",
+        });
+        const third = "run_after_uncertain_retention@example.com";
+        const deployed = router.deploy(singleStepFrame(third, "wf-sync"));
+        await spawner.driveReadyFor(2);
+        await deployed;
+        expect(await router.control(retainCommand(third))).toEqual({
+          retention: "kept",
+        });
+        expect(
+          router.incarnations().some(({ address }) => address === first),
+        ).toBe(false);
+        return;
+      }
+      expect(await router.control(retainCommand(first))).toEqual({
+        retention: "kept",
+      });
+      expect(
+        (
+          await scanWorkflowRunRecords(dataDir, createNoopCredentialCipher())
+        ).filter(({ record }) => record.retention === "kept"),
+      ).toHaveLength(1);
+    },
+  );
+
+  test.each([
+    new Error("injected spawn failure"),
+    new Error(""),
+    new AggregateError([]),
+  ])(
+    "failed initialization (%s) keeps a valid stopped record and its slot until removal",
+    async (cause) => {
+      const dataDir = await createTempBaseDir("sidecar-failed-record-cleanup-");
+      const head = "run_failed_record@example.com";
+      const recordFile = path.join(
+        dataDir,
+        "workflow-runs",
+        deriveWorkflowRunRepoId(head),
+        "deployment.json",
+      );
+      const { router } = await buildMultistepFixture({
+        spawner: () => {
+          throw cause;
+        },
+        multistepSubstrateEnv: { SIDECAR_DATA_DIR: dataDir },
+        maxActiveDeployments: 1,
+      });
+      const unlink = fs.unlink;
+      const spy = spyOn(fs, "unlink").mockImplementation(async (target) => {
+        if (target === recordFile) throw new Error("record cleanup failed");
+        return unlink(target);
+      });
+      try {
+        await expect(
+          router.deploy(singleStepFrame(head, "wf-failure")),
+        ).rejects.toBe(cause);
+        const incarnations = router.incarnations();
+        expect(incarnations).toEqual([
+          {
+            address: head,
+            generation: 1,
+            state: "stopped",
+            error:
+              cause.message || "Deployment failed without an error message",
+          },
+        ]);
+        expect(HostedIncarnation(incarnations[0]) instanceof type.errors).toBe(
+          false,
+        );
+        await expect(
+          router.deploy(
+            singleStepFrame("run_another@example.com", "wf-failure"),
+          ),
+        ).rejects.toThrow("no active deployment slot");
+        expect(await recordExists(dataDir, deriveWorkflowRunRepoId(head))).toBe(
+          true,
+        );
+        const records = await scanWorkflowRunRecords(
+          dataDir,
+          createNoopCredentialCipher(),
+        );
+        expect(records).toHaveLength(1);
+        expect(records[0]?.record).toMatchObject({
+          state: "stopped",
+          error: incarnations[0]?.error,
+        });
+        const restartedSpawner = makeReadyDrivingSpawner(15600);
+        const { router: restarted } = await buildMultistepFixture({
+          spawner: restartedSpawner.spawner,
+          transport: createInMemoryTransport(),
+          multistepSubstrateEnv: { SIDECAR_DATA_DIR: dataDir },
+        });
+        await restarted.restoreWorkflowRuns();
+        expect(restartedSpawner.spawnCount()).toBe(0);
+        expect(restarted.incarnations()).toEqual(incarnations);
+      } finally {
+        spy.mockRestore();
+      }
+      if (router.undeploy === undefined) throw new Error("Expected undeploy");
+      await router.undeploy({
+        type: "agent.undeploy",
+        requestId: "cleanup-failed-record",
+        agentAddress: head,
+        generation: 1,
+        reason: "test",
+      });
+      expect(router.incarnations()).toEqual([]);
+    },
+  );
+
+  test("restore holds a deployment its record marks stopped or tearing down without spawning it", async () => {
+    const dataDir = await createTempBaseDir("sidecar-restore-marked-");
+    const stoppedHead = "run_marked_stopped@example.com";
+    const tearingHead = "run_marked_tearing@example.com";
+    const first = makeReadyDrivingSpawner(12000);
+    const { router: routerA } = await buildMultistepFixture({
+      spawner: first.spawner,
+      multistepSubstrateEnv: { SIDECAR_DATA_DIR: dataDir },
+    });
+    for (const [index, head] of [stoppedHead, tearingHead].entries()) {
+      const deployed = routerA.deploy(singleStepFrame(head, "wf-marked"));
+      await first.driveReadyFor(index);
+      await deployed;
+    }
+    await markWorkflowRunRecord(dataDir, deriveWorkflowRunRepoId(stoppedHead), {
+      state: "stopped",
+      error: "The child ended itself",
+    });
+    await markWorkflowRunRecord(dataDir, deriveWorkflowRunRepoId(tearingHead), {
+      state: "tearing-down",
+    });
+
+    const reports: unknown[] = [];
+    const second = makeReadyDrivingSpawner(12100);
+    const { router: routerB } = await buildMultistepFixture({
+      spawner: second.spawner,
+      transport: createInMemoryTransport(),
+      multistepSubstrateEnv: { SIDECAR_DATA_DIR: dataDir },
+      reportDeploymentRefTips: async () => STOPPED_TIPS,
+      publishDeploymentStopped: (report) => {
+        reports.push(report);
+      },
+    });
+    await routerB.restoreWorkflowRuns();
+
+    expect(second.spawnCount()).toBe(0);
+    expect(
+      routerB.incarnations().sort((a, b) => a.address.localeCompare(b.address)),
+    ).toEqual([
+      {
+        address: stoppedHead,
+        generation: 1,
+        state: "stopped",
+        error: "The child ended itself",
+      },
+      { address: tearingHead, generation: 1, state: "tearing-down" },
+    ]);
+    // Only the deployment that stopped on its own is reported to the Hub.
+    routerB.reportStoppedDeployments();
+    await waitUntil(() => reports.length > 0);
+    expect(reports).toEqual([
+      {
+        agentAddress: stoppedHead,
+        generation: 1,
+        error: "The child ended itself",
+        refTips: STOPPED_TIPS,
+      },
+    ]);
+  });
+
+  test.each(["kept", "refused"] as const)(
+    "does not replay a stopped error after restoring retention: %s",
+    async (retention) => {
+      const dataDir = await createTempBaseDir("sidecar-retained-report-");
+      const head = "run_retained_report@example.com";
+      const first = makeReadyDrivingSpawner(19000);
+      const { router } = await buildMultistepFixture({
+        spawner: first.spawner,
+        multistepSubstrateEnv: { SIDECAR_DATA_DIR: dataDir },
+      });
+      const deployed = router.deploy(
+        singleStepFrame(head, "wf-retained-report"),
+      );
+      await first.driveReadyFor(0);
+      await deployed;
+      const error = "The child ended itself";
+      await markWorkflowRunRecord(dataDir, deriveWorkflowRunRepoId(head), {
+        state: "stopped",
+        error,
+        retention,
+      });
+      let reads = 0;
+      const { router: restarted } = await buildMultistepFixture({
+        spawner: makeReadyDrivingSpawner(19100).spawner,
+        transport: createInMemoryTransport(),
+        multistepSubstrateEnv: { SIDECAR_DATA_DIR: dataDir },
+        reportDeploymentRefTips: async () => {
+          reads++;
+          return STOPPED_TIPS;
+        },
+      });
+      await restarted.restoreWorkflowRuns();
+      restarted.reportStoppedDeployments();
+      restarted.reportStoppedDeployments();
+      expect(reads).toBe(0);
+      expect(restarted.incarnations()).toEqual([
+        { address: head, generation: 1, state: "stopped", retention, error },
+      ]);
+    },
+  );
+
+  test("cuts a stop reason longer than the Hub accepts to the bound it reports", async () => {
+    const dataDir = await createTempBaseDir("sidecar-restore-long-error-");
+    const head = "run_long_error@example.com";
+    const first = makeReadyDrivingSpawner(12200);
+    const { router: routerA } = await buildMultistepFixture({
+      spawner: first.spawner,
+      multistepSubstrateEnv: { SIDECAR_DATA_DIR: dataDir },
+    });
+    const deployed = routerA.deploy(singleStepFrame(head, "wf-long-error"));
+    await first.driveReadyFor(0);
+    await deployed;
+    await markWorkflowRunRecord(dataDir, deriveWorkflowRunRepoId(head), {
+      state: "stopped",
+      error: "x".repeat(MAX_DEPLOYMENT_ERROR_LENGTH + 100),
+    });
+
+    const reports: DeploymentStoppedFrame[] = [];
+    const { router: routerB } = await buildMultistepFixture({
+      spawner: makeReadyDrivingSpawner(12250).spawner,
+      transport: createInMemoryTransport(),
+      multistepSubstrateEnv: { SIDECAR_DATA_DIR: dataDir },
+      reportDeploymentRefTips: async () => STOPPED_TIPS,
+      publishDeploymentStopped: (report) => {
+        reports.push({ type: "deployment.stopped", ...report });
+      },
+    });
+    await routerB.restoreWorkflowRuns();
+    routerB.reportStoppedDeployments();
+    await waitUntil(() => reports.length > 0);
+
+    const [incarnation] = routerB.incarnations();
+    expect(incarnation?.error).toHaveLength(MAX_DEPLOYMENT_ERROR_LENGTH);
+    expect(incarnation?.error?.endsWith("...")).toBe(true);
+    expect(HostedIncarnation(incarnation) instanceof type.errors).toBe(false);
+    expect(reports[0]?.error).toBe(incarnation?.error);
+    expect(DeploymentStoppedFrame(reports[0]) instanceof type.errors).toBe(
+      false,
+    );
+  });
+
+  test("cuts a stop reason before a character it would split", async () => {
+    const dataDir = await createTempBaseDir("sidecar-restore-split-error-");
+    const head = "run_split_error@example.com";
+    const first = makeReadyDrivingSpawner(12210);
+    const { router: routerA } = await buildMultistepFixture({
+      spawner: first.spawner,
+      multistepSubstrateEnv: { SIDECAR_DATA_DIR: dataDir },
+    });
+    const deployed = routerA.deploy(singleStepFrame(head, "wf-split-error"));
+    await first.driveReadyFor(0);
+    await deployed;
+    // The bound falls between the two code units of the emoji.
+    const kept = "x".repeat(MAX_DEPLOYMENT_ERROR_LENGTH - 4);
+    await markWorkflowRunRecord(dataDir, deriveWorkflowRunRepoId(head), {
+      state: "stopped",
+      error: `${kept}\u{1F600}${"x".repeat(100)}`,
+    });
+
+    const { router: routerB } = await buildMultistepFixture({
+      spawner: makeReadyDrivingSpawner(12260).spawner,
+      transport: createInMemoryTransport(),
+      multistepSubstrateEnv: { SIDECAR_DATA_DIR: dataDir },
+    });
+    await routerB.restoreWorkflowRuns();
+
+    const [incarnation] = routerB.incarnations();
+    expect(incarnation?.error).toBe(`${kept}...`);
+  });
+
+  test("keeps an agent-directory cleanup failure recoverable across a restart", async () => {
+    const dataDir = await createTempBaseDir("sidecar-undeploy-agent-dir-");
+    const head = "run_agent_cleanup@example.com";
+    const runId = deriveWorkflowRunRepoId(head);
+    const agentDir = path.join(dataDir, "agent-directory");
+    await fs.mkdir(agentDir);
+    await fs.writeFile(path.join(agentDir, "key"), "deployment key");
+    const first = makeReadyDrivingSpawner(12270);
+    const { router: routerA } = await buildMultistepFixture({
+      spawner: first.spawner,
+      multistepSubstrateEnv: { SIDECAR_DATA_DIR: dataDir },
+      deleteAgentDir: async () => {
+        throw new Error("EACCES: agent directory could not be removed");
+      },
+    });
+    const deployed = routerA.deploy(singleStepFrame(head, "wf-agent-cleanup"));
+    await first.driveReadyFor(0);
+    await deployed;
+    const frame = {
+      type: "agent.undeploy",
+      requestId: "undeploy-agent-cleanup",
+      agentAddress: head,
+      generation: 1,
+      reason: "test",
+    } as const;
+    if (routerA.undeploy === undefined)
+      throw new Error("router.undeploy is undefined");
+    await expect(routerA.undeploy(frame)).rejects.toThrow(
+      "deleting its agent directory failed: EACCES",
+    );
+    expect(await recordExists(dataDir, runId)).toBe(true);
+    expect(routerA.incarnations()).toEqual([
+      { address: head, generation: 1, state: "tearing-down" },
+    ]);
+
+    const second = makeReadyDrivingSpawner(12280);
+    const { router: routerB } = await buildMultistepFixture({
+      spawner: second.spawner,
+      multistepSubstrateEnv: { SIDECAR_DATA_DIR: dataDir },
+      deleteAgentDir: async (address) => {
+        expect(address).toBe(head);
+        expect(await recordExists(dataDir, runId)).toBe(true);
+        await fs.rm(agentDir, { recursive: true });
+      },
+    });
+    await routerB.restoreWorkflowRuns();
+    expect(second.spawnCount()).toBe(0);
+    expect(routerB.incarnations()).toEqual([
+      { address: head, generation: 1, state: "tearing-down" },
+    ]);
+    if (routerB.undeploy === undefined)
+      throw new Error("router.undeploy is undefined");
+    await routerB.undeploy(frame);
+    expect(await recordExists(dataDir, runId)).toBe(false);
+    await expect(fs.stat(agentDir)).rejects.toMatchObject({ code: "ENOENT" });
+    expect(routerB.incarnations()).toEqual([]);
+  });
+
+  test.each(["undeploy", "kept", "refused", "retention failed"] as const)(
+    "stopped reports recheck ownership after %s during their history read",
+    async (outcome) => {
+      const dataDir = await createTempBaseDir("sidecar-unrestored-report-");
+      const removed = "run_pending_a@example.com";
+      const kept = "run_pending_b@example.com";
+      const first = makeReadyDrivingSpawner(12430);
+      const { router: routerA } = await buildMultistepFixture({
+        spawner: first.spawner,
+        multistepSubstrateEnv: { SIDECAR_DATA_DIR: dataDir },
+      });
+      for (const [index, head] of [removed, kept].entries()) {
+        const deployed = routerA.deploy(
+          singleStepFrame(head, "wf-pending-report"),
+        );
+        await first.driveReadyFor(index);
+        await deployed;
+      }
+
+      for (const head of [removed, kept]) {
+        await markWorkflowRunRecord(dataDir, deriveWorkflowRunRepoId(head), {
+          state: "stopped",
+          error: "test workflow stopped",
+        });
+      }
+
+      const tips = Promise.withResolvers<typeof STOPPED_TIPS>();
+      const lastReported = Promise.withResolvers<undefined>();
+      const reports: unknown[] = [];
+      const reads: string[] = [];
+      const second = makeReadyDrivingSpawner(12440);
+      const { router: routerB } = await buildMultistepFixture({
+        spawner: second.spawner,
+        multistepSubstrateEnv: { SIDECAR_DATA_DIR: dataDir },
+        maxRetainedDeployments: outcome === "refused" ? 0 : 1,
+        reportDeploymentRefTips: ({ agentAddress }) => {
+          reads.push(agentAddress);
+          return tips.promise;
+        },
+        publishDeploymentStopped: (report) => {
+          reports.push(report);
+          if (report.agentAddress === kept) lastReported.resolve(undefined);
+        },
+      });
+      await routerB.restoreWorkflowRuns();
+      const undeploy = routerB.undeploy;
+      if (undeploy === undefined)
+        throw new Error("router.undeploy is undefined");
+      routerB.reportStoppedDeployments();
+      try {
+        expect(reads).toEqual([removed, kept]);
+        if (outcome === "undeploy") {
+          await undeploy({
+            type: "agent.undeploy",
+            requestId: "remove-before-report",
+            agentAddress: removed,
+            generation: 1,
+            reason: "test",
+          });
+        } else if (outcome === "retention failed") {
+          const recordDir = path.join(
+            dataDir,
+            "workflow-runs",
+            deriveWorkflowRunRepoId(removed),
+          );
+          const open = fs.open;
+          const spy = spyOn(fs, "open").mockImplementation(
+            async (target, flags, mode) => {
+              const handle = await open(target, flags, mode);
+              if (target === recordDir)
+                spyOn(handle, "sync").mockRejectedValue(
+                  new Error("Retention sync failed"),
+                );
+              return handle;
+            },
+          );
+          try {
+            await expect(
+              routerB.control(retainCommand(removed)),
+            ).rejects.toThrow("Retention sync failed");
+          } finally {
+            spy.mockRestore();
+          }
+        } else {
+          expect(await routerB.control(retainCommand(removed))).toEqual({
+            retention: outcome,
+          });
+        }
+      } finally {
+        // Both reports await this promise in inventory order. The second report
+        // signals that the first report's publication callback has also run.
+        tips.resolve(STOPPED_TIPS);
+        await lastReported.promise;
+      }
+      expect(reports).toEqual(
+        (outcome === "retention failed" ? [removed, kept] : [kept]).map(
+          (agentAddress) => ({
+            agentAddress,
+            generation: 1,
+            error: "test workflow stopped",
+            refTips: STOPPED_TIPS,
+          }),
+        ),
+      );
+    },
+  );
+
+  test("restore spawns several deployments at once", async () => {
+    const dataDir = await createTempBaseDir("sidecar-restore-parallel-");
+    const heads = ["run_parallel_a@example.com", "run_parallel_b@example.com"];
+    const first = makeReadyDrivingSpawner(12500);
+    const { router: routerA } = await buildMultistepFixture({
+      spawner: first.spawner,
+      multistepSubstrateEnv: { SIDECAR_DATA_DIR: dataDir },
+    });
+    for (const [index, head] of heads.entries()) {
+      const deployed = routerA.deploy(singleStepFrame(head, "wf-parallel"));
+      await first.driveReadyFor(index);
+      await deployed;
+    }
+
+    const second = makeReadyDrivingSpawner(12600);
+    const { router: routerB } = await buildMultistepFixture({
+      spawner: second.spawner,
+      transport: createInMemoryTransport(),
+      multistepSubstrateEnv: { SIDECAR_DATA_DIR: dataDir },
+    });
+    const restored = routerB.restoreWorkflowRuns();
+    // Neither child is ready yet, so a restore one at a time would never
+    // spawn the second.
+    await waitUntil(() => second.spawnCount() === 2);
+    await second.driveReadyFor(0);
+    await second.driveReadyFor(1);
+    await restored;
+
+    expect(
+      routerB
+        .incarnations()
+        .map((incarnation) => incarnation.state)
+        .sort(),
+    ).toEqual(["live", "live"]);
+  });
+
+  test("reports a stop without tips when its history cannot be read", async () => {
+    const dataDir = await createTempBaseDir("sidecar-report-no-tips-");
+    const head = "run_report_no_tips@example.com";
+    const first = makeReadyDrivingSpawner(12700);
+    const { router: routerA } = await buildMultistepFixture({
+      spawner: first.spawner,
+      multistepSubstrateEnv: { SIDECAR_DATA_DIR: dataDir },
+    });
+    const deployed = routerA.deploy(singleStepFrame(head, "wf-no-tips"));
+    await first.driveReadyFor(0);
+    await deployed;
+    await markWorkflowRunRecord(dataDir, deriveWorkflowRunRepoId(head), {
+      state: "stopped",
+      error: "test workflow stopped",
+    });
+
+    const reports: unknown[] = [];
+    const second = makeReadyDrivingSpawner(12800);
+    const { router: routerB } = await buildMultistepFixture({
+      spawner: second.spawner,
+      transport: createInMemoryTransport(),
+      multistepSubstrateEnv: { SIDECAR_DATA_DIR: dataDir },
+      reportDeploymentRefTips: async () => {
+        throw new Error("repository unreadable");
+      },
+      publishDeploymentStopped: (report) => {
+        reports.push(report);
+      },
+    });
+    await routerB.restoreWorkflowRuns();
+
+    routerB.reportStoppedDeployments();
+    await waitUntil(() => reports.length > 0);
+    expect(reports).toEqual([
+      {
+        agentAddress: head,
+        generation: 1,
+        error: "test workflow stopped",
+      },
+    ]);
+  });
+
+  test("reports a deployment whose child ended itself, with its history tips, once its record says so", async () => {
+    const dataDir = await createTempBaseDir("sidecar-self-term-report-");
+    const head = "run_selfterm_report@example.com";
+    const recordFile = path.join(
+      dataDir,
+      "workflow-runs",
+      deriveWorkflowRunRepoId(head),
+      "deployment.json",
+    );
+    const reported = Promise.withResolvers<{
+      report: unknown;
+      record: unknown;
+    }>();
+    const spawner = makeReadyDrivingSpawner(12200);
+    const { router } = await buildMultistepFixture({
+      spawner: spawner.spawner,
+      multistepSubstrateEnv: { SIDECAR_DATA_DIR: dataDir },
+      reportDeploymentRefTips: async () => STOPPED_TIPS,
+      publishDeploymentStopped: (report) => {
+        reported.resolve({
+          report,
+          record: JSON.parse(readFileSync(recordFile, "utf8")),
+        });
+      },
+    });
+    const deployed = router.deploy(singleStepFrame(head, "wf-report"));
+    await spawner.driveReadyFor(0);
+    await deployed;
+
+    spawner.failNextSpawn();
+    await spawner.recycleRequestFor(0);
+
+    const { report, record } = await reported.promise;
+    expect(report).toEqual({
+      agentAddress: head,
+      generation: 1,
+      error: expect.stringMatching(/^Its workflow child ended itself/),
+      refTips: STOPPED_TIPS,
+    });
+    expect(record).toMatchObject({ state: "stopped" });
+  });
+
+  test("does not report a child that ends during a Hub undeploy as stopped on its own", async () => {
+    const dataDir = await createTempBaseDir("sidecar-self-term-undeploy-");
+    const head = "run_selfterm_undeploy@example.com";
+    const reports: unknown[] = [];
+    const spawner = makeReadyDrivingSpawner(12300);
+    const { router } = await buildMultistepFixture({
+      spawner: spawner.spawner,
+      multistepSubstrateEnv: { SIDECAR_DATA_DIR: dataDir },
+      reportDeploymentRefTips: async () => STOPPED_TIPS,
+      publishDeploymentStopped: (report) => {
+        reports.push(report);
+      },
+    });
+    const deployed = router.deploy(singleStepFrame(head, "wf-undeploying"));
+    await spawner.driveReadyFor(0);
+    await deployed;
+    const undeploy = router.undeploy;
+    if (undeploy === undefined) {
+      throw new Error("router.undeploy is undefined");
+    }
+
+    // The child's recycle fails while the Hub's undeploy tears it down.
+    spawner.failNextSpawn();
+    const recycled = spawner.recycleRequestFor(0);
+    const undeployed = undeploy({
+      type: "agent.undeploy",
+      requestId: "undeploy-during-stop",
+      agentAddress: head,
+      generation: 1,
+      reason: "test",
+    });
+    await recycled;
+    await undeployed;
+
+    expect(reports).toEqual([]);
+    expect(heldAddresses(router)).toEqual([]);
+    expect(await recordExists(dataDir, deriveWorkflowRunRepoId(head))).toBe(
+      false,
+    );
+  });
+
+  test("a self-terminated deployment stays held as stopped, with why, and refuses a redeploy", async () => {
+    const dataDir = await createTempBaseDir("sidecar-self-term-redeploy-data-");
+    const head = "run_selfterm@example.com";
+    const anchorRunId = deriveWorkflowRunRepoId(head);
+
+    const spawner = makeReadyDrivingSpawner(9750);
+    const { router, transport } = await buildMultistepFixture({
+      spawner: spawner.spawner,
+      multistepSubstrateEnv: { SIDECAR_DATA_DIR: dataDir },
+    });
+
+    // Deploy and bring the supervisor to `running`.
+    const deployPromise = router.deploy(singleStepFrame(head, "wf-selfterm"));
+    await spawner.driveReadyFor(0);
+    await deployPromise;
+    expect(heldAddresses(router)).toEqual([head]);
+    expect(isRegistered(transport, head)).toBe(true);
+
+    // Drive a self-termination: a child-initiated recycle whose respawn spawn
+    // fails tears the supervisor down to `stopped` through the recycle-failure
+    // path, which fires `onSelfTerminate`.
+    spawner.failNextSpawn();
+    await spawner.recycleRequestFor(0);
+
+    // No signal exists for this one. The stop runs off the supervisor's
+    // control pump, and the router wires its own self-termination sink
+    // straight to it without chaining a caller's, so nothing observable fires
+    // when it completes. So this stays a poll, but it carries no deadline of
+    // its own: a stop that never lands is caught by the lane timeout, per
+    // "Synchronizing on State, Not Time" in CONVENTIONS.md.
+    await waitUntil(() => isStopped(router, head));
+    expect(router.incarnations()).toEqual([
+      {
+        address: head,
+        generation: 1,
+        state: "stopped",
+        error: expect.stringMatching(/^Its workflow child ended itself/),
+      },
+    ]);
+    expect(isRegistered(transport, head)).toBe(false);
+    // Its record says so too, so a restart reports it instead of spawning it.
+    expect(
+      await waitForRecord(
+        dataDir,
+        anchorRunId,
+        (record) => record?.["state"] === "stopped",
+      ),
+    ).toMatchObject({
+      error: expect.stringMatching(/^Its workflow child ended itself/),
+    });
+
+    // An address is deployed once, so the stopped incarnation refuses a deploy.
+    await expect(
+      router.deploy(singleStepFrame(head, "wf-selfterm")),
+    ).rejects.toThrow("generation 1 is stopped here");
+    expect(spawner.spawnCount()).toBe(1);
+  });
+
+  test("a cancelled self-terminated deployment stays stopped across a restart", async () => {
+    const dataDir = await createTempBaseDir("sidecar-self-term-cancel-data-");
+    const head = "run_selfterm_cancel@example.com";
+    const deploymentId = deriveWorkflowRunRepoId(head);
+    const spawner = makeReadyDrivingSpawner(9780);
+    const { router } = await buildMultistepFixture({
+      spawner: spawner.spawner,
+      multistepSubstrateEnv: { SIDECAR_DATA_DIR: dataDir },
+    });
+
+    const deploying = router.deploy(singleStepFrame(head, "wf-st-cancel"));
+    await spawner.driveReadyFor(0);
+    await deploying;
+    spawner.failNextSpawn();
+    await spawner.recycleRequestFor(0);
+    // The stop exposes no completion signal; use the existing deadline-free
+    // wait for its state transition, as the neighboring tests do.
+    await waitUntil(() => isStopped(router, head));
+    await waitForRecord(
+      dataDir,
+      deploymentId,
+      (record) => record?.["state"] === "stopped",
+    );
+
+    const scratch = path.join(
+      dataDir,
+      "workflow-step-state",
+      deploymentId,
+      "inspection.txt",
+    );
+    await fs.mkdir(path.dirname(scratch), { recursive: true });
+    await fs.writeFile(scratch, "retained");
+    const control = router.control;
+    if (control === undefined) throw new Error("router.control is undefined");
+    const command = {
+      type: "workflow.control",
+      requestId: "cancel-request",
+      action: "cancel",
+      runId: "run_selfterm_cancel",
+      agentAddress: head,
+      generation: 1,
+      reason: "Operator cancellation after failed recycle",
+    } as const;
+    await Promise.all([
+      control(command),
+      control({ ...command, requestId: "concurrent-cancel" }),
+    ]);
+    await control({ ...command, requestId: "cancel-retry" });
+    // The cancel keeps why the deployment stopped.
+    expect(
+      await waitForRecord(dataDir, deploymentId, () => true),
+    ).toMatchObject({
+      state: "stopped",
+      error: expect.stringMatching(/^Its workflow child ended itself/),
+    });
+    expect(await fs.readFile(scratch, "utf8")).toBe("retained");
+
+    const restartedSpawner = makeReadyDrivingSpawner(9790);
+    const { router: restarted } = await buildMultistepFixture({
+      spawner: restartedSpawner.spawner,
+      multistepSubstrateEnv: { SIDECAR_DATA_DIR: dataDir },
+    });
+    await restarted.restoreWorkflowRuns();
+    expect(restartedSpawner.spawnCount()).toBe(0);
+    expect(restarted.incarnations()).toEqual([
+      {
+        address: head,
+        generation: 1,
+        state: "stopped",
+        error: expect.stringMatching(/^Its workflow child ended itself/),
+      },
+    ]);
+  });
+
+  test("a stopped deployment stays held as stopped and refuses commands for another generation", async () => {
+    const dataDir = await createTempBaseDir("sidecar-stop-held-data-");
+    const head = "run_stop_held@example.com";
+    const spawner = makeReadyDrivingSpawner(9800);
+    const { router } = await buildMultistepFixture({
+      spawner: spawner.spawner,
+      multistepSubstrateEnv: { SIDECAR_DATA_DIR: dataDir },
+    });
+    const deploying = router.deploy(singleStepFrame(head, "wf-stop-held"));
+    await spawner.driveReadyFor(0);
+    await deploying;
+    const control = router.control;
+    if (control === undefined) throw new Error("router.control is undefined");
+    const command = {
+      type: "workflow.control",
+      requestId: "stop-request",
+      action: "stop",
+      runId: "run_stop_held",
+      agentAddress: head,
+      generation: 1,
+      reason: "Lifetime expired",
+    } as const;
+
+    await expect(
+      control({ ...command, requestId: "stop-other", generation: 2 }),
+    ).rejects.toThrow("generation 1 is hosted here, not generation 2");
+    await control(command);
+    expect(router.incarnations()).toEqual([
+      { address: head, generation: 1, state: "stopped" },
+    ]);
+    // A repeated stop is answered. The run record marks the deployment
+    // stopped, so a restart reports it instead of bringing it back, while the
+    // incarnation stays held until the Hub undeploys it.
+    await control({ ...command, requestId: "stop-retry" });
+    const record = await waitForRecord(
+      dataDir,
+      deriveWorkflowRunRepoId(head),
+      () => true,
+    );
+    expect(record).toMatchObject({ state: "stopped" });
+    expect(record).not.toHaveProperty("error");
+    expect(heldAddresses(router)).toEqual([head]);
+  });
+
+  test("an operator undeploy releases a self-terminated deployment", async () => {
+    const dataDir = await createTempBaseDir("sidecar-self-term-undeploy-data-");
+    const head = "run_selfterm_undeploy@example.com";
+
+    const spawner = makeReadyDrivingSpawner(9760);
+    const { router, transport } = await buildMultistepFixture({
+      spawner: spawner.spawner,
+      multistepSubstrateEnv: { SIDECAR_DATA_DIR: dataDir },
+    });
+
+    const deployPromise = router.deploy(
+      singleStepFrame(head, "wf-st-undeploy"),
+    );
+    await spawner.driveReadyFor(0);
+    await deployPromise;
+
+    spawner.failNextSpawn();
+    await spawner.recycleRequestFor(0);
+    // The stop exposes no completion signal; use the existing deadline-free
+    // wait for its state transition, as the neighboring tests do.
+    await waitUntil(() => isStopped(router, head));
+
+    // The undeploy releases the stopped incarnation: the stop already dropped
+    // the supervisor and the transport registration, so undeploy's idempotent
+    // unregisters neither throw nor double-remove.
+    const undeploy = router.undeploy;
+    if (undeploy === undefined) {
+      throw new Error("router.undeploy is undefined");
+    }
+    await expect(
+      undeploy({
+        type: "agent.undeploy",
+        requestId: "undeploy-test",
+        agentAddress: head,
+        generation: 1,
+        reason: "operator undeploy after self-termination",
+      }),
+    ).resolves.toBeUndefined();
+    expect(heldAddresses(router)).toEqual([]);
+    expect(isRegistered(transport, head)).toBe(false);
+    expect(await recordExists(dataDir, deriveWorkflowRunRepoId(head))).toBe(
+      false,
+    );
+  });
+
+  test("a self-terminated stop retains the deployment-address mapping so the terminal RunFailed commit can still resolve its run address", async () => {
+    // Regression guard for the stop/terminal-commit ordering hazard. The
+    // crash-loop latch commits its `RunFailed` tombstone AFTER teardown fires
+    // `onSelfTerminate`, and that commit resolves the deployment-address
+    // mapping to route the outbound pack push. A stop that dropped the
+    // mapping (via `unregisterDeployment`) stranded the commit with "no run
+    // address registered". This wires a REAL `deploymentAddressRegistry`
+    // through the register/unregister hooks -- the same registry the sidecar
+    // wires in `index.ts` -- and asserts the mapping survives the stop, so
+    // a subsequent `resolve` still returns the address the commit needs.
+    const dataDir = await createTempBaseDir("sidecar-self-term-mapping-data-");
+    const head = "run_selfterm_mapping@example.com";
+    const runId = deriveWorkflowRunRepoId(head);
+
+    const registry = createDeploymentAddressRegistry();
+
+    const spawner = makeReadyDrivingSpawner(9770);
+    const { router } = await buildMultistepFixture({
+      spawner: spawner.spawner,
+      multistepSubstrateEnv: { SIDECAR_DATA_DIR: dataDir },
+      registerDeployment: ({ runId: id, agentAddress, generation }) => {
+        registry.record(id, { agentAddress, generation });
+      },
+      unregisterDeployment: ({ runId: id }) => {
+        registry.unregister(id);
+      },
+    });
+
+    const deployPromise = router.deploy(singleStepFrame(head, "wf-st-mapping"));
+    await spawner.driveReadyFor(0);
+    await deployPromise;
+    // The deploy recorded the mapping before spawn (the replay's pack push
+    // resolves it), so it is resolvable while the supervisor is live.
+    expect(registry.resolve(runId)).toEqual({
+      agentAddress: head,
+      generation: 1,
+    });
+
+    // Drive the supervisor to a self-termination via the recycle-failure path.
+    spawner.failNextSpawn();
+    await spawner.recycleRequestFor(0);
+    // The stop exposes no completion signal; use the existing deadline-free
+    // wait for its state transition, as the neighboring tests do.
+    await waitUntil(() => isStopped(router, head));
+
+    // The stop RETAINED the address mapping: the supervisor's own terminal
+    // `RunFailed` commit is the sole remaining consumer and must still
+    // resolve the address. A stop that unregistered the mapping would fail
+    // this assertion (and strand that commit).
+    expect(registry.resolve(runId)).toEqual({
+      agentAddress: head,
+      generation: 1,
+    });
+  });
+
+  test.each(["active", "kept"] as const)(
+    "restore excludes misplaced %s records from capacity on later boots",
+    async (pool) => {
+      const dataDir = await createTempBaseDir("sidecar-restore-mismatch-data-");
+      const head = "run_mismatch@example.com";
+      // A record filed under a directory that is NOT its own derived slug --
+      // a corrupt or misplaced record that must not be restored under the
+      // wrong slug.
+      const wrongDir = "not-the-right-slug";
+      // Valid contents let the scan reach the directory-ownership check.
+      const record: WorkflowRunRecord = {
+        version: 1,
+        agentAddress: head,
+        generation: 1,
+        ...(pool === "kept"
+          ? { state: "stopped" as const, retention: "kept" as const }
+          : {}),
+        definitionId: "wf-mismatch",
+        sources: { "step-1": [makeInferenceSource("step-1")] },
+        hubPublicKey: "hub-pk",
+        approvedWireHash: "a".repeat(64),
+        lineage: "source-ref",
+        sourceRef: {
+          source: { kind: "registry", registry: "test-registry" },
+          closure: { schemaVersion: "1", topLevel: [], entries: [] },
+        },
+      };
+      await writeWorkflowRunRecord(
+        dataDir,
+        wrongDir,
+        record,
+        createNoopCredentialCipher(),
+      );
+
+      const spawner = makeReadyDrivingSpawner(9800);
+      const freshTransport = createInMemoryTransport();
+      const { router } = await buildMultistepFixture({
+        spawner: spawner.spawner,
+        transport: freshTransport,
+        multistepSubstrateEnv: { SIDECAR_DATA_DIR: dataDir },
+        maxActiveDeployments: 1,
+        maxRetainedDeployments: 1,
+      });
+
+      await router.restoreWorkflowRuns();
+
+      expect(spawner.spawnCount()).toBe(0);
+      expect(isRegistered(freshTransport, head)).toBe(false);
+      const wrongRecordPath = path.join(
+        dataDir,
+        "workflow-runs",
+        wrongDir,
+        "deployment.json",
+      );
+      const wrongRecord = await fs.readFile(wrongRecordPath, "utf8");
+
+      // Fill the real slot after skipping the misplaced record, then restart.
+      // Counting the raw scan would now report two records against a limit of one.
+      const valid = "run_valid_restore@example.com";
+      const deployed = router.deploy(
+        singleStepFrame(valid, "wf-valid-restore"),
+      );
+      await spawner.driveReadyFor(0);
+      await deployed;
+      if (pool === "kept") await router.control(retainCommand(valid));
+
+      const nextSpawner = makeReadyDrivingSpawner(9810);
+      const { router: restarted } = await buildMultistepFixture({
+        spawner: nextSpawner.spawner,
+        multistepSubstrateEnv: { SIDECAR_DATA_DIR: dataDir },
+        maxActiveDeployments: 1,
+        maxRetainedDeployments: 1,
+      });
+      const restored = restarted.restoreWorkflowRuns();
+      if (pool === "active")
+        await Promise.race([nextSpawner.driveReadyFor(0), restored]);
+      await restored;
+      expect(nextSpawner.spawnCount()).toBe(pool === "active" ? 1 : 0);
+      expect(restarted.incarnations()).toEqual([
+        {
+          address: valid,
+          generation: 1,
+          ...(pool === "kept"
+            ? { state: "stopped", retention: "kept" }
+            : { state: "live" }),
+        },
+      ]);
+      expect(await fs.readFile(wrongRecordPath, "utf8")).toBe(wrongRecord);
+    },
+  );
+
+  test("restore holds a deployment whose pinned source is no longer buildable as stopped", async () => {
+    const dataDir = await createTempBaseDir(
+      "sidecar-restore-unbuildable-data-",
+    );
+    const head = "run_unbuildable_restore@example.com";
+    const anchorRunId = deriveWorkflowRunRepoId(head);
+
+    // First process: a permissive gate lets the deploy through, persisting
+    // the record and its workflow.json.
+    const first = makeReadyDrivingSpawner(9900);
+    const { router: routerA } = await buildMultistepFixture({
+      spawner: first.spawner,
+      multistepSubstrateEnv: { SIDECAR_DATA_DIR: dataDir },
+    });
+    const deployPromise = routerA.deploy(
+      singleStepFrame(head, "wf-unbuildable-restore"),
+    );
+    await first.driveReadyFor(0);
+    await deployPromise;
+
+    // Restart with a gate that now rejects the pinned provider.
+    const second = makeReadyDrivingSpawner(10000);
+    const freshTransport = createInMemoryTransport();
+    const { router: routerB } = await buildMultistepFixture({
+      spawner: second.spawner,
+      transport: freshTransport,
+      multistepSubstrateEnv: { SIDECAR_DATA_DIR: dataDir },
+      assertSourceBuildable: (source) => {
+        throw new Error(
+          `Source provider "${source.provider}" is not registered`,
+        );
+      },
+    });
+
+    await routerB.restoreWorkflowRuns();
+
+    expect(second.spawnCount()).toBe(0);
+    expect(isRegistered(freshTransport, head)).toBe(false);
+    // The record stays, marked stopped with why, until the Hub undeploys the
+    // deployment it fails.
+    expect(await waitForRecord(dataDir, anchorRunId, () => true)).toMatchObject(
+      {
+        state: "stopped",
+        error: expect.stringMatching(/is not registered$/),
+      },
+    );
+  });
+
+  test("restore isolates an unbuildable-provider record: it holds it as stopped and surfaces the failure while the healthy deployment still restores", async () => {
+    const dataDir = await createTempBaseDir(
+      "sidecar-restore-unbuildable-isolate-data-",
+    );
+    const healthyHead = "run_healthy_isolate@example.com";
+    const unbuildableHead = "run_unbuildable_isolate@example.com";
+    const healthyId = deriveWorkflowRunRepoId(healthyHead);
+    const unbuildableId = deriveWorkflowRunRepoId(unbuildableHead);
+
+    // The unbuildable deployment pins a source whose provider the restart's
+    // gate will reject; the healthy deployment keeps the default `anthropic`
+    // source the gate admits. Distinguishing on `provider` lets one
+    // `assertSourceBuildable` reject exactly one of the two restored records.
+    const unbuildableProvider = "phantom-provider";
+    function unbuildableSingleStepFrame(): AgentDeployFrame {
+      return makeMultistepFrame({
+        agentAddress: unbuildableHead,
+        definition: {
+          id: "wf-unbuildable-isolate",
+          triggers: [{ type: "manual" }],
+          stepOrder: ["step-1"],
+          steps: { "step-1": { kind: "step" } },
+        },
+        sources: {
+          "step-1": [
+            { ...makeInferenceSource("step-1"), provider: unbuildableProvider },
+          ],
+        },
+      });
+    }
+
+    // First process: a permissive gate lets BOTH deploys through, persisting
+    // each record and its workflow.json.
+    const first = makeReadyDrivingSpawner(11400);
+    const { router: routerA } = await buildMultistepFixture({
+      spawner: first.spawner,
+      multistepSubstrateEnv: { SIDECAR_DATA_DIR: dataDir },
+    });
+    const deployHealthy = routerA.deploy(
+      singleStepFrame(healthyHead, "wf-healthy-isolate"),
+    );
+    await first.driveReadyFor(0);
+    await deployHealthy;
+    const deployUnbuildable = routerA.deploy(unbuildableSingleStepFrame());
+    await first.driveReadyFor(1);
+    await deployUnbuildable;
+    expect(await recordExists(dataDir, healthyId)).toBe(true);
+    expect(await recordExists(dataDir, unbuildableId)).toBe(true);
+
+    // Restart: a fresh transport plus a gate that rejects ONLY the phantom
+    // provider. Capture the module's warn output through the default console
+    // sink (threshold "warning" routes `logger.warn` to `console.warn`) so we
+    // can assert the failure is surfaced loudly rather than silently dropped.
+    const warnCaptured: string[] = [];
+    // eslint-disable-next-line no-console -- intentionally spy on the default sink's warn target to prove the restore failure is surfaced
+    const originalWarn = console.warn;
+    // eslint-disable-next-line no-console
+    console.warn = (...parts: unknown[]) => {
+      warnCaptured.push(parts.map((part) => String(part)).join(" "));
+    };
+    try {
+      const second = makeReadyDrivingSpawner(11500);
+      const freshTransport = createInMemoryTransport();
+      const { router: routerB } = await buildMultistepFixture({
+        spawner: second.spawner,
+        transport: freshTransport,
+        multistepSubstrateEnv: { SIDECAR_DATA_DIR: dataDir },
+        assertSourceBuildable: (source) => {
+          if (source.provider === unbuildableProvider) {
+            throw new Error(
+              `Source provider "${source.provider}" is not registered`,
+            );
+          }
+        },
+      });
+
+      // Only the healthy deployment spawns, so its handshake is the sole one
+      // to drive; the unbuildable record faults before its spawner is ever
+      // reached. Restore isolates each record, so scan order does not change
+      // the outcome.
+      const restorePromise = routerB.restoreWorkflowRuns();
+      await second.driveReadyFor(0);
+      await restorePromise;
+
+      // The unbuildable record did NOT strand the healthy one: it re-spawned
+      // exactly once and its head is routable again on the fresh transport.
+      expect(second.spawnCount()).toBe(1);
+      expect(isRegistered(freshTransport, healthyHead)).toBe(true);
+
+      // The unbuildable deployment was not stood up: no spawn, no route.
+      expect(isRegistered(freshTransport, unbuildableHead)).toBe(false);
+
+      // It stays reported as stopped, with why, and its record marked so.
+      expect(
+        routerB
+          .incarnations()
+          .find((incarnation) => incarnation.address === unbuildableHead),
+      ).toMatchObject({ state: "stopped" });
+      expect(
+        await waitForRecord(dataDir, unbuildableId, () => true),
+      ).toMatchObject({ state: "stopped" });
+
+      // The failure is surfaced loudly: a warning naming the failed deployment
+      // and the provider rejection reason, not a silent drop.
+      const failureWarn = warnCaptured.find(
+        (line) =>
+          line.includes(unbuildableId) &&
+          line.includes(unbuildableProvider) &&
+          line.includes("is not registered"),
+      );
+      expect(failureWarn).toBeDefined();
+    } finally {
+      // eslint-disable-next-line no-console
+      console.warn = originalWarn;
+    }
+  });
+
+  test("a deploy whose child never signals ready times out and rejects", async () => {
+    const dataDir = await createTempBaseDir("sidecar-ready-timeout-data-");
+    const head = "run_readytimeout@example.com";
+    const anchorRunId = deriveWorkflowRunRepoId(head);
+
+    // A spawner whose child is created but never driven through the `ready`
+    // handshake. With a small threaded readyTimeoutMs the supervisor times
+    // out, kills the child, and rejects the spawn. The message echoes the
+    // threaded value, so this also proves readyTimeoutMs reaches the
+    // supervisor across the router's forwarding.
+    const spawner = makeReadyDrivingSpawner(10100);
+    const { router } = await buildMultistepFixture({
+      spawner: spawner.spawner,
+      readyTimeoutMs: 40,
+      multistepSubstrateEnv: { SIDECAR_DATA_DIR: dataDir },
+    });
+
+    await expect(
+      router.deploy(singleStepFrame(head, "wf-readytimeout")),
+    ).rejects.toThrow(/did not emit ready within 40ms/);
+
+    // The deploy soft-failed, so its restore record was cleaned up -- a
+    // wedged deploy leaves nothing for a later boot to re-spawn.
+    expect(await recordExists(dataDir, anchorRunId)).toBe(false);
+  });
+
+  test("a single-step deploy acks the agent key, not the supervisor key", async () => {
+    // The single-step head is the deployed agent identity, so the ack must
+    // surface the agent key rather than the supervisor principal key.
+    const headKeyPair = await generateKeyPair();
+    const spawner = makeReadyDrivingSpawner(10300);
+    const { router, keyPair: fixtureKeyPair } = await buildMultistepFixture({
+      spawner: spawner.spawner,
+      headKeyPair,
+      multistepSubstrateEnv: {
+        SIDECAR_DATA_DIR: await createTempBaseDir("sidecar-bkey-data-"),
+      },
+    });
+
+    const deployPromise = router.deploy(
+      singleStepFrame("run_bkey@example.com", "wf-bkey"),
+    );
+    await spawner.driveReadyFor(0);
+    const result = await deployPromise;
+
+    // The supervisor principal key is derived from the fixture's signing seed
+    // (fixtureKeyPair); the head's agent key is the distinct headKeyPair.
+    expect(result.publicKey).toBe(
+      Buffer.from(headKeyPair.publicKey).toString("hex"),
+    );
+    expect(result.publicKey).not.toBe(
+      Buffer.from(fixtureKeyPair.publicKey).toString("hex"),
+    );
+  });
+
+  test("registers a sources-rotation handler for a single-step deployment", async () => {
+    const sourcesRouter = createMultistepSourcesRouter();
+    const spawner = makeReadyDrivingSpawner(10600);
+    const { router } = await buildMultistepFixture({
+      spawner: spawner.spawner,
+      multistepSourcesRouter: sourcesRouter,
+      multistepSubstrateEnv: {
+        SIDECAR_DATA_DIR: await createTempBaseDir("sidecar-sources-single-"),
+      },
+    });
+
+    const deployPromise = router.deploy(
+      singleStepFrame("run_srcsingle@example.com", "wf-srcsingle"),
+    );
+    await spawner.driveReadyFor(0);
+    await deployPromise;
+
+    // The single-step deploy registered a rotation handler, so an inbound
+    // sources.update for its address routes.
+    expect(
+      await sourcesRouter.tryRoute({
+        type: "sources.update",
+        agentAddress: "run_srcsingle@example.com",
+        sources: [makeInferenceSource("primary")],
+        defaultSource: "primary",
+      }),
+    ).toBe(true);
+  });
+
+  test("does not register a sources-rotation handler for a multi-step deployment", async () => {
+    const sourcesRouter = createMultistepSourcesRouter();
+    const spawner = makeReadyDrivingSpawner(10700);
+    const { router } = await buildMultistepFixture({
+      spawner: spawner.spawner,
+      multistepSourcesRouter: sourcesRouter,
+      multistepSubstrateEnv: {
+        SIDECAR_DATA_DIR: await createTempBaseDir("sidecar-sources-multi-"),
+      },
+    });
+
+    const frame = makeMultistepFrame({
+      definition: {
+        id: "wf-srcmulti",
+        triggers: [{ type: "manual" }],
+        stepOrder: ["step-1", "step-2"],
+        steps: { "step-1": { kind: "step" }, "step-2": { kind: "step" } },
+      },
+      sources: {
+        "step-1": [makeInferenceSource("step-1")],
+        "step-2": [makeInferenceSource("step-2")],
+      },
+    });
+    const deployPromise = router.deploy(frame);
+    await spawner.driveReadyFor(0);
+    await deployPromise;
+
+    // A multi-step deployment has no single warm agent to rotate, so no
+    // handler is registered and the inbound rotation is unrouted.
+    expect(
+      await sourcesRouter.tryRoute({
+        type: "sources.update",
+        agentAddress: frame.agentAddress,
+        sources: [makeInferenceSource("primary")],
+        defaultSource: "primary",
+      }),
+    ).toBe(false);
+  });
+
+  test("a source rotation survives a recycle respawn", async () => {
+    // End-to-end guard for the rotation-survives-recycle fix: the single-step
+    // rotation handler mutates `currentSources`, `dynamicSpawnEnv`
+    // re-serializes it, and the recycle respawn's STEP_INFERENCE_SOURCES
+    // carries the ROTATED table -- not the frozen deploy-time one.
+    const sourcesRouter = createMultistepSourcesRouter();
+    const spawner = makeReadyDrivingSpawner(10800);
+    const { router } = await buildMultistepFixture({
+      spawner: spawner.spawner,
+      multistepSourcesRouter: sourcesRouter,
+      multistepSubstrateEnv: {
+        SIDECAR_DATA_DIR: await createTempBaseDir("sidecar-rot-survive-"),
+      },
+    });
+
+    const addr = "run_rotsurvive@example.com";
+    const deployPromise = router.deploy(singleStepFrame(addr, "wf-rotsurvive"));
+    await spawner.driveReadyFor(0);
+    await deployPromise;
+
+    // The initial spawn carries the deploy-time source table.
+    const initialEnv = spawner.envFor(0);
+    if (initialEnv === undefined) throw new Error("initial spawn env missing");
+    expect(
+      JSON.parse(initialEnv[STEP_INFERENCE_SOURCES_ENV_KEY] ?? "null"),
+    ).toEqual({ "step-1": [makeInferenceSource("step-1")] });
+
+    // Rotate the single-step deployment's sources in place.
+    const rotated = makeInferenceSource("rotated");
+    expect(
+      await sourcesRouter.tryRoute({
+        type: "sources.update",
+        agentAddress: addr,
+        sources: [rotated],
+        defaultSource: "rotated",
+      }),
+    ).toBe(true);
+
+    // The child asks to recycle; the supervisor respawns.
+    await spawner.recycleRequestFor(0);
+    await spawner.awaitSpawnCount(2);
+    await spawner.driveReadyFor(1);
+
+    // The recycle respawn's sources are the ROTATED table, proving the
+    // rotation survived the recycle (before the fix it reverted to the
+    // deploy-time list frozen in substrateEnv).
+    const respawnEnv = spawner.envFor(1);
+    if (respawnEnv === undefined) throw new Error("respawn env missing");
+    expect(
+      JSON.parse(respawnEnv[STEP_INFERENCE_SOURCES_ENV_KEY] ?? "null"),
+    ).toEqual({ "step-1": [rotated] });
+  });
+
+  test("a source rotation cannot erase a self-termination before restart", async () => {
+    const dataDir = await createTempBaseDir("sidecar-rotation-stopped-");
+    const address = "run_rotation_stopped@example.com";
+    const sourcesRouter = createMultistepSourcesRouter();
+    const spawner = makeReadyDrivingSpawner(12100);
+    const entered = Promise.withResolvers<undefined>();
+    const release = Promise.withResolvers<undefined>();
+    const reported = Promise.withResolvers<undefined>();
+    let hold = false;
+    const { router } = await buildMultistepFixture({
+      spawner: spawner.spawner,
+      multistepSourcesRouter: sourcesRouter,
+      multistepSubstrateEnv: { SIDECAR_DATA_DIR: dataDir },
+      updateWorkflowRunRecordSources: async (dir, id, generation, sources) => {
+        if (hold) {
+          entered.resolve(undefined);
+          await release.promise;
+        }
+        await updateWorkflowRunRecordSources(dir, id, generation, sources);
+      },
+      publishDeploymentStopped: () => reported.resolve(undefined),
+    });
+    const deploying = router.deploy(
+      singleStepFrame(address, "wf-rotation-stop"),
+    );
+    await spawner.driveReadyFor(0);
+    await deploying;
+    hold = true;
+    const rotated = makeInferenceSource("rotated");
+    const rotating = sourcesRouter
+      .tryRoute({
+        type: "sources.update",
+        agentAddress: address,
+        sources: [rotated],
+        defaultSource: "rotated",
+      })
+      .catch((error: unknown) => error);
+    try {
+      await entered.promise;
+      spawner.failNextSpawn();
+      await spawner.recycleRequestFor(0);
+      await reported.promise;
+      release.resolve(undefined);
+      expect(await rotating).toBeInstanceOf(Error);
+      const records = await scanWorkflowRunRecords(
+        dataDir,
+        createNoopCredentialCipher(),
+      );
+      expect(records[0]?.record).toMatchObject({
+        state: "stopped",
+        error: expect.stringMatching(/^Its workflow child ended itself/),
+        sources: { "step-1": [rotated] },
+      });
+
+      const restarted = makeReadyDrivingSpawner(12200);
+      const { router: restored } = await buildMultistepFixture({
+        spawner: restarted.spawner,
+        multistepSubstrateEnv: { SIDECAR_DATA_DIR: dataDir },
+      });
+      await restored.restoreWorkflowRuns();
+      expect(restarted.spawnCount()).toBe(0);
+      expect(isStopped(restored, address)).toBe(true);
+    } finally {
+      release.resolve(undefined);
+      await rotating;
+    }
+  });
+
+  test("a source rotation survives a full sidecar restart", async () => {
+    // Restart-durability: a rotation is persisted into the run record,
+    // so a fresh sidecar process (a restore over the same data dir) respawns
+    // the deployment on the ROTATED sources, not the deploy-time ones.
+    const dataDir = await createTempBaseDir("sidecar-rot-restart-");
+    const addr = "run_rotrestart@example.com";
+
+    // First process: deploy a single-step deployment and rotate its sources.
+    const sourcesRouter = createMultistepSourcesRouter();
+    const first = makeReadyDrivingSpawner(10900);
+    const { router: routerA } = await buildMultistepFixture({
+      spawner: first.spawner,
+      multistepSourcesRouter: sourcesRouter,
+      multistepSubstrateEnv: { SIDECAR_DATA_DIR: dataDir },
+    });
+    const deployPromise = routerA.deploy(
+      singleStepFrame(addr, "wf-rotrestart"),
+    );
+    await first.driveReadyFor(0);
+    await deployPromise;
+
+    const rotated = makeInferenceSource("rotated");
+    expect(
+      await sourcesRouter.tryRoute({
+        type: "sources.update",
+        agentAddress: addr,
+        sources: [rotated],
+        defaultSource: "rotated",
+      }),
+    ).toBe(true);
+
+    // Second process (simulated restart): a fresh router over the SAME data
+    // dir restores the deployment from its durable record.
+    const second = makeReadyDrivingSpawner(11000);
+    const { router: routerB } = await buildMultistepFixture({
+      spawner: second.spawner,
+      transport: createInMemoryTransport(),
+      multistepSubstrateEnv: { SIDECAR_DATA_DIR: dataDir },
+    });
+    const restorePromise = routerB.restoreWorkflowRuns();
+    await second.driveReadyFor(0);
+    await restorePromise;
+
+    // The restored spawn carries the ROTATED sources, read back from the
+    // durable record -- not the deploy-time list.
+    const restoredEnv = second.envFor(0);
+    if (restoredEnv === undefined) {
+      throw new Error("restored spawn env missing");
+    }
+    expect(
+      JSON.parse(restoredEnv[STEP_INFERENCE_SOURCES_ENV_KEY] ?? "null"),
+    ).toEqual({ "step-1": [rotated] });
+  });
+
+  test("a rotation whose persist fails leaves no partial effect", async () => {
+    // Atomicity: if the durable write rejects, the rotation takes NO net
+    // effect. The handler swaps currentSources synchronously, then rolls it
+    // back on a failed persist, so once the handler throws currentSources is
+    // on the deploy-time table (a recycle respawn AFTER the failure is
+    // unrotated) and deliverSources is never reached. Rolling the in-memory
+    // hint back keeps currentSources and the record in agreement in this
+    // no-interleaved-recycle failure case.
+    const dataDir = await createTempBaseDir("sidecar-rot-failatomic-");
+    const addr = "run_rotfailatomic@example.com";
+    const sourcesRouter = createMultistepSourcesRouter();
+    const spawner = makeReadyDrivingSpawner(11100);
+    const { router } = await buildMultistepFixture({
+      spawner: spawner.spawner,
+      multistepSourcesRouter: sourcesRouter,
+      multistepSubstrateEnv: { SIDECAR_DATA_DIR: dataDir },
+    });
+
+    const deployPromise = router.deploy(singleStepFrame(addr, "wf-rotfail"));
+    await spawner.driveReadyFor(0);
+    await deployPromise;
+
+    // Replace the run record file with a directory so the rotation's
+    // source updater rejects (EISDIR) -- a deterministic,
+    // root-immune write fault (a chmod guard would be bypassed under root).
+    const recordFile = path.join(
+      dataDir,
+      "workflow-runs",
+      deriveWorkflowRunRepoId(addr),
+      "deployment.json",
+    );
+    await fs.rm(recordFile);
+    await fs.mkdir(recordFile);
+
+    // The persist rejects, so the route rejects and nothing after the write
+    // runs.
+    await expect(
+      sourcesRouter.tryRoute({
+        type: "sources.update",
+        agentAddress: addr,
+        sources: [makeInferenceSource("rotated")],
+        defaultSource: "rotated",
+      }),
+    ).rejects.toThrow();
+
+    // currentSources was rolled back: a recycle respawn AFTER the failed
+    // rotation carries the DEPLOY-TIME sources, proving the failed rotation
+    // left no net in-memory effect.
+    await spawner.recycleRequestFor(0);
+    await spawner.awaitSpawnCount(2);
+    await spawner.driveReadyFor(1);
+    const respawnEnv = spawner.envFor(1);
+    if (respawnEnv === undefined) throw new Error("respawn env missing");
+    expect(
+      JSON.parse(respawnEnv[STEP_INFERENCE_SOURCES_ENV_KEY] ?? "null"),
+    ).toEqual({ "step-1": [makeInferenceSource("step-1")] });
+  });
+
+  // A one-material delivery for the credentials-seal tests.
+  function sealDelivery(credentialId: string, secret: string) {
+    return {
+      bindings: [],
+      materials: [
+        {
+          credentialId,
+          providerKey: "http",
+          origin: "https://api.example.com",
+          secret,
+        },
+      ],
+    };
+  }
+
+  // The credential ids the run record restores for `addr`, sorted.
+  async function sealedCredentialIds(dataDir: string, addr: string) {
+    const scanned = await scanWorkflowRunRecords(
+      dataDir,
+      createNoopCredentialCipher(),
+    );
+    const record = scanned.find(
+      (s) => s.runId === deriveWorkflowRunRepoId(addr),
+    );
+    return (record?.record.credentials?.materials ?? [])
+      .map((material) => material.credentialId)
+      .sort();
+  }
+
+  test("a credentials update seals the merged delivery, revokes included, into the run record", async () => {
+    const dataDir = await createTempBaseDir("sidecar-cred-seal-");
+    const addr = "run_credseal@example.com";
+    const credentialsRouter = createMultistepCredentialsRouter();
+    const spawner = makeReadyDrivingSpawner(11400);
+    const { router } = await buildMultistepFixture({
+      spawner: spawner.spawner,
+      multistepCredentialsRouter: credentialsRouter,
+      multistepSubstrateEnv: { SIDECAR_DATA_DIR: dataDir },
+    });
+    const deployPromise = router.deploy(singleStepFrame(addr, "wf-credseal"));
+    await spawner.driveReadyFor(0);
+    await deployPromise;
+
+    const update = (delivery: CredentialDelivery, revoke?: string[]) =>
+      credentialsRouter.tryRoute({
+        type: "credentials.update",
+        agentAddress: addr,
+        delivery,
+        ...(revoke !== undefined ? { revoke } : {}),
+      });
+    expect(await update(sealDelivery("cred-a", "sk-a"))).toBe(true);
+    expect(await update(sealDelivery("hub:mail", "itx-token"))).toBe(true);
+    expect(await sealedCredentialIds(dataDir, addr)).toEqual([
+      "cred-a",
+      "hub:mail",
+    ]);
+
+    expect(await update({ bindings: [], materials: [] }, ["cred-a"])).toBe(
+      true,
+    );
+    expect(await sealedCredentialIds(dataDir, addr)).toEqual(["hub:mail"]);
+  });
+
+  test("a credentials update that leaves the delivery unchanged writes nothing", async () => {
+    const dataDir = await createTempBaseDir("sidecar-cred-same-");
+    const addr = "run_credsame@example.com";
+    const credentialsRouter = createMultistepCredentialsRouter();
+    const spawner = makeReadyDrivingSpawner(11500);
+    let seals = 0;
+    const { router } = await buildMultistepFixture({
+      spawner: spawner.spawner,
+      multistepCredentialsRouter: credentialsRouter,
+      multistepSubstrateEnv: { SIDECAR_DATA_DIR: dataDir },
+      updateWorkflowRunRecordCredentials: async (...args) => {
+        seals += 1;
+        await updateWorkflowRunRecordCredentials(...args);
+      },
+    });
+    const deployPromise = router.deploy(singleStepFrame(addr, "wf-credsame"));
+    await spawner.driveReadyFor(0);
+    await deployPromise;
+
+    for (let i = 0; i < 2; i += 1) {
+      await credentialsRouter.tryRoute({
+        type: "credentials.update",
+        agentAddress: addr,
+        delivery: sealDelivery("hub:mail", "itx-token"),
+      });
+    }
+    expect(seals).toBe(1);
+  });
+
+  test("a failed credentials seal fails the update, and the next update seals both", async () => {
+    const dataDir = await createTempBaseDir("sidecar-cred-fail-");
+    const addr = "run_credfail@example.com";
+    const credentialsRouter = createMultistepCredentialsRouter();
+    const spawner = makeReadyDrivingSpawner(11600);
+    let failNext = false;
+    const { router } = await buildMultistepFixture({
+      spawner: spawner.spawner,
+      multistepCredentialsRouter: credentialsRouter,
+      multistepSubstrateEnv: { SIDECAR_DATA_DIR: dataDir },
+      updateWorkflowRunRecordCredentials: async (...args) => {
+        if (failNext) {
+          failNext = false;
+          throw new Error("synthetic seal failure");
+        }
+        await updateWorkflowRunRecordCredentials(...args);
+      },
+    });
+    const deployPromise = router.deploy(singleStepFrame(addr, "wf-credfail"));
+    await spawner.driveReadyFor(0);
+    await deployPromise;
+
+    failNext = true;
+    await expect(
+      credentialsRouter.tryRoute({
+        type: "credentials.update",
+        agentAddress: addr,
+        delivery: sealDelivery("cred-a", "sk-a"),
+      }),
+    ).rejects.toThrow("synthetic seal failure");
+    expect(await sealedCredentialIds(dataDir, addr)).toEqual([]);
+
+    // The mirror kept the first update, so the next seal carries both.
+    await credentialsRouter.tryRoute({
+      type: "credentials.update",
+      agentAddress: addr,
+      delivery: sealDelivery("cred-b", "sk-b"),
+    });
+    expect(await sealedCredentialIds(dataDir, addr)).toEqual([
+      "cred-a",
+      "cred-b",
+    ]);
+  });
+
+  test("a seal that replaced the record before it failed does not skip a later revoke", async () => {
+    const dataDir = await createTempBaseDir("sidecar-cred-partial-");
+    const addr = "run_credpartial@example.com";
+    const credentialsRouter = createMultistepCredentialsRouter();
+    const spawner = makeReadyDrivingSpawner(11700);
+    let failAfterWrite = false;
+    const { router } = await buildMultistepFixture({
+      spawner: spawner.spawner,
+      multistepCredentialsRouter: credentialsRouter,
+      multistepSubstrateEnv: { SIDECAR_DATA_DIR: dataDir },
+      // The record write lands, then the seal fails, as a failed directory
+      // sync after the rename does.
+      updateWorkflowRunRecordCredentials: async (...args) => {
+        await updateWorkflowRunRecordCredentials(...args);
+        if (failAfterWrite) {
+          failAfterWrite = false;
+          throw new Error("synthetic directory sync failure");
+        }
+      },
+    });
+    const deployPromise = router.deploy(
+      singleStepFrame(addr, "wf-credpartial"),
+    );
+    await spawner.driveReadyFor(0);
+    await deployPromise;
+
+    await credentialsRouter.tryRoute({
+      type: "credentials.update",
+      agentAddress: addr,
+      delivery: sealDelivery("hub:mail", "itx-token"),
+    });
+    failAfterWrite = true;
+    await expect(
+      credentialsRouter.tryRoute({
+        type: "credentials.update",
+        agentAddress: addr,
+        delivery: sealDelivery("cred-a", "sk-a"),
+      }),
+    ).rejects.toThrow("synthetic directory sync failure");
+    expect(await sealedCredentialIds(dataDir, addr)).toEqual([
+      "cred-a",
+      "hub:mail",
+    ]);
+
+    // The mirror is back to the last confirmed seal, and the write still runs.
+    await credentialsRouter.tryRoute({
+      type: "credentials.update",
+      agentAddress: addr,
+      delivery: { bindings: [], materials: [] },
+      revoke: ["cred-a"],
+    });
+    expect(await sealedCredentialIds(dataDir, addr)).toEqual(["hub:mail"]);
+  });
+
+  test("a restart gives the restored child the latest sealed delivery in its first frame", async () => {
+    const dataDir = await createTempBaseDir("sidecar-cred-restart-");
+    const addr = "run_credrestart@example.com";
+    const credentialsRouter = createMultistepCredentialsRouter();
+    const first = makeReadyDrivingSpawner(11800);
+    const { router: routerA } = await buildMultistepFixture({
+      spawner: first.spawner,
+      multistepCredentialsRouter: credentialsRouter,
+      multistepSubstrateEnv: { SIDECAR_DATA_DIR: dataDir },
+    });
+    const deployPromise = routerA.deploy(
+      singleStepFrame(addr, "wf-credrestart"),
+    );
+    await first.driveReadyFor(0);
+    await deployPromise;
+    await credentialsRouter.tryRoute({
+      type: "credentials.update",
+      agentAddress: addr,
+      delivery: sealDelivery("cred-a", "sk-a"),
+    });
+    await credentialsRouter.tryRoute({
+      type: "credentials.update",
+      agentAddress: addr,
+      delivery: sealDelivery("hub:mail", "itx-token"),
+      revoke: ["cred-a"],
+    });
+
+    // A fresh router over the same data dir models the restarted sidecar.
+    const second = makeReadyDrivingSpawner(11900);
+    const { router: routerB } = await buildMultistepFixture({
+      spawner: second.spawner,
+      transport: createInMemoryTransport(),
+      multistepSubstrateEnv: { SIDECAR_DATA_DIR: dataDir },
+    });
+    const restorePromise = routerB.restoreWorkflowRuns();
+    await second.driveReadyFor(0);
+    await restorePromise;
+
+    const [firstFrame] = second.controlFramesFor(0);
+    if (firstFrame?.type !== "authority.set") {
+      throw new Error(`expected authority.set first, got ${firstFrame?.type}`);
+    }
+    expect(firstFrame.data.delivery).toEqual(
+      sealDelivery("hub:mail", "itx-token"),
+    );
+  });
+
+  test("a recycle interleaving the rotation persist respawns on the rotated sources", async () => {
+    // Interleave guard: the rotation swaps currentSources synchronously
+    // BEFORE the durable persist, so a recycle that lands inside the persist
+    // window respawns the child on the ROTATED sources -- consistent with
+    // what is being persisted -- rather than the stale deploy-time table.
+    const dataDir = await createTempBaseDir("sidecar-rot-interleave-ok-");
+    const addr = "run_rotinterok@example.com";
+    const sourcesRouter = createMultistepSourcesRouter();
+    const spawner = makeReadyDrivingSpawner(11200);
+
+    // A persist that blocks on a test-controlled gate once armed, so a recycle
+    // can be driven into the rotation's persist window. Initial deployment
+    // writes its own record before this source updater is called.
+    let gate: Promise<void> | null = null;
+    let release: () => void = () => undefined;
+    const persist: typeof updateWorkflowRunRecordSources = async (
+      d,
+      id,
+      generation,
+      sources,
+    ) => {
+      if (gate !== null) await gate;
+      await updateWorkflowRunRecordSources(d, id, generation, sources);
+    };
+
+    const { router } = await buildMultistepFixture({
+      spawner: spawner.spawner,
+      multistepSourcesRouter: sourcesRouter,
+      multistepSubstrateEnv: { SIDECAR_DATA_DIR: dataDir },
+      updateWorkflowRunRecordSources: persist,
+    });
+
+    const deployPromise = router.deploy(singleStepFrame(addr, "wf-rotinterok"));
+    await spawner.driveReadyFor(0);
+    await deployPromise;
+
+    // Arm the gate so the rotation's persist blocks mid-window.
+    gate = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+
+    // Start the rotation but do not await it: the handler swaps currentSources
+    // synchronously, then parks on the blocked persist before deliverSources.
+    const rotated = makeInferenceSource("rotated");
+    const rotatePromise = sourcesRouter.tryRoute({
+      type: "sources.update",
+      agentAddress: addr,
+      sources: [rotated],
+      defaultSource: "rotated",
+    });
+
+    // Drive a recycle while the persist is blocked. The respawn env must carry
+    // the ROTATED sources, because the synchronous swap already ran.
+    await spawner.recycleRequestFor(0);
+    await spawner.awaitSpawnCount(2);
+    await spawner.driveReadyFor(1);
+    const respawnEnv = spawner.envFor(1);
+    if (respawnEnv === undefined) throw new Error("respawn env missing");
+    expect(
+      JSON.parse(respawnEnv[STEP_INFERENCE_SOURCES_ENV_KEY] ?? "null"),
+    ).toEqual({ "step-1": [rotated] });
+
+    // Release the persist; the rotation completes without throwing and the
+    // durable record converges on the rotated sources.
+    release();
+    await rotatePromise;
+    const scanned = await scanWorkflowRunRecords(
+      dataDir,
+      createNoopCredentialCipher(),
+    );
+    const record = scanned.find(
+      (s) => s.runId === deriveWorkflowRunRepoId(addr),
+    );
+    expect(record?.record.sources).toEqual({ "step-1": [rotated] });
+  });
+
+  test("a recycle interleaving a failed rotation persist respawns on new sources then rolls back", async () => {
+    // The benign residual, pinned: a persist that fails WHILE a recycle
+    // interleaves leaves the just-respawned child transiently ahead on the
+    // rotated sources (the intended, self-healing direction), while
+    // currentSources rolls back to the deploy-time table so the NEXT recycle
+    // reverts the child to durable truth.
+    const dataDir = await createTempBaseDir("sidecar-rot-interleave-fail-");
+    const addr = "run_rotinterfail@example.com";
+    const sourcesRouter = createMultistepSourcesRouter();
+    const spawner = makeReadyDrivingSpawner(11300);
+
+    let gate: Promise<void> | null = null;
+    let release: () => void = () => undefined;
+    const persist: typeof updateWorkflowRunRecordSources = async (
+      d,
+      id,
+      generation,
+      sources,
+    ) => {
+      if (gate !== null) {
+        await gate;
+        throw new Error("rotation persist boom");
+      }
+      await updateWorkflowRunRecordSources(d, id, generation, sources);
+    };
+
+    const { router } = await buildMultistepFixture({
+      spawner: spawner.spawner,
+      multistepSourcesRouter: sourcesRouter,
+      multistepSubstrateEnv: { SIDECAR_DATA_DIR: dataDir },
+      updateWorkflowRunRecordSources: persist,
+    });
+
+    const deployPromise = router.deploy(
+      singleStepFrame(addr, "wf-rotinterfail"),
+    );
+    await spawner.driveReadyFor(0);
+    await deployPromise;
+
+    gate = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+
+    const rotated = makeInferenceSource("rotated");
+    const rotatePromise = sourcesRouter.tryRoute({
+      type: "sources.update",
+      agentAddress: addr,
+      sources: [rotated],
+      defaultSource: "rotated",
+    });
+
+    // A recycle interleaves the about-to-fail persist: the respawn still
+    // carries the ROTATED sources, because the swap already ran.
+    await spawner.recycleRequestFor(0);
+    await spawner.awaitSpawnCount(2);
+    await spawner.driveReadyFor(1);
+    const respawnEnv = spawner.envFor(1);
+    if (respawnEnv === undefined) throw new Error("respawn env missing");
+    expect(
+      JSON.parse(respawnEnv[STEP_INFERENCE_SOURCES_ENV_KEY] ?? "null"),
+    ).toEqual({ "step-1": [rotated] });
+
+    // Release the persist so it rejects; the rotation rolls currentSources
+    // back and rethrows.
+    release();
+    await expect(rotatePromise).rejects.toThrow(/rotation persist boom/);
+
+    // A SECOND recycle now respawns on the ROLLED-BACK deploy-time sources,
+    // healing the transient down to durable truth.
+    await spawner.recycleRequestFor(1);
+    await spawner.awaitSpawnCount(3);
+    await spawner.driveReadyFor(2);
+    const secondRespawnEnv = spawner.envFor(2);
+    if (secondRespawnEnv === undefined) {
+      throw new Error("second respawn env missing");
+    }
+    expect(
+      JSON.parse(secondRespawnEnv[STEP_INFERENCE_SOURCES_ENV_KEY] ?? "null"),
+    ).toEqual({ "step-1": [makeInferenceSource("step-1")] });
+  });
+
+  test("two addresses that project to the same workflow-run repo id are rejected at the second deploy", async () => {
+    // deriveWorkflowRunRepoId substitutes every disallowed character with
+    // `-`, so two distinct addresses can collapse to the same slug. The slug
+    // IS the workflow-run repoId, so a silent collision would let the second
+    // deploy overwrite the first deploy's repo state. claimSlug rejects the
+    // second deploy at the router edge, before any spawn or repo write.
+    const spawner = makeReadyDrivingSpawner(10400);
+    const { router } = await buildMultistepFixture({
+      spawner: spawner.spawner,
+      multistepSubstrateEnv: {
+        SIDECAR_DATA_DIR: await createTempBaseDir("sidecar-collision-data-"),
+      },
+    });
+
+    // `run_col.a@example.com` and `run_col-a@example.com` both project to
+    // `run_col-a-example-com` under the slug derivation.
+    const deployPromise = router.deploy(
+      singleStepFrame("run_col.a@example.com", "wf-collide"),
+    );
+    await spawner.driveReadyFor(0);
+    await deployPromise;
+
+    await expect(
+      router.deploy(singleStepFrame("run_col-a@example.com", "wf-collide")),
+    ).rejects.toThrow(/workflow-run repo id collision/);
+    expect(spawner.spawnCount()).toBe(1);
+  });
+
+  test("reEmitParkedCorrelations reaches the live supervisor and sends a parked-correlations.request downstream", async () => {
+    // Trigger B: the hub-reconnect fan-out. After a deploy populates
+    // `deployments` for the deployment address, the router's
+    // address-dispatch wrapper must reach the live supervisor's own no-arg
+    // `reEmitParkedCorrelations`, which the supervisor implements by sending a
+    // `parked-correlations.request` control frame down to the child. The mock
+    // child never answers, so the supervisor's watchdog eventually fires; the
+    // router's fire-and-forget contract means the request frame lands on the
+    // downstream stream regardless, which is the observable evidence here.
+    const childIpcKeyPair = await generateKeyPair();
+    const {
+      supervisorToChild,
+      childToSupervisor,
+      eventChildToSupervisor,
+      exited,
+      resolveExit,
+    } = createChildStreams();
+    let observedEnv: Record<string, string> | undefined;
+    // Scoped here, not to the file: `first()` must resolve with THIS
+    // fixture's spawn, not whichever spawn happened earliest in the run.
+    const spawnObserver = createSpawnObserver();
+    const spawner: SubprocessSpawner = ({ env }) => {
+      observedEnv = env;
+      spawnObserver.record(env);
+      const handle: SubprocessHandle = {
+        pid: 10500,
+        controlWriter: supervisorToChild.writer,
+        controlReader: childToSupervisor.reader,
+        eventReader: eventChildToSupervisor.reader,
+        kill: () => {
+          childToSupervisor.close();
+          eventChildToSupervisor.close();
+          resolveExit?.(0);
+        },
+        exited,
+      };
+      return handle;
+    };
+
+    const dataDir = await createTempBaseDir("sidecar-reemit-data-");
+    const { router } = await buildMultistepFixture({
+      spawner,
+      multistepSubstrateEnv: { SIDECAR_DATA_DIR: dataDir },
+    });
+
+    const sources = defaultMultistepSources();
+    const definition = {
+      id: "wf-reemit",
+      triggers: [{ type: "manual" }],
+      stepOrder: ["step-1", "step-2"],
+      steps: { "step-1": { kind: "step" }, "step-2": { kind: "step" } },
+    };
+    const frame = makeMultistepFrame({ definition, sources });
+
+    const deployPromise = router.deploy(frame);
+    observedEnv = await spawnObserver.first();
+    const channelId = observedEnv.IPC_CHANNEL_ID;
+    if (channelId === undefined) {
+      throw new Error("IPC_CHANNEL_ID not set in spawn-time env");
+    }
+    const childSender = createControlChannelSender({
+      privateKeySeed: childIpcKeyPair.privateKey,
+      channelId,
+      writer: {
+        write(line: string) {
+          childToSupervisor.inject(line);
+          return Promise.resolve();
+        },
+      },
+    });
+    await childSender.send({
+      type: "ready",
+      data: {
+        childPid: 10500,
+        childPublicKey: hexEncode(childIpcKeyPair.publicKey),
+      },
+    });
+    await deployPromise;
+
+    // `deployments` is keyed by the frame's run address; the router
+    // routes the re-emit through that same key.
+    expect(heldAddresses(router)).toEqual([frame.agentAddress]);
+
+    // Each downstream line is a signed envelope `{ envelope: { seq, channelId,
+    // payload }, sig }`; read `envelope.payload.type` without verifying the
+    // signature (the supervisor's IPC public key is not exposed to the test).
+    // The supervisor emits its own `parked-correlations.request` on spawn (a
+    // fresh child becoming addressable), so the trigger is observed as an
+    // increase in the downstream request count, not its first appearance.
+    function parkedRequestCount(): number {
+      return supervisorToChild
+        .flushed()
+        .filter((line) => downstreamPayloadType(line) === PARKED_REQUEST_TYPE)
+        .length;
+    }
+
+    // The baseline has to include the spawn-time request, which is a frame on
+    // this same stream -- so wait for it rather than for fifty milliseconds,
+    // which on a slow enough machine would have banked a baseline of zero and
+    // made the assertion below pass on the spawn-time frame alone.
+    while (parkedRequestCount() < 1) {
+      await supervisorToChild.nextWrite();
+    }
+    const baseline = parkedRequestCount();
+
+    router.reEmitParkedCorrelations(frame.agentAddress);
+
+    // The request frame reaching the downstream stream is the event. The
+    // bounded poll this replaces made a wiring break indistinguishable from
+    // slowness, since both ended at the same deadline.
+    while (parkedRequestCount() <= baseline) {
+      await supervisorToChild.nextWrite();
+    }
+    expect(parkedRequestCount()).toBeGreaterThan(baseline);
+  });
+
+  test("reEmitParkedCorrelations for an address with no active supervisor is a no-op", async () => {
+    // The edge boundary: the hub reports an address routable, but no live
+    // supervisor owns it (a torn-down or not-yet-respawned deployment). The
+    // router must skip it -- neither throw nor drive any downstream frame.
+    const childIpcKeyPair = await generateKeyPair();
+    const {
+      supervisorToChild,
+      childToSupervisor,
+      eventChildToSupervisor,
+      exited,
+      resolveExit,
+    } = createChildStreams();
+    let observedEnv: Record<string, string> | undefined;
+    // Scoped here, not to the file: `first()` must resolve with THIS
+    // fixture's spawn, not whichever spawn happened earliest in the run.
+    const spawnObserver = createSpawnObserver();
+    const spawner: SubprocessSpawner = ({ env }) => {
+      observedEnv = env;
+      spawnObserver.record(env);
+      const handle: SubprocessHandle = {
+        pid: 10600,
+        controlWriter: supervisorToChild.writer,
+        controlReader: childToSupervisor.reader,
+        eventReader: eventChildToSupervisor.reader,
+        kill: () => {
+          childToSupervisor.close();
+          eventChildToSupervisor.close();
+          resolveExit?.(0);
+        },
+        exited,
+      };
+      return handle;
+    };
+
+    const dataDir = await createTempBaseDir("sidecar-reemit-miss-data-");
+    const { router } = await buildMultistepFixture({
+      spawner,
+      multistepSubstrateEnv: { SIDECAR_DATA_DIR: dataDir },
+    });
+
+    const sources = defaultMultistepSources();
+    const definition = {
+      id: "wf-reemit-miss",
+      triggers: [{ type: "manual" }],
+      stepOrder: ["step-1", "step-2"],
+      steps: { "step-1": { kind: "step" }, "step-2": { kind: "step" } },
+    };
+    const frame = makeMultistepFrame({ definition, sources });
+
+    const deployPromise = router.deploy(frame);
+    observedEnv = await spawnObserver.first();
+    const channelId = observedEnv.IPC_CHANNEL_ID;
+    if (channelId === undefined) {
+      throw new Error("IPC_CHANNEL_ID not set in spawn-time env");
+    }
+    const childSender = createControlChannelSender({
+      privateKeySeed: childIpcKeyPair.privateKey,
+      channelId,
+      writer: {
+        write(line: string) {
+          childToSupervisor.inject(line);
+          return Promise.resolve();
+        },
+      },
+    });
+    await childSender.send({
+      type: "ready",
+      data: {
+        childPid: 10600,
+        childPublicKey: hexEncode(childIpcKeyPair.publicKey),
+      },
+    });
+    await deployPromise;
+
+    const missAddress = "run_nonexistent@wf.example";
+    expect(heldAddresses(router)).not.toContain(missAddress);
+
+    // The deployed supervisor emits its own `parked-correlations.request` on
+    // spawn; the miss-address re-emit must add nothing on top of that
+    // baseline. Count downstream requests before and after the no-op call.
+    function parkedRequestCount(): number {
+      return supervisorToChild
+        .flushed()
+        .filter((line) => downstreamPayloadType(line) === PARKED_REQUEST_TYPE)
+        .length;
+    }
+    // The baseline has to include the spawn-time request, which is a frame on
+    // this same stream -- so wait for it rather than for fifty milliseconds,
+    // which on a slow enough machine would have banked a baseline of zero and
+    // made the assertion below pass on the spawn-time frame alone.
+    while (parkedRequestCount() < 1) {
+      await supervisorToChild.nextWrite();
+    }
+    const baseline = parkedRequestCount();
+
+    // The no-op skip must not throw for an address with no live supervisor.
+    expect(() => router.reEmitParkedCorrelations(missAddress)).not.toThrow();
+
+    // No pause. The skip path returns without starting any work -- the
+    // assertion above is that the call does not even throw -- so there is no
+    // fire-and-forget in flight for an interval to catch. A pause would only
+    // have given an unrelated frame time to arrive and make this flaky in the
+    // other direction.
+    expect(parkedRequestCount()).toBe(baseline);
+  });
+});
+
+describe("assembleRunCredentialsSnapshot", () => {
+  // getRepoDir mirrors the production `<base>/<kind>/<id>` layout that
+  // `createSpawnTestRepoStore` uses, so a file written at
+  // `<base>/workflow-run/<anchorRunId>/runs/<runId>/grants.json` lands where
+  // the sink's working-tree read looks, and a step's deploy-time grants land
+  // at `<base>/agent-state/<repoId>/state/grants.json`.
+  function createReadStubRepoStore(tempBase: string): RepoStore {
+    const stub: Partial<RepoStore> = {
+      getRepoDir(repoId: RepoId): string {
+        return path.join(tempBase, repoId.kind, repoId.id);
+      },
+    };
+    // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion -- test stub; the sink reads only via getRepoDir working-tree reads
+    return new Proxy(stub as RepoStore, {
+      get(target, prop, receiver) {
+        const value = Reflect.get(target, prop, receiver);
+        if (value !== undefined) return value;
+        return () => {
+          throw new Error(
+            `stub RepoStore: ${String(prop)} not implemented for this test`,
+          );
+        };
+      },
+    });
+  }
+
+  const anchorRunId = "dep-run-grants";
+  const runId = "run-xyz";
+  const stepOrder = ["step-1", "step-2"];
+  const deriveStepAddress = ({
+    runId: dep,
+    stepId,
+  }: {
+    runId: string;
+    stepId: string;
+  }) => `${dep}-${stepId}@example.com`;
+
+  async function writeRunGrantsFile(
+    tempBase: string,
+    contents: string,
+  ): Promise<void> {
+    const dir = path.join(tempBase, "workflow-run", anchorRunId, "runs", runId);
+    await fs.mkdir(dir, { recursive: true });
+    await fs.writeFile(path.join(dir, "grants.json"), contents);
+  }
+
+  async function writeDeployTimeStepGrants(
+    tempBase: string,
+    stepId: string,
+    contents: string,
+  ): Promise<void> {
+    const dir = path.join(
+      tempBase,
+      "agent-state",
+      `${anchorRunId}-${stepId}`,
+      "state",
+    );
+    await fs.mkdir(dir, { recursive: true });
+    await fs.writeFile(path.join(dir, "grants.json"), contents);
+  }
+
+  test("a run with a per-run grants file reads those grants over deploy-time", async () => {
+    const tempBase = await createTempBaseDir("sidecar-run-grants-");
+    const repoStore = createReadStubRepoStore(tempBase);
+
+    const runGrants = [
+      { id: "run-grant", resource: "tool:send-mail", effect: "allow" },
+    ];
+    await writeRunGrantsFile(tempBase, JSON.stringify({ grants: runGrants }));
+    // Deploy-time grants differ; the per-run read must win, so these are
+    // never surfaced.
+    await writeDeployTimeStepGrants(
+      tempBase,
+      "step-1",
+      JSON.stringify({ grants: [{ id: "deploy-grant" }] }),
+    );
+
+    const snapshot = await assembleRunCredentialsSnapshot({
+      repoStore,
+      anchorRunId,
+      runId,
+      stepOrder,
+      deriveStepAddress,
+    });
+    if (snapshot === null) throw new Error("expected a snapshot");
+
+    // Every step carries the single flat per-run grant set, keyed on the
+    // deploy-time per-step address, with a shared content hash.
+    expect(snapshot.steps).toHaveLength(2);
+    for (const step of snapshot.steps) {
+      expect(step.grants).toEqual(runGrants);
+      expect(step.address).toBe(`${anchorRunId}-${step.stepId}@example.com`);
+    }
+    expect(snapshot.steps[0]?.stepId).toBe("step-1");
+    expect(snapshot.steps[1]?.stepId).toBe("step-2");
+    expect(snapshot.steps[0]?.contentHash).toBe(
+      snapshot.steps[1]?.contentHash ?? "",
+    );
+  });
+
+  test("a run without a per-run grants file has no snapshot", async () => {
+    const tempBase = await createTempBaseDir("sidecar-run-grants-");
+    const repoStore = createReadStubRepoStore(tempBase);
+
+    // No per-run file. A deploy-time file is present so a silent fallback
+    // would surface deploy-time grants; the run must have none, so the
+    // barrier fails it closed and a new child starts with no snapshot.
+    await writeDeployTimeStepGrants(
+      tempBase,
+      "step-1",
+      JSON.stringify({ grants: [{ id: "deploy-grant-1" }] }),
+    );
+
+    expect(
+      await assembleRunCredentialsSnapshot({
+        repoStore,
+        anchorRunId,
+        runId,
+        stepOrder,
+        deriveStepAddress,
+      }),
+    ).toBeNull();
+  });
+
+  test("a run with a malformed per-run grants file throws", async () => {
+    const tempBase = await createTempBaseDir("sidecar-run-grants-");
+    const repoStore = createReadStubRepoStore(tempBase);
+
+    // The file exists but is not valid JSON. A deploy-time file is present so
+    // a swallowed error would silently fall back rather than surface.
+    await writeRunGrantsFile(tempBase, "{ not valid json");
+    await writeDeployTimeStepGrants(
+      tempBase,
+      "step-1",
+      JSON.stringify({ grants: [{ id: "deploy-grant" }] }),
+    );
+
+    await expect(
+      assembleRunCredentialsSnapshot({
+        repoStore,
+        anchorRunId,
+        runId,
+        stepOrder,
+        deriveStepAddress,
+      }),
+    ).rejects.toThrow(/is not valid JSON/);
+
+    // A file that is valid JSON but violates the `{ grants: [] }` envelope
+    // also throws, rather than falling back -- the presence of the file
+    // implies a grants frame was delivered.
+    await writeRunGrantsFile(tempBase, JSON.stringify({ grants: "not-array" }));
+    await expect(
+      assembleRunCredentialsSnapshot({
+        repoStore,
+        anchorRunId,
+        runId,
+        stepOrder,
+        deriveStepAddress,
+      }),
+    ).rejects.toThrow(/failed validation/);
+  });
+
+  test("a re-dispatched run re-reads the durable per-run grants, not the deploy-time fallback", async () => {
+    // On a child respawn the supervisor's `replayProcessingToInbox` moves an
+    // already-consumed run's orphaned `processing/` entry back to `inbox/`,
+    // so the fresh dispatch loop re-dequeues it and the `onRunStart` grants
+    // barrier fires AGAIN for the same runId. The per-run grants file is a
+    // durable commit -- `readRunGrants` never deletes it -- so this second
+    // resolution must still read `runs/<runId>/grants.json` and win over the
+    // deploy-time fallback, rather than inheriting the deployment's grants as
+    // if the run had never carried its own.
+    const tempBase = await createTempBaseDir("sidecar-run-grants-");
+    const repoStore = createReadStubRepoStore(tempBase);
+
+    const runGrants = [
+      { id: "run-grant", resource: "tool:send-mail", effect: "allow" },
+    ];
+    await writeRunGrantsFile(tempBase, JSON.stringify({ grants: runGrants }));
+    // A deploy-time file is present so a spurious fallback (a deleted or
+    // missed per-run file on the second read) would surface as the wrong
+    // grants rather than an empty set.
+    await writeDeployTimeStepGrants(
+      tempBase,
+      "step-1",
+      JSON.stringify({ grants: [{ id: "deploy-grant" }] }),
+    );
+
+    const first = await assembleRunCredentialsSnapshot({
+      repoStore,
+      anchorRunId,
+      runId,
+      stepOrder,
+      deriveStepAddress,
+    });
+
+    // The re-dispatch: resolve the same run a second time with no rewrite of
+    // the grants file in between.
+    const second = await assembleRunCredentialsSnapshot({
+      repoStore,
+      anchorRunId,
+      runId,
+      stepOrder,
+      deriveStepAddress,
+    });
+    if (first === null || second === null) {
+      throw new Error("expected both snapshots");
+    }
+
+    for (const snapshot of [first, second]) {
+      expect(snapshot.steps).toHaveLength(2);
+      for (const step of snapshot.steps) {
+        expect(step.grants).toEqual(runGrants);
+      }
+    }
+    // The second resolution is byte-identical to the first: same flat grant
+    // set, same content hash across every step.
+    expect(second.steps.map((s) => s.contentHash)).toEqual(
+      first.steps.map((s) => s.contentHash),
+    );
+  });
+});

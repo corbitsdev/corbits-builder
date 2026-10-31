@@ -1,0 +1,49 @@
+{
+  "name": "@intx/test-harness",
+  "description": "Database and environment test-harness primitives shared across the tests tree",
+  "version": "0.5.0",
+  "license": "LGPL-2.1-only",
+  "private": true,
+  "type": "module",
+  "exports": {
+    "./env": {
+      "types": "./env.ts",
+      "default": "./env.ts"
+    },
+    "./db-harness": {
+      "types": "./db-harness.ts",
+      "default": "./db-harness.ts"
+    },
+    "./db-provision": {
+      "types": "./db-provision.ts",
+      "default": "./db-provision.ts"
+    },
+    "./grants": {
+      "types": "./grants.ts",
+      "default": "./grants.ts"
+    },
+    "./http": {
+      "types": "./http.ts",
+      "default": "./http.ts"
+    },
+    "./bun-server": {
+      "types": "./bun-server.ts",
+      "default": "./bun-server.ts"
+    },
+    "./seed": {
+      "types": "./seed.ts",
+      "default": "./seed.ts"
+    },
+    "./crypto": {
+      "types": "./crypto.ts",
+      "default": "./crypto.ts"
+    }
+  },
+  "dependencies": {
+    "@intx/crypto": "workspace:*",
+    "@intx/db": "workspace:*",
+    "@intx/types": "workspace:*",
+    "drizzle-orm": "catalog:",
+    "postgres": "catalog:"
+  }
+}

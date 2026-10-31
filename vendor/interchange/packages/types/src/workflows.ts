@@ -1,0 +1,77 @@
+// Status vocabulary for the first-class workflow definition model, kept in its
+// own workflow-scoped module.
+export const workflowDefinitionStatuses = ["deployed", "stopped"] as const;
+export type WorkflowDefinitionStatus =
+  (typeof workflowDefinitionStatuses)[number];
+
+export const workflowDefinitionVersionStatuses = [
+  "active",
+  "inactive",
+  "failed",
+] as const;
+export type WorkflowDefinitionVersionStatus =
+  (typeof workflowDefinitionVersionStatuses)[number];
+
+import { type } from "arktype";
+import { WorkflowLifecyclePolicy } from "./workflow-lifecycle";
+
+const WorkflowDefinitionStatusType = type.enumerated(
+  ...workflowDefinitionStatuses,
+);
+const WorkflowDefinitionVersionStatusType = type.enumerated(
+  ...workflowDefinitionVersionStatuses,
+);
+
+// One entry in a definition's version history.
+export const WorkflowDefinitionVersion = type({
+  version: "string",
+  status: WorkflowDefinitionVersionStatusType,
+  createdAt: "string",
+});
+
+// The first-class workflow definition, as returned by the definition routes.
+export const WorkflowDefinitionResponse = type({
+  id: "string",
+  tenantId: "string",
+  name: "string",
+  "description?": "string | null",
+  currentVersion: "string",
+  "lifecycle?": WorkflowLifecyclePolicy,
+  status: WorkflowDefinitionStatusType.describe(
+    "Lifecycle state of the definition: `deployed` (a launchable version is active) or `stopped` (deactivated).",
+  ),
+  createdAt: "string",
+  updatedAt: "string",
+});
+
+// Rollback a definition to a prior version.
+export const WorkflowRollbackRequest = type({
+  version: "string",
+});
+
+export const UpdateWorkflowDefinitionLifecycle = type({
+  lifecycle: WorkflowLifecyclePolicy,
+}).onUndeclaredKey("reject");
+
+export const WorkflowDeploymentStatus = type.enumerated(
+  "deployed",
+  "pending",
+  "recovering",
+  "releasing",
+  "released",
+  "failed",
+  "destroy_failed",
+);
+export type WorkflowDeploymentStatus = typeof WorkflowDeploymentStatus.infer;
+
+export const WorkflowDeploymentResponse = type({
+  id: "string",
+  tenantId: "string",
+  definitionAssetId: "string",
+  status: WorkflowDeploymentStatus.describe(
+    "Deployment lifecycle status. `recovering` means the Hub is replacing deployment capacity. `failed` is a terminal allocation failure with no infrastructure. `destroy_failed` means automatic cleanup stopped. Read `GET /api/tenants/:tenantId/workflows/runs/:runId/lifecycle` for the allocation's failure code and message.",
+  ),
+  createdAt: "string",
+});
+export type WorkflowDeploymentResponse =
+  typeof WorkflowDeploymentResponse.infer;

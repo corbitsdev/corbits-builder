@@ -1,0 +1,49 @@
+#!/usr/bin/env bash
+# shellcheck shell=bash
+
+source "$(dirname -- "${BASH_SOURCE[0]}")/opsh"
+opsh::version::require v0.9.0
+lib::import step-runner
+
+REPODIR=$(git rev-parse --show-toplevel)
+DBPKG="$REPODIR/packages/db"
+
+# Source shared env, then migration-specific overrides
+if [[ -f "$REPODIR/.env" ]]; then
+	# shellcheck disable=SC1091
+	set -a
+	source "$REPODIR/.env"
+	set +a
+	log::info "loaded .env"
+fi
+
+if [[ -f "$REPODIR/.env.migrate" ]]; then
+	# shellcheck disable=SC1091
+	set -a
+	source "$REPODIR/.env.migrate"
+	set +a
+	log::info "loaded .env.migrate"
+fi
+
+step::10::type_check() {
+	log::info "running type check..."
+	(cd "$REPODIR" && make build) || log::fatal "type check failed, fix errors before migrating"
+}
+
+step::20::generate() {
+	log::info "generating migration from schema..."
+	(cd "$DBPKG" && bun drizzle-kit generate) \
+		|| log::fatal "drizzle-kit generate failed"
+}
+
+step::30::migrate() {
+	for var in DB_HOST DB_USER DB_NAME; do
+		[[ -n "${!var:-}" ]] || log::fatal "missing required env var: $var"
+	done
+
+	log::info "applying migrations..."
+	(cd "$DBPKG" && bun drizzle-kit migrate) \
+		|| log::fatal "drizzle-kit migrate failed"
+}
+
+steps::run step

@@ -1,0 +1,645 @@
+// Lifecycle-edge race regression tests for the supervisor.
+//
+// Gap A pins the `waitForReady` -> `pumpUpstreamControl` iterator
+// handoff: an upstream control frame that arrives in the wire-level
+// buffer immediately after `ready` (before the upstream pump
+// subscribes) must still flow into `pumpUpstreamControl` and not be
+// dropped on the floor when the generator's first consumer
+// (`waitForReady`) exits.
+//
+// Gap B pins the spawn-time crash vs `shutdownInternal` race: when a
+// `shutdown()` lands while `spawn()` is still awaiting the child's
+// `ready` frame, the spawn-time error (control channel ended before
+// `ready`) must surface to the awaiting `spawn()` caller and not be
+// silently swallowed by the shutdown teardown.
+
+import { describe, test, expect } from "bun:test";
+import fs from "node:fs/promises";
+import os from "node:os";
+import path from "node:path";
+
+import { generateKeyPair } from "@intx/crypto";
+import { hexEncode } from "@intx/types";
+import type { RepoId } from "@intx/hub-sessions";
+import {
+  createMemoryFrameStream,
+  createMemoryNdjsonStream,
+  createMockMailBus,
+  createStubRepoStore,
+} from "@intx/workflow-host/testing";
+
+import {
+  createWorkflowSupervisor,
+  DEFAULT_KILL_TIMEOUT_MS,
+  type InboxPrimitives,
+  type MailBusBindings,
+  type SignedPayload,
+  type SubprocessHandle,
+  type SubprocessSpawner,
+  type WorkflowSupervisorBindings,
+} from "./index";
+import { defaultStepRepoId, STEP_GRANTS_PATH } from "./credentials";
+import { createControlChannelSender } from "../ipc/index";
+import { waitUntil } from "@intx/types/testing";
+
+async function makeTempDir(prefix: string): Promise<string> {
+  return fs.mkdtemp(path.join(os.tmpdir(), prefix));
+}
+
+async function seedStepGrants(
+  baseDir: string,
+  repoId: RepoId,
+  grants: unknown[],
+): Promise<void> {
+  const dir = path.join(baseDir, repoId.kind, repoId.id);
+  await fs.mkdir(path.join(dir, "state"), { recursive: true });
+  await fs.writeFile(
+    path.join(dir, STEP_GRANTS_PATH),
+    JSON.stringify({ grants }),
+  );
+}
+
+function createMemoryInboxPrimitives(): InboxPrimitives {
+  type Entry = {
+    messageId: string;
+    receivedAt: number;
+    mailAuditRef: { store: string; path: string };
+  };
+  const state = new Map<
+    string,
+    {
+      inbox: Map<string, Entry>;
+      processing: Map<string, Entry>;
+      consumed: Map<string, Entry>;
+    }
+  >();
+  function getOrCreate(address: string) {
+    let entry = state.get(address);
+    if (entry === undefined) {
+      entry = { inbox: new Map(), processing: new Map(), consumed: new Map() };
+      state.set(address, entry);
+    }
+    return entry;
+  }
+  function key(receivedAt: number, messageId: string): string {
+    return `${String(receivedAt)}-${messageId}`;
+  }
+  return {
+    async enqueueInbox(_store, _principal, _repoId, args) {
+      const s = getOrCreate(args.address);
+      const k = key(args.receivedAt, args.messageId);
+      const envelope: Entry = {
+        messageId: args.messageId,
+        receivedAt: args.receivedAt,
+        mailAuditRef: args.mailAuditRef,
+      };
+      s.inbox.set(k, envelope);
+      return {
+        outcome: "enqueued",
+        commitSha: "memory",
+        inboxKey: k,
+        envelope: {
+          messageId: args.messageId,
+          receivedAt: args.receivedAt,
+          address: args.address,
+          mailAuditRef: args.mailAuditRef,
+        },
+      };
+    },
+    async dequeueToProcessing(_store, _principal, _repoId, address) {
+      const s = getOrCreate(address);
+      const entries = [...s.inbox.entries()].sort(([, a], [, b]) => {
+        if (a.receivedAt !== b.receivedAt) return a.receivedAt - b.receivedAt;
+        if (a.messageId < b.messageId) return -1;
+        if (a.messageId > b.messageId) return 1;
+        return 0;
+      });
+      if (entries.length === 0) return null;
+      const head = entries[0];
+      if (head === undefined) throw new Error("unreachable");
+      const [k, envelope] = head;
+      s.inbox.delete(k);
+      s.processing.set(k, envelope);
+      return {
+        commitSha: "memory",
+        key: k,
+        envelope: {
+          messageId: envelope.messageId,
+          receivedAt: envelope.receivedAt,
+          address,
+          mailAuditRef: envelope.mailAuditRef,
+        },
+      };
+    },
+    async markConsumed(_store, _principal, _repoId, args) {
+      const s = getOrCreate(args.address);
+      let foundKey: string | null = null;
+      let envelope: Entry | null = null;
+      for (const [k, value] of s.processing) {
+        if (value.messageId === args.messageId) {
+          foundKey = k;
+          envelope = value;
+          break;
+        }
+      }
+      if (foundKey === null || envelope === null) {
+        throw new Error("processing entry not found");
+      }
+      s.processing.delete(foundKey);
+      s.consumed.set(args.messageId, envelope);
+      return {
+        commitSha: "memory",
+        envelope: {
+          messageId: envelope.messageId,
+          receivedAt: envelope.receivedAt,
+          address: args.address,
+          runId: args.runId,
+          consumedAt: args.consumedAt,
+          mailAuditRef: envelope.mailAuditRef,
+        },
+        watermark: 0,
+        prunedMessageIds: [],
+      };
+    },
+    async replayProcessingToInbox(_store, _principal, _repoId, address) {
+      const s = getOrCreate(address);
+      const replayedKeys: string[] = [];
+      for (const [k, value] of s.processing) {
+        s.inbox.set(k, value);
+        replayedKeys.push(k);
+      }
+      s.processing.clear();
+      return { commitSha: "memory", replayedKeys };
+    },
+  };
+}
+
+async function buildBindings(opts: {
+  baseDir: string;
+  spawner: SubprocessSpawner;
+  mailBus: MailBusBindings;
+  ipcKeypair: { privateKey: Uint8Array; publicKey: Uint8Array };
+}): Promise<WorkflowSupervisorBindings> {
+  return {
+    repoStore: createStubRepoStore(opts.baseDir, { writeTree: true }),
+    signAsPrincipal: async (): Promise<SignedPayload> => ({
+      sig: new Uint8Array(64),
+      principalKind: "supervisor",
+    }),
+    mailBus: opts.mailBus,
+    subprocessSpawner: opts.spawner,
+    binaryPath: "/fake/bin/workflow-child",
+    substrateEnv: { DATA_DIR: opts.baseDir },
+    dynamicSpawnEnv: () => ({}),
+    workflowRunRepoId: { kind: "workflow-run", id: "deployment-x" },
+    workflowRunRef: "refs/heads/main",
+    anchorRunId: "deployment-x",
+    stepCount: 1,
+    deploymentMailAddress: "deployment-x@example.com",
+    readPrincipal: { kind: "supervisor" },
+    deriveStepAddress: ({ runId, stepId }) => `${runId}-${stepId}@example.com`,
+    ipcKeyPairFactory: () => Promise.resolve(opts.ipcKeypair),
+    inboxPrimitives: createMemoryInboxPrimitives(),
+  };
+}
+
+describe("waitForReady -> pumpUpstreamControl iterator handoff (Gap A)", () => {
+  test("a recycle.request that lands immediately after ready is delivered to the upstream pump rather than dropped", async () => {
+    // The synthetic child injects `ready` and `recycle.request` back-
+    // to-back into the supervisor's upstream control reader BEFORE the
+    // supervisor's `spawn()` consumes them. The handoff under test:
+    // `waitForReady` consumes `ready` off the receiver generator and
+    // returns; `pumpUpstreamControl` (started later in `spawn()`)
+    // continues iterating the SAME generator. If the handoff finalized
+    // the generator on `ready`, the buffered `recycle.request` frame
+    // would be silently dropped and the supervisor would never react.
+    // The assertion: the supervisor honours the request by invoking
+    // its recycle path, which spawns a fresh workflow-process child
+    // under a new channelId.
+    const baseDir = await makeTempDir("lifecycle-races-gap-a-");
+    await seedStepGrants(
+      baseDir,
+      defaultStepRepoId({ runId: "deployment-x", stepId: "step-1" }),
+      [{ resource: "thing", action: "read" }],
+    );
+    const ipcKeypair = await generateKeyPair();
+    const childIpcKeypair = await generateKeyPair();
+    const mailBus = createMockMailBus();
+
+    type FakeChild = {
+      pid: number;
+      channelId: string | undefined;
+      controlIn: ReturnType<typeof createMemoryNdjsonStream>;
+      controlOut: ReturnType<typeof createMemoryNdjsonStream>;
+      events: ReturnType<typeof createMemoryFrameStream>;
+      killed: boolean;
+      resolveExit: ((code: number) => void) | undefined;
+      exited: Promise<number>;
+    };
+    const children: FakeChild[] = [];
+    const spawner: SubprocessSpawner = ({ env }) => {
+      const controlIn = createMemoryNdjsonStream();
+      const controlOut = createMemoryNdjsonStream();
+      const events = createMemoryFrameStream();
+      let resolveExit: ((code: number) => void) | undefined;
+      const exited = new Promise<number>((resolve) => {
+        resolveExit = resolve;
+      });
+      const child: FakeChild = {
+        pid: 5000 + children.length,
+        channelId: env.IPC_CHANNEL_ID,
+        controlIn,
+        controlOut,
+        events,
+        killed: false,
+        resolveExit,
+        exited,
+      };
+      children.push(child);
+      const handle: SubprocessHandle = {
+        pid: child.pid,
+        controlWriter: controlOut.writer,
+        controlReader: controlIn.reader,
+        eventReader: events.reader,
+        kill: () => {
+          child.killed = true;
+          controlIn.close();
+          events.close();
+          child.resolveExit?.(0);
+        },
+        exited,
+      };
+      return handle;
+    };
+
+    const bindings = await buildBindings({
+      baseDir,
+      spawner,
+      mailBus,
+      ipcKeypair,
+    });
+    const supervisor = createWorkflowSupervisor(bindings);
+
+    const spawnPromise = supervisor.spawn({
+      stepOrder: ["step-1"],
+      definitionHash: "def-hash-abc",
+      warmKeep: false,
+
+      onInferenceEvent: () => undefined,
+    });
+
+    // Wait until the supervisor has invoked the spawner. At this
+    // moment the supervisor's `wireChild` has constructed the receive
+    // generator but no consumer has subscribed -- both frames injected
+    // below sit in the reader's internal buffer until the generator
+    // pulls them.
+    await waitUntil(
+      () => children.length > 0 && children[0]?.channelId !== undefined,
+    );
+    const first = children[0];
+    if (first === undefined || first.channelId === undefined) {
+      throw new Error("first child not minted");
+    }
+    const childSender = createControlChannelSender({
+      privateKeySeed: childIpcKeypair.privateKey,
+      channelId: first.channelId,
+      writer: {
+        write(line: string) {
+          first.controlIn.inject(line);
+        },
+      },
+    });
+    // Inject `ready` followed IMMEDIATELY by `recycle.request`. Both
+    // frames are buffered in the reader before any iterator consumer
+    // pulls. `waitForReady` will consume `ready` and exit; the
+    // upstream pump must observe the buffered `recycle.request` next.
+    await childSender.send({
+      type: "ready",
+      data: {
+        childPid: first.pid,
+        childPublicKey: hexEncode(childIpcKeypair.publicKey),
+      },
+    });
+    await childSender.send({
+      type: "recycle.request",
+      data: { reason: "early-arriving" },
+    });
+
+    await spawnPromise;
+
+    // The supervisor's recycle path under origin=self spawns a fresh
+    // workflow-process child. Wait for the second spawn; if Gap A
+    // were unhealed (e.g. `for await ... return` over the receiver
+    // generator), the buffered `recycle.request` would be silently
+    // dropped and `children.length` would never reach 2.
+    await waitUntil(() => children.length >= 2);
+    expect(children.length).toBeGreaterThanOrEqual(2);
+    const second = children[1];
+    if (second === undefined || second.channelId === undefined) {
+      throw new Error("second child not minted");
+    }
+    expect(second.channelId).not.toBe(first.channelId);
+
+    // Drive the replacement child's `ready` so the recycle path
+    // settles cleanly before shutdown.
+    const secondSender = createControlChannelSender({
+      privateKeySeed: childIpcKeypair.privateKey,
+      channelId: second.channelId,
+      writer: {
+        write(line: string) {
+          second.controlIn.inject(line);
+        },
+      },
+    });
+    await secondSender.send({
+      type: "ready",
+      data: {
+        childPid: second.pid,
+        childPublicKey: hexEncode(childIpcKeypair.publicKey),
+      },
+    });
+
+    await supervisor.shutdown();
+  });
+});
+
+describe("shutdownInternal vs spawn-time crash (Gap B)", () => {
+  test("kills the child before waiting for a blocked dispatch loop", async () => {
+    const baseDir = await makeTempDir("shutdown-blocked-dispatch-");
+    await seedStepGrants(
+      baseDir,
+      defaultStepRepoId({ runId: "deployment-x", stepId: "step-1" }),
+      [],
+    );
+    const ipcKeypair = await generateKeyPair();
+    const childKeypair = await generateKeyPair();
+    const controlIn = createMemoryNdjsonStream();
+    const controlOut = createMemoryNdjsonStream();
+    const events = createMemoryFrameStream();
+    const spawned = Promise.withResolvers<Record<string, string>>();
+    const blocked = Promise.withResolvers<undefined>();
+    const unblocked = Promise.withResolvers<undefined>();
+    const exited = Promise.withResolvers<number>();
+    let kills = 0;
+    const bindings = await buildBindings({
+      baseDir,
+      ipcKeypair,
+      mailBus: createMockMailBus(),
+      spawner: ({ env }) => {
+        spawned.resolve(env);
+        return {
+          pid: 9992,
+          controlWriter: controlOut.writer,
+          controlReader: controlIn.reader,
+          eventReader: events.reader,
+          exited: exited.promise,
+          kill() {
+            kills += 1;
+            unblocked.resolve(undefined);
+            controlIn.close();
+            events.close();
+            exited.resolve(0);
+          },
+        };
+      },
+    });
+    const supervisor = createWorkflowSupervisor({
+      ...bindings,
+      inboxPrimitives: {
+        ...createMemoryInboxPrimitives(),
+        async dequeueToProcessing() {
+          blocked.resolve(undefined);
+          await unblocked.promise;
+          return null;
+        },
+      },
+    });
+    const spawning = supervisor.spawn({
+      stepOrder: ["step-1"],
+      definitionHash: "test",
+      warmKeep: false,
+      onInferenceEvent: () => undefined,
+    });
+    const env = await spawned.promise;
+    const channelId = env.IPC_CHANNEL_ID;
+    if (channelId === undefined) throw new Error("Missing channel id");
+    const sender = createControlChannelSender({
+      privateKeySeed: childKeypair.privateKey,
+      channelId,
+      writer: controlIn.writer,
+    });
+    await sender.send({
+      type: "ready",
+      data: {
+        childPid: 9992,
+        childPublicKey: hexEncode(childKeypair.publicKey),
+      },
+    });
+    await spawning;
+    await blocked.promise;
+    try {
+      await Promise.all([supervisor.shutdown(), supervisor.shutdown()]);
+      expect(kills).toBe(1);
+    } finally {
+      unblocked.resolve(undefined);
+      await supervisor.shutdown();
+      await fs.rm(baseDir, { recursive: true, force: true });
+    }
+  });
+
+  test("escalates to SIGKILL when the child ignores SIGTERM", async () => {
+    const baseDir = await makeTempDir("shutdown-sigterm-trap-");
+    await seedStepGrants(
+      baseDir,
+      defaultStepRepoId({ runId: "deployment-x", stepId: "step-1" }),
+      [],
+    );
+    const ipcKeypair = await generateKeyPair();
+    const childKeypair = await generateKeyPair();
+    const controlIn = createMemoryNdjsonStream();
+    const controlOut = createMemoryNdjsonStream();
+    const events = createMemoryFrameStream();
+    const spawned = Promise.withResolvers<Record<string, string>>();
+    const exited = Promise.withResolvers<number>();
+    const killDeadline = Promise.withResolvers<() => void>();
+    const signals: (number | string | undefined)[] = [];
+    const bindings = await buildBindings({
+      baseDir,
+      ipcKeypair,
+      mailBus: createMockMailBus(),
+      spawner: ({ env }) => {
+        spawned.resolve(env);
+        return {
+          pid: 9993,
+          controlWriter: controlOut.writer,
+          controlReader: controlIn.reader,
+          eventReader: events.reader,
+          exited: exited.promise,
+          kill(signal) {
+            signals.push(signal);
+            if (signal !== "SIGKILL") return;
+            controlIn.close();
+            events.close();
+            exited.resolve(137);
+          },
+        };
+      },
+    });
+    const supervisor = createWorkflowSupervisor({
+      ...bindings,
+      setTimer: (cb, ms) => {
+        if (ms === DEFAULT_KILL_TIMEOUT_MS) killDeadline.resolve(cb);
+        return undefined;
+      },
+      clearTimer: () => undefined,
+    });
+    const spawning = supervisor.spawn({
+      stepOrder: ["step-1"],
+      definitionHash: "test",
+      warmKeep: false,
+      onInferenceEvent: () => undefined,
+    });
+    const env = await spawned.promise;
+    const channelId = env.IPC_CHANNEL_ID;
+    if (channelId === undefined) throw new Error("Missing channel id");
+    const sender = createControlChannelSender({
+      privateKeySeed: childKeypair.privateKey,
+      channelId,
+      writer: controlIn.writer,
+    });
+    await sender.send({
+      type: "ready",
+      data: {
+        childPid: 9993,
+        childPublicKey: hexEncode(childKeypair.publicKey),
+      },
+    });
+    await spawning;
+    try {
+      const stopping = supervisor.shutdown();
+      (await killDeadline.promise)();
+      await stopping;
+      expect(signals).toEqual(["SIGTERM", "SIGKILL"]);
+    } finally {
+      await fs.rm(baseDir, { recursive: true, force: true });
+    }
+  });
+
+  test("a spawn that loses its control channel mid-handshake surfaces the failure to the awaiting spawn() caller even when shutdown races in", async () => {
+    // The spawner returns a handle whose control reader never yields
+    // `ready`. The test starts `spawn()`, lets the supervisor reach
+    // the `waitForReady` await, then calls `shutdown()`. The shutdown
+    // path kills the handle, which closes the control reader. The
+    // supervisor's `waitForReady` observes the iterator ending and
+    // throws "control channel ended before child emitted ready". That
+    // error MUST surface as a `spawn()` rejection -- not be swallowed
+    // by the shutdown teardown's catches.
+    const baseDir = await makeTempDir("lifecycle-races-gap-b-");
+    await seedStepGrants(
+      baseDir,
+      defaultStepRepoId({ runId: "deployment-x", stepId: "step-1" }),
+      [{ resource: "thing", action: "read" }],
+    );
+    const ipcKeypair = await generateKeyPair();
+    const mailBus = createMockMailBus();
+
+    let spawnerInvoked = false;
+    let controlIn: ReturnType<typeof createMemoryNdjsonStream> | undefined;
+    let events: ReturnType<typeof createMemoryFrameStream> | undefined;
+    let resolveExit: ((code: number) => void) | undefined;
+    const exited = new Promise<number>((resolve) => {
+      resolveExit = resolve;
+    });
+    let killed = false;
+    const killRequested = Promise.withResolvers<undefined>();
+    const spawner: SubprocessSpawner = () => {
+      spawnerInvoked = true;
+      controlIn = createMemoryNdjsonStream();
+      const controlOut = createMemoryNdjsonStream();
+      events = createMemoryFrameStream();
+      const handle: SubprocessHandle = {
+        pid: 9991,
+        controlWriter: controlOut.writer,
+        controlReader: controlIn.reader,
+        eventReader: events.reader,
+        kill: () => {
+          killed = true;
+          controlIn?.close();
+          events?.close();
+          killRequested.resolve(undefined);
+        },
+        exited,
+      };
+      return handle;
+    };
+
+    const bindings = await buildBindings({
+      baseDir,
+      spawner,
+      mailBus,
+      ipcKeypair,
+    });
+    const supervisor = createWorkflowSupervisor(bindings);
+
+    // Spawn but never deliver `ready`. The supervisor will sit on
+    // `waitForReady`.
+    const spawnPromise = supervisor.spawn({
+      stepOrder: ["step-1"],
+      definitionHash: "def-hash-abc",
+      warmKeep: false,
+
+      onInferenceEvent: () => undefined,
+    });
+    // Wait for the spawn to be in flight and registered with the
+    // mail bus so we know the supervisor is past `wireChild` and
+    // mid-handshake.
+    await mailBus.awaitRegistered("deployment-x@example.com");
+    await waitUntil(() => spawnerInvoked);
+
+    // Concurrently trigger shutdown. The shutdown's `prior.handle.kill()`
+    // closes the control reader; the supervisor's `waitForReady`
+    // throws "control channel ended before child emitted ready" and
+    // unwinds out of `spawn()`. The test asserts the rejection is
+    // observable -- a swallowed error would either hang `spawnPromise`
+    // forever or let it resolve with a malformed `SpawnResult`.
+    const cancellation = supervisor
+      .requestCancel({
+        runId: "deployment-x",
+        origin: "supervisor-operator",
+        reason: "Stop during initialization",
+        at: new Date().toISOString(),
+      })
+      .then(
+        () => null,
+        (cause: unknown) => cause,
+      );
+    const shutdownPromise = supervisor.shutdown();
+    await killRequested.promise;
+    let concurrentShutdownFinished = false;
+    const concurrentShutdown = supervisor.shutdown().then(() => {
+      concurrentShutdownFinished = true;
+    });
+    // Drain this event-loop turn while the child's exit is explicitly held.
+    await new Promise<void>((resolve) => setImmediate(resolve));
+    const returnedBeforeExit = concurrentShutdownFinished;
+    resolveExit?.(0);
+
+    let spawnError: unknown;
+    try {
+      await spawnPromise;
+      spawnError = "spawn resolved unexpectedly";
+    } catch (cause) {
+      spawnError = cause;
+    }
+    await shutdownPromise;
+    await concurrentShutdown;
+    expect(returnedBeforeExit).toBe(false);
+    expect(await cancellation).toBeInstanceOf(Error);
+
+    expect(killed).toBe(true);
+    expect(spawnError).toBeInstanceOf(Error);
+    const message =
+      spawnError instanceof Error ? spawnError.message : String(spawnError);
+    expect(message).toMatch(/control channel ended before child emitted ready/);
+  });
+});

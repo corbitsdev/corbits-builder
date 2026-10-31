@@ -1,0 +1,1668 @@
+import { describe, test, expect } from "bun:test";
+
+import type { InferenceSource } from "@intx/types/runtime";
+import type { CredentialDelivery } from "@intx/types/credential-delivery";
+import type { RepoId, RepoStore } from "@intx/hub-sessions";
+import { waitUntil } from "@intx/types/testing";
+import {
+  createDeploymentAddressRegistry,
+  createMultistepDrainRouter,
+  createMultistepMailRouter,
+  createMultistepSignalRouter,
+  createMultistepSourcesRouter,
+  createMultistepCredentialsRouter,
+  createWorkflowRunPackClient,
+  createWorkflowRunPackPushingRepoStore,
+  type WorkflowRunPackClient,
+  type WorkflowRunPackPushingRepoStore,
+} from "./workflow-run-pack-client";
+
+function isConnectionLost(error: unknown): boolean {
+  return error instanceof Error && error.message === "Connection lost";
+}
+
+function deriveWorkflowRunRepoId(agentAddress: string): string {
+  return agentAddress.replaceAll(/[^a-zA-Z0-9_-]/g, "-");
+}
+
+function createRecordingUnderlyingRepoStore(
+  refTips: Record<string, string | null> = {},
+): {
+  store: RepoStore;
+  preserveCalls: {
+    principal: { kind: string };
+    repoId: RepoId;
+    ref: string;
+  }[];
+  packs: { principal: { kind: string }; repoId: RepoId; ref: string }[];
+  packedTipCommits: { repoId: RepoId; ref: string; commitSha: string }[];
+} {
+  const preserveCalls: {
+    principal: { kind: string };
+    repoId: RepoId;
+    ref: string;
+  }[] = [];
+  const packs: {
+    principal: { kind: string };
+    repoId: RepoId;
+    ref: string;
+  }[] = [];
+  const packedTipCommits: {
+    repoId: RepoId;
+    ref: string;
+    commitSha: string;
+  }[] = [];
+  const stub: Partial<RepoStore> = {
+    getRepoDir(_repoId: RepoId): string {
+      return "/tmp/unused";
+    },
+    async writeTreePreservingPrefix(principal, repoId, ref, args) {
+      preserveCalls.push({ principal, repoId, ref });
+      await args.merge(new Map());
+      return {
+        commitSha: `sha-${String(preserveCalls.length)}`,
+        newlyTerminalRuns: [],
+      };
+    },
+    async resolveRef(_principal, _repoId, ref) {
+      // The client's empty-delta guard compares the current ref tip against
+      // the last commit it acked. Return a fixed tip distinct from the
+      // `createPack` sha so the guard never short-circuits these tests: the
+      // client acks `stub-pack-sha`, so a tip of `stub-tip-sha` always has
+      // un-shipped work.
+      const tip = refTips[ref];
+      return tip === undefined ? "stub-tip-sha" : tip;
+    },
+    async createPack(principal, repoId, ref) {
+      packs.push({ principal, repoId, ref });
+      return {
+        pack: new Uint8Array([0xab, 0xcd]),
+        commitSha: "stub-pack-sha",
+        ref,
+      };
+    },
+    commitPackedTip(repoId, ref, commitSha) {
+      packedTipCommits.push({ repoId, ref, commitSha });
+    },
+  };
+  // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion -- in-test stub; the unused RepoStore methods are guarded by the Proxy below
+  const store = new Proxy(stub as RepoStore, {
+    get(target, prop, receiver) {
+      const value = Reflect.get(target, prop, receiver);
+      if (value !== undefined) return value;
+      return () => {
+        throw new Error(
+          `stub RepoStore: ${String(prop)} not implemented for this test`,
+        );
+      };
+    },
+  });
+  return { store, preserveCalls, packs, packedTipCommits };
+}
+
+// Yield to the macrotask queue so the facade's coalescing loop settles a push
+// that already rejected.
+//
+// The loop latches a failed push in a `catch` chained on the rejection the
+// `packClient.push` double threw. Neither that double nor
+// `createRecordingUnderlyingRepoStore` performs IO, so every hop from the
+// throw to `slot.lastError` being set is a microtask, and one macrotask turn
+// drains the queue to exhaustion however deep that chain runs. There is
+// nothing to await instead: the latch has no reporter, and the one consumer
+// that does signal (`flushWorkflowRunPushes`) takes the latched error, which
+// is the value the tests using this need left in place.
+//
+// The chain is currently shallow enough that the catch lands before the
+// awaiting test resumes, so the callers below pass without this. The barrier
+// stays because that is a fact about the facade's present await depth, not
+// about its contract: one added `await` on the write path would silently move
+// the latch after the assertion.
+function drainPushSettle(): Promise<void> {
+  return new Promise<void>((resolve) => {
+    setTimeout(resolve, 0);
+  });
+}
+
+describe("createWorkflowRunPackClient", () => {
+  test("push builds a pack under the supervisor principal, forwards it to the hub link, and commits the packed tip on the ack", async () => {
+    const { store, packs, packedTipCommits } =
+      createRecordingUnderlyingRepoStore();
+    const sent: {
+      agentAddress: string;
+      repoId: RepoId;
+      pack: Uint8Array;
+      ref: string;
+      commitSha: string;
+    }[] = [];
+    const client = createWorkflowRunPackClient({
+      substrate: store,
+      hubLink: {
+        async pushWorkflowRunPack(opts) {
+          sent.push(opts);
+        },
+      },
+    });
+
+    await client.push({
+      agentAddress: "agent@example.com",
+      generation: 1,
+      repoId: { kind: "workflow-run", id: "agent-example-com" },
+      ref: "refs/heads/main",
+    });
+
+    expect(packs).toHaveLength(1);
+    expect(packs[0]?.principal.kind).toBe("supervisor");
+    expect(packs[0]?.repoId.kind).toBe("workflow-run");
+    expect(sent).toHaveLength(1);
+    expect(sent[0]?.agentAddress).toBe("agent@example.com");
+    expect(sent[0]?.commitSha).toBe("stub-pack-sha");
+    expect(sent[0]?.ref).toBe("refs/heads/main");
+    // The ack (pushWorkflowRunPack resolving) commits the packed tip
+    // for the shipped commit, so the next createPack ships incrementally.
+    expect(packedTipCommits).toHaveLength(1);
+    expect(packedTipCommits[0]?.repoId.id).toBe("agent-example-com");
+    expect(packedTipCommits[0]?.ref).toBe("refs/heads/main");
+    expect(packedTipCommits[0]?.commitSha).toBe("stub-pack-sha");
+  });
+
+  test("push does not commit the packed tip when the hub link rejects the transfer", async () => {
+    const { store, packedTipCommits } = createRecordingUnderlyingRepoStore();
+    const client = createWorkflowRunPackClient({
+      substrate: store,
+      hubLink: {
+        pushWorkflowRunPack: () =>
+          Promise.reject(new Error("transfer cancelled: Connection lost")),
+      },
+    });
+
+    await expect(
+      client.push({
+        agentAddress: "agent@example.com",
+        generation: 1,
+        repoId: { kind: "workflow-run", id: "agent-example-com" },
+        ref: "refs/heads/main",
+      }),
+    ).rejects.toThrow(/Connection lost/);
+
+    // A cancelled/rejected transfer never acks, so the packed tip must
+    // not advance: the retry rebuild re-includes the un-acked commits.
+    expect(packedTipCommits).toHaveLength(0);
+  });
+
+  test("forgetting a repository drops its acknowledged tips", async () => {
+    const { store } = createRecordingUnderlyingRepoStore({
+      "refs/heads/main": "stub-pack-sha",
+    });
+    let sent = 0;
+    const client = createWorkflowRunPackClient({
+      substrate: store,
+      hubLink: {
+        pushWorkflowRunPack: () => {
+          sent += 1;
+          return Promise.resolve();
+        },
+      },
+    });
+    const repoId: RepoId = { kind: "workflow-run", id: "agent-example-com" };
+    const push = () =>
+      client.push({
+        agentAddress: "agent@example.com",
+        generation: 1,
+        repoId,
+        ref: "refs/heads/main",
+      });
+
+    await push();
+    // The tip is the one just acknowledged, so nothing is left to ship.
+    await push();
+    expect(sent).toBe(1);
+
+    client.forget(repoId);
+    await push();
+    expect(sent).toBe(2);
+  });
+
+  test("a push acknowledged after its repository was forgotten writes nothing back", async () => {
+    const { store } = createRecordingUnderlyingRepoStore({
+      "refs/heads/main": "stub-pack-sha",
+    });
+    let sent = 0;
+    const pushed = Promise.withResolvers<undefined>();
+    let ack = Promise.withResolvers<undefined>();
+    const client = createWorkflowRunPackClient({
+      substrate: store,
+      hubLink: {
+        pushWorkflowRunPack: async () => {
+          sent += 1;
+          pushed.resolve(undefined);
+          await ack.promise;
+        },
+      },
+    });
+    const repoId: RepoId = { kind: "workflow-run", id: "agent-example-com" };
+    const push = () =>
+      client.push({
+        agentAddress: "agent@example.com",
+        generation: 1,
+        repoId,
+        ref: "refs/heads/main",
+      });
+
+    const inFlight = push();
+    await pushed.promise;
+    client.forget(repoId);
+    ack.resolve(undefined);
+    await inFlight;
+
+    // The forgotten repository ships its tip again.
+    ack = Promise.withResolvers<undefined>();
+    ack.resolve(undefined);
+    await push();
+    expect(sent).toBe(2);
+  });
+
+  test("push rejects when given a non-workflow-run repoId", async () => {
+    const { store } = createRecordingUnderlyingRepoStore();
+    const client = createWorkflowRunPackClient({
+      substrate: store,
+      hubLink: {
+        pushWorkflowRunPack: () => Promise.resolve(),
+      },
+    });
+    await expect(
+      client.push({
+        agentAddress: "a@example.com",
+        generation: 1,
+        repoId: { kind: "agent-state", id: "a@example.com" },
+        ref: "refs/heads/deploy",
+      }),
+    ).rejects.toThrow(/workflow-run/);
+  });
+});
+
+describe("createWorkflowRunPackPushingRepoStore", () => {
+  test("writeTreePreservingPrefix against a workflow-run repo fires the push hook", async () => {
+    const { store, preserveCalls } = createRecordingUnderlyingRepoStore();
+    const registry = createDeploymentAddressRegistry();
+    registry.record("dep-1", {
+      agentAddress: "agent-1@example.com",
+      generation: 1,
+    });
+    const pushed: { agentAddress: string; repoId: RepoId; ref: string }[] = [];
+    const facade = createWorkflowRunPackPushingRepoStore({
+      isConnectionLost,
+      deriveWorkflowRunRepoId,
+      underlying: store,
+      packClient: {
+        forget: () => undefined,
+        async push(opts) {
+          pushed.push(opts);
+        },
+      },
+      registry,
+    });
+
+    const repoId: RepoId = { kind: "workflow-run", id: "dep-1" };
+    const result = await facade.writeTreePreservingPrefix(
+      { kind: "supervisor" },
+      repoId,
+      "refs/heads/main",
+      {
+        preservePrefix: "runs/r-1/events/",
+        merge: async () => ({ "runs/r-1/events/0.json": "{}" }),
+        message: "append RunStarted",
+      },
+    );
+    await facade.flushWorkflowRunPushes(repoId, "refs/heads/main");
+
+    expect(result.commitSha).toBe("sha-1");
+    expect(preserveCalls).toHaveLength(1);
+    expect(pushed).toHaveLength(1);
+    expect(pushed[0]?.agentAddress).toBe("agent-1@example.com");
+    expect(pushed[0]?.repoId.id).toBe("dep-1");
+    expect(pushed[0]?.ref).toBe("refs/heads/main");
+  });
+
+  test("writeTreePreservingPrefix returns before the pack push finishes", async () => {
+    // The facade is required to return from writeTreePreservingPrefix
+    // as soon as the local commit lands; the pack push runs
+    // asynchronously. This is the throughput-critical behaviour the
+    // fifo-mail load test depends on -- without it, every
+    // supervisor write pays a full hub-ack round-trip in series and
+    // the dispatch loop's per-mail wall-clock balloons to ~15-25s/mail
+    // under sustained pressure.
+    const { store } = createRecordingUnderlyingRepoStore();
+    const registry = createDeploymentAddressRegistry();
+    registry.record("dep-pipeline", {
+      agentAddress: "agent-pipeline@example.com",
+      generation: 1,
+    });
+    let resolvePush: () => void = () => {
+      throw new Error("test: gate resolver was not captured before use");
+    };
+    const gate = new Promise<void>((resolve) => {
+      resolvePush = resolve;
+    });
+    const pushOrder: string[] = [];
+    const facade = createWorkflowRunPackPushingRepoStore({
+      isConnectionLost,
+      deriveWorkflowRunRepoId,
+      underlying: store,
+      packClient: {
+        forget: () => undefined,
+        async push() {
+          pushOrder.push("enter");
+          await gate;
+          pushOrder.push("exit");
+        },
+      },
+      registry,
+    });
+
+    const repoId: RepoId = { kind: "workflow-run", id: "dep-pipeline" };
+    await facade.writeTreePreservingPrefix(
+      { kind: "supervisor" },
+      repoId,
+      "refs/heads/main",
+      {
+        preservePrefix: "runs/r-1/events/",
+        merge: async () => ({ "runs/r-1/events/0.json": "{}" }),
+        message: "first",
+      },
+    );
+    // Wait for the push's `enter` log to land. With a serialised wrap the
+    // write would not resolve until `exit`; pipelining is the property under
+    // test, so we assert the write returned while the push is still parked
+    // inside packClient.push. `exit` cannot race the assertion: the push is
+    // parked on `gate`, which nothing resolves until the line below.
+    await waitUntil(() => pushOrder.length >= 1);
+    expect(pushOrder).toEqual(["enter"]);
+    resolvePush();
+    await facade.flushWorkflowRunPushes(repoId, "refs/heads/main");
+    expect(pushOrder).toEqual(["enter", "exit"]);
+  });
+
+  test("a burst of writes against the same (repoId, ref) coalesces into at most 2 pushes", async () => {
+    // The coalescing invariant: while a push is in flight, follow-on
+    // writes mark the slot as dirty rather than enqueueing a new
+    // push. After the in-flight push exits, the loop runs one more
+    // push that captures whichever commits arrived during the
+    // window. This collapses N hub-ack round-trips into 2 for a
+    // burst of N back-to-back writes, which is the load-bearing
+    // throughput win for the fifo-mail load test.
+    const { store } = createRecordingUnderlyingRepoStore();
+    const registry = createDeploymentAddressRegistry();
+    registry.record("dep-burst", {
+      agentAddress: "agent-burst@example.com",
+      generation: 1,
+    });
+    let resolveFirst: () => void = () => {
+      throw new Error("test: first gate not captured");
+    };
+    const firstGate = new Promise<void>((resolve) => {
+      resolveFirst = resolve;
+    });
+    let pushCount = 0;
+    const facade = createWorkflowRunPackPushingRepoStore({
+      isConnectionLost,
+      deriveWorkflowRunRepoId,
+      underlying: store,
+      packClient: {
+        forget: () => undefined,
+        async push() {
+          const idx = pushCount;
+          pushCount += 1;
+          if (idx === 0) await firstGate;
+        },
+      },
+      registry,
+    });
+
+    const repoId: RepoId = { kind: "workflow-run", id: "dep-burst" };
+    // Five back-to-back writes. The first triggers a push; the next
+    // four land while the first push is in flight and all flip the
+    // slot's `dirty` flag, but only one coalesced follow-up push
+    // runs after the first exits.
+    for (let i = 0; i < 5; i += 1) {
+      await facade.writeTreePreservingPrefix(
+        { kind: "supervisor" },
+        repoId,
+        "refs/heads/main",
+        {
+          preservePrefix: "runs/r-1/events/",
+          merge: async () => ({
+            [`runs/r-1/events/${String(i)}.json`]: "{}",
+          }),
+          message: `write-${String(i)}`,
+        },
+      );
+    }
+    expect(pushCount).toBe(1);
+    resolveFirst();
+    await facade.flushWorkflowRunPushes(repoId, "refs/heads/main");
+    // First push covered write 0 (the only commit landed when it
+    // started); the four follow-up writes coalesced into ONE
+    // additional push regardless of count.
+    expect(pushCount).toBe(2);
+  });
+
+  test("a failed pipelined push surfaces on the next writeTreePreservingPrefix call", async () => {
+    // The facade swallows the failed push at fire time but latches
+    // the error on the per-(repoId, ref) chain; the next
+    // writeTreePreservingPrefix on the same (repoId, ref) re-throws
+    // it. The defensive-coding rule says errors must surface; this
+    // is how they surface from a pipelined writer.
+    const { store } = createRecordingUnderlyingRepoStore();
+    const registry = createDeploymentAddressRegistry();
+    registry.record("dep-fail", {
+      agentAddress: "agent-fail@example.com",
+      generation: 1,
+    });
+    let pushCount = 0;
+    const facade = createWorkflowRunPackPushingRepoStore({
+      isConnectionLost,
+      deriveWorkflowRunRepoId,
+      underlying: store,
+      packClient: {
+        forget: () => undefined,
+        async push() {
+          pushCount += 1;
+          if (pushCount === 1) {
+            throw new Error("hub_rejected: non_fast_forward");
+          }
+        },
+      },
+      registry,
+    });
+    const repoId: RepoId = { kind: "workflow-run", id: "dep-fail" };
+    await facade.writeTreePreservingPrefix(
+      { kind: "supervisor" },
+      repoId,
+      "refs/heads/main",
+      {
+        preservePrefix: "runs/r/events/",
+        merge: async () => ({ "runs/r/events/0.json": "{}" }),
+        message: "first",
+      },
+    );
+    // Wait for the failed push to settle on the chain without
+    // consuming the latched error; flush would also surface the
+    // error, but the contract being pinned here is that the NEXT
+    // writeTreePreservingPrefix surfaces it -- ordinary supervisor
+    // code does not call flush between writes.
+    await drainPushSettle();
+    await expect(
+      facade.writeTreePreservingPrefix(
+        { kind: "supervisor" },
+        repoId,
+        "refs/heads/main",
+        {
+          preservePrefix: "runs/r/events/",
+          merge: async () => ({ "runs/r/events/1.json": "{}" }),
+          message: "second",
+        },
+      ),
+    ).rejects.toThrow(/non_fast_forward/);
+  });
+
+  function forgettableFacade(
+    push: WorkflowRunPackClient["push"],
+  ): WorkflowRunPackPushingRepoStore {
+    const { store } = createRecordingUnderlyingRepoStore();
+    const registry = createDeploymentAddressRegistry();
+    registry.record("dep-forgotten", {
+      agentAddress: "agent-forgotten@example.com",
+      generation: 1,
+    });
+    return createWorkflowRunPackPushingRepoStore({
+      deriveWorkflowRunRepoId,
+      isConnectionLost,
+      underlying: store,
+      packClient: {
+        forget: () => undefined,
+        push,
+      },
+      registry,
+    });
+  }
+
+  const forgettableRepoId: RepoId = {
+    kind: "workflow-run",
+    id: "dep-forgotten",
+  };
+
+  function writeEvent(
+    facade: WorkflowRunPackPushingRepoStore,
+    message: string,
+  ): Promise<unknown> {
+    return facade.writeTreePreservingPrefix(
+      { kind: "supervisor" },
+      forgettableRepoId,
+      "refs/heads/main",
+      {
+        preservePrefix: "runs/r/events/",
+        merge: async () => ({ [`runs/r/events/${message}.json`]: "{}" }),
+        message,
+      },
+    );
+  }
+
+  test("a forgotten deployment starts no further push after the one in flight", async () => {
+    const pushes: PromiseWithResolvers<boolean>[] = [];
+    const facade = forgettableFacade(async () => {
+      const push = Promise.withResolvers<boolean>();
+      pushes.push(push);
+      if (!(await push.promise)) {
+        throw new Error("pack rejected by receiver (reason=path_violation)");
+      }
+    });
+    await writeEvent(facade, "first");
+    await waitUntil(() => pushes.length === 1);
+    await writeEvent(facade, "second");
+
+    facade.forgetDeployment("dep-forgotten", "agent-forgotten@example.com");
+    pushes[0]?.resolve(false);
+    await drainPushSettle();
+
+    expect(pushes).toHaveLength(1);
+  });
+
+  test("a push names the generation of the incarnation whose commits it ships", async () => {
+    const generations: number[] = [];
+    const { store } = createRecordingUnderlyingRepoStore();
+    const registry = createDeploymentAddressRegistry();
+    registry.record("dep-forgotten", {
+      agentAddress: "agent-forgotten@example.com",
+      generation: 3,
+    });
+    const facade = createWorkflowRunPackPushingRepoStore({
+      deriveWorkflowRunRepoId,
+      isConnectionLost,
+      underlying: store,
+      packClient: {
+        forget: () => undefined,
+        push: async ({ generation }) => {
+          generations.push(generation);
+        },
+      },
+      registry,
+    });
+    await writeEvent(facade, "first");
+    await facade.flushWorkflowRunPushes(forgettableRepoId, "refs/heads/main");
+
+    expect(generations).toEqual([3]);
+  });
+
+  test("flushWorkflowRunPushes resolves immediately when no pushes are pending", async () => {
+    const { store } = createRecordingUnderlyingRepoStore();
+    const registry = createDeploymentAddressRegistry();
+    const facade = createWorkflowRunPackPushingRepoStore({
+      isConnectionLost,
+      deriveWorkflowRunRepoId,
+      underlying: store,
+      packClient: {
+        forget: () => undefined,
+        push: () => Promise.resolve(),
+      },
+      registry,
+    });
+    await facade.flushWorkflowRunPushes(
+      { kind: "workflow-run", id: "never-touched" },
+      "refs/heads/main",
+    );
+  });
+
+  test("writeTreePreservingPrefix against a non-workflow-run repo bypasses the push hook", async () => {
+    const { store } = createRecordingUnderlyingRepoStore();
+    const registry = createDeploymentAddressRegistry();
+    const pushed: { agentAddress: string; repoId: RepoId; ref: string }[] = [];
+    const facade = createWorkflowRunPackPushingRepoStore({
+      isConnectionLost,
+      deriveWorkflowRunRepoId,
+      underlying: store,
+      packClient: {
+        forget: () => undefined,
+        async push(opts) {
+          pushed.push(opts);
+        },
+      },
+      registry,
+    });
+
+    await facade.writeTreePreservingPrefix(
+      { kind: "hub" },
+      { kind: "agent-state", id: "a-1" },
+      "refs/heads/deploy",
+      {
+        preservePrefix: "deploy/",
+        merge: async () => ({ "deploy/prompt.md": "hi" }),
+        message: "deploy",
+      },
+    );
+
+    expect(pushed).toEqual([]);
+  });
+
+  test("workflow-run write surfaces a structured error when no run address is registered", async () => {
+    const { store } = createRecordingUnderlyingRepoStore();
+    const registry = createDeploymentAddressRegistry();
+    const facade = createWorkflowRunPackPushingRepoStore({
+      isConnectionLost,
+      deriveWorkflowRunRepoId,
+      underlying: store,
+      packClient: {
+        forget: () => undefined,
+        push: () => Promise.resolve(),
+      },
+      registry,
+    });
+
+    await expect(
+      facade.writeTreePreservingPrefix(
+        { kind: "supervisor" },
+        { kind: "workflow-run", id: "missing-dep" },
+        "refs/heads/main",
+        {
+          preservePrefix: "runs/r/events/",
+          merge: async () => ({}),
+          message: "append",
+        },
+      ),
+    ).rejects.toThrow(/no run address registered/);
+  });
+
+  test("markAddressUnroutable holds a push until notifyAddressRoutable resumes it", async () => {
+    // The reconnect ordering contract. A connection opening or closing blocks
+    // the address: a write that lands while blocked schedules no wire push,
+    // because a push shipped before the Hub's `welcome` routes the address is
+    // dropped by the hub as "unrouted". The `welcome` lifts the block, and the
+    // held push ships after the hub has routed the address again.
+    const { store } = createRecordingUnderlyingRepoStore();
+    const registry = createDeploymentAddressRegistry();
+    registry.record("dep-blocked", {
+      agentAddress: "agent-blocked@example.com",
+      generation: 1,
+    });
+    let pushCount = 0;
+    const facade = createWorkflowRunPackPushingRepoStore({
+      isConnectionLost,
+      deriveWorkflowRunRepoId,
+      underlying: store,
+      packClient: {
+        forget: () => undefined,
+        async push() {
+          pushCount += 1;
+        },
+      },
+      registry,
+    });
+    const repoId: RepoId = { kind: "workflow-run", id: "dep-blocked" };
+
+    facade.markAddressUnroutable("agent-blocked@example.com");
+    await facade.writeTreePreservingPrefix(
+      { kind: "supervisor" },
+      repoId,
+      "refs/heads/main",
+      {
+        preservePrefix: "runs/r/events/",
+        merge: async () => ({ "runs/r/events/0.json": "{}" }),
+        message: "append while blocked",
+      },
+    );
+    // Yield: a wire push would have run by now if the block were not held.
+    await new Promise((r) => setTimeout(r, 0));
+    expect(pushCount).toBe(0);
+
+    facade.notifyAddressRoutable("agent-blocked@example.com");
+    await facade.flushWorkflowRunPushes(repoId, "refs/heads/main");
+    expect(pushCount).toBe(1);
+  });
+
+  test("notifyAddressRoutable re-drives a push a disconnect cancelled with no fresh write", async () => {
+    // The liveness contract a synchronous single-step run depends on. The
+    // first push rejects "Connection lost" (the disconnect cancelled the
+    // in-flight transfer) and stays due. There is no later local write to
+    // re-arm the coalescing loop, so without the routable-again re-drive the
+    // run would strand forever. notifyAddressRoutable re-ships the un-acked
+    // commits once a `welcome` routes the address again.
+    const { store } = createRecordingUnderlyingRepoStore();
+    const registry = createDeploymentAddressRegistry();
+    registry.record("dep-cancelled", {
+      agentAddress: "agent-cancelled@example.com",
+      generation: 1,
+    });
+    let pushCount = 0;
+    const facade = createWorkflowRunPackPushingRepoStore({
+      isConnectionLost,
+      deriveWorkflowRunRepoId,
+      underlying: store,
+      packClient: {
+        forget: () => undefined,
+        async push() {
+          pushCount += 1;
+          if (pushCount === 1) {
+            throw new Error("Connection lost");
+          }
+        },
+      },
+      registry,
+    });
+    const repoId: RepoId = { kind: "workflow-run", id: "dep-cancelled" };
+
+    await facade.writeTreePreservingPrefix(
+      { kind: "supervisor" },
+      repoId,
+      "refs/heads/main",
+      {
+        preservePrefix: "runs/r/events/",
+        merge: async () => ({ "runs/r/events/0.json": "{}" }),
+        message: "single batch",
+      },
+    );
+    // Let the first push settle without a second write to re-arm the loop.
+    await drainPushSettle();
+    expect(pushCount).toBe(1);
+
+    facade.notifyAddressRoutable("agent-cancelled@example.com");
+    await facade.flushWorkflowRunPushes(repoId, "refs/heads/main");
+    // The re-drive re-shipped the un-acked commits, and flush resolves
+    // cleanly.
+    expect(pushCount).toBe(2);
+  });
+
+  test("a first push the Hub rejects is not resent until notifyAddressRoutable re-drives it", async () => {
+    // The sender does not resend a rejected push on its own. The rejection
+    // latches on the slot, and the next `welcome` that routes the address
+    // ships the un-acked commits again.
+    const { store } = createRecordingUnderlyingRepoStore();
+    const registry = createDeploymentAddressRegistry();
+    registry.record("dep-rejected", {
+      agentAddress: "agent-rejected@example.com",
+      generation: 1,
+    });
+    let pushCount = 0;
+    const facade = createWorkflowRunPackPushingRepoStore({
+      isConnectionLost,
+      deriveWorkflowRunRepoId,
+      underlying: store,
+      packClient: {
+        forget: () => undefined,
+        async push() {
+          pushCount += 1;
+          if (pushCount === 1) {
+            throw new Error("Pack rejected: reason=corrupt");
+          }
+        },
+      },
+      registry,
+    });
+    const repoId: RepoId = { kind: "workflow-run", id: "dep-rejected" };
+
+    await facade.writeTreePreservingPrefix(
+      { kind: "supervisor" },
+      repoId,
+      "refs/heads/main",
+      {
+        preservePrefix: "runs/r/events/",
+        merge: async () => ({ "runs/r/events/0.json": "{}" }),
+        message: "single batch",
+      },
+    );
+    await drainPushSettle();
+    expect(pushCount).toBe(1);
+
+    facade.notifyAddressRoutable("agent-rejected@example.com");
+    await facade.flushWorkflowRunPushes(repoId, "refs/heads/main");
+    expect(pushCount).toBe(2);
+  });
+
+  test("flush fails rather than report a push no connection carried as drained", async () => {
+    const { store } = createRecordingUnderlyingRepoStore();
+    const registry = createDeploymentAddressRegistry();
+    registry.record("dep-undrained", {
+      agentAddress: "agent-undrained@example.com",
+      generation: 1,
+    });
+    const connectionDrops = Promise.withResolvers<boolean>();
+    const facade = createWorkflowRunPackPushingRepoStore({
+      deriveWorkflowRunRepoId,
+      isConnectionLost,
+      underlying: store,
+      packClient: {
+        forget: () => undefined,
+        async push() {
+          await connectionDrops.promise;
+          throw new Error("Connection lost");
+        },
+      },
+      registry,
+    });
+    const repoId: RepoId = { kind: "workflow-run", id: "dep-undrained" };
+    await facade.writeTreePreservingPrefix(
+      { kind: "supervisor" },
+      repoId,
+      "refs/heads/main",
+      {
+        preservePrefix: "runs/r/events/",
+        merge: async () => ({ "runs/r/events/0.json": "{}" }),
+        message: "undrained",
+      },
+    );
+
+    const flushed = facade
+      .flushWorkflowRunPushes(repoId, "refs/heads/main")
+      .then(
+        () => "drained",
+        (error: unknown) => error,
+      );
+    connectionDrops.resolve(true);
+
+    expect(await flushed).toMatchObject({
+      message: expect.stringContaining("did not drain"),
+    });
+  });
+
+  test("flush fails at once for a push held while the Hub does not route the address", async () => {
+    const { store } = createRecordingUnderlyingRepoStore();
+    const registry = createDeploymentAddressRegistry();
+    registry.record("dep-held", {
+      agentAddress: "agent-held@example.com",
+      generation: 1,
+    });
+    const facade = createWorkflowRunPackPushingRepoStore({
+      deriveWorkflowRunRepoId,
+      isConnectionLost,
+      underlying: store,
+      packClient: {
+        forget: () => undefined,
+        async push() {
+          throw new Error("a held push must not ship");
+        },
+      },
+      registry,
+    });
+    const repoId: RepoId = { kind: "workflow-run", id: "dep-held" };
+    facade.markAddressUnroutable("agent-held@example.com");
+    await facade.writeTreePreservingPrefix(
+      { kind: "supervisor" },
+      repoId,
+      "refs/heads/main",
+      {
+        preservePrefix: "runs/r/events/",
+        merge: async () => ({ "runs/r/events/0.json": "{}" }),
+        message: "held",
+      },
+    );
+
+    await expect(
+      facade.flushWorkflowRunPushes(repoId, "refs/heads/main"),
+    ).rejects.toThrow(
+      "did not drain: the Hub does not route agent-held@example.com on a connection yet",
+    );
+  });
+
+  test("flush names the teardown when the deployment is forgotten with a push still due", async () => {
+    const { store } = createRecordingUnderlyingRepoStore();
+    const registry = createDeploymentAddressRegistry();
+    registry.record("dep-forgotten", {
+      agentAddress: "agent-forgotten@example.com",
+      generation: 1,
+    });
+    const firstPush = Promise.withResolvers<undefined>();
+    let pushCount = 0;
+    const facade = createWorkflowRunPackPushingRepoStore({
+      deriveWorkflowRunRepoId,
+      isConnectionLost,
+      underlying: store,
+      packClient: {
+        forget: () => undefined,
+        async push() {
+          pushCount += 1;
+          if (pushCount === 1) await firstPush.promise;
+        },
+      },
+      registry,
+    });
+    const repoId: RepoId = { kind: "workflow-run", id: "dep-forgotten" };
+    const write = (message: string) =>
+      facade.writeTreePreservingPrefix(
+        { kind: "supervisor" },
+        repoId,
+        "refs/heads/main",
+        {
+          preservePrefix: "runs/r/events/",
+          merge: async () => ({ "runs/r/events/0.json": message }),
+          message,
+        },
+      );
+    await write("first");
+    await write("second");
+    const flushed = facade
+      .flushWorkflowRunPushes(repoId, "refs/heads/main")
+      .then(
+        () => "drained",
+        (error: unknown) => error,
+      );
+
+    facade.forgetDeployment("dep-forgotten", "agent-forgotten@example.com");
+    firstPush.resolve(undefined);
+
+    expect(await flushed).toMatchObject({
+      message: expect.stringContaining(
+        "agent-forgotten@example.com generation 1 was undeployed first",
+      ),
+    });
+    expect(pushCount).toBe(1);
+  });
+
+  test("a push no connection could carry does not fail the deployment's next write", async () => {
+    const { store } = createRecordingUnderlyingRepoStore();
+    const registry = createDeploymentAddressRegistry();
+    registry.record("dep-unwelcomed", {
+      agentAddress: "agent-unwelcomed@example.com",
+      generation: 1,
+    });
+    let pushCount = 0;
+    const facade = createWorkflowRunPackPushingRepoStore({
+      deriveWorkflowRunRepoId,
+      isConnectionLost,
+      underlying: store,
+      packClient: {
+        forget: () => undefined,
+        async push() {
+          pushCount += 1;
+          if (pushCount === 1) {
+            throw new Error("Connection lost");
+          }
+        },
+      },
+      registry,
+    });
+    const repoId: RepoId = { kind: "workflow-run", id: "dep-unwelcomed" };
+    const write = (message: string) =>
+      facade.writeTreePreservingPrefix(
+        { kind: "supervisor" },
+        repoId,
+        "refs/heads/main",
+        {
+          preservePrefix: "runs/r/events/",
+          merge: async () => ({ "runs/r/events/0.json": "{}" }),
+          message,
+        },
+      );
+
+    await write("first");
+    await drainPushSettle();
+    expect(pushCount).toBe(1);
+
+    // The failed push is the link's, not the deployment's: the next write
+    // goes through, and the push it re-arms ships what the first did not.
+    await write("second");
+    await facade.flushWorkflowRunPushes(repoId, "refs/heads/main");
+    expect(pushCount).toBe(2);
+  });
+
+  test("reportWorkflowRunRefTips reports every ref's tip and pushes the refs that exist", async () => {
+    const { store } = createRecordingUnderlyingRepoStore({
+      "refs/heads/main": "main-tip",
+      "refs/heads/events": null,
+    });
+    const pushed: {
+      agentAddress: string;
+      generation: number;
+      repoId: RepoId;
+      ref: string;
+    }[] = [];
+    // No registered deployment: a stop after a sidecar restart still ships
+    // the history it finds on disk.
+    const facade = createWorkflowRunPackPushingRepoStore({
+      isConnectionLost,
+      deriveWorkflowRunRepoId,
+      underlying: store,
+      packClient: {
+        forget: () => undefined,
+        async push(opts) {
+          pushed.push(opts);
+        },
+      },
+      registry: createDeploymentAddressRegistry(),
+    });
+    const agentAddress = "run_reported@example.com";
+    const repoId: RepoId = {
+      kind: "workflow-run",
+      id: deriveWorkflowRunRepoId(agentAddress),
+    };
+
+    expect(
+      await facade.reportWorkflowRunRefTips({ agentAddress, generation: 1 }),
+    ).toEqual({
+      "refs/heads/main": "main-tip",
+      "refs/heads/events": null,
+    });
+    await facade.flushWorkflowRunPushes(repoId, "refs/heads/main");
+    expect(pushed).toEqual([
+      { agentAddress, generation: 1, repoId, ref: "refs/heads/main" },
+    ]);
+  });
+
+  test("reportWorkflowRunRefTips ships a stopped deployment's history after a disconnect blocked it", async () => {
+    const { store } = createRecordingUnderlyingRepoStore({
+      "refs/heads/main": "main-tip",
+      "refs/heads/events": null,
+    });
+    const pushed: {
+      agentAddress: string;
+      generation: number;
+      repoId: RepoId;
+      ref: string;
+    }[] = [];
+    const facade = createWorkflowRunPackPushingRepoStore({
+      isConnectionLost,
+      deriveWorkflowRunRepoId,
+      underlying: store,
+      packClient: {
+        forget: () => undefined,
+        async push(opts) {
+          pushed.push(opts);
+        },
+      },
+      registry: createDeploymentAddressRegistry(),
+    });
+    const agentAddress = "run_stopped_blocked@example.com";
+    const repoId: RepoId = {
+      kind: "workflow-run",
+      id: deriveWorkflowRunRepoId(agentAddress),
+    };
+
+    // The link dropped while the deployment was stopping. No `welcome` routes
+    // the stopped address, so nothing else lifts this block.
+    facade.markAddressUnroutable(agentAddress);
+    await facade.reportWorkflowRunRefTips({ agentAddress, generation: 1 });
+    await facade.flushWorkflowRunPushes(repoId, "refs/heads/main");
+    expect(pushed).toEqual([
+      { agentAddress, generation: 1, repoId, ref: "refs/heads/main" },
+    ]);
+  });
+
+  test("notifyAddressRoutable is a no-op for a slot with nothing un-shipped", async () => {
+    // A clean, already-acked slot (no dirty work, no latched error) has
+    // nothing to re-ship. This pins the facade's re-drive gating: a
+    // routable-again notification for such a slot does not re-drive, so it
+    // does not call push again. Only slots with pending work or a latched
+    // failure re-drive.
+    const { store } = createRecordingUnderlyingRepoStore();
+    const registry = createDeploymentAddressRegistry();
+    registry.record("dep-clean", {
+      agentAddress: "agent-clean@example.com",
+      generation: 1,
+    });
+    let pushCount = 0;
+    const facade = createWorkflowRunPackPushingRepoStore({
+      isConnectionLost,
+      deriveWorkflowRunRepoId,
+      underlying: store,
+      packClient: {
+        forget: () => undefined,
+        async push() {
+          pushCount += 1;
+        },
+      },
+      registry,
+    });
+    const repoId: RepoId = { kind: "workflow-run", id: "dep-clean" };
+
+    await facade.writeTreePreservingPrefix(
+      { kind: "supervisor" },
+      repoId,
+      "refs/heads/main",
+      {
+        preservePrefix: "runs/r/events/",
+        merge: async () => ({ "runs/r/events/0.json": "{}" }),
+        message: "append",
+      },
+    );
+    await facade.flushWorkflowRunPushes(repoId, "refs/heads/main");
+    expect(pushCount).toBe(1);
+
+    facade.notifyAddressRoutable("agent-clean@example.com");
+    await facade.flushWorkflowRunPushes(repoId, "refs/heads/main");
+    expect(pushCount).toBe(1);
+  });
+});
+
+describe("createMultistepMailRouter", () => {
+  test("tryRoute returns null when no handler is registered", () => {
+    const router = createMultistepMailRouter();
+    expect(
+      router.tryRoute("dep@integration.interchange", new Uint8Array([1])),
+    ).toBeNull();
+  });
+
+  test("a registered handler receives the inbound message and tryRoute returns its settlement", async () => {
+    const router = createMultistepMailRouter();
+    const received: Uint8Array[] = [];
+    router.register("dep@integration.interchange", async (msg) => {
+      received.push(msg);
+    });
+    const message = new Uint8Array([1, 2, 3, 4]);
+    const durable = router.tryRoute("dep@integration.interchange", message);
+    expect(durable).not.toBeNull();
+    await durable;
+    expect(received).toHaveLength(1);
+    expect(received[0]).toEqual(message);
+  });
+
+  test("tryRoute propagates the handler's rejection as the withhold signal", async () => {
+    const router = createMultistepMailRouter();
+    router.register("dep@integration.interchange", async () => {
+      throw new Error("durable write failed");
+    });
+    const durable = router.tryRoute(
+      "dep@integration.interchange",
+      new Uint8Array([1]),
+    );
+    expect(durable).not.toBeNull();
+    await expect(durable).rejects.toThrow(/durable write failed/);
+  });
+
+  test("registration is per-address; an unrelated address falls through", () => {
+    const router = createMultistepMailRouter();
+    const received: Uint8Array[] = [];
+    router.register("dep-a@integration.interchange", async (msg) => {
+      received.push(msg);
+    });
+    expect(
+      router.tryRoute("dep-b@integration.interchange", new Uint8Array([9])),
+    ).toBeNull();
+    expect(received).toHaveLength(0);
+  });
+
+  test("unregister removes the handler", () => {
+    const router = createMultistepMailRouter();
+    const received: Uint8Array[] = [];
+    router.register("dep@integration.interchange", async (msg) => {
+      received.push(msg);
+    });
+    router.unregister("dep@integration.interchange");
+    expect(
+      router.tryRoute("dep@integration.interchange", new Uint8Array([1])),
+    ).toBeNull();
+    expect(received).toHaveLength(0);
+  });
+
+  test("re-registering an address replaces the prior handler", async () => {
+    const router = createMultistepMailRouter();
+    const first: Uint8Array[] = [];
+    const second: Uint8Array[] = [];
+    router.register("dep@integration.interchange", async (msg) => {
+      first.push(msg);
+    });
+    router.register("dep@integration.interchange", async (msg) => {
+      second.push(msg);
+    });
+    await router.tryRoute("dep@integration.interchange", new Uint8Array([7]));
+    expect(first).toHaveLength(0);
+    expect(second).toHaveLength(1);
+  });
+});
+
+describe("createMultistepCredentialsRouter", () => {
+  const delivery = {
+    bindings: [
+      {
+        handle: "example-api",
+        credentialId: "cred_1",
+        consumer: "tool:@intx/tools-example",
+      },
+    ],
+    materials: [
+      {
+        credentialId: "cred_1",
+        providerKey: "http",
+        origin: "https://api.example.com",
+        secret: "sk-secret",
+      },
+    ],
+  };
+  const frame = {
+    type: "credentials.update" as const,
+    agentAddress: "dep@integration.interchange",
+    delivery,
+  };
+
+  test("tryRoute returns false when no handler is registered", async () => {
+    const router = createMultistepCredentialsRouter();
+    expect(await router.tryRoute(frame)).toBe(false);
+  });
+
+  test("a registered handler receives the delivery and tryRoute returns true", async () => {
+    const router = createMultistepCredentialsRouter();
+    const received: { delivery: typeof delivery }[] = [];
+    router.register("dep@integration.interchange", async (args) => {
+      received.push(args);
+    });
+    expect(await router.tryRoute(frame)).toBe(true);
+    expect(received).toHaveLength(1);
+    expect(received[0]?.delivery).toEqual(delivery);
+  });
+
+  test("a frame's revoke list threads through to the handler", async () => {
+    const router = createMultistepCredentialsRouter();
+    const received: { delivery: typeof delivery; revoke?: string[] }[] = [];
+    router.register("dep@integration.interchange", async (args) => {
+      received.push(args);
+    });
+    expect(await router.tryRoute({ ...frame, revoke: ["cred_1"] })).toBe(true);
+    expect(received).toHaveLength(1);
+    expect(received[0]?.revoke).toEqual(["cred_1"]);
+  });
+
+  test("registration is per-address; an unrelated address falls through", async () => {
+    const router = createMultistepCredentialsRouter();
+    router.register("dep-a@integration.interchange", async () => undefined);
+    expect(
+      await router.tryRoute({
+        ...frame,
+        agentAddress: "dep-b@integration.interchange",
+      }),
+    ).toBe(false);
+  });
+
+  test("unregister removes the handler", async () => {
+    const router = createMultistepCredentialsRouter();
+    router.register("dep@integration.interchange", async () => undefined);
+    router.unregister("dep@integration.interchange");
+    expect(await router.tryRoute(frame)).toBe(false);
+  });
+
+  test("rejects a malformed delivery for a registered address without dispatching", async () => {
+    const router = createMultistepCredentialsRouter();
+    let called = false;
+    router.register("dep@integration.interchange", async () => {
+      called = true;
+    });
+    // A malformed delivery would crash the child's control-channel receiver on
+    // its `CredentialsUpdateFrame` narrow, so the router rejects before
+    // dispatch and the hub-link turns the throw into a truthful session.error.
+    // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion -- deliberately malformed delivery to exercise the pre-dispatch validation
+    const malformed = {
+      bindings: [{ handle: "x" }],
+      materials: [],
+    } as unknown as CredentialDelivery;
+    await expect(
+      router.tryRoute({
+        type: "credentials.update",
+        agentAddress: "dep@integration.interchange",
+        delivery: malformed,
+      }),
+    ).rejects.toThrow();
+    expect(called).toBe(false);
+  });
+
+  test("propagates the handler's rejection (deliverCredentials throwing) verbatim", async () => {
+    const router = createMultistepCredentialsRouter();
+    router.register("dep@integration.interchange", async () => {
+      throw new Error("deliverCredentials failed in a recycling phase");
+    });
+    await expect(router.tryRoute(frame)).rejects.toThrow(
+      /deliverCredentials failed/,
+    );
+  });
+});
+
+describe("createMultistepSourcesRouter", () => {
+  const source: InferenceSource = {
+    id: "primary",
+    provider: "anthropic",
+    baseURL: "https://api.anthropic.com",
+    credentialId: "sk-x",
+    model: "claude-test",
+  };
+  const frame = {
+    type: "sources.update" as const,
+    agentAddress: "dep@integration.interchange",
+    sources: [source],
+    defaultSource: "primary",
+  };
+
+  test("tryRoute returns false when no handler is registered", async () => {
+    const router = createMultistepSourcesRouter();
+    expect(await router.tryRoute(frame)).toBe(false);
+  });
+
+  test("a registered handler receives the rotation and tryRoute returns true", async () => {
+    const router = createMultistepSourcesRouter();
+    const received: { sources: InferenceSource[]; defaultSource: string }[] =
+      [];
+    router.register("dep@integration.interchange", async (args) => {
+      received.push(args);
+    });
+    expect(await router.tryRoute(frame)).toBe(true);
+    expect(received).toHaveLength(1);
+    expect(received[0]?.sources).toEqual([source]);
+    expect(received[0]?.defaultSource).toBe("primary");
+  });
+
+  test("registration is per-address; an unrelated address falls through", async () => {
+    const router = createMultistepSourcesRouter();
+    router.register("dep-a@integration.interchange", async () => undefined);
+    expect(
+      await router.tryRoute({
+        ...frame,
+        agentAddress: "dep-b@integration.interchange",
+      }),
+    ).toBe(false);
+  });
+
+  test("unregister removes the handler", async () => {
+    const router = createMultistepSourcesRouter();
+    router.register("dep@integration.interchange", async () => undefined);
+    router.unregister("dep@integration.interchange");
+    expect(await router.tryRoute(frame)).toBe(false);
+  });
+
+  test("rejects a rotation with duplicate ids for a registered address without dispatching", async () => {
+    const router = createMultistepSourcesRouter();
+    let called = false;
+    router.register("dep@integration.interchange", async () => {
+      called = true;
+    });
+    // Duplicate ids would crash the child's control-channel receiver on
+    // its narrow, so the router rejects before dispatch.
+    await expect(
+      router.tryRoute({ ...frame, sources: [source, { ...source }] }),
+    ).rejects.toThrow(/unique ids/);
+    expect(called).toBe(false);
+  });
+
+  test("rejects a rotation whose default is not the head source", async () => {
+    const router = createMultistepSourcesRouter();
+    let called = false;
+    router.register("dep@integration.interchange", async () => {
+      called = true;
+    });
+    const second = { ...source, id: "secondary" };
+    await expect(
+      router.tryRoute({
+        ...frame,
+        sources: [source, second],
+        defaultSource: "secondary",
+      }),
+    ).rejects.toThrow(/first element is the default/);
+    expect(called).toBe(false);
+  });
+
+  test("an invalid rotation for an unregistered address is unrouted, not rejected", async () => {
+    const router = createMultistepSourcesRouter();
+    // Registration is checked before validation: an unregistered address
+    // reports `false` and its (here invalid) payload is never inspected.
+    expect(
+      await router.tryRoute({
+        ...frame,
+        agentAddress: "unregistered@integration.interchange",
+        sources: [source, { ...source }],
+      }),
+    ).toBe(false);
+  });
+});
+
+describe("createMultistepDrainRouter", () => {
+  test("tryRoute resolves to false when no handler is registered", async () => {
+    const router = createMultistepDrainRouter();
+    const claimed = await router.tryRoute({
+      type: "drain.deliver",
+      agentAddress: "dep@integration.interchange",
+      deadlineMs: 1_000,
+    });
+    expect(claimed).toBe(false);
+  });
+
+  test("a registered handler receives the deadline and tryRoute resolves to true", async () => {
+    const router = createMultistepDrainRouter();
+    const received: { deadlineMs: number }[] = [];
+    router.register("dep@integration.interchange", async (args) => {
+      received.push({ deadlineMs: args.deadlineMs });
+    });
+    const claimed = await router.tryRoute({
+      type: "drain.deliver",
+      agentAddress: "dep@integration.interchange",
+      deadlineMs: 3_500,
+    });
+    expect(claimed).toBe(true);
+    expect(received).toEqual([{ deadlineMs: 3_500 }]);
+  });
+
+  test("registration is per-address; an unrelated address falls through", async () => {
+    const router = createMultistepDrainRouter();
+    const received: number[] = [];
+    router.register("dep-a@integration.interchange", async (args) => {
+      received.push(args.deadlineMs);
+    });
+    const claimed = await router.tryRoute({
+      type: "drain.deliver",
+      agentAddress: "dep-b@integration.interchange",
+      deadlineMs: 9_000,
+    });
+    expect(claimed).toBe(false);
+    expect(received).toHaveLength(0);
+  });
+
+  test("unregister removes the handler", async () => {
+    const router = createMultistepDrainRouter();
+    const received: number[] = [];
+    router.register("dep@integration.interchange", async (args) => {
+      received.push(args.deadlineMs);
+    });
+    router.unregister("dep@integration.interchange");
+    const claimed = await router.tryRoute({
+      type: "drain.deliver",
+      agentAddress: "dep@integration.interchange",
+      deadlineMs: 1_000,
+    });
+    expect(claimed).toBe(false);
+    expect(received).toHaveLength(0);
+  });
+
+  test("re-registering an address replaces the prior handler", async () => {
+    const router = createMultistepDrainRouter();
+    const first: number[] = [];
+    const second: number[] = [];
+    router.register("dep@integration.interchange", async (args) => {
+      first.push(args.deadlineMs);
+    });
+    router.register("dep@integration.interchange", async (args) => {
+      second.push(args.deadlineMs);
+    });
+    await router.tryRoute({
+      type: "drain.deliver",
+      agentAddress: "dep@integration.interchange",
+      deadlineMs: 4_200,
+    });
+    expect(first).toHaveLength(0);
+    expect(second).toEqual([4_200]);
+  });
+
+  test("handler rejection propagates through tryRoute", async () => {
+    const router = createMultistepDrainRouter();
+    router.register("dep@integration.interchange", async () => {
+      throw new Error("supervisor.drain failed");
+    });
+    await expect(
+      router.tryRoute({
+        type: "drain.deliver",
+        agentAddress: "dep@integration.interchange",
+        deadlineMs: 1_000,
+      }),
+    ).rejects.toThrow(/supervisor\.drain failed/);
+  });
+
+  test("drain.deliver for a never-registered deployment id drops cleanly without throwing", async () => {
+    // Pins the defensive contract for an inbound drain.deliver frame
+    // that names a anchorRunId the sidecar's supervisor never spawned
+    // (e.g. an in-flight frame outracing the deploy ack, or a hub-side
+    // stale-state retry). The router must not throw; the hub-link's
+    // handleDrainDeliver then logs and drops, leaving sibling
+    // deployments unaffected.
+    const router = createMultistepDrainRouter();
+    router.register("dep-known@integration.interchange", async () => {
+      throw new Error("known handler must not be invoked");
+    });
+    const claimed = await router.tryRoute({
+      type: "drain.deliver",
+      agentAddress: "dep-unknown@integration.interchange",
+      deadlineMs: 1_000,
+    });
+    expect(claimed).toBe(false);
+  });
+});
+
+describe("createMultistepSignalRouter", () => {
+  test("tryRoute resolves to false when no handler is registered", async () => {
+    const router = createMultistepSignalRouter();
+    const claimed = await router.tryRoute({
+      type: "signal.deliver",
+      agentAddress: "dep@integration.interchange",
+      runId: "run-1",
+      signalName: "approve",
+      signalId: "sig-1",
+      payload: { ok: true },
+    });
+    expect(claimed).toBe(false);
+  });
+
+  test("a registered handler receives the signal and tryRoute resolves to true", async () => {
+    const router = createMultistepSignalRouter();
+    const received: {
+      runId: string;
+      signalName: string;
+      signalId: string;
+      payload: unknown;
+    }[] = [];
+    router.register("dep@integration.interchange", async (args) => {
+      received.push(args);
+    });
+    const claimed = await router.tryRoute({
+      type: "signal.deliver",
+      agentAddress: "dep@integration.interchange",
+      runId: "run-42",
+      signalName: "approve",
+      signalId: "sig-42",
+      payload: { ok: true },
+    });
+    expect(claimed).toBe(true);
+    expect(received).toEqual([
+      {
+        runId: "run-42",
+        signalName: "approve",
+        signalId: "sig-42",
+        payload: { ok: true },
+      },
+    ]);
+  });
+
+  test("registration is per-address; an unrelated address falls through", async () => {
+    const router = createMultistepSignalRouter();
+    const received: string[] = [];
+    router.register("dep-a@integration.interchange", async (args) => {
+      received.push(args.signalId);
+    });
+    const claimed = await router.tryRoute({
+      type: "signal.deliver",
+      agentAddress: "dep-b@integration.interchange",
+      runId: "run-1",
+      signalName: "approve",
+      signalId: "sig-1",
+      payload: null,
+    });
+    expect(claimed).toBe(false);
+    expect(received).toHaveLength(0);
+  });
+
+  test("unregister removes the handler", async () => {
+    const router = createMultistepSignalRouter();
+    const received: string[] = [];
+    router.register("dep@integration.interchange", async (args) => {
+      received.push(args.signalId);
+    });
+    router.unregister("dep@integration.interchange");
+    const claimed = await router.tryRoute({
+      type: "signal.deliver",
+      agentAddress: "dep@integration.interchange",
+      runId: "run-1",
+      signalName: "approve",
+      signalId: "sig-1",
+      payload: null,
+    });
+    expect(claimed).toBe(false);
+    expect(received).toHaveLength(0);
+  });
+
+  test("re-registering an address replaces the prior handler", async () => {
+    // Pins the contract that drives the "stale-cohort signal" edge
+    // case. A signal frame in flight while the deploy router re-binds
+    // the deployment address (the only legitimate path that swaps the
+    // handler today) must route to the most-recently-registered
+    // handler; the prior cohort's handler is unreachable once
+    // replaced. The router does not carry a cohortId on the wire, so
+    // "live registration wins" is the contract that captures the
+    // intent.
+    const router = createMultistepSignalRouter();
+    const first: string[] = [];
+    const second: string[] = [];
+    router.register("dep@integration.interchange", async (args) => {
+      first.push(args.signalId);
+    });
+    router.register("dep@integration.interchange", async (args) => {
+      second.push(args.signalId);
+    });
+    await router.tryRoute({
+      type: "signal.deliver",
+      agentAddress: "dep@integration.interchange",
+      runId: "run-1",
+      signalName: "approve",
+      signalId: "sig-late",
+      payload: null,
+    });
+    expect(first).toHaveLength(0);
+    expect(second).toEqual(["sig-late"]);
+  });
+
+  test("handler rejection propagates through tryRoute", async () => {
+    const router = createMultistepSignalRouter();
+    router.register("dep@integration.interchange", async () => {
+      throw new Error("supervisor.deliverSignal failed");
+    });
+    await expect(
+      router.tryRoute({
+        type: "signal.deliver",
+        agentAddress: "dep@integration.interchange",
+        runId: "run-1",
+        signalName: "approve",
+        signalId: "sig-1",
+        payload: null,
+      }),
+    ).rejects.toThrow(/supervisor\.deliverSignal failed/);
+  });
+
+  test("signal.deliver for a never-registered deployment id drops cleanly without throwing", async () => {
+    // Pins the defensive contract for an inbound signal.deliver frame
+    // that names a anchorRunId the sidecar's supervisor never spawned
+    // (e.g. an in-flight frame outracing the deploy ack, or a hub-side
+    // stale-state retry). The router must not throw; the hub-link's
+    // handleSignalDeliver then logs and drops, leaving sibling
+    // deployments unaffected.
+    const router = createMultistepSignalRouter();
+    router.register("dep-known@integration.interchange", async () => {
+      throw new Error("known handler must not be invoked");
+    });
+    const claimed = await router.tryRoute({
+      type: "signal.deliver",
+      agentAddress: "dep-unknown@integration.interchange",
+      runId: "run-1",
+      signalName: "approve",
+      signalId: "sig-1",
+      payload: null,
+    });
+    expect(claimed).toBe(false);
+  });
+});

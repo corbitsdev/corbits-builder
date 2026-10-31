@@ -1,0 +1,1647 @@
+# Faremeter Interchange
+
+_Implementation_
+
+## Message Bus: SMTP/IMAP Transport
+
+The Interchange message bus is built on SMTP and IMAP as wire protocols, leveraging existing global messaging infrastructure as the transport layer for agent communication. SMTP/IMAP provide the durable, federated message routing that Interchange needs — but Interchange clients are not email clients.
+
+Interchange clients (harnesses, UIs, CLIs) speak SMTP/IMAP to send and receive messages, but they are purpose-built for Interchange semantics: structured message payloads, conversation threading, offering negotiation, and real-time session channels. A traditional email client _could_ connect to an agent's inbox and see messages, but the experience would be like reading raw HTTP traffic — technically possible, not practically useful.
+
+### Why SMTP/IMAP
+
+SMTP and IMAP provide a battle-tested, globally distributed message passing system with decades of operational maturity:
+
+- **Universal addressing** - Every agent gets an SMTP address as its network identity
+- **Federated by default** - No central authority required; agents on different domains communicate seamlessly
+- **Delivery guarantees** - SMTP provides store-and-forward semantics with retry logic
+- **Asynchronous** - Agents don't need to be online simultaneously to exchange messages
+- **Existing infrastructure** - DNS MX records, TLS, spam filtering, and authentication (SPF, DKIM, DMARC) already exist
+- **Firewall-friendly** - SMTP traverses network boundaries that block other protocols
+
+The choice of SMTP/IMAP is pragmatic: we get a global, federated message bus without building one from scratch. The protocols are the implementation detail; the Interchange message semantics are what matter.
+
+### Agent Addressing
+
+Each agent has an SMTP address that serves as its network identifier:
+
+```
+run_xxxxx@domain.interchange.network
+```
+
+The local part identifies the agent; the domain identifies the tenant. Tenant boundaries map directly to SMTP domains, providing natural isolation and federation semantics. Multiple agents launched from the same definition each receive their own address.
+
+### Message Transport
+
+**Outbound (SMTP)**
+When an agent sends a message to another agent or human, the harness composes and submits it via SMTP. The payload is serialized into the body. Structured data uses MIME multipart encoding.
+
+**Inbound (IMAP)**
+The harness maintains an IMAP connection to the agent's inbox. Incoming messages are fetched, parsed, and converted into events that the harness routes to internal handlers.
+
+### Message Topologies
+
+SMTP/IMAP naturally supports the topologies defined in the architecture:
+
+- **1:1** - Direct message between two addresses
+- **1:N** - Distribution lists or CC/BCC for broadcast
+- **M:N** - Distribution lists where multiple agents can post and receive
+
+1:1 direct messaging and 1:N broadcast via `To`/`Cc`/`Bcc` are implemented. The distribution-list machinery that backs list-driven 1:N and the M:N collaborative model is not yet implemented — the transport's `createList`/`listMembers`/`subscribe`/`unsubscribe` operations currently throw.
+
+### Authentication and Trust
+
+Interchange uses standard SMTP authentication mechanisms:
+
+- **SPF** - Sender Policy Framework validates sending servers
+- **DKIM** - DomainKeys Identified Mail provides cryptographic signatures
+- **DMARC** - Domain-based Message Authentication ties SPF and DKIM together
+
+Agent identity is bound to its SMTP address and verified through these mechanisms. Additional payload-level signatures can provide end-to-end verification when required.
+
+### Content Safety
+
+Beyond authenticating message senders, the harness applies content-level safety measures:
+
+**Context Framing**
+All input assembled into the agent's context uses consistent structural delimiters. System prompts and skill instructions are clearly marked as trusted. External content (messages, tool responses, user input) is framed as data with explicit boundaries. The framing format is designed to be recognizable by models and resistant to delimiter injection.
+
+**Action Validation**
+Before executing tool invocations, the harness evaluates the action against the agent's materialized grants (entries where `resource` matches `tool:*`). Validation checks include:
+
+- Is this tool permitted for this agent?
+- Does the invocation match expected patterns?
+- Are there anomalous parameters or frequencies?
+
+Failed validations are logged and can trigger alerts.
+
+**Human Approval Gates**
+Operators can configure approval requirements for sensitive actions. When an agent attempts a gated action, execution blocks and an approval request is sent via the message bus. The request includes the proposed action and relevant context. Execution resumes only after explicit human approval.
+
+**Audit Logging**
+All inputs, outputs, and policy decisions are logged. Logs are partitioned by tenant (as described in Tenant Isolation Enforcement). Anomaly detection can flag unusual patterns for review.
+
+### Encryption
+
+- **Transport encryption** - TLS for SMTP and IMAP connections
+- **Payload encryption** - S/MIME or PGP for end-to-end encrypted messages between agents
+
+### Cryptographic Identity: Key Formats
+
+Interchange uses Ed25519 as the single key algorithm for all cryptographic identity operations. Ed25519 is compact, fast, and supported by SSH (since OpenSSH 6.5), PGP/GnuPG (since 2.1), and TLS 1.3 (RFC 8446), allowing one key algorithm to serve across all protocol contexts. For encryption operations, the corresponding Curve25519 (X25519) is used.
+
+The harness generates one Ed25519 key pair per harness and per agent. The same key material is used across protocols, with SSH, PGP, and X.509 serving as wire formats depending on context:
+
+- **SSH format** - Used for harness-to-harness communication, control plane interactions, and general identity verification. Public keys are published in OpenSSH format.
+- **PGP format** - Used for message-level signatures and encryption over the SMTP/IMAP transport, where PGP integration with email infrastructure is a natural fit. Agent PGP keys are published through the control plane. Publication via DNS (DANE/OPENPGPKEY records), giving a federated path that does not require the receiving tenant to trust the sending tenant's control plane, is the intended design and is not yet implemented.
+- **X.509 format** - Used for TLS client certificates enabling mutual authentication. The control plane issues X.509 certificates wrapping the agent's Ed25519 public key, signed by a tenant certificate authority. This allows agents to authenticate via standard TLS mutual auth without introducing a separate key type.
+
+**Protocol mapping:**
+
+- **Agent/harness identity and control plane** - Ed25519 in SSH format
+- **Message payload signatures** - Ed25519 in PGP format, integrated with SMTP/IMAP transport
+- **End-to-end message encryption** - X25519 in PGP format (S/MIME as an alternative where required)
+- **TLS mutual authentication** - Ed25519 in X.509 format, certificates issued by the control plane
+
+The harness manages key generation, storage, rotation, and revocation. Key rotation follows a grace period model: the new key is published alongside the old key, both are accepted for verification during the overlap window, and the old key is retired after the grace period.
+
+### Spam and Abuse Prevention
+
+Existing SMTP infrastructure handles abuse:
+
+- Rate limiting at the SMTP level
+- Reputation systems for sending domains
+- Content filtering where appropriate
+
+Agents that misbehave lose SMTP deliverability, which maps directly to losing network access.
+
+### IMAP Inbox as State
+
+The agent's IMAP inbox provides a natural persistence layer:
+
+- Unprocessed messages remain in the inbox
+- Processed messages can be archived or deleted
+- Folders organize different message types or conversations
+- Search capabilities (IMAP SEARCH) allow retrieval of historical context
+
+### Limitations and Mitigations
+
+**Latency**
+SMTP is not designed for real-time communication. For latency-sensitive workloads — streaming LLM responses, interactive chat, debugging — session channels provide a real-time alternative (see Session Channels below).
+
+**Message size**
+Large payloads may hit size limits. Agents can signal through the bus and exchange large data through separate channels (e.g., signed URLs).
+
+**Ordering**
+SMTP does not guarantee message ordering. Agents that require ordering must implement sequencing at the application layer.
+
+## Session Channels: WebSocket Transport
+
+Session channels provide an optional real-time overlay on the message bus for interactive use cases. The message bus (SMTP/IMAP) remains the canonical, durable transport — complete messages always land in the recipient's IMAP inbox. Session channels add real-time token streaming for clients that want to see inference output as it's generated.
+
+### Protocol
+
+Session channels use WebSocket (RFC 6455) as the transport protocol. WebSocket provides:
+
+- Full-duplex communication over a single TCP connection
+- Low overhead for small messages (2-6 byte framing vs. SMTP/MIME overhead)
+- Wide support in browsers, mobile platforms, and server environments
+- Compatible with standard load balancers and proxies
+
+For clients that cannot use WebSocket (some embedded environments, restrictive firewalls), Server-Sent Events (SSE) for server-to-client streaming combined with HTTP POST for client-to-server messages provides a fallback.
+
+### Message Format
+
+Session channel messages are JSON objects with a type field, sequence number, and payload. The event types are defined in INFERENCE.md and shared end-to-end — the inference layer emits the same events that session channel subscribers receive.
+
+```json
+{"type": "inference.start", "seq": 1, "data": {"model": "claude-4"}}
+{"type": "inference.text.delta", "seq": 2, "data": {"token": "The", "partial": {...}}}
+{"type": "inference.thinking.delta", "seq": 3, "data": {"token": "Let me think", "partial": {...}}}
+{"type": "inference.text.delta", "seq": 4, "data": {"token": " weather", "partial": {...}}}
+{"type": "inference.usage", "seq": 47, "data": {"input": 120, "output": 47, "cacheRead": 0, "cacheWrite": 80, "thinking": 15}}
+{"type": "inference.done", "seq": 48, "data": {"message_id": "<abc123@example.com>", "usage": {"input": 120, "output": 47}}}
+{"type": "user.message", "data": {"content": "What's the weather?"}}
+```
+
+Event types are namespaced by category: `inference.*` for model streaming, `tool.*` for tool execution, `reactor.*` for lifecycle, `fork.*` for fork management, `message.*` for inbound messages, `custom.*` for plugin-defined events, and `user.*`, `debug.*`, `system.*` for session-level events. See INFERENCE.md for the complete event type reference.
+
+### Connection Establishment
+
+**Production (via control plane):**
+
+1. Client authenticates with the control plane via HTTPS, providing identity credentials and target agent
+2. Control plane returns a session token (JWT signed by the control plane, containing agent ID, client identity, capabilities, expiry)
+3. Client opens WebSocket to control plane's session endpoint: `wss://controlplane.example/session`
+4. Client sends session token in the first message
+5. Control plane validates token and routes connection to the harness hosting the target agent
+6. Harness sends `session.ready` message; bidirectional streaming begins
+
+**Development (direct to harness):**
+
+1. Client opens WebSocket directly to harness: `ws://localhost:8080/session`
+2. Client sends authentication (API key, or signed challenge)
+3. Harness validates and sends `session.ready`
+
+### Authentication
+
+Session tokens issued by the control plane are JWTs containing:
+
+- `sub` — client identity
+- `aud` — target agent ID
+- `cap` — invoker-granted capabilities for this session
+- `exp` — token expiry (short-lived, typically minutes)
+- `jti` — unique token ID for replay prevention
+
+Tokens are signed with the control plane's Ed25519 key. Harnesses verify the signature against the control plane's published public key.
+
+### Streaming Inference
+
+When an agent performs inference, the harness streams events to the session channel as they arrive from the model backend. Events use the protocol defined in INFERENCE.md:
+
+```
+← {"type": "inference.start", "seq": 1, "data": {"model": "claude-4"}}
+← {"type": "inference.text.delta", "seq": 2, "data": {"token": "The", "partial": {...}}}
+← {"type": "inference.text.delta", "seq": 3, "data": {"token": " weather", "partial": {...}}}
+← {"type": "inference.text.delta", "seq": 4, "data": {"token": " today", "partial": {...}}}
+...
+← {"type": "inference.usage", "seq": 47, "data": {"input": 120, "output": 47, "cacheRead": 0, "cacheWrite": 80, "thinking": 15}}
+← {"type": "inference.done", "seq": 48, "data": {"usage": {"input": 120, "output": 47}, "message_id": "<abc123@example.com>"}}
+```
+
+Sequence numbers are monotonic across the session (not per-inference-call), enabling gap detection and ordered replay. The `inference.usage` event fires before `inference.done`, allowing clients to process token accounting before the terminal event. `inference.done` also carries a usage summary for clients that only need totals. Reasoning tokens stream as `inference.thinking.delta` events, separate from `inference.text.delta`.
+
+When inference completes, the complete message is also delivered via SMTP to the client's IMAP inbox. Clients connected to both the session channel and IMAP will see the content twice — once as streaming tokens, once as the complete message. The client is responsible for deduplication, typically by matching the message ID included in `inference.done` with the IMAP message.
+
+### Heartbeats and Timeouts
+
+Both client and harness send periodic heartbeat messages to detect dead connections:
+
+```json
+{"type": "system.ping", "data": {"ts": 1699999999}}
+{"type": "system.pong", "data": {"ts": 1699999999}}
+```
+
+Connections without activity or heartbeat responses for 30 seconds are terminated. Clients are expected to reconnect and resume if needed.
+
+### Reconnection and Durability
+
+Session channels are ephemeral — there is no built-in resume capability for token streams. If a connection drops mid-stream, those tokens are lost. However, conversation durability is guaranteed through two mechanisms depending on the transport layer:
+
+**Production (IMAP transport):**
+
+1. Client reconnects and re-authenticates
+2. Client fetches any messages that arrived via IMAP while disconnected (using QRESYNC for efficient sync)
+3. New streaming resumes from the current point
+
+The IMAP inbox is the source of truth for conversation history. Session channels are a real-time optimization, not a replacement for IMAP.
+
+**Prototype (hub-mediated sidecar transport):**
+
+1. Sidecar reconnects to the Hub with its credential and reports the deployments it hosts
+2. Hub redelivers mail the sidecar had not acknowledged when the connection dropped, if it is back within the mail hold
+3. Sidecar loads agent context from isogit and resumes operation
+
+A supervised deployment carries its grants in the deploy pack and refreshes them over the supervisor's IPC credentials snapshot at spawn and recycle, so reconnect does not refresh grants over the wire.
+
+In the prototype, the Hub keeps no queue of mail sent while a sidecar is disconnected. Triggers and signals wait in `workflow_run_dispatch` rows until a sidecar takes them, and mail the sidecar had not acknowledged is held in memory for the mail hold (five minutes by default). The sidecar's isogit repository is the source of truth for agent inference context. The hub maintains a sidecar-to-agent mapping so it knows which sidecar to route messages to for a given run address. See HARNESS_DESIGN.md for the reconnection wire protocol.
+
+### Sidecar Agent Lifecycle Frames
+
+The sidecar WebSocket protocol includes frames for agent deployment and reconnection.
+
+**Agent deployment:**
+
+| Direction     | Frame                  | Purpose                                           |
+| ------------- | ---------------------- | ------------------------------------------------- |
+| Hub → Sidecar | `agent.deploy`         | Stage a deploy through the workflow-run substrate |
+| Sidecar → Hub | `agent.deploy.ack`     | Confirm the deploy staged, provide the public key |
+| Sidecar → Hub | `agent.deploy.error`   | Report that the deploy failed                     |
+| Hub → Sidecar | `agent.undeploy`       | Remove a deployment from the sidecar              |
+| Sidecar → Hub | `agent.undeploy.ack`   | Confirm teardown                                  |
+| Sidecar → Hub | `agent.undeploy.error` | Report that teardown failed                       |
+
+Agent deployment stages through the workflow-run substrate rather than a separate provision-then-start handshake. The hub sends `agent.deploy`; the sidecar's deploy router primes the per-step repo (for a provision-step frame) or spawns the supervised workflow-process child (for a workflow frame), then acks with `agent.deploy.ack` carrying the public key. The deploy tree (prompt, skills) rides in on the follow-up deploy pack, which the child reads from the substrate. The workflow-process child starts inference itself once spawned -- there is no separate `session.start` step.
+
+A deployment on a sidecar is an incarnation: its address plus the allocation generation it was deployed for. `agent.deploy` and `agent.undeploy` carry a `requestId` and the `generation` they act on, and every reply echoes both, so a reply settles only the request it answers and a late reply to a request the Hub already gave up on matches nothing. The sidecar handles the frames for one address one at a time, in the order it received them. Two kinds of frame do not hold the address's turn: the Hub's answers to its own pack transfers and correlation registrations, which only settle the request they answer, and a `workflow.control`, which starts in order but frees the turn while a cooperative cancellation waits for the child. Frames for different addresses, probe requests, and heartbeat pongs do not wait on each other, so one deployment's slow deploy or undeploy delays neither another deployment nor the link's liveness. It answers each request only on the connection that carried it; a request whose connection closed before its turn is dropped, and the Hub has already failed it. An undeploy is the exception: it still runs and only its answer is dropped, because the Hub sends it for a generation it will not route again and may close the socket right behind it.
+
+A sidecar holds at most one incarnation of an address, and an address is deployed once: a deploy of an address the sidecar holds is refused with `agent.deploy.error`, and a Hub pack for it with `conflict`.
+
+Undeploy is an acknowledged operation. The sidecar shuts the named generation's supervisor down, waits for the deployment's in-flight outbound mail to reach the link, deletes the agent directory, and responds with `agent.undeploy.ack`, or with `agent.undeploy.error` naming each step that failed. An undeploy of a generation older than the one the sidecar holds is acknowledged without touching anything. An undeploy of an address the sidecar does not hold still runs the teardown, so local state an interrupted deploy left behind is reclaimed. The teardown first marks the run record `tearing-down`, and removes the deployment's workflow-run repository and, last, the record only once every other step succeeded: after a crash mid-undeploy the next boot reports the incarnation as tearing down, a step that fails keeps it listed so. Each removed tree's parent is synced before cleanup is acknowledged. The Hub retries removal while its cleanup policy permits it; a cleanup binding leaves this to the reconciler rather than sending an untracked undeploy on hello. A multi-step deployment's per-step grants repositories and deploy trees are left on disk, since a sidecar no longer holding the deployment cannot identify them. Reports the undeployed incarnation still owed the Hub but had not sent, such as queued outbound mail and correlation-register retries, are dropped with it, so none reaches the Hub after the teardown. When the Hub releases a deployment, it drops the deployment's routes before it sends the undeploy. A deploy of an address waits until the sidecar has answered every undeploy of it sent on the same connection, bounded by the request timeout. The Hub handles that answer behind the frames the sidecar sent before it, so nothing the removed copy sends is credited to a later deploy of the address.
+
+**Reconnection:**
+
+| Direction     | Frame                | Purpose                                                         |
+| ------------- | -------------------- | --------------------------------------------------------------- |
+| Sidecar → Hub | `hello`              | Authenticate and report every incarnation the sidecar holds     |
+| Hub → Sidecar | `welcome`            | Name the incarnations the Hub routes after reconciling `hello`  |
+| Sidecar → Hub | `deployment.stopped` | Report a deployment that stopped though the Hub did not stop it |
+
+**Grant management:**
+
+The live `grants.update` wire path has been retired. A supervised deployment receives its grants in the deploy pack and refreshes them over the supervisor's IPC credentials snapshot at spawn and recycle; there is no wire frame that pushes a grant change to an already-running deployment. Propagating a mid-run grant change (for example, a revocation) to a running deployment is not currently implemented.
+
+Every connection opens with a `hello` that reports each incarnation the sidecar holds and whether it is `deploying`, `live`, `stopped`, or `tearing-down`. A `stopped` incarnation no longer runs and keeps its local state for inspection until the Hub undeploys it. One the Hub did not stop carries the error that ended it: its workflow child ended itself, or the sidecar could not restore it. The Hub then fails the deployment's live runs with that error and keeps its capacity for the retention its policy sets for failed runs, so the stopped copy can be inspected. The sidecar also marks either state in the run record, so a restart reports the incarnation instead of spawning it, and reports such a stop in a `deployment.stopped` frame once that write settles, and again after each `welcome` until retention is durably decided, with the tips of the deployment's history branches. It does not wait for its pushes of that history: a push that fails is retried on every reconnect, so that wait would have no bound. The Hub fails the deployment once it holds those tips, or a minute after it first heard of the stop, and the failure then names the history it never received. A reconnect does not restart that minute, and a sidecar that disconnects instead and stays away past its disconnect limit fails the deployment with the reason it reported. The Hub holds a reported stop only in memory until it fails the deployment: a Hub restart starts that minute again from the sidecar's next report, and if the sidecar does not come back, the deployment fails without that reason. The Hub accepts the frame when the bearer token resolves to a sidecar that is not retired or still hosts a probe, allocation generation, or cleanup binding. It restores a reported incarnation's route when the incarnation is live, its generation is the current, initialized generation of a routable allocation the sidecar hosts, and its run has not ended, keeps a stopped one of the current generation of an allocation the sidecar hosts unrouted, initialized or not, and an initialized live one whose run is terminal until lifecycle retention stops it, leaves incarnations covered by cleanup bindings to the reconciler, and sends `agent.undeploy` naming the generation of every other reported incarnation rather than rejecting the connection, so one stale deployment cannot disconnect the others. It then answers `welcome` listing the incarnations it routes, as soon as routing is settled. A hello is never left unanswered: the Hub closes the socket when the hello is invalid or its registration fails before the welcome, and the sidecar reconnects when no `welcome` arrives within 30 seconds (`welcomeTimeoutMs`). A failure after the welcome is logged, since registering again would meet it again. A sidecar whose token is valid but that hosts neither current work nor cleanup obligations is welcomed with nothing routed, after the Hub sends `agent.undeploy` for everything it reports, and stays connected, idle, for its provisioner to reuse. Until `welcome` the sidecar sends nothing the Hub must receive: it queues outbound mail and signal correlation registrations, drops best-effort events, and holds back the workflow-run pack pushes of every incarnation it holds; a push no connection could carry stays due instead of failing the deployment's next write. The queue holds 1024 frames for all the sidecar's deployments together: an outage that outlasts it drops queued correlation registrations first, which the next `welcome` re-sends, then the audit copies the Hub records sent mail from, and then fails a deployment's send rather than drop mail it has not yet routed. On `welcome` it sends the queue, re-drives its routed incarnations' pending packs and parked correlations, and reports stopped deployments whose retention is undecided.
+
+### Debug and Telemetry Streams
+
+Debug and telemetry data (state inspection, trace output, log tailing) flows only over session channels — it is not delivered via IMAP. This data is captured for auditing purposes with standard retention policies but is not part of the durable conversation record.
+
+```json
+{"type": "debug.state", "data": {"context_tokens": 4096, "tools_invoked": 3}}
+{"type": "debug.trace", "data": {"span_id": "abc123", "event": "tool_start", "tool": "web_search"}}
+{"type": "telemetry.log", "data": {"level": "info", "message": "Processing request"}}
+```
+
+Debug streams require explicit authorization — not all clients are permitted to attach debuggers to agents.
+
+## Provisioned Sidecar Allocation and Recovery
+
+The placement design describes capability-based provisioner selection. This section describes how the Hub keeps the selected binding, and fails and releases it when its sidecar or infrastructure is lost, while retaining main's anchor-run workflow model.
+
+### Probe preparation
+
+`workflow_probe` owns only the probe operation: source, entry, optional pin, status, raw result, failure, and the temporary provisioner binding needed to clean up remote capacity. It does not store catalog offerings, session/domain data, deploy content, or a workflow launch specification.
+
+`workflow_definition_revision` freezes the source asset commit, selected package,
+entry, and complete dependency manifest. Its selector includes the tenant,
+asset, source commit, entry, package pin, and registry identity. Dependency
+ranges resolve once for that revision. When a probe fails or is refused, the
+Hub deletes the revision unless an artifact row, pending or published, still
+references it, so the next deployment resolves the ranges again and probes the
+new manifest. A published artifact keeps its revision, and the closure a
+deployment ships is always read from the revision its artifact or claim holds.
+Changing the source revision or registry creates another revision; changing
+the internal probe cache version retains the frozen manifest and probes it
+again.
+
+`workflow_definition_artifact` stores the validated probe result for a revision.
+Its id hashes the revision id with the internal `WORKFLOW_PROBE_CACHE_VERSION`
+in `workflow-probe-cache.ts`. Asset-sourced deployments reuse these artifacts
+automatically. Bump the version when probe behavior or the stored result shape
+changes. A completed artifact is immutable. Pending artifacts use renewable
+database leases so concurrent Hub requests share a probe and a crashed owner
+can be replaced. Lease ownership is checked when publishing; failed and refused
+probes never publish a reusable result. A validated result that cannot be
+published still deploys, without an artifact reference. When an awaited probe
+fails, one waiting request takes over the claim and the others probe on their
+own instead of queueing behind it.
+
+A cache hit skips asset-pack delivery and probe provisioning, but still runs the
+current Hub validation and approval gate. The new deployment resolves current
+offerings, credentials, lifecycle and placement policy. Its launch specification
+references the artifact.
+
+Reuse assumes deterministic definition evaluation over the pinned code and
+compatible evaluator code and environments across probe workers. Provisioner
+configuration does not contribute to the cache key; deployment configuration
+must keep those workers compatible. The run child re-verifies its projection
+against the approved wire hash and refuses a mismatch. Registry-source installs
+do not use this cache; the HTTP deployment route accepts asset sources.
+
+Asset packs use the exact recorded commit. A launch specification written
+before that commit was recorded uses the commit its source names, or the
+branch tip for a tarball asset. The Hub retains those commits under
+`refs/interchange/workflow-definitions/<commit>`. Garbage collection treats
+`refs/interchange/` as roots, git clients never see it, and only the Hub may
+write to it. Only the Hub may write ref names with non-ASCII characters either,
+because a case-insensitive filesystem can fold one of them into this namespace.
+Retained commits and completed artifacts are not expired automatically.
+
+Each launch specification freezes the grant snapshot from its deployment's
+probe. HTTP and mail triggers read that deployment's snapshot rather than a
+later definition approval. Older launch specifications receive their existing
+version snapshot during migration. A deployment with no snapshot cannot be
+triggered; triggers never read the shared version row.
+
+Every deployment request matches tenant and Hub probe policy against the probe-provisioner list and passes every match to the configured probe chooser before the cache lookup, so a cache hit cannot bypass current probe policy. No match fails closed, even when a cached result exists. On a cache miss, the deployment request stays open while the selected provisioner starts probe capacity. Once the exact authenticated generation returns `workflow.probe.result`, the Hub freezes that result, matches the final capability policy against its separate deployment-provisioner list, and passes those matches to the deployment chooser. The default chooser selects the first match in registration order. If both choosers select the same binding, the Hub atomically creates the normal anchor run, frozen launch spec, and an allocated `sidecar_allocation` that adopts the connected capacity; the sidecar stays connected, and the reconciler's readiness check turns its probe binding into the allocation binding in place. Otherwise it destroys the probe capacity and creates a normal pending allocation for the selected binding. Only then does the deployment exist.
+
+A probe passes its own id as the opaque owner id to the same `ensure`/`destroy` lifecycle as an allocation. `destroy` must identify capacity from `(allocationId, generation, sidecarId)` alone. The optional `externalRef` is persisted only after `ensure` returns, so a Hub crash after capacity creation can require cleanup without it. Startup moves every active probe left by an interrupted request to durable `releasing` state. Provider destruction runs in the independent cleanup scheduler after startup; a slow or unavailable provisioner cannot hold the Hub startup path. The production Hub registers no infrastructure backend by default; the admin UI E2E harness injects a test-only `local-process` provisioner.
+
+The launch spec deliberately stores catalog offering ids rather than resolved provider secrets. Every deploy attempt resolves those offerings again under the original authority, so a rotated or revoked credential takes effect on the next attempt and no raw provider credential is persisted.
+
+### Allocation state and generation fence
+
+An allocation moves through `pending → provisioning → allocated`. An uncertain provision outcome moves it through `replacing` before another generation is created. A structured ensure rejection certifies that no infrastructure exists for that generation; a non-retryable rejection terminally fails the allocation and its active runs, while a retryable rejection advances the fence and backs off before replacement. Each provisioning sequence allows ten attempts, recorded when binding the identity before calling ensure and preserved through cleanup and Hub restarts. Provisioning backoff uses that counter independently of cleanup. Exhaustion fails the workflow and releases remaining capacity. Replacing a parked worker starts a fresh provisioning sequence only if that worker completed initialization; an accepted worker that never connects keeps spending the same budget. Provisioners throw when they cannot determine whether an ensure request took effect. An allocated worker is replaced only when its committed run is parked; otherwise losing it fails its active runs and the allocation uses `releasing → released`. `failed` is reserved for a terminal case where the Hub knows no infrastructure exists. One allocation is permitted per anchor.
+
+The provisioner decides whether a probe or allocation generation gets new capacity or joins a sidecar it already runs. Every `ensure` request carries a newly minted sidecar identity; the provisioner either starts capacity that authenticates with it or returns the id of a sidecar it started for earlier work. The Hub records the provisioner binding and the adapter manifest digest on each identity it mints. It retires an identity once it knows no sidecar runs with it: its ensure was rejected, a destroy confirmed cleanup, or its provisioner reported it stopped through the host it receives in `attach`. Such a report ends the reconnect window of the sidecar's work only when it passes `endReconnectWindow`, which the Hub records on the sidecar so that work disconnecting later, or across a Hub restart, gets no window either; connected work keeps running until it disconnects. Once no current probe, allocation, or cleanup obligation is left on a retired identity, the Hub refuses its next handshake after asking the sidecar to undeploy everything it reports; a connection already open stays open, idle, until it closes. It accepts a reused sidecar only when that sidecar was minted for the same binding and manifest and is not retired, whether or not it still hosts other work, and, for an allocation, fewer active reservations than the sidecar advertised in its current hello (128 by default, configured with `SIDECAR_MAX_ACTIVE_DEPLOYMENTS`), counting releasing, replacing, and destroy-failed allocations unless removal is durably confirmed or the sidecar confirmed that their accepted incarnation is retained, records it on the probe or allocation, and deletes the unused minted identity. An allocation placement it cannot accept is handled like a failed ensure and replaced; a probe placement it cannot accept fails the probe and the deploy that requested it. A deployment that adopts its probe's sidecar is held to the same reuse check and deployment limit; when the sidecar is full the deploy fails and the probe is released. Because the Hub records the chosen sidecar only once `ensure` returns, `destroy` after an uncertain ensure names the minted identity, so a provisioner that reuses sidecars must release by allocation id. Such a provisioner keeps its holds durably: each `ensure` it answers with a sidecar adds a hold for that allocation id, the matching `destroy` removes it, and once none remain it either keeps the sidecar running idle for later work, answering `cleanup: required`, or stops it, which requires also removing its restorable deployment state and confirming cleanup. A provider returning `cleanup: required` keeps a viable sidecar cleanup path available. The Hub never re-announces holds, so a provisioner that keeps them only in memory leaks sidecars after its own restart, or stops one that other work still uses. `destroy` releases the allocation's hold at the named generation or any older one, since release and replacement advance an allocation's generation before destroying it; whether the sidecar stays up, for its other work or idle, is the provisioner's decision. A provisioner's capability declarations must hold for the work it shares a sidecar with.
+
+The reconciler owns acknowledged undeploys for releasing and replacing deployments. Release completes once the provisioner's hold is released and deployment cleanup is confirmed; replacement waits for the same proof before binding new capacity. Confirmed removal frees the active sidecar slot even while provider cleanup remains pending or failed. See [Release and replacement cleanup](SIDECAR_PLACEMENT.md#release-and-replacement-cleanup) for the provider contract, attempt ordering, retry budget, and recovery rules. Beginning new cleanup resets the durable attempt count; giving up an exhausted replacement continues its existing cleanup without a reset. Connection identities are revalidated before sending. Reconnects can advance a pending retry or resume a cleanup disconnect timeout without resetting attempts or reviving a failed workflow. They cannot reopen exhausted cleanup; its provider obligation and cleanup fence remain recorded.
+
+A non-retryable destroy rejection moves a `releasing` or `replacing` allocation to terminal `destroy_failed`. The Hub records the failure, keeps a cleanup-only binding, and stops reconciliation. It fails remaining live runs and unsettled dispatches unless deployment removal is confirmed and cancellation is pending; then lifecycle reconciliation settles cancellation and dispatches after recovering accepted history. The allocation retains its sidecar id and external reference for operator recovery, but cannot dispatch work or create a replacement. Its copy occupies an active slot until removal or retained storage is confirmed. Reconnect preserves inventory access without an untracked hello undeploy or a new cleanup attempt. Cleanup must preserve other work on a shared sidecar. The deployment list reports `destroy_failed` explicitly.
+
+Every replacement increments `generation`. The generation is persisted before the provisioner is called and appears in the ensure/destroy request and the sidecar's authenticated identity. Provisioners must make ensure/destroy idempotent and reject a generation older than one they have already observed. The Hub separately records `ensure_accepted_generation`; registration may occur while capacity is converging, but readiness and routing require the exact generation to be accepted. A reconnecting sidecar takes a deployment's route back only once the deployment's first deploy completed: its anchor's key is committed and no initialization is in flight. Releasing a deployment on a sidecar that hosts other work does not destroy the sidecar, so the Hub undeploys a copy whose deploy is still uncertain rather than routing to it. A copy whose run has ended takes no route either. The lifecycle service stops and transfers it under the [retained-capacity policy](SIDECAR_PLACEMENT.md#active-and-retained-capacity). A deferred failure whose run is still live remains ineligible for reclaim and is undeployed.
+
+The Hub never persists raw sidecar bearer tokens; it stores only their hashes. A sidecar connection grants cleanup while it hosts a `releasing`, `replacing`, or `destroy_failed` allocation, including a permanent provider rejection. A disconnect timeout resumes cleanup on reconnect; an exhausted retry budget remains terminal. A cleanup binding permits registration, reporting existing retained-copy proofs, and cleanup. It grants no readiness, routing, reclaim, or permission to request new retention. A sidecar with neither current work nor cleanup obligations stays connected, idle, after the Hub asks it to undeploy what its hello reports, so its provisioner can place new work on it. If the Hub restarts during a probe, startup marks its temporary capacity for release; background reconciliation performs and retries destruction. If it restarts after binding an allocation generation but before recording ensure acceptance, it treats that outcome as uncertain, fences the generation, destroys it idempotently, and mints a replacement identity. On Hub startup, interrupted probes are durably marked for cleanup before active allocation fences are rebuilt; no provider call is awaited during this initialization.
+
+The sidecar token is a bearer secret: possession is sufficient to authenticate as that sidecar, for every probe and allocation it currently hosts, including cleanup bindings. Provisioners and workers must never log the raw token. A provisioner that must persist it for restartable capacity must use access-controlled secret storage and keep it with any worker state that can be restarted, deleting it only when the worker and its restorable state are permanently removed. The sidecar WebSocket must use TLS (`wss://`) whenever it crosses a non-loopback or otherwise untrusted transport; plaintext `ws://` is reserved for local loopback development.
+
+The Hub tracks each probe and allocation generation a sidecar hosts as a binding on its connection. A connection hosting only probes reports no incarnations and can use only the probe operation. An allocation routes only its anchor's deployment address and the step addresses staged for it. Probe, deploy, mail, and signal sends resolve the exact `(allocationId, generation)` and revalidate its database identity before routing. A generation advance drops that binding's routes and rejects its waiters and in-flight requests. Release and replacement retain a cleanup binding for the reconciler's acknowledged undeploy of the old copy. Every deployment-scoped frame in either direction except `connector.state.changed` carries the generation it belongs to (a reply matched to its request by an id, such as a pack acknowledgement, carries the id instead), so the Hub drops what the sidecar still sends for a generation it has fenced, and the sidecar refuses mail, signals, drains, grants and updates for a generation it does not hold live. A deploy of an address waits until the sidecar answers an earlier undeploy of it. Mail the Hub delivered but the sidecar has not acknowledged is held for five minutes after its address loses its route, whether by a disconnect, an undeploy or a stop. A `hello` that routes the same generation again within that time redelivers all of it, including mail a `workflow_run_dispatch` row stands behind; the deployment drops a copy it already holds by its message id. Mail the Hub gives up on is surfaced as `mail.outbound.undelivered` unless such a row stands behind it; a redelivery that finds its run can no longer execute drops it instead. The socket stays open when the sidecar hosts neither current work nor a cleanup binding: the Hub routes nothing to an idle sidecar, and whether it keeps running is its provisioner's decision. Stale incarnations reported again after a lost undeploy are removed again; release and replacement cleanup remain durable allocation obligations. When a binding appears on a sidecar that is already connected, such as an adopted probe, the Hub syncs that connection's bindings from the database before checking readiness. A handshake claims its sidecar before reading the bindings it hosts: the previous socket keeps serving until the new one takes them over, and a sync that arrives meanwhile runs after the registration, so work placed on the sidecar while it connects attaches either way.
+
+Sidecar-originated `mail.outbound`, `agent.event`, `mail.inbound.ack`, and `signal.correlation.register` frames carry an agent address and generation that must name an incarnation the authenticated connection routes. The Hub drops any other claim before routing or persisting mail, emitting an event, or notifying subscribers. A `deployment.stopped` frame must name the current generation of an allocation the connection hosts, routed or not, since a stopped incarnation is not routed. The reconciler owns removal for copies covered by a current cleanup binding; the Hub undeploys other stale incarnations named by stop reports. Routed mail carries the sender address validated by the sidecar's scoped transport rather than deriving authority from the MIME `From` header.
+
+A sidecar relays every recipient of a deployment's mail through the Hub, including deployments on the same sidecar and the sender itself. A mail may name at most one workflow deployment among its recipients, its sender included: the sidecar fails a send that names more, so a reply to another deployment that copies its own sender is refused, and the Hub refuses such a mail too.
+
+Workflow-run pack ingestion applies the fence in the reverse direction. The wire layer derives pack ownership from the authenticated socket, requires the frame's generation to be the one the connection hosts for the deployment address, routed or not, and the repository id to equal the slug derived from that address, and passes that source to the Hub lookup. Immediately before advancing the Git ref, the lookup revalidates the running anchor and the current accepted allocation generation. Terminal events are projected into SQL only when their run row belongs to that anchor.
+
+The repository store stages a workflow-run pack and validates it before it decides the ref. Under the repository lock, it writes and indexes the pack in `objects/pack-staging/<transferId>/`, a directory that no reader scans. It then validates each new commit through a view that also reads the staged pack, with no repository lock held. The commit step takes the repository lock again, publishes the pack into `objects/pack`, and moves the ref. A pack that fails validation is discarded, so no reader ever sees it. A crash leaves only a staging directory, and the first receive for that repository in the next Hub process removes it. When the repository is removed while its pack validates, the receive fails with `RepoRemovedDuringReceiveError` instead of a validation error, because the pack is not at fault. Every other pack receive, such as an agent-state, skill or asset push, uses the same stage, validate and publish steps in one lock span.
+
+The Hub lookup validates a workflow-run pack before it takes the deployment's `sidecar_allocation` row lock, and it holds that row only for the ref decision. First, with no lock, it checks that the anchor is live and that the source owns the current generation of an `allocated` allocation. It rejects a fenced or stale source with `path_violation` before the repository store stages anything. Then it prepares the pack with no database transaction open, so a pack that fails validation writes no row. After that it opens the pending projection and locks the allocation row. Under the lock it runs the same ownership check and the live check again, and only then calls the commit step. Git therefore still moves only under the allocation lock. A release or a recorded stop that commits while the pack validates makes the locked check reject the pack, and the receive discards the staged pack. The commit step fails with `RepoRemovedDuringReceiveError` only before it publishes, so that receive clears its pending projection and gets `path_violation`.
+
+A pack whose tip the ref already holds, at prepare or at commit, is accepted with no runs, and it runs neither the terminal projection nor the dispatch projection. Git did not change, and the receive that moved the ref to that tip runs both projections after its own ref write. Lifecycle recovery and the periodic dispatch projection pass retry what that receive could not finish.
+
+This order has limits:
+
+- The Hub handles the queued frames of one sidecar connection in order, and a pack receive holds that queue for its full length, validation included. Only the frames that `frameBypassesQueue` lists skip the queue, such as `ping` and the pack acknowledgements and rejections. A slow validation therefore delays the mail, events, control acknowledgements, stop reports and next push of that sidecar.
+- Receive B's commit step can wait for the repository lock while receive A stages its pack. That wait is shorter than a whole receive, but it is not zero.
+- Pushes from one sidecar can finish in any order. The repository store keeps the ref at the newest tip of the line, so an older push that finishes last changes nothing. If a sidecar loses its disk and starts a new history while an older push from it is still in flight, the older push can finish last and replace the new history. The store does not judge the shape of the sidecar's history, because the sidecar is authoritative for it.
+
+### Replacement and replay
+
+Provisioner `ensure` and `destroy` calls have a 120-second default deadline, configurable through `operationTimeoutMs` on the allocation reconciler and workflow allocation service. The Hub supplies an abort signal and stops waiting at the deadline even if a provisioner ignores cancellation. An ensure timeout is an uncertain outcome requiring fencing and cleanup; a destroy timeout leaves cleanup pending and cannot authorize replacement. A late provider operation must still respect the provisioner generation fence.
+
+One lease heartbeat spans the entire claimed reconciliation, including database transitions between provider calls and the final readiness write. Changing stages does not restart the renewal timer, and a pending renewal remains owned by that claim. Completion or cancellation makes its late response inert. Lease-validation query errors follow the lease-loss retry path. Readiness queries before connection waits and after ensure acceptance also obey the operation deadline and lease cancellation.
+
+Several lookups can fail or stall without establishing that a worker is gone. Each is inconclusive and schedules a retry rather than a release:
+
+- A readiness-query timeout schedules a retry without releasing the worker: a stalled identity lookup does not prove that the worker missed its connection deadline.
+- A failed identity lookup is likewise inconclusive: the router reports it distinctly from an absent worker, the connection wait stays patient while its deadline remains and reports the failure rather than a missed deadline at expiry, and reconciliation retries instead of releasing. This includes identity revalidation inside the router connection wait; expiry of the outer operation deadline schedules a retry, while the router still reports an actual expired connection deadline.
+- A notification lookup still pending at the connection deadline is also inconclusive; it retains admission capacity and allocation exclusion until it settles, even after the wait expires.
+- The workflow-active check propagates identity lookup failures and a missing connection too, so neither can fail a deployment its sidecar may still hold or start a deploy over a live supervisor.
+
+The scheduler slot is freed, but the allocation stays excluded from new claims until the underlying lookup settles, preventing duplicate stuck database reads. A fresh claim then performs a fresh readiness check. Sender deployment recovery queries use the same exclusion until their underlying reads settle, including after timeout or cancellation. Cancelled initialization queries keep the same exclusion: the scheduler slot is freed, but the allocation stays excluded and retains admission capacity until the initializer's underlying reads settle.
+
+Release and replacement transactions use the bounded per-allocation connection queue. Cancellation, lease expiry, or the operation deadline frees the scheduler slot while the pending transaction keeps the allocation excluded from new claims. Claims recheck local work after returning so an older exclusion snapshot cannot overtake pending cleanup, reconciliation, or queries. A late claim that finds such work returns without parking and lets its lease expire. Lease loss, renewal errors, and lease-validation errors stop reconciliation without a parking write. The heartbeat stops and the existing durable lease and retry schedule govern the next claim; these paths do not add a fresh retry backoff. Unfinished tracked queries and writes keep their allocation excluded until they settle. A late committed transition advances the router's generation fence before the queued work settles and its exclusion clears.
+
+Allocation reconciliation uses eight concurrent slots by default (`sidecarAllocationConcurrency` on `createHubServer`). Each free slot can claim work without waiting for a batch of other slots to finish. An admission limit equal to that concurrency setting (`maxConcurrentClaims` when constructing the reconciler directly) covers pending claims, active reconciliation, and allocations with retained readiness/recovery queries, lease-validation queries, lease renewals, or connection-event writes. When the limit is full, new claims wait for a later scheduler poll.
+
+- Capacity is reserved before issuing a claim and retained through reconciliation, without a gap at the claim response. After cancellation or timeout, unfinished tracked work continues to count until it settles; active allocations count once even when they have pending queries or writes.
+- Overlapping queries keep the allocation excluded and its capacity reserved until every query settles, including renewals that outlive a completed reconciliation.
+- Claims exclude allocations still executing in the same Hub and allocations with pending connection-event writes. Late claim results never start reconciliation.
+- Waiting to enter or finish initialization through that queue obeys cancellation, lease expiry, and the operation deadline. A cancelled waiter releases its reconciliation slot; its queued callback cannot run later, while already-started database writes retain their ordering until they settle. Unrelated allocations can proceed during that wait while admission capacity remains available.
+
+Probe cleanup, workflow dispatch, and connection repair run on independent schedules. Periodic dispatch drains directly, independently of the guarded drain used by enqueue notifications. Both drains share an admission limit of eight unfinished attempts by default (`maxConcurrentDispatches` on `createWorkflowDispatchService`). Pending claims reserve capacity before querying; delivery and retry writes retain that capacity until they settle, even after timeout. Both drains exclude dispatches whose earlier delivery work is still executing, even after the database lease expires. Once a claim returns, delivery and retry writes are bounded by the remaining delivery lease (30 seconds by default), counted conservatively from the start of the claim. Expiry frees the drain while unfinished I/O keeps that dispatch excluded until it settles; cancellation checks after address, identity, and sender-key lookups prevent late sends. Provider, allocation claim, lease-validation, and allocation connection-wait deadlines share the `sidecarOperationTimeoutMs` setting.
+
+The allocation reconciler uses database leases and retry timestamps rather than process-local jobs. Within a Hub, connection events and ordinary reconciliation completion share a per-allocation queue. A disconnect cancels the active attempt and invalidates its existing database lease. The readiness pass consumes connection notifications before starting initialization. A later connect schedules an immediate follow-up after successful initialization; failed initialization retains its failure details and retry backoff. Losing or failing to renew a lease cancels initialization. A local watchdog also cancels it if renewal never settles before the last confirmed lease expires. Successful renewals advance that deadline, while late results from cancelled or completed operations are ignored. Restore and deploy sends check cancellation, and publishing the initialization key requires the current unexpired lease. A single initialization attempt has no total deadline: each restore pack acknowledgement has a 120-second default timeout, and the deploy acknowledgement has a 30-second default timeout. Restore or preparation failures, which happen before the deploy frame is sent, retry the same generation at the capped backoff for 1 minute from the first failure; past that the Hub fails the deployment's runs and releases its capacity like any other unrecoverable loss. Failures after the deploy frame was sent remain uncertain and require fencing and release. Repository preparation and database work have no separate initialization deadline and can occupy a reconciliation slot while the lease remains current. Probe cleanup callers in one Hub share an in-flight operation and reread its current state before destruction. The `releasing` and `replacing` statuses both track durable cleanup obligations; the independent periodic scan retries them within the cleanup limits after transient failure or a Hub restart. It persists a sidecar identity and connect deadline before calling `ensure`, parks an accepted generation while waiting for its WebSocket, and wakes immediately on an exact-generation connect event. A disconnect starts the deployment's disconnect limit, the `maxDisconnected` of its lifecycle policy, which the allocation records, once its first deploy completed, and the first-connect window, the 2 minutes a newly placed sidecar has to connect, until then. A Hub start gives every allocated generation the same fresh window, since no sidecar could connect while the Hub was down, keeping a later first-connect deadline the generation already has. Work on a sidecar whose provisioner ended its reconnect window gets none. The runtime periodically repairs an allocated generation that has neither a live connection nor a durable schedule, without replacing a concurrent wake or reconciliation lease. If the deadline expires, the Hub atomically fails the deployment's active runs, deactivates their principals, advances the fence, and releases the uncertain worker. A sidecar that returns after that holds only a cleanup binding for the deployment: it cannot regain its routes or push workflow history. A cleanup disconnect timeout resumes removal on reconnect; exhausted retries and permanent provider rejections remain terminal. Trigger enqueue transactions lock and revalidate the allocation, reread the authoritative Git lifecycle under that fence, and revalidate the deployment's SQL run state, so they cannot enqueue after either representation becomes terminal.
+
+Before sending an allocated deploy, the Hub commits an `initialization_lease_id` on the allocation under the current accepted generation and unexpired reconciliation lease. Restoration and preparation happen before this reservation. The router rechecks cancellation and the exact socket after the reservation commits. A crash between reservation and send can conservatively require cleanup even if no frame reached the worker. A proven unsent failure of a confirmed reservation clears its own initialization marker, even after cancellation or loss of its reconciliation lease, provided the exact marker, allocation status, anchor identity, and accepted generation still match. If reservation confirmation is lost, the caller cannot prove its reservation and leaves the marker for conservative cleanup. Cancellation, disconnects, retries, and lease changes otherwise preserve the marker; a stale clear cannot remove a newer attempt or affect another generation.
+
+An allocated supervisor's deploy acknowledgement does not publish its public key immediately. The Hub publishes the key and credential references and clears the exact initialization marker in one allocation-locked transaction, rechecking lease expiry before committing the mutations. A later reconciliation with an outstanding marker fences and releases the generation before checking connectivity or restoring history. That cleanup requires the exact observed marker to remain present when the generation advances. A concurrent proven-unsent rollback instead requeues ordinary initialization checks; absence of the marker alone does not publish readiness. Readiness and dispatch require the marker to be absent, while bootstrap Git uploads remain permitted. Release consumes the marker atomically with the generation advance. A publication error whose transaction actually committed must not release the completed worker: cleanup revalidates the marker and key after acquiring the allocation lock, and completed initialization re-enters the normal callback to finish dispatch requeue and readiness. An active allocated supervisor without a completed initialization key remains uncertain and must be fenced and released, never redeployed in place.
+
+Mail sent before initialization publishes its signing key is deferred under the allocation generation and reconciliation attempt. Cancellation leaves that mail pending because the key transaction may already have committed. A confirmed unsent rollback fails queued mail. A new reconciliation resolves the previous attempt's marker and key before waiting for a connection. A completed initialization releases its queued mail and a rolled-back one fails it; an outstanding marker leaves mail pending until fencing confirms failure, because the prior caller may still complete a proven-unsent rollback. A lost rollback response is resolved on a later claim, which finds neither a marker nor a key. A durable generation advance also clears an unfinished sender attempt, including when the cleanup transaction's response was lost. Late callbacks can settle only their own attempt. Deferred delivery carries the confirmed signing key so a newer attempt cannot capture the queued message or change its verification key. The Hub completes asynchronous delivery preparation before sending the sender key and mail consecutively on the same socket. The existing deferred-mail TTL remains the fallback if recovery cannot resolve the outcome.
+
+Hub-originated triggers have a separate durable replay path in `workflow_run_dispatch`:
+
+- Mail stores the immutable MIME bytes and the stable run's canonical step grants in the same transaction that reserves the run principal/grants. The exact generation receives `run.grants` then `mail.inbound` on one FIFO WebSocket. Later trigger occurrences reuse that snapshot; a grants-only reservation with no `RunStarted` event is still eligible for its first delivery.
+- A sidecar `mail.inbound.ack` proves only that the local inbox accepted the message. The Hub retains it until an accepted workflow-run Git pack shows either the matching `RunStarted` event or a claim-check entry under `addresses/*/consumed/`. An explicit supervisor rejection fails the dispatch instead of settling it.
+- Signals store a validated `signal.deliver` frame and are redelivered with the same `signalId`. Approval decisions for provisioned deployments enqueue that frame in the same transaction that resolves the approval. There is no sidecar signal ack; the Hub settles the row only after an accepted pack contains the corresponding `SignalReceived` event.
+- When a generation becomes ready, pending and acknowledged dispatches are requeued. Abandoned attempts remain stopped. Mail claim checks and signal ids make replay idempotent across a worker loss at any point in delivery.
+- A terminal target run closes dispatches to that run after accepted ids in its log are settled. The anchor's terminal log closes dispatches to a still-live child only after the anchor's database row is terminal or its allocation is closed, no pack projection is pending, and the pinned Git tree is still current. A failed anchor status projection can otherwise leave the allocation able to accept a later child pack. This ordering also prevents the terminal event from racing the firing mail's immediately-following claim-check receipt.
+- Forced stop and unrecoverable allocation failure abandon outstanding attempts without asserting rejection. A bounded independent recovery loop scans unresolved dispatches regardless of the database run status and can resolve abandoned attempts from later Git evidence. Mail used to resume an input gate is accepted through a `SignalReceived` event, just as an explicit signal is; the dispatch id remains unique across both kinds within the anchor.
+
+Run statuses have a matching obligation in `workflow_pending_projection`. Pack ingestion inserts a row before the receive can advance Git and deletes it after every newly terminal run in the pack reaches a final decision, or when the receive is rejected before Git changes. A row that survives a failed projection or a failed receive is reconciled by the lifecycle sweep once it is older than a short grace: the Hub reads the deployment's accepted history at one pinned tip, records each run's terminal outcome (creating child rows it never recorded), confirms the tip under the allocation lock, and deletes only rows whose receive has finished in this process or belonged to an earlier one. A receive writes the ref last and nothing removes refs, so a repository without a ref never advanced and its row clears, while a missing repository under a receive's row fails reconciliation instead of clearing it; only rows the migration backfilled for deployments that may never have pushed clear on a missing ref. A confirmed stop records `cancelled` only once the Hub holds the ref tips the stopped worker reported and no row remains, so it cannot overwrite an outcome the worker committed or one the database has not seen yet. A stop the worker cannot confirm ends in allocation release instead, and `cancelled` is then recorded once no row remains, over whatever outcome the worker committed but never delivered. Unrecoverable allocation failure follows the same rule: while a row remains it records `infrastructure_failed_at` on the anchor instead of failing live runs, and the lifecycle sweep fails the runs still live, at that time, once reconciliation has cleared every row. Why the Hub failed the deployment is kept as `failure_code` and `failure_message` on its anchor and on each run it failed, which the run view reports after the allocation is released; the anchor's is cleared again when reconciled history settled the anchor first.
+
+The lifecycle sweep sends cancel and stop through the router. When the router holds no connection for the allocation generation, it fails the command with `WorkflowControlNotConnectedError`, which carries the time the sidecar has been gone since: the later of the router's creation and the last time the router lost that generation's allocated binding through a close or a detach. The router keeps that time in memory until the allocation is retired, so a Hub restart counts from the Hub start. For a run with `operator_cancellation_requested_at`, the sweep releases the allocation through the provisioner once that time is `operatorCancelReconnectGraceMs` (15 seconds by default) in the past, and records `workflow_cancel_unreachable`. Every other unreachable failure, and every expiry stop, keeps the stop grace. This grace is independent of the allocation reconciler's reconnect windows, which are usually longer, so an operator cancel can destroy a sidecar that would still reconnect. The release then waits for confirmed cleanup like any other forced release. See [Workflow lifetime and capacity retention](./workflow-lifecycle-policy.md) for the reconnect windows and the limits.
+
+### Recovery boundary
+
+The Hub does not recover a deployment it lost. A worker that stays disconnected past its deployment's disconnect limit, or whose current connection does not report a deployment whose first deploy completed, fails the deployment's live runs and releases its capacity, and the address is never deployed again. Hub-owned Git and database state (workflow event history, claim-check mail state, grants snapshots committed by the supervisor, the secret-free launch specification, allocation state, and unsettled Hub dispatches) does not include arbitrary files in a POSIX workspace, Docker volume, `/tmp`, or an external isolation provider, and a worker that is only cut off from the Hub may still be running the deployment. Continuing the work means a new deployment.
+
+The settlement projection currently scans the retained consumed-mail index and workflow event logs after each accepted pack. This is correct and idempotent, but it is intentionally a first implementation; a future projection cursor can avoid rescanning long histories. The lifecycle service repairs missed terminal projections from committed events and schedules allocation release from the saved retention policy. An independent loop enforces lifetime deadlines even while provisioning is blocked. Revoking an allocation lease releases the reconciler from a stalled provider call so it can process cleanup. The release API persists the same intent; the allocation reconciler calls the bound provisioner's `destroy` method. See [Workflow lifetime and capacity retention](./workflow-lifecycle-policy.md).
+
+## Workflow Process: Supervisor/Child IPC
+
+A deployed workflow runs in two processes per active deployment. The supervisor lives in the sidecar — it holds the mail-bus identity for the deployment's addresses, owns the per-deployment Ed25519 signing key the hub trusts, and reads the per-step credential snapshots out of each step's `agent-state` repo. The workflow-process is a Bun child the supervisor spawns; it loads operator-supplied workflow code (tools, directors, agent prompts) and executes runs against the runtime adapters. The supervisor is the authoritative side; the workflow-process is the untrusted side.
+
+The IPC between them is the airlock between those two halves. Per-frame crypto is what makes the airlock seal: nothing the child receives is acted on until its signature verifies under the supervisor's public key, and nothing the supervisor accepts from the child is acted on until its HMAC verifies under the shared key. The implementation lives at `packages/workflow-host/src/ipc/` with the threat model at the top of `packages/workflow-host/src/ipc/index.ts`.
+
+### Why This Boundary Exists
+
+The workflow-process runs code the operator deploys but the sidecar does not fully control: tool implementations, director prompts, agent harnesses talking to external APIs. The supervisor must continue to be trusted by the hub regardless of what happens inside the child, because the supervisor holds the deployment's credentials and signing keys. The IPC channels exist so the supervisor can hand the child everything it needs to run while keeping the credentials and the signing key inside the supervisor's own address space.
+
+### Two Channels, Split By Cost And Rate
+
+Each deployment gets two channels:
+
+- **Control channel.** NDJSON over stdio, Ed25519-signed per direction. Carries the child's first `authority.set`, trigger fires, signal deliveries, drain, recycle, shutdown, grants-updated, credentials-updated, sources-updated, and the child's `ready` signal back. Low rate, high authority. Sending and receiving live in `packages/workflow-host/src/ipc/control-sender.ts` and `control-receiver.ts`; payload validation lives in `control-payloads.ts`.
+- **Event channel.** A UNIX socketpair, HMAC-SHA256-authenticated with a 32-byte symmetric key derived at spawn time. Carries `InferenceEvent`s from the reactor (including the per-message `message.run.started` / `message.run.ended` brackets). High rate. Sending lives in `packages/workflow-host/src/ipc/event-sender.ts`; receiving and payload validation live in `event-channel.ts`.
+
+Each side signs control frames with its own private key and verifies incoming frames against its peer's public key, so the child cannot forge supervisor commands. Symmetric HMAC authenticates the event stream at reactor cadence — Ed25519 per frame at that rate would dominate runtime cost. The control receiver validates each payload against its message kind's schema. Those schemas and the `InferenceEvent` schema applied by `parseInferenceEvent` accept disjoint payload shapes: control schemas reject inference-event shapes, and the event schema rejects control-plane shapes, so a confused-deputy attack that smuggles a `drain` or `recycle` over the event channel fails at validation.
+
+### Frame Envelope
+
+Every frame on either channel carries `{ seq, channelId, payload }` inside the bytes that are authenticated. `seq` is a monotonic u64 counter the sender maintains per channel. `channelId` is the supervisor-minted channel identity. `payload` is the channel-specific JSON value. The wire format wraps the envelope with either `sig` (hex-encoded Ed25519, 64 bytes) on the control channel or `mac` (hex-encoded HMAC-SHA256 tag, 32 bytes) on the event channel. The envelope schema and canonical-JSON encoder live in `packages/workflow-host/src/ipc/envelope.ts`.
+
+### Replay Protection
+
+Two complementary mechanisms run side by side:
+
+- **Monotonic seq per channelId.** The receiver tracks the highest seq seen and requires the next frame's seq to equal `highestSeq + 1` exactly. A repeat or decrease is a replay; a gap is a drop. Either crashes the receiver.
+- **ChannelId rotation on every spawn and every recycle.** The supervisor mints a fresh 16-byte channelId via `crypto.randomBytes` (hex-encoded) at every spawn and at every recycle (the `generateChannelId` helper in `packages/workflow-host/src/ipc/crypto.ts`). The receiver compares the incoming channelId against the current one byte for byte; any mismatch crashes the receiver. A frame from a recycled child's predecessor, or a frame captured from a previous channelId's lifetime, carries the wrong channelId and is rejected loudly rather than silently dropped.
+
+The combination is what defends against frame replay across the spawn/recycle boundary that monotonic seq alone cannot defend against. The seq counter resets per channelId.
+
+### Trust-Anchor Bootstrap
+
+The spawn-time environment is the only channel the supervisor uses to hand trust anchors to the child. It carries exactly three values: `HOST_PUBKEY` (the supervisor's Ed25519 32-byte public key, hex), `IPC_HMAC_KEY` (the freshly minted 32-byte HMAC key, hex), and `IPC_CHANNEL_ID` (the freshly minted channelId, hex). The supervisor's Ed25519 private key never appears in env, never appears in any IPC payload, never appears in a log line, and never appears in an audit-log frame — it lives only as a 32-byte `Uint8Array` held in closure by the signing-key callback the supervisor wraps the control channel sender around. The env is constructed as a fresh object containing only those three variables, with no `...process.env` spread that could accidentally propagate a private value the supervisor's parent put in its own env.
+
+### Failure Stance
+
+The child verifies every control frame against `HOST_PUBKEY`; the supervisor verifies every event frame against `IPC_HMAC_KEY`. The contract on both sides is the same: any frame whose signature or MAC fails, whose channelId does not match the current one, or whose seq violates the monotonicity check is treated as a violation. The receiver calls a caller-supplied crash callback and ends the iterator. The supervisor's wiring promotes that crash to a process kill; the child does the same. Recycling brings the deployment back up cleanly with a fresh channelId.
+
+The event channel's userspace buffer is bounded (default 1024 frames, exported as `DEFAULT_EVENT_BUFFER_LIMIT`). On overrun the supervisor logs the saturation and the workflow-process kills itself. The audit chain is built from forwarded `InferenceEvent`s; a silent drop of even one event would corrupt the chain in a way no downstream consumer could detect. Between corrupt-but-quiet and crash-and-be-noticed, crash wins.
+
+### Supervisor Lifecycle And Bindings
+
+The host-side supervisor implementation lives at
+`packages/workflow-host/src/supervisor/`. The factory
+`createWorkflowSupervisor(bindings)` takes a `WorkflowSupervisorBindings`
+object whose shape is:
+
+- `repoStore` — substrate-shaped `RepoStore` handle. The supervisor
+  reads grants and commits events through this one handle; per-
+  principal write-sites pass the principal kind explicitly rather
+  than going through pre-minted "RepoStore views".
+- `signAsPrincipal: (kind, payload) => SignedPayload` — host-owned
+  per-principal signing callback. The supervisor never sees the
+  principal's private key.
+- `mailBus` — `MailBusBindings` (`registerAddress`,
+  `unregisterAddress`, `subscribeMailForAddress`).
+- `subprocessSpawner` — invoked once per spawn against the
+  host-owned `apps/sidecar/bin/workflow-child` script.
+  Production wires it against `Bun.spawn`; tests inject a mock.
+- Per-deployment configuration: `binaryPath`, `substrateEnv`,
+  `workflowRunRepoId`, `workflowRunRef`, `anchorRunId`,
+  `deploymentMailAddress`, `readPrincipal`, `deriveStepAddress`.
+
+The supervisor's `spawn(opts)` method:
+
+1. Mints a fresh channelId, HMAC key, and IPC Ed25519 keypair.
+2. Builds the spawn-time env containing `IPC_CHANNEL_ID`,
+   `IPC_HMAC_KEY`, `HOST_PUBKEY`, `DEPLOYMENT_ID`,
+   `DEFINITION_HASH`, `MAILBOX_ADDRESS`, plus substrate-config keys
+   the host injected. Never the private key, never the principal-
+   signing key.
+3. Invokes `bindings.subprocessSpawner` and constructs the control-
+   channel sender + event-channel receiver against the returned
+   handle's stdio / event-socket fds.
+4. Awaits the child's `ready` frame on the control channel.
+5. Assembles the per-deployment `credentialsSnapshot` from each
+   step's `agent-state` repo (see next subsection) and registers
+   the deployment's mail address on the bus.
+6. Forwards inbound mail as `trigger.fire` control frames; mail that
+   arrives during `starting` buffers and drains in arrival order
+   after `ready`.
+
+Implementation lives in
+`packages/workflow-host/src/supervisor/supervisor.ts`. The recycle
+sequence is library code in
+`packages/workflow-host/src/supervisor/recycle.ts`; see the Recycle
+subsection below for the six-step contract and the three trigger
+origins.
+
+### Workflow-Process Child
+
+The workflow-process child's runtime body is `runWorkflowChild`. It
+lives in `packages/workflow-host/src/child/run-child.ts` and is the
+single function each host's thin entry script invokes via
+`runWorkflowChildFromProcessEnv` (the process-boundary helper in
+the same package). The signature is:
+
+```ts
+runWorkflowChild(opts: {
+  env: SpawnTimeEnv;             // parsed spawn-time env
+  controlReader: NdjsonReader;   // supervisor -> child
+  controlWriter: NdjsonWriter;   // child -> supervisor
+  eventWriter: FrameWriter;      // child -> supervisor (InferenceEvents)
+  bindings: RunWorkflowChildBindings;
+}): Promise<RunWorkflowChildResult>
+```
+
+Every I/O stream and every substrate handle is injected. Nothing
+inside the function reads `process.env` or reaches into a singleton;
+the binary is the only component that crosses that boundary.
+Integration tests bypass the binary and exercise `runWorkflowChild`
+directly with mock streams and an in-memory substrate.
+
+#### Lifecycle
+
+1. **Open the IPC channels.** The control channel is the
+   `receiveControlChannel` iterator the supervisor's `createControl
+ChannelSender` writes against; the event channel is the
+   `createEventChannelSender` the child publishes to.
+2. **Construct `WorkflowRuntimeEnv`.** Each in-flight run gets a
+   per-run `BlobSubstrate` and `SignalChannel`; the per-deployment
+   `RepoStore` adapter and the host-process `Scheduler` singleton
+   are shared. The `authorize` slot is the credentialsSnapshot-backed
+   closure documented below.
+3. **Authority.** The child reads its first control frame, which
+   must be `authority.set`, and fails otherwise. The frame carries
+   the run's grants snapshot (or none) and the supervisor's merged
+   credential mirror, and replaces the child's snapshot and material
+   cell. Every spawn path sends it before the child resumes any run.
+   When the supervisor cannot read the grants, the frame's snapshot
+   is null, and a step that needs grants fails closed.
+4. **Self-discovery.** The child enumerates `runs/<runId>/` under
+   the workflow-run repo's working tree, calls `resumeFromLog` for
+   each run whose log lacks a terminal event
+   (`RunCompleted`/`RunFailed`/`RunCancelled`), and invokes
+   `runtimeRun(env, definition, { resumeFromEvents })` for each one
+   it surfaces. The runtime body's resume path re-arms unfired
+   timers, pending awaits, and uncancelled children from the seed log.
+   Self-discovery runs before `ready` so a fresh `trigger.fired`
+   cannot race ahead of a resume.
+5. **`ready`.** The child holds every other upstream control frame
+   until it has sent `ready` and `resumed.runs`, because the
+   supervisor accepts nothing else first and seeds its cohort
+   tracking from `resumed.runs`. A due timer or a resumed run that
+   writes during startup therefore waits. The child emits a signed
+   `ready` control frame back
+   to the supervisor via the same `createControlChannelSender` shape
+   the downstream uses, signed under the IPC keypair the supervisor
+   minted at spawn time.
+6. **Control-loop.** The child consumes the receiver iterator:
+   - `trigger.fire` -> fire the deployment's top-level run only when its durable event log is absent. A live log is recovered, and a terminal log is rejected rather than cleared.
+   - `authority.set` -> replace the snapshot and the material cell. A
+     null snapshot clears the snapshot; a frame without the `snapshot`
+     field keeps it and replaces only the material.
+   - `grants-updated` -> swap the active credentialsSnapshot.
+   - `credentials-updated` -> merge into the material cell.
+   - `drain` -> forward to the drain controller (no-op placeholder
+     in this commit; the real controller lands separately).
+   - `recycle` -> log-only notification on the child side; the
+     supervisor's recycle path drives the kill/respawn from outside
+     the child, so the downstream `recycle` payload exists for
+     symmetry with the protocol but is not the trigger.
+   - `shutdown` -> stop accepting new triggers and exit the loop.
+
+#### Trust Anchors
+
+The spawn-time env (`SpawnTimeEnv`) carries:
+
+- `IPC_CHANNEL_ID` -- supervisor-minted channelId per spawn.
+- `IPC_HMAC_KEY` -- 32-byte shared HMAC key for the event channel.
+- `HOST_PUBKEY` -- the supervisor's Ed25519 public key for verifying
+  inbound control frames. **The supervisor's private key never
+  appears in env, never appears in any IPC payload, never appears
+  in a log line.** It lives only in the supervisor's address space.
+- `DEPLOYMENT_ID`, `DEFINITION_HASH`, `MAILBOX_ADDRESS` --
+  per-deployment identifiers the runtime body uses to attribute
+  every committed event back to the owning deployment.
+
+`parseSpawnTimeEnv` validates the env at the boundary and returns
+the typed struct; missing keys, malformed hex, or off-size byte
+payloads throw before the child opens IPC.
+
+#### CredentialsSnapshot-Backed Authorize
+
+The child's `WorkflowAuthorizeFn` closure captures a mutable
+`CredentialsSnapshotRef`; every authorize call looks up the
+originating step's grants by `stepId` and delegates to a
+host-supplied `GrantEvaluator`. A `grants-updated` control frame
+swaps the snapshot in place, so subsequent steps see the fresh
+grants without reconstructing the runtime env. The initial
+snapshot arrives in the child's first control frame,
+`authority.set`; the closure raises if a step's authorize fires
+while the run has no snapshot.
+
+#### Channel-To-Loop Mapping
+
+- **Control channel.** Supervisor -> child. Carries every
+  `ControlPayload` variant (`authority.set`, `trigger.fire`,
+  `signal.deliver`, `drain`, `recycle`, `shutdown`, `grants-updated`,
+  `credentials-updated`, `sources-updated`) plus the child's upstream
+  `ready` ride. Every
+  inbound frame is verified against `HOST_PUBKEY`; the receiver
+  iterator crashes the loop on any signature/channelId/seq
+  violation.
+- **Event channel.** Child -> supervisor. Carries `EventPayload`
+  (InferenceEvents the harness emits). The child authenticates
+  every outbound frame with HMAC under `IPC_HMAC_KEY`; the
+  supervisor's `receiveEventChannel` verifies the same way.
+
+#### Thin binary per host
+
+`@intx/workflow-host` ships the runtime logic as a library; the
+package itself does not ship a `bin` entry. Each host owns the
+binary the supervisor's `subprocessSpawner` invokes, and the
+binary is a thin entry script (~5 lines: a `bun` shebang, an
+`import` of `runWorkflowChildFromProcessEnv`, an `import` of the
+host's substrate factory, an `await` of the helper).
+
+The substrate factory is the host-owned slot. It is a callback
+typed `(env: SubstrateFactoryEnv) => Promise<RunWorkflowChildBindings>`
+that closes over the host's concrete infrastructure: the
+substrate-shaped `RepoStore`, the host-process scheduler
+singleton (adapted via `adaptHostScheduler` to the runtime's
+`Scheduler` shape), the production `invokeStep` and `spawnChild`
+adapters, the host's grant evaluator, and the IPC upstream
+signing key. `SubstrateFactoryEnv` is a narrow typed struct (the
+parsed `SpawnTimeEnv` plus a `substrateConfig` record listing the
+keys the host's binary called out); the factory never sees
+`NodeJS.ProcessEnv` directly.
+
+Each spawn seam also declares `hasUpstreamSignalResolver` on the
+runtime env it builds, and the value is a per-seam judgement no
+type can make. Declare `true` where an answer can reach the run:
+the deployment's own addressable run, a suspendable body whose
+container relays a decision back down, and a `childWorkflow` child,
+whose parent drives it across parks and relays each one onto the
+parent. The child stays unaddressable. The field is required, so an
+omission is a compile error. A `childWorkflow` spawner forces `true`
+rather than inheriting the parent's flag: a parent `false` would
+refuse a gate the relay can answer. A run that still sets the flag
+`false` refuses an untimed park and writes no suspension of its own.
+A child whose flag was forced true may already have recorded its await;
+the refusing parent's failure tears that child down.
+
+The in-tree seams are the worked example. `buildRuntimeEnv`
+(`packages/workflow-host/src/child/run-child.ts`) declares `true`
+for the deployment's own run. In
+`packages/workflow-host/src/child/substrate-factory.ts`,
+`createSidecarRunChild` and `createSidecarSpawnSuspendableChild`
+both declare `true`.
+
+The supervisor's `binaryPath` binding resolves to the host's own
+binary statically. In the sidecar
+(`apps/sidecar/src/workflow-child-spawner.ts`) the resolution lives
+in a load-time constant computed via
+`import.meta.resolve("../bin/workflow-child")`; the same pattern
+applies to any alternative-sidecar implementation.
+
+The in-tree sidecar's substrate factory is
+`packages/workflow-host/src/child/substrate-factory.ts` and the binary
+is `apps/sidecar/bin/workflow-child`. An alternative-sidecar
+implementer ships its own factory + binary and points its
+supervisor's `binaryPath` at the alternative binary.
+
+#### Drain semantics
+
+The runtime body observes drain at exactly four sites in
+`packages/workflow/src/runtime/run.ts`. Each site reads
+`shouldAbortForDrain(env.drain, stepId)` from
+`packages/workflow/src/runtime/drain.ts` and aborts the step's local
+abort controller when (a) the drain signal has aborted AND (b) the
+step's declared `drainBehavior` is `"cancel"`. A step whose behavior
+is `"wait"` ignores drain; only an explicit cancel can abort it.
+
+The four observation points and why they are the four:
+
+1. **Main loop entry.** Per iteration, the runtime checks every
+   in-flight step. A drain that lands after a step was already
+   scheduled (the step's combined abort signal was wired through
+   `createStepAbort` at schedule time) is re-evaluated against the
+   live `behaviorFor` on every tick. This is where a drain that
+   fires while the workflow is paused on a `Promise.race` is first
+   observed.
+2. **Retry-between-attempts inside `runStep`.** A long-running
+   workflow that hit `StepFailed` and committed `AttemptScheduled`
+   is asleep inside `waitForTimer`. The site after `waitForTimer`
+   returns and before the next attempt's `invokeStep` runs is the
+   point where the runtime can short-circuit cleanly without
+   re-entering a fresh agent invocation that the supervisor would
+   then wait on to wind down.
+3. **`waitForTimer`.** The event-sourced timer wait subscribes to
+   the run's log tail. A drain that lands while the subscription
+   is live aborts the local controller so the `for await` ends
+   cleanly. The site is observed at entry and again as a
+   `drain.signal` listener attached during the wait.
+4. **`runAwaitSignal`.** The signal-channel await is the
+   human-in-the-loop site. `awaitSignal` defaults to `"wait"` so
+   the typical pause sits through drain untouched; an author who
+   explicitly opts in via `drainBehavior: "cancel"` gets the
+   short-circuit at entry and again on `drain.signal` mid-await.
+   What drain can meet under a `childWorkflow` is the spawn step the
+   relay sits on, not a step inside the child. That step defaults to
+   `"wait"`, so the drain signal does not abort it. That covers the
+   whole time the step is in flight, including a parked relay and a
+   child that is still mid-step. An explicit `"cancel"` still aborts
+   the child through `localAbort`. The child's own `drainBehavior` is
+   not what drain consults. A run whose env declares
+   `hasUpstreamSignalResolver` false still refuses an untimed park
+   before it suspends, so the only pause drain finds in that run is a
+   timed one, which its own timer ends whatever drain decides.
+
+The four sites cover every place the runtime body blocks long
+enough for drain to matter. The state-machine primitives that do
+not block (gate, escalation, the outer map) settle without ever
+yielding to the event loop, so a drain observed at the next
+main-loop tick takes effect before they could matter.
+
+`"wait"` vs `"cancel"` is declared per primitive. The constructors
+in `packages/workflow/src/definition/primitives.ts` set the
+defaults: `step` (trigger budget `1`) and `sleep` default to
+`"cancel"` (long compute should not block a redeploy past the
+drainTimeout). `childWorkflow` defaults to `"wait"` because drain
+consults the spawn step for the whole time it is in flight, and a
+local abort would tear the child down. `awaitSignal` defaults to
+`"wait"` (human-in-the-loop pauses are the canonical case the spec
+calls out, and operators do not want them silently cancelled at
+redeploy). `map`'s outer node carries no `drainBehavior` -- its
+inner step carries its own. `gate` and `escalation` are
+non-blocking and resolve as `"cancel"` for short-circuit purposes
+only.
+
+The supervisor's drainTimeout accumulator lives in
+`packages/workflow-host/src/supervisor/drain-timeout.ts`. Default
+`drainTimeout` is 60 seconds (`DEFAULT_DRAIN_TIMEOUT_MS`),
+operator-overridable per deployment. The accumulator ticks against
+wall-clock time only while the supervisor believes at least one
+`"cancel"`-behavior step is in flight; it pauses when every live
+step transitions to `"wait"` behavior and resumes when cancel-mode
+work reappears. Time spent paused does not consume the deadline.
+
+On `drainTimeout` expiry the accumulator invokes the supervisor's
+injected `signAsPrincipal("supervisor", ...)` callback to mint a
+signature over a canonical `CancelRequested{origin:
+"supervisor-drain"}` event and commits it through the supervisor's
+substrate handle. The runtime body observes the commit through its
+existing cancel-cascade path; no special drain-aware cancel branch
+is needed in `run.ts`.
+
+The canonical observable sequence at the in-process layer (asserted
+in this package's tests via `subscribeKind` against a fake
+`RepoStore`, and at the end-to-end layer by the I3 integration
+test) is:
+
+1. `drain` issued (host command, not a workflow-run event).
+2. Steps in `"wait"` mode commit nothing during the drain window.
+3. Steps in `"cancel"` mode: `drainTimeout` accumulates; on
+   expiry, `CancelRequested{origin: "supervisor-drain"}` appended
+   to the workflow-run log.
+4. `CancelPropagated` appended for each non-terminal step
+   (runtime-body cascade).
+5. `RunFailed{reason: "cancelled"}` / `RunCancelled` appended
+   (terminal).
+6. Workflow-process exit observed by the supervisor.
+
+Child-workflow drain coordination splits two ways:
+
+- **Same-deployment children** run inside the same workflow-process
+  as the parent. The child does not share the parent's
+  `DrainController`. Its controller's signal never aborts, so a step
+  inside the child keeps running when the deployment drains. Drain
+  consults the spawn step on the parent. A cancel of the parent run
+  still records `ChildCancelRequested` and cascades through
+  `runtime/run.ts`.
+- **Cross-deployment children** run under a different deployment
+  with its own supervisor and its own drain accumulator. The
+  parent's `ChildCancelRequested` event lands on the parent run's
+  log; the cross-deployment child's supervisor handles the
+  resulting cancel mail as `supervisor-operator` origin against
+  its own runtime, which then drains through its own four
+  observation points.
+
+A parked `childWorkflow` is one of those same-deployment children. The
+relay sits on the spawn step. That step defaults to `"wait"`, so the
+drain signal does not abort it, whether the child is parked or still
+mid-step. An explicit `"cancel"` still aborts the child through
+`localAbort`. The child's own `drainBehavior` is not what drain
+consults. A parked child survives a process restart. Resume reattaches
+the same child run from its log and reestablishes the relay on the spawn
+step. The child stays unaddressable; the parent is the resume root.
+
+#### How a child park reaches the addressable run
+
+A run can be answered from outside only at the deployment's single
+addressable run. A `childWorkflow` child carries no address, and the hub
+refuses to deliver a signal to any other run id. The spawning step drives
+the child across parks and relays each one onto the parent: an approval,
+carrying the body's snapshot, an author `awaitSignal`, and a trigger-budget
+input park. A gate inside a loop in the child climbs the same way, one
+layer at a time, until the park is on the deployment run. That is the run
+the hub approval is registered against, and the run an operator signals.
+The spawn step awaits one signal at a time. A second park that is already
+live in the child stays queued until the decision for the first is relayed
+down. A queued park whose gate has already moved on is not given a signal
+that arrived while it waited.
+
+The env carries `hasUpstreamSignalResolver`, set by the seam that spawns
+a run. The runtime refuses an untimed park on a run whose flag is false,
+and that run writes no suspension. A `childWorkflow` spawner forces the
+child's flag true: the parent relays, and inheriting a parent false would
+refuse a gate the relay can answer. The child may already have written
+its own `SignalAwaited`; the parent's refusal then tears the child down.
+A loop or `onTrigger` body still inherits its container's flag, and an
+input park in one of those bodies is rejected rather than relayed.
+
+A timed gate is exempt. Its scheduler timer resolves it in process, so
+it needs nothing upstream.
+
+A parked child survives a process restart. Resume reattaches the same
+child run from its log and reestablishes the relay on the spawn step. The
+child stays unaddressable; the parent is the resume root.
+
+#### Recycle
+
+Recycle is the supervisor's "same deploy tree, fresh process" path,
+implemented as library code in
+`packages/workflow-host/src/supervisor/recycle.ts` and consumed by
+the supervisor object's `recycle()` method.
+
+**Same deploy tree only.** Recycle uses the SAME deploy
+tree -- the same materialized source closure, the same workflow-asset
+repo, the same per-step `agent-state` repos. A deployment keeps that
+tree for its life: a new deploy tree, a new workflow definition, or
+different agents need a new deployment. The recycle module never
+refetches the deploy tree, never consults an updated workflow
+definition, never re-resolves agents. The module header documents the
+invariant loudly. The recycle module must not grow a "maybe also
+refetch the deploy tree" mode -- that would let a recycle silently
+change what a deployment runs.
+
+**Six-step sequence (locked):**
+
+1. **`drain`** -- the supervisor sends the existing `drain` control
+   mail (from the drain-controller commit). The child's
+   `DrainController` flips its signal; the runtime body's four
+   observation points pick up the change on their next tick.
+   `drainTimeout` escalation applies normally -- the supervisor's
+   drain-timeout accumulator runs orthogonally and commits a signed
+   `CancelRequested{origin: "supervisor-drain"}` if cancel-mode work
+   outlasts the deadline. The recycle path does NOT reimplement
+   drain; it consumes the supervisor's existing `drain()` primitive.
+2. **`kill`** -- the supervisor terminates the workflow-process child
+   via the injected subprocess spawner's `SubprocessHandle.kill`
+   surface. SIGTERM first; if the child does not exit within
+   `DEFAULT_KILL_TIMEOUT_MS` (operator-overridable), the recycle
+   path escalates to SIGKILL. The injected spawner owns the Node
+   primitives; the recycle path never reaches into them directly.
+3. **`respawn`** -- the supervisor mints a fresh 16-byte hex
+   channelId via the same `generateChannelId` helper the initial
+   spawn uses, generates a new 32-byte HMAC key, mints a fresh
+   Ed25519 IPC keypair, re-reads per-step credentials via the
+   injected `RepoStore`, and spawns a new Bun child via the same
+   subprocess-spawner binding. The new IPC anchors flow through
+   spawn-time env exactly as the initial spawn's anchors did.
+4. **`self-discover`** -- the new child runs its existing
+   self-discovery on spawn (the same code path the initial-spawn
+   case uses). The recycle path does not coordinate this step.
+5. **`resume`** -- self-discovery resumes any in-flight runs from
+   the workflow-run log. The runtime body's seed-events path
+   re-arms timers, pending awaits, and uncancelled children.
+6. **Mail buffer drain** -- the supervisor drains its buffered mail
+   into the new child over the control IPC. Inbound mail that
+   arrived during the kill/respawn gap was buffered in the
+   supervisor's queue; this step replays it in arrival order as
+   `trigger.fire` control frames. Subsequent inbound mail bypasses
+   the buffer and forwards immediately.
+
+**Mail address ownership across the gap.** The supervisor holds the
+mail-bus registration across the recycle via the injected mail-bus
+binding. No re-register, no unregister, no subscription cycling.
+Inbound mail during the kill/respawn gap buffers in the supervisor's
+bounded queue (`MAX_BUFFERED_MAIL`, 256 messages). On saturation the
+recycle path surfaces a loud error rather than silently dropping
+inbound mail -- a saturated buffer indicates either an upstream
+stuck on the deployment or a recycle stuck partway through, and
+either case is one the operator must see. Once the new child emits
+`ready`, the supervisor drains the buffer over control IPC.
+
+**ChannelId rotation per the IPC contract.** Every respawn mints a
+new channelId via `generateChannelId` (16 bytes from
+`crypto.randomBytes`, hex-encoded). The new channel's receiver
+crashes on any frame carrying the predecessor channelId -- a stale
+frame is by construction either a replay or a programming bug, and
+crashing on mismatch is the only honest response. The seq counter
+resets per channelId because the IPC contract pins seq monotonicity
+to the channelId's lifetime; the rotation is what defends against
+frame replay across the recycle boundary that monotonic seq alone
+cannot defend against.
+
+**Three trigger origins funnel through `triggerRecycle(reason)`:**
+
+- **Operator command.** The host receives a `recycle` request via
+  its caller-facing API and routes it to the supervisor's
+  `recycle()` method, which delegates here with origin `operator`.
+- **Supervisor policy.** A periodic check inside the supervisor
+  (`createRecyclePolicy`) wakes on the configured interval
+  (default `DEFAULT_POLICY_INTERVAL_MS`, ~1 minute) and evaluates
+  the configured bounds: `maxUptimeMs`, `maxRssBytes`,
+  `maxGrantsAgeMs`. Defaults are unlimited (the bound is disabled
+  unless the operator sets a threshold). On a threshold trip the
+  policy calls `triggerRecycle` with origin `policy` and a reason
+  naming the tripped bound.
+- **Workflow-process self-initiated.** The child sends a
+  `recycle.request` payload over control IPC when its own self-
+  check decides it needs to be recycled (an internal consistency
+  error it can't recover from, a watchdog tripping). The
+  supervisor's upstream control-channel reader recognises the
+  variant and funnels into `triggerRecycle` with origin `self`. The
+  IPC payload union extension is the only contract change recycle
+  introduces; the envelope, signature, and channelId/seq rules are
+  unchanged.
+
+All three origins land in the same code path. The reason string is
+the only origin-specific data the path carries forward.
+
+#### Placeholders And Future Work
+
+The signal-channel seam is constructed per run with an empty
+`RunState` reader -- a pre-await signal still resolves through the
+live `subscribeKind` tail, but a resume-rehydrated queued signal
+needs the runtime body's `RunState` reader plumbing, which lands
+when the per-run state-machine reader is wired into the child.
+
+### Deploy Routing
+
+The sidecar's deploy router is the single ingress for inbound
+`agent.deploy` frames. The hub-link surface at
+`packages/hub-agent/src/ws/hub-link.ts` consumes a `DeployRouter`
+binding whose production implementation is `createSidecarDeployRouter`
+in `packages/workflow-host/src/deploy/workflow-host-wiring.ts`. Routing lives on the
+router side of the seam; the hub-link hands the frame off and folds the
+returned public key into the outbound `agent.deploy.ack`.
+
+Every deploy stages through the workflow-run substrate. The router
+branches on the frame shape:
+
+1. **Provision-step frame (`provisionStep: true`).** The router primes
+   the frame's per-step `agent-state` repo and records the hub key,
+   without constructing a supervisor or spawning a child. The follow-up
+   full-closure deploy pack then applies into the primed repo and
+   verifies against the recorded key.
+2. **Workflow frame (carries a `WorkflowDefinition`).** The router
+   constructs a fresh per-deployment workflow-host supervisor and drives
+   its `spawn(opts)` lifecycle: per-step `agent-state` repo
+   provisioning, key minting, workflow-process child spawn via
+   `subprocessSpawner`, mail-bus registration, the IPC ready handshake,
+   and `credentialsSnapshot` assembly.
+
+A frame carrying neither shape is rejected -- there is no in-process
+deploy path. A single agent deploys as a single-step workflow whose
+lone step IS the deployment head (`deriveRunAddress` in
+`packages/workflow-deploy/src/addresses.ts`), so single- and
+multi-step deployments run the same supervised-child topology and
+differ only in step count.
+
+Run-lifecycle events (`RunStarted` / `StepStarted` / `StepCompleted` /
+`RunCompleted`) are committed by the workflow-process child from its own
+address space against the workflow-run repo; the supervisor does not
+commit them in-process. The supervisor's surviving run-event work is
+compaction: once a run terminates it folds that run's per-event blobs
+into one combined log
+(`packages/workflow-host/src/supervisor/run-event-compaction.ts`).
+
+The workflow-run repo's substrate `repoId.id` is constrained to
+`/^[a-zA-Z0-9_-]+$/` (`SAFE_REPO_ID` in
+`packages/hub-sessions/src/repo-store/types.ts`), which the
+run-address shape (`run_<id>@<domain>`) does not satisfy. The sidecar
+wiring derives the deploy-phase repo slug by substituting disallowed
+characters with `-`; see `deriveWorkflowRunRepoId` in
+`packages/workflow-deploy/src/addresses.ts`. The supervisor principal's
+`anchorRunId` and the workflow-run `repoId.id` are kept equal so the
+workflow-run kind handler's principal-vs-repo authz check holds for
+every supervisor-authored event commit.
+
+The `HubTransport` mail-bus adapter the supervisor consumes lives in the
+`@intx/workflow-host` package proper
+(`packages/workflow-host/src/mail-bus/`) so an alternative-sidecar
+implementation can reuse it without forking the wiring.
+
+### CredentialsSnapshot Assembly
+
+Per the Q6.4 discovery decision, each workflow step gets its own
+`agent-state` repo, and the supervisor assembles a per-step grant
+snapshot at spawn time over the step ids the host hands it. The
+implementation lives in
+`packages/workflow-host/src/supervisor/credentials.ts`:
+
+The domain is the deployment's FLAT STEP-ID NAMESPACE, which is wider
+than the definition's own `stepOrder`: a `loop` body runs in-process as
+a child run inheriting the parent's env, so a body step authorizes
+against this same snapshot under its own plain step id. The host owns
+that widening because it is the layer that holds the definition --
+`inertFlatNamespaceStepIds` in `@intx/workflow-deploy` computes it from
+the frozen inert projection, and the sidecar's deploy router feeds the
+result to both the snapshot assembly and the deploy-time per-step grants
+write. A step id absent from the snapshot is unrecoverable at the child's
+authorize (it throws rather than denying), so the producer, not the
+consumer, owns totality. An `onTrigger` section or `childWorkflow` body
+is NOT part of this namespace: it is lifted to its own definition and the
+sidecar mints it a fresh snapshot of its own when it builds the spawned
+child's run env.
+
+- `defaultStepRepoId({ runId, stepId })` returns the
+  `agent-state` repo identity for the step. The default convention
+  is `<runId>-<stepId>`.
+- The grants file for a step rides at `state/grants.json` under the
+  step's repo working tree (the substrate's `getRepoDir` is a pure
+  path computation, mirroring the sibling production adapters'
+  working-tree-read pattern).
+- `assembleCredentialsSnapshot` reads each step's grants, hashes
+  them with sha256 over the canonical JSON serialization, and
+  returns a `CredentialsSnapshot` with per-step `address`, `grants`,
+  and `contentHash`. The hash is stable across processes so the
+  child can detect a stale snapshot pushed after a fresher one.
+- A missing grants file is treated as an empty grant array (so a
+  single-step deploy with no operator-supplied grants does not crash); a
+  malformed file fails loudly at the boundary.
+
+### Signed CancelRequested Authority
+
+Per interface decisions Q3, every CancelRequested origin flows
+through the same supervisor-signed path; the workflow-process has
+no asymmetric keypair of its own. The implementation lives in
+`packages/workflow-host/src/supervisor/cancel-signing.ts`:
+
+- The supervisor builds the event payload from the runId, origin,
+  reason, and ISO-8601 timestamp.
+- The canonical JSON bytes (without the `signature` field) are
+  passed to `bindings.signAsPrincipal("supervisor", payload)`,
+  which returns a `SignedPayload` carrying the raw 64-byte
+  Ed25519 signature plus the principal kind.
+- The supervisor attaches the signature to the on-disk blob and
+  commits via `RepoStore.writeTreePreservingPrefix` under a
+  `WorkflowRunSupervisorPrincipal`. The workflow-run kind handler
+  enforces the Q3 principal-vs-origin map at push validation;
+  routing every supervisor-signed origin through the same
+  principal kind keeps the trust anchor inventory at one signing
+  key per deployment.
+
+The `self`-origin case is the workflow-process forwarding its
+stated reason to the supervisor over the control IPC; the
+supervisor wraps it into a signed event without consulting the
+child for the signature.
+
+### Host Wiring (Sidecar Reference Implementation)
+
+The in-tree sidecar's wiring lives at
+`packages/workflow-host/src/deploy/workflow-host-wiring.ts`. The module
+composes the sidecar's `HubTransport`, signing keypair, and substrate
+`RepoStore` handle into the bindings shape the supervisor expects, and
+exposes `createSidecarWorkflowSupervisor(opts)` for the deploy handler to
+invoke per workflow deployment. The app passes the Bun spawner and the
+child binary path from `apps/sidecar/src/workflow-child-spawner.ts`.
+
+### How This Differs From The Hub-Sidecar WebSocket Boundary
+
+The session-channels transport documented above runs between two services across a network, and the Hub does not trust a sidecar merely because it connected. A bearer token the Hub mints for the provisioner, presented on `hello`, resolves to one sidecar and the exact probe and allocation generations it hosts; the router keys off that verified identity rather than the id claimed in the frame. There is no mutual TLS or transport-level client authentication, and network isolation is not enforced in code. Framing is JSON over WebSocket; lifecycle frames travel alongside event frames on the same wire.
+
+The supervisor/child IPC runs between two processes on the same host where one of them is the trust anchor and the other is not. The threat model is "compromised user code in the child," not "lossy network in the middle." That changes three things in shape:
+
+- **Per-frame crypto, not per-session.** A long-lived authenticated session is not enough when the untrusted side could fabricate a single frame at any moment. Every frame carries its own authentication tag.
+- **Two separate transports, not one multiplexed wire.** Control and event differ in cost (asymmetric vs symmetric), in rate (low vs high), and in authority (one-way supervisor-to-child vs bidirectional). Multiplexing them onto a single wire would force the worst-case discipline of either, with no upside.
+- **Crash-on-violation, not retry-on-violation.** The WebSocket transport reconnects on transport faults. The IPC channels do not — a violation is treated as either a compromise or a programming bug, both of which the supervisor handles by killing the child and respawning with a fresh channelId. There is no "try again on the same wire" path.
+
+## Authorization: OpenAPI-Based Capability Scoping
+
+When agents are granted access to external APIs, the full API surface often exceeds what the agent needs. Interchange uses OpenAPI specifications to define and enforce fine-grained authorization subsets.
+
+### Subset Definitions
+
+An operator provides an OpenAPI spec (or a reference to one) alongside a subset policy that restricts which operations the agent may invoke. The subset policy specifies:
+
+- Allowed paths and HTTP methods
+- Parameter constraints (e.g., only certain query parameter values)
+- Required headers or authentication scopes
+
+The harness loads the OpenAPI spec, applies the subset policy, and generates a filtered view of the API that the agent can discover and invoke through the standard tool interface.
+
+### Dynamic Skill and Tool Generation
+
+From the filtered OpenAPI spec, the harness dynamically generates tools that the agent can invoke. Each permitted endpoint becomes a tool with typed parameters derived from the spec's schema definitions. The agent sees only the operations it is authorized to use, and the harness validates every invocation against the subset policy before forwarding the request to the external API.
+
+This approach allows operators to grant access to complex APIs without writing custom tool definitions. The OpenAPI spec serves as both documentation and enforcement boundary.
+
+### Credential Binding
+
+Subset policies are paired with the delegated credentials for the API. The harness injects authentication (OAuth tokens, API keys) into outbound requests transparently. The agent never sees raw credentials; it invokes tools and the harness handles authentication.
+
+## Wallets: Payment Tools and Plugins
+
+> **Status: not yet implemented.** The wallet and payment tools described in this section are a planned capability. No wallet tools are registered on the harness and there is no Faremeter integration in the code today (`@faremeter/*` is not a dependency). This section describes the intended design, not current behavior.
+
+Wallets provide agents with the ability to send and receive payments. The harness exposes wallet functionality as tools, with a plugin architecture for payment backends.
+
+### Payment Tools
+
+The harness provides standard payment tools that agents invoke like any other capability:
+
+- **`wallet.pay`** — Send payment to a recipient
+- **`wallet.request_payment`** — Request payment from a caller, blocking until received or timeout
+- **`wallet.check_balance`** — Query available balance by currency
+- **`wallet.verify_payment`** — Verify that a payment was received
+- **`wallet.list_transactions`** — Query recent transaction history
+
+These tools abstract over payment protocols and backends. The agent specifies what to pay (amount, currency, recipient); the harness handles how (signing, broadcasting, proof generation).
+
+### Payment Framework
+
+The harness defines a payment integration interface behind the payment tools. This interface is what connects the agent-facing tools (`wallet.pay`, etc.) to actual payment implementations. Multiple implementations can be active simultaneously — the harness selects the appropriate one based on the payment requirements of a given transaction.
+
+### Faremeter
+
+[Faremeter](https://github.com/faremeter/faremeter) is the primary payment framework. It provides a pluggable, standards-agnostic payment system that supports a superset of emerging payment protocols including x402, L402, and Cloudflare's Pay-Per-Crawl.
+
+**Agent as consumer (outbound payments):**
+The harness uses Faremeter's client library (`@faremeter/fetch`) to handle outbound payments. When an agent invokes a remote tool that requires payment, the harness uses Faremeter to negotiate and execute the payment using the appropriate protocol and wallet backend. Faremeter's plugin system handles scheme and network selection — the harness connects the agent's configured wallet plugins and Faremeter handles the rest.
+
+**Agent as provider (inbound payments):**
+For agents that charge for their services, the harness uses Faremeter's middleware to handle payment collection. The middleware intercepts inbound requests, enforces pricing, and verifies payment before allowing the agent to process the request. This separates payment handling from agent logic — the agent focuses on its work while Faremeter handles the payment mechanics.
+
+Faremeter's plugin architecture is wallet and blockchain agnostic. Tenants configure which payment plugins are available (Solana, EVM chains, fiat processors) and bind them to wallets. New payment standards can be supported by adding plugins without changes to the harness or agent.
+
+### Third-Party Integrations
+
+The payment integration interface is open. Payment implementations outside of Faremeter's ecosystem can plug into the harness's wallet layer, allowing tenants to connect proprietary payment systems, custom billing platforms, or emerging protocols that haven't yet been adopted by Faremeter. Third-party integrations implement the same interface and are available to agents through the same payment tools.
+
+### Policy Enforcement
+
+The harness enforces spending policy before executing any payment:
+
+- **Spending limits** — Per-transaction, per-day, per-recipient caps
+- **Approved recipients** — Whitelist of addresses/accounts permitted to receive funds
+- **Approved currencies** — Which currencies the agent may spend
+- **Approval thresholds** — Transactions above a threshold require human approval (via the message bus)
+
+Policy violations are logged and the payment is rejected. The agent receives an error indicating the policy failure.
+
+### Pricing Advertisement
+
+Agents that charge for their services publish pricing in their offering metadata:
+
+```json
+{
+  "offering": "web-search",
+  "pricing": {
+    "base": { "amount": "0.001", "currency": "USD" },
+    "methods": ["ethereum", "lightning", "stripe"],
+    "negotiable": true,
+    "bounds": { "min": "0.0005", "max": "0.01" }
+  }
+}
+```
+
+When `negotiable` is true, callers can propose alternative pricing within the specified bounds. The agent (or its policy) decides whether to accept.
+
+### Receipt Logging
+
+All payment transactions are logged to the audit trail:
+
+- Transaction ID / hash
+- Amount and currency
+- Payer and recipient identities
+- Associated request (tool invocation, offering call)
+- Timestamp
+- Success/failure status
+
+This provides a complete financial audit trail for compliance and debugging.
+
+## Tenant Mapping
+
+Multi-tenancy maps naturally onto SMTP infrastructure, with tenant boundaries corresponding to message domains.
+
+### Domain-Based Tenancy
+
+Each tenant owns one or more SMTP domains:
+
+```
+agent@acme.interchange.network      # Tenant: Acme Corp
+agent@research.acme.interchange.network  # Tenant: Acme Research (child tenant)
+agent@startup.interchange.network   # Tenant: Startup Inc
+```
+
+Subdomains support hierarchical tenancy - child tenants inherit the parent domain as a suffix.
+
+### Tenant-Local Communication
+
+Messages between agents in the same tenant (same domain) are routed internally without traversing external SMTP infrastructure. The harness can optimize tenant-local delivery for lower latency and higher throughput.
+
+### Cross-Tenant Federation
+
+Cross-tenant communication uses standard SMTP federation:
+
+- Agents in different tenants communicate by sending messages across domains
+- DNS MX records route messages to the correct tenant's mail infrastructure
+- SPF, DKIM, and DMARC authenticate cross-tenant messages at the domain level
+- Additional tenant-level trust policies determine whether to accept or reject cross-tenant requests
+
+### Tenant Discovery
+
+Tenants publish their federated agents and offerings through DNS:
+
+- **SRV records** - Advertise the tenant's Interchange endpoints
+- **TXT records** - Publish federation policies and offering manifests
+- **Well-known URIs** - HTTPS endpoints for detailed offering and discovery queries (discovered via DNS)
+
+This allows agents to discover other tenants and their available services using standard DNS resolution.
+
+### Tenant Isolation Enforcement
+
+The SMTP/IMAP server infrastructure enforces tenant boundaries:
+
+- Each tenant operates its own message domain (or subdomain)
+- Server configuration prevents agents from impersonating other tenants
+- Rate limits and quotas are applied per-tenant
+- Audit logs are partitioned by tenant for compliance and debugging
+
+## Observability: OpenTelemetry
+
+Interchange uses OpenTelemetry as the observability framework, providing a vendor-neutral interface for logs, metrics, and traces.
+
+### Instrumentation
+
+The harness instruments key operations:
+
+- **Inference calls** - Span per model invocation, recording model ID, token counts, latency
+- **Tool invocations** - Span per tool call, recording tool name, parameters (redacted as needed), result status
+- **Message send/receive** - Span per message, recording sender, recipient, message type
+- **Policy decisions** - Log entry per authorization check, recording action, policy, and outcome
+
+### Trace Propagation
+
+Trace context propagates through the message bus:
+
+- Outbound messages carry trace context in the W3C trace-context headers (`traceparent`, and `tracestate` when present)
+- Inbound message parsing extracts trace context and resumes the trace
+- Cross-tenant traces work the same way; trace context is just data in the message header
+
+### Export
+
+Telemetry is exported via the OpenTelemetry Protocol (OTLP). Operators configure collectors and backends (e.g., Jaeger, Prometheus, Grafana) according to their infrastructure.
+
+### Tenant Scoping
+
+Telemetry is tagged with tenant identifiers. Backends can enforce tenant-level access control so operators only see telemetry for their own agents.
+
+## Lifecycle: Versioning and Health
+
+Agent lifecycle operations are managed through versioned packages and health protocols.
+
+### Agent Packages
+
+An agent package is a git tree assembled from the agent's definition repository with resolved skill dependencies (see Agent Versioning above). It contains:
+
+- Skills and their dependencies
+- System prompt
+- Context builder configuration
+- Initial state
+- Capability grants
+
+Each deploy commit represents an immutable version. The control plane tracks which deploy refs are active on which sidecars, and retains historical deploy tags for rollback.
+
+### Health Protocol
+
+The hub derives a run's health rather than polling a harness-exposed endpoint. `GET /api/tenants/:tenantId/workflows/runs/:runId/health` returns:
+
+- **Liveness** — `ok` when the run's address is in the hub's routable set, `unhealthy` otherwise.
+- **Readiness** — `ok` when the run has a recorded status, `not_ready` otherwise.
+
+The response's `lastCheckedAt` is currently always `null`: this is a derived read of hub-side state, not an active probe. Automated liveness-restart, readiness-gating, and heartbeat-driven failure handling are not yet wired — the deployment procedure's health gate and the health-triggered rollback below describe the intended flow, not an automated control loop that exists today.
+
+### Deployment Procedure
+
+1. **Stage** - Hub sends `agent.deploy`; the sidecar's deploy router stages the deploy through the workflow-run substrate (priming the per-step repo or spawning the supervised workflow-process child) and returns the public key
+2. **Assembly** - Hub resolves skill dependencies and assembles the deploy tree
+3. **Pack transfer** - Hub streams the packfile to the sidecar; the workflow-process child reads the deploy tree from the substrate and begins inference (see Agent Deployment)
+4. **Health gate** - New version must pass health checks before receiving traffic (see the Health Protocol above: this gate is intended flow, not yet an automated control loop)
+5. **Traffic shift** - Registry updates discovery to point to new version
+6. **Drain** - Old version stops accepting new work, completes in-flight operations
+7. **Retirement** - Old version shuts down; deploy tag remains for rollback
+
+### Rollback
+
+If a new version fails health checks or exhibits problems in production (health-triggered rollback is intended flow — see the Health Protocol above):
+
+1. Operator or agent triggers rollback via control plane
+2. Traffic shifts back to previous version
+3. Failed version is marked unhealthy and stopped
+
+Rollback is fast because the previous version's package is still available and can be restarted immediately.
+
+## Agent Versioning: Git-Backed Definitions
+
+Agent definitions are stored in git repositories on the hub, providing version control for the resources that constitute an agent.
+
+### Repository Contents
+
+The repository contains agent-specific resources:
+
+- Skills and skill configuration
+- System prompt (`prompt.md`)
+- Context builder configuration
+- Initial state
+- Capability grants
+- Dependency references (resolved at deployment)
+
+External skill libraries are not stored directly. Configuration files reference them, and the hub resolves these references when assembling the deploy tree.
+
+### Source Composition
+
+At deploy time, the hub assembles a flat tree from multiple sources via subtree merge:
+
+- The agent's own repository provides the prompt, configuration, and agent-specific skills
+- Referenced skill library repositories are merged under `deploy/skills/<name>/` prefixes
+
+The result is a single commit containing everything the harness needs. The sidecar receives this flat tree with no submodule metadata or external references to resolve. Provenance (which source repos and refs contributed) is recorded in the assembly commit on the hub side.
+
+How the hub discovers and resolves skill dependencies (registry format, version resolution, authentication to source repos) is not yet specified.
+
+### Skill Structure
+
+A skill is a directory within the deploy tree:
+
+```
+deploy/skills/<name>/
+  tool.json               (required: ToolDefinition schema)
+  handler.ts              (optional: executable implementation)
+  ...                     (additional assets as needed)
+```
+
+`tool.json` declares the tool's name, description, and input schema. The harness reads all `deploy/skills/*/tool.json` files at startup to build the tool list for inference calls.
+
+A skill with `tool.json` but no `handler.ts` is backed by the harness's built-in tool runner (e.g., `read_file`, `write_file`, `run_shell`). The tool name in `tool.json` maps to the internal implementation.
+
+Skills with `handler.ts` contain executable code loaded by the harness. The degree of sandboxing depends on the execution environment (see Architecture, Environment Integration). At minimum, skill handlers run in a separate isolate/process from the harness itself.
+
+### Repository Organization
+
+Repository structure is flexible:
+
+- **Tenant repository** - A single repository contains definitions for all agents within a tenant, organized by directory
+- **Agent repository** - Each agent has a dedicated repository
+
+Both approaches support standard git workflows for managing agent versions.
+
+## Agent Deployment: Git Pack Transport
+
+Deploy content travels from the hub to sidecars as git packfiles streamed over the existing WebSocket connection. State travels back from sidecars to the hub using the same mechanism. This avoids requiring sidecars to have network access to external git hosts and reuses the authenticated WebSocket connection already in place. The protocol does not encrypt that connection; transport confidentiality depends on running it over TLS (`wss://`).
+
+### Wire Frames
+
+The following frames are additions to the hub-sidecar protocol:
+
+| Frame              | Direction | Purpose                                             |
+| ------------------ | --------- | --------------------------------------------------- |
+| `repo.pack.push`   | Either    | Chunked packfile data with sequence number          |
+| `repo.pack.done`   | Either    | End of transfer; carries target refs and commit SHA |
+| `repo.pack.ack`    | Receiver  | Refs accepted                                       |
+| `repo.pack.reject` | Receiver  | Transfer rejected (with reason code)                |
+
+Each pack transfer is scoped to an `agentAddress` and the `generation` of its incarnation, and carries a `transferId` for correlation that the sender never reuses. Multiple transfers for different agents can be in flight concurrently.
+
+### Encoding and Flow Control
+
+Packfile chunks are base64-encoded within JSON frames, consistent with how mail bytes are encoded in the protocol. Each `repo.pack.push` frame carries a bounded chunk (64 KiB before encoding) to avoid blocking the frame parser.
+
+Pack transfers share the WebSocket with live session traffic. To prevent interference:
+
+- Pack chunks are interleaved with other frames at the WebSocket message level (messages are atomic; the receiver processes each independently)
+- The sender limits unacknowledged pack data to a configurable window before pausing
+- Session-critical frames (`mail.inbound`, `message.send`) are never delayed by pack transfers
+- The receiver buffers incoming chunks in memory (or a temp file for large transfers) and only unpacks atomically on `repo.pack.done`
+
+### Rejection Reasons
+
+`repo.pack.reject` carries a `reason` field distinguishing failure modes:
+
+| Reason              | Meaning                                                                                        | Sender action                  |
+| ------------------- | ---------------------------------------------------------------------------------------------- | ------------------------------ |
+| `signature_invalid` | Commit signature verification failed                                                           | Do not retry with same content |
+| `path_violation`    | Commit modifies paths outside sender's ownership, or the connection does not host that address | Do not retry                   |
+| `backpressure`      | Receiver is overwhelmed                                                                        | Pause and retry after a delay  |
+| `conflict`          | Ref update conflicts with receiver state                                                       | Reconcile before retrying      |
+| `corrupt`           | Packfile failed index verification                                                             | Resend from scratch            |
+
+The Hub answers every transfer, rejecting one for an address the connection does not host rather than dropping it, and one it failed to parse or receive with `corrupt`: the sender holds a transfer open until it is answered and queues later pushes to the same repository ref behind it.
+
+### Deploy Flow
+
+Deployment is a two-phase operation: stage and pack delivery. There is no separate session-start phase -- the workflow-process child begins inference once it is spawned and its deploy tree has landed.
+
+**Phase 1: Stage**
+
+1. Hub sends `agent.deploy` with the deploy config (credentials, materialized grants, providers, session ID) and, for a multi-step deploy, a workflow definition
+2. The sidecar's deploy router stages the deploy through the workflow-run substrate: a provision-step frame primes the per-step `agent-state` repo and records the hub key; a workflow frame spawns the supervised workflow-process child
+3. Sidecar responds with `agent.deploy.ack` containing the public key (hex-encoded)
+4. Hub stores the public key for future deploy-commit verification
+
+**Phase 2: Pack delivery**
+
+5. Hub assembles the deploy tree and produces a packfile
+6. Hub sends `repo.pack.push` frames (chunked, interleaved with other traffic)
+7. Hub sends `repo.pack.done` with target ref (`refs/heads/deploy`) and commit SHA
+8. Sidecar validates the packfile integrity
+9. Sidecar verifies the deploy commit signature against the recorded hub public key
+10. Sidecar unpacks objects into the git object store
+11. Sidecar updates `refs/heads/deploy` to the new commit
+12. Sidecar merges `deploy` into its agent branch (fast-forward)
+13. Sidecar checks out only `deploy/` paths via partial checkout (`filepaths: ["deploy/"], noUpdateHead: true`) — `state/` working-tree files are untouched because `filepaths` restricts the scope, `noUpdateHead` prevents moving the branch pointer
+14. Sidecar responds with `repo.pack.ack`; the workflow-process child reads the deploy tree from the substrate and runs
+
+The agent is now running and can receive messages.
+
+Each provisioned deployment receives the full pack for its frozen deploy tree. Reconnect restores the existing local tree; it does not negotiate deploy refs or reconcile a newer definition.
+
+### Undeploy Flow
+
+1. Hub keeps the releasing allocation counted, drops the deployment's routes, and sends `agent.undeploy` with a request id, the generation fence to remove through, and a reason string
+2. Sidecar shuts the deployment's supervisor down, releasing the workflow-process child and its per-deployment routing state, and waits for its in-flight outbound mail to reach the link (a no-op if the sidecar does not hold the address; a sidecar holding a newer generation skips the teardown and acknowledges at once)
+3. Sidecar deletes the agent directory and the deployment's local state, retaining its teardown record until every deletion succeeds so a restart can retry a failed cleanup
+4. Sidecar responds with `agent.undeploy.ack`, or `agent.undeploy.error` naming each step that failed. Consecutive requests for the same address and generation share the running teardown and each receive its final result with their own request id. An intervening command or a different generation keeps its place in the address queue.
+5. Hub completes allocation release after the provider releases its hold and cleanup is confirmed. Authoritative confirmation from the provisioner that the worker and state are gone also permits release without a sidecar acknowledgement.
+
+Lost acknowledgements are retried under the [cleanup policy](SIDECAR_PLACEMENT.md#release-and-replacement-cleanup); an absent record can be acknowledged again.
+
+### Partial Transfer Recovery
+
+If the WebSocket disconnects mid-transfer, no git state is corrupted: the receiver buffers chunks in memory and only unpacks on `repo.pack.done`. Allocation reconciliation retries initialization when a Hub-to-sidecar transfer is interrupted. The sidecar takes a workflow-run seed only for a branch it does not have yet, one already at the sent commit, or one holding only the empty start an earlier attempt created, so a retried first deploy applies it again, while a seed that would move a branch the sidecar already has is rejected rather than mixed with what an earlier copy left there. For sidecar-to-Hub workflow-run packs, the sender re-drives unacknowledged commits once a `welcome` routes the address again.
+
+### Reconnect Sequencing
+
+On reconnect a provisioned sidecar restores its workflow deployments from local disk (see the deployment restore path) and reports them so the Hub restores their routes.
+
+1. After local restoration, the sidecar opens every connection with one `hello` reporting every incarnation it holds: the ones it restored, and any still deploying or tearing down from an earlier connection. The Hub undeploys unwanted incarnations unless a cleanup binding covers them; those remain subject to the allocation cleanup policy.
+2. The Hub resolves the bearer token to its sidecar and the probe and allocation generations that sidecar currently hosts; a token that resolves to neither current work nor cleanup obligations fails closed. A reported incarnation gets its route back only when it is live and its generation is the current generation of a routable allocation the sidecar hosts whose first deploy completed and whose run has not ended. A stopped incarnation of a current allocation stays unrouted, as does an initialized live copy whose run is terminal; the Hub stops those terminal copies after welcome and requests retention only while their policy allows it. The Hub leaves cleanup bindings to the reconciler and sends `agent.undeploy` for other unwanted incarnations, then answers `welcome` with the incarnations it routes.
+3. The deployment's in-flight run state is reconstructed sidecar-locally at restore; the Hub sends its copy of the workflow-run refs only to a first deploy, before a supervisor is active.
+4. A `hello` that does not report the current generation of a deployment the sidecar hosts whose first deploy completed means the sidecar no longer holds it, for instance because its data directory was lost. The Hub fails the deployment and releases its capacity rather than deploying it again.
+
+The sidecar verifies every inbound deploy pack's commit signature against the hub key it recorded at deploy time before applying it, so pack content is never applied on an unverified signature.
+
+The sidecar generates the deployment key and returns it in `agent.deploy.ack`, but routing authority comes from the sidecar credential and the allocations it hosts. Registration checks each binding's in-memory generation fence and revalidates its durable identity before mutating routing state, and routes no reported incarnation other than a hosted allocation's anchor deployment at its current generation.
+
+#### Workflow Definition Versioning: Pinned-Forever
+
+A workflow deployment is pinned to its deploy-time definition. It keeps that definition — the frozen source closure the child re-evaluates, the workflow-asset repo, the per-step `agent-state` repos — until it is undeployed. A definition change made on the hub does **not** reconcile onto a live deployment; it affects only deployments created after the change.
+
+This holds across a sidecar↔Hub disconnect. Reconnect restores routing and resumes the locally persisted frozen definition; it does not negotiate deploy refs or pull newer definition bytes. Picking up a definition change requires a new deployment. This is orthogonal to recycle, which also keeps the same deploy tree while starting a fresh process.
+
+### SSH Commit Signatures
+
+State commits are signed using SSH signature format (compatible with `git verify-commit` since git 2.34). The signature is embedded in the commit object's `gpgsig` header via isomorphic-git's `onSign` callback.
+
+The signature structure:
+
+```
+-----BEGIN SSH SIGNATURE-----
+<base64 of SSHSIG binary:
+  "SSHSIG" magic (6 bytes)
+  uint32 version = 1
+  string publickey (SSH wire: "ssh-ed25519" + 32-byte key)
+  string namespace = "git"
+  string reserved = ""
+  string hash_algorithm = "sha512"
+  string signature (Ed25519 sig over prescribed hash)>
+-----END SSH SIGNATURE-----
+```
+
+State commits carry an author identity of `<agentAddress> <agent-id@interchange.local>` rather than a shared harness identity, making commits attributable in standard git tooling.
+
+### Deploy Content Integrity
+
+The deploy tree can contain executable code (`handler.ts` files in skills). This makes it the primary attack surface in the deployment path. Deploy commit signing is mandatory:
+
+- Deploy commits are signed by the hub's Ed25519 key (or an operator-delegated key)
+- The sidecar verifies the signature before unpacking
+- Unsigned or incorrectly signed deploy content is rejected
+
+The hub's signing public key is provisioned to the sidecar at registration time. A compromised hub can still push malicious code (it holds the signing key) — that threat is bounded by hub security and access controls, not by the wire protocol.
+
+### Credential Isolation
+
+The deploy tree never contains credentials. API keys, OAuth tokens, and other secrets travel in the `sources` field of the wire-format `HarnessConfig` from `@intx/types/runtime` on the `agent.deploy` frame, which is ephemeral (not persisted to git). The `keys/` directory is excluded from git via `.gitignore`.
+
+## Change History: Git-Backed Storage
+
+Agent-local data is stored in the same git repository as the deployed definition, providing revision control as a native capability. State lives under `state/` paths on a per-agent branch, while the deployed definition lives under `deploy/` (see Agent Deployment below).
+
+### Storage Backends
+
+The git repository can be backed by different storage implementations depending on the execution environment:
+
+- **Filesystem** - Native git on disk for Docker containers, VMs, local processes, and mobile/embedded devices with filesystem access. Full git functionality with standard tooling.
+- **In-memory with remote sync** - For JavaScript runtimes (Cloudflare Workers, web workers) and mobile/embedded environments that lack persistent filesystem access. Uses isomorphic-git or similar pure-JS implementations with object storage (R2, S3) as the backing store. Repository state is loaded on initialization and synced on commits.
+- **Virtual filesystem** - For environments with partial filesystem semantics. Adapts git operations to the available storage primitives.
+
+The harness abstracts these differences - agents interact with the same history tools regardless of the underlying backend.
+
+### Repository Structure
+
+Each agent has a single git repository:
+
+```
+<agent-dir>/
+  .git/
+  deploy/               # Hub-managed (read-only on sidecar)
+    prompt.md
+    config.json
+    skills/
+      <name>/
+        tool.json
+        handler.ts
+  state/                # Sidecar-managed (per-agent journal)
+    context.json
+    audit/
+      <session-id>/
+        <call-id>.json
+  keys/                 # Not tracked in git (.gitignore)
+    id_ed25519
+    id_ed25519.pub
+```
+
+The `deploy/` subtree is checked out from the deploy ref. The `state/` subtree is the agent's working data. The `keys/` directory holds the agent's Ed25519 keypair and is excluded from git via `.gitignore`.
+
+### Ref Structure
+
+```
+refs/
+  heads/
+    deploy                  (latest deploy commit, hub-managed)
+  tags/
+    deploy/v1               (historical deploy versions)
+    deploy/v2
+  agents/
+    <agent-id>              (per-agent state branch)
+```
+
+The agent branch forks from the deploy ref at launch time and keeps that deploy commit for the deployment's life; a new deploy commit means a new deployment.
+
+### Commit Policy
+
+The harness uses a hybrid commit strategy:
+
+- **Auto-commits** - The storage layer commits automatically as tool-audit and error records accumulate: `commitAudit` batches pending tool-audit records and `commitErrors` batches pending error records, each with a fixed-format message stating the count and a singularized noun (a single record commits as `Record 1 tool audit record` / `Record 1 error record`; multiple as `Record <count> tool audit records` / `Record <count> error records`). These commits are not driven by any write-path batching threshold. Audit and error records accumulate in memory with no cap and are flushed by lifecycle hooks: `afterCheckpoint`, which fires after every cycle-boundary commit — inference, tool-call, and compaction cycles alike — and `onShutdown`. The "batch" is simply whatever accumulated since the previous hook fired; the hook is the trigger, not record volume.
+
+- **Agent checkpoints** - Agents explicitly create checkpoints when they want to mark meaningful points in their work. The agent controls the commit message, making history readable and intentional. This is the primary mechanism for building useful change history.
+
+The hybrid approach ensures no work is lost across session boundaries while keeping the agent in control of what constitutes a meaningful checkpoint during active operation.
+
+### Branch Management
+
+Agents create and switch branches through harness-provided tools:
+
+- `branch create <name>` - Create a new branch from current state
+- `branch switch <name>` - Switch to an existing branch
+- `branch merge <name>` - Merge another branch into current
+- `branch delete <name>` - Remove a branch
+
+The harness tracks branch metadata (creation time, purpose, parent branch) for garbage collection and auditing.
+
+### Worktree Support
+
+For concurrent access to multiple states:
+
+- `worktree add <path> <branch>` - Create a new worktree for a branch
+- `worktree remove <path>` - Clean up a worktree
+
+Worktrees share history but have independent working directories, enabling agents to compare states or run parallel experiments.
+
+### History Queries
+
+Agents query history through structured tools:
+
+- `history log` - List recent commits with messages and timestamps
+- `history show <ref>` - Show changes in a specific commit
+- `history diff <ref1> <ref2>` - Compare two points in history
+- `history restore <ref> <path>` - Restore a file from a previous state
+
+### Garbage Collection
+
+The harness periodically cleans up:
+
+- Merged branches older than a retention threshold
+- Orphaned worktrees
+- Unreachable commits (standard git gc)
+
+Retention policies are configurable per-tenant or per-agent.

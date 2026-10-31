@@ -1,0 +1,517 @@
+// Federated deliver path: an agent-to-deployment mail run reaches SUCCESS.
+//
+// The runId contract has TWO grants writers. The hub-api trigger route is
+// covered by `mail-trigger-run-completes-real-route`; this test covers the
+// OTHER one: the sidecar's `deliverMailToRecipient`, which materializes a
+// receiving deployment's grants when a `mail.outbound` frame (an agent
+// sending mail to a workflow deployment) names it. That path derives the
+// receiving run's runId from the RECIPIENT address, stages the run's grants
+// at `runs/<recipientAddress>/grants.json`, and the supervisor's onRunStart
+// barrier reads exactly that path -- so a producer that keys by the mail's
+// Message-ID leaves the barrier's path empty and the run fails closed.
+//
+// One hub, TWO sidecars, one deployment on each -- the sidecar split is
+// load-bearing. A mail send is only remote (and so only leaves as a
+// `delivered:false` frame that reaches deliverMailToRecipient) when the
+// recipient is not registered on the SENDER's own transport; co-locating both
+// deployments on one sidecar makes the send local and never exercises the path
+// under test.
+//   - Deployment B (the RECEIVER) is a completing echo agent on sidecar 2. It
+//     is NEVER triggered by the fixture, so its grants come ONLY from the
+//     sidecar's real materializer -- if that stages them under the wrong
+//     runId, B's onRunStart finds no grants file and B fails closed. B
+//     reaching RunCompleted is therefore the whole proof. Its grants come from
+//     the frozen grant snapshot the source-ref deploy's approve step wrote.
+//   - Deployment A (the SENDER) is on sidecar 1 and its agent carries the
+//     inline `mail_send` tool from the `mail-tool.ts` fixture in its transport
+//     variant; its mock inference calls it with `to: <B's address>`, so A's run
+//     forwards a real `mail.outbound` frame to the hub, which routes it through
+//     `handleMailOutbound -> deliverMailToRecipient(B)`.
+//
+// The REAL `createMailTriggeredRunGrantsMaterializer` (backed by a migrated
+// schema) is wired into the fixture hub's sidecar router via the
+// `materializeMailTriggeredRunGrants` option, closing the harness gap that let
+// the earlier route test assert only DB rows.
+//
+// SCOPE: this exercises the RECEIVER seam -- grant materialization + the
+// onRunStart barrier -- across a real sidecar transport on ONE hub. It is NOT
+// cross-hub coverage: the sender-to-receiver hop stays inside a single hub's
+// router, not over a hub-link between two hubs. A dedicated two-hub
+// federation-transport test is separate and non-gating; do not read this as
+// covering that hop. The harness's dependence on the placement invariant
+// below is tracked in INTR-395.
+
+import {
+  afterAll,
+  afterEach,
+  beforeAll,
+  beforeEach,
+  describe,
+  expect,
+  test,
+} from "bun:test";
+
+import { eq } from "drizzle-orm";
+
+import {
+  createGrantStore,
+  createPrincipalKeyStore,
+  createRunTokenStore,
+} from "@intx/db";
+import { createTestCredentialCipher } from "@intx/test-harness/crypto";
+import {
+  tenant as tenantTable,
+  workflowRun as workflowRunTable,
+} from "@intx/db/schema";
+import { createMailTriggeredRunGrantsMaterializer } from "@intx/hub-api";
+import type { HarnessConfig, InferenceSource } from "@intx/types/runtime";
+import type { WireGrantRule } from "@intx/types/grant-wire";
+import {
+  createTestDb,
+  harnessDbEnvAvailable,
+  type TestDb,
+} from "@intx/test-harness/db-harness";
+import {
+  seedAsset,
+  seedPrincipal,
+  tenantSlugFromId,
+} from "@intx/test-harness/seed";
+import {
+  createApprovalSet,
+  deriveRunAddress,
+  type ApprovalSet,
+} from "@intx/workflow-deploy";
+
+import {
+  SECOND_SIDECAR_ID,
+  SIDECAR_ID,
+  SECOND_TOKEN,
+  SESSION_ID,
+  deployWorkflowSourceForTest,
+  fireMailTrigger,
+  startDeployFlowEnv,
+  startSidecarSubprocess,
+  terminateSidecarSubprocess,
+  waitFor,
+  waitForReconnect,
+  waitForWorkflowRunComplete,
+  type DeployFlowEnv,
+  type SidecarHandle,
+} from "../hub-agent/lib/deploy-flow-env";
+import { MAIL_TOOL_NAME } from "./fixtures/mail-tool";
+import { singleStepAgentEntry } from "./fixtures/single-step-agent";
+import { singleStepMailToolEntry } from "./fixtures/single-step-mail-tool";
+
+const DEPLOYMENT_DOMAIN = "integration.interchange";
+
+// The RECEIVER, whose grants come only from the sidecar materializer. The
+// `run_` prefix is load-bearing and MUST NOT be dropped: the address SHAPE
+// selects the materialization path. deliverMailToRecipient only materializes a
+// run for a recipient whose address `isRunAddress` recognizes, and that
+// predicate keys on the `run_` prefix. A bare id (e.g. `fed-mail-receiver-1` ->
+// `fed-mail-receiver-1@...`) fails that predicate, so the mail is routed with
+// NO materialization -- and the test still goes GREEN while exercising nothing,
+// because the receiver never starts and the RunCompleted assertion is only ever
+// reached on the real path. Keep the `run_` prefix.
+const RECEIVER_ID = "run_fed-mail-receiver-1";
+const RECEIVER_TENANT_ID = "tnt_fed_mail_receiver";
+const RECEIVER_CREATOR_PRINCIPAL_ID = "prn_fed_mail_receiver_creator";
+const RECEIVER_ASSET_ID = "ast_fed_mail_receiver_wf";
+const RECEIVER_STEP_ID = "receive";
+// The SENDER, triggered by the fixture to mail the receiver.
+const SENDER_ID = "run_fed-mail-sender-1";
+const SENDER_TENANT_ID = "tnt_fed_mail_sender";
+const SENDER_CREATOR_PRINCIPAL_ID = "prn_fed_mail_sender_creator";
+const SENDER_ASSET_ID = "ast_fed_mail_sender_wf";
+const SENDER_STEP_ID = "send";
+// The sender's run principal. A sender triggered through fireMailTrigger reserves
+// no run principal (it hand-delivers grants and routes without the commit path),
+// so its anchor is left principal-less and resolveSenderPrincipal would fail the
+// admission coordinates closed. Mint one and attach it to the sender anchor so
+// the sender resolves to concrete coordinates the receiver's accept-policy can
+// admit.
+const SENDER_RUN_PRINCIPAL_ID = "prn_fed_mail_sender_run";
+
+const receiverAddress = deriveRunAddress({
+  runId: RECEIVER_ID,
+  domain: DEPLOYMENT_DOMAIN,
+});
+const senderAddress = deriveRunAddress({
+  runId: SENDER_ID,
+  domain: DEPLOYMENT_DOMAIN,
+});
+
+// The sender's grant to invoke the mail tool; hand-delivered with its
+// fixture trigger (the sender is a plain fixture-triggered run, unlike the
+// receiver whose grants are the property under test).
+const SENDER_MAIL_GRANT: WireGrantRule = {
+  id: "grant-sender-mail",
+  resource: `tool:${MAIL_TOOL_NAME}`,
+  action: "invoke",
+  effect: "allow",
+  origin: "creator",
+  conditions: null,
+  expiresAt: null,
+  roleId: null,
+  principalId: null,
+};
+
+let env: DeployFlowEnv;
+let h: TestDb;
+let sidecar2: SidecarHandle | undefined;
+const tempDirs: string[] = [];
+
+describe.skipIf(!harnessDbEnvAvailable())(
+  "a mail-triggered run started through the sidecar deliver path reaches RunCompleted",
+  () => {
+    let hasRun = false;
+
+    beforeAll(async () => {
+      h = await createTestDb();
+      // The REAL materializer the production sidecar router uses, wired into
+      // the fixture hub so a `mail.outbound` frame for the receiver drives
+      // deliverMailToRecipient through its true grants-write seam.
+      const principalKeyStore = createPrincipalKeyStore({
+        db: h.db,
+        cipher: createTestCredentialCipher(),
+      });
+      const materializer = createMailTriggeredRunGrantsMaterializer({
+        db: h.db,
+        principalKeyStore,
+        runTokenStore: createRunTokenStore({
+          db: h.db,
+          cipher: createTestCredentialCipher(),
+        }),
+        grantStore: createGrantStore(h.db),
+      });
+      env = await startDeployFlowEnv({
+        // The sender's mock inference calls the mail tool with the RECEIVER
+        // as `to`; the receiver has no such tool, so its request falls
+        // through to echo and its run completes.
+        inferenceToolCall: {
+          toolName: MAIL_TOOL_NAME,
+          input: { to: receiverAddress, body: "federated hello" },
+        },
+        inferenceEchoUserMessage: true,
+        materializeMailTriggeredRunGrants: materializer,
+        // Co-deliver the sender's durable key on the receiver run's grants
+        // barrier the way production does, so the sender (a local same-hub run
+        // with a resolvable key) verifies `clean` rather than the cache-miss
+        // `unknown` that strict inbound enforcement drops.
+        senderKeyResolution: { db: h.db, principalKeyStore },
+      });
+    });
+
+    afterAll(async () => {
+      if (sidecar2) {
+        await terminateSidecarSubprocess(sidecar2);
+        sidecar2 = undefined;
+      }
+      if (env !== undefined) await env.teardown();
+      if (h !== undefined) await h.close();
+      tempDirs.splice(0);
+    });
+
+    beforeEach(async () => {
+      await h.reset();
+    });
+
+    afterEach(async () => {
+      await h.reset();
+    });
+
+    test("the receiver's run, grants only from the sidecar materializer, completes", async () => {
+      if (hasRun) {
+        throw new Error(
+          "this suite assumes a single test per shared subprocess env; " +
+            "add a new scenario in its own file with its own env instead",
+        );
+      }
+      hasRun = true;
+
+      // The sender and receiver must land on DIFFERENT sidecars: only then is
+      // the sender's mail remote to its own transport, so it leaves as a
+      // `delivered:false` frame and the hub routes it through
+      // deliverMailToRecipient (the path under test) rather than a local
+      // persist. findSidecarForNewAgent always places a new deploy on the
+      // hub's first-connected sidecar, so capture sidecar 1's handle now, while
+      // it is the sole connection, to drive the placement below.
+      const startHandles = [...env.hub.liveHandles];
+      const sidecar1Handle = startHandles[0];
+      if (startHandles.length !== 1 || !sidecar1Handle) {
+        throw new Error(
+          `expected exactly one connected sidecar at start, got ${startHandles.length}`,
+        );
+      }
+      const hubPort = env.hub.server.port;
+      if (hubPort === undefined) {
+        throw new Error("hub.server.port is undefined; expected a bound port");
+      }
+
+      // Seed the receiver's and sender's tenancy + workflow asset so each
+      // source-ref deploy's install/approve freeze and anchor `workflow_run`
+      // insert resolve their FKs. The receiver's frozen grant snapshot -- the
+      // one the materializer reads -- is written by its approve step here.
+      await h.db.insert(tenantTable).values({
+        id: RECEIVER_TENANT_ID,
+        name: RECEIVER_TENANT_ID,
+        slug: tenantSlugFromId(RECEIVER_TENANT_ID),
+        // The tenant's own domain is a tenant attribute distinct from the
+        // deployment mail domain; the two deployments share the deployment
+        // domain but each tenant carries a unique `tenant.domain`.
+        domain: `recv.${DEPLOYMENT_DOMAIN}`,
+        parentId: null,
+      });
+      await seedPrincipal(h.db, {
+        id: RECEIVER_CREATOR_PRINCIPAL_ID,
+        tenantId: RECEIVER_TENANT_ID,
+        kind: "user",
+        refId: "usr_fed_mail_receiver_creator",
+        status: "active",
+      });
+      await seedAsset(h.db, {
+        id: RECEIVER_ASSET_ID,
+        tenantId: RECEIVER_TENANT_ID,
+        kind: "workflow",
+        name: "fed-mail-receiver-wf",
+        creatorPrincipalId: RECEIVER_CREATOR_PRINCIPAL_ID,
+      });
+      await h.db.insert(tenantTable).values({
+        id: SENDER_TENANT_ID,
+        name: SENDER_TENANT_ID,
+        slug: tenantSlugFromId(SENDER_TENANT_ID),
+        domain: `send.${DEPLOYMENT_DOMAIN}`,
+        parentId: null,
+      });
+      await seedPrincipal(h.db, {
+        id: SENDER_CREATOR_PRINCIPAL_ID,
+        tenantId: SENDER_TENANT_ID,
+        kind: "user",
+        refId: "usr_fed_mail_sender_creator",
+        status: "active",
+      });
+      await seedAsset(h.db, {
+        id: SENDER_ASSET_ID,
+        tenantId: SENDER_TENANT_ID,
+        kind: "workflow",
+        name: "fed-mail-sender-wf",
+        creatorPrincipalId: SENDER_CREATOR_PRINCIPAL_ID,
+      });
+
+      // Deploy the receiver onto sidecar 1 while it is the sole connection.
+      // The receiver is the PASSIVE party -- it never initiates, it only wakes
+      // when the sender's mail arrives -- so it, not the sender, is the one we
+      // let absorb the connection churn of the placement dance below.
+      const receiverEntry = singleStepAgentEntry({
+        stepId: RECEIVER_STEP_ID,
+        systemPrompt: "You are the federated-mail receiver agent.",
+        address: receiverAddress,
+        agentId: `agent_${RECEIVER_ID}`,
+        // Accept mail from the sending run by name: the mail-transport
+        // admission gate stages `mail.accept:principal:<sender>` from this. The
+        // sender is in another tenant and did not deploy the receiver, so no
+        // relational rule admits it.
+        mailAccept: { principals: [SENDER_RUN_PRINCIPAL_ID] },
+      });
+      await deployWorkflowSourceForTest(env, {
+        entryModule: receiverEntry,
+        db: h.db,
+        tenantId: RECEIVER_TENANT_ID,
+        definitionAssetId: RECEIVER_ASSET_ID,
+        anchorRunId: RECEIVER_ID,
+        sourceAuthorityPrincipalId: RECEIVER_CREATOR_PRINCIPAL_ID,
+        // Name the transport rather than letting it be inferred from which
+        // sidecar happens to be connected: the receiver and the sender must
+        // end up on DIFFERENT ones, and inference cannot guarantee that once
+        // the primary starts reconnecting underneath the placement below.
+        sidecarId: SIDECAR_ID,
+        deploymentDomain: DEPLOYMENT_DOMAIN,
+        agentAddress: receiverAddress,
+        approvals: buildApprovals(receiverAddress, [
+          `mail.accept:principal:${SENDER_RUN_PRINCIPAL_ID}`,
+        ]),
+        config: buildConfig(RECEIVER_ID, receiverAddress, "sk-mock-receiver"),
+        sources: { [RECEIVER_STEP_ID]: [inferenceSource("sk-mock-receiver")] },
+      });
+
+      // Bring up a second sidecar and wait for it to register.
+      sidecar2 = await startSidecarSubprocess({
+        hubPort,
+        registerTempDir: (d) => tempDirs.push(d),
+        extraEnv: {
+          SIDECAR_ID: SECOND_SIDECAR_ID,
+          SIDECAR_TOKEN: SECOND_TOKEN,
+        },
+      });
+      // Register it so a wedge anywhere below reports BOTH sidecars' stderr.
+      // The sender runs here, so without this the diagnostic on a hang covers
+      // only the receiver's sidecar and the sending half is invisible.
+      env.registerSidecar(sidecar2);
+      await waitFor(
+        () => env.hub.router.getConnectedSidecars().includes(SECOND_SIDECAR_ID),
+        { diagnostics: env.sidecarDiagnostics },
+      );
+
+      // Close sidecar 1's original handle so its connections entry is dropped
+      // and sidecar 2 becomes the hub's first-connected sidecar. Sidecar 1
+      // reconnects and appends AFTER sidecar 2, so once sidecar 2 leads the
+      // connection order the next deploy lands on it deterministically,
+      // regardless of when sidecar 1 comes back.
+      //
+      // DO NOT "simplify" this wait away: `getConnectedSidecars()[0] ===
+      // SECOND_SIDECAR_ID` is exactly the predicate `findSidecarForNewAgent`
+      // evaluates to place a new deploy (first entry of the connections map).
+      // Waiting on that precise invariant -- not a sleep, not "sidecar 2 is
+      // connected" -- is what makes the placement deterministic rather than
+      // racy against sidecar 1's reconnect. Dropping or loosening it silently
+      // reintroduces the race and lands the sender on the wrong sidecar (making
+      // the send local, which never exercises deliverMailToRecipient). The
+      // coupling to this internal placement rule is tracked in INTR-395.
+      sidecar1Handle.close();
+      await waitFor(
+        () => env.hub.router.getConnectedSidecars()[0] === SECOND_SIDECAR_ID,
+        { diagnostics: env.sidecarDiagnostics },
+      );
+
+      // Deploy the sender; it lands on sidecar 2, the pristine connection that
+      // never churns, so the run that must actively fire on trigger is never
+      // disrupted. Its agent carries the transport-backed mail tool from its
+      // source closure.
+      const senderEntry = singleStepMailToolEntry({
+        variant: "transport",
+        stepId: SENDER_STEP_ID,
+        systemPrompt: "You are the federated-mail sender agent.",
+        address: senderAddress,
+        agentId: `agent_${SENDER_ID}`,
+      });
+      await deployWorkflowSourceForTest(env, {
+        entryModule: senderEntry,
+        db: h.db,
+        tenantId: SENDER_TENANT_ID,
+        definitionAssetId: SENDER_ASSET_ID,
+        anchorRunId: SENDER_ID,
+        sourceAuthorityPrincipalId: SENDER_CREATOR_PRINCIPAL_ID,
+        // The second sidecar, named. This is what makes the send remote to
+        // the sender's own transport and so routes it through
+        // deliverMailToRecipient -- the seam under test.
+        sidecarId: SECOND_SIDECAR_ID,
+        deploymentDomain: DEPLOYMENT_DOMAIN,
+        agentAddress: senderAddress,
+        approvals: buildApprovals(senderAddress, [`tool:${MAIL_TOOL_NAME}`]),
+        config: buildConfig(SENDER_ID, senderAddress, "sk-mock-sender"),
+        sources: { [SENDER_STEP_ID]: [inferenceSource("sk-mock-sender")] },
+      });
+
+      // Attach a run principal to the sender's anchor so it resolves to concrete
+      // admission coordinates. The sender fires through fireMailTrigger, which
+      // never runs the commit path that would mint one, so without this the
+      // sender resolves principal-less and the receiver's start gate would drop
+      // its mail as an unknown sender.
+      await seedPrincipal(h.db, {
+        id: SENDER_RUN_PRINCIPAL_ID,
+        tenantId: SENDER_TENANT_ID,
+        kind: "workflow",
+        refId: SENDER_ID,
+        status: "active",
+      });
+      await h.db
+        .update(workflowRunTable)
+        .set({ principalId: SENDER_RUN_PRINCIPAL_ID })
+        .where(eq(workflowRunTable.id, SENDER_ID));
+
+      // Wait for sidecar 1 (the receiver) to reconnect so the receiver is
+      // routable again before the sender's mail can arrive, then trigger the
+      // sender. Its run signs and forwards a `mail.outbound` frame to the
+      // receiver on sidecar 1; because the receiver is not local to sidecar 2's
+      // transport, the send is remote and the hub delivers it via
+      // deliverMailToRecipient.
+      await waitForReconnect(env, receiverAddress);
+      await fireMailTrigger(env, senderAddress, {
+        messageId: "<fed-mail-sender-kickoff@integration.interchange>",
+        grants: [SENDER_MAIL_GRANT],
+      });
+
+      // The load-bearing assertion: the RECEIVER's run reaches terminal
+      // SUCCESS. Its grants exist only because deliverMailToRecipient staged
+      // them at runs/<receiverAddress>/ under the recipient-derived runId. A
+      // RunFailed or timeout here is the signature of grants staged under the
+      // mail's Message-ID.
+      //
+      // TRIAGE, if this goes red: this test rides on placement + reconnect
+      // settling before it can assert the grants seam, so it has two
+      // distinguishable failure points. A timeout at the
+      // `getConnectedSidecars()[0]` placement wait or the `waitForReconnect`
+      // above is an infrastructure/timing failure, NOT a grants regression --
+      // run the dedicated reconnect suites (hub-link-reconnect,
+      // reconnect-reemits-parked-correlation) first to disambiguate. Only a
+      // reached-here RunFailed or a timeout waiting on the RECEIVER's terminal
+      // event below implicates the grants materialization/runId contract this
+      // test actually guards.
+      const dumpDiag = () =>
+        `${env.sidecarDiagnostics()}\n--- sidecar 2 (sender) stderr ---\n${
+          sidecar2?.stderr.join("") ?? "(none)"
+        }`;
+      // This wait carries a bound because its expiry is how the triage note
+      // above discriminates: the note tells a reader which failure class they
+      // are in by WHICH wait gave up, and `dumpDiag` -- the only rendering of
+      // both sidecars' stderr -- is emitted by that expiry. Without it the
+      // test dies on the runner's budget instead, which prints neither.
+      const terminal = await waitForWorkflowRunComplete(
+        env,
+        RECEIVER_ID,
+        RECEIVER_ID,
+        { timeoutMs: 60_000, diagnostics: dumpDiag },
+      );
+      if (terminal.type !== "RunCompleted") {
+        throw new Error(
+          `expected RunCompleted for the receiver, got ${terminal.type}: ${JSON.stringify(terminal.body)}\n${dumpDiag()}`,
+        );
+      }
+      expect(terminal.type).toBe("RunCompleted");
+    });
+
+    // The sender and receiver are sibling tenants (neither is the other's
+    // ancestor), so each must own its OWN inference credential: a credential id
+    // is a global primary key, and the seed helper's onConflictDoNothing would
+    // otherwise leave a single id owned by whichever tenant seeded it first,
+    // unresolvable by the other.
+    function inferenceSource(credentialId: string): InferenceSource {
+      return {
+        id: "anthropic:mock-model",
+        provider: "anthropic",
+        baseURL: `http://localhost:${String(env.inference.server.port)}`,
+        credentialId,
+        model: "mock-model",
+      };
+    }
+
+    function buildConfig(
+      anchorRunId: string,
+      address: string,
+      credentialId: string,
+    ): HarnessConfig {
+      return {
+        sessionId: SESSION_ID,
+        agentId: `${anchorRunId}`,
+        tenantId: "tenant-1",
+        principalId: "prin_integration-1",
+        agentAddress: address,
+        systemPrompt: "Fallback prompt (overridden per step by the definition)",
+        tools: [],
+        grants: [],
+        sources: [inferenceSource(credentialId)],
+        defaultSource: "anthropic:mock-model",
+      };
+    }
+
+    function buildApprovals(address: string, extra: string[]): ApprovalSet {
+      return createApprovalSet([
+        "inference.source:anthropic:mock-model",
+        "director:@intx/agent/default",
+        `mail.address:${address}`,
+        `mail.send:${DEPLOYMENT_DOMAIN}`,
+        ...extra,
+      ]);
+    }
+  },
+);

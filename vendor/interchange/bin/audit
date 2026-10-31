@@ -1,0 +1,6 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+REPODIR=$(git rev-parse --show-toplevel)
+
+exec bun run --conditions=intx-src "$REPODIR/bin/audit.ts" "$@"

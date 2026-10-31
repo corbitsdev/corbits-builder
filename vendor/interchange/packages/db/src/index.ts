@@ -1,0 +1,227 @@
+export {
+  createDB,
+  type AnyPgDatabase,
+  type DB,
+  type DBExecutor,
+} from "./client";
+export {
+  isReferencedRowViolation,
+  pgErrorCode,
+  PG_UNIQUE_VIOLATION,
+  PG_FOREIGN_KEY_VIOLATION,
+} from "./pg-error";
+export type { DBConfig } from "./config";
+export { runMigrations, dropSchema } from "./migrate";
+export {
+  rekeyCredentialSecrets,
+  type RekeyReport,
+} from "./rekey-credential-secrets";
+export {
+  backfillPrincipalKeys,
+  type BackfillPrincipalKeysReport,
+} from "./backfill-principal-keys";
+export { createGrantStore } from "./grant-store";
+export {
+  loadTenantLifecyclePolicies,
+  canExecuteWorkflowRun,
+  workflowRunExecutability,
+  workflowCapacityReleaseAt,
+  withExecutableWorkflowRun,
+  WorkflowRunNotExecutableError,
+  type WorkflowRunExecutionTarget,
+  resolveDeploymentLifecyclePolicy,
+  validateLifecyclePolicyEdit,
+} from "./workflow-lifecycle-policy";
+export { createPrincipalStore, type PrincipalStore } from "./principal-store";
+export {
+  createPrincipalKeyStore,
+  type CreatePrincipalKeyStoreDeps,
+  type PrincipalKeyStore,
+} from "./principal-key-store";
+export {
+  createRunTokenStore,
+  deleteRunTokensForPrincipals,
+  type RunTokenStore,
+} from "./run-token-store";
+export { lookupLocalPrincipalSigner } from "./signer-identity";
+export {
+  resolveSenderKey,
+  resolveFrameSenderKey,
+  resolveSenderPrincipal,
+  auditSenderKeys,
+  senderCoordinates,
+  type SenderKeyResolution,
+  type ResolvedSenderPrincipal,
+  type SenderKeyAuditReport,
+} from "./sender-key-resolver";
+// Re-exported from `@intx/authz` alongside `senderCoordinates`, which produces
+// it: a consumer that resolves a sender's admission coordinates through this
+// package can name the coordinate type without depending on `@intx/authz`
+// directly.
+export type { MailAcceptCoordinate } from "@intx/authz";
+export {
+  createApprovalStore,
+  type ApprovalStore,
+  type ResolveApprovalArgs,
+} from "./approval-store";
+export {
+  createSignalCorrelationStore,
+  type SignalCorrelationStore,
+} from "./signal-correlation-store";
+export {
+  createWorkflowRunStore,
+  type WorkflowRunStore,
+} from "./workflow-run-store";
+export {
+  createWorkflowRunLaunchSpecStore,
+  type WorkflowRunLaunchSpecStore,
+} from "./workflow-run-launch-spec-store";
+export {
+  createWorkflowRunDispatchStore,
+  WorkflowRunDispatchPayloadConflictError,
+  type AcknowledgeWorkflowRunDispatchArgs,
+  type ClaimWorkflowRunDispatchArgs,
+  type EnqueueWorkflowRunDispatchArgs,
+  type EnqueueWorkflowRunDispatchResult,
+  type EnqueueWorkflowSignalDispatchArgs,
+  type RetryWorkflowRunDispatchArgs,
+  type WorkflowRunDispatchStore,
+} from "./workflow-run-dispatch-store";
+export {
+  createWorkflowPendingProjectionStore,
+  type WorkflowPendingProjectionStore,
+} from "./workflow-pending-projection-store";
+export {
+  createSidecarAllocationStore,
+  SIDECAR_DEPLOYMENT_STOPPED_FAILURE_CODE,
+  SIDECAR_CLEANUP_UNCONFIRMED_FAILURE_CODE,
+  SIDECAR_PROVISIONER_RELEASE_FAILURE_CODE,
+  SIDECAR_CLEANUP_RETRY_EXHAUSTED_FAILURE_CODE,
+  SIDECAR_CLEANUP_DISCONNECT_TIMEOUT_FAILURE_CODE,
+  SIDECAR_CLEANUP_PREPARATION_TIMEOUT_FAILURE_CODE,
+  SIDECAR_CLEANUP_OPERATOR_RELEASED_FAILURE_CODE,
+  type BeginSidecarReleaseArgs,
+  type BeginSidecarReplacementArgs,
+  type BindInitialSidecarArgs,
+  type BindReplacementSidecarArgs,
+  type CreateAdoptedSidecarAllocationArgs,
+  type ClaimSidecarAllocationArgs,
+  type CreatePendingSidecarAllocationArgs,
+  type FailSidecarAllocationArgs,
+  type FailStoppedSidecarDeploymentArgs,
+  type MarkSidecarAllocatedArgs,
+  type MarkSidecarConnectionLostArgs,
+  type MarkSidecarConnectionReadyArgs,
+  type MarkSidecarDestroyFailedArgs,
+  type MarkSidecarReleasedArgs,
+  type ParkSidecarReconciliationPolicy,
+  type ReleaseStoppedSidecarCleanupArgs,
+  type ReleaseStoppedSidecarCleanupResult,
+  type ScheduleSidecarAllocationRetryArgs,
+  type ScheduleSidecarReconnectAfterHubStartArgs,
+  type SidecarAllocation,
+  type SidecarAllocationStore,
+} from "./sidecar-allocation-store";
+export {
+  SidecarReuseRejectedError,
+  SidecarInventoryUnavailableError,
+  type RetainedSidecarIncarnation,
+  type SidecarInventory,
+  type SidecarAllocationStoreOptions,
+  type AllocationConnectionCheck,
+  type ProvisionerSidecarRetirement,
+  type SidecarProvisionerBinding,
+} from "./sidecar-reuse";
+export {
+  createWorkflowProbeStore,
+  type BindWorkflowProbeSidecarArgs,
+  type CreateWorkflowProbeArgs,
+  type WorkflowProbe,
+  type WorkflowProbeStore,
+} from "./workflow-probe-store";
+export {
+  createWorkflowDefinitionArtifactStore,
+  type WorkflowDefinitionArtifactStore,
+} from "./workflow-definition-artifact-store";
+export {
+  createWorkflowDefinitionStore,
+  loadDeploymentGrantSnapshot,
+  resolveDefinitionIdForAsset,
+  type WorkflowDefinitionRollbackResult,
+  type WorkflowDefinitionSelector,
+} from "./workflow-definition-store";
+export {
+  getAncestorChain,
+  getDescendantTenants,
+  resolveTenantSidecarCapabilityPolicies,
+} from "./tenant-hierarchy";
+export { resolveActivePrice, type ModelPricingRow } from "./pricing";
+export {
+  resolveProviderByName,
+  resolveOAuthClient,
+  resolveCredentialByName,
+  resolveCredentialById,
+  resolveCredentialRequirement,
+  resolveTenantOwnedCredentialById,
+  resolveInferenceMaterials,
+  reresolveCurrentMaterials,
+  AmbiguousCredentialError,
+  CredentialUnauthorizedError,
+  buildCredentialDelivery,
+} from "./credential-resolution";
+export type {
+  BuildCredentialDeliveryResult,
+  CredentialDeliveryFailure,
+} from "./credential-resolution";
+export {
+  resolveAssetByName,
+  resolveAssetById,
+  listAssetsForTenant,
+  type AssetRow,
+  type AssetWithOrigin,
+} from "./asset-resolution";
+export {
+  listVisibleModels,
+  listVisibleProviders,
+  listVisibleOfferings,
+  type ModelRow,
+  type ModelProviderRow,
+  type ModelOfferingRow,
+  type Origin,
+  type VisibleModel,
+  type VisibleProvider,
+  type ResolvedOffering,
+} from "./catalog-resolution";
+export {
+  resolveModelSources,
+  resolveInferencePreferences,
+  resolveInstanceModelSources,
+  resolveSourcesByOfferingIds,
+  type CatalogSourceResolution,
+  type OfferingSourceResolution,
+  type SourceSkip,
+} from "./model-source-resolution";
+export {
+  parseGrantRow,
+  parseApprovalRow,
+  parsePrincipalRow,
+  parsePrincipalKeyRow,
+  parseSignalCorrelationRow,
+  parseWorkflowRunRow,
+  parseWorkflowRunDispatchRow,
+  parseWorkflowRunLaunchSpecRow,
+  parseWorkflowDefinitionRow,
+  parseWorkflowDefinitionVersionRow,
+  parseOfferingRow,
+  parseModelOfferingRow,
+  parseCredentialRow,
+  parseProviderRow,
+  parseTenantRow,
+  TenantConfigInvalidError,
+  parseWalletRow,
+  parseTransactionRow,
+  parseOAuthClientRow,
+  parseGitTokenRow,
+  parseTurnPartType,
+} from "./parse-row";
+export * as schema from "./schema";

@@ -1,0 +1,233 @@
+import { and, eq, inArray, or } from "drizzle-orm";
+import { sha256 } from "@intx/crypto";
+import {
+  workflowRunExecutability,
+  workflowCapacityReleaseAt,
+  type DB,
+} from "@intx/db";
+import {
+  sidecar,
+  sidecarAllocation,
+  workflowProbe,
+  workflowRun,
+} from "@intx/db/schema";
+
+import type {
+  SidecarCredentialIdentity,
+  SidecarCredentialResolver,
+  SidecarIdentityUse,
+} from "../sidecar-allocation/contracts";
+import type { SidecarAuthenticator } from "./sidecar-handler";
+
+export type CreateSidecarTokenAuthenticatorDeps = {
+  db: DB["db"];
+  now?: () => Date;
+};
+
+/**
+ * Builds a resolver that verifies a sidecar's presented token against the
+ * per-sidecar hash stored on the `sidecar` table. The token is hashed with
+ * SHA-256 and looked up by its digest; a matching row yields that row's id as
+ * the verified identity, and `resolveBindings` reads what that sidecar
+ * currently hosts. An unknown token resolves to `null`; a retired one with
+ * neither current work nor cleanup left resolves marked `retired`. A sidecar
+ * that hosts nothing current still resolves and stays connected, idle, after
+ * its handshake undeploys what it reports. The claimed `sidecarId` on the
+ * frame is ignored: identity is derived from the token alone.
+ */
+export function createSidecarCredentialResolver({
+  db,
+  now = () => new Date(),
+}: CreateSidecarTokenAuthenticatorDeps): SidecarCredentialResolver {
+  const cleanupStatus = inArray(sidecarAllocation.status, [
+    "releasing",
+    "replacing",
+    "destroy_failed",
+  ]);
+  async function resolveBindings(
+    sidecarId: string,
+  ): Promise<SidecarCredentialIdentity[]> {
+    const [allocations, probes] = await Promise.all([
+      db.query.sidecarAllocation.findMany({
+        columns: {
+          id: true,
+          tenantId: true,
+          anchorRunId: true,
+          generation: true,
+          status: true,
+        },
+        where: and(
+          eq(sidecarAllocation.sidecarId, sidecarId),
+          or(
+            inArray(sidecarAllocation.status, ["provisioning", "allocated"]),
+            cleanupStatus,
+          ),
+        ),
+      }),
+      db.query.workflowProbe.findMany({
+        columns: { id: true, tenantId: true, generation: true },
+        where: and(
+          eq(workflowProbe.sidecarId, sidecarId),
+          inArray(workflowProbe.status, ["provisioning", "probing"]),
+        ),
+      }),
+    ]);
+    const anchors =
+      allocations.length === 0
+        ? []
+        : await db.query.workflowRun.findMany({
+            columns: { id: true, address: true },
+            where: inArray(
+              workflowRun.id,
+              allocations.map((allocation) => allocation.anchorRunId),
+            ),
+          });
+    const addressByAnchor = new Map(
+      anchors.map((anchor) => [anchor.id, anchor.address]),
+    );
+    return [
+      ...allocations.flatMap((allocation): SidecarCredentialIdentity[] => {
+        const address = addressByAnchor.get(allocation.anchorRunId);
+        return address === null || address === undefined
+          ? []
+          : [
+              {
+                kind:
+                  allocation.status === "releasing" ||
+                  allocation.status === "replacing" ||
+                  allocation.status === "destroy_failed"
+                    ? "cleanup"
+                    : "allocated",
+                sidecarId,
+                allocationId: allocation.id,
+                tenantId: allocation.tenantId,
+                anchorRunId: allocation.anchorRunId,
+                workflowRunAddress: address,
+                generation: allocation.generation,
+              },
+            ];
+      }),
+      ...probes.map(
+        (probe): SidecarCredentialIdentity => ({
+          kind: "probe",
+          sidecarId,
+          allocationId: probe.id,
+          tenantId: probe.tenantId,
+          generation: probe.generation,
+        }),
+      ),
+    ];
+  }
+
+  async function resolve(token: string) {
+    const tokenHash = await sha256(token);
+    const row = await db.query.sidecar.findFirst({
+      columns: { id: true, retiredAt: true },
+      where: eq(sidecar.tokenHashSha256, tokenHash),
+    });
+    if (row === undefined) return null;
+    // Work still current on a retired sidecar keeps its reconnects.
+    if (row.retiredAt !== null && (await resolveBindings(row.id)).length === 0)
+      return { sidecarId: row.id, retired: true as const };
+    return { sidecarId: row.id };
+  }
+
+  async function isCurrent(
+    identity: SidecarCredentialIdentity,
+    use: SidecarIdentityUse,
+  ): Promise<boolean> {
+    const copyCheck =
+      use === "reclaim" ||
+      use === "retention" ||
+      use === "retention-transition";
+    if (
+      identity.kind === "cleanup" &&
+      use !== "registration" &&
+      use !== "cleanup"
+    )
+      return false;
+    if (use === "cleanup" && identity.kind !== "cleanup") return false;
+    if (identity.kind === "probe") {
+      if (copyCheck) return false;
+      const statuses =
+        use === "registration"
+          ? (["provisioning", "probing"] as const)
+          : (["probing"] as const);
+      const probe = await db.query.workflowProbe.findFirst({
+        columns: { id: true },
+        where: and(
+          eq(workflowProbe.id, identity.allocationId),
+          eq(workflowProbe.sidecarId, identity.sidecarId),
+          eq(workflowProbe.tenantId, identity.tenantId),
+          eq(workflowProbe.generation, identity.generation),
+          inArray(workflowProbe.status, statuses),
+        ),
+      });
+      return probe !== undefined;
+    }
+
+    const statusCondition =
+      identity.kind === "cleanup"
+        ? cleanupStatus
+        : inArray(
+            sidecarAllocation.status,
+            use === "registration"
+              ? ["provisioning", "allocated"]
+              : ["allocated"],
+          );
+    const allocation = await db.query.sidecarAllocation.findFirst({
+      where: and(
+        eq(sidecarAllocation.id, identity.allocationId),
+        eq(sidecarAllocation.sidecarId, identity.sidecarId),
+        eq(sidecarAllocation.tenantId, identity.tenantId),
+        eq(sidecarAllocation.anchorRunId, identity.anchorRunId),
+        eq(sidecarAllocation.generation, identity.generation),
+        statusCondition,
+      ),
+    });
+    if (allocation === undefined) return false;
+    if (use === "registration") return true;
+    if (
+      identity.kind !== "cleanup" &&
+      allocation.ensureAcceptedGeneration !== identity.generation
+    ) {
+      return false;
+    }
+    if (copyCheck && allocation.initializationLeaseId !== null) {
+      return false;
+    }
+    const anchor = await db.query.workflowRun.findFirst({
+      columns: {
+        address: true,
+        publicKey: true,
+        status: true,
+        expiresAt: true,
+        cancellationRequestedAt: true,
+        failureCode: true,
+        endedAt: true,
+        capacityReleaseAt: true,
+        lifecyclePolicy: true,
+      },
+      where: eq(workflowRun.id, identity.anchorRunId),
+    });
+    if (anchor?.address !== identity.workflowRunAddress) return false;
+    if (!copyCheck) return true;
+    if (anchor.publicKey === null) return false;
+    // The Hub may have ended the run without the worker recording it, so the
+    // run row, not the copy that reconnects, decides whether it is over.
+    const ended = workflowRunExecutability(anchor) === "terminal";
+    if (use === "retention-transition") return ended;
+    if (use === "reclaim") return !ended && anchor.failureCode === null;
+    const releaseAt = workflowCapacityReleaseAt(anchor);
+    return ended && (releaseAt === null || releaseAt > now());
+  }
+
+  return { resolve, resolveBindings, isCurrent };
+}
+
+export function createSidecarTokenAuthenticator(
+  deps: CreateSidecarTokenAuthenticatorDeps,
+): SidecarAuthenticator {
+  const resolver = createSidecarCredentialResolver(deps);
+  return async ({ token }) => resolver.resolve(token);
+}

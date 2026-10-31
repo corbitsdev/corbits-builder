@@ -1,0 +1,785 @@
+// Acceptance test: a hub reconnect re-emits a parked run's correlation so the
+// run becomes approvable again, and an approver can then resolve the recovered
+// correlation to drive the parked run to completion.
+//
+// The scenario the ticket names is "suspend with the hub down -> hub comes up
+// -> the correlation is registered and the run is approvable". The load-bearing
+// state is the ABSENCE of the parked run's `signal_correlation` + `approval`
+// rows at the hub (the `signal.correlation.register` frame the suspend emitted
+// never co-wrote them) followed by their APPEARANCE after the hub link
+// reconnects. The recovery is the sidecar's Trigger B: on the reconnect
+// route announcement the hub-link fires `onWorkflowAddressesRoutable`, which
+// calls `reEmitParkedCorrelations(address)`, which asks the deployment's live
+// supervisor to re-query its child's durably-parked approval correlations and
+// re-emit each through the suspension sink -> a fresh
+// `signal.correlation.register` frame reaches the hub -> the co-write lands the
+// rows -> the run is approvable. The test then approves the recovered
+// correlation through the real resolve route and asserts the parked run resumes
+// to RunCompleted, so the re-emitted registration is proven to be a live route
+// the resolver can drive, not merely a row that reappeared.
+//
+// Making "the register did not co-write" deterministic
+// ----------------------------------------------------
+// Emitting the register while the hub link is genuinely down would require
+// holding the child in inference across a link drop -- a race with no harness
+// hook to gate it, and this file must not modify the shared harness. Two
+// hub-side facts let the scenario be forced deterministically instead:
+//
+//   1. On a mere WebSocket drop the sidecar subprocess and the deployment's
+//      supervisor stay alive; only the hub link reconnects. The parked run is
+//      never resumed, so the child keeps the approval park in durable state and
+//      still reports it to a `parked-correlations.request`. So dropping the link
+//      does NOT respawn the child: Trigger A (child re-establishment) never
+//      fires on this path, and the ONLY re-emit driver on reconnect is Trigger
+//      B (`onWorkflowAddressesRoutable`).
+//
+//   2. The parked run's `signal_correlation` + `approval` rows are hub-side DB
+//      state. Deleting them while the link is down reproduces exactly the state
+//      a hub that missed the suspend-time register would be in: a child parked
+//      on a correlation with no rows at the hub.
+//
+// So the test fires the trigger with the link up (the run parks and its initial
+// register co-writes the rows -- proving the run genuinely parked and the
+// co-write is wired), captures the correlationId, drops the link, DELETES both
+// rows while disconnected, asserts they are absent, then reconnects and asserts
+// they reappear. The reappearance can ONLY come from the reconnect re-emitting
+// the still-parked correlation's register: no other actor writes these rows,
+// the run is never resumed, and the child is never respawned. A regression that
+// removed the Trigger B re-emit would leave the rows deleted and the poll would
+// block until this test's own budget ends it.
+//
+// Harness justification: SPAWN-REAL. A real hub server, a real sidecar
+// subprocess, a real workflow-process child, and a test inference provider. The
+// suspend/park half runs against the real sidecar through the shared
+// `deploy-flow-env` fixture; the co-write + row assertions run against a real
+// migrated Postgres schema (`@intx/test-harness`), bridged by wiring the fixture
+// hub's `registerSignalCorrelation` lookup to the real DB co-write. The drop is
+// a genuine server-side WebSocket close; the recovery is the sidecar's real
+// allocation-authenticated `hub-link` reconnect and the supervisor re-emitting
+// the parked correlation.
+//
+// Single-test file. The `deploy-flow-env` (real sidecar subprocess + its
+// on-disk warm step-state) is `beforeAll`-scoped, while the DB resets per test.
+// A second test would inherit the first run's warm workspace and live parked
+// run; a run-once guard below fails loud if a second test is ever added here
+// rather than letting that assumption rot.
+
+import {
+  afterAll,
+  beforeAll,
+  beforeEach,
+  describe,
+  expect,
+  test,
+} from "bun:test";
+import { and, eq, inArray } from "drizzle-orm";
+
+import { createInMemoryGrantStore } from "@intx/authz";
+import {
+  createApprovalStore,
+  createSignalCorrelationStore,
+  createWorkflowRunStore,
+} from "@intx/db";
+import {
+  approval,
+  signalCorrelation,
+  workflowDefinition,
+  workflowRun,
+} from "@intx/db/schema";
+import { createApp, type GetSession } from "@intx/hub-api";
+import { generateId } from "@intx/hub-common";
+import {
+  type EventCollectorRegistry,
+  type SessionService,
+} from "@intx/hub-sessions";
+import { isRunAddress, signalName } from "@intx/types";
+import type { GrantRule } from "@intx/types/authz";
+import type {
+  ApprovalSnapshot,
+  HarnessConfig,
+  InferenceSource,
+} from "@intx/types/runtime";
+import { WireGrantRule } from "@intx/types/grant-wire";
+import {
+  createTestDb,
+  harnessDbEnvAvailable,
+  type TestDb,
+} from "@intx/test-harness/db-harness";
+import { seedAsset, seedPrincipal, seedTenants } from "@intx/test-harness/seed";
+import {
+  createApprovalSet,
+  deriveRunAddress,
+  deriveWorkflowRunRepoId,
+  type ApprovalSet,
+} from "@intx/workflow-deploy";
+
+import {
+  SESSION_ID,
+  deployWorkflowSourceForTest,
+  dropHubLink,
+  fireMailTrigger,
+  readWorkflowRunEvents,
+  PRODUCTION_RECONNECT_DELAY_MS,
+  startDeployFlowEnv,
+  waitFor,
+  waitForFirstRunId,
+  waitForReconnect,
+  waitForWorkflowRunComplete,
+  type DeployFlowEnv,
+} from "../hub-agent/lib/deploy-flow-env";
+import { MAIL_TOOL_NAME } from "./fixtures/mail-tool";
+import { singleStepMailToolEntry } from "./fixtures/single-step-mail-tool";
+
+const DEPLOYMENT_DOMAIN = "integration.interchange";
+// A top-level `run_<hex>` deploy run identity (not a per-step derived
+// address), matching the reconnect-survival fixtures. The
+// reconnect route announcement fires `onWorkflowAddressesRoutable`, which is
+// what drives Trigger B.
+const INSTANCE_LOCAL = "run_dep0ec0ffee0ec0ffee0ec0ffee0ec0f";
+const DEPLOYMENT_ID = INSTANCE_LOCAL;
+const STEP_ID = "step1";
+
+// The tool the model is told to call. Its grant is `ask`, so the call SUSPENDS
+// instead of running, parking the run on the reserved control-plane channel.
+const TOOL_NAME = MAIL_TOOL_NAME;
+const ASK_RESOURCE = `tool:${TOOL_NAME}`;
+const STEP_AGENT_ID = "agent-reconnect-reemit";
+
+// The `mail_send` arguments the mock issues. The fixture tool writes its
+// `to` argument into the file named by `body`; the run parks before the tool
+// ever runs, so these only travel as far as the approval snapshot's arguments.
+const CALL_TO = "correlation-recovery";
+const CALL_BODY = "reconnect-tool-ran.txt";
+const RESUME_REPLY_PREFIX = "done: ";
+
+// The run's `ask`-effect tool grant, delivered per run via the `run.grants`
+// frame the trigger sends. `fireMailTrigger` does not materialize run grants
+// itself the way the production route does, so feeding it here reproduces the
+// per-run delivery. Effect `ask` is the whole point: the tool call suspends
+// awaiting an external decision rather than running, so the run parks and mints
+// a correlation.
+const ASK_GRANT: WireGrantRule = {
+  id: "grant-tool-ask",
+  resource: ASK_RESOURCE,
+  action: "invoke",
+  effect: "ask",
+  origin: "creator",
+  conditions: null,
+  expiresAt: null,
+  roleId: null,
+  principalId: null,
+};
+
+const TENANT_ID = "tnt_reconnect_reemit";
+const DEFINITION_ASSET_ID = "ast_reconnect_wf";
+const DEFINITION_ID = "wfd_reconnect_reemit";
+const APPROVER_USER_ID = "usr_reconnect_approver";
+const APPROVER_PRINCIPAL_ID = "prn_reconnect_approver";
+
+let env: DeployFlowEnv;
+let h: TestDb;
+
+// The deployment mail address. The supervisor stamps the workflow-run repo
+// slug this address derives onto the register frame's `anchorRunId`; the
+// co-write cross-checks that slug and resolves the anchor by address. The
+// anchor's own DB id -- the run id the source-ref deploy passed -- is what the
+// co-write keys the approval/correlation rows on.
+const deploymentMailAddress = deriveRunAddress({
+  runId: DEPLOYMENT_ID,
+  domain: DEPLOYMENT_DOMAIN,
+});
+
+// Approve-route scaffolding: a mock approver session plus the
+// `approval:<slug>`/`resolve` grant that authorizes the real approve route,
+// pointed at the same DB and fixture sidecar router. Mirrors the capstone
+// approval test's setup so the re-emitted, recovered correlation can be
+// resolved through the real resolver, not just observed as approvable.
+function createMockGetSession(userId: string): GetSession {
+  const now = new Date("2025-01-01");
+  return async () => ({
+    user: {
+      id: userId,
+      email: "approver@example.com",
+      emailVerified: true,
+      name: "Approver",
+      createdAt: now,
+      updatedAt: now,
+    },
+    session: {
+      id: "session_reconnect_reemit",
+      userId,
+      token: "tok_reconnect_reemit",
+      expiresAt: new Date("2999-01-01"),
+      createdAt: now,
+      updatedAt: now,
+    },
+  });
+}
+
+function notImpl(name: string): never {
+  throw new Error(`reconnect re-emit approve mock: ${name} not implemented`);
+}
+
+function createMockSessionService(): SessionService {
+  return {
+    stageWorkflowStep: () => notImpl("stageWorkflowStep"),
+    endSession: () => notImpl("endSession"),
+  };
+}
+
+function createMockEventCollectors(): EventCollectorRegistry {
+  return {
+    create: () => notImpl("create"),
+    dispatch: () => notImpl("dispatch"),
+    abandon: () => notImpl("abandon"),
+    has: () => false,
+    getStatus: () => undefined,
+    getAccumulatedText: () => undefined,
+    getCurrentTurnId: () => undefined,
+    getLastTurnId: () => undefined,
+  };
+}
+
+const approverGrant: GrantRule = {
+  id: "grant-approver-resolve",
+  resource: `approval:${DEPLOYMENT_ID}`,
+  action: "resolve",
+  effect: "allow",
+  origin: "system",
+  conditions: null,
+  expiresAt: null,
+  roleId: null,
+  principalId: APPROVER_PRINCIPAL_ID,
+};
+
+/**
+ * The real hub co-write, mirroring `createHubSessionLookups`'s
+ * `registerSignalCorrelation`: resolve tenancy from the deployment's anchor run
+ * -- the `workflow_run` whose id is the deployment id -- the address names,
+ * cross-check the frame's `anchorRunId` against it, and co-write the
+ * `signal_correlation` + `approval` rows in one transaction through the real
+ * stores. Wired into the fixture hub's sidecar router so both the suspend-time
+ * register and the reconnect re-emit land durable rows on the same schema this
+ * test reads. Idempotent via `registerIfAbsent` / `createIfAbsent`, so a re-emit
+ * after a delete re-inserts.
+ */
+function createRegisterSignalCorrelation(db: TestDb["db"]) {
+  const signalCorrelationStore = createSignalCorrelationStore(db);
+  const approvalStore = createApprovalStore(db);
+  const workflowRunStore = createWorkflowRunStore(db);
+  return async ({
+    correlationId,
+    runId,
+    anchorRunId,
+    agentAddress,
+    kind,
+    approvalSnapshot,
+  }: {
+    correlationId: string;
+    runId: string;
+    anchorRunId: string;
+    agentAddress: string;
+    kind: "approval";
+    approvalSnapshot: ApprovalSnapshot;
+  }): Promise<void> => {
+    // Resolve the deployment's anchor run by address across the live states
+    // (a source-ref deploy's anchor sits at "deployed" in its pre-trigger
+    // window). The co-write keys the correlation/approval rows on the anchor's
+    // own DB id, which for a source-ref deploy is the run id the deploy passed
+    // (distinct from the workflow-run repo slug the frame carries).
+    const anchor = await db
+      .select({
+        id: workflowRun.id,
+        tenantId: workflowRun.tenantId,
+      })
+      .from(workflowRun)
+      .where(
+        and(
+          eq(workflowRun.address, agentAddress),
+          inArray(workflowRun.status, ["deployed", "running"]),
+        ),
+      )
+      .limit(1)
+      .then((rows) => rows[0]);
+    if (anchor === undefined) {
+      throw new Error(
+        `No live workflow run for address "${agentAddress}"; cannot register signal correlation ${correlationId}`,
+      );
+    }
+    // The frame's `anchorRunId` is the workflow-run repo slug the child stamps;
+    // cross-check it against the slug the recipient address derives, mirroring
+    // production's addressSlug check.
+    const addressSlug = deriveWorkflowRunRepoId(agentAddress);
+    if (addressSlug !== anchorRunId) {
+      throw new Error(
+        `Anchor run id mismatch registering signal correlation ${correlationId}: frame claims "${anchorRunId}" but address "${agentAddress}" derives the workflow-run repo slug "${addressSlug}"`,
+      );
+    }
+    const tenantId = anchor.tenantId;
+    const anchorDbId = anchor.id;
+    await db.transaction(async (tx) => {
+      // Mirror the production co-write: lazily anchor the run before the
+      // correlation and approval reference it, so their runId FK resolves.
+      await workflowRunStore.createIfAbsent(
+        {
+          id: runId,
+          anchorRunId: anchorDbId,
+          tenantId,
+          definitionId: DEFINITION_ID,
+          principalId: null,
+          status: "running",
+        },
+        tx,
+      );
+      await signalCorrelationStore.registerIfAbsent(
+        {
+          correlationId,
+          tenantId,
+          anchorRunId: anchorDbId,
+          agentAddress,
+          runId,
+          signalName: signalName(correlationId),
+          kind,
+        },
+        tx,
+      );
+      await approvalStore.createIfAbsent(
+        {
+          id: generateId("approval"),
+          tenantId,
+          anchorRunId: anchorDbId,
+          runId,
+          agentAddress,
+          correlationId,
+          status: "pending",
+          toolDefinition: {
+            name: approvalSnapshot.name,
+            description: approvalSnapshot.description,
+            inputSchema: approvalSnapshot.inputSchema,
+          },
+          toolArguments: approvalSnapshot.arguments,
+          scope: null,
+          timeoutAt: null,
+        },
+        tx,
+      );
+    });
+  };
+}
+
+describe.skipIf(!harnessDbEnvAvailable())(
+  "a hub reconnect re-emits a parked run's correlation and resolves it to completion",
+  () => {
+    // Run-once guard. The env (sidecar subprocess + on-disk warm step-state +
+    // the live parked run) is shared across the describe block, so a second
+    // test would inherit this run's parked correlation and the "absent then
+    // present" assertions would stop meaning what they claim. Fail loud if a
+    // second test is ever added rather than letting the assumption rot; a
+    // genuinely independent scenario belongs in its own file with its own env.
+    let hasRun = false;
+
+    beforeAll(async () => {
+      h = await createTestDb();
+      env = await startDeployFlowEnv({
+        // Persistent tool-call mock: re-issue the ask-granted call until its
+        // result is in history, then reply. The run parks on the first call --
+        // exactly the durable state Trigger B re-emits on reconnect -- and only
+        // completes once the recovered correlation is approved at the end.
+        inferenceApprovalToolCall: {
+          toolName: TOOL_NAME,
+          input: { to: CALL_TO, body: CALL_BODY },
+          resultPrefix: RESUME_REPLY_PREFIX,
+        },
+        // Wire the real DB co-write into the fixture hub so a register frame
+        // that reaches the hub writes real rows.
+        registerSignalCorrelation: createRegisterSignalCorrelation(h.db),
+        // Pin the production reconnect backoff so the drop below is recovered
+        // through the real delayed-reconnect cycle rather than the fixture's
+        // shortened test delay.
+        sidecarEnv: {
+          SIDECAR_RECONNECT_DELAY_MS: PRODUCTION_RECONNECT_DELAY_MS,
+        },
+      });
+    });
+
+    afterAll(async () => {
+      await env.teardown();
+      await h.close();
+    });
+
+    beforeEach(async () => {
+      await h.reset();
+    });
+
+    test("re-registers the parked correlation on reconnect and resolves it to completion", async () => {
+      if (hasRun) {
+        throw new Error(
+          "reconnect re-emit acceptance test assumes a single test per shared " +
+            "env: the live parked run and warm step-state carry across, so a " +
+            "second test would break the absent-then-present row assertions. " +
+            "Add a new scenario in its own file with its own env instead.",
+        );
+      }
+      hasRun = true;
+
+      // The deployment mail address is a run address: it names the single
+      // self-anchored run that Trigger B re-announces on reconnect.
+      expect(isRunAddress(deploymentMailAddress)).toBe(true);
+
+      // Seed the tenancy the co-write resolves against: a tenant, the workflow
+      // definition asset the deployment references, a workflow_definition the
+      // co-write's lazily-anchored per-message run row FKs, and an active
+      // approver principal. The deployment's anchor `workflow_run` row is
+      // written by the source-ref deploy below (keyed by the run id the deploy
+      // passes), not seeded here; the co-write resolves tenancy from it by
+      // address.
+      await seedTenants(h.db, [{ id: TENANT_ID }]);
+      await seedAsset(h.db, {
+        id: DEFINITION_ASSET_ID,
+        tenantId: TENANT_ID,
+        kind: "workflow",
+        name: "reconnect-reemit-wf",
+      });
+      await h.db.insert(workflowDefinition).values({
+        id: DEFINITION_ID,
+        tenantId: TENANT_ID,
+        name: "reconnect-reemit-wf",
+        assetId: DEFINITION_ASSET_ID,
+      });
+      await seedPrincipal(h.db, {
+        id: APPROVER_PRINCIPAL_ID,
+        tenantId: TENANT_ID,
+        kind: "user",
+        refId: APPROVER_USER_ID,
+        status: "active",
+      });
+
+      const inferenceSource: InferenceSource = {
+        id: "anthropic:mock-model",
+        provider: "anthropic",
+        baseURL: `http://localhost:${String(env.inference.server.port)}`,
+        credentialId: "sk-mock",
+        model: "mock-model",
+      };
+
+      const config: HarnessConfig = {
+        sessionId: SESSION_ID,
+        agentId: `${DEPLOYMENT_ID}`,
+        tenantId: "tenant-1",
+        principalId: "prin_reconnect-reemit-1",
+        agentAddress: deploymentMailAddress,
+        systemPrompt: "Fallback prompt (overridden per step by the definition)",
+        tools: [],
+        grants: [],
+        sources: [inferenceSource],
+        defaultSource: "anthropic:mock-model",
+      };
+
+      const operatorApprovals: ApprovalSet = createApprovalSet([
+        "inference.source:anthropic:mock-model",
+        "director:@intx/agent/default",
+        `mail.address:${deploymentMailAddress}`,
+        `mail.send:${DEPLOYMENT_DOMAIN}`,
+        `tool:${MAIL_TOOL_NAME}`,
+      ]);
+
+      const entryModule = singleStepMailToolEntry({
+        variant: "ask",
+        stepId: STEP_ID,
+        systemPrompt: "You are the single-step agent under approval control.",
+        address: deploymentMailAddress,
+        agentId: STEP_AGENT_ID,
+      });
+
+      const handle = await deployWorkflowSourceForTest(env, {
+        entryModule,
+        db: h.db,
+        tenantId: TENANT_ID,
+        definitionAssetId: DEFINITION_ASSET_ID,
+        anchorRunId: DEPLOYMENT_ID,
+        deploymentDomain: DEPLOYMENT_DOMAIN,
+        agentAddress: deploymentMailAddress,
+        approvals: operatorApprovals,
+        config,
+        sources: { [STEP_ID]: [inferenceSource] },
+      });
+      expect(handle.publicKey).toBeTruthy();
+
+      const workflowRunRepoId = handle.workflowRunRepoId;
+
+      // Wait for the deployment to ack its key so the sidecar's hub link is
+      // fully live and the address is routable before firing the trigger and
+      // before the drop below has an established route to restore. The
+      // source-ref frame round-trips through the real sidecar subprocess, so
+      // routability is asynchronous; wait for it rather than asserting it
+      // synchronously.
+      await waitFor(() => env.hub.deployAcks.has(deploymentMailAddress), {
+        diagnostics: env.sidecarDiagnostics,
+      });
+      await waitFor(
+        () =>
+          env.hub.router.getRoutableAddresses().includes(deploymentMailAddress),
+        { diagnostics: env.sidecarDiagnostics },
+      );
+
+      // ---- park the run (link up) ----
+      //
+      // Fire the trigger. The model calls the tool; the call hits the ask grant
+      // and suspends, so the run parks and mints a correlation. Because the link
+      // is up, the suspend-time `signal.correlation.register` co-writes the rows
+      // -- which both proves the run genuinely parked and gives us the
+      // correlationId to track across the drop/reconnect.
+      await fireMailTrigger(env, deploymentMailAddress, {
+        messageId: "<reconnect-reemit-1@integration.interchange>",
+        grants: [ASK_GRANT],
+      });
+
+      const runId = await waitForFirstRunId(env, workflowRunRepoId, {
+        diagnostics: env.sidecarDiagnostics,
+      });
+
+      // Wait for the co-written pending approval row -- proof the reactor
+      // suspended, the step parked, the register reached the hub, and the hub
+      // co-wrote both rows.
+      await waitFor(
+        async () => {
+          const rows = await h.db
+            .select()
+            .from(approval)
+            .where(eq(approval.anchorRunId, DEPLOYMENT_ID));
+          return rows.length === 1;
+        },
+        { diagnostics: env.sidecarDiagnostics },
+      );
+
+      const parkedApprovalRows = await h.db
+        .select()
+        .from(approval)
+        .where(eq(approval.anchorRunId, DEPLOYMENT_ID));
+      expect(parkedApprovalRows).toHaveLength(1);
+      const parkedApproval = parkedApprovalRows[0];
+      if (parkedApproval === undefined) throw new Error("unreachable");
+      expect(parkedApproval.status).toBe("pending");
+      expect(parkedApproval.runId).toBe(runId);
+      const correlationId = parkedApproval.correlationId;
+
+      // The run has parked, not completed: the workflow-run log carries the
+      // `SignalAwaited` marker for the reserved correlation channel. This is the
+      // durable park the child re-reports to Trigger B's `parked-correlations.
+      // request`, so wait for it to land before disturbing the rows.
+      await waitFor(
+        async () => {
+          const events = await readWorkflowRunEvents(env, DEPLOYMENT_ID, runId);
+          return events.some(
+            (e) =>
+              e.type === "SignalAwaited" &&
+              e.body["signalName"] === signalName(correlationId),
+          );
+        },
+        { diagnostics: env.sidecarDiagnostics },
+      );
+      const parkedTypes = (
+        await readWorkflowRunEvents(env, DEPLOYMENT_ID, runId)
+      ).map((e) => e.type);
+      expect(parkedTypes).not.toContain("RunCompleted");
+      expect(parkedTypes).not.toContain("RunFailed");
+
+      // ---- drop the hub link ----
+      //
+      // A raw drop, not a settle: the run is parked (no pack push is in flight
+      // to interrupt), and severing the link is the whole point. The sidecar
+      // subprocess and the deployment's supervisor stay alive; only the hub link
+      // reconnects, so the parked run is never resumed and the child is never
+      // respawned. The address leaves the hub's routing index on the drop.
+      dropHubLink(env);
+      await waitFor(
+        () =>
+          !env.hub.router
+            .getRoutableAddresses()
+            .includes(deploymentMailAddress),
+        { diagnostics: env.sidecarDiagnostics },
+      );
+
+      // ---- reproduce "the register did not co-write" ----
+      //
+      // Delete the parked run's rows while the link is down. This is exactly the
+      // hub-side state a suspend that emitted its register while the hub was
+      // down would leave: a child parked on a correlation with no rows at the
+      // hub. Deleting while disconnected guarantees no concurrent re-emit can
+      // race the delete because Trigger B does not run until reconnect restores
+      // the address's route.
+      await h.db
+        .delete(approval)
+        .where(eq(approval.anchorRunId, DEPLOYMENT_ID));
+      await h.db
+        .delete(signalCorrelation)
+        .where(eq(signalCorrelation.anchorRunId, DEPLOYMENT_ID));
+
+      const approvalsWhileDown = await h.db
+        .select()
+        .from(approval)
+        .where(eq(approval.anchorRunId, DEPLOYMENT_ID));
+      expect(approvalsWhileDown).toHaveLength(0);
+      const correlationsWhileDown = await h.db
+        .select()
+        .from(signalCorrelation)
+        .where(eq(signalCorrelation.anchorRunId, DEPLOYMENT_ID));
+      expect(correlationsWhileDown).toHaveLength(0);
+
+      // ---- reconnect: Trigger B re-emits the parked correlation ----
+      //
+      // The sidecar reconnects and re-announces the deployment address. The
+      // Hub's `welcome` fires the hub-link's
+      // `onWorkflowAddressesRoutable`, which calls `reEmitParkedCorrelations`:
+      // the supervisor re-queries the child's still-parked approval correlation
+      // and re-emits its register, which now reaches the routed hub and co-writes
+      // the rows again.
+      await waitForReconnect(env, deploymentMailAddress);
+      expect(env.hub.router.getRoutableAddresses()).toContain(
+        deploymentMailAddress,
+      );
+
+      // ---- the acceptance criterion: the run is approvable again ----
+      //
+      // The re-emit is fire-and-forget (the reconnect fan-out never awaits it),
+      // so poll for both rows to reappear. Their return can only come from the
+      // reconnect re-registering the still-parked correlation: no other actor
+      // writes these rows, the run is never resumed, and the child is never
+      // respawned across a mere link drop.
+      await waitFor(
+        async () => {
+          const correlations = await h.db
+            .select()
+            .from(signalCorrelation)
+            .where(eq(signalCorrelation.correlationId, correlationId));
+          const approvals = await h.db
+            .select()
+            .from(approval)
+            .where(eq(approval.correlationId, correlationId));
+          return correlations.length === 1 && approvals.length === 1;
+        },
+        { diagnostics: env.sidecarDiagnostics },
+      );
+
+      const reemittedCorrelations = await h.db
+        .select()
+        .from(signalCorrelation)
+        .where(eq(signalCorrelation.correlationId, correlationId));
+      expect(reemittedCorrelations).toHaveLength(1);
+      const reemittedCorrelation = reemittedCorrelations[0];
+      if (reemittedCorrelation === undefined) throw new Error("unreachable");
+      expect(reemittedCorrelation.runId).toBe(runId);
+      expect(reemittedCorrelation.agentAddress).toBe(deploymentMailAddress);
+      expect(reemittedCorrelation.signalName).toBe(signalName(correlationId));
+      expect(reemittedCorrelation.resolvedAt).toBeNull();
+
+      const reemittedApprovals = await h.db
+        .select()
+        .from(approval)
+        .where(eq(approval.correlationId, correlationId));
+      expect(reemittedApprovals).toHaveLength(1);
+      const reemittedApproval = reemittedApprovals[0];
+      if (reemittedApproval === undefined) throw new Error("unreachable");
+      // Pending + unresolved: the recovered run is approvable. The approve step
+      // below then proves it is actually resolvable end-to-end.
+      expect(reemittedApproval.status).toBe("pending");
+      expect(reemittedApproval.runId).toBe(runId);
+      expect(reemittedApproval.agentAddress).toBe(deploymentMailAddress);
+      expect(reemittedApproval.resolvedAt).toBeNull();
+      // The re-emitted register carried the child's durable approval snapshot,
+      // so the approvable row exposes the same tool the model asked to invoke.
+      expect(reemittedApproval.toolDefinition).toEqual({
+        name: TOOL_NAME,
+        description: "Send a mail message",
+        inputSchema: {
+          type: "object",
+          properties: { to: { type: "string" }, body: { type: "string" } },
+          required: ["to", "body"],
+        },
+      });
+      expect(reemittedApproval.toolArguments).toEqual({
+        to: CALL_TO,
+        body: CALL_BODY,
+      });
+
+      // The recovered registration is not just approvable -- it is functionally
+      // routable. Approve through the real resolve route (same DB, same fixture
+      // sidecar router): the resolver claims the re-emitted correlation and
+      // delivers the decision to the parked run in the real subprocess. If the
+      // re-emitted row were a dead record rather than a live route, the resume
+      // would never arrive and this wait would block until this test's own
+      // budget ends it.
+      const approveApp = createApp({
+        getSession: createMockGetSession(APPROVER_USER_ID),
+        authHandler: () => new Response("", { status: 404 }),
+        db: h.db,
+        grantStore: createInMemoryGrantStore([approverGrant]),
+        sidecarRouter: env.hub.router,
+        sessionService: createMockSessionService(),
+        eventCollectors: createMockEventCollectors(),
+        assetService: null,
+        repoStore: null,
+        maxTarballBytes: 10_000_000,
+      });
+
+      const approveRes = await approveApp.request(
+        `/api/tenants/${TENANT_ID}/approvals/${reemittedApproval.id}/approve`,
+        {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({ scope: "once" }),
+        },
+      );
+      expect(approveRes.status).toBe(200);
+
+      const terminal = await waitForWorkflowRunComplete(
+        env,
+        DEPLOYMENT_ID,
+        runId,
+        {
+          diagnostics: env.sidecarDiagnostics,
+        },
+      );
+      expect(terminal.type).toBe("RunCompleted");
+
+      // The delivered decision landed on the parked correlation channel, and the
+      // approval + correlation rows are now resolved/claimed -- still exactly one
+      // of each, so the recovery did not strand or duplicate a row.
+      const finalEvents = await readWorkflowRunEvents(
+        env,
+        DEPLOYMENT_ID,
+        runId,
+      );
+      const signalReceived = finalEvents.find(
+        (e) =>
+          e.type === "SignalReceived" &&
+          e.body["signalName"] === signalName(correlationId),
+      );
+      if (signalReceived === undefined) {
+        throw new Error(
+          `no SignalReceived for the recovered correlation ${correlationId}`,
+        );
+      }
+
+      const resolvedApprovals = await h.db
+        .select()
+        .from(approval)
+        .where(eq(approval.correlationId, correlationId));
+      expect(resolvedApprovals).toHaveLength(1);
+      const resolvedApproval = resolvedApprovals[0];
+      if (resolvedApproval === undefined) throw new Error("unreachable");
+      expect(resolvedApproval.status).toBe("approved");
+      expect(resolvedApproval.resolvedAt).not.toBeNull();
+
+      const claimedCorrelations = await h.db
+        .select()
+        .from(signalCorrelation)
+        .where(eq(signalCorrelation.correlationId, correlationId));
+      expect(claimedCorrelations).toHaveLength(1);
+      const claimedCorrelation = claimedCorrelations[0];
+      if (claimedCorrelation === undefined) throw new Error("unreachable");
+      expect(claimedCorrelation.resolvedAt).not.toBeNull();
+      expect(claimedCorrelation.signalId).not.toBeNull();
+    }, 240_000);
+  },
+);

@@ -1,0 +1,24 @@
+{
+  "name": "@intx/example-agent-quickstart",
+  "description": "Example: the smallest runnable @intx/agent program — construct, send, print, close",
+  "version": "0.5.0",
+  "license": "LGPL-2.1-only",
+  "private": true,
+  "type": "module",
+  "exports": {
+    ".": {
+      "types": "./src/index.ts",
+      "default": "./src/index.ts"
+    }
+  },
+  "scripts": {
+    "start": "bun --conditions=intx-src run src/cli.ts"
+  },
+  "dependencies": {
+    "@intx/agent": "workspace:*",
+    "@intx/example-agent-common": "workspace:*",
+    "@intx/inference": "workspace:*",
+    "@intx/storage-isogit": "workspace:*",
+    "@intx/types": "workspace:*"
+  }
+}

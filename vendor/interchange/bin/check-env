@@ -1,0 +1,72 @@
+#!/usr/bin/env bash
+# shellcheck shell=bash disable=SC2164
+
+# This script is the environment-validation gate. Every other shell
+# script in the repo just sources bin/opsh and accepts bash's generic
+# error if the file is missing; here we explicitly check first so a
+# missing vendored opsh fails with a clear diagnostic rather than a
+# bash "no such file" message.
+OPSH_VENDORED="$(dirname -- "${BASH_SOURCE[0]}")/opsh"
+if [[ ! -f $OPSH_VENDORED ]]; then
+	echo "FATAL: vendored opsh not found at $OPSH_VENDORED" >&2
+	exit 1
+fi
+source "$OPSH_VENDORED"
+
+opsh::version::require v0.9.0
+lib::import step-runner
+
+REQUIRED_BUN_VERSION=1.2.0
+REQUIRED_GIT_VERSION=2.34.0
+
+explain-githooks() {
+	log::fatal "Please configure your git hooks: git config core.hooksPath .githooks"
+}
+
+step::05::check_git_binary() {
+	command -v git >/dev/null 2>&1 \
+		|| log::fatal "git not found on PATH (git >=$REQUIRED_GIT_VERSION required: the smart-HTTP wire and integration harness rely on gpg.ssh.allowedSignersFile, which landed in git 2.34)"
+	local raw
+	raw=$(git --version) \
+		|| log::fatal "failed to invoke 'git --version'"
+	# `git --version` may emit a vendor suffix, e.g.
+	#   git version 2.39.5 (Apple Git-154)
+	# Extract just the leading `MAJOR.MINOR.PATCH` triple so the
+	# semver comparator does not choke on the parenthesised tail.
+	# The parser mirrors discoverGitBinary() in
+	# tests/hub-api/lib/git-harness.ts.
+	local trimmed=${raw#"git version "}
+	if [[ ! $trimmed =~ ^([0-9]+\.[0-9]+\.[0-9]+) ]]; then
+		log::fatal "could not parse git version from: $raw"
+	fi
+	local version=${BASH_REMATCH[1]}
+	semver::test "$version" -ge "$REQUIRED_GIT_VERSION" \
+		|| log::fatal "git >=$REQUIRED_GIT_VERSION required (have $version); the floor is the gpg.ssh.allowedSignersFile config that landed in git 2.34 and is exercised by the integration harness"
+}
+
+step::10::check_git_repo() {
+	git rev-parse --git-dir >/dev/null 2>&1 || log::fatal "Not inside a git repository"
+}
+
+step::20::check_git_hooks() {
+	hookspath=$(git config core.hooksPath) || explain-githooks
+	[[ $hookspath = .githooks ]] || explain-githooks
+	[[ -d "$hookspath" ]] || log::fatal "Hooks directory does not exist: $hookspath"
+}
+
+step::30::check_bun() {
+	command -v bun >/dev/null 2>&1 \
+		|| log::fatal "bun not found on PATH (see DEV.md; install from https://bun.sh/)"
+	local version
+	version=$(bun --version) \
+		|| log::fatal "failed to invoke 'bun --version'"
+	semver::test "$version" -ge "$REQUIRED_BUN_VERSION" \
+		|| log::fatal "bun >=$REQUIRED_BUN_VERSION required (have $version)"
+}
+
+step::40::check_node_modules() {
+	[[ -d node_modules ]] \
+		|| log::fatal "node_modules missing - run 'bun install'"
+}
+
+steps::run step

@@ -1,0 +1,164 @@
+#!/usr/bin/env bun
+/* eslint-disable no-console */
+
+import { rmSync } from "node:fs";
+import { resolve } from "node:path";
+import {
+  INTENTS,
+  SUPPORT_MATRIX,
+  getSessionDir,
+  type SupportEntry,
+} from "@intx/inference-discovery/catalog";
+import {
+  assertNotCI,
+  parseCLI,
+  requireEnvSet,
+  runCapture,
+  type ParsedCLIRun,
+} from "@intx/inference-discovery";
+import {
+  PLUGIN_REGISTRY,
+  findPlugin,
+  formatProviderHelp,
+} from "./lib/discover-registry";
+
+const ROOT = resolve(import.meta.dirname, "..");
+
+function buildHelpText(): string {
+  return `Usage: bun bin/discover.ts --provider <name> [--all | --only <capability>] [--model <name>] [-h]
+
+Captures live inference responses from a provider plug-in and writes
+session bundles into the provider's discovery package, under
+sessions/<provider>/<model>/<capability>/.
+
+Options:
+  --provider <name>     Required. Selects the provider plug-in to invoke.
+  --model <name>        Restrict to this model. Repeatable.
+  --only <capability>   Restrict to this capability. Repeatable.
+  --all                 Run every supported model x capability combination
+                        for the chosen provider. Mutually exclusive with
+                        --model and --only.
+  --help, -h            Show this message.
+
+Available providers:
+${formatProviderHelp()}
+
+CI guard:
+  Discovery makes real, paid network calls and must never run in CI.
+  If the CI environment variable is set (to any non-empty value), the
+  command aborts before any plug-in is constructed.
+
+Regeneration prerequisites:
+  - A funded billing account with the upstream provider.
+  - The required environment variables for the chosen provider, exported
+    in the shell that invokes this command.
+  - Network access to the provider's API endpoint.
+  - Awareness that each invocation incurs per-request usage charges; an
+    --all run touches every (model, capability) pair in the support matrix
+    for the selected provider.
+`;
+}
+
+function describeSelection(entries: readonly SupportEntry[]): string {
+  return `${entries.length} (model, capability) pair${entries.length === 1 ? "" : "s"}`;
+}
+
+function selectEntries(parsed: ParsedCLIRun): SupportEntry[] {
+  const modelSet = new Set(parsed.models);
+  const capabilitySet = new Set(parsed.capabilities);
+  return SUPPORT_MATRIX.filter((entry) => {
+    if (entry.provider !== parsed.provider) return false;
+    // captured and misled rows both have fixtures on disk and should
+    // be exercised by re-runs: captured to refresh, misled to retry
+    // (the documented behavior may have started materializing on the
+    // provider side since the last capture).
+    if (entry.outcome !== "captured" && entry.outcome !== "misled") {
+      return false;
+    }
+    if (parsed.all) return true;
+    if (modelSet.size > 0 && !modelSet.has(entry.model)) return false;
+    if (capabilitySet.size > 0 && !capabilitySet.has(entry.capability))
+      return false;
+    return true;
+  });
+}
+
+async function main(): Promise<number> {
+  const parsed = parseCLI(process.argv.slice(2));
+
+  if (parsed.kind === "help") {
+    console.log(buildHelpText());
+    return 0;
+  }
+
+  if (parsed.kind === "error") {
+    console.error(`error: ${parsed.message}`);
+    console.error("");
+    console.error("Run with --help for usage.");
+    return 1;
+  }
+
+  assertNotCI();
+
+  const registered = findPlugin(parsed.provider);
+  if (registered === undefined) {
+    const known = PLUGIN_REGISTRY.map((entry) => entry.name).join(", ");
+    console.error(`error: unknown provider '${parsed.provider}'`);
+    console.error(`available providers: ${known}`);
+    return 1;
+  }
+
+  const env = requireEnvSet(registered.requiredEnv);
+  const plugin = registered.create(env);
+
+  const entries = selectEntries(parsed);
+  if (entries.length === 0) {
+    console.error(
+      `error: no captured entries in SUPPORT_MATRIX match the selection for provider '${parsed.provider}'`,
+    );
+    return 1;
+  }
+
+  console.error(
+    `[discover] provider=${parsed.provider} selection=${describeSelection(entries)}`,
+  );
+
+  for (const entry of entries) {
+    const intent = INTENTS[entry.capability];
+    const relDir = getSessionDir(entry);
+    if (relDir === null) {
+      throw new Error(
+        `getSessionDir returned null for captured entry ${entry.provider}/${entry.model}/${entry.capability}`,
+      );
+    }
+    const outDir = resolve(ROOT, relDir);
+    console.error(
+      `[discover] start  model=${entry.model} capability=${entry.capability}`,
+    );
+    const result = await runCapture({
+      plugin,
+      model: entry.model,
+      capability: entry.capability,
+      intent,
+      outDir,
+    });
+    // discover writes into the committed sessions/ tree, so a non-2xx must not
+    // pass silently: runCapture stops before the manifest on a non-2xx, leaving
+    // a partial bundle a later replay would choke on. Remove that partial and
+    // fail loudly rather than exit 0 with a broken session on disk.
+    if (result.finalStatus < 200 || result.finalStatus >= 300) {
+      rmSync(outDir, { recursive: true, force: true });
+      throw new Error(
+        `discover: ${entry.model}/${entry.capability} returned HTTP ${String(result.finalStatus)}; no session written`,
+      );
+    }
+    console.error(
+      `[discover] done   model=${entry.model} capability=${entry.capability}`,
+    );
+  }
+
+  return 0;
+}
+
+const exitCode = await main();
+process.exit(exitCode);

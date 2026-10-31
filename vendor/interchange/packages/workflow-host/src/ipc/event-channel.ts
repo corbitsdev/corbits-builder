@@ -1,0 +1,268 @@
+// Event channel: UNIX socketpair, HMAC-SHA256 authenticated.
+//
+// The workflow-process child sends InferenceEvents (high rate, plus
+// the per-message `message.run.started` / `message.run.ended`
+// brackets) to the supervisor. The supervisor verifies each frame's
+// MAC and forwards into the hub via the existing `agent.event`
+// session-channel path. The shared 32-byte HMAC key is minted by the
+// supervisor at spawn time and passed to the child in spawn-time env.
+// Both sides authenticate every frame: a malformed or tampered frame
+// is a crash signal, not a recoverable error.
+//
+// Backpressure: the supervisor keeps a bounded userspace ring (default
+// 1024 frames). On overrun the supervisor logs the saturation, fires
+// the caller-supplied crash callback, and the workflow-process kills
+// itself on the next signal cycle. Observability lost equals
+// invariant violated equals crash; the audit chain cannot tolerate a
+// silent drop, and a blocking writer would deadlock against the
+// reactor's emit path.
+//
+// The receiver validates every payload with `parseInferenceEvent`, which
+// applies the shared `InferenceEvent` schema. A control-shaped payload such
+// as `drain` or `recycle` fails validation; the receiver reports a crash
+// and stops.
+// The per-kind control validators in `control-payloads.ts` reject these
+// inference-event shapes, keeping the channels' payload schemas disjoint.
+
+import { type } from "arktype";
+
+import { hexDecode } from "@intx/types/hex";
+import {
+  parseInferenceEvent,
+  type InferenceEvent,
+} from "@intx/types/inference-events";
+
+import { decodeEnvelope, encodeEnvelope, MacedEnvelope } from "./envelope";
+import { verifyHmac } from "./crypto";
+
+export type EventPayload = InferenceEvent;
+
+export interface FrameReader {
+  read(): AsyncIterableIterator<Uint8Array>;
+}
+
+export interface EventChannelReceiverOpts {
+  hmacKey: Uint8Array;
+  channelId: string;
+  reader: FrameReader;
+  /**
+   * Userspace bound on the in-flight buffer between substrate read
+   * and caller consume. Overrun calls `onCrash` and stops the
+   * iterator. Default 1024 matches the discipline documented in
+   * the IPC threat model.
+   */
+  bufferLimit?: number;
+  onCrash: (reason: string) => void;
+}
+
+/**
+ * Construct the supervisor-side event-channel receiver. Yields one
+ * verified, in-order `EventPayload` per call. Any frame that fails
+ * HMAC verification, carries a non-current channelId, arrives out
+ * of order, or arrives faster than the consumer drains -- triggers
+ * `onCrash` and ends the iterator.
+ */
+export async function* receiveEventChannel(
+  opts: EventChannelReceiverOpts,
+): AsyncGenerator<EventPayload, void, void> {
+  const limit = opts.bufferLimit ?? DEFAULT_EVENT_BUFFER_LIMIT;
+  let highestSeq = 0;
+
+  const buffer: EventPayload[] = [];
+  let crashed = false;
+  let producerDone = false;
+  let waiter: (() => void) | null = null;
+  function wake() {
+    const w = waiter;
+    waiter = null;
+    if (w) w();
+  }
+
+  const pump = (async () => {
+    // The channel rides a byte-stream pipe: the kernel can coalesce
+    // several sender writes into one read chunk or split one write
+    // across chunks, so a chunk boundary is not a frame boundary. The
+    // sender newline-delimits every frame; this decoder accumulates raw
+    // bytes and splits on `\n` so each complete line is exactly one
+    // envelope, mirroring the control channel's NDJSON reader. A partial
+    // trailing line stays buffered until its terminator arrives.
+    const decoder = new TextDecoder("utf-8");
+    let pending = "";
+    try {
+      for await (const chunk of opts.reader.read()) {
+        if (crashed) return;
+        pending += decoder.decode(chunk, { stream: true });
+        let nl = pending.indexOf("\n");
+        while (nl >= 0) {
+          const line = pending.slice(0, nl).replace(/\r$/, "");
+          pending = pending.slice(nl + 1);
+          nl = pending.indexOf("\n");
+          if (line.length === 0) continue;
+          if (crashed) return;
+
+          let raw: unknown;
+          try {
+            raw = JSON.parse(line);
+          } catch (cause) {
+            crashed = true;
+            opts.onCrash(
+              `event channel received non-JSON frame: ${errorMessage(cause)}`,
+            );
+            wake();
+            return;
+          }
+
+          const crashedOnLine = await processLine(raw);
+          if (crashedOnLine) return;
+        }
+      }
+      // A non-empty trailing buffer at EOF is a truncated final frame:
+      // the sender always terminates a frame with `\n`, so unterminated
+      // bytes mean the writer died mid-frame. Surface it as a crash
+      // rather than silently dropping a partial envelope.
+      if (pending.length > 0) {
+        crashed = true;
+        opts.onCrash(
+          `event channel received truncated frame at EOF (${String(pending.length)} bytes, no terminator)`,
+        );
+        wake();
+        return;
+      }
+    } finally {
+      producerDone = true;
+      wake();
+    }
+
+    // Process one decoded frame through the verify/order/validate
+    // pipeline. Returns `true` when the frame tripped a crash (the
+    // caller must stop pumping), `false` on a clean buffered push.
+    async function processLine(raw: unknown): Promise<boolean> {
+      const maced = MacedEnvelope(raw);
+      if (maced instanceof type.errors) {
+        crashed = true;
+        opts.onCrash(
+          `event channel envelope failed validation: ${maced.summary}`,
+        );
+        wake();
+        return true;
+      }
+
+      let envelopeBytes: Uint8Array;
+      try {
+        envelopeBytes = encodeEnvelope(maced.envelope);
+      } catch (cause) {
+        crashed = true;
+        opts.onCrash(
+          `event channel envelope re-encode failed: ${errorMessage(cause)}`,
+        );
+        wake();
+        return true;
+      }
+
+      let macBytes: Uint8Array;
+      try {
+        macBytes = hexDecode(maced.mac);
+      } catch (cause) {
+        crashed = true;
+        opts.onCrash(`event channel MAC decode failed: ${errorMessage(cause)}`);
+        wake();
+        return true;
+      }
+
+      const ok = await verifyHmac(envelopeBytes, macBytes, opts.hmacKey);
+      if (!ok) {
+        crashed = true;
+        opts.onCrash(
+          `event channel HMAC did not verify (seq=${String(maced.envelope.seq)}, channelId=${maced.envelope.channelId})`,
+        );
+        wake();
+        return true;
+      }
+
+      if (maced.envelope.channelId !== opts.channelId) {
+        crashed = true;
+        opts.onCrash(
+          `event channel channelId mismatch: expected ${opts.channelId}, got ${maced.envelope.channelId} at seq=${String(maced.envelope.seq)}`,
+        );
+        wake();
+        return true;
+      }
+
+      if (maced.envelope.seq <= highestSeq) {
+        crashed = true;
+        opts.onCrash(
+          `event channel out-of-order seq: expected > ${String(highestSeq)}, got ${String(maced.envelope.seq)}`,
+        );
+        wake();
+        return true;
+      }
+      if (maced.envelope.seq !== highestSeq + 1) {
+        crashed = true;
+        opts.onCrash(
+          `event channel seq gap: expected ${String(highestSeq + 1)}, got ${String(maced.envelope.seq)}`,
+        );
+        wake();
+        return true;
+      }
+      highestSeq = maced.envelope.seq;
+
+      const payload = parseInferenceEvent(maced.envelope.payload);
+      if (payload instanceof type.errors) {
+        crashed = true;
+        opts.onCrash(
+          `event channel payload failed validation: ${payload.summary}`,
+        );
+        wake();
+        return true;
+      }
+
+      if (buffer.length >= limit) {
+        crashed = true;
+        opts.onCrash(
+          `event channel buffer overrun: ${String(buffer.length)} frames pending, limit ${String(limit)}`,
+        );
+        wake();
+        return true;
+      }
+      buffer.push(payload);
+      wake();
+      return false;
+    }
+  })();
+
+  try {
+    while (true) {
+      if (buffer.length > 0) {
+        const next = buffer.shift();
+        if (next === undefined) {
+          throw new Error(
+            "event channel receiver invariant: shift returned undefined despite non-empty buffer",
+          );
+        }
+        yield next;
+        continue;
+      }
+      if (crashed || producerDone) {
+        return;
+      }
+      await new Promise<void>((resolve) => {
+        waiter = resolve;
+      });
+    }
+  } finally {
+    await pump;
+  }
+}
+
+function errorMessage(cause: unknown): string {
+  if (cause instanceof Error) return cause.message;
+  return String(cause);
+}
+
+export const DEFAULT_EVENT_BUFFER_LIMIT = 1024;
+
+/**
+ * Re-export the envelope decoder for callers that need raw access
+ * to a frame's envelope outside the receiver iterator.
+ */
+export { decodeEnvelope };

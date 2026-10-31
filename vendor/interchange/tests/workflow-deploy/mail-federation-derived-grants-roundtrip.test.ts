@@ -1,0 +1,540 @@
+// Creator-derived grant materialization at the trigger route.
+//
+// A workflow may declare a CREATOR-sourced grant requirement: at trigger
+// time the run's authority for that resource is materialized against the
+// workflow ASSET's creator, not the triggerer. The run gets the grant only
+// if the creator actually holds it; otherwise the trigger is rejected
+// fail-closed. This test drives that resolution through the production
+// `POST /workflows/:runId/mail` route against a real migrated schema
+// and a real DB-backed grant store:
+//
+//   - POSITIVE: the workflow declares `grantRequirements: [{ source:
+//     "creator", resource: "secret:vault", action: "use" }]`. The asset's
+//     creator holds a backing `secret:vault`/`use` grant, so
+//     `resolveGrantMaterialization` resolves it and commits a run grant row
+//     with `origin="creator"`. The run principal, run row, and the
+//     creator-materialized grant all land in Postgres.
+//   - NEGATIVE: the same requirement, but the creator holds NO backing
+//     grant. The route rejects `403 insufficient_grants` and commits
+//     nothing -- no run principal, no run row, no grant rows. This is the
+//     discriminator: the creator gate actually gates.
+//
+// FALLBACK (stated honestly). GAP-3 was scoped as an A-mails-B federation:
+// deployment A sends mail to B, and B's run materializes via the real hub
+// path. That is NOT reproducible in this harness: the deploy-flow fixture's
+// inbound-mail path runs against a `fakeDb` and injects grants directly
+// (`fireMailTrigger` -> `sendRunGrants`), and never wires the real
+// `createMailTriggeredRunGrantsMaterializer`, so B's run would never
+// materialize through the real creator-resolution path. Additionally, A's
+// workflow could only mail B from an action step, which this host does not
+// execute. So this test collapses "A mails B" into driving B's `/mail`
+// route directly through the real `createApp` seam with a creator-declared
+// requirement -- which exercises the SAME `resolveGrantMaterialization`
+// against B's asset creator that a federated trigger would. The A->B mail
+// hop is not exercised; the creator-derived materialization it would feed
+// is.
+//
+// SCOPE. As with the other reachable-half tests, the run's CONSUME side is
+// not exercised: this host does not execute the run's steps, so the
+// materialized grant's runtime authorization is out of reach. The
+// derivation, materialization, and DB commit (or fail-closed rejection) are
+// what this asserts.
+
+import fs from "node:fs";
+import os from "node:os";
+import path from "node:path";
+
+import {
+  afterAll,
+  beforeAll,
+  beforeEach,
+  describe,
+  expect,
+  test,
+} from "bun:test";
+import { and, eq } from "drizzle-orm";
+import { type } from "arktype";
+
+import { createGrantStore } from "@intx/db";
+import {
+  grant as grantTable,
+  principal as principalTable,
+  tenant as tenantTable,
+  workflowDefinition as workflowDefinitionTable,
+  workflowRun as workflowRunTable,
+} from "@intx/db/schema";
+import { createSSHSignature, generateKeyPair } from "@intx/crypto";
+import { createApp, type GetSession } from "@intx/hub-api";
+import {
+  DEFAULT_ASSET_REF,
+  createAssetService,
+  createRepoStore,
+  workflowAuthorize,
+  workflowKindHandler,
+  workflowRunAuthorize,
+  workflowRunKindHandler,
+  type AuthorizeFn,
+  type EventCollectorRegistry,
+  type RepoStore,
+  type SessionService,
+  type SidecarRouter,
+} from "@intx/hub-sessions";
+import { createSidecarEmitter } from "@intx/hub-sessions";
+import type { KeyPair } from "@intx/types/runtime";
+import type { GrantRequirement } from "@intx/types";
+import {
+  createTestDb,
+  harnessDbEnvAvailable,
+  type TestDb,
+} from "@intx/test-harness/db-harness";
+import {
+  seedAsset,
+  seedGrant,
+  seedPrincipal,
+  seedPrincipalKey,
+  seedWorkflowRunLaunchSpec,
+  tenantSlugFromId,
+} from "@intx/test-harness/seed";
+import { defineWorkflow, step, type WorkflowDefinition } from "@intx/workflow";
+import { createDefaultDirectorRegistry, defineAgent } from "@intx/agent";
+import { deriveRunAddress, walkCapabilities } from "@intx/workflow-deploy";
+
+const DOMAIN = "federation.example.test";
+const TENANT_ID = "tnt_mail_federation";
+const CALLER_USER_ID = "usr_federation_caller";
+const CALLER_PRINCIPAL_ID = "prn_federation_caller";
+const CREATOR_PRINCIPAL_ID = "prn_federation_creator";
+
+// The creator-declared requirement B's workflow carries.
+const CREATOR_CAP_RESOURCE = "secret:vault";
+const CREATOR_CAP_ACTION = "use";
+
+const CREATOR_REQUIREMENT: GrantRequirement = {
+  source: "creator",
+  resource: CREATOR_CAP_RESOURCE,
+  action: CREATOR_CAP_ACTION,
+};
+
+// B's workflow: a single agent step, plus a creator-sourced grant
+// requirement. An agent step keeps the definition hydrate-able without an
+// action host; the requirement is what the trigger route resolves against
+// the asset's creator.
+function bWorkflow(id: string, address: string): WorkflowDefinition {
+  const agent = defineAgent({
+    id: "agent-federation-b",
+    systemPrompt: "You are deployment B's step agent.",
+    tools: [],
+    capabilities: [],
+    inference: { sources: [{ provider: "anthropic", model: "mock-model" }] },
+  });
+  return defineWorkflow({
+    id,
+    trigger: { type: "mail", to: address },
+    steps: { b: step({ agent }) },
+    grantRequirements: [CREATOR_REQUIREMENT],
+  });
+}
+
+const TriggerResponse = type({
+  runId: "string",
+  address: "string",
+  messageId: "string",
+});
+
+// The structured error body the route returns on rejection.
+const ErrorBody = type({
+  error: type({ code: "string", message: "string" }),
+});
+
+let h: TestDb;
+let signingKey: KeyPair;
+const tempDirs: string[] = [];
+
+function createMockGetSession(userId: string): GetSession {
+  const now = new Date("2025-01-01");
+  return async () => ({
+    user: {
+      id: userId,
+      email: "caller@example.com",
+      emailVerified: true,
+      name: "Caller",
+      createdAt: now,
+      updatedAt: now,
+    },
+    session: {
+      id: "session_federation",
+      userId,
+      token: "tok_federation",
+      expiresAt: new Date("2999-01-01"),
+      createdAt: now,
+      updatedAt: now,
+    },
+  });
+}
+
+function notImpl(name: string): never {
+  throw new Error(`mail-federation mock: ${name} not implemented`);
+}
+
+function createMockSessionService(): SessionService {
+  return {
+    stageWorkflowStep: () => notImpl("stageWorkflowStep"),
+    endSession: () => notImpl("endSession"),
+  };
+}
+
+function createMockEventCollectors(): EventCollectorRegistry {
+  return {
+    create: () => notImpl("create"),
+    dispatch: () => notImpl("dispatch"),
+    abandon: () => notImpl("abandon"),
+    has: () => false,
+    getStatus: () => undefined,
+    getAccumulatedText: () => undefined,
+    getCurrentTurnId: () => undefined,
+    getLastTurnId: () => undefined,
+  };
+}
+
+// Accept the trigger's grants and mail after materialization. The negative
+// case rejects (403) before routing, so its calls never fire.
+function createRoutingSidecarRouter(): SidecarRouter {
+  function notImplRouter(name: string): never {
+    throw new Error(`mail-federation mock: sidecarRouter.${name} not used`);
+  }
+  return {
+    handleOpen: () => notImplRouter("handleOpen"),
+    handleMessage: () => notImplRouter("handleMessage"),
+    handleClose: () => notImplRouter("handleClose"),
+    routeMail: async () => true,
+    sendRunGrants: () => true,
+    noteSenderDeployStarted: () => undefined,
+    noteSenderDeploySettled: () => undefined,
+    sendAgentUndeploy: () => notImplRouter("sendAgentUndeploy"),
+    sendSourcesUpdate: () => notImplRouter("sendSourcesUpdate"),
+    sendCredentialsUpdate: () => notImplRouter("sendCredentialsUpdate"),
+    sendSignalDeliver: () => notImplRouter("sendSignalDeliver"),
+    sendDrain: () => notImplRouter("sendDrain"),
+    subscribeAgent: () => notImplRouter("subscribeAgent"),
+    dispatchAgentEvent: () => undefined,
+    getConnectedSidecars: () => [],
+    getRoutableAddresses: () => [],
+    getConnectorState: () => null,
+    events: createSidecarEmitter(),
+  };
+}
+
+async function createWorkflowRepoStore(): Promise<RepoStore> {
+  const dataDir = await fs.promises.mkdtemp(
+    path.join(os.tmpdir(), "mail-federation-"),
+  );
+  tempDirs.push(dataDir);
+  const signer = async (payload: string) =>
+    createSSHSignature(payload, signingKey.privateKey, signingKey.publicKey);
+  const authorize: AuthorizeFn = (principal, repoId, ref, act) => {
+    if (repoId.kind === "workflow") {
+      return workflowAuthorize(principal, repoId, ref, act);
+    }
+    if (repoId.kind === "workflow-run") {
+      return workflowRunAuthorize(principal, repoId, ref, act);
+    }
+    return { allowed: false, reason: `no authorize for ${repoId.kind}` };
+  };
+  return createRepoStore({
+    dataDir,
+    signingKey,
+    handlers: {
+      workflow: workflowKindHandler,
+      "workflow-run": workflowRunKindHandler,
+    },
+    authorize,
+    signingCallback: () => signer,
+  });
+}
+
+// The trigger route derives the deployment address as
+// `<anchorRunId>@<tenant.domain>`; the routing router accepts any
+// address, so the derived value only needs to be well-formed.
+
+describe.skipIf(!harnessDbEnvAvailable())(
+  "creator-derived grant materialization at the trigger route",
+  () => {
+    let repoStore: RepoStore;
+    let assetService: ReturnType<typeof createAssetService>;
+
+    beforeAll(async () => {
+      signingKey = await generateKeyPair();
+      h = await createTestDb();
+      repoStore = await createWorkflowRepoStore();
+      assetService = createAssetService({ db: h.db, repoStore });
+    });
+
+    afterAll(async () => {
+      await h.close();
+      for (const d of tempDirs.splice(0)) {
+        await fs.promises.rm(d, { recursive: true, force: true });
+      }
+    });
+
+    beforeEach(async () => {
+      await h.reset();
+    });
+
+    // Seed the shared tenancy and the workflow asset (populated with B's
+    // workflow codebase), returning the wired app. `creatorHoldsGrant`
+    // decides whether the creator holds the backing `secret:vault`/`use`
+    // grant.
+    async function setup(opts: {
+      anchorRunId: string;
+      creatorHoldsGrant: boolean;
+    }): Promise<ReturnType<typeof createApp>> {
+      const address = deriveRunAddress({
+        runId: opts.anchorRunId,
+        domain: DOMAIN,
+      });
+      const assetId = `ast_${opts.anchorRunId}`;
+
+      await h.db.insert(tenantTable).values({
+        id: TENANT_ID,
+        name: TENANT_ID,
+        slug: tenantSlugFromId(TENANT_ID),
+        domain: DOMAIN,
+        parentId: null,
+      });
+      await seedPrincipal(h.db, {
+        id: CALLER_PRINCIPAL_ID,
+        tenantId: TENANT_ID,
+        kind: "user",
+        refId: CALLER_USER_ID,
+        status: "active",
+      });
+      // The caller signs the trigger mail with its durable hub principal key,
+      // which production mints at principal creation; the direct row insert
+      // above bypasses that, so mint it here or the trigger's sign() throws.
+      await seedPrincipalKey(h.db, CALLER_PRINCIPAL_ID);
+      await seedPrincipal(h.db, {
+        id: CREATOR_PRINCIPAL_ID,
+        tenantId: TENANT_ID,
+        kind: "user",
+        refId: "usr_federation_creator_ref",
+        status: "active",
+      });
+      await seedAsset(h.db, {
+        id: assetId,
+        tenantId: TENANT_ID,
+        kind: "workflow",
+        name: `federation-wf-${opts.anchorRunId}`,
+        creatorPrincipalId: CREATOR_PRINCIPAL_ID,
+      });
+      // The caller's grant to invoke the trigger route.
+      await seedGrant(h.db, {
+        id: `grant-caller-manage-${opts.anchorRunId}`,
+        tenantId: TENANT_ID,
+        resource: `workflow-run:${opts.anchorRunId}`,
+        action: "manage",
+        effect: "allow",
+        origin: "system",
+        principalId: CALLER_PRINCIPAL_ID,
+      });
+      // The creator's backing grant, present only in the positive case.
+      if (opts.creatorHoldsGrant) {
+        await seedGrant(h.db, {
+          id: `grant-creator-vault-${opts.anchorRunId}`,
+          tenantId: TENANT_ID,
+          resource: CREATOR_CAP_RESOURCE,
+          action: CREATOR_CAP_ACTION,
+          effect: "allow",
+          origin: "creator",
+          principalId: CREATOR_PRINCIPAL_ID,
+        });
+      }
+      // The deployment's first-class definition and its anchor run: the trigger
+      // route reads the workflow asset and the run's definition off the anchor.
+      await h.db.insert(workflowDefinitionTable).values({
+        id: `wfd_${opts.anchorRunId}`,
+        tenantId: TENANT_ID,
+        name: opts.anchorRunId,
+        assetId,
+      });
+      await h.db.insert(workflowRunTable).values({
+        id: opts.anchorRunId,
+        tenantId: TENANT_ID,
+        anchorRunId: opts.anchorRunId,
+        definitionId: `wfd_${opts.anchorRunId}`,
+        address,
+        // The deploy-time birth state; the first mail trigger flips it running.
+        status: "deployed",
+        // A recorded key with no credential refs is a finished initialization
+        // that delivered nothing. The first grant commit refuses an anchor
+        // that has recorded neither.
+        publicKey: "test-public-key",
+      });
+      // Freeze the deploy-approved grant-walk snapshot into the deployment's
+      // launch spec: the trigger route materializes the run's grants from it,
+      // including the creator-sourced requirement resolved against the asset
+      // creator.
+      const walk = walkCapabilities(
+        bWorkflow(`wf_${opts.anchorRunId}`, address),
+        createDefaultDirectorRegistry(),
+      );
+      await seedWorkflowRunLaunchSpec(h.db, {
+        anchorRunId: opts.anchorRunId,
+        sourceAuthorityPrincipalId: CREATOR_PRINCIPAL_ID,
+        grantSnapshot: {
+          perStep: [...walk.perStep].map(([stepId, decl]) => ({
+            stepId,
+            grants: [...decl.grants],
+            grantEffects: Object.fromEntries(decl.grantEffects),
+          })),
+          grantRequirements: [CREATOR_REQUIREMENT],
+        },
+      });
+
+      await repoStore.initRepo({ kind: "workflow", id: assetId });
+      // A workflow asset is a codebase: a package.json declaring an
+      // interchange.workflow entry plus source files. The trigger route reads
+      // the run's grants from the deployment's launch-spec snapshot and the
+      // asset row's creator, not the asset's tree, so a minimal valid codebase
+      // seed is all the push boundary needs here.
+      await assetService.populateAsset({
+        assetId,
+        ref: DEFAULT_ASSET_REF,
+        principal: { kind: "hub" },
+        tree: {
+          files: {
+            "package.json": JSON.stringify({
+              name: "@fixture/federation-wf",
+              version: "1.0.0",
+              interchange: { workflow: "./workflow.mjs" },
+            }),
+            "workflow.mjs": "export const workflow = {};",
+          },
+          message: "seed workflow codebase",
+        },
+      });
+
+      return createApp({
+        getSession: createMockGetSession(CALLER_USER_ID),
+        authHandler: () => new Response("", { status: 404 }),
+        db: h.db,
+        grantStore: createGrantStore(h.db),
+        sidecarRouter: createRoutingSidecarRouter(),
+        sessionService: createMockSessionService(),
+        eventCollectors: createMockEventCollectors(),
+        assetService,
+        repoStore,
+        maxTarballBytes: 10_000_000,
+      });
+    }
+
+    test("materializes the creator grant when the creator holds it", async () => {
+      const anchorRunId = "run_federation-b-positive-1";
+      const app = await setup({ anchorRunId, creatorHoldsGrant: true });
+
+      const res = await app.request(
+        `/api/tenants/${TENANT_ID}/workflows/${anchorRunId}/mail`,
+        {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({ content: "kick off B" }),
+        },
+      );
+      if (res.status !== 202) {
+        const body: unknown = await res.json();
+        throw new Error(
+          `expected 202, got ${String(res.status)}: ${JSON.stringify(body)}`,
+        );
+      }
+      const json = TriggerResponse.assert(await res.json());
+      // The run is keyed on the deployment's local part (the stable runId the
+      // route returns as `runId`), not this message's Message-ID.
+      const runId = json.runId;
+
+      // The run principal and run row committed.
+      const principals = await h.db
+        .select()
+        .from(principalTable)
+        .where(
+          and(
+            eq(principalTable.tenantId, TENANT_ID),
+            eq(principalTable.kind, "workflow"),
+            eq(principalTable.refId, runId),
+          ),
+        );
+      expect(principals).toHaveLength(1);
+      const runPrincipal = principals[0];
+      if (runPrincipal === undefined) throw new Error("unreachable");
+
+      const runs = await h.db
+        .select()
+        .from(workflowRunTable)
+        .where(eq(workflowRunTable.id, runId));
+      expect(runs).toHaveLength(1);
+
+      // The creator-materialized grant committed on the run principal,
+      // carrying `origin="creator"` and the requirement's resource/action.
+      const grants = await h.db
+        .select()
+        .from(grantTable)
+        .where(eq(grantTable.principalId, runPrincipal.id));
+      const creatorGrant = grants.find(
+        (g) =>
+          g.resource === CREATOR_CAP_RESOURCE &&
+          g.action === CREATOR_CAP_ACTION,
+      );
+      if (creatorGrant === undefined) {
+        throw new Error(
+          `no creator-materialized ${CREATOR_CAP_RESOURCE}/${CREATOR_CAP_ACTION} grant; got ${JSON.stringify(
+            grants.map((g) => `${g.resource}/${g.action}`),
+          )}`,
+        );
+      }
+      expect(creatorGrant.origin).toBe("creator");
+      expect(creatorGrant.effect).toBe("allow");
+    });
+
+    test("rejects 403 and commits nothing when the creator lacks the grant", async () => {
+      const anchorRunId = "run_federation-b-negative-1";
+      const app = await setup({ anchorRunId, creatorHoldsGrant: false });
+
+      const res = await app.request(
+        `/api/tenants/${TENANT_ID}/workflows/${anchorRunId}/mail`,
+        {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({ content: "kick off B" }),
+        },
+      );
+      expect(res.status).toBe(403);
+      const body = ErrorBody.assert(await res.json());
+      expect(body.error.code).toBe("insufficient_grants");
+
+      // Nothing committed: no run principal, no run row, no grant rows on a
+      // run principal. The route rejects before `commitRunGrants` runs.
+      const runPrincipals = await h.db
+        .select()
+        .from(principalTable)
+        .where(
+          and(
+            eq(principalTable.tenantId, TENANT_ID),
+            eq(principalTable.kind, "workflow"),
+          ),
+        );
+      expect(runPrincipals).toHaveLength(0);
+
+      // Only the deployment's seeded anchor run (id == anchorRunId) exists;
+      // the rejected trigger committed no child run of its own.
+      const runs = await h.db.select().from(workflowRunTable);
+      const childRuns = runs.filter((r) => r.id !== r.anchorRunId);
+      expect(childRuns).toHaveLength(0);
+
+      // The only grants present are the seeded caller manage grant; no run
+      // grant row was committed.
+      const vaultGrants = await h.db
+        .select()
+        .from(grantTable)
+        .where(eq(grantTable.resource, CREATOR_CAP_RESOURCE));
+      expect(vaultGrants).toHaveLength(0);
+    });
+  },
+);

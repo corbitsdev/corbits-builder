@@ -1,0 +1,92 @@
+// Attachment allowlist — the system-level source of truth for which MIME
+// types the hub accepts as conversation attachments and which ContentBlock
+// category each maps to. Adding a MIME type is a one-line change here.
+//
+// This is the hard capability ceiling: a type is only useful if the pipeline
+// can produce the right ContentBlock and an adapter can marshal it. Per-agent
+// or per-workflow narrowing rides on top of this ceiling — it narrows the
+// accepted set, it never widens past what the adapters support.
+
+export const ATTACHMENT_CATEGORIES = [
+  "image",
+  "video",
+  "audio",
+  "document",
+] as const;
+export type AttachmentCategory = (typeof ATTACHMENT_CATEGORIES)[number];
+
+export const ATTACHMENT_ALLOWLIST = {
+  "image/png": "image",
+  "image/jpeg": "image",
+  "image/gif": "image",
+  "image/webp": "image",
+  "image/heic": "image",
+  "image/heif": "image",
+  "video/mp4": "video",
+  "video/webm": "video",
+  "video/quicktime": "video",
+  "audio/mpeg": "audio",
+  "audio/wav": "audio",
+  "audio/ogg": "audio",
+  "audio/webm": "audio",
+  "application/pdf": "document",
+  "application/json": "document",
+  "text/plain": "document",
+  "text/csv": "document",
+  "text/markdown": "document",
+} as const satisfies Record<string, AttachmentCategory>;
+
+export type AllowedMimeType = keyof typeof ATTACHMENT_ALLOWLIST;
+
+const ALLOWLIST_BY_TYPE: Record<string, AttachmentCategory> =
+  ATTACHMENT_ALLOWLIST;
+
+/**
+ * The type/subtype of a Content-Type, ignoring parameters and case.
+ * Allowlist identity is this token, not the raw header value.
+ */
+export function mimeTypeAndSubtype(contentType: string): string {
+  const [mimeType = ""] = contentType.split(";");
+  return mimeType.trim().toLowerCase();
+}
+
+export function isAllowedMimeType(mimeType: string): boolean {
+  return Object.hasOwn(ALLOWLIST_BY_TYPE, mimeTypeAndSubtype(mimeType));
+}
+
+/**
+ * The ContentBlock category for an allowlisted MIME type, or `undefined`
+ * when the type is not on the allowlist. Callers decide how to treat an
+ * unknown type (the route rejects it at the boundary; turn construction
+ * surfaces it as a text marker).
+ */
+export function attachmentCategory(
+  mimeType: string,
+): AttachmentCategory | undefined {
+  return ALLOWLIST_BY_TYPE[mimeTypeAndSubtype(mimeType)];
+}
+
+/**
+ * True when a Content-Type names readable text: `text/*`, JSON, and the
+ * `+json` structured suffix. Callers use this to decide whether an
+ * attachment's content is carried as text or as opaque bytes. Any
+ * Content-Type parameters (e.g. `; charset=utf-8`) are ignored.
+ */
+export function isTextLikeMimeType(contentType: string): boolean {
+  const mime = mimeTypeAndSubtype(contentType);
+  return (
+    mime.startsWith("text/") ||
+    mime === "application/json" ||
+    mime.endsWith("+json")
+  );
+}
+
+// Default size limits, on decoded bytes. These are the system-level
+// ceiling; a future per-agent/per-workflow policy resolves an effective
+// limit that defaults to these.
+export const PER_ATTACHMENT_LIMIT_BYTES = 10 * 1024 * 1024;
+export const PER_MESSAGE_TOTAL_LIMIT_BYTES = 30 * 1024 * 1024;
+// Cap on attachment count. The byte limits measure decoded payload, so
+// without this a request could carry an unbounded number of empty
+// attachments, each of which becomes a MIME part.
+export const MAX_ATTACHMENTS_PER_MESSAGE = 20;

@@ -1,0 +1,26 @@
+#!/usr/bin/env bash
+# shellcheck shell=bash
+
+source "$(dirname -- "${BASH_SOURCE[0]}")/opsh"
+opsh::version::require v0.9.0
+
+REPODIR=$(git rev-parse --show-toplevel)
+
+# Source shared env, then hub-specific overrides
+if [[ -f "$REPODIR/.env" ]]; then
+	# shellcheck disable=SC1091
+	set -a
+	source "$REPODIR/.env"
+	set +a
+	log::info "loaded .env"
+fi
+
+if [[ -f "$REPODIR/.env.hub" ]]; then
+	# shellcheck disable=SC1091
+	set -a
+	source "$REPODIR/.env.hub"
+	set +a
+	log::info "loaded .env.hub"
+fi
+
+exec bun run --conditions=intx-src --watch "$REPODIR/apps/hub/src/index.ts"

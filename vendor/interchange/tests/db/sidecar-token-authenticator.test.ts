@@ -1,0 +1,578 @@
+import {
+  afterAll,
+  beforeAll,
+  beforeEach,
+  describe,
+  expect,
+  test,
+} from "bun:test";
+
+import { sha256 } from "@intx/crypto";
+import {
+  SIDECAR_CLEANUP_RETRY_EXHAUSTED_FAILURE_CODE,
+  SIDECAR_CLEANUP_DISCONNECT_TIMEOUT_FAILURE_CODE,
+} from "@intx/db";
+import {
+  sidecar,
+  sidecarAllocation,
+  workflowProbe,
+  workflowRun,
+} from "@intx/db/schema";
+import {
+  createSidecarCredentialResolver,
+  createSidecarTokenAuthenticator,
+} from "@intx/hub-sessions";
+import { eq } from "drizzle-orm";
+import {
+  createTestDb,
+  harnessDbEnvAvailable,
+  type TestDb,
+} from "@intx/test-harness/db-harness";
+import {
+  seedAsset,
+  seedTenants,
+  seedWorkflowRun,
+} from "@intx/test-harness/seed";
+
+const TENANT_ID = "tnt-sidecar-auth";
+const MANIFEST_DIGEST = "1".repeat(64);
+
+// The mock-DB unit test proves the authenticator's control flow, but it
+// never exercises the real `bytea` lookup: the token hash is written to
+// and read back from Postgres through the customType encoder, and the
+// query matches on that stored digest. A flipped byte on the write, a
+// mangled encode/decode, or a `bytea` equality that Postgres does not
+// evaluate the way drizzle builds it would all pass the mock and fail
+// here. These cases drive the shipped `createSidecarTokenAuthenticator`
+// against a real migrated schema to defend that write->read round-trip
+// and the token-derived identity property.
+describe.skipIf(!harnessDbEnvAvailable())(
+  "sidecar token authenticator (real DB)",
+  () => {
+    let h: TestDb;
+
+    beforeAll(async () => {
+      h = await createTestDb();
+    });
+
+    afterAll(async () => {
+      await h.close();
+    });
+
+    beforeEach(async () => {
+      await h.reset();
+      await seedTenants(h.db, [{ id: TENANT_ID }]);
+    });
+
+    // Seed a sidecar identity the same way provisioning does: store the
+    // SHA-256 digest of the token as the `bytea` hash. `url` is not read
+    // by the authenticator; a placeholder satisfies its NOT NULL.
+    async function seedSidecar(opts: {
+      id: string;
+      token: string;
+      allocated?: boolean;
+    }): Promise<{
+      kind: "allocated";
+      sidecarId: string;
+      allocationId: string;
+      tenantId: string;
+      anchorRunId: string;
+      workflowRunAddress: string;
+      generation: number;
+    }> {
+      const anchorRunId = `run-${opts.id}`;
+      const workflowRunAddress = `${opts.id}@sidecar-auth.example.test`;
+      await h.db.insert(sidecar).values({
+        id: opts.id,
+        url: "ws://dev-sidecar",
+        tokenHashSha256: await sha256(opts.token),
+        provisionerId: "test",
+        provisionerApiVersion: 2,
+        provisionerBindingFingerprint: "test:v1",
+        adapterManifestDigest: MANIFEST_DIGEST,
+      });
+      if (opts.allocated !== false) {
+        await seedWorkflowRun(h.db, {
+          id: anchorRunId,
+          anchorRunId,
+          tenantId: TENANT_ID,
+          address: workflowRunAddress,
+          status: "deployed",
+        });
+        await h.db.insert(sidecarAllocation).values({
+          id: `allocation-${opts.id}`,
+          anchorRunId,
+          tenantId: TENANT_ID,
+          provisionerId: "test",
+          provisionerApiVersion: 2,
+          provisionerBindingFingerprint: "test:v1",
+          adapterManifestDigest: MANIFEST_DIGEST,
+          maxDisconnectedMs: 900_000,
+          sidecarId: opts.id,
+          status: "allocated",
+          generation: 1,
+          ensureAcceptedGeneration: 1,
+        });
+      }
+      return {
+        kind: "allocated",
+        sidecarId: opts.id,
+        allocationId: `allocation-${opts.id}`,
+        tenantId: TENANT_ID,
+        anchorRunId,
+        workflowRunAddress,
+        generation: 1,
+      };
+    }
+
+    test.each(["releasing", "replacing"] as const)(
+      "cleanup authentication grants no workflow access, status = %s",
+      async (status) => {
+        const original = await seedSidecar({
+          id: "sc-cleanup",
+          token: "cleanup-token",
+        });
+        await h.db
+          .update(sidecarAllocation)
+          .set({ status, generation: 2, ensureAcceptedGeneration: null })
+          .where(eq(sidecarAllocation.id, original.allocationId));
+        const resolver = createSidecarCredentialResolver({ db: h.db });
+        const cleanup = {
+          ...original,
+          kind: "cleanup",
+          generation: 2,
+        } as const;
+        expect(await resolver.resolveBindings(original.sidecarId)).toEqual([
+          cleanup,
+        ]);
+        expect(await resolver.isCurrent(cleanup, "registration")).toBe(true);
+        expect(await resolver.isCurrent(cleanup, "cleanup")).toBe(true);
+        for (const use of [
+          "readiness",
+          "routing",
+          "reclaim",
+          "retention",
+          "retention-transition",
+        ] as const) {
+          expect(await resolver.isCurrent(cleanup, use)).toBe(false);
+        }
+        expect(await resolver.isCurrent(original, "cleanup")).toBe(false);
+        expect(
+          await resolver.isCurrent({ ...cleanup, generation: 1 }, "cleanup"),
+        ).toBe(false);
+        await h.db
+          .update(sidecarAllocation)
+          .set({ status: "released" })
+          .where(eq(sidecarAllocation.id, original.allocationId));
+        expect(await resolver.resolveBindings(original.sidecarId)).toEqual([]);
+        expect(await resolver.isCurrent(cleanup, "cleanup")).toBe(false);
+      },
+    );
+
+    test.each([
+      SIDECAR_CLEANUP_RETRY_EXHAUSTED_FAILURE_CODE,
+      SIDECAR_CLEANUP_DISCONNECT_TIMEOUT_FAILURE_CODE,
+      "provider_permission_denied",
+    ])(
+      "failed cleanup %s can report inventory without granting work",
+      async (failureCode) => {
+        const original = await seedSidecar({
+          id: "sc-exhausted",
+          token: "exhausted-token",
+        });
+        await h.db
+          .update(sidecarAllocation)
+          .set({
+            status: "destroy_failed",
+            generation: 2,
+            failureCode,
+          })
+          .where(eq(sidecarAllocation.id, original.allocationId));
+        const resolver = createSidecarCredentialResolver({ db: h.db });
+        const cleanup = {
+          ...original,
+          kind: "cleanup",
+          generation: 2,
+        } as const;
+        expect(await resolver.resolveBindings(original.sidecarId)).toEqual([
+          cleanup,
+        ]);
+        expect(await resolver.isCurrent(cleanup, "registration")).toBe(true);
+        expect(await resolver.isCurrent(cleanup, "cleanup")).toBe(true);
+        for (const use of [
+          "readiness",
+          "routing",
+          "reclaim",
+          "retention",
+          "retention-transition",
+        ] as const) {
+          expect(await resolver.isCurrent(cleanup, use)).toBe(false);
+        }
+        await h.db
+          .update(sidecarAllocation)
+          .set({ status: "released" })
+          .where(eq(sidecarAllocation.id, original.allocationId));
+        expect(await resolver.resolveBindings(original.sidecarId)).toEqual([]);
+        expect(await resolver.isCurrent(cleanup, "cleanup")).toBe(false);
+      },
+    );
+
+    test("resolves a valid token to the seeded sidecar's identity", async () => {
+      const token = "sidecar-secret";
+      await seedSidecar({ id: "sc-1", token });
+      const authenticate = createSidecarTokenAuthenticator({ db: h.db });
+
+      const identity = await authenticate({ sidecarId: "sc-1", token });
+
+      expect(identity).toEqual({ sidecarId: "sc-1" });
+    });
+
+    test("rejects a wrong token with null", async () => {
+      await seedSidecar({ id: "sc-1", token: "sidecar-secret" });
+      const authenticate = createSidecarTokenAuthenticator({ db: h.db });
+
+      const identity = await authenticate({
+        sidecarId: "sc-1",
+        token: "wrong-secret",
+      });
+
+      expect(identity).toBeNull();
+    });
+
+    test("rejects an empty token with null", async () => {
+      await seedSidecar({ id: "sc-1", token: "sidecar-secret" });
+      const authenticate = createSidecarTokenAuthenticator({ db: h.db });
+
+      const identity = await authenticate({ sidecarId: "sc-1", token: "" });
+
+      // `null` here comes from the lookup missing, not an input guard: the
+      // authenticator hashes `""` and finds no row carrying `sha256("")`.
+      // There is no empty-token validation to short-circuit the query.
+      expect(identity).toBeNull();
+    });
+
+    test("resolves an allocated token without a current allocation to no bindings", async () => {
+      const token = "stale-allocated-secret";
+      await seedSidecar({
+        id: "sc-replaced",
+        token,
+        allocated: false,
+      });
+      const resolver = createSidecarCredentialResolver({ db: h.db });
+
+      expect(await resolver.resolve(token)).toEqual({
+        sidecarId: "sc-replaced",
+      });
+      expect(await resolver.resolveBindings("sc-replaced")).toEqual([]);
+    });
+
+    test("authenticates a retired sidecar until no current work is left on it", async () => {
+      const token = "retired-shared-secret";
+      const hosted = await seedSidecar({ id: "sc-retired-shared", token });
+      await h.db
+        .update(sidecar)
+        .set({ retiredAt: new Date() })
+        .where(eq(sidecar.id, "sc-retired-shared"));
+      const authenticate = createSidecarTokenAuthenticator({ db: h.db });
+
+      expect(
+        await authenticate({ sidecarId: "sc-retired-shared", token }),
+      ).toEqual({ sidecarId: "sc-retired-shared" });
+
+      await h.db
+        .update(sidecarAllocation)
+        .set({ status: "released" })
+        .where(eq(sidecarAllocation.id, hosted.allocationId));
+      expect(
+        await authenticate({ sidecarId: "sc-retired-shared", token }),
+      ).toEqual({ sidecarId: "sc-retired-shared", retired: true });
+    });
+
+    test("authenticates a retired sidecar while only cleanup is left on it", async () => {
+      const token = "retired-cleanup-secret";
+      const hosted = await seedSidecar({ id: "sc-retired-cleanup", token });
+      await h.db
+        .update(sidecar)
+        .set({ retiredAt: new Date() })
+        .where(eq(sidecar.id, "sc-retired-cleanup"));
+      const authenticate = createSidecarTokenAuthenticator({ db: h.db });
+
+      for (const status of [
+        "releasing",
+        "replacing",
+        "destroy_failed",
+      ] as const) {
+        await h.db
+          .update(sidecarAllocation)
+          .set({ status })
+          .where(eq(sidecarAllocation.id, hosted.allocationId));
+        expect(
+          await authenticate({ sidecarId: "sc-retired-cleanup", token }),
+        ).toEqual({ sidecarId: "sc-retired-cleanup" });
+      }
+
+      await h.db
+        .update(sidecarAllocation)
+        .set({ status: "released" })
+        .where(eq(sidecarAllocation.id, hosted.allocationId));
+      expect(
+        await authenticate({ sidecarId: "sc-retired-cleanup", token }),
+      ).toEqual({ sidecarId: "sc-retired-cleanup", retired: true });
+    });
+
+    test("marks the token of a retired identity with nothing left retired", async () => {
+      const token = "retired-secret";
+      await seedSidecar({ id: "sc-retired", token, allocated: false });
+      await h.db
+        .update(sidecar)
+        .set({ retiredAt: new Date() })
+        .where(eq(sidecar.id, "sc-retired"));
+      const authenticate = createSidecarTokenAuthenticator({ db: h.db });
+
+      expect(await authenticate({ sidecarId: "sc-retired", token })).toEqual({
+        sidecarId: "sc-retired",
+        retired: true,
+      });
+    });
+
+    test("derives identity from the token, not a spoofed claimed sidecarId", async () => {
+      const token = "sidecar-secret";
+      await seedSidecar({ id: "sc-real", token });
+      const authenticate = createSidecarTokenAuthenticator({ db: h.db });
+
+      const identity = await authenticate({ sidecarId: "sc-spoofed", token });
+
+      expect(identity).toEqual({ sidecarId: "sc-real" });
+    });
+
+    test("selects the matching row by hash among several sidecars", async () => {
+      // With more than one sidecar present, each token must resolve to its
+      // own row. A single-row mock cannot distinguish "matched by hash" from
+      // "returned the only row"; a populated table proves the `bytea`
+      // equality actually keys the lookup on the presented token's digest.
+      const tokenA = "sidecar-secret-a";
+      const tokenB = "sidecar-secret-b";
+      await seedSidecar({ id: "sc-a", token: tokenA });
+      await seedSidecar({ id: "sc-b", token: tokenB });
+      const authenticate = createSidecarTokenAuthenticator({ db: h.db });
+
+      expect(await authenticate({ sidecarId: "sc-a", token: tokenA })).toEqual({
+        sidecarId: "sc-a",
+      });
+      expect(await authenticate({ sidecarId: "sc-b", token: tokenB })).toEqual({
+        sidecarId: "sc-b",
+      });
+    });
+
+    test("resolves a probe hosted beside an allocation", async () => {
+      const token = "shared-secret";
+      const allocated = await seedSidecar({ id: "sc-shared", token });
+      await seedAsset(h.db, {
+        id: "asset-shared",
+        tenantId: TENANT_ID,
+        kind: "workflow",
+        name: "shared-workflow",
+      });
+      await h.db.insert(workflowProbe).values({
+        id: "probe-shared",
+        tenantId: TENANT_ID,
+        definitionAssetId: "asset-shared",
+        source: { kind: "registry", registry: "npmjs" },
+        entry: "./workflow.js",
+        status: "probing",
+        provisionerId: "test",
+        provisionerApiVersion: 2,
+        provisionerBindingFingerprint: "test:v1",
+        adapterManifestDigest: MANIFEST_DIGEST,
+        sidecarId: "sc-shared",
+      });
+      const resolver = createSidecarCredentialResolver({ db: h.db });
+
+      expect(await resolver.resolve(token)).toEqual({ sidecarId: "sc-shared" });
+      expect(await resolver.resolveBindings("sc-shared")).toEqual([
+        allocated,
+        {
+          kind: "probe",
+          sidecarId: "sc-shared",
+          allocationId: "probe-shared",
+          tenantId: TENANT_ID,
+          generation: 0,
+        },
+      ]);
+    });
+
+    test("leaves out an allocation that is no longer active", async () => {
+      const token = "released-secret";
+      await seedSidecar({ id: "sc-released", token });
+      await h.db
+        .update(sidecarAllocation)
+        .set({ status: "released" })
+        .where(eq(sidecarAllocation.sidecarId, "sc-released"));
+      const resolver = createSidecarCredentialResolver({ db: h.db });
+
+      expect(await resolver.resolve(token)).toEqual({
+        sidecarId: "sc-released",
+      });
+      expect(await resolver.resolveBindings("sc-released")).toEqual([]);
+    });
+
+    test("reclaims only a deployment whose first deploy completed", async () => {
+      const binding = await seedSidecar({ id: "sc-reclaim", token: "t" });
+      const resolver = createSidecarCredentialResolver({ db: h.db });
+
+      expect(await resolver.isCurrent(binding, "routing")).toBe(true);
+      expect(await resolver.isCurrent(binding, "reclaim")).toBe(false);
+
+      await h.db
+        .update(workflowRun)
+        .set({ publicKey: "public-key" })
+        .where(eq(workflowRun.id, binding.anchorRunId));
+      expect(await resolver.isCurrent(binding, "reclaim")).toBe(true);
+
+      await h.db
+        .update(sidecarAllocation)
+        .set({ initializationLeaseId: "uncertain-attempt" })
+        .where(eq(sidecarAllocation.sidecarId, "sc-reclaim"));
+      expect(await resolver.isCurrent(binding, "reclaim")).toBe(false);
+    });
+
+    test("retention transitions require a terminal initialized current allocation", async () => {
+      const binding = await seedSidecar({ id: "sc-retain", token: "t" });
+      const resolver = createSidecarCredentialResolver({ db: h.db });
+      const allowed = () => resolver.isCurrent(binding, "retention-transition");
+      expect(await allowed()).toBe(false);
+      await h.db
+        .update(workflowRun)
+        .set({ publicKey: "public-key" })
+        .where(eq(workflowRun.id, binding.anchorRunId));
+      expect(await allowed()).toBe(false);
+      await h.db
+        .update(workflowRun)
+        .set({ cancellationRequestedAt: new Date() })
+        .where(eq(workflowRun.id, binding.anchorRunId));
+      expect(await allowed()).toBe(false);
+      for (const status of ["completed", "failed", "cancelled"] as const) {
+        await h.db
+          .update(workflowRun)
+          .set({ status, endedAt: new Date(), failureCode: "ended-by-hub" })
+          .where(eq(workflowRun.id, binding.anchorRunId));
+        expect(await allowed()).toBe(true);
+      }
+      expect(
+        await resolver.isCurrent(
+          { ...binding, generation: 2 },
+          "retention-transition",
+        ),
+      ).toBe(false);
+      await h.db
+        .update(sidecarAllocation)
+        .set({ ensureAcceptedGeneration: null })
+        .where(eq(sidecarAllocation.id, binding.allocationId));
+      expect(await allowed()).toBe(false);
+      await h.db
+        .update(sidecarAllocation)
+        .set({
+          ensureAcceptedGeneration: 1,
+          initializationLeaseId: "initializing",
+        })
+        .where(eq(sidecarAllocation.id, binding.allocationId));
+      expect(await allowed()).toBe(false);
+      await h.db
+        .update(sidecarAllocation)
+        .set({ initializationLeaseId: null })
+        .where(eq(sidecarAllocation.id, binding.allocationId));
+      await h.db
+        .update(workflowRun)
+        .set({ publicKey: null })
+        .where(eq(workflowRun.id, binding.anchorRunId));
+      expect(await allowed()).toBe(false);
+    });
+
+    test("retains instead of reclaiming a copy of a run that ended on its own", async () => {
+      const binding = await seedSidecar({ id: "sc-ended", token: "t" });
+      const resolver = createSidecarCredentialResolver({ db: h.db });
+      await h.db
+        .update(workflowRun)
+        .set({ publicKey: "public-key", status: "failed", endedAt: new Date() })
+        .where(eq(workflowRun.id, binding.anchorRunId));
+      expect(await resolver.isCurrent(binding, "reclaim")).toBe(false);
+      // Its copy stays, unrouted, until the Hub releases the deployment.
+      expect(await resolver.isCurrent(binding, "retention")).toBe(true);
+      // The Hub can still reach it to stop or undeploy it.
+      expect(await resolver.isCurrent(binding, "routing")).toBe(true);
+    });
+
+    test.each(["saved", "derived"] as const)(
+      "retention requests stop at the %s deadline without rejecting their acknowledgements",
+      async (deadline) => {
+        const binding = await seedSidecar({ id: "sc-expired", token: "t" });
+        const endedAt = new Date("2020-01-01T00:00:00Z");
+        const retentionMs = deadline === "saved" ? 30_000 : 60_000;
+        let now = new Date(endedAt.getTime() + retentionMs - 1);
+        const resolver = createSidecarCredentialResolver({
+          db: h.db,
+          now: () => now,
+        });
+        await h.db
+          .update(workflowRun)
+          .set({
+            publicKey: "public-key",
+            status: "completed",
+            endedAt,
+            lifecyclePolicy: { capacityRetention: { completed: "1m" } },
+            capacityReleaseAt:
+              deadline === "saved"
+                ? new Date(endedAt.getTime() + retentionMs)
+                : null,
+          })
+          .where(eq(workflowRun.id, binding.anchorRunId));
+        expect(await resolver.isCurrent(binding, "retention")).toBe(true);
+        now = new Date(endedAt.getTime() + retentionMs);
+        expect(await resolver.isCurrent(binding, "retention")).toBe(false);
+        expect(await resolver.isCurrent(binding, "retention-transition")).toBe(
+          true,
+        );
+        expect(await resolver.isCurrent(binding, "registration")).toBe(true);
+      },
+    );
+
+    test("retains a Hub-ended copy only once its run is terminal", async () => {
+      const binding = await seedSidecar({ id: "sc-cancelled", token: "t" });
+      const resolver = createSidecarCredentialResolver({ db: h.db });
+      await h.db
+        .update(workflowRun)
+        .set({ publicKey: "public-key", cancellationRequestedAt: new Date() })
+        .where(eq(workflowRun.id, binding.anchorRunId));
+      // A run still cancelling keeps its copy, which records the cancel.
+      expect(await resolver.isCurrent(binding, "reclaim")).toBe(true);
+      expect(await resolver.isCurrent(binding, "retention")).toBe(false);
+
+      await h.db
+        .update(workflowRun)
+        .set({ status: "cancelled", endedAt: new Date() })
+        .where(eq(workflowRun.id, binding.anchorRunId));
+      expect(await resolver.isCurrent(binding, "reclaim")).toBe(false);
+      expect(await resolver.isCurrent(binding, "retention")).toBe(true);
+
+      const failed = await seedSidecar({ id: "sc-failed", token: "t2" });
+      await h.db
+        .update(workflowRun)
+        .set({
+          publicKey: "public-key",
+          failureCode: "sidecar_deployment_stopped",
+          infrastructureFailedAt: new Date(),
+        })
+        .where(eq(workflowRun.id, failed.anchorRunId));
+      // A deferred failure leaves the run live while accepted history is projected.
+      expect(await resolver.isCurrent(failed, "reclaim")).toBe(false);
+      expect(await resolver.isCurrent(failed, "retention")).toBe(false);
+
+      await h.db
+        .update(workflowRun)
+        .set({ status: "failed", endedAt: new Date() })
+        .where(eq(workflowRun.id, failed.anchorRunId));
+      expect(await resolver.isCurrent(failed, "reclaim")).toBe(false);
+      expect(await resolver.isCurrent(failed, "retention")).toBe(true);
+    });
+  },
+);

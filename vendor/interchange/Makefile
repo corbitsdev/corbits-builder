@@ -1,0 +1,146 @@
+export PATH := $(PWD)/node_modules/.bin:$(PWD)/bin:$(PATH)
+
+# Internal bun runs resolve @intx/* to TypeScript source via the intx-src
+# exports condition; external consumers fall through to the compiled dist.
+BUN := bun --conditions=intx-src
+
+# Worker count for the workflow-deploy pass (default 4; CI caps at 2:
+# each file spawns sidecar + workflow-process children, and 4 workers
+# exhausted ubuntu-latest's memory). Raise on bigger machines, e.g.
+# `make test-workflow WF_PARALLEL=8` (~16% faster on 8 cores).
+WF_PARALLEL ?= 4
+
+# Worker count for the unit pass. CI overrides this to 2 (see the job env
+# for why). Locally, 4 is a conservative default that leaves a workstation
+# responsive; on a 32-core guest 16 measured ~45% faster, and 32 surfaced
+# tests that wait on a duration rather than a signal. Such a failure is a
+# test to fix under "Synchronizing on State, Not Time" in CONVENTIONS.md,
+# not a reason to hold the count down.
+# Raise via `make test-unit UNIT_PARALLEL=16`.
+UNIT_PARALLEL ?= 4
+
+# Worker count for the core integration pass (default 4; CI caps at 2).
+# Raise on bigger machines, e.g. `make test-core CORE_PARALLEL=8`.
+# Measured on a 32-core guest: serial 41-45s; 4 ~16s; 8 ~10s (best);
+# 16-32 plateau ~10.5-12s (DB-bound).
+CORE_PARALLEL ?= 4
+
+all: lint build build-admin-ui test
+
+build: FORCE
+	tsc -b --noEmit --force
+
+build-admin-ui: FORCE
+	cd apps/admin-ui && vite build
+
+lint: FORCE
+	prettier -c .
+	NODE_OPTIONS=--max-old-space-size=8192 eslint --cache .
+	$(BUN) bin/gen-api-docs.ts --check
+	$(BUN) bin/check-deps.ts
+	$(BUN) bin/check-launchers.ts
+	$(BUN) bin/check-test-enumeration.ts
+	$(BUN) bin/check-ci-test-jobs.ts
+	$(BUN) bin/exports-shape.ts
+	$(BUN) bin/publish-metadata.ts
+
+test: test-unit test-workflow test-core
+
+# The unit pass: parallel-safe tests at the default 5s timeout. Whole
+# directories are enumerated (bun discovers every *.test.ts beneath). Files
+# run in parallel (UNIT_PARALLEL workers); --no-isolate keeps one global and
+# module registry per worker across that worker's files, matching the
+# single-process sharing of a serial run while amortizing the per-file
+# @intx/* import cost (with --parallel's default per-file isolation every
+# file re-imports the whole module graph, which is slower than serial).
+test-unit: FORCE
+	$(BUN) test --parallel=$(UNIT_PARALLEL) --no-isolate packages/ apps/ bin/ tests/agent/ tests/agent-audit-log/ tests/agent-blob-spill/ tests/agent-common/ tests/agent-multi-provider/ tests/agent-quickstart/ tests/agent-resume/ tests/agent-rewind/ tests/agent-rich-tool/ tests/agent-structured-payload/ tests/coding-agent/ tests/hub-agent/lib/ tests/inference-testing/ tests/tool-packaging/ tests/workflow/ tests/workflow-quickstart/
+
+# The workflow-deploy integration pass: spawns real hub/sidecar processes
+# and drives real agents, so it needs the extended timeout. Split from the
+# core pass so CI can run the two heavy passes as separate parallel jobs.
+#
+# Files run in parallel (WF_PARALLEL workers): each file is fully isolated
+# (hub/mocks bind port 0, data dirs are mkdtemp, and every file migrates its
+# own unique Postgres schema), so the pass is wall-clock bound by process
+# boot and reconnect waits rather than CPU. The default of 4 stays within
+# 16GB-RAM guests (worker + sidecar subprocess + workflow-process child per
+# file); see WF_PARALLEL above for how to raise it locally. This pass leans
+# on polling deadlines carried by the shared fixture helpers, which
+# "Synchronizing on State, Not Time" in CONVENTIONS.md rules against and
+# which are a backlog to make signal-driven; a failure at a higher worker
+# count is one of those tests, not a ceiling. The pinned 3s reconnect is a
+# different case and stays -- it drives a production duration through an env
+# seam the rest of the suite shortens.
+#
+# --no-isolate keeps one global and module registry per worker across that
+# worker's files, so the large @intx/* module graph is imported once per
+# worker instead of re-imported into a fresh isolate per file. Measured on a
+# 32-core guest at 4-way parallel: peak RSS drops from ~7.4-7.8GB to
+# ~6.3-6.4GB and the pass runs ~12% faster. Files remain runtime-isolated
+# (port 0, mkdtemp dirs, unique schemas) and none rely on fresh module state,
+# so sharing the registry across files is safe.
+test-workflow: FORCE
+	$(BUN) test --timeout 120000 --parallel=$(WF_PARALLEL) --no-isolate tests/workflow-deploy/multistep-signal.test.ts tests/workflow-deploy/hub-link-reconnect.test.ts tests/workflow-deploy/reconnect-reemits-parked-correlation.test.ts tests/workflow-deploy/interrupted-pack-reconnect-recovery.test.ts tests/workflow-deploy/deploy-window-reconnect-recovery.test.ts tests/workflow-deploy/midrun-signal-survives-reconnect.test.ts tests/workflow-deploy/multistep-perstep-reroute-reconnect.test.ts tests/workflow-deploy/crash-restart-reconnect-resumes.test.ts tests/workflow-deploy/crash-respawn-fifo.test.ts tests/workflow-deploy/crash-loop-latch.test.ts tests/workflow-deploy/on-trigger-signal-delivery.test.ts tests/workflow-deploy/on-trigger-between-events-restart.test.ts tests/workflow-deploy/on-trigger-body-sleep-restart-resumes.test.ts tests/workflow-deploy/sleep-restart-keeps-authority.test.ts tests/workflow-deploy/sleep-restart-hub-access.test.ts tests/workflow-deploy/on-trigger-agent-body.test.ts tests/workflow-deploy/on-trigger-action-body.test.ts tests/workflow-deploy/on-trigger-loop-body.test.ts tests/workflow-deploy/single-step-real-agent.test.ts tests/workflow-deploy/map-fan-out-real-agent.test.ts tests/workflow-deploy/multistep-signed-send.test.ts tests/workflow-deploy/single-step-message-input.test.ts tests/workflow-deploy/single-step-posix-tool.test.ts tests/workflow-deploy/single-step-credential-tool.test.ts tests/workflow-deploy/credential-bound-route-deploy.test.ts tests/workflow-deploy/action-step-credential.test.ts tests/workflow-deploy/action-hub-access.test.ts tests/workflow-deploy/tool-hub-access.test.ts tests/workflow-deploy/invoker-hub-access.test.ts tests/workflow-deploy/body-hub-access.test.ts tests/workflow-deploy/tarball-route-deploy.test.ts tests/workflow-deploy/folded-tools-failover-real-agent.test.ts tests/workflow-deploy/single-step-grants-bridge.test.ts tests/workflow-deploy/single-step-pinned-ask-tool.test.ts tests/workflow-deploy/single-step-per-run-grants.test.ts tests/workflow-deploy/approval-tracer-roundtrip.test.ts tests/workflow-deploy/scope-always-roundtrip.test.ts tests/workflow-deploy/mail-trigger-derived-grants-roundtrip.test.ts tests/workflow-deploy/mail-trigger-run-completes-real-route.test.ts tests/workflow-deploy/inbound-mail-enforcement-real-route.test.ts tests/workflow-deploy/run-mail-send-real-route.test.ts tests/workflow-deploy/mail-federation-derived-grants-roundtrip.test.ts tests/workflow-deploy/mail-federation-run-completes.test.ts tests/workflow-deploy/single-step-event-threading.test.ts tests/workflow-deploy/single-step-conversation-durability.test.ts tests/workflow-deploy/per-level-pipeline-real-agents.test.ts tests/workflow-deploy/dispatch-orchestrator-real-agents.test.ts tests/workflow-deploy/single-step-full-lifecycle.test.ts tests/workflow-deploy/single-step-mail-loop.test.ts tests/workflow-deploy/single-step-mail-in-reply-to.test.ts tests/workflow-deploy/single-step-mail-wait-wake.test.ts tests/workflow-deploy/single-step-mail-two-turn-thread.test.ts tests/workflow-deploy/single-step-mail-interactive-turns.test.ts tests/workflow-deploy/single-step-mail-flag-expunge.test.ts tests/workflow-deploy/cross-process-custom-adapter.test.ts tests/workflow-deploy/conversation-state-wal.test.ts tests/workflow-deploy/conversation-state-connector-seed.test.ts tests/workflow-deploy/drain-roundtrip.test.ts tests/workflow-deploy/fixtures/child-workflow.test.ts tests/workflow-deploy/child-workflow-roundtrip.test.ts tests/workflow-deploy/child-workflow-tool-invoke-roundtrip.test.ts tests/workflow-deploy/child-workflow-inherited-grants-roundtrip.test.ts tests/workflow-deploy/on-trigger-childworkflow-roundtrip.test.ts tests/workflow-deploy/loop-roundtrip.test.ts tests/workflow-deploy/loop-nested-roundtrip.test.ts tests/workflow-deploy/loop-action-roundtrip.test.ts tests/workflow-deploy/all-action-deploy.test.ts tests/workflow-deploy/onfailure-action-roundtrip.test.ts tests/workflow-deploy/loop-await-signal-restart-resumes.test.ts tests/workflow-deploy/loop-childworkflow-roundtrip.test.ts tests/workflow-deploy/loop-work-then-signal-restart-resumes.test.ts tests/workflow-deploy/loop-await-signal-drain-roundtrip.test.ts tests/workflow-deploy/loop-childworkflow-inflight-grandchild-drain.test.ts tests/workflow-deploy/childworkflow-restart-resumes.test.ts tests/workflow-deploy/body-action-restart-effect-once.test.ts tests/workflow-deploy/body-action-crash-mid-effect.test.ts tests/workflow-deploy/childworkflow-drain-wait-resumes.test.ts tests/workflow-deploy/childworkflow-unanswerable-gate.test.ts tests/workflow-deploy/on-trigger-drain-roundtrip.test.ts tests/workflow-deploy/unresolvable-director.test.ts tests/workflow-deploy/fifo-mail.test.ts tests/workflow-deploy/mail-edge-cases.test.ts tests/workflow-deploy/run-event-batching.test.ts tests/workflow-deploy/walking-skeleton.e2e.test.ts tests/workflow-deploy/asset-source.e2e.test.ts tests/workflow-deploy/source-workflow.e2e.test.ts tests/workflow-deploy/source-monorepo.e2e.test.ts tests/workflow-deploy/source-monorepo-many.e2e.test.ts tests/workflow-deploy/source-tamper-reject.e2e.test.ts tests/workflow-deploy/source-catalog.e2e.test.ts tests/workflow-deploy/source-mixed-closure.e2e.test.ts tests/workflow-deploy/source-closure-director.e2e.test.ts tests/workflow-deploy/source-credential.e2e.test.ts tests/workflow-deploy/source-inline-tool.e2e.test.ts tests/workflow-deploy/source-posix-lsp.e2e.test.ts tests/workflow-deploy/loop-tool-invoke-roundtrip.test.ts tests/workflow-deploy/child-workflow-loop-tool-invoke-roundtrip.test.ts tests/workflow-deploy/on-trigger-tool-invoke-roundtrip.test.ts tests/workflow-deploy/on-trigger-credential-tool.test.ts tests/workflow-deploy/loop-map-tool-invoke-roundtrip.test.ts tests/workflow-deploy/loop-nested-tool-invoke-roundtrip.test.ts
+
+# The core integration pass: inference, hub-api, and db suites that need
+# real Postgres and the extended timeout. Files run in parallel
+# (CORE_PARALLEL workers); without --parallel, bun runs test files
+# serially and this pass measured 41-45s on a 32-core guest vs ~16s at
+# the default 4 workers. --no-isolate keeps one global and module
+# registry per worker across its files, amortizing the @intx/* import
+# cost exactly as in the other lanes. The files are isolated from one
+# another (servers bind port 0, data dirs are mkdtemp under
+# os.tmpdir(), and DB-backed files migrate their own unique Postgres
+# schema per file), so they are safe to run concurrently.
+test-core: FORCE
+	$(BUN) test --timeout 120000 --parallel=$(CORE_PARALLEL) --no-isolate tests/inference/ tests/hub-api/ tests/db/
+
+test-load: FORCE
+	$(BUN) test --timeout 300000 tests/workflow-deploy/fifo-mail-load.test.ts
+
+# Browser-driven admin UI end-to-end suite (Playwright). Excluded from
+# all/test; needs a running Postgres and a one-time
+# `bunx playwright install chromium`. Builds the admin UI bundle first
+# because the harness globalSetup requires apps/admin-ui/dist.
+test-e2e: build-admin-ui
+	$(MAKE) test-e2e-run
+
+# Run the suite against an already-built bundle (CI builds it via
+# `make all` and must not build it twice).
+test-e2e-run: FORCE
+	cd tests/admin-ui-e2e && bunx playwright test
+
+# Real-browser smoke test for the LightningFS storage backend. Runs its own
+# static harness and does not require Postgres, the hub, or an admin build.
+test-storage-browser: FORCE
+	cd tests/admin-ui-e2e && bunx playwright test --config storage-isogit.playwright.config.ts
+
+verify-tool-load: FORCE
+	bun bin/verify-tool-load.ts
+
+format: FORCE
+	prettier -w .
+
+docs: FORCE
+	$(BUN) bin/gen-api-docs.ts
+
+builtins: FORCE
+	$(BUN) run bin/build-builtins.ts
+
+publish-builtins: builtins
+	$(BUN) bin/publish-tool-packages.ts --registry workspace-builtins --from dist/builtins
+
+clean:
+	rm -f .env-checked .eslintcache
+	find . -type f -name tsconfig.tsbuildinfo -a ! -path '*/node_modules/*' | xargs rm -f
+	find . -type d -name dist -a ! -path '*/node_modules/*' | xargs rm -rf
+
+.env-checked: bin/check-env
+	./bin/check-env
+	touch .env-checked
+
+include .env-checked
+
+.PHONY: all build build-admin-ui lint test test-unit test-workflow test-core test-load test-e2e test-e2e-run test-storage-browser verify-tool-load format docs clean builtins publish-builtins
+FORCE:

@@ -1,0 +1,469 @@
+// Production workflow-host signal channel (Seam 3, log-tail wait).
+//
+// The signal channel is constructed per run by the host's runtime
+// wiring. Its `deliver` commits a `SignalReceived` blob to the run's
+// event log; commit-success is the dedup gate (the state machine's
+// `observedSignalIds` rejects a duplicate `signalId` on the next
+// transition). `awaitNext` consults the state-machine `RunState`
+// before subscribing. A name awaiter reads the head of
+// `unconsumedSignals`. A correlated awaiter reads
+// `unconsumedByCorrelation` for an item whose signalName matches.
+// Otherwise it waits on a per-slot `subscribeKind` tail.
+//
+// Slots do not share a tail. The name slot key is `name\0${name}`
+// and a correlated slot key is `corr\0${correlationId}\0${name}`.
+// Each slot has its own awaiter queue and its own `subscribeKind`
+// loop, started on the first `awaitNext` for that slot and torn
+// down when that queue empties or `stop()` is called. A delivery
+// resolves only the slot whose correlationId equals the event's;
+// both absent selects the name slot.
+//
+// Commit-ordering invariant: `deliver` flushes the run's pending
+// buffer through `runtimeStore`, then commits the `SignalReceived`
+// blob, then returns. The flush runs under the run's commit barrier
+// so a sibling event already validated into the buffer keeps its
+// sequence and the signal takes the next durable sequence. A log that
+// already holds a terminal event is left unchanged, so a delivery that
+// loses the race does not append after it. Resolution
+// of an awaiter happens from the `subscribeKind` loop only after the
+// substrate has surfaced the commit. The awaiter is never resolved
+// from inside `deliver`'s call site, so resume-after-crash sees a
+// coherent log: an awaiter that resolved must have a corresponding
+// committed `SignalReceived`.
+
+import { type } from "arktype";
+
+import type {
+  Principal,
+  RepoId,
+  RepoStore,
+  SubscribeKindEntry,
+} from "@intx/hub-sessions/substrate";
+import { subscribeKind } from "@intx/hub-sessions/substrate";
+import type { RunState, SignalChannel } from "@intx/workflow";
+import {
+  withRunCommitBarrier,
+  type RepoStore as RuntimeRepoStore,
+} from "@intx/workflow/runtime";
+
+/**
+ * Substrate-shape envelope for the `SignalReceived` event blob
+ * committed to `runs/<runId>/events/<seq>.json`. The validator covers
+ * the single event type the signal channel both reads (live tail) and
+ * writes (deliver). Fields ride at the top level so the shape is
+ * symmetric with the runtime body's append shape -- a downstream
+ * reader that hydrates the envelope as a state-machine `WorkflowEvent`
+ * sees `signalName`/`signalId`/`payload` regardless of whether the
+ * commit came from the signal channel's `deliver` or the runtime
+ * body's `commit` of a SignalReceived after `awaitNext`. Non-signal
+ * blobs at the same path prefix do not match the kinds filter inside
+ * `subscribeKind`.
+ */
+export const SignalReceivedEnvelope = type({
+  type: "'SignalReceived'",
+  signalName: "string",
+  signalId: "string",
+  payload: "unknown",
+  "correlationId?": "string > 0",
+});
+export type SignalReceivedEnvelope = typeof SignalReceivedEnvelope.infer;
+
+export type SignalChannelOpts = {
+  /**
+   * Substrate handle the channel reads from and writes to. The caller
+   * wires this against the workflow-run kind handler's registered
+   * substrate -- the channel's writes land under
+   * `runs/<runId>/events/<seq>.json` and the handler's `validatePush`
+   * must accept that path layout.
+   */
+  repoStore: RepoStore;
+  /**
+   * Runtime store that owns this run's commit chain. `deliver` flushes
+   * its pending buffer before the substrate merge numbers the signal.
+   * One store serves every run in the deployment; the barrier selects
+   * the buffer by `runId`.
+   */
+  runtimeStore: RuntimeRepoStore;
+  /**
+   * Principal the channel presents to the substrate. The substrate
+   * gates every operation behind `authorize`; the principal must be
+   * granted `writeTree` (for `deliver`) and `subscribe` (for
+   * `awaitNext`'s log tail) against the workflow-run repo.
+   */
+  principal: Principal;
+  /** Workflow-run repo this channel operates against. */
+  repoId: RepoId;
+  /**
+   * Events ref the channel tails and writes to. The workflow-run
+   * repo layout pins all `runs/<runId>/events/` blobs under a single
+   * moving ref. Callers typically supply `"refs/heads/main"`.
+   */
+  ref: string;
+  /**
+   * The run this channel belongs to. The channel filters
+   * `subscribeKind` entries on this runId so a host-wide events ref
+   * carrying multiple runs does not cross-resolve awaiters.
+   */
+  runId: string;
+  /**
+   * Reader for the in-memory `RunState`. The runtime body owns the
+   * state; the channel reads `unconsumedSignals` (pre-await
+   * delivery / resume rehydration) and `observedSignalIds` (dedup)
+   * on every `awaitNext`. A reader rather than a snapshot keeps the
+   * channel coherent with the runtime body's latest reduction.
+   */
+  readState: () => RunState;
+  /** Generator for synthesized `signalId`s when `deliver`'s caller omits one. */
+  newId: () => string;
+  /** Clock used to stamp the committed `SignalReceived` blob's `at`. */
+  clock: () => Date;
+};
+
+type Awaiter = {
+  resolve: (value: {
+    payload: unknown;
+    signalId: string;
+    correlationId?: string;
+  }) => void;
+  reject: (cause: unknown) => void;
+  signal?: AbortSignal;
+  onAbort?: () => void;
+};
+
+function slotOf(name: string, correlationId: string | undefined): string {
+  return correlationId === undefined
+    ? `name\0${name}`
+    : `corr\0${correlationId}\0${name}`;
+}
+
+type NameSubscription = {
+  abort: AbortController;
+  done: Promise<void>;
+};
+
+export type SignalChannelHandle = SignalChannel & {
+  /**
+   * Tear down every slot subscription and reject every pending
+   * awaiter. Idempotent. After `stop()` the channel holds no
+   * substrate watcher handles.
+   */
+  stop(): Promise<void>;
+};
+
+export function createWorkflowHostSignalChannel(
+  opts: SignalChannelOpts,
+): SignalChannelHandle {
+  const awaiters = new Map<string, Awaiter[]>();
+  const subscriptions = new Map<string, NameSubscription>();
+  let stopped = false;
+
+  function peekState(
+    name: string,
+    correlationId: string | undefined,
+  ): { payload: unknown; signalId: string; correlationId?: string } | null {
+    const state = opts.readState();
+    if (correlationId !== undefined) {
+      const queued = state.unconsumedByCorrelation.get(correlationId);
+      const head = queued?.find((item) => item.signalName === name);
+      if (head === undefined) return null;
+      return {
+        payload: head.payload,
+        signalId: head.id,
+        correlationId,
+      };
+    }
+    const queue = state.unconsumedSignals.get(name);
+    if (queue === undefined || queue.length === 0) return null;
+    const head = queue[0];
+    if (head === undefined) return null;
+    // The state-machine name queue is drained by the runtime body's
+    // next name-addressed `SignalAwaited`, not by the channel. The
+    // channel reads the head; the caller commits the SignalAwaited
+    // that consumes it.
+    return { payload: head.payload, signalId: head.id };
+  }
+
+  function matchesAwaiter(
+    entry: SubscribeKindEntry<SignalReceivedEnvelope>,
+    name: string,
+  ): boolean {
+    if (entry.runId !== opts.runId) return false;
+    if (entry.event.type !== "SignalReceived") return false;
+    return entry.event.signalName === name;
+  }
+
+  function shiftAwaiter(name: string): Awaiter | null {
+    const queue = awaiters.get(name);
+    if (queue === undefined || queue.length === 0) return null;
+    const head = queue.shift();
+    if (head === undefined) return null;
+    if (head.signal !== undefined && head.onAbort !== undefined) {
+      head.signal.removeEventListener("abort", head.onAbort);
+    }
+    if (queue.length === 0) awaiters.delete(name);
+    return head;
+  }
+
+  function awaiterCount(name: string): number {
+    const queue = awaiters.get(name);
+    if (queue === undefined) return 0;
+    return queue.length;
+  }
+
+  function startNameSubscription(
+    name: string,
+    correlationId: string | undefined,
+  ): void {
+    const slot = slotOf(name, correlationId);
+    if (subscriptions.has(slot)) return;
+    const abort = new AbortController();
+    // The teardown must run synchronously *before* the awaiter wakes
+    // when this loop drains, otherwise the awaiter's continuation
+    // (which often calls awaitNext again on the same name) sees the
+    // leaked subscription entry and short-circuits in
+    // startNameSubscription, stranding the new awaiter on a dead
+    // subscribeKind loop. Removing the entry from `subscriptions` and
+    // aborting *before* resolving the awaiter keeps the per-name
+    // invariant intact across multi-round resolution cycles.
+    const teardown = (): void => {
+      if (subscriptions.get(slot)?.abort === abort) {
+        subscriptions.delete(slot);
+      }
+      abort.abort();
+    };
+    const done = (async () => {
+      try {
+        const iter = subscribeKind(
+          opts.repoStore,
+          opts.principal,
+          opts.repoId,
+          opts.ref,
+          SignalReceivedEnvelope,
+          {
+            signal: abort.signal,
+            from: "head",
+            kinds: ["SignalReceived"],
+          },
+        );
+        for await (const entry of iter) {
+          if (stopped) break;
+          if (!matchesAwaiter(entry, name)) continue;
+          if (entry.event.correlationId !== correlationId) continue;
+          const observed = opts.readState().observedSignalIds;
+          if (observed.has(entry.event.signalId)) continue;
+          const next = shiftAwaiter(slot);
+          if (next === null) {
+            // No awaiter left -- the queue was drained between the
+            // event landing and this loop reaching it. The reduced
+            // state machine keeps the event; the next `awaitNext` for
+            // the same slot picks it up via the state-reader path.
+            break;
+          }
+          if (awaiterCount(slot) === 0) {
+            // Resolving the last awaiter on this subscription. Tear
+            // down before the resolve so any awaitNext call inside
+            // the awaiter's continuation installs a fresh
+            // subscription instead of joining a dead one.
+            teardown();
+            next.resolve({
+              payload: entry.event.payload,
+              signalId: entry.event.signalId,
+              ...(entry.event.correlationId !== undefined
+                ? { correlationId: entry.event.correlationId }
+                : {}),
+            });
+            return;
+          }
+          next.resolve({
+            payload: entry.event.payload,
+            signalId: entry.event.signalId,
+            ...(entry.event.correlationId !== undefined
+              ? { correlationId: entry.event.correlationId }
+              : {}),
+          });
+        }
+      } finally {
+        // Catches the queue-drained natural break, the `stopped`
+        // bail, and any error escaping the loop. The abort path
+        // through `stopSubscription` already deleted the Map entry;
+        // the get(...)?.abort guard makes this idempotent.
+        teardown();
+      }
+    })();
+    subscriptions.set(slot, { abort, done });
+  }
+
+  async function stopSubscription(name: string): Promise<void> {
+    const sub = subscriptions.get(name);
+    if (sub === undefined) return;
+    subscriptions.delete(name);
+    sub.abort.abort();
+    await sub.done.catch(() => {
+      /* swallow aborted-iterator surface */
+    });
+  }
+
+  return {
+    async deliver(name, payload, signalId, correlationId) {
+      if (stopped) {
+        throw new Error("signal channel: deliver after stop");
+      }
+      const id = signalId ?? opts.newId();
+      const at = opts.clock().toISOString();
+      const prefix = `runs/${opts.runId}/events/`;
+      await withRunCommitBarrier(
+        { repoStore: opts.runtimeStore },
+        opts.runId,
+        () =>
+          opts.repoStore.writeTreePreservingPrefix(
+            opts.principal,
+            opts.repoId,
+            opts.ref,
+            {
+              preservePrefix: prefix,
+              merge: async (existing) => {
+                let maxSeq = -1;
+                let duplicate = false;
+                let terminal = false;
+                for (const [filepath, contents] of existing) {
+                  const fname = filepath.slice(prefix.length);
+                  const match = /^(0|[1-9][0-9]*)\.json$/.exec(fname);
+                  if (match === null) continue;
+                  const seqStr = match[1];
+                  if (seqStr === undefined) continue;
+                  const seq = Number.parseInt(seqStr, 10);
+                  if (seq > maxSeq) maxSeq = seq;
+                  try {
+                    const parsed: unknown = JSON.parse(
+                      new TextDecoder().decode(contents),
+                    );
+                    if (isMatchingSignalId(parsed, id)) {
+                      duplicate = true;
+                    }
+                    if (isTerminalOnDiskEvent(parsed)) {
+                      terminal = true;
+                    }
+                  } catch {
+                    // A corrupt blob is rejected by validatePush at write
+                    // time. Treat as non-matching here.
+                  }
+                }
+                const out: Record<string, string> = {};
+                for (const [filepath, contents] of existing) {
+                  out[filepath] = new TextDecoder().decode(contents);
+                }
+                // A repeated signalId and a log that already reached a
+                // terminal event both leave the tree unchanged. Appending
+                // past RunFailed/RunCompleted/RunCancelled would make the
+                // next resume disagree with the terminal result already
+                // reported.
+                if (duplicate || terminal) return out;
+                const nextSeq = maxSeq + 1;
+                // The workflow-run kind handler's `EventEnvelope`
+                // validator requires `seq: number` on every event blob;
+                // the same `nextSeq` we use to mint the filename also
+                // carries into the body so a reader that hydrates the
+                // envelope (state-machine resume, audit reads) sees a
+                // self-describing event without consulting the filename.
+                out[`${prefix}${String(nextSeq)}.json`] = JSON.stringify({
+                  type: "SignalReceived",
+                  seq: nextSeq,
+                  signalName: name,
+                  signalId: id,
+                  payload,
+                  at,
+                  ...(correlationId !== undefined ? { correlationId } : {}),
+                });
+                return out;
+              },
+              message: `SignalReceived ${id} (${name}) for run ${opts.runId}`,
+            },
+          ),
+      );
+    },
+    async awaitNext(name, signal, correlationId) {
+      if (stopped) {
+        throw new Error("signal channel: awaitNext after stop");
+      }
+      if (signal !== undefined && signal.aborted) {
+        throw new Error("aborted");
+      }
+      // Drain the state-machine queue first. A signal that was
+      // committed before the awaiter subscribed lives in the name
+      // queue, or under its correlation, after log replay.
+      const queued = peekState(name, correlationId);
+      if (queued !== null) return queued;
+
+      const slot = slotOf(name, correlationId);
+      return new Promise<{
+        payload: unknown;
+        signalId: string;
+        correlationId?: string;
+      }>((resolve, reject) => {
+        const awaiter: Awaiter = {
+          resolve,
+          reject,
+          ...(signal !== undefined ? { signal } : {}),
+        };
+        if (signal !== undefined) {
+          const onAbort = (): void => {
+            const list = awaiters.get(slot);
+            if (list !== undefined) {
+              const idx = list.indexOf(awaiter);
+              if (idx >= 0) list.splice(idx, 1);
+              if (list.length === 0) {
+                awaiters.delete(slot);
+                void stopSubscription(slot);
+              }
+            }
+            reject(new Error("aborted"));
+          };
+          awaiter.onAbort = onAbort;
+          signal.addEventListener("abort", onAbort, { once: true });
+        }
+        let list = awaiters.get(slot);
+        if (list === undefined) {
+          list = [];
+          awaiters.set(slot, list);
+        }
+        list.push(awaiter);
+        startNameSubscription(name, correlationId);
+      });
+    },
+    async stop() {
+      if (stopped) return;
+      stopped = true;
+      for (const list of awaiters.values()) {
+        for (const awaiter of list) {
+          if (awaiter.signal !== undefined && awaiter.onAbort !== undefined) {
+            awaiter.signal.removeEventListener("abort", awaiter.onAbort);
+          }
+          awaiter.reject(new Error("signal channel stopped"));
+        }
+      }
+      awaiters.clear();
+      const names = [...subscriptions.keys()];
+      for (const name of names) {
+        await stopSubscription(name);
+      }
+    },
+  };
+}
+
+function isTerminalOnDiskEvent(parsed: unknown): boolean {
+  if (typeof parsed !== "object" || parsed === null) return false;
+  const type = (parsed as { type?: unknown }).type;
+  return (
+    type === "RunCompleted" || type === "RunFailed" || type === "RunCancelled"
+  );
+}
+
+function isMatchingSignalId(parsed: unknown, signalId: string): boolean {
+  if (typeof parsed !== "object" || parsed === null) return false;
+  const obj = parsed as {
+    type?: unknown;
+    signalId?: unknown;
+  };
+  if (obj.type !== "SignalReceived") return false;
+  return obj.signalId === signalId;
+}
