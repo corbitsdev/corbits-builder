@@ -637,6 +637,11 @@
         "@intx/workflow": "workspace:*",
         "arktype": "catalog:",
       },
+      "devDependencies": {
+        "@intx/inference-testing": "workspace:*",
+        "@intx/storage-isogit": "workspace:*",
+        "@intx/workflow-host": "workspace:*",
+      },
     },
   },
   "patchedDependencies": {
