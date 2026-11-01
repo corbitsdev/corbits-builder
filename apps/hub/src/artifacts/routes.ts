@@ -33,7 +33,7 @@ import {
   ProjectExport,
 } from "@corbits-builder/schemas/project";
 import { actorOf } from "../projects/authorization.ts";
-import { ProjectError } from "../projects/errors.ts";
+import { ProjectError, typeIssues } from "../projects/errors.ts";
 import { readJson } from "../lib/json.ts";
 import { mailRunAsCaller } from "../mail/caller-mail.ts";
 import type { createArtifactService } from "./service.ts";
@@ -691,7 +691,7 @@ export function mountArtifactRoutes(
       );
       if (sections instanceof type.errors)
         throw new ProjectError(400, "invalid_export_sections", {
-          issues: sections.summary,
+          issues: typeIssues(sections, "sections"),
         });
       const { filename, archive } = await service.exportArchive(
         actorOf(c),

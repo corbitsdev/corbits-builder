@@ -922,7 +922,7 @@ export function createArtifactService(
       const input = DesignTweaks(raw);
       if (input instanceof type.errors)
         throw new ProjectError(400, "invalid_design_tweaks", {
-          issues: input.summary,
+          issues: typeIssues(input),
         });
       await requireProject(actor, projectId, "manage");
       const tokens: Record<string, string> = input.tokens;
@@ -954,7 +954,7 @@ export function createArtifactService(
         const bundle = DesignBundle(parseJson(stored.content));
         if (bundle instanceof type.errors)
           throw new ProjectError(409, "invalid_design", {
-            issues: bundle.summary,
+            issues: typeIssues(bundle),
           });
         const files = {
           ...bundle.files,
@@ -1090,7 +1090,7 @@ export function createArtifactService(
       const material = ProjectExportMaterial(input);
       if (material instanceof type.errors)
         throw new ProjectError(400, "invalid_material", {
-          issues: material.summary,
+          issues: typeIssues(material),
         });
       const allowed = await requireProject(actor, projectId, "manage");
       if (!(await allowed(artifactResource(MATERIAL_KIND), "write")))
@@ -1161,7 +1161,7 @@ export function createArtifactService(
       const input = ArtifactRead(raw);
       if (input instanceof type.errors)
         throw new ProjectError(400, "invalid_artifact_read", {
-          issues: input.summary,
+          issues: typeIssues(input),
         });
       await requireProject(actor, projectId, "read");
       const pinned = input.artifactId?.match(PINNED_REF);
@@ -1711,7 +1711,7 @@ export function createArtifactService(
       const input = DesignConceptRecord(raw);
       if (input instanceof type.errors)
         throw new ProjectError(400, "invalid_design_concept", {
-          issues: input.summary,
+          issues: typeIssues(input),
         });
       await requireProject(actor, projectId, "manage");
       const [run] = await rawDB
@@ -1791,7 +1791,7 @@ export function createArtifactService(
       const input = ArtifactApprovalRecord(raw);
       if (input instanceof type.errors)
         throw new ProjectError(400, "invalid_artifact_approval", {
-          issues: input.summary,
+          issues: typeIssues(input),
         });
       await requireProject(actor, projectId, "manage");
       const covers = APPROVAL_COVERS[input.tool]!;
@@ -1898,7 +1898,7 @@ export function createArtifactService(
       const input = DesignChoice(raw);
       if (input instanceof type.errors)
         throw new ProjectError(400, "invalid_design_choice", {
-          issues: input.summary,
+          issues: typeIssues(input),
         });
       await requireProject(actor, projectId, "manage");
       const [chooser] = await rawDB

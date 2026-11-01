@@ -1,10 +1,14 @@
 import type { ArkError, ArkErrors } from "arktype";
 import { ProjectId } from "@corbits-builder/schemas/project";
+
+// Agents see a rejection's reasons only in this list form.
+type Issues = readonly { path: string; message: string }[];
+
 export class ProjectError extends Error {
   constructor(
     readonly status: 400 | 403 | 404 | 409 | 413 | 503,
     readonly code: string,
-    readonly details: Record<string, unknown> = {},
+    readonly details: { issues?: Issues; [detail: string]: unknown } = {},
     options?: ErrorOptions,
   ) {
     super(code, options);
@@ -26,8 +30,7 @@ const ruleText: Partial<Record<ArkError["code"], string>> = {
   predicate: "is not allowed here",
 };
 
-// Agents see a rejection's reasons only in this list form.
-export const typeIssues = (errors: ArkErrors, root?: string) =>
+export const typeIssues = (errors: ArkErrors, root?: string): Issues =>
   [...errors].slice(0, 10).map((issue) => ({
     path: issuePath(issue, root),
     message: (ruleText[issue.code] ?? "must be " + issue.expected).slice(

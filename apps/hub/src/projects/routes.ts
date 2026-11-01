@@ -30,11 +30,11 @@ import {
 import { readProjectImport } from "@corbits-builder/schemas/project-import";
 import {
   createProjectService,
-  ProjectError,
   type CreateTenant,
   type ProjectCaller,
 } from "./service.ts";
 import { actorOf, resolveProjectTenant } from "./authorization.ts";
+import { ProjectError, typeIssues } from "./errors.ts";
 import {
   createProjectNextStep,
   mountProjectNextStepRoutes,
@@ -271,7 +271,7 @@ export function createProjectRoutes(
         const read = readProjectImport(input);
         if (read instanceof type.errors)
           throw new ProjectError(400, "invalid_project_import", {
-            issues: read.summary,
+            issues: typeIssues(read),
           });
         const { file, omitted } = read;
         const materials = file.materials ?? [];
