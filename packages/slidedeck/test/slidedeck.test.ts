@@ -305,8 +305,9 @@ test("each effect on a shape is its own build, and wipes travel away from their 
   const timed = parts
     .map(({ data }) => new TextDecoder().decode(data))
     .find((xml) => xml.includes("<p:timing>"));
+  if (timed === undefined) throw new Error("no slide has a timing tree");
   const effects = [
-    ...(timed ?? "").matchAll(
+    ...timed.matchAll(
       /grpId="(\d+)" nodeType="\w+"><p:stCondLst>.*?<p:spTgt spid="(\d+)"\/>/g,
     ),
   ].map(([, grpId, spid]) => `${spid}:${grpId}`);
@@ -314,11 +315,11 @@ test("each effect on a shape is its own build, and wipes travel away from their 
     new Set(effects.map((each) => each.split(":")[0])).size,
   );
   expect(new Set(effects).size).toBe(effects.length);
-  for (const [, spid, grpId] of (timed ?? "").matchAll(
+  for (const [, spid, grpId] of timed.matchAll(
     /<p:bldP spid="(\d+)" grpId="(\d+)"/g,
   ))
     expect(effects).toContain(`${spid}:${grpId}`);
-  const wipes = [...(timed ?? "").matchAll(/filter="(wipe\(\w+\))"/g)].map(
+  const wipes = [...timed.matchAll(/filter="(wipe\(\w+\))"/g)].map(
     ([, filter]) => filter,
   );
   expect(wipes).toEqual(["wipe(right)", "wipe(left)"]);

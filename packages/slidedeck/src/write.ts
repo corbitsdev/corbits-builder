@@ -441,10 +441,11 @@ function freeSlide(slide: Slide & { layout: "free" }, part: SlidePart) {
     part.shapes.push(elementXml(element, part, targets));
   return {
     background: slide.background ? backgroundXml(slide.background) : "",
-    timing: timingXml(slide.animations ?? [], targets),
+    timing: slide.animations ? timingXml(slide.animations, targets) : "",
   };
 }
 
+/** A placed slide takes its background from the master and has no animations. */
 function placedSlide(
   deck: Deck,
   slide: Exclude<Slide, { layout: "free" }>,
@@ -471,6 +472,7 @@ function placedSlide(
     else if (text !== undefined)
       part.shapes.push(placeholderShape(part.nextId(), placeholder, text));
   }
+  return { background: "", timing: "" };
 }
 
 // Keynote drops an unused Picture with Caption layout and warns about removed media on open.
@@ -494,8 +496,10 @@ function slideXml(
     "slideLayout",
     `../slideLayouts/slideLayout${layouts.indexOf(layout) + 1}.xml`,
   );
-  const free = slide.layout === "free" ? freeSlide(slide, part) : undefined;
-  if (slide.layout !== "free") placedSlide(deck, slide, index, part);
+  const { background, timing } =
+    slide.layout === "free"
+      ? freeSlide(slide, part)
+      : placedSlide(deck, slide, index, part);
   if (slide.notes !== undefined)
     part.rels.add("notesSlide", `../notesSlides/notesSlide${index + 1}.xml`);
   const transition = slide.transition ? transitionXml(slide.transition) : "";
@@ -503,7 +507,7 @@ function slideXml(
   return {
     notes: slide.notes,
     rels: part.rels,
-    xml: `${XML_DECLARATION}<p:sld ${NAMESPACES}${masterShapes}><p:cSld>${free?.background ?? ""}<p:spTree>${GROUP_HEADER}${part.shapes.join("")}</p:spTree></p:cSld><p:clrMapOvr><a:masterClrMapping/></p:clrMapOvr>${transition}${free?.timing ?? ""}</p:sld>`,
+    xml: `${XML_DECLARATION}<p:sld ${NAMESPACES}${masterShapes}><p:cSld>${background}<p:spTree>${GROUP_HEADER}${part.shapes.join("")}</p:spTree></p:cSld><p:clrMapOvr><a:masterClrMapping/></p:clrMapOvr>${transition}${timing}</p:sld>`,
   };
 }
 

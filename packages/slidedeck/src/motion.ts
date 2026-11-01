@@ -17,8 +17,11 @@ const TOWARD: Record<Side, string> = {
   bottom: "up",
 };
 
-const speed = (duration: number) =>
-  duration <= 500 ? "fast" : duration <= 750 ? "med" : "slow";
+function speed(duration: number) {
+  if (duration <= 500) return "fast";
+  if (duration <= 750) return "med";
+  return "slow";
+}
 
 /** An exact duration needs PowerPoint 2010 and Morph needs 2019; older viewers take the fallback, with Morph as a fade. */
 export function transitionXml(transition: Transition) {

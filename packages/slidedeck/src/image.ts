@@ -55,7 +55,7 @@ export function isSvg(bytes: Uint8Array) {
   for (let at = 0; at < bytes.length; at += CHUNK) {
     const end = at + CHUNK >= bytes.length;
     text += decoder.decode(bytes.subarray(at, at + CHUNK), { stream: !end });
-    const rest = text.slice(PROLOG.exec(text)?.[0].length ?? 0);
+    const rest = text.replace(PROLOG, "");
     // An unfinished comment, declaration or tag name needs the next chunk to decide.
     if (end || (rest.length > 4 && !/^<[?!]/.test(rest)))
       return /^<svg[\s/>]/.test(rest);

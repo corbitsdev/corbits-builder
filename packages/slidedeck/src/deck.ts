@@ -318,8 +318,9 @@ const PATH_ARGUMENTS: Record<string, number> = { M: 2, L: 2, C: 6, Z: 0, E: 0 };
 const MotionPath = type("string").narrow((path, ctx) => {
   const tokens = path.trim().split(/[\s,]+/);
   if (tokens[0] !== "M") return ctx.mustBe("a path starting with M");
-  for (let at = 0; at < tokens.length;) {
-    const count = PATH_ARGUMENTS[tokens[at] ?? ""];
+  let at = 0;
+  for (let command = tokens[at]; command !== undefined; command = tokens[at]) {
+    const count = PATH_ARGUMENTS[command];
     if (count === undefined)
       return ctx.mustBe("a path of M, L, C, Z and E commands with numbers");
     const numbers = tokens.slice(at + 1, at + 1 + count);
@@ -327,7 +328,7 @@ const MotionPath = type("string").narrow((path, ctx) => {
       numbers.length < count ||
       numbers.some((n) => !Number.isFinite(Number(n)))
     )
-      return ctx.mustBe(`a path whose ${tokens[at]} has ${count} numbers`);
+      return ctx.mustBe(`a path whose ${command} has ${count} numbers`);
     at += 1 + count;
   }
   return true;
@@ -499,6 +500,8 @@ const NESTING = [
   },
 ] as const;
 
+type Depths = Record<(typeof NESTING)[number]["key"], number>;
+
 /** Lists and groups nested past their limits, found without recursion before the schema's own recursion can overflow. */
 function deepNesting(input: unknown): DeckIssue[] {
   const issues: DeckIssue[] = [];
@@ -506,7 +509,7 @@ function deepNesting(input: unknown): DeckIssue[] {
     {
       value: isObject(input) ? input.slides : undefined,
       path: ["slides"] as Path,
-      depths: NESTING.map(() => 0),
+      depths: { items: 0, children: 0 } satisfies Depths,
     },
   ];
   for (let next = pending.pop(); next; next = pending.pop()) {
@@ -515,22 +518,18 @@ function deepNesting(input: unknown): DeckIssue[] {
     const entries = Object.entries(value).reverse();
     for (const [key, child] of entries) {
       const childPath = [...path, Array.isArray(value) ? Number(key) : key];
-      const level = NESTING.findIndex(
-        (nesting, index) =>
-          key === nesting.key &&
+      const nesting = NESTING.find(
+        (each) =>
+          key === each.key &&
           Array.isArray(child) &&
-          nesting.opens(value, depths[index] ?? 0),
+          each.opens(value, depths[each.key]),
       );
-      const nesting = NESTING[level];
-      const depth = depths[level] ?? 0;
       if (!nesting) pending.push({ value: child, path: childPath, depths });
-      else if (depth < nesting.limit)
+      else if (depths[nesting.key] < nesting.limit)
         pending.push({
           value: child,
           path: childPath,
-          depths: depths.map((each, index) =>
-            index === level ? each + 1 : each,
-          ),
+          depths: { ...depths, [nesting.key]: depths[nesting.key] + 1 },
         });
       else
         issues.push(
@@ -654,8 +653,9 @@ function freeSlideIssues(slide: Slide, index: number): DeckIssue[] {
         ),
       );
   }
+  if (!slide.animations) return issues;
   let endless = false;
-  for (const [position, animation] of (slide.animations ?? []).entries()) {
+  for (const [position, animation] of slide.animations.entries()) {
     const path = ["slides", index, "animations", position];
     if (!ids.has(animation.target))
       issues.push(
