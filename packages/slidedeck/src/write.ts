@@ -2,6 +2,7 @@ import { zip, type ZipEntry } from "@corbits/zip";
 
 import {
   assetKey,
+  slideRegions,
   validateDeck,
   type AssetRef,
   type Block,
@@ -9,6 +10,10 @@ import {
   type DeckInput,
   type DeckIssue,
   type Element,
+  type Link,
+  type ListItem,
+  type RichText,
+  type Run,
   type Slide,
   type TextBlock,
 } from "./deck.ts";
@@ -17,11 +22,13 @@ import {
   FREE_AREA,
   GROUP_HEADER,
   LAYOUT_ORDER,
+  LIST_LEVELS,
   LOGO_BOX,
   SLIDE_SIZE,
   layoutPlaceholders,
   layoutXml,
   masterXml,
+  numbering,
   placeholderTag,
   slideNumberField,
   xfrm,
@@ -29,7 +36,7 @@ import {
   type Placeholder,
   type Role,
 } from "./layouts.ts";
-import { COLOR_MAP, themeXml } from "./theme.ts";
+import { COLOR_MAP, colorFill, themeXml } from "./theme.ts";
 import {
   NAMESPACES,
   Relationships,
@@ -50,7 +57,6 @@ export class DeckError extends Error {
 
 type Media = { name: string; data: Uint8Array<ArrayBuffer>; info: ImageInfo };
 type AssetUse = { ref: AssetRef; path: string; slide?: number };
-type Region = { role: Role; path: string; blocks: readonly Block[] };
 
 const CONTENT_TYPE = "application/vnd.openxmlformats-officedocument";
 const PRESENTATION = `${CONTENT_TYPE}.presentationml`;
@@ -58,35 +64,89 @@ const STACK_GAP = 137160;
 
 const lines = (text: string) => text.split(/\r?\n/);
 
-const run = (text: string) =>
-  `<a:r><a:rPr lang="en-US" dirty="0"/><a:t>${escapeXml(text)}</a:t></a:r>`;
+// PowerPoint numbers adjacent numbered paragraphs at one level as one sequence; an unbulleted paragraph between two lists starts the second at 1.
+const LIST_BREAK =
+  '<a:p><a:pPr lvl="1"><a:spcBef><a:spcPts val="0"/></a:spcBef><a:buNone/></a:pPr><a:endParaRPr lang="en-US" sz="100" dirty="0"/></a:p>';
 
-function paragraph(text: string) {
-  if (text === "") return '<a:p><a:endParaRPr lang="en-US" dirty="0"/></a:p>';
-  return `<a:p>${lines(text).map(run).join('<a:br><a:rPr lang="en-US"/></a:br>')}</a:p>`;
+const flag = (
+  name: string,
+  value: boolean | undefined,
+  on: string,
+  off: string,
+) => (value === undefined ? "" : ` ${name}="${value ? on : off}"`);
+
+function runXml({ text, link, color, size, ...style }: Run, part: SlidePart) {
+  const attributes = [
+    size === undefined ? "" : ` sz="${Math.round(size * 100)}"`,
+    flag("b", style.bold, "1", "0"),
+    flag("i", style.italic, "1", "0"),
+    flag("u", style.underline, "sng", "none"),
+    flag("strike", style.strike, "sngStrike", "noStrike"),
+  ].join("");
+  const children = `${color ? colorFill(color) : ""}${link === undefined ? "" : part.hyperlink(link)}`;
+  const properties = children
+    ? `<a:rPr lang="en-US"${attributes} dirty="0">${children}</a:rPr>`
+    : `<a:rPr lang="en-US"${attributes} dirty="0"/>`;
+  return lines(text)
+    .map((line) => `<a:r>${properties}<a:t>${escapeXml(line)}</a:t></a:r>`)
+    .join(`<a:br>${properties}</a:br>`);
 }
 
-const isText = (block: Block): block is TextBlock => block.type === "paragraph";
+/** A plain string is a single run. */
+function paragraph(text: RichText, part: SlidePart, properties = "") {
+  const runs = (typeof text === "string" ? [text] : text).map((run) =>
+    typeof run === "string" ? { text: run } : run,
+  );
+  if (runs.every((run) => run.text === ""))
+    return `<a:p>${properties}<a:endParaRPr lang="en-US" dirty="0"/></a:p>`;
+  return `<a:p>${properties}${runs.map((run) => runXml(run, part)).join("")}</a:p>`;
+}
 
-function regions(slide: Slide): Region[] {
-  switch (slide.layout) {
-    case "content":
-    case "blank":
-      return [{ role: "body", path: "body", blocks: slide.body }];
-    case "two-column":
-      return [
-        { role: "left", path: "left", blocks: slide.left },
-        { role: "right", path: "right", blocks: slide.right },
-      ];
-    case "comparison":
-      return [
-        { role: "left", path: "left.body", blocks: slide.left.body },
-        { role: "right", path: "right.body", blocks: slide.right.body },
-      ];
-    default:
-      return [];
+const notesParagraph = (text: string) =>
+  text === ""
+    ? '<a:p><a:endParaRPr lang="en-US" dirty="0"/></a:p>'
+    : `<a:p><a:r><a:rPr lang="en-US" dirty="0"/><a:t>${escapeXml(text)}</a:t></a:r></a:p>`;
+
+/** List items become paragraphs at levels 1 and down, which the master styles as bullets or numbers. */
+function* listParagraphs(
+  items: readonly ListItem[],
+  ordered: boolean,
+  level: number,
+): Generator<{ text: RichText; properties: string }> {
+  for (const item of items) {
+    const nested = typeof item === "object" && !Array.isArray(item);
+    yield {
+      text: nested ? item.text : item,
+      properties: ordered
+        ? `<a:pPr lvl="${level}"><a:buAutoNum type="${numbering(level)}"/></a:pPr>`
+        : `<a:pPr lvl="${level}"/>`,
+    };
+    if (nested)
+      yield* listParagraphs(item.items, item.ordered ?? ordered, level + 1);
   }
 }
+
+function textBlockXml(block: TextBlock, part: SlidePart) {
+  if (block.type === "paragraph") return paragraph(block.text, part);
+  return [...listParagraphs(block.items, block.ordered, 1)]
+    .map(({ text, properties }) => paragraph(text, part, properties))
+    .join("");
+}
+
+const isOrderedList = (block: TextBlock | undefined) =>
+  block?.type === "list" && block.ordered;
+
+function textBodyXml(blocks: readonly TextBlock[], part: SlidePart) {
+  return blocks
+    .map(
+      (block, index) =>
+        `${isOrderedList(block) && isOrderedList(blocks[index - 1]) ? LIST_BREAK : ""}${textBlockXml(block, part)}`,
+    )
+    .join("");
+}
+
+const isText = (block: Block): block is TextBlock =>
+  block.type === "paragraph" || block.type === "list";
 
 function assetUses(deck: Deck): AssetUse[] {
   const uses: AssetUse[] = deck.theme.logo
@@ -95,7 +155,7 @@ function assetUses(deck: Deck): AssetUse[] {
   for (const [slide, content] of deck.slides.entries()) {
     if (content.layout === "image")
       uses.push({ ref: content.image, path: `slides[${slide}].image`, slide });
-    for (const { path, blocks } of regions(content))
+    for (const { path, blocks } of slideRegions(content))
       for (const [index, block] of blocks.entries())
         if (block.type === "image")
           uses.push({
@@ -192,8 +252,8 @@ const picture = ({
 }: Picture) =>
   `<p:pic><p:nvPicPr><p:cNvPr id="${id}" name="${name}"/><p:cNvPicPr><a:picLocks noGrp="1" noChangeAspect="1"/></p:cNvPicPr><p:nvPr>${nvPr}</p:nvPr></p:nvPicPr><p:blipFill><a:blip r:embed="${relId}"/>${crop}<a:stretch><a:fillRect/></a:stretch></p:blipFill><p:spPr>${xfrm(box)}<a:prstGeom prst="rect"><a:avLst/></a:prstGeom></p:spPr></p:pic>`;
 
-const textBox = (id: number, box: Box, paragraphs: string) =>
-  `<p:sp><p:nvSpPr><p:cNvPr id="${id}" name="Text ${id}"/><p:cNvSpPr txBox="1"/><p:nvPr/></p:nvSpPr><p:spPr>${xfrm(box)}<a:prstGeom prst="rect"><a:avLst/></a:prstGeom></p:spPr><p:txBody><a:bodyPr wrap="square"><a:normAutofit/></a:bodyPr><a:lstStyle/>${paragraphs}</p:txBody></p:sp>`;
+const textBox = (id: number, box: Box, paragraphs: string, listStyle: string) =>
+  `<p:sp><p:nvSpPr><p:cNvPr id="${id}" name="Text ${id}"/><p:cNvSpPr txBox="1"/><p:nvPr/></p:nvSpPr><p:spPr>${xfrm(box)}<a:prstGeom prst="rect"><a:avLst/></a:prstGeom></p:spPr><p:txBody><a:bodyPr wrap="square"><a:normAutofit/></a:bodyPr><a:lstStyle>${listStyle}</a:lstStyle>${paragraphs}</p:txBody></p:sp>`;
 
 const placeholderShape = (
   id: number,
@@ -220,6 +280,13 @@ class SlidePart {
       info: media.info,
       relId: this.rels.add("image", `../media/${media.name}`),
     };
+  }
+
+  hyperlink(link: Link) {
+    if (typeof link === "string")
+      return `<a:hlinkClick r:id="${this.rels.add("hyperlink", new URL(link).href, true)}"/>`;
+    const relId = this.rels.add("slide", `slide${link + 1}.xml`);
+    return `<a:hlinkClick r:id="${relId}" action="ppaction://hlinksldjump"/>`;
   }
 
   element(element: Element, box: Box) {
@@ -272,9 +339,9 @@ function stack(
       part.element(band.element, box);
       continue;
     }
-    const paragraphs = band.text.map((block) => paragraph(block.text)).join("");
+    const paragraphs = textBodyXml(band.text, part);
     if (!target) {
-      part.shapes.push(textBox(part.nextId(), box, paragraphs));
+      part.shapes.push(textBox(part.nextId(), box, paragraphs, LIST_LEVELS));
       continue;
     }
     const fills = bands.length === 1 ? undefined : box;
@@ -285,29 +352,32 @@ function stack(
   }
 }
 
-function textContent(slide: Slide): Partial<Record<Role, string>> {
+function textContent(
+  slide: Slide,
+  part: SlidePart,
+): Partial<Record<Role, string>> {
   switch (slide.layout) {
     case "title":
     case "section":
       return {
-        title: paragraph(slide.title),
-        ...(slide.subtitle && { subtitle: paragraph(slide.subtitle) }),
+        title: paragraph(slide.title, part),
+        ...(slide.subtitle && { subtitle: paragraph(slide.subtitle, part) }),
       };
     case "comparison":
       return {
-        title: paragraph(slide.title),
-        leftHeading: paragraph(slide.left.heading),
-        rightHeading: paragraph(slide.right.heading),
+        title: paragraph(slide.title, part),
+        leftHeading: paragraph(slide.left.heading, part),
+        rightHeading: paragraph(slide.right.heading, part),
       };
     case "image":
       return {
-        ...(slide.title && { title: paragraph(slide.title) }),
-        ...(slide.caption && { caption: paragraph(slide.caption) }),
+        ...(slide.title && { title: paragraph(slide.title, part) }),
+        ...(slide.caption && { caption: paragraph(slide.caption, part) }),
       };
     case "blank":
       return {};
     default:
-      return { title: paragraph(slide.title) };
+      return { title: paragraph(slide.title, part) };
   }
 }
 
@@ -340,14 +410,14 @@ function slideXml(deck: Deck, slide: Slide, index: number, media: MediaStore) {
     `../slideLayouts/slideLayout${LAYOUT_ORDER.indexOf(slide.layout) + 1}.xml`,
   );
   const content: Partial<Record<Role, string>> = {
-    ...textContent(slide),
-    ...(deck.footer?.text && { footer: paragraph(deck.footer.text) }),
+    ...textContent(slide, part),
+    ...(deck.footer?.text && { footer: paragraph(deck.footer.text, part) }),
     ...(deck.footer?.slideNumbers && {
       slideNumber: `<a:p>${slideNumberField(String(index + 1))}</a:p>`,
     }),
   };
-  const byRole = new Map(
-    regions(slide).map((region) => [region.role, region.blocks]),
+  const byRole = new Map<Role, readonly Block[]>(
+    slideRegions(slide).map((region) => [region.role, region.blocks]),
   );
   if (slide.layout === "blank") stack(part, slide.body, FREE_AREA);
   for (const placeholder of layoutPlaceholders(slide.layout)) {
@@ -369,7 +439,8 @@ function slideXml(deck: Deck, slide: Slide, index: number, media: MediaStore) {
 }
 
 function notesXml(notes: string) {
-  return `${XML_DECLARATION}<p:notes ${NAMESPACES}><p:cSld><p:spTree>${GROUP_HEADER}<p:sp><p:nvSpPr><p:cNvPr id="2" name="Slide Image"/><p:cNvSpPr><a:spLocks noGrp="1" noRot="1" noChangeAspect="1"/></p:cNvSpPr><p:nvPr><p:ph type="sldImg"/></p:nvPr></p:nvSpPr><p:spPr/></p:sp><p:sp><p:nvSpPr><p:cNvPr id="3" name="Notes"/><p:cNvSpPr><a:spLocks noGrp="1"/></p:cNvSpPr><p:nvPr><p:ph type="body" idx="1"/></p:nvPr></p:nvSpPr><p:spPr/><p:txBody><a:bodyPr/><a:lstStyle/>${lines(notes).map(paragraph).join("")}</p:txBody></p:sp></p:spTree></p:cSld><p:clrMapOvr><a:masterClrMapping/></p:clrMapOvr></p:notes>`;
+  const paragraphs = lines(notes).map(notesParagraph).join("");
+  return `${XML_DECLARATION}<p:notes ${NAMESPACES}><p:cSld><p:spTree>${GROUP_HEADER}<p:sp><p:nvSpPr><p:cNvPr id="2" name="Slide Image"/><p:cNvSpPr><a:spLocks noGrp="1" noRot="1" noChangeAspect="1"/></p:cNvSpPr><p:nvPr><p:ph type="sldImg"/></p:nvPr></p:nvSpPr><p:spPr/></p:sp><p:sp><p:nvSpPr><p:cNvPr id="3" name="Notes"/><p:cNvSpPr><a:spLocks noGrp="1"/></p:cNvSpPr><p:nvPr><p:ph type="body" idx="1"/></p:nvPr></p:nvSpPr><p:spPr/><p:txBody><a:bodyPr/><a:lstStyle/>${paragraphs}</p:txBody></p:sp></p:spTree></p:cSld><p:clrMapOvr><a:masterClrMapping/></p:clrMapOvr></p:notes>`;
 }
 
 const NOTES_MASTER = `${XML_DECLARATION}<p:notesMaster ${NAMESPACES}><p:cSld><p:spTree>${GROUP_HEADER}<p:sp><p:nvSpPr><p:cNvPr id="2" name="Slide Image"/><p:cNvSpPr><a:spLocks noGrp="1" noRot="1" noChangeAspect="1"/></p:cNvSpPr><p:nvPr><p:ph type="sldImg" idx="2"/></p:nvPr></p:nvSpPr><p:spPr>${xfrm({ x: 685800, y: 1143000, w: 5486400, h: 3086100 })}<a:prstGeom prst="rect"><a:avLst/></a:prstGeom></p:spPr></p:sp><p:sp><p:nvSpPr><p:cNvPr id="3" name="Notes"/><p:cNvSpPr><a:spLocks noGrp="1"/></p:cNvSpPr><p:nvPr><p:ph type="body" sz="quarter" idx="1"/></p:nvPr></p:nvSpPr><p:spPr>${xfrm({ x: 685800, y: 4400550, w: 5486400, h: 3600450 })}<a:prstGeom prst="rect"><a:avLst/></a:prstGeom></p:spPr><p:txBody><a:bodyPr/><a:lstStyle/><a:p><a:endParaRPr lang="en-US"/></a:p></p:txBody></p:sp></p:spTree></p:cSld>${COLOR_MAP}</p:notesMaster>`;
