@@ -201,14 +201,16 @@ function changeEffect(
   }
 }
 
-const presetClass = (animation: Animation) =>
-  "kind" in animation
-    ? animation.kind === "entrance"
-      ? "entr"
-      : "exit"
-    : animation.effect === "path"
-      ? "path"
-      : "emph";
+function presetClass(animation: Animation) {
+  if ("kind" in animation)
+    return animation.kind === "entrance" ? "entr" : "exit";
+  return animation.effect === "path" ? "path" : "emph";
+}
+
+function presetSubtype(animation: Animation) {
+  if ("side" in animation) return SUBTYPES[animation.side];
+  return animation.effect === "zoom" ? ZOOM_FROM_CENTER : 0;
+}
 
 function effectXml(
   timeline: Timeline,
@@ -216,12 +218,6 @@ function effectXml(
   target: Target,
   nodeType: string,
 ) {
-  const subtype =
-    "side" in animation
-      ? SUBTYPES[animation.side]
-      : animation.effect === "zoom"
-        ? ZOOM_FROM_CENTER
-        : 0;
   const easing = animation.easing
     ? `${animation.easing.accel > 0 ? ` accel="${Math.round(animation.easing.accel * 100000)}"` : ""}${animation.easing.decel > 0 ? ` decel="${Math.round(animation.easing.decel * 100000)}"` : ""}`
     : "";
@@ -231,7 +227,7 @@ function effectXml(
       : ` repeatCount="${animation.repeat === "indefinite" ? "indefinite" : Math.round(animation.repeat * 1000)}"`;
   const id = timeline.id();
   const grpId = timeline.grpId(target);
-  return `<p:par><p:cTn id="${id}" presetID="${PRESETS[animation.effect]}" presetClass="${presetClass(animation)}" presetSubtype="${subtype}"${easing}${repeat} fill="hold" grpId="${grpId}" nodeType="${nodeType}"><p:stCondLst><p:cond delay="${animation.delay}"/></p:stCondLst><p:childTnLst>${behaviors(timeline, animation, target.spid)}</p:childTnLst></p:cTn></p:par>`;
+  return `<p:par><p:cTn id="${id}" presetID="${PRESETS[animation.effect]}" presetClass="${presetClass(animation)}" presetSubtype="${presetSubtype(animation)}"${easing}${repeat} fill="hold" grpId="${grpId}" nodeType="${nodeType}"><p:stCondLst><p:cond delay="${animation.delay}"/></p:stCondLst><p:childTnLst>${behaviors(timeline, animation, target.spid)}</p:childTnLst></p:cTn></p:par>`;
 }
 
 const playTime = (animation: Animation) =>

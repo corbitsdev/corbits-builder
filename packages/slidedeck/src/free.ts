@@ -228,6 +228,13 @@ function shapeXml(element: ShapeElement, part: DrawingPart, opacity: number) {
 const SVG_BLIP = (relId: string) =>
   `<a:extLst><a:ext uri="{96DAC541-7B7A-43D3-8B79-37D633B846F1}"><asvg:svgBlip xmlns:asvg="http://schemas.microsoft.com/office/drawing/2016/SVG/main" r:embed="${relId}"/></a:ext></a:extLst>`;
 
+function sourceRectXml(element: PictureElement, info: ImageInfo, area: Box) {
+  if (element.fit === "cover") return coverCrop(info, area);
+  const { crop } = element;
+  if (!crop) return "";
+  return `<a:srcRect l="${percent(crop.left)}" t="${percent(crop.top)}" r="${percent(crop.right)}" b="${percent(crop.bottom)}"/>`;
+}
+
 function pictureXml(
   element: PictureElement,
   part: DrawingPart,
@@ -237,13 +244,6 @@ function pictureXml(
   const { info, relId } = part.image(element.image);
   const area = boxOf(element);
   const box = element.fit === "contain" ? contain(info, area) : area;
-  const { crop } = element;
-  const sourceRect =
-    element.fit === "cover"
-      ? coverCrop(info, area)
-      : crop
-        ? `<a:srcRect l="${percent(crop.left)}" t="${percent(crop.top)}" r="${percent(crop.right)}" b="${percent(crop.bottom)}"/>`
-        : "";
   const blipChildren = `${opacity < 1 ? `<a:alphaModFix amt="${percent(opacity)}"/>` : ""}${element.svg ? SVG_BLIP(part.svg(element.svg)) : ""}`;
   const blip = blipChildren
     ? `<a:blip r:embed="${relId}">${blipChildren}</a:blip>`
@@ -253,7 +253,7 @@ function pictureXml(
   return {
     spid,
     build: false,
-    xml: `<p:pic><p:nvPicPr>${cNvPr}<p:cNvPicPr><a:picLocks noChangeAspect="1"/></p:cNvPicPr><p:nvPr/></p:nvPicPr><p:blipFill>${blip}${sourceRect}<a:stretch><a:fillRect/></a:stretch></p:blipFill><p:spPr>${xfrm(box, element.rotation)}${geometry}${line}${shadowXml(element.shadow, box, opacity)}</p:spPr></p:pic>`,
+    xml: `<p:pic><p:nvPicPr>${cNvPr}<p:cNvPicPr><a:picLocks noChangeAspect="1"/></p:cNvPicPr><p:nvPr/></p:nvPicPr><p:blipFill>${blip}${sourceRectXml(element, info, area)}<a:stretch><a:fillRect/></a:stretch></p:blipFill><p:spPr>${xfrm(box, element.rotation)}${geometry}${line}${shadowXml(element.shadow, box, opacity)}</p:spPr></p:pic>`,
   };
 }
 
@@ -288,6 +288,24 @@ function groupXml(
   };
 }
 
+function drawnXml(
+  element: FreeElement,
+  part: DrawingPart,
+  targets: Map<string, Target>,
+  opacity: number,
+): Drawn {
+  switch (element.type) {
+    case "text":
+      return textXml(element, part, opacity);
+    case "shape":
+      return shapeXml(element, part, opacity);
+    case "image":
+      return pictureXml(element, part, opacity);
+    case "group":
+      return groupXml(element, part, targets, opacity);
+  }
+}
+
 /** Draws one element, recording the shape id of each element with an `id` for animations. */
 export function elementXml(
   element: FreeElement,
@@ -296,14 +314,7 @@ export function elementXml(
   inherited = 1,
 ): string {
   const opacity = inherited * (element.opacity ?? 1);
-  const drawn: Drawn =
-    element.type === "text"
-      ? textXml(element, part, opacity)
-      : element.type === "shape"
-        ? shapeXml(element, part, opacity)
-        : element.type === "image"
-          ? pictureXml(element, part, opacity)
-          : groupXml(element, part, targets, opacity);
+  const drawn = drawnXml(element, part, targets, opacity);
   if (element.id !== undefined)
     targets.set(element.id, { spid: drawn.spid, build: drawn.build });
   return drawn.xml;
