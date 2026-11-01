@@ -1,6 +1,6 @@
-<!-- Generated from @corbits/react-ui 0.4.0. Regenerate: bun scripts/react-ui-api.ts -->
+<!-- Generated from @corbits/react-ui 0.5.0. Regenerate: bun scripts/react-ui-api.ts -->
 
-# react-ui: tables, stats, charts, status, avatars, empty and loading states (0.4.0)
+# react-ui: tables, stats, charts, status, avatars, empty and loading states (0.5.0)
 
 Props per exported component, from the installed declarations. `?` marks optional. `+native` means the component also accepts the native props of the element it renders (`className`, `onClick`, ...). Import from the package root unless SKILL.md lists the module as a subpath.
 
@@ -84,8 +84,18 @@ className?: string
 ## ui/csv-table
 
 ### CsvTable — CSV text, rendered as a table when that is honest and as raw text when it is not.
-text: string
+text?: string
+sheets?: readonly CsvTableSheet[] — Several sheets of one workbook, switched by tabs under the grid.
 caption?: string
+interactive?: boolean — A compact spreadsheet grid that sorts, selects and copies, and applies the host's `query` and `filters`.
+query?: string — The search query.
+filters?: Readonly<Record<string, string>>
+sort?: CsvSort | null
+onSortChange?: ((sort: CsvSort | null) => void)
+sheet?: number — The open sheet's index in `sheets`.
+onSheetChange?: ((sheet: number) => void)
+labels?: Partial<CsvTableLabels>
+onSelectionChange?: ((selection: CsvSelection | null) => void)
 
 ## ui/empty-state
 

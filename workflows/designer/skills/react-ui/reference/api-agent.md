@@ -1,8 +1,24 @@
-<!-- Generated from @corbits/react-ui 0.4.0. Regenerate: bun scripts/react-ui-api.ts -->
+<!-- Generated from @corbits/react-ui 0.5.0. Regenerate: bun scripts/react-ui-api.ts -->
 
-# react-ui: conversation, agent runs, media and artifacts (0.4.0)
+# react-ui: conversation, agent runs, media and artifacts (0.5.0)
 
 Props per exported component, from the installed declarations. `?` marks optional. `+native` means the component also accepts the native props of the element it renders (`className`, `onClick`, ...). Import from the package root unless SKILL.md lists the module as a subpath.
+
+## ui/action-bar
+
+### ActionBar — One bar of quiet controls for a view: groups of icon or text buttons with a rule between them, toggles, menus, status notes and a sideways-scrolling strip.
+label: string
+groups: readonly ActionBarGroup[]
+placement?: "inline" | "floating"
+collapsed?: boolean
+defaultCollapsed?: boolean
+onCollapsedChange?: ((collapsed: boolean) => void)
+popover?: ReactNode
+rootRef?: Ref<HTMLDivElement>
+barRef?: Ref<HTMLElement>
+collapseLabel?: string
+expandLabel?: string
+className?: string
 
 ## ui/activity
 
@@ -412,6 +428,11 @@ className?: string
 brief: ResearchBrief
 body?: string
 className?: string
+
+## ui/sort-header-button
+
+### SortHeaderButton +native — The control inside a sortable column header.
+direction: SortDirection | null
 
 ## ui/sources
 

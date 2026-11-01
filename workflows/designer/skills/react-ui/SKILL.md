@@ -3,9 +3,9 @@ name: react-ui
 description: Use before hand-writing any UI - which @corbits/react-ui component to use for app shell, pages, forms, tables, stats, charts, status, empty and loading states; install, theme tokens, dark mode and extra packages.
 ---
 
-# @corbits/react-ui (0.4.0)
+# @corbits/react-ui (0.5.0)
 
-The client starter pins `@corbits/react-ui` 0.4.0. Components take props and
+The client starter pins `@corbits/react-ui` 0.5.0. Components take props and
 render markup; data comes from the app's queries. Styling is Tailwind v4 classes backed by
 theme tokens, so everything inherits light and dark mode and the same
 spacing, radius and type.

@@ -1,6 +1,6 @@
 # react-ui: install, theme and tokens
 
-Source: @corbits/react-ui 0.4.0 npm package (README.md, dist/theme.css, dist/ui/theme-provider.d.ts), the version pinned in workflows/coder/starter/client/package.json
+Source: @corbits/react-ui 0.5.0 npm package (README.md, dist/theme.css, dist/ui/theme-provider.d.ts), the version pinned in workflows/coder/starter/client/package.json
 Fetched: 2026-10-29
 
 ---
