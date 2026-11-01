@@ -1,0 +1,15 @@
+{
+  "name": "@corbits/slidedeck",
+  "version": "0.1.0-rc.2",
+  "private": true,
+  "license": "SEE LICENSE IN ../../LICENSE.md",
+  "author": "Sawyer Cutler <sawyer@dirtroad.dev>",
+  "type": "module",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "dependencies": {
+    "@corbits/zip": "workspace:*",
+    "arktype": "catalog:"
+  }
+}
