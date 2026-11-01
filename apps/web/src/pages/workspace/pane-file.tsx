@@ -1,7 +1,8 @@
 /**
  * A pane's Download and Share actions for the one file it gives away: a document as Markdown, a
- * design as a zip, the app as the hub's zip. Both actions take the same file, built before the
- * press where it can be, because a share sheet opens only inside the press that asked for it.
+ * spreadsheet as its CSV, a design as a zip, the app as the hub's zip. Both actions take the same
+ * file, built before the press where it can be, because a share sheet opens only inside the press
+ * that asked for it.
  */
 import JSZip from "jszip";
 import { useEffect, useRef } from "react";
@@ -10,12 +11,14 @@ import { toast } from "sonner";
 import { wording } from "../../config.ts";
 import type { PaneBarGroup } from "./pane-bar.tsx";
 
-export const MARKDOWN_TYPE = "text/markdown";
+const MARKDOWN_TYPE = "text/markdown";
 export const ZIP_TYPE = "application/zip";
+const CSV_TYPE = "text/csv";
 
 const EXTENSION: Record<string, string> = {
   [MARKDOWN_TYPE]: "md",
   [ZIP_TYPE]: "zip",
+  [CSV_TYPE]: "csv",
 };
 
 /** A file name a person's system keeps as one name, as the hub names the app's zip. */
@@ -28,6 +31,9 @@ export const fileStem = (...parts: readonly string[]) =>
 
 export const markdownFile = (stem: string, markdown: string) =>
   new File([markdown], `${stem}.md`, { type: MARKDOWN_TYPE });
+
+export const csvFile = (stem: string, csv: string) =>
+  new File([csv], `${stem}.csv`, { type: CSV_TYPE });
 
 /** The files under one directory named after the zip, as the app's zip is laid out. */
 export async function zipFile(

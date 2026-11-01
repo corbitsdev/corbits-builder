@@ -168,6 +168,11 @@ className?: string
 
 ### Skeleton +native — A placeholder for content that has not arrived.
 
+## ui/sort-header-button
+
+### SortHeaderButton +native — The control inside a sortable column header.
+direction: SortDirection | null
+
 ## ui/sortable-table
 
 ### SortableTable — A table you can sort by clicking a header.

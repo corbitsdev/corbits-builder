@@ -4,6 +4,22 @@
 
 Props per exported component, from the installed declarations. `?` marks optional. `+native` means the component also accepts the native props of the element it renders (`className`, `onClick`, ...). Import from the package root unless SKILL.md lists the module as a subpath.
 
+## ui/action-bar
+
+### ActionBar — One bar of quiet controls for a view: groups of icon or text buttons with a rule between them, toggles, menus, status notes and a sideways-scrolling strip.
+label: string — The toolbar's accessible name.
+groups: readonly ActionBarGroup[] — Drawn in order with a rule between; empty groups are skipped.
+placement?: "inline" | "floating" — `floating` pins the bar to the bottom centre of the nearest positioned ancestor and lets it collapse to a small handle; `inline` sticks to the foot of its scroll container.
+collapsed?: boolean
+defaultCollapsed?: boolean
+onCollapsedChange?: ((collapsed: boolean) => void)
+popover?: ReactNode — A panel shown just above the bar, such as one an action opens.
+rootRef?: Ref<HTMLDivElement> — The element around the bar and its popover, so a press on either can count as inside.
+barRef?: Ref<HTMLElement> — The bar itself, or its handle while collapsed, for measuring the space it covers.
+collapseLabel?: string
+expandLabel?: string
+className?: string
+
 ## ui/bulk-action-bar
 
 ### BulkActionBar — The floating pill that appears once a list has a selection: fixed to the bottom of the viewport (or the nearest ancestor that establishes its own containing block — a `transform`, `filter`, or similar CSS property on an ancestor changes what `fixed` positions against), riding in with a small rise so it reads as newly arrived rather than always having been there.

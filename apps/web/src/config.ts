@@ -178,6 +178,8 @@ export const wording = {
     shareDocument: "Share as Markdown",
     downloadDesign: "Download the design",
     shareDesign: "Share the design",
+    downloadSheet: "Download as CSV",
+    shareSheet: "Share as CSV",
     downloaded: (name: string) => `Downloaded ${name}.`,
     shareReady: (name: string) => `${name} is ready to share.`,
     shareNow: "Share now",

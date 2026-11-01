@@ -6,7 +6,7 @@
  */
 import { wording } from "../../config.ts";
 import { useRef, useState } from "react";
-import { Button, ShimmerText } from "@corbits/react-ui";
+import { Button, CsvTable, ShimmerText } from "@corbits/react-ui";
 import { Markdown } from "../../markdown.jsx";
 import {
   DESIGN_MEDIA_TYPE,
@@ -22,9 +22,9 @@ import { versionGroup } from "./version-menu.tsx";
 import { useTipsGroup } from "./document-tips.tsx";
 import { PaneBar } from "./pane-bar.tsx";
 import {
+  csvFile,
   fileStem,
   markdownFile,
-  MARKDOWN_TYPE,
   type PaneFile,
   useFileGroup,
   ZIP_TYPE,
@@ -61,14 +61,22 @@ export type DeliverableState =
 
 function mediaKind(
   mediaType: string,
-): "html" | "design" | "json" | "prose" | "text" | "image" | "file" {
+  title: string,
+): "html" | "design" | "json" | "prose" | "sheet" | "text" | "image" | "file" {
   if (mediaType === "text/html") return "html";
   if (mediaType === DESIGN_MEDIA_TYPE) return "design";
   if (mediaType === "application/json") return "json";
   if (mediaType === "text/markdown") return "prose";
-  if (mediaType === "text/plain") return "text";
+  // A material is titled with its file name; a CSV that is not UTF-8 is a data: URL, so it stays a file.
+  if (mediaType === "text/plain")
+    return title.toLowerCase().endsWith(".csv") ? "sheet" : "text";
   return mediaType.startsWith("image/") ? "image" : "file";
 }
+
+/** A spreadsheet fills its pane edge to edge, as a mockup does. */
+export const fillsPane = (state: DeliverableState | undefined) =>
+  state?.status === "ready" &&
+  mediaKind(state.document.mediaType, state.document.title) === "sheet";
 
 export function DeliverableBody({
   state,
@@ -132,14 +140,21 @@ export function DeliverableBody({
   );
 }
 
-const documentFile = (file: File): PaneFile => ({
-  type: MARKDOWN_TYPE,
-  download: wording.paneFile.downloadDocument,
-  share: wording.paneFile.shareDocument,
+const shownFile = (file: File, download: string, share: string): PaneFile => ({
+  type: file.type,
+  download,
+  share,
   key: file.name,
   prepare: "shown",
   build: () => Promise.resolve({ file }),
 });
+
+const documentFile = (file: File) =>
+  shownFile(
+    file,
+    wording.paneFile.downloadDocument,
+    wording.paneFile.shareDocument,
+  );
 
 function ReadyDocument({
   document,
@@ -193,7 +208,7 @@ function ReadyDocument({
   const viewed = document.versions?.find((item) => item.version === viewing);
   const mediaType = viewed?.mediaType ?? document.mediaType;
   const title = viewed?.title ?? document.title;
-  const kind = mediaKind(mediaType);
+  const kind = mediaKind(mediaType, title);
   const shown = readFor(viewing);
   const approaches = shown?.approaches;
   const chooseApproach =
@@ -274,28 +289,36 @@ function ReadyDocument({
     ) : null;
   const stem = fileStem(
     fileName.project,
-    fileName.document,
+    kind === "sheet"
+      ? fileName.document.replace(/\.csv$/i, "")
+      : fileName.document,
     `v${String(viewing)}`,
   );
   const design =
     kind === "design" && afterText !== null ? parseBundle(afterText) : null;
   const plan = designPart === "plan" ? design?.["DESIGN.md"] : undefined;
-  const source: PaneFile | null =
-    kind === "prose" && afterText !== null
-      ? documentFile(markdownFile(stem, afterText))
-      : plan !== undefined
-        ? documentFile(markdownFile(stem, plan))
-        : design !== null && designPart === "mockup"
-          ? {
-              type: ZIP_TYPE,
-              download: wording.paneFile.downloadDesign,
-              share: wording.paneFile.shareDesign,
-              key: `${stem}.zip`,
-              prepare: "shown",
-              build: async () => ({ file: await zipFile(stem, design) }),
-            }
-          : null;
-  const files = useFileGroup(source);
+  const sourceFile = (): PaneFile | null => {
+    if (kind === "prose" && afterText !== null)
+      return documentFile(markdownFile(stem, afterText));
+    if (plan !== undefined) return documentFile(markdownFile(stem, plan));
+    if (design !== null && designPart === "mockup")
+      return {
+        type: ZIP_TYPE,
+        download: wording.paneFile.downloadDesign,
+        share: wording.paneFile.shareDesign,
+        key: `${stem}.zip`,
+        prepare: "shown",
+        build: async () => ({ file: await zipFile(stem, design) }),
+      };
+    if (kind === "sheet" && afterText !== null)
+      return shownFile(
+        csvFile(stem, afterText),
+        wording.paneFile.downloadSheet,
+        wording.paneFile.shareSheet,
+      );
+    return null;
+  };
+  const files = useFileGroup(sourceFile());
   const barGroups = [
     versionGroup({
       versions: document.versions ?? [],
@@ -314,33 +337,42 @@ function ReadyDocument({
   ];
   const visual =
     kind === "html" || (kind === "design" && designPart === "mockup");
-  const reading =
-    kind === "html" ? (
-      <DevicePreview
-        html={body}
-        device={device}
-        onDevice={setDevice}
-        trailing={barGroups}
-      />
-    ) : kind === "design" ? (
-      <DesignPreview
-        content={body}
-        part={designPart}
-        device={device}
-        onDevice={setDevice}
-        trailing={barGroups}
-      />
-    ) : kind === "json" || kind === "text" ? (
-      <pre className="document-raw">{body}</pre>
-    ) : kind === "image" ? (
-      <img className="document-image" src={body} alt={title} />
-    ) : kind === "file" ? (
-      <p>
-        <a href={body} download={title}>
-          {wording.attach.open(title)}
-        </a>
-      </p>
-    ) : comparing ? null : (
+  const readingView = () => {
+    if (kind === "html")
+      return (
+        <DevicePreview
+          html={body}
+          device={device}
+          onDevice={setDevice}
+          trailing={barGroups}
+        />
+      );
+    if (kind === "design")
+      return (
+        <DesignPreview
+          content={body}
+          part={designPart}
+          device={device}
+          onDevice={setDevice}
+          trailing={barGroups}
+        />
+      );
+    if (kind === "sheet")
+      return <CsvTable text={body} caption={title} interactive />;
+    if (kind === "json" || kind === "text")
+      return <pre className="document-raw">{body}</pre>;
+    if (kind === "image")
+      return <img className="document-image" src={body} alt={title} />;
+    if (kind === "file")
+      return (
+        <p>
+          <a href={body} download={title}>
+            {wording.attach.open(title)}
+          </a>
+        </p>
+      );
+    if (comparing) return null;
+    return (
       <>
         {approaches === undefined ? null : (
           <ApproachesComparison
@@ -361,10 +393,12 @@ function ReadyDocument({
         <Markdown source={body} />
       </>
     );
+  };
   const add = onAddToPrompt === undefined ? {} : { onAdd: onAddToPrompt };
 
-  // A mockup fills the pane edge to edge: its tab names it, and its notes float over the page.
-  const fill = kind === "design" && designPart === "mockup";
+  // A mockup or spreadsheet fills the pane edge to edge: its tab names it, and its notes float over the page.
+  const fill =
+    (kind === "design" && designPart === "mockup") || kind === "sheet";
   const notes = (
     <>
       {viewing !== document.version ? (
@@ -411,7 +445,7 @@ function ReadyDocument({
         </>
       )}
       <PassageQuotes title={title} version={viewing} {...add}>
-        {reading}
+        {readingView()}
         {comparison}
       </PassageQuotes>
       {visual ? null : (

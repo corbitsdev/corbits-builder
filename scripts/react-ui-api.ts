@@ -50,6 +50,7 @@ const groups = {
   controls: {
     title: "buttons, inputs, filters, dialogs, menus and toasts",
     modules: [
+      "action-bar",
       "bulk-action-bar",
       "button",
       "checkbox",
@@ -93,6 +94,7 @@ const groups = {
       "rich-empty-state",
       "shimmer-text",
       "skeleton",
+      "sort-header-button",
       "sortable-table",
       "sparkline",
       "stat-grid",
