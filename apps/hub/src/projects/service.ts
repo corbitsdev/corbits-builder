@@ -43,7 +43,7 @@ import {
 import { workflowRoleSql } from "../workflows/spawn-role.ts";
 
 export { ProjectError, projectResource } from "./errors.ts";
-import { ProjectError, projectResource } from "./errors.ts";
+import { ProjectError, projectResource, typeIssues } from "./errors.ts";
 import { digest } from "../lib/digest.ts";
 import type { Actor } from "../lib/actor.ts";
 
@@ -417,10 +417,7 @@ export function createProjectService(db: DB["db"]) {
       throw new ProjectError(400, "invalid_project_mutation");
     if (mutation instanceof type.errors)
       throw new ProjectError(400, "invalid_project_mutation", {
-        issues: [...mutation].slice(0, 10).map((issue) => ({
-          path: issue.propString,
-          message: issue.problem.slice(0, 200),
-        })),
+        issues: typeIssues(mutation),
       });
     if (
       mutation.command === "version_project" &&
