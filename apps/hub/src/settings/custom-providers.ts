@@ -67,7 +67,6 @@ export async function modelDirectory(
           keyless: entry.keyless,
           label: entry.name,
           hint: CUSTOM_APIS[CustomApi.assert(row.plugin)],
-          needsBaseUrl: true,
           baseURL: row.baseURL,
           models,
         },

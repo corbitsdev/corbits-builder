@@ -57,8 +57,12 @@ export function connected(catalog: ModelCatalog, provider: string): boolean {
   return (
     catalog.providers
       .find((entry) => entry.id === provider)
-      ?.connections.some((connection) => connection.status === "connected") ??
-    false
+      ?.connections.some(
+        (connection) =>
+          connection.status === "connected" ||
+          // A custom endpoint is never probed on read, so its key being set is what is known.
+          (connection.status === undefined && connection.credentialSet),
+      ) ?? false
   );
 }
 
@@ -434,7 +438,7 @@ function ProfileEditor({
                     </option>
                     {provider?.models.map((model) => (
                       <option key={model.id} value={model.id}>
-                        {model.label}
+                        {model.label ?? model.id}
                       </option>
                     ))}
                   </QuietSelect>

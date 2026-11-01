@@ -4,24 +4,16 @@
  * Which providers exist, what they are called and what they need comes from the hub's
  * config through `/settings/models`. A subscription provider is connected by logging in: the hub
  * runs the sign-in, this page opens its authorize URL and waits for the hub to finish. Adding an
- * API-key provider is: pick it, paste its key (and base URL), test it with one real model-list
- * call, and only a key that passes is saved. Keys live in form state until they are handed over,
- * and nothing here renders a key or token back.
+ * API-key provider is: pick it, paste its key, test it with one real model-list call, and only a
+ * key that passes is saved. A custom endpoint is added from the same dialog and
+ * sits in the same list (custom-providers.tsx). Keys live in form state until they are handed
+ * over, and nothing here renders a key or token back.
  */
 import { wording } from "../config.ts";
 import { EmptyState, Input, Section } from "@corbits/react-ui";
-import {
-  Dialog,
-  DialogBody,
-  DialogContent,
-  DialogDescription,
-  DialogFieldLabel,
-  DialogFooter,
-  DialogHeader,
-  DialogTitle,
-} from "@corbits/react-ui/ui/dialog";
+import { DialogFieldLabel } from "@corbits/react-ui/ui/dialog";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { useRef, useState, type KeyboardEvent } from "react";
+import { useState } from "react";
 import { toast } from "sonner";
 import type {
   ModelProvider,
@@ -33,9 +25,18 @@ import { keys } from "../queries/keys.ts";
 import { productClient } from "../api/transport.ts";
 import { workspaceTenantId } from "../api/auth.ts";
 import { setCredential } from "../api/credentials.ts";
-import { ProviderLogo } from "./provider-logos.tsx";
+import {
+  CustomProviderRow,
+  ProviderDialog,
+  ProviderPicker,
+  message,
+  useCustomProviderForm,
+} from "./custom-providers.tsx";
 
 const copy = wording.providers;
+
+// The picker's tile for a person's own endpoint; no catalog provider has this id.
+const CUSTOM_ENDPOINT = "custom-endpoint";
 
 const POLL_MS = 1000;
 // The hub's login holds the provider's loopback port for five minutes.
@@ -47,10 +48,6 @@ const STATUS_TONE = {
   unavailable: "warning",
   unconfigured: "warning",
 } as const satisfies Record<ProviderStatus, string>;
-
-function message(cause: unknown): string {
-  return cause instanceof Error ? cause.message : String(cause);
-}
 
 export function useModelCatalog() {
   return useQuery({
@@ -157,10 +154,11 @@ export function SubscriptionLogins({
 export function ProvidersSection({ onChanged }: { onChanged: () => void }) {
   const catalog = useModelCatalog();
   const [adding, setAdding] = useState(false);
+  const [error, setError] = useState<string | null>(null);
   const providers = catalog.data?.providers ?? [];
   const hasLogins = providers.some((provider) => provider.kind === "login");
   const connected = providers
-    .filter((provider) => provider.kind === "api_key")
+    .filter((provider) => provider.kind !== "login")
     .flatMap((provider) =>
       provider.connections.map((connection) => ({ provider, connection })),
     );
@@ -178,22 +176,33 @@ export function ProvidersSection({ onChanged }: { onChanged: () => void }) {
           }
         />
       ) : null}
-      {connected.map(({ provider, connection }) => (
-        <div key={connection.id} className="row">
-          <div className="k">
-            <b>{connection.name}</b>
-            {connection.name === provider.label ? null : (
-              <span>{provider.label}</span>
-            )}
-            {connection.note ? <span>{connection.note}</span> : null}
+      {connected.map(({ provider, connection }) =>
+        provider.kind === "custom" ? (
+          <CustomProviderRow
+            key={connection.id}
+            provider={provider}
+            apis={catalog.data?.customApis ?? []}
+            onChanged={onChanged}
+            onError={setError}
+          />
+        ) : (
+          <div key={connection.id} className="row">
+            <div className="k">
+              <b>{connection.name}</b>
+              {connection.name === provider.label ? null : (
+                <span>{provider.label}</span>
+              )}
+              {connection.note ? <span>{connection.note}</span> : null}
+            </div>
+            {connection.status ? (
+              <QuietState tone={STATUS_TONE[connection.status]}>
+                {copy.status[connection.status]}
+              </QuietState>
+            ) : null}
           </div>
-          {connection.status ? (
-            <QuietState tone={STATUS_TONE[connection.status]}>
-              {copy.status[connection.status]}
-            </QuietState>
-          ) : null}
-        </div>
-      ))}
+        ),
+      )}
+      {error ? <Banner tone="error" title={error} /> : null}
     </>
   );
   const addAction =
@@ -268,27 +277,48 @@ export function AddProviderDialog({
   const providers = (catalog.data?.providers ?? []).filter(
     (provider) => provider.kind === "api_key",
   );
+  const apis = catalog.data?.customApis ?? [];
   const [chosenId, setChosenId] = useState<string | null>(null);
-  const [baseUrl, setBaseUrl] = useState("");
   const [secret, setSecret] = useState("");
+  const customForm = useCustomProviderForm(apis);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const custom = providerId === undefined && chosenId === CUSTOM_ENDPOINT;
   const chosen: ModelProvider | undefined =
     providers.find((provider) => provider.id === (providerId ?? chosenId)) ??
     providers[0];
-  const ready =
-    chosen !== undefined &&
-    secret.trim().length > 0 &&
-    (!chosen.needsBaseUrl || baseUrl.trim().length > 0);
+  const keyReady = chosen !== undefined && secret.trim().length > 0;
+  const ready = custom ? customForm.ready : keyReady;
+  const picker = [
+    ...providers,
+    ...(providerId === undefined && apis.length > 0
+      ? [
+          {
+            id: CUSTOM_ENDPOINT,
+            label: copy.custom.tile,
+            hint: copy.custom.tileHint,
+          },
+        ]
+      : []),
+  ];
 
   const close = (next: boolean) => {
     if (busy) return;
     if (!next) {
       setSecret("");
-      setBaseUrl("");
+      customForm.reset();
       setError(null);
     }
     onOpenChange(next);
+  };
+
+  const saved = async (label: string) => {
+    setSecret("");
+    customForm.reset();
+    toast.success(copy.saved(label));
+    await queryClient.invalidateQueries({ queryKey: keys.modelCatalog });
+    onConnected();
+    onOpenChange(false);
   };
 
   const testAndSave = async () => {
@@ -296,11 +326,16 @@ export function AddProviderDialog({
     setBusy(true);
     setError(null);
     try {
+      if (custom) {
+        await customForm.save();
+        await saved(customForm.name);
+        return;
+      }
+      if (!keyReady) return;
       const tenantId = await workspaceTenantId();
-      const endpoint = chosen.needsBaseUrl ? baseUrl.trim() : chosen.baseURL;
       const { status } = await productClient().testProvider(tenantId, {
         plugin: chosen.plugin,
-        baseURL: endpoint,
+        baseURL: chosen.baseURL,
         secret: secret.trim(),
       });
       if (status !== "connected") {
@@ -310,15 +345,10 @@ export function AddProviderDialog({
       await setCredential({
         plugin: chosen.plugin,
         secret: secret.trim(),
-        baseURL: endpoint,
+        baseURL: chosen.baseURL,
         label: chosen.label,
       });
-      setSecret("");
-      setBaseUrl("");
-      toast.success(copy.saved(chosen.label));
-      await queryClient.invalidateQueries({ queryKey: keys.modelCatalog });
-      onConnected();
-      onOpenChange(false);
+      await saved(chosen.label);
     } catch (cause) {
       setError(message(cause));
     } finally {
@@ -327,169 +357,74 @@ export function AddProviderDialog({
   };
 
   return (
-    <Dialog open={open} onOpenChange={close}>
-      <DialogContent>
-        <DialogHeader>
-          <DialogTitle>
-            {providerId && chosen
-              ? copy.connectOne(chosen.label)
-              : copy.dialogTitle}
-          </DialogTitle>
-          <DialogDescription>
-            {providerId ? copy.keyLead : copy.dialogLead}
-          </DialogDescription>
-        </DialogHeader>
-        <form
-          onSubmit={(event) => {
-            event.preventDefault();
-            void testAndSave();
-          }}
-        >
-          <DialogBody className="provider-form">
-            {catalog.error ? (
-              <Banner tone="error" title={message(catalog.error)} />
-            ) : null}
-            {providerId ? null : (
-              <div className="provider-field">
-                <DialogFieldLabel id="provider-choice-label">
-                  {copy.provider}
-                </DialogFieldLabel>
-                <ProviderPicker
-                  providers={providers}
-                  chosenId={chosen?.id}
-                  disabled={busy}
-                  onChoose={(id) => {
-                    setChosenId(id);
-                    setError(null);
-                  }}
-                />
-              </div>
-            )}
-            {chosen?.needsBaseUrl ? (
-              <div className="provider-field">
-                <DialogFieldLabel htmlFor="provider-base-url">
-                  {copy.baseUrl}
-                </DialogFieldLabel>
-                <Input
-                  id="provider-base-url"
-                  type="url"
-                  autoComplete="off"
-                  spellCheck={false}
-                  placeholder="https://example.com/v1"
-                  value={baseUrl}
-                  disabled={busy}
-                  onChange={(event) => setBaseUrl(event.target.value)}
-                />
-              </div>
-            ) : null}
-            <div className="provider-field">
-              <DialogFieldLabel htmlFor="provider-key">
-                {copy.key}
-              </DialogFieldLabel>
-              <Input
-                id="provider-key"
-                type="password"
-                autoComplete="off"
-                spellCheck={false}
-                value={secret}
-                disabled={busy}
-                onChange={(event) => setSecret(event.target.value)}
-              />
-            </div>
-            {error ? <Banner tone="error" title={error} /> : null}
-          </DialogBody>
-          <DialogFooter>
-            <Button
-              variant="ghost"
-              disabled={busy}
-              onClick={() => close(false)}
-            >
-              {wording.action.cancel}
-            </Button>
-            <Button
-              variant="primary"
-              type="submit"
-              loading={busy}
-              disabled={!ready}
-            >
-              {busy ? copy.testing : copy.test}
-            </Button>
-          </DialogFooter>
-        </form>
-      </DialogContent>
-    </Dialog>
-  );
-}
-
-const STEP: Partial<Record<string, number>> = {
-  ArrowRight: 1,
-  ArrowDown: 1,
-  ArrowLeft: -1,
-  ArrowUp: -1,
-};
-
-/** One card per provider, as a radio group: arrow keys move the choice, Tab leaves the group. */
-function ProviderPicker({
-  providers,
-  chosenId,
-  disabled,
-  onChoose,
-}: {
-  providers: readonly ModelProvider[];
-  chosenId: string | undefined;
-  disabled: boolean;
-  onChoose: (id: string) => void;
-}) {
-  const cards = useRef<(HTMLButtonElement | null)[]>([]);
-  const move = (event: KeyboardEvent, index: number) => {
-    const step = STEP[event.key];
-    const target =
-      event.key === "Home"
-        ? 0
-        : event.key === "End"
-          ? providers.length - 1
-          : step === undefined
-            ? undefined
-            : (index + step + providers.length) % providers.length;
-    const provider = target === undefined ? undefined : providers[target];
-    if (target === undefined || !provider) return;
-    event.preventDefault();
-    onChoose(provider.id);
-    cards.current[target]?.focus();
-  };
-  return (
-    <div
-      role="radiogroup"
-      aria-labelledby="provider-choice-label"
-      className="provider-cards"
+    <ProviderDialog
+      open={open}
+      onOpenChange={close}
+      title={
+        custom
+          ? copy.custom.addTitle
+          : providerId && chosen
+            ? copy.connectOne(chosen.label)
+            : copy.dialogTitle
+      }
+      description={
+        custom
+          ? copy.custom.addLead
+          : providerId
+            ? copy.keyLead
+            : copy.dialogLead
+      }
+      error={error}
+      busy={busy}
+      ready={ready}
+      tests
+      onSubmit={() => void testAndSave()}
+      onBack={
+        custom
+          ? () => {
+              setChosenId(null);
+              setError(null);
+            }
+          : undefined
+      }
+      rows={custom}
     >
-      {providers.map((provider, index) => {
-        const checked = provider.id === chosenId;
-        return (
-          <button
-            key={provider.id}
-            ref={(card) => {
-              cards.current[index] = card;
+      {catalog.error ? (
+        <Banner tone="error" title={message(catalog.error)} />
+      ) : null}
+      {providerId || custom ? null : (
+        <div className="provider-field">
+          <DialogFieldLabel id="provider-choice-label">
+            {copy.provider}
+          </DialogFieldLabel>
+          <ProviderPicker
+            providers={picker}
+            chosenId={chosen?.id}
+            disabled={busy}
+            labelledBy="provider-choice-label"
+            onChoose={(id) => {
+              setChosenId(id);
+              setError(null);
             }}
-            type="button"
-            role="radio"
-            aria-checked={checked}
-            tabIndex={checked ? 0 : -1}
-            disabled={disabled}
-            className="provider-card"
-            onClick={() => onChoose(provider.id)}
-            onKeyDown={(event) => move(event, index)}
-          >
-            <span className="provider-card-head">
-              <span className="provider-card-logo">
-                <ProviderLogo providerId={provider.id} />
-              </span>
-              <b>{provider.label}</b>
-            </span>
-            <span className="provider-hint">{provider.hint}</span>
-          </button>
-        );
-      })}
-    </div>
+          />
+        </div>
+      )}
+      {custom ? (
+        customForm.rows(busy)
+      ) : (
+        <div className="provider-field">
+          <DialogFieldLabel htmlFor="provider-key">{copy.key}</DialogFieldLabel>
+          <Input
+            id="provider-key"
+            type="password"
+            autoComplete="off"
+            spellCheck={false}
+            value={secret}
+            disabled={busy}
+            onChange={(event) => setSecret(event.target.value)}
+          />
+        </div>
+      )}
+    </ProviderDialog>
   );
 }
