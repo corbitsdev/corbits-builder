@@ -7,6 +7,7 @@ import {
   frozenModelChoice,
   providerOfRow,
   resolveModelChoice,
+  type ModelDirectory,
 } from "../config/models.ts";
 import { settingsRecord } from "../db/schema.ts";
 import {
@@ -21,11 +22,12 @@ import type { Actor } from "../lib/actor.ts";
 /** The provider entries a tenant can run on: each enabled connection with a credential. */
 export async function connectedProviders(
   db: DB["db"],
+  directory: ModelDirectory,
   tenantId: string,
 ): Promise<string[]> {
   const ids = (await listVisibleProviders(db, tenantId))
     .filter(({ row }) => row.credentialId !== null && !row.disabled)
-    .map(({ row }) => providerOfRow(row)?.id)
+    .map(({ row }) => providerOfRow(directory, row)?.id)
     .filter((id) => id !== undefined);
   return [...new Set(ids)];
 }
@@ -52,10 +54,11 @@ async function personalChoice(
 
 // A choice runs only when every tier's provider is connected in this workspace, not merely offered.
 function frozenOn(
+  directory: ModelDirectory,
   choice: ModelChoice | null,
   connected: readonly string[],
 ): ModelChoice | null {
-  const kept = frozenModelChoice(choice);
+  const kept = frozenModelChoice(directory, choice);
   const profile = kept?.custom?.find((entry) => entry.id === kept.profile);
   return profile &&
     Object.values(profile.tiers).every((binding) =>
@@ -74,13 +77,15 @@ export async function projectModelChoice(
   db: DB["db"],
   actor: Actor,
   projectId: string,
+  directory: ModelDirectory,
 ): Promise<ModelChoice> {
   const { models } = await loadSettings(db, actor.tenantId, projectId);
-  const connected = await connectedProviders(db, actor.tenantId);
-  const kept = frozenOn(models.value, connected);
+  const connected = await connectedProviders(db, directory, actor.tenantId);
+  const kept = frozenOn(directory, models.value, connected);
   if (kept) return kept;
   const resolved = resolveModelChoice(
-    frozenOn(await personalChoice(db, actor), connected),
+    directory,
+    frozenOn(directory, await personalChoice(db, actor), connected),
     connected,
   );
   if ("refused" in resolved)

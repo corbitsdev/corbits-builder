@@ -26,6 +26,7 @@ import {
 } from "./policy.ts";
 import { invalidPreference } from "../config/preferences.ts";
 import { invalidModelChoice } from "../config/models.ts";
+import { modelDirectory } from "./custom-providers.ts";
 import { digest } from "../lib/digest.ts";
 import type { Actor } from "../lib/actor.ts";
 
@@ -78,7 +79,7 @@ export function createSettingsService(db: DB["db"]) {
       throw new ProjectError(404, "project_not_found");
     return rows;
   }
-  function parse(raw: unknown) {
+  async function parse(actor: Actor, raw: unknown) {
     const input = SettingsSave(structuredClone(raw));
     if (input instanceof type.errors || Object.keys(input.fields).length === 0)
       throw new ProjectError(400, "invalid_settings_save");
@@ -89,7 +90,9 @@ export function createSettingsService(db: DB["db"]) {
         preference: unknown,
       });
     const models = input.fields.models?.value;
-    const refused = models && invalidModelChoice(models);
+    const refused =
+      models &&
+      invalidModelChoice(await modelDirectory(db, actor.tenantId), models);
     if (refused)
       throw new ProjectError(400, "unknown_model_choice", { choice: refused });
     return input;
@@ -120,7 +123,7 @@ export function createSettingsService(db: DB["db"]) {
       personal = false,
     ): Promise<SettingsReceipt> {
       if (!personal) await authorize(actor, projectId, "manage");
-      const input = parse(raw);
+      const input = await parse(actor, raw);
       if (
         personal &&
         Object.keys(input.fields).some(

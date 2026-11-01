@@ -14,7 +14,10 @@ import { generateId } from "@intx/hub-common";
 import { getLogger } from "@intx/log";
 import { credentialAad, type CredentialCipher } from "@intx/types";
 import { installRoot, type ServerProviderKeys } from "./config/install-root.ts";
-import { modelProvider as providerEntry } from "./config/models.ts";
+import {
+  MODEL_PROVIDERS,
+  modelProvider as providerEntry,
+} from "./config/models.ts";
 
 const log = getLogger(["corbits-builder", "hub", "install-root"]);
 
@@ -62,7 +65,7 @@ async function seedProviderKey(
   tenantId: string,
   key: ServerProviderKeys["keys"][number],
 ) {
-  const entry = providerEntry(key.provider)!;
+  const entry = providerEntry(MODEL_PROVIDERS, key.provider)!;
   const baseURL = key.baseURL ?? entry.baseURL;
   const credentialName = `provider:${entry.id}`;
   await db.transaction(async (tx) => {

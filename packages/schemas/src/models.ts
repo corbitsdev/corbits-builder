@@ -7,13 +7,17 @@ export const ProviderStatus = type(
 );
 export type ProviderStatus = typeof ProviderStatus.infer;
 
-// A key is tried once against the provider's model list before it is kept; it is never returned.
-export const ProviderTest = type({
+const testTarget = {
   "+": "reject",
   plugin: name,
   "baseURL?": type("string").atMostLength(2000),
+} as const;
+// A key is tried once against the provider's model list before it is kept; it is never returned.
+// A keyless server is tried with no key at all.
+export const ProviderTest = type({
+  ...testTarget,
   secret: type("string > 0").atMostLength(8000),
-});
+}).or({ ...testTarget, keyless: "true" });
 export type ProviderTest = typeof ProviderTest.infer;
 export const ProviderTestResult = type({
   "+": "reject",
@@ -21,22 +25,90 @@ export const ProviderTestResult = type({
 });
 export type ProviderTestResult = typeof ProviderTestResult.infer;
 
+const tokens = type("number.integer > 0").atMost(100_000_000);
+
+// A model a person serves from their own endpoint, with the window and output cap every role runs it with.
+export const CustomModel = type({
+  "+": "reject",
+  id: name,
+  // The name a person gave it; without one it is shown by its id.
+  "label?": name,
+  contextWindow: tokens,
+  maxOutputTokens: tokens,
+}).narrow(
+  (model, ctx) =>
+    model.maxOutputTokens < model.contextWindow ||
+    ctx.mustBe("an output cap below the context window"),
+);
+export type CustomModel = typeof CustomModel.infer;
+
+// The wire API a custom provider speaks, named by the native adapter plugin that serves it.
+export const CustomApi = type(
+  "'openai-compatible' | 'openai-responses' | 'anthropic'",
+);
+export type CustomApi = typeof CustomApi.infer;
+
+const customModels = CustomModel.array()
+  .atLeastLength(1)
+  .atMostLength(50)
+  .narrow(
+    (models, ctx) =>
+      new Set(models.map((model) => model.id)).size === models.length ||
+      ctx.mustBe("models with distinct ids"),
+  );
+
+// A key is pinned to the origin it was entered for, so a new base URL, API or key is a new connection.
+const endpoint = {
+  "+": "reject",
+  api: CustomApi,
+  baseURL: type("string.url").atMostLength(2000),
+} as const;
+// A server that needs no key is marked keyless instead of given one.
+const CustomConnection = type({
+  ...endpoint,
+  secret: type("string > 0").atMostLength(8000),
+}).or({ ...endpoint, keyless: "true" });
+
+export const CustomProviderCreate = type({
+  "+": "reject",
+  name,
+  models: customModels,
+  connection: CustomConnection,
+});
+export type CustomProviderCreate = typeof CustomProviderCreate.infer;
+
+export const CustomProviderUpdate = type({
+  "+": "reject",
+  name,
+  models: customModels,
+  "connection?": CustomConnection,
+});
+export type CustomProviderUpdate = typeof CustomProviderUpdate.infer;
+
+export const CustomProviderReceipt = type({ "+": "reject", id: name });
+export type CustomProviderReceipt = typeof CustomProviderReceipt.infer;
+
 export const ModelProvider = type({
   "+": "reject",
   id: name,
   plugin: name,
-  kind: "'api_key' | 'login'",
+  kind: "'api_key' | 'login' | 'custom'",
   label: name,
   hint: name,
   needsBaseUrl: "boolean",
   baseURL: "string",
-  models: type({ "+": "reject", id: name, label: name }).array(),
+  models: type({ "+": "reject", id: name, label: name })
+    .or(CustomModel)
+    .array(),
   connections: type({
     "+": "reject",
     id: name,
     name,
-    status: ProviderStatus,
+    // Omitted for a custom endpoint, which is probed only on demand, unless it is disabled.
+    "status?": ProviderStatus,
     credentialSet: "boolean",
+    // A custom endpoint's: whether it runs with no key.
+    "keyless?": "boolean",
     // Where the connection comes from when a person did not make it, such as the server's keys.
     "note?": "string",
   }).array(),
@@ -150,6 +222,8 @@ export const ModelCatalog = type({
   }).array(),
   tiers: type({ "+": "reject", id: Tier, label: name }).array(),
   efforts: type({ "+": "reject", id: Effort, label: name }).array(),
+  // The APIs a custom provider can speak.
+  customApis: type({ "+": "reject", id: CustomApi, label: name }).array(),
   // The profile a person without a choice runs on: the only connected provider's.
   "automaticProfile?": name,
   // Why there is no automatic profile, when there is none.

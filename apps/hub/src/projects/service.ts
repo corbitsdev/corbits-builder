@@ -34,6 +34,7 @@ import {
 } from "../settings/policy.ts";
 import { resolvePreferences } from "../config/preferences.ts";
 import { frozenModelChoice, pickedModelChoice } from "../config/models.ts";
+import { modelDirectory } from "../settings/custom-providers.ts";
 import { parseStatusFilter } from "./lifecycle.ts";
 import {
   grantAuthorization,
@@ -544,6 +545,7 @@ export function createProjectService(db: DB["db"]) {
       mutation.payload.title,
       parentId,
     );
+    const directory = await modelDirectory(db, child.id);
     const result = await db.transaction(async (tx) => {
       await tx.execute(
         sql`select pg_advisory_xact_lock(hashtextextended(${canonicalJsonStringify([caller.tenantId, caller.principalId, mutation.command, mutation.idempotencyKey])}, 0))`,
@@ -593,7 +595,7 @@ export function createProjectService(db: DB["db"]) {
             value: resolvePreferences(preferences.value),
             version: 1,
           },
-          models: { value: frozenModelChoice(choice), version: 1 },
+          models: { value: frozenModelChoice(directory, choice), version: 1 },
         },
       });
       const recorded = await record(

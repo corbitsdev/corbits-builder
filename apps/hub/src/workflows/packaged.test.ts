@@ -1,8 +1,18 @@
 import { expect, test } from "bun:test";
 import { NativeSpecialistDeployment } from "@corbits-builder/schemas/native-specialist";
-import { workflowBindings } from "../config/models.ts";
+import { MODEL_PROVIDERS, workflowBindings } from "../config/models.ts";
+import { resolveRoleInference, type RoleInference } from "./role-inference.ts";
+import type { WorkflowRole } from "@corbits-builder/schemas/installed-workflows";
 
-const bindings = workflowBindings({ profile: "anthropic_default" });
+const bindings = workflowBindings(MODEL_PROVIDERS, {
+  profile: "anthropic_default",
+});
+const inference = Object.fromEntries(
+  Object.entries(bindings).map(([role, binding]) => [
+    role,
+    resolveRoleInference(MODEL_PROVIDERS, role as WorkflowRole, binding),
+  ]),
+) as Record<WorkflowRole, RoleInference>;
 
 test("native specialist accepts installed tarballs only with an exact package pin", () => {
   const deployment: NativeSpecialistDeployment = {
@@ -23,7 +33,7 @@ test("native specialist accepts installed tarballs only with an exact package pi
 });
 
 test("production entries expose concrete native workflows without callback credentials", async () => {
-  process.env.BUILDER_ROLE_INFERENCE = JSON.stringify(bindings.coordinator);
+  process.env.BUILDER_ROLE_INFERENCE = JSON.stringify(inference.coordinator);
   const coordinator = (await import("./entries/coordinator.ts")).default;
   const writer = (await import("./entries/writer.ts")).default;
   const reviewer = (await import("./entries/reviewer.ts")).default;
@@ -82,7 +92,7 @@ test("built npm tarballs contain importable production workflow metadata and def
     join(tmpdir(), "sb-packaged-definition-test-"),
   );
   try {
-    const manifest = await buildWorkflowPackages(directory, "1.0.0", bindings);
+    const manifest = await buildWorkflowPackages(directory, "1.0.0", inference);
     expect(manifest).toHaveLength(6);
     for (const metadata of manifest) {
       const extracted = join(directory, metadata.assetName);

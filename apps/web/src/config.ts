@@ -864,6 +864,7 @@ export const wording = {
     provider: "Provider",
     baseUrl: "Base URL",
     key: "API key",
+    keyless: `For servers that need no API key; ${productName} sends a placeholder.`,
     test: "Test connection",
     testing: "Testing…",
     saved: (label: string) => `${label} connected`,

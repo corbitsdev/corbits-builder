@@ -187,9 +187,11 @@ export function ProvidersSection({ onChanged }: { onChanged: () => void }) {
             )}
             {connection.note ? <span>{connection.note}</span> : null}
           </div>
-          <QuietState tone={STATUS_TONE[connection.status]}>
-            {copy.status[connection.status]}
-          </QuietState>
+          {connection.status ? (
+            <QuietState tone={STATUS_TONE[connection.status]}>
+              {copy.status[connection.status]}
+            </QuietState>
+          ) : null}
         </div>
       ))}
     </>

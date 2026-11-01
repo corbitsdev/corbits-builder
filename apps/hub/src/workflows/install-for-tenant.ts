@@ -27,7 +27,9 @@ import {
   modelProvider,
   providerOfRow,
   workflowBindings,
+  type ModelDirectory,
 } from "../config/models.ts";
+import { modelDirectory } from "../settings/custom-providers.ts";
 import {
   isOAuthModelPlugin,
   offeringQuirks,
@@ -35,6 +37,7 @@ import {
 import { projectModelChoice } from "../projects/model-choice.ts";
 import { ProjectError } from "../projects/errors.ts";
 import { buildWorkflowPackages } from "./build-packages.ts";
+import { resolveRoleInference, type RoleInference } from "./role-inference.ts";
 import type { Actor } from "../lib/actor.ts";
 
 const PACKAGE_VERSION = "1.0.0";
@@ -49,9 +52,10 @@ type InstallForTenantPorts = {
 };
 
 type Bindings = Record<WorkflowRole, RoleBinding>;
+type Inference = Record<WorkflowRole, RoleInference>;
 type Source = Pick<RoleBinding, "provider" | "model">;
 
-// One build per set of role bindings: the binding is inlined, so it is part of the bundle.
+// One build per set of resolved role inference: it is inlined, so it is part of the bundle.
 const packages = new Map<
   string,
   Promise<
@@ -72,9 +76,12 @@ export function startFailed(): ProjectError {
   });
 }
 
-function providerMissing(source: Source): ProjectError {
+function providerMissing(
+  directory: ModelDirectory,
+  source: Source,
+): ProjectError {
   return new ProjectError(409, "inference_provider_missing", {
-    message: `Connect a ${modelProvider(source.provider)?.label ?? source.provider} model provider before starting a project.`,
+    message: `Connect a ${modelProvider(directory, source.provider)?.label ?? source.provider} model provider before starting a project.`,
   });
 }
 
@@ -93,8 +100,8 @@ function installedFrom(config: unknown): InstalledWorkflows | null {
   return parsed instanceof type.errors ? null : parsed;
 }
 
-function builtPackages(bindings: Bindings) {
-  const key = JSON.stringify(bindings);
+function builtPackages(inference: Inference) {
+  const key = JSON.stringify(inference);
   const cached = packages.get(key);
   if (cached) return cached;
   const building = (async () => {
@@ -103,7 +110,7 @@ function builtPackages(bindings: Bindings) {
       const manifest = await buildWorkflowPackages(
         directory,
         PACKAGE_VERSION,
-        bindings,
+        inference,
       );
       return await Promise.all(
         manifest.map(async (item) => ({
@@ -142,17 +149,24 @@ type ProviderRow = VisibleOffering["provider"];
 
 // What an offering must carry for its adapter: for a login, the host identity and the account the
 // login was made for; otherwise its provider entry's quirks. Null when the adapter takes none.
-async function wantedQuirks(db: DB["db"], row: ProviderRow) {
+async function wantedQuirks(
+  db: DB["db"],
+  directory: ModelDirectory,
+  row: ProviderRow,
+) {
   if (isOAuthModelPlugin(row.plugin))
     return offeringQuirks(
       row.plugin,
       await credentialMetadata(db, row.credentialId),
     );
-  return providerOfRow(row)?.quirks ?? null;
+  return providerOfRow(directory, row)?.quirks ?? null;
 }
 
-function wantedCapabilities(row: ProviderRow): readonly string[] {
-  return providerOfRow(row)?.capabilities ?? [];
+function wantedCapabilities(
+  directory: ModelDirectory,
+  row: ProviderRow,
+): readonly string[] {
+  return providerOfRow(directory, row)?.capabilities ?? [];
 }
 
 function declaresCapabilities(
@@ -168,6 +182,7 @@ function declaresCapabilities(
 // `inference.source:<provider>:<model>` never matches at deploy time.
 async function servesSource(
   db: DB["db"],
+  directory: ModelDirectory,
   row: VisibleOffering,
   source: Source,
 ): Promise<boolean> {
@@ -175,13 +190,16 @@ async function servesSource(
     row.offering.disabled ||
     row.model.disabled ||
     row.provider.disabled ||
-    providerOfRow(row.provider)?.id !== source.provider ||
+    providerOfRow(directory, row.provider)?.id !== source.provider ||
     row.model.canonicalName !== source.model
   )
     return false;
-  const quirks = await wantedQuirks(db, row.provider);
+  const quirks = await wantedQuirks(db, directory, row.provider);
   return (
-    declaresCapabilities(row.offering, wantedCapabilities(row.provider)) &&
+    declaresCapabilities(
+      row.offering,
+      wantedCapabilities(directory, row.provider),
+    ) &&
     (quirks === null ||
       JSON.stringify(row.offering.quirks) === JSON.stringify(quirks))
   );
@@ -190,32 +208,35 @@ async function servesSource(
 /** The visible catalog offering a role bound to `source` runs on, once one is minted. */
 export async function servingOffering(
   db: DB["db"],
+  directory: ModelDirectory,
   tenantId: string,
   source: Source,
 ) {
   for (const row of await listVisibleOfferings(db, tenantId))
-    if (await servesSource(db, row, source)) return row.offering;
+    if (await servesSource(db, directory, row, source)) return row.offering;
   return undefined;
 }
 
 async function offeringId(
   db: DB["db"],
+  directory: ModelDirectory,
   tenantId: string,
   source: Source,
 ): Promise<string> {
-  const serving = await servingOffering(db, tenantId, source);
+  const serving = await servingOffering(db, directory, tenantId, source);
   if (serving) return serving.id;
   // A project is a child tenant; its provider lives up the tree where the
   // person connected it. The model and offering are minted beside that
   // provider so every descendant resolves them.
   const visible = (await listVisibleProviders(db, tenantId)).find(
     (entry) =>
-      providerOfRow(entry.row)?.id === source.provider && !entry.row.disabled,
+      providerOfRow(directory, entry.row)?.id === source.provider &&
+      !entry.row.disabled,
   );
-  if (!visible) throw providerMissing(source);
+  if (!visible) throw providerMissing(directory, source);
   const providerId = visible.row.id;
-  const quirks = await wantedQuirks(db, visible.row);
-  const capabilities = [...wantedCapabilities(visible.row)];
+  const quirks = await wantedQuirks(db, directory, visible.row);
+  const capabilities = [...wantedCapabilities(directory, visible.row)];
   tenantId = visible.origin.tenantId;
   const [named] = await db
     .select({ id: model.id })
@@ -296,6 +317,7 @@ const ROLES = [
 /** A stored descriptor is current only while it pins this build's packages and, for each role, an offering serving its source. */
 async function isCurrent(
   db: DB["db"],
+  directory: ModelDirectory,
   tenantId: string,
   installed: InstalledWorkflows,
   built: Built,
@@ -315,7 +337,8 @@ async function isCurrent(
     const row = visible.find(
       (entry) => entry.offering.id === installed[role].defaultSourceOfferingId,
     );
-    if (!row || !(await servesSource(db, row, bindings[role]))) return false;
+    if (!row || !(await servesSource(db, directory, row, bindings[role])))
+      return false;
   }
   return true;
 }
@@ -388,14 +411,30 @@ export async function installForTenant(
     .select({ config: tenant.config })
     .from(tenant)
     .where(eq(tenant.id, actor.tenantId));
+  const directory = await modelDirectory(ports.db, actor.tenantId);
   const bindings = workflowBindings(
-    await projectModelChoice(ports.db, actor, projectId),
+    directory,
+    await projectModelChoice(ports.db, actor, projectId, directory),
   );
-  const built = await builtPackages(bindings);
+  const built = await builtPackages(
+    Object.fromEntries(
+      ROLES.map((role) => [
+        role,
+        resolveRoleInference(directory, role, bindings[role]),
+      ]),
+    ) as Inference,
+  );
   const existing = installedFrom(row?.config);
   if (
     existing &&
-    (await isCurrent(ports.db, actor.tenantId, existing, built, bindings))
+    (await isCurrent(
+      ports.db,
+      directory,
+      actor.tenantId,
+      existing,
+      built,
+      bindings,
+    ))
   )
     return existing;
   const offerings = new Map<string, string>();
@@ -404,7 +443,7 @@ export async function installForTenant(
     if (!offerings.has(key))
       offerings.set(
         key,
-        await offeringId(ports.db, actor.tenantId, bindings[role]),
+        await offeringId(ports.db, directory, actor.tenantId, bindings[role]),
       );
   }
   const offeringFor = (role: WorkflowRole) =>
@@ -472,7 +511,14 @@ export async function installForTenant(
     const stored = installedFrom(current.config);
     if (
       stored &&
-      (await isCurrent(ports.db, actor.tenantId, stored, built, bindings))
+      (await isCurrent(
+        ports.db,
+        directory,
+        actor.tenantId,
+        stored,
+        built,
+        bindings,
+      ))
     )
       return;
     const config =

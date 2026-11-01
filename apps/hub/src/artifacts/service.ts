@@ -131,6 +131,7 @@ import {
 } from "../config/preferences.ts";
 import { awaitingApproval } from "../projects/deploy-tools.ts";
 import { frozenModelChoice, workflowBindings } from "../config/models.ts";
+import { modelDirectory } from "../settings/custom-providers.ts";
 import { materialsNote } from "../config/materials.ts";
 import { servingOffering } from "../workflows/install-for-tenant.ts";
 import {
@@ -999,13 +1000,15 @@ export function createArtifactService(
     ): Promise<AcceptedMaterials> {
       await requireProject(actor, projectId, "read");
       const { models } = await loadSettings(rawDB, actor.tenantId, projectId);
-      const choice = frozenModelChoice(models.value);
+      const directory = await modelDirectory(rawDB, actor.tenantId);
+      const choice = frozenModelChoice(directory, models.value);
       const offering =
         choice &&
         (await servingOffering(
           rawDB,
+          directory,
           actor.tenantId,
-          workflowBindings(choice).coordinator,
+          workflowBindings(directory, choice).coordinator,
         ));
       return acceptedMaterials(offering?.capabilities ?? []);
     },

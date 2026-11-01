@@ -9,6 +9,9 @@ import type { DiscoveredModels } from "@corbits-builder/schemas/catalog";
 import type { SettingsProviders } from "@corbits-builder/schemas/settings";
 import type { PreferenceRegistry } from "@corbits-builder/schemas/preferences";
 import type {
+  CustomProviderCreate,
+  CustomProviderReceipt,
+  CustomProviderUpdate,
   ModelCatalog,
   ProviderTest,
   ProviderTestResult,
@@ -202,6 +205,24 @@ export type ProductApiClient = Readonly<{
     input: ProviderTest,
     signal?: AbortSignal,
   ): Promise<ProviderTestResult>;
+  /** Adds a custom provider: its connection, key and models at once. The key is never returned. */
+  createCustomProvider(
+    tenantId: string,
+    input: CustomProviderCreate,
+    signal?: AbortSignal,
+  ): Promise<CustomProviderReceipt>;
+  /** Renames a custom provider and replaces its models; a given connection replaces its old one. */
+  updateCustomProvider(
+    tenantId: string,
+    providerId: string,
+    input: CustomProviderUpdate,
+    signal?: AbortSignal,
+  ): Promise<CustomProviderReceipt>;
+  removeCustomProvider(
+    tenantId: string,
+    providerId: string,
+    signal?: AbortSignal,
+  ): Promise<CustomProviderReceipt>;
   personalSettings(
     tenantId: string,
     signal?: AbortSignal,
@@ -509,7 +530,7 @@ export type ClientDeps = {
     path: string,
     signal?: AbortSignal,
     mutation?: unknown,
-    method?: "POST" | "PATCH",
+    method?: "POST" | "PATCH" | "DELETE",
   ) => Promise<T>;
   catalogResponse: (path: string, signal?: AbortSignal) => Promise<unknown>;
   baseUrl: URL;

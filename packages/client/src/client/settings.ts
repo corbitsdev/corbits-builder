@@ -8,6 +8,10 @@ function personalSettingsPath(tenantId: string) {
   return `${tenantPath(tenantId)}/settings/me`;
 }
 
+function customProvidersPath(tenantId: string, providerId?: string) {
+  return `${tenantPath(tenantId)}/settings/custom-providers${providerId ? `/${encodeURIComponent(providerId)}` : ""}`;
+}
+
 export function buildSettingsMethods(
   deps: ClientDeps,
 ): Pick<
@@ -17,6 +21,9 @@ export function buildSettingsMethods(
   | "preferenceRegistry"
   | "modelCatalog"
   | "testProvider"
+  | "createCustomProvider"
+  | "updateCustomProvider"
+  | "removeCustomProvider"
   | "personalSettings"
   | "savePersonalSettings"
 > {
@@ -43,6 +50,20 @@ export function buildSettingsMethods(
         `${tenantPath(tenantId)}/settings/providers/test`,
         signal,
         input,
+      );
+    },
+    createCustomProvider(tenantId, input, signal) {
+      return request(customProvidersPath(tenantId), signal, input);
+    },
+    updateCustomProvider(tenantId, providerId, input, signal) {
+      return request(customProvidersPath(tenantId, providerId), signal, input);
+    },
+    removeCustomProvider(tenantId, providerId, signal) {
+      return request(
+        customProvidersPath(tenantId, providerId),
+        signal,
+        null,
+        "DELETE",
       );
     },
     personalSettings(tenantId, signal) {

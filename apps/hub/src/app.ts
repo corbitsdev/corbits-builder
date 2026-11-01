@@ -561,6 +561,7 @@ export async function createHubRuntime(
           credentialCipher,
           config,
           installRootId,
+          async (request) => app.fetch(request),
         ),
       );
     const modelLogins = mountModelLogins(app, {

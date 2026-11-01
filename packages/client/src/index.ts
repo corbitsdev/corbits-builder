@@ -62,7 +62,7 @@ export function createProductApiClient(
     path: string,
     signal?: AbortSignal,
     mutation?: unknown,
-    method: "POST" | "PATCH" = "POST",
+    method: "POST" | "PATCH" | "DELETE" = "POST",
   ): Promise<T> {
     const requestHeaders = new Headers(headers);
     if (mutation !== undefined)
