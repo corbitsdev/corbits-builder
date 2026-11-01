@@ -15,9 +15,7 @@ if (import.meta.main) {
       websocket: runtime.websocket,
     });
     await runtime.start();
-    log.info(
-      "Hub ready: Postgres connected; local Interchange sidecar provisioner",
-    );
+    log.info("Hub ready: Postgres connected");
     let stopping = false;
     const stop = async () => {
       if (stopping) return;

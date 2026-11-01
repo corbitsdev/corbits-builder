@@ -59,12 +59,13 @@ RUN apt-get update \
  && rm -rf /var/lib/apt/lists/*
 
 # Docker sidecars load the hub's inference adapters at the paths the hub resolves them to,
-# so this image keeps the hub's /app layout.
+# so this image keeps the hub's /app layout. The sidecar-provisioner service runs from it too.
 FROM runtime AS sidecar
 WORKDIR /app
 COPY --from=deps --chown=bun:bun /app/package.json ./
 COPY --from=deps --chown=bun:bun /app/node_modules ./node_modules
 COPY --from=deps --chown=bun:bun /app/apps/hub ./apps/hub
+COPY --from=deps --chown=bun:bun /app/apps/sidecar-provisioner ./apps/sidecar-provisioner
 COPY --from=deps --chown=bun:bun /app/packages ./packages
 COPY --from=deps --chown=bun:bun /app/vendor/interchange ./vendor/interchange
 RUN mkdir -p /data && chown bun:bun /data
@@ -78,6 +79,7 @@ WORKDIR /app
 COPY --from=deps --chown=bun:bun /app/package.json /app/bun.lock /app/tsconfig.json ./
 COPY --from=deps --chown=bun:bun /app/node_modules ./node_modules
 COPY --from=deps --chown=bun:bun /app/apps/hub ./apps/hub
+COPY --from=deps --chown=bun:bun /app/apps/sidecar-provisioner ./apps/sidecar-provisioner
 COPY --from=web --chown=bun:bun /app/apps/web/dist ./apps/web/dist
 COPY --from=deps --chown=bun:bun /app/packages ./packages
 COPY --from=deps --chown=bun:bun /app/workflows ./workflows

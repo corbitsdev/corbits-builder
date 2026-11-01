@@ -17,7 +17,14 @@
     "skipLibCheck": true,
     "allowImportingTsExtensions": true
   },
-  "include": ["apps/hub", "scripts", "packages", "workflows", "test"],
+  "include": [
+    "apps/hub",
+    "apps/sidecar-provisioner",
+    "scripts",
+    "packages",
+    "workflows",
+    "test"
+  ],
   "exclude": [
     "node_modules",
     "vendor",

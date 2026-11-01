@@ -67,6 +67,7 @@ jobs:
             e2e:
               - *shared
               - "apps/hub/**"
+              - "apps/sidecar-provisioner/**"
               - "packages/**"
               - "workflows/**"
               - "test/e2e/**"

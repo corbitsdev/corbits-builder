@@ -1,5 +1,4 @@
 import { resolve } from "node:path";
-import { type } from "arktype";
 import type { SidecarProvisioner } from "@intx/hub-sessions";
 import {
   createSidecarAllocationStore,
@@ -33,12 +32,10 @@ import {
   type ResolvedWorkflowLifecyclePolicy,
 } from "@intx/types";
 import { getLogger } from "@intx/log";
-import {
-  connectDocker,
-  createDockerSidecarProvisioner,
-  defaultDockerLimits,
-} from "./docker.ts";
 import { positiveInteger } from "../environment.ts";
+import { dockerProvisionerFromEnv } from "@corbits-builder/sidecar-provisioner/docker";
+import { provisionerToken } from "@corbits-builder/sidecar-provisioner/routes";
+import { createRemoteSidecarProvisioner } from "./remote.ts";
 import { localSidecarDataRoot } from "../sidecar/data-root.ts";
 import { createHostCapacity } from "../sidecar/host-capacity.ts";
 import {
@@ -55,8 +52,6 @@ import {
 } from "../sidecar/spawn.ts";
 
 const log = getLogger(["corbits-builder", "workflow-services"]);
-const Daemon = type({ ID: "string > 0" });
-const Image = type({ Id: "string > 0" });
 const ROOT = resolve(import.meta.dir, "../../../..");
 const INTERCHANGE_DIR = resolve(ROOT, "vendor/interchange");
 
@@ -112,88 +107,89 @@ export async function createWorkflowServices(options: {
       export: "createXaiResponsesAdapter",
     },
   ];
-  const credentialEncryptionKey = environment["CREDENTIAL_ENCRYPTION_KEY"];
-  if (!credentialEncryptionKey)
-    throw new Error("CREDENTIAL_ENCRYPTION_KEY is required");
-  const maxActiveDeployments = positiveInteger(
-    environment,
-    "SIDECAR_LOCAL_MAX_ACTIVE",
-    16,
-  );
-  const dataRoot = localSidecarDataRoot(
-    environment["HUB_DATA_DIR"] ?? "data/hub",
-  );
-  const local = createLocalProcessSidecarProvisioner({
-    dataRoot,
-    spawnSidecar: createSpawnLocalSidecar({
-      interchangeDir: INTERCHANGE_DIR,
-      credentialEncryptionKey,
-      maxActiveDeployments,
-      processEnv: childProcessEnv(environment),
-    }),
-    stopStaleSidecar: stopStaleLocalSidecar,
-    manifests: createLocalSidecarManifestStore({
+  async function localSidecars() {
+    const credentialEncryptionKey = environment["CREDENTIAL_ENCRYPTION_KEY"];
+    if (!credentialEncryptionKey)
+      throw new Error("CREDENTIAL_ENCRYPTION_KEY is required");
+    const maxActiveDeployments = positiveInteger(
+      environment,
+      "SIDECAR_LOCAL_MAX_ACTIVE",
+      16,
+    );
+    const dataRoot = localSidecarDataRoot(
+      environment["HUB_DATA_DIR"] ?? "data/hub",
+    );
+    const local = createLocalProcessSidecarProvisioner({
       dataRoot,
-      cipher: options.cipher,
-      log: sidecarLog,
-    }),
-    capacity: createHostCapacity({
-      cgroupRoot: "/sys/fs/cgroup",
-      meminfo: "/proc/meminfo",
-    }),
-    adapterManifest,
-    log: sidecarLog,
-  });
-  const provisioners: SidecarProvisioner[] = [local.provisioner];
-  const imageName = environment["SIDECAR_IMAGE"];
-  if (imageName) {
-    const engine = connectDocker(
-      environment["SIDECAR_DOCKER_HOST"] ?? "unix:///var/run/docker.sock",
-    );
-    const daemon = Daemon.assert(await engine.request("GET", "/info"));
-    const image = Image.assert(
-      await engine.request(
-        "GET",
-        `/images/${encodeURIComponent(imageName)}/json`,
-      ),
-    );
-    provisioners.push(
-      createDockerSidecarProvisioner({
-        engine,
-        hubId: environment["SIDECAR_DOCKER_HUB_ID"] ?? options.hubId,
-        daemonId: daemon.ID,
-        image: image.Id,
-        adapterManifest,
-        limits: {
-          memoryBytes: positiveInteger(
-            environment,
-            "SIDECAR_MEMORY_BYTES",
-            defaultDockerLimits.memoryBytes,
-          ),
-          pids: positiveInteger(
-            environment,
-            "SIDECAR_PIDS",
-            defaultDockerLimits.pids,
-          ),
-          nanoCpus: positiveInteger(
-            environment,
-            "SIDECAR_NANO_CPUS",
-            defaultDockerLimits.nanoCpus,
-          ),
-        },
-        ...(environment["SIDECAR_HUB_WS_URL"]
-          ? { hubWebSocketUrl: environment["SIDECAR_HUB_WS_URL"] }
-          : {}),
+      spawnSidecar: createSpawnLocalSidecar({
+        interchangeDir: INTERCHANGE_DIR,
+        credentialEncryptionKey,
+        maxActiveDeployments,
+        processEnv: childProcessEnv(environment),
       }),
-    );
+      stopStaleSidecar: stopStaleLocalSidecar,
+      manifests: createLocalSidecarManifestStore({
+        dataRoot,
+        cipher: options.cipher,
+        log: sidecarLog,
+      }),
+      capacity: createHostCapacity({
+        cgroupRoot: "/sys/fs/cgroup",
+        meminfo: "/proc/meminfo",
+      }),
+      adapterManifest,
+      log: sidecarLog,
+    });
+    const provisioners: SidecarProvisioner[] = [local.provisioner];
+    if (environment["SIDECAR_IMAGE"])
+      provisioners.push(
+        await dockerProvisionerFromEnv(environment, {
+          hubId: environment["SIDECAR_DOCKER_HUB_ID"] ?? options.hubId,
+        }),
+      );
+    return {
+      local,
+      // The sidecar resolves its data dir from its own working directory.
+      dataDir: resolve(INTERCHANGE_DIR, localSidecarDataDir(dataRoot)),
+      provisioners,
+      chooser: createPlacementChooser({
+        db,
+        local: local.provisioner,
+        maxDeployments: maxActiveDeployments,
+      }),
+    };
   }
+
+  // The Docker install starts every agent through its sidecar-provisioner service and none in the hub's container.
+  async function remoteSidecars(url: string) {
+    if (environment["SIDECAR_IMAGE"])
+      throw new Error(
+        "SIDECAR_PROVISIONER_URL and SIDECAR_IMAGE cannot both be set",
+      );
+    return {
+      local: undefined,
+      dataDir: undefined,
+      provisioners: [
+        await createRemoteSidecarProvisioner({
+          url: new URL(url),
+          token: provisionerToken(environment["SIDECAR_PROVISIONER_TOKEN"]),
+        }),
+      ],
+      chooser: undefined,
+    };
+  }
+
+  const provisionerUrl = environment["SIDECAR_PROVISIONER_URL"];
+  const sidecars = provisionerUrl
+    ? await remoteSidecars(provisionerUrl)
+    : await localSidecars();
+  const { local, provisioners, chooser } = sidecars;
+  log.info("Sidecar provisioners: {ids}", {
+    ids: provisioners.map((provisioner) => provisioner.id),
+  });
   const plugins = createSidecarPluginRegistry({
     provisioners,
-    chooser: createPlacementChooser({
-      db,
-      local: local.provisioner,
-      maxDeployments: maxActiveDeployments,
-    }),
+    ...(chooser !== undefined && { chooser }),
   });
   const duration = (key: string, fallback: string) =>
     LifecycleDuration.assert(environment[key] ?? fallback);
@@ -283,7 +279,8 @@ export async function createWorkflowServices(options: {
     retireProvisionerSidecar: allocationStore.retireProvisionerSidecar,
     isConnected: router.holdsAllocatedBinding,
   });
-  await restoreLocalSidecars(db, local, adapterManifest);
+  if (local !== undefined)
+    await restoreLocalSidecars(db, local, adapterManifest);
   const pending = new Set<Promise<unknown>>();
   const track = <T>(run: () => Promise<T>): Promise<T> => {
     const task = Promise.resolve().then(run);
@@ -373,11 +370,7 @@ export async function createWorkflowServices(options: {
       workflowLifecycleService: lifecycle,
     },
     configured: true as const,
-    // The sidecar resolves its data dir from its own working directory.
-    localSidecarDataDir: resolve(
-      INTERCHANGE_DIR,
-      localSidecarDataDir(dataRoot),
-    ),
+    localSidecarDataDir: sidecars.dataDir,
     start() {
       for (const scheduler of schedulers) scheduler.start();
     },
@@ -387,7 +380,7 @@ export async function createWorkflowServices(options: {
     },
     async drain() {
       await Promise.allSettled(pending);
-      await local.shutdown();
+      await local?.shutdown();
     },
   };
 }
