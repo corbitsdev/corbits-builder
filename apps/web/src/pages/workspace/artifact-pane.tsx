@@ -30,6 +30,7 @@ import {
 import {
   DeliverableBody,
   type DeliverableState,
+  fillsPane,
   type ReadVersion,
 } from "./deliverable-block.tsx";
 import {
@@ -68,7 +69,7 @@ export const LIVE_TAB = "live-app";
 const liveIds = panelTabIds(TAB_PREFIX, LIVE_TAB);
 const THEMES_TAB = "design-themes";
 const themesIds = panelTabIds(TAB_PREFIX, THEMES_TAB);
-// A pane whose page fills it edge to edge: the app, a mockup or the design draft.
+// A pane whose page fills it edge to edge: the app, a mockup, a spreadsheet or the design draft.
 const FILL_PANE = "workspace-pane-fill";
 const POINTER_TABS = "data-pointer-tabs";
 const TAB_KEYS = new Set([
@@ -473,7 +474,9 @@ export function ArtifactPane({
                 <PanelPane
                   key={view.value}
                   value={view.value}
-                  {...(view.part === "mockup" ? { className: FILL_PANE } : {})}
+                  {...(view.part === "mockup" || (current && fillsPane(state))
+                    ? { className: FILL_PANE }
+                    : {})}
                   id={ids.pane}
                   role="tabpanel"
                   aria-labelledby={ids.tab}

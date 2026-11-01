@@ -31,7 +31,12 @@ function passageQuote(
   root: HTMLElement,
 ): string | null {
   if (!(target instanceof Element)) return null;
-  if (target.closest("button, a, input, textarea, select, label, iframe"))
+  // A click in a grid picks a cell, so it offers no quote.
+  if (
+    target.closest(
+      "button, a, input, textarea, select, label, iframe, [role=grid]",
+    )
+  )
     return null;
   const block = target.closest(
     "p, li, h1, h2, h3, h4, blockquote, pre, td, th",

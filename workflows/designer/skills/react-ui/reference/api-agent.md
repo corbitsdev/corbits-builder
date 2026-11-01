@@ -1,6 +1,6 @@
-<!-- Generated from @corbits/react-ui 0.4.0. Regenerate: bun scripts/react-ui-api.ts -->
+<!-- Generated from @corbits/react-ui 0.5.0. Regenerate: bun scripts/react-ui-api.ts -->
 
-# react-ui: conversation, agent runs, media and artifacts (0.4.0)
+# react-ui: conversation, agent runs, media and artifacts (0.5.0)
 
 Props per exported component, from the installed declarations. `?` marks optional. `+native` means the component also accepts the native props of the element it renders (`className`, `onClick`, ...). Import from the package root unless SKILL.md lists the module as a subpath.
 

@@ -1,8 +1,24 @@
-<!-- Generated from @corbits/react-ui 0.4.0. Regenerate: bun scripts/react-ui-api.ts -->
+<!-- Generated from @corbits/react-ui 0.5.0. Regenerate: bun scripts/react-ui-api.ts -->
 
-# react-ui: buttons, inputs, filters, dialogs, menus and toasts (0.4.0)
+# react-ui: buttons, inputs, filters, dialogs, menus and toasts (0.5.0)
 
 Props per exported component, from the installed declarations. `?` marks optional. `+native` means the component also accepts the native props of the element it renders (`className`, `onClick`, ...). Import from the package root unless SKILL.md lists the module as a subpath.
+
+## ui/action-bar
+
+### ActionBar — One bar of quiet controls for a view: groups of icon or text buttons with a rule between them, toggles, menus, status notes and a sideways-scrolling strip.
+label: string — The toolbar's accessible name.
+groups: readonly ActionBarGroup[] — Drawn in order with a rule between; empty groups are skipped.
+placement?: "inline" | "floating" — `floating` pins the bar to the bottom centre of the nearest positioned ancestor and lets it collapse to a small handle; `inline` sticks to the foot of its scroll container.
+collapsed?: boolean
+defaultCollapsed?: boolean
+onCollapsedChange?: ((collapsed: boolean) => void)
+popover?: ReactNode — A panel shown just above the bar, such as one an action opens.
+rootRef?: Ref<HTMLDivElement> — The element around the bar and its popover, so a press on either can count as inside.
+barRef?: Ref<HTMLElement> — The bar itself, or its handle while collapsed, for measuring the space it covers.
+collapseLabel?: string
+expandLabel?: string
+className?: string
 
 ## ui/bulk-action-bar
 
