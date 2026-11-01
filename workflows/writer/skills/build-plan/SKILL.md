@@ -23,7 +23,11 @@ one, and carries each requirement by its id.
    between outside sources, the server and the screens, and where it is
    kept.
 5. `## Phases`: in order, each with its files, the requirement ids it
-   delivers and a checkable exit. The phases reach every must and name the
+   delivers and a checkable exit. For an app with a server, the order lets
+   the person watch the app take shape in the live preview: the shared schemas and the client's
+   sample data first; then the theme, layout and routes; then the pages on
+   sample data; then the server; then each page wired to the server; checks
+   and the README last. The phases reach every must and name the
    nice-to-haves that ship.
 6. `## Install and run`: how the person installs and runs the app with the
    starter's standard scripts. The port comes from the environment.
