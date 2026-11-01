@@ -38,6 +38,18 @@ and `DB_PORT` the database (default `5433`).
 newest release candidate), `latest` (the newest stable release), `main` (every
 merge), an exact version such as `0.1.0-rc.1`, or a full commit sha.
 
+To check that the images were built by Builder's own workflow, verify their
+attestations with the [GitHub CLI](https://cli.github.com) before starting,
+where `<version>` is the release you run:
+
+```sh
+gh attestation verify oci://ghcr.io/corbitsdev/corbits-builder-hub:<version> -R corbitsdev/corbits-builder
+gh attestation verify oci://ghcr.io/corbitsdev/corbits-builder-sidecar:<version> -R corbitsdev/corbits-builder
+```
+
+A release re-tags images built on `main` without rebuilding them, so the
+attestation names `main` as its source, not the release tag.
+
 ## Models
 
 Connect a provider in the UI under **Settings → Providers**, or set its key in
