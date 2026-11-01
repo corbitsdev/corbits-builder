@@ -49,7 +49,9 @@ There is no default profile. When a project's coordinator starts, it runs on:
 The resolved profile is fixed for the life of the project.
 
 Agents run in sidecar processes the hub starts on this machine; their state
-lives under `HUB_DATA_DIR` (`data/hub`). Docker sidecars are optional
+lives under `HUB_DATA_DIR` (`data/hub`). Docker sidecars beside them are
+optional (`SIDECAR_IMAGE` in `.env.hub.example`). The Docker install runs every
+agent in its own container instead
 ([SELF_HOST.md](https://github.com/corbitsdev/corbits-builder/blob/main/docs/SELF_HOST.md#sidecars-in-docker)).
 
 ## Tests
@@ -104,7 +106,7 @@ real API ([CONTRIBUTING.md](https://github.com/corbitsdev/corbits-builder/blob/m
 - Hub routes: mounted in `apps/hub/src/app.ts`; each project's routes in
   `apps/hub/src/projects/routes.ts`.
 - Starting and placing sidecars: `apps/hub/src/provisioning/`,
-  `apps/hub/src/sidecar/`.
+  `apps/hub/src/sidecar/`, `apps/sidecar-provisioner/`.
 - Each role's prompt: `workflows/<role>/src/`. Its `defineTool` tools:
   `apps/hub/src/` (`artifacts/`, `projects/`, `builds/`, `skills/`).
 - Interchange docs: `vendor/interchange/docs/`.

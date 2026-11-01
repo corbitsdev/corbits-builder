@@ -1,4 +1,4 @@
-# Builds the hub from this checkout instead of pulling the published image:
+# Builds the hub and sidecar images from this checkout instead of pulling the published ones:
 #   docker compose --env-file .env.hub --project-directory . -f deploy/compose.yml -f deploy/compose.build.yml up -d --build
 x-build: &build
   image: corbits-builder-hub:local
@@ -10,3 +10,11 @@ x-build: &build
 services:
   hub: *build
   setup: *build
+  sidecar-provisioner:
+    image: corbits-builder-sidecar:local
+    build:
+      context: .
+      dockerfile: deploy/Dockerfile
+      target: sidecar
+    environment:
+      SIDECAR_IMAGE: corbits-builder-sidecar:local

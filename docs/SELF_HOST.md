@@ -137,31 +137,37 @@ or `bwrap: setting up uid map: Permission denied`.
 
 ## Sidecars in Docker
 
-Agents run in sidecars. By default the hub starts them as processes beside
-itself, inside the hub container. With `SIDECAR_IMAGE` set, it can also
-start them as containers on the Docker daemon at `SIDECAR_DOCKER_HOST`.
+Agents run in sidecars, each in its own container. The `sidecar-provisioner`
+service starts them on the host's Docker daemon when the hub asks over the
+Compose network, authenticated with `SIDECAR_PROVISIONER_TOKEN` (at least 32
+characters). It is the only service that mounts `/var/run/docker.sock`; the
+hub has no access to Docker and runs no agents itself. The hub starts once
+`sidecar-provisioner` is healthy. If it stops later, agents do not start, and
+the project shows why.
 
-```sh
-curl -fsSLO https://raw.githubusercontent.com/corbitsdev/corbits-builder/main/deploy/compose.docker-sidecars.yml
-docker compose --env-file .env.hub -f compose.yml -f compose.docker-sidecars.yml up -d
-```
-
-- Compose pulls the sidecar image for your `BUILDER_VERSION` before the hub
-  starts, and `docker compose pull` refreshes it with the hub. From source, `bun run docker:sidecar` builds
-  `corbits-builder-sidecar:local`; set `SIDECAR_IMAGE` to it in `.env.hub`.
-- `deploy/compose.docker-sidecars.yml` mounts `/var/run/docker.sock` into the hub and
-  adds the socket's group (`DOCKER_SOCKET_GID`: `0` on Docker Desktop, the
+- `sidecar-provisioner` runs from the sidecar image for your
+  `BUILDER_VERSION`, so `docker compose pull` refreshes both with the hub.
+  `deploy/compose.build.yml` builds it from source as
+  `corbits-builder-sidecar:local`.
+- It adds the socket's group (`DOCKER_SOCKET_GID`: `0` on Docker Desktop, the
   host's `docker` group id on Linux). Access to that socket is root on the
   host.
+- Each container has a read-only root, drops every capability, cannot gain
+  privileges, and gets its own data volume and the per-container limits
+  `SIDECAR_MEMORY_BYTES`, `SIDECAR_PIDS` and `SIDECAR_NANO_CPUS`.
 - Sidecar containers are not on the Compose network. They reach the hub
-  through `HUB_API_ORIGIN` and its WebSocket; on Docker Desktop the hub maps
-  a loopback origin to `host.docker.internal`. Set `SIDECAR_HUB_WS_URL`
+  through `HUB_API_ORIGIN` and its WebSocket; on Docker Desktop a loopback
+  origin is mapped to `host.docker.internal`. Set `SIDECAR_HUB_WS_URL`
   when that address is not reachable from them.
-- Per-container limits: `SIDECAR_MEMORY_BYTES`, `SIDECAR_PIDS`,
-  `SIDECAR_NANO_CPUS`.
 - `COORDINATOR_START_TIMEOUT_MS` (default `60000`) is the longest a project's
   coordinator may take to start; raise it on a slow machine, but keep it under
   `300000`.
+
+Upgrading from a release where agents ran inside the hub container: work that
+was running when you upgraded fails within a few minutes with its reason, and a
+project's coordinator starts again on `sidecar-provisioner`. If you used
+`deploy/compose.docker-sidecars.yml`, remove its old `sb-*` sidecar containers
+with `docker rm -f`; the new provisioner does not manage them.
 
 ## Logs
 

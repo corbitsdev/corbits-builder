@@ -42,17 +42,30 @@ so the vendored packages load from source.
 Agents run on sidecars, which the hub provisions
 ([apps/hub/src/provisioning/workflow-services.ts](https://github.com/corbitsdev/corbits-builder/blob/main/apps/hub/src/provisioning/workflow-services.ts)):
 
-- **Local process sidecars** are always available. The hub spawns them from
+- **Local process sidecars** run outside Docker. The hub spawns them from
   the vendored sidecar app on the same machine, keeps their state under
   `HUB_DATA_DIR`, and restores them after a restart. One holds up to
   `SIDECAR_LOCAL_MAX_ACTIVE` deployments.
-- **Docker sidecars** are added when `SIDECAR_IMAGE` names an image (built
-  from the `sidecar` target of
+- **Docker sidecars** are added beside them when `SIDECAR_IMAGE` names an
+  image (built from the `sidecar` target of
   [deploy/Dockerfile](https://github.com/corbitsdev/corbits-builder/blob/main/deploy/Dockerfile)),
-  with memory, process and CPU limits from `SIDECAR_*`.
+  with memory, process and CPU limits from `SIDECAR_*`
+  ([apps/sidecar-provisioner/src/docker.ts](https://github.com/corbitsdev/corbits-builder/blob/main/apps/sidecar-provisioner/src/docker.ts)).
+- **In the Docker install**, `SIDECAR_PROVISIONER_URL` replaces both: the hub
+  forwards every ensure and destroy to the `sidecar-provisioner` service
+  ([apps/hub/src/provisioning/remote.ts](https://github.com/corbitsdev/corbits-builder/blob/main/apps/hub/src/provisioning/remote.ts)),
+  which runs the same Docker provisioner and is the only container with the
+  Docker socket. Interchange reads a provisioner's binding once, so the hub
+  takes the service's Docker binding fingerprint and capabilities from
+  `GET /binding` when it starts and does not start without them; Compose
+  starts the hub once the service is healthy. A service restarted with
+  another Docker setup refuses the hub's calls until the hub restarts. When
+  the service cannot be reached later, placement retries under
+  Interchange's provisioning budget and then fails the run with the reason
+  from `apps/hub/src/config/sidecar-provisioner.ts`.
 
-Placement uses the local sidecar until it is full, then the first matching
-sandbox
+Outside Docker, placement uses the local sidecar until it is full, then the
+first matching sandbox
 ([apps/hub/src/sidecar/placement.ts](https://github.com/corbitsdev/corbits-builder/blob/main/apps/hub/src/sidecar/placement.ts)).
 Default lifetimes and retention come from `WORKFLOW_DEFAULT_*`.
 
@@ -115,22 +128,23 @@ Environment files, installs and build output never leave the workspace.
 
 ## Package layout
 
-| Path                      | Package                        | What it holds                                                    |
-| ------------------------- | ------------------------------ | ---------------------------------------------------------------- |
-| `apps/hub`                | `@corbits-builder/hub`         | The server: routes, services, hub tools, provisioning, live app. |
-| `packages/client`         | `@corbits-builder/client`      | The typed client for the hub's API.                              |
-| `apps/web`                | `@corbits-builder/web`         | The interface, built only on the client and the schemas.         |
-| `workflows/coordinator`   | `@corbits-builder/coordinator` | The coordinator's agent, prompt and workflow.                    |
-| `workflows/writer`        | `@corbits-builder/writer`      | The document writer and its per-kind skills.                     |
-| `workflows/reviewer`      | `@corbits-builder/reviewer`    | The document reviewer.                                           |
-| `workflows/designer`      | `@corbits-builder/designer`    | The designer, its starter, themes and skills.                    |
-| `workflows/coder`         | `@corbits-builder/coder`       | The coder, its app starter and `check-app`.                      |
-| `packages/schemas`        | `@corbits-builder/schemas`     | Types and schemas shared by the hub, client and workflows.       |
-| `vendor/interchange`      |                                | Interchange at the pinned revision.                              |
-| `deploy/`                 |                                | The Dockerfile and Compose files.                                |
-| `scripts/`                |                                | Dev and verification scripts.                                    |
-| `skills/`                 |                                | Agent skills to install Builder and drive it through its API.    |
-| `test/integration`, `e2e` |                                | Cross-module and full-stack tests.                               |
+| Path                       | Package                                | What it holds                                                    |
+| -------------------------- | -------------------------------------- | ---------------------------------------------------------------- |
+| `apps/hub`                 | `@corbits-builder/hub`                 | The server: routes, services, hub tools, provisioning, live app. |
+| `packages/client`          | `@corbits-builder/client`              | The typed client for the hub's API.                              |
+| `apps/web`                 | `@corbits-builder/web`                 | The interface, built only on the client and the schemas.         |
+| `apps/sidecar-provisioner` | `@corbits-builder/sidecar-provisioner` | The Docker install's service that starts sidecar containers.     |
+| `workflows/coordinator`    | `@corbits-builder/coordinator`         | The coordinator's agent, prompt and workflow.                    |
+| `workflows/writer`         | `@corbits-builder/writer`              | The document writer and its per-kind skills.                     |
+| `workflows/reviewer`       | `@corbits-builder/reviewer`            | The document reviewer.                                           |
+| `workflows/designer`       | `@corbits-builder/designer`            | The designer, its starter, themes and skills.                    |
+| `workflows/coder`          | `@corbits-builder/coder`               | The coder, its app starter and `check-app`.                      |
+| `packages/schemas`         | `@corbits-builder/schemas`             | Types and schemas shared by the hub, client and workflows.       |
+| `vendor/interchange`       |                                        | Interchange at the pinned revision.                              |
+| `deploy/`                  |                                        | The Dockerfile and Compose files.                                |
+| `scripts/`                 |                                        | Dev and verification scripts.                                    |
+| `skills/`                  |                                        | Agent skills to install Builder and drive it through its API.    |
+| `test/integration`, `e2e`  |                                        | Cross-module and full-stack tests.                               |
 
 Workflow packages declare their agents and workflows with Interchange's
 definition exports (`@intx/agent/authoring`, `@intx/workflow/definition`).

@@ -8,15 +8,13 @@ import type {
   EnsureSidecarResult,
   SidecarProvisioner,
 } from "@intx/hub-sessions";
-import type { AdapterManifest } from "@intx/types";
-import { settle } from "../lib/serial-queue.ts";
+import type { SidecarCapabilityDeclaration } from "@intx/types";
 import {
+  connectDocker,
   DockerEngineError,
   isThisMachine,
   type DockerEngine,
 } from "./docker-engine.ts";
-
-export { connectDocker } from "./docker-engine.ts";
 
 const LABEL = {
   hub: "corbits-builder.hub",
@@ -31,11 +29,16 @@ type DockerLimits = {
   readonly pids: number;
   readonly nanoCpus: number;
 };
-export const defaultDockerLimits: DockerLimits = {
+const defaultDockerLimits: DockerLimits = {
   memoryBytes: 2048 * MiB,
   pids: 1024,
   nanoCpus: 2_000_000_000,
 };
+const dockerSidecarCapabilities: readonly SidecarCapabilityDeclaration[] = [
+  { capability: "isolation:workload", state: "blocked" },
+  { capability: "network:outbound", state: "available" },
+  { capability: "runtime:posix", state: "available" },
+];
 
 const Container = type({
   Id: "string",
@@ -50,6 +53,8 @@ type Container = typeof Container.infer;
 const Listed = type("unknown[]");
 const Created = type({ Id: "string" });
 const Info = type({ MemTotal: "number" });
+const Daemon = type({ ID: "string > 0" });
+const Image = type({ Id: "string > 0" });
 
 type CreateDockerSidecarProvisionerOpts = {
   readonly engine: DockerEngine;
@@ -60,8 +65,6 @@ type CreateDockerSidecarProvisionerOpts = {
   readonly daemonId: string;
   /** Runs the stock sidecar as its command. */
   readonly image: string;
-  /** The hub's adapter manifest at the paths the image holds its modules. */
-  readonly adapterManifest: AdapterManifest;
   /** Where containers reach the hub, for a daemon on another machine; unset, the hub's own address with loopback mapped to the Docker host. */
   readonly hubWebSocketUrl?: string;
 };
@@ -133,7 +136,6 @@ export function createDockerSidecarProvisioner({
   hubId,
   daemonId,
   image,
-  adapterManifest,
   hubWebSocketUrl,
   limits = defaultDockerLimits,
 }: CreateDockerSidecarProvisionerOpts): SidecarProvisioner {
@@ -179,9 +181,12 @@ export function createDockerSidecarProvisioner({
       SIDECAR_TOKEN: request.token,
       SIDECAR_DATA_DIR: DATA_DIR,
       SIDECAR_CREDENTIAL_ENCRYPTION_KEY: randomBytes(32).toString("hex"),
-      SIDECAR_ADAPTER_MANIFEST: JSON.stringify(adapterManifest),
       HOME: DATA_DIR,
       TMPDIR: "/tmp",
+      // The hub's manifest names modules at the paths the image holds them.
+      ...(request.adapterManifest !== undefined && {
+        SIDECAR_ADAPTER_MANIFEST: JSON.stringify(request.adapterManifest),
+      }),
     };
     const body = {
       Image: image,
@@ -227,6 +232,11 @@ export function createDockerSidecarProvisioner({
       throw error;
     }
     return Id;
+  }
+
+  // The caller observes the failure; the queue only needs ordering.
+  async function settle(operation: Promise<unknown> | undefined) {
+    await Promise.allSettled([operation]);
   }
 
   async function runAfter<T>(
@@ -347,11 +357,7 @@ export function createDockerSidecarProvisioner({
     apiVersion: 2,
     // The image is a launch setting: containers are found by label whatever image they run.
     bindingFingerprint: `docker:v1:${daemonId}:${hubId}:${limits.memoryBytes}:${limits.pids}:${limits.nanoCpus}`,
-    capabilities: [
-      { capability: "isolation:workload", state: "blocked" },
-      { capability: "network:outbound", state: "available" },
-      { capability: "runtime:posix", state: "available" },
-    ],
+    capabilities: dockerSidecarCapabilities,
     ensure(request) {
       return serialize(request.allocationId, () => ensureSidecar(request));
     },
@@ -359,4 +365,49 @@ export function createDockerSidecarProvisioner({
       return serialize(request.allocationId, () => destroySidecar(request));
     },
   };
+}
+
+/**
+ * The Docker provisioner configured by `SIDECAR_IMAGE`, `SIDECAR_DOCKER_HOST`, `SIDECAR_HUB_WS_URL` and the
+ * `SIDECAR_MEMORY_BYTES`, `SIDECAR_PIDS` and `SIDECAR_NANO_CPUS` limits, bound to the daemon it reaches.
+ */
+export async function dockerProvisionerFromEnv(
+  environment: Record<string, string | undefined>,
+  { hubId }: { readonly hubId: string },
+): Promise<SidecarProvisioner> {
+  function limit(key: string, fallback: number): number {
+    const raw = environment[key];
+    const value = raw === undefined ? fallback : Number(raw);
+    if (!Number.isSafeInteger(value) || value <= 0)
+      throw new Error(`${key} must be a positive safe integer`);
+    return value;
+  }
+  const imageName = environment["SIDECAR_IMAGE"];
+  if (!imageName) throw new Error("SIDECAR_IMAGE is required");
+  const engine = connectDocker(
+    environment["SIDECAR_DOCKER_HOST"] ?? "unix:///var/run/docker.sock",
+  );
+  const daemon = Daemon.assert(await engine.request("GET", "/info"));
+  const image = Image.assert(
+    await engine.request(
+      "GET",
+      `/images/${encodeURIComponent(imageName)}/json`,
+    ),
+  );
+  const hubWebSocketUrl = environment["SIDECAR_HUB_WS_URL"];
+  return createDockerSidecarProvisioner({
+    engine,
+    hubId,
+    daemonId: daemon.ID,
+    image: image.Id,
+    limits: {
+      memoryBytes: limit(
+        "SIDECAR_MEMORY_BYTES",
+        defaultDockerLimits.memoryBytes,
+      ),
+      pids: limit("SIDECAR_PIDS", defaultDockerLimits.pids),
+      nanoCpus: limit("SIDECAR_NANO_CPUS", defaultDockerLimits.nanoCpus),
+    },
+    ...(hubWebSocketUrl ? { hubWebSocketUrl } : {}),
+  });
 }

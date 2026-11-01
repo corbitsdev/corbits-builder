@@ -4,6 +4,7 @@
 # this file:
 #   docker compose --env-file .env.hub --project-directory . -f deploy/compose.yml up -d
 # deploy/compose.build.yml builds the images from source instead.
+x-sidecar-image: &sidecar-image ${SIDECAR_IMAGE:-ghcr.io/corbitsdev/corbits-builder-sidecar:${BUILDER_VERSION:-rc}}
 x-hub: &hub
   image: ghcr.io/corbitsdev/corbits-builder-hub:${BUILDER_VERSION:-rc}
   env_file: .env.hub
@@ -18,8 +19,14 @@ x-hub: &hub
     MIGRATION_DATABASE_URL: ""
     HUB_WEB_DIR: /app/apps/web/dist
     BETTER_AUTH_BASE_URL: ${BETTER_AUTH_BASE_URL:-http://localhost:${PORT:-8000}}
+    # Agents run in containers sidecar-provisioner starts, never in the hub's.
+    SIDECAR_PROVISIONER_URL: http://sidecar-provisioner:8080
+    SIDECAR_IMAGE: ""
   depends_on:
     db:
+      condition: service_healthy
+    # The hub takes the provisioner's Docker binding when it starts.
+    sidecar-provisioner:
       condition: service_healthy
   volumes:
     - hub-data:/app/data/hub
@@ -57,6 +64,41 @@ services:
       - "127.0.0.1:${PORT:-8000}:${PORT:-8000}"
       - "127.0.0.1:1455:1455"
       - "127.0.0.1:1456:1456"
+  # The only service with the Docker socket, which is root on the host. It starts one hardened
+  # container per agent from the sidecar image, which it runs from itself.
+  sidecar-provisioner:
+    image: *sidecar-image
+    working_dir: /app
+    command:
+      [
+        "bun",
+        "--no-env-file",
+        "--conditions=intx-src",
+        "apps/sidecar-provisioner/src/server.ts",
+      ]
+    environment:
+      HOST: 0.0.0.0
+      PORT: 8080
+      SIDECAR_PROVISIONER_TOKEN: ${SIDECAR_PROVISIONER_TOKEN:?Set SIDECAR_PROVISIONER_TOKEN}
+      SIDECAR_IMAGE: *sidecar-image
+      SIDECAR_DOCKER_HOST: unix:///var/run/docker.sock
+      SIDECAR_DOCKER_HUB_ID: ${SIDECAR_DOCKER_HUB_ID:-${COMPOSE_PROJECT_NAME}}
+      SIDECAR_HUB_WS_URL:
+      SIDECAR_MEMORY_BYTES:
+      SIDECAR_PIDS:
+      SIDECAR_NANO_CPUS:
+    # It listens only once it has reached Docker and found the sidecar image; any answer is healthy.
+    healthcheck:
+      test: ["CMD", "bun", "-e", "await fetch('http://127.0.0.1:8080/')"]
+      interval: 2s
+      timeout: 3s
+      retries: 30
+    # The group that owns the socket inside the container: 0 on Docker Desktop,
+    # the host's docker group id (`getent group docker`) on Linux.
+    group_add:
+      - "${DOCKER_SOCKET_GID:-0}"
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
   setup:
     <<: *hub
     profiles: ["setup"]
