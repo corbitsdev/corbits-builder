@@ -691,7 +691,7 @@ export function mountArtifactRoutes(
       );
       if (sections instanceof type.errors)
         throw new ProjectError(400, "invalid_export_sections", {
-          issues: sections.summary,
+          issues: sections,
         });
       const { filename, archive } = await service.exportArchive(
         actorOf(c),

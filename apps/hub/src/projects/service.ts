@@ -417,10 +417,7 @@ export function createProjectService(db: DB["db"]) {
       throw new ProjectError(400, "invalid_project_mutation");
     if (mutation instanceof type.errors)
       throw new ProjectError(400, "invalid_project_mutation", {
-        issues: [...mutation].slice(0, 10).map((issue) => ({
-          path: issue.propString,
-          message: issue.problem.slice(0, 200),
-        })),
+        issues: mutation,
       });
     if (
       mutation.command === "version_project" &&
