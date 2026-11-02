@@ -75,8 +75,6 @@ export function NewProjectProfile({
   const models =
     catalog && choice !== undefined ? profileOptions(catalog, choice) : [];
   const active = choice?.profile ?? catalog?.automaticProfile;
-  // No active or automatic profile (several providers connected) still has to
-  // offer every runnable profile, with one selected so a start carries an id.
   const shown =
     models.find((model) => model.id === active)?.id ?? models[0]?.id;
   useEffect(() => {
