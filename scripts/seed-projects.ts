@@ -9,9 +9,16 @@ import { readHubEnvironment } from "@corbits-builder/hub/environment";
 import { migrateDatabase } from "@corbits-builder/hub/migrate";
 import type { ApproachesMeta } from "@corbits-builder/schemas/approaches";
 import {
+  ApprovalRound,
+  type ApprovalRound as ApprovalRoundType,
+  type ExpiryPreset,
+} from "@corbits-builder/schemas/approval-round";
+import {
   AppBundle,
+  ApprovalPackageBundle,
   DesignBundle,
   DocumentWrite,
+  type ApprovalPackageSource,
   type ArtifactContent,
   type ArtifactList,
   type ArtifactListItem,
@@ -55,6 +62,8 @@ import {
   loadSeedProjectFixture,
   loadSeedProjectFixtures,
   resolveSeedFixtures,
+  type SeedApprovalPackageFixture,
+  type SeedApprovalRoundMetadata,
   type SeedDesignOptionFixture,
   type SeedFixtureId,
   type SeedFixtureSelector,
@@ -70,6 +79,8 @@ export {
   loadSeedProjectFixture,
   loadSeedProjectFixtures,
   resolveSeedFixtures,
+  type SeedApprovalPackageFixture,
+  type SeedApprovalRoundMetadata,
   type SeedDesignOptionFixture,
   type SeedFixtureId,
   type SeedFixtureSelector,
@@ -90,6 +101,12 @@ const DEFAULT_DEV_USER = {
   workspaceName: "Development Workspace",
   workspaceSlug: "dev-workspace",
 } as const;
+
+const EXPIRY_MS: Readonly<Record<ExpiryPreset, number>> = {
+  "24h": 24 * 60 * 60 * 1000,
+  "7d": 7 * 24 * 60 * 60 * 1000,
+  "30d": 30 * 24 * 60 * 60 * 1000,
+};
 
 const projectTable = pgTable("project", {
   id: text("id").primaryKey(),
@@ -132,6 +149,25 @@ const artifactImportApprovalTable = pgTable(
   (table) => [primaryKey({ columns: [table.artifactId, table.version] })],
 );
 
+const approvalRoundTable = pgTable("sb_approval_round", {
+  id: text("id").primaryKey(),
+  tenantId: text("tenant_id").notNull(),
+  projectId: text("project_id").notNull(),
+  artifactId: text("artifact_id").notNull(),
+  packageVersion: integer("package_version").notNull(),
+  packageSha256: text("package_sha256").notNull(),
+  startedBy: text("started_by").notNull(),
+  expiryPreset: text("expiry_preset").notNull(),
+  expiresAt: timestamp("expires_at", { withTimezone: true }).notNull(),
+  settledAt: timestamp("settled_at", { withTimezone: true }),
+  reviewers: jsonb("reviewers").notNull(),
+  triage: jsonb("triage").notNull().default([]),
+  triggeredRunId: text("triggered_run_id"),
+  createdAt: timestamp("created_at", { withTimezone: true })
+    .notNull()
+    .defaultNow(),
+});
+
 export interface ResolvedWorkspaceTenant {
   tenantId: string;
   principalId: string;
@@ -149,6 +185,13 @@ export interface SeedArtifactWriteInput {
   content: string;
   openQuestions?: NonNullable<ArtifactContent["openQuestions"]>;
   approaches?: ApproachesMeta;
+}
+
+export interface SeedApprovalRoundInput {
+  artifactId: string;
+  packageVersion: number;
+  packageSha256: string;
+  round: SeedApprovalRoundMetadata;
 }
 
 export interface SeedDeps {
@@ -176,6 +219,11 @@ export interface SeedDeps {
     projectId: string,
     input: { artifactId: string; version: number },
   ): Promise<DesignChoiceReceipt>;
+  seedApprovalRound(
+    actor: SeedActor,
+    projectId: string,
+    input: SeedApprovalRoundInput,
+  ): Promise<ApprovalRoundType>;
   shipProject(actor: SeedActor, projectId: string): Promise<ProjectShipReceipt>;
   listArtifacts(actor: SeedActor, projectId: string): Promise<ArtifactList>;
 }
@@ -199,6 +247,7 @@ export interface SeededProjectSummary {
   shippedAt: string | null;
   artifacts: ArtifactListItem[];
   awaitingApproval: string[];
+  approvalRound?: ApprovalRoundType;
 }
 
 export interface SeedDevelopmentProjectsResult {
@@ -247,6 +296,7 @@ export async function seedDevelopmentProjects(
     });
     const { actor, projectId } = created;
     const docs = fixture.documents;
+    const sourcePins: ApprovalPackageSource[] = [];
 
     if (reachesStage(stage, "brief")) {
       const briefRef = await deps.writeArtifact(actor, projectId, {
@@ -254,6 +304,7 @@ export async function seedDevelopmentProjects(
         title: docs.problem_brief.title,
         content: docs.problem_brief.content,
       });
+      sourcePins.push({ ...briefRef, title: docs.problem_brief.title });
       if (approve || isPastStage(stage, "brief")) {
         await deps.recordArtifactApproval(actor, projectId, briefRef);
       }
@@ -265,16 +316,22 @@ export async function seedDevelopmentProjects(
         title: docs.constraints.title,
         content: docs.constraints.content,
       });
+      sourcePins.push({ ...constraintsRef, title: docs.constraints.title });
       const approachesRef = await deps.writeArtifact(actor, projectId, {
         kind: "approaches",
         title: docs.approaches.title,
         content: docs.approaches.content,
         approaches: docs.approaches.approaches,
       });
+      sourcePins.push({ ...approachesRef, title: docs.approaches.title });
       const prdRef = await deps.writeArtifact(actor, projectId, {
         kind: "product_requirements",
         title: docs.product_requirements.title,
         content: docs.product_requirements.content,
+      });
+      sourcePins.push({
+        ...prdRef,
+        title: docs.product_requirements.title,
       });
       if (approve || isPastStage(stage, "planning")) {
         await deps.recordArtifactApproval(actor, projectId, constraintsRef);
@@ -306,9 +363,13 @@ export async function seedDevelopmentProjects(
           `Fixture ${fixture.id} is missing chosen design option "${fixture.chosenDesignOption}"`,
         );
       }
-      await deps.chooseDesign(actor, projectId, {
+      const chosenDesign = await deps.chooseDesign(actor, projectId, {
         artifactId: pickedDesignOptionRef.artifactId,
         version: pickedDesignOptionRef.version,
+      });
+      sourcePins.push({
+        ...chosenDesign.design,
+        title: chosenDesign.concept,
       });
     }
 
@@ -318,8 +379,40 @@ export async function seedDevelopmentProjects(
         title: docs.build_plan.title,
         content: docs.build_plan.content,
       });
+      sourcePins.push({ ...buildPlanRef, title: docs.build_plan.title });
       if (approve || isPastStage(stage, "ready_to_build")) {
         await deps.recordArtifactApproval(actor, projectId, buildPlanRef);
+      }
+    }
+
+    let approvalRound: ApprovalRoundType | undefined;
+    if (
+      reachesStage(stage, "ready_to_build") &&
+      fixture.approvalPackage !== undefined
+    ) {
+      const livePackageBundle = ApprovalPackageBundle.assert({
+        ...fixture.approvalPackage.bundle,
+        manifest: {
+          ...fixture.approvalPackage.bundle.manifest,
+          sources:
+            sourcePins.length > 0
+              ? sourcePins
+              : fixture.approvalPackage.bundle.manifest.sources,
+        },
+      });
+      const packageRef = await deps.writeArtifact(actor, projectId, {
+        kind: "approval_package",
+        title: fixture.approvalPackage.title,
+        content: JSON.stringify(livePackageBundle),
+      });
+      if (fixture.approvalRound !== undefined) {
+        await deps.recordArtifactApproval(actor, projectId, packageRef);
+        approvalRound = await deps.seedApprovalRound(actor, projectId, {
+          artifactId: packageRef.artifactId,
+          packageVersion: packageRef.version,
+          packageSha256: packageRef.sha256,
+          round: fixture.approvalRound,
+        });
       }
     }
 
@@ -347,6 +440,7 @@ export async function seedDevelopmentProjects(
       shippedAt,
       artifacts: listed.artifacts,
       awaitingApproval: listed.awaitingApproval,
+      ...(approvalRound === undefined ? {} : { approvalRound }),
     });
   }
 
@@ -625,6 +719,8 @@ export function createDatabaseSeedDeps(
         DesignBundle.assert(JSON.parse(input.content));
       } else if (input.kind === "app") {
         AppBundle.assert(JSON.parse(input.content));
+      } else if (input.kind === "approval_package") {
+        ApprovalPackageBundle.assert(JSON.parse(input.content));
       } else {
         DocumentWrite.assert(input);
       }
@@ -634,7 +730,9 @@ export function createDatabaseSeedDeps(
         ...(input.approaches ? { approaches: input.approaches } : {}),
       };
       const origin =
-        input.kind === "design_option" || input.kind === "app"
+        input.kind === "design_option" ||
+        input.kind === "app" ||
+        input.kind === "approval_package"
           ? "workflow"
           : "user";
 
@@ -715,6 +813,54 @@ export function createDatabaseSeedDeps(
       };
     },
 
+    async seedApprovalRound(actor, projectId, input) {
+      const roundId = crypto.randomUUID();
+      const now = new Date();
+      const expiresAt = new Date(now.getTime() + EXPIRY_MS[input.round.expiry]);
+      const triage = input.round.triage.map((item) => ({
+        ...item,
+        roundId,
+      }));
+      await db.insert(approvalRoundTable).values({
+        id: roundId,
+        tenantId: actor.tenantId,
+        projectId,
+        artifactId: input.artifactId,
+        packageVersion: input.packageVersion,
+        packageSha256: input.packageSha256,
+        startedBy: actor.principalId,
+        expiryPreset: input.round.expiry,
+        expiresAt,
+        settledAt: null,
+        reviewers: input.round.reviewers,
+        triage,
+        createdAt: now,
+      });
+      return ApprovalRound.assert({
+        roundId,
+        projectId,
+        artifactId: input.artifactId,
+        packageVersion: input.packageVersion,
+        packageSha256: input.packageSha256,
+        expiry: input.round.expiry,
+        status: "open",
+        createdAt: now.toISOString(),
+        expiresAt: expiresAt.toISOString(),
+        reviewers: input.round.reviewers.map((reviewer) => ({
+          id: reviewer.id,
+          name: reviewer.name,
+          persona: reviewer.persona,
+          ...(reviewer.email === undefined ? {} : { email: reviewer.email }),
+          ...(reviewer.goal === undefined ? {} : { goal: reviewer.goal }),
+          state: reviewer.decision === undefined ? "sent" : "decided",
+          ...(reviewer.decision === undefined
+            ? {}
+            : { decision: reviewer.decision }),
+        })),
+        triage,
+      });
+    },
+
     async shipProject(_actor, projectId) {
       const now = new Date();
       await db
@@ -769,7 +915,8 @@ export function createDatabaseSeedDeps(
           approvedVersion !== item.version &&
           item.kind !== "design_option" &&
           item.kind !== "design" &&
-          item.kind !== "app"
+          item.kind !== "app" &&
+          item.kind !== "approval_package"
         ) {
           awaitingApproval.push(item.kind);
         }
@@ -931,6 +1078,7 @@ export async function main(argv: readonly string[] = process.argv.slice(2)) {
           shippedAt: project.shippedAt,
           artifactKinds: project.artifacts.map((item) => item.kind),
           awaitingApproval: project.awaitingApproval,
+          approvalRoundId: project.approvalRound?.roundId ?? null,
         })),
       },
       null,

@@ -99,5 +99,70 @@
   ],
   "app": {
     "path": "app"
+  },
+  "approvalPackage": {
+    "title": "IRB & Clinical Operations Approval Package",
+    "audience": "Principal Investigator, IRB Chair & Clinical Operations Lead",
+    "decisionNeeded": "Approve protocol eligibility gate rules, IRB e-consent version enforcement, and the coordinator workbench build plan.",
+    "tone": "Regulatory, rigorous, and concise",
+    "length": "5 slides",
+    "deckPath": "approval-package/deck.json"
+  },
+  "approvalRound": {
+    "expiry": "7d",
+    "reviewers": [
+      {
+        "id": "reviewer-elena-vance",
+        "name": "Dr. Elena Vance",
+        "persona": "Principal Investigator & IRB Chair",
+        "email": "elena.vance@clinical.example",
+        "goal": "Verify IRB protocol version enforcement, exclusion criteria gates, and audit log immutability.",
+        "decision": {
+          "outcome": "request_changes",
+          "note": "- Require a mandatory clinical rationale note whenever a coordinator flags a borderline screening criterion\n- Show the IRB approval effective date next to the protocol version badge",
+          "slideNotes": [
+            {
+              "slide": 2,
+              "text": "Specify that any active IRB protocol amendment locks enrollment until re-consent is recorded."
+            }
+          ],
+          "decidedAt": "2026-11-01T10:30:00.000Z"
+        }
+      },
+      {
+        "id": "reviewer-marcus-thorne",
+        "name": "Marcus Thorne",
+        "persona": "Clinical Operations Director",
+        "email": "marcus.thorne@clinical.example",
+        "goal": "Confirm coordinator intake throughput and multi-site screening queue visibility."
+      }
+    ],
+    "triage": [
+      {
+        "itemId": "triage-item-1",
+        "reviewerId": "reviewer-elena-vance",
+        "reviewerName": "Dr. Elena Vance",
+        "persona": "Principal Investigator & IRB Chair",
+        "text": "Require a mandatory clinical rationale note whenever a coordinator flags a borderline screening criterion",
+        "status": "pending"
+      },
+      {
+        "itemId": "triage-item-2",
+        "reviewerId": "reviewer-elena-vance",
+        "reviewerName": "Dr. Elena Vance",
+        "persona": "Principal Investigator & IRB Chair",
+        "text": "Show the IRB approval effective date next to the protocol version badge",
+        "status": "pending"
+      },
+      {
+        "itemId": "triage-item-3",
+        "reviewerId": "reviewer-elena-vance",
+        "reviewerName": "Dr. Elena Vance",
+        "persona": "Principal Investigator & IRB Chair",
+        "slide": 2,
+        "text": "Specify that any active IRB protocol amendment locks enrollment until re-consent is recorded.",
+        "status": "pending"
+      }
+    ]
   }
 }

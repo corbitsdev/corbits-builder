@@ -1,8 +1,10 @@
 import { describe, expect, test } from "bun:test";
 import { existsSync } from "node:fs";
 import { join } from "node:path";
+import { ApprovalRound } from "@corbits-builder/schemas/approval-round";
 import {
   AppBundle,
+  ApprovalPackageBundle,
   DesignBundle,
   DocumentWrite,
   type ArtifactList,
@@ -146,6 +148,37 @@ function createInMemorySeedDeps(): SeedDeps {
       };
     },
 
+    async seedApprovalRound(_actor, projectId, input) {
+      const roundId = `round-${projectId}`;
+      const triage = input.round.triage.map((item) => ({
+        ...item,
+        roundId,
+      }));
+      return ApprovalRound.assert({
+        roundId,
+        projectId,
+        artifactId: input.artifactId,
+        packageVersion: input.packageVersion,
+        packageSha256: input.packageSha256,
+        expiry: input.round.expiry,
+        status: "open",
+        createdAt: "2026-11-01T10:00:00.000Z",
+        expiresAt: "2026-11-08T10:00:00.000Z",
+        reviewers: input.round.reviewers.map((reviewer) => ({
+          id: reviewer.id,
+          name: reviewer.name,
+          persona: reviewer.persona,
+          ...(reviewer.email === undefined ? {} : { email: reviewer.email }),
+          ...(reviewer.goal === undefined ? {} : { goal: reviewer.goal }),
+          state: reviewer.decision === undefined ? "sent" : "decided",
+          ...(reviewer.decision === undefined
+            ? {}
+            : { decision: reviewer.decision }),
+        })),
+        triage,
+      });
+    },
+
     async shipProject(_actor, projectId) {
       const state = projects.get(projectId);
       if (!state) {
@@ -177,7 +210,8 @@ function createInMemorySeedDeps(): SeedDeps {
           !entry.approved &&
           entry.kind !== "design_option" &&
           entry.kind !== "design" &&
-          entry.kind !== "app"
+          entry.kind !== "app" &&
+          entry.kind !== "approval_package"
         ) {
           awaitingApproval.push(entry.kind);
         }
@@ -247,6 +281,17 @@ describe("test/seed fixtures on disk", () => {
         expect(option.bundle.files["designs/screens/home.html"]).toBeDefined();
       }
       AppBundle.assert(fixture.app);
+
+      if (fixtureId === "clinical-trial-intake") {
+        expect(existsSync(join(dir, "approval-package", "deck.json"))).toBe(
+          true,
+        );
+        expect(fixture.approvalPackage).toBeDefined();
+        ApprovalPackageBundle.assert(fixture.approvalPackage!.bundle);
+        expect(fixture.approvalRound).toBeDefined();
+        expect(fixture.approvalRound!.reviewers).toHaveLength(2);
+        expect(fixture.approvalRound!.triage).toHaveLength(3);
+      }
     }
   });
 
@@ -279,6 +324,28 @@ describe("test/seed fixtures on disk", () => {
       "approaches",
       "product_requirements",
     ]);
+
+    const clinicalDeps = createInMemorySeedDeps();
+    const clinicalSeeded = await seedDevelopmentProjects(clinicalDeps, {
+      fixture: "clinical-trial-intake",
+      stage: "ready_to_build",
+      approve: true,
+    });
+    const clinicalProject = clinicalSeeded.projects[0]!;
+    expect(clinicalProject.awaitingApproval).toEqual([]);
+    expect(clinicalProject.artifacts.map((item) => item.kind)).toContain(
+      "approval_package",
+    );
+    const clinicalPackage = clinicalProject.artifacts.find(
+      (item) => item.kind === "approval_package",
+    );
+    expect(clinicalPackage?.approvedVersion).toBe(1);
+    expect(clinicalProject.approvalRound).toBeDefined();
+    expect(clinicalProject.approvalRound!.status).toBe("open");
+    expect(
+      clinicalProject.approvalRound!.reviewers.map((r) => r.state),
+    ).toEqual(["decided", "sent"]);
+    expect(clinicalProject.approvalRound!.triage).toHaveLength(3);
   });
 
   test("parses CLI arguments and renders help usage", () => {

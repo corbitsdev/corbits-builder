@@ -1,0 +1,117 @@
+{
+  "theme": {
+    "colors": {
+      "primary": "#1D5BD6",
+      "secondary": "#334155",
+      "accent": "#0284C7",
+      "background": "#F8FAFC",
+      "text": "#0F172A",
+      "muted": "#475569"
+    },
+    "fonts": {
+      "heading": "Inter",
+      "body": "Inter"
+    }
+  },
+  "footer": {
+    "text": "Clinical Trial Patient Intake & Consent Portal — Stakeholder Review",
+    "slideNumbers": true
+  },
+  "slides": [
+    {
+      "layout": "title",
+      "title": "Clinical Trial Intake & Consent",
+      "subtitle": "IRB Protocol Gate, Eligibility Screening & Immutable Audit Ledger"
+    },
+    {
+      "layout": "content",
+      "title": "Problem & Regulatory Constraints",
+      "body": [
+        {
+          "type": "paragraph",
+          "text": "Multi-site oncology trials lose enrollment velocity and risk audit findings when screening checklists and IRB consent versions are tracked in spreadsheets."
+        },
+        {
+          "type": "list",
+          "ordered": false,
+          "items": [
+            "Zero enrollments permitted when any exclusion criterion is triggered.",
+            "Every e-consent must match the currently active IRB protocol version.",
+            "Every candidate state transition writes an append-only audit entry."
+          ]
+        }
+      ]
+    },
+    {
+      "layout": "comparison",
+      "title": "Chosen Approach: Coordinator Workbench",
+      "left": {
+        "heading": "Chosen: Coordinator Workbench",
+        "body": [
+          {
+            "type": "list",
+            "ordered": false,
+            "items": [
+              "Criterion-level inclusion and exclusion validation.",
+              "Automatic outdated IRB consent detection.",
+              "Dedicated Principal Investigator sign-off queue."
+            ]
+          }
+        ]
+      },
+      "right": {
+        "heading": "Rejected: Static Form Wizard",
+        "body": [
+          {
+            "type": "list",
+            "ordered": false,
+            "items": [
+              "Free-text notes allow accidental protocol deviations.",
+              "No automatic check against active IRB version.",
+              "Manual status overrides bypass PI sign-off."
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "layout": "two-column",
+      "title": "Design & Build Plan Summary",
+      "left": [
+        {
+          "type": "paragraph",
+          "text": "Rounded Enterprise Visual System"
+        },
+        {
+          "type": "list",
+          "ordered": false,
+          "items": [
+            "Calm clinical blue (#1D5BD6) primary actions.",
+            "Semantic status badges for eligibility and consent.",
+            "3-column coordinator workbench layout."
+          ]
+        }
+      ],
+      "right": [
+        {
+          "type": "paragraph",
+          "text": "Verification & Delivery Plan"
+        },
+        {
+          "type": "list",
+          "ordered": true,
+          "items": [
+            "SQLite schema for candidates, criteria, consents, and audit events.",
+            "Server-side eligibility and IRB version enforcement.",
+            "End-to-end Playwright verification of gate refusals."
+          ]
+        }
+      ]
+    },
+    {
+      "layout": "section",
+      "title": "Decision: Approve Build Plan & Gates",
+      "subtitle": "Sign off on IRB consent version enforcement and PI review queue before implementation."
+    }
+  ]
+}
