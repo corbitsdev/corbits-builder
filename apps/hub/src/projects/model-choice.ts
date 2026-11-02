@@ -52,22 +52,6 @@ async function personalChoice(
     .models.value;
 }
 
-// A choice runs only when every tier's provider is connected in this workspace, not merely offered.
-function frozenOn(
-  directory: ModelDirectory,
-  choice: ModelChoice | null,
-  connected: readonly string[],
-): ModelChoice | null {
-  const kept = frozenModelChoice(directory, choice);
-  const profile = kept?.custom?.find((entry) => entry.id === kept.profile);
-  return profile &&
-    Object.values(profile.tiers).every((binding) =>
-      connected.includes(binding.provider),
-    )
-    ? kept
-    : null;
-}
-
 /**
  * The choice a project's roles run on. A project keeps the profile it started with; one that has
  * none this server can run on a connected provider takes the caller's choice or the only connected
@@ -81,11 +65,11 @@ export async function projectModelChoice(
 ): Promise<ModelChoice> {
   const { models } = await loadSettings(db, actor.tenantId, projectId);
   const connected = await connectedProviders(db, directory, actor.tenantId);
-  const kept = frozenOn(directory, models.value, connected);
+  const kept = frozenModelChoice(directory, models.value, connected);
   if (kept) return kept;
   const resolved = resolveModelChoice(
     directory,
-    frozenOn(directory, await personalChoice(db, actor), connected),
+    await personalChoice(db, actor),
     connected,
   );
   if ("refused" in resolved)

@@ -19,7 +19,7 @@ import { wording } from "../config.ts";
 import { keys } from "../queries/keys.ts";
 import { workspaceTenantId } from "../api/auth.ts";
 import { productClient } from "../api/transport.ts";
-import { connected } from "./profiles.jsx";
+import { available } from "./profiles.jsx";
 import { useModelCatalog } from "./providers.jsx";
 
 const copy = wording.profiles;
@@ -46,9 +46,7 @@ function profileOptions(catalog: ModelCatalog, choice: ModelChoice | null) {
   return [
     ...catalog.profiles.filter((profile) => profile.available),
     ...(choice?.custom ?? []).filter((profile) =>
-      Object.values(profile.tiers).every((binding) =>
-        connected(catalog, binding.provider),
-      ),
+      available(catalog, profile.tiers),
     ),
   ].map((profile) => option(catalog, profile));
 }

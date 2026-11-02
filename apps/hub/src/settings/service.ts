@@ -26,6 +26,7 @@ import {
 } from "./policy.ts";
 import { invalidPreference } from "../config/preferences.ts";
 import { invalidModelChoice } from "../config/models.ts";
+import { connectedProviders } from "../projects/model-choice.ts";
 import { modelDirectory } from "./custom-providers.ts";
 import { digest } from "../lib/digest.ts";
 import type { Actor } from "../lib/actor.ts";
@@ -90,11 +91,15 @@ export function createSettingsService(db: DB["db"]) {
         preference: unknown,
       });
     const models = input.fields.models?.value;
-    const refused =
-      models &&
-      invalidModelChoice(await modelDirectory(db, actor.tenantId), models);
-    if (refused)
-      throw new ProjectError(400, "unknown_model_choice", { choice: refused });
+    if (models) {
+      const directory = await modelDirectory(db, actor.tenantId);
+      const connected = await connectedProviders(db, directory, actor.tenantId);
+      const refused = invalidModelChoice(directory, models, connected);
+      if (refused)
+        throw new ProjectError(400, "unknown_model_choice", {
+          choice: refused,
+        });
+    }
     return input;
   }
   return {
