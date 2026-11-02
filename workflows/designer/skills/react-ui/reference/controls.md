@@ -1,6 +1,6 @@
 # react-ui: controls
 
-Source: @corbits/react-ui 0.5.0 npm package (README.md and dist/ui/*.d.ts), the version pinned in workflows/coder/starter/client/package.json
+Source: @corbits/react-ui 0.5.1 npm package (README.md and dist/ui/*.d.ts), the version pinned in workflows/coder/starter/client/package.json
 Fetched: 2026-10-29
 
 ---
@@ -70,8 +70,9 @@ for dialog forms.
 
 `ui/menu` (needs `@radix-ui/react-dropdown-menu`): `Menu`, `MenuTrigger`,
 `MenuContent`, `MenuItem`, `MenuLabel`, `MenuGroup`, `MenuSeparator`.
-`ui/tooltip` (needs `@radix-ui/react-tooltip`): `InfoTooltip` (`label`,
-`triggerLabel`). `ui/command-palette` and `ui/sidebar-search`: global search.
+`ui/tooltip` (needs `@radix-ui/react-tooltip`): `Tooltip` (`label`, `side`,
+`children`), `InfoTooltip` (`label`, `triggerLabel`). `ui/command-palette` and
+`ui/sidebar-search`: global search.
 
 ## Toasts (already installed in the starter)
 

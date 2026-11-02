@@ -26,8 +26,7 @@ import {
   MenuSeparator,
   MenuTrigger,
 } from "@corbits/react-ui/ui/menu";
-import { InfoTooltip } from "@corbits/react-ui/ui/tooltip";
-import * as Tooltip from "@radix-ui/react-tooltip";
+import { InfoTooltip, Tooltip } from "@corbits/react-ui/ui/tooltip";
 import { useQueryClient } from "@tanstack/react-query";
 import { ChevronDown, Ellipsis, X } from "lucide-react";
 import { useRef, useState, type KeyboardEvent, type ReactNode } from "react";
@@ -269,35 +268,14 @@ export function ProviderPicker({
           </button>
         );
         return provider.tip ? (
-          <Tip key={provider.id} label={provider.tip}>
+          <Tooltip key={provider.id} label={provider.tip}>
             {card}
-          </Tip>
+          </Tooltip>
         ) : (
           card
         );
       })}
     </div>
-  );
-}
-
-/** The library's info-tooltip surface around any trigger; the library only offers it on its glyph. */
-function Tip({ label, children }: { label: string; children: ReactNode }) {
-  return (
-    <Tooltip.Provider delayDuration={200}>
-      <Tooltip.Root>
-        <Tooltip.Trigger asChild>{children}</Tooltip.Trigger>
-        <Tooltip.Portal>
-          <Tooltip.Content
-            data-slot="tooltip-content"
-            sideOffset={6}
-            className="z-50 max-w-64 rounded-md border border-border bg-popover px-2.5 py-1.5 text-xs text-popover-foreground shadow-lg"
-          >
-            {label}
-            <Tooltip.Arrow className="fill-popover" />
-          </Tooltip.Content>
-        </Tooltip.Portal>
-      </Tooltip.Root>
-    </Tooltip.Provider>
   );
 }
 

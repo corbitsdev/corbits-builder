@@ -1,6 +1,6 @@
-<!-- Generated from @corbits/react-ui 0.5.0. Regenerate: bun scripts/react-ui-api.ts -->
+<!-- Generated from @corbits/react-ui 0.5.1. Regenerate: bun scripts/react-ui-api.ts -->
 
-# react-ui: buttons, inputs, filters, dialogs, menus and toasts (0.5.0)
+# react-ui: buttons, inputs, filters, dialogs, menus and toasts (0.5.1)
 
 Props per exported component, from the installed declarations. `?` marks optional. `+native` means the component also accepts the native props of the element it renders (`className`, `onClick`, ...). Import from the package root unless SKILL.md lists the module as a subpath.
 
@@ -240,6 +240,17 @@ maxHeight?: number — Pixel height autoResize grows to before it caps and scrol
 ### Toaster +native — Mount once at the app root.
 
 ## ui/tooltip
+
+### Tooltip — A general tooltip that wraps a focusable trigger element and discloses a note on hover or focus.
+label: ReactNode — The content shown in the tooltip bubble and bound to the trigger via `aria-describedby`.
+children: ReactElement<unknown, string | JSXElementConstructor<any>> — Focusable trigger element that discloses the tooltip on hover or keyboard focus.
+side?: TooltipSide — Preferred side of the trigger to render against.
+sideOffset?: number — Offset distance in pixels from the trigger.
+delay?: number — Delay in milliseconds before opening on hover.
+defaultOpen?: boolean — Render already open — uncontrolled, for stories and screenshots.
+open?: boolean — Controlled open state.
+onOpenChange?: ((open: boolean) => void) — Callback fired when the open state changes.
+className?: string — Additional class names applied to the tooltip content bubble.
 
 ### InfoTooltip — A focusable info glyph that discloses a short note on hover or focus.
 label: string — The note shown in the tooltip and bound to the trigger via `aria-describedby`.
