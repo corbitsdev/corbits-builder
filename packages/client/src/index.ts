@@ -48,6 +48,20 @@ export type {
   AgentActivity,
   ProjectActivity,
 } from "@corbits-builder/schemas/activity";
+export type {
+  ApprovalReviewer,
+  ApprovalRound,
+  ApprovalRoundList,
+  ApprovalRoundStatus,
+  ExpiryPreset,
+  RecordReviewerDecision,
+  ReviewerDecision,
+  ReviewerInput,
+  ReviewerOutcome,
+  ReviewerState,
+  SlideNote,
+  StartApprovalRound,
+} from "@corbits-builder/schemas/approval-round";
 export { ProductApiError };
 
 export function createProductApiClient(

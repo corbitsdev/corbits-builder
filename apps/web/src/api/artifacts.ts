@@ -3,6 +3,10 @@ import type {
   DesignChoice,
   DesignTweaks,
 } from "@corbits-builder/schemas/artifact";
+import type {
+  RecordReviewerDecision,
+  StartApprovalRound,
+} from "@corbits-builder/schemas/approval-round";
 import { productClient } from "./transport.ts";
 import { workspaceTenantId } from "./auth.ts";
 import { ApiFailure } from "./types.ts";
@@ -199,4 +203,55 @@ export async function attachMaterials(
 ) {
   const tenantId = await workspaceTenantId();
   return productClient().attachMaterials(tenantId, projectId, files, message);
+}
+
+export async function downloadPackageZip(
+  projectId: string,
+  version: number,
+  signal?: AbortSignal,
+) {
+  const tenantId = await workspaceTenantId();
+  return productClient().downloadPackageZip(
+    tenantId,
+    projectId,
+    version,
+    signal,
+  );
+}
+
+export async function listApprovalRounds(
+  projectId: string,
+  signal?: AbortSignal,
+) {
+  const tenantId = await workspaceTenantId();
+  return productClient().approvalRounds(tenantId, projectId, signal);
+}
+
+export async function startApprovalRound(
+  projectId: string,
+  input: StartApprovalRound,
+) {
+  const tenantId = await workspaceTenantId();
+  return productClient().startApprovalRound(tenantId, projectId, input);
+}
+
+export async function recordReviewerDecision(
+  projectId: string,
+  roundId: string,
+  reviewerId: string,
+  input: RecordReviewerDecision,
+) {
+  const tenantId = await workspaceTenantId();
+  return productClient().recordReviewerDecision(
+    tenantId,
+    projectId,
+    roundId,
+    reviewerId,
+    input,
+  );
+}
+
+export async function settleApprovalRound(projectId: string, roundId: string) {
+  const tenantId = await workspaceTenantId();
+  return productClient().settleApprovalRound(tenantId, projectId, roundId);
 }

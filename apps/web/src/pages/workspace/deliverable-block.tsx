@@ -5,8 +5,9 @@
  * for HTML and JSON.
  */
 import { wording } from "../../config.ts";
-import { useRef, useState } from "react";
+import { useContext, useRef, useState } from "react";
 import { Button, CsvTable, ShimmerText } from "@corbits/react-ui";
+import { downloadPackageZip } from "../../api/artifacts.ts";
 import { Markdown } from "../../markdown.jsx";
 import {
   APPROVAL_PACKAGE_MEDIA_TYPE,
@@ -40,6 +41,8 @@ import { splitLeadingHeading } from "./reading-selection.ts";
 import type { ApproachesMeta } from "@corbits-builder/schemas/approaches";
 import { ApproachesComparison } from "./approaches-comparison.tsx";
 import type { ApproachChoice } from "./approach-choice.ts";
+import { ContextualApprovalRounds } from "./approval-rounds.tsx";
+import { DesignTarget } from "./mockup-tweaks.tsx";
 
 export type { RetainedVersion };
 
@@ -199,6 +202,7 @@ function ReadyDocument({
   const [pendingVersion, setPendingVersion] = useState<number | null>(null);
   const [readError, setReadError] = useState<string | null>(null);
   const [device, setDevice] = useState<PreviewDevice>("desktop");
+  const designTarget = useContext(DesignTarget);
   const tipsGroup = useTipsGroup();
   const readRef = useRef(onReadVersion);
   readRef.current = onReadVersion;
@@ -327,6 +331,24 @@ function ReadyDocument({
         build: async () => ({ file: await zipFile(stem, design) }),
       };
     if (kind === "approval_package" && afterText !== null) {
+      if (designTarget !== null) {
+        return {
+          type: ZIP_TYPE,
+          download: wording.approvalRound.downloadZip,
+          share: wording.approvalRound.shareSheet,
+          key: `${designTarget.projectId}:package:${String(viewing)}`,
+          prepare: "intent",
+          build: async () => {
+            const { filename, archive } = await downloadPackageZip(
+              designTarget.projectId,
+              viewing,
+            );
+            return {
+              file: new File([archive], filename, { type: ZIP_TYPE }),
+            };
+          },
+        };
+      }
       const pkg = parseApprovalPackage(afterText);
       if (pkg !== null) {
         return shownFile(
@@ -477,6 +499,9 @@ function ReadyDocument({
         {readingView()}
         {comparison}
       </PassageQuotes>
+      {kind === "approval_package" ? (
+        <ContextualApprovalRounds packageVersion={viewing} />
+      ) : null}
       {visual ? null : (
         <PaneBar label={wording.documentBar} groups={barGroups} floating />
       )}
