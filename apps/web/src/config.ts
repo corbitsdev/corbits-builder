@@ -986,8 +986,7 @@ export const wording = {
     effort: (tier: string) => `${tier} effort`,
     pick: "Model profile",
     askDefault: "Which profile is the default?",
-    askDefaultLead:
-      "New projects start on the profile you pick. The one you just saved is in the list.",
+    askDefaultLead: "New projects start on the one you pick.",
     askDefaultSave: "Set default",
   },
   settings: {

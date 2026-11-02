@@ -89,49 +89,6 @@ function complete(draft: Draft, tiers: readonly Tier[]): Tiers | null {
   return done as Tiers;
 }
 
-/** A new profile asks which is the default only when another profile already exists. */
-export function asksDefaultProfile(
-  mode: "new" | "edit",
-  existingCount: number,
-): boolean {
-  return mode === "new" && existingCount > 0;
-}
-
-/** The new profile plus the ones already on the screen, for the default question. */
-export function defaultProfileOptions(
-  existing: readonly { id: string; label: string }[],
-  created: { id: string; label: string },
-): { id: string; label: string }[] {
-  return [
-    ...existing.map((entry) => ({ id: entry.id, label: entry.label })),
-    { id: created.id, label: created.label },
-  ];
-}
-
-/** Which id the select shows before the person answers. */
-export function initialDefaultProfile(input: {
-  previous: string | undefined;
-  automatic: string | undefined;
-  createdId: string;
-  existingIds: readonly string[];
-}): string {
-  const known = new Set([...input.existingIds, input.createdId]);
-  return (
-    [input.previous, input.automatic, input.createdId].find(
-      (id) => id !== undefined && known.has(id),
-    ) ?? input.createdId
-  );
-}
-
-/** An answered ask stores the chosen id. Otherwise the previous active id stays. */
-export function activeProfileId(input: {
-  ask: boolean;
-  previous: string | undefined;
-  chosen: string | undefined;
-}): string | undefined {
-  return input.ask ? input.chosen : input.previous;
-}
-
 export function Profiles({ initialField }: { initialField?: Field } = {}) {
 
   const catalog = useModelCatalog();
@@ -342,33 +299,28 @@ export function Profiles({ initialField }: { initialField?: Field } = {}) {
                     entry.id === profile.id ? profile : entry,
                   )
                 : [...custom, profile];
-            const ask = asksDefaultProfile(editing.mode, profiles.length);
-            const saved = await save(
-              choice(
-                activeProfileId({
-                  ask: false,
-                  previous: field.value?.profile,
-                  chosen: undefined,
-                }),
+            if (editing.mode === "new" && profiles.length > 0) {
+              const stored = field.value?.profile;
+              const preset = [stored, data.automaticProfile].find(
+                (id) =>
+                  id !== undefined && profiles.some((entry) => entry.id === id),
+              );
+              setDefaultId(preset ?? profile.id);
+              setDefaultAsk({
+                options: [
+                  ...profiles.map((entry) => ({
+                    id: entry.id,
+                    label: entry.label,
+                  })),
+                  { id: profile.id, label: profile.label },
+                ],
                 list,
-              ),
-            );
-            if (!saved) return;
-            setEditing(null);
-            if (!ask) return;
-            setDefaultId(
-              initialDefaultProfile({
-                previous: field.value?.profile,
-                automatic: data.automaticProfile,
-                createdId: profile.id,
-                existingIds: profiles.map((entry) => entry.id),
-              }),
-            );
-            setDefaultBusy(false);
-            setDefaultAsk({
-              options: defaultProfileOptions(profiles, profile),
-              list,
-            });
+              });
+              setEditing(null);
+              return;
+            }
+            if (await save(choice(field.value?.profile, list)))
+              setEditing(null);
 
           }}
         />
@@ -390,16 +342,7 @@ export function Profiles({ initialField }: { initialField?: Field } = {}) {
                 event.preventDefault();
                 if (!defaultId || defaultBusy) return;
                 setDefaultBusy(true);
-                void save(
-                  choice(
-                    activeProfileId({
-                      ask: true,
-                      previous: field.value?.profile,
-                      chosen: defaultId,
-                    }),
-                    defaultAsk.list,
-                  ),
-                ).then((ok) => {
+                void save(choice(defaultId, defaultAsk.list)).then((ok) => {
                   setDefaultBusy(false);
                   if (ok) setDefaultAsk(null);
                 });
