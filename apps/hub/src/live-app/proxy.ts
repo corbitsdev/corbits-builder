@@ -1,4 +1,5 @@
 import { getLogger } from "@intx/log";
+import { hasCode } from "@intx/types/has-code";
 import type { MiddlewareHandler } from "hono";
 import { liveAppWording } from "../config/live-app.ts";
 import { errorCode, requestErrorMetadata } from "../request-error.ts";
@@ -36,8 +37,36 @@ const HOP_BY_HOP = [
 // pages. Cookies ignore ports, so the browser sends the hub session along; each request is let
 // through only when the hub would show that person the project, and the hub's cookies never
 // reach the app.
+export type LiveAppPorts = { from: number; to: number };
+
+/**
+ * A server on the first free port of the range, skipping the ports the other apps hold. A
+ * deployment that publishes ports, such as Compose, can publish a range but never a port chosen at
+ * random; without a range any free port serves, as on a developer's machine.
+ */
+function serveWithin<T>(
+  serveAt: (port: number) => Bun.Server<T>,
+  ports: LiveAppPorts | undefined,
+  taken: ReadonlySet<number>,
+): Bun.Server<T> {
+  if (ports === undefined) return serveAt(0);
+  for (let port = ports.from; port <= ports.to; port += 1) {
+    if (taken.has(port)) continue;
+    try {
+      return serveAt(port);
+    } catch (error) {
+      if (!(hasCode(error) && error.code === "EADDRINUSE")) throw error;
+    }
+  }
+  throw new Error(
+    `live_app_ports_exhausted: every port from ${String(ports.from)} to ${String(ports.to)} is in use; widen LIVE_APP_PORTS`,
+  );
+}
+
 export function createLiveAppProxy(options: {
   hostname: string;
+  /** The range to serve apps from, or undefined to take any free port. */
+  ports?: LiveAppPorts | undefined;
   publicOrigin: URL;
   hubCookiePrefix: string;
   authorize: (request: Request, scope: LiveAppScope) => Promise<boolean>;
@@ -101,64 +130,79 @@ export function createLiveAppProxy(options: {
 
   function listen(scope: LiveAppScope, target: URL): Exposed {
     const entry = { ...scope, target, lastUsed: Date.now() } as Exposed;
-    entry.server = Bun.serve<Upstream>({
-      hostname: options.hostname,
-      port: 0,
-      error(error) {
-        log.warn("Live app proxy request failed", {
-          ...errorCode(error),
-          ...requestErrorMetadata(error),
-        });
-        return new Response(liveAppWording.unreachable, { status: 502 });
-      },
-      fetch: async (request, server) => {
-        if (!(await allows(request, entry)))
-          return new Response(liveAppWording.signIn, { status: 401 });
-        entry.lastUsed = Date.now();
-        if (request.headers.get("upgrade")?.toLowerCase() !== "websocket")
-          return forward(request, entry);
-        const url = new URL(request.url);
-        const socketUrl = new URL(url.pathname + url.search, entry.target);
-        socketUrl.protocol = "ws:";
-        const protocols = (request.headers.get("sec-websocket-protocol") ?? "")
-          .split(",")
-          .map((protocol) => protocol.trim())
-          .filter(Boolean);
-        const upgraded = server.upgrade(request, {
-          data: { url: socketUrl.href, protocols, pending: [] },
-          ...(protocols[0]
-            ? { headers: { "sec-websocket-protocol": protocols[0] } }
-            : {}),
-        });
-        return upgraded ? undefined : new Response(null, { status: 400 });
-      },
-      websocket: {
-        open(client) {
-          const socket = new WebSocket(client.data.url, client.data.protocols);
-          socket.binaryType = "arraybuffer";
-          socket.onopen = () => {
-            for (const message of client.data.pending.splice(0))
-              socket.send(message);
-          };
-          socket.onmessage = (event) => {
-            entry.lastUsed = Date.now();
-            client.send(event.data as string | ArrayBuffer);
-          };
-          socket.onclose = (event) =>
-            client.close(event.code === 1005 ? 1000 : event.code);
-          socket.onerror = () => client.close(1011);
-          client.data.socket = socket;
+    const serveAt = (port: number) =>
+      Bun.serve<Upstream>({
+        hostname: options.hostname,
+        port,
+        error(error) {
+          log.warn("Live app proxy request failed", {
+            ...errorCode(error),
+            ...requestErrorMetadata(error),
+          });
+          return new Response(liveAppWording.unreachable, { status: 502 });
         },
-        message(client, message) {
-          const socket = client.data.socket;
-          if (socket?.readyState === WebSocket.OPEN) socket.send(message);
-          else client.data.pending.push(message);
+        fetch: async (request, server) => {
+          if (!(await allows(request, entry)))
+            return new Response(liveAppWording.signIn, { status: 401 });
+          entry.lastUsed = Date.now();
+          if (request.headers.get("upgrade")?.toLowerCase() !== "websocket")
+            return forward(request, entry);
+          const url = new URL(request.url);
+          const socketUrl = new URL(url.pathname + url.search, entry.target);
+          socketUrl.protocol = "ws:";
+          const protocols = (
+            request.headers.get("sec-websocket-protocol") ?? ""
+          )
+            .split(",")
+            .map((protocol) => protocol.trim())
+            .filter(Boolean);
+          const upgraded = server.upgrade(request, {
+            data: { url: socketUrl.href, protocols, pending: [] },
+            ...(protocols[0]
+              ? { headers: { "sec-websocket-protocol": protocols[0] } }
+              : {}),
+          });
+          return upgraded ? undefined : new Response(null, { status: 400 });
         },
-        close(client) {
-          client.data.socket?.close();
+        websocket: {
+          open(client) {
+            const socket = new WebSocket(
+              client.data.url,
+              client.data.protocols,
+            );
+            socket.binaryType = "arraybuffer";
+            socket.onopen = () => {
+              for (const message of client.data.pending.splice(0))
+                socket.send(message);
+            };
+            socket.onmessage = (event) => {
+              entry.lastUsed = Date.now();
+              client.send(event.data as string | ArrayBuffer);
+            };
+            socket.onclose = (event) =>
+              client.close(event.code === 1005 ? 1000 : event.code);
+            socket.onerror = () => client.close(1011);
+            client.data.socket = socket;
+          },
+          message(client, message) {
+            const socket = client.data.socket;
+            if (socket?.readyState === WebSocket.OPEN) socket.send(message);
+            else client.data.pending.push(message);
+          },
+          close(client) {
+            client.data.socket?.close();
+          },
         },
-      },
-    });
+      });
+    entry.server = serveWithin(
+      serveAt,
+      options.ports,
+      new Set(
+        [...exposed.values()].flatMap((item) =>
+          item.server.port === undefined ? [] : [item.server.port],
+        ),
+      ),
+    );
     const origin = new URL(options.publicOrigin);
     origin.port = String(entry.server.port);
     entry.origin = origin.origin;

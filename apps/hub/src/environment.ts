@@ -154,6 +154,23 @@ export function positiveInteger(
   return value;
 }
 
+/**
+ * The ports the live-app proxy serves projects' apps on, as "4100-4119", or undefined to take any
+ * free port. A deployment that publishes ports, such as Compose, needs the range known in advance.
+ */
+export function readLiveAppPorts(
+  env: Environment,
+): { from: number; to: number } | undefined {
+  const raw = env["LIVE_APP_PORTS"]?.trim();
+  if (raw === undefined || raw === "") return undefined;
+  const match = /^(\d{1,5})-(\d{1,5})$/.exec(raw);
+  const from = Number(match?.[1]);
+  const to = Number(match?.[2]);
+  if (!match || from < 1 || to > 65535 || from > to)
+    throw new Error("LIVE_APP_PORTS must be a port range such as 4100-4119");
+  return { from, to };
+}
+
 export function readHubEnvironment(env: Environment) {
   const credentialKey = required(env, "CREDENTIAL_ENCRYPTION_KEY");
   const principalKey = required(env, "PRINCIPAL_KEY_ENCRYPTION_KEY");
@@ -211,5 +228,6 @@ export function readHubEnvironment(env: Environment) {
     hubApiOrigin: hubApiOrigin.origin,
     uiOrigin: uiOrigin.origin,
     allowedEmails: readAllowedEmails(env),
+    liveAppPorts: readLiveAppPorts(env),
   };
 }
