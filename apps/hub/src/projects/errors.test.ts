@@ -105,7 +105,7 @@ test("a rejected write_artifact call reaches the agent with {path, message} issu
 
   expect(
     await write({
-      kind: "problem_brief",
+      kind: "constraints",
       approaches: { approaches: [approach("a"), approach("b")] },
     }),
   ).toEqual({
@@ -115,7 +115,7 @@ test("a rejected write_artifact call reaches the agent with {path, message} issu
       {
         path: "approaches",
         message:
-          "goes on the approaches document; write this problem_brief without it",
+          "goes on the approaches document; write this constraints without it",
       },
     ],
   });
