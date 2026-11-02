@@ -166,6 +166,7 @@ const CALL_STATUS: Record<DispatchStatus["state"], ToolTraceStatus> = {
   declined: "output-denied",
   starting: "pending",
   working: "running",
+  approval: "approval-requested",
   ready: "output-available",
   finished: "output-available",
   failed: "error",

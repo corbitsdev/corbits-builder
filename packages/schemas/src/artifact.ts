@@ -285,8 +285,9 @@ export const InFlightRun = type({
   startedAt: "string > 0",
   // Interchange's run status: deployed until its first assignment arrives, then running.
   status: "'deployed' | 'running'",
-  // Mid-turn, or parked between turns waiting for mail; a parked run is idle, not at work.
-  state: "'working' | 'waiting'",
+  // Mid-turn; parked between turns waiting for mail, which is idle, not at work; or mid-turn but
+  // held on an approval only the person can give, so nothing moves until they answer.
+  state: "'working' | 'waiting' | 'approval'",
   // When the current state began, once the hub has seen the run start or end a turn.
   "since?": "string > 0",
   // The design concept a designer run works on, filed as that concept's design_option.
