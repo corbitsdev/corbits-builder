@@ -9,7 +9,7 @@ import { listMail } from "@intx/storage-isogit/node";
 import { runFailure } from "../artifacts/service.ts";
 import { specialistEndedMessage } from "../config/specialist-ended.ts";
 import { endedRun, project, projectCoordinator } from "../db/schema.ts";
-import { HubMailError, type HubMail } from "../mail/hub-mail.ts";
+import type { HubMail } from "../mail/hub-mail.ts";
 import { errorCode, requestErrorMetadata } from "../request-error.ts";
 import { spawnedWorkflowRole } from "../workflows/spawn-role.ts";
 
@@ -21,27 +21,27 @@ async function unansweredAssignment(
   mailDirectory: string,
   runId: string,
 ): Promise<string | undefined> {
-  let entries: Awaited<ReturnType<typeof listMail>>;
+  let assigned: { at: number; correlationId: string } | undefined;
+  let answeredAt = -Infinity;
   try {
-    entries = await listMail(join(mailDirectory, runId));
+    for (const entry of await listMail(join(mailDirectory, runId))) {
+      const { headers } = decodeMail(entry.raw);
+      if (headers.date === undefined) continue;
+      const at = Date.parse(headers.date);
+      if (!Number.isFinite(at)) continue;
+      const correlationId = headers.interchangeCorrelationId;
+      if (entry.direction === "out") answeredAt = Math.max(answeredAt, at);
+      else if (correlationId !== undefined && (!assigned || at >= assigned.at))
+        assigned = { at, correlationId };
+    }
   } catch (error) {
-    // An unreadable mail store reads as answered, so the ended run is still recorded.
+    // Unreadable mail reads as answered, so the ended run is still recorded.
     log.warn("Reading ended specialist {runId}'s mail failed", {
       runId,
       ...errorCode(error),
       ...requestErrorMetadata(error),
     });
     return undefined;
-  }
-  let assigned: { at: number; correlationId: string } | undefined;
-  let answeredAt = -Infinity;
-  for (const entry of entries) {
-    const { headers } = decodeMail(entry.raw);
-    const at = Date.parse(headers.date ?? "");
-    if (!Number.isFinite(at)) continue;
-    if (entry.direction === "out") answeredAt = Math.max(answeredAt, at);
-    else if (!assigned || at >= assigned.at)
-      assigned = { at, correlationId: headers.interchangeCorrelationId ?? "" };
   }
   return assigned && assigned.at > answeredAt
     ? assigned.correlationId
@@ -190,14 +190,11 @@ export function createSpecialistEndNotices(deps: {
         coordinatorRunId: coordinator.runId,
         ...requestErrorMetadata(error),
       });
-      // A refusal stands; anything else is tried again on a later pass.
-      if (error instanceof HubMailError && error.status < 500)
-        await db
-          .update(endedRun)
-          .set({ notified: false })
-          .where(eq(endedRun.runId, ended.runId));
-      else await db.delete(endedRun).where(eq(endedRun.runId, ended.runId));
-      return false;
+      // A failed notice is final; settling it keeps it from holding back the next.
+      await db
+        .update(endedRun)
+        .set({ notified: false })
+        .where(eq(endedRun.runId, ended.runId));
     }
     return true;
   };
