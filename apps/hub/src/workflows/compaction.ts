@@ -257,7 +257,7 @@ const backoffRetryPolicy: RetryPolicy = ({ error, attempt, elapsedMs }) => {
     !TRANSIENT_ERRORS.has(error.category) ||
     delayMs === undefined ||
     (error.category === "timeout" && attempt > TIMEOUT_RETRIES) ||
-    elapsedMs > RETRY_BUDGET_MS ||
+    (error.category !== "timeout" && elapsedMs > RETRY_BUDGET_MS) ||
     (retryAfterMs !== undefined && retryAfterMs > MAX_RETRY_AFTER_MS)
   )
     return { kind: "abort" };

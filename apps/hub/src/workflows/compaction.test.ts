@@ -104,7 +104,7 @@ test("every inference retries a busy model on a bounded backoff", async () => {
         decision(overloaded, 3),
         decision(overloaded, 4),
         decision(overloaded, 2, 6 * 60_000),
-        decision(timeout, 1),
+        decision(timeout, 1, 10 * 60_000),
         decision(timeout, 2),
         decision(quota(45_000), 1),
         decision(quota(90_000), 1),
