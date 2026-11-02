@@ -201,6 +201,15 @@ export type DesignTweaks = typeof DesignTweaks.infer;
 export const AcceptanceChecklist = type({ "+": "reject", markdown: "string" });
 export type AcceptanceChecklist = typeof AcceptanceChecklist.infer;
 
+// The app's user manual, docs/USER-MANUAL.md, as the coder keeps it or as filed with the app, with
+// each picture it shows keyed as the markdown names it ("manual/home.png") and carried as a data URL.
+export const UserManual = type({
+  "+": "reject",
+  markdown: "string",
+  pictures: { "[string]": "string" },
+});
+export type UserManual = typeof UserManual.infer;
+
 // The project's app as the person can open it, served by the hub at url, the app's own origin.
 // The hub runs it while the project is open from the project's current files: the build
 // workspace's (source builder) while a coder builds, else the newer of the latest filed version
