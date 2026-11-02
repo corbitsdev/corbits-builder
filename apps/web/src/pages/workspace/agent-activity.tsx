@@ -17,8 +17,8 @@ const text = wording.activity;
 const ASKS = new Set(["instruct_coder", "request_approval", "design_app"]);
 const CHECK_SCRIPT = /\bcheck-app\b/;
 
-// A person sees what the file is, never where it lives: no folders, no internal ids.
-function fileLabel(path: string): string {
+/** A person sees what the file is, never where it lives: no folders, no internal ids. */
+export function fileLabel(path: string): string {
   if (path.startsWith("tool-output:")) return text.files.earlierOutput;
   const name = path.split("/").filter(Boolean).at(-1) ?? path;
   if (/[0-9a-f]{12,}/.test(name)) return text.files.generic;
