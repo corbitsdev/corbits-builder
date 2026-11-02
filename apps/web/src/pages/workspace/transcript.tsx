@@ -605,7 +605,7 @@ export function RoomThread({
   turns: readonly TranscriptTurn[];
   /** Specialist mail from their own threads, folded in between the turns. */
   updates?: readonly SpecialistUpdate[];
-  /** The reader's latest send, so the conversation settles on it. */
+  /** The reader's latest send, so the conversation follows the reply to it. */
   sentId?: string;
   /** The colleague is working on a reply. */
   thinking?: boolean;
@@ -864,7 +864,10 @@ export function RoomThread({
     },
   );
   return (
+    // The view follows the reply to its end once the person sends, and stays put when they scroll
+    // away, so a long answer is read without chasing it.
     <Conversation
+      scrollPolicy="stick"
       sentId={sentId}
       className="room-thread"
       data-mapped={mapTurns.length > 1 ? "" : undefined}
