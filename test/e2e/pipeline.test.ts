@@ -9,6 +9,7 @@ import {
   formatOpenAISseResponse,
   startRecordedModelServer,
   writeScenarioFixture,
+  type ExchangeExpectation,
   type RecordedModelServer,
 } from "./support/recorded-model.ts";
 
@@ -465,6 +466,19 @@ async function withPipelineScenario(
   }
 }
 
+function withRequiredTools(
+  requiredTools: readonly string[],
+  exchanges: readonly {
+    sse: string;
+    expect: Omit<ExchangeExpectation, "requiredTools">;
+  }[],
+) {
+  return exchanges.map((exchange) => ({
+    sse: exchange.sse,
+    expect: { ...exchange.expect, requiredTools: [...requiredTools] },
+  }));
+}
+
 describe("Builder E2E pipeline replay", () => {
   test(
     "drives Animated Weather App from idea through documents, review, design and build to a shipped app",
@@ -635,6 +649,20 @@ describe("Builder E2E pipeline replay", () => {
         "check_deck",
         "file_package",
       ];
+      const deck = {
+        theme: {
+          colors: {
+            primary: "#111827",
+            secondary: "#111827",
+            accent: "#111827",
+            background: "#FFFFFF",
+            text: "#111827",
+            muted: "#111827",
+          },
+          fonts: { heading: "Inter", body: "Inter" },
+        },
+        slides: [{ layout: "title" as const, title: "Ask" }],
+      };
 
       try {
         await writeScenarioFixture(
@@ -649,15 +677,14 @@ describe("Builder E2E pipeline replay", () => {
               role: "coordinator",
               stage: "presentation",
               sourceRunId: "run_coord_approval_1",
-              exchanges: [
+              exchanges: withRequiredTools(coordinatorTools, [
                 {
                   sse: formatOpenAISseResponse({
-                    text: "Tell me who this weather pitch is for and what must be in Phase 1.",
+                    text: "Tell me who this weather pitch is for.",
                   }),
                   expect: {
                     lastMessageRole: "user",
                     userTextContains: "Weather Executive Pitch",
-                    requiredTools: coordinatorTools,
                     toolResults: [],
                   },
                 },
@@ -669,9 +696,8 @@ describe("Builder E2E pipeline replay", () => {
                         name: "write_artifact",
                         arguments: {
                           kind: "problem_brief",
-                          title: "Problem Brief: Weather Executive Pitch",
-                          content:
-                            "# Problem Brief: Weather Executive Pitch\n\n## Problem\nCommuters need instant 60fps weather scenes with zero sign-in.\n\n## Goals\n- Free Open-Meteo forecast feed\n- Browser-local saved cities\n- WCAG AA contrast and reduce-motion support\n",
+                          title: "Brief",
+                          content: "Brief",
                         },
                       },
                     ],
@@ -679,13 +705,12 @@ describe("Builder E2E pipeline replay", () => {
                   expect: {
                     lastMessageRole: "user",
                     userTextContains: "Open-Meteo",
-                    requiredTools: coordinatorTools,
                     toolResults: [],
                   },
                 },
                 {
                   sse: formatOpenAISseResponse({
-                    text: "I've drafted the Problem Brief for your approval.",
+                    text: "Brief filed.",
                     toolCalls: [
                       {
                         id: "coord_approve_brief",
@@ -696,7 +721,6 @@ describe("Builder E2E pipeline replay", () => {
                   }),
                   expect: {
                     lastMessageRole: "tool",
-                    requiredTools: coordinatorTools,
                     toolResults: [
                       {
                         callId: "coord_write_brief",
@@ -719,19 +743,18 @@ describe("Builder E2E pipeline replay", () => {
                         name: "deploy_presenter",
                         arguments: {
                           audience: "ceo",
-                          decisionNeeded: "Approve Q3 staffing and scope",
+                          decisionNeeded: "Approve scope",
                           kinds: ["problem_brief"],
-                          tone: "Executive and direct",
-                          length: "2 slides",
+                          tone: "plain",
+                          length: "1",
                           instruction:
-                            "Build a 2-slide CEO approval deck from the Problem Brief leading with the Q3 staffing and scope ask.",
+                            "File a one-slide deck for this audience now.",
                         },
                       },
                     ],
                   }),
                   expect: {
                     lastMessageRole: "tool",
-                    requiredTools: coordinatorTools,
                     toolResults: [
                       {
                         callId: "coord_approve_brief",
@@ -744,11 +767,10 @@ describe("Builder E2E pipeline replay", () => {
                 },
                 {
                   sse: formatOpenAISseResponse({
-                    text: "I've started the presenter to build the CEO approval package.",
+                    text: "Presenter started.",
                   }),
                   expect: {
                     lastMessageRole: "tool",
-                    requiredTools: coordinatorTools,
                     toolResults: [
                       {
                         callId: "coord_deploy_presenter",
@@ -767,7 +789,6 @@ describe("Builder E2E pipeline replay", () => {
                     lastMessageRole: "user",
                     userTextContains:
                       "CEO approval package is filed as version 1",
-                    requiredTools: coordinatorTools,
                     toolResults: [],
                   },
                 },
@@ -778,18 +799,17 @@ describe("Builder E2E pipeline replay", () => {
                   expect: {
                     lastMessageRole: "user",
                     userTextContains: "--- reviewer feedback (external",
-                    requiredTools: coordinatorTools,
                     toolResults: [],
                   },
                 },
-              ],
+              ]),
             },
             {
               runKey: "presenter-1",
               role: "presenter",
               stage: "presentation",
               sourceRunId: "run_pres_approval_1",
-              exchanges: [
+              exchanges: withRequiredTools(presenterTools, [
                 {
                   sse: formatOpenAISseResponse({
                     toolCalls: [
@@ -802,59 +822,15 @@ describe("Builder E2E pipeline replay", () => {
                         id: "pres_write_deck",
                         name: "write_deck",
                         arguments: {
-                          deck: {
-                            theme: {
-                              colors: {
-                                primary: "#2563EB",
-                                secondary: "#0EA5E9",
-                                accent: "#F59E0B",
-                                background: "#FFFFFF",
-                                text: "#111827",
-                                muted: "#6B7280",
-                              },
-                              fonts: { heading: "Inter", body: "Inter" },
-                            },
-                            footer: {
-                              text: "Weather Executive Pitch · CEO Review",
-                              slideNumbers: true,
-                            },
-                            slides: [
-                              {
-                                layout: "title",
-                                title: "CEO Sign-Off: Weather Executive Pitch",
-                                subtitle: "Approve Q3 staffing and scope",
-                              },
-                              {
-                                layout: "content",
-                                title: "Phase 1 Scope & Resource Ask",
-                                body: [
-                                  {
-                                    type: "paragraph",
-                                    text: "Commuters get 60fps weather scenes powered by Open-Meteo with zero sign-in.",
-                                  },
-                                  {
-                                    type: "list",
-                                    ordered: true,
-                                    items: [
-                                      "Open-Meteo forecast feed with zero API key cost",
-                                      "Browser-local saved cities and WCAG AA contrast",
-                                      "Decision needed: approve Q3 staffing and scope",
-                                    ],
-                                  },
-                                ],
-                              },
-                            ],
-                          },
+                          deck,
                           assignment: {
                             audience: "ceo",
-                            decisionNeeded: "Approve Q3 staffing and scope",
-                            tone: "Executive and direct",
-                            length: "2 slides",
+                            decisionNeeded: "Approve scope",
                             sources: [
                               {
                                 artifactId: "{{bind:brief.artifactId}}",
                                 kind: "problem_brief",
-                                title: "Problem Brief: Weather Executive Pitch",
+                                title: "Brief",
                                 version: 1,
                                 sha256: "{{bind:brief.sha256}}",
                               },
@@ -867,7 +843,6 @@ describe("Builder E2E pipeline replay", () => {
                   expect: {
                     lastMessageRole: "user",
                     userTextContains: "# Presenter Assignment",
-                    requiredTools: presenterTools,
                     toolResults: [],
                   },
                 },
@@ -883,7 +858,6 @@ describe("Builder E2E pipeline replay", () => {
                   }),
                   expect: {
                     lastMessageRole: "tool",
-                    requiredTools: presenterTools,
                     toolResults: [
                       {
                         callId: "pres_skill",
@@ -912,15 +886,12 @@ describe("Builder E2E pipeline replay", () => {
                       {
                         id: "pres_file_pkg",
                         name: "file_package",
-                        arguments: {
-                          title: "CEO Sign-Off: Weather Executive Pitch",
-                        },
+                        arguments: {},
                       },
                     ],
                   }),
                   expect: {
                     lastMessageRole: "tool",
-                    requiredTools: presenterTools,
                     toolResults: [
                       {
                         callId: "pres_check_deck",
@@ -937,7 +908,6 @@ describe("Builder E2E pipeline replay", () => {
                   }),
                   expect: {
                     lastMessageRole: "tool",
-                    requiredTools: presenterTools,
                     toolResults: [
                       {
                         callId: "pres_file_pkg",
@@ -948,7 +918,7 @@ describe("Builder E2E pipeline replay", () => {
                     ],
                   },
                 },
-              ],
+              ]),
             },
           ],
         );
@@ -969,9 +939,7 @@ describe("Builder E2E pipeline replay", () => {
                 "documents",
                 "who this weather pitch is for",
               );
-              await driver.sendMessage([
-                "Commuters who want 60fps weather scenes powered by Open-Meteo with zero sign-in.",
-              ]);
+              await driver.sendMessage(["Open-Meteo."]);
               await driver.decideArtifactApproval({
                 stage: "documents",
                 kind: "problem_brief",
@@ -1044,10 +1012,7 @@ describe("Builder E2E pipeline replay", () => {
                   outcome: "request_changes",
                   note: "- Cap Phase 1 staffing at 2 engineers\n- Keep zero sign-in scope",
                   slideNotes: [
-                    {
-                      slide: 2,
-                      text: "Highlight the 60fps target on slide 2",
-                    },
+                    { slide: 1, text: "Highlight the ask on slide 1" },
                   ],
                 },
               );
@@ -1075,7 +1040,7 @@ describe("Builder E2E pipeline replay", () => {
                 item.text.includes("Keep zero sign-in scope"),
               )!;
               const slideItem = afterMarcus.triage.find(
-                (item) => item.slide === 2,
+                (item) => item.slide === 1,
               )!;
               const ctoItem = afterMarcus.triage.find((item) =>
                 item.text.includes("Architecture looks solid"),
@@ -1101,7 +1066,7 @@ describe("Builder E2E pipeline replay", () => {
                 slideItem.itemId,
                 {
                   action: "reply",
-                  reply: "We will call out 60fps in the subtitle on slide 2.",
+                  reply: "We will call out the ask on slide 1.",
                 },
               );
               const repliedItem = afterReply.triage.find(
@@ -1109,7 +1074,7 @@ describe("Builder E2E pipeline replay", () => {
               );
               expect(repliedItem?.status).toBe("replied");
               expect(repliedItem?.reply).toBe(
-                "We will call out 60fps in the subtitle on slide 2.",
+                "We will call out the ask on slide 1.",
               );
 
               await client.triageReviewerFeedback(
