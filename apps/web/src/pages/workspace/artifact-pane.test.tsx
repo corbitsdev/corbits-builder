@@ -4,6 +4,7 @@ import type { ProjectArtifact } from "@corbits-builder/client";
 import { ArtifactPane } from "./artifact-pane.tsx";
 import { APPROVAL_PACKAGE_MEDIA_TYPE } from "./approval-package-preview.tsx";
 import type { DeliverableState } from "./deliverable-block.tsx";
+import { writeWorkspaceApprovalsEnabled } from "../../workspace-approvals-setting.ts";
 
 type Deliverable = ProjectArtifact;
 const ready: Deliverable = {
@@ -126,8 +127,9 @@ describe("persistent artifact pane", () => {
       }),
     ).toContain("Retained content unavailable");
   });
-  test("renders approval_package deliverable with Approval tab, reminder note, and slides view", () => {
+  test("renders approval_package deliverable with Approval tab, reminder note, and slides view, and hides it when approvals are disabled", () => {
     if (document.status !== "ready") throw new Error("invalid fixture");
+    writeWorkspaceApprovalsEnabled("on");
     const pkgDeliverable: Deliverable = {
       artifactId: "pkg-1",
       kind: "approval_package",
@@ -179,5 +181,20 @@ describe("persistent artifact pane", () => {
     expect(html).toContain("download a .zip per reviewer");
     expect(html).toContain("Launch Readiness");
     expect(html).toContain("Summary of approved scope");
+
+    writeWorkspaceApprovalsEnabled("off");
+    const bypassedHtml = renderToStaticMarkup(
+      <ArtifactPane
+        projectTitle="Project"
+        deliverables={[ready, pkgDeliverable]}
+        selected={ready}
+        state={document}
+        changesOpen={false}
+        onSelect={() => {}}
+        onToggleChanges={() => {}}
+      />,
+    );
+    expect(bypassedHtml).not.toContain(">Approval<");
+    writeWorkspaceApprovalsEnabled("on");
   });
 });

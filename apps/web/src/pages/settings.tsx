@@ -11,6 +11,7 @@
  */
 import { wording } from "../config.ts";
 import {
+  Badge,
   Section,
   Switch,
   Tabs,
@@ -27,6 +28,16 @@ import {
   useDocumentTips,
   writeDocumentTips,
 } from "../document-tips-setting.ts";
+import {
+  addCustomReviewerPersona,
+  addWorkspaceReviewer,
+  allReviewerPersonas,
+  removeWorkspaceReviewer,
+  useCustomReviewerPersonas,
+  useWorkspaceApprovalsEnabled,
+  useWorkspaceReviewers,
+  writeWorkspaceApprovalsEnabled,
+} from "../workspace-approvals-setting.ts";
 import { Collaborators } from "./collaborators.jsx";
 import { Banner, Button, QuietSelect, QuietState } from "../components.jsx";
 import { productClient } from "../api/transport.ts";
@@ -102,6 +113,30 @@ export function Settings({
   onSignOut?: () => Promise<void>;
 }) {
   const [tab, setTab] = useTabInUrl();
+  const renderTabContent = (active: SettingsTab) => {
+    if (active === "providers") {
+      return <ProvidersSection onChanged={onChanged} />;
+    }
+    if (active === "profiles") {
+      return <Profiles />;
+    }
+    if (active === "collaborators") {
+      return <Collaborators user={user} />;
+    }
+    if (active === "about") {
+      return <About />;
+    }
+    return (
+      <>
+        {user ? <WorkingPreferences /> : null}
+        <WorkspaceApprovals />
+        <Appearance />
+        {user ? (
+          <Account user={user} {...(onSignOut ? { onSignOut } : {})} />
+        ) : null}
+      </>
+    );
+  };
   return (
     <div className="settings-page">
       <h1>{wording.settings.title}</h1>
@@ -112,25 +147,7 @@ export function Settings({
         label={wording.settings.sections}
         className="settings-tabs"
       >
-        {(active) =>
-          active === "providers" ? (
-            <ProvidersSection onChanged={onChanged} />
-          ) : active === "profiles" ? (
-            <Profiles />
-          ) : active === "collaborators" ? (
-            <Collaborators user={user} />
-          ) : active === "about" ? (
-            <About />
-          ) : (
-            <>
-              {user ? <WorkingPreferences /> : null}
-              <Appearance />
-              {user ? (
-                <Account user={user} {...(onSignOut ? { onSignOut } : {})} />
-              ) : null}
-            </>
-          )
-        }
+        {renderTabContent}
       </Tabs>
     </div>
   );
@@ -162,6 +179,149 @@ function Row({
       </div>
       {children}
     </div>
+  );
+}
+
+const OTHER_PERSONA_OPTION = "__other__";
+
+/** Workspace-level approval toggle and saved workspace reviewers. */
+export function WorkspaceApprovals() {
+  const approvalsEnabled = useWorkspaceApprovalsEnabled();
+  const reviewers = useWorkspaceReviewers();
+  const customPersonas = useCustomReviewerPersonas();
+  const personaOptions = allReviewerPersonas(customPersonas, reviewers);
+  const [name, setName] = useState("");
+  const [persona, setPersona] = useState<string>(
+    wording.approvalRound.reviewerPersonas[0],
+  );
+  const [customPersonaOpen, setCustomPersonaOpen] = useState(false);
+  const [customPersonaDraft, setCustomPersonaDraft] = useState("");
+  const [email, setEmail] = useState("");
+  const copy = wording.settings.approvals;
+  const roundCopy = wording.approvalRound;
+
+  const effectivePersona = customPersonaOpen
+    ? customPersonaDraft.trim()
+    : persona.trim();
+  const canAdd = name.trim().length > 0 && effectivePersona.length > 0;
+
+  const handleSelectPersona = (value: string) => {
+    if (value === OTHER_PERSONA_OPTION) {
+      setCustomPersonaOpen(true);
+      setCustomPersonaDraft("");
+      return;
+    }
+    setCustomPersonaOpen(false);
+    setPersona(value);
+  };
+
+  const handleAddReviewer = () => {
+    if (!canAdd) return;
+    if (customPersonaOpen) {
+      addCustomReviewerPersona(effectivePersona);
+    }
+    const trimmedEmail = email.trim();
+    addWorkspaceReviewer({
+      name: name.trim(),
+      persona: effectivePersona,
+      ...(trimmedEmail.length > 0 ? { email: trimmedEmail } : {}),
+    });
+    setName("");
+    setEmail("");
+    if (customPersonaOpen) {
+      setPersona(effectivePersona);
+      setCustomPersonaOpen(false);
+      setCustomPersonaDraft("");
+    }
+  };
+
+  return (
+    <Section title={copy.section} description={copy.lead}>
+      <div className="section-body">
+        <Row label={copy.requireLabel} hint={copy.requireHint}>
+          <Switch
+            label={copy.requireLabel}
+            checked={approvalsEnabled === "on"}
+            onCheckedChange={(on) =>
+              writeWorkspaceApprovalsEnabled(on ? "on" : "off")
+            }
+          />
+        </Row>
+        <h3 className="about-subhead">{copy.reviewersSubhead}</h3>
+        <p className="about-lead">{copy.reviewersLead}</p>
+        {reviewers.length === 0 ? (
+          <p className="inline-note">{copy.emptyReviewers}</p>
+        ) : (
+          reviewers.map((reviewer) => (
+            <Row
+              key={reviewer.id}
+              label={reviewer.name}
+              {...(reviewer.email === undefined
+                ? {}
+                : { hint: reviewer.email })}
+            >
+              <span className="v">
+                <Badge tone="neutral">{reviewer.persona}</Badge>
+                <Button
+                  variant="ghost"
+                  onClick={() => removeWorkspaceReviewer(reviewer.id)}
+                >
+                  {copy.removeReviewer}
+                </Button>
+              </span>
+            </Row>
+          ))
+        )}
+        <div className="row">
+          <div className="invite-form">
+            <input
+              className="field"
+              aria-label={copy.reviewerName}
+              placeholder={copy.reviewerName}
+              value={name}
+              onChange={(event) => setName(event.target.value)}
+            />
+            <QuietSelect
+              aria-label={copy.reviewerPersona}
+              value={customPersonaOpen ? OTHER_PERSONA_OPTION : persona}
+              onChange={(event) => handleSelectPersona(event.target.value)}
+            >
+              {personaOptions.map((option) => (
+                <option key={option} value={option}>
+                  {option}
+                </option>
+              ))}
+              <option value={OTHER_PERSONA_OPTION}>
+                {roundCopy.otherPersona}
+              </option>
+            </QuietSelect>
+            {customPersonaOpen ? (
+              <input
+                className="field"
+                aria-label={roundCopy.customPersonaLabel}
+                placeholder={roundCopy.customPersonaPlaceholder}
+                value={customPersonaDraft}
+                onChange={(event) => setCustomPersonaDraft(event.target.value)}
+              />
+            ) : null}
+            <input
+              className="field"
+              aria-label={copy.reviewerEmail}
+              placeholder={copy.reviewerEmail}
+              value={email}
+              onChange={(event) => setEmail(event.target.value)}
+            />
+            <Button
+              variant="outline"
+              disabled={!canAdd}
+              onClick={handleAddReviewer}
+            >
+              {copy.addReviewer}
+            </Button>
+          </div>
+        </div>
+      </div>
+    </Section>
   );
 }
 

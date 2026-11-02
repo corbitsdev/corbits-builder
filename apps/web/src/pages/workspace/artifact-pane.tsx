@@ -57,8 +57,21 @@ import { useTipsGroup } from "./document-tips.tsx";
 import { printDocument } from "./print-document.ts";
 import { useTabStrip } from "./tab-strip.ts";
 import type { ApproachChoice } from "./approach-choice.ts";
+import {
+  useWorkspaceApprovalsEnabled,
+  type OnOff,
+} from "../../workspace-approvals-setting.ts";
 
 type Deliverable = ProjectArtifact;
+
+function filterVisibleDeliverables(
+  deliverables: readonly Deliverable[],
+  approvalsEnabled: OnOff,
+): readonly Deliverable[] {
+  return approvalsEnabled === "on"
+    ? deliverables
+    : deliverables.filter((item) => item.kind !== "approval_package");
+}
 
 const TAB_PREFIX = "workspace-document";
 const DRAFT_TAB = "design-draft";
@@ -275,14 +288,18 @@ export function ArtifactPane({
       openTabMenu(value, tab.left, tab.bottom);
     },
   });
+  const visibleDeliverables = filterVisibleDeliverables(
+    deliverables,
+    useWorkspaceApprovalsEnabled(),
+  );
   const print = (value: string) => {
-    const item = deliverables.find((entry) => entry.kind === value);
+    const item = visibleDeliverables.find((entry) => entry.kind === value);
     const pane = document.getElementById(panelTabIds(TAB_PREFIX, value).pane);
     if (item !== undefined && pane !== null)
       printDocument(pane, item.title, documentStatus(item));
   };
   const outputs =
-    deliverables.length > 0 || draftShown || conceptViews.length > 0;
+    visibleDeliverables.length > 0 || draftShown || conceptViews.length > 0;
   const hasTabs = outputs || themes !== null;
   useEffect(() => {
     if (shown !== null) markSeen(seen, shown.artifactId, shown.version);
@@ -324,7 +341,7 @@ export function ArtifactPane({
             onWheel={strip.onWheel}
           >
             {[
-              ...deliverables.map((item) => {
+              ...visibleDeliverables.map((item) => {
                 const unread =
                   item.kind !== shown?.kind &&
                   seen[item.artifactId] !== item.version;
@@ -484,7 +501,7 @@ export function ArtifactPane({
           keepMounted
           className="workspace-artifact-content"
         >
-          {deliverables.flatMap((item) =>
+          {visibleDeliverables.flatMap((item) =>
             documentViews(item).map((view) => {
               const ids = panelTabIds(TAB_PREFIX, view.value);
               const current = view.value === selectedId;
