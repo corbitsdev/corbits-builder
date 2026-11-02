@@ -1,10 +1,15 @@
 import { describe, expect, test } from "bun:test";
+import { mkdtemp, rm } from "node:fs/promises";
+import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { type } from "arktype";
 import type { NativeApproval, ProjectArtifact } from "@corbits-builder/client";
 import { startTestHub, type TestHubHandle } from "./support/hub.ts";
 import {
+  formatOpenAISseResponse,
   startRecordedModelServer,
+  writeScenarioFixture,
+  type ExchangeExpectation,
   type RecordedModelServer,
 } from "./support/recorded-model.ts";
 
@@ -186,6 +191,7 @@ async function withPipelineScenario(
     assertSecretRedacted: (
       artifacts: readonly ProjectArtifact[],
       secret: string,
+      minDecidedApprovals?: number,
     ) => Promise<void>;
   }) => Promise<void>,
 ): Promise<void> {
@@ -416,7 +422,11 @@ async function withPipelineScenario(
           }
           return artifacts;
         },
-        assertSecretRedacted: async (artifacts, secret) => {
+        assertSecretRedacted: async (
+          artifacts,
+          secret,
+          minDecidedApprovals,
+        ) => {
           for (const item of artifacts) {
             const full = await client.artifact(
               projectTenantId,
@@ -432,7 +442,9 @@ async function withPipelineScenario(
           ]);
           expect(JSON.stringify(finalConv)).not.toContain(secret);
           expect(JSON.stringify(finalActivity)).not.toContain(secret);
-          expect(decided.approvals.length).toBeGreaterThanOrEqual(6);
+          const expectedMin =
+            minDecidedApprovals !== undefined ? minDecidedApprovals : 6;
+          expect(decided.approvals.length).toBeGreaterThanOrEqual(expectedMin);
         },
       });
 
@@ -452,6 +464,19 @@ async function withPipelineScenario(
     if (hub) await hub.close();
     await recordedModel.stop();
   }
+}
+
+function withRequiredTools(
+  requiredTools: readonly string[],
+  exchanges: readonly {
+    sse: string;
+    expect: Omit<ExchangeExpectation, "requiredTools">;
+  }[],
+) {
+  return exchanges.map((exchange) => ({
+    sse: exchange.sse,
+    expect: { ...exchange.expect, requiredTools: [...requiredTools] },
+  }));
 }
 
 describe("Builder E2E pipeline replay", () => {
@@ -603,5 +628,512 @@ describe("Builder E2E pipeline replay", () => {
       );
     },
     STAGE_DEADLINE_MS * 3,
+  );
+
+  test(
+    "drives presenter approval package, reviewer decisions and owner feedback triage to the coordinator",
+    async () => {
+      const fixtureDir = await mkdtemp(
+        join(tmpdir(), "builder-e2e-approval-fixture-"),
+      );
+      const coordinatorTools = [
+        "read_artifact",
+        "write_artifact",
+        "request_approval",
+        "deploy_writer",
+        "deploy_presenter",
+      ];
+      const presenterTools = [
+        "read_skill",
+        "write_deck",
+        "check_deck",
+        "file_package",
+      ];
+      const deck = {
+        theme: {
+          colors: {
+            primary: "#111827",
+            secondary: "#111827",
+            accent: "#111827",
+            background: "#FFFFFF",
+            text: "#111827",
+            muted: "#111827",
+          },
+          fonts: { heading: "Inter", body: "Inter" },
+        },
+        slides: [{ layout: "title" as const, title: "Ask" }],
+      };
+
+      try {
+        await writeScenarioFixture(
+          fixtureDir,
+          {
+            scenario: "weather-executive-approval-package",
+            recordedFromCommit: "bbfb75d",
+          },
+          [
+            {
+              runKey: "coordinator-1",
+              role: "coordinator",
+              stage: "presentation",
+              sourceRunId: "run_coord_approval_1",
+              exchanges: withRequiredTools(coordinatorTools, [
+                {
+                  sse: formatOpenAISseResponse({
+                    text: "Tell me who this weather pitch is for.",
+                  }),
+                  expect: {
+                    lastMessageRole: "user",
+                    userTextContains: "Weather Executive Pitch",
+                    toolResults: [],
+                  },
+                },
+                {
+                  sse: formatOpenAISseResponse({
+                    toolCalls: [
+                      {
+                        id: "coord_write_brief",
+                        name: "write_artifact",
+                        arguments: {
+                          kind: "problem_brief",
+                          title: "Brief",
+                          content: "Brief",
+                        },
+                      },
+                    ],
+                  }),
+                  expect: {
+                    lastMessageRole: "user",
+                    userTextContains: "Open-Meteo",
+                    toolResults: [],
+                  },
+                },
+                {
+                  sse: formatOpenAISseResponse({
+                    text: "Brief filed.",
+                    toolCalls: [
+                      {
+                        id: "coord_approve_brief",
+                        name: "request_approval",
+                        arguments: { kinds: ["problem_brief"] },
+                      },
+                    ],
+                  }),
+                  expect: {
+                    lastMessageRole: "tool",
+                    toolResults: [
+                      {
+                        callId: "coord_write_brief",
+                        toolName: "write_artifact",
+                        isError: false,
+                        keys: ["artifactId", "kind", "version", "sha256"],
+                        bind: {
+                          "brief.artifactId": "artifactId",
+                          "brief.sha256": "sha256",
+                        },
+                      },
+                    ],
+                  },
+                },
+                {
+                  sse: formatOpenAISseResponse({
+                    toolCalls: [
+                      {
+                        id: "coord_deploy_presenter",
+                        name: "deploy_presenter",
+                        arguments: {
+                          audience: "ceo",
+                          decisionNeeded: "Approve scope",
+                          kinds: ["problem_brief"],
+                          tone: "plain",
+                          length: "1",
+                          instruction:
+                            "File a one-slide deck for this audience now.",
+                        },
+                      },
+                    ],
+                  }),
+                  expect: {
+                    lastMessageRole: "tool",
+                    toolResults: [
+                      {
+                        callId: "coord_approve_brief",
+                        toolName: "request_approval",
+                        isError: false,
+                        keys: ["approved"],
+                      },
+                    ],
+                  },
+                },
+                {
+                  sse: formatOpenAISseResponse({
+                    text: "Presenter started.",
+                  }),
+                  expect: {
+                    lastMessageRole: "tool",
+                    toolResults: [
+                      {
+                        callId: "coord_deploy_presenter",
+                        toolName: "deploy_presenter",
+                        isError: false,
+                        keys: ["runId", "role", "status"],
+                      },
+                    ],
+                  },
+                },
+                {
+                  sse: formatOpenAISseResponse({
+                    text: "Your CEO approval package is filed as version 1 and ready to share with reviewers.",
+                  }),
+                  expect: {
+                    lastMessageRole: "user",
+                    userTextContains:
+                      "CEO approval package is filed as version 1",
+                    toolResults: [],
+                  },
+                },
+                {
+                  sse: formatOpenAISseResponse({
+                    text: "I've received Dana Chen's incorporated feedback to cap Phase 1 staffing at 2 engineers and will update our plan.",
+                  }),
+                  expect: {
+                    lastMessageRole: "user",
+                    userTextContains: "--- reviewer feedback (external",
+                    toolResults: [],
+                  },
+                },
+              ]),
+            },
+            {
+              runKey: "presenter-1",
+              role: "presenter",
+              stage: "presentation",
+              sourceRunId: "run_pres_approval_1",
+              exchanges: withRequiredTools(presenterTools, [
+                {
+                  sse: formatOpenAISseResponse({
+                    toolCalls: [
+                      {
+                        id: "pres_skill",
+                        name: "read_skill",
+                        arguments: { name: "presenting" },
+                      },
+                      {
+                        id: "pres_write_deck",
+                        name: "write_deck",
+                        arguments: {
+                          deck,
+                          assignment: {
+                            audience: "ceo",
+                            decisionNeeded: "Approve scope",
+                            sources: [
+                              {
+                                artifactId: "{{bind:brief.artifactId}}",
+                                kind: "problem_brief",
+                                title: "Brief",
+                                version: 1,
+                                sha256: "{{bind:brief.sha256}}",
+                              },
+                            ],
+                          },
+                        },
+                      },
+                    ],
+                  }),
+                  expect: {
+                    lastMessageRole: "user",
+                    userTextContains: "# Presenter Assignment",
+                    toolResults: [],
+                  },
+                },
+                {
+                  sse: formatOpenAISseResponse({
+                    toolCalls: [
+                      {
+                        id: "pres_check_deck",
+                        name: "check_deck",
+                        arguments: {},
+                      },
+                    ],
+                  }),
+                  expect: {
+                    lastMessageRole: "tool",
+                    toolResults: [
+                      {
+                        callId: "pres_skill",
+                        toolName: "read_skill",
+                        isError: false,
+                      },
+                      {
+                        callId: "pres_write_deck",
+                        toolName: "write_deck",
+                        isError: false,
+                        keys: [
+                          "slides",
+                          "deckPath",
+                          "pptxPath",
+                          "pdfPath",
+                          "passed",
+                          "issues",
+                        ],
+                      },
+                    ],
+                  },
+                },
+                {
+                  sse: formatOpenAISseResponse({
+                    toolCalls: [
+                      {
+                        id: "pres_file_pkg",
+                        name: "file_package",
+                        arguments: {},
+                      },
+                    ],
+                  }),
+                  expect: {
+                    lastMessageRole: "tool",
+                    toolResults: [
+                      {
+                        callId: "pres_check_deck",
+                        toolName: "check_deck",
+                        isError: false,
+                        contains: "check passed:",
+                      },
+                    ],
+                  },
+                },
+                {
+                  sse: formatOpenAISseResponse({
+                    text: "The CEO approval package is filed as version 1.",
+                  }),
+                  expect: {
+                    lastMessageRole: "tool",
+                    toolResults: [
+                      {
+                        callId: "pres_file_pkg",
+                        toolName: "file_package",
+                        isError: false,
+                        keys: ["artifactId", "kind", "version", "sha256"],
+                      },
+                    ],
+                  },
+                },
+              ]),
+            },
+          ],
+        );
+
+        await withPipelineScenario(
+          {
+            fixtureDir,
+            projectId: "weather-executive-pitch",
+            title: "Weather Executive Pitch",
+            problemStatement: "Build a Weather Executive Pitch for our CEO.",
+          },
+          async (driver) => {
+            const { hub, projectTenantId, projectId } = driver;
+            const { client, fakeCredentialSecret } = hub;
+
+            await driver.runStage("documents", async () => {
+              await driver.waitForAssistantTurn(
+                "documents",
+                "who this weather pitch is for",
+              );
+              await driver.sendMessage(["Open-Meteo."]);
+              await driver.decideArtifactApproval({
+                stage: "documents",
+                kind: "problem_brief",
+                version: 1,
+                decision: "approve",
+              });
+            });
+
+            await driver.runStage("presentation", async () => {
+              await driver.waitForArtifactAndTurn(
+                "presentation",
+                { kind: "approval_package", version: 1 },
+                "ready to share with reviewers",
+              );
+            });
+
+            await driver.runStage("approval-round", async () => {
+              const round = await client.startApprovalRound(
+                projectTenantId,
+                projectId,
+                {
+                  packageVersion: 1,
+                  expiry: "7d",
+                  reviewers: [
+                    {
+                      name: "Dana Chen",
+                      persona: "CEO",
+                      email: "dana.chen@example.com",
+                      goal: "Approve Q3 staffing and scope",
+                    },
+                    {
+                      name: "Marcus Vance",
+                      persona: "CTO",
+                      email: "marcus.vance@example.com",
+                      goal: "Confirm Open-Meteo zero sign-in architecture",
+                    },
+                  ],
+                },
+              );
+              expect(round.status).toBe("open");
+              expect(round.packageVersion).toBe(1);
+              expect(round.reviewers).toHaveLength(2);
+              const dana = round.reviewers.find((r) => r.name === "Dana Chen")!;
+              const marcus = round.reviewers.find(
+                (r) => r.name === "Marcus Vance",
+              )!;
+              expect(dana.state).toBe("sent");
+              expect(marcus.state).toBe("sent");
+
+              const packageZip = await client.downloadPackageZip(
+                projectTenantId,
+                projectId,
+                1,
+                {
+                  roundId: round.roundId,
+                  reviewerId: dana.id,
+                },
+              );
+              expect(packageZip.filename).toContain(
+                "approval-package-for-dana-chen-ceo.zip",
+              );
+              expect(packageZip.archive.size).toBeGreaterThan(500);
+
+              const afterDana = await client.recordReviewerDecision(
+                projectTenantId,
+                projectId,
+                round.roundId,
+                dana.id,
+                {
+                  outcome: "request_changes",
+                  note: "- Cap Phase 1 staffing at 2 engineers\n- Keep zero sign-in scope",
+                  slideNotes: [
+                    { slide: 1, text: "Highlight the ask on slide 1" },
+                  ],
+                },
+              );
+              expect(afterDana.triage).toHaveLength(3);
+              expect(
+                afterDana.triage.every((item) => item.status === "pending"),
+              ).toBe(true);
+
+              const afterMarcus = await client.recordReviewerDecision(
+                projectTenantId,
+                projectId,
+                round.roundId,
+                marcus.id,
+                {
+                  outcome: "approve",
+                  note: "- Architecture looks solid",
+                },
+              );
+              expect(afterMarcus.triage).toHaveLength(4);
+
+              const staffingItem = afterMarcus.triage.find((item) =>
+                item.text.includes("Cap Phase 1 staffing at 2 engineers"),
+              )!;
+              const scopeItem = afterMarcus.triage.find((item) =>
+                item.text.includes("Keep zero sign-in scope"),
+              )!;
+              const slideItem = afterMarcus.triage.find(
+                (item) => item.slide === 1,
+              )!;
+              const ctoItem = afterMarcus.triage.find((item) =>
+                item.text.includes("Architecture looks solid"),
+              )!;
+
+              const afterDismiss = await client.triageReviewerFeedback(
+                projectTenantId,
+                projectId,
+                round.roundId,
+                scopeItem.itemId,
+                { action: "dismiss" },
+              );
+              expect(
+                afterDismiss.triage.find(
+                  (item) => item.itemId === scopeItem.itemId,
+                )?.status,
+              ).toBe("dismissed");
+
+              const afterReply = await client.triageReviewerFeedback(
+                projectTenantId,
+                projectId,
+                round.roundId,
+                slideItem.itemId,
+                {
+                  action: "reply",
+                  reply: "We will call out the ask on slide 1.",
+                },
+              );
+              const repliedItem = afterReply.triage.find(
+                (item) => item.itemId === slideItem.itemId,
+              );
+              expect(repliedItem?.status).toBe("replied");
+              expect(repliedItem?.reply).toBe(
+                "We will call out the ask on slide 1.",
+              );
+
+              await client.triageReviewerFeedback(
+                projectTenantId,
+                projectId,
+                round.roundId,
+                ctoItem.itemId,
+                { action: "dismiss" },
+              );
+
+              const afterIncorporate = await client.triageReviewerFeedback(
+                projectTenantId,
+                projectId,
+                round.roundId,
+                staffingItem.itemId,
+                { action: "incorporate" },
+              );
+              expect(
+                afterIncorporate.triage.find(
+                  (item) => item.itemId === staffingItem.itemId,
+                )?.status,
+              ).toBe("incorporated");
+
+              await driver.waitForAssistantTurn(
+                "approval-round",
+                "cap Phase 1 staffing at 2 engineers",
+              );
+
+              const settled = await client.settleApprovalRound(
+                projectTenantId,
+                projectId,
+                round.roundId,
+              );
+              expect(settled.status).toBe("settled");
+              expect(settled.settledAt).toBeDefined();
+
+              const listed = await client.approvalRounds(
+                projectTenantId,
+                projectId,
+              );
+              expect(listed.rounds).toHaveLength(1);
+              expect(listed.rounds[0]?.status).toBe("settled");
+
+              const finalArtifacts = await driver.assertArtifactStates([
+                { kind: "problem_brief", version: 1, approvedVersion: 1 },
+                { kind: "approval_package", version: 1, approvedVersion: 1 },
+              ]);
+              await driver.assertSecretRedacted(
+                finalArtifacts,
+                fakeCredentialSecret,
+                1,
+              );
+            });
+          },
+        );
+      } finally {
+        await rm(fixtureDir, { recursive: true, force: true });
+      }
+    },
+    STAGE_DEADLINE_MS,
   );
 });

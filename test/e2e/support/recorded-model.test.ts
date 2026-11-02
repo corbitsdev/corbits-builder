@@ -1,67 +1,33 @@
 import { describe, expect, test } from "bun:test";
-import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
+import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import {
+  classifyRole,
   formatOpenAISseResponse,
   loadScenarioBundle,
   startRecordedModelServer,
+  writeScenarioFixture,
   type ExchangeExpectation,
-  type ScenarioManifest,
-  type SessionManifest,
 } from "./recorded-model.ts";
 
 async function writeBundle(
   root: string,
   exchanges: { sse: string; expect: ExchangeExpectation }[],
 ): Promise<void> {
-  const session: SessionManifest = {
-    runKey: "writer-1",
-    role: "writer",
-    stage: "documents",
-    sourceRunId: "run_test",
-    exchangeCount: exchanges.length,
-  };
-  const manifest: ScenarioManifest = {
-    scenario: "unit-bundle",
-    recordedFromCommit: "d6c6b46",
-    runs: [session],
-  };
-  await writeFile(
-    join(root, "scenario.json"),
-    JSON.stringify(manifest, null, 2),
-  );
-  const runDir = join(root, "runs", session.runKey);
-  await mkdir(runDir, { recursive: true });
-  await writeFile(
-    join(runDir, "session.json"),
-    JSON.stringify(session, null, 2),
-  );
-  await writeFile(
-    join(runDir, "key.json"),
-    JSON.stringify(
+  await writeScenarioFixture(
+    root,
+    { scenario: "unit-bundle", recordedFromCommit: "d6c6b46" },
+    [
       {
-        role: session.role,
-        stage: session.stage,
-        sourceRunId: session.sourceRunId,
+        runKey: "writer-1",
+        role: "writer",
+        stage: "documents",
+        sourceRunId: "run_test",
+        exchanges,
       },
-      null,
-      2,
-    ),
+    ],
   );
-  for (let i = 0; i < exchanges.length; i += 1) {
-    const exDir = join(runDir, "exchanges", String(i));
-    await mkdir(exDir, { recursive: true });
-    await writeFile(join(exDir, "response.sse"), exchanges[i]!.sse);
-    await writeFile(
-      join(exDir, "response-headers.json"),
-      JSON.stringify({ "content-type": "text/event-stream; charset=utf-8" }),
-    );
-    await writeFile(
-      join(exDir, "expect.json"),
-      JSON.stringify(exchanges[i]!.expect, null, 2),
-    );
-  }
 }
 
 describe("recorded-model server", () => {
@@ -239,5 +205,46 @@ describe("recorded-model server", () => {
     } finally {
       await rm(dir, { recursive: true, force: true });
     }
+  });
+
+  test("classifies presenter and other agent roles from offered tools", () => {
+    const baseReq = {
+      model: "recorded-replay",
+      messages: [{ role: "user", content: "Build the deck" }],
+    };
+    expect(
+      classifyRole(
+        baseReq,
+        new Set(["write_deck", "check_deck", "file_package"]),
+      ),
+    ).toBe("presenter");
+    expect(classifyRole(baseReq, new Set(["file_package"]))).toBe("presenter");
+    expect(
+      classifyRole(
+        baseReq,
+        new Set(["deploy_writer", "deploy_presenter", "request_approval"]),
+      ),
+    ).toBe("coordinator");
+    expect(
+      classifyRole(baseReq, new Set(["check_design", "file_design_option"])),
+    ).toBe("designer");
+    expect(
+      classifyRole(baseReq, new Set(["app_status", "install_packages"])),
+    ).toBe("coder");
+    expect(
+      classifyRole(baseReq, new Set(["write_artifact", "read_skill"])),
+    ).toBe("writer");
+    expect(
+      classifyRole(
+        {
+          model: "recorded-replay",
+          messages: [
+            { role: "system", content: "You are a document reviewer." },
+            { role: "user", content: "Review this." },
+          ],
+        },
+        new Set(["mail_reply"]),
+      ),
+    ).toBe("reviewer");
   });
 });
