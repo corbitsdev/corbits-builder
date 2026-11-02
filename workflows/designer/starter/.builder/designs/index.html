@@ -47,17 +47,15 @@
         </button>
       </header>
 
-      <main class="app-main">
-        <section data-screen="home" data-testid="screen-home">
-          <div data-state="populated" data-testid="home-populated">
-            <h1 data-testid="home-title">Hello, world</h1>
-          </div>
-        </section>
-      </main>
+      <main class="app-main"></main>
     </div>
 
     <script>
       (() => {
+        for (const overlay of document.querySelectorAll(
+          "dialog, .toaster, :not(.toaster) > .toast",
+        ))
+          document.body.append(overlay);
         const screens = [...document.querySelectorAll("[data-screen]")];
 
         function route() {

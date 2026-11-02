@@ -611,7 +611,7 @@ a {
     opacity var(--duration-standard) var(--ease-out),
     transform var(--duration-standard) var(--ease-out);
 }
-.toast[data-open="false"] {
+.toast:not([data-open="true"]) {
   opacity: 0;
   transform: translateY(8px);
   pointer-events: none;
@@ -1232,7 +1232,7 @@ h2 {
     transform: none;
     translate: none;
   }
-  .toast[data-open="false"] {
+  .toast:not([data-open="true"]) {
     transform: none;
   }
 }
