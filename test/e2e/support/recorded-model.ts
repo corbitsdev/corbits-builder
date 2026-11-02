@@ -1,6 +1,14 @@
-import { readdir, readFile } from "node:fs/promises";
+import { mkdir, readdir, readFile, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { type } from "arktype";
+
+export type AgentRole =
+  | "coordinator"
+  | "designer"
+  | "coder"
+  | "presenter"
+  | "writer"
+  | "reviewer";
 
 export const ToolResultExpectation = type({
   "+": "reject",
@@ -166,10 +174,10 @@ function offeredToolNames(req: OpenAIChatRequest): string[] {
   return names;
 }
 
-function classifyRole(
+export function classifyRole(
   req: OpenAIChatRequest,
   tools: ReadonlySet<string>,
-): string | undefined {
+): AgentRole | undefined {
   if (tools.has("deploy_writer") || tools.has("request_approval")) {
     return "coordinator";
   }
@@ -178,6 +186,9 @@ function classifyRole(
   }
   if (tools.has("app_status") || tools.has("install_packages")) {
     return "coder";
+  }
+  if (tools.has("write_deck") || tools.has("file_package")) {
+    return "presenter";
   }
   if (tools.has("write_artifact") && !tools.has("read_artifact")) {
     return "writer";
@@ -671,4 +682,77 @@ export function formatOpenAISseResponse(turn: {
     usage: { prompt_tokens: 120, completion_tokens: 60 },
   });
   return `${chunks.map((c) => `data: ${JSON.stringify(OpenAISseChunk.assert(c))}\n\n`).join("")}data: [DONE]\n\n`;
+}
+
+export type ScenarioRunFixtureSpec = Readonly<{
+  runKey: string;
+  role: AgentRole;
+  stage: string;
+  sourceRunId: string;
+  exchanges: readonly {
+    sse: string;
+    expect: ExchangeExpectation;
+  }[];
+}>;
+
+export async function writeScenarioFixture(
+  root: string,
+  meta: { scenario: string; recordedFromCommit: string },
+  runs: readonly ScenarioRunFixtureSpec[],
+): Promise<void> {
+  const manifest: ScenarioManifest = {
+    scenario: meta.scenario,
+    recordedFromCommit: meta.recordedFromCommit,
+    runs: runs.map((run) => ({
+      runKey: run.runKey,
+      role: run.role,
+      stage: run.stage,
+      sourceRunId: run.sourceRunId,
+      exchangeCount: run.exchanges.length,
+    })),
+  };
+  await writeFile(
+    join(root, "scenario.json"),
+    JSON.stringify(manifest, null, 2),
+  );
+  for (const run of runs) {
+    const runDir = join(root, "runs", run.runKey);
+    await mkdir(runDir, { recursive: true });
+    const session: SessionManifest = {
+      runKey: run.runKey,
+      role: run.role,
+      stage: run.stage,
+      sourceRunId: run.sourceRunId,
+      exchangeCount: run.exchanges.length,
+    };
+    await writeFile(
+      join(runDir, "session.json"),
+      JSON.stringify(session, null, 2),
+    );
+    await writeFile(
+      join(runDir, "key.json"),
+      JSON.stringify(
+        {
+          role: run.role,
+          stage: run.stage,
+          sourceRunId: run.sourceRunId,
+        },
+        null,
+        2,
+      ),
+    );
+    for (let i = 0; i < run.exchanges.length; i += 1) {
+      const exDir = join(runDir, "exchanges", String(i));
+      await mkdir(exDir, { recursive: true });
+      await writeFile(join(exDir, "response.sse"), run.exchanges[i]!.sse);
+      await writeFile(
+        join(exDir, "response-headers.json"),
+        JSON.stringify({ "content-type": "text/event-stream; charset=utf-8" }),
+      );
+      await writeFile(
+        join(exDir, "expect.json"),
+        JSON.stringify(run.exchanges[i]!.expect, null, 2),
+      );
+    }
+  }
 }
