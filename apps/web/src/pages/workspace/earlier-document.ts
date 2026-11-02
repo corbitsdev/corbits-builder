@@ -22,6 +22,14 @@ const BUILDS_FROM: Readonly<Record<string, readonly string[]>> = {
     "build_plan",
     "design",
   ],
+  presenter: [
+    "problem_brief",
+    "constraints",
+    "approaches",
+    "product_requirements",
+    "build_plan",
+    "design",
+  ],
 };
 
 function names(text: string, phrase: string): boolean {

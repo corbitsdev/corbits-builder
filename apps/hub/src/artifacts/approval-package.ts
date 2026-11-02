@@ -45,6 +45,18 @@ export type StoredPackageSource = {
   kind: string;
   version: number;
   sha256: string;
+  approved?: boolean;
+};
+
+export type SealedPackageAssignment = {
+  audience: string;
+  decisionNeeded?: string;
+  sources: readonly {
+    artifactId: string;
+    kind: string;
+    version: number;
+    sha256: string;
+  }[];
 };
 
 export type StoredSourceReader = (
@@ -118,11 +130,61 @@ async function verifySourcePin(
         message: `${source.artifactId}@${String(source.version)}`,
       },
     ]);
+  if (stored.approved === false)
+    throw new ProjectError(422, "unapproved_package_source", [
+      {
+        path: "manifest.sources",
+        message: `${source.kind}@${String(source.version)}`,
+      },
+    ]);
+}
+
+function verifySealedAssignment(
+  bundle: ApprovalPackageBundle,
+  sealed: SealedPackageAssignment,
+): void {
+  if (bundle.manifest.audience.trim() !== sealed.audience.trim()) {
+    throw new ProjectError(422, "package_assignment_mismatch", [
+      {
+        path: "manifest.audience",
+        message: `expected ${sealed.audience}`,
+      },
+    ]);
+  }
+  if (
+    sealed.decisionNeeded !== undefined &&
+    bundle.manifest.decisionNeeded.trim() !== sealed.decisionNeeded.trim()
+  ) {
+    throw new ProjectError(422, "package_assignment_mismatch", [
+      {
+        path: "manifest.decisionNeeded",
+        message: `expected ${sealed.decisionNeeded}`,
+      },
+    ]);
+  }
+  const actualKeys = bundle.manifest.sources.map(
+    (s) => `${s.artifactId}:${s.kind}:${String(s.version)}:${s.sha256}`,
+  );
+  const expectedKeys = sealed.sources.map(
+    (s) => `${s.artifactId}:${s.kind}:${String(s.version)}:${s.sha256}`,
+  );
+  if (
+    actualKeys.length !== expectedKeys.length ||
+    actualKeys.some((key, idx) => key !== expectedKeys[idx])
+  ) {
+    throw new ProjectError(422, "package_assignment_mismatch", [
+      {
+        path: "manifest.sources",
+        message: "sources do not match the approved hand-off selection",
+      },
+    ]);
+  }
 }
 
 export async function validateApprovalPackage(
   input: string | ApprovalPackageBundle,
   readSource: StoredSourceReader,
+  sealedAssignment?: SealedPackageAssignment,
 ): Promise<ApprovalPackageBundle> {
   const bundle =
     typeof input === "string" ? parseApprovalPackageBundle(input) : input;
@@ -133,6 +195,9 @@ export async function validateApprovalPackage(
       ]);
   }
   scanApprovalPackageForSecrets(bundle);
+  if (sealedAssignment !== undefined) {
+    verifySealedAssignment(bundle, sealedAssignment);
+  }
   for (const source of bundle.manifest.sources)
     await verifySourcePin(source, readSource);
   return bundle;
@@ -141,6 +206,11 @@ export async function validateApprovalPackage(
 export function readProjectPackageSource(
   db: ArtifactDb,
   tenantId: string,
+  isApproved?: (
+    artifactId: string,
+    kind: string,
+    version: number,
+  ) => Promise<boolean>,
 ): StoredSourceReader {
   return async (artifactId, version) => {
     if (!UUID_RE.test(artifactId)) return undefined;
@@ -148,10 +218,15 @@ export function readProjectPackageSource(
     if (!row || row.tenantId !== tenantId) return undefined;
     const stored = await getArtifactVersion(db, artifactId, version);
     if (!stored?.contentSha256) return undefined;
+    const approved =
+      isApproved === undefined
+        ? true
+        : await isApproved(artifactId, row.kind, stored.version);
     return {
       kind: row.kind,
       version: stored.version,
       sha256: stored.contentSha256,
+      approved,
     };
   };
 }

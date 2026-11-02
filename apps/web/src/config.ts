@@ -325,6 +325,7 @@ export const wording = {
       reviewer: "reviewer",
       designer: "designer",
       coder: "app builder",
+      presenter: "presenter",
     },
     change: "What needs to change…",
     fix: "What needs fixing…",
@@ -357,6 +358,7 @@ export const wording = {
       reviewer: "Reviewer",
       designer: "Designer",
       coder: "App builder",
+      presenter: "Presenter",
     },
     /** Before the run's first tool call: the hub has seen nothing from it yet. */
     starting: "getting started",
@@ -377,6 +379,9 @@ export const wording = {
         "package.json": "the app setup",
         "index.html": "the main screen",
         "styles.css": "the styles",
+        "deck.json": "the slide deck",
+        "deck.pptx": "the PowerPoint deck",
+        "deck.pdf": "the PDF deck",
       } as Record<string, string>,
     },
     /** Verbs for file work, one picked per file so a line reads like a person at work. */
@@ -428,6 +433,7 @@ export const wording = {
         document ? `Started the writer · ${document}` : "Started the writer",
       design_app: () => "Started the designer",
       deploy_coder: () => "Started the app builder",
+      deploy_presenter: () => "Started the presenter",
       instruct_coder: () => "Sent the app builder a change",
       review_artifact: (document?: string) =>
         document ? `Asked for a review · ${document}` : "Asked for a review",
@@ -469,6 +475,10 @@ export const wording = {
       review_artifact: () => "asking for a review",
       design_app: () => "starting the designer",
       deploy_coder: () => "starting the app builder",
+      deploy_presenter: () => "starting the presenter",
+      write_deck: () => "building the slide deck",
+      check_deck: () => "checking the slide deck",
+      file_package: () => "filing the approval package",
       instruct_coder: () =>
         "waiting for you to approve a change for the app builder",
     } as Record<string, (subject?: string) => string>,
@@ -607,6 +617,7 @@ export const wording = {
       deploy_coder: "the app",
       instruct_coder: "the app",
       design_app: "the design",
+      deploy_presenter: "the approval package",
     } as Record<string, string>,
     /** What a hand-off works on when nothing names it yet. */
     unnamed: "the task",
@@ -626,6 +637,7 @@ export const wording = {
       reviewer: (subject: string) => `Reviewed ${subject}`,
       designer: (subject: string) => `Drafted ${subject}`,
       coder: (subject: string) => `Built ${subject}`,
+      presenter: (subject: string) => `Prepared ${subject}`,
     },
     /** The run ended without filing what it was asked for. */
     ended: (subject: string) => `Worked on ${subject}`,
@@ -744,6 +756,7 @@ export const wording = {
     writtenBy: {
       problem_brief: "Coordinator",
       design: "Designer",
+      approval_package: "Presenter",
     } as Record<string, string>,
     writer: "Writer",
     /** The document written after this one once it is approved, and the line saying so. */

@@ -5,7 +5,12 @@
 
 import type { CustomModel } from "@corbits-builder/schemas/models";
 
-export type AgentRole = "coordinator" | "document" | "coding" | "design";
+export type AgentRole =
+  | "coordinator"
+  | "document"
+  | "coding"
+  | "design"
+  | "presenter";
 
 type Effort = "low" | "medium" | "high" | "max";
 
@@ -33,6 +38,7 @@ const sharedRoles: Record<AgentRole, RoleBudget> = {
   document: { maxOutputTokens: 32768 },
   coding: { maxOutputTokens: 65536 },
   design: { maxOutputTokens: 32768 },
+  presenter: { maxOutputTokens: 32768 },
 };
 
 // context_window of each model in the Codex CLI catalog, openai/codex@b1e72963c3
@@ -138,6 +144,7 @@ export function customModelLimits(model: CustomModel): ModelLimits {
       document: budget,
       coding: budget,
       design: budget,
+      presenter: budget,
     },
   };
 }

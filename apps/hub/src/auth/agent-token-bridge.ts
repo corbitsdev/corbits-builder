@@ -299,6 +299,7 @@ export function createAgentTokenBridge(
             ? installed.coderAnyPackage
             : installed.coder,
           designer: installed.designer,
+          ...(installed.presenter ? { presenter: installed.presenter } : {}),
         },
         openNetwork: opensNetwork(preferences.value),
         build: await buildLayout(),
@@ -358,7 +359,7 @@ export function createAgentTokenBridge(
       ((c.req.method === "GET" &&
         /^(|\/audit|\/artifacts(?:\/[^/]+)?)$/.test(suffix)) ||
         (c.req.method === "POST" &&
-          /^(\/mutations|\/artifacts|\/artifact-approvals|\/design-concepts)$/.test(
+          /^(\/mutations|\/artifacts|\/artifact-approvals|\/design-concepts|\/presenter-assignments)$/.test(
             suffix,
           )));
     const deployRoute =

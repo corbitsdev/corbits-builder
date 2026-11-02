@@ -23,6 +23,7 @@ const ALL_ROLES = [
   "designer",
   "coder",
   "reviewer",
+  "presenter",
 ] as const;
 
 // How Builder works with a person. Each entry is one setting in Settings, copied onto a

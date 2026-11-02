@@ -74,6 +74,17 @@ describe("composer placeholder", () => {
     ).toBe("Ask the app builder…");
   });
 
+  test("the presenter is named while it is working", () => {
+    expect(
+      placeholder({
+        status: standing({
+          working: [{ role: "presenter", state: "working" }],
+          app: { state: "running" },
+        }),
+      }),
+    ).toBe("Ask the presenter…");
+  });
+
   test("a running app beats a failure", () => {
     expect(
       placeholder({

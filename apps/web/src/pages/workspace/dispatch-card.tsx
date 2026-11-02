@@ -23,6 +23,7 @@ const ROLE_OF: Record<string, Role> = {
   deploy_coder: "coder",
   instruct_coder: "coder",
   design_app: "designer",
+  deploy_presenter: "presenter",
 };
 
 export const DISPATCH_TOOLS: ReadonlySet<string> = new Set(
@@ -173,6 +174,7 @@ export function targetKind(dispatch: Dispatch): string | undefined {
   if (dispatch.tool === "design_app")
     return dispatch.concept === undefined ? "design" : undefined;
   if (dispatch.role === "coder") return "app";
+  if (dispatch.role === "presenter") return "approval_package";
   return undefined;
 }
 
@@ -363,6 +365,7 @@ const RUN_TOOL: Record<Role, string> = {
   reviewer: "review_artifact",
   coder: "deploy_coder",
   designer: "design_app",
+  presenter: "deploy_presenter",
 };
 
 /** A run at work the conversation has no hand-off for, such as one started before a reload. */
