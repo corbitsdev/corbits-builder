@@ -89,13 +89,63 @@ function complete(draft: Draft, tiers: readonly Tier[]): Tiers | null {
   return done as Tiers;
 }
 
+/** A new profile asks which is the default only when another profile already exists. */
+export function asksDefaultProfile(
+  mode: "new" | "edit",
+  existingCount: number,
+): boolean {
+  return mode === "new" && existingCount > 0;
+}
+
+/** The new profile plus the ones already on the screen, for the default question. */
+export function defaultProfileOptions(
+  existing: readonly { id: string; label: string }[],
+  created: { id: string; label: string },
+): { id: string; label: string }[] {
+  return [
+    ...existing.map((entry) => ({ id: entry.id, label: entry.label })),
+    { id: created.id, label: created.label },
+  ];
+}
+
+/** Which id the select shows before the person answers. */
+export function initialDefaultProfile(input: {
+  previous: string | undefined;
+  automatic: string | undefined;
+  createdId: string;
+  existingIds: readonly string[];
+}): string {
+  const known = new Set([...input.existingIds, input.createdId]);
+  return (
+    [input.previous, input.automatic, input.createdId].find(
+      (id) => id !== undefined && known.has(id),
+    ) ?? input.createdId
+  );
+}
+
+/** An answered ask stores the chosen id. Otherwise the previous active id stays. */
+export function activeProfileId(input: {
+  ask: boolean;
+  previous: string | undefined;
+  chosen: string | undefined;
+}): string | undefined {
+  return input.ask ? input.chosen : input.previous;
+}
+
 export function Profiles({ initialField }: { initialField?: Field } = {}) {
+
   const catalog = useModelCatalog();
   const queryClient = useQueryClient();
   const [field, setField] = useState<Field | null>(initialField ?? null);
   const [error, setError] = useState<string | null>(null);
   const [editing, setEditing] = useState<Editing | null>(null);
   const [viewing, setViewing] = useState<string | null>(null);
+  const [defaultAsk, setDefaultAsk] = useState<{
+    options: readonly { id: string; label: string }[];
+    list: CustomProfile[];
+  } | null>(null);
+  const [defaultId, setDefaultId] = useState("");
+  const [defaultBusy, setDefaultBusy] = useState(false);
   useEffect(() => {
     if (initialField) return;
     void workspaceTenantId()
@@ -292,9 +342,108 @@ export function Profiles({ initialField }: { initialField?: Field } = {}) {
                     entry.id === profile.id ? profile : entry,
                   )
                 : [...custom, profile];
-            if (await save(choice(active?.id, list))) setEditing(null);
+            const ask = asksDefaultProfile(editing.mode, profiles.length);
+            const saved = await save(
+              choice(
+                activeProfileId({
+                  ask: false,
+                  previous: field.value?.profile,
+                  chosen: undefined,
+                }),
+                list,
+              ),
+            );
+            if (!saved) return;
+            setEditing(null);
+            if (!ask) return;
+            setDefaultId(
+              initialDefaultProfile({
+                previous: field.value?.profile,
+                automatic: data.automaticProfile,
+                createdId: profile.id,
+                existingIds: profiles.map((entry) => entry.id),
+              }),
+            );
+            setDefaultBusy(false);
+            setDefaultAsk({
+              options: defaultProfileOptions(profiles, profile),
+              list,
+            });
+
           }}
         />
+      ) : null}
+      {defaultAsk ? (
+        <Dialog
+          open
+          onOpenChange={(open) =>
+            open || defaultBusy ? undefined : setDefaultAsk(null)
+          }
+        >
+          <DialogContent>
+            <DialogHeader>
+              <DialogTitle>{copy.askDefault}</DialogTitle>
+              <DialogDescription>{copy.askDefaultLead}</DialogDescription>
+            </DialogHeader>
+            <form
+              onSubmit={(event) => {
+                event.preventDefault();
+                if (!defaultId || defaultBusy) return;
+                setDefaultBusy(true);
+                void save(
+                  choice(
+                    activeProfileId({
+                      ask: true,
+                      previous: field.value?.profile,
+                      chosen: defaultId,
+                    }),
+                    defaultAsk.list,
+                  ),
+                ).then((ok) => {
+                  setDefaultBusy(false);
+                  if (ok) setDefaultAsk(null);
+                });
+              }}
+            >
+              <DialogBody className="provider-form">
+                <div className="provider-field">
+                  <DialogFieldLabel htmlFor="profile-default">
+                    {copy.pick}
+                  </DialogFieldLabel>
+                  <QuietSelect
+                    id="profile-default"
+                    value={defaultId}
+                    disabled={defaultBusy}
+                    onChange={(event) => setDefaultId(event.target.value)}
+                  >
+                    {defaultAsk.options.map((option) => (
+                      <option key={option.id} value={option.id}>
+                        {option.label}
+                      </option>
+                    ))}
+                  </QuietSelect>
+                </div>
+              </DialogBody>
+              <DialogFooter>
+                <Button
+                  variant="ghost"
+                  disabled={defaultBusy}
+                  onClick={() => setDefaultAsk(null)}
+                >
+                  {wording.action.cancel}
+                </Button>
+                <Button
+                  variant="primary"
+                  type="submit"
+                  loading={defaultBusy}
+                  disabled={!defaultId}
+                >
+                  {copy.askDefaultSave}
+                </Button>
+              </DialogFooter>
+            </form>
+          </DialogContent>
+        </Dialog>
       ) : null}
     </>
   );
