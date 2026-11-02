@@ -378,12 +378,16 @@ async function* runSingleAttempt(
   const armInactivity = () => {
     cancelInactivity?.();
     cancelInactivity = scheduler.setTimeout(() => {
-      timeoutReason = "inactivity";
+      if (timeoutReason === null) {
+        timeoutReason = "inactivity";
+      }
       timeoutAbort.abort();
     }, inactivityTimeoutMs);
   };
   const cancelTotal = scheduler.setTimeout(() => {
-    timeoutReason = "total";
+    if (timeoutReason === null) {
+      timeoutReason = "total";
+    }
     timeoutAbort.abort();
   }, totalTimeoutMs);
   // Per-timer cancellers are idempotent (the production scheduler's
@@ -552,10 +556,13 @@ async function* runSingleAttempt(
         yield adapter.parseJSONResponse(body);
         return;
       }
-      for await (const sseData of parseSSE(responseBody)) {
+      for await (const sseData of parseSSE(responseBody, fetchSignal)) {
         // Reset inactivity timer — we just got something from the wire.
         armInactivity();
         yield adapter.parseResponse(sseData);
+        if (adapter.isStreamTerminal?.(sseData)) {
+          return;
+        }
       }
     };
 

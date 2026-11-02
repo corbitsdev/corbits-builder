@@ -78,6 +78,7 @@ export type ProviderAdapter = {
   parseJSONResponse: JSONResponseParser;
   extractRetryAfterMs?: RetryAfterExtractor;
   extractPacingDelayMs?: PacingExtractor;
+  isStreamTerminal?: (sseData: string) => boolean;
 };
 
 // Builds a fresh adapter for one inference call. Invoked per call so the

@@ -910,4 +910,119 @@ describe("runInference — non-streaming JSON responses", () => {
     expect(errorEvent.data.error.category).toBe("protocol_mismatch");
     expect(errorEvent.data.error.message).toContain("text/plain");
   });
+
+  test("terminates SSE consumption when adapter.isStreamTerminal returns true without waiting for stream close", async () => {
+    const sseSource: InferenceSource = {
+      id: "test-terminal:model-x",
+      provider: "test-terminal",
+      baseURL: "https://example.test",
+      credentialId: "test",
+      model: "model-x",
+    };
+    const factory: AdapterFactory = (source) => ({
+      buildRequest: () => ({ url: "/sse", headers: {}, body: "{}" }),
+      parseResponse: (sseData) => {
+        if (sseData === "completed") {
+          return [
+            {
+              type: "inference.usage",
+              seq: 0,
+              data: {
+                usage: {
+                  input: 4,
+                  output: 2,
+                  cacheRead: 0,
+                  cacheWrite: 0,
+                  thinking: 0,
+                },
+                source,
+              },
+            },
+          ];
+        }
+        return [
+          {
+            type: "inference.text.delta",
+            seq: 0,
+            data: { token: sseData, partial: { text: "" }, index: 0 },
+          },
+        ];
+      },
+      parseJSONResponse: () => [],
+      isStreamTerminal: (sseData) => sseData === "completed",
+    });
+
+    const stream = new ReadableStream<Uint8Array>({
+      start(controller) {
+        controller.enqueue(
+          new TextEncoder().encode("data: hi\n\ndata: completed\n\n"),
+        );
+        // Intentionally never close the stream or send [DONE].
+      },
+    });
+
+    let seq = 0;
+    const events = await collect(
+      runInference({
+        turns: [userTurn("hi")],
+        source: sseSource,
+        nextSeq: () => ++seq,
+        deps: {
+          fetch: () =>
+            Promise.resolve(
+              new Response(stream, {
+                status: 200,
+                headers: { "content-type": "text/event-stream" },
+              }),
+            ),
+          scheduler: createDefaultScheduler(),
+          adapters: createAdapterRegistry({ "test-terminal": factory }),
+        },
+      }),
+    );
+
+    expect(events.some((e) => e.type === "inference.done")).toBe(true);
+  });
+
+  test("aborts a stalled SSE stream on inactivityTimeoutMs even when the Response stream is not bound to fetchSignal", async () => {
+    const stream = new ReadableStream<Uint8Array>({
+      start() {
+        // Intentionally never enqueue or close.
+      },
+    });
+
+    let seq = 0;
+    const events = await collect(
+      runInference({
+        turns: [userTurn("hi")],
+        source: SOURCE,
+        readMaterial: () => ({ secret: "test-secret" }),
+        inferenceOptions: {
+          inactivityTimeoutMs: 10,
+          totalTimeoutMs: 5_000,
+          retryPolicy: () => ({ kind: "abort" }),
+        },
+        nextSeq: () => ++seq,
+        deps: {
+          fetch: () =>
+            Promise.resolve(
+              new Response(stream, {
+                status: 200,
+                headers: { "content-type": "text/event-stream" },
+              }),
+            ),
+          scheduler: createDefaultScheduler(),
+          adapters: createBuiltinRegistry(),
+        },
+      }),
+    );
+
+    const errorEvent = events.find(
+      (e): e is Extract<InferenceEvent, { type: "inference.error" }> =>
+        e.type === "inference.error",
+    );
+    if (errorEvent === undefined) throw new Error("missing inference.error");
+    expect(errorEvent.data.error.category).toBe("timeout");
+    expect(errorEvent.data.error.message).toContain("inactivity timeout");
+  });
 });
