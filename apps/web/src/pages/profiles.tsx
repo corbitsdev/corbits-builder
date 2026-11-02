@@ -8,7 +8,7 @@
  * project keeps the bindings it started with, so a change here never alters a running project.
  */
 import { wording } from "../config.ts";
-import { Input, Section } from "@corbits/react-ui";
+import { Input, Section, Switch } from "@corbits/react-ui";
 import {
   Dialog,
   DialogBody,
@@ -97,12 +97,6 @@ export function Profiles({ initialField }: { initialField?: Field } = {}) {
   const [error, setError] = useState<string | null>(null);
   const [editing, setEditing] = useState<Editing | null>(null);
   const [viewing, setViewing] = useState<string | null>(null);
-  const [defaultAsk, setDefaultAsk] = useState<{
-    options: readonly { id: string; label: string }[];
-    list: CustomProfile[];
-  } | null>(null);
-  const [defaultId, setDefaultId] = useState("");
-  const [defaultBusy, setDefaultBusy] = useState(false);
   useEffect(() => {
     if (initialField) return;
     void workspaceTenantId()
@@ -292,101 +286,24 @@ export function Profiles({ initialField }: { initialField?: Field } = {}) {
           )}
           editing={editing}
           onClose={() => setEditing(null)}
-          onSave={async (profile) => {
+          replacing={editing.mode === "new" ? (active?.label ?? null) : null}
+          onSave={async (profile, makeDefault) => {
             const list =
               editing.mode === "edit"
                 ? custom.map((entry) =>
                     entry.id === profile.id ? profile : entry,
                   )
                 : [...custom, profile];
-            if (editing.mode === "new" && profiles.length > 0) {
-              const stored = field.value?.profile;
-              const preset = [stored, data.automaticProfile].find(
-                (id) =>
-                  id !== undefined && profiles.some((entry) => entry.id === id),
-              );
-              setDefaultId(preset ?? profile.id);
-              setDefaultAsk({
-                options: [
-                  ...profiles.map((entry) => ({
-                    id: entry.id,
-                    label: entry.label,
-                  })),
-                  { id: profile.id, label: profile.label },
-                ],
-                list,
-              });
-              setEditing(null);
-              return;
-            }
-            if (await save(choice(field.value?.profile, list)))
-              setEditing(null);
+            const profileId =
+              editing.mode === "new" && makeDefault
+                ? profile.id
+                : editing.mode === "new"
+                  ? (active?.id ?? field.value?.profile)
+                  : field.value?.profile;
+            if (await save(choice(profileId, list))) setEditing(null);
 
           }}
         />
-      ) : null}
-      {defaultAsk ? (
-        <Dialog
-          open
-          onOpenChange={(open) =>
-            open || defaultBusy ? undefined : setDefaultAsk(null)
-          }
-        >
-          <DialogContent>
-            <DialogHeader>
-              <DialogTitle>{copy.askDefault}</DialogTitle>
-              <DialogDescription>{copy.askDefaultLead}</DialogDescription>
-            </DialogHeader>
-            <form
-              onSubmit={(event) => {
-                event.preventDefault();
-                if (!defaultId || defaultBusy) return;
-                setDefaultBusy(true);
-                void save(choice(defaultId, defaultAsk.list)).then((ok) => {
-                  setDefaultBusy(false);
-                  if (ok) setDefaultAsk(null);
-                });
-              }}
-            >
-              <DialogBody className="provider-form">
-                <div className="provider-field">
-                  <DialogFieldLabel htmlFor="profile-default">
-                    {copy.pick}
-                  </DialogFieldLabel>
-                  <QuietSelect
-                    id="profile-default"
-                    value={defaultId}
-                    disabled={defaultBusy}
-                    onChange={(event) => setDefaultId(event.target.value)}
-                  >
-                    {defaultAsk.options.map((option) => (
-                      <option key={option.id} value={option.id}>
-                        {option.label}
-                      </option>
-                    ))}
-                  </QuietSelect>
-                </div>
-              </DialogBody>
-              <DialogFooter>
-                <Button
-                  variant="ghost"
-                  disabled={defaultBusy}
-                  onClick={() => setDefaultAsk(null)}
-                >
-                  {wording.action.cancel}
-                </Button>
-                <Button
-                  variant="primary"
-                  type="submit"
-                  loading={defaultBusy}
-                  disabled={!defaultId}
-                >
-                  {copy.askDefaultSave}
-                </Button>
-              </DialogFooter>
-            </form>
-          </DialogContent>
-        </Dialog>
       ) : null}
     </>
   );
@@ -403,20 +320,24 @@ function ProfileEditor({
   catalog,
   profiles,
   editing,
+  replacing,
   onClose,
   onSave,
 }: {
   catalog: ModelCatalog;
   profiles: readonly Profile[];
   editing: Editing;
+  /** Label of the current default, when a new profile can replace it. */
+  replacing: string | null;
   onClose: () => void;
-  onSave: (profile: CustomProfile) => Promise<void>;
+  onSave: (profile: CustomProfile, makeDefault: boolean) => Promise<void>;
 }) {
   const [draft, setDraft] = useState<Draft>(
     editing.mode === "edit"
       ? { label: editing.profile.label, tiers: editing.profile.tiers }
       : { label: "", tiers: {} },
   );
+  const [makeDefault, setMakeDefault] = useState(false);
   const [busy, setBusy] = useState(false);
   const filled = complete(
     draft,
@@ -449,14 +370,17 @@ function ProfileEditor({
             event.preventDefault();
             if (!ready || busy) return;
             setBusy(true);
-            void onSave({
-              id:
-                editing.mode === "edit"
-                  ? editing.profile.id
-                  : `custom_${crypto.randomUUID().replaceAll("-", "").slice(0, 12)}`,
-              label: draft.label.trim(),
-              tiers: filled,
-            }).finally(() => setBusy(false));
+            void onSave(
+              {
+                id:
+                  editing.mode === "edit"
+                    ? editing.profile.id
+                    : `custom_${crypto.randomUUID().replaceAll("-", "").slice(0, 12)}`,
+                label: draft.label.trim(),
+                tiers: filled,
+              },
+              replacing !== null && makeDefault,
+            ).finally(() => setBusy(false));
           }}
         >
           <DialogBody className="provider-form">
@@ -590,6 +514,19 @@ function ProfileEditor({
                 </fieldset>
               );
             })}
+            {replacing ? (
+              <div className="provider-field">
+                <DialogFieldLabel htmlFor="profile-replace-default">
+                  {copy.replaceDefault(replacing)}
+                </DialogFieldLabel>
+                <Switch
+                  id="profile-replace-default"
+                  checked={makeDefault}
+                  disabled={busy}
+                  onCheckedChange={setMakeDefault}
+                />
+              </div>
+            ) : null}
           </DialogBody>
           <DialogFooter>
             <Button variant="ghost" disabled={busy} onClick={onClose}>
