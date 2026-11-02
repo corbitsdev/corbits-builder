@@ -386,6 +386,7 @@ export async function createHubRuntime(
     const app = new Hono<AppEnv>();
     const liveAppProxy = createLiveAppProxy({
       hostname: env.hostname,
+      ports: env.liveAppPorts,
       publicOrigin: new URL(env.uiOrigin),
       hubCookiePrefix: sessionCookieName.split(".")[0] + ".",
       authorize: async (request, scope) => {

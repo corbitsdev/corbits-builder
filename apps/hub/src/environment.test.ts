@@ -2,6 +2,7 @@ import { describe, expect, test } from "bun:test";
 import {
   readDatabaseConfig,
   readHubEnvironment,
+  readLiveAppPorts,
   readMigrationDatabaseConfig,
 } from "./environment.ts";
 
@@ -135,5 +136,21 @@ describe("hub environment security boundary", () => {
         GOOGLE_CLIENT_ID: "id-only",
       }),
     ).toThrow("set together");
+  });
+});
+
+describe("live-app port range", () => {
+  test("reads a range, takes any port without one, and refuses a malformed one", () => {
+    expect(readLiveAppPorts({ LIVE_APP_PORTS: "4100-4119" })).toEqual({
+      from: 4100,
+      to: 4119,
+    });
+    expect(readLiveAppPorts({})).toBeUndefined();
+    expect(readLiveAppPorts({ LIVE_APP_PORTS: "" })).toBeUndefined();
+    for (const raw of ["4100", "4119-4100", "0-10", "4100-70000", "a-b"])
+      expect(() => readLiveAppPorts({ LIVE_APP_PORTS: raw })).toThrow(
+        "LIVE_APP_PORTS",
+      );
+    expect(readHubEnvironment(environment).liveAppPorts).toBeUndefined();
   });
 });
