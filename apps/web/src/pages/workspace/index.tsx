@@ -71,7 +71,11 @@ import { cardDocuments } from "./collaboration.ts";
 import { useFiledVersions } from "./filed-versions.tsx";
 import { threadUpdates } from "./specialist-updates.tsx";
 import { useSettledApprovals, type OpenApproval } from "./settled-approvals.ts";
-import { useTypedYes } from "./typed-yes.tsx";
+import {
+  chooseApproachWithOpenApproval,
+  deliverWithOpenApproval,
+  useTypedYes,
+} from "./typed-yes.tsx";
 import { asksAbout, chosenApproach } from "./approach-choice.ts";
 import { selectedDeliverable } from "./reading-selection.ts";
 import {
@@ -624,7 +628,7 @@ export function StageWorkspace({
     return documents[key];
   };
 
-  const deliver = async (
+  const deliverMail = async (
     body: string,
     clearComposer = false,
   ): Promise<boolean> => {
@@ -849,6 +853,9 @@ export function StageWorkspace({
       setApprovalBusy(false);
     }
   };
+  const openApproval = pendingApprovals.find(
+    (approval) => approval.packages === undefined,
+  );
   // Choosing an approach is the person's yes to the version's open ask; the message names the pick.
   const chooseApproach = async (
     message: string,
@@ -863,32 +870,34 @@ export function StageWorkspace({
               approval.packages === undefined &&
               asksAbout(approval, kind, version),
           );
-    if (asked !== undefined) {
-      const fault = await onDecideApproval({
-        approvalId: asked.approvalId,
-        choice: "yes",
-      });
-      if (fault !== null) return fault;
-    }
-    return (await deliver(message)) ? null : wording.approaches.notSent;
+    return chooseApproachWithOpenApproval({
+      askedApprovalId: asked?.approvalId,
+      openApprovalId: openApproval?.approvalId,
+      decide: onDecideApproval,
+      deliver: () => deliverMail(message),
+      notSent: wording.approaches.notSent,
+    });
   };
-  const openApproval = pendingApprovals.find(
-    (approval) => approval.packages === undefined,
-  );
+  const deliver = (body: string, clearComposer = false) =>
+    deliverWithOpenApproval({
+      openApprovalId: openApproval?.approvalId,
+      decide: onDecideApproval,
+      deliver: () => deliverMail(body, clearComposer),
+    });
   const sendNow = () => {
     setCaution(null);
     void deliver(value, true);
   };
   const restoreToComposer = (message: string) =>
     setValue((current) => (current.trim().length === 0 ? message : current));
+  const undoTypedYes = async (message: string) => {
+    if (!(await deliver(message))) restoreToComposer(message);
+  };
   const typedYes = useTypedYes({
     pending: pendingApprovals.map((approval) => approval.approvalId),
     onApprove: (approvalId) =>
       void onDecideApproval({ approvalId, choice: "yes" }),
-    onUndo: (message) =>
-      void deliver(message).then((sent) => {
-        if (!sent) restoreToComposer(message);
-      }),
+    onUndo: (message) => void undoTypedYes(message),
     onDropped: restoreToComposer,
   });
   const shell = useShellReply(documentPaneRef);
