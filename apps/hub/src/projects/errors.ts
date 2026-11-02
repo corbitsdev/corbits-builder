@@ -2,21 +2,34 @@ import { type, type ArkError, type ArkErrors } from "arktype";
 import { ProjectId } from "@corbits-builder/schemas/project";
 
 // Agents see a rejection's reasons only in this list form.
-type Issues = readonly { path: string; message: string }[];
+export type ProjectErrorIssue = { path: string; message: string };
+type Issues = readonly ProjectErrorIssue[];
 
 export class ProjectError extends Error {
   readonly details: Record<string, unknown>;
+  readonly issues?: readonly ProjectErrorIssue[];
   constructor(
-    readonly status: 400 | 403 | 404 | 409 | 413 | 503,
+    readonly status: 400 | 403 | 404 | 409 | 413 | 422 | 503,
     readonly code: string,
-    {
-      issues,
-      ...details
-    }: { issues?: Issues | ArkErrors; [detail: string]: unknown } = {},
+    rawDetails:
+      | { issues?: Issues | ArkErrors | string; [detail: string]: unknown }
+      | readonly ProjectErrorIssue[] = {},
     options?: ErrorOptions,
   ) {
     super(code, options);
+    if (Array.isArray(rawDetails)) {
+      this.issues = rawDetails;
+      this.details = { issues: rawDetails };
+      return;
+    }
+    const { issues, ...details } = rawDetails as {
+      issues?: Issues | ArkErrors | string;
+      [detail: string]: unknown;
+    };
     const listed = issues instanceof type.errors ? typeIssues(issues) : issues;
+    if (Array.isArray(listed)) {
+      this.issues = listed;
+    }
     this.details =
       listed === undefined ? details : { ...details, issues: listed };
   }
