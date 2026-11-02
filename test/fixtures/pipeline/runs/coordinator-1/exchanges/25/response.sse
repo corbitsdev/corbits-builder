@@ -1,0 +1,12 @@
+data: {"choices":[{"index":0,"delta":{"role":"assistant"},"finish_reason":null}]}
+
+data: {"choices":[{"index":0,"delta":{"tool_calls":[{"index":0,"id":"coord_deploy_build_plan","function":{"name":"deploy_writer","arguments":""}}]},"finish_reason":null}]}
+
+data: {"choices":[{"index":0,"delta":{"tool_calls":[{"index":0,"function":{"arguments":"{\"kind\":\"build_plan\",\"instruction\":\"Write the build plan for the Animated Weather App. Open with the chosen approach (B, as recorded in the approved Approaches) and stack, then order the work in phases. Build from the approved design \\\"Adaptive weather-driven\\\" (v1): weather-driven scenes (clear, hot, cloudy, rain, storm, snow, wind, fog; day/night), home, search, saved cities, compare 2-4 cities, settings (°C/°F, simpler effects, install), loading/offline/location-off/welcome states, responsive phone/desktop layout, reduce-motion support. Cover free weather data source, no sign-in, saved cities stored on device, and performance safeguards for older phones.\"}"}}]},"finish_reason":null}]}
+
+data: {"choices":[{"index":0,"delta":{},"finish_reason":"tool_calls"}]}
+
+data: {"choices":[],"usage":{"prompt_tokens":120,"completion_tokens":60}}
+
+data: [DONE]
+

@@ -1,0 +1,10 @@
+data: {"choices":[{"index":0,"delta":{"role":"assistant"},"finish_reason":null}]}
+
+data: {"choices":[{"index":0,"delta":{"content":"The automatic app check passed again just now, and nothing in the app has changed since my last update.\n\nI can't confirm the save worked. I don't have a separate save button on my side. When I checked the project's documents, no saved copy of the finished app was listed yet, only the planning documents. The app should be filed when I finish this task, which is now. If it still doesn't show up afterwards, please tell me.\n\nThe checklist is unchanged: 41 of 42 items confirmed. The one still open is trying the app in Safari and Firefox. I've sent you a short note saying the same."},"finish_reason":null}]}
+
+data: {"choices":[{"index":0,"delta":{},"finish_reason":"stop"}]}
+
+data: {"choices":[],"usage":{"prompt_tokens":120,"completion_tokens":60}}
+
+data: [DONE]
+

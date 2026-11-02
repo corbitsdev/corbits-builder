@@ -1,0 +1,10 @@
+data: {"choices":[{"index":0,"delta":{"role":"assistant"},"finish_reason":null}]}
+
+data: {"choices":[{"index":0,"delta":{"content":"I've updated the approaches document to record your choice of the rich, realistic weather scenes. A and C are still in it as alternatives, each with the reason it was set aside.\n\nThe document now lists these safeguards for the realistic scenes:\n- **Automatic quality scaling:** the app lowers the effects by itself if your device struggles.\n- **Pause when hidden:** the animation stops when you switch tabs or lock your phone.\n- **Reduce-motion fallback:** if your device asks for less motion, the scenes become calm or still.\n- **Simpler-effects setting:** you can choose lighter effects yourself.\n- **Cities saved in your browser:** there are no accounts.\n\nThe realistic scenes will take longer to build than the simple version, roughly 10–16 hours of work. Weaker or older phones will get a toned-down look.\n\nPlease confirm two things. Is it fine that saved cities disappear if you clear your browser data? Is a lighter look on older phones acceptable?"},"finish_reason":null}]}
+
+data: {"choices":[{"index":0,"delta":{},"finish_reason":"stop"}]}
+
+data: {"choices":[],"usage":{"prompt_tokens":120,"completion_tokens":60}}
+
+data: [DONE]
+

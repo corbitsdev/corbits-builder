@@ -1,0 +1,21 @@
+{
+  "lastMessageRole": "tool",
+  "requiredTools": [
+    "write_file",
+    "read_file",
+    "edit_file",
+    "grep",
+    "check_design",
+    "file_design_option",
+    "mail_reply",
+    "mail_search"
+  ],
+  "toolResults": [
+    {
+      "callId": "des_check",
+      "toolName": "check_design",
+      "isError": false,
+      "contains": "check passed"
+    }
+  ]
+}

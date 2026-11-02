@@ -1,12 +1,20 @@
 import { AsyncLocalStorage } from "node:async_hooks";
 import { createMiddleware } from "hono/factory";
-import { withContext } from "@logtape/logtape";
+import { configureSync, getConfig, withContext } from "@logtape/logtape";
 import { getLogger } from "@intx/log";
 
 export const requestContext = new AsyncLocalStorage<Record<string, unknown>>();
 const log = getLogger(["corbits-builder", "hub"]);
 
 export function correlationMiddleware() {
+  const config = getConfig();
+  if (config && !config.contextLocalStorage) {
+    configureSync({
+      ...config,
+      reset: true,
+      contextLocalStorage: requestContext,
+    });
+  }
   return createMiddleware(async (c, next) => {
     const supplied = c.req.header("x-correlation-id");
     // Treat the ID as an opaque bounded token, never arbitrary log content.

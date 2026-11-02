@@ -1,0 +1,10 @@
+data: {"choices":[{"index":0,"delta":{"role":"assistant"},"finish_reason":null}]}
+
+data: {"choices":[{"index":0,"delta":{"content":"The weather-driven design is filed as this concept's option, ready for you to compare with the others. It passed the automatic check on desktop and phone screen sizes.\n\n- **Colours that follow the weather:** the whole app shifts with the weather and time of day. It's warm amber when it's hot, slate blue for rain and deep indigo at night. Text sits on soft frosted panels so it stays easy to read.\n- **Home:** today's weather, the next 24 hours and the next 7 days, over a full-screen scene. There are scenes for clear, hot, cloudy, rain, storm, snow, wind and fog, each with a day and a night look.\n- **Search:** includes a \"no results\" message with suggestions.\n- **Saved cities:** you tick 2 to 4 cities to compare.\n- **Compare:** shows each city's card tinted to its own weather.\n- **Settings:** °C/°F, simpler effects, an explanation of reduced motion, and a note that saved cities live only in this browser. It also has a button to install the app.\n- **Other screens:**\n  - loading;\n  - offline, which shows the last weather marked as 3 hours old;\n  - location turned off, which offers search and your saved cities;\n  - a welcome screen for a first visit.\n- **Phone and desktop:** on a phone everything is one column. On a desktop there's a menu down the side and a panel of your places next to the main view. No sign-in anywhere.\n\nThe motion in the mockup is a simple stand-in. The real app would show fuller rain, snow, lightning and heat shimmer.\n\nI also replied on the task thread with this summary."},"finish_reason":null}]}
+
+data: {"choices":[{"index":0,"delta":{},"finish_reason":"stop"}]}
+
+data: {"choices":[],"usage":{"prompt_tokens":120,"completion_tokens":60}}
+
+data: [DONE]
+

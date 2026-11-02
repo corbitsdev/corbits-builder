@@ -107,8 +107,8 @@ covers the architecture, tests and other scripts.
    bun run vendor:verify # vendored Interchange matches its manifest
    ```
 
-   `bun run format` fixes formatting. Changes to model logins also need
-   `bun run test:e2e` against a real Postgres
+   `bun run format` fixes formatting. Changes to model logins, workflows, tools,
+   approvals or sidecars also need `bun run test:e2e` against a real Postgres
    ([docs/DEV.md](https://github.com/corbitsdev/corbits-builder/blob/main/docs/DEV.md#tests)).
 
 4. Commit with a [Conventional Commit](https://www.conventionalcommits.org)

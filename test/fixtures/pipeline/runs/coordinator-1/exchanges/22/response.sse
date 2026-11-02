@@ -1,0 +1,10 @@
+data: {"choices":[{"index":0,"delta":{"role":"assistant"},"finish_reason":null}]}
+
+data: {"choices":[{"index":0,"delta":{"content":"Welcome back! We're building an animated weather app. Four documents are filed and approved: the Problem Brief, the Constraints, the Approaches, and the Product Requirements.\n\nNext is the design. I'll start three different design concepts for you to click through and compare. I'll tell you what sets each one apart and which I recommend. After you pick one, I'll write the build plan from it and then build the app.\n\nDo you want me to start the three design concepts now?"},"finish_reason":null}]}
+
+data: {"choices":[{"index":0,"delta":{},"finish_reason":"stop"}]}
+
+data: {"choices":[],"usage":{"prompt_tokens":120,"completion_tokens":60}}
+
+data: [DONE]
+

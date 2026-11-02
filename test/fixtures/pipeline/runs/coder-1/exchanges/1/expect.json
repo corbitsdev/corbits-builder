@@ -1,0 +1,297 @@
+{
+  "lastMessageRole": "tool",
+  "requiredTools": [
+    "read_artifact",
+    "write_file",
+    "edit_file",
+    "read_file",
+    "run_shell",
+    "app_status",
+    "install_packages",
+    "mail_reply",
+    "mail_search"
+  ],
+  "toolResults": [
+    {
+      "callId": "coder_read_design",
+      "toolName": "read_artifact",
+      "isError": false,
+      "keys": ["artifactId", "kind", "version", "content"]
+    },
+    {
+      "callId": "coder_write_0",
+      "toolName": "write_file",
+      "isError": false
+    },
+    {
+      "callId": "coder_write_1",
+      "toolName": "write_file",
+      "isError": false
+    },
+    {
+      "callId": "coder_write_2",
+      "toolName": "write_file",
+      "isError": false
+    },
+    {
+      "callId": "coder_write_3",
+      "toolName": "write_file",
+      "isError": false
+    },
+    {
+      "callId": "coder_write_4",
+      "toolName": "write_file",
+      "isError": false
+    },
+    {
+      "callId": "coder_write_5",
+      "toolName": "write_file",
+      "isError": false
+    },
+    {
+      "callId": "coder_write_6",
+      "toolName": "write_file",
+      "isError": false
+    },
+    {
+      "callId": "coder_write_7",
+      "toolName": "write_file",
+      "isError": false
+    },
+    {
+      "callId": "coder_write_8",
+      "toolName": "write_file",
+      "isError": false
+    },
+    {
+      "callId": "coder_write_9",
+      "toolName": "write_file",
+      "isError": false
+    },
+    {
+      "callId": "coder_write_10",
+      "toolName": "write_file",
+      "isError": false
+    },
+    {
+      "callId": "coder_write_11",
+      "toolName": "write_file",
+      "isError": false
+    },
+    {
+      "callId": "coder_write_12",
+      "toolName": "write_file",
+      "isError": false
+    },
+    {
+      "callId": "coder_write_13",
+      "toolName": "write_file",
+      "isError": false
+    },
+    {
+      "callId": "coder_write_14",
+      "toolName": "write_file",
+      "isError": false
+    },
+    {
+      "callId": "coder_write_15",
+      "toolName": "write_file",
+      "isError": false
+    },
+    {
+      "callId": "coder_write_16",
+      "toolName": "write_file",
+      "isError": false
+    },
+    {
+      "callId": "coder_write_17",
+      "toolName": "write_file",
+      "isError": false
+    },
+    {
+      "callId": "coder_write_18",
+      "toolName": "write_file",
+      "isError": false
+    },
+    {
+      "callId": "coder_write_19",
+      "toolName": "write_file",
+      "isError": false
+    },
+    {
+      "callId": "coder_write_20",
+      "toolName": "write_file",
+      "isError": false
+    },
+    {
+      "callId": "coder_write_21",
+      "toolName": "write_file",
+      "isError": false
+    },
+    {
+      "callId": "coder_write_22",
+      "toolName": "write_file",
+      "isError": false
+    },
+    {
+      "callId": "coder_write_23",
+      "toolName": "write_file",
+      "isError": false
+    },
+    {
+      "callId": "coder_write_24",
+      "toolName": "write_file",
+      "isError": false
+    },
+    {
+      "callId": "coder_write_25",
+      "toolName": "write_file",
+      "isError": false
+    },
+    {
+      "callId": "coder_write_26",
+      "toolName": "write_file",
+      "isError": false
+    },
+    {
+      "callId": "coder_write_27",
+      "toolName": "write_file",
+      "isError": false
+    },
+    {
+      "callId": "coder_write_28",
+      "toolName": "write_file",
+      "isError": false
+    },
+    {
+      "callId": "coder_write_29",
+      "toolName": "write_file",
+      "isError": false
+    },
+    {
+      "callId": "coder_write_30",
+      "toolName": "write_file",
+      "isError": false
+    },
+    {
+      "callId": "coder_write_31",
+      "toolName": "write_file",
+      "isError": false
+    },
+    {
+      "callId": "coder_write_32",
+      "toolName": "write_file",
+      "isError": false
+    },
+    {
+      "callId": "coder_write_33",
+      "toolName": "write_file",
+      "isError": false
+    },
+    {
+      "callId": "coder_write_34",
+      "toolName": "write_file",
+      "isError": false
+    },
+    {
+      "callId": "coder_write_35",
+      "toolName": "write_file",
+      "isError": false
+    },
+    {
+      "callId": "coder_write_36",
+      "toolName": "write_file",
+      "isError": false
+    },
+    {
+      "callId": "coder_write_37",
+      "toolName": "write_file",
+      "isError": false
+    },
+    {
+      "callId": "coder_write_38",
+      "toolName": "write_file",
+      "isError": false
+    },
+    {
+      "callId": "coder_write_39",
+      "toolName": "write_file",
+      "isError": false
+    },
+    {
+      "callId": "coder_write_40",
+      "toolName": "write_file",
+      "isError": false
+    },
+    {
+      "callId": "coder_write_41",
+      "toolName": "write_file",
+      "isError": false
+    },
+    {
+      "callId": "coder_write_42",
+      "toolName": "write_file",
+      "isError": false
+    },
+    {
+      "callId": "coder_write_43",
+      "toolName": "write_file",
+      "isError": false
+    },
+    {
+      "callId": "coder_write_44",
+      "toolName": "write_file",
+      "isError": false
+    },
+    {
+      "callId": "coder_write_45",
+      "toolName": "write_file",
+      "isError": false
+    },
+    {
+      "callId": "coder_write_46",
+      "toolName": "write_file",
+      "isError": false
+    },
+    {
+      "callId": "coder_write_47",
+      "toolName": "write_file",
+      "isError": false
+    },
+    {
+      "callId": "coder_write_48",
+      "toolName": "write_file",
+      "isError": false
+    },
+    {
+      "callId": "coder_write_49",
+      "toolName": "write_file",
+      "isError": false
+    },
+    {
+      "callId": "coder_write_50",
+      "toolName": "write_file",
+      "isError": false
+    },
+    {
+      "callId": "coder_write_51",
+      "toolName": "write_file",
+      "isError": false
+    },
+    {
+      "callId": "coder_write_52",
+      "toolName": "write_file",
+      "isError": false
+    },
+    {
+      "callId": "coder_write_53",
+      "toolName": "write_file",
+      "isError": false
+    },
+    {
+      "callId": "coder_write_54",
+      "toolName": "write_file",
+      "isError": false
+    }
+  ]
+}
