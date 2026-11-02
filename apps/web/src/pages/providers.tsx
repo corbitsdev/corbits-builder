@@ -156,6 +156,7 @@ export function ProvidersSection({ onChanged }: { onChanged: () => void }) {
   const [adding, setAdding] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const providers = catalog.data?.providers ?? [];
+  const customApis = catalog.data?.customApis;
   const hasLogins = providers.some((provider) => provider.kind === "login");
   const connected = providers
     .filter((provider) => provider.kind !== "login")
@@ -177,15 +178,15 @@ export function ProvidersSection({ onChanged }: { onChanged: () => void }) {
         />
       ) : null}
       {connected.map(({ provider, connection }) =>
-        provider.kind === "custom" ? (
+        provider.kind === "custom" && customApis ? (
           <CustomProviderRow
             key={connection.id}
             provider={provider}
-            apis={catalog.data?.customApis ?? []}
+            apis={customApis}
             onChanged={onChanged}
             onError={setError}
           />
-        ) : (
+        ) : provider.kind === "custom" ? null : (
           <div key={connection.id} className="row">
             <div className="k">
               <b>{connection.name}</b>
@@ -277,7 +278,8 @@ export function AddProviderDialog({
   const providers = (catalog.data?.providers ?? []).filter(
     (provider) => provider.kind === "api_key",
   );
-  const apis = catalog.data?.customApis ?? [];
+  const customApis = catalog.data?.customApis;
+  const apis = customApis !== undefined ? customApis : [];
   const [chosenId, setChosenId] = useState<string | null>(null);
   const [secret, setSecret] = useState("");
   const customForm = useCustomProviderForm(apis);
@@ -356,24 +358,22 @@ export function AddProviderDialog({
     }
   };
 
+  let dialogTitle: string;
+  if (custom) dialogTitle = copy.custom.addTitle;
+  else if (providerId && chosen) dialogTitle = copy.connectOne(chosen.label);
+  else dialogTitle = copy.dialogTitle;
+
+  let dialogDescription: string;
+  if (custom) dialogDescription = copy.custom.addLead;
+  else if (providerId) dialogDescription = copy.keyLead;
+  else dialogDescription = copy.dialogLead;
+
   return (
     <ProviderDialog
       open={open}
       onOpenChange={close}
-      title={
-        custom
-          ? copy.custom.addTitle
-          : providerId && chosen
-            ? copy.connectOne(chosen.label)
-            : copy.dialogTitle
-      }
-      description={
-        custom
-          ? copy.custom.addLead
-          : providerId
-            ? copy.keyLead
-            : copy.dialogLead
-      }
+      title={dialogTitle}
+      description={dialogDescription}
       error={error}
       busy={busy}
       ready={ready}

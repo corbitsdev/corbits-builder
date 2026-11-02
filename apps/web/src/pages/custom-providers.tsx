@@ -231,14 +231,11 @@ export function ProviderPicker({
   const cards = useRef<(HTMLButtonElement | null)[]>([]);
   const move = (event: KeyboardEvent, index: number) => {
     const step = STEP[event.key];
-    const target =
-      event.key === "Home"
-        ? 0
-        : event.key === "End"
-          ? providers.length - 1
-          : step === undefined
-            ? undefined
-            : (index + step + providers.length) % providers.length;
+    let target: number | undefined;
+    if (event.key === "Home") target = 0;
+    else if (event.key === "End") target = providers.length - 1;
+    else if (step !== undefined)
+      target = (index + step + providers.length) % providers.length;
     const provider = target === undefined ? undefined : providers[target];
     if (target === undefined || !provider) return;
     event.preventDefault();
@@ -357,9 +354,11 @@ function draftOf(provider: ModelProvider): CustomDraft {
 }
 
 function modelDraftOf(model: ModelProvider["models"][number]): ModelDraft {
+  const label = model.label;
   return {
     id: model.id,
-    label: model.label ?? "",
+    // An unnamed custom model drafts with an empty label; it shows by its id.
+    label: label !== undefined ? label : "",
     contextWindow: "contextWindow" in model ? String(model.contextWindow) : "",
     maxOutputTokens:
       "maxOutputTokens" in model ? String(model.maxOutputTokens) : "",
