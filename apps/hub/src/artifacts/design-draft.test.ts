@@ -423,10 +423,8 @@ test("designer agent writes per-screen files, is held by checkBeforeDone until c
             !result.isError &&
             typeof path === "string" &&
             touchesDesigns(workspace, path)
-          ) {
+          )
             await syncDesignScreensOnDisk(workspace);
-            check.changed();
-          }
           return result;
         },
         dispose: async () => {

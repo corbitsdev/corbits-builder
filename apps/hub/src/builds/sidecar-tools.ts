@@ -579,10 +579,6 @@ export function createSidecarCodingTools(policy: {
               );
             if (touchesDesigns(workspace, path))
               await syncDesignScreensOnDisk(workspace);
-            if (designCheck) {
-              notes.push(await designCheck.unheard());
-              if (touchesDesigns(workspace, path)) designCheck.changed();
-            }
           }
           if (call.name === PACKAGE_INSTALL_TOOL && succeeded(result))
             notes.push(await restartForPackages());

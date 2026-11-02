@@ -1038,11 +1038,14 @@ export function StageWorkspace({
     artifacts.filter((item) => item.kind !== DESIGN_OPTION),
     documentState,
   );
+  const inFlight = snapshot?.inFlight ?? [];
   const designDraft = useDesignDraft(
     projectId,
-    artifacts.some((item) => item.kind === "design"),
+    artifacts.some((item) => item.kind === "design") ||
+      !inFlight.some(
+        (run) => run.role === "designer" && run.concept === undefined,
+      ),
   );
-  const inFlight = snapshot?.inFlight ?? [];
   const dispatchRoom: DispatchRoom = {
     artifacts: snapshot?.artifacts ?? [],
     inFlight,

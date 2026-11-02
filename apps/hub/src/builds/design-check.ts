@@ -5,8 +5,6 @@ import { withDesignTokens } from "../artifacts/design-tokens.ts";
 import { DESIGN_STYLES } from "../artifacts/design-tweaks.ts";
 
 export const DESIGNS = join(".builder", "designs");
-// A designer writes a screen in several calls; the check starts once they pause.
-const SETTLE_MS = 2_000;
 
 export interface FiledDesignArtifact {
   artifactId: string;
@@ -112,7 +110,7 @@ function withValidationIssue(output: string, issue: string): string {
 export const CHECK_DESIGN_TOOL = "check_design";
 export const checkDesignDefinition = {
   name: CHECK_DESIGN_TOOL,
-  description: `Runs check-app on the design as it is now: it serves ${DESIGNS} in a headless browser, opens its screens at desktop and phone widths, checks that ${DESIGN_DOC} is filled in, and that the look is moved off the kit's starting point. The harness also runs it after each design write and shows the result with a later write, so call this to see the checklist for the design as it is now; when it reads "check passed", it also files the .builder folder as your design concept's option.`,
+  description: `Runs check-app on the design as it is now: it serves ${DESIGNS} in a headless browser, opens its screens at desktop and phone widths, checks that ${DESIGN_DOC} is filled in, and that the look is moved off the kit's starting point. Call this once the screens and ${DESIGN_DOC} are written; when it reads "check passed", it also files the .builder folder as your design concept's option.`,
   inputSchema: { type: "object", properties: {}, additionalProperties: false },
 };
 
@@ -122,12 +120,11 @@ export const touchesDesigns = (workspace: string, path: string) => {
 };
 
 /**
- * check-app on a designer workspace's mockup, run by the harness: after design writes settle,
- * restarted when more arrive, and on demand for filing. A result belongs to the exact files it saw.
+ * check-app on a designer workspace's mockup, run on demand for checking and filing. A result
+ * belongs to the exact files it saw.
  */
 export function createDesignCheck(workspace: string, run: Run) {
   let latest: Result | undefined;
-  let heard: Result | undefined;
   let filed: { fingerprint: string; artifact: FiledDesignArtifact } | undefined;
   let filing:
     | { fingerprint: string; done: Promise<FiledDesignArtifact> }
@@ -139,7 +136,6 @@ export function createDesignCheck(workspace: string, run: Run) {
         done: Promise<Result | undefined>;
       }
     | undefined;
-  let timer: ReturnType<typeof setTimeout> | undefined;
 
   const fingerprint = async () => {
     const hash = createHash("sha256");
@@ -194,7 +190,6 @@ export function createDesignCheck(workspace: string, run: Run) {
   // The result for the files as they are now: the latest one if they have not changed, else a run.
   // undefined when a newer change superseded the run.
   const check = async (): Promise<Result | undefined> => {
-    timer = undefined;
     const print = await fingerprint();
     if (latest?.fingerprint === print) return latest;
     if (running?.fingerprint === print) return running.done;
@@ -206,44 +201,22 @@ export function createDesignCheck(workspace: string, run: Run) {
   };
 
   const designCheck = {
-    /** A design file changed: drop the run in progress and check again once writes settle. */
-    changed() {
-      clearTimeout(timer);
-      running?.controller.abort();
-      timer = setTimeout(() => void check(), SETTLE_MS);
-    },
-    /** The checklist of the latest run the agent has not been shown, with what design it saw. */
-    async unheard() {
-      if (!latest || latest === heard) return "";
-      heard = latest;
-      const current = latest.fingerprint === (await fingerprint());
-      return `check-app ${DESIGNS}, run by the harness on ${current ? "the current design" : "the design before the latest changes, which are checked next"}:\n${latest.checklist}`;
-    },
     /** The result for the design as it is now, waiting for a run when there is none. */
     async current(signal: AbortSignal): Promise<Result> {
-      clearTimeout(timer);
       for (;;) {
         signal.throwIfAborted();
         const result = await check();
         if (!result) continue;
-        if (!result.passed) {
-          heard = result;
-          return result;
-        }
+        if (!result.passed) return result;
         if (filed?.fingerprint === result.fingerprint) {
-          const withReceipt: Result = {
+          return {
             ...result,
             artifact: filed.artifact,
             checklist: `${result.checklist}\nFiled design_option: ${JSON.stringify(filed.artifact)}`,
           };
-          heard = withReceipt;
-          return withReceipt;
         }
         const filer = await findDesignFiler(workspace);
-        if (!filer) {
-          heard = result;
-          return result;
-        }
+        if (!filer) return result;
         try {
           if (filing?.fingerprint !== result.fingerprint)
             filing = {
@@ -252,30 +225,25 @@ export function createDesignCheck(workspace: string, run: Run) {
             };
           const artifact = await filing.done;
           filed = { fingerprint: result.fingerprint, artifact };
-          const withReceipt: Result = {
+          return {
             ...result,
             artifact,
             checklist: `${result.checklist}\nFiled design_option: ${JSON.stringify(artifact)}`,
           };
-          heard = withReceipt;
-          return withReceipt;
         } catch (error) {
           const reason = error instanceof Error ? error.message : String(error);
-          const failedFiling: Result = {
+          return {
             fingerprint: result.fingerprint,
             passed: false,
             checklist: withValidationIssue(result.checklist, reason),
             filingError: error,
           };
-          heard = failedFiling;
-          return failedFiling;
         } finally {
           filing = undefined;
         }
       }
     },
     dispose() {
-      clearTimeout(timer);
       running?.controller.abort();
       checks.delete(workspace);
       filers.delete(workspace);

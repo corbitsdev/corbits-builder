@@ -981,15 +981,20 @@ export function createArtifactService(
       concept?: string,
     ): Promise<DesignDraft> {
       await requireProject(actor, projectId, "read");
-      for (const workspace of await liveWorkspaces(actor, "designer")) {
-        if ((workspace.concept ?? undefined) !== concept) continue;
-        const files = await readDesignDraft(workspace.dir);
-        if (files === undefined) continue;
-        const draft = DesignDraft.assert({ files });
-        if (Buffer.byteLength(JSON.stringify(draft)) > MAX_DESIGN_BYTES)
-          throw new ProjectError(409, "design_draft_too_large");
-        return draft;
-      }
+      for (const ended of [false, true])
+        for (const workspace of await liveWorkspaces(
+          actor,
+          "designer",
+          ended,
+        )) {
+          if ((workspace.concept ?? undefined) !== concept) continue;
+          const files = await readDesignDraft(workspace.dir);
+          if (files === undefined) continue;
+          const draft = DesignDraft.assert({ files });
+          if (Buffer.byteLength(JSON.stringify(draft)) > MAX_DESIGN_BYTES)
+            throw new ProjectError(409, "design_draft_too_large");
+          return draft;
+        }
       throw new ProjectError(404, "design_draft_not_found");
     },
 
