@@ -40,6 +40,7 @@ import {
 import { keys } from "../../queries/keys.ts";
 import { wording } from "../../config.ts";
 import { activityPhrase, useProjectActivity } from "./agent-activity.tsx";
+import { setupProgressLine } from "./setup-progress.ts";
 import { AppSketch } from "./design-concepts.tsx";
 import { clock, useElapsedMs } from "./elapsed.tsx";
 import { DevicePreview, type PreviewDevice } from "./device-preview.tsx";
@@ -126,6 +127,10 @@ function BuilderSetup({
     (item) => item.runId === builder.runId,
   );
   const phrase = agent === undefined ? undefined : activityPhrase(agent).phrase;
+  // What the build has produced so far, with the time since its last event ticking, so the pane
+  // moves every second even while one long step says nothing.
+  const quietMs = useElapsedMs(builder.progress?.lastActivityAt);
+  const progress = setupProgressLine(builder.progress, quietMs);
   return (
     <div className="concept-sketching" data-state="working" role="status">
       <AppSketch />
@@ -134,6 +139,9 @@ function BuilderSetup({
         <p className="live-app-setup-activity">
           <ShimmerText key={phrase}>{phrase}</ShimmerText>
         </p>
+      )}
+      {progress === undefined ? null : (
+        <p className="live-app-setup-activity">{progress}</p>
       )}
       <p className="concept-sketching-note">
         {text.setup.note}{" "}
@@ -465,8 +473,7 @@ function checklistEntries(markdown: string): ChecklistEntry[] {
   const open: { indent: number; item: ChecklistItem }[] = [];
   let note: ChecklistNote | undefined;
   let fenced:
-    | { target: ChecklistItem | ChecklistNote; fence: string }
-    | undefined;
+    { target: ChecklistItem | ChecklistNote; fence: string } | undefined;
   for (const line of markdown.split("\n")) {
     if (fenced !== undefined) {
       append(fenced.target, line);

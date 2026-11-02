@@ -133,6 +133,16 @@ export const wording = {
       unknown:
         "The app builder's progress cannot be read right now; your app shows here once it can.",
       notWritten: "The app builder has not written any of your app yet.",
+      /** The build so far: "12 files written · last: routines · 20 s ago". */
+      progress: (files: number, last: string | undefined, ago: string) =>
+        `${String(files)} ${files === 1 ? "file" : "files"} written` +
+        (last === undefined ? "" : ` · last: ${last}`) +
+        ` · ${ago}`,
+      nothingYet: (ago: string) =>
+        `No files written yet · last activity ${ago}`,
+      justNow: "just now",
+      secondsAgo: (seconds: number) => `${String(seconds)} s ago`,
+      minutesAgo: (minutes: number) => `${String(minutes)} min ago`,
     },
     phase: {
       installing: "Installing the app's packages",
