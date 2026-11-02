@@ -215,9 +215,11 @@ test("designer director holds replies until the latest edits pass check_design a
     reason: "reply before done",
   });
   const infer1 = reInferUnchecked.find((action) => action.type === "infer");
-  expect(
-    infer1?.type === "infer" ? String(infer1.options?.systemPrompt ?? "") : "",
-  ).toContain(
+  const prompt1 =
+    infer1?.type === "infer" && typeof infer1.options?.systemPrompt === "string"
+      ? infer1.options.systemPrompt
+      : undefined;
+  expect(prompt1).toContain(
     "Files changed after the last passing check-app, so the work is not done yet.",
   );
 
@@ -243,9 +245,11 @@ test("designer director holds replies until the latest edits pass check_design a
     reason: "reply before done",
   });
   const infer2 = reInferUnfiled.find((action) => action.type === "infer");
-  expect(
-    infer2?.type === "infer" ? String(infer2.options?.systemPrompt ?? "") : "",
-  ).toContain(
+  const prompt2 =
+    infer2?.type === "infer" && typeof infer2.options?.systemPrompt === "string"
+      ? infer2.options.systemPrompt
+      : undefined;
+  expect(prompt2).toContain(
     "The design option is not filed yet; check_design or file_design_option files it.",
   );
 

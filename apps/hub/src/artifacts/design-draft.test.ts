@@ -599,9 +599,18 @@ test("designer agent writes per-screen files, is held by checkBeforeDone until c
         const body = JSON.parse(String(init?.body)) as {
           system?: string | { text?: string }[];
         };
-        const systemText = Array.isArray(body.system)
-          ? body.system.map((part) => part.text ?? "").join("\n")
-          : String(body.system ?? "");
+        const system = body.system;
+        let systemText: string | undefined;
+        if (Array.isArray(system)) {
+          systemText = system
+            .flatMap((part) =>
+              typeof part.text === "string" ? [part.text] : [],
+            )
+            .join("\n");
+        } else if (typeof system === "string") {
+          systemText = system;
+        }
+        if (systemText === undefined) throw new Error("missing_system_prompt");
         systemPrompts.push(systemText);
         const content = scriptedTurns[turnIndex++];
         if (!content) throw new Error("unexpected_inference_turn");
