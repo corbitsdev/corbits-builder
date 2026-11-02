@@ -781,7 +781,7 @@ export async function createPosixBuildExecutor(
             env: childEnv,
             stdin: "ignore",
             stdout: "pipe",
-            stderr: "ignore",
+            stderr: "pipe",
             detached: process.platform !== "linux",
           },
         );
@@ -790,11 +790,19 @@ export async function createPosixBuildExecutor(
         const timer = setTimeout(stop, limits.commandTimeoutMs);
         signal.addEventListener("abort", stop, { once: true });
         try {
-          const output = await new Response(child.stdout).text();
-          return {
-            exitCode: await child.exited,
-            output: output.replaceAll(cwd + sep, ""),
-          };
+          const [output, errors] = await Promise.all([
+            new Response(child.stdout).text(),
+            new Response(child.stderr).text(),
+          ]);
+          const exitCode = await child.exited;
+          // A command that died before printing its checklist would otherwise fail with nothing said.
+          const text =
+            exitCode === 0
+              ? output
+              : [output, errors.slice(-2000)]
+                  .filter((part) => part.trim())
+                  .join("\n");
+          return { exitCode, output: text.replaceAll(cwd + sep, "") };
         } finally {
           clearTimeout(timer);
           signal.removeEventListener("abort", stop);

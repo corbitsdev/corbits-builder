@@ -42,6 +42,7 @@ const CHROME_VERSION = "156.0.8078.4";
 const CHROME_PLATFORMS: Record<string, string> = {
   "darwin-arm64": "mac-arm64",
   "darwin-x64": "mac-x64",
+  "linux-arm64": "linux-arm64",
   "linux-x64": "linux64",
 };
 const CHROME_PLATFORM = CHROME_PLATFORMS[`${process.platform}-${process.arch}`];
@@ -55,8 +56,8 @@ const exists = (path: string) =>
   );
 
 // One Chrome for every sandbox, unpacked once beside the hub's other caches and only ever read by
-// the sandboxes. Chrome for Testing has no build for some hosts (linux-arm64); there no browser is
-// installed and check-app reports it missing.
+// the sandboxes. On a host Chrome for Testing has no build for, no browser is installed and
+// check-app reports it missing.
 const BROWSER_CACHE = join(
   homedir(),
   ".cache",
