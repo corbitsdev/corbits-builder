@@ -10,9 +10,10 @@ const sha256 = /^[a-f0-9]{64}$/;
 // Documents a model writes as text. A design concept's option is filed from the designer's
 // workspace by file_design_option, the design by the person's choice among the options, and the
 // app from the coder's workspace each time check-app passes.
-const DocumentKind = type(
-  "'problem_brief' | 'constraints' | 'approaches' | 'product_requirements' | 'build_plan'",
+const WriterDocumentKind = type(
+  "'constraints' | 'approaches' | 'product_requirements' | 'build_plan'",
 );
+const DocumentKind = WriterDocumentKind.or("'problem_brief'");
 const WritableArtifactKind = DocumentKind.or(
   "'design' | 'design_option' | 'app'",
 );
@@ -32,6 +33,44 @@ export const ArtifactKindWrite = type({
   "approaches?": ApproachesMeta,
 });
 export type ArtifactKindWrite = typeof ArtifactKindWrite.infer;
+export const BriefWrite = type({
+  "+": "reject",
+  kind: "'problem_brief'",
+  title: text,
+  content,
+  "openQuestions?": OpenQuestions,
+});
+export type BriefWrite = typeof BriefWrite.infer;
+export const WriterDocumentWrite = type({
+  "+": "reject",
+  kind: "'constraints'",
+  title: text,
+  content,
+  "openQuestions?": OpenQuestions,
+})
+  .or({
+    "+": "reject",
+    kind: "'product_requirements'",
+    title: text,
+    content,
+    "openQuestions?": OpenQuestions,
+  })
+  .or({
+    "+": "reject",
+    kind: "'build_plan'",
+    title: text,
+    content,
+    "openQuestions?": OpenQuestions,
+  })
+  .or({
+    "+": "reject",
+    kind: "'approaches'",
+    title: text,
+    content,
+    "openQuestions?": OpenQuestions,
+    "approaches?": ApproachesMeta,
+  });
+export type WriterDocumentWrite = typeof WriterDocumentWrite.infer;
 export const DocumentWrite = type({
   "+": "reject",
   kind: DocumentKind,

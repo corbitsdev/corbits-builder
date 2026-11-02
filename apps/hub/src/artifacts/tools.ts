@@ -8,10 +8,11 @@ import { HUB_CREDENTIAL_HANDLE } from "@intx/types/credential-delivery";
 import type { RuntimeCapabilities } from "@intx/types/runtime-capabilities";
 import {
   ArtifactContent,
-  DocumentWrite,
+  BriefWrite,
   ArtifactList,
   ArtifactRead,
   ArtifactReceipt,
+  WriterDocumentWrite,
 } from "@corbits-builder/schemas/artifact";
 import type { WorkflowRole } from "@corbits-builder/schemas/installed-workflows";
 import { unpackDesign } from "./design-tools.ts";
@@ -45,11 +46,20 @@ const readDefinition = {
     "See which project documents exist, or read one.\nWith no arguments it lists: each document's artifactId, kind, title, current version, sha256, approvedVersion, the version a person approved, and openQuestionCount, the questions its current version leaves open for the person; inFlight, the writer, reviewer, coder and designer runs still open, each with its status, deployed until its first assignment arrives and running after, and each working (mid-turn) or waiting (parked for your next mail), with progress once it has acted: its turns so far, its latest tool calls as tool and target, the files it has written, and lastActivityAt; failed, the latest runs that stopped on an error, with when and why, which deliver nothing more; awaitingApproval, the kinds of filed documents whose current version waits on the person's approval; and preferenceGuidance, how the person has said they want to work.\nWith a kind or an artifactId it returns that document's content at its current version, or at the given version, with the openQuestions that version leaves for the person; a long document comes in numbered parts, and part reads the next one.",
   inputSchema: { ...ToolRead.toJsonSchema() },
 };
-const writeDefinition = {
+const briefWriteDefinition = {
+  name: "write_artifact",
+  description:
+    "Write the next version of the problem brief. The hub assigns its id, version and sha256 and returns them. Writing a version is not approval.\nopenQuestions lists each question in the document's Open questions section that the person must answer: a short id, the question as they would read it, whyItBlocks, and suggestedAnswers, your recommendation first. A version written without openQuestions leaves none open.",
+  inputSchema: { ...BriefWrite.toJsonSchema() },
+};
+const writerWriteDefinition = {
   name: "write_artifact",
   description:
     "Write the next version of the project document of one kind. The hub assigns its id, version and sha256 and returns them. Writing a version is not approval.\nopenQuestions lists each question in the document's Open questions section that the person must answer: a short id, the question as they would read it, whyItBlocks, and suggestedAnswers, your recommendation first. A version written without openQuestions leaves none open.\nOn the approaches document, approaches carries the approaches it compares, for the person to see side by side: each with a short id, its name, a one-line summary, bestFor, its pros, cons and risks as short phrases, and its effort; recommended names the id of the one you recommend.",
-  inputSchema: { ...DocumentWrite.toJsonSchema() },
+  inputSchema: {
+    type: "object" as const,
+    ...WriterDocumentWrite.toJsonSchema(),
+  },
 };
 
 export function failure(callId: string, error: unknown) {
@@ -67,17 +77,23 @@ export function failure(callId: string, error: unknown) {
   return projectScopeFailure(callId, error);
 }
 
+const DEFINITIONS_BY_ROLE: Record<
+  WorkflowRole,
+  readonly (typeof readDefinition)[]
+> = {
+  coordinator: [readDefinition, briefWriteDefinition],
+  writer: [writerWriteDefinition],
+  reviewer: [readDefinition],
+  coder: [readDefinition],
+  designer: [readDefinition],
+};
+
 export function createArtifactTools(
   role: WorkflowRole,
 ): AnnotatedToolFactory<ArtifactToolEnv> {
   // A writer's or reviewer's task carries every document it needs in full; a read tool sends
   // writers looking for documents that do not exist.
-  const definitions =
-    role === "coordinator"
-      ? [readDefinition, writeDefinition]
-      : role === "writer"
-        ? [writeDefinition]
-        : [readDefinition];
+  const definitions = DEFINITIONS_BY_ROLE[role];
   return defineTool<ArtifactToolEnv>({
     id: "@corbits-builder/artifacts/tools",
     credentials: [{ handle: HUB_CREDENTIAL_HANDLE }],
@@ -120,19 +136,28 @@ export function createArtifactTools(
                 signal,
               });
             if (call.name === "write_artifact") {
-              const input = DocumentWrite(call.arguments);
+              // The coordinator's writers own every kind but the brief, so the documents the person
+              // decides on come from them.
+              const rawKind = (call.arguments as { kind?: unknown } | undefined)
+                ?.kind;
+              if (
+                role === "coordinator" &&
+                typeof rawKind === "string" &&
+                rawKind !== "problem_brief"
+              )
+                return {
+                  callId: call.id,
+                  content: `brief_only: you write the problem brief; deploy_writer has a writer write the ${rawKind}`,
+                  isError: true,
+                };
+              const input =
+                role === "coordinator"
+                  ? BriefWrite(call.arguments)
+                  : WriterDocumentWrite(call.arguments);
               if (input instanceof type.errors)
                 return {
                   callId: call.id,
                   content: "invalid_arguments: " + input.summary,
-                  isError: true,
-                };
-              // The coordinator's writers own every kind but the brief, so the documents the person
-              // decides on come from them.
-              if (role === "coordinator" && input.kind !== "problem_brief")
-                return {
-                  callId: call.id,
-                  content: `brief_only: you write the problem brief; deploy_writer has a writer write the ${input.kind}`,
                   isError: true,
                 };
               const body = JSON.stringify(input);
