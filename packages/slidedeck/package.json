@@ -9,6 +9,7 @@
     ".": "./src/index.ts"
   },
   "dependencies": {
+    "@corbits/pdf": "workspace:*",
     "@corbits/zip": "workspace:*",
     "arktype": "catalog:"
   }

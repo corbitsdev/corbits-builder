@@ -31,7 +31,7 @@
     "lint": "bun --bun run oxlint --deny-warnings",
     "format": "bun fmt --no-script",
     "format:check": "bun fmt --no-script --check",
-    "typecheck": "bun check --no-script && bun check --no-script -p packages/client && bun check --no-script -p packages/zip && bun check --no-script -p apps/web",
+    "typecheck": "bun check --no-script && bun check --no-script -p packages/client && bun check --no-script -p packages/pdf && bun check --no-script -p packages/slidedeck && bun check --no-script -p packages/zip && bun check --no-script -p apps/web",
     "test": "bun --conditions=intx-src test ./apps/hub ./apps/web/src ./packages ./workflows ./test/integration",
     "test:e2e": "bun --env-file=.env.hub --conditions=intx-src test ./test/e2e",
     "vendor:verify": "bun scripts/verify-vendor.ts",
