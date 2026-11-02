@@ -10,6 +10,11 @@ import {
   presenterAssignmentMessage,
 } from "../config/personas.ts";
 import {
+  experimentalApprovals,
+  preferenceGuidance,
+  preferenceRegistry,
+} from "../config/preferences.ts";
+import {
   createPackageTools,
   DECK_CHECK,
   DECK_JSON,
@@ -502,4 +507,30 @@ test("presenter workflow entry binds Medium tier inference and approval_package 
       source: "invoker",
     },
   ]);
+});
+
+test("experimental_approvals preference includes coordinator guidance when enabled and omits it when disabled", () => {
+  const registryIds = preferenceRegistry().preferences.map((entry) => entry.id);
+  expect(registryIds).toContain("experimental_approvals");
+  expect(registryIds).not.toContain("experimental_slide_decks");
+  expect(experimentalApprovals(null)).toBe(false);
+  expect(experimentalApprovals({ experimental_approvals: "yes" })).toBe(true);
+  expect(experimentalApprovals({ experimental_approvals: "no" })).toBe(false);
+
+  const enabledGuidance = preferenceGuidance(
+    { experimental_approvals: "yes" },
+    "coordinator",
+  ).join("\n");
+  expect(enabledGuidance).toContain("deploy_presenter");
+  expect(enabledGuidance).toContain("approval_package");
+  expect(enabledGuidance).toContain("reviewer feedback (external");
+
+  const disabledGuidance = preferenceGuidance(
+    { experimental_approvals: "no" },
+    "coordinator",
+  ).join("\n");
+  expect(disabledGuidance).not.toContain("deploy_presenter");
+  expect(disabledGuidance).not.toContain("approval_package");
+  expect(disabledGuidance).not.toContain("reviewer feedback");
+  expect(disabledGuidance).not.toContain("Approvals:");
 });

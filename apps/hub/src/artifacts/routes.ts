@@ -756,5 +756,5 @@ export function mountArtifactRoutes(
       );
     },
   );
-  mountApprovalRoundRoutes(app, service.approvalRounds);
+  mountApprovalRoundRoutes(app, service.approvalRounds, nativeFetch);
 }

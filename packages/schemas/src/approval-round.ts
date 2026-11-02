@@ -2,7 +2,9 @@ import { type } from "arktype";
 
 const sha256 = /^[a-f0-9]{64}$/;
 const nonBlank = /\S/;
-const NonEmptyText = type("string > 0").and(nonBlank);
+const NonEmptyText = type("string > 0").and(nonBlank).atMostLength(512);
+const GoalText = type("string > 0").and(nonBlank).atMostLength(2000);
+const NoteText = type("string <= 20000");
 
 export const ExpiryPreset = type("'24h' | '7d' | '30d'");
 export type ExpiryPreset = typeof ExpiryPreset.infer;
@@ -27,6 +29,7 @@ export const ReviewerInput = type({
   name: NonEmptyText,
   persona: NonEmptyText,
   "email?": NonEmptyText,
+  "goal?": GoalText,
   "saveToWorkspace?": "boolean",
 });
 export type ReviewerInput = typeof ReviewerInput.infer;
@@ -37,6 +40,7 @@ export const WorkspaceReviewer = type({
   name: NonEmptyText,
   persona: NonEmptyText,
   "email?": NonEmptyText,
+  "goal?": GoalText,
 });
 export type WorkspaceReviewer = typeof WorkspaceReviewer.infer;
 
@@ -50,9 +54,12 @@ export type StartApprovalRound = typeof StartApprovalRound.infer;
 
 export const RecordReviewerDecision = type({
   "+": "reject",
-  outcome: ReviewerOutcome,
-  "note?": "string",
-  "slideNotes?": SlideNote.array(),
+  "outcome?": ReviewerOutcome,
+  "name?": NonEmptyText,
+  "persona?": NonEmptyText,
+  "goal?": NoteText,
+  "note?": NoteText,
+  "slideNotes?": SlideNote.array().atMostLength(100),
 });
 export type RecordReviewerDecision = typeof RecordReviewerDecision.infer;
 
@@ -71,6 +78,7 @@ export const ApprovalReviewer = type({
   name: "string > 0",
   persona: "string > 0",
   "email?": "string > 0",
+  "goal?": "string > 0",
   state: ReviewerState,
   "decision?": ReviewerDecision,
 });

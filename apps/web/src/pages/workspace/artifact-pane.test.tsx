@@ -178,7 +178,8 @@ describe("persistent artifact pane", () => {
     expect(html).toContain(">Approval<");
     expect(html).not.toContain(">Approval package<");
     expect(html).not.toContain(">Executive Sign-off Package</h1>");
-    expect(html).toContain("download a .zip per reviewer");
+    expect(html).toContain("Add new reviewer");
+    expect(html).not.toContain("Add reviewers &amp; download .zip");
     expect(html).toContain("Launch Readiness");
     expect(html).toContain("Summary of approved scope");
 

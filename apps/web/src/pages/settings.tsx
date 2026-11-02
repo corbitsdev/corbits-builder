@@ -11,7 +11,7 @@
  */
 import { wording } from "../config.ts";
 import {
-  Badge,
+  Button as UiButton,
   Section,
   Switch,
   Tabs,
@@ -37,6 +37,7 @@ import {
   useWorkspaceApprovalsEnabled,
   useWorkspaceReviewers,
   writeWorkspaceApprovalsEnabled,
+  type OnOff,
 } from "../workspace-approvals-setting.ts";
 import { Collaborators } from "./collaborators.jsx";
 import { Banner, Button, QuietSelect, QuietState } from "../components.jsx";
@@ -50,7 +51,7 @@ import type {
 } from "@corbits-builder/schemas/preferences";
 import "./settings-layout.css";
 
-type SettingsTab = keyof typeof wording.settings.tab;
+export type SettingsTab = keyof typeof wording.settings.tab;
 
 const SETTINGS_TABS: readonly { id: SettingsTab; label: string }[] = [
   { id: "providers", label: wording.settings.tab.providers },
@@ -67,12 +68,20 @@ function isSettingsTab(value: string | null): value is SettingsTab {
 }
 
 function tabInUrl(): SettingsTab {
+  if (typeof window === "undefined") return "providers";
   const requested = new URLSearchParams(window.location.search).get("tab");
   return isSettingsTab(requested) ? requested : "providers";
 }
 
+function focusInUrl(): string | undefined {
+  if (typeof window === "undefined") return undefined;
+  const requested = new URLSearchParams(window.location.search).get("focus");
+  return requested !== null && requested.length > 0 ? requested : undefined;
+}
+
 /** Replaces rather than pushes, so switching tabs never adds a Back step. */
 function writeSearch(edit: (search: URLSearchParams) => void): void {
+  if (typeof window === "undefined") return;
   const url = new URL(window.location.href);
   edit(url.searchParams);
   window.history.replaceState(window.history.state, "", url);
@@ -80,14 +89,39 @@ function writeSearch(edit: (search: URLSearchParams) => void): void {
 
 /** Keeps the open tab in the address bar while Settings is shown, and takes
  * back on leaving only the parameters it added. */
-function useTabInUrl(): [SettingsTab, (tab: SettingsTab) => void] {
-  const [tab, setTab] = useState(tabInUrl);
+function useTabInUrl(
+  requestedTab?: SettingsTab,
+  focusPreference?: string,
+  focusSeq?: number,
+): [SettingsTab, (tab: SettingsTab) => void] {
+  const [activeTab, setActiveTab] = useState<SettingsTab>(() => {
+    if (requestedTab !== undefined) return requestedTab;
+    if (focusPreference !== undefined || focusInUrl() !== undefined) {
+      return "preferences";
+    }
+    return tabInUrl();
+  });
+  useEffect(() => {
+    if (requestedTab !== undefined) {
+      setActiveTab(requestedTab);
+    } else if (focusPreference !== undefined || focusInUrl() !== undefined) {
+      setActiveTab("preferences");
+    }
+  }, [requestedTab, focusPreference, focusSeq]);
+  useEffect(() => {
+    if (typeof window === "undefined") return undefined;
+    const onPopState = () => setActiveTab(tabInUrl());
+    window.addEventListener("popstate", onPopState);
+    return () => window.removeEventListener("popstate", onPopState);
+  }, []);
   useEffect(() => {
     const addedView =
+      typeof window !== "undefined" &&
       new URLSearchParams(window.location.search).get("view") !== "settings";
     return () =>
       writeSearch((search) => {
         search.delete("tab");
+        search.delete("focus");
         if (addedView && search.get("view") === "settings")
           search.delete("view");
       });
@@ -95,24 +129,38 @@ function useTabInUrl(): [SettingsTab, (tab: SettingsTab) => void] {
   useEffect(() => {
     writeSearch((search) => {
       search.set("view", "settings");
-      search.set("tab", tab);
+      search.set("tab", activeTab);
+      if (activeTab === "preferences" && focusPreference !== undefined) {
+        search.set("focus", focusPreference);
+      }
     });
-  }, [tab]);
-  return [tab, setTab];
+  }, [activeTab, focusPreference, focusSeq]);
+  return [activeTab, setActiveTab];
 }
 
 export function Settings({
   onChanged,
   user = null,
   onSignOut,
+  requestedTab,
+  focusPreference,
+  focusSeq = 0,
 }: {
   onChanged: () => void;
   /** Who is signed in; the Account section names them. */
   user?: HubUser | null;
   onUserChanged?: (user: HubUser) => void;
   onSignOut?: () => Promise<void>;
+  requestedTab?: SettingsTab;
+  focusPreference?: string;
+  focusSeq?: number;
 }) {
-  const [tab, setTab] = useTabInUrl();
+  const effectiveFocus = focusPreference ?? focusInUrl();
+  const [activeTab, setActiveTab] = useTabInUrl(
+    requestedTab,
+    effectiveFocus,
+    focusSeq,
+  );
   const renderTabContent = (active: SettingsTab) => {
     if (active === "providers") {
       return <ProvidersSection onChanged={onChanged} />;
@@ -128,7 +176,12 @@ export function Settings({
     }
     return (
       <>
-        {user ? <WorkingPreferences /> : null}
+        <WorkingPreferences
+          {...(effectiveFocus !== undefined
+            ? { focusPreference: effectiveFocus }
+            : {})}
+          focusSeq={focusSeq}
+        />
         <WorkspaceApprovals />
         <Appearance />
         {user ? (
@@ -142,8 +195,8 @@ export function Settings({
       <h1>{wording.settings.title}</h1>
       <Tabs
         tabs={SETTINGS_TABS}
-        active={tab}
-        onChange={setTab}
+        active={activeTab}
+        onChange={setActiveTab}
         label={wording.settings.sections}
         className="settings-tabs"
       >
@@ -154,11 +207,15 @@ export function Settings({
 }
 
 function Row({
+  id,
+  highlighted = false,
   label,
   hint,
   htmlFor,
   children,
 }: {
+  id?: string;
+  highlighted?: boolean;
   label: string;
   hint?: string;
   /** The control the label names, when the row holds one. */
@@ -166,7 +223,11 @@ function Row({
   children: ReactNode;
 }) {
   return (
-    <div className="row">
+    <div
+      id={id}
+      className={highlighted ? "row is-highlighted" : "row"}
+      data-highlighted={highlighted ? "true" : undefined}
+    >
       <div className="k">
         {htmlFor ? (
           <label htmlFor={htmlFor}>
@@ -197,6 +258,7 @@ export function WorkspaceApprovals() {
   const [customPersonaOpen, setCustomPersonaOpen] = useState(false);
   const [customPersonaDraft, setCustomPersonaDraft] = useState("");
   const [email, setEmail] = useState("");
+  const [goal, setGoal] = useState("");
   const copy = wording.settings.approvals;
   const roundCopy = wording.approvalRound;
 
@@ -221,13 +283,16 @@ export function WorkspaceApprovals() {
       addCustomReviewerPersona(effectivePersona);
     }
     const trimmedEmail = email.trim();
+    const trimmedGoal = goal.trim();
     addWorkspaceReviewer({
       name: name.trim(),
       persona: effectivePersona,
       ...(trimmedEmail.length > 0 ? { email: trimmedEmail } : {}),
+      ...(trimmedGoal.length > 0 ? { goal: trimmedGoal } : {}),
     });
     setName("");
     setEmail("");
+    setGoal("");
     if (customPersonaOpen) {
       setPersona(effectivePersona);
       setCustomPersonaOpen(false);
@@ -238,9 +303,13 @@ export function WorkspaceApprovals() {
   return (
     <Section title={copy.section} description={copy.lead}>
       <div className="section-body">
-        <Row label={copy.requireLabel} hint={copy.requireHint}>
+        <Row
+          label={copy.requireLabel}
+          hint={copy.requireHint}
+          htmlFor="workspace-approvals-enabled"
+        >
           <Switch
-            label={copy.requireLabel}
+            id="workspace-approvals-enabled"
             checked={approvalsEnabled === "on"}
             onCheckedChange={(on) =>
               writeWorkspaceApprovalsEnabled(on ? "on" : "off")
@@ -252,36 +321,54 @@ export function WorkspaceApprovals() {
         {reviewers.length === 0 ? (
           <p className="inline-note">{copy.emptyReviewers}</p>
         ) : (
-          reviewers.map((reviewer) => (
-            <Row
-              key={reviewer.id}
-              label={reviewer.name}
-              {...(reviewer.email === undefined
-                ? {}
-                : { hint: reviewer.email })}
-            >
-              <span className="v">
-                <Badge tone="neutral">{reviewer.persona}</Badge>
-                <Button
-                  variant="ghost"
-                  onClick={() => removeWorkspaceReviewer(reviewer.id)}
-                >
-                  {copy.removeReviewer}
-                </Button>
-              </span>
-            </Row>
-          ))
+          reviewers.map((reviewer) => {
+            const hintParts = [reviewer.goal, reviewer.email].filter(
+              (part): part is string => part !== undefined && part !== "",
+            );
+            return (
+              <Row
+                key={reviewer.id}
+                label={reviewer.name}
+                {...(hintParts.length === 0
+                  ? {}
+                  : { hint: hintParts.join(" · ") })}
+              >
+                <span className="v">
+                  <span className="approval-status-text">
+                    {reviewer.persona}
+                  </span>
+                  <UiButton
+                    size="sm"
+                    variant="ghost"
+                    className="approval-lean-btn"
+                    onClick={() => removeWorkspaceReviewer(reviewer.id)}
+                  >
+                    {copy.removeReviewer}
+                  </UiButton>
+                </span>
+              </Row>
+            );
+          })
         )}
-        <div className="row">
-          <div className="invite-form">
+        <div className="approval-inline-fields settings-reviewer-form">
+          <div className="approval-field-row">
+            <span className="approval-field-label">
+              {roundCopy.fieldLabels.name}
+            </span>
             <input
-              className="field"
+              className="approval-lean-input"
               aria-label={copy.reviewerName}
               placeholder={copy.reviewerName}
               value={name}
               onChange={(event) => setName(event.target.value)}
             />
-            <QuietSelect
+          </div>
+          <div className="approval-field-row">
+            <span className="approval-field-label">
+              {roundCopy.fieldLabels.role}
+            </span>
+            <select
+              className="approval-lean-select"
               aria-label={copy.reviewerPersona}
               value={customPersonaOpen ? OTHER_PERSONA_OPTION : persona}
               onChange={(event) => handleSelectPersona(event.target.value)}
@@ -294,30 +381,56 @@ export function WorkspaceApprovals() {
               <option value={OTHER_PERSONA_OPTION}>
                 {roundCopy.otherPersona}
               </option>
-            </QuietSelect>
-            {customPersonaOpen ? (
+            </select>
+          </div>
+          {customPersonaOpen ? (
+            <div className="approval-field-row">
+              <span className="approval-field-label">
+                {roundCopy.customPersonaLabel}
+              </span>
               <input
-                className="field"
+                className="approval-lean-input"
                 aria-label={roundCopy.customPersonaLabel}
                 placeholder={roundCopy.customPersonaPlaceholder}
                 value={customPersonaDraft}
                 onChange={(event) => setCustomPersonaDraft(event.target.value)}
               />
-            ) : null}
+            </div>
+          ) : null}
+          <div className="approval-field-row">
+            <span className="approval-field-label">
+              {roundCopy.fieldLabels.focus}
+            </span>
             <input
-              className="field"
+              className="approval-lean-input"
+              aria-label={copy.reviewerGoal}
+              placeholder={copy.reviewerGoal}
+              value={goal}
+              onChange={(event) => setGoal(event.target.value)}
+            />
+          </div>
+          <div className="approval-field-row">
+            <span className="approval-field-label">
+              {wording.settings.account.email}
+            </span>
+            <input
+              className="approval-lean-input"
               aria-label={copy.reviewerEmail}
               placeholder={copy.reviewerEmail}
               value={email}
               onChange={(event) => setEmail(event.target.value)}
             />
-            <Button
+          </div>
+          <div className="settings-reviewer-form-actions">
+            <UiButton
+              size="sm"
               variant="outline"
+              className="approval-field-save-btn"
               disabled={!canAdd}
               onClick={handleAddReviewer}
             >
               {copy.addReviewer}
-            </Button>
+            </UiButton>
           </div>
         </div>
       </div>
@@ -366,17 +479,61 @@ const SAVE_TONES = {
   failed: "error",
 } as const;
 
+type PreferenceItem = {
+  readonly id: string;
+  readonly label: string;
+  readonly hint?: string;
+  readonly options: readonly { readonly id: string; readonly label: string }[];
+  readonly default: string;
+};
+
 /** A preference whose only choices are Off and On, shown as a switch. */
-function isOnOff(
-  preference: PreferenceRegistry["preferences"][number],
-): boolean {
+function isOnOff(preference: PreferenceItem): boolean {
   return preference.options.map((option) => option.id).join() === "no,yes";
+}
+
+function mergeExperimentalPreferences(
+  loaded: PreferenceRegistry["preferences"] | null,
+): readonly PreferenceItem[] {
+  if (loaded === null) {
+    return wording.settings.preferences.experimental;
+  }
+  const extras = wording.settings.preferences.experimental.filter(
+    (exp) => !loaded.some((item) => item.id === exp.id),
+  );
+  return [...loaded, ...extras];
+}
+
+function resolvePreferenceChoice(
+  preference: PreferenceItem,
+  fieldValue: Preferences | null | undefined,
+  approvalsEnabled: OnOff,
+): string {
+  if (preference.id === "experimental_approvals") {
+    return approvalsEnabled === "on" ? "yes" : "no";
+  }
+  return fieldValue?.[preference.id] ?? preference.default;
+}
+
+function syncExperimentalPreference(id: string, choice: string): boolean {
+  if (id === "experimental_approvals") {
+    writeWorkspaceApprovalsEnabled(choice === "yes" ? "on" : "off");
+    return true;
+  }
+  return false;
 }
 
 /** The person's working preferences, from the hub's registry and kept by the hub, which
  * delivers them to every role they apply to. Each change saves as it is made. */
-function WorkingPreferences() {
+export function WorkingPreferences({
+  focusPreference,
+  focusSeq = 0,
+}: {
+  focusPreference?: string;
+  focusSeq?: number;
+} = {}) {
   const queryClient = useQueryClient();
+  const approvalsEnabled = useWorkspaceApprovalsEnabled();
   const [registry, setRegistry] = useState<
     PreferenceRegistry["preferences"] | null
   >(null);
@@ -388,24 +545,104 @@ function WorkingPreferences() {
   const [save, setSave] = useState<{ id: string; state: SaveState } | null>(
     null,
   );
+  const [highlightedId, setHighlightedId] = useState<string | null>(
+    focusPreference ?? null,
+  );
   useEffect(() => {
-    void workspaceTenantId()
-      .then((tenantId) =>
-        Promise.all([
+    if (!focusPreference || typeof document === "undefined") return;
+    setHighlightedId(focusPreference);
+
+    const jumpToPreference = () => {
+      const controlEl = document.getElementById(
+        `preference-${focusPreference}`,
+      );
+      const rowEl =
+        document.getElementById(`preference-row-${focusPreference}`) ??
+        (controlEl?.closest(".row") as HTMLElement | null);
+      if (rowEl) {
+        rowEl.setAttribute("data-highlighted", "true");
+        if (typeof rowEl.scrollIntoView === "function") {
+          rowEl.scrollIntoView({ behavior: "smooth", block: "center" });
+        }
+      }
+      if (controlEl instanceof HTMLElement) {
+        controlEl.focus({ preventScroll: true });
+      }
+    };
+
+    jumpToPreference();
+    const rafId =
+      registry !== null &&
+      typeof window !== "undefined" &&
+      typeof window.requestAnimationFrame === "function"
+        ? window.requestAnimationFrame(jumpToPreference)
+        : undefined;
+    const timerId = setTimeout(() => {
+      setHighlightedId((current) =>
+        current === focusPreference ? null : current,
+      );
+      const controlEl = document.getElementById(
+        `preference-${focusPreference}`,
+      );
+      const rowEl =
+        document.getElementById(`preference-row-${focusPreference}`) ??
+        (controlEl?.closest(".row") as HTMLElement | null);
+      rowEl?.removeAttribute("data-highlighted");
+    }, 2_000);
+
+    return () => {
+      if (
+        rafId !== undefined &&
+        typeof window !== "undefined" &&
+        typeof window.cancelAnimationFrame === "function"
+      ) {
+        window.cancelAnimationFrame(rafId);
+      }
+      clearTimeout(timerId);
+    };
+  }, [registry, focusPreference, focusSeq]);
+  useEffect(() => {
+    let cancelled = false;
+    async function loadPreferences() {
+      try {
+        const tenantId = await workspaceTenantId();
+        const [read, record] = await Promise.all([
           productClient().preferenceRegistry(tenantId),
           productClient().personalSettings(tenantId),
-        ]),
-      )
-      .then(([read, record]) => {
+        ]);
+        if (cancelled) return;
         setRegistry(read.preferences);
-        setField(record.fields.preferences ?? { value: null, version: 0 });
-      })
-      .catch((cause: unknown) =>
-        setError(cause instanceof Error ? cause.message : String(cause)),
-      );
+        const loadedField = record.fields.preferences ?? {
+          value: null,
+          version: 0,
+        };
+        setField(loadedField);
+        const approvalsVal = loadedField.value?.["experimental_approvals"];
+        if (approvalsVal === "yes" || approvalsVal === "no") {
+          writeWorkspaceApprovalsEnabled(approvalsVal === "yes" ? "on" : "off");
+        }
+      } catch (cause) {
+        if (!cancelled) {
+          setRegistry((prev) => (prev === null ? [] : prev));
+          setError(cause instanceof Error ? cause.message : String(cause));
+        }
+      }
+    }
+    void loadPreferences();
+    return () => {
+      cancelled = true;
+    };
   }, []);
   const choose = async (id: string, choice: string) => {
-    if (!field) return;
+    const isExperimental = syncExperimentalPreference(id, choice);
+    const inHubRegistry =
+      registry !== null && registry.some((entry) => entry.id === id);
+    if (!field || (isExperimental && !inHubRegistry)) {
+      if (isExperimental) {
+        setSave({ id, state: "saved" });
+      }
+      return;
+    }
     setSave({ id, state: "saving" });
     try {
       const receipt = await productClient().savePersonalSettings(
@@ -432,17 +669,25 @@ function WorkingPreferences() {
     }
   };
   const copy = wording.settings.preferences;
+  const preferences = mergeExperimentalPreferences(registry);
   return (
     <Section title={copy.section} description={copy.lead}>
       <div className="section-body">
-        {registry?.map((preference) => {
+        {preferences.map((preference) => {
           const id = `preference-${preference.id}`;
-          const choice = field?.value?.[preference.id] ?? preference.default;
+          const isExperimental = preference.id === "experimental_approvals";
+          const choice = resolvePreferenceChoice(
+            preference,
+            field?.value,
+            approvalsEnabled,
+          );
           const state = save?.id === preference.id ? save.state : null;
-          const disabled = !field || state === "saving";
+          const disabled = (!field && !isExperimental) || state === "saving";
           return (
             <Row
               key={preference.id}
+              id={`preference-row-${preference.id}`}
+              highlighted={highlightedId === preference.id}
               label={preference.label}
               htmlFor={id}
               {...(preference.hint ? { hint: preference.hint } : {})}

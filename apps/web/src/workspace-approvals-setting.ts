@@ -16,11 +16,11 @@ const CUSTOM_PERSONAS_KEY = "builder-workspace-custom-personas";
 
 export type OnOff = "on" | "off";
 
-const parseOnOff = (raw: string | null): OnOff =>
-  raw === "off" ? "off" : "on";
+const parseDefaultOff = (raw: string | null): OnOff =>
+  raw === "on" ? "on" : "off";
 
 const readApprovalsEnabled = (): OnOff =>
-  parseOnOff(readStoredPreference(APPROVALS_ENABLED_KEY));
+  parseDefaultOff(readStoredPreference(APPROVALS_ENABLED_KEY));
 
 export function useWorkspaceApprovalsEnabled(): OnOff {
   return useSyncExternalStore(
@@ -42,18 +42,21 @@ export const DEFAULT_WORKSPACE_REVIEWERS: readonly WorkspaceReviewer[] = [
     name: "Dana Chen",
     persona: "CEO",
     email: "dana.chen@example.com",
+    goal: "Approve Aurora Weather Studio scope, timeline, and Q3 budget to begin the Coder phase",
   },
   {
     id: "ws-rev-marcus-vance",
     name: "Marcus Vance",
     persona: "CTO",
     email: "marcus.vance@example.com",
+    goal: "Sign off on radar tile payload budget, latency SLAs, and offline caching architecture",
   },
   {
     id: "ws-rev-priya-patel",
     name: "Priya Patel",
     persona: "VP Product",
     email: "priya.patel@example.com",
+    goal: "Confirm user journey, severe alert triage flow, and accessibility targets",
   },
 ];
 
@@ -74,11 +77,16 @@ function parseReviewerEntry(entry: unknown): WorkspaceReviewer | null {
     typeof entry.email === "string" && entry.email.trim().length > 0
       ? entry.email.trim()
       : undefined;
+  const goalValue =
+    typeof entry.goal === "string" && entry.goal.trim().length > 0
+      ? entry.goal.trim()
+      : undefined;
   return {
     id: entry.id,
     name: entry.name,
     persona: entry.persona,
     ...(emailValue === undefined ? {} : { email: emailValue }),
+    ...(goalValue === undefined ? {} : { goal: goalValue }),
   };
 }
 
@@ -145,6 +153,7 @@ export function addWorkspaceReviewer(input: {
   name: string;
   persona: string;
   email?: string;
+  goal?: string;
 }): WorkspaceReviewer {
   const current = [...readWorkspaceReviewers()];
   const trimmedName = input.name.trim();
@@ -152,6 +161,10 @@ export function addWorkspaceReviewer(input: {
   const trimmedEmail =
     input.email !== undefined && input.email.trim().length > 0
       ? input.email.trim()
+      : undefined;
+  const trimmedGoal =
+    input.goal !== undefined && input.goal.trim().length > 0
+      ? input.goal.trim()
       : undefined;
   const slug = trimmedName
     .toLowerCase()
@@ -163,6 +176,7 @@ export function addWorkspaceReviewer(input: {
     name: trimmedName,
     persona: trimmedPersona,
     ...(trimmedEmail === undefined ? {} : { email: trimmedEmail }),
+    ...(trimmedGoal === undefined ? {} : { goal: trimmedGoal }),
   };
   const existingIndex = current.findIndex(
     (entry) => entry.name.toLowerCase() === trimmedName.toLowerCase(),

@@ -11,18 +11,21 @@ export const DEFAULT_WORKSPACE_REVIEWERS = [
     name: "Dana Chen",
     persona: "CEO",
     email: "dana.chen@example.com",
+    goal: "Approve Aurora Weather Studio scope, timeline, and Q3 budget to begin the Coder phase",
   },
   {
     id: "ws-rev-marcus-vance",
     name: "Marcus Vance",
     persona: "CTO",
     email: "marcus.vance@example.com",
+    goal: "Sign off on radar tile payload budget, latency SLAs, and offline caching architecture",
   },
   {
     id: "ws-rev-priya-patel",
     name: "Priya Patel",
     persona: "VP Product",
     email: "priya.patel@example.com",
+    goal: "Confirm user journey, severe alert triage flow, and accessibility targets",
   },
 ] as const;
 
@@ -84,4 +87,36 @@ export function packageReadme(input: {
   }
   lines.push("");
   return lines.join("\n");
+}
+
+export function incorporatedFeedbackMessage(item: {
+  packageVersion?: number;
+  audience?: string;
+  reviewerName: string;
+  persona: string;
+  decision?: string;
+  slide?: number;
+  text: string;
+}): string {
+  const slideLabel =
+    item.slide === undefined ? "overall" : `slide ${String(item.slide)}`;
+  const versionPart =
+    item.packageVersion === undefined
+      ? ""
+      : `package: v${String(item.packageVersion)}, `;
+  const audiencePart =
+    item.audience === undefined || item.audience.trim() === ""
+      ? ""
+      : `audience: ${item.audience.trim()}, `;
+  const decisionPart =
+    item.decision === undefined || item.decision.trim() === ""
+      ? ""
+      : `, decision: ${item.decision.trim()}`;
+  return [
+    "Please revise the project to incorporate this reviewer feedback:",
+    "",
+    `--- reviewer feedback (external, ${versionPart}${audiencePart}persona: ${item.persona}, reviewer: ${item.reviewerName}${decisionPart}, slide: ${slideLabel}) ---`,
+    item.text,
+    "--- end reviewer feedback ---",
+  ].join("\n");
 }

@@ -1,11 +1,17 @@
+import { Button, Input, Switch } from "@corbits/react-ui";
 import {
-  Badge,
-  Button,
-  Input,
-  Select,
-  Switch,
-  Textarea,
-} from "@corbits/react-ui";
+  Dialog,
+  DialogBody,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@corbits/react-ui/ui/dialog";
+import type {
+  ApprovalPackageBundle,
+  ApprovalPackageSource,
+} from "@corbits-builder/schemas/artifact";
 import type {
   ApprovalReviewer,
   ApprovalRound,
@@ -18,7 +24,17 @@ import type {
   TriageItem,
   TriageItemStatus,
 } from "@corbits-builder/schemas/approval-round";
-import { Download, Paperclip } from "lucide-react";
+import JSZip from "jszip";
+import {
+  ArrowLeft,
+  Check,
+  ChevronDown,
+  ChevronRight,
+  Download,
+  Maximize2,
+  Presentation,
+  X,
+} from "lucide-react";
 import { useContext, useEffect, useRef, useState } from "react";
 import { toast } from "sonner";
 import {
@@ -29,6 +45,7 @@ import {
   startApprovalRound,
   triageReviewerFeedback,
 } from "../../api/artifacts.ts";
+import { sendMessage } from "../../api/conversation.ts";
 import { wording } from "../../config.ts";
 import { queryClient } from "../../queries/client.ts";
 import { keys } from "../../queries/keys.ts";
@@ -40,8 +57,14 @@ import {
   useCustomReviewerPersonas,
   useWorkspaceReviewers,
 } from "../../workspace-approvals-setting.ts";
-import { humanFault } from "./human-fault.ts";
+import {
+  ApprovalPackagePreview,
+  parseApprovalPackage,
+  SlidesView,
+} from "./approval-package-preview.tsx";
+import { humanFault, responseCode } from "./human-fault.ts";
 import { DesignTarget } from "./mockup-tweaks.tsx";
+import type { PassageQuote } from "./passage-note.tsx";
 
 const roundText = wording.approvalRound;
 const OTHER_PERSONA_VALUE = "__other__";
@@ -56,25 +79,25 @@ type BadgeTone = "neutral" | "accent" | "success" | "warning" | "danger";
 
 const ROUND_STATUS_TONE: Readonly<Record<ApprovalRoundStatus, BadgeTone>> = {
   open: "neutral",
-  settled: "neutral",
-  expired: "neutral",
+  settled: "success",
+  expired: "danger",
 };
 
 const REVIEWER_STATE_TONE: Readonly<Record<ReviewerState, BadgeTone>> = {
   sent: "neutral",
-  decided: "neutral",
-  expired: "neutral",
+  decided: "success",
+  expired: "danger",
 };
 
 const OUTCOME_TONE: Readonly<Record<ReviewerOutcome, BadgeTone>> = {
-  approve: "neutral",
-  request_changes: "neutral",
+  approve: "success",
+  request_changes: "warning",
   comment: "neutral",
 };
 
 const TRIAGE_STATUS_TONE: Readonly<Record<TriageItemStatus, BadgeTone>> = {
   pending: "neutral",
-  incorporated: "neutral",
+  incorporated: "success",
   dismissed: "neutral",
   replied: "neutral",
 };
@@ -94,242 +117,166 @@ function triggerBrowserDownload(file: File) {
   setTimeout(() => URL.revokeObjectURL(href));
 }
 
+function getEffectiveReviewerGoal(reviewer: ApprovalReviewer): string {
+  if (reviewer.goal !== undefined && reviewer.goal.trim() !== "") {
+    return reviewer.goal.trim();
+  }
+  return roundText.defaultGoal(reviewer.persona);
+}
+
+function getReviewerStatusDisplay(reviewer: ApprovalReviewer): {
+  label: string;
+  tone: BadgeTone;
+} {
+  if (reviewer.decision !== undefined) {
+    return {
+      label: roundText.outcome[reviewer.decision.outcome],
+      tone: OUTCOME_TONE[reviewer.decision.outcome],
+    };
+  }
+  return {
+    label: roundText.reviewerState[reviewer.state],
+    tone: REVIEWER_STATE_TONE[reviewer.state],
+  };
+}
+
+function getDownloadButtonLabel(
+  downloading: boolean,
+  selectedCount: number,
+  totalCount: number,
+): string {
+  if (downloading) {
+    return roundText.downloadingZipShort;
+  }
+  if (selectedCount === totalCount) {
+    return roundText.downloadAllButton;
+  }
+  return roundText.downloadSelectedCount(selectedCount);
+}
+
+function normalizePersonaToken(value: string): string {
+  return value
+    .trim()
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, "_")
+    .replace(/^_+|_+$/g, "");
+}
+
+const KNOWN_PERSONA_TOKENS: ReadonlySet<string> = new Set(
+  roundText.reviewerPersonas.map((persona) => normalizePersonaToken(persona)),
+);
+
+export function doesBundleMatchReviewer(
+  bundle: ApprovalPackageBundle,
+  reviewer: { name: string; persona: string },
+): boolean {
+  const personaToken = normalizePersonaToken(reviewer.persona);
+  if (personaToken === "") return false;
+  const audienceRaw = bundle.manifest.audience.trim().toLowerCase();
+  const audienceToken = normalizePersonaToken(bundle.manifest.audience);
+  if (audienceToken !== "") {
+    if (audienceToken === personaToken) return true;
+    if (
+      audienceToken.startsWith(`${personaToken}_`) ||
+      audienceToken.endsWith(`_${personaToken}`) ||
+      audienceToken.includes(`_${personaToken}_`)
+    ) {
+      return true;
+    }
+  }
+  const reviewerNameLower = reviewer.name.trim().toLowerCase();
+  if (reviewerNameLower !== "") {
+    if (audienceRaw.includes(reviewerNameLower)) return true;
+    if (
+      bundle.manifest.decisionNeeded.toLowerCase().includes(reviewerNameLower)
+    ) {
+      return true;
+    }
+  }
+  return false;
+}
+
+export function resolveReviewerPackage({
+  reviewer,
+  reviewerIndex,
+  round,
+  bundlesByVersion,
+  fallbackBundle,
+  newlyAddedReviewerIds,
+}: {
+  reviewer: ApprovalReviewer;
+  reviewerIndex: number;
+  round: ApprovalRound;
+  bundlesByVersion: ReadonlyMap<number, ApprovalPackageBundle>;
+  fallbackBundle: ApprovalPackageBundle | null;
+  newlyAddedReviewerIds?: ReadonlySet<string> | undefined;
+}): {
+  bundle: ApprovalPackageBundle | null;
+  packageVersion: number;
+  hasCuratedDeck: boolean;
+} {
+  const sortedVersions = [...bundlesByVersion.keys()].sort((a, b) => b - a);
+  for (const version of sortedVersions) {
+    const candidate = bundlesByVersion.get(version);
+    if (
+      candidate !== undefined &&
+      doesBundleMatchReviewer(candidate, reviewer)
+    ) {
+      return {
+        bundle: candidate,
+        packageVersion: version,
+        hasCuratedDeck: true,
+      };
+    }
+  }
+  if (
+    fallbackBundle !== null &&
+    doesBundleMatchReviewer(fallbackBundle, reviewer)
+  ) {
+    return {
+      bundle: fallbackBundle,
+      packageVersion: round.packageVersion,
+      hasCuratedDeck: true,
+    };
+  }
+  const fallbackAudienceToken =
+    fallbackBundle === null
+      ? ""
+      : normalizePersonaToken(fallbackBundle.manifest.audience);
+  const reviewerPersonaToken = normalizePersonaToken(reviewer.persona);
+  const isFallbackGeneric =
+    fallbackBundle !== null &&
+    !KNOWN_PERSONA_TOKENS.has(fallbackAudienceToken) &&
+    !round.reviewers.some((other) =>
+      doesBundleMatchReviewer(fallbackBundle, other),
+    );
+  const isReviewerNewlyAdded = newlyAddedReviewerIds?.has(reviewer.id) === true;
+  if (
+    fallbackBundle !== null &&
+    reviewerIndex === 0 &&
+    !isReviewerNewlyAdded &&
+    isFallbackGeneric &&
+    !KNOWN_PERSONA_TOKENS.has(reviewerPersonaToken)
+  ) {
+    return {
+      bundle: fallbackBundle,
+      packageVersion: round.packageVersion,
+      hasCuratedDeck: true,
+    };
+  }
+  return {
+    bundle: null,
+    packageVersion: round.packageVersion,
+    hasCuratedDeck: false,
+  };
+}
+
 type ReviewerDraft = ReviewerInput & {
   key: string;
   workspaceReviewerId?: string | undefined;
   customPersonaOpen?: boolean | undefined;
   customPersonaDraft?: string | undefined;
 };
-
-type AttachedFeedbackFile = {
-  name: string;
-  block: string;
-};
-
-export function ReviewerDecisionEditor({
-  projectId,
-  roundId,
-  reviewer,
-  onUpdated,
-}: {
-  projectId: string;
-  roundId: string;
-  reviewer: ApprovalReviewer;
-  onUpdated: (round: ApprovalRound) => void;
-}) {
-  const existing = reviewer.decision;
-  const initialOutcome: ReviewerOutcome =
-    existing === undefined ? "approve" : existing.outcome;
-  const initialNote =
-    existing === undefined || existing.note === undefined ? "" : existing.note;
-
-  const fileInputRef = useRef<HTMLInputElement | null>(null);
-  const [open, setOpen] = useState(false);
-  const [outcome, setOutcome] = useState<ReviewerOutcome>(initialOutcome);
-  const [note, setNote] = useState(initialNote);
-  const [attachedFiles, setAttachedFiles] = useState<AttachedFeedbackFile[]>(
-    [],
-  );
-  const [saving, setSaving] = useState(false);
-  const [fault, setFault] = useState<string | null>(null);
-
-  const resetFromDecision = () => {
-    const current = reviewer.decision;
-    setOutcome(current === undefined ? "approve" : current.outcome);
-    setNote(
-      current === undefined || current.note === undefined ? "" : current.note,
-    );
-    setAttachedFiles([]);
-    setFault(null);
-  };
-
-  const openEditor = () => {
-    resetFromDecision();
-    setOpen(true);
-  };
-
-  const cancelEditor = () => {
-    resetFromDecision();
-    setOpen(false);
-  };
-
-  const readAttachedFiles = async (fileList: FileList | null) => {
-    if (fileList === null || fileList.length === 0) return;
-    setFault(null);
-    try {
-      const additions: AttachedFeedbackFile[] = [];
-      for (const file of Array.from(fileList)) {
-        const raw = await file.text();
-        const trimmed = raw.trim();
-        if (trimmed === "") continue;
-        additions.push({
-          name: file.name,
-          block: `### ${file.name}\n${trimmed}`,
-        });
-      }
-      if (additions.length === 0) return;
-      setAttachedFiles((current) => [...current, ...additions]);
-      setNote((current) => {
-        const blocks = additions.map((entry) => entry.block).join("\n\n");
-        return current.trim() === ""
-          ? blocks
-          : `${current.trim()}\n\n${blocks}`;
-      });
-    } catch (error) {
-      setFault(humanFault(error, roundText.failed));
-    }
-  };
-
-  const removeAttachedFile = (index: number) => {
-    const target = attachedFiles[index];
-    if (target === undefined) return;
-    setAttachedFiles((current) =>
-      current.filter((_, itemIndex) => itemIndex !== index),
-    );
-    setNote((current) =>
-      current
-        .replace(target.block, "")
-        .replace(/\n{3,}/g, "\n\n")
-        .trim(),
-    );
-  };
-
-  const submit = async () => {
-    setSaving(true);
-    setFault(null);
-    try {
-      const trimmed = note.trim();
-      const updated = await recordReviewerDecision(
-        projectId,
-        roundId,
-        reviewer.id,
-        {
-          outcome,
-          ...(trimmed === "" ? {} : { note: trimmed }),
-        },
-      );
-      onUpdated(updated);
-      setOpen(false);
-    } catch (error) {
-      setFault(humanFault(error, roundText.failed));
-    } finally {
-      setSaving(false);
-    }
-  };
-
-  if (!open) {
-    return (
-      <Button type="button" size="sm" variant="outline" onClick={openEditor}>
-        {existing === undefined
-          ? roundText.recordDecision
-          : roundText.amendDecision}
-      </Button>
-    );
-  }
-
-  return (
-    <div
-      className="approval-reviewer-editor"
-      onDragOver={(event) => event.preventDefault()}
-      onDrop={(event) => {
-        event.preventDefault();
-        void readAttachedFiles(event.dataTransfer.files);
-      }}
-    >
-      {fault === null ? null : (
-        <p className="inline-note" role="alert">
-          {fault}
-        </p>
-      )}
-      <label className="approval-share-field">
-        <span>{roundText.outcomeLabel}</span>
-        <Select
-          aria-label={roundText.outcomeLabel}
-          value={outcome}
-          onChange={(event) =>
-            setOutcome(event.target.value as ReviewerOutcome)
-          }
-        >
-          {OUTCOME_OPTIONS.map((option) => (
-            <option key={option} value={option}>
-              {roundText.outcome[option]}
-            </option>
-          ))}
-        </Select>
-      </label>
-      <label className="approval-share-field">
-        <span>{roundText.noteLabel}</span>
-        <Textarea
-          aria-label={roundText.noteLabel}
-          placeholder={roundText.notePlaceholder}
-          value={note}
-          onChange={(event) => setNote(event.target.value)}
-        />
-      </label>
-      <div className="approval-feedback-attachments">
-        <input
-          ref={fileInputRef}
-          type="file"
-          multiple
-          accept=".txt,.md,.markdown,.csv,.json"
-          className="sr-only"
-          aria-label={roundText.attachFeedbackFile}
-          onChange={(event) => {
-            void readAttachedFiles(event.target.files);
-            event.target.value = "";
-          }}
-        />
-        <div className="approval-feedback-attach-bar">
-          <Button
-            type="button"
-            size="sm"
-            variant="outline"
-            onClick={() => fileInputRef.current?.click()}
-          >
-            <Paperclip size={14} aria-hidden="true" />
-            {roundText.attachFeedbackFile}
-          </Button>
-          <span className="inline-note">{roundText.attachFeedbackHint}</span>
-        </div>
-        {attachedFiles.length === 0 ? null : (
-          <div className="approval-feedback-file-list">
-            {attachedFiles.map((file, idx) => (
-              <div
-                key={`${file.name}:${String(idx)}`}
-                className="approval-feedback-file-pill"
-              >
-                <Badge tone="neutral">{file.name}</Badge>
-                <Button
-                  type="button"
-                  size="sm"
-                  variant="ghost"
-                  aria-label={roundText.removeAttachedFile(file.name)}
-                  onClick={() => removeAttachedFile(idx)}
-                >
-                  {roundText.removeReviewer}
-                </Button>
-              </div>
-            ))}
-          </div>
-        )}
-      </div>
-      <div className="approval-editor-actions">
-        <Button
-          type="button"
-          size="sm"
-          variant="outline"
-          disabled={saving}
-          onClick={() => void submit()}
-        >
-          {saving ? roundText.savingDecision : roundText.saveDecision}
-        </Button>
-        <Button type="button" size="sm" variant="ghost" onClick={cancelEditor}>
-          {wording.action.cancel}
-        </Button>
-      </div>
-    </div>
-  );
-}
 
 export function SharePackageDialog({
   projectId,
@@ -344,7 +291,6 @@ export function SharePackageDialog({
   onCancel: () => void;
   onFault: (message: string | null) => void;
 }) {
-  const nextRowKey = useRef(2);
   const workspaceReviewers = useWorkspaceReviewers();
   const customPersonas = useCustomReviewerPersonas();
   const personaOptions = allReviewerPersonas(
@@ -359,7 +305,7 @@ export function SharePackageDialog({
 
   const setReviewerField = (
     rowKey: string,
-    field: "name" | "persona" | "email",
+    field: "name" | "persona" | "email" | "goal",
     value: string,
   ) => {
     setReviewers((current) =>
@@ -388,6 +334,7 @@ export function SharePackageDialog({
           name: match.name,
           persona: match.persona,
           ...(match.email === undefined ? {} : { email: match.email }),
+          ...(match.goal === undefined ? {} : { goal: match.goal }),
           customPersonaOpen: false,
           customPersonaDraft: undefined,
           saveToWorkspace: false,
@@ -460,15 +407,12 @@ export function SharePackageDialog({
     );
   };
 
-  const addReviewerRow = () => {
-    const key = `reviewer-${String(nextRowKey.current)}`;
-    nextRowKey.current += 1;
-    setReviewers((current) => [...current, { key, name: "", persona: "" }]);
-  };
-
-  const removeReviewerRow = (rowKey: string) => {
-    setReviewers((current) => current.filter((entry) => entry.key !== rowKey));
-  };
+  const canStartRound =
+    reviewers.length > 0 &&
+    reviewers.every(
+      (reviewer) =>
+        reviewer.name.trim() !== "" && reviewer.persona.trim() !== "",
+    );
 
   const handleStartRound = async () => {
     const valid = reviewers
@@ -477,6 +421,9 @@ export function SharePackageDialog({
         persona: reviewer.persona.trim(),
         ...(reviewer.email !== undefined && reviewer.email.trim() !== ""
           ? { email: reviewer.email.trim() }
+          : {}),
+        ...(reviewer.goal !== undefined && reviewer.goal.trim() !== ""
+          ? { goal: reviewer.goal.trim() }
           : {}),
         ...(reviewer.saveToWorkspace === true ? { saveToWorkspace: true } : {}),
       }))
@@ -489,6 +436,7 @@ export function SharePackageDialog({
           name: reviewer.name,
           persona: reviewer.persona,
           ...(reviewer.email === undefined ? {} : { email: reviewer.email }),
+          ...(reviewer.goal === undefined ? {} : { goal: reviewer.goal }),
         });
       }
     }
@@ -504,20 +452,6 @@ export function SharePackageDialog({
         queryKey: keys.projectRoom.of(projectId),
       });
       onCreated(created);
-      for (const reviewer of created.reviewers) {
-        const file = await downloadApprovalPackageZip(
-          projectId,
-          created.packageVersion,
-          {
-            name: reviewer.name,
-            persona: reviewer.persona,
-            reviewerId: reviewer.id,
-            roundId: created.roundId,
-          },
-        );
-        triggerBrowserDownload(file);
-        toast.success(wording.paneFile.downloaded(file.name));
-      }
     } catch (error) {
       onFault(humanFault(error, roundText.failed));
     } finally {
@@ -534,20 +468,6 @@ export function SharePackageDialog({
         if (event.key === "Escape") onCancel();
       }}
     >
-      <label className="approval-share-field">
-        <span>{roundText.expiryLabel}</span>
-        <Select
-          aria-label={roundText.expiryLabel}
-          value={expiry}
-          onChange={(event) => setExpiry(event.target.value as ExpiryPreset)}
-        >
-          {EXPIRY_OPTIONS.map((preset) => (
-            <option key={preset} value={preset}>
-              {roundText.expiry[preset]}
-            </option>
-          ))}
-        </Select>
-      </label>
       <div className="approval-share-reviewers">
         {reviewers.map((reviewer, index) => {
           const rowLabel = roundText.reviewerRowLabel(index + 1);
@@ -567,137 +487,215 @@ export function SharePackageDialog({
           return (
             <div
               key={reviewer.key}
-              className="approval-share-reviewer-row"
+              className="approval-inline-fields settings-reviewer-form"
               role="group"
               aria-label={rowLabel}
             >
               {workspaceReviewers.length === 0 ? null : (
-                <Select
-                  aria-label={`${rowLabel} ${roundText.workspaceReviewerLabel}`}
-                  value={selectedWorkspaceId}
-                  onChange={(event) =>
-                    selectWorkspaceReviewer(reviewer.key, event.target.value)
-                  }
-                >
-                  <option value="">
-                    {roundText.workspaceReviewerPlaceholder}
-                  </option>
-                  {workspaceReviewers.map((saved) => (
-                    <option key={saved.id} value={saved.id}>
-                      {roundText.workspaceReviewerOption(
-                        saved.name,
-                        saved.persona,
-                      )}
-                    </option>
-                  ))}
-                </Select>
-              )}
-              <Input
-                aria-label={`${rowLabel} ${roundText.reviewerName}`}
-                placeholder={roundText.reviewerName}
-                value={reviewer.name}
-                onChange={(event) =>
-                  setReviewerField(reviewer.key, "name", event.target.value)
-                }
-              />
-              <Select
-                aria-label={`${rowLabel} ${roundText.reviewerPersona}`}
-                value={selectedPersonaValue}
-                onChange={(event) =>
-                  selectReviewerPersona(reviewer.key, event.target.value)
-                }
-              >
-                <option value="">{roundText.reviewerPersonaPlaceholder}</option>
-                {personaOptions.map((persona) => (
-                  <option key={persona} value={persona}>
-                    {persona}
-                  </option>
-                ))}
-                <option value={OTHER_PERSONA_VALUE}>
-                  {roundText.otherPersona}
-                </option>
-              </Select>
-              {reviewer.customPersonaOpen === true ? (
-                <div className="approval-custom-persona-row">
-                  <Input
-                    aria-label={`${rowLabel} ${roundText.customPersonaLabel}`}
-                    placeholder={roundText.customPersonaPlaceholder}
-                    value={customPersonaValue}
-                    onChange={(event) =>
-                      setCustomPersonaDraft(reviewer.key, event.target.value)
-                    }
-                    onKeyDown={(event) => {
-                      if (event.key === "Enter") {
-                        event.preventDefault();
-                        commitCustomPersona(reviewer.key);
+                <div className="approval-field-row">
+                  <span className="approval-field-label">
+                    {roundText.fieldLabels.saved}
+                  </span>
+                  <div className="approval-field-control">
+                    <select
+                      className="approval-lean-select"
+                      aria-label={`${rowLabel} ${roundText.workspaceReviewerLabel}`}
+                      value={selectedWorkspaceId}
+                      onChange={(event) =>
+                        selectWorkspaceReviewer(
+                          reviewer.key,
+                          event.target.value,
+                        )
                       }
-                    }}
-                  />
-                  <Button
-                    type="button"
-                    size="sm"
-                    variant="outline"
-                    onClick={() => commitCustomPersona(reviewer.key)}
-                  >
-                    {roundText.addCustomPersona}
-                  </Button>
+                    >
+                      <option value="">
+                        {roundText.workspaceReviewerPlaceholder}
+                      </option>
+                      {workspaceReviewers.map((saved) => (
+                        <option key={saved.id} value={saved.id}>
+                          {roundText.workspaceReviewerOption(
+                            saved.name,
+                            saved.persona,
+                          )}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
                 </div>
-              ) : null}
-              <Input
-                aria-label={`${rowLabel} ${roundText.reviewerEmail}`}
-                placeholder={roundText.reviewerEmail}
-                value={reviewer.email === undefined ? "" : reviewer.email}
-                onChange={(event) =>
-                  setReviewerField(reviewer.key, "email", event.target.value)
-                }
-              />
-              {showSaveToggle ? (
-                <div
-                  className="approval-save-workspace-toggle"
-                  title={roundText.saveToWorkspaceTooltip}
-                >
-                  <Switch
-                    label={roundText.saveToWorkspaceLabel(reviewer.name.trim())}
-                    checked={reviewer.saveToWorkspace === true}
-                    onCheckedChange={(checked) =>
-                      setSaveToWorkspace(reviewer.key, checked)
+              )}
+              <div className="approval-field-row">
+                <span className="approval-field-label">
+                  {roundText.fieldLabels.name}
+                </span>
+                <div className="approval-field-control">
+                  <Input
+                    className="approval-lean-input"
+                    aria-label={`${rowLabel} ${roundText.reviewerName}`}
+                    placeholder={roundText.reviewerNamePlaceholder}
+                    value={reviewer.name}
+                    onChange={(event) =>
+                      setReviewerField(reviewer.key, "name", event.target.value)
                     }
                   />
                 </div>
+              </div>
+              <div className="approval-field-row">
+                <span className="approval-field-label">
+                  {roundText.fieldLabels.role}
+                </span>
+                <div className="approval-field-control">
+                  <select
+                    className="approval-lean-select"
+                    aria-label={`${rowLabel} ${roundText.reviewerPersona}`}
+                    value={selectedPersonaValue}
+                    onChange={(event) =>
+                      selectReviewerPersona(reviewer.key, event.target.value)
+                    }
+                  >
+                    <option value="">
+                      {roundText.reviewerPersonaPlaceholder}
+                    </option>
+                    {personaOptions.map((persona) => (
+                      <option key={persona} value={persona}>
+                        {persona}
+                      </option>
+                    ))}
+                    <option value={OTHER_PERSONA_VALUE}>
+                      {roundText.otherPersona}
+                    </option>
+                  </select>
+                </div>
+              </div>
+              {reviewer.customPersonaOpen === true ? (
+                <div className="approval-field-row">
+                  <span className="approval-field-label">
+                    {roundText.customPersonaLabel}
+                  </span>
+                  <div className="approval-field-control approval-custom-persona-row">
+                    <Input
+                      className="approval-lean-input"
+                      aria-label={`${rowLabel} ${roundText.customPersonaLabel}`}
+                      placeholder={roundText.customPersonaPlaceholder}
+                      value={customPersonaValue}
+                      onChange={(event) =>
+                        setCustomPersonaDraft(reviewer.key, event.target.value)
+                      }
+                      onKeyDown={(event) => {
+                        if (event.key === "Enter") {
+                          event.preventDefault();
+                          commitCustomPersona(reviewer.key);
+                        }
+                      }}
+                    />
+                    <Button
+                      type="button"
+                      size="sm"
+                      variant="outline"
+                      className="approval-field-save-btn"
+                      onClick={() => commitCustomPersona(reviewer.key)}
+                    >
+                      {roundText.addCustomPersona}
+                    </Button>
+                  </div>
+                </div>
               ) : null}
-              {reviewers.length > 1 ? (
-                <Button
-                  type="button"
-                  size="sm"
-                  variant="ghost"
-                  onClick={() => removeReviewerRow(reviewer.key)}
-                >
-                  {roundText.removeReviewer}
-                </Button>
+              <div className="approval-field-row">
+                <span className="approval-field-label">
+                  {roundText.fieldLabels.focus}
+                </span>
+                <div className="approval-field-control">
+                  <Input
+                    className="approval-lean-input"
+                    aria-label={`${rowLabel} ${roundText.reviewerGoal}`}
+                    placeholder={roundText.reviewerGoalPlaceholder}
+                    value={reviewer.goal === undefined ? "" : reviewer.goal}
+                    onChange={(event) =>
+                      setReviewerField(reviewer.key, "goal", event.target.value)
+                    }
+                  />
+                </div>
+              </div>
+              <div className="approval-field-row">
+                <span className="approval-field-label">
+                  {roundText.fieldLabels.email}
+                </span>
+                <div className="approval-field-control">
+                  <Input
+                    className="approval-lean-input"
+                    type="email"
+                    aria-label={`${rowLabel} ${roundText.reviewerEmail}`}
+                    placeholder={roundText.reviewerEmailPlaceholder}
+                    value={reviewer.email === undefined ? "" : reviewer.email}
+                    onChange={(event) =>
+                      setReviewerField(
+                        reviewer.key,
+                        "email",
+                        event.target.value,
+                      )
+                    }
+                  />
+                </div>
+              </div>
+              {showSaveToggle ? (
+                <div className="approval-field-row">
+                  <span className="approval-field-label">
+                    {roundText.fieldLabels.workspace}
+                  </span>
+                  <div
+                    className="approval-field-control approval-save-workspace-toggle"
+                    title={roundText.saveToWorkspaceTooltip}
+                  >
+                    <Switch
+                      label={roundText.saveToWorkspaceLabel(
+                        reviewer.name.trim(),
+                      )}
+                      checked={reviewer.saveToWorkspace === true}
+                      onCheckedChange={(checked) =>
+                        setSaveToWorkspace(reviewer.key, checked)
+                      }
+                    />
+                    <span className="inline-note">
+                      {roundText.saveToWorkspaceNote}
+                    </span>
+                  </div>
+                </div>
               ) : null}
+              <div className="approval-field-row">
+                <span className="approval-field-label">
+                  {roundText.fieldLabels.expires}
+                </span>
+                <div className="approval-field-control">
+                  <select
+                    className="approval-lean-select"
+                    aria-label={roundText.expiryLabel}
+                    value={expiry}
+                    onChange={(event) =>
+                      setExpiry(event.target.value as ExpiryPreset)
+                    }
+                  >
+                    {EXPIRY_OPTIONS.map((preset) => (
+                      <option key={preset} value={preset}>
+                        {roundText.expiry[preset]}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+              </div>
             </div>
           );
         })}
       </div>
-      <div className="approval-share-actions">
-        <Button
-          type="button"
-          size="sm"
-          variant="ghost"
-          onClick={addReviewerRow}
-        >
-          {roundText.addReviewer}
-        </Button>
-        <Button
-          type="button"
-          size="sm"
-          disabled={starting}
-          onClick={() => void handleStartRound()}
-        >
-          {starting ? roundText.startingRound : roundText.startRound}
-        </Button>
+      <div className="row approval-share-actions">
         <Button type="button" size="sm" variant="ghost" onClick={onCancel}>
           {roundText.cancelShare}
+        </Button>
+        <Button
+          type="button"
+          size="sm"
+          disabled={starting || !canStartRound}
+          onClick={() => void handleStartRound()}
+        >
+          {starting ? roundText.startingRound : roundText.shareSubmitButton}
         </Button>
       </div>
     </div>
@@ -706,38 +704,62 @@ export function SharePackageDialog({
 
 function TriageItemRow({
   projectId,
-  roundId,
+  round,
   item,
+  onAddToPrompt,
   onUpdated,
 }: {
   projectId: string;
-  roundId: string;
+  round: ApprovalRound;
   item: TriageItem;
+  onAddToPrompt?: ((passage: PassageQuote) => void) | undefined;
   onUpdated: (round: ApprovalRound) => void;
 }) {
-  const [replyOpen, setReplyOpen] = useState(false);
-  const [replyText, setReplyText] = useState(
-    item.reply === undefined ? "" : item.reply,
-  );
   const [busy, setBusy] = useState(false);
   const [fault, setFault] = useState<string | null>(null);
 
-  const runTriage = async (action: TriageAction, reply?: string) => {
+  const runTriage = async (action: TriageAction) => {
+    if (action === "incorporate" && onAddToPrompt !== undefined) {
+      onAddToPrompt({
+        title: `${item.reviewerName} (${item.persona})`,
+        version: round.packageVersion,
+        quote: item.text,
+      });
+    }
+    const nextStatus: TriageItemStatus =
+      action === "incorporate" ? "incorporated" : "dismissed";
+    const optimisticRound: ApprovalRound = {
+      ...round,
+      triage: round.triage.map((entry) =>
+        entry.itemId === item.itemId ? { ...entry, status: nextStatus } : entry,
+      ),
+    };
+    onUpdated(optimisticRound);
     setBusy(true);
     setFault(null);
     try {
       const updated = await triageReviewerFeedback(
         projectId,
-        roundId,
+        round.roundId,
         item.itemId,
-        {
-          action,
-          ...(reply === undefined ? {} : { reply }),
-        },
+        { action },
       );
+      if (action === "incorporate") {
+        void queryClient.invalidateQueries({
+          queryKey: keys.projectRoom.of(projectId),
+        });
+      }
       onUpdated(updated);
-      setReplyOpen(false);
     } catch (error) {
+      const code = await responseCode(error);
+      if (
+        action === "incorporate" &&
+        onAddToPrompt !== undefined &&
+        code === "coordinator_not_running"
+      ) {
+        return;
+      }
+      onUpdated(round);
       setFault(humanFault(error, roundText.failed));
     } finally {
       setBusy(false);
@@ -751,72 +773,759 @@ function TriageItemRow({
   const alreadyIncorporated = item.status === "incorporated";
 
   return (
-    <li className="approval-triage-item">
-      <div className="tweak-row approval-triage-summary">
-        <span className="approval-triage-meta">
-          {item.reviewerName} ({item.persona}) · {scopeLabel}
-        </span>
-        <Badge tone={TRIAGE_STATUS_TONE[item.status]}>
-          {roundText.triageStatus[item.status]}
-        </Badge>
+    <li className="tweak-row approval-triage-item">
+      <div className="approval-triage-item-inline">
+        <div className="approval-triage-summary">
+          <span className="approval-triage-text">{item.text}</span>
+          <span className="approval-triage-meta">{scopeLabel}</span>
+          {item.status === "pending" ? null : (
+            <span
+              className={`approval-status-text approval-status-${TRIAGE_STATUS_TONE[item.status]}`}
+            >
+              {roundText.triageStatus[item.status]}
+            </span>
+          )}
+        </div>
+        <div className="row tweak-actions approval-triage-actions">
+          <Button
+            type="button"
+            size="sm"
+            variant="ghost"
+            className="approval-triage-icon-btn approval-triage-icon-btn-check"
+            aria-label={roundText.incorporate}
+            title={roundText.incorporate}
+            disabled={busy || alreadyIncorporated}
+            onClick={() => void runTriage("incorporate")}
+          >
+            <Check className="size-3.5" aria-hidden="true" />
+          </Button>
+          <Button
+            type="button"
+            size="sm"
+            variant="ghost"
+            className="approval-triage-icon-btn approval-triage-icon-btn-dismiss"
+            aria-label={roundText.dismiss}
+            title={roundText.dismiss}
+            disabled={
+              busy || alreadyIncorporated || item.status === "dismissed"
+            }
+            onClick={() => void runTriage("dismiss")}
+          >
+            <X className="size-3.5" aria-hidden="true" />
+          </Button>
+        </div>
       </div>
-      <p className="approval-triage-text">{item.text}</p>
-      {item.reply === undefined ? null : (
-        <p className="inline-note approval-triage-reply">
-          {roundText.ownerReplyLabel(item.reply)}
-        </p>
-      )}
       {fault === null ? null : (
         <p className="inline-note" role="alert">
           {fault}
         </p>
       )}
-      <div className="tweak-actions approval-triage-actions">
-        <Button
-          type="button"
-          size="sm"
-          disabled={busy || alreadyIncorporated}
-          onClick={() => void runTriage("incorporate")}
-        >
-          {roundText.incorporate}
-        </Button>
-        <Button
-          type="button"
-          size="sm"
-          variant="outline"
-          disabled={busy || alreadyIncorporated || item.status === "dismissed"}
-          onClick={() => void runTriage("dismiss")}
-        >
-          {roundText.dismiss}
-        </Button>
+    </li>
+  );
+}
+
+function renderReviewerDecisionSection(
+  projectId: string,
+  round: ApprovalRound,
+  reviewer: ApprovalReviewer,
+  reviewerItems: readonly TriageItem[],
+  onAddToPrompt: ((passage: PassageQuote) => void) | undefined,
+  onUpdated: (round: ApprovalRound) => void,
+) {
+  if (reviewer.decision === undefined || reviewerItems.length === 0) {
+    return null;
+  }
+  return (
+    <div className="approval-reviewer-decision">
+      <ul className="approval-triage-list" aria-label={roundText.triageHeading}>
+        {reviewerItems.map((item) => (
+          <TriageItemRow
+            key={item.itemId}
+            projectId={projectId}
+            round={round}
+            item={item}
+            onAddToPrompt={onAddToPrompt}
+            onUpdated={onUpdated}
+          />
+        ))}
+      </ul>
+    </div>
+  );
+}
+
+function PaneSlideDeckView({
+  title,
+  bundle,
+  onBack,
+}: {
+  title: string;
+  bundle: ApprovalPackageBundle | null;
+  onBack: () => void;
+}) {
+  const [slidesExpanded, setSlidesExpanded] = useState(false);
+
+  return (
+    <div className="approval-pane-slides-view">
+      <div className="approval-pane-slides-bar">
         <Button
           type="button"
           size="sm"
           variant="ghost"
-          disabled={busy || alreadyIncorporated}
-          onClick={() => setReplyOpen((current) => !current)}
+          className="approval-lean-btn"
+          onClick={onBack}
         >
-          {roundText.reply}
+          <ArrowLeft size={14} aria-hidden="true" />
+          {wording.shell.back}
+        </Button>
+        <strong className="approval-pane-slides-title">{title}</strong>
+        <Button
+          type="button"
+          size="sm"
+          variant="ghost"
+          className="approval-lean-btn"
+          aria-label={wording.preview.expand}
+          title={wording.preview.expand}
+          onClick={() => setSlidesExpanded(true)}
+        >
+          <Maximize2 size={14} aria-hidden="true" />
         </Button>
       </div>
-      {replyOpen && !alreadyIncorporated ? (
-        <div className="tweak-actions approval-triage-reply-editor">
-          <Input
-            aria-label={roundText.reply}
-            placeholder={roundText.replyPlaceholder}
-            value={replyText}
-            onChange={(event) => setReplyText(event.target.value)}
-          />
-          <Button
-            type="button"
-            size="sm"
-            disabled={busy || replyText.trim() === ""}
-            onClick={() => void runTriage("reply", replyText.trim())}
+      {bundle === null ? (
+        <p className="inline-note">{wording.approvalPackage.noSlides}</p>
+      ) : (
+        <SlidesView deck={bundle.deck} />
+      )}
+      <Dialog open={slidesExpanded} onOpenChange={setSlidesExpanded}>
+        <DialogContent className="device-preview-expanded approval-slide-deck-dialog">
+          <DialogHeader>
+            <DialogTitle>{title}</DialogTitle>
+          </DialogHeader>
+          <div className="approval-slide-deck-modal-body">
+            {bundle === null ? (
+              <p className="inline-note">{wording.approvalPackage.noSlides}</p>
+            ) : (
+              <SlidesView deck={bundle.deck} />
+            )}
+          </div>
+        </DialogContent>
+      </Dialog>
+    </div>
+  );
+}
+
+async function filterZipArchiveEntries(
+  file: File,
+  excludedPaths: ReadonlySet<string>,
+): Promise<File> {
+  if (excludedPaths.size === 0) return file;
+  const archive = await JSZip.loadAsync(await file.arrayBuffer());
+  for (const path of excludedPaths) {
+    archive.remove(path);
+  }
+  const bytes = await archive.generateAsync({ type: "uint8array" });
+  return new File([bytes as BlobPart], file.name, { type: "application/zip" });
+}
+
+function ReviewerTableRow({
+  projectId,
+  round,
+  reviewer,
+  bundle,
+  packageVersion,
+  hasCuratedDeck,
+  isGeneratingDeck,
+  onGeneratingChange,
+  onOpenSource,
+  onAddToPrompt,
+  onDeliverMessage,
+  onViewSlides,
+  isExpanded,
+  onToggleExpand,
+  onUpdated,
+}: {
+  projectId: string;
+  round: ApprovalRound;
+  reviewer: ApprovalReviewer;
+  bundle: ApprovalPackageBundle | null;
+  packageVersion: number;
+  hasCuratedDeck: boolean;
+  isGeneratingDeck: boolean;
+  onGeneratingChange: (generating: boolean) => void;
+  onOpenSource?: ((kind: string, version: number) => void) | undefined;
+  onAddToPrompt?: ((passage: PassageQuote) => void) | undefined;
+  onDeliverMessage?: ((message: string) => Promise<boolean | void>) | undefined;
+  onViewSlides: () => void;
+  isExpanded: boolean;
+  onToggleExpand: () => void;
+  onUpdated: (round: ApprovalRound) => void;
+}) {
+  const effectiveGoal = getEffectiveReviewerGoal(reviewer);
+  const savedGoal = reviewer.goal === undefined ? "" : reviewer.goal;
+  const currentOutcome: ReviewerOutcome | "" =
+    reviewer.decision === undefined ? "" : reviewer.decision.outcome;
+  const currentNote =
+    reviewer.decision === undefined || reviewer.decision.note === undefined
+      ? ""
+      : reviewer.decision.note;
+
+  const [nameDraft, setNameDraft] = useState(reviewer.name);
+  const [personaDraft, setPersonaDraft] = useState(reviewer.persona);
+  const [goalDraft, setGoalDraft] = useState(savedGoal);
+  const [outcomeDraft, setOutcomeDraft] = useState<ReviewerOutcome | "">(
+    currentOutcome,
+  );
+  const [noteDraft, setNoteDraft] = useState(currentNote);
+  const [downloadOpen, setDownloadOpen] = useState(false);
+  const [excludedPaths, setExcludedPaths] = useState<ReadonlySet<string>>(
+    () => new Set<string>(),
+  );
+  const [savingDetails, setSavingDetails] = useState(false);
+  const [savingDecision, setSavingDecision] = useState(false);
+  const [downloading, setDownloading] = useState(false);
+  const [tailoring, setTailoring] = useState(false);
+  const [generatingDeck, setGeneratingDeck] = useState(false);
+  const [rowFault, setRowFault] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (hasCuratedDeck) {
+      setGeneratingDeck(false);
+    }
+  }, [hasCuratedDeck]);
+
+  useEffect(() => {
+    setNameDraft(reviewer.name);
+    setPersonaDraft(reviewer.persona);
+    setGoalDraft(reviewer.goal === undefined ? "" : reviewer.goal);
+    setOutcomeDraft(
+      reviewer.decision === undefined ? "" : reviewer.decision.outcome,
+    );
+    setNoteDraft(
+      reviewer.decision === undefined || reviewer.decision.note === undefined
+        ? ""
+        : reviewer.decision.note,
+    );
+  }, [reviewer.name, reviewer.persona, reviewer.goal, reviewer.decision]);
+
+  const nameDirty =
+    nameDraft.trim() !== "" && nameDraft.trim() !== reviewer.name;
+  const personaDirty =
+    personaDraft.trim() !== "" && personaDraft.trim() !== reviewer.persona;
+  const goalDirty = goalDraft.trim() !== savedGoal;
+  const detailsDirty = nameDirty || personaDirty || goalDirty;
+  const outcomeDirty = outcomeDraft !== "" && outcomeDraft !== currentOutcome;
+  const noteDirty = noteDraft.trim() !== currentNote;
+
+  const reviewerItems = round.triage.filter(
+    (item) => item.reviewerId === reviewer.id,
+  );
+  const sources: readonly ApprovalPackageSource[] =
+    bundle === null ? [] : bundle.manifest.sources;
+  const allPackagePaths = [
+    "deck.pptx",
+    "deck.pdf",
+    ...sources.map((source) => `documents/${source.kind}.md`),
+  ];
+  const totalCheckableItems = allPackagePaths.length;
+  const selectedCount = Math.max(0, totalCheckableItems - excludedPaths.size);
+
+  const openDownloadDialog = () => {
+    setExcludedPaths(new Set<string>());
+    setDownloadOpen(true);
+  };
+
+  const togglePackageEntry = (path: string) => {
+    setExcludedPaths((current) => {
+      const next = new Set(current);
+      if (next.has(path)) {
+        next.delete(path);
+      } else {
+        next.add(path);
+      }
+      return next;
+    });
+  };
+
+  const toggleSelectAllPackageEntries = () => {
+    if (selectedCount === totalCheckableItems) {
+      setExcludedPaths(new Set(allPackagePaths));
+    } else {
+      setExcludedPaths(new Set<string>());
+    }
+  };
+
+  const saveReviewerDetails = async () => {
+    const nextName = nameDraft.trim();
+    const nextPersona = personaDraft.trim();
+    const nextGoal = goalDraft.trim();
+    if (nextName === "" || nextPersona === "") return;
+    setSavingDetails(true);
+    setRowFault(null);
+    try {
+      const updated = await recordReviewerDecision(
+        projectId,
+        round.roundId,
+        reviewer.id,
+        {
+          name: nextName,
+          persona: nextPersona,
+          goal: nextGoal,
+        },
+      );
+      onUpdated(updated);
+      toast.success(roundText.reviewerDetailsSaved(nextName));
+    } catch (error) {
+      setRowFault(humanFault(error, roundText.failed));
+    } finally {
+      setSavingDetails(false);
+    }
+  };
+
+  const saveInlineDecision = async (useDefaultFeedbackOutcome: boolean) => {
+    let resolvedOutcome: ReviewerOutcome = "request_changes";
+    if (outcomeDraft !== "") {
+      resolvedOutcome = outcomeDraft;
+    } else if (!useDefaultFeedbackOutcome && currentOutcome !== "") {
+      resolvedOutcome = currentOutcome;
+    }
+    const trimmedNote = noteDraft.trim();
+    setSavingDecision(true);
+    setRowFault(null);
+    try {
+      const updated = await recordReviewerDecision(
+        projectId,
+        round.roundId,
+        reviewer.id,
+        {
+          outcome: resolvedOutcome,
+          ...(trimmedNote === "" ? {} : { note: trimmedNote }),
+        },
+      );
+      onUpdated(updated);
+    } catch (error) {
+      setRowFault(humanFault(error, roundText.failed));
+    } finally {
+      setSavingDecision(false);
+    }
+  };
+
+  const downloadForReviewer = async () => {
+    setDownloading(true);
+    setRowFault(null);
+    try {
+      const rawFile = await downloadApprovalPackageZip(
+        projectId,
+        packageVersion,
+        {
+          name: nameDraft.trim() || reviewer.name,
+          persona: personaDraft.trim() || reviewer.persona,
+          reviewerId: reviewer.id,
+          roundId: round.roundId,
+        },
+      );
+      const file = await filterZipArchiveEntries(rawFile, excludedPaths);
+      triggerBrowserDownload(file);
+      toast.success(wording.paneFile.downloaded(file.name));
+      setDownloadOpen(false);
+    } catch (error) {
+      setRowFault(humanFault(error, roundText.failed));
+    } finally {
+      setDownloading(false);
+    }
+  };
+
+  const askCoordinatorToTailor = async () => {
+    const activeName = nameDraft.trim() || reviewer.name;
+    const activePersona = personaDraft.trim() || reviewer.persona;
+    const activeGoal = goalDraft.trim() || effectiveGoal;
+    const promptText = roundText.tailorPrompt(
+      activeName,
+      activePersona,
+      activeGoal,
+    );
+    setTailoring(true);
+    setGeneratingDeck(true);
+    onGeneratingChange(true);
+    setRowFault(null);
+    try {
+      if (detailsDirty && round.status === "open") {
+        const updated = await recordReviewerDecision(
+          projectId,
+          round.roundId,
+          reviewer.id,
+          {
+            name: activeName,
+            persona: activePersona,
+            goal: activeGoal,
+          },
+        );
+        onUpdated(updated);
+      }
+      if (onDeliverMessage !== undefined) {
+        const delivered = await onDeliverMessage(promptText);
+        if (delivered === false) {
+          setGeneratingDeck(false);
+          onGeneratingChange(false);
+          return;
+        }
+      } else {
+        await sendMessage(projectId, promptText);
+        void queryClient.invalidateQueries({
+          queryKey: keys.projectRoom.of(projectId),
+        });
+      }
+      toast.success(roundText.tailorRequested(activeName));
+    } catch (error) {
+      setGeneratingDeck(false);
+      onGeneratingChange(false);
+      setRowFault(humanFault(error, roundText.failed));
+    } finally {
+      setTailoring(false);
+    }
+  };
+
+  const statusDisplay = getReviewerStatusDisplay(reviewer);
+  const isGenerating = tailoring || generatingDeck || isGeneratingDeck;
+  const generateLabel = isGenerating
+    ? roundText.generatingSlideDeck
+    : roundText.generateSlideDeck;
+
+  return (
+    <li
+      className="approval-reviewer-item approval-reviewer-row"
+      data-expanded={isExpanded ? "true" : "false"}
+    >
+      <button
+        type="button"
+        className="approval-reviewer-row-toggle"
+        aria-expanded={isExpanded}
+        onClick={onToggleExpand}
+      >
+        <span className="approval-reviewer-chevron" aria-hidden="true">
+          {isExpanded ? <ChevronDown size={15} /> : <ChevronRight size={15} />}
+        </span>
+        <strong className="approval-reviewer-cell-name">{reviewer.name}</strong>
+        <span className="approval-reviewer-cell-role">{reviewer.persona}</span>
+        <span className="approval-reviewer-cell-goal">{effectiveGoal}</span>
+        <span className="approval-reviewer-cell-status">
+          <span
+            className={`approval-status-text approval-status-${statusDisplay.tone}`}
           >
-            {roundText.sendReply}
-          </Button>
+            {statusDisplay.label}
+          </span>
+        </span>
+      </button>
+      <div className="approval-reviewer-drawer" hidden={!isExpanded}>
+        {rowFault === null ? null : (
+          <p className="inline-note" role="alert">
+            {rowFault}
+          </p>
+        )}
+        <div className="approval-inline-fields">
+          <div className="approval-field-row">
+            <span className="approval-field-label">
+              {roundText.fieldLabels.name}
+            </span>
+            <div className="approval-field-control">
+              <Input
+                className="approval-lean-input"
+                aria-label={`${reviewer.name} ${roundText.reviewerName}`}
+                value={nameDraft}
+                disabled={round.status !== "open"}
+                onChange={(event) => setNameDraft(event.target.value)}
+              />
+            </div>
+            <div className="approval-field-action">
+              {round.status === "open" && nameDirty ? (
+                <Button
+                  type="button"
+                  size="sm"
+                  variant="outline"
+                  className="approval-field-save-btn"
+                  disabled={savingDetails}
+                  onClick={() => void saveReviewerDetails()}
+                >
+                  {savingDetails ? roundText.savingField : roundText.saveField}
+                </Button>
+              ) : null}
+            </div>
+          </div>
+          <div className="approval-field-row">
+            <span className="approval-field-label">
+              {roundText.fieldLabels.role}
+            </span>
+            <div className="approval-field-control">
+              <Input
+                className="approval-lean-input"
+                aria-label={`${reviewer.name} ${roundText.reviewerPersona}`}
+                value={personaDraft}
+                disabled={round.status !== "open"}
+                onChange={(event) => setPersonaDraft(event.target.value)}
+              />
+            </div>
+            <div className="approval-field-action">
+              {round.status === "open" && personaDirty ? (
+                <Button
+                  type="button"
+                  size="sm"
+                  variant="outline"
+                  className="approval-field-save-btn"
+                  disabled={savingDetails}
+                  onClick={() => void saveReviewerDetails()}
+                >
+                  {savingDetails ? roundText.savingField : roundText.saveField}
+                </Button>
+              ) : null}
+            </div>
+          </div>
+          <div className="approval-field-row">
+            <span className="approval-field-label">
+              {roundText.fieldLabels.focus}
+            </span>
+            <div className="approval-field-control">
+              <Input
+                className="approval-lean-input"
+                aria-label={`${reviewer.name} ${roundText.reviewerGoal}`}
+                placeholder={roundText.defaultGoal(reviewer.persona)}
+                value={goalDraft}
+                disabled={round.status !== "open"}
+                onChange={(event) => setGoalDraft(event.target.value)}
+              />
+            </div>
+            <div className="approval-field-action">
+              {round.status === "open" && goalDirty ? (
+                <Button
+                  type="button"
+                  size="sm"
+                  variant="outline"
+                  className="approval-field-save-btn"
+                  disabled={savingDetails}
+                  onClick={() => void saveReviewerDetails()}
+                >
+                  {savingDetails ? roundText.savingField : roundText.saveField}
+                </Button>
+              ) : null}
+            </div>
+          </div>
+          <div className="approval-field-row">
+            <span className="approval-field-label">
+              {roundText.fieldLabels.decision}
+            </span>
+            <div className="approval-field-control">
+              <select
+                className="approval-lean-select"
+                aria-label={`${reviewer.name} ${roundText.outcomeLabel}`}
+                value={outcomeDraft}
+                disabled={round.status !== "open"}
+                onChange={(event) =>
+                  setOutcomeDraft(event.target.value as ReviewerOutcome | "")
+                }
+              >
+                <option value="">{roundText.pendingOutcome}</option>
+                {OUTCOME_OPTIONS.map((option) => (
+                  <option key={option} value={option}>
+                    {roundText.outcome[option]}
+                  </option>
+                ))}
+              </select>
+            </div>
+            <div className="approval-field-action">
+              {round.status === "open" && outcomeDirty ? (
+                <Button
+                  type="button"
+                  size="sm"
+                  variant="outline"
+                  className="approval-field-save-btn"
+                  disabled={savingDecision}
+                  onClick={() => void saveInlineDecision(false)}
+                >
+                  {savingDecision ? roundText.savingField : roundText.saveField}
+                </Button>
+              ) : null}
+            </div>
+          </div>
+          <div className="approval-field-row">
+            <span className="approval-field-label">
+              {roundText.fieldLabels.feedback}
+            </span>
+            <div className="approval-field-control">
+              <Input
+                className="approval-lean-input"
+                aria-label={`${reviewer.name} ${roundText.noteLabel}`}
+                placeholder={roundText.inlineFeedbackPlaceholder}
+                value={noteDraft}
+                disabled={round.status !== "open"}
+                onChange={(event) => setNoteDraft(event.target.value)}
+              />
+            </div>
+            <div className="approval-field-action">
+              {round.status === "open" && noteDirty ? (
+                <Button
+                  type="button"
+                  size="sm"
+                  variant="outline"
+                  className="approval-field-save-btn"
+                  disabled={savingDecision}
+                  onClick={() => void saveInlineDecision(true)}
+                >
+                  {savingDecision ? roundText.savingField : roundText.saveField}
+                </Button>
+              ) : null}
+            </div>
+          </div>
         </div>
-      ) : null}
+        <div className="row approval-reviewer-actions">
+          {hasCuratedDeck ? (
+            <>
+              <Button
+                type="button"
+                size="sm"
+                variant="ghost"
+                className="approval-lean-btn"
+                onClick={onViewSlides}
+              >
+                <Presentation size={14} aria-hidden="true" />
+                {roundText.viewSlideDeck}
+              </Button>
+              <Button
+                type="button"
+                size="sm"
+                variant="ghost"
+                className="approval-lean-btn"
+                aria-label={roundText.downloadReviewerZip(reviewer.name)}
+                onClick={openDownloadDialog}
+              >
+                <Download size={14} aria-hidden="true" />
+                {roundText.downloadZipShort}
+              </Button>
+            </>
+          ) : (
+            <Button
+              type="button"
+              size="sm"
+              variant="ghost"
+              className="approval-lean-btn"
+              disabled={isGenerating}
+              onClick={() => void askCoordinatorToTailor()}
+            >
+              <Presentation size={14} aria-hidden="true" />
+              {generateLabel}
+            </Button>
+          )}
+        </div>
+        {renderReviewerDecisionSection(
+          projectId,
+          round,
+          reviewer,
+          reviewerItems,
+          onAddToPrompt,
+          onUpdated,
+        )}
+      </div>
+      <Dialog open={downloadOpen} onOpenChange={setDownloadOpen}>
+        <DialogContent className="approval-download-dialog">
+          <DialogHeader>
+            <DialogTitle>
+              {roundText.downloadDialogTitle(reviewer.name)}
+            </DialogTitle>
+            <DialogDescription>{reviewer.persona}</DialogDescription>
+          </DialogHeader>
+          <DialogBody>
+            <div className="row approval-reviewer-download-head">
+              <span className="inline-note">
+                {roundText.downloadSectionLead}
+              </span>
+              <Button
+                type="button"
+                size="sm"
+                variant="ghost"
+                onClick={toggleSelectAllPackageEntries}
+              >
+                {selectedCount === totalCheckableItems
+                  ? roundText.deselectAllFiles
+                  : roundText.selectAllFiles}
+              </Button>
+            </div>
+            <ul className="approval-package-checklist">
+              <li>
+                <label className="approval-package-check-row">
+                  <input
+                    type="checkbox"
+                    checked={!excludedPaths.has("deck.pptx")}
+                    onChange={() => togglePackageEntry("deck.pptx")}
+                  />
+                  <span>{roundText.packageItemPptx}</span>
+                </label>
+              </li>
+              <li>
+                <label className="approval-package-check-row">
+                  <input
+                    type="checkbox"
+                    checked={!excludedPaths.has("deck.pdf")}
+                    onChange={() => togglePackageEntry("deck.pdf")}
+                  />
+                  <span>{roundText.packageItemPdf}</span>
+                </label>
+              </li>
+              {sources.map((source) => {
+                const docPath = `documents/${source.kind}.md`;
+                const kindLabel =
+                  wording.documentTab[source.kind] ?? source.kind;
+                return (
+                  <li key={`${source.artifactId}:${String(source.version)}`}>
+                    <div className="approval-package-check-row">
+                      <input
+                        type="checkbox"
+                        aria-label={roundText.packageItemSource(
+                          kindLabel,
+                          source.title,
+                          source.version,
+                        )}
+                        checked={!excludedPaths.has(docPath)}
+                        onChange={() => togglePackageEntry(docPath)}
+                      />
+                      <button
+                        type="button"
+                        className="approval-package-source-link"
+                        onClick={() =>
+                          onOpenSource?.(source.kind, source.version)
+                        }
+                      >
+                        {roundText.packageItemSource(
+                          kindLabel,
+                          source.title,
+                          source.version,
+                        )}
+                      </button>
+                    </div>
+                  </li>
+                );
+              })}
+            </ul>
+          </DialogBody>
+          <DialogFooter>
+            <Button
+              type="button"
+              variant="ghost"
+              size="sm"
+              onClick={() => setDownloadOpen(false)}
+            >
+              {wording.action.cancel}
+            </Button>
+            <Button
+              type="button"
+              size="sm"
+              disabled={downloading || selectedCount === 0}
+              onClick={() => void downloadForReviewer()}
+            >
+              {getDownloadButtonLabel(
+                downloading,
+                selectedCount,
+                totalCheckableItems,
+              )}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </li>
   );
 }
@@ -824,40 +1533,78 @@ function TriageItemRow({
 function RoundCard({
   projectId,
   round,
+  bundle,
+  bundlesByVersion,
+  newlyAddedReviewerIds,
+  generatingReviewerIds,
+  onReviewerGeneratingChange,
+  flush = false,
+  onOpenSource,
+  onAddToPrompt,
+  onDeliverMessage,
   onUpdated,
 }: {
   projectId: string;
   round: ApprovalRound;
+  bundle: ApprovalPackageBundle | null;
+  bundlesByVersion: ReadonlyMap<number, ApprovalPackageBundle>;
+  newlyAddedReviewerIds: ReadonlySet<string>;
+  generatingReviewerIds: ReadonlySet<string>;
+  onReviewerGeneratingChange: (reviewerId: string, generating: boolean) => void;
+  flush?: boolean | undefined;
+  onOpenSource?: ((kind: string, version: number) => void) | undefined;
+  onAddToPrompt?: ((passage: PassageQuote) => void) | undefined;
+  onDeliverMessage?: ((message: string) => Promise<boolean | void>) | undefined;
   onUpdated: (round: ApprovalRound) => void;
 }) {
   const [settling, setSettling] = useState(false);
-  const [downloadingId, setDownloadingId] = useState<string | null>(null);
   const [fault, setFault] = useState<string | null>(null);
+  const [viewingSlides, setViewingSlides] = useState<{
+    reviewer: ApprovalReviewer;
+    bundle: ApprovalPackageBundle | null;
+  } | null>(null);
+  const [expandedIds, setExpandedIds] = useState<ReadonlySet<string>>(() => {
+    const initial = new Set<string>();
+    const first = round.reviewers[0]?.id;
+    if (first !== undefined) {
+      initial.add(first);
+    }
+    for (const reviewer of round.reviewers) {
+      if (newlyAddedReviewerIds.has(reviewer.id)) {
+        initial.add(reviewer.id);
+      }
+    }
+    return initial;
+  });
+
+  useEffect(() => {
+    setExpandedIds((current) => {
+      let changed = false;
+      const next = new Set(current);
+      for (const reviewer of round.reviewers) {
+        if (newlyAddedReviewerIds.has(reviewer.id) && !next.has(reviewer.id)) {
+          next.add(reviewer.id);
+          changed = true;
+        }
+      }
+      return changed ? next : current;
+    });
+  }, [round.reviewers, newlyAddedReviewerIds]);
+
   const canSettle =
     round.status !== "settled" &&
     round.reviewers.every((reviewer) => reviewer.state !== "sent");
 
-  const downloadForReviewer = async (reviewer: ApprovalReviewer) => {
-    setDownloadingId(reviewer.id);
-    setFault(null);
-    try {
-      const file = await downloadApprovalPackageZip(
-        projectId,
-        round.packageVersion,
-        {
-          name: reviewer.name,
-          persona: reviewer.persona,
-          reviewerId: reviewer.id,
-          roundId: round.roundId,
-        },
-      );
-      triggerBrowserDownload(file);
-      toast.success(wording.paneFile.downloaded(file.name));
-    } catch (error) {
-      setFault(humanFault(error, roundText.failed));
-    } finally {
-      setDownloadingId(null);
-    }
+  const toggleExpanded = (reviewerId: string) => {
+    setExpandedIds((current) => {
+      const next = new Set(current);
+      if (next.has(reviewerId)) {
+        next.delete(reviewerId);
+      } else {
+        next.add(reviewerId);
+      }
+      return next;
+    });
   };
 
   const settle = async () => {
@@ -875,100 +1622,101 @@ function RoundCard({
 
   return (
     <section
-      className="approval-round-card"
+      className="approval-round-card approval-round-section"
       aria-label={roundText.roundHeading(round.packageVersion)}
     >
-      <header className="approval-round-meta">
-        <strong>{roundText.roundHeading(round.packageVersion)}</strong>
-        <Badge tone={ROUND_STATUS_TONE[round.status]}>
-          {roundText.roundStatus[round.status]}
-        </Badge>
-      </header>
+      {flush ? null : (
+        <header className="approval-round-meta">
+          <strong>{roundText.roundHeading(round.packageVersion)}</strong>
+          <span
+            className={`approval-status-text approval-status-${ROUND_STATUS_TONE[round.status]}`}
+          >
+            {roundText.roundStatus[round.status]}
+          </span>
+        </header>
+      )}
       {fault === null ? null : (
         <p className="inline-note" role="alert">
           {fault}
         </p>
       )}
-      <ul className="approval-reviewer-list">
-        {round.reviewers.map((reviewer) => (
-          <li key={reviewer.id} className="approval-reviewer-item">
-            <div className="approval-reviewer-summary">
-              <div className="approval-reviewer-identity">
-                <strong>{reviewer.name}</strong>
-                <Badge tone="neutral">{reviewer.persona}</Badge>
-              </div>
-              <div className="approval-reviewer-actions">
-                <Badge tone={REVIEWER_STATE_TONE[reviewer.state]}>
-                  {roundText.reviewerState[reviewer.state]}
-                </Badge>
-                <Button
-                  type="button"
-                  size="sm"
-                  variant="outline"
-                  aria-label={roundText.downloadReviewerZip(reviewer.name)}
-                  disabled={downloadingId === reviewer.id}
-                  onClick={() => void downloadForReviewer(reviewer)}
-                >
-                  <Download size={14} aria-hidden="true" />
-                  {roundText.downloadZipShort}
-                </Button>
-                {round.status === "open" ? (
-                  <ReviewerDecisionEditor
+      {viewingSlides !== null ? (
+        <PaneSlideDeckView
+          title={roundText.slideDeckDialogTitle(
+            viewingSlides.reviewer.name,
+            viewingSlides.reviewer.persona,
+          )}
+          bundle={viewingSlides.bundle}
+          onBack={() => setViewingSlides(null)}
+        />
+      ) : (
+        <>
+          <div className="approval-reviewer-table">
+            <div className="approval-reviewer-table-head" aria-hidden="true">
+              <span />
+              <span>{roundText.tableHeaders.reviewer}</span>
+              <span>{roundText.tableHeaders.role}</span>
+              <span>{roundText.tableHeaders.goal}</span>
+              <span>{roundText.tableHeaders.status}</span>
+            </div>
+            <ul className="approval-reviewer-list">
+              {round.reviewers.map((reviewer, reviewerIndex) => {
+                const resolved = resolveReviewerPackage({
+                  reviewer,
+                  reviewerIndex,
+                  round,
+                  bundlesByVersion,
+                  fallbackBundle: bundle,
+                  newlyAddedReviewerIds,
+                });
+                return (
+                  <ReviewerTableRow
+                    key={reviewer.id}
                     projectId={projectId}
-                    roundId={round.roundId}
+                    round={round}
                     reviewer={reviewer}
+                    bundle={resolved.bundle}
+                    packageVersion={resolved.packageVersion}
+                    hasCuratedDeck={resolved.hasCuratedDeck}
+                    isGeneratingDeck={
+                      !resolved.hasCuratedDeck &&
+                      generatingReviewerIds.has(reviewer.id)
+                    }
+                    onGeneratingChange={(generating) =>
+                      onReviewerGeneratingChange(reviewer.id, generating)
+                    }
+                    onOpenSource={onOpenSource}
+                    onAddToPrompt={onAddToPrompt}
+                    onDeliverMessage={onDeliverMessage}
+                    onViewSlides={() =>
+                      setViewingSlides({
+                        reviewer,
+                        bundle: resolved.bundle,
+                      })
+                    }
+                    isExpanded={expandedIds.has(reviewer.id)}
+                    onToggleExpand={() => toggleExpanded(reviewer.id)}
                     onUpdated={onUpdated}
                   />
-                ) : null}
-              </div>
+                );
+              })}
+            </ul>
+          </div>
+          {round.status === "settled" ? null : (
+            <div className="row approval-editor-actions">
+              <Button
+                type="button"
+                size="sm"
+                variant="ghost"
+                className="approval-lean-btn"
+                disabled={!canSettle || settling}
+                onClick={() => void settle()}
+              >
+                {settling ? roundText.settlingRound : roundText.settleRound}
+              </Button>
             </div>
-            {reviewer.decision === undefined ? null : (
-              <div className="approval-reviewer-decision">
-                <div className="approval-reviewer-decision-header">
-                  <Badge tone={OUTCOME_TONE[reviewer.decision.outcome]}>
-                    {roundText.outcome[reviewer.decision.outcome]}
-                  </Badge>
-                </div>
-                {reviewer.decision.note === undefined ? null : (
-                  <p className="inline-note">{reviewer.decision.note}</p>
-                )}
-              </div>
-            )}
-          </li>
-        ))}
-      </ul>
-      {round.triage.length === 0 ? null : (
-        <div
-          className="approval-triage-section"
-          aria-label={roundText.triageHeading}
-        >
-          <h3>{roundText.triageHeading}</h3>
-          <p className="inline-note">{roundText.triageLead}</p>
-          <ul className="approval-triage-list">
-            {round.triage.map((item) => (
-              <TriageItemRow
-                key={item.itemId}
-                projectId={projectId}
-                roundId={round.roundId}
-                item={item}
-                onUpdated={onUpdated}
-              />
-            ))}
-          </ul>
-        </div>
-      )}
-      {round.status === "settled" ? null : (
-        <div className="approval-editor-actions">
-          <Button
-            type="button"
-            size="sm"
-            variant="outline"
-            disabled={!canSettle || settling}
-            onClick={() => void settle()}
-          >
-            {settling ? roundText.settlingRound : roundText.settleRound}
-          </Button>
-        </div>
+          )}
+        </>
       )}
     </section>
   );
@@ -977,20 +1725,123 @@ function RoundCard({
 export function ApprovalRoundsPanel({
   projectId,
   packageVersion,
+  packageContent,
+  packageVersions,
+  packageBundlesByVersion,
+  onReadPackageVersion,
+  onOpenSource,
+  onAddToPrompt,
+  onDeliverMessage,
   initialRounds,
   initialShareOpen = false,
+  flush = false,
+  shareOpen: controlledShareOpen,
+  onShareOpenChange,
+  isAddReviewerOpen,
+  onCloseAddReviewer,
 }: {
   projectId: string;
   packageVersion: number;
+  packageContent?: string;
+  packageVersions?: readonly number[] | undefined;
+  packageBundlesByVersion?:
+    | ReadonlyMap<number, ApprovalPackageBundle>
+    | undefined;
+  onReadPackageVersion?: ((version: number) => Promise<string>) | undefined;
+  onOpenSource?: ((kind: string, version: number) => void) | undefined;
+  onAddToPrompt?: ((passage: PassageQuote) => void) | undefined;
+  onDeliverMessage?: ((message: string) => Promise<boolean | void>) | undefined;
   initialRounds?: readonly ApprovalRound[];
   initialShareOpen?: boolean;
+  flush?: boolean | undefined;
+  shareOpen?: boolean | undefined;
+  onShareOpenChange?: ((open: boolean) => void) | undefined;
+  isAddReviewerOpen?: boolean | undefined;
+  onCloseAddReviewer?: (() => void) | undefined;
 }) {
+  const bundle =
+    packageContent === undefined ? null : parseApprovalPackage(packageContent);
+  const [fetchedBundles, setFetchedBundles] = useState<
+    ReadonlyMap<number, ApprovalPackageBundle>
+  >(() => new Map<number, ApprovalPackageBundle>());
+  const [newlyAddedReviewerIds, setNewlyAddedReviewerIds] = useState<
+    ReadonlySet<string>
+  >(() => new Set<string>());
+  const [generatingReviewerIds, setGeneratingReviewerIds] = useState<
+    ReadonlySet<string>
+  >(() => new Set<string>());
   const [rounds, setRounds] = useState<ApprovalRound[]>(
     initialRounds === undefined ? [] : [...initialRounds],
   );
   const [loading, setLoading] = useState(initialRounds === undefined);
   const [fault, setFault] = useState<string | null>(null);
-  const [shareOpen, setShareOpen] = useState(initialShareOpen);
+  const [internalShareOpen, setInternalShareOpen] = useState(initialShareOpen);
+  const [emptySlidesOpen, setEmptySlidesOpen] = useState(false);
+
+  const readPackageRef = useRef(onReadPackageVersion);
+  readPackageRef.current = onReadPackageVersion;
+
+  const bundlesByVersion = new Map<number, ApprovalPackageBundle>(
+    fetchedBundles,
+  );
+  if (packageBundlesByVersion !== undefined) {
+    for (const [ver, bdl] of packageBundlesByVersion) {
+      bundlesByVersion.set(ver, bdl);
+    }
+  }
+  if (bundle !== null) {
+    bundlesByVersion.set(packageVersion, bundle);
+  }
+
+  useEffect(() => {
+    const reader = readPackageRef.current;
+    if (reader === undefined) return;
+    const versionsToLoad = new Set<number>(
+      packageVersions === undefined ? [] : packageVersions,
+    );
+    for (const round of rounds) {
+      versionsToLoad.add(round.packageVersion);
+    }
+    let cancelled = false;
+    async function loadVersion(
+      ver: number,
+      read: (version: number) => Promise<string>,
+    ) {
+      try {
+        const raw = await read(ver);
+        if (cancelled) return;
+        const parsed = parseApprovalPackage(raw);
+        if (parsed === null) return;
+        setFetchedBundles((current) => {
+          if (current.has(ver)) return current;
+          const next = new Map(current);
+          next.set(ver, parsed);
+          return next;
+        });
+      } catch (error) {
+        if (!cancelled) setFault(humanFault(error, roundText.failed));
+      }
+    }
+    for (const ver of versionsToLoad) {
+      if (ver === packageVersion && bundle !== null) continue;
+      if (fetchedBundles.has(ver)) continue;
+      void loadVersion(ver, reader);
+    }
+    return () => {
+      cancelled = true;
+    };
+  }, [packageVersions, rounds, packageVersion, bundle, fetchedBundles]);
+
+  const shareOpen =
+    isAddReviewerOpen ?? controlledShareOpen ?? internalShareOpen;
+  const setShareOpen = (next: boolean | ((prev: boolean) => boolean)) => {
+    const resolved = typeof next === "function" ? next(shareOpen) : next;
+    setInternalShareOpen(resolved);
+    onShareOpenChange?.(resolved);
+    if (!resolved) {
+      onCloseAddReviewer?.();
+    }
+  };
 
   useEffect(() => {
     if (initialRounds !== undefined) return;
@@ -1025,6 +1876,111 @@ export function ApprovalRoundsPanel({
     );
   };
 
+  const setReviewerGenerating = (reviewerId: string, generating: boolean) => {
+    setGeneratingReviewerIds((current) => {
+      if (generating && current.has(reviewerId)) return current;
+      if (!generating && !current.has(reviewerId)) return current;
+      const next = new Set(current);
+      if (generating) {
+        next.add(reviewerId);
+      } else {
+        next.delete(reviewerId);
+      }
+      return next;
+    });
+  };
+
+  const handleRoundCreated = (created: ApprovalRound) => {
+    const existingReviewerIds = new Set(
+      rounds.flatMap((round) => round.reviewers.map((rev) => rev.id)),
+    );
+    const addedReviewers = created.reviewers.filter(
+      (rev) => !existingReviewerIds.has(rev.id),
+    );
+    if (addedReviewers.length > 0) {
+      setNewlyAddedReviewerIds((current) => {
+        const next = new Set(current);
+        for (const rev of addedReviewers) {
+          next.add(rev.id);
+        }
+        return next;
+      });
+      async function requestTailorForAddedReviewer(rev: ApprovalReviewer) {
+        const effectiveGoal = getEffectiveReviewerGoal(rev);
+        const promptText = roundText.tailorPrompt(
+          rev.name,
+          rev.persona,
+          effectiveGoal,
+        );
+        try {
+          if (onDeliverMessage !== undefined) {
+            const delivered = await onDeliverMessage(promptText);
+            if (delivered === false) {
+              setReviewerGenerating(rev.id, false);
+              return;
+            }
+          } else {
+            await sendMessage(projectId, promptText);
+            void queryClient.invalidateQueries({
+              queryKey: keys.projectRoom.of(projectId),
+            });
+          }
+          toast.success(roundText.tailorRequested(rev.name));
+        } catch (error) {
+          setReviewerGenerating(rev.id, false);
+          setFault(humanFault(error, roundText.failed));
+        }
+      }
+      for (const rev of addedReviewers) {
+        const hasMatch = [...bundlesByVersion.values()].some((candidate) =>
+          doesBundleMatchReviewer(candidate, rev),
+        );
+        if (!hasMatch) {
+          setReviewerGenerating(rev.id, true);
+          void requestTailorForAddedReviewer(rev);
+        }
+      }
+    }
+    setRounds((current) => {
+      const exists = current.some((item) => item.roundId === created.roundId);
+      if (exists) {
+        return current.map((item) =>
+          item.roundId === created.roundId ? created : item,
+        );
+      }
+      return [created, ...current];
+    });
+    setShareOpen(false);
+  };
+
+  const renderEmptyRoundsContent = () => {
+    if (emptySlidesOpen) {
+      return (
+        <PaneSlideDeckView
+          title={wording.approvalPackage.label}
+          bundle={bundle}
+          onBack={() => setEmptySlidesOpen(false)}
+        />
+      );
+    }
+    return (
+      <div className="approval-rounds-empty">
+        <p className="inline-note">{roundText.empty}</p>
+        {bundle === null ? null : (
+          <Button
+            type="button"
+            size="sm"
+            variant="outline"
+            onClick={() => setEmptySlidesOpen(true)}
+          >
+            <Presentation size={14} aria-hidden="true" />
+            {roundText.viewSlideDeck}
+          </Button>
+        )}
+      </div>
+    );
+  };
+
   const renderRoundsContent = () => {
     if (loading) {
       return (
@@ -1034,7 +1990,7 @@ export function ApprovalRoundsPanel({
       );
     }
     if (rounds.length === 0) {
-      return <p className="inline-note">{roundText.empty}</p>;
+      return renderEmptyRoundsContent();
     }
     return (
       <div className="approval-rounds-list">
@@ -1043,6 +1999,15 @@ export function ApprovalRoundsPanel({
             key={round.roundId}
             projectId={projectId}
             round={round}
+            bundle={bundle}
+            bundlesByVersion={bundlesByVersion}
+            newlyAddedReviewerIds={newlyAddedReviewerIds}
+            generatingReviewerIds={generatingReviewerIds}
+            onReviewerGeneratingChange={setReviewerGenerating}
+            flush={flush}
+            onOpenSource={onOpenSource}
+            onAddToPrompt={onAddToPrompt}
+            onDeliverMessage={onDeliverMessage}
             onUpdated={updateRound}
           />
         ))}
@@ -1052,37 +2017,46 @@ export function ApprovalRoundsPanel({
 
   return (
     <section className="approval-rounds-panel" aria-label={roundText.heading}>
-      <header className="approval-rounds-header">
-        <h2>{roundText.heading}</h2>
-        <div className="approval-rounds-actions">
-          <Button
-            type="button"
-            size="sm"
-            variant={shareOpen ? "outline" : "primary"}
-            onClick={() => setShareOpen((current) => !current)}
-          >
-            {roundText.shareButton}
-          </Button>
-        </div>
-      </header>
-      <p className="inline-note">{roundText.lead}</p>
+      {flush ? null : (
+        <>
+          <header className="approval-rounds-header">
+            <h2>{roundText.heading}</h2>
+            <div className="approval-rounds-actions">
+              <Button
+                type="button"
+                size="sm"
+                variant={shareOpen ? "outline" : "primary"}
+                onClick={() => setShareOpen((current) => !current)}
+              >
+                {roundText.shareButton}
+              </Button>
+            </div>
+          </header>
+          <p className="inline-note">{roundText.lead}</p>
+        </>
+      )}
       {fault === null ? null : (
         <p className="inline-note" role="alert">
           {fault}
         </p>
       )}
-      {shareOpen ? (
-        <SharePackageDialog
-          projectId={projectId}
-          packageVersion={packageVersion}
-          onCreated={(created) => {
-            setRounds((current) => [created, ...current]);
-            setShareOpen(false);
-          }}
-          onCancel={() => setShareOpen(false)}
-          onFault={setFault}
-        />
-      ) : null}
+      <Dialog open={shareOpen} onOpenChange={setShareOpen}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>{roundText.shareFormLegend}</DialogTitle>
+            <DialogDescription>{roundText.dialogDescription}</DialogDescription>
+          </DialogHeader>
+          <DialogBody>
+            <SharePackageDialog
+              projectId={projectId}
+              packageVersion={packageVersion}
+              onCreated={handleRoundCreated}
+              onCancel={() => setShareOpen(false)}
+              onFault={setFault}
+            />
+          </DialogBody>
+        </DialogContent>
+      </Dialog>
       {renderRoundsContent()}
     </section>
   );
@@ -1090,15 +2064,61 @@ export function ApprovalRoundsPanel({
 
 export function ContextualApprovalRounds({
   packageVersion,
+  packageContent,
+  packageVersions,
+  onReadPackageVersion,
+  onOpenSource,
+  onAddToPrompt,
+  onDeliverMessage,
+  shareOpen,
+  onShareOpenChange,
+  isAddReviewerOpen,
+  onCloseAddReviewer,
 }: {
   packageVersion: number;
+  packageContent?: string;
+  packageVersions?: readonly number[] | undefined;
+  onReadPackageVersion?: ((version: number) => Promise<string>) | undefined;
+  onOpenSource?: ((kind: string, version: number) => void) | undefined;
+  onAddToPrompt?: ((passage: PassageQuote) => void) | undefined;
+  onDeliverMessage?: ((message: string) => Promise<boolean | void>) | undefined;
+  shareOpen?: boolean | undefined;
+  onShareOpenChange?: ((open: boolean) => void) | undefined;
+  isAddReviewerOpen?: boolean | undefined;
+  onCloseAddReviewer?: (() => void) | undefined;
 }) {
   const target = useContext(DesignTarget);
-  if (target === null) return null;
+  if (target === null) {
+    if (packageContent === undefined) {
+      return null;
+    }
+    return (
+      <>
+        <aside className="approval-package-reminder" role="note">
+          <p className="inline-note">{wording.approvalPackage.reminder}</p>
+        </aside>
+        <ApprovalPackagePreview
+          content={packageContent}
+          {...(onOpenSource === undefined ? {} : { onOpenSource })}
+        />
+      </>
+    );
+  }
   return (
     <ApprovalRoundsPanel
       projectId={target.projectId}
       packageVersion={packageVersion}
+      flush
+      {...(packageContent === undefined ? {} : { packageContent })}
+      {...(packageVersions === undefined ? {} : { packageVersions })}
+      {...(onReadPackageVersion === undefined ? {} : { onReadPackageVersion })}
+      {...(onOpenSource === undefined ? {} : { onOpenSource })}
+      {...(onAddToPrompt === undefined ? {} : { onAddToPrompt })}
+      {...(onDeliverMessage === undefined ? {} : { onDeliverMessage })}
+      {...(shareOpen === undefined ? {} : { shareOpen })}
+      {...(onShareOpenChange === undefined ? {} : { onShareOpenChange })}
+      {...(isAddReviewerOpen === undefined ? {} : { isAddReviewerOpen })}
+      {...(onCloseAddReviewer === undefined ? {} : { onCloseAddReviewer })}
     />
   );
 }

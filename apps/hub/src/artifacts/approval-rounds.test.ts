@@ -625,6 +625,231 @@ describe("approval package zip and approval rounds", () => {
     );
   });
 
+  test("extracts triage bullets without messaging the coordinator, and only mails the coordinator when the owner incorporates an item", async () => {
+    const mailedRequests: Array<{
+      url: string;
+      cookie: string | null;
+      body: { content: string };
+    }> = [];
+    const { store } = createFakeStore({ coordinatorRunId: "wfr_coord_99" });
+    const service = createApprovalRoundService(store);
+    const app = createTestApp(service, OWNER, async (request) => {
+      mailedRequests.push({
+        url: new URL(request.url).pathname,
+        cookie: request.headers.get("cookie"),
+        body: (await request.json()) as { content: string },
+      });
+      return new Response(JSON.stringify({ ok: true }), { status: 200 });
+    });
+
+    const created = await service.start(OWNER, "proj_1", {
+      packageVersion: 1,
+      expiry: "7d",
+      reviewers: [{ name: "Dana Reviewer", persona: "Finance VP" }],
+    });
+    const reviewerId = created.reviewers[0]!.id;
+
+    // 1. Recording feedback splits multi-bullet overall notes and per-slide notes into triage items without mailing the coordinator
+    const decisionRes = await app.request(
+      `/proj_1/approval-rounds/${created.roundId}/reviewers/${reviewerId}/decision`,
+      {
+        method: "POST",
+        headers: {
+          "content-type": "application/json",
+          cookie: "session=owner_cookie",
+        },
+        body: JSON.stringify({
+          outcome: "request_changes",
+          note: "- Add sensitivity table for Q3.\n- Clarify cloud vendor commits.",
+          slideNotes: [
+            {
+              slide: 4,
+              text: "Break out contractor headcount by month.",
+            },
+          ],
+        }),
+      },
+    );
+    expect(decisionRes.status).toBe(200);
+    const afterDecision = (await decisionRes.json()) as {
+      triage: Array<{
+        itemId: string;
+        reviewerName: string;
+        persona: string;
+        slide?: number;
+        text: string;
+        status: string;
+        reply?: string;
+      }>;
+    };
+    expect(afterDecision.triage).toHaveLength(3);
+    expect(afterDecision.triage.map((item) => item.text)).toEqual([
+      "Add sensitivity table for Q3.",
+      "Clarify cloud vendor commits.",
+      "Break out contractor headcount by month.",
+    ]);
+    expect(afterDecision.triage[2]?.slide).toBe(4);
+    expect(afterDecision.triage.map((item) => item.status)).toEqual([
+      "pending",
+      "pending",
+      "pending",
+    ]);
+    expect(mailedRequests).toHaveLength(0);
+
+    const [firstItem, secondItem, slideItem] = afterDecision.triage;
+
+    // 2. Dismissing an item updates triage state without messaging the coordinator
+    const dismissRes = await app.request(
+      `/proj_1/approval-rounds/${created.roundId}/triage/${firstItem!.itemId}`,
+      {
+        method: "POST",
+        headers: {
+          "content-type": "application/json",
+          cookie: "session=owner_cookie",
+        },
+        body: JSON.stringify({ action: "dismiss" }),
+      },
+    );
+    expect(dismissRes.status).toBe(200);
+    const afterDismiss = (await dismissRes.json()) as typeof afterDecision;
+    expect(
+      afterDismiss.triage.find((item) => item.itemId === firstItem!.itemId)
+        ?.status,
+    ).toBe("dismissed");
+    expect(mailedRequests).toHaveLength(0);
+
+    // 3. Replying to an item records the owner's reply without messaging the coordinator
+    const replyRes = await app.request(
+      `/proj_1/approval-rounds/${created.roundId}/triage/${secondItem!.itemId}`,
+      {
+        method: "POST",
+        headers: {
+          "content-type": "application/json",
+          cookie: "session=owner_cookie",
+        },
+        body: JSON.stringify({
+          action: "reply",
+          reply: "Handled in the appendix contract schedule.",
+        }),
+      },
+    );
+    expect(replyRes.status).toBe(200);
+    const afterReply = (await replyRes.json()) as typeof afterDecision;
+    const replied = afterReply.triage.find(
+      (item) => item.itemId === secondItem!.itemId,
+    );
+    expect(replied?.status).toBe("replied");
+    expect(replied?.reply).toBe("Handled in the appendix contract schedule.");
+    expect(mailedRequests).toHaveLength(0);
+
+    // 4. Incorporating an item marks it incorporated and mails the coordinator as the owner with the delimited external block
+    const incorporateRes = await app.request(
+      `/proj_1/approval-rounds/${created.roundId}/triage/${slideItem!.itemId}`,
+      {
+        method: "POST",
+        headers: {
+          "content-type": "application/json",
+          cookie: "session=owner_cookie",
+        },
+        body: JSON.stringify({ action: "incorporate" }),
+      },
+    );
+    expect(incorporateRes.status).toBe(200);
+    const afterIncorporate =
+      (await incorporateRes.json()) as typeof afterDecision;
+    expect(
+      afterIncorporate.triage.find((item) => item.itemId === slideItem!.itemId)
+        ?.status,
+    ).toBe("incorporated");
+
+    expect(mailedRequests).toHaveLength(1);
+    expect(mailedRequests[0]?.url).toBe(
+      "/api/tenants/tenant_proj_1/workflows/runs/wfr_coord_99/mail",
+    );
+    expect(mailedRequests[0]?.cookie).toBe("session=owner_cookie");
+    expect(mailedRequests[0]?.body.content).toBe(
+      [
+        "Please revise the project to incorporate this reviewer feedback:",
+        "",
+        "--- reviewer feedback (external, package: v1, audience: Executive committee, persona: Finance VP, reviewer: Dana Reviewer, decision: request_changes, slide: slide 4) ---",
+        "Break out contractor headcount by month.",
+        "--- end reviewer feedback ---",
+      ].join("\n"),
+    );
+
+    // 5. Re-triaging an already-incorporated item fails with 409 triage_item_already_incorporated and sends no second coordinator message
+    const secondIncorporateRes = await app.request(
+      `/proj_1/approval-rounds/${created.roundId}/triage/${slideItem!.itemId}`,
+      {
+        method: "POST",
+        headers: {
+          "content-type": "application/json",
+          cookie: "session=owner_cookie",
+        },
+        body: JSON.stringify({ action: "incorporate" }),
+      },
+    );
+    expect(secondIncorporateRes.status).toBe(409);
+    expect(await secondIncorporateRes.json()).toEqual({
+      error: "triage_item_already_incorporated",
+      roundId: created.roundId,
+      itemId: slideItem!.itemId,
+    });
+    expect(mailedRequests).toHaveLength(1);
+
+    // 6. Amending the reviewer's decision preserves already-triaged items without duplicating them as pending, while adding newly added bullets as pending
+    const amendRes = await app.request(
+      `/proj_1/approval-rounds/${created.roundId}/reviewers/${reviewerId}/decision`,
+      {
+        method: "POST",
+        headers: {
+          "content-type": "application/json",
+          cookie: "session=owner_cookie",
+        },
+        body: JSON.stringify({
+          outcome: "request_changes",
+          note: "- Add sensitivity table for Q3.\n- Include multi-year ARR ramp.",
+          slideNotes: [
+            {
+              slide: 4,
+              text: "Break out contractor headcount by month.",
+            },
+          ],
+        }),
+      },
+    );
+    expect(amendRes.status).toBe(200);
+    const afterAmend = (await amendRes.json()) as typeof afterDecision;
+    expect(
+      afterAmend.triage.map((item) => ({
+        text: item.text,
+        slide: item.slide,
+        status: item.status,
+      })),
+    ).toEqual([
+      {
+        text: "Add sensitivity table for Q3.",
+        slide: undefined,
+        status: "dismissed",
+      },
+      {
+        text: "Clarify cloud vendor commits.",
+        slide: undefined,
+        status: "replied",
+      },
+      {
+        text: "Break out contractor headcount by month.",
+        slide: 4,
+        status: "incorporated",
+      },
+      {
+        text: "Include multi-year ARR ramp.",
+        slide: undefined,
+        status: "pending",
+      },
+    ]);
+  });
+
   test("saves reviewers marked saveToWorkspace at the workspace level and returns workspaceReviewers on list", async () => {
     const { store } = createFakeStore();
     const service = createApprovalRoundService(store);
@@ -688,10 +913,15 @@ describe("approval package zip and approval rounds", () => {
     expect(rounds.size).toBe(0);
   });
 
-  test("preserves both reviewers' decisions when recorded concurrently", async () => {
+  test("preserves both reviewers' decisions when recorded concurrently and prevents concurrent double-incorporate from mailing twice", async () => {
+    let mailCount = 0;
     const { store } = createFakeStore({ coordinatorRunId: "wfr_coord_99" });
     const service = createApprovalRoundService(store);
-    const app = createTestApp(service, OWNER);
+    const app = createTestApp(service, OWNER, async () => {
+      mailCount += 1;
+      await new Promise<void>((resolve) => queueMicrotask(resolve));
+      return new Response(JSON.stringify({ ok: true }), { status: 200 });
+    });
 
     const created = await service.start(OWNER, "proj_1", {
       packageVersion: 1,
@@ -739,5 +969,34 @@ describe("approval package zip and approval rounds", () => {
       round.reviewers.find((r) => r.id === marcus!.id)?.decision?.outcome,
     ).toBe("approve");
     expect(round.triage).toHaveLength(2);
+
+    const targetItem = round.triage[0]!;
+    const [inc1, inc2] = await Promise.all([
+      app.request(
+        `/proj_1/approval-rounds/${created.roundId}/triage/${targetItem.itemId}`,
+        {
+          method: "POST",
+          headers: {
+            "content-type": "application/json",
+            cookie: "session=owner_cookie",
+          },
+          body: JSON.stringify({ action: "incorporate" }),
+        },
+      ),
+      app.request(
+        `/proj_1/approval-rounds/${created.roundId}/triage/${targetItem.itemId}`,
+        {
+          method: "POST",
+          headers: {
+            "content-type": "application/json",
+            cookie: "session=owner_cookie",
+          },
+          body: JSON.stringify({ action: "incorporate" }),
+        },
+      ),
+    ]);
+    const statuses = [inc1.status, inc2.status].sort();
+    expect(statuses).toEqual([200, 409]);
+    expect(mailCount).toBe(1);
   });
 });
