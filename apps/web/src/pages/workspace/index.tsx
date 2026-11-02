@@ -1594,7 +1594,12 @@ export function StageWorkspace({
                     chosenApproach(meta, turns, Date.parse(filedAt)),
                   ...(archived ? {} : { choose: chooseApproach }),
                 }}
-                {...(archived ? {} : { onAddToPrompt: addToPrompt })}
+                {...(archived
+                  ? {}
+                  : {
+                      onAddToPrompt: addToPrompt,
+                      onDeliverMessage: (message: string) => deliver(message),
+                    })}
               />
             </DesignTarget.Provider>
           )}

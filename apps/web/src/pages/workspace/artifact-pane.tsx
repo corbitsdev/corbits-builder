@@ -153,6 +153,7 @@ export function ArtifactPane({
   onRetry,
   onReadVersion,
   onAddToPrompt,
+  onDeliverMessage,
   approachChoice,
 }: {
   /** Names the files the panes download and share. */
@@ -177,6 +178,7 @@ export function ArtifactPane({
   onRetry?: (() => void) | undefined;
   onReadVersion?: (version: number) => Promise<ReadVersion>;
   onAddToPrompt?: (passage: PassageQuote) => void;
+  onDeliverMessage?: ((message: string) => Promise<boolean | void>) | undefined;
   /** The person's pick of a filed approach, and how to make it; choosing is absent on an archived project. */
   approachChoice?: ApproachChoice;
 }) {
@@ -530,6 +532,9 @@ export function ArtifactPane({
                       : {})}
                     {...(current && onAddToPrompt !== undefined
                       ? { onAddToPrompt }
+                      : {})}
+                    {...(current && onDeliverMessage !== undefined
+                      ? { onDeliverMessage }
                       : {})}
                     {...(current && approachChoice !== undefined
                       ? { approachChoice }

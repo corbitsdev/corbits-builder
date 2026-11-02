@@ -25,6 +25,7 @@ import {
   ApprovalRoundList,
   RecordReviewerDecision,
   StartApprovalRound,
+  TriageDecisionInput,
   type ApprovalReviewer,
   type ApprovalRoundStatus,
   type ExpiryPreset,
@@ -42,11 +43,13 @@ import {
 } from "../db/schema.ts";
 import {
   DEFAULT_WORKSPACE_REVIEWERS,
+  incorporatedFeedbackMessage,
   packageReadme,
   type PackageManifestSource,
 } from "../config/approval-rounds.ts";
 import type { Actor } from "../lib/actor.ts";
 import { parseJson, readJson } from "../lib/json.ts";
+import { mailRunAsCaller } from "../mail/caller-mail.ts";
 import { actorOf, authorizeProject } from "../projects/authorization.ts";
 import { ProjectError } from "../projects/errors.ts";
 import { parseApprovalPackageBundle } from "./approval-package.ts";
@@ -64,6 +67,7 @@ export type StoredReviewer = {
   name: string;
   persona: string;
   email?: string;
+  goal?: string;
   decision?: ReviewerDecision;
 };
 
@@ -311,6 +315,7 @@ function deriveReviewerView(
     name: reviewer.name,
     persona: reviewer.persona,
     ...(reviewer.email === undefined ? {} : { email: reviewer.email }),
+    ...(reviewer.goal === undefined ? {} : { goal: reviewer.goal }),
     state: deriveReviewerState(reviewer, expired),
     ...(reviewer.decision === undefined ? {} : { decision: reviewer.decision }),
   };
@@ -348,7 +353,8 @@ function splitNoteBullets(rawText: string): string[] {
         .replace(/^\d+[.)]\s+/, "")
         .trim(),
     )
-    .filter((line) => line !== "" && !line.startsWith("#"));
+    .filter((line) => line !== "" && !line.startsWith("#"))
+    .slice(0, 100);
 }
 
 function extractTriageItemsForDecision(
@@ -415,11 +421,18 @@ function parseWorkspaceReviewersField(
         entry.email.trim() !== ""
           ? entry.email.trim()
           : undefined;
+      const goal =
+        "goal" in entry &&
+        typeof entry.goal === "string" &&
+        entry.goal.trim() !== ""
+          ? entry.goal.trim()
+          : undefined;
       parsed.push({
         id: entry.id,
         name: entry.name,
         persona: entry.persona,
         ...(email === undefined ? {} : { email }),
+        ...(goal === undefined ? {} : { goal }),
       });
     }
   }
@@ -720,6 +733,10 @@ export function createPgApprovalRoundStore(
           item.email !== undefined && item.email.trim() !== ""
             ? item.email.trim()
             : undefined;
+        const goal =
+          item.goal !== undefined && item.goal.trim() !== ""
+            ? item.goal.trim()
+            : undefined;
         const existingIndex = next.findIndex(
           (entry) =>
             entry.name.toLowerCase() === name.toLowerCase() &&
@@ -731,6 +748,7 @@ export function createPgApprovalRoundStore(
             name,
             persona,
             ...(email === undefined ? {} : { email }),
+            ...(goal === undefined ? {} : { goal }),
           });
         } else {
           const existing = next[existingIndex]!;
@@ -739,6 +757,7 @@ export function createPgApprovalRoundStore(
             name,
             persona,
             ...(email === undefined ? {} : { email }),
+            ...(goal === undefined ? {} : { goal }),
           };
         }
       }
@@ -956,6 +975,9 @@ export function createApprovalRoundService(store: ApprovalRoundStore) {
           ...(reviewer.email === undefined
             ? {}
             : { email: reviewer.email.trim() }),
+          ...(reviewer.goal === undefined || reviewer.goal.trim() === ""
+            ? {}
+            : { goal: reviewer.goal.trim() }),
         })),
         triage: [],
       };
@@ -1003,36 +1025,85 @@ export function createApprovalRoundService(store: ApprovalRoundStore) {
               reviewerId,
             });
           }
-          const trimmedNote = input.note === undefined ? "" : input.note.trim();
-          const decision: ReviewerDecision = {
-            outcome: input.outcome,
-            ...(trimmedNote === "" ? {} : { note: trimmedNote }),
-            slideNotes: input.slideNotes === undefined ? [] : input.slideNotes,
-            decidedAt: now.toISOString(),
-          };
           const target = round.reviewers[index]!;
-          const updatedReviewers = [...round.reviewers];
-          updatedReviewers[index] = {
-            ...target,
-            decision,
+          const nextName =
+            input.name !== undefined && input.name.trim() !== ""
+              ? input.name.trim()
+              : target.name;
+          const nextPersona =
+            input.persona !== undefined && input.persona.trim() !== ""
+              ? input.persona.trim()
+              : target.persona;
+          let nextGoal: string | undefined = target.goal;
+          if (input.goal !== undefined) {
+            const trimmedGoal = input.goal.trim();
+            if (trimmedGoal === "") {
+              nextGoal = undefined;
+            } else {
+              nextGoal = trimmedGoal;
+            }
+          }
+          if (
+            input.outcome === undefined &&
+            input.name === undefined &&
+            input.persona === undefined &&
+            input.goal === undefined
+          ) {
+            throw new ProjectError(400, "invalid_reviewer_decision");
+          }
+          const trimmedNote = input.note === undefined ? "" : input.note.trim();
+          const decision: ReviewerDecision | undefined =
+            input.outcome === undefined
+              ? target.decision
+              : {
+                  outcome: input.outcome,
+                  ...(trimmedNote === "" ? {} : { note: trimmedNote }),
+                  slideNotes:
+                    input.slideNotes === undefined ? [] : input.slideNotes,
+                  decidedAt: now.toISOString(),
+                };
+          const updatedReviewer: StoredReviewer = {
+            id: target.id,
+            name: nextName,
+            persona: nextPersona,
+            ...(target.email === undefined ? {} : { email: target.email }),
+            ...(nextGoal === undefined ? {} : { goal: nextGoal }),
+            ...(decision === undefined ? {} : { decision }),
           };
-          const retainedTriage = round.triage.filter(
-            (item) =>
-              item.reviewerId !== reviewerId || item.status !== "pending",
+          const updatedReviewers = [...round.reviewers];
+          updatedReviewers[index] = updatedReviewer;
+          const baseTriage =
+            input.outcome === undefined
+              ? round.triage
+              : round.triage.filter(
+                  (item) =>
+                    item.reviewerId !== reviewerId || item.status !== "pending",
+                );
+          const retainedTriage = baseTriage.map((item) =>
+            item.reviewerId === reviewerId
+              ? {
+                  ...item,
+                  reviewerName: nextName,
+                  persona: nextPersona,
+                }
+              : item,
           );
-          const extractedTriage = extractTriageItemsForDecision(
-            round.roundId,
-            target,
-            decision,
-          ).filter(
-            (item) =>
-              !retainedTriage.some(
-                (existing) =>
-                  existing.reviewerId === item.reviewerId &&
-                  existing.slide === item.slide &&
-                  existing.text === item.text,
-              ),
-          );
+          const extractedTriage =
+            input.outcome === undefined || decision === undefined
+              ? []
+              : extractTriageItemsForDecision(
+                  round.roundId,
+                  updatedReviewer,
+                  decision,
+                ).filter(
+                  (item) =>
+                    !retainedTriage.some(
+                      (existing) =>
+                        existing.reviewerId === item.reviewerId &&
+                        existing.slide === item.slide &&
+                        existing.text === item.text,
+                    ),
+                );
           const updatedRound: StoredApprovalRound = {
             ...round,
             reviewers: updatedReviewers,
@@ -1040,6 +1111,128 @@ export function createApprovalRoundService(store: ApprovalRoundStore) {
           };
           await save(updatedRound);
           return serializeRound(updatedRound, now);
+        },
+      );
+    },
+
+    async triageItem(
+      actor: Actor,
+      projectId: string,
+      roundId: string,
+      itemId: string,
+      raw: unknown,
+      mailRun?: (runId: string, content: string) => Promise<void>,
+    ): Promise<ApprovalRound> {
+      const input = TriageDecisionInput(raw);
+      if (input instanceof type.errors) {
+        throw new ProjectError(400, "invalid_triage_decision", {
+          issues: input.summary,
+        });
+      }
+      const trimmedReply = input.reply === undefined ? "" : input.reply.trim();
+      if (input.action === "reply" && trimmedReply === "") {
+        throw new ProjectError(400, "invalid_triage_decision");
+      }
+      await store.authorize(actor, projectId, "manage", true);
+      return withRoundLock(
+        actor.tenantId,
+        projectId,
+        roundId,
+        async (round, save) => {
+          if (!round) {
+            throw new ProjectError(404, "approval_round_not_found", {
+              roundId,
+            });
+          }
+          const itemIndex = round.triage.findIndex(
+            (item) => item.itemId === itemId,
+          );
+          if (itemIndex === -1) {
+            throw new ProjectError(404, "triage_item_not_found", {
+              roundId,
+              itemId,
+            });
+          }
+          const target = round.triage[itemIndex]!;
+          if (target.status === "incorporated") {
+            throw new ProjectError(409, "triage_item_already_incorporated", {
+              roundId,
+              itemId,
+            });
+          }
+          let nextStatus: TriageItem["status"] = "dismissed";
+          if (input.action === "incorporate") nextStatus = "incorporated";
+          if (input.action === "reply") nextStatus = "replied";
+          const updatedItem: TriageItem = {
+            itemId: target.itemId,
+            roundId: target.roundId,
+            reviewerId: target.reviewerId,
+            reviewerName: target.reviewerName,
+            persona: target.persona,
+            ...(target.slide === undefined ? {} : { slide: target.slide }),
+            text: target.text,
+            status: nextStatus,
+            ...(input.action === "reply" ? { reply: trimmedReply } : {}),
+          };
+          const updatedTriage = [...round.triage];
+          updatedTriage[itemIndex] = updatedItem;
+          const updatedRound: StoredApprovalRound = {
+            ...round,
+            triage: updatedTriage,
+          };
+          if (input.action === "incorporate") {
+            const coordinatorRunId =
+              store.activeCoordinatorRunId === undefined
+                ? undefined
+                : await store.activeCoordinatorRunId(projectId);
+            if (coordinatorRunId === undefined) {
+              throw new ProjectError(409, "coordinator_not_running");
+            }
+            if (mailRun === undefined) {
+              throw new ProjectError(503, "run_mail_unavailable");
+            }
+            let audience: string | undefined;
+            try {
+              const pkg = await store.readPackage(
+                actor,
+                projectId,
+                round.packageVersion,
+              );
+              const bundle = parseApprovalPackageBundle(pkg.content);
+              audience = bundle.manifest.audience;
+            } catch (error) {
+              audience = error instanceof Error ? undefined : undefined;
+            }
+            const reviewer = round.reviewers.find(
+              (r) => r.id === target.reviewerId,
+            );
+            const decisionOutcome = reviewer?.decision?.outcome;
+            await save(updatedRound);
+            try {
+              await mailRun(
+                coordinatorRunId,
+                incorporatedFeedbackMessage({
+                  packageVersion: round.packageVersion,
+                  ...(audience === undefined ? {} : { audience }),
+                  reviewerName: target.reviewerName,
+                  persona: target.persona,
+                  ...(decisionOutcome === undefined
+                    ? {}
+                    : { decision: decisionOutcome }),
+                  ...(target.slide === undefined
+                    ? {}
+                    : { slide: target.slide }),
+                  text: target.text,
+                }),
+              );
+            } catch (error) {
+              await save(round);
+              throw error;
+            }
+            return serializeRound(updatedRound, currentNow());
+          }
+          await save(updatedRound);
+          return serializeRound(updatedRound, currentNow());
         },
       );
     },
@@ -1096,7 +1289,7 @@ const security = [
 export function mountApprovalRoundRoutes(
   app: Hono<TenantEnv>,
   service: ApprovalRoundService,
-  _nativeFetch?: (request: Request) => Promise<Response>,
+  nativeFetch?: (request: Request) => Promise<Response>,
 ) {
   const body = async (c: { req: { json(): Promise<unknown> } }) => {
     const json = await readJson(c.req);
@@ -1316,6 +1509,49 @@ export function mountApprovalRoundRoutes(
           actorOf(c),
           c.req.param("projectId"),
           c.req.param("roundId"),
+        ),
+      );
+    },
+  );
+
+  app.post(
+    "/:projectId/approval-rounds/:roundId/triage/:itemId",
+    describeRoute({
+      tags: ["Artifacts"],
+      operationId: "triageReviewerFeedback",
+      description:
+        "Records the project owner's triage decision (incorporate, dismiss, or reply) on a reviewer feedback bullet. Only incorporating an item mails the coordinator as the owner with the quoted external feedback block.",
+      security,
+      requestBody: {
+        required: true,
+        content: {
+          "application/json": { schema: resolver(TriageDecisionInput) },
+        },
+      },
+      responses: {
+        200: {
+          description: "The updated approval round",
+          content: {
+            "application/json": { schema: resolver(ApprovalRound) },
+          },
+        },
+        400: { description: "Invalid triage decision" },
+        403: { description: "Caller is not a person who manages the project" },
+        404: { description: "Round or triage item not found" },
+        409: { description: "The project has no running coordinator" },
+      },
+    }),
+    async (c) => {
+      const current = actorOf(c);
+      return c.json(
+        await service.triageItem(
+          current,
+          c.req.param("projectId"),
+          c.req.param("roundId"),
+          c.req.param("itemId"),
+          await body(c),
+          (runId, content) =>
+            mailRunAsCaller(c, nativeFetch, current.tenantId, runId, content),
         ),
       );
     },

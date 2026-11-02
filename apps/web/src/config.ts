@@ -246,11 +246,39 @@ export const wording = {
     projectOptions: (title: string) => `Options for ${title}`,
     projects: "Projects",
     inProgress: "Projects in progress",
+    whatsNew: "What's new",
+    whatsNewBadge: "New",
     settings: "Settings",
     untitledProject: "Project",
     noProjectTitle: "No project open",
     noProjectLead:
       "Choose a project from the list. Chat stays on the left and outputs on the right.",
+  },
+  whatsNew: {
+    title: "What's new",
+    sections: "What's new features",
+    tabs: {
+      slideDecks: "Slide decks",
+      approvals: "Approvals",
+    },
+    features: {
+      slideDecks: {
+        id: "slide_decks",
+        title: "Slide decks",
+        experimental: false,
+        description:
+          "Ask the coordinator to present your project for an audience — such as a CEO, CTO, investor, or client — to generate a tailored 16:9 slide deck (.pptx and .pdf) from your approved documents and preview it beside the chat.",
+      },
+      approvals: {
+        id: "experimental_approvals",
+        title: "Approvals",
+        experimental: true,
+        statusNote: "Experimental — off by default",
+        actionLabel: "Enable in Settings",
+        description:
+          "Share approval packages with reviewers, track their decisions, and pull their feedback straight into your prompt with one click.",
+      },
+    },
   },
   projectLoadFailure: {
     title: "This project couldn't be opened",
@@ -1086,6 +1114,18 @@ export const wording = {
       saving: "Saving…",
       saved: "Saved",
       failed: "Not saved",
+      experimental: [
+        {
+          id: "experimental_approvals",
+          label: "Approvals (Experimental)",
+          hint: "On, share tailored approval packages with stakeholders, track reviewer status (Pending Feedback, Approve), and incorporate feedback directly into your prompt.",
+          options: [
+            { id: "no", label: "Off" },
+            { id: "yes", label: "On" },
+          ],
+          default: "no",
+        },
+      ],
     },
     approvals: {
       section: "Workspace approvals",
@@ -1099,6 +1139,7 @@ export const wording = {
       reviewerName: "Reviewer name",
       reviewerPersona: "Persona",
       reviewerEmail: "Email (optional)",
+      reviewerGoal: "Goal or decision focus (optional)",
       addReviewer: "Add reviewer",
       removeReviewer: "Remove",
       emptyReviewers: "No saved workspace reviewers yet.",
@@ -1133,9 +1174,13 @@ export const wording = {
   approvalRound: {
     heading: "Share for sign-off",
     lead: "Add each person reviewing this package to download their personalized .zip (slide deck, PDF, README and pinned source documents) and track their sign-off or feedback.",
-    shareButton: "Add reviewers & download .zip",
+    shareButton: "Add new reviewer",
+    shareSubmitButton: "Add reviewer",
+    shareFormLegend: "Add new reviewer",
     cancelShare: "Cancel",
-    dialogTitle: "Share approval package",
+    dialogTitle: "Add new reviewer",
+    dialogDescription:
+      "Add a reviewer to tailor their approval package and track feedback.",
     expiryLabel: "Expires in",
     expiry: {
       "24h": "24 hours",
@@ -1144,6 +1189,7 @@ export const wording = {
     },
     reviewerRowLabel: (index: number) => `Reviewer ${String(index)}`,
     reviewerName: "Reviewer name",
+    reviewerNamePlaceholder: "Dana Chen",
     reviewerPersona: "Persona",
     reviewerPersonaPlaceholder: "Select role or persona…",
     reviewerPersonas: [
@@ -1165,18 +1211,74 @@ export const wording = {
     customPersonaPlaceholder: "Type custom role or persona…",
     addCustomPersona: "Add",
     workspaceReviewerLabel: "Pick from workspace",
-    workspaceReviewerPlaceholder: "Select a workspace reviewer…",
+    workspaceReviewerPlaceholder: "Choose saved reviewer…",
     workspaceReviewerOption: (name: string, persona: string) =>
       `${name} (${persona})`,
     saveToWorkspaceLabel: (name: string) =>
       name === "" ? "Save to workspace?" : `Save ${name} to workspace?`,
+    saveToWorkspaceNote: "Save reviewer for future projects",
     saveToWorkspaceTooltip:
       "Saves this reviewer to the workspace so you can pick them in any project without retyping their details.",
     reviewerEmail: "Email (optional)",
+    reviewerEmailPlaceholder: "Optional",
+    reviewerGoal: "Goal / decision focus (optional)",
+    reviewerGoalPlaceholder:
+      "What decision or sign-off does this person focus on?",
+    defaultGoal: (persona: string) =>
+      `Review and sign off from the ${persona} perspective.`,
+    tableHeaders: {
+      reviewer: "Name",
+      role: "Role",
+      goal: "Focus",
+      status: "Status",
+    },
+    fieldLabels: {
+      saved: "Saved",
+      name: "Name",
+      role: "Role",
+      focus: "Focus",
+      email: "Email",
+      workspace: "Workspace",
+      expires: "Expires",
+      decision: "Decision",
+      feedback: "Feedback",
+    },
+    pendingOutcome: "Pending",
+    inlineFeedbackPlaceholder: "Add feedback note...",
+    saveField: "Save",
+    savingField: "Saving…",
+    saveReviewerDetails: "Save details",
+    savingReviewerDetails: "Saving details…",
+    reviewerDetailsSaved: (name: string) => `Saved details for ${name}.`,
+    tailorPrompt: (name: string, persona: string, goal: string) =>
+      `Generate a slide deck for ${name} (${persona}) focused on: ${goal}.`,
+    tailorRequested: (name: string) =>
+      `Asked the coordinator to tailor the package for ${name}.`,
+    generateSlideDeck: "Generate slide deck",
+    generatingSlideDeck: "Generating slide deck…",
+    viewSlideDeck: "View slide deck",
+    slideDeckDialogTitle: (name: string, role: string) => `${name} — ${role}`,
+    downloadDialogTitle: (name: string) => `Download package — ${name}`,
+    downloadSectionLead:
+      "All package files are selected by default. Uncheck any items you do not want to include for this reviewer.",
+    downloadAllButton: "Download all",
+    downloadSelectedCount: (count: number) =>
+      count === 1 ? "Download 1 file" : `Download ${String(count)} files`,
+    selectAllFiles: "Select all",
+    deselectAllFiles: "Deselect all",
+    packageItemPptx: "Slide deck (.pptx)",
+    packageItemPdf: "Printable handout (.pdf)",
+    packageItemSource: (kindLabel: string, title: string, version: number) =>
+      `${kindLabel} — ${title} (v${String(version)})`,
+    packageSummaryNote: (name: string, persona: string) =>
+      `Includes personalized README for ${name} (${persona}), slide deck (.pptx), printable PDF (.pdf), and pinned source documents.`,
+    feedbackSection: "Feedback",
+    noFeedbackYet: "No feedback recorded yet.",
+    docsSection: "Package & documents",
     addReviewer: "Add reviewer",
     removeReviewer: "Remove",
-    startRound: "Save & download .zip",
-    startingRound: "Preparing .zip…",
+    startRound: "Add reviewer",
+    startingRound: "Adding…",
     roundHeading: (version: number) => `Package v${String(version)} reviewers`,
     roundStatus: {
       open: "Open",
@@ -1188,13 +1290,15 @@ export const wording = {
       decided: "Decided",
       expired: "Expired",
     },
-    downloadReviewerZip: (name: string) => `Download .zip for ${name}`,
-    downloadZipShort: "Download .zip",
+    downloadReviewerZip: (name: string) =>
+      `Download Approval Package for ${name}`,
+    downloadZipShort: "Download package",
+    downloadingZipShort: "Downloading…",
     shareReviewerZip: (name: string) => `Share .zip for ${name}`,
     outcomeLabel: "Decision",
     outcome: {
       approve: "Approve",
-      request_changes: "Request changes",
+      request_changes: "Pending Feedback",
       comment: "Comment",
     },
     recordDecision: "Record decision",

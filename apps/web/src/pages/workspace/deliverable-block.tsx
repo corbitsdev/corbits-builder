@@ -5,15 +5,12 @@
  * for HTML and JSON.
  */
 import { wording } from "../../config.ts";
-import { useContext, useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { Button, CsvTable, ShimmerText } from "@corbits/react-ui";
-import { downloadPackageZip } from "../../api/artifacts.ts";
 import { Markdown } from "../../markdown.jsx";
 import {
   APPROVAL_PACKAGE_MEDIA_TYPE,
   ApprovalPackagePreview,
-  approvalPackagePdfFile,
-  parseApprovalPackage,
 } from "./approval-package-preview.tsx";
 import {
   DESIGN_MEDIA_TYPE,
@@ -42,7 +39,6 @@ import type { ApproachesMeta } from "@corbits-builder/schemas/approaches";
 import { ApproachesComparison } from "./approaches-comparison.tsx";
 import type { ApproachChoice } from "./approach-choice.ts";
 import { ContextualApprovalRounds } from "./approval-rounds.tsx";
-import { DesignTarget } from "./mockup-tweaks.tsx";
 
 export type { RetainedVersion };
 
@@ -106,6 +102,7 @@ export function DeliverableBody({
   onRetry,
   onReadVersion,
   onAddToPrompt,
+  onDeliverMessage,
   onViewVersion,
   approachChoice,
   requestedVersion,
@@ -120,6 +117,7 @@ export function DeliverableBody({
   onRetry?: (() => void) | undefined;
   onReadVersion?: (version: number) => Promise<ReadVersion>;
   onAddToPrompt?: (passage: PassageQuote) => void;
+  onDeliverMessage?: ((message: string) => Promise<boolean | void>) | undefined;
   /** The person chose a version to read, which holds this document in the pane. */
   onViewVersion?: () => void;
   /** The person's pick of a filed approach, and how to make it. */
@@ -159,6 +157,7 @@ export function DeliverableBody({
       onToggleChanges={onToggleChanges}
       {...(onReadVersion === undefined ? {} : { onReadVersion })}
       {...(onAddToPrompt === undefined ? {} : { onAddToPrompt })}
+      {...(onDeliverMessage === undefined ? {} : { onDeliverMessage })}
       {...(onViewVersion === undefined ? {} : { onViewVersion })}
       {...(approachChoice === undefined ? {} : { approachChoice })}
       {...(requestedVersion === undefined ? {} : { requestedVersion })}
@@ -191,6 +190,7 @@ function ReadyDocument({
   onToggleChanges,
   onReadVersion,
   onAddToPrompt,
+  onDeliverMessage,
   onViewVersion,
   approachChoice,
   requestedVersion,
@@ -203,6 +203,7 @@ function ReadyDocument({
   onToggleChanges: () => void;
   onReadVersion?: (version: number) => Promise<ReadVersion>;
   onAddToPrompt?: (passage: PassageQuote) => void;
+  onDeliverMessage?: ((message: string) => Promise<boolean | void>) | undefined;
   onViewVersion?: () => void;
   approachChoice?: ApproachChoice;
   requestedVersion?: { version: number; seq: number } | undefined;
@@ -214,7 +215,7 @@ function ReadyDocument({
   const [pendingVersion, setPendingVersion] = useState<number | null>(null);
   const [readError, setReadError] = useState<string | null>(null);
   const [device, setDevice] = useState<PreviewDevice>("desktop");
-  const designTarget = useContext(DesignTarget);
+  const [shareOpen, setShareOpen] = useState(false);
   const tipsGroup = useTipsGroup();
   const readRef = useRef(onReadVersion);
   readRef.current = onReadVersion;
@@ -353,33 +354,8 @@ function ReadyDocument({
         prepare: "shown",
         build: async () => ({ file: await zipFile(stem, design) }),
       };
-    if (kind === "approval_package" && afterText !== null) {
-      if (designTarget !== null) {
-        return {
-          type: ZIP_TYPE,
-          download: wording.paneFile.downloadPackage,
-          share: wording.paneFile.sharePackage,
-          key: `${designTarget.projectId}:package:${String(viewing)}`,
-          prepare: "intent",
-          build: async () => {
-            const { filename, archive } = await downloadPackageZip(
-              designTarget.projectId,
-              viewing,
-            );
-            return {
-              file: new File([archive], filename, { type: ZIP_TYPE }),
-            };
-          },
-        };
-      }
-      const pkg = parseApprovalPackage(afterText);
-      if (pkg !== null) {
-        return shownFile(
-          approvalPackagePdfFile(stem, pkg),
-          wording.paneFile.downloadPackagePdf,
-          wording.paneFile.sharePackagePdf,
-        );
-      }
+    if (kind === "approval_package") {
+      return null;
     }
     if (kind === "sheet" && afterText !== null)
       return shownFile(
@@ -390,7 +366,20 @@ function ReadyDocument({
     return null;
   };
   const files = useFileGroup(sourceFile());
+  const approvalGroup =
+    kind === "approval_package"
+      ? [
+          {
+            id: "add-reviewers",
+            label: wording.approvalRound.shareButton,
+            text: wording.approvalRound.shareButton,
+            active: shareOpen,
+            onSelect: () => setShareOpen((current) => !current),
+          },
+        ]
+      : [];
   const barGroups = [
+    approvalGroup,
     versionGroup({
       versions: document.versions ?? [],
       viewing,
@@ -515,14 +504,7 @@ function ReadyDocument({
       return <div className="pane-notes">{notes}</div>;
     }
     if (kind === "approval_package") {
-      return (
-        <>
-          <aside className="approval-package-reminder" role="note">
-            <p className="inline-note">{wording.approvalPackage.reminder}</p>
-          </aside>
-          {notes}
-        </>
-      );
+      return notes;
     }
     return (
       <>
@@ -539,13 +521,28 @@ function ReadyDocument({
   return (
     <div className="deliverable-body">
       {renderDocumentHeader()}
-      <PassageQuotes title={title} version={viewing} {...add}>
-        {readingView()}
-        {comparison}
-      </PassageQuotes>
       {kind === "approval_package" ? (
-        <ContextualApprovalRounds packageVersion={viewing} />
-      ) : null}
+        <PassageQuotes title={title} version={viewing} {...add}>
+          <ContextualApprovalRounds
+            packageVersion={viewing}
+            packageContent={body}
+            packageVersions={document.versions?.map((item) => item.version)}
+            onReadPackageVersion={fetchVersion}
+            shareOpen={shareOpen}
+            onShareOpenChange={setShareOpen}
+            isAddReviewerOpen={shareOpen}
+            onCloseAddReviewer={() => setShareOpen(false)}
+            {...(onOpenSource === undefined ? {} : { onOpenSource })}
+            {...(onAddToPrompt === undefined ? {} : { onAddToPrompt })}
+            {...(onDeliverMessage === undefined ? {} : { onDeliverMessage })}
+          />
+        </PassageQuotes>
+      ) : (
+        <PassageQuotes title={title} version={viewing} {...add}>
+          {readingView()}
+          {comparison}
+        </PassageQuotes>
+      )}
       {visual ? null : (
         <PaneBar label={wording.documentBar} groups={barGroups} floating />
       )}

@@ -53,9 +53,10 @@ import {
   type HubUser,
 } from "./api/auth.ts";
 import { WorkspaceMenu } from "./workspace-menu.tsx";
-import { Settings } from "./pages/settings.jsx";
+import { Settings, type SettingsTab } from "./pages/settings.jsx";
 import {
   Avatar,
+  Badge,
   BootScreen,
   Button as UiButton,
   Sidebar,
@@ -66,8 +67,16 @@ import {
   SidebarItem,
   SidebarItemRow,
   SidebarSection,
+  Tabs,
   useTheme,
 } from "@corbits/react-ui";
+import {
+  Dialog,
+  DialogBody,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+} from "@corbits/react-ui/ui/dialog";
 import { Auth } from "./pages/auth.jsx";
 import { StageWorkspace } from "./pages/workspace.jsx";
 import { firstRunScreen, type HubAuthState } from "./first-run.ts";
@@ -221,6 +230,78 @@ function ProjectLoadFailure({
 // in the icon rail exactly as a SidebarItem's does.
 const RAIL_LABEL_CLASS = "group-data-[collapsed=true]/sidebar:sr-only";
 
+export type WhatsNewTab = keyof typeof wording.whatsNew.tabs;
+
+const WHATS_NEW_TABS: readonly { id: WhatsNewTab; label: string }[] = [
+  { id: "slideDecks", label: wording.whatsNew.tabs.slideDecks },
+  { id: "approvals", label: wording.whatsNew.tabs.approvals },
+];
+
+/**
+ * Highlights new workspace features in a tabbed dialog and links directly to Settings → Preferences.
+ */
+export function WhatsNewDialog({
+  open = true,
+  initialTab = "slideDecks",
+  onClose,
+  onOpenPreferences,
+}: {
+  open?: boolean;
+  initialTab?: WhatsNewTab;
+  onClose: () => void;
+  onOpenPreferences: (preferenceId?: string) => void;
+}) {
+  const copy = wording.whatsNew;
+  const [activeTab, setActiveTab] = useState<WhatsNewTab>(initialTab);
+  const renderFeatureTab = (tabId: WhatsNewTab) => {
+    if (tabId === "approvals") {
+      const feature = copy.features.approvals;
+      return (
+        <div className="whats-new-panel">
+          <p className="whats-new-copy">{feature.description}</p>
+          <div className="whats-new-action-row">
+            <span className="inline-note">{feature.statusNote}</span>
+            <UiButton
+              type="button"
+              variant="outline"
+              size="sm"
+              onClick={() => onOpenPreferences(feature.id)}
+            >
+              {feature.actionLabel}
+            </UiButton>
+          </div>
+        </div>
+      );
+    }
+    const feature = copy.features.slideDecks;
+    return (
+      <div className="whats-new-panel">
+        <p className="whats-new-copy">{feature.description}</p>
+      </div>
+    );
+  };
+  return (
+    <Dialog open={open} onOpenChange={(next) => (next ? undefined : onClose())}>
+      <DialogContent aria-label={copy.title}>
+        <DialogHeader>
+          <DialogTitle>{copy.title}</DialogTitle>
+        </DialogHeader>
+        <DialogBody>
+          <Tabs
+            tabs={WHATS_NEW_TABS}
+            active={activeTab}
+            onChange={setActiveTab}
+            label={copy.sections}
+            className="whats-new-tabs"
+          >
+            {renderFeatureTab}
+          </Tabs>
+        </DialogBody>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
 /**
  * The rail down the left.
  *
@@ -230,13 +311,14 @@ const RAIL_LABEL_CLASS = "group-data-[collapsed=true]/sidebar:sr-only";
  * Collapsed, it is an icon rail that keeps every control and its name; the
  * choice is kept per browser.
  */
-function AppSidebar({
+export function AppSidebar({
   view,
   project,
   projects,
   onOpenProject,
   onNavigate,
   onSettingsClose,
+  onOpenWhatsNew,
   onProjectChanged,
   onProjectDeleted,
   onNotice,
@@ -251,6 +333,7 @@ function AppSidebar({
   onNavigate: (view: View) => void;
   /** Returns to wherever Settings was opened from. */
   onSettingsClose: () => void;
+  onOpenWhatsNew?: () => void;
   onProjectChanged: () => void;
   onProjectDeleted: () => void;
   onNotice: (
@@ -361,6 +444,12 @@ function AppSidebar({
       </SidebarContent>
       <SidebarFooter>
         <ul className="app-sidebar-list">
+          <SidebarItem asChild>
+            <button type="button" onClick={onOpenWhatsNew}>
+              <span>{wording.shell.whatsNew}</span>
+              <Badge tone="neutral">{wording.shell.whatsNewBadge}</Badge>
+            </button>
+          </SidebarItem>
           <SidebarItem asChild active={inSettings} icon={<SettingsIcon />}>
             <button
               type="button"
@@ -381,6 +470,14 @@ function AppSidebar({
 export function App() {
   const { resolvedMode } = useTheme();
   const [shownView, setShownView] = useState<View>(initialView);
+  const [whatsNewOpen, setWhatsNewOpen] = useState(false);
+  const [settingsTab, setSettingsTab] = useState<SettingsTab | undefined>(
+    undefined,
+  );
+  const [focusPreference, setFocusPreference] = useState<string | undefined>(
+    undefined,
+  );
+  const [focusSeq, setFocusSeq] = useState(0);
   // The path decides whether a project is open (or an invitation is on
   // screen), so Back leaves it and Forward returns.
   const urlProject = useSyncExternalStore(subscribeToHistory, projectInUrl);
@@ -407,16 +504,42 @@ export function App() {
   // toggle-to-close return there rather than always landing on the projects
   // list.
   const [settingsFrom, setSettingsFrom] = useState<View>("projects");
-  const openSettings = () => {
-    setSettingsFrom(view === "settings" ? "projects" : view);
+  const openSettings = (tab?: SettingsTab, focusId?: string) => {
+    setSettingsFrom(view === "settings" ? settingsFrom : view);
     setView("settings");
+    if (typeof window !== "undefined" && tab !== undefined) {
+      const url = new URL(window.location.href);
+      url.searchParams.set("view", "settings");
+      url.searchParams.set("tab", tab);
+      if (focusId !== undefined) {
+        url.searchParams.set("focus", focusId);
+      } else {
+        url.searchParams.delete("focus");
+      }
+      window.history.replaceState(window.history.state, "", url);
+    }
+    setSettingsTab(tab);
+    setFocusPreference(focusId);
+    if (tab !== undefined || focusId !== undefined) {
+      setFocusSeq((seq) => seq + 1);
+    }
+  };
+  const openPreferencesFromWhatsNew = (preferenceId?: string) => {
+    setWhatsNewOpen(false);
+    openSettings(
+      "preferences",
+      preferenceId ?? wording.whatsNew.features.approvals.id,
+    );
   };
   const navigate = (next: View) => {
     if (next === "settings") openSettings();
     else setView(next);
   };
-  const closeSettings = () =>
+  const closeSettings = () => {
+    setSettingsTab(undefined);
+    setFocusPreference(undefined);
     setView(settingsFrom === "settings" ? "projects" : settingsFrom);
+  };
 
   const slowHost = useSlowHost();
   const [auth, setAuth] = useState<HubAuthState>("unknown");
@@ -666,6 +789,7 @@ export function App() {
           onOpenProject={(projectId) => openProject(projectId)}
           onNavigate={navigate}
           onSettingsClose={closeSettings}
+          onOpenWhatsNew={() => setWhatsNewOpen(true)}
           onProjectChanged={() => void refresh()}
           onProjectDeleted={() => {
             setSelected(null);
@@ -764,11 +888,22 @@ export function App() {
                 user={user}
                 onUserChanged={setUser}
                 onSignOut={signOut}
+                {...(settingsTab !== undefined
+                  ? { requestedTab: settingsTab }
+                  : {})}
+                {...(focusPreference !== undefined ? { focusPreference } : {})}
+                focusSeq={focusSeq}
               />
             ) : null}
           </div>
         </main>
       </div>
+      {whatsNewOpen ? (
+        <WhatsNewDialog
+          onClose={() => setWhatsNewOpen(false)}
+          onOpenPreferences={openPreferencesFromWhatsNew}
+        />
+      ) : null}
       {/* Outside the .app grid: its section would otherwise take the canvas's row. */}
       <Toaster theme={resolvedMode} richColors closeButton />
       <FineMode />
