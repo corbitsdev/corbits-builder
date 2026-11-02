@@ -44,6 +44,8 @@ import {
   conceptTab,
   type ConceptView,
 } from "./design-concepts.tsx";
+import { UserManualPane } from "./user-manual.tsx";
+import type { UserManual } from "@corbits-builder/schemas/artifact";
 import { DesignThemes } from "./design-themes.tsx";
 import type { PreviewDevice } from "./device-preview.tsx";
 import type { PassageQuote } from "./passage-note.tsx";
@@ -76,6 +78,36 @@ function filterVisibleDeliverables(
 const TAB_PREFIX = "workspace-document";
 const DRAFT_TAB = "design-draft";
 const draftIds = panelTabIds(TAB_PREFIX, DRAFT_TAB);
+const MANUAL_TAB = "user-manual";
+const manualIds = panelTabIds(TAB_PREFIX, MANUAL_TAB);
+// The tabs that are not filed documents: open while what they show is there. Read at call time,
+// as some of these tabs are named further down.
+const isSideOnly = (id: string) =>
+  id === DRAFT_TAB || id === LIVE_TAB || id === MANUAL_TAB || id === THEMES_TAB;
+const isSideTab = (id: string) =>
+  isSideOnly(id) || conceptOfTab(id) !== undefined;
+
+/** The tab that is open: a side tab while what it shows is there, else the chosen document. */
+function selectTab(input: {
+  side: string | null;
+  draftShown: boolean;
+  conceptShown: boolean;
+  liveApp: boolean;
+  manual: boolean;
+  themes: boolean;
+  selectedKind: string | undefined;
+  designPart: DesignPart;
+}): string | null {
+  const { side } = input;
+  if (side === DRAFT_TAB && input.draftShown) return DRAFT_TAB;
+  if (input.conceptShown) return side;
+  if (side === LIVE_TAB && input.liveApp) return LIVE_TAB;
+  if (side === MANUAL_TAB && input.manual) return MANUAL_TAB;
+  if (side === THEMES_TAB && input.themes) return THEMES_TAB;
+  if (input.selectedKind === "design" && input.designPart === "mockup")
+    return MOCKUP_TAB;
+  return input.selectedKind ?? null;
+}
 // The filed design is one document read as two tabs: its plan under the design's kind, its mockup here.
 const MOCKUP_TAB = "design-mockup";
 export const LIVE_TAB = "live-app";
@@ -139,6 +171,7 @@ function documentStatus(item: Deliverable): string {
 export function ArtifactPane({
   projectTitle,
   draft = null,
+  manual = null,
   concepts = null,
   openTab = null,
   liveApp = null,
@@ -160,6 +193,8 @@ export function ArtifactPane({
   projectTitle: string;
   /** The live designer's unfiled mockup, shown in its own tab until a design is filed. */
   draft?: DesignFiles | null;
+  /** The app's user manual with its pictures, in its own tab once the coder has written it. */
+  manual?: UserManual | null;
   /** The design concepts the person compares, a tab each, until one is picked. */
   concepts?: { projectId: string; views: readonly ConceptView[] } | null;
   /** A tab the conversation asks for that is not a filed document, such as a concept. */
@@ -202,36 +237,30 @@ export function ArtifactPane({
   useEffect(() => {
     if (openTab !== null)
       setSide(
-        openTab.value === LIVE_TAB || conceptOfTab(openTab.value) !== undefined
+        openTab.value === LIVE_TAB ||
+          openTab.value === MANUAL_TAB ||
+          conceptOfTab(openTab.value) !== undefined
           ? openTab.value
           : null,
       );
   }, [openTab]);
   const sideConcept = side === null ? undefined : conceptOfTab(side);
   const conceptShown = conceptViews.some((view) => view.label === sideConcept);
-  const selectedId =
-    side === DRAFT_TAB && draftShown
-      ? DRAFT_TAB
-      : conceptShown
-        ? side
-        : side === LIVE_TAB && liveApp !== null
-          ? LIVE_TAB
-          : side === THEMES_TAB && themes !== null
-            ? THEMES_TAB
-            : selected?.kind === "design" && designPart === "mockup"
-              ? MOCKUP_TAB
-              : (selected?.kind ?? null);
+  const selectedId = selectTab({
+    side,
+    draftShown,
+    conceptShown,
+    liveApp: liveApp !== null,
+    manual: manual !== null,
+    themes: themes !== null,
+    selectedKind: selected?.kind,
+    designPart,
+  });
   const [requestedVersions, setRequestedVersions] = useState<
     Record<string, { version: number; seq: number }>
   >({});
   const choose = (id: string) => {
-    if (
-      id === DRAFT_TAB ||
-      id === LIVE_TAB ||
-      id === THEMES_TAB ||
-      conceptOfTab(id) !== undefined
-    )
-      return setSide(id);
+    if (isSideTab(id)) return setSide(id);
     setSide(null);
     if (id === MOCKUP_TAB || id === "design")
       setDesignPart(id === MOCKUP_TAB ? "mockup" : "plan");
@@ -255,10 +284,7 @@ export function ArtifactPane({
   const seen = useSeenVersions();
   const tipsGroup = useTipsGroup();
   const shown =
-    selectedId === DRAFT_TAB ||
-    selectedId === LIVE_TAB ||
-    selectedId === THEMES_TAB ||
-    conceptShown
+    (selectedId !== null && isSideOnly(selectedId)) || conceptShown
       ? null
       : selected;
   const strip = useTabStrip();
@@ -378,6 +404,15 @@ export function ArtifactPane({
                         title={wording.liveApp.title}
                       >
                         {wording.liveApp.tab}
+                      </PanelTab>
+                    ) : null,
+                    item.kind === "build_plan" && manual !== null ? (
+                      <PanelTab
+                        key={MANUAL_TAB}
+                        value={MANUAL_TAB}
+                        title={wording.liveApp.manualTitle}
+                      >
+                        {wording.documentTab["user_manual"]}
                       </PanelTab>
                     ) : null,
                   ],
@@ -604,6 +639,16 @@ export function ArtifactPane({
                   </PanelPane>
                 );
               })}
+          {manual !== null ? (
+            <PanelPane
+              value={MANUAL_TAB}
+              id={manualIds.pane}
+              role="tabpanel"
+              aria-labelledby={manualIds.tab}
+            >
+              <UserManualPane manual={manual} />
+            </PanelPane>
+          ) : null}
           {draftShown ? (
             <PanelPane
               value={DRAFT_TAB}

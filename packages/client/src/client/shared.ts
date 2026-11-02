@@ -45,6 +45,7 @@ import type {
 import type {
   AcceptanceChecklist,
   AcceptedMaterials,
+  UserManual,
   AppSnapshotReceipt,
   AppVersionList,
   ArtifactContent,
@@ -466,6 +467,12 @@ export type ProductApiClient = Readonly<{
     projectId: string,
     signal?: AbortSignal,
   ): Promise<AcceptanceChecklist>;
+  /** The app's user manual with its pictures, from the live coder or the filed app. */
+  manual(
+    tenantId: string,
+    projectId: string,
+    signal?: AbortSignal,
+  ): Promise<UserManual>;
   liveApp(
     tenantId: string,
     projectId: string,

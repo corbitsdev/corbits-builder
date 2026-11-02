@@ -4,6 +4,7 @@ import { dirname, join } from "node:path";
 import { type } from "arktype";
 import { workflowRunRepoIdForAddress } from "@intx/hub-sessions";
 import { hasCode } from "@intx/types";
+import type { UserManual } from "@corbits-builder/schemas/artifact";
 import { packApp } from "../builds/app-snapshot.ts";
 import {
   spliceDesignScreens,
@@ -134,13 +135,30 @@ const DEMO_ACCOUNT = "server/src/data/demo-account.json";
 const utf8 = new TextDecoder("utf-8", { fatal: true });
 
 // A regular UTF-8 file in the workspace, null when it is larger than maxBytes, or undefined while
-// there is none. No directory on its way may be a symlink and the file is opened without following
-// one, so nothing outside the workspace is served.
+// there is none or it is not UTF-8.
 async function readWorkspaceText(
   workspace: string,
   path: string,
   maxBytes: number,
 ) {
+  const bytes = await readWorkspaceBytes(workspace, path, maxBytes);
+  if (bytes === undefined || bytes === null) return bytes;
+  try {
+    return utf8.decode(bytes);
+  } catch (error) {
+    if (error instanceof TypeError) return undefined;
+    throw error;
+  }
+}
+
+// A regular file in the workspace, null when it is larger than maxBytes, or undefined while there
+// is none. No directory on its way may be a symlink and the file is opened without following one,
+// so nothing outside the workspace is served.
+async function readWorkspaceBytes(
+  workspace: string,
+  path: string,
+  maxBytes: number,
+): Promise<Uint8Array | null | undefined> {
   const target = join(workspace, path);
   try {
     if (
@@ -164,13 +182,82 @@ async function readWorkspaceText(
     const stat = await file.stat();
     if (!stat.isFile()) return undefined;
     if (stat.size > maxBytes) return null;
-    return utf8.decode(await file.readFile());
-  } catch (error) {
-    if (error instanceof TypeError) return undefined;
-    throw error;
+    return await file.readFile();
   } finally {
     await file.close();
   }
+}
+
+const MAX_MANUAL_BYTES = 512 * 1024;
+const MAX_PICTURE_BYTES = 4 * 1024 * 1024;
+// Every picture a manual shows travels in one answer, so the whole set is bounded.
+const MAX_PICTURES_BYTES = 32 * 1024 * 1024;
+const PICTURE_TYPES: Record<string, string> = {
+  png: "image/png",
+  jpg: "image/jpeg",
+  jpeg: "image/jpeg",
+  gif: "image/gif",
+  webp: "image/webp",
+  svg: "image/svg+xml",
+};
+// A picture as Markdown or HTML names it, as check-app reads them.
+const PICTURE_REF =
+  /!\[[^\]]*\]\(\s*<?([^)\s>]+)>?(?:\s+"[^"]*")?\s*\)|<img\b[^>]*\bsrc=["']([^"']+)/g;
+
+/** The pictures a manual shows under docs/manual/, as it names them: "manual/home.png". */
+export function manualPictureRefs(markdown: string): string[] {
+  const refs = new Set<string>();
+  for (const [, link, img] of markdown.matchAll(PICTURE_REF)) {
+    const ref = decodeURIComponent(link ?? img ?? "");
+    if (ref.startsWith("manual/") && !ref.split("/").includes(".."))
+      refs.add(ref);
+  }
+  return [...refs];
+}
+
+/** The manual's pictures as data URLs, keyed as it names them, from wherever their bytes are kept. */
+export function manualPictures(
+  markdown: string,
+  bytesOf: (ref: string) => Uint8Array | undefined,
+): Record<string, string> {
+  const pictures: Record<string, string> = {};
+  let total = 0;
+  for (const ref of manualPictureRefs(markdown)) {
+    const type = PICTURE_TYPES[ref.split(".").at(-1)?.toLowerCase() ?? ""];
+    const bytes = bytesOf(ref);
+    if (type === undefined || bytes === undefined) continue;
+    total += bytes.byteLength;
+    if (total > MAX_PICTURES_BYTES) break;
+    pictures[ref] =
+      `data:${type};base64,${Buffer.from(bytes).toString("base64")}`;
+  }
+  return pictures;
+}
+
+// The coder's docs/USER-MANUAL.md with the pictures it shows, or undefined until it writes one.
+export async function readUserManual(
+  workspace: string,
+): Promise<UserManual | undefined> {
+  const markdown = await readWorkspaceText(
+    workspace,
+    join("docs", "USER-MANUAL.md"),
+    MAX_MANUAL_BYTES,
+  );
+  if (markdown === null) throw new ProjectError(409, "manual_too_large");
+  if (markdown === undefined) return undefined;
+  const read = new Map<string, Uint8Array>();
+  for (const ref of manualPictureRefs(markdown)) {
+    const bytes = await readWorkspaceBytes(
+      workspace,
+      join("docs", ref),
+      MAX_PICTURE_BYTES,
+    );
+    if (bytes !== undefined && bytes !== null) read.set(ref, bytes);
+  }
+  return {
+    markdown,
+    pictures: manualPictures(markdown, (ref) => read.get(ref)),
+  };
 }
 
 // The coder's ACCEPTANCE.md at the workspace root, or undefined until it writes one.

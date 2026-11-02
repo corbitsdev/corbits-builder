@@ -52,6 +52,7 @@ import {
   DesignTweaks,
   type AcceptanceChecklist,
   type AcceptedMaterials,
+  type UserManual,
   type MaterialReceipt,
   type DesignTweaksReceipt,
   type DesignChoiceReceipt,
@@ -115,6 +116,8 @@ import {
   readDemoLogin,
   readDesignBundle,
   readDesignDraft,
+  readUserManual,
+  manualPictures,
   warmStepWorkspace,
 } from "./design-draft.ts";
 import type { LiveApps } from "../live-app/runner.ts";
@@ -1242,6 +1245,27 @@ export function createArtifactService(
       const markdown = filed?.bundle.files["ACCEPTANCE.md"];
       if (markdown !== undefined) return { markdown };
       throw new ProjectError(404, "acceptance_not_found");
+    },
+
+    // The user manual as the coder keeps it, with the pictures check-app saved; once the coder
+    // ends, the one filed with the app, whose pictures the bundle carries as binaries.
+    async manual(actor: Actor, projectId: string): Promise<UserManual> {
+      await requireProject(actor, projectId, "read");
+      for (const { dir } of await liveWorkspaces(actor, "coder")) {
+        const manual = await readUserManual(dir);
+        if (manual !== undefined) return manual;
+      }
+      const filed = await filedApp(actor);
+      const markdown = filed?.bundle.files["docs/USER-MANUAL.md"];
+      if (filed !== undefined && markdown !== undefined)
+        return {
+          markdown,
+          pictures: manualPictures(markdown, (ref) => {
+            const data = filed.bundle.binary?.[`docs/${ref}`];
+            return data === undefined ? undefined : Buffer.from(data, "base64");
+          }),
+        };
+      throw new ProjectError(404, "manual_not_found");
     },
 
     async read(

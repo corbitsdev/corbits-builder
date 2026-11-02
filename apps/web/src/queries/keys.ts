@@ -25,6 +25,10 @@ export const keys = {
     all: ["acceptance"] as const,
     of: (projectId: string) => ["acceptance", projectId] as const,
   },
+  userManual: {
+    all: ["userManual"] as const,
+    of: (projectId: string) => ["userManual", projectId] as const,
+  },
   liveApp: {
     all: ["liveApp"] as const,
     of: (projectId: string) => ["liveApp", projectId] as const,
