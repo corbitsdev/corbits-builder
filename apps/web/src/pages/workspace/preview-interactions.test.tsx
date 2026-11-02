@@ -1,5 +1,6 @@
 import { describe, expect, test } from "bun:test";
 import { renderToStaticMarkup } from "react-dom/server";
+import { firstPage } from "./design-preview.tsx";
 import { predecessorOf } from "./document-versions.ts";
 import { DevicePreview } from "./device-preview.tsx";
 
@@ -23,5 +24,37 @@ describe("device preview", () => {
     );
     expect(html).toContain('sandbox=""');
     expect(html).not.toContain("allow-scripts");
+  });
+
+  test("splices per-screen files into index.html in navigation order", () => {
+    const rendered = firstPage({
+      "designs/index.html":
+        '<nav><a href="#/overview">Overview</a><a href="#/orders">Orders</a></nav><main class="app-main"></main>',
+      "designs/screens/home.html":
+        '<section data-screen="home"><h1 data-testid="home-title">Hello, world</h1></section>',
+      "designs/screens/orders.html":
+        '<section data-screen="orders"><h1>Orders</h1></section>',
+      "designs/screens/overview.html":
+        '<section data-screen="overview"><h1>Overview</h1></section>',
+    });
+    expect(rendered).not.toContain("Hello, world");
+    expect(rendered.indexOf('data-screen="overview"')).toBeLessThan(
+      rendered.indexOf('data-screen="orders"'),
+    );
+    expect(rendered.indexOf('data-screen="orders"')).toBeLessThan(
+      rendered.indexOf("</main>"),
+    );
+  });
+
+  test("wraps a screen file that omits data-screen or includes a body tag", () => {
+    const rendered = firstPage({
+      "designs/index.html":
+        '<nav><a href="#/orders">Orders</a></nav><main class="app-main"></main>',
+      "designs/screens/orders.html":
+        "<!doctype html><html><body><div><h1>Orders</h1></div><script>alert(1)</script></body></html>",
+    });
+    expect(rendered).toContain('<section data-screen="orders">');
+    expect(rendered).toContain("<div><h1>Orders</h1></div>");
+    expect(rendered).not.toContain("alert(1)");
   });
 });

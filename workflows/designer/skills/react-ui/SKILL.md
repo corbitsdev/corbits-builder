@@ -33,8 +33,9 @@ kit's documentation, props included.
 
 ## In a design mockup
 
-The mockup is three files: `.builder/DESIGN.md`, `.builder/designs/index.html`
-and `.builder/designs/styles.css`. It is plain HTML and CSS: pick the kit
+The mockup lives in `.builder`: `DESIGN.md`, `designs/styles.css`,
+`designs/index.html` (the app shell and navigation) and one
+`designs/screens/<name>.html` file per screen. It is plain HTML and CSS: pick the kit
 component for each part from these references, write its markup by hand with
 the tokens and base component classes in `styles.css`, and name the component
 in the `DESIGN.md` components table so the coder builds it from the kit. The

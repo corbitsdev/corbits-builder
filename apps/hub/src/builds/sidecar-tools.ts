@@ -123,6 +123,17 @@ const DESIGNER_TOOLS = new Set([
   "edit_file",
   "grep",
 ]);
+// The designer's prompt names files under .builder (DESIGN.md, designs/...) without repeating the
+// folder prefix on every bullet; map bare design paths into .builder so writes never land outside it.
+export const designPath = (raw: string) => {
+  const clean = raw.replace(/^\.\/+/, "");
+  return clean === "DESIGN.md" ||
+    clean === "designs" ||
+    clean.startsWith("designs/")
+    ? `.builder/${clean}`
+    : raw;
+};
+
 // The calls after which the agent hears what its running app complained of since the last one.
 const REPORTING = new Set([...WRITES, PACKAGE_INSTALL_TOOL]);
 // run_shell reports a failed command as its output, headed by its exit code.
@@ -507,7 +518,18 @@ export function createSidecarCodingTools(policy: {
           ...(design ? [checkDesignDefinition] : []),
           ...(policy.browser?.tools ?? []),
         ],
-        run: async (call, signal) => {
+        run: async (rawCall, signal) => {
+          const rawPath = rawCall.arguments?.["path"];
+          const call =
+            design && typeof rawPath === "string"
+              ? {
+                  ...rawCall,
+                  arguments: {
+                    ...rawCall.arguments,
+                    path: designPath(rawPath),
+                  },
+                }
+              : rawCall;
           if (browserNames.has(call.name)) return runBrowser(call, signal);
           if (design && call.name === CHECK_DESIGN_TOOL) {
             await open(signal);

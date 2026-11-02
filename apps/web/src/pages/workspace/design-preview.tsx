@@ -97,8 +97,66 @@ export function parseBundle(content: string): Record<string, string> | null {
   }
 }
 
+const SCREEN_PREFIX = "designs/screens/";
+const STARTER_HOME_MARK = '<h1 data-testid="home-title">Hello, world</h1>';
+
+function screenNameOf(path: string, html: string): string {
+  const match = html.match(/data-screen=["']([^"']+)["']/);
+  if (match?.[1] !== undefined) return match[1];
+  return path.slice(SCREEN_PREFIX.length, -".html".length);
+}
+
+function normalizeScreenHtml(path: string, html: string): string {
+  const body = html.match(/<body[^>]*>([\s\S]*?)<\/body>/i)?.[1] ?? html;
+  const withoutScripts = body
+    .replace(/<script\b[\s\S]*?<\/script>/gi, "")
+    .trim();
+  if (/data-screen=/.test(withoutScripts)) return withoutScripts;
+  const name = screenNameOf(path, withoutScripts);
+  return `<section data-screen="${name}">\n${withoutScripts}\n</section>`;
+}
+
+function screenFragments(files: DesignFiles, page: string): string {
+  const inline = new Set(
+    [...page.matchAll(/data-screen=["']([^"']+)["']/g)].flatMap((m) =>
+      m[1] === undefined ? [] : [m[1]],
+    ),
+  );
+  const raw = Object.entries(files).filter(
+    ([path]) => path.startsWith(SCREEN_PREFIX) && path.endsWith(".html"),
+  );
+  const filtered = raw.filter(([path, html]) => {
+    if (
+      path === "designs/screens/home.html" &&
+      html.includes(STARTER_HOME_MARK) &&
+      (raw.length > 1 || inline.size > 0)
+    )
+      return false;
+    return !inline.has(screenNameOf(path, html));
+  });
+  const order = [...page.matchAll(/href=["']#\/([^/"'\s]+)/g)].flatMap((m) =>
+    m[1] === undefined ? [] : [m[1]],
+  );
+  const rank = (entry: readonly [string, string]) => {
+    const index = order.indexOf(screenNameOf(entry[0], entry[1]));
+    return index === -1 ? order.length : index;
+  };
+  return filtered
+    .sort((a, b) => rank(a) - rank(b) || a[0].localeCompare(b[0]))
+    .map(([path, html]) => normalizeScreenHtml(path, html))
+    .join("\n");
+}
+
+function spliceScreens(page: string, fragments: string): string {
+  if (fragments.length === 0) return page;
+  if (/<\/main>/i.test(page))
+    return page.replace(/<\/main>/i, (tag) => `${fragments}\n${tag}`);
+  return `${page}\n${fragments}`;
+}
+
 function mockupPage(files: DesignFiles, page: string, head: string): string {
-  const inlined = page.replace(
+  const withScreens = spliceScreens(page, screenFragments(files, page));
+  const inlined = withScreens.replace(
     /<link\s+rel="stylesheet"\s+href="([^"]+)"\s*\/?>/g,
     (link, href: string) => {
       const css = files[`designs/${href}`];
@@ -114,7 +172,12 @@ function mockupPage(files: DesignFiles, page: string, head: string): string {
 
 function bundlePages(files: DesignFiles): string[] {
   return Object.keys(files)
-    .filter((path) => path.startsWith("designs/") && path.endsWith(".html"))
+    .filter(
+      (path) =>
+        path.startsWith("designs/") &&
+        !path.startsWith(SCREEN_PREFIX) &&
+        path.endsWith(".html"),
+    )
     .map((path) => path.slice("designs/".length));
 }
 

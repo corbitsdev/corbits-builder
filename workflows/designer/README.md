@@ -24,8 +24,9 @@ and skills through its macros.
   step on a posix sidecar; each message is another request on the same warm
   workspace.
 - `starter/`: the workspace every design begins from: `.builder/DESIGN.md`,
-  `.builder/designs/index.html` and `styles.css`, and a `README.md` for the
-  designer that is not filed with the design.
+  `.builder/designs/index.html`, `.builder/designs/screens/home.html` and
+  `styles.css`, and a `README.md` for the designer that is not filed with the
+  design.
 - `themes/`: the design themes a person can preview and pick, each a sample
   `DESIGN.md` and `designs/` bundle.
 - `skills/`: skill bundles; the coder reads `react-ui` and `stack-docs`.
