@@ -18,6 +18,8 @@ x-hub: &hub
     MIGRATION_DATABASE_URL: ""
     HUB_WEB_DIR: /app/apps/web/dist
     BETTER_AUTH_BASE_URL: ${BETTER_AUTH_BASE_URL:-http://localhost:${PORT:-8000}}
+    # Published below on the hub service, so the browser outside the container can reach them.
+    LIVE_APP_PORTS: ${LIVE_APP_PORTS:-4100-4119}
   depends_on:
     db:
       condition: service_healthy
@@ -57,6 +59,8 @@ services:
       - "127.0.0.1:${PORT:-8000}:${PORT:-8000}"
       - "127.0.0.1:1455:1455"
       - "127.0.0.1:1456:1456"
+      # The live preview serves each open project's app on a port of its own from this range.
+      - "127.0.0.1:${LIVE_APP_PORTS:-4100-4119}:${LIVE_APP_PORTS:-4100-4119}"
   setup:
     <<: *hub
     profiles: ["setup"]
