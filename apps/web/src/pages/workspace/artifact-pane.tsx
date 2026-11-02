@@ -79,6 +79,35 @@ const draftIds = panelTabIds(TAB_PREFIX, DRAFT_TAB);
 // The filed design is one document read as two tabs: its plan under the design's kind, its mockup here.
 const MOCKUP_TAB = "design-mockup";
 export const LIVE_TAB = "live-app";
+
+/**
+ * What the pane shows when nothing is chosen: the live app once the build has started, else the
+ * filed document furthest along the project's flow, else nothing.
+ */
+export function defaultTab(
+  liveApp: boolean,
+  deliverables: readonly Deliverable[],
+): string | null {
+  if (liveApp) return LIVE_TAB;
+  return deliverables.at(-1)?.kind ?? null;
+}
+
+/**
+ * The pane's selection once the person's choice is read: theirs when they made one; else, after a
+ * reload, the default, which the pane shows itself when it is the live app and asks the page to
+ * open when it is a document, so the document is read like any the person picks.
+ */
+export function resolveSelection(
+  chosenId: string | null,
+  liveApp: boolean,
+  deliverables: readonly Deliverable[],
+): { selectedId: string | null; documentToOpen: string | null } {
+  if (chosenId !== null) return { selectedId: chosenId, documentToOpen: null };
+  const fallback = defaultTab(liveApp, deliverables);
+  return fallback === LIVE_TAB
+    ? { selectedId: LIVE_TAB, documentToOpen: null }
+    : { selectedId: null, documentToOpen: fallback };
+}
 const liveIds = panelTabIds(TAB_PREFIX, LIVE_TAB);
 const THEMES_TAB = "design-themes";
 const themesIds = panelTabIds(TAB_PREFIX, THEMES_TAB);
@@ -209,7 +238,7 @@ export function ArtifactPane({
   }, [openTab]);
   const sideConcept = side === null ? undefined : conceptOfTab(side);
   const conceptShown = conceptViews.some((view) => view.label === sideConcept);
-  const selectedId =
+  const chosenId =
     side === DRAFT_TAB && draftShown
       ? DRAFT_TAB
       : conceptShown
@@ -221,6 +250,15 @@ export function ArtifactPane({
             : selected?.kind === "design" && designPart === "mockup"
               ? MOCKUP_TAB
               : (selected?.kind ?? null);
+  const { selectedId, documentToOpen } = resolveSelection(
+    chosenId,
+    liveApp !== null,
+    deliverables,
+  );
+  // A document is chosen through the page, which reads it; the live app the pane shows itself.
+  useEffect(() => {
+    if (documentToOpen !== null) onSelect(documentToOpen);
+  }, [documentToOpen]);
   const [requestedVersions, setRequestedVersions] = useState<
     Record<string, { version: number; seq: number }>
   >({});
