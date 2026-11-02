@@ -92,6 +92,7 @@ import {
   designConcept,
   project,
   projectCoordinator,
+  settingsRecord,
 } from "../db/schema.ts";
 import type { AgentActivityTracker } from "./activity.ts";
 import type { Actor } from "../lib/actor.ts";
@@ -131,6 +132,7 @@ import {
 import { designChosenNote } from "../config/design.ts";
 import { loadSettings } from "../settings/policy.ts";
 import {
+  agentDecidesApprovals,
   preferenceGuidance,
   resolvePreferences,
 } from "../config/preferences.ts";
@@ -1344,15 +1346,84 @@ export function createArtifactService(
         throw new ProjectError(403, "artifact_write_refused", {
           kind: input.kind,
         });
-      if (input.kind === "approval_package")
-        await validateApprovalPackage(
-          input.content,
-          readProjectPackageSource(db, actor.tenantId),
-        );
       const [active] = await rawDB
         .select({ kind: principal.kind, refId: principal.refId })
         .from(principal)
         .where(eq(principal.id, actor.principalId));
+      if (input.kind === "approval_package") {
+        const settings = await loadSettings(rawDB, actor.tenantId, projectId);
+        const preferences = resolvePreferences(settings.preferences.value);
+        let sealed:
+          | {
+              audience: string;
+              decisionNeeded?: string;
+              sources: {
+                artifactId: string;
+                kind: string;
+                version: number;
+                sha256: string;
+              }[];
+            }
+          | undefined;
+        if (active?.kind === "workflow" && active.refId) {
+          const [row] = await rawDB
+            .select({ fields: settingsRecord.fields })
+            .from(settingsRecord)
+            .where(
+              and(
+                eq(settingsRecord.tenantId, actor.tenantId),
+                eq(settingsRecord.scopeKey, `presenter:${active.refId}`),
+              ),
+            );
+          const rawAssignment =
+            row && typeof row.fields === "object" && row.fields !== null
+              ? (row.fields as unknown as Record<string, unknown>)["assignment"]
+              : undefined;
+          if (
+            typeof rawAssignment === "object" &&
+            rawAssignment !== null &&
+            "audience" in rawAssignment &&
+            typeof rawAssignment.audience === "string" &&
+            "sources" in rawAssignment &&
+            Array.isArray(rawAssignment.sources)
+          ) {
+            sealed = {
+              audience: rawAssignment.audience,
+              ...("decisionNeeded" in rawAssignment &&
+              typeof rawAssignment.decisionNeeded === "string"
+                ? { decisionNeeded: rawAssignment.decisionNeeded }
+                : {}),
+              sources: rawAssignment.sources as {
+                artifactId: string;
+                kind: string;
+                version: number;
+                sha256: string;
+              }[],
+            };
+          } else {
+            throw new ProjectError(
+              403,
+              "approval_package_assignment_mismatch",
+              { runId: active.refId },
+            );
+          }
+        }
+        await validateApprovalPackage(
+          input.content,
+          readProjectPackageSource(
+            db,
+            actor.tenantId,
+            async (artifactId, kind, version) => {
+              if (kind !== "design" && agentDecidesApprovals(preferences))
+                return true;
+              return (
+                (await approvedVersion(actor.tenantId, artifactId)) === version
+              );
+            },
+          ),
+          sealed,
+        );
+      }
       // Each document version states its own open questions, so a revision never inherits the ones
       // its answers settled.
       const metadata =
@@ -1811,6 +1882,100 @@ export function createArtifactService(
         runId: input.runId,
         concept: { label: stored.label, direction: stored.direction },
       };
+    },
+
+    async recordPresenterAssignment(
+      actor: Actor,
+      projectId: string,
+      raw: unknown,
+    ) {
+      const PresenterAssignmentRecord = type({
+        "+": "ignore",
+        runId: "string > 0",
+        assignment: {
+          "+": "ignore",
+          audience: "string > 0",
+          decisionNeeded: "string > 0",
+          "tone?": "string",
+          "length?": "string",
+          sources: type({
+            "+": "ignore",
+            artifactId: "string > 0",
+            kind: "string > 0",
+            title: "string > 0",
+            version: "number.integer > 0",
+            sha256: /^[a-f0-9]{64}$/,
+          })
+            .array()
+            .atLeastLength(1),
+        },
+      });
+      const input = PresenterAssignmentRecord(raw);
+      if (input instanceof type.errors)
+        throw new ProjectError(400, "invalid_presenter_assignment", {
+          issues: input.summary,
+        });
+      await requireProject(actor, projectId, "manage");
+      const settings = await loadSettings(rawDB, actor.tenantId, projectId);
+      const preferences = resolvePreferences(settings.preferences.value);
+      const readSource = readProjectPackageSource(
+        db,
+        actor.tenantId,
+        async (artifactId, kind, version) => {
+          if (kind !== "design" && agentDecidesApprovals(preferences))
+            return true;
+          return (
+            (await approvedVersion(actor.tenantId, artifactId)) === version
+          );
+        },
+      );
+      for (const source of input.assignment.sources) {
+        const stored = await readSource(source.artifactId, source.version);
+        if (
+          !stored ||
+          stored.kind !== source.kind ||
+          stored.version !== source.version ||
+          stored.sha256 !== source.sha256
+        ) {
+          throw new ProjectError(422, "invalid_package_source", [
+            {
+              path: "assignment.sources",
+              message: `${source.artifactId}@${String(source.version)}`,
+            },
+          ]);
+        }
+        if (stored.approved === false) {
+          throw new ProjectError(422, "unapproved_package_source", [
+            {
+              path: "assignment.sources",
+              message: `${source.kind}@${String(source.version)}`,
+            },
+          ]);
+        }
+      }
+      const sealedAssignment = {
+        ...input.assignment,
+        sealed: true as const,
+      };
+      await rawDB
+        .insert(settingsRecord)
+        .values({
+          tenantId: actor.tenantId,
+          scopeKey: `presenter:${input.runId}`,
+          projectId,
+          fields: {
+            assignment: sealedAssignment,
+          } as unknown as typeof settingsRecord.$inferInsert.fields,
+        })
+        .onConflictDoUpdate({
+          target: [settingsRecord.tenantId, settingsRecord.scopeKey],
+          set: {
+            fields: {
+              assignment: sealedAssignment,
+            } as unknown as typeof settingsRecord.$inferInsert.fields,
+          },
+        });
+      return { runId: input.runId, assignment: sealedAssignment };
     },
 
     // Called by an asking tool after its native approval resolved. The hub

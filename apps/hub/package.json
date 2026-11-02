@@ -18,6 +18,7 @@
     "@corbits-builder/coder": "workspace:*",
     "@corbits-builder/coordinator": "workspace:*",
     "@corbits-builder/designer": "workspace:*",
+    "@corbits-builder/presenter": "workspace:*",
     "@corbits-builder/reviewer": "workspace:*",
     "@corbits-builder/schemas": "workspace:*",
     "@corbits-builder/writer": "workspace:*",

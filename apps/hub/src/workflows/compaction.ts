@@ -361,7 +361,9 @@ function unchecked(turns: readonly ConversationTurn[]): boolean {
 // the coordinator waited on a writer that had already answered.
 const unfiled = (turns: readonly ConversationTurn[]) =>
   !taskCalls(turns).some(
-    (call) => call.name === "write_artifact" && !call.isError,
+    (call) =>
+      (call.name === "write_artifact" || call.name === "file_package") &&
+      !call.isError,
   );
 
 /**

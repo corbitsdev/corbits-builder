@@ -27,6 +27,10 @@ const PERSON_LINES: Record<SpawnedRole, Record<Outcome, string>> = {
     failed: "The designer stopped before finishing.",
     cancelled: "The design was stopped.",
   },
+  presenter: {
+    failed: "The presenter stopped before finishing.",
+    cancelled: "The presentation was stopped.",
+  },
 };
 
 const TASKS: Record<SpawnedRole, (kind: string | undefined) => string> = {
@@ -35,6 +39,7 @@ const TASKS: Record<SpawnedRole, (kind: string | undefined) => string> = {
     `The reviewer checking the ${kind ?? "assigned"} document`,
   coder: () => "The coder building the app",
   designer: () => "The designer working on the app's design",
+  presenter: () => "The presenter building the approval package",
 };
 
 export function specialistEndedMessage(ended: {

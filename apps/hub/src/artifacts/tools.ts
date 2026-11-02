@@ -88,6 +88,7 @@ const DEFINITIONS_BY_ROLE: Record<
   reviewer: [readDefinition],
   coder: [readDefinition],
   designer: [readDefinition],
+  presenter: [readDefinition],
 };
 
 export function createArtifactTools(

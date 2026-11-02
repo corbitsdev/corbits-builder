@@ -15,6 +15,7 @@ export const InstalledWorkflows = type({
   // The coder whose install_packages does not ask, for a project that turned asking off.
   coderAnyPackage: NativeSpecialistDeployment,
   designer: NativeSpecialistDeployment,
+  presenter: NativeSpecialistDeployment,
 });
 export type InstalledWorkflows = typeof InstalledWorkflows.infer;
 
@@ -32,6 +33,7 @@ export const WorkflowProjectScope = type({
     reviewer: NativeSpecialistDeployment,
     coder: NativeSpecialistDeployment,
     designer: NativeSpecialistDeployment,
+    "presenter?": NativeSpecialistDeployment,
   },
   // Whether the project's build sandboxes reach any public host rather than only the npm registry.
   openNetwork: "boolean",
