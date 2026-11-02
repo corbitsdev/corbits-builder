@@ -6,6 +6,8 @@ import type {
   ReviewerInput,
   ReviewerOutcome,
   SlideNote,
+  TriageAction,
+  TriageItem,
 } from "@corbits-builder/schemas/approval-round";
 import { useContext, useEffect, useState } from "react";
 import {
@@ -13,6 +15,7 @@ import {
   recordReviewerDecision,
   settleApprovalRound,
   startApprovalRound,
+  triageReviewerFeedback,
 } from "../../api/artifacts.ts";
 import { wording } from "../../config.ts";
 import { humanFault } from "./human-fault.ts";
@@ -189,6 +192,118 @@ function ReviewerDecisionEditor({
   );
 }
 
+function TriageItemRow({
+  projectId,
+  roundId,
+  item,
+  onUpdated,
+}: {
+  projectId: string;
+  roundId: string;
+  item: TriageItem;
+  onUpdated: (round: ApprovalRound) => void;
+}) {
+  const [replyOpen, setReplyOpen] = useState(false);
+  const [replyText, setReplyText] = useState(
+    item.reply === undefined ? "" : item.reply,
+  );
+  const [busy, setBusy] = useState(false);
+  const [fault, setFault] = useState<string | null>(null);
+
+  const runTriage = async (action: TriageAction, reply?: string) => {
+    setBusy(true);
+    setFault(null);
+    try {
+      const updated = await triageReviewerFeedback(
+        projectId,
+        roundId,
+        item.itemId,
+        {
+          action,
+          ...(reply === undefined ? {} : { reply }),
+        },
+      );
+      onUpdated(updated);
+      setReplyOpen(false);
+    } catch (error) {
+      setFault(humanFault(error, roundText.failed));
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const scopeLabel =
+    item.slide === undefined
+      ? roundText.overallScope
+      : roundText.slidePrefix(item.slide);
+
+  return (
+    <li className="approval-triage-item">
+      <div className="tweak-row">
+        <span>
+          {item.reviewerName} ({item.persona}) · {scopeLabel}
+        </span>
+        <span>{roundText.triageStatus[item.status]}</span>
+      </div>
+      <p className="approval-triage-text">{item.text}</p>
+      {item.reply === undefined ? null : (
+        <p className="inline-note">{roundText.ownerReplyLabel(item.reply)}</p>
+      )}
+      {fault === null ? null : (
+        <p className="inline-note" role="alert">
+          {fault}
+        </p>
+      )}
+      <div className="tweak-actions">
+        <Button
+          type="button"
+          size="sm"
+          disabled={busy || item.status === "incorporated"}
+          onClick={() => void runTriage("incorporate")}
+        >
+          {roundText.incorporate}
+        </Button>
+        <Button
+          type="button"
+          size="sm"
+          variant="outline"
+          disabled={busy || item.status === "dismissed"}
+          onClick={() => void runTriage("dismiss")}
+        >
+          {roundText.dismiss}
+        </Button>
+        <Button
+          type="button"
+          size="sm"
+          variant="ghost"
+          disabled={busy}
+          onClick={() => setReplyOpen((current) => !current)}
+        >
+          {roundText.reply}
+        </Button>
+      </div>
+      {replyOpen ? (
+        <div className="tweak-actions">
+          <Input
+            aria-label={roundText.reply}
+            placeholder={roundText.replyPlaceholder}
+            value={replyText}
+            onChange={(event) => setReplyText(event.target.value)}
+          />
+          <Button
+            type="button"
+            size="sm"
+            disabled={busy || replyText.trim() === ""}
+            onClick={() => void runTriage("reply", replyText.trim())}
+          >
+            {roundText.sendReply}
+          </Button>
+        </div>
+      ) : null}
+    </li>
+  );
+}
+
 function RoundCard({
   projectId,
   round,
@@ -269,6 +384,26 @@ function RoundCard({
           </li>
         ))}
       </ul>
+      {round.triage.length === 0 ? null : (
+        <div
+          className="approval-triage-section"
+          aria-label={roundText.triageHeading}
+        >
+          <h3>{roundText.triageHeading}</h3>
+          <p className="inline-note">{roundText.triageLead}</p>
+          <ul className="approval-triage-list">
+            {round.triage.map((item) => (
+              <TriageItemRow
+                key={item.itemId}
+                projectId={projectId}
+                roundId={round.roundId}
+                item={item}
+                onUpdated={onUpdated}
+              />
+            ))}
+          </ul>
+        </div>
+      )}
       {round.status === "settled" ? null : (
         <div className="tweak-actions">
           <Button

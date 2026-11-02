@@ -61,6 +61,10 @@ export type {
   ReviewerState,
   SlideNote,
   StartApprovalRound,
+  TriageAction,
+  TriageDecisionInput,
+  TriageItem,
+  TriageItemStatus,
 } from "@corbits-builder/schemas/approval-round";
 export { ProductApiError };
 

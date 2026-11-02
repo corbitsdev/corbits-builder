@@ -22,22 +22,27 @@ import {
   ApprovalRoundList,
   RecordReviewerDecision,
   StartApprovalRound,
+  TriageDecisionInput,
   type ApprovalReviewer,
   type ApprovalRoundStatus,
   type ExpiryPreset,
   type ReviewerDecision,
+  type TriageItem,
 } from "@corbits-builder/schemas/approval-round";
 import {
   approvalRound,
   artifactImportApproval,
   project,
+  projectCoordinator,
 } from "../db/schema.ts";
 import {
+  incorporatedFeedbackMessage,
   packageReadme,
   type PackageManifestSource,
 } from "../config/approval-rounds.ts";
 import type { Actor } from "../lib/actor.ts";
 import { readJson } from "../lib/json.ts";
+import { mailRunAsCaller } from "../mail/caller-mail.ts";
 import { actorOf, authorizeProject } from "../projects/authorization.ts";
 import { ProjectError } from "../projects/errors.ts";
 import { parseApprovalPackageBundle } from "./approval-package.ts";
@@ -71,6 +76,7 @@ export type StoredApprovalRound = {
   expiresAt: Date;
   settledAt: Date | null;
   reviewers: StoredReviewer[];
+  triage: TriageItem[];
   triggeredRunId: string | null;
 };
 
@@ -121,6 +127,7 @@ export type ApprovalRoundStore = {
     roundId: string,
   ): Promise<StoredApprovalRound | undefined>;
   updateRound(round: StoredApprovalRound): Promise<void>;
+  activeCoordinatorRunId?(projectId: string): Promise<string | undefined>;
   triggerFeedbackRun?(
     actor: Actor,
     projectId: string,
@@ -276,10 +283,59 @@ function serializeRound(round: StoredApprovalRound, now: Date): ApprovalRound {
     reviewers: round.reviewers.map((reviewer) =>
       deriveReviewerView(reviewer, expired),
     ),
+    triage: round.triage,
     ...(round.triggeredRunId === null
       ? {}
       : { triggeredRunId: round.triggeredRunId }),
   });
+}
+
+function splitNoteBullets(rawText: string): string[] {
+  return rawText
+    .split(/\r?\n/)
+    .map((line) =>
+      line
+        .replace(/^[-*•+]\s+/, "")
+        .replace(/^\d+[.)]\s+/, "")
+        .trim(),
+    )
+    .filter((line) => line !== "");
+}
+
+function extractTriageItemsForDecision(
+  roundId: string,
+  reviewer: StoredReviewer,
+  decision: ReviewerDecision,
+): TriageItem[] {
+  const items: TriageItem[] = [];
+  if (decision.note !== undefined) {
+    for (const text of splitNoteBullets(decision.note)) {
+      items.push({
+        itemId: crypto.randomUUID(),
+        roundId,
+        reviewerId: reviewer.id,
+        reviewerName: reviewer.name,
+        persona: reviewer.persona,
+        text,
+        status: "pending",
+      });
+    }
+  }
+  for (const slideNote of decision.slideNotes) {
+    for (const text of splitNoteBullets(slideNote.text)) {
+      items.push({
+        itemId: crypto.randomUUID(),
+        roundId,
+        reviewerId: reviewer.id,
+        reviewerName: reviewer.name,
+        persona: reviewer.persona,
+        slide: slideNote.slide,
+        text,
+        status: "pending",
+      });
+    }
+  }
+  return items;
 }
 
 function hasFeedbackContent(decision: ReviewerDecision): boolean {
@@ -394,6 +450,7 @@ export function createPgApprovalRoundStore(
         expiresAt: round.expiresAt,
         settledAt: round.settledAt,
         reviewers: round.reviewers,
+        triage: round.triage,
         triggeredRunId: round.triggeredRunId,
         createdAt: round.createdAt,
       });
@@ -423,6 +480,7 @@ export function createPgApprovalRoundStore(
         expiresAt: row.expiresAt,
         settledAt: row.settledAt,
         reviewers: row.reviewers as StoredReviewer[],
+        triage: row.triage as TriageItem[],
         triggeredRunId: row.triggeredRunId,
       }));
     },
@@ -452,6 +510,7 @@ export function createPgApprovalRoundStore(
         expiresAt: row.expiresAt,
         settledAt: row.settledAt,
         reviewers: row.reviewers as StoredReviewer[],
+        triage: row.triage as TriageItem[],
         triggeredRunId: row.triggeredRunId,
       };
     },
@@ -462,6 +521,7 @@ export function createPgApprovalRoundStore(
         .set({
           settledAt: round.settledAt,
           reviewers: round.reviewers,
+          triage: round.triage,
           triggeredRunId: round.triggeredRunId,
         })
         .where(
@@ -471,6 +531,19 @@ export function createPgApprovalRoundStore(
             eq(approvalRound.projectId, round.projectId),
           ),
         );
+    },
+
+    async activeCoordinatorRunId(projectId) {
+      const [row] = await rawDB
+        .select({ runId: projectCoordinator.runId })
+        .from(projectCoordinator)
+        .where(
+          and(
+            eq(projectCoordinator.projectId, projectId),
+            eq(projectCoordinator.active, true),
+          ),
+        );
+      return row?.runId;
     },
 
     ...(triggerFeedbackRun === undefined ? {} : { triggerFeedbackRun }),
@@ -546,6 +619,7 @@ export function createApprovalRoundService(store: ApprovalRoundStore) {
             ? {}
             : { email: reviewer.email.trim() }),
         })),
+        triage: [],
         triggeredRunId: null,
       };
       await store.insertRound(round);
@@ -599,9 +673,18 @@ export function createApprovalRoundService(store: ApprovalRoundStore) {
         ...target,
         decision,
       };
+      const retainedTriage = round.triage.filter(
+        (item) => item.reviewerId !== reviewerId || item.status !== "pending",
+      );
+      const extractedTriage = extractTriageItemsForDecision(
+        round.roundId,
+        target,
+        decision,
+      );
       const updatedRound: StoredApprovalRound = {
         ...round,
         reviewers: updatedReviewers,
+        triage: [...retainedTriage, ...extractedTriage],
       };
       if (
         hasFeedbackContent(decision) &&
@@ -619,6 +702,84 @@ export function createApprovalRoundService(store: ApprovalRoundStore) {
       }
       await store.updateRound(updatedRound);
       return serializeRound(updatedRound, now);
+    },
+
+    async triageItem(
+      actor: Actor,
+      projectId: string,
+      roundId: string,
+      itemId: string,
+      raw: unknown,
+      mailRun?: (runId: string, content: string) => Promise<void>,
+    ): Promise<ApprovalRound> {
+      const input = TriageDecisionInput(raw);
+      if (input instanceof type.errors) {
+        throw new ProjectError(400, "invalid_triage_decision", {
+          issues: input.summary,
+        });
+      }
+      const trimmedReply = input.reply === undefined ? "" : input.reply.trim();
+      if (input.action === "reply" && trimmedReply === "") {
+        throw new ProjectError(400, "invalid_triage_decision");
+      }
+      await store.authorize(actor, projectId, "manage", true);
+      const round = await store.readRound(actor.tenantId, projectId, roundId);
+      if (!round) {
+        throw new ProjectError(404, "approval_round_not_found", { roundId });
+      }
+      const itemIndex = round.triage.findIndex(
+        (item) => item.itemId === itemId,
+      );
+      if (itemIndex === -1) {
+        throw new ProjectError(404, "triage_item_not_found", {
+          roundId,
+          itemId,
+        });
+      }
+      const target = round.triage[itemIndex]!;
+      let nextStatus: TriageItem["status"] = "dismissed";
+      if (input.action === "incorporate") nextStatus = "incorporated";
+      if (input.action === "reply") nextStatus = "replied";
+      const updatedItem: TriageItem = {
+        itemId: target.itemId,
+        roundId: target.roundId,
+        reviewerId: target.reviewerId,
+        reviewerName: target.reviewerName,
+        persona: target.persona,
+        ...(target.slide === undefined ? {} : { slide: target.slide }),
+        text: target.text,
+        status: nextStatus,
+        ...(input.action === "reply" ? { reply: trimmedReply } : {}),
+      };
+      if (input.action === "incorporate") {
+        const coordinatorRunId =
+          store.activeCoordinatorRunId === undefined
+            ? undefined
+            : await store.activeCoordinatorRunId(projectId);
+        if (coordinatorRunId === undefined) {
+          throw new ProjectError(409, "coordinator_not_running");
+        }
+        if (mailRun === undefined) {
+          throw new ProjectError(503, "run_mail_unavailable");
+        }
+        await mailRun(
+          coordinatorRunId,
+          incorporatedFeedbackMessage({
+            reviewerName: target.reviewerName,
+            persona: target.persona,
+            ...(target.slide === undefined ? {} : { slide: target.slide }),
+            text: target.text,
+          }),
+        );
+      }
+      const updatedTriage = [...round.triage];
+      updatedTriage[itemIndex] = updatedItem;
+      const updatedRound: StoredApprovalRound = {
+        ...round,
+        triage: updatedTriage,
+      };
+      await store.updateRound(updatedRound);
+      return serializeRound(updatedRound, currentNow());
     },
 
     async settle(
@@ -665,6 +826,7 @@ const security = [
 export function mountApprovalRoundRoutes(
   app: Hono<TenantEnv>,
   service: ApprovalRoundService,
+  nativeFetch?: (request: Request) => Promise<Response>,
 ) {
   const body = async (c: { req: { json(): Promise<unknown> } }) => {
     const json = await readJson(c.req);
@@ -850,6 +1012,49 @@ export function mountApprovalRoundRoutes(
           actorOf(c),
           c.req.param("projectId"),
           c.req.param("roundId"),
+        ),
+      );
+    },
+  );
+
+  app.post(
+    "/:projectId/approval-rounds/:roundId/triage/:itemId",
+    describeRoute({
+      tags: ["Artifacts"],
+      operationId: "triageReviewerFeedback",
+      description:
+        "Records the project owner's triage decision (incorporate, dismiss, or reply) on a reviewer feedback bullet. Only incorporating an item mails the coordinator as the owner with the quoted external feedback block.",
+      security,
+      requestBody: {
+        required: true,
+        content: {
+          "application/json": { schema: resolver(TriageDecisionInput) },
+        },
+      },
+      responses: {
+        200: {
+          description: "The updated approval round",
+          content: {
+            "application/json": { schema: resolver(ApprovalRound) },
+          },
+        },
+        400: { description: "Invalid triage decision" },
+        403: { description: "Caller is not a person who manages the project" },
+        404: { description: "Round or triage item not found" },
+        409: { description: "The project has no running coordinator" },
+      },
+    }),
+    async (c) => {
+      const current = actorOf(c);
+      return c.json(
+        await service.triageItem(
+          current,
+          c.req.param("projectId"),
+          c.req.param("roundId"),
+          c.req.param("itemId"),
+          await body(c),
+          (runId, content) =>
+            mailRunAsCaller(c, nativeFetch, current.tenantId, runId, content),
         ),
       );
     },

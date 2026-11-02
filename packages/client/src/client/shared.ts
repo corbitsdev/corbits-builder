@@ -62,6 +62,7 @@ import type {
   ApprovalRoundList,
   RecordReviewerDecision,
   StartApprovalRound,
+  TriageDecisionInput,
 } from "@corbits-builder/schemas/approval-round";
 import type { ProjectActivity } from "@corbits-builder/schemas/activity";
 import type {
@@ -535,6 +536,15 @@ export type ProductApiClient = Readonly<{
     tenantId: string,
     projectId: string,
     roundId: string,
+    signal?: AbortSignal,
+  ): Promise<ApprovalRound>;
+  /** Records the owner's triage decision on a reviewer feedback bullet, mailing the coordinator when incorporated. */
+  triageReviewerFeedback(
+    tenantId: string,
+    projectId: string,
+    roundId: string,
+    itemId: string,
+    input: TriageDecisionInput,
     signal?: AbortSignal,
   ): Promise<ApprovalRound>;
 }>;

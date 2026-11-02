@@ -67,6 +67,35 @@ export type ApprovalReviewer = typeof ApprovalReviewer.infer;
 export const ApprovalRoundStatus = type("'open' | 'expired' | 'settled'");
 export type ApprovalRoundStatus = typeof ApprovalRoundStatus.infer;
 
+export const TriageAction = type("'incorporate' | 'dismiss' | 'reply'");
+export type TriageAction = typeof TriageAction.infer;
+
+export const TriageItemStatus = type(
+  "'pending' | 'incorporated' | 'dismissed' | 'replied'",
+);
+export type TriageItemStatus = typeof TriageItemStatus.infer;
+
+export const TriageItem = type({
+  "+": "reject",
+  itemId: "string > 0",
+  roundId: "string > 0",
+  reviewerId: "string > 0",
+  reviewerName: "string > 0",
+  persona: "string > 0",
+  "slide?": "number.integer >= 1",
+  text: "string > 0",
+  status: TriageItemStatus,
+  "reply?": "string > 0",
+});
+export type TriageItem = typeof TriageItem.infer;
+
+export const TriageDecisionInput = type({
+  "+": "reject",
+  action: TriageAction,
+  "reply?": "string > 0",
+});
+export type TriageDecisionInput = typeof TriageDecisionInput.infer;
+
 export const ApprovalRound = type({
   "+": "reject",
   roundId: "string > 0",
@@ -80,6 +109,7 @@ export const ApprovalRound = type({
   expiresAt: "string > 0",
   "settledAt?": "string > 0",
   reviewers: ApprovalReviewer.array(),
+  triage: TriageItem.array(),
   "triggeredRunId?": "string > 0",
 });
 export type ApprovalRound = typeof ApprovalRound.infer;
