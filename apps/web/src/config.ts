@@ -705,15 +705,27 @@ export const wording = {
     next: (document: string) => `Next on approval: ${document}.`,
     /** The design concepts a design ask starts, listed by name. */
     concepts: "Design concepts to compare",
+    /** Column headings for those concepts on the design approval card. */
+    conceptColumns: {
+      design: "Design",
+      description: "Description",
+    },
     /** An ask's own action labels, by its tool, where the defaults read wrong. */
     actions: {
       design_app: {
-        approve: "Start the design",
-        deny: "Not yet",
+        /** Zero concepts, or several. */
+        approve: "Start Designs",
+        /** One concept, by its label: "Start Clear Skies". */
+        startNamed: (label: string) => `Start ${label}`,
+        deny: "Not Yet",
       },
     } as Record<
       string,
-      { approve: string; approveAlways?: string; deny: string }
+      {
+        approve: string;
+        deny: string;
+        startNamed?: (label: string) => string;
+      }
     >,
     /** A document the card lists, as a link: "Weather App Brief v2". */
     source: (title: string, version: number) => `${title} v${String(version)}`,

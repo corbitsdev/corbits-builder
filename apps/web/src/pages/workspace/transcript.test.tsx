@@ -105,6 +105,9 @@ describe("conversation transcript", () => {
     expect(html).toContain("Happy with the brief?");
     expect(html).toContain(">Yes, go ahead<");
     expect(html).toContain(">Not yet<");
+    expect(html).not.toContain(">Not Yet<");
+    expect(html).not.toContain("<table");
+    expect(html).not.toContain("Start Designs");
     expect(html).not.toContain("request_approval");
     expect(html).not.toContain("appr-1");
     expect(html).not.toContain(briefId);
@@ -122,7 +125,7 @@ describe("conversation transcript", () => {
       />,
     );
     expect(html).toContain("document-decision-once");
-    expect(html).toContain(">Start the design<");
+    expect(html).toContain(">Start Designs<");
     expect(html).not.toContain("Start designs without asking");
   });
 
@@ -319,5 +322,54 @@ describe("conversation transcript", () => {
     ]) {
       expect(html).not.toContain(hidden);
     }
+  });
+
+  test("a design approval lists each look and starts one by name", () => {
+    const html = renderToStaticMarkup(
+      <DocumentDecision
+        approval={{
+          approvalId: "appr-design",
+          toolName: "design_app",
+          concepts: [
+            {
+              label: "Clear Skies",
+              direction:
+                "Crisp cool neutrals, one cobalt accent, generous whitespace.",
+            },
+          ],
+        }}
+        onYes={() => {}}
+        onAlways={() => {}}
+        onNo={() => {}}
+      />,
+    );
+    expect(html).toContain(">Clear Skies<");
+    expect(html).toContain(">Crisp cool neutrals<");
+    expect(html).not.toContain("generous whitespace");
+    expect(html).toContain(">Start Clear Skies<");
+    expect(html).toContain(">Not Yet<");
+
+    const several = renderToStaticMarkup(
+      <DocumentDecision
+        approval={{
+          approvalId: "appr-several",
+          toolName: "design_app",
+          concepts: [
+            { label: "Clear Skies", direction: "Crisp cool neutrals." },
+            {
+              label: "Night Dock",
+              direction: "Square corners (--radius 0), a deep navy primary.",
+            },
+          ],
+        }}
+        onYes={() => {}}
+        onAlways={() => {}}
+        onNo={() => {}}
+      />,
+    );
+    expect(several).toContain(">Start Designs<");
+    expect(several).toContain(">Night Dock<");
+    expect(several).not.toContain("--radius");
+    expect(several).not.toContain(">Start Clear Skies<");
   });
 });
