@@ -95,7 +95,6 @@ export const ModelProvider = type({
   kind: "'api_key' | 'login' | 'custom'",
   label: name,
   hint: name,
-  needsBaseUrl: "boolean",
   baseURL: "string",
   models: type({ "+": "reject", id: name, label: name })
     .or(CustomModel)

@@ -24,8 +24,6 @@ type CommonEntry = {
   plugin: string;
   label: string;
   hint: string;
-  // Whether a person points it at their own base URL.
-  needsBaseUrl: boolean;
   baseURL: string;
   // The adapter quirks every offering of this provider carries.
   quirks?: Readonly<Record<string, unknown>>;
@@ -66,7 +64,6 @@ export const MODEL_PROVIDERS: readonly ShippedEntry[] = [
     kind: "api_key",
     label: "OpenAI",
     hint: "An OpenAI API key.",
-    needsBaseUrl: false,
     baseURL: "https://api.openai.com/v1",
     models: [
       { id: "gpt-6-astra", label: "GPT-6 Astra" },
@@ -84,7 +81,6 @@ export const MODEL_PROVIDERS: readonly ShippedEntry[] = [
     kind: "api_key",
     label: "Anthropic",
     hint: "An Anthropic API key.",
-    needsBaseUrl: false,
     baseURL: "https://api.anthropic.com",
     models: [
       { id: "claude-fable-5-1", label: "Claude Fable 5.1" },
@@ -106,7 +102,6 @@ export const MODEL_PROVIDERS: readonly ShippedEntry[] = [
     kind: "api_key",
     label: "Google",
     hint: "A Gemini API key.",
-    needsBaseUrl: false,
     baseURL: "https://generativelanguage.googleapis.com",
     models: [
       { id: "gemini-4-argon", label: "Gemini 4 Argon" },
@@ -121,7 +116,6 @@ export const MODEL_PROVIDERS: readonly ShippedEntry[] = [
     quirks: { reasoning: { maxEffort: "xhigh" } },
     label: "xAI API",
     hint: "An xAI API key, from console.x.ai.",
-    needsBaseUrl: false,
     baseURL: "https://api.x.ai/v1",
     models: [
       { id: "grok-4.7", label: "Grok 4.7" },
@@ -140,7 +134,6 @@ export const MODEL_PROVIDERS: readonly ShippedEntry[] = [
     kind: "login",
     label: "ChatGPT",
     hint: "Your ChatGPT subscription, signed in through OpenAI.",
-    needsBaseUrl: false,
     baseURL: "https://chatgpt.com/backend-api",
     models: [
       { id: "gpt-6.1-sol", label: "gpt-6.1-sol" },
@@ -160,7 +153,6 @@ export const MODEL_PROVIDERS: readonly ShippedEntry[] = [
     kind: "login",
     label: "xAI",
     hint: "Your xAI subscription, signed in through xAI.",
-    needsBaseUrl: false,
     baseURL: "https://cli-chat-proxy.grok.com/v1",
     models: [
       { id: "grok-4.7", label: "Grok 4.7" },
@@ -190,23 +182,13 @@ export function modelProvider(
   return directory.find((entry) => entry.id === id);
 }
 
-/**
- * The shipped entry a catalog provider row is a connection of: the one at its plugin and fixed base
- * URL, else the entry of that plugin a person points at their own base URL.
- */
+/** The shipped entry a catalog provider row is a connection of: the one at its plugin and base URL. */
 export function shippedOfRow(
   row: Readonly<{ plugin: string; baseURL: string | undefined }>,
 ): ShippedEntry | undefined {
-  const ofPlugin = MODEL_PROVIDERS.filter(
-    (entry) => entry.plugin === row.plugin,
+  return MODEL_PROVIDERS.find(
+    (entry) => entry.plugin === row.plugin && entry.baseURL === row.baseURL,
   );
-  if (row.baseURL !== undefined) {
-    const exact = ofPlugin.find(
-      (entry) => !entry.needsBaseUrl && entry.baseURL === row.baseURL,
-    );
-    if (exact) return exact;
-  }
-  return ofPlugin.find((entry) => entry.needsBaseUrl);
 }
 
 /** The custom provider running on a catalog provider row, else the shipped entry it connects. */

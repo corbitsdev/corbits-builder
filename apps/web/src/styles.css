@@ -1394,6 +1394,13 @@ select.quiet-control {
   padding: 4px;
 }
 
+/* The form sits between the dialog's header and its edges, so the body scrolls and the footer stays. */
+.provider-dialog-form {
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+}
+
 .provider-field {
   display: flex;
   flex-direction: column;

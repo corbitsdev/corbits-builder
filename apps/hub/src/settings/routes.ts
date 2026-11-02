@@ -311,7 +311,6 @@ export function createSettingsRoutes(
             kind: entry.kind,
             label: entry.label,
             hint: entry.hint,
-            needsBaseUrl: entry.needsBaseUrl,
             baseURL: entry.baseURL,
             models: [...entry.models],
             // A stored row name is the catalog's unique key, not something a person chose.
@@ -378,15 +377,14 @@ export function createSettingsRoutes(
       const input = ProviderTest(await c.req.json().catch(() => null));
       if (input instanceof type.errors)
         throw new ProjectError(400, "invalid_provider_test");
-      const typed = input.baseURL?.trim();
-      const entry = shippedOfRow({ plugin: input.plugin, baseURL: typed });
+      const baseURL = input.baseURL?.trim();
+      const entry = shippedOfRow({ plugin: input.plugin, baseURL });
       if (!entry && !CustomApi.allows(input.plugin))
         throw new ProjectError(400, "unknown_provider");
       if (entry?.kind === "login")
         throw new ProjectError(400, "provider_signs_in");
       if (entry && !("secret" in input))
         throw new ProjectError(400, "secret_required");
-      const baseURL = entry && !entry.needsBaseUrl ? entry.baseURL : typed;
       if (!baseURL) throw new ProjectError(400, "base_url_required");
       return c.json({
         status: await probeKey(

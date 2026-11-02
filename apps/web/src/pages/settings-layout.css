@@ -73,7 +73,8 @@
   gap: var(--space-1);
 }
 
-.settings-page .row {
+.settings-page .row,
+.settings-rows .row {
   display: flex;
   align-items: center;
   justify-content: space-between;
@@ -82,14 +83,16 @@
   font-size: 14px;
 }
 
-.settings-page .row .k {
+.settings-page .row .k,
+.settings-rows .row .k {
   display: flex;
   flex-direction: column;
   gap: 1px;
   min-width: 0;
 }
 
-.settings-page .row .k b {
+.settings-page .row .k b,
+.settings-rows .row .k b {
   display: inline-flex;
   align-items: center;
   gap: var(--space-2);
@@ -97,13 +100,15 @@
   font-size: 13.5px;
 }
 
-.settings-page .row .k span {
+.settings-page .row .k span,
+.settings-rows .row .k span {
   font-size: 12px;
   color: var(--muted-foreground);
   font-family: var(--font-mono);
 }
 
-.settings-page .row .v {
+.settings-page .row .v,
+.settings-rows .row .v {
   font-family: var(--font-mono);
   font-size: 12px;
   color: var(--muted-foreground);
@@ -116,7 +121,8 @@
   max-width: min(420px, 100%);
 }
 
-.settings-page input.field {
+.settings-page input.field,
+.settings-rows input.field {
   display: block;
   font-family: var(--font-mono);
   font-size: 12.5px;
@@ -130,7 +136,8 @@
   outline: none;
 }
 
-.settings-page input.field:focus {
+.settings-page input.field:focus,
+.settings-rows input.field:focus {
   border-color: var(--primary);
 }
 
@@ -160,11 +167,13 @@
     padding: var(--space-4) 0 var(--space-12);
   }
 
-  .settings-page .row {
+  .settings-page .row,
+  .settings-rows .row {
     flex-wrap: wrap;
   }
 
-  .settings-page .row .v {
+  .settings-page .row .v,
+  .settings-rows .row .v {
     flex-shrink: 1;
     justify-content: flex-start;
   }
@@ -174,7 +183,8 @@
   }
 }
 
-.settings-page .quiet-state {
+.settings-page .quiet-state,
+.settings-rows .quiet-state {
   display: inline-flex;
   align-items: center;
   gap: var(--space-2);
@@ -202,6 +212,76 @@
 
 @media (max-width: 520px) {
   .profile-role {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+
+/* Settings rows in a dialog: the body's own gap would double the rows' spacing, and rows sit a
+   little closer so a whole form fits without scrolling. */
+.provider-form.settings-rows {
+  gap: 0;
+}
+
+.provider-form.settings-rows .row {
+  padding: var(--space-2) 0;
+}
+
+/* A custom endpoint's API types: three compact choices on one line, the path each one calls. */
+.api-options {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: var(--space-2);
+  padding-bottom: var(--space-1);
+}
+
+.api-options .provider-hint {
+  font-family: var(--font-mono);
+  font-size: 12px;
+}
+
+/* A custom provider's models, listed under its row. */
+.custom-models {
+  padding-left: var(--space-4);
+}
+
+.settings-page input.field.token-field,
+.settings-rows input.field.token-field,
+.token-field {
+  width: 104px;
+}
+
+.token-head {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-1);
+  font-family: var(--font-sans);
+}
+
+.token-remove {
+  width: 2.25rem;
+  flex: none;
+}
+
+.models-toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-1);
+}
+
+@media (max-width: 560px) {
+  .settings-page input.field.token-field,
+  .settings-rows input.field.token-field,
+  .token-field {
+    width: 88px;
+  }
+
+  .custom-models {
+    padding-left: 0;
+  }
+}
+
+@media (max-width: 520px) {
+  .api-options {
     grid-template-columns: minmax(0, 1fr);
   }
 }
