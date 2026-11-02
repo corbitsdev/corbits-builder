@@ -39,8 +39,10 @@ import {
   ArtifactApprovalRecord,
   AppBundle,
   AppVersionMetadata,
+  DeckBundle,
   DocumentContent,
   MAX_APP_BYTES,
+  MAX_DECK_BYTES,
   MATERIAL_KIND,
   ArtifactKindWrite,
   DesignBundle,
@@ -153,11 +155,15 @@ const log = getLogger(["corbits-builder", "hub", "artifacts"]);
 // so no approval covers it.
 const APPROVAL_COVERS: Record<string, (kind: string) => boolean> = {
   request_approval: (kind) =>
-    kind !== "app" && kind !== "design" && kind !== "design_option",
-  instruct_coder: (kind) => kind !== "app" && kind !== "design_option",
+    kind !== "app" &&
+    kind !== "design" &&
+    kind !== "design_option" &&
+    kind !== "deck",
+  instruct_coder: (kind) =>
+    kind !== "app" && kind !== "design_option" && kind !== "deck",
 };
-// Whole documents, the filed app among them (up to 1 MiB of source).
-const MAX_READ_CHARS = 1024 * 1024;
+// Whole documents, the filed app and deck among them.
+const MAX_READ_CHARS = MAX_DECK_BYTES;
 const RECENT_FAILURES = 5;
 const RunError = type({ "+": "delete", message: "string", "code?": "string" });
 const UUID = "[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}";
@@ -188,6 +194,81 @@ async function isDirectory(path: string) {
 }
 
 const artifactResource = (kind: string) => "sb-artifact:" + kind;
+
+function validateArtifactWriteContent(
+  input: typeof ArtifactKindWrite.infer,
+): boolean {
+  const bundled =
+    input.kind === "design" ||
+    input.kind === "design_option" ||
+    input.kind === "app" ||
+    input.kind === "deck";
+  if (bundled && input.openQuestions)
+    throw new ProjectError(400, "invalid_artifact_write", {
+      issues: [
+        {
+          path: "openQuestions",
+          message: `goes on documents; write this ${input.kind} without it`,
+        },
+      ],
+    });
+  if (input.approaches) {
+    if (input.kind !== "approaches")
+      throw new ProjectError(400, "invalid_artifact_write", {
+        issues: [
+          {
+            path: "approaches",
+            message: `goes on the approaches document; write this ${input.kind} without it`,
+          },
+        ],
+      });
+    const issue = approachesIssue(input.approaches);
+    if (issue)
+      throw new ProjectError(400, "invalid_artifact_write", {
+        issues: [issue],
+      });
+  }
+  if (
+    input.kind === "design" ||
+    input.kind === "design_option" ||
+    input.kind === "app"
+  ) {
+    const bundle = (input.kind === "app" ? AppBundle : DesignBundle)(
+      parseJson(input.content),
+    );
+    if (bundle instanceof type.errors)
+      throw new ProjectError(400, "invalid_" + input.kind, {
+        issues: typeIssues(bundle, "content"),
+      });
+  }
+  if (input.kind === "app") {
+    const bytes = Buffer.byteLength(input.content);
+    if (bytes > MAX_APP_BYTES)
+      throw new ProjectError(413, "app_too_large", {
+        bytes,
+        limit: MAX_APP_BYTES,
+      });
+  } else if (input.kind === "deck") {
+    const bytes = Buffer.byteLength(input.content);
+    if (bytes > MAX_DECK_BYTES)
+      throw new ProjectError(413, "deck_too_large", {
+        bytes,
+        limit: MAX_DECK_BYTES,
+      });
+    const bundle = DeckBundle(parseJson(input.content));
+    if (bundle instanceof type.errors)
+      throw new ProjectError(400, "invalid_deck", {
+        issues: typeIssues(bundle, "content"),
+      });
+  } else {
+    const document = DocumentContent(input.content);
+    if (document instanceof type.errors)
+      throw new ProjectError(400, "invalid_artifact_write", {
+        issues: typeIssues(document, "content"),
+      });
+  }
+  return bundled;
+}
 
 // A document version records the open questions it leaves for the person; a version filed without
 // them, before they were recorded or by an import, leaves none. An approaches version may also
@@ -1261,58 +1342,7 @@ export function createArtifactService(
         throw new ProjectError(400, "invalid_artifact_write", {
           issues: input,
         });
-      const bundled =
-        input.kind === "design" ||
-        input.kind === "design_option" ||
-        input.kind === "app";
-      if (bundled && input.openQuestions)
-        throw new ProjectError(400, "invalid_artifact_write", {
-          issues: [
-            {
-              path: "openQuestions",
-              message: `goes on documents; write this ${input.kind} without it`,
-            },
-          ],
-        });
-      if (input.approaches) {
-        if (input.kind !== "approaches")
-          throw new ProjectError(400, "invalid_artifact_write", {
-            issues: [
-              {
-                path: "approaches",
-                message: `goes on the approaches document; write this ${input.kind} without it`,
-              },
-            ],
-          });
-        const issue = approachesIssue(input.approaches);
-        if (issue)
-          throw new ProjectError(400, "invalid_artifact_write", {
-            issues: [issue],
-          });
-      }
-      if (bundled) {
-        const bundle = (input.kind === "app" ? AppBundle : DesignBundle)(
-          parseJson(input.content),
-        );
-        if (bundle instanceof type.errors)
-          throw new ProjectError(400, "invalid_" + input.kind, {
-            issues: typeIssues(bundle, "content"),
-          });
-      }
-      if (input.kind === "app") {
-        const bytes = Buffer.byteLength(input.content);
-        if (bytes > MAX_APP_BYTES)
-          throw new ProjectError(413, "app_too_large", {
-            bytes,
-            limit: MAX_APP_BYTES,
-          });
-      } else {
-        const document = DocumentContent(input.content);
-        if (document instanceof type.errors)
-          throw new ProjectError(400, "invalid_artifact_write", {
-            issues: typeIssues(document, "content"),
-          });
-      }
+      const bundled = validateArtifactWriteContent(input);
       const allowed = await requireProject(actor, projectId, "read");
       if (!(await allowed(artifactResource(input.kind), "write")))
         throw new ProjectError(403, "artifact_write_refused", {
