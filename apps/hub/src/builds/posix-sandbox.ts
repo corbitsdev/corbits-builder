@@ -23,8 +23,88 @@ import { requestErrorMetadata } from "../request-error.ts";
 import type { buildPackageLayout } from "./package-layout.ts";
 import { BROWSER_ARGS } from "./browser.ts";
 import { CODER_REGISTRY_HOSTS } from "../config/packages.ts";
+import { COMMAND_PROGRESS_FILE } from "@corbits-builder/schemas/activity";
 
 const log = getLogger(["corbits-builder", "hub", "posix-sandbox"]);
+
+// A command's own word on its progress: a stderr line with this prefix, which the sandbox relays
+// to the hub and keeps out of the command's output. Set for commands the hub runs, so a command
+// the agent runs itself prints no such lines into what the agent reads.
+const PROGRESS_PREFIX = "progress: ";
+const PROGRESS_ENV = "SB_PROGRESS";
+const MAX_PROGRESS_LINE = 200;
+// Progress is read on a poll; writing it more often than this changes nothing the person sees.
+const PROGRESS_MIN_INTERVAL_MS = 1_000;
+
+/** Where a command's latest word about itself sits: beside the workspace, out of the sandbox's reach. */
+const progressFile = (workspace: string) =>
+  join(dirname(workspace), COMMAND_PROGRESS_FILE);
+
+/**
+ * Records what a long command in the workspace is doing now, for the hub to show the person. A
+ * note that cannot be written costs the person a line, never the command, so it is logged instead.
+ */
+export async function noteCommandProgress(workspace: string, line: string) {
+  try {
+    await writeFile(
+      progressFile(workspace),
+      JSON.stringify({
+        line: line.replace(/\s+/g, " ").trim().slice(0, MAX_PROGRESS_LINE),
+        at: new Date().toISOString(),
+      }),
+    );
+  } catch (error) {
+    log.warn("Command progress could not be noted", {
+      workspace,
+      ...requestErrorMetadata(error),
+    });
+  }
+}
+
+/** Forgets the command's progress once it has ended. */
+export async function clearCommandProgress(workspace: string) {
+  try {
+    await rm(progressFile(workspace), { force: true });
+  } catch (error) {
+    log.warn("Command progress could not be cleared", {
+      workspace,
+      ...requestErrorMetadata(error),
+    });
+  }
+}
+
+/**
+ * Relays a command's progress lines to the hub as they arrive and keeps the rest of its stderr
+ * for a failure. A progress line is noted at most once a second, since it is read on a poll.
+ */
+async function relayStderr(
+  stderr: ReadableStream<Uint8Array>,
+  workspace: string,
+  errors: string[],
+) {
+  const decoder = new TextDecoder();
+  let pending = "";
+  let noted = 0;
+  const take = async (line: string) => {
+    if (!line.startsWith(PROGRESS_PREFIX)) {
+      errors.push(line);
+      return;
+    }
+    const now = Date.now();
+    if (now - noted < PROGRESS_MIN_INTERVAL_MS) return;
+    noted = now;
+    await noteCommandProgress(workspace, line.slice(PROGRESS_PREFIX.length));
+  };
+  for await (const chunk of stderr) {
+    pending += decoder.decode(chunk, { stream: true });
+    const end = pending.lastIndexOf("\n");
+    if (end === -1) continue;
+    const lines = pending.slice(0, end).split("\n");
+    pending = pending.slice(end + 1);
+    for (const line of lines) await take(line);
+  }
+  if (pending !== "") await take(pending);
+}
 
 export type BuildPackageLayout = Awaited<ReturnType<typeof buildPackageLayout>>;
 // The workspace's dev app: its address, whether it runs and its recent output. stopped names the
@@ -947,7 +1027,7 @@ export async function createPosixBuildExecutor(
           ],
           {
             cwd,
-            env: childEnv,
+            env: { ...childEnv, [PROGRESS_ENV]: "1" },
             stdin: "ignore",
             stdout: "pipe",
             stderr: "pipe",
@@ -958,17 +1038,18 @@ export async function createPosixBuildExecutor(
         const stop = () => kill(child);
         const timer = setTimeout(stop, limits.commandTimeoutMs);
         signal.addEventListener("abort", stop, { once: true });
+        // Progress lines are relayed as they arrive; the rest of stderr is kept for a failure.
+        const errors: string[] = [];
+        const relay = relayStderr(child.stderr, cwd, errors);
         try {
-          const [output, errors] = await Promise.all([
-            new Response(child.stdout).text(),
-            new Response(child.stderr).text(),
-          ]);
+          const output = await new Response(child.stdout).text();
+          await relay;
           const exitCode = await child.exited;
           // A command that died before printing its checklist would otherwise fail with nothing said.
           const text =
             exitCode === 0
               ? output
-              : [output, errors.slice(-2000)]
+              : [output, errors.join("\n").slice(-2000)]
                   .filter((part) => part.trim())
                   .join("\n");
           return { exitCode, output: text.replaceAll(cwd + sep, "") };
@@ -978,6 +1059,7 @@ export async function createPosixBuildExecutor(
           // Chrome may outlive the command that started it.
           stop();
           commands.delete(child);
+          await clearCommandProgress(cwd);
         }
       },
       /** What the running app complained of since the last call: its server's errors and its page's. */
