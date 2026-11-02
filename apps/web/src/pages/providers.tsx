@@ -177,16 +177,20 @@ export function ProvidersSection({ onChanged }: { onChanged: () => void }) {
           }
         />
       ) : null}
-      {connected.map(({ provider, connection }) =>
-        provider.kind === "custom" && customApis ? (
-          <CustomProviderRow
-            key={connection.id}
-            provider={provider}
-            apis={customApis}
-            onChanged={onChanged}
-            onError={setError}
-          />
-        ) : provider.kind === "custom" ? null : (
+      {connected.map(({ provider, connection }) => {
+        if (provider.kind === "custom") {
+          if (!customApis) return null;
+          return (
+            <CustomProviderRow
+              key={connection.id}
+              provider={provider}
+              apis={customApis}
+              onChanged={onChanged}
+              onError={setError}
+            />
+          );
+        }
+        return (
           <div key={connection.id} className="row">
             <div className="k">
               <b>{connection.name}</b>
@@ -201,8 +205,8 @@ export function ProvidersSection({ onChanged }: { onChanged: () => void }) {
               </QuietState>
             ) : null}
           </div>
-        ),
-      )}
+        );
+      })}
       {error ? <Banner tone="error" title={error} /> : null}
     </>
   );
