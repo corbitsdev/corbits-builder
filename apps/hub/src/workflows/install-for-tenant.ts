@@ -100,33 +100,35 @@ function installedFrom(config: unknown): InstalledWorkflows | null {
   return parsed instanceof type.errors ? null : parsed;
 }
 
+async function buildAndRead(key: string, inference: Inference) {
+  const directory = await mkdtemp(join(tmpdir(), "sb-hub-packages-"));
+  try {
+    const manifest = await buildWorkflowPackages(
+      directory,
+      PACKAGE_VERSION,
+      inference,
+    );
+    return await Promise.all(
+      manifest.map(async (item) => ({
+        ...item,
+        bytes: new Uint8Array(
+          await Bun.file(join(directory, item.file)).arrayBuffer(),
+        ),
+      })),
+    );
+  } catch (error) {
+    packages.delete(key);
+    throw error;
+  } finally {
+    await rm(directory, { recursive: true, force: true });
+  }
+}
+
 function builtPackages(inference: Inference) {
   const key = JSON.stringify(inference);
   const cached = packages.get(key);
   if (cached) return cached;
-  const building = (async () => {
-    const directory = await mkdtemp(join(tmpdir(), "sb-hub-packages-"));
-    try {
-      const manifest = await buildWorkflowPackages(
-        directory,
-        PACKAGE_VERSION,
-        inference,
-      );
-      return await Promise.all(
-        manifest.map(async (item) => ({
-          ...item,
-          bytes: new Uint8Array(
-            await Bun.file(join(directory, item.file)).arrayBuffer(),
-          ),
-        })),
-      );
-    } catch (error) {
-      packages.delete(key);
-      throw error;
-    } finally {
-      await rm(directory, { recursive: true, force: true });
-    }
-  })();
+  const building = buildAndRead(key, inference);
   packages.set(key, building);
   return building;
 }
@@ -165,14 +167,15 @@ async function wantedQuirks(
 function wantedCapabilities(
   directory: ModelDirectory,
   row: ProviderRow,
-): readonly string[] {
-  return providerOfRow(directory, row)?.capabilities ?? [];
+): readonly string[] | undefined {
+  return providerOfRow(directory, row)?.capabilities;
 }
 
 function declaresCapabilities(
   offering: VisibleOffering["offering"],
-  wanted: readonly string[],
+  wanted: readonly string[] | undefined,
 ) {
+  if (!wanted) return true;
   return wanted.every((capability) =>
     offering.capabilities.some((have) => have === capability),
   );
@@ -236,7 +239,7 @@ async function offeringId(
   if (!visible) throw providerMissing(directory, source);
   const providerId = visible.row.id;
   const quirks = await wantedQuirks(db, directory, visible.row);
-  const capabilities = [...wantedCapabilities(directory, visible.row)];
+  const capabilities = wantedCapabilities(directory, visible.row);
   tenantId = visible.origin.tenantId;
   const [named] = await db
     .select({ id: model.id })
@@ -280,7 +283,7 @@ async function offeringId(
       providerId,
       priority: 0,
       quirks,
-      capabilities,
+      ...(capabilities ? { capabilities: [...capabilities] } : {}),
     })
     .onConflictDoNothing()
     .returning({ id: modelOffering.id });
@@ -298,9 +301,14 @@ async function offeringId(
   if (!raced) throw startFailed();
   // The offering already existed for an earlier login or before its capabilities were declared;
   // it now names this one's account and carries the provider's capabilities.
+  const mutableCapabilities = capabilities ? [...capabilities] : undefined;
   await db
     .update(modelOffering)
-    .set(quirks === null ? { capabilities } : { quirks, capabilities })
+    .set(
+      quirks === null
+        ? { capabilities: mutableCapabilities }
+        : { quirks, capabilities: mutableCapabilities },
+    )
     .where(eq(modelOffering.id, raced.id));
   return raced.id;
 }

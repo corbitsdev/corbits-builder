@@ -378,7 +378,7 @@ export function createSettingsRoutes(
       const input = ProviderTest(await c.req.json().catch(() => null));
       if (input instanceof type.errors)
         throw new ProjectError(400, "invalid_provider_test");
-      const typed = input.baseURL?.trim() ?? "";
+      const typed = input.baseURL?.trim();
       const entry = shippedOfRow({ plugin: input.plugin, baseURL: typed });
       if (!entry && !CustomApi.allows(input.plugin))
         throw new ProjectError(400, "unknown_provider");

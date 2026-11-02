@@ -195,16 +195,18 @@ export function modelProvider(
  * URL, else the entry of that plugin a person points at their own base URL.
  */
 export function shippedOfRow(
-  row: Readonly<{ plugin: string; baseURL: string }>,
+  row: Readonly<{ plugin: string; baseURL: string | undefined }>,
 ): ShippedEntry | undefined {
   const ofPlugin = MODEL_PROVIDERS.filter(
     (entry) => entry.plugin === row.plugin,
   );
-  return (
-    ofPlugin.find(
+  if (row.baseURL !== undefined) {
+    const exact = ofPlugin.find(
       (entry) => !entry.needsBaseUrl && entry.baseURL === row.baseURL,
-    ) ?? ofPlugin.find((entry) => entry.needsBaseUrl)
-  );
+    );
+    if (exact) return exact;
+  }
+  return ofPlugin.find((entry) => entry.needsBaseUrl);
 }
 
 /** The custom provider running on a catalog provider row, else the shipped entry it connects. */
@@ -434,9 +436,11 @@ export function invalidModelChoice(
     return choice.profile;
   // A made profile nobody runs may name a provider since removed; only the chosen one must run.
   const chosen = custom.find((profile) => profile.id === choice.profile);
-  for (const [tier, binding] of Object.entries(chosen?.tiers ?? {})) {
-    const reason = unrunnable(directory, binding);
-    if (reason) return `${chosen!.id}:${tier}:${reason}`;
+  if (chosen) {
+    for (const [tier, binding] of Object.entries(chosen.tiers)) {
+      const reason = unrunnable(directory, binding);
+      if (reason) return `${chosen.id}:${tier}:${reason}`;
+    }
   }
   return undefined;
 }
