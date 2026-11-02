@@ -1,0 +1,12 @@
+data: {"choices":[{"index":0,"delta":{"role":"assistant"},"finish_reason":null}]}
+
+data: {"choices":[{"index":0,"delta":{"tool_calls":[{"index":0,"id":"coord_deploy_constraints","function":{"name":"deploy_writer","arguments":""}}]},"finish_reason":null}]}
+
+data: {"choices":[{"index":0,"delta":{"tool_calls":[{"index":0,"function":{"arguments":"{\"kind\":\"constraints\",\"instruction\":\"Write the constraints for the animated weather app from the approved brief. The person asked only essentials and did not state bounds, so record these as correctable assumptions: free/no-cost weather data service (e.g. Open-Meteo, no API key) and free city geocoding; low budget, minimal hosting; desktop and phone browsers, installable to home screen; no sign-in, saved cities and unit preference stored per browser/device; only location data is the browser's geolocation (asked with permission) and searched city names; accessibility including reduce-motion support and readable contrast over animated backgrounds; animations must stay smooth on mid-range phones; first version = current conditions, hourly + multi-day forecast, °C/°F toggle, current location, saved cities, compare cities, animated weather-driven UI; out of scope: radar maps, severe weather alerts, accounts, native apps. Keep it plain-language.\"}"}}]},"finish_reason":null}]}
+
+data: {"choices":[{"index":0,"delta":{},"finish_reason":"tool_calls"}]}
+
+data: {"choices":[],"usage":{"prompt_tokens":120,"completion_tokens":60}}
+
+data: [DONE]
+

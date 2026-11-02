@@ -1,0 +1,10 @@
+data: {"choices":[{"index":0,"delta":{"role":"assistant"},"finish_reason":null}]}
+
+data: {"choices":[{"index":0,"delta":{"content":"I've written the build plan for your weather app. It follows the rich, realistic weather scenes you chose and the \"Adaptive weather-driven\" design.\n\nThe work is split into eight steps:\n\n1. Layout and look.\n2. Weather data, units and saved choices.\n3. The home screen figures.\n4. Search and saved cities.\n5. Comparing cities.\n6. The animated scenes.\n7. The smoothness safeguards and settings.\n8. Install and final polish.\n\nThe app gets its weather straight from the free Open-Meteo service. Your saved cities stay in your browser, and there's no sign-in. The animations slow themselves down on older phones, and there's a \"simpler effects\" switch. Everything calms down when someone's device asks for less motion.\n\nThe riskiest part is making the animations smooth on older phones. If the safeguards aren't enough, I'll check with you before switching to the lighter look.\n\n**Please confirm:**\n- **\"My location\" name:** Open-Meteo can't turn a position into a place name directly. The app will guess the nearest city and fall back to the plain label \"My location\".\n- **Default units:** °F will be the starting choice only in regions that use it, such as the US. After that, the app remembers whatever you pick."},"finish_reason":null}]}
+
+data: {"choices":[{"index":0,"delta":{},"finish_reason":"stop"}]}
+
+data: {"choices":[],"usage":{"prompt_tokens":120,"completion_tokens":60}}
+
+data: [DONE]
+

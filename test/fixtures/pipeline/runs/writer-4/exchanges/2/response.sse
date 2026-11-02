@@ -1,0 +1,10 @@
+data: {"choices":[{"index":0,"delta":{"role":"assistant"},"finish_reason":null}]}
+
+data: {"choices":[{"index":0,"delta":{"content":"I've written the requirements for your weather app: 60 must-haves and 3 nice-to-haves. Each must-have has a plain check for how we'll know it works. The document covers everything you listed, with radar, alerts and accounts left out.\n\nI had to fill some gaps, so please check these:\n- **Forecast length:** the next 24 hours, plus 7 days.\n- **Comparing cities:** up to 4 cities side by side.\n- **Units:** the °C/°F switch also changes wind speed and rain amounts, to km/h and mm or mph and inches.\n- **Offline:** the app shows the last weather it saw, clearly marked with how old it is.\n- **Day and night:** each scene follows daylight in the city you're viewing, not the time on your own clock.\n- **Hot weather:** the heat effect applies to clear weather above about 30 °C.\n- **Saved cities:** a note in the app tells people they're lost if browser data is cleared. Older phones get a simpler look but the same numbers and features."},"finish_reason":null}]}
+
+data: {"choices":[{"index":0,"delta":{},"finish_reason":"stop"}]}
+
+data: {"choices":[],"usage":{"prompt_tokens":120,"completion_tokens":60}}
+
+data: [DONE]
+

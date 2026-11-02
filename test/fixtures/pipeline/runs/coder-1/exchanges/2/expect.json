@@ -1,0 +1,22 @@
+{
+  "lastMessageRole": "tool",
+  "requiredTools": [
+    "read_artifact",
+    "write_file",
+    "edit_file",
+    "read_file",
+    "run_shell",
+    "app_status",
+    "install_packages",
+    "mail_reply",
+    "mail_search"
+  ],
+  "toolResults": [
+    {
+      "callId": "coder_check_v1",
+      "toolName": "run_shell",
+      "isError": false,
+      "contains": "The app is filed as version 1."
+    }
+  ]
+}

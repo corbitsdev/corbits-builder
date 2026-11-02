@@ -1,0 +1,12 @@
+{
+  "lastMessageRole": "tool",
+  "requiredTools": ["read_skill", "write_artifact"],
+  "toolResults": [
+    {
+      "callId": "writer-4_write",
+      "toolName": "write_artifact",
+      "isError": false,
+      "keys": ["artifactId", "kind", "version", "sha256"]
+    }
+  ]
+}

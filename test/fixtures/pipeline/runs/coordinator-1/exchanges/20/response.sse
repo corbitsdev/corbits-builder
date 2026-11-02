@@ -1,0 +1,14 @@
+data: {"choices":[{"index":0,"delta":{"role":"assistant"},"finish_reason":null}]}
+
+data: {"choices":[{"index":0,"delta":{"content":"Here's the design plan:\n\n1. **Three designers each make one clickable mockup**, and each mockup has a different look:\n   - **Immersive realism:** the weather fills the whole screen, with frosted panels on top. It's cinematic and puts the weather first.\n   - **Modern and sleek:** clean and minimal, with a large animated weather area that subtly tints the interface.\n   - **Playful and bold:** bright colour for each type of weather, big friendly type and energetic motion.\n2. **Every mockup covers the same things.** That means the animated scenes (rain, snow, wind, heat, storm, fog, day and night), the home screen, city search and saved cities, comparing cities, the °C/°F switch, settings, and the loading, offline and permission-denied screens.\n3. **You click through all three and pick one.** You can also ask me to blend two. Your choice then becomes the look we build from.\n\nI recommend Immersive realism, because it fits your idea best. Shall I start the three designs?"},"finish_reason":null}]}
+
+data: {"choices":[{"index":0,"delta":{"tool_calls":[{"index":0,"id":"coord_approve_requirements","function":{"name":"request_approval","arguments":""}}]},"finish_reason":null}]}
+
+data: {"choices":[{"index":0,"delta":{"tool_calls":[{"index":0,"function":{"arguments":"{\"kinds\":[\"product_requirements\"]}"}}]},"finish_reason":null}]}
+
+data: {"choices":[{"index":0,"delta":{},"finish_reason":"tool_calls"}]}
+
+data: {"choices":[],"usage":{"prompt_tokens":120,"completion_tokens":60}}
+
+data: [DONE]
+

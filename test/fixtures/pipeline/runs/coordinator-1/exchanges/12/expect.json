@@ -1,0 +1,21 @@
+{
+  "lastMessageRole": "tool",
+  "requiredTools": [
+    "read_artifact",
+    "write_artifact",
+    "request_approval",
+    "deploy_writer",
+    "review_artifact",
+    "design_app",
+    "deploy_coder",
+    "instruct_coder"
+  ],
+  "toolResults": [
+    {
+      "callId": "coord_read_approaches_v1",
+      "toolName": "read_artifact",
+      "isError": false,
+      "keys": ["artifactId", "kind", "version", "content"]
+    }
+  ]
+}

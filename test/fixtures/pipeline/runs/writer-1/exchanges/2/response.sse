@@ -1,0 +1,10 @@
+data: {"choices":[{"index":0,"delta":{"role":"assistant"},"finish_reason":null}]}
+
+data: {"choices":[{"index":0,"delta":{"content":"I've written the limits for your weather app. You didn't give any, so I filled them in as my own best guesses. Please correct any that are wrong.\n\n- **How it runs:** It's a website for phone and desktop browsers. You can add it to your home screen.\n- **Cost and data:** It uses free weather and city-search services, so there's no sign-in and almost no running cost.\n- **What's saved:** Your saved cities and °C/°F choice stay in your own browser on that device. They won't carry over to another device.\n- **Location:** The app asks permission before using your location. If you say no, you can still search for cities.\n- **Accessibility:** The app has a reduce-motion option and keeps text readable over the animated backgrounds. It's built to run smoothly on mid-range phones.\n- **Later:** The first version leaves out radar maps, severe weather alerts, accounts and phone apps."},"finish_reason":null}]}
+
+data: {"choices":[{"index":0,"delta":{},"finish_reason":"stop"}]}
+
+data: {"choices":[],"usage":{"prompt_tokens":120,"completion_tokens":60}}
+
+data: [DONE]
+

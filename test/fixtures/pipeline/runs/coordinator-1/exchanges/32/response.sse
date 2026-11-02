@@ -1,0 +1,10 @@
+data: {"choices":[{"index":0,"delta":{"role":"assistant"},"finish_reason":null}]}
+
+data: {"choices":[{"index":0,"delta":{"content":"The coder has said the same thing again. The check passes, but it can't see a saved copy of the app. The document list I can see also shows only the planning documents and the design. It doesn't show a filed app, so I can't confirm the save either.\n\nPlease check the workspace for the build. If it isn't there, tell me, because the problem is on the platform side and I have no way to file the app myself. The Safari and Firefox test is still open on your side."},"finish_reason":null}]}
+
+data: {"choices":[{"index":0,"delta":{},"finish_reason":"stop"}]}
+
+data: {"choices":[],"usage":{"prompt_tokens":120,"completion_tokens":60}}
+
+data: [DONE]
+

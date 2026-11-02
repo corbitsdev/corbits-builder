@@ -1,0 +1,12 @@
+data: {"choices":[{"index":0,"delta":{"role":"assistant"},"finish_reason":null}]}
+
+data: {"choices":[{"index":0,"delta":{"tool_calls":[{"index":0,"id":"coord_design_app","function":{"name":"design_app","arguments":""}}]},"finish_reason":null}]}
+
+data: {"choices":[{"index":0,"delta":{"tool_calls":[{"index":0,"function":{"arguments":"{\"instruction\":\"Design one adaptive, weather-driven UI for the Animated Weather App (see product requirements). The person wants a single design that is dynamic and flexible. Cover: full-screen animated scenes (clear/hot, cloudy, rain, storm, snow, wind, fog, each day and night) with colour palettes that shift with the weather and a smooth transition when the city changes; soft readable panels over the scene; current conditions, 24-hour and 7-day forecasts; city search, saved cities list, current-location entry; °C/°F toggle; compare view for 2-4 cities (side by side on desktop, scrolling or stacking on phone); a visible 'simpler effects' switch and a reduced-motion calm version; loading, offline (last weather marked old), permission-denied and no-results states. Layout adapts: single column with swipeable city list on phone, side panel plus main view on desktop. Accessible: keyboard and screen reader friendly, strong contrast. No sign-in.\",\"concepts\":[{\"label\":\"Adaptive weather-driven\",\"direction\":\"Modern and sleek base: crisp neutrals, system sans-serif, generous whitespace, subtle depth, with frosted soft panels over the scene. The accent and background palette shift per weather condition and day/night (e.g. warm amber for hot, slate blue for rain, deep indigo for night). Flexible layout that reflows between phone and desktop.\"}],\"lookIdeas\":\"Dynamic and flexible look that adapts its palette and full-screen weather animations to the current condition and time of day, with frosted readable panels.\"}"}}]},"finish_reason":null}]}
+
+data: {"choices":[{"index":0,"delta":{},"finish_reason":"tool_calls"}]}
+
+data: {"choices":[],"usage":{"prompt_tokens":120,"completion_tokens":60}}
+
+data: [DONE]
+

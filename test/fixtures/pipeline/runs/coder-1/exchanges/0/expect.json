@@ -1,0 +1,16 @@
+{
+  "lastMessageRole": "user",
+  "userTextContains": ".inputs/build-plan.md",
+  "requiredTools": [
+    "read_artifact",
+    "write_file",
+    "edit_file",
+    "read_file",
+    "run_shell",
+    "app_status",
+    "install_packages",
+    "mail_reply",
+    "mail_search"
+  ],
+  "toolResults": []
+}

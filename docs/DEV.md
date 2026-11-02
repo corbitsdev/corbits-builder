@@ -61,7 +61,7 @@ bun run typecheck
 bun run test          # unit and integration tests
 bun run pins:verify   # pinned dependency versions
 bun run vendor:verify # vendored Interchange matches its manifest
-bun run test:e2e      # model logins end to end against an isolated Postgres
+bun run test:e2e      # model logins and project replay against an isolated Postgres
 ```
 
 `bun run test:e2e` reads the `E2E_DB_*` values from `.env.hub`. Start its
@@ -73,7 +73,8 @@ docker compose -p builder-e2e --env-file .env.hub --project-directory . -f deplo
 ```
 
 Tests are load-bearing only: invariants and end-to-end behaviour through the
-real API ([CONTRIBUTING.md](https://github.com/corbitsdev/corbits-builder/blob/main/CONTRIBUTING.md#rules-worth-knowing)).
+real API ([CONTRIBUTING.md](https://github.com/corbitsdev/corbits-builder/blob/main/CONTRIBUTING.md#rules-worth-knowing),
+[test/AGENTS.md](https://github.com/corbitsdev/corbits-builder/blob/main/test/AGENTS.md)).
 
 ## Other scripts
 

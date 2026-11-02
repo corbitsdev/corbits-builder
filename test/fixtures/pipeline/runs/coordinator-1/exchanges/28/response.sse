@@ -1,0 +1,14 @@
+data: {"choices":[{"index":0,"delta":{"role":"assistant"},"finish_reason":null}]}
+
+data: {"choices":[{"index":0,"delta":{"content":"You approved the build plan, and the coder has started building the whole app. I'm using your two defaults. \"My location\" shows the nearest city, or \"My location\" if that fails. °F is the starting unit only where it's normally used, and the app then remembers your choice. I'll tell you when there's something to try."},"finish_reason":null}]}
+
+data: {"choices":[{"index":0,"delta":{"tool_calls":[{"index":0,"id":"coord_approve_build_plan","function":{"name":"request_approval","arguments":""}}]},"finish_reason":null}]}
+
+data: {"choices":[{"index":0,"delta":{"tool_calls":[{"index":0,"function":{"arguments":"{\"kinds\":[\"build_plan\"]}"}}]},"finish_reason":null}]}
+
+data: {"choices":[{"index":0,"delta":{},"finish_reason":"tool_calls"}]}
+
+data: {"choices":[],"usage":{"prompt_tokens":120,"completion_tokens":60}}
+
+data: [DONE]
+

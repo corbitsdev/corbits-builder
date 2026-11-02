@@ -70,9 +70,124 @@ const PageError = type({ detail: "string" });
 // kqueue and needs neither.
 const MACOS_WATCH_POLLING = { WATCH_POLL_MS: "300" };
 const SANDBOX_RUNTIME_VERSION = "0.0.81";
+// Where the sandbox allows Unix sockets: for the browser, and on Linux for the app's relays.
+const needsSockets = (options: { browser?: boolean; app?: boolean }) =>
+  options.browser === true ||
+  (options.app === true && process.platform === "linux");
+const allowsLinuxUnixSockets = (
+  sockets: string | undefined,
+  browsers: string | undefined,
+) =>
+  process.platform === "linux" &&
+  (sockets !== undefined || browsers !== undefined);
 // srt's manager is process-global. A second job must use another sidecar
 // process; it cannot silently replace the policy protecting a running job.
 let leased = false;
+
+/**
+ * How the dev app is reached from outside its wrap. On macOS every wrap shares the host's loopback,
+ * so the app's own port serves. On Linux every wrap has a loopback of its own, so the app is reached
+ * through a Unix socket in the sockets folder: a relay inside the app's wrap serves the socket, a
+ * relay in this process serves the socket on a port of its own, and a relay inside every other wrap
+ * serves it on that same port, so one URL holds for the hub, the browser and the page watcher
+ * alike. The port is picked once and kept across restarts of the app, which the browser outlives.
+ */
+type AppRelay = {
+  /** Picks the relayed port, once. */
+  reserve(): Promise<void>;
+  /** The app's URL as every party reaches it, given the port its client listens on. */
+  url(clientPort: number): string;
+  /** The prefix for the app's own wrap: serves its client port on the socket. */
+  serve(clientPort: number): string;
+  /** A command for any other wrap, prefixed to serve the socket on the relayed port there. */
+  into(command: string): string;
+  /** Serves the socket on the relayed port in this process, for the hub. */
+  start(): Promise<void>;
+  stop(): Promise<void>;
+};
+
+const LINUX_RELAY_BINDS = [
+  "--new-session",
+  "--die-with-parent",
+  "--unshare-user",
+  "--unshare-pid",
+  "--ro-bind",
+  "/usr",
+  "/usr",
+  "--ro-bind",
+  "/bin",
+  "/bin",
+  "--ro-bind",
+  "/lib",
+  "/lib",
+  "--ro-bind-try",
+  "/lib64",
+  "/lib64",
+] as const;
+
+function createAppRelay(sockets: string | undefined): AppRelay {
+  const socat = process.platform === "linux" ? Bun.which("socat") : null;
+  const bwrap = process.platform === "linux" ? Bun.which("bwrap") : null;
+  if (sockets === undefined || socat === null || bwrap === null)
+    return {
+      reserve: async () => undefined,
+      url: (clientPort) => `http://127.0.0.1:${String(clientPort)}`,
+      serve: () => "",
+      into: (command) => command,
+      start: async () => undefined,
+      stop: async () => undefined,
+    };
+  const socket = join(sockets, "app.sock");
+  const quiet = ">/dev/null 2>&1 & ";
+  let port: number | undefined;
+  let child: Bun.Subprocess | undefined;
+  const listen = () =>
+    `TCP-LISTEN:${String(port)},bind=127.0.0.1,fork,reuseaddr`;
+  const stop = async () => {
+    if (!child) return;
+    const current = child;
+    child = undefined;
+    current.kill("SIGKILL");
+    await current.exited;
+  };
+  return {
+    reserve: async () => {
+      port ??= await freePort();
+    },
+    url: (clientPort) => `http://127.0.0.1:${String(port ?? clientPort)}`,
+    serve: (clientPort) =>
+      `${quote(socat)} UNIX-LISTEN:${quote(socket)},fork,reuseaddr,unlink-early TCP:127.0.0.1:${String(clientPort)} ${quiet}`,
+    into: (command) =>
+      port === undefined
+        ? command
+        : `${quote(socat)} ${listen()} UNIX-CONNECT:${quote(socket)} ${quiet}${command}`,
+    start: async () => {
+      await stop();
+      if (port === undefined) return;
+      // Isolate the host relay's filesystem view to the sockets folder so a
+      // symlink planted there by the sandboxed app cannot reach host sockets.
+      child = Bun.spawn(
+        [
+          bwrap,
+          ...LINUX_RELAY_BINDS,
+          "--bind",
+          sockets,
+          sockets,
+          "--",
+          socat,
+          listen(),
+          `UNIX-CONNECT:${socket}`,
+        ],
+        {
+          stdin: "ignore",
+          stdout: "ignore",
+          stderr: "ignore",
+        },
+      );
+    },
+    stop,
+  };
+}
 // What bun, sh, curl, unzip and Chrome's headless shell load to run; nothing here holds user data.
 const SYSTEM_READ_PATHS =
   process.platform === "darwin"
@@ -152,6 +267,33 @@ async function freePort(): Promise<number> {
   return port;
 }
 
+async function isReachable(url: string): Promise<boolean> {
+  try {
+    await fetch(url);
+    return true;
+  } catch (error) {
+    if (error instanceof Error) return false;
+    throw error;
+  }
+}
+
+async function configureLinuxBridgeSockets(
+  policy: ReturnType<typeof SandboxRuntimeConfigSchema.parse>,
+) {
+  if (process.platform !== "linux") return;
+  await SandboxManager.waitForNetworkInitialization();
+  const bridges = new Set(
+    [
+      SandboxManager.getLinuxHttpSocketPath(),
+      SandboxManager.getLinuxSocksSocketPath(),
+    ].filter((path): path is string => path !== undefined),
+  );
+  if (bridges.size) {
+    policy.filesystem.allowRead?.push(...bridges);
+    SandboxManager.updateConfig(policy);
+  }
+}
+
 export async function createPosixBuildExecutor(
   workspace: string,
   limits: BuildExecutionPolicy,
@@ -166,6 +308,8 @@ export async function createPosixBuildExecutor(
     pageWatcher?: string;
     // Whether the agent drives its app in Playwright's browser, which browser() starts.
     browser?: boolean;
+    // Whether the workspace's dev app runs here, which app() starts.
+    app?: boolean;
     // The shared Chrome install, which the sandbox reads through $HOME/browsers but never writes.
     browsers?: string | undefined;
   } = {},
@@ -236,7 +380,12 @@ export async function createPosixBuildExecutor(
           `command_build_failed:${name} ${built.logs.join("; ")}`,
         );
       const shim = join(shimDirectory, name);
-      await writeFile(shim, `#!/bin/sh\nexec ${quote(binary)} "$@"\n`);
+      // srt points TMPDIR at a folder it does not make inside the sandbox's own /tmp, and Bun's
+      // WebView cannot start Chrome without a temp folder.
+      await writeFile(
+        shim,
+        `#!/bin/sh\n[ -z "$TMPDIR" ] || mkdir -p -- "$TMPDIR"\nexec ${quote(binary)} "$@"\n`,
+      );
       await chmod(shim, 0o755);
     }
     const pageWatcher = join(shimDirectory, "watch-page.ts");
@@ -264,8 +413,9 @@ export async function createPosixBuildExecutor(
     if (options.browsers)
       await symlink(options.browsers, join(home, "browsers"));
     // Playwright's MCP server always serves its browser on a Unix socket, which the sandbox allows
-    // only here. Under /tmp, as a socket's path fits in 104 bytes on macOS.
-    if (options.browser)
+    // only here. Under /tmp, as a socket's path fits in 104 bytes on macOS. On Linux the dev app is
+    // reached through a socket here too, since every wrap there has a loopback of its own.
+    if (needsSockets(options))
       sockets = await realpath(await mkdtemp("/tmp/sb-browser-"));
     stage = "policy";
     const policy = SandboxRuntimeConfigSchema.parse({
@@ -274,8 +424,8 @@ export async function createPosixBuildExecutor(
         // hidden, and only the system runtime and this job's own trees are re-opened.
         denyRead: [
           "/",
-          "**/.env",
-          "**/.env.*",
+          join(cwd, "**/.env"),
+          join(cwd, "**/.env.*"),
           ...(process.platform === "darwin" ? executables : []),
         ],
         allowRead: [
@@ -294,6 +444,8 @@ export async function createPosixBuildExecutor(
         denyWrite: [
           ...protectedPaths,
           shimDirectory,
+          "/tmp/claude",
+          "/private/tmp/claude",
           ...(options.readOnly ?? []).map((path) => join(cwd, path)),
         ],
       },
@@ -301,10 +453,6 @@ export async function createPosixBuildExecutor(
         allowedDomains: options.openNetwork ? [] : [...CODER_REGISTRY_HOSTS],
         deniedDomains: [],
         allowUnixSockets: sockets ? [sockets] : [],
-        // A Linux sandbox filters Unix sockets by syscall, not by path.
-        ...(sockets && process.platform === "linux"
-          ? { allowAllUnixSockets: true }
-          : {}),
         allowLocalBinding: true,
         // Resolved names in private and carrier-grade NAT space (a LAN, a tailnet) are refused too.
         deniedResolvedAddresses: [
@@ -327,12 +475,40 @@ export async function createPosixBuildExecutor(
         : undefined,
     );
     initialized = true;
+    // On Linux srt relays the sandbox's proxy ports to the host over Unix sockets in the host's temp
+    // folder, which the default-deny read policy hides; srt binds them before that deny lands, so
+    // every connection through the proxy was reset. Named in allowRead, they are bound back over it.
+    await configureLinuxBridgeSockets(policy);
+    // SRT's Linux wrapper supports exec composition. The namespace owner
+    // must be a direct child in the workflow group, so parent death and the
+    // native spawner's group cleanup also reach an interrupted tool.
+    const linux = process.platform === "linux";
+    // SRT's generateProxyEnvVars sets TMPDIR=/tmp/claude inside the sandbox,
+    // which does not exist on a clean Linux host; export the sandbox's own
+    // writable home as TMPDIR before execing the inner command.
+    const wrapShell = async (
+      command: string,
+      customConfig?: Parameters<typeof SandboxManager.wrapWithSandbox>[2],
+      signal?: AbortSignal,
+    ) => {
+      const wrappedCommand = await SandboxManager.wrapWithSandbox(
+        `export TMPDIR=${quote(home)}; ${command}`,
+        "/bin/sh",
+        customConfig,
+        signal,
+      );
+      return linux ? `exec ${wrappedCommand}` : wrappedCommand;
+    };
     stage = "wrap";
-    const childCommand = `exec ${[executable, "--no-env-file", layout.childPath, cwd].map(quote).join(" ")}`;
-    const wrapped = await SandboxManager.wrapWithSandbox(
-      childCommand,
-      "/bin/sh",
-    );
+    const childCommand = `exec ${[executable, "--no-env-file", "--conditions=intx-src", layout.childPath, cwd].map(quote).join(" ")}`;
+    const wrapped = await wrapShell(childCommand);
+    // Agent tool calls use `wrapped` above with Unix sockets blocked by seccomp;
+    // sidecar-owned helpers wrapped below (dev app relay, browser, check-app)
+    // need Unix sockets for socat, Playwright and Chrome IPC.
+    if (allowsLinuxUnixSockets(sockets, options.browsers)) {
+      policy.network.allowAllUnixSockets = true;
+      SandboxManager.updateConfig(policy);
+    }
     let trustedGate: { nonce: string; timeoutMs: number } | undefined;
     let devApp:
       | {
@@ -357,6 +533,12 @@ export async function createPosixBuildExecutor(
       return cleaned;
     };
     const kill = (child: Bun.Subprocess) => {
+      if (linux) {
+        // Killing the namespace owner terminates its complete PID namespace;
+        // signaling its inherited group would also kill the workflow host.
+        child.kill("SIGKILL");
+        return;
+      }
       try {
         process.kill(-child.pid, "SIGKILL");
       } catch (error) {
@@ -370,6 +552,7 @@ export async function createPosixBuildExecutor(
       TMPDIR: home,
       NO_COLOR: "1",
     };
+    const appRelay = createAppRelay(sockets);
     let browser: { process: Bun.Subprocess; url: string } | undefined;
     let browserStarting: Promise<string> | undefined;
     // A turn's tool calls run in parallel; two app_status calls must not each start a server.
@@ -388,50 +571,34 @@ export async function createPosixBuildExecutor(
     ): Promise<ToolResult> => {
       if (disposed) throw new BuildExecutionError("sandbox_closed");
       signal.throwIfAborted();
-      // SRT's Linux wrapper supports exec composition. The namespace owner
-      // must be a direct child in the workflow group, so parent death and the
-      // native spawner's group cleanup also reach an interrupted tool.
-      const linux = process.platform === "linux";
       const gateWrapped = trustedGate
-        ? await SandboxManager.wrapWithSandbox(
+        ? await wrapShell(
             childCommand,
-            "/bin/sh",
             {
               filesystem: {
                 ...policy.filesystem,
                 allowWrite: [],
-                denyWrite: [...protectedPaths, cwd],
+                denyWrite: [
+                  ...protectedPaths,
+                  "/tmp/claude",
+                  "/private/tmp/claude",
+                  cwd,
+                ],
               },
             },
             signal,
           )
         : wrapped;
-      const child = Bun.spawn(
-        ["/bin/sh", "-c", linux ? `exec ${gateWrapped}` : gateWrapped],
-        {
-          cwd,
-          env: childEnv,
-          stdin: "pipe",
-          stdout: "pipe",
-          stderr: "pipe",
-          detached: !linux,
-        },
-      );
+      const child = Bun.spawn(["/bin/sh", "-c", gateWrapped], {
+        cwd,
+        env: childEnv,
+        stdin: "pipe",
+        stdout: "pipe",
+        stderr: "pipe",
+        detached: !linux,
+      });
       running = true;
-      const stop = () => {
-        if (linux) {
-          // Killing the namespace owner terminates its complete PID namespace;
-          // signaling its inherited group would also kill the workflow host.
-          child.kill("SIGKILL");
-          return;
-        }
-        try {
-          process.kill(-child.pid, "SIGKILL");
-        } catch (error) {
-          if (!isGroupGone(error)) throw error;
-          child.kill("SIGKILL");
-        }
-      };
+      const stop = () => kill(child);
       let timedOut = false;
       const timer = setTimeout(() => {
         timedOut = true;
@@ -493,7 +660,7 @@ export async function createPosixBuildExecutor(
       devApp = undefined;
       kill(child);
       if (page) kill(page);
-      await Promise.all([child.exited, page?.exited]);
+      await Promise.all([child.exited, page?.exited, appRelay.stop()]);
     };
     const startApp = (): Promise<DevApp> => {
       if (disposed)
@@ -511,9 +678,9 @@ export async function createPosixBuildExecutor(
             freePort(),
             freePort(),
           ]);
-          const command = await SandboxManager.wrapWithSandbox(
-            `exec ${quote(executable)} run dev`,
-            "/bin/sh",
+          await appRelay.reserve();
+          const command = await wrapShell(
+            `${appRelay.serve(clientPort)}exec ${quote(executable)} run dev`,
           );
           const child = Bun.spawn(["/bin/sh", "-c", command], {
             cwd,
@@ -526,7 +693,7 @@ export async function createPosixBuildExecutor(
             stdin: "ignore",
             stdout: "pipe",
             stderr: "pipe",
-            detached: process.platform !== "linux",
+            detached: !linux,
           });
           const lines: string[] = [];
           let stopped: string | undefined;
@@ -585,8 +752,10 @@ export async function createPosixBuildExecutor(
               }
           };
           void Promise.all([collect(child.stdout), collect(child.stderr)]);
-          // Vite serves the client on CLIENT_PORT and proxies /api to the server on PORT.
-          const url = `http://127.0.0.1:${clientPort}`;
+          await appRelay.start();
+          // Vite serves the client on CLIENT_PORT and proxies /api to the server on PORT; where the
+          // wraps have loopbacks of their own, the relays serve it on one port everywhere.
+          const url = appRelay.url(clientPort);
           const view = (): DevApp => ({
             url,
             running: child.exitCode === null,
@@ -599,9 +768,10 @@ export async function createPosixBuildExecutor(
               [
                 "/bin/sh",
                 "-c",
-                await SandboxManager.wrapWithSandbox(
-                  `exec ${[executable, "--no-env-file", pageWatcher, url].map(quote).join(" ")}`,
-                  "/bin/sh",
+                await wrapShell(
+                  appRelay.into(
+                    `exec ${[executable, "--no-env-file", pageWatcher, url].map(quote).join(" ")}`,
+                  ),
                 ),
               ],
               {
@@ -610,7 +780,7 @@ export async function createPosixBuildExecutor(
                 stdin: "pipe",
                 stdout: "pipe",
                 stderr: "ignore",
-                detached: process.platform !== "linux",
+                detached: !linux,
               },
             );
             devApp.page = page;
@@ -661,7 +831,7 @@ export async function createPosixBuildExecutor(
         );
       if (browser && browser.process.exitCode === null)
         return Promise.resolve(browser.url);
-      browserStarting ??= (async () => {
+      const launchBrowser = async () => {
         const [chrome] = await Array.fromAsync(
           new Bun.Glob("chrome-headless-shell-*/chrome-headless-shell").scan({
             cwd: join(home, "browsers"),
@@ -693,10 +863,7 @@ export async function createPosixBuildExecutor(
           [
             "/bin/sh",
             "-c",
-            await SandboxManager.wrapWithSandbox(
-              `exec ${argv.map(quote).join(" ")}`,
-              "/bin/sh",
-            ),
+            await wrapShell(appRelay.into(`exec ${argv.map(quote).join(" ")}`)),
           ],
           {
             cwd,
@@ -704,18 +871,13 @@ export async function createPosixBuildExecutor(
             stdin: "ignore",
             stdout: "ignore",
             stderr: "pipe",
-            detached: process.platform !== "linux",
+            detached: !linux,
           },
         );
         const diagnostics = new Response(child.stderr).text();
         browser = { process: child, url: `http://127.0.0.1:${port}/mcp` };
         const deadline = Date.now() + 30_000;
-        while (
-          !(await fetch(browser.url).then(
-            () => true,
-            () => false,
-          ))
-        ) {
+        while (!(await isReachable(browser.url))) {
           if (child.exitCode !== null || disposed || Date.now() > deadline) {
             kill(child);
             throw new BuildExecutionError(
@@ -725,7 +887,15 @@ export async function createPosixBuildExecutor(
           await Bun.sleep(250);
         }
         return browser.url;
-      })().finally(() => (browserStarting = undefined));
+      };
+      const trackBrowser = async () => {
+        try {
+          return await launchBrowser();
+        } finally {
+          browserStarting = undefined;
+        }
+      };
+      browserStarting ??= trackBrowser();
       return browserStarting;
     };
     return {
@@ -769,9 +939,10 @@ export async function createPosixBuildExecutor(
           [
             "/bin/sh",
             "-c",
-            await SandboxManager.wrapWithSandbox(
-              `exec ${[join(shimDirectory!, name), ...args].map(quote).join(" ")}`,
-              "/bin/sh",
+            await wrapShell(
+              appRelay.into(
+                `exec ${[join(shimDirectory!, name), ...args].map(quote).join(" ")}`,
+              ),
             ),
           ],
           {
@@ -779,8 +950,8 @@ export async function createPosixBuildExecutor(
             env: childEnv,
             stdin: "ignore",
             stdout: "pipe",
-            stderr: "ignore",
-            detached: process.platform !== "linux",
+            stderr: "pipe",
+            detached: !linux,
           },
         );
         commands.add(child);
@@ -788,11 +959,19 @@ export async function createPosixBuildExecutor(
         const timer = setTimeout(stop, limits.commandTimeoutMs);
         signal.addEventListener("abort", stop, { once: true });
         try {
-          const output = await new Response(child.stdout).text();
-          return {
-            exitCode: await child.exited,
-            output: output.replaceAll(cwd + sep, ""),
-          };
+          const [output, errors] = await Promise.all([
+            new Response(child.stdout).text(),
+            new Response(child.stderr).text(),
+          ]);
+          const exitCode = await child.exited;
+          // A command that died before printing its checklist would otherwise fail with nothing said.
+          const text =
+            exitCode === 0
+              ? output
+              : [output, errors.slice(-2000)]
+                  .filter((part) => part.trim())
+                  .join("\n");
+          return { exitCode, output: text.replaceAll(cwd + sep, "") };
         } finally {
           clearTimeout(timer);
           signal.removeEventListener("abort", stop);

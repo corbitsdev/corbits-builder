@@ -1,0 +1,6 @@
+{
+  "lastMessageRole": "user",
+  "userTextContains": "\"artifact\":\"product_requirements\"",
+  "requiredTools": ["read_skill", "write_artifact"],
+  "toolResults": []
+}

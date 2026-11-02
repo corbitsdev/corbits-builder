@@ -1,0 +1,20 @@
+{
+  "lastMessageRole": "tool",
+  "requiredTools": [
+    "read_artifact",
+    "write_artifact",
+    "request_approval",
+    "deploy_writer",
+    "review_artifact",
+    "design_app",
+    "deploy_coder",
+    "instruct_coder"
+  ],
+  "toolResults": [
+    {
+      "callId": "coord_design_app",
+      "toolName": "design_app",
+      "isError": false
+    }
+  ]
+}

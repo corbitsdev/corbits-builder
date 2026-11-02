@@ -232,13 +232,14 @@ export function createSidecarCodingTools(policy: {
             >;
           }
         | undefined;
-      const open = (signal: AbortSignal) => {
-        const role = policy.workspace === "app" ? "coder" : "designer";
-        sandbox ??= resolveWorkflowProjectScope(
-          env.capabilities,
-          role,
-          signal,
-        ).then(async (scope) => {
+      async function startSandbox(signal: AbortSignal) {
+        try {
+          const role = policy.workspace === "app" ? "coder" : "designer";
+          const scope = await resolveWorkflowProjectScope(
+            env.capabilities,
+            role,
+            signal,
+          );
           const workspace = await realpath(env.toolCwd);
           const app =
             policy.workspace === "app"
@@ -269,6 +270,7 @@ export function createSidecarCodingTools(policy: {
               openNetwork: scope.openNetwork,
               commands: { "check-app": CHECK_APP },
               browser: policy.browser !== undefined,
+              app: policy.workspace === "app",
               browsers: await sharedBrowser(),
               ...(policy.workspace === "app"
                 ? {
@@ -308,13 +310,13 @@ export function createSidecarCodingTools(policy: {
               executor.command("check-app", [DESIGNS], signal),
             );
           return executor;
-        });
-        // A failed setup is retried by the next call rather than failing every later one.
-        sandbox.catch(() => {
+        } catch (error) {
+          // A failed setup is retried by the next call rather than failing every later one.
           sandbox = undefined;
-        });
-        return sandbox;
-      };
+          throw error;
+        }
+      }
+      const open = (signal: AbortSignal) => (sandbox ??= startSandbox(signal));
       const lazySandbox: ToolRunner = {
         run: async (call, signal) => {
           const ready = open(signal);

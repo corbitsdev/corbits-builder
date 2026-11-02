@@ -24,7 +24,8 @@ These are the ones no check catches:
   ([who owns what](https://github.com/corbitsdev/corbits-builder/blob/main/docs/IMPLEMENTATION.md#who-owns-what)).
 - Extend the existing module, package, API or component before adding one
   that overlaps it; Builder keeps one way to do each thing. Interface work
-  follows [apps/web/AGENTS.md](apps/web/AGENTS.md).
+  follows [apps/web/AGENTS.md](apps/web/AGENTS.md); end-to-end and integration
+  tests follow [test/AGENTS.md](test/AGENTS.md).
 - The interface talks to the hub through `@corbits-builder/client`.
 - A change to `vendor/interchange` is its own `(vendor)` commit that also
   updates `vendor/interchange.manifest.json`.

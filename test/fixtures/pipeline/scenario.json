@@ -1,0 +1,69 @@
+{
+  "scenario": "animated-weather-app",
+  "recordedFromCommit": "d6c6b46",
+  "runs": [
+    {
+      "runKey": "coordinator-1",
+      "role": "coordinator",
+      "stage": "project",
+      "sourceRunId": "run_29495a64502566c30213588dc8b3fc08",
+      "exchangeCount": 34
+    },
+    {
+      "runKey": "writer-1",
+      "role": "writer",
+      "stage": "documents",
+      "sourceRunId": "run_2c1986a2c8dee7a4d192add5f8c5e7b9",
+      "exchangeCount": 3
+    },
+    {
+      "runKey": "reviewer-1",
+      "role": "reviewer",
+      "stage": "documents",
+      "sourceRunId": "run_2c1986a2c8dee7a4d192add5f8c5e7b9",
+      "exchangeCount": 1
+    },
+    {
+      "runKey": "writer-2",
+      "role": "writer",
+      "stage": "documents",
+      "sourceRunId": "run_3433413723e3f2cad30adc8afe6d89ea",
+      "exchangeCount": 3
+    },
+    {
+      "runKey": "writer-3",
+      "role": "writer",
+      "stage": "documents",
+      "sourceRunId": "run_0fbe70fbdcb7174d73f9815d9f5f7e0f",
+      "exchangeCount": 3
+    },
+    {
+      "runKey": "writer-4",
+      "role": "writer",
+      "stage": "documents",
+      "sourceRunId": "run_f76d5bfdb487b00e753d417c942b721d",
+      "exchangeCount": 3
+    },
+    {
+      "runKey": "designer-1",
+      "role": "designer",
+      "stage": "design",
+      "sourceRunId": "run_58cf9e8d726377fd10cf3b6d4c751bbc",
+      "exchangeCount": 4
+    },
+    {
+      "runKey": "writer-5",
+      "role": "writer",
+      "stage": "documents",
+      "sourceRunId": "run_e2cac090f6c422535d77e00a38387d62",
+      "exchangeCount": 3
+    },
+    {
+      "runKey": "coder-1",
+      "role": "coder",
+      "stage": "build",
+      "sourceRunId": "run_970c695116933ed8147c26bcad9a0a65",
+      "exchangeCount": 6
+    }
+  ]
+}
