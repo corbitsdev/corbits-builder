@@ -108,7 +108,7 @@ import {
   roomSnapshotReady,
 } from "./load-room.ts";
 import { RoomFault, RoomSkeleton } from "./room-skeleton.tsx";
-import { useDesignDraft } from "./design-preview.tsx";
+import { designDraftFiled, useDesignDraft } from "./design-preview.tsx";
 import {
   conceptOfTab,
   conceptTab,
@@ -1040,7 +1040,10 @@ export function StageWorkspace({
   );
   const designDraft = useDesignDraft(
     projectId,
-    artifacts.some((item) => item.kind === "design"),
+    designDraftFiled(
+      artifacts.some((item) => item.kind === "design"),
+      snapshot?.inFlight,
+    ),
   );
   const inFlight = snapshot?.inFlight ?? [];
   const dispatchRoom: DispatchRoom = {

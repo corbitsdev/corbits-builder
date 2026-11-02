@@ -2,13 +2,16 @@ import {
   access,
   mkdir,
   mkdtemp,
+  readdir,
+  readFile,
   realpath,
   rename,
   rm,
   writeFile,
 } from "node:fs/promises";
 import { homedir } from "node:os";
-import { dirname, join } from "node:path";
+import { basename, dirname, join } from "node:path";
+import { hasCode } from "@intx/types";
 import {
   AppBundle,
   type ArtifactContent,
@@ -34,9 +37,137 @@ import { designStarterFiles } from "@corbits-builder/designer/skills" with { typ
 
 const STARTER = starterFiles();
 const DESIGN_STARTER = designStarterFiles();
+export const STARTER_INDEX = DESIGN_STARTER[".builder/designs/index.html"]!;
+export const STARTER_HOME_SCREEN =
+  DESIGN_STARTER[".builder/designs/screens/home.html"]!;
 const KIT = kitDigest();
 export const CHECK_APP = checkScript();
 export const WATCH_PAGE = watchScript();
+
+const SCREENS_PLACEHOLDER = "<!-- builder:screens -->";
+const SCREENS_START = "<!-- builder:screens:start -->";
+const SCREENS_END = "<!-- builder:screens:end -->";
+const SPLICED_BLOCK =
+  /<!-- builder:screens:start -->[\s\S]*?<!-- builder:screens:end -->/;
+
+function cleanScreenBody(html: string): string {
+  const body = html.match(/<body[^>]*>([\s\S]*?)<\/body>/i)?.[1] ?? html;
+  return body.replace(/<script\b[\s\S]*?<\/script>/gi, "").trim();
+}
+
+function screenNameOf(file: string, html: string): string {
+  const match = html.match(/data-screen=["']([^"']+)["']/);
+  if (match?.[1] !== undefined) return match[1];
+  return basename(file, ".html");
+}
+
+function normalizeScreenHtml(file: string, cleaned: string): string {
+  if (/data-screen=/.test(cleaned)) return cleaned;
+  const name = screenNameOf(file, cleaned);
+  return `<section data-screen="${name}">\n${cleaned}\n</section>`;
+}
+
+const isStarterHome = (file: string, html: string) =>
+  file === "home.html" &&
+  (html === STARTER_HOME_SCREEN || html.trim() === STARTER_HOME_SCREEN.trim());
+
+// Splices per-screen HTML files into the mockup shell's <!-- builder:screens --> marker (or
+// <main>), wrapping the spliced markup in start/end markers so repeated calls replace the
+// previously spliced block in place.
+export function spliceDesignScreens(
+  indexHtml: string,
+  screens: Readonly<Record<string, string>>,
+): string {
+  const shell = indexHtml.replace(SPLICED_BLOCK, "");
+  const inline = new Set(
+    [...shell.matchAll(/data-screen=["']([^"']+)["']/g)].flatMap((match) =>
+      match[1] === undefined ? [] : [match[1]],
+    ),
+  );
+  const nonEmpty = Object.entries(screens)
+    .map(([path, raw]) => [basename(path), cleanScreenBody(raw), raw] as const)
+    .filter(([, cleaned]) => cleaned.length > 0);
+  const hasOtherScreen =
+    nonEmpty.some(([file]) => file !== "home.html") || inline.size > 0;
+  const active = nonEmpty.filter(([file, cleaned, raw]) => {
+    if (hasOtherScreen && isStarterHome(file, raw)) return false;
+    return !inline.has(screenNameOf(file, cleaned));
+  });
+  if (active.length === 0) {
+    if (SPLICED_BLOCK.test(indexHtml))
+      return indexHtml.replace(SPLICED_BLOCK, () => SCREENS_PLACEHOLDER);
+    return indexHtml;
+  }
+  const order = [...shell.matchAll(/href=["']#\/([^/"'\s]+)/g)].flatMap(
+    (match) => (match[1] === undefined ? [] : [match[1]]),
+  );
+  const rank = (entry: readonly [string, string, string]) => {
+    const pos = order.indexOf(screenNameOf(entry[0], entry[1]));
+    return pos === -1 ? order.length : pos;
+  };
+  const joined = active
+    .sort((a, b) => rank(a) - rank(b) || a[0].localeCompare(b[0]))
+    .map(([file, cleaned]) => normalizeScreenHtml(file, cleaned))
+    .join("\n");
+  const marked = `${SCREENS_START}\n${joined}\n${SCREENS_END}`;
+  if (SPLICED_BLOCK.test(indexHtml))
+    return indexHtml.replace(SPLICED_BLOCK, () => marked);
+  if (indexHtml.includes(SCREENS_PLACEHOLDER))
+    return indexHtml.replace(SCREENS_PLACEHOLDER, () => marked);
+  if (/<\/main>/i.test(indexHtml))
+    return indexHtml.replace(/<\/main>/i, (tag) => `${marked}\n${tag}`);
+  return `${indexHtml}\n${marked}`;
+}
+
+export const STARTER_SPLICED_INDEX = spliceDesignScreens(STARTER_INDEX, {
+  "home.html": STARTER_HOME_SCREEN,
+});
+
+// Re-splices .builder/designs/screens/*.html into .builder/designs/index.html on disk whenever
+// a design write completes, and drops the untouched starter home.html once another screen exists.
+export async function syncDesignScreensOnDisk(
+  workspaceDir: string,
+): Promise<void> {
+  const designsDir = join(workspaceDir, ".builder", "designs");
+  const indexPath = join(designsDir, "index.html");
+  const screensDir = join(designsDir, "screens");
+  let indexHtml: string;
+  let entries;
+  try {
+    indexHtml = await readFile(indexPath, "utf8");
+    entries = await readdir(screensDir, { withFileTypes: true });
+  } catch (error) {
+    if (hasCode(error) && error.code === "ENOENT") return;
+    throw error;
+  }
+  const screens: Record<string, string> = {};
+  for (const entry of entries) {
+    if (!entry.isFile() || !entry.name.endsWith(".html")) continue;
+    try {
+      screens[entry.name] = await readFile(
+        join(screensDir, entry.name),
+        "utf8",
+      );
+    } catch (error) {
+      if (hasCode(error) && error.code === "ENOENT") continue;
+      throw error;
+    }
+  }
+  const hasCustomScreen = Object.entries(screens).some(
+    ([name, content]) =>
+      name !== "home.html" && cleanScreenBody(content).length > 0,
+  );
+  if (
+    hasCustomScreen &&
+    screens["home.html"] !== undefined &&
+    isStarterHome("home.html", screens["home.html"])
+  ) {
+    delete screens["home.html"];
+    await rm(join(screensDir, "home.html"), { force: true });
+  }
+  const spliced = spliceDesignScreens(indexHtml, screens);
+  if (spliced !== indexHtml) await writeFile(indexPath, spliced);
+}
 // Chrome for Testing's headless shell, the browser check-app drives.
 const CHROME_VERSION = "156.0.8078.4";
 const CHROME_PLATFORMS: Record<string, string> = {

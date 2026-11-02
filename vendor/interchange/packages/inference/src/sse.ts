@@ -12,6 +12,7 @@
 
 export async function* parseSSE(
   stream: ReadableStream<Uint8Array>,
+  signal?: AbortSignal,
 ): AsyncIterable<string> {
   const reader = stream.getReader();
   // One decoder per stream: a streaming decoder holds the incomplete UTF-8
@@ -25,7 +26,7 @@ export async function* parseSSE(
 
   try {
     while (true) {
-      const { done, value } = await reader.read();
+      const { done, value } = await readWithSignal(reader, signal);
 
       if (done) {
         fragments.push(decoder.decode());
@@ -68,6 +69,38 @@ export async function* parseSSE(
 }
 
 const DONE = "[DONE]";
+
+type ChunkReadResult =
+  | { done: false; value: Uint8Array }
+  | { done: true; value?: Uint8Array | undefined };
+
+function readWithSignal(
+  reader: { read(): Promise<ChunkReadResult> },
+  signal: AbortSignal | undefined,
+): Promise<ChunkReadResult> {
+  if (signal === undefined) {
+    return reader.read();
+  }
+  if (signal.aborted) {
+    return Promise.reject(new DOMException("aborted", "AbortError"));
+  }
+  return new Promise((resolve, reject) => {
+    const onAbort = (): void => {
+      reject(new DOMException("aborted", "AbortError"));
+    };
+    signal.addEventListener("abort", onAbort, { once: true });
+    reader.read().then(
+      (result) => {
+        signal.removeEventListener("abort", onAbort);
+        resolve(result);
+      },
+      (err: unknown) => {
+        signal.removeEventListener("abort", onAbort);
+        reject(err instanceof Error ? err : new Error(String(err)));
+      },
+    );
+  });
+}
 
 // Returns the data payload of one line, or null for blank lines, comments,
 // and non-data fields. A trailing \r from a CRLF ending is dropped.

@@ -1,5 +1,6 @@
 import { describe, expect, test } from "bun:test";
 import { renderToStaticMarkup } from "react-dom/server";
+import { designDraftFiled, firstPage } from "./design-preview.tsx";
 import { predecessorOf } from "./document-versions.ts";
 import { DevicePreview } from "./device-preview.tsx";
 
@@ -23,5 +24,82 @@ describe("device preview", () => {
     );
     expect(html).toContain('sandbox=""');
     expect(html).not.toContain("allow-scripts");
+  });
+
+  test("splices per-screen files into index.html in navigation order", () => {
+    const rendered = firstPage({
+      "designs/index.html":
+        '<nav><a href="#/overview">Overview</a><a href="#/orders">Orders</a></nav><main class="app-main"></main>',
+      "designs/screens/home.html": [
+        '<section data-screen="home" data-testid="screen-home">',
+        '  <div data-state="populated" data-testid="home-populated">',
+        '    <h1 data-testid="home-title">Hello, world</h1>',
+        "  </div>",
+        "</section>",
+      ].join("\n"),
+      "designs/screens/orders.html":
+        '<section data-screen="orders"><h1>Orders</h1></section>',
+      "designs/screens/overview.html":
+        '<section data-screen="overview"><h1>Overview</h1></section>',
+    });
+    expect(rendered).not.toContain("Hello, world");
+    expect(rendered.indexOf('data-screen="overview"')).toBeLessThan(
+      rendered.indexOf('data-screen="orders"'),
+    );
+    expect(rendered.indexOf('data-screen="orders"')).toBeLessThan(
+      rendered.indexOf("</main>"),
+    );
+  });
+
+  test("keeps a home screen that retains the starter heading and adds copy", () => {
+    const rendered = firstPage({
+      "designs/index.html":
+        '<nav><a href="#/home">Home</a><a href="#/orders">Orders</a></nav><main class="app-main"></main>',
+      "designs/screens/home.html": [
+        '<section data-screen="home" data-testid="screen-home">',
+        '  <div data-state="populated" data-testid="home-populated">',
+        '    <h1 data-testid="home-title">Hello, world</h1>',
+        "    <p>Welcome back to the studio.</p>",
+        "  </div>",
+        "</section>",
+      ].join("\n"),
+      "designs/screens/orders.html":
+        '<section data-screen="orders"><h1>Orders</h1></section>',
+    });
+    expect(rendered).toContain('data-screen="home"');
+    expect(rendered).toContain("Welcome back to the studio.");
+    expect(rendered).toContain('data-screen="orders"');
+  });
+
+  test("wraps a screen file that omits data-screen or includes a body tag", () => {
+    const rendered = firstPage({
+      "designs/index.html":
+        '<nav><a href="#/orders">Orders</a></nav><main class="app-main"></main>',
+      "designs/screens/orders.html":
+        "<!doctype html><html><body><div><h1>Orders</h1></div><script>alert(1)</script></body></html>",
+    });
+    expect(rendered).toContain('<section data-screen="orders">');
+    expect(rendered).toContain("<div><h1>Orders</h1></div>");
+    expect(rendered).not.toContain("alert(1)");
+  });
+});
+
+describe("design draft", () => {
+  test("keeps reading when the room snapshot has not loaded", () => {
+    expect(designDraftFiled(false, undefined)).toBe(false);
+  });
+
+  test("stops once a design is filed or no whole-mockup designer is running", () => {
+    expect(designDraftFiled(true, undefined)).toBe(true);
+    expect(designDraftFiled(false, [])).toBe(true);
+    expect(
+      designDraftFiled(false, [{ role: "designer", concept: "Quiet" }]),
+    ).toBe(true);
+    expect(designDraftFiled(false, [{ role: "coder" }])).toBe(true);
+  });
+
+  test("keeps reading while a designer drafts the whole mockup", () => {
+    expect(designDraftFiled(false, [{ role: "designer" }])).toBe(false);
+    expect(designDraftFiled(true, [{ role: "designer" }])).toBe(true);
   });
 });

@@ -22,6 +22,7 @@ import {
   WATCH_PAGE,
   prepareWorkspace,
   sharedBrowser,
+  syncDesignScreensOnDisk,
 } from "./starter.ts";
 import {
   fileApp,
@@ -123,6 +124,17 @@ const DESIGNER_TOOLS = new Set([
   "edit_file",
   "grep",
 ]);
+// The designer's prompt names files under .builder (DESIGN.md, designs/...) without repeating the
+// folder prefix on every bullet; map bare design paths into .builder so writes never land outside it.
+export const designPath = (raw: string) => {
+  const clean = raw.replace(/^\.\/+/, "");
+  return clean === "DESIGN.md" ||
+    clean === "designs" ||
+    clean.startsWith("designs/")
+    ? `.builder/${clean}`
+    : raw;
+};
+
 // The calls after which the agent hears what its running app complained of since the last one.
 const REPORTING = new Set([...WRITES, PACKAGE_INSTALL_TOOL]);
 // run_shell reports a failed command as its output, headed by its exit code.
@@ -507,11 +519,23 @@ export function createSidecarCodingTools(policy: {
           ...(design ? [checkDesignDefinition] : []),
           ...(policy.browser?.tools ?? []),
         ],
-        run: async (call, signal) => {
+        run: async (rawCall, signal) => {
+          const rawPath = rawCall.arguments?.["path"];
+          const call =
+            design && typeof rawPath === "string"
+              ? {
+                  ...rawCall,
+                  arguments: {
+                    ...rawCall.arguments,
+                    path: designPath(rawPath),
+                  },
+                }
+              : rawCall;
           if (browserNames.has(call.name)) return runBrowser(call, signal);
           if (design && call.name === CHECK_DESIGN_TOOL) {
             await open(signal);
             if (!designCheck) throw new Error("design_check_missing");
+            await syncDesignScreensOnDisk(await realpath(env.toolCwd));
             const { checklist } = await designCheck.current(signal);
             return { callId: call.id, content: checklist };
           }
@@ -545,24 +569,16 @@ export function createSidecarCodingTools(policy: {
           const path = call.arguments["path"];
           const executor = await sandbox;
           if (WRITES.has(call.name) && typeof path === "string") {
+            const workspace = await realpath(env.toolCwd);
             if (policy.packageInstall)
               notes.push(await installImports(call, path, signal));
             // After the import scan, so a package it installed resolves.
             if (policy.workspace === "app" && executor)
               notes.push(
-                await typeProbe(
-                  executor,
-                  await realpath(env.toolCwd),
-                  path,
-                  call.id,
-                  signal,
-                ),
+                await typeProbe(executor, workspace, path, call.id, signal),
               );
-            if (designCheck) {
-              notes.push(await designCheck.unheard());
-              if (touchesDesigns(await realpath(env.toolCwd), path))
-                designCheck.changed();
-            }
+            if (touchesDesigns(workspace, path))
+              await syncDesignScreensOnDisk(workspace);
           }
           if (call.name === PACKAGE_INSTALL_TOOL && succeeded(result))
             notes.push(await restartForPackages());

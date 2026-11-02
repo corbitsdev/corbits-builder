@@ -22,6 +22,7 @@ const agent = createDesignerAgent<CodingSidecarEnv & MailToolEnv>({
     contextWindow,
     compactAt: 0.6,
     checkBeforeDone: true,
+    fileBeforeDone: true,
   }),
   id: "designer",
   standards: [],

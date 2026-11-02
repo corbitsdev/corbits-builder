@@ -5,7 +5,12 @@ import { defineTool, type BaseEnv } from "@intx/agent/authoring";
 import { HUB_CREDENTIAL_HANDLE } from "@intx/types/credential-delivery";
 import type { RuntimeCapabilities } from "@intx/types/runtime-capabilities";
 import { DesignBundle } from "@corbits-builder/schemas/artifact";
-import { designCheckFor } from "../builds/design-check.ts";
+import {
+  designCheckFor,
+  registerDesignFiler,
+  type FiledDesignArtifact,
+} from "../builds/design-check.ts";
+import { withoutUnusedStarterHome } from "./design-draft.ts";
 import { withDesignTokens } from "./design-tokens.ts";
 import { DESIGN_STYLES } from "./design-tweaks.ts";
 import { resolveWorkflowProjectScope } from "../workflows/project-scope.ts";
@@ -50,7 +55,7 @@ async function readDesignFolder(workspace: string) {
     cwd: join(workspace, ".builder"),
   }))
     files[path] = await readFile(join(workspace, ".builder", path), "utf8");
-  return files;
+  return withoutUnusedStarterHome(files);
 }
 
 // Files the designer's .builder folder as its design concept's option. The person decides on the
@@ -73,97 +78,125 @@ export function createDesignTools() {
     credentials: [{ handle: HUB_CREDENTIAL_HANDLE }],
     requires: ["toolCwd", "capabilities"],
     definitions: [{ name: "file_design_option" }],
-    factory: (env) => ({
-      definitions,
-      run: async (call, signal) => {
-        if (call.name !== "file_design_option")
-          return {
-            callId: call.id,
-            content: "unknown_design_tool",
-            isError: true,
-          };
-        try {
-          const scope = await resolveWorkflowProjectScope(
-            env.capabilities,
-            "designer",
-            signal,
+    factory: (env) => {
+      let lastFiled:
+        | { content: string; artifact: FiledDesignArtifact }
+        | undefined;
+      const fileOption = async (
+        signal: AbortSignal,
+      ): Promise<FiledDesignArtifact> => {
+        const files = await readDesignFolder(env.toolCwd);
+        const doc = files["DESIGN.md"];
+        const styles = files[DESIGN_STYLES];
+        if (doc === undefined || styles === undefined)
+          throw new Error(
+            `invalid_design: .builder needs DESIGN.md and ${DESIGN_STYLES}`,
           );
-          const projectPath =
-            "/api/tenants/" +
-            encodeURIComponent(scope.tenantId) +
-            "/projects/" +
-            encodeURIComponent(scope.projectId);
-          const hub = (path: string, body?: unknown) =>
-            workflowHttpJson({
-              capabilities: env.capabilities,
-              handle: HUB_CREDENTIAL_HANDLE,
-              path: projectPath + path,
-              ...(body === undefined ? {} : { body }),
-              maxResponseBytes: 16384,
-              signal,
-            });
-          // The person reviews only a mockup that passed check-app as it is filed.
-          const check = designCheckFor(await realpath(env.toolCwd));
-          if (!check)
-            return {
-              callId: call.id,
-              content:
-                "design_unchecked: check-app has not run on the design yet",
-              isError: true,
-            };
-          const checked = await check.current(signal);
-          if (!checked.passed)
-            return {
-              callId: call.id,
-              content: `design_check_failed: the design is filed once it passes check-app.\n${checked.checklist}`,
-              isError: true,
-            };
-          const files = await readDesignFolder(env.toolCwd);
-          const doc = files["DESIGN.md"];
-          const styles = files[DESIGN_STYLES];
-          if (doc === undefined || styles === undefined)
-            return {
-              callId: call.id,
-              content: `invalid_design: .builder needs DESIGN.md and ${DESIGN_STYLES}`,
-              isError: true,
-            };
-          try {
-            files["DESIGN.md"] = withDesignTokens(doc, styles);
-          } catch (error) {
-            return {
-              callId: call.id,
-              content: `invalid_design: ${error instanceof Error ? error.message : String(error)}`,
-              isError: true,
-            };
-          }
-          const bundle = DesignBundle({ files });
-          if (bundle instanceof type.errors)
-            return {
-              callId: call.id,
-              content: "invalid_design: " + bundle.summary,
-              isError: true,
-            };
-          const content = JSON.stringify(bundle);
-          const bytes = Buffer.byteLength(content);
-          if (bytes > MAX_DESIGN_BYTES)
-            return {
-              callId: call.id,
-              content: `design_too_large: ${bytes} bytes; the limit is ${MAX_DESIGN_BYTES}`,
-              isError: true,
-            };
-          const title = doc.match(/^#\s+(.+)$/m)?.[1]?.trim() ?? "Design";
-          const { artifact } = HubArtifactReceipt.assert(
-            await hub("/artifacts", {
+        try {
+          files["DESIGN.md"] = withDesignTokens(doc, styles);
+        } catch (error) {
+          throw new Error(
+            `invalid_design: ${error instanceof Error ? error.message : String(error)}`,
+          );
+        }
+        const bundle = DesignBundle({ files });
+        if (bundle instanceof type.errors)
+          throw new Error("invalid_design: " + bundle.summary);
+        const content = JSON.stringify(bundle);
+        const bytes = Buffer.byteLength(content);
+        if (bytes > MAX_DESIGN_BYTES)
+          throw new Error(
+            `design_too_large: ${bytes} bytes; the limit is ${MAX_DESIGN_BYTES}`,
+          );
+        if (lastFiled?.content === content) return lastFiled.artifact;
+        const scope = await resolveWorkflowProjectScope(
+          env.capabilities,
+          "designer",
+          signal,
+        );
+        const projectPath =
+          "/api/tenants/" +
+          encodeURIComponent(scope.tenantId) +
+          "/projects/" +
+          encodeURIComponent(scope.projectId);
+        const title = doc.match(/^#\s+(.+)$/m)?.[1]?.trim() ?? "Design";
+        const { artifact } = HubArtifactReceipt.assert(
+          await workflowHttpJson({
+            capabilities: env.capabilities,
+            handle: HUB_CREDENTIAL_HANDLE,
+            path: projectPath + "/artifacts",
+            body: {
               kind: "design_option",
               title: title.slice(0, 512),
               content,
-            }),
-          );
-          return { callId: call.id, content: JSON.stringify(artifact) };
-        } catch (error) {
-          return failure(call.id, error);
-        }
-      },
-    }),
+            },
+            maxResponseBytes: 16384,
+            signal,
+          }),
+        );
+        lastFiled = { content, artifact };
+        return artifact;
+      };
+      registerDesignFiler(env.toolCwd, fileOption);
+      return {
+        definitions,
+        run: async (call, signal) => {
+          if (call.name !== "file_design_option")
+            return {
+              callId: call.id,
+              content: "unknown_design_tool",
+              isError: true,
+            };
+          try {
+            const workspace = await realpath(env.toolCwd);
+            registerDesignFiler(workspace, fileOption);
+            // The person reviews only a mockup that passed check-app as it is filed.
+            const check = designCheckFor(workspace);
+            if (!check)
+              return {
+                callId: call.id,
+                content:
+                  "design_unchecked: check-app has not run on the design yet",
+                isError: true,
+              };
+            const checked = await check.current(signal);
+            if (!checked.passed) {
+              if (checked.filingError !== undefined) {
+                if (
+                  checked.filingError instanceof Error &&
+                  /^(?:invalid_design|design_too_large):/.test(
+                    checked.filingError.message,
+                  )
+                )
+                  return {
+                    callId: call.id,
+                    content: checked.filingError.message,
+                    isError: true,
+                  };
+                return failure(call.id, checked.filingError);
+              }
+              return {
+                callId: call.id,
+                content: `design_check_failed: the design is filed once it passes check-app.\n${checked.checklist}`,
+                isError: true,
+              };
+            }
+            const artifact = checked.artifact ?? (await fileOption(signal));
+            return { callId: call.id, content: JSON.stringify(artifact) };
+          } catch (error) {
+            if (
+              error instanceof Error &&
+              /^(?:invalid_design|design_too_large):/.test(error.message)
+            )
+              return {
+                callId: call.id,
+                content: error.message,
+                isError: true,
+              };
+            return failure(call.id, error);
+          }
+        },
+      };
+    },
   });
 }

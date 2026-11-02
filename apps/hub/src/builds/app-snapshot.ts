@@ -14,6 +14,7 @@ import {
 } from "@corbits-builder/schemas/artifact";
 import { WorkflowHttpError, workflowHttpJson } from "../workflows/http-json.ts";
 import { INPUTS_DIRECTORY } from "../config/inputs.ts";
+import { spliceDesignScreens } from "./starter.ts";
 
 // Installs and builds are rebuilt by setup and check-app, and .builder and the inputs come from
 // filed documents.
@@ -94,6 +95,19 @@ export async function packApp(
         if (!(error instanceof TypeError)) throw error;
       }
     }
+  }
+  if (root === undefined && files["designs/index.html"] !== undefined) {
+    const screens = Object.fromEntries(
+      Object.entries(files).filter(
+        ([path]) =>
+          path.startsWith("designs/screens/") && path.endsWith(".html"),
+      ),
+    );
+    if (Object.keys(screens).length > 0)
+      files["designs/index.html"] = spliceDesignScreens(
+        files["designs/index.html"],
+        screens,
+      );
   }
   return files;
 }

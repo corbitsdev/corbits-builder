@@ -5,12 +5,72 @@ import { type } from "arktype";
 import { workflowRunRepoIdForAddress } from "@intx/hub-sessions";
 import { hasCode } from "@intx/types";
 import { packApp } from "../builds/app-snapshot.ts";
+import {
+  spliceDesignScreens,
+  STARTER_HOME_SCREEN,
+  STARTER_INDEX,
+  STARTER_SPLICED_INDEX,
+} from "../builds/starter.ts";
 import { parseJson } from "../lib/json.ts";
 import { ProjectError } from "../projects/errors.ts";
 import { DESIGN_STYLES } from "./design-tweaks.ts";
-import { designStarterFiles } from "@corbits-builder/designer/skills" with { type: "macro" };
 
-const STARTER_INDEX = designStarterFiles()[".builder/designs/index.html"];
+const hasInlineNonHomeScreen = (index: string | undefined) => {
+  if (index === undefined) return false;
+  for (const match of index.matchAll(/data-screen=["']([^"']+)["']/g)) {
+    if (match[1] !== "home") return true;
+  }
+  return false;
+};
+
+// The starter's home.html stays on disk when a designer builds screens with other names; drop it
+// once another screen exists while home.html is still the starter's.
+export function withoutUnusedStarterHome(
+  files: Record<string, string>,
+): Record<string, string> {
+  const screens = Object.fromEntries(
+    Object.entries(files).filter(
+      ([path]) => path.startsWith("designs/screens/") && path.endsWith(".html"),
+    ),
+  );
+  const next =
+    files["designs/index.html"] !== undefined && Object.keys(screens).length > 0
+      ? {
+          ...files,
+          "designs/index.html": spliceDesignScreens(
+            files["designs/index.html"],
+            screens,
+          ),
+        }
+      : files;
+  if (next["designs/screens/home.html"] !== STARTER_HOME_SCREEN) return next;
+  const index = next["designs/index.html"];
+  const hasOtherScreen =
+    Object.entries(next).some(
+      ([path, content]) =>
+        path.startsWith("designs/screens/") &&
+        path.endsWith(".html") &&
+        path !== "designs/screens/home.html" &&
+        content.trim().length > 0,
+    ) || hasInlineNonHomeScreen(index);
+  if (!hasOtherScreen) return next;
+  const { "designs/screens/home.html": _, ...rest } = next;
+  return rest;
+}
+
+const isStarterPages = (files: Readonly<Record<string, string>>) => {
+  const index = files["designs/index.html"];
+  if (index !== STARTER_INDEX && index !== STARTER_SPLICED_INDEX) return false;
+  const otherPages = Object.keys(files).filter(
+    (path) =>
+      path.endsWith(".html") &&
+      path !== "designs/index.html" &&
+      path !== "designs/screens/home.html",
+  );
+  if (otherPages.length > 0) return false;
+  const home = files["designs/screens/home.html"];
+  return home === undefined || home === STARTER_HOME_SCREEN;
+};
 
 // A warm single-step agent's workspace lives at
 // <SIDECAR_DATA_DIR>/workflow-step-state/<run repo id>/warm/<step id>/workspace
@@ -46,9 +106,10 @@ export async function readDesignDraft(workspace: string) {
   if (actual !== join(await realpath(workspace), ".builder", "designs"))
     return undefined;
   const files = await packApp(builder, designs);
-  const index = files["designs/index.html"];
   // The starter mockup is the designer's scaffold, not its draft; the draft begins with its first change.
-  return index === undefined || index === STARTER_INDEX ? undefined : files;
+  if (files["designs/index.html"] === undefined || isStarterPages(files))
+    return undefined;
+  return withoutUnusedStarterHome(files);
 }
 
 const MAX_DESIGN_DOC_BYTES = 256 * 1024;

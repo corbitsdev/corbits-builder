@@ -1,30 +1,116 @@
 import { createHash } from "node:crypto";
-import { readFile } from "node:fs/promises";
+import { readFile, realpath } from "node:fs/promises";
 import { join, relative, resolve, sep } from "node:path";
+import { withDesignTokens } from "../artifacts/design-tokens.ts";
+import { DESIGN_STYLES } from "../artifacts/design-tweaks.ts";
 
 export const DESIGNS = join(".builder", "designs");
-// A designer writes a screen in several calls; the check starts once they pause.
-const SETTLE_MS = 2_000;
 
-type Result = { fingerprint: string; passed: boolean; checklist: string };
+export interface FiledDesignArtifact {
+  artifactId: string;
+  kind: string;
+  version: number;
+  sha256: string;
+}
+
+type Result = {
+  fingerprint: string;
+  passed: boolean;
+  checklist: string;
+  artifact?: FiledDesignArtifact;
+  filingError?: unknown;
+};
 type Run = (
   signal: AbortSignal,
 ) => Promise<{ exitCode: number | null; output: string }>;
+type DesignFiler = (signal: AbortSignal) => Promise<FiledDesignArtifact>;
 export type DesignCheck = ReturnType<typeof createDesignCheck>;
 
 // By workspace. The designer's coding tools run the check and file_design_option waits on it; both
 // tool packages load into the one workflow child of the designer's bundle
 // (unified-execution-host-design.md, "The tool-execution locus"; build-packages.ts bundles a role).
 const checks = new Map<string, DesignCheck>();
+const filers = new Map<string, DesignFiler>();
 export const designCheckFor = (workspace: string) => checks.get(workspace);
+export function registerDesignFiler(workspace: string, filer: DesignFiler) {
+  filers.set(resolve(workspace), filer);
+}
+
+async function findDesignFiler(
+  workspace: string,
+): Promise<DesignFiler | undefined> {
+  const direct = filers.get(workspace) ?? filers.get(resolve(workspace));
+  if (direct) return direct;
+  for (const [candidate, filer] of filers) {
+    try {
+      if ((await realpath(candidate)) === workspace) {
+        filers.set(workspace, filer);
+        return filer;
+      }
+    } catch (error) {
+      if ((error as NodeJS.ErrnoException).code !== "ENOENT") throw error;
+    }
+  }
+  return undefined;
+}
 
 // check-app also reads the design document beside the mockup.
 const DESIGN_DOC = join(".builder", "DESIGN.md");
+const DESIGN_STYLES_PATH = join(".builder", DESIGN_STYLES);
+const DESIGN_INDEX_PATH = join(".builder", "designs", "index.html");
+// Prose in angle brackets, like <App name>; HTML tags carry attributes and code is stripped first.
+const PLACEHOLDER = /<[A-Za-z][^<>=`"]*\s[^<>=`"]*>/g;
+
+async function readTextIfPresent(path: string): Promise<string | undefined> {
+  try {
+    return await readFile(path, "utf8");
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code === "ENOENT") return undefined;
+    throw error;
+  }
+}
+
+export async function validateDesignWorkspace(
+  workspace: string,
+): Promise<string | undefined> {
+  const doc = await readTextIfPresent(join(workspace, DESIGN_DOC));
+  const styles = await readTextIfPresent(join(workspace, DESIGN_STYLES_PATH));
+  const index = await readTextIfPresent(join(workspace, DESIGN_INDEX_PATH));
+  if (doc === undefined || styles === undefined || index === undefined)
+    return `invalid_design: .builder needs DESIGN.md, designs/index.html and ${DESIGN_STYLES}`;
+  const prose = doc.replace(/```[\s\S]*?```/g, "").replace(/`[^`\n]*`/g, "");
+  const placeholders = [
+    ...new Set(
+      Array.from(prose.matchAll(PLACEHOLDER), ([match]) =>
+        match.replace(/\s+/g, " ").slice(0, 40),
+      ),
+    ),
+  ];
+  if (placeholders.length > 0)
+    return `invalid_design: DESIGN.md still has ${placeholders.length} template placeholder(s): ${placeholders.slice(0, 5).join(", ")}`;
+  try {
+    withDesignTokens(doc, styles);
+  } catch (error) {
+    return `invalid_design: ${error instanceof Error ? error.message : String(error)}`;
+  }
+  return undefined;
+}
+
+function withValidationIssue(output: string, issue: string): string {
+  const trimmed = output.trim();
+  const detail = issue.replace(/^invalid_design:\s*/, "");
+  const rewritten = trimmed.replace(
+    /^check passed\b[^\n]*/,
+    `check failed: ${issue}`,
+  );
+  if (trimmed.includes(detail)) return rewritten;
+  return `${rewritten}\n✗ ${issue}`;
+}
 
 export const CHECK_DESIGN_TOOL = "check_design";
 export const checkDesignDefinition = {
   name: CHECK_DESIGN_TOOL,
-  description: `Runs check-app on the design as it is now: it serves ${DESIGNS} in a headless browser, opens its screens at desktop and phone widths, checks that ${DESIGN_DOC} is filled in, and that the look is moved off the kit's starting point. The harness also runs it after each design write and shows the result with a later write, so call this to see the checklist for the design as it is now; the design is ready to file once it reads "check passed".`,
+  description: `Runs check-app on the design as it is now: it serves ${DESIGNS} in a headless browser, opens its screens at desktop and phone widths, checks that ${DESIGN_DOC} is filled in, and that the look is moved off the kit's starting point. Call this once the screens and ${DESIGN_DOC} are written; when it reads "check passed", it also files the .builder folder as your design concept's option.`,
   inputSchema: { type: "object", properties: {}, additionalProperties: false },
 };
 
@@ -34,12 +120,15 @@ export const touchesDesigns = (workspace: string, path: string) => {
 };
 
 /**
- * check-app on a designer workspace's mockup, run by the harness: after design writes settle,
- * restarted when more arrive, and on demand for filing. A result belongs to the exact files it saw.
+ * check-app on a designer workspace's mockup, run on demand for checking and filing. A result
+ * belongs to the exact files it saw.
  */
 export function createDesignCheck(workspace: string, run: Run) {
   let latest: Result | undefined;
-  let heard: Result | undefined;
+  let filed: { fingerprint: string; artifact: FiledDesignArtifact } | undefined;
+  let filing:
+    | { fingerprint: string; done: Promise<FiledDesignArtifact> }
+    | undefined;
   let running:
     | {
         fingerprint: string;
@@ -47,7 +136,6 @@ export function createDesignCheck(workspace: string, run: Run) {
         done: Promise<Result | undefined>;
       }
     | undefined;
-  let timer: ReturnType<typeof setTimeout> | undefined;
 
   const fingerprint = async () => {
     const hash = createHash("sha256");
@@ -65,67 +153,100 @@ export function createDesignCheck(workspace: string, run: Run) {
     return hash.digest("hex");
   };
 
+  const runCheck = async (
+    print: string,
+    controller: AbortController,
+  ): Promise<Result | undefined> => {
+    try {
+      let ran: { exitCode: number | null; output: string };
+      try {
+        ran = await run(controller.signal);
+      } catch (error) {
+        ran = {
+          exitCode: 1,
+          output: `check-app did not run: ${error instanceof Error ? error.message : String(error)}`,
+        };
+      }
+      const issue = await validateDesignWorkspace(workspace);
+      if (controller.signal.aborted) return undefined;
+      const result: Result = issue
+        ? {
+            fingerprint: print,
+            passed: false,
+            checklist: withValidationIssue(ran.output, issue),
+          }
+        : {
+            fingerprint: print,
+            passed: ran.exitCode === 0,
+            checklist: ran.output.trim(),
+          };
+      latest = result;
+      return result;
+    } finally {
+      if (running?.controller === controller) running = undefined;
+    }
+  };
+
   // The result for the files as they are now: the latest one if they have not changed, else a run.
   // undefined when a newer change superseded the run.
   const check = async (): Promise<Result | undefined> => {
-    timer = undefined;
     const print = await fingerprint();
     if (latest?.fingerprint === print) return latest;
     if (running?.fingerprint === print) return running.done;
     running?.controller.abort();
     const controller = new AbortController();
-    const done = run(controller.signal)
-      .then(
-        ({ exitCode, output }) => ({
-          fingerprint: print,
-          passed: exitCode === 0,
-          checklist: output.trim(),
-        }),
-        (error: unknown) => ({
-          fingerprint: print,
-          passed: false,
-          checklist: `check-app did not run: ${error instanceof Error ? error.message : String(error)}`,
-        }),
-      )
-      .then((result) => {
-        if (controller.signal.aborted) return undefined;
-        latest = result;
-        return result;
-      })
-      .finally(() => {
-        if (running?.controller === controller) running = undefined;
-      });
+    const done = runCheck(print, controller);
     running = { fingerprint: print, controller, done };
     return done;
   };
 
   const designCheck = {
-    /** A design file changed: drop the run in progress and check again once writes settle. */
-    changed() {
-      clearTimeout(timer);
-      running?.controller.abort();
-      timer = setTimeout(() => void check(), SETTLE_MS);
-    },
-    /** The checklist of the latest run the agent has not been shown, with what design it saw. */
-    async unheard() {
-      if (!latest || latest === heard) return "";
-      heard = latest;
-      const current = latest.fingerprint === (await fingerprint());
-      return `check-app ${DESIGNS}, run by the harness on ${current ? "the current design" : "the design before the latest changes, which are checked next"}:\n${latest.checklist}`;
-    },
     /** The result for the design as it is now, waiting for a run when there is none. */
     async current(signal: AbortSignal): Promise<Result> {
-      clearTimeout(timer);
       for (;;) {
         signal.throwIfAborted();
         const result = await check();
-        if (result) return (heard = result);
+        if (!result) continue;
+        if (!result.passed) return result;
+        if (filed?.fingerprint === result.fingerprint) {
+          return {
+            ...result,
+            artifact: filed.artifact,
+            checklist: `${result.checklist}\nFiled design_option: ${JSON.stringify(filed.artifact)}`,
+          };
+        }
+        const filer = await findDesignFiler(workspace);
+        if (!filer) return result;
+        try {
+          if (filing?.fingerprint !== result.fingerprint)
+            filing = {
+              fingerprint: result.fingerprint,
+              done: filer(signal),
+            };
+          const artifact = await filing.done;
+          filed = { fingerprint: result.fingerprint, artifact };
+          return {
+            ...result,
+            artifact,
+            checklist: `${result.checklist}\nFiled design_option: ${JSON.stringify(artifact)}`,
+          };
+        } catch (error) {
+          const reason = error instanceof Error ? error.message : String(error);
+          return {
+            fingerprint: result.fingerprint,
+            passed: false,
+            checklist: withValidationIssue(result.checklist, reason),
+            filingError: error,
+          };
+        } finally {
+          filing = undefined;
+        }
       }
     },
     dispose() {
-      clearTimeout(timer);
       running?.controller.abort();
       checks.delete(workspace);
+      filers.delete(workspace);
     },
   };
   checks.set(workspace, designCheck);
