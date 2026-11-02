@@ -94,6 +94,9 @@ export function activityPhrase(agent: AgentActivity): {
   phrase: string;
   asking: boolean;
 } {
+  // A long command's own word on what it is doing beats a reading of the call that started it.
+  if (agent.command !== undefined)
+    return { phrase: agent.command.line, asking: false };
   const latest = agent.tools.at(-1);
   if (latest === undefined) {
     if (agent.role === "coordinator")

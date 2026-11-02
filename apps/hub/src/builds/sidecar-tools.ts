@@ -14,7 +14,11 @@ import type { RuntimeCapabilities } from "@intx/types/runtime-capabilities";
 import { resolveWorkflowProjectScope } from "../workflows/project-scope.ts";
 import { WorkflowHttpError } from "../workflows/http-json.ts";
 import { APP_STATUS_TOOL, createCodingTools } from "./coding-tools.ts";
-import { createPosixBuildExecutor } from "./posix-sandbox.ts";
+import {
+  clearCommandProgress,
+  createPosixBuildExecutor,
+  noteCommandProgress,
+} from "./posix-sandbox.ts";
 import { browserTools } from "./browser.ts";
 import type { BrowserCatalog } from "./browser-catalog.ts";
 import {
@@ -142,6 +146,8 @@ const passedAppCheck = (call: ToolCall, result: ToolResult) =>
 
 // A cold install; under the executor's own ceiling.
 const SETUP_TIMEOUT_MS = 115_000;
+// What the person reads while the workspace installs its packages, which can take the whole timeout.
+const SETUP_PROGRESS = "installing the app's packages";
 
 // A source-closure-safe declaration: only explicit policy is captured. The
 // native child supplies the step workspace; the sandbox is built inside it.
@@ -268,17 +274,27 @@ export function createSidecarCodingTools(policy: {
           );
           try {
             if (setup) {
-              const result = await executor.run(
-                {
-                  id: "workspace-setup",
-                  name: "run_shell",
-                  arguments: {
-                    command: setup.command,
-                    timeout: SETUP_TIMEOUT_MS,
-                  },
-                },
-                signal,
+              // The install says nothing the hub can relay until it ends, so the person is told what
+              // is running for its whole length.
+              await noteCommandProgress(workspace, SETUP_PROGRESS).catch(
+                () => undefined,
               );
+              let result: ToolResult;
+              try {
+                result = await executor.run(
+                  {
+                    id: "workspace-setup",
+                    name: "run_shell",
+                    arguments: {
+                      command: setup.command,
+                      timeout: SETUP_TIMEOUT_MS,
+                    },
+                  },
+                  signal,
+                );
+              } finally {
+                await clearCommandProgress(workspace).catch(() => undefined);
+              }
               if (!succeeded(result))
                 throw new Error(
                   `workspace_setup_failed: ${String(result.content).slice(-2000)}`,
