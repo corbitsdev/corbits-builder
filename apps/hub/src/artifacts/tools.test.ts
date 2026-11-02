@@ -149,7 +149,7 @@ test("writer write_artifact exposes only writer kinds and validates approaches",
           anyOf?: {
             additionalProperties?: boolean;
             properties?: {
-              kind?: { const?: string; enum?: string[] };
+              kind?: { const?: string };
               approaches?: unknown;
             };
           }[];
@@ -157,16 +157,26 @@ test("writer write_artifact exposes only writer kinds and validates approaches",
       | undefined
   )?.anyOf;
   const branchFor = (kind: string) =>
-    branches?.find(
-      (branch) =>
-        branch.properties?.kind?.const === kind ||
-        branch.properties?.kind?.enum?.includes(kind),
-    );
-  expect(branchFor("approaches")?.properties?.approaches).toBeDefined();
+    branches?.find((branch) => branch.properties?.kind?.const === kind);
+  expect(branches).toHaveLength(4);
+  const approaches = branchFor("approaches");
+  expect(approaches?.additionalProperties).toBe(false);
+  expect(Object.keys(approaches?.properties ?? {}).sort()).toEqual([
+    "approaches",
+    "content",
+    "kind",
+    "openQuestions",
+    "title",
+  ]);
   for (const kind of ["constraints", "product_requirements", "build_plan"]) {
     const branch = branchFor(kind);
     expect(branch?.additionalProperties).toBe(false);
-    expect(branch?.properties?.approaches).toBeUndefined();
+    expect(Object.keys(branch?.properties ?? {}).sort()).toEqual([
+      "content",
+      "kind",
+      "openQuestions",
+      "title",
+    ]);
   }
   expect(branchFor("problem_brief")).toBeUndefined();
 
