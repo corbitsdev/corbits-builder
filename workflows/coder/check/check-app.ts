@@ -572,12 +572,13 @@ if (staticRoot) {
 
 // The sandbox setup unpacks Chrome's headless shell under $HOME/browsers. A sandboxed process may not
 // register Mach services, so Chrome runs as one process with its own sandbox off.
+// With no browser installed the folder is not there at all, which is the same finding.
 const [chrome] = await Array.fromAsync(
   new Bun.Glob("chrome-headless-shell-*/chrome-headless-shell").scan({
     cwd: join(homedir(), "browsers"),
     absolute: true,
   }),
-);
+).catch(() => [] as string[]);
 if (!chrome) {
   stop();
   fail("browser", "nothing under $HOME/browsers");

@@ -236,7 +236,12 @@ export async function createPosixBuildExecutor(
           `command_build_failed:${name} ${built.logs.join("; ")}`,
         );
       const shim = join(shimDirectory, name);
-      await writeFile(shim, `#!/bin/sh\nexec ${quote(binary)} "$@"\n`);
+      // srt points TMPDIR at a folder it does not make inside the sandbox's own /tmp, and Bun's
+      // WebView cannot start Chrome without a temp folder.
+      await writeFile(
+        shim,
+        `#!/bin/sh\n[ -z "$TMPDIR" ] || mkdir -p -- "$TMPDIR"\nexec ${quote(binary)} "$@"\n`,
+      );
       await chmod(shim, 0o755);
     }
     const pageWatcher = join(shimDirectory, "watch-page.ts");
@@ -327,8 +332,30 @@ export async function createPosixBuildExecutor(
         : undefined,
     );
     initialized = true;
+    // On Linux srt relays the sandbox's proxy ports to the host over Unix sockets in the host's temp
+    // folder, which the default-deny read policy hides; srt binds them before that deny lands, so
+    // every connection through the proxy was reset. Named in allowRead, they are bound back over it.
+    if (process.platform === "linux") {
+      await SandboxManager.waitForNetworkInitialization();
+      const bridges = new Set(
+        [
+          SandboxManager.getLinuxHttpSocketPath(),
+          SandboxManager.getLinuxSocksSocketPath(),
+        ].filter((path): path is string => path !== undefined),
+      );
+      if (bridges.size)
+        SandboxManager.updateConfig({
+          ...policy,
+          filesystem: {
+            ...policy.filesystem,
+            allowRead: [...(policy.filesystem.allowRead ?? []), ...bridges],
+          },
+        });
+    }
     stage = "wrap";
-    const childCommand = `exec ${[executable, "--no-env-file", layout.childPath, cwd].map(quote).join(" ")}`;
+    // The child resolves the workspace packages from source like the hub does;
+    // the vendored packages ship no built dist.
+    const childCommand = `exec ${[executable, "--no-env-file", "--conditions=intx-src", layout.childPath, cwd].map(quote).join(" ")}`;
     const wrapped = await SandboxManager.wrapWithSandbox(
       childCommand,
       "/bin/sh",
@@ -779,7 +806,7 @@ export async function createPosixBuildExecutor(
             env: childEnv,
             stdin: "ignore",
             stdout: "pipe",
-            stderr: "ignore",
+            stderr: "pipe",
             detached: process.platform !== "linux",
           },
         );
@@ -788,11 +815,19 @@ export async function createPosixBuildExecutor(
         const timer = setTimeout(stop, limits.commandTimeoutMs);
         signal.addEventListener("abort", stop, { once: true });
         try {
-          const output = await new Response(child.stdout).text();
-          return {
-            exitCode: await child.exited,
-            output: output.replaceAll(cwd + sep, ""),
-          };
+          const [output, errors] = await Promise.all([
+            new Response(child.stdout).text(),
+            new Response(child.stderr).text(),
+          ]);
+          const exitCode = await child.exited;
+          // A command that died before printing its checklist would otherwise fail with nothing said.
+          const text =
+            exitCode === 0
+              ? output
+              : [output, errors.slice(-2000)]
+                  .filter((part) => part.trim())
+                  .join("\n");
+          return { exitCode, output: text.replaceAll(cwd + sep, "") };
         } finally {
           clearTimeout(timer);
           signal.removeEventListener("abort", stop);
