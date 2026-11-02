@@ -697,8 +697,8 @@ export function StageWorkspace({
     setFiles((current) => [...current, ...fitting]);
   };
 
-  const sendFiles = async () => {
-    if (sending) return;
+  const deliverFiles = async (): Promise<boolean> => {
+    if (sending) return false;
     const text = value.trim();
     const attached = files;
     setSending(true);
@@ -736,6 +736,7 @@ export function StageWorkspace({
         setSent((previous) => previous.filter((item) => item !== pending));
       reloadRef.current();
       onChanged();
+      return true;
     } catch (cause) {
       setAwaitingSince(null);
       setSent((previous) => previous.filter((item) => item !== pending));
@@ -743,6 +744,7 @@ export function StageWorkspace({
       setValue((current) => (current === "" ? text : current));
       setFiles(attached);
       setAttachFault(await attachFaultText(cause));
+      return false;
     } finally {
       setSending(false);
     }
@@ -879,11 +881,21 @@ export function StageWorkspace({
     });
   };
   const deliver = (body: string, clearComposer = false) =>
-    deliverWithOpenApproval({
-      openApprovalId: openApproval?.approvalId,
-      decide: onDecideApproval,
-      deliver: () => deliverMail(body, clearComposer),
-    });
+    body.trim().length === 0 || sending
+      ? Promise.resolve(false)
+      : deliverWithOpenApproval({
+          openApprovalId: openApproval?.approvalId,
+          decide: onDecideApproval,
+          deliver: () => deliverMail(body, clearComposer),
+        });
+  const sendFiles = () =>
+    sending
+      ? Promise.resolve(false)
+      : deliverWithOpenApproval({
+          openApprovalId: openApproval?.approvalId,
+          decide: onDecideApproval,
+          deliver: deliverFiles,
+        });
   const sendNow = () => {
     setCaution(null);
     void deliver(value, true);

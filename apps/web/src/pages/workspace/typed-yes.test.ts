@@ -113,3 +113,35 @@ test("choosing an approach approves a matching ask without denying it and denies
   expect(unrelatedFault).toBeNull();
   expect(unrelatedSteps).toEqual(["decide:appr-design:no", "deliver"]);
 });
+
+test("sending attached files while a coordinator approval is open denies it before attaching materials", async () => {
+  const steps: string[] = [];
+  const attached = await deliverWithOpenApproval({
+    openApprovalId: "appr-brief",
+    decide: async (decision) => {
+      steps.push(`decide:${decision.approvalId}:${decision.choice}`);
+      return null;
+    },
+    deliver: async () => {
+      steps.push("attachMaterials");
+      return true;
+    },
+  });
+  expect(attached).toBe(true);
+  expect(steps).toEqual(["decide:appr-brief:no", "attachMaterials"]);
+
+  const failedSteps: string[] = [];
+  const notAttached = await deliverWithOpenApproval({
+    openApprovalId: "appr-brief",
+    decide: async (decision) => {
+      failedSteps.push(`decide:${decision.approvalId}:${decision.choice}`);
+      return "That decision was not saved.";
+    },
+    deliver: async () => {
+      failedSteps.push("attachMaterials");
+      return true;
+    },
+  });
+  expect(notAttached).toBe(false);
+  expect(failedSteps).toEqual(["decide:appr-brief:no"]);
+});
