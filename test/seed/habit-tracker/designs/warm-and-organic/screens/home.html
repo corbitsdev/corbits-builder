@@ -1,0 +1,70 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Daily Streak &amp; Habit Tracker</title>
+    <link rel="stylesheet" href="styles.css" />
+  </head>
+  <body>
+    <header class="shell">
+      <div
+        style="
+          display: flex;
+          justify-content: space-between;
+          align-items: center;
+          gap: 12px;
+        "
+      >
+        <strong data-testid="today-title"
+          >Daily Streak &amp; Habit Tracker</strong
+        >
+        <button type="button" data-theme-toggle>Theme</button>
+      </div>
+    </header>
+    <main class="shell" data-screen="today">
+      <section data-state="populated">
+        <div
+          class="card"
+          data-testid="streak-summary"
+          style="margin-bottom: 16px"
+        >
+          <h1>3 of 4 habits completed today</h1>
+          <p>Longest active streak: 18 days (Morning Hydration)</p>
+        </div>
+        <div class="card" data-testid="habit-list">
+          <div
+            style="
+              display: flex;
+              justify-content: space-between;
+              align-items: center;
+              padding: 8px 0;
+            "
+          >
+            <span>Morning Hydration (500ml water)</span>
+            <strong>18d streak</strong>
+          </div>
+          <div
+            style="
+              display: flex;
+              justify-content: space-between;
+              align-items: center;
+              padding: 8px 0;
+            "
+          >
+            <span>Read 20 pages before bed</span>
+            <strong>11d streak</strong>
+          </div>
+        </div>
+      </section>
+      <section data-state="empty" hidden>
+        <div class="card">
+          <h2>No habits tracked yet</h2>
+          <button type="button" data-testid="habit-add-button">
+            Add first habit
+          </button>
+        </div>
+      </section>
+    </main>
+  </body>
+</html>

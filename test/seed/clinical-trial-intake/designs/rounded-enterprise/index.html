@@ -1,0 +1,109 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Clinical Trial Patient Intake &amp; Consent Portal</title>
+    <link rel="stylesheet" href="styles.css" />
+  </head>
+  <body>
+    <header
+      style="
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        padding: 12px 24px;
+        border-bottom: 1px solid var(--border);
+        background: var(--card);
+      "
+    >
+      <strong>CARDIO-301 Intake &amp; eConsent</strong>
+      <nav style="display: flex; gap: 12px">
+        <a href="#/queue">Review Queue</a>
+        <a href="#/screening">Screening</a>
+        <a href="#/consent">eConsent</a>
+        <a href="#/audit">Audit Trail</a>
+      </nav>
+      <button type="button" data-theme-toggle>Theme</button>
+    </header>
+    <main
+      style="max-width: 1200px; margin: 0 auto; padding: 24px"
+      data-screen="queue"
+    >
+      <section data-state="populated">
+        <div
+          data-testid="protocol-banner"
+          style="
+            padding: 12px 16px;
+            margin-bottom: 16px;
+            background: var(--accent);
+            color: var(--accent-foreground);
+            border-radius: var(--radius);
+          "
+        >
+          Protocol CARDIO-301 · Active Consent: IRB-2026-v3.2 · Enrolled: 18 /
+          40
+        </div>
+        <h1 data-testid="queue-title">Coordinator Review Queue</h1>
+        <div
+          data-testid="candidate-table"
+          style="
+            padding: 16px;
+            margin-top: 16px;
+            background: var(--card);
+            border: 1px solid var(--border);
+            border-radius: var(--radius-lg);
+          "
+        >
+          <p>
+            <strong>SUBJ-2041 (M.R.)</strong> · Boston Site 01 · Eligible ·
+            Consent IRB-2026-v3.2 · Ready for PI Sign-Off
+          </p>
+          <p>
+            <strong>SUBJ-2044 (K.L.)</strong> · Chicago Site 02 · Screening ·
+            Consent IRB-2026-v3.1 (Re-consent Required)
+          </p>
+        </div>
+      </section>
+      <section data-state="empty" hidden>
+        <p>No candidates in the intake queue.</p>
+      </section>
+    </main>
+    <section
+      style="max-width: 1200px; margin: 0 auto; padding: 24px"
+      data-screen="screening"
+      hidden
+    >
+      <div data-state="populated">
+        <h1 data-testid="screening-title">Eligibility Screening — SUBJ-2041</h1>
+        <p data-testid="inclusion-list">Inclusion Criteria: 4 / 4 Passed</p>
+        <p data-testid="exclusion-list">Exclusion Criteria: 0 Triggered</p>
+      </div>
+    </section>
+    <section
+      style="max-width: 1200px; margin: 0 auto; padding: 24px"
+      data-screen="consent"
+      hidden
+    >
+      <div data-state="populated">
+        <h1 data-testid="consent-title">eConsent Verification</h1>
+        <p data-testid="consent-version-card">
+          Active IRB-2026-v3.2 · Participant signed · Awaiting PI
+          countersignature
+        </p>
+      </div>
+    </section>
+    <section
+      style="max-width: 1200px; margin: 0 auto; padding: 24px"
+      data-screen="audit"
+      hidden
+    >
+      <div data-state="populated">
+        <h1 data-testid="audit-title">Immutable Audit Trail</h1>
+        <p data-testid="audit-table">
+          12 recorded protocol events across 6 subjects
+        </p>
+      </div>
+    </section>
+  </body>
+</html>

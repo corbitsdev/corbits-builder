@@ -1,0 +1,105 @@
+{
+  "slug": "field-service-dispatch",
+  "id": "field-service-dispatch",
+  "title": "Field Service Dispatch Board",
+  "complexity": "medium",
+  "defaultStage": "design_options",
+  "idea": "Build a field service dispatch board for regional HVAC and electrical operations where dispatchers assign technicians to urgent work orders, track status transitions, and resolve SLA breach alerts.",
+  "problemStatement": "Build a field service dispatch board for regional HVAC and electrical operations where dispatchers assign technicians to urgent work orders, track status transitions, and resolve SLA breach alerts.",
+  "chosenConceptId": "modern-and-sleek",
+  "chosenDesignOption": "Modern and sleek",
+  "documents": {
+    "problem_brief": {
+      "title": "Problem Brief — Field Service Dispatch Board",
+      "path": "docs/problem_brief.md"
+    },
+    "constraints": {
+      "title": "Constraints — Field Service Dispatch Board",
+      "path": "docs/constraints.md"
+    },
+    "approaches": {
+      "title": "Approaches — Field Service Dispatch Board",
+      "path": "docs/approaches.md",
+      "approaches": {
+        "recommended": "queue-capacity-split",
+        "approaches": [
+          {
+            "id": "queue-capacity-split",
+            "name": "Queue + Technician Capacity Split View",
+            "summary": "Filterable priority queue with inline SLA timers paired with a side-by-side technician matcher and status transition panel.",
+            "bestFor": "Fast keyboard-and-mouse triage during peak dispatch hours at both desktop and tablet widths.",
+            "pros": [
+              "Shows SLA countdowns, required certifications, and technician workload at a glance",
+              "Accessible keyboard navigation and predictable responsive behavior",
+              "Clean audit log for every assignment and status change"
+            ],
+            "cons": [
+              "Does not show multi-hour visual overlap bars like a Gantt chart"
+            ],
+            "effort": "medium",
+            "risks": [
+              "Must keep queue filters and selected detail synchronized after status transitions"
+            ]
+          },
+          {
+            "id": "gantt-timeline",
+            "name": "Full-Screen Drag-and-Drop Gantt Timeline",
+            "summary": "Horizontal time-slot grid where dispatchers drag work-order blocks onto technician rows.",
+            "bestFor": "Multi-day planned maintenance scheduling on wide monitors.",
+            "pros": ["Visualizes shift gaps across the day"],
+            "cons": [
+              "Cramped on screens narrower than 1280px",
+              "Harder to triage urgent unscheduled emergency calls quickly"
+            ],
+            "effort": "high",
+            "risks": ["Complex drag collision handling when jobs run late"]
+          },
+          {
+            "id": "map-first-geo-pin-board",
+            "name": "Map-First Geo Pin Board",
+            "summary": "Center the dispatch workspace on a full-bleed map canvas with floating overlays for work orders and technicians.",
+            "bestFor": "Dense urban courier routing where geographic clustering is the primary decision factor.",
+            "pros": ["Immediate spatial view of technician proximity"],
+            "cons": [
+              "Floating drawers obscure map pins when comparing multiple SLA deadlines",
+              "Requires external map tile keys and geocoding for every site address"
+            ],
+            "effort": "high",
+            "risks": [
+              "Overlapping pins at multi-unit commercial sites hide urgent alerts"
+            ]
+          }
+        ]
+      }
+    },
+    "product_requirements": {
+      "title": "Product Requirements — Field Service Dispatch Board",
+      "path": "docs/product_requirements.md"
+    },
+    "design": {
+      "title": "Modern and sleek",
+      "path": "docs/design.md"
+    },
+    "build_plan": {
+      "title": "Build Plan — Field Service Dispatch Board",
+      "path": "docs/build_plan.md"
+    }
+  },
+  "designOptions": [
+    {
+      "conceptId": "modern-and-sleek",
+      "title": "Modern and sleek",
+      "direction": "Crisp cool zinc neutrals with a single cobalt accent (#2747d6) for primary dispatch actions and tabular SLA countdowns.",
+      "path": "designs/modern-and-sleek"
+    },
+    {
+      "conceptId": "boxy-enterprise",
+      "title": "Boxy enterprise",
+      "direction": "Square corners (--radius 0), deep navy primary (#0f2942), and dense high-contrast hairline tables built for multi-monitor dispatch centers.",
+      "path": "designs/boxy-enterprise"
+    }
+  ],
+  "app": {
+    "path": "app"
+  }
+}

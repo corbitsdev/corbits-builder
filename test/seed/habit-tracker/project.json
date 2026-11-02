@@ -1,0 +1,99 @@
+{
+  "slug": "habit-tracker",
+  "id": "habit-tracker",
+  "title": "Daily Streak & Habit Tracker",
+  "complexity": "simple",
+  "defaultStage": "shipped",
+  "idea": "Build a calm personal habit tracker with a single screen for daily check-ins, current and best streaks, a 7-day completion ring, and optional reminder times.",
+  "problemStatement": "Build a calm personal habit tracker with a single screen for daily check-ins, current and best streaks, a 7-day completion ring, and optional reminder times.",
+  "chosenConceptId": "warm-and-organic",
+  "chosenDesignOption": "Warm and organic",
+  "documents": {
+    "problem_brief": {
+      "title": "Problem Brief — Daily Streak & Habit Tracker",
+      "path": "docs/problem_brief.md"
+    },
+    "constraints": {
+      "title": "Constraints — Daily Streak & Habit Tracker",
+      "path": "docs/constraints.md"
+    },
+    "approaches": {
+      "title": "Approaches — Daily Streak & Habit Tracker",
+      "path": "docs/approaches.md",
+      "approaches": {
+        "recommended": "sqlite-ledger",
+        "approaches": [
+          {
+            "id": "sqlite-ledger",
+            "name": "SQLite-Backed Daily Ledger",
+            "summary": "Store habits and per-date check-in rows in SQLite with deterministic streak aggregation.",
+            "bestFor": "Reliable multi-tab persistence, instant check-ins, and clean streak history queries.",
+            "pros": [
+              "Unique (habit_id, completed_on) index prevents duplicate check-ins",
+              "Persists across browser restarts and device previews",
+              "Simple REST endpoints for toggle, create, and archive"
+            ],
+            "cons": ["Requires thin Hono API routes for check-in mutations"],
+            "effort": "low",
+            "risks": ["Local date formatting must use YYYY-MM-DD consistently"]
+          },
+          {
+            "id": "browser-storage",
+            "name": "Browser-Only LocalStorage",
+            "summary": "Store the entire habit array and date map in window.localStorage.",
+            "bestFor": "Static prototypes that never touch a backend.",
+            "pros": ["Zero server code", "Instant synchronous reads"],
+            "cons": [
+              "Data disappears when browser site data is cleared",
+              "Cannot share state across preview origins"
+            ],
+            "effort": "low",
+            "risks": ["Silent storage quota errors on mobile browsers"]
+          },
+          {
+            "id": "event-log",
+            "name": "Event-Sourced Habit Log",
+            "summary": "Append every check, uncheck, and schedule change to an immutable event stream.",
+            "bestFor": "Audit-heavy habit coaching platforms.",
+            "pros": ["Full historical replay of every toggle"],
+            "cons": [
+              "Unnecessary projection complexity for a personal habit tracker",
+              "Higher query cost as history grows"
+            ],
+            "effort": "high",
+            "risks": ["Projection bugs when habits change cadence"]
+          }
+        ]
+      }
+    },
+    "product_requirements": {
+      "title": "Product Requirements — Daily Streak & Habit Tracker",
+      "path": "docs/product_requirements.md"
+    },
+    "design": {
+      "title": "Warm and organic",
+      "path": "docs/design.md"
+    },
+    "build_plan": {
+      "title": "Build Plan — Daily Streak & Habit Tracker",
+      "path": "docs/build_plan.md"
+    }
+  },
+  "designOptions": [
+    {
+      "conceptId": "warm-and-organic",
+      "title": "Warm and organic",
+      "direction": "Earthy terracotta primary on a warm cream background with soft brown borders and humanist sans typography.",
+      "path": "designs/warm-and-organic"
+    },
+    {
+      "conceptId": "minimal-monochrome",
+      "title": "Minimal monochrome",
+      "direction": "Crisp ink-on-paper monochrome layout with tabular numerals and high-contrast streak indicators.",
+      "path": "designs/minimal-monochrome"
+    }
+  ],
+  "app": {
+    "path": "app"
+  }
+}
