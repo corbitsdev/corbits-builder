@@ -328,7 +328,9 @@ export async function createPosixBuildExecutor(
     );
     initialized = true;
     stage = "wrap";
-    const childCommand = `exec ${[executable, "--no-env-file", layout.childPath, cwd].map(quote).join(" ")}`;
+    // The child resolves the workspace packages from source like the hub does;
+    // the vendored packages ship no built dist.
+    const childCommand = `exec ${[executable, "--no-env-file", "--conditions=intx-src", layout.childPath, cwd].map(quote).join(" ")}`;
     const wrapped = await SandboxManager.wrapWithSandbox(
       childCommand,
       "/bin/sh",
