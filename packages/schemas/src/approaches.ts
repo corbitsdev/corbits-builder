@@ -29,12 +29,17 @@ export type ApproachesMeta = typeof ApproachesMeta.infer;
 export function approachesIssue({
   approaches,
   recommended,
-}: ApproachesMeta): string | undefined {
+}: ApproachesMeta): { path: string; message: string } | undefined {
   const ids = approaches.map((approach) => approach.id);
-  const repeated = duplicate(ids);
-  if (repeated !== undefined)
-    return "approach id " + repeated + " is used twice";
+  if (duplicate(ids) !== undefined)
+    return {
+      path: "approaches.approaches",
+      message: "give each approach a unique id",
+    };
   if (recommended !== undefined && !ids.includes(recommended))
-    return "recommended " + recommended + " is not one of the approaches";
+    return {
+      path: "approaches.recommended",
+      message: "name one of the approach ids",
+    };
   return undefined;
 }

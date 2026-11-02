@@ -271,7 +271,7 @@ export function createProjectRoutes(
         const read = readProjectImport(input);
         if (read instanceof type.errors)
           throw new ProjectError(400, "invalid_project_import", {
-            issues: read.summary,
+            issues: read,
           });
         const { file, omitted } = read;
         const materials = file.materials ?? [];

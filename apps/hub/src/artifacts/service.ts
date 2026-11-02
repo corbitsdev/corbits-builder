@@ -96,7 +96,11 @@ import type { AgentActivityTracker } from "./activity.ts";
 import type { Actor } from "../lib/actor.ts";
 import { parseJson } from "../lib/json.ts";
 import { authorizeProject } from "../projects/authorization.ts";
-import { ProjectError, projectResource } from "../projects/errors.ts";
+import {
+  ProjectError,
+  projectResource,
+  typeIssues,
+} from "../projects/errors.ts";
 import { readAppRepository } from "../projects/app-repository.ts";
 import {
   spawnedWorkflowRole,
@@ -918,7 +922,7 @@ export function createArtifactService(
       const input = DesignTweaks(raw);
       if (input instanceof type.errors)
         throw new ProjectError(400, "invalid_design_tweaks", {
-          issues: input.summary,
+          issues: input,
         });
       await requireProject(actor, projectId, "manage");
       const tokens: Record<string, string> = input.tokens;
@@ -950,7 +954,7 @@ export function createArtifactService(
         const bundle = DesignBundle(parseJson(stored.content));
         if (bundle instanceof type.errors)
           throw new ProjectError(409, "invalid_design", {
-            issues: bundle.summary,
+            issues: bundle,
           });
         const files = {
           ...bundle.files,
@@ -1086,7 +1090,7 @@ export function createArtifactService(
       const material = ProjectExportMaterial(input);
       if (material instanceof type.errors)
         throw new ProjectError(400, "invalid_material", {
-          issues: material.summary,
+          issues: material,
         });
       const allowed = await requireProject(actor, projectId, "manage");
       if (!(await allowed(artifactResource(MATERIAL_KIND), "write")))
@@ -1157,7 +1161,7 @@ export function createArtifactService(
       const input = ArtifactRead(raw);
       if (input instanceof type.errors)
         throw new ProjectError(400, "invalid_artifact_read", {
-          issues: input.summary,
+          issues: input,
         });
       await requireProject(actor, projectId, "read");
       const pinned = input.artifactId?.match(PINNED_REF);
@@ -1252,7 +1256,7 @@ export function createArtifactService(
       const input = ArtifactKindWrite(raw);
       if (input instanceof type.errors)
         throw new ProjectError(400, "invalid_artifact_write", {
-          issues: input.summary,
+          issues: input,
         });
       const bundled =
         input.kind === "design" ||
@@ -1260,19 +1264,27 @@ export function createArtifactService(
         input.kind === "app";
       if (bundled && input.openQuestions)
         throw new ProjectError(400, "invalid_artifact_write", {
-          issues: "openQuestions belong to documents, not a " + input.kind,
+          issues: [
+            {
+              path: "openQuestions",
+              message: `goes on documents; write this ${input.kind} without it`,
+            },
+          ],
         });
       if (input.approaches) {
         if (input.kind !== "approaches")
           throw new ProjectError(400, "invalid_artifact_write", {
-            issues:
-              "approaches belong to the approaches document, not a " +
-              input.kind,
+            issues: [
+              {
+                path: "approaches",
+                message: `goes on the approaches document; write this ${input.kind} without it`,
+              },
+            ],
           });
         const issue = approachesIssue(input.approaches);
         if (issue)
           throw new ProjectError(400, "invalid_artifact_write", {
-            issues: issue,
+            issues: [issue],
           });
       }
       if (bundled) {
@@ -1281,7 +1293,7 @@ export function createArtifactService(
         );
         if (bundle instanceof type.errors)
           throw new ProjectError(400, "invalid_" + input.kind, {
-            issues: bundle.summary,
+            issues: typeIssues(bundle, "content"),
           });
       }
       if (input.kind === "app") {
@@ -1295,7 +1307,7 @@ export function createArtifactService(
         const document = DocumentContent(input.content);
         if (document instanceof type.errors)
           throw new ProjectError(400, "invalid_artifact_write", {
-            issues: document.summary,
+            issues: typeIssues(document, "content"),
           });
       }
       const allowed = await requireProject(actor, projectId, "read");
@@ -1699,7 +1711,7 @@ export function createArtifactService(
       const input = DesignConceptRecord(raw);
       if (input instanceof type.errors)
         throw new ProjectError(400, "invalid_design_concept", {
-          issues: input.summary,
+          issues: input,
         });
       await requireProject(actor, projectId, "manage");
       const [run] = await rawDB
@@ -1779,7 +1791,7 @@ export function createArtifactService(
       const input = ArtifactApprovalRecord(raw);
       if (input instanceof type.errors)
         throw new ProjectError(400, "invalid_artifact_approval", {
-          issues: input.summary,
+          issues: input,
         });
       await requireProject(actor, projectId, "manage");
       const covers = APPROVAL_COVERS[input.tool]!;
@@ -1886,7 +1898,7 @@ export function createArtifactService(
       const input = DesignChoice(raw);
       if (input instanceof type.errors)
         throw new ProjectError(400, "invalid_design_choice", {
-          issues: input.summary,
+          issues: input,
         });
       await requireProject(actor, projectId, "manage");
       const [chooser] = await rawDB
