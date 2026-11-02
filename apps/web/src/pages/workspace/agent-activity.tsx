@@ -6,12 +6,16 @@
  */
 import { useQuery } from "@tanstack/react-query";
 import type { AgentActivity } from "@corbits-builder/client";
-import { readProjectActivity } from "../../api/activity.ts";
+import {
+  readProjectActivity,
+  readProjectRunStates,
+} from "../../api/activity.ts";
 import { keys } from "../../queries/keys.ts";
 import { wording } from "../../config.ts";
 
 const POLL_MS = 10_000;
 const BUSY_POLL_MS = 3_000;
+const RUN_STATE_POLL_MS = 5_000;
 const text = wording.activity;
 // The calls that hold until the person answers.
 const ASKS = new Set(["instruct_coder", "request_approval", "design_app"]);
@@ -124,6 +128,31 @@ export function useProjectActivity(projectId: string) {
       (query.state.data?.agents.length ?? 0) > 0 ? BUSY_POLL_MS : POLL_MS,
     refetchOnWindowFocus: false,
   });
+}
+
+/**
+ * Each live run's state by its latest committed event, polled while any run is live. A run that
+ * parks on an approval raises no room event, so this is how the page learns the person's turn came.
+ */
+export function useProjectRunStates(projectId: string) {
+  return useQuery({
+    queryKey: keys.projectRunStates.of(projectId),
+    queryFn: ({ signal }) => readProjectRunStates(projectId, signal),
+    refetchInterval: (query) =>
+      (query.state.data?.runs.length ?? 0) > 0 ? RUN_STATE_POLL_MS : POLL_MS,
+    refetchOnWindowFocus: false,
+  });
+}
+
+/** The runs held on an approval, as one string a React effect can depend on. */
+export function heldOnApproval(
+  states: { runs: readonly { runId: string; state: string }[] } | undefined,
+): string {
+  return (states?.runs ?? [])
+    .filter((run) => run.state === "approval")
+    .map((run) => run.runId)
+    .sort()
+    .join(",");
 }
 
 /** The roles with a run mid-turn right now, from the hub's native activity read. */
