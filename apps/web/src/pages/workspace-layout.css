@@ -182,8 +182,8 @@
   margin: 0;
 }
 
-/* The library card always renders Approve always as its second action. A card
-   that approves exact document versions cannot take a standing grant. */
+/* The library card always renders Approve always as its second action.
+   Document cards and the design card do not offer that standing grant. */
 .document-decision-once
   [data-slot="tool-approval-card"]
   > div:last-child
@@ -194,12 +194,17 @@
 /* Not yet is sm:ms-auto, and every action is shrink-0 nowrap. A long middle
    label fills the row, Not yet wraps, and the auto margin pins it to the
    right edge. Keep the actions on one line; the long label wraps inside
-   its own button. */
-.document-decision [data-slot="tool-approval-card"] > div:last-child {
+   its own button. The design card sizes its actions on their own. */
+.document-decision:not(.document-decision-design)
+  [data-slot="tool-approval-card"]
+  > div:last-child {
   flex-wrap: nowrap;
 }
 
-.document-decision [data-slot="tool-approval-card"] > div:last-child > button {
+.document-decision:not(.document-decision-design)
+  [data-slot="tool-approval-card"]
+  > div:last-child
+  > button {
   flex-shrink: 1;
   min-width: 0;
   height: auto;
@@ -207,12 +212,31 @@
   white-space: normal;
 }
 
-.document-decision
+.document-decision:not(.document-decision-design)
   [data-slot="tool-approval-card"]
   > div:last-child
   > button:last-child {
   flex-shrink: 0;
   margin-inline-start: 0;
+}
+
+/* Design approval: the two actions share one line, one width and one
+   height. Not yet is not pinned to the right edge, and the labels do not wrap. */
+.document-decision-design [data-slot="tool-approval-card"] > div:last-child {
+  flex-wrap: nowrap;
+  align-items: stretch;
+}
+
+.document-decision-design
+  [data-slot="tool-approval-card"]
+  > div:last-child
+  > button {
+  flex: 1 1 0;
+  min-width: 0;
+  margin-inline-start: 0;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
 /* The library keeps a settled line's words from shrinking, so a long document title ran past the
@@ -246,12 +270,26 @@
 }
 
 .document-decision-concepts {
-  display: flex;
-  flex-wrap: wrap;
-  gap: var(--space-1);
+  width: 100%;
   margin: 0;
-  padding: 0;
-  list-style: none;
+  border-collapse: collapse;
+}
+
+.document-decision-concepts th,
+.document-decision-concepts td {
+  padding: var(--space-1) var(--space-3) var(--space-1) 0;
+  text-align: start;
+  vertical-align: baseline;
+  font-weight: 400;
+}
+
+.document-decision-concepts thead th {
+  font-weight: 600;
+  color: var(--wb-muted-foreground);
+}
+
+.document-decision-concepts tbody td:first-child {
+  font-weight: 600;
 }
 
 .design-choice {

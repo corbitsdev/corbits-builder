@@ -10,7 +10,6 @@
 import type { ReactNode } from "react";
 import { wording } from "../../config.ts";
 import {
-  Badge,
   Button as UiButton,
   ToolApproval,
   type ToolApprovalDecision,
@@ -18,6 +17,24 @@ import {
 import { approvalQuestion, shortDocumentName } from "./collaboration.ts";
 import { approvalToolPart } from "./conversation-parts.ts";
 import type { ApprovalOutcome, DocumentApproval } from "./transcript.tsx";
+
+/** At most ten words of a design direction, with parenthetical notes removed. */
+function designConceptDescription(direction: string): string {
+  const words = direction
+    .replaceAll(/\([^)]*\)/g, "")
+    .replaceAll(/\s+([,.])/g, "$1")
+    .replaceAll(/\s+/g, " ")
+    .trim()
+    .split(" ")
+    .filter((word) => word !== "");
+  const breakAt = words.findIndex(
+    (word, index) => index >= 2 && (word.endsWith(",") || word.endsWith(".")),
+  );
+  const count =
+    breakAt === -1 ? Math.min(words.length, 10) : Math.min(breakAt + 1, 10);
+  const line = words.slice(0, count).join(" ");
+  return line.endsWith(",") || line.endsWith(".") ? line.slice(0, -1) : line;
+}
 
 const text = wording.approval;
 const INSTRUCTION_ASKS = new Set(["instruct_coder"]);
@@ -87,6 +104,27 @@ function declinedLine(approval: DocumentApproval): string {
   );
 }
 
+function actionLabels(approval: DocumentApproval): {
+  approve: string;
+  approveAlways?: string;
+  deny: string;
+} {
+  const preset =
+    approval.toolName === undefined
+      ? undefined
+      : text.actions[approval.toolName];
+  if (approval.toolName !== "design_app" || preset === undefined)
+    return preset ?? { approve: text.approve, deny: text.notYet };
+  const label =
+    approval.concepts?.length === 1 ? approval.concepts[0]?.label : undefined;
+  const startDesigns = preset.approve;
+  const approve =
+    label !== undefined && preset.startNamed !== undefined
+      ? preset.startNamed(label)
+      : startDesigns;
+  return { approve, deny: preset.deny };
+}
+
 function settledLine(approval: DocumentApproval): string {
   const { document } = approval;
   if (document !== undefined)
@@ -136,14 +174,10 @@ export function DocumentDecision({
   const shown = asked !== undefined && shownDocument === asked.kind;
   const name = shortName(approval);
   const together = approvedTogether(approval) !== undefined;
-  const actions = (approval.toolName === undefined
-    ? undefined
-    : text.actions[approval.toolName]) ?? {
-    approve: text.approve,
-    deny: text.notYet,
-  };
+  const actions = actionLabels(approval);
   const instruction = approval.instruction;
   const tool = approval.toolName ?? "";
+  const design = tool === "design_app";
   const decide = (decision: ToolApprovalDecision) => {
     if (decision.outcome === "rejected") onNo();
     else onYes();
@@ -177,7 +211,13 @@ export function DocumentDecision({
     );
   return (
     <ToolApproval
-      className="document-decision document-decision-once"
+      className={[
+        "document-decision",
+        "document-decision-once",
+        design ? "document-decision-design" : "",
+      ]
+        .filter((name) => name !== "")
+        .join(" ")}
       part={approvalToolPart(approval.approvalId, approval.outcome)}
       onDecide={decide}
       disabled={disabled}
@@ -211,15 +251,25 @@ export function DocumentDecision({
       )}
       {approval.concepts === undefined ||
       approval.concepts.length === 0 ? null : (
-        <ul className="document-decision-concepts" aria-label={text.concepts}>
-          {approval.concepts.map((concept) => (
-            <li key={concept.label}>
-              <Badge tone="neutral" title={concept.direction}>
-                {concept.label}
-              </Badge>
-            </li>
-          ))}
-        </ul>
+        <table
+          className="document-decision-concepts"
+          aria-label={text.concepts}
+        >
+          <thead>
+            <tr>
+              <th scope="col">{text.conceptColumns.design}</th>
+              <th scope="col">{text.conceptColumns.description}</th>
+            </tr>
+          </thead>
+          <tbody>
+            {approval.concepts.map((concept) => (
+              <tr key={concept.label}>
+                <td>{concept.label}</td>
+                <td>{designConceptDescription(concept.direction)}</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
       )}
       {body === undefined ? null : (
         <p className="document-decision-next">{body}</p>
