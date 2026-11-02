@@ -34,7 +34,12 @@ import {
   PromptInputToolbar,
   useAttachments,
 } from "@corbits/react-ui";
-import { useProjectActivity, useRolesAtWork } from "./agent-activity.tsx";
+import {
+  heldOnApproval,
+  useProjectActivity,
+  useProjectRunStates,
+  useRolesAtWork,
+} from "./agent-activity.tsx";
 import {
   dispatchLive,
   DispatchRoomContext,
@@ -510,8 +515,12 @@ export function StageWorkspace({
     };
   }, [projectId, runId]);
 
+  // The runs held on an approval, from the polled run states: a coder's package request raises no
+  // room event, so the room alone would not say the person's turn came until something else moved.
+  const awaitingApproval = heldOnApproval(useProjectRunStates(projectId).data);
   // A room that moved may mean a message reached the coordinator from elsewhere, or a coordinator
-  // or coder decision opened; read who is at work and the open decisions.
+  // or coder decision opened; read who is at work and the open decisions. A run parking on an
+  // approval moves no room, so the open decisions are read again then too.
   useEffect(() => {
     void queryClient.invalidateQueries({
       queryKey: keys.projectActivity.of(projectId),
@@ -519,7 +528,7 @@ export function StageWorkspace({
     void queryClient.invalidateQueries({
       queryKey: keys.openDecisions.of(projectId),
     });
-  }, [projectId, queryClient, snapshot, gateDone]);
+  }, [projectId, queryClient, snapshot, gateDone, awaitingApproval]);
 
   const settling = awaitingCommit(liveRun, mirror);
   useEffect(() => {
