@@ -1,7 +1,8 @@
 /**
- * The model profile in the new-project prompt box. A new project starts on the one picked here
- * (the person's active profile, else the only connected provider's, until they pick another); its
- * bindings never change once it starts. With neither, nothing is picked and the hub says why.
+ * The model profile in the new-project prompt box. A new project starts on the one picked here:
+ * the person's active profile, else the only connected provider's, else the first profile that can
+ * run, until they pick another. Its bindings never change once it starts. With no runnable
+ * profile, nothing is picked and the hub says why.
  */
 import {
   PromptInputModelSelect,
@@ -74,9 +75,10 @@ export function NewProjectProfile({
   const models =
     catalog && choice !== undefined ? profileOptions(catalog, choice) : [];
   const active = choice?.profile ?? catalog?.automaticProfile;
-  const shown = models.some((model) => model.id === active)
-    ? active
-    : undefined;
+  // No active or automatic profile (several providers connected) still has to
+  // offer every runnable profile, with one selected so a start carries an id.
+  const shown =
+    models.find((model) => model.id === active)?.id ?? models[0]?.id;
   useEffect(() => {
     if (value === undefined && shown !== undefined) onValueChange(shown);
   }, [value, shown, onValueChange]);
