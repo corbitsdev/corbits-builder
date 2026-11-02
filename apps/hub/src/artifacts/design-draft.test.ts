@@ -1,4 +1,4 @@
-import { expect, test } from "bun:test";
+import { describe, expect, test } from "bun:test";
 import {
   mkdir,
   mkdtemp,
@@ -46,7 +46,12 @@ import {
   dropDegenerateTurn,
   trimHistory,
 } from "../workflows/compaction.ts";
-import { readDesignBundle, readDesignDraft } from "./design-draft.ts";
+import {
+  readDesignBundle,
+  readDesignDraft,
+  manualPictureRefs,
+  manualPictures,
+} from "./design-draft.ts";
 import { createDesignTools } from "./design-tools.ts";
 
 const STARTER = designStarterFiles();
@@ -709,4 +714,36 @@ test("readDesignDraft serves spliced index.html whether synced on disk or packed
   } finally {
     await rm(workspace, { recursive: true, force: true });
   }
+});
+
+describe("user manual pictures", () => {
+  const markdown = [
+    "# Using the app",
+    "![The home page](manual/home.png)",
+    '![Adding a card](manual/board.new-card.png "highlight: button | New card")',
+    '<img src="manual/settings.png" alt="Settings">',
+    "![Not ours](../secret.png)",
+    "![Elsewhere](https://example.com/x.png)",
+    "![Again](manual/home.png)",
+  ].join("\n");
+  test("reads each picture under docs/manual/ once, as the manual names it", () => {
+    expect(manualPictureRefs(markdown)).toEqual([
+      "manual/home.png",
+      "manual/board.new-card.png",
+      "manual/settings.png",
+    ]);
+  });
+  test("carries the pictures it can find as data URLs of their kind", () => {
+    const bytes = new TextEncoder().encode("png-bytes");
+    const pictures = manualPictures(markdown, (ref) =>
+      ref === "manual/settings.png" ? undefined : bytes,
+    );
+    expect(Object.keys(pictures)).toEqual([
+      "manual/home.png",
+      "manual/board.new-card.png",
+    ]);
+    expect(pictures["manual/home.png"]).toBe(
+      `data:image/png;base64,${Buffer.from(bytes).toString("base64")}`,
+    );
+  });
 });

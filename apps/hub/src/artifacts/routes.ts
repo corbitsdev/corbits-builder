@@ -8,6 +8,7 @@ import type { TenantEnv } from "@intx/hub-api";
 import {
   AcceptanceChecklist,
   AcceptedMaterials,
+  UserManual,
   AppSnapshotReceipt,
   AppVersionList,
   ArtifactApprovalReceipt,
@@ -439,6 +440,29 @@ export function mountArtifactRoutes(
       ),
     );
   });
+  app.get(
+    "/:projectId/manual",
+    describeRoute({
+      tags: ["Artifacts"],
+      operationId: "readProjectUserManual",
+      security,
+      responses: {
+        200: {
+          description:
+            "The app's user manual, docs/USER-MANUAL.md, as the live coder keeps it, with the pictures it shows as data URLs; with no coder at work, the one filed with the latest app",
+          content: {
+            "application/json": { schema: resolver(UserManual) },
+          },
+        },
+        404: {
+          description: "Neither a coder at work nor the filed app has a manual",
+        },
+      },
+    }),
+    async (c) => {
+      return c.json(await service.manual(actorOf(c), c.req.param("projectId")));
+    },
+  );
   app.get(
     "/:projectId/acceptance",
     describeRoute({

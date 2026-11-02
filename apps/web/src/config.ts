@@ -105,6 +105,7 @@ export const wording = {
     design: "Design Plan",
     approval_package: "Approval",
     app: "App",
+    user_manual: "User Manual",
   } as Record<string, string>,
   documentUnread: "new version",
   tips: {
@@ -122,6 +123,7 @@ export const wording = {
   liveApp: {
     tab: "Live Preview",
     title: "The app as it is being built",
+    manualTitle: "How to use the app, with pictures of it as built",
     frameTitle: "The running app",
     notBuiltTitle: "Your app appears here",
     notBuilt:

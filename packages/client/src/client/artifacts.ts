@@ -18,6 +18,7 @@ export function buildArtifactsMethods(
   | "designThemes"
   | "designTheme"
   | "acceptance"
+  | "manual"
   | "liveApp"
   | "keepLiveApp"
   | "snapshotApp"
@@ -99,6 +100,9 @@ export function buildArtifactsMethods(
     },
     acceptance(tenantId, projectId, signal) {
       return request(`${projectPath(tenantId, projectId)}/acceptance`, signal);
+    },
+    manual(tenantId, projectId, signal) {
+      return request(`${projectPath(tenantId, projectId)}/manual`, signal);
     },
     liveApp(tenantId, projectId, signal) {
       return request(`${projectPath(tenantId, projectId)}/app`, signal);

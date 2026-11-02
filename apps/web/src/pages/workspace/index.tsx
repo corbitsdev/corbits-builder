@@ -114,6 +114,7 @@ import {
 } from "./load-room.ts";
 import { RoomFault, RoomSkeleton } from "./room-skeleton.tsx";
 import { designDraftFiled, useDesignDraft } from "./design-preview.tsx";
+import { useUserManual } from "./user-manual.tsx";
 import {
   conceptOfTab,
   conceptTab,
@@ -1182,6 +1183,12 @@ export function StageWorkspace({
   const liveApp = paneDeliverables.some((item) => item.kind === "build_plan")
     ? { projectId, builder: firstBuilder }
     : null;
+  // The manual follows the app, so it is read again while the coder works.
+  const userManual = useUserManual(
+    projectId,
+    liveApp !== null,
+    rolesAtWork.has("coder"),
+  );
   // While an approval is open the pane follows the document it approves.
   const approvalDeliverableId =
     pendingApprovals.find((approval) => approval.document !== undefined)
@@ -1556,6 +1563,7 @@ export function StageWorkspace({
               <ArtifactPane
                 projectTitle={projectTitle}
                 draft={designDraft}
+                manual={userManual}
                 concepts={{ projectId, views: concepts }}
                 openTab={paneTab}
                 liveApp={liveApp}

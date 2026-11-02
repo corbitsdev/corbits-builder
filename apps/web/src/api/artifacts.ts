@@ -5,6 +5,7 @@ import {
 import type {
   DesignChoice,
   DesignTweaks,
+  UserManual,
 } from "@corbits-builder/schemas/artifact";
 import type {
   RecordReviewerDecision,
@@ -49,6 +50,15 @@ export async function readAcceptance(projectId: string, signal?: AbortSignal) {
     productClient().acceptance(tenantId, projectId, signal),
   );
   return read?.markdown ?? null;
+}
+
+/** The app's user manual with its pictures, or null until the coder has written one. */
+export async function readUserManual(
+  projectId: string,
+  signal?: AbortSignal,
+): Promise<UserManual | null> {
+  const tenantId = await workspaceTenantId();
+  return nullWhenMissing(productClient().manual(tenantId, projectId, signal));
 }
 
 /** The project's app as the person can open it: running at its own origin, starting, or why not. */
