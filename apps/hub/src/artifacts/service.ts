@@ -648,11 +648,21 @@ export function createArtifactService(
     if (run?.state !== "running") proxy.withdraw(projectId);
     if (!run) return { state: "stopped", ...shown };
     if (run.state !== "running") return { ...run, ...shown };
-    return {
-      state: "running",
-      ...shown,
-      url: proxy.expose({ tenantId: routeTenantId, projectId }, run.url),
-    };
+    // With every port of a configured range in use, the app runs but cannot be shown.
+    try {
+      return {
+        state: "running",
+        ...shown,
+        url: proxy.expose({ tenantId: routeTenantId, projectId }, run.url),
+      };
+    } catch (error) {
+      log.warn("Exposing the live app failed", requestErrorMetadata(error));
+      return {
+        state: "failed",
+        error: error instanceof Error ? error.message : String(error),
+        ...shown,
+      };
+    }
   }
 
   // The concept of the designer run writing as actor: a workflow principal's ref is its run.

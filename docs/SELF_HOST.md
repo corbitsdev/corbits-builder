@@ -31,7 +31,10 @@ setting is optional and described in
 Behind a proxy or on a public domain, set `BETTER_AUTH_BASE_URL` to the URL
 people open, and `HUB_PUBLIC_URL`, `HUB_API_ORIGIN` and `UI_PUBLIC_URL` when
 they differ from it. If a port is taken, `PORT` moves Builder (default `8000`)
-and `DB_PORT` the database (default `5433`).
+and `DB_PORT` the database (default `5433`). The live preview serves each open
+project's app on a port of its own from `LIVE_APP_PORTS` (default `4100-4119`),
+which Compose publishes on loopback beside `PORT`; widen the range when more
+projects than that have their app open at once.
 
 `BUILDER_VERSION` picks the published images
 (`ghcr.io/corbitsdev/corbits-builder-hub` and `-sidecar`): `rc` (default, the
