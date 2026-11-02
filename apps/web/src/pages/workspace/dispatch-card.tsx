@@ -196,6 +196,8 @@ export type DispatchStatus =
     }
   | { readonly state: "starting" }
   | { readonly state: "working"; readonly since: string }
+  /** Mid-turn but held on an approval only the person can give. */
+  | { readonly state: "approval" }
   | {
       readonly state: "ready";
       readonly title: string;
@@ -331,6 +333,7 @@ export function dispatchStatus(
     return dispatch.runId === undefined
       ? { state: "starting" }
       : { state: "finished" };
+  if (run.state === "approval") return { state: "approval" };
   if (run.state === "working")
     return { state: "working", since: run.since ?? run.startedAt };
   // A parked run that filed its document is done with it, whenever this session first saw it.
@@ -340,11 +343,11 @@ export function dispatchStatus(
     : { state: "finished" };
 }
 
-/** The hand-off's run is still starting or at work, so its work is current. */
+/** The hand-off's run is still starting, at work or held on an approval, so its work is current. */
 export function dispatchLive(dispatch: Dispatch, room: DispatchRoom): boolean {
   noteDispatch(room, dispatch);
   const { state } = dispatchStatus(dispatch, room);
-  return state === "starting" || state === "working";
+  return state === "starting" || state === "working" || state === "approval";
 }
 
 /** What a hand-off works on: "Constraints", "Quiet concept", "the app". */

@@ -558,6 +558,8 @@ export const wording = {
     /** What a hand-off works on when nothing names it yet. */
     unnamed: "the task",
     waiting: "Waiting for your go-ahead",
+    /** The run is held on a request only the person can approve, such as a package install. */
+    approval: "Paused for your approval",
     /** The hand-off's approval ended without a yes, so nothing started. */
     declined: {
       rejected: "Not started — you said not yet",

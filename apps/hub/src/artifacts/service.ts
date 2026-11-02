@@ -681,6 +681,21 @@ export function createArtifactService(
           ),
         )
         .orderBy(desc(workflowRun.endedAt));
+      // A run held on an approval is still mid-turn, so its activity reads as work; the pending
+      // record is what says it waits on the person.
+      const heldOnApproval = new Set(
+        (
+          await rawDB
+            .select({ runId: approval.anchorRunId })
+            .from(approval)
+            .where(
+              and(
+                eq(approval.tenantId, actor.tenantId),
+                eq(approval.status, "pending"),
+              ),
+            )
+        ).map((row) => row.runId),
+      );
       const inFlight: InFlightRun[] = [];
       const failed: FailedRun[] = [];
       for (const run of specialists) {
@@ -694,7 +709,11 @@ export function createArtifactService(
             role,
             startedAt: run.startedAt.toISOString(),
             status: run.status,
-            state: seen?.working ? "working" : "waiting",
+            state: heldOnApproval.has(run.runId)
+              ? "approval"
+              : seen?.working
+                ? "working"
+                : "waiting",
             ...(seen?.since ? { since: seen.since } : {}),
             ...(run.concept === null ? {} : { concept: run.concept }),
             ...(progress ? { progress } : {}),
