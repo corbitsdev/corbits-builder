@@ -9,6 +9,7 @@
  */
 import { wording } from "../config.ts";
 import { useEffect, useState } from "react";
+import { toast } from "sonner";
 import { Banner, Button, Mark, StateLabel } from "../components.jsx";
 import { productClient } from "../api/transport.ts";
 import { getHubSession, type HubUser } from "../api/auth.ts";
@@ -58,12 +59,11 @@ export function InvitationAccept({ invitationId }: { invitationId: string }) {
 
   const accept = async () => {
     setBusy(true);
-    setFailed(null);
     try {
       const result = await productClient().acceptInvitation(invitationId);
       setAccepted(result);
     } catch (cause) {
-      setFailed(cause instanceof Error ? cause.message : String(cause));
+      toast.error(cause instanceof Error ? cause.message : String(cause));
     } finally {
       setBusy(false);
     }

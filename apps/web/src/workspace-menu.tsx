@@ -31,7 +31,8 @@ import {
 } from "@corbits/react-ui/ui/menu";
 import { Check, ChevronDown, Plus } from "lucide-react";
 import { useState } from "react";
-import { Banner, Button } from "./components.jsx";
+import { toast } from "sonner";
+import { Button } from "./components.jsx";
 import { LogoMark } from "./flourish.tsx";
 import {
   createWorkspace,
@@ -125,7 +126,6 @@ function CreateWorkspaceDialog({
 }) {
   const [name, setName] = useState("");
   const [busy, setBusy] = useState(false);
-  const [error, setError] = useState<string | null>(null);
   const [created, setCreated] = useState<Workspace | null>(null);
   const copy = wording.workspace;
 
@@ -133,12 +133,11 @@ function CreateWorkspaceDialog({
     const trimmed = name.trim();
     if (busy || trimmed.length === 0) return;
     setBusy(true);
-    setError(null);
     try {
       setCreated(await createWorkspace(trimmed));
       void queryClient.invalidateQueries({ queryKey: keys.workspaces });
     } catch (cause) {
-      setError(humanFault(cause, "The workspace could not be created."));
+      toast.error(humanFault(cause, "The workspace could not be created."));
     } finally {
       setBusy(false);
     }
@@ -162,7 +161,6 @@ function CreateWorkspaceDialog({
               <DialogDescription>{copy.createLead}</DialogDescription>
             </DialogHeader>
             <DialogBody>
-              {error ? <Banner tone="error" title={error} /> : null}
               <div className="field">
                 <DialogFieldLabel htmlFor="workspace-name">
                   {copy.nameLabel}

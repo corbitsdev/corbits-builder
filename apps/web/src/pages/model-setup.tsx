@@ -61,7 +61,7 @@ export function ModelSetup({
     onConnected();
   };
   const catalog = useModelCatalog();
-  const { logins, signingIn, error, signIn } = useSubscriptionLogins(connected);
+  const { logins, signingIn, signIn } = useSubscriptionLogins(connected);
   const apiKeyProviders = (catalog.data?.providers ?? []).filter(
     (provider) => provider.kind === "api_key",
   );
@@ -85,7 +85,6 @@ export function ModelSetup({
         {catalog.error ? (
           <Banner tone="error" title={catalog.error.message} />
         ) : null}
-        {error ? <Banner tone="error" title={error} /> : null}
         <KindCardGrid
           label={copy.loginGroup}
           className="provider-tiles"
