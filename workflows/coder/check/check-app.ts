@@ -280,6 +280,11 @@ const WIDTHS = [
 const MAX_PAGES = 30;
 // run_shell's executor stops a command at 120 s; stop crawling early enough to print a result.
 const DEADLINE = Date.now() + 100_000;
+// A word on progress for the person watching, on stderr with the prefix the hub's sandbox relays.
+// Only when the hub runs this check: an agent running it itself reads stderr and needs no such lines.
+const progress = (line: string) => {
+  if (process.env["SB_PROGRESS"]) console.error(`progress: ${line}`);
+};
 
 const problems: Problem[] = [];
 // Overlap misfired 30 times across 8 well-built sites at two widths, so it is reported, not failed.
@@ -549,6 +554,7 @@ if (staticRoot) {
   }
   const port = await freePort();
   origin = `http://127.0.0.1:${port}`;
+  progress("checking the app: starting it");
   const server = Bun.spawn(["bun", "run", "start"], {
     env: { ...process.env, PORT: String(port) },
     stdout: "ignore",
@@ -751,6 +757,10 @@ while (queue.length && visited.length < MAX_PAGES && Date.now() < DEADLINE) {
   const path = queue.shift()!;
   if (visited.includes(path)) continue;
   visited.push(path);
+  const ahead = new Set(queue.filter((link) => !visited.includes(link))).size;
+  progress(
+    `${staticRoot ? "checking the mockup" : "checking the app"}: page ${String(visited.length)}, ${String(ahead)} more to open`,
+  );
   page = path;
   for (const [w, h] of WIDTHS) {
     width = w;
