@@ -325,6 +325,7 @@ export const wording = {
       reviewer: "reviewer",
       designer: "designer",
       coder: "app builder",
+      presenter: "presenter",
     },
     change: "What needs to change…",
     fix: "What needs fixing…",
