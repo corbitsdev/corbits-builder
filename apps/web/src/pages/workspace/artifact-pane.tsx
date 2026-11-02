@@ -101,6 +101,7 @@ const FLOW = [
   "product_requirements",
   "design",
   "build_plan",
+  "approval_package",
 ];
 const flowRank = (kind: string) => {
   const rank = FLOW.indexOf(kind);

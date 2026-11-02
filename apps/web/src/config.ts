@@ -103,6 +103,7 @@ export const wording = {
     product_requirements: "Requirements",
     build_plan: "Build Plan",
     design: "Design Plan",
+    approval_package: "Approval package",
     app: "App",
   } as Record<string, string>,
   documentUnread: "new version",
@@ -178,6 +179,8 @@ export const wording = {
     shareDocument: "Share as Markdown",
     downloadDesign: "Download the design",
     shareDesign: "Share the design",
+    downloadPackagePdf: "Download the package PDF",
+    sharePackagePdf: "Share the package PDF",
     downloadSheet: "Download as CSV",
     shareSheet: "Share as CSV",
     downloaded: (name: string) => `Downloaded ${name}.`,
@@ -515,6 +518,36 @@ export const wording = {
       font: (stack: string) => `font ${stack}`,
     },
   },
+  /** The approval package viewer: slides, PDF preview, and pinned source manifest. */
+  approvalPackage: {
+    label: "Approval package",
+    viewLabel: "Approval package view",
+    tabs: {
+      slides: "Slides",
+      pdf: "PDF",
+      sources: "Sources",
+    },
+    slideCount: (index: number, total: number) =>
+      `Slide ${String(index)} of ${String(total)}`,
+    noSlides: "This approval package contains no slides.",
+    speakerNotes: "Speaker notes",
+    downloadPdf: "Download PDF",
+    downloadPptx: "Download PPTX",
+    pdfTitle: "Approval package PDF preview",
+    manifest: {
+      audience: "Audience",
+      decisionNeeded: "Decision needed",
+      tone: "Tone",
+      length: "Length",
+      sources: "Pinned source documents",
+      sourceKind: "Document",
+      sourceTitle: "Title",
+      sourceVersion: "Version",
+      sourceHash: "SHA-256",
+      documents: "Supporting documents",
+    },
+    unreadable: "This approval package could not be read.",
+  },
   /** The approaches document's comparison, above its prose. */
   approaches: {
     label: "Approaches side by side",
@@ -734,6 +767,7 @@ export const wording = {
       product_requirements: "requirements",
       build_plan: "build plan",
       design: "design",
+      approval_package: "approval package",
     } as Record<string, string>,
     openOnRight: "It's open on the right.",
     /** Takes the reading pane back to the document the card asks about. */

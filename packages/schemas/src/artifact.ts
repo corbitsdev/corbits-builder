@@ -14,20 +14,21 @@ const DocumentKind = type(
   "'problem_brief' | 'constraints' | 'approaches' | 'product_requirements' | 'build_plan'",
 );
 const WritableArtifactKind = DocumentKind.or(
-  "'design' | 'design_option' | 'app'",
+  "'design' | 'design_option' | 'app' | 'approval_package'",
 );
 const content = type("string > 0").atMostLength(256 * 1024);
 export const DocumentContent = content;
 // A working weather app packed to about 270 KB of source.
 export const MAX_APP_BYTES = 1024 * 1024;
+export const MAX_APPROVAL_PACKAGE_BYTES = 4 * 1024 * 1024;
 
-// A filed app runs up to MAX_APP_BYTES, which the hub checks in bytes; it holds every other kind to
-// DocumentContent.
+// A filed approval package runs up to MAX_APPROVAL_PACKAGE_BYTES and a filed app up to
+// MAX_APP_BYTES, which the hub checks in bytes; it holds every other kind to DocumentContent.
 export const ArtifactKindWrite = type({
   "+": "reject",
   kind: WritableArtifactKind,
   title: text,
-  content: type("string > 0").atMostLength(MAX_APP_BYTES),
+  content: type("string > 0").atMostLength(MAX_APPROVAL_PACKAGE_BYTES),
   "openQuestions?": OpenQuestions,
   "approaches?": ApproachesMeta,
 });
@@ -40,6 +41,36 @@ export const DocumentWrite = type({
   "openQuestions?": OpenQuestions,
   "approaches?": ApproachesMeta,
 });
+
+export const ApprovalPackageSource = type({
+  "+": "reject",
+  artifactId: "string > 0",
+  kind: "string > 0",
+  title: "string > 0",
+  version: "number.integer > 0",
+  sha256,
+});
+export type ApprovalPackageSource = typeof ApprovalPackageSource.infer;
+
+export const ApprovalPackageManifest = type({
+  "+": "reject",
+  audience: "string > 0",
+  decisionNeeded: "string > 0",
+  tone: "string > 0",
+  length: "string > 0",
+  sources: ApprovalPackageSource.array().atLeastLength(1),
+});
+export type ApprovalPackageManifest = typeof ApprovalPackageManifest.infer;
+
+export const ApprovalPackageBundle = type({
+  "+": "reject",
+  manifest: ApprovalPackageManifest,
+  deck: "Record<string, unknown>",
+  pptxBase64: "string > 0",
+  pdfBase64: "string > 0",
+  "documents?": { "[string]": "string" },
+});
+export type ApprovalPackageBundle = typeof ApprovalPackageBundle.infer;
 
 // A design document's content: the designer's .builder files keyed by path, DESIGN.md and
 // designs/index.html among them.
