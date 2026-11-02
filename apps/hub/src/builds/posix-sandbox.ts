@@ -70,9 +70,83 @@ const PageError = type({ detail: "string" });
 // kqueue and needs neither.
 const MACOS_WATCH_POLLING = { WATCH_POLL_MS: "300" };
 const SANDBOX_RUNTIME_VERSION = "0.0.81";
+// Where the sandbox allows Unix sockets: for the browser, and on Linux for the app's relays.
+const needsSockets = (options: { browser?: boolean; app?: boolean }) =>
+  options.browser === true ||
+  (options.app === true && process.platform === "linux");
 // srt's manager is process-global. A second job must use another sidecar
 // process; it cannot silently replace the policy protecting a running job.
 let leased = false;
+
+/**
+ * How the dev app is reached from outside its wrap. On macOS every wrap shares the host's loopback,
+ * so the app's own port serves. On Linux every wrap has a loopback of its own, so the app is reached
+ * through a Unix socket in the sockets folder: a relay inside the app's wrap serves the socket, a
+ * relay in this process serves the socket on a port of its own, and a relay inside every other wrap
+ * serves it on that same port, so one URL holds for the hub, the browser and the page watcher
+ * alike. The port is picked once and kept across restarts of the app, which the browser outlives.
+ */
+type AppRelay = {
+  /** Picks the relayed port, once. */
+  reserve(): Promise<void>;
+  /** The app's URL as every party reaches it, given the port its client listens on. */
+  url(clientPort: number): string;
+  /** The prefix for the app's own wrap: serves its client port on the socket. */
+  serve(clientPort: number): string;
+  /** A command for any other wrap, prefixed to serve the socket on the relayed port there. */
+  into(command: string): string;
+  /** Serves the socket on the relayed port in this process, for the hub. */
+  start(): Promise<void>;
+  stop(): Promise<void>;
+};
+
+function createAppRelay(sockets: string | undefined): AppRelay {
+  const socat = process.platform === "linux" ? Bun.which("socat") : null;
+  if (sockets === undefined || socat === null)
+    return {
+      reserve: async () => undefined,
+      url: (clientPort) => `http://127.0.0.1:${String(clientPort)}`,
+      serve: () => "",
+      into: (command) => command,
+      start: async () => undefined,
+      stop: async () => undefined,
+    };
+  const socket = join(sockets, "app.sock");
+  const quiet = ">/dev/null 2>&1 & ";
+  let port: number | undefined;
+  let child: Bun.Subprocess | undefined;
+  const listen = () =>
+    `TCP-LISTEN:${String(port)},bind=127.0.0.1,fork,reuseaddr`;
+  const stop = async () => {
+    if (!child) return;
+    const current = child;
+    child = undefined;
+    current.kill("SIGKILL");
+    await current.exited;
+  };
+  return {
+    reserve: async () => {
+      port ??= await freePort();
+    },
+    url: (clientPort) => `http://127.0.0.1:${String(port ?? clientPort)}`,
+    serve: (clientPort) =>
+      `${quote(socat)} UNIX-LISTEN:${quote(socket)},fork,reuseaddr,unlink-early TCP:127.0.0.1:${String(clientPort)} ${quiet}`,
+    into: (command) =>
+      port === undefined
+        ? command
+        : `${quote(socat)} ${listen()} UNIX-CONNECT:${quote(socket)} ${quiet}${command}`,
+    start: async () => {
+      await stop();
+      if (port === undefined) return;
+      child = Bun.spawn([socat, listen(), `UNIX-CONNECT:${socket}`], {
+        stdin: "ignore",
+        stdout: "ignore",
+        stderr: "ignore",
+      });
+    },
+    stop,
+  };
+}
 // What bun, sh, curl, unzip and Chrome's headless shell load to run; nothing here holds user data.
 const SYSTEM_READ_PATHS =
   process.platform === "darwin"
@@ -166,6 +240,8 @@ export async function createPosixBuildExecutor(
     pageWatcher?: string;
     // Whether the agent drives its app in Playwright's browser, which browser() starts.
     browser?: boolean;
+    // Whether the workspace's dev app runs here, which app() starts.
+    app?: boolean;
     // The shared Chrome install, which the sandbox reads through $HOME/browsers but never writes.
     browsers?: string | undefined;
   } = {},
@@ -269,8 +345,9 @@ export async function createPosixBuildExecutor(
     if (options.browsers)
       await symlink(options.browsers, join(home, "browsers"));
     // Playwright's MCP server always serves its browser on a Unix socket, which the sandbox allows
-    // only here. Under /tmp, as a socket's path fits in 104 bytes on macOS.
-    if (options.browser)
+    // only here. Under /tmp, as a socket's path fits in 104 bytes on macOS. On Linux the dev app is
+    // reached through a socket here too, since every wrap there has a loopback of its own.
+    if (needsSockets(options))
       sockets = await realpath(await mkdtemp("/tmp/sb-browser-"));
     stage = "policy";
     const policy = SandboxRuntimeConfigSchema.parse({
@@ -397,6 +474,7 @@ export async function createPosixBuildExecutor(
       TMPDIR: home,
       NO_COLOR: "1",
     };
+    const appRelay = createAppRelay(sockets);
     let browser: { process: Bun.Subprocess; url: string } | undefined;
     let browserStarting: Promise<string> | undefined;
     // A turn's tool calls run in parallel; two app_status calls must not each start a server.
@@ -520,7 +598,7 @@ export async function createPosixBuildExecutor(
       devApp = undefined;
       kill(child);
       if (page) kill(page);
-      await Promise.all([child.exited, page?.exited]);
+      await Promise.all([child.exited, page?.exited, appRelay.stop()]);
     };
     const startApp = (): Promise<DevApp> => {
       if (disposed)
@@ -538,8 +616,9 @@ export async function createPosixBuildExecutor(
             freePort(),
             freePort(),
           ]);
+          await appRelay.reserve();
           const command = await SandboxManager.wrapWithSandbox(
-            `exec ${quote(executable)} run dev`,
+            `${appRelay.serve(clientPort)}exec ${quote(executable)} run dev`,
             "/bin/sh",
           );
           const child = Bun.spawn(["/bin/sh", "-c", command], {
@@ -612,8 +691,10 @@ export async function createPosixBuildExecutor(
               }
           };
           void Promise.all([collect(child.stdout), collect(child.stderr)]);
-          // Vite serves the client on CLIENT_PORT and proxies /api to the server on PORT.
-          const url = `http://127.0.0.1:${clientPort}`;
+          await appRelay.start();
+          // Vite serves the client on CLIENT_PORT and proxies /api to the server on PORT; where the
+          // wraps have loopbacks of their own, the relays serve it on one port everywhere.
+          const url = appRelay.url(clientPort);
           const view = (): DevApp => ({
             url,
             running: child.exitCode === null,
@@ -627,7 +708,9 @@ export async function createPosixBuildExecutor(
                 "/bin/sh",
                 "-c",
                 await SandboxManager.wrapWithSandbox(
-                  `exec ${[executable, "--no-env-file", pageWatcher, url].map(quote).join(" ")}`,
+                  appRelay.into(
+                    `exec ${[executable, "--no-env-file", pageWatcher, url].map(quote).join(" ")}`,
+                  ),
                   "/bin/sh",
                 ),
               ],
@@ -721,7 +804,7 @@ export async function createPosixBuildExecutor(
             "/bin/sh",
             "-c",
             await SandboxManager.wrapWithSandbox(
-              `exec ${argv.map(quote).join(" ")}`,
+              appRelay.into(`exec ${argv.map(quote).join(" ")}`),
               "/bin/sh",
             ),
           ],
@@ -797,7 +880,9 @@ export async function createPosixBuildExecutor(
             "/bin/sh",
             "-c",
             await SandboxManager.wrapWithSandbox(
-              `exec ${[join(shimDirectory!, name), ...args].map(quote).join(" ")}`,
+              appRelay.into(
+                `exec ${[join(shimDirectory!, name), ...args].map(quote).join(" ")}`,
+              ),
               "/bin/sh",
             ),
           ],

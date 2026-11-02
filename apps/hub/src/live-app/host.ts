@@ -63,7 +63,7 @@ async function createExecutor() {
       },
       layout,
       // The person's running app installs its packages and reaches the services it was built against.
-      { openNetwork: true },
+      { openNetwork: true, app: true },
     );
   } catch (error) {
     report({ state: "failed", error: message(error), log: [] });

@@ -257,6 +257,7 @@ export function createSidecarCodingTools(policy: {
               openNetwork: scope.openNetwork,
               commands: { "check-app": CHECK_APP },
               browser: policy.browser !== undefined,
+              app: policy.workspace === "app",
               browsers: await sharedBrowser(),
               ...(policy.workspace === "app"
                 ? {
