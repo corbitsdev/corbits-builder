@@ -138,47 +138,56 @@ test("coordinator write_artifact exposes only problem_brief without approaches",
   expect(coordinator.written).toHaveLength(1);
 });
 
+test("every role's artifact tool definitions declare top-level type: object", () => {
+  const roles: WorkflowRole[] = [
+    "coordinator",
+    "writer",
+    "reviewer",
+    "coder",
+    "designer",
+  ];
+  for (const role of roles) {
+    for (const definition of harness(role).definitions) {
+      expect(
+        (definition.inputSchema as { type?: unknown } | undefined)?.type,
+      ).toBe("object");
+    }
+  }
+});
+
 test("writer write_artifact exposes only writer kinds and validates approaches", async () => {
   const writer = harness("writer");
   const definition = writer.definitions.find(
     (item) => item.name === "write_artifact",
   );
-  const branches = (
-    definition?.inputSchema as
-      | {
-          anyOf?: {
-            additionalProperties?: boolean;
-            properties?: {
-              kind?: { const?: string };
-              approaches?: unknown;
-            };
-          }[];
-        }
-      | undefined
-  )?.anyOf;
-  const branchFor = (kind: string) =>
-    branches?.find((branch) => branch.properties?.kind?.const === kind);
-  expect(branches).toHaveLength(4);
-  const approaches = branchFor("approaches");
-  expect(approaches?.additionalProperties).toBe(false);
-  expect(Object.keys(approaches?.properties ?? {}).sort()).toEqual([
+  const schema = definition?.inputSchema as
+    | {
+        type?: unknown;
+        additionalProperties?: boolean;
+        properties?: {
+          kind?: { enum?: string[] };
+          approaches?: unknown;
+          content?: unknown;
+          openQuestions?: unknown;
+          title?: unknown;
+        };
+      }
+    | undefined;
+  expect(schema?.type).toBe("object");
+  expect(schema?.additionalProperties).toBe(false);
+  expect(schema?.properties?.kind?.enum).toEqual([
+    "approaches",
+    "build_plan",
+    "constraints",
+    "product_requirements",
+  ]);
+  expect(Object.keys(schema?.properties ?? {}).sort()).toEqual([
     "approaches",
     "content",
     "kind",
     "openQuestions",
     "title",
   ]);
-  for (const kind of ["constraints", "product_requirements", "build_plan"]) {
-    const branch = branchFor(kind);
-    expect(branch?.additionalProperties).toBe(false);
-    expect(Object.keys(branch?.properties ?? {}).sort()).toEqual([
-      "content",
-      "kind",
-      "openQuestions",
-      "title",
-    ]);
-  }
-  expect(branchFor("problem_brief")).toBeUndefined();
 
   const briefAttempt = await writer.write({
     kind: "problem_brief",

@@ -43,33 +43,17 @@ export const BriefWrite = type({
 export type BriefWrite = typeof BriefWrite.infer;
 export const WriterDocumentWrite = type({
   "+": "reject",
-  kind: "'constraints'",
+  kind: WriterDocumentKind,
   title: text,
   content,
   "openQuestions?": OpenQuestions,
-})
-  .or({
-    "+": "reject",
-    kind: "'product_requirements'",
-    title: text,
-    content,
-    "openQuestions?": OpenQuestions,
-  })
-  .or({
-    "+": "reject",
-    kind: "'build_plan'",
-    title: text,
-    content,
-    "openQuestions?": OpenQuestions,
-  })
-  .or({
-    "+": "reject",
-    kind: "'approaches'",
-    title: text,
-    content,
-    "openQuestions?": OpenQuestions,
-    "approaches?": ApproachesMeta,
-  });
+  "approaches?": ApproachesMeta,
+}).narrow(
+  (doc, ctx) =>
+    doc.kind === "approaches" ||
+    doc.approaches === undefined ||
+    ctx.mustBe("without approaches unless kind is approaches"),
+);
 export type WriterDocumentWrite = typeof WriterDocumentWrite.infer;
 export const DocumentWrite = type({
   "+": "reject",

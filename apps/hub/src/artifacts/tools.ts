@@ -56,7 +56,11 @@ const writerWriteDefinition = {
   name: "write_artifact",
   description:
     "Write the next version of the project document of one kind. The hub assigns its id, version and sha256 and returns them. Writing a version is not approval.\nopenQuestions lists each question in the document's Open questions section that the person must answer: a short id, the question as they would read it, whyItBlocks, and suggestedAnswers, your recommendation first. A version written without openQuestions leaves none open.\nOn the approaches document, approaches carries the approaches it compares, for the person to see side by side: each with a short id, its name, a one-line summary, bestFor, its pros, cons and risks as short phrases, and its effort; recommended names the id of the one you recommend.",
-  inputSchema: { ...WriterDocumentWrite.toJsonSchema() },
+  inputSchema: {
+    ...WriterDocumentWrite.toJsonSchema({
+      fallback: { predicate: (ctx) => ctx.base },
+    }),
+  },
 };
 
 export function failure(callId: string, error: unknown) {
