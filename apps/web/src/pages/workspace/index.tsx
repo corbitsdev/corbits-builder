@@ -34,7 +34,12 @@ import {
   PromptInputToolbar,
   useAttachments,
 } from "@corbits/react-ui";
-import { useProjectActivity, useRolesAtWork } from "./agent-activity.tsx";
+import {
+  heldOnApproval,
+  useProjectActivity,
+  useProjectRunStates,
+  useRolesAtWork,
+} from "./agent-activity.tsx";
 import {
   dispatchLive,
   DispatchRoomContext,
@@ -500,6 +505,9 @@ export function StageWorkspace({
     toast.error(message);
   }, [events, mirror]);
 
+  // The runs held on an approval, from the polled run states: a coder's package request raises no
+  // room event, so the room alone would not say the person's turn came until something else moved.
+  const awaitingApproval = heldOnApproval(useProjectRunStates(projectId).data);
   // The waits that belong to this project, from the open decisions.
   useEffect(() => {
     let cancelled = false;
@@ -522,9 +530,9 @@ export function StageWorkspace({
     return () => {
       cancelled = true;
     };
-    // A coordinator decision arrives with a room event; a coder's package
-    // request raises none, so every room reload re-reads the open decisions.
-  }, [projectId, gateDone, snapshot]);
+    // A coordinator decision arrives with a room event; a coder's package request raises none, so
+    // the open decisions are read again on every room reload and whenever a run parks on an approval.
+  }, [projectId, gateDone, snapshot, awaitingApproval]);
 
   for (const [at, parts] of committedSteps(liveRun, mirror))
     stepsByAt.current.set(at, parts);
