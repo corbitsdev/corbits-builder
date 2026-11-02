@@ -1,7 +1,7 @@
 import { describe, expect, test } from "bun:test";
 import { renderToStaticMarkup } from "react-dom/server";
 import type { ProjectArtifact } from "@corbits-builder/client";
-import { ArtifactPane } from "./artifact-pane.tsx";
+import { ArtifactPane, LIVE_TAB, defaultTab } from "./artifact-pane.tsx";
 import type { DeliverableState } from "./deliverable-block.tsx";
 
 type Deliverable = ProjectArtifact;
@@ -124,5 +124,22 @@ describe("persistent artifact pane", () => {
         retryable: true,
       }),
     ).toContain("Retained content unavailable");
+  });
+});
+
+describe("default tab", () => {
+  const plan: Deliverable = {
+    artifactId: "plan",
+    kind: "build_plan",
+    title: "Build plan",
+    version: 1,
+    sha256: "b".repeat(64),
+  };
+  test("nothing chosen shows the live app once the build has started", () => {
+    expect(defaultTab(true, [ready, plan])).toBe(LIVE_TAB);
+  });
+  test("before the build it shows the document furthest along, and nothing before any", () => {
+    expect(defaultTab(false, [ready, plan])).toBe("build_plan");
+    expect(defaultTab(false, [])).toBeNull();
   });
 });
