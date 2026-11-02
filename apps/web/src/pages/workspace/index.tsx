@@ -11,7 +11,7 @@
  * making chat inert during document review.
  */
 import { wording } from "../../config.ts";
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { Paperclip } from "lucide-react";
 import {
@@ -1223,6 +1223,226 @@ export function StageWorkspace({
     designDraft === null &&
     concepts.length === 0;
 
+  let dock: ReactNode;
+  if (archived) {
+    dock = (
+      <div className="banner" role="status">
+        <p className="banner-title">{wording.archivedProject.title}</p>
+        <p>{wording.archivedProject.lead}</p>
+        {restoreFault === null ? null : (
+          <p className="workspace-fault" role="alert">
+            {restoreFault}
+          </p>
+        )}
+        <div className="banner-action">
+          <UiButton
+            type="button"
+            size="sm"
+            disabled={restoring}
+            onClick={() => void restore()}
+          >
+            {restoring
+              ? wording.archivedProject.restoring
+              : wording.archivedProject.restore}
+          </UiButton>
+        </div>
+      </div>
+    );
+  } else if (modelNeeded !== null) {
+    // A coordinator with no model to run on cannot answer, even one still bound from before.
+    dock = (
+      <div className="banner" role="alert">
+        <p className="banner-title">{modelNeeded}</p>
+        <div className="banner-action">
+          <UiButton type="button" size="sm" onClick={onOpenSettings}>
+            {wording.action.openSettings}
+          </UiButton>
+          <UiButton
+            type="button"
+            size="sm"
+            variant="outline"
+            onClick={() => void startCoordinator()}
+          >
+            {wording.action.retry}
+          </UiButton>
+        </div>
+      </div>
+    );
+  } else if (unbound) {
+    // The person does not start the coordinator by typing: an unbound room waits for the
+    // start that opening it asked for, and a refused start says why and offers it again.
+    if (startFault === null) {
+      dock = (
+        <div className="banner" role="status">
+          <p className="banner-title">
+            {wording.conversation.startingCoordinator}
+          </p>
+        </div>
+      );
+    } else {
+      dock = (
+        <div className="banner" role="alert">
+          <p className="banner-title">{startFault}</p>
+          <div className="banner-action">
+            <UiButton
+              type="button"
+              size="sm"
+              onClick={() => void startCoordinator()}
+            >
+              {wording.action.retry}
+            </UiButton>
+          </div>
+        </div>
+      );
+    }
+  } else {
+    dock = (
+      <div
+        className="composer"
+        data-working={working || sending ? "" : undefined}
+      >
+        {attachFault === null ? null : (
+          <p className="workspace-fault" role="alert">
+            {attachFault}
+          </p>
+        )}
+        {sendFailed && sendFault ? (
+          <p className="workspace-fault" role="alert">
+            {sendFault}
+          </p>
+        ) : null}
+        {caution === null ? null : (
+          <div className="workspace-caution" role="alert">
+            <p>{wording.earlierDocument.warning(participantLabel(caution))}</p>
+            <div className="workspace-caution-actions">
+              <UiButton type="button" size="sm" onClick={sendNow}>
+                {wording.earlierDocument.sendAnyway}
+              </UiButton>
+              <UiButton
+                type="button"
+                size="sm"
+                variant="ghost"
+                onClick={() => {
+                  setCaution(null);
+                  composerRef.current?.focus();
+                }}
+              >
+                {wording.action.cancel}
+              </UiButton>
+            </div>
+          </div>
+        )}
+        {replies.length > 0 ? (
+          <div
+            className="workspace-replies"
+            role="group"
+            aria-label="Suggested replies"
+          >
+            {replies.map((reply) => (
+              <UiButton
+                key={reply}
+                type="button"
+                variant="outline"
+                size="sm"
+                onClick={() => void deliver(reply)}
+              >
+                {reply}
+              </UiButton>
+            ))}
+          </div>
+        ) : null}
+        <AttachmentDropZone
+          onFiles={addFiles}
+          disabled={
+            limits === undefined ||
+            limits.mimeTypes.length === 0 ||
+            sending ||
+            approvalBusy
+          }
+          label={wording.conversation.dropFiles}
+        >
+          <Dictated
+            value={value}
+            onValueChange={setValue}
+            disabled={sending || approvalBusy}
+          >
+            {(mic) => (
+              <PromptInput
+                className={COMPOSER_BOX_CLASS}
+                value={value}
+                onValueChange={setValue}
+                onSubmit={send}
+                canSubmit={value.trim() !== "" || files.length > 0}
+                status={sending || approvalBusy ? "submitted" : "ready"}
+                disabled={sending || approvalBusy}
+              >
+                {files.length === 0 ? null : (
+                  <PromptInputFloat>
+                    <Attachments
+                      variant="stack"
+                      total={files.length}
+                      returnFocusTo={composerRef}
+                    >
+                      {files.map((item) => (
+                        <Attachment key={item.id} data={item}>
+                          <AttachmentPreview />
+                          <AttachmentInfo />
+                          <AttachmentRemove
+                            onClick={() =>
+                              setFiles((current) =>
+                                current.filter((held) => held.id !== item.id),
+                              )
+                            }
+                          />
+                        </Attachment>
+                      ))}
+                    </Attachments>
+                  </PromptInputFloat>
+                )}
+                <PromptInputTextarea
+                  ref={composerRef}
+                  placeholder={composerPlaceholder({
+                    approvalOpen: openApproval !== undefined,
+                    status: projectStatus.data,
+                    chatFirst,
+                  })}
+                />
+                <PromptInputToolbar>
+                  {mic}
+                  {limits === undefined ||
+                  limits.mimeTypes.length === 0 ? null : (
+                    <>
+                      <input
+                        ref={fileInputRef}
+                        type="file"
+                        multiple
+                        hidden
+                        accept={limits.mimeTypes.join(",")}
+                        onChange={(event) => {
+                          if (event.target.files !== null)
+                            addFiles(event.target.files);
+                          event.target.value = "";
+                        }}
+                      />
+                      <PromptInputButton
+                        aria-label={wording.attach.add}
+                        title={wording.attach.add}
+                        onClick={() => fileInputRef.current?.click()}
+                      >
+                        <Paperclip size={16} aria-hidden="true" />
+                      </PromptInputButton>
+                    </>
+                  )}
+                  <PromptInputSubmit className="ms-auto" />
+                </PromptInputToolbar>
+              </PromptInput>
+            )}
+          </Dictated>
+        </AttachmentDropZone>
+      </div>
+    );
+  }
+
   return (
     <div className="stage-view" aria-label={`Conversation for ${projectTitle}`}>
       <div
@@ -1316,224 +1536,7 @@ export function StageWorkspace({
                   ) : null}
                 </RoomThread>
               </DispatchRoomContext.Provider>
-              {archived ? (
-                <div className="banner" role="status">
-                  <p className="banner-title">
-                    {wording.archivedProject.title}
-                  </p>
-                  <p>{wording.archivedProject.lead}</p>
-                  {restoreFault === null ? null : (
-                    <p className="workspace-fault" role="alert">
-                      {restoreFault}
-                    </p>
-                  )}
-                  <div className="banner-action">
-                    <UiButton
-                      type="button"
-                      size="sm"
-                      disabled={restoring}
-                      onClick={() => void restore()}
-                    >
-                      {restoring
-                        ? wording.archivedProject.restoring
-                        : wording.archivedProject.restore}
-                    </UiButton>
-                  </div>
-                </div>
-              ) : modelNeeded !== null ? (
-                // A coordinator with no model to run on cannot answer, even one still bound from before.
-                <div className="banner" role="alert">
-                  <p className="banner-title">{modelNeeded}</p>
-                  <div className="banner-action">
-                    <UiButton type="button" size="sm" onClick={onOpenSettings}>
-                      {wording.action.openSettings}
-                    </UiButton>
-                    <UiButton
-                      type="button"
-                      size="sm"
-                      variant="outline"
-                      onClick={() => void startCoordinator()}
-                    >
-                      {wording.action.retry}
-                    </UiButton>
-                  </div>
-                </div>
-              ) : unbound ? (
-                // The person does not start the coordinator by typing: an unbound room waits for the
-                // start that opening it asked for, and a refused start says why and offers it again.
-                startFault === null ? (
-                  <div className="banner" role="status">
-                    <p className="banner-title">
-                      {wording.conversation.startingCoordinator}
-                    </p>
-                  </div>
-                ) : (
-                  <div className="banner" role="alert">
-                    <p className="banner-title">{startFault}</p>
-                    <div className="banner-action">
-                      <UiButton
-                        type="button"
-                        size="sm"
-                        onClick={() => void startCoordinator()}
-                      >
-                        {wording.action.retry}
-                      </UiButton>
-                    </div>
-                  </div>
-                )
-              ) : (
-                <div
-                  className="composer"
-                  data-working={working || sending ? "" : undefined}
-                >
-                  {attachFault === null ? null : (
-                    <p className="workspace-fault" role="alert">
-                      {attachFault}
-                    </p>
-                  )}
-                  {sendFailed && sendFault ? (
-                    <p className="workspace-fault" role="alert">
-                      {sendFault}
-                    </p>
-                  ) : null}
-                  {caution === null ? null : (
-                    <div className="workspace-caution" role="alert">
-                      <p>
-                        {wording.earlierDocument.warning(
-                          participantLabel(caution),
-                        )}
-                      </p>
-                      <div className="workspace-caution-actions">
-                        <UiButton type="button" size="sm" onClick={sendNow}>
-                          {wording.earlierDocument.sendAnyway}
-                        </UiButton>
-                        <UiButton
-                          type="button"
-                          size="sm"
-                          variant="ghost"
-                          onClick={() => {
-                            setCaution(null);
-                            composerRef.current?.focus();
-                          }}
-                        >
-                          {wording.action.cancel}
-                        </UiButton>
-                      </div>
-                    </div>
-                  )}
-                  {replies.length > 0 ? (
-                    <div
-                      className="workspace-replies"
-                      role="group"
-                      aria-label="Suggested replies"
-                    >
-                      {replies.map((reply) => (
-                        <UiButton
-                          key={reply}
-                          type="button"
-                          variant="outline"
-                          size="sm"
-                          onClick={() => void deliver(reply)}
-                        >
-                          {reply}
-                        </UiButton>
-                      ))}
-                    </div>
-                  ) : null}
-                  <AttachmentDropZone
-                    onFiles={addFiles}
-                    disabled={
-                      limits === undefined ||
-                      limits.mimeTypes.length === 0 ||
-                      sending ||
-                      approvalBusy
-                    }
-                    label={wording.conversation.dropFiles}
-                  >
-                    <Dictated
-                      value={value}
-                      onValueChange={setValue}
-                      disabled={sending || approvalBusy}
-                    >
-                      {(mic) => (
-                        <PromptInput
-                          className={COMPOSER_BOX_CLASS}
-                          value={value}
-                          onValueChange={setValue}
-                          onSubmit={send}
-                          canSubmit={value.trim() !== "" || files.length > 0}
-                          status={
-                            sending || approvalBusy ? "submitted" : "ready"
-                          }
-                          disabled={sending || approvalBusy}
-                        >
-                          {files.length === 0 ? null : (
-                            <PromptInputFloat>
-                              <Attachments
-                                variant="stack"
-                                total={files.length}
-                                returnFocusTo={composerRef}
-                              >
-                                {files.map((item) => (
-                                  <Attachment key={item.id} data={item}>
-                                    <AttachmentPreview />
-                                    <AttachmentInfo />
-                                    <AttachmentRemove
-                                      onClick={() =>
-                                        setFiles((current) =>
-                                          current.filter(
-                                            (held) => held.id !== item.id,
-                                          ),
-                                        )
-                                      }
-                                    />
-                                  </Attachment>
-                                ))}
-                              </Attachments>
-                            </PromptInputFloat>
-                          )}
-                          <PromptInputTextarea
-                            ref={composerRef}
-                            placeholder={composerPlaceholder({
-                              approvalOpen: openApproval !== undefined,
-                              status: projectStatus.data,
-                              chatFirst,
-                            })}
-                          />
-                          <PromptInputToolbar>
-                            {mic}
-                            {limits === undefined ||
-                            limits.mimeTypes.length === 0 ? null : (
-                              <>
-                                <input
-                                  ref={fileInputRef}
-                                  type="file"
-                                  multiple
-                                  hidden
-                                  accept={limits.mimeTypes.join(",")}
-                                  onChange={(event) => {
-                                    if (event.target.files !== null)
-                                      addFiles(event.target.files);
-                                    event.target.value = "";
-                                  }}
-                                />
-                                <PromptInputButton
-                                  aria-label={wording.attach.add}
-                                  title={wording.attach.add}
-                                  onClick={() => fileInputRef.current?.click()}
-                                >
-                                  <Paperclip size={16} aria-hidden="true" />
-                                </PromptInputButton>
-                              </>
-                            )}
-                            <PromptInputSubmit className="ms-auto" />
-                          </PromptInputToolbar>
-                        </PromptInput>
-                      )}
-                    </Dictated>
-                  </AttachmentDropZone>
-                </div>
-              )}
+              {dock}
             </div>
           </section>
           {chatFirst ? null : (
