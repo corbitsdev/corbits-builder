@@ -171,6 +171,15 @@ const APPROVAL_COVERS: Record<string, (kind: string) => boolean> = {
 // Whole documents, the filed app and approval package among them.
 const MAX_READ_CHARS = MAX_APPROVAL_PACKAGE_BYTES;
 const RECENT_FAILURES = 5;
+// A run held on an approval is mid-turn, so its activity reads as work; the pending record is what
+// says it waits on the person. Otherwise it is at work or parked between turns, which is idle.
+const inFlightState = (
+  heldOnApproval: boolean,
+  working: boolean | undefined,
+): InFlightRun["state"] => {
+  if (heldOnApproval) return "approval";
+  return working ? "working" : "waiting";
+};
 const RunError = type({ "+": "delete", message: "string", "code?": "string" });
 const UUID = "[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}";
 const isUuid = (value: string) => new RegExp("^" + UUID + "$", "i").test(value);
@@ -765,6 +774,19 @@ export function createArtifactService(
           ),
         )
         .orderBy(desc(workflowRun.endedAt));
+      const heldOnApproval = new Set(
+        (
+          await rawDB
+            .select({ runId: approval.anchorRunId })
+            .from(approval)
+            .where(
+              and(
+                eq(approval.tenantId, actor.tenantId),
+                eq(approval.status, "pending"),
+              ),
+            )
+        ).map((row) => row.runId),
+      );
       const inFlight: InFlightRun[] = [];
       const failed: FailedRun[] = [];
       for (const run of specialists) {
@@ -778,7 +800,7 @@ export function createArtifactService(
             role,
             startedAt: run.startedAt.toISOString(),
             status: run.status,
-            state: seen?.working ? "working" : "waiting",
+            state: inFlightState(heldOnApproval.has(run.runId), seen?.working),
             ...(seen?.since ? { since: seen.since } : {}),
             ...(run.concept === null ? {} : { concept: run.concept }),
             ...(progress ? { progress } : {}),

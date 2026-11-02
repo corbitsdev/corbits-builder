@@ -102,6 +102,9 @@ function WorkLine({
         </>
       );
     }
+    // Nothing moves until the person answers, so no shimmer and no clock running on it.
+    case "approval":
+      return text.approval;
     case "ready":
       return text.steps(text.done[dispatch.role](subject), steps);
     case "finished":
