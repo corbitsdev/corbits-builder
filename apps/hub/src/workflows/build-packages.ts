@@ -3,7 +3,7 @@ import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
 import { join, resolve } from "node:path";
 import { tmpdir } from "node:os";
 import { nativePackageName } from "./package-name.ts";
-import type { RoleBinding } from "@corbits-builder/schemas/models";
+import type { RoleInference } from "./role-inference.ts";
 import type { WorkflowRole } from "@corbits-builder/schemas/installed-workflows";
 
 // The version follows the bundle bytes, so a rebuilt workflow publishes beside the old one instead of
@@ -12,7 +12,7 @@ function contentVersion(base: string, bundle: string): string {
   return `${base}-sha-${createHash("sha256").update(bundle).digest("hex").slice(0, 8)}`;
 }
 
-// Each package is an entry under entries/ built on its role's model binding.
+// Each package is an entry under entries/ built on what its role's model binding resolved to.
 const WORKFLOW_PACKAGES: readonly { name: string; role: WorkflowRole }[] = [
   ...(["coordinator", "writer", "reviewer", "coder", "designer"] as const).map(
     (role) => ({
@@ -26,7 +26,7 @@ const WORKFLOW_PACKAGES: readonly { name: string; role: WorkflowRole }[] = [
 export async function buildWorkflowPackages(
   destination: string,
   base: string,
-  bindings: Record<WorkflowRole, RoleBinding>,
+  inference: Record<WorkflowRole, RoleInference>,
 ) {
   if (!/^\d+\.\d+\.\d+$/.test(base)) throw new Error("invalid_package_version");
   const output = resolve(destination);
@@ -36,7 +36,7 @@ export async function buildWorkflowPackages(
     const result = await Bun.build({
       define: {
         "process.env.BUILDER_ROLE_INFERENCE": JSON.stringify(
-          JSON.stringify(bindings[role]),
+          JSON.stringify(inference[role]),
         ),
       },
       entrypoints: [join(import.meta.dir, "entries", name + ".ts")],

@@ -29,7 +29,11 @@ const log = getLogger(["corbits-builder", "availability"]);
 
 // These are wire-protocol adapters, not a provider/model registry. Identity,
 // endpoints, shadowing and credential authority all come from the native catalog.
-function probeRequest(plugin: string, baseURL: string, secret: string) {
+function probeRequest(
+  plugin: string,
+  baseURL: string,
+  secret: string | undefined,
+) {
   const url = new URL(baseURL);
   if (
     !["http:", "https:"].includes(url.protocol) ||
@@ -45,16 +49,17 @@ function probeRequest(plugin: string, baseURL: string, secret: string) {
     case "openai-responses":
     case "openai-compatible":
       url.pathname = `${url.pathname.replace(/\/$/, "")}/models`;
-      headers.set("authorization", `Bearer ${secret}`);
+      if (secret !== undefined)
+        headers.set("authorization", `Bearer ${secret}`);
       break;
     case "anthropic":
       url.pathname = `${url.pathname.replace(/\/$/, "")}/v1/models`;
-      headers.set("x-api-key", secret);
+      if (secret !== undefined) headers.set("x-api-key", secret);
       headers.set("anthropic-version", "2023-06-01");
       break;
     case "google-genai":
       url.pathname = `${url.pathname.replace(/\/$/, "")}/v1beta/models`;
-      headers.set("x-goog-api-key", secret);
+      if (secret !== undefined) headers.set("x-goog-api-key", secret);
       break;
     default:
       return null;
@@ -139,11 +144,14 @@ export function createAvailabilityProbe(
   };
 }
 
-/** One model-list call with this key; `origin`, when given, is the only origin the key may reach. */
+/**
+ * One model-list call with this key, or with none for a keyless server; `origin`, when given, is
+ * the only origin the key may reach.
+ */
 export async function probeKey(
   plugin: string,
   baseURL: string,
-  secret: string,
+  secret: string | undefined,
   origin?: string,
 ): Promise<AvailabilityState> {
   let request;

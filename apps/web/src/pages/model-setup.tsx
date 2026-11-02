@@ -38,7 +38,7 @@ export function clearModelSetupDeferral(): void {
 /** No connection, the workspace's or one it inherits, holds a usable key. An empty read is this case. */
 export function needsModelSetup(
   providers: readonly {
-    connections: readonly { credentialSet: boolean; status: string }[];
+    connections: readonly { credentialSet: boolean; status?: string }[];
   }[],
 ): boolean {
   return !providers.some((provider) =>

@@ -23,6 +23,10 @@ import {
 } from "@corbits-builder/schemas/settings";
 import { PreferenceRegistry } from "@corbits-builder/schemas/preferences";
 import {
+  CustomApi,
+  CustomProviderCreate,
+  CustomProviderReceipt,
+  CustomProviderUpdate,
   ModelCatalog,
   ProviderTest,
   ProviderTestResult,
@@ -31,15 +35,24 @@ import { type } from "arktype";
 import { preferenceRegistry } from "../config/preferences.ts";
 import type { ProductConfig } from "../config/index.ts";
 import {
+  CUSTOM_APIS,
   EFFORTS,
   MODEL_CHOICE_REFUSALS,
   MODEL_ROLES,
   PROFILES,
   TIERS,
-  MODEL_PROVIDERS,
   providerOfRow,
   resolveModelChoice,
+  shippedOfRow,
 } from "../config/models.ts";
+import {
+  createCustomProvider,
+  modelDirectory,
+  nativeCatalog,
+  removeCustomProvider,
+  updateCustomProvider,
+} from "./custom-providers.ts";
+import { readJson } from "../lib/json.ts";
 import { connectedProviders } from "../projects/model-choice.ts";
 import {
   createAvailabilityProbe,
@@ -89,10 +102,16 @@ export function createSettingsRoutes(
   cipher: CredentialCipher,
   config: ProductConfig,
   installRootId: string,
+  nativeFetch: (request: Request) => Promise<Response>,
 ) {
   const app = new Hono<TenantEnv>();
   const service = createSettingsService(db);
   const probe = createAvailabilityProbe(db, cipher);
+  const requireManage = async (c: Context<TenantEnv>) => {
+    const allowed = await reportAuthorization(db, actor(c));
+    if (!(await allowed("sb-settings:tenant", "manage")))
+      throw new ProjectError(403, "forbidden");
+  };
   app.use("*", requireAuth, createResolveTenant({ db }));
   app.use(
     "*",
@@ -130,6 +149,7 @@ export function createSettingsRoutes(
       const allowed = await reportAuthorization(db, actor(c));
       if (!(await allowed("sb-settings:tenant", "read")))
         throw new ProjectError(403, "forbidden");
+      const directory = await modelDirectory(db, tenantId);
       const providers = [];
       for (const { row } of await listVisibleProviders(db, tenantId)) {
         if (!(await allowed(`model-provider:${row.id}`, "read"))) continue;
@@ -143,10 +163,15 @@ export function createSettingsRoutes(
         providers.push({
           id: row.id,
           name: row.name,
-          availability: settingsAvailability(
-            row.plugin,
-            await probe(tenantId, row.id),
-          ),
+          // A custom endpoint is an address a person typed, so it is probed only when they ask.
+          ...(providerOfRow(directory, row)?.kind === "custom"
+            ? {}
+            : {
+                availability: settingsAvailability(
+                  row.plugin,
+                  await probe(tenantId, row.id),
+                ),
+              }),
           secrets: { credential: { set: Boolean(credential) } },
         });
       }
@@ -235,21 +260,32 @@ export function createSettingsRoutes(
       if (!(await allowed("sb-settings:tenant", "read")))
         throw new ProjectError(403, "forbidden");
       const { tenantId } = actor(c);
+      const directory = await modelDirectory(db, tenantId);
       const visible = [];
       for (const { row, origin } of await listVisibleProviders(db, tenantId))
         if (await allowed(`model-provider:${row.id}`, "read"))
           visible.push({ row, fromServer: origin.tenantId === installRootId });
       const connections = await Promise.all(
-        visible.map(async ({ row, fromServer }) => ({
-          entry: providerOfRow(row)?.id,
-          id: row.id,
-          name: row.name,
-          status: row.disabled
-            ? ("unavailable" as const)
-            : await probe(tenantId, row.id),
-          credentialSet: row.credentialId !== null,
-          ...(fromServer ? { note: installRoot.connectionNote } : {}),
-        })),
+        visible.map(async ({ row, fromServer }) => {
+          const entry = providerOfRow(directory, row);
+          return {
+            entry: entry?.id,
+            id: row.id,
+            name: row.name,
+            ...(entry?.kind === "custom"
+              ? {
+                  keyless: entry.keyless,
+                  ...(row.disabled ? { status: "unavailable" as const } : {}),
+                }
+              : {
+                  status: row.disabled
+                    ? ("unavailable" as const)
+                    : await probe(tenantId, row.id),
+                }),
+            credentialSet: row.credentialId !== null,
+            ...(fromServer ? { note: installRoot.connectionNote } : {}),
+          };
+        }),
       );
       const answering = new Set(
         connections
@@ -257,21 +293,34 @@ export function createSettingsRoutes(
           .map((row) => row.entry),
       );
       const automatic = resolveModelChoice(
+        directory,
         null,
-        await connectedProviders(db, tenantId),
+        await connectedProviders(db, directory, tenantId),
       );
       return c.json({
-        providers: MODEL_PROVIDERS.map(({ quirks: _quirks, ...entry }) => ({
-          ...entry,
-          models: [...entry.models],
-          // A stored row name is the catalog's unique key, not something a person chose.
-          connections: connections
-            .filter((connection) => connection.entry === entry.id)
-            .map(({ entry: _entry, ...connection }, index) => ({
-              ...connection,
-              name: `${entry.label}${index === 0 ? "" : ` ${index + 1}`}`,
-            })),
-        })),
+        providers: directory
+          // A custom provider shows only to someone who may read the connection it runs on.
+          .filter(
+            (entry) =>
+              entry.kind !== "custom" ||
+              connections.some(({ id }) => id === entry.connection),
+          )
+          .map((entry) => ({
+            id: entry.id,
+            plugin: entry.plugin,
+            kind: entry.kind,
+            label: entry.label,
+            hint: entry.hint,
+            baseURL: entry.baseURL,
+            models: [...entry.models],
+            // A stored row name is the catalog's unique key, not something a person chose.
+            connections: connections
+              .filter((connection) => connection.entry === entry.id)
+              .map(({ entry: _entry, ...connection }, index) => ({
+                ...connection,
+                name: `${entry.label}${index === 0 ? "" : ` ${index + 1}`}`,
+              })),
+          })),
         roles: MODEL_ROLES.map(({ id, label, hint, tier }) => ({
           id,
           label,
@@ -280,6 +329,10 @@ export function createSettingsRoutes(
         })),
         tiers: [...TIERS],
         efforts: [...EFFORTS],
+        customApis: Object.entries(CUSTOM_APIS).map(([id, label]) => ({
+          id,
+          label,
+        })),
         ...("refused" in automatic
           ? {
               unresolved: {
@@ -324,20 +377,127 @@ export function createSettingsRoutes(
       const input = ProviderTest(await c.req.json().catch(() => null));
       if (input instanceof type.errors)
         throw new ProjectError(400, "invalid_provider_test");
-      const entry = providerOfRow({
-        plugin: input.plugin,
-        baseURL: input.baseURL?.trim() ?? "",
-      });
-      if (!entry) throw new ProjectError(400, "unknown_provider");
-      if (entry.kind === "login")
+      const baseURL = input.baseURL?.trim();
+      const entry = shippedOfRow({ plugin: input.plugin, baseURL });
+      if (!entry && !CustomApi.allows(input.plugin))
+        throw new ProjectError(400, "unknown_provider");
+      if (entry?.kind === "login")
         throw new ProjectError(400, "provider_signs_in");
-      const baseURL = entry.needsBaseUrl
-        ? input.baseURL?.trim()
-        : entry.baseURL;
+      if (entry && !("secret" in input))
+        throw new ProjectError(400, "secret_required");
       if (!baseURL) throw new ProjectError(400, "base_url_required");
       return c.json({
-        status: await probeKey(entry.plugin, baseURL, input.secret),
+        status: await probeKey(
+          input.plugin,
+          baseURL,
+          "secret" in input ? input.secret : undefined,
+        ),
       });
+    },
+  );
+  app.post(
+    "/custom-providers",
+    describeRoute({
+      tags: ["Settings"],
+      operationId: "createCustomProvider",
+      requestBody: {
+        required: true,
+        content: {
+          "application/json": { schema: resolver(CustomProviderCreate) },
+        },
+      },
+      responses: {
+        200: {
+          description: "The new custom provider; the key is not returned",
+          content: {
+            "application/json": { schema: resolver(CustomProviderReceipt) },
+          },
+        },
+        400: { description: "Invalid name, base URL or models" },
+      },
+    }),
+    async (c) => {
+      await requireManage(c);
+      if (!isJsonRequest(c))
+        return c.json({ code: "json_content_type_required" }, 415);
+      const input = CustomProviderCreate(await readJson(c.req));
+      if (input instanceof type.errors)
+        throw new ProjectError(400, "invalid_custom_provider");
+      return c.json(
+        await createCustomProvider(
+          db,
+          nativeCatalog(c, nativeFetch),
+          actor(c).tenantId,
+          input,
+        ),
+      );
+    },
+  );
+  app.post(
+    "/custom-providers/:providerId",
+    describeRoute({
+      tags: ["Settings"],
+      operationId: "updateCustomProvider",
+      requestBody: {
+        required: true,
+        content: {
+          "application/json": { schema: resolver(CustomProviderUpdate) },
+        },
+      },
+      responses: {
+        200: {
+          description: "The custom provider as kept",
+          content: {
+            "application/json": { schema: resolver(CustomProviderReceipt) },
+          },
+        },
+        400: { description: "Invalid name, base URL or models" },
+        404: { description: "This workspace owns no such custom provider" },
+      },
+    }),
+    async (c) => {
+      await requireManage(c);
+      if (!isJsonRequest(c))
+        return c.json({ code: "json_content_type_required" }, 415);
+      const input = CustomProviderUpdate(await readJson(c.req));
+      if (input instanceof type.errors)
+        throw new ProjectError(400, "invalid_custom_provider");
+      const id = c.req.param("providerId");
+      await updateCustomProvider(
+        db,
+        nativeCatalog(c, nativeFetch),
+        actor(c).tenantId,
+        id,
+        input,
+      );
+      return c.json({ id });
+    },
+  );
+  app.delete(
+    "/custom-providers/:providerId",
+    describeRoute({
+      tags: ["Settings"],
+      operationId: "removeCustomProvider",
+      responses: {
+        200: {
+          description: "The connection, its key and its models are removed",
+          content: {
+            "application/json": { schema: resolver(CustomProviderReceipt) },
+          },
+        },
+        404: { description: "This workspace owns no such custom provider" },
+      },
+    }),
+    async (c) => {
+      await requireManage(c);
+      const id = c.req.param("providerId");
+      await removeCustomProvider(
+        db,
+        nativeCatalog(c, nativeFetch),
+        actor(c).tenantId,
+        id,
+      );
+      return c.json({ id });
     },
   );
   app.get(

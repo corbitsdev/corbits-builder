@@ -93,7 +93,8 @@ export const SettingsProviders = type({
     "+": "reject",
     id: "string > 0",
     name: "string > 0",
-    availability: ProviderAvailability,
+    // Omitted for a custom endpoint, which is probed only on demand.
+    "availability?": ProviderAvailability,
     secrets: { "+": "reject", credential: { "+": "reject", set: "boolean" } },
   }).array(),
 });

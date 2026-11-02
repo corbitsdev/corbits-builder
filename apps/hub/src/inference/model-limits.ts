@@ -3,6 +3,8 @@
 // still fits. A missing record fails closed. How hard each role reasons is the profile's choice
 // (config/models.ts), not the model's.
 
+import type { CustomModel } from "@corbits-builder/schemas/models";
+
 export type AgentRole = "coordinator" | "document" | "coding" | "design";
 
 type Effort = "low" | "medium" | "high" | "max";
@@ -12,7 +14,7 @@ type RoleBudget = {
   temperature?: number;
 };
 
-type ModelLimits = {
+export type ModelLimits = {
   contextWindow: number;
   /** The efforts the provider's adapter puts on the wire for this model; empty sends none. */
   efforts: readonly Effort[];
@@ -125,25 +127,17 @@ export function modelLimits(
   return found;
 }
 
-export function modelEfforts(
-  provider: string,
-  model: string,
-): readonly Effort[] {
-  return modelLimits(provider, model)?.efforts ?? [];
-}
-
-export function requireContextWindow(provider: string, model: string): number {
-  const found = modelLimits(provider, model);
-  if (!found) throw new Error(`model_limits_required:${provider}:${model}`);
-  return found.contextWindow;
-}
-
-export function requireModelRole(
-  provider: string,
-  model: string,
-  role: AgentRole,
-): RoleBudget {
-  const budget = modelLimits(provider, model)?.roles[role];
-  if (!budget) throw new Error(`model_limits_required:${provider}:${model}`);
-  return budget;
+// A person's own model runs every role on the one output cap they set, and is sent no effort.
+export function customModelLimits(model: CustomModel): ModelLimits {
+  const budget: RoleBudget = { maxOutputTokens: model.maxOutputTokens };
+  return {
+    contextWindow: model.contextWindow,
+    efforts: [],
+    roles: {
+      coordinator: budget,
+      document: budget,
+      coding: budget,
+      design: budget,
+    },
+  };
 }

@@ -13,7 +13,14 @@ import {
   unique,
   uniqueIndex,
 } from "drizzle-orm/pg-core";
-import { approval, principal, tenant, workflowRun } from "@intx/db/schema";
+import {
+  approval,
+  modelProvider,
+  principal,
+  tenant,
+  workflowRun,
+} from "@intx/db/schema";
+import type { CustomModel } from "@corbits-builder/schemas/models";
 
 export const project = pgTable(
   "project",
@@ -283,3 +290,18 @@ export const settingsRecord = pgTable(
   },
   (t) => [primaryKey({ columns: [t.tenantId, t.scopeKey] })],
 );
+
+// A person's own endpoint: its name and models, and the catalog connection it runs
+// on, which holds its base URL and key. Its id is what profiles bind, so it survives moving to a
+// new connection.
+export const customModelProvider = pgTable("sb_custom_model_provider", {
+  id: text("id").primaryKey(),
+  modelProviderId: text("model_provider_id")
+    .notNull()
+    .unique()
+    .references(() => modelProvider.id, { onDelete: "cascade" }),
+  name: text("name").notNull(),
+  models: jsonb("models").$type<CustomModel[]>().notNull(),
+  // Its connection carries a placeholder in place of a key; the placeholder itself is never shown.
+  keyless: boolean("keyless").notNull(),
+});

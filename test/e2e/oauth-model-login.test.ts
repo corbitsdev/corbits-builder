@@ -17,7 +17,10 @@ import { createHubRuntime } from "@corbits-builder/hub/app";
 import { readDatabaseConfig } from "@corbits-builder/hub/environment";
 import { migrateDatabase } from "@corbits-builder/hub/migrate";
 import { installForTenant } from "@corbits-builder/hub/workflows/install-for-tenant";
-import { frozenModelChoice } from "@corbits-builder/hub/config/models";
+import {
+  MODEL_PROVIDERS,
+  frozenModelChoice,
+} from "@corbits-builder/hub/config/models";
 import { defaultSettings } from "@corbits-builder/hub/settings/policy";
 import type { ModelChoice } from "@corbits-builder/schemas/models";
 import { createProductApiClient } from "@corbits-builder/client";
@@ -320,7 +323,10 @@ test("ChatGPT and xAI logins are providers a profile binds roles to, and install
       const projectId = `p-${randomUUID().replaceAll("-", "")}`;
       const fields = {
         ...defaultSettings(),
-        models: { value: frozenModelChoice(chosen), version: 1 },
+        models: {
+          value: frozenModelChoice(MODEL_PROVIDERS, chosen),
+          version: 1,
+        },
       };
       const projectSql = postgres({
         ...database,
