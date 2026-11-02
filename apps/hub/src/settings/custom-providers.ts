@@ -47,20 +47,31 @@ export async function modelDirectory(
     );
   return [
     ...MODEL_PROVIDERS,
-    ...saved.map((entry) => {
-      const row = rows.find(({ id }) => id === entry.modelProviderId)!;
-      return {
-        id: entry.id,
-        plugin: row.plugin,
-        kind: "custom" as const,
-        connection: row.id,
-        keyless: entry.keyless,
-        label: entry.name,
-        hint: CUSTOM_APIS[CustomApi.assert(row.plugin)],
-        needsBaseUrl: true,
-        baseURL: row.baseURL,
-        models: storedModels.assert(entry.models),
-      };
+    ...saved.flatMap((entry) => {
+      const row = rows.find(({ id }) => id === entry.modelProviderId);
+      if (!row) return [];
+      const models = storedModels(entry.models);
+      if (models instanceof type.errors) {
+        log.warn("Skipping custom provider {id}: stored models are invalid", {
+          id: entry.id,
+          errors: models.summary,
+        });
+        return [];
+      }
+      return [
+        {
+          id: entry.id,
+          plugin: row.plugin,
+          kind: "custom" as const,
+          connection: row.id,
+          keyless: entry.keyless,
+          label: entry.name,
+          hint: CUSTOM_APIS[CustomApi.assert(row.plugin)],
+          needsBaseUrl: true,
+          baseURL: row.baseURL,
+          models,
+        },
+      ];
     }),
   ];
 }
