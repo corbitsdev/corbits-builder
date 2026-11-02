@@ -20,6 +20,7 @@ import {
   DialogTitle,
 } from "@corbits/react-ui/ui/dialog";
 import { useEffect, useState } from "react";
+import { useQueryClient } from "@tanstack/react-query";
 import type {
   CustomProfile,
   ModelCatalog,
@@ -28,6 +29,7 @@ import type {
   Tier,
 } from "@corbits-builder/schemas/models";
 import { Banner, Button, QuietSelect, QuietState } from "../components.jsx";
+import { keys } from "../queries/keys.ts";
 import { productClient } from "../api/transport.ts";
 import { workspaceTenantId } from "../api/auth.ts";
 import { useModelCatalog } from "./providers.jsx";
@@ -66,6 +68,17 @@ export function connected(catalog: ModelCatalog, provider: string): boolean {
   );
 }
 
+export function available(catalog: ModelCatalog, tiers: Tiers): boolean {
+  return Object.values(tiers).every((binding) =>
+    connected(catalog, binding.provider),
+  );
+}
+
+function profileSubtitle(profile: Profile, runnable: boolean) {
+  if (!runnable) return copy.unavailable;
+  return profile.custom ? copy.yours : profile.hint;
+}
+
 function complete(draft: Draft, tiers: readonly Tier[]): Tiers | null {
   const done: Partial<Record<Tier, RoleBinding>> = {};
   for (const tier of tiers) {
@@ -76,20 +89,22 @@ function complete(draft: Draft, tiers: readonly Tier[]): Tiers | null {
   return done as Tiers;
 }
 
-export function Profiles() {
+export function Profiles({ initialField }: { initialField?: Field } = {}) {
   const catalog = useModelCatalog();
-  const [field, setField] = useState<Field | null>(null);
+  const queryClient = useQueryClient();
+  const [field, setField] = useState<Field | null>(initialField ?? null);
   const [error, setError] = useState<string | null>(null);
   const [editing, setEditing] = useState<Editing | null>(null);
   const [viewing, setViewing] = useState<string | null>(null);
   useEffect(() => {
+    if (initialField) return;
     void workspaceTenantId()
       .then((tenantId) => productClient().personalSettings(tenantId))
       .then((record) =>
         setField(record.fields.models ?? { value: null, version: 0 }),
       )
       .catch((cause: unknown) => setError(message(cause)));
-  }, []);
+  }, [initialField]);
 
   const save = async (choice: ModelChoice) => {
     if (!field) return false;
@@ -103,6 +118,7 @@ export function Profiles() {
         },
       );
       setField(receipt.record.fields.models ?? field);
+      void queryClient.invalidateQueries({ queryKey: keys.modelChoice });
       setError(receipt.conflicts.length ? wording.message.stepFailed : null);
       return receipt.conflicts.length === 0;
     } catch (cause) {
@@ -128,8 +144,14 @@ export function Profiles() {
     ...custom.map((entry) => ({ ...entry, custom: true })),
   ];
   const active =
-    profiles.find((entry) => entry.id === field.value?.profile) ??
-    profiles.find((entry) => entry.id === data.automaticProfile);
+    profiles.find(
+      (entry) =>
+        entry.id === field.value?.profile && available(data, entry.tiers),
+    ) ??
+    profiles.find(
+      (entry) =>
+        entry.id === data.automaticProfile && available(data, entry.tiers),
+    );
   const viewed = profiles.find((entry) => entry.id === viewing) ?? active;
   const choice = (
     profile: string | undefined,
@@ -138,8 +160,6 @@ export function Profiles() {
     ...(profile ? { profile } : {}),
     ...(list.length ? { custom: list } : {}),
   });
-  const available = (tiers: Tiers) =>
-    Object.values(tiers).every((binding) => connected(data, binding.provider));
 
   return (
     <>
@@ -156,72 +176,68 @@ export function Profiles() {
           {!active && data.unresolved ? (
             <Banner title={data.unresolved.message} />
           ) : null}
-          {profiles.map((profile) => (
-            <div key={profile.id} className="row">
-              <div className="k">
-                <b>{profile.label}</b>
-                <span>
-                  {!available(profile.tiers)
-                    ? copy.unavailable
-                    : profile.custom
-                      ? copy.yours
-                      : profile.hint}
+          {profiles.map((profile) => {
+            const runnable = available(data, profile.tiers);
+            const activeRow = profile.id === active?.id;
+            return (
+              <div key={profile.id} className="row">
+                <div className="k">
+                  <b>{profile.label}</b>
+                  <span>{profileSubtitle(profile, runnable)}</span>
+                </div>
+                <span className="v">
+                  {profile.custom ? (
+                    <>
+                      <Button
+                        variant="ghost"
+                        onClick={() =>
+                          setEditing({
+                            mode: "edit",
+                            profile: custom.find(
+                              (entry) => entry.id === profile.id,
+                            )!,
+                          })
+                        }
+                      >
+                        {copy.edit}
+                      </Button>
+                      <Button
+                        variant="ghost"
+                        onClick={() => {
+                          const rest = custom.filter(
+                            (entry) => entry.id !== profile.id,
+                          );
+                          void save(
+                            choice(activeRow ? undefined : active?.id, rest),
+                          );
+                        }}
+                      >
+                        {copy.delete}
+                      </Button>
+                    </>
+                  ) : null}
+                  {profile.id === viewed?.id ? null : (
+                    <Button
+                      variant="ghost"
+                      onClick={() => setViewing(profile.id)}
+                    >
+                      {copy.show}
+                    </Button>
+                  )}
+                  {activeRow ? (
+                    <QuietState tone="success">{copy.active}</QuietState>
+                  ) : null}
+                  {!activeRow && runnable ? (
+                    <Button
+                      onClick={() => void save(choice(profile.id, custom))}
+                    >
+                      {copy.use}
+                    </Button>
+                  ) : null}
                 </span>
               </div>
-              <span className="v">
-                {profile.custom ? (
-                  <>
-                    <Button
-                      variant="ghost"
-                      onClick={() =>
-                        setEditing({
-                          mode: "edit",
-                          profile: custom.find(
-                            (entry) => entry.id === profile.id,
-                          )!,
-                        })
-                      }
-                    >
-                      {copy.edit}
-                    </Button>
-                    <Button
-                      variant="ghost"
-                      onClick={() => {
-                        const rest = custom.filter(
-                          (entry) => entry.id !== profile.id,
-                        );
-                        void save(
-                          choice(
-                            profile.id === field.value?.profile
-                              ? undefined
-                              : field.value?.profile,
-                            rest,
-                          ),
-                        );
-                      }}
-                    >
-                      {copy.delete}
-                    </Button>
-                  </>
-                ) : null}
-                {profile.id === viewed?.id ? null : (
-                  <Button
-                    variant="ghost"
-                    onClick={() => setViewing(profile.id)}
-                  >
-                    {copy.show}
-                  </Button>
-                )}
-                {profile.id === active?.id ? (
-                  <QuietState tone="success">{copy.active}</QuietState>
-                ) : (
-                  <Button onClick={() => void save(choice(profile.id, custom))}>
-                    {copy.use}
-                  </Button>
-                )}
-              </span>
-            </div>
-          ))}
+            );
+          })}
           {error ? <Banner tone="error" title={error} /> : null}
         </div>
       </Section>
@@ -264,7 +280,9 @@ export function Profiles() {
       {editing ? (
         <ProfileEditor
           catalog={data}
-          profiles={profiles}
+          profiles={profiles.filter((profile) =>
+            available(data, profile.tiers),
+          )}
           editing={editing}
           onClose={() => setEditing(null)}
           onSave={async (profile) => {
@@ -274,12 +292,17 @@ export function Profiles() {
                     entry.id === profile.id ? profile : entry,
                   )
                 : [...custom, profile];
-            if (await save(choice(field.value?.profile, list)))
-              setEditing(null);
+            if (await save(choice(active?.id, list))) setEditing(null);
           }}
         />
       ) : null}
     </>
+  );
+}
+
+export function editorProviders(catalog: ModelCatalog, current?: string) {
+  return catalog.providers.filter(
+    (entry) => connected(catalog, entry.id) || entry.id === current,
   );
 }
 
@@ -307,7 +330,10 @@ function ProfileEditor({
     draft,
     catalog.tiers.map((tier) => tier.id),
   );
-  const ready = filled !== null && draft.label.trim().length > 0;
+  const ready =
+    filled !== null &&
+    draft.label.trim().length > 0 &&
+    available(catalog, filled);
   const setTier = (tier: Tier, binding: Partial<RoleBinding>) =>
     setDraft((current) => ({
       ...current,
@@ -389,6 +415,7 @@ function ProfileEditor({
               const provider = catalog.providers.find(
                 (entry) => entry.id === binding.provider,
               );
+              const providers = editorProviders(catalog, binding.provider);
               return (
                 <fieldset
                   key={tier.id}
@@ -414,13 +441,20 @@ function ProfileEditor({
                     <option value="" disabled>
                       {copy.choose}
                     </option>
-                    {catalog.providers.map((entry) => (
-                      <option key={entry.id} value={entry.id}>
-                        {connected(catalog, entry.id)
-                          ? entry.label
-                          : copy.unavailableOption(entry.label)}
-                      </option>
-                    ))}
+                    {providers.map((entry) => {
+                      const availableProvider = connected(catalog, entry.id);
+                      return (
+                        <option
+                          key={entry.id}
+                          value={entry.id}
+                          disabled={!availableProvider}
+                        >
+                          {availableProvider
+                            ? entry.label
+                            : copy.unavailableOption(entry.label)}
+                        </option>
+                      );
+                    })}
                   </QuietSelect>
                   <QuietSelect
                     aria-label={copy.model(copy.tier(tier.label))}

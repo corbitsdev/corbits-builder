@@ -386,13 +386,16 @@ export const PROFILES: readonly Profile[] = [
     },
   ),
 ];
-/** Why a binding cannot run: an unlisted provider or model, or a model without limits. */
+/** Why a binding cannot run: an unlisted or unconnected provider, an unlisted model, or no limits. */
 function unrunnable(
   directory: ModelDirectory,
   binding: RoleBinding,
+  connected?: readonly string[],
 ): string | undefined {
   const provider = modelProvider(directory, binding.provider);
   if (!provider) return `provider:${binding.provider}`;
+  if (connected && !connected.includes(binding.provider))
+    return `unconnected:${binding.provider}`;
   if (!provider.models.some((model) => model.id === binding.model))
     return `model:${binding.provider}:${binding.model}`;
   if (!bindingLimits(directory, binding.provider, binding.model))
@@ -406,21 +409,23 @@ for (const profile of PROFILES)
     if (reason) throw new Error(`profile_unrunnable:${profile.id}:${reason}`);
   }
 
-/** The first part of a choice the profiles cannot run: its profile or a made profile's tier. */
+/** The first part of a choice the profiles cannot run: its profile or the chosen profile's tier. */
 export function invalidModelChoice(
   directory: ModelDirectory,
   choice: ModelChoice,
+  connected?: readonly string[],
 ): string | undefined {
   const custom = choice.custom ?? [];
-  const ids = [...PROFILES, ...custom].map((profile) => profile.id);
+  const profiles = [...PROFILES, ...custom];
+  const ids = profiles.map((profile) => profile.id);
   if (new Set(ids).size !== ids.length) return "duplicate_profile";
   if (choice.profile !== undefined && !ids.includes(choice.profile))
     return choice.profile;
   // A made profile nobody runs may name a provider since removed; only the chosen one must run.
-  const chosen = custom.find((profile) => profile.id === choice.profile);
+  const chosen = profiles.find((profile) => profile.id === choice.profile);
   if (chosen) {
     for (const [tier, binding] of Object.entries(chosen.tiers)) {
-      const reason = unrunnable(directory, binding);
+      const reason = unrunnable(directory, binding, connected);
       if (reason) return `${chosen.id}:${tier}:${reason}`;
     }
   }
@@ -431,13 +436,14 @@ export function invalidModelChoice(
 function chosenProfile(
   directory: ModelDirectory,
   choice: ModelChoice | null,
+  connected?: readonly string[],
 ): CustomProfile | undefined {
   const profile =
     choice?.custom?.find((entry) => entry.id === choice.profile) ??
     PROFILES.find((entry) => entry.id === choice?.profile);
   return profile &&
     Object.values(profile.tiers).every(
-      (binding) => !unrunnable(directory, binding),
+      (binding) => !unrunnable(directory, binding, connected),
     )
     ? profile
     : undefined;
@@ -470,7 +476,7 @@ export function resolveModelChoice(
   choice: ModelChoice | null,
   connected: readonly string[],
 ): { choice: ModelChoice } | { refused: ModelChoiceRefusal } {
-  const chosen = chosenProfile(directory, choice);
+  const chosen = chosenProfile(directory, choice, connected);
   if (chosen) return { choice: frozen(chosen) };
   const providers = [...new Set(connected)];
   const only =
@@ -518,8 +524,9 @@ function frozen(profile: CustomProfile): ModelChoice {
 export function frozenModelChoice(
   directory: ModelDirectory,
   choice: ModelChoice | null,
+  connected?: readonly string[],
 ): ModelChoice | null {
-  const profile = chosenProfile(directory, choice);
+  const profile = chosenProfile(directory, choice, connected);
   return profile ? frozen(profile) : null;
 }
 
