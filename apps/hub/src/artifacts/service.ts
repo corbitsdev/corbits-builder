@@ -39,10 +39,9 @@ import {
   ArtifactApprovalRecord,
   AppBundle,
   AppVersionMetadata,
-  DeckBundle,
   DocumentContent,
   MAX_APP_BYTES,
-  MAX_DECK_BYTES,
+  MAX_APPROVAL_PACKAGE_BYTES,
   MATERIAL_KIND,
   ArtifactKindWrite,
   DesignBundle,
@@ -145,6 +144,11 @@ import {
   materialContent,
   materialMimeType,
 } from "./materials.ts";
+import {
+  parseApprovalPackageBundle,
+  readProjectPackageSource,
+  validateApprovalPackage,
+} from "./approval-package.ts";
 import { requestErrorMetadata } from "../request-error.ts";
 
 const log = getLogger(["corbits-builder", "hub", "artifacts"]);
@@ -155,15 +159,11 @@ const log = getLogger(["corbits-builder", "hub", "artifacts"]);
 // so no approval covers it.
 const APPROVAL_COVERS: Record<string, (kind: string) => boolean> = {
   request_approval: (kind) =>
-    kind !== "app" &&
-    kind !== "design" &&
-    kind !== "design_option" &&
-    kind !== "deck",
-  instruct_coder: (kind) =>
-    kind !== "app" && kind !== "design_option" && kind !== "deck",
+    kind !== "app" && kind !== "design" && kind !== "design_option",
+  instruct_coder: (kind) => kind !== "app" && kind !== "design_option",
 };
-// Whole documents, the filed app and deck among them.
-const MAX_READ_CHARS = MAX_DECK_BYTES;
+// Whole documents, the filed app and approval package among them.
+const MAX_READ_CHARS = MAX_APPROVAL_PACKAGE_BYTES;
 const RECENT_FAILURES = 5;
 const RunError = type({ "+": "delete", message: "string", "code?": "string" });
 const UUID = "[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}";
@@ -202,7 +202,7 @@ function validateArtifactWriteContent(
     input.kind === "design" ||
     input.kind === "design_option" ||
     input.kind === "app" ||
-    input.kind === "deck";
+    input.kind === "approval_package";
   if (bundled && input.openQuestions)
     throw new ProjectError(400, "invalid_artifact_write", {
       issues: [
@@ -248,18 +248,14 @@ function validateArtifactWriteContent(
         bytes,
         limit: MAX_APP_BYTES,
       });
-  } else if (input.kind === "deck") {
+  } else if (input.kind === "approval_package") {
     const bytes = Buffer.byteLength(input.content);
-    if (bytes > MAX_DECK_BYTES)
-      throw new ProjectError(413, "deck_too_large", {
+    if (bytes > MAX_APPROVAL_PACKAGE_BYTES)
+      throw new ProjectError(413, "approval_package_too_large", {
         bytes,
-        limit: MAX_DECK_BYTES,
+        limit: MAX_APPROVAL_PACKAGE_BYTES,
       });
-    const bundle = DeckBundle(parseJson(input.content));
-    if (bundle instanceof type.errors)
-      throw new ProjectError(400, "invalid_deck", {
-        issues: typeIssues(bundle, "content"),
-      });
+    parseApprovalPackageBundle(input.content);
   } else {
     const document = DocumentContent(input.content);
     if (document instanceof type.errors)
@@ -1348,6 +1344,11 @@ export function createArtifactService(
         throw new ProjectError(403, "artifact_write_refused", {
           kind: input.kind,
         });
+      if (input.kind === "approval_package")
+        await validateApprovalPackage(
+          input.content,
+          readProjectPackageSource(db, actor.tenantId),
+        );
       const [active] = await rawDB
         .select({ kind: principal.kind, refId: principal.refId })
         .from(principal)

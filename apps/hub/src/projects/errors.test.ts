@@ -173,7 +173,7 @@ test("typeIssues names the rule for narrow checks, unions and extra keys without
     {
       path: "kind",
       message:
-        'must be "app", "approaches", "build_plan", "constraints", "deck", "design", "design_option", "problem_brief" or "product_requirements"',
+        'must be "app", "approaches", "approval_package", "build_plan", "constraints", "design", "design_option", "problem_brief" or "product_requirements"',
     },
     { path: "extra", message: "is not allowed here" },
   ]);

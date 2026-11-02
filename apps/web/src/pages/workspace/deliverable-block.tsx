@@ -5,9 +5,15 @@
  * for HTML and JSON.
  */
 import { wording } from "../../config.ts";
-import { useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { Button, CsvTable, ShimmerText } from "@corbits/react-ui";
 import { Markdown } from "../../markdown.jsx";
+import {
+  APPROVAL_PACKAGE_MEDIA_TYPE,
+  ApprovalPackagePreview,
+  approvalPackagePdfFile,
+  parseApprovalPackage,
+} from "./approval-package-preview.tsx";
 import {
   DESIGN_MEDIA_TYPE,
   DesignPreview,
@@ -62,9 +68,19 @@ export type DeliverableState =
 function mediaKind(
   mediaType: string,
   title: string,
-): "html" | "design" | "json" | "prose" | "sheet" | "text" | "image" | "file" {
+):
+  | "html"
+  | "design"
+  | "approval_package"
+  | "json"
+  | "prose"
+  | "sheet"
+  | "text"
+  | "image"
+  | "file" {
   if (mediaType === "text/html") return "html";
   if (mediaType === DESIGN_MEDIA_TYPE) return "design";
+  if (mediaType === APPROVAL_PACKAGE_MEDIA_TYPE) return "approval_package";
   if (mediaType === "application/json") return "json";
   if (mediaType === "text/markdown") return "prose";
   // A material is titled with its file name; a CSV that is not UTF-8 is a data: URL, so it stays a file.
@@ -89,6 +105,8 @@ export function DeliverableBody({
   onAddToPrompt,
   onViewVersion,
   approachChoice,
+  requestedVersion,
+  onOpenSource,
 }: {
   state: DeliverableState | undefined;
   designPart?: DesignPart;
@@ -103,6 +121,10 @@ export function DeliverableBody({
   onViewVersion?: () => void;
   /** The person's pick of a filed approach, and how to make it. */
   approachChoice?: ApproachChoice;
+  /** A specific version requested when jumping from a pinned source document. */
+  requestedVersion?: { version: number; seq: number } | undefined;
+  /** Opens a pinned source document tab at its pinned version. */
+  onOpenSource?: ((kind: string, version: number) => void) | undefined;
 }) {
   if (state === undefined)
     return <p className="inline-note">Nothing to read yet.</p>;
@@ -136,6 +158,8 @@ export function DeliverableBody({
       {...(onAddToPrompt === undefined ? {} : { onAddToPrompt })}
       {...(onViewVersion === undefined ? {} : { onViewVersion })}
       {...(approachChoice === undefined ? {} : { approachChoice })}
+      {...(requestedVersion === undefined ? {} : { requestedVersion })}
+      {...(onOpenSource === undefined ? {} : { onOpenSource })}
     />
   );
 }
@@ -166,6 +190,8 @@ function ReadyDocument({
   onAddToPrompt,
   onViewVersion,
   approachChoice,
+  requestedVersion,
+  onOpenSource,
 }: {
   document: LoadedDeliverable;
   designPart: DesignPart;
@@ -176,6 +202,8 @@ function ReadyDocument({
   onAddToPrompt?: (passage: PassageQuote) => void;
   onViewVersion?: () => void;
   approachChoice?: ApproachChoice;
+  requestedVersion?: { version: number; seq: number } | undefined;
+  onOpenSource?: ((kind: string, version: number) => void) | undefined;
 }) {
   const [viewing, setViewing] = useState(document.version);
   const [cache, setCache] = useState<Record<number, ReadVersion>>({});
@@ -246,6 +274,17 @@ function ReadyDocument({
       .finally(() => setPendingVersion(null));
   };
 
+  const appliedRequestSeq = useRef<number | null>(null);
+  useEffect(() => {
+    if (
+      requestedVersion !== undefined &&
+      requestedVersion.seq !== appliedRequestSeq.current
+    ) {
+      appliedRequestSeq.current = requestedVersion.seq;
+      selectVersion(requestedVersion.version);
+    }
+  }, [requestedVersion]);
+
   const comparePrevious = () => {
     if (predecessor === null) return;
     setPendingVersion(predecessor);
@@ -310,6 +349,16 @@ function ReadyDocument({
         prepare: "shown",
         build: async () => ({ file: await zipFile(stem, design) }),
       };
+    if (kind === "approval_package" && afterText !== null) {
+      const pkg = parseApprovalPackage(afterText);
+      if (pkg !== null) {
+        return shownFile(
+          approvalPackagePdfFile(stem, pkg),
+          wording.paneFile.downloadPackagePdf,
+          wording.paneFile.sharePackagePdf,
+        );
+      }
+    }
     if (kind === "sheet" && afterText !== null)
       return shownFile(
         csvFile(stem, afterText),
@@ -327,6 +376,7 @@ function ReadyDocument({
       canCompare:
         predecessor !== null &&
         !comparing &&
+        kind !== "approval_package" &&
         kind !== "image" &&
         kind !== "file",
       onView: selectVersion,
@@ -355,6 +405,14 @@ function ReadyDocument({
           device={device}
           onDevice={setDevice}
           trailing={barGroups}
+        />
+      );
+    if (kind === "approval_package")
+      return (
+        <ApprovalPackagePreview
+          content={body}
+          stem={stem}
+          {...(onOpenSource === undefined ? {} : { onOpenSource })}
         />
       );
     if (kind === "sheet")
@@ -430,20 +488,35 @@ function ReadyDocument({
     </>
   );
 
-  return (
-    <div className="deliverable-body">
-      {fill ? (
-        <div className="pane-notes">{notes}</div>
-      ) : (
+  const renderDocumentHeader = () => {
+    if (fill) {
+      return <div className="pane-notes">{notes}</div>;
+    }
+    if (kind === "approval_package") {
+      return (
         <>
-          <header className="document-header">
-            <h1 className="workspace-artifact-title" title={title}>
-              {lifted.heading ?? title}
-            </h1>
-          </header>
+          <aside className="approval-package-reminder" role="note">
+            <p className="inline-note">{wording.approvalPackage.reminder}</p>
+          </aside>
           {notes}
         </>
-      )}
+      );
+    }
+    return (
+      <>
+        <header className="document-header">
+          <h1 className="workspace-artifact-title" title={title}>
+            {lifted.heading ?? title}
+          </h1>
+        </header>
+        {notes}
+      </>
+    );
+  };
+
+  return (
+    <div className="deliverable-body">
+      {renderDocumentHeader()}
       <PassageQuotes title={title} version={viewing} {...add}>
         {readingView()}
         {comparison}

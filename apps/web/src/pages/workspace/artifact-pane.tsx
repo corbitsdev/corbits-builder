@@ -101,6 +101,7 @@ const FLOW = [
   "product_requirements",
   "design",
   "build_plan",
+  "approval_package",
 ];
 const flowRank = (kind: string) => {
   const rank = FLOW.indexOf(kind);
@@ -205,6 +206,9 @@ export function ArtifactPane({
             : selected?.kind === "design" && designPart === "mockup"
               ? MOCKUP_TAB
               : (selected?.kind ?? null);
+  const [requestedVersions, setRequestedVersions] = useState<
+    Record<string, { version: number; seq: number }>
+  >({});
   const choose = (id: string) => {
     if (
       id === DRAFT_TAB ||
@@ -217,6 +221,20 @@ export function ArtifactPane({
     if (id === MOCKUP_TAB || id === "design")
       setDesignPart(id === MOCKUP_TAB ? "mockup" : "plan");
     onSelect(id === MOCKUP_TAB ? "design" : id);
+  };
+  const openSourceDocument = (kind: string, version: number) => {
+    setRequestedVersions((current) => {
+      const previous = current[kind];
+      const nextSeq = previous === undefined ? 1 : previous.seq + 1;
+      return {
+        ...current,
+        [kind]: {
+          version,
+          seq: nextSeq,
+        },
+      };
+    });
+    choose(kind);
   };
   const width = useDocumentPaneWidth();
   const seen = useSeenVersions();
@@ -500,7 +518,11 @@ export function ArtifactPane({
                       ? { approachChoice }
                       : {})}
                     {...(current
-                      ? { onViewVersion: () => choose(view.value) }
+                      ? {
+                          onViewVersion: () => choose(view.value),
+                          requestedVersion: requestedVersions[item.kind],
+                          onOpenSource: openSourceDocument,
+                        }
                       : {})}
                   />
                 </PanelPane>

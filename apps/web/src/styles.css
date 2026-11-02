@@ -1989,3 +1989,446 @@ button[aria-disabled="true"] {
 .prose .prose-missing-picture {
   color: var(--wb-muted-foreground);
 }
+
+/* ---- Approval package preview ---- */
+
+.approval-package {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-4);
+  padding: 0 var(--space-6) var(--space-6);
+}
+
+.approval-package-tabs {
+  display: inline-flex;
+  align-self: flex-start;
+  flex-wrap: wrap;
+  gap: 0.25rem;
+  padding: 0.25rem;
+  border: 1px solid var(--wb-border);
+  border-radius: var(--radius-control);
+  background: color-mix(in srgb, var(--wb-muted) 50%, var(--wb-background));
+}
+
+.approval-package-subtab {
+  color: var(--wb-muted-foreground);
+  border: 1px solid transparent;
+}
+
+.approval-package-subtab[aria-selected="true"] {
+  background: var(--wb-card);
+  color: var(--wb-foreground);
+  border-color: var(--wb-border);
+  font-weight: 600;
+  box-shadow: 0 1px 2px rgba(15, 23, 42, 0.06);
+}
+
+.approval-package-slides {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-6);
+}
+
+.approval-package-slide {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+}
+
+.approval-package-slide-meta {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-2);
+  padding: 0 var(--space-1);
+}
+
+.approval-package-slide-index {
+  font-size: 0.75rem;
+  font-weight: 600;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  color: var(--wb-muted-foreground);
+}
+
+.approval-package-slide-stage {
+  position: relative;
+  width: 100%;
+  aspect-ratio: 16 / 9;
+  container-type: inline-size;
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+  overflow: hidden;
+  border: 1px solid var(--wb-border-strong);
+  border-radius: var(--radius-panel);
+  background: var(--slide-bg, #ffffff);
+  color: var(--slide-fg, #0f172a);
+  box-shadow:
+    0 12px 28px -8px rgba(15, 23, 42, 0.2),
+    0 4px 10px -4px rgba(15, 23, 42, 0.1);
+}
+
+@media (max-width: 640px) {
+  .approval-package-slide-stage {
+    aspect-ratio: auto;
+    min-height: 18rem;
+  }
+}
+
+.approval-package-slide-accent-bar {
+  width: 100%;
+  height: 5px;
+  flex: none;
+  background: var(--slide-accent, var(--wb-primary));
+}
+
+.approval-package-slide-canvas {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: clamp(0.625rem, 1.5cqw, 1.15rem);
+  padding: clamp(1rem, 2.8cqw, 2.25rem) clamp(1.25rem, 3.4cqw, 2.75rem)
+    clamp(0.5rem, 1.2cqw, 1rem);
+  min-height: 0;
+  overflow-y: auto;
+}
+
+.approval-package-slide-stage[data-slide-layout="title"]
+  .approval-package-slide-canvas {
+  justify-content: center;
+}
+
+.approval-package-slide-kicker {
+  display: inline-block;
+  width: 3rem;
+  height: 4px;
+  border-radius: 999px;
+  margin-bottom: var(--space-1);
+}
+
+.approval-package-slide-heading {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+}
+
+.approval-package-slide-title {
+  margin: 0;
+  font-size: clamp(1.25rem, 2.2vw, 1.65rem);
+  font-weight: 700;
+  line-height: 1.2;
+  letter-spacing: -0.015em;
+  color: var(--slide-heading, inherit);
+}
+
+.approval-package-slide-stage[data-slide-layout="title"]
+  .approval-package-slide-title {
+  font-size: clamp(1.75rem, 3.2vw, 2.5rem);
+  line-height: 1.12;
+  letter-spacing: -0.025em;
+}
+
+.approval-package-slide-subtitle {
+  margin: 0;
+  font-size: clamp(0.925rem, 1.35vw, 1.075rem);
+  line-height: 1.5;
+  max-width: 68ch;
+  color: var(--slide-subtitle, inherit);
+}
+
+.approval-package-slide-stage[data-slide-layout="title"]
+  .approval-package-slide-subtitle {
+  font-size: clamp(1rem, 1.6vw, 1.25rem);
+  line-height: 1.55;
+  max-width: 62ch;
+}
+
+.approval-package-slide-body {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  font-size: clamp(0.925rem, 1.3vw, 1.05rem);
+  line-height: 1.6;
+}
+
+.approval-package-slide-body p {
+  margin: 0;
+}
+
+.approval-package-slide-body ul,
+.approval-package-slide-body ol {
+  margin: 0;
+  padding-left: 1.5rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.45rem;
+}
+
+.approval-package-slide-body ul {
+  list-style: disc;
+}
+
+.approval-package-slide-body ol {
+  list-style: decimal;
+}
+
+.approval-package-slide-body li::marker {
+  color: var(--slide-accent, currentColor);
+}
+
+.approval-package-columns {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 14rem), 1fr));
+  gap: clamp(0.875rem, 2vw, 1.5rem);
+  flex: 1;
+  align-content: start;
+}
+
+.approval-package-column {
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  padding: clamp(0.875rem, 1.8vw, 1.25rem);
+  border-radius: var(--radius-md);
+  background: var(--slide-column-bg, rgba(15, 23, 42, 0.035));
+  border: 1px solid var(--slide-column-border, rgba(15, 23, 42, 0.1));
+}
+
+.approval-package-column-heading {
+  margin: 0;
+  padding-bottom: var(--space-1);
+  border-bottom: 1px solid var(--slide-column-border, rgba(15, 23, 42, 0.1));
+  font-size: clamp(0.95rem, 1.35vw, 1.1rem);
+  font-weight: 600;
+  letter-spacing: -0.01em;
+}
+
+.approval-package-slide-caption {
+  margin: auto 0 0;
+  font-size: 0.875rem;
+  color: var(--slide-subtitle, var(--wb-muted-foreground));
+}
+
+.approval-package-slide-stage-footer {
+  display: flex;
+  justify-content: flex-end;
+  align-items: center;
+  padding: 0 clamp(1.75rem, 4.2vw, 3.25rem) clamp(0.75rem, 1.6vw, 1.25rem);
+  font-size: 0.75rem;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  opacity: 0.8;
+}
+
+.approval-package-slide-notes {
+  padding: var(--space-3) var(--space-4);
+  border-radius: var(--radius-md);
+  border: 1px solid var(--wb-border);
+  background: color-mix(in srgb, var(--wb-muted) 50%, var(--wb-card));
+  font-size: 0.84375rem;
+  line-height: 1.55;
+  color: var(--wb-foreground);
+}
+
+.approval-package-slide-notes-label {
+  color: var(--wb-muted-foreground);
+  font-weight: 600;
+}
+
+.approval-package-pdf {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-4);
+}
+
+.approval-package-pdf-toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-3);
+  padding: var(--space-3) var(--space-4);
+  border: 1px solid var(--wb-border);
+  border-radius: var(--radius-panel);
+  background: var(--wb-card);
+}
+
+.approval-package-pdf-toolbar-meta {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: var(--space-2);
+}
+
+.approval-package-pdf-title {
+  font-size: 0.875rem;
+  font-weight: 600;
+  color: var(--wb-foreground);
+}
+
+.approval-package-pdf-filename {
+  font-family: var(--wb-font-mono);
+  font-size: 0.75rem;
+  color: var(--wb-muted-foreground);
+}
+
+.approval-package-pdf-toolbar-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-2);
+}
+
+.approval-package-pdf-action {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0.375rem 0.75rem;
+  border-radius: var(--radius-control);
+  border: 1px solid var(--wb-border);
+  background: var(--wb-background);
+  color: var(--wb-foreground);
+  font-size: 0.8125rem;
+  font-weight: 500;
+  text-decoration: none;
+  transition: background-color 120ms ease-out;
+}
+
+.approval-package-pdf-action:hover {
+  background: var(--wb-muted);
+}
+
+.approval-package-pdf-action-primary {
+  background: var(--wb-muted);
+  border-color: var(--wb-border-strong);
+  color: var(--wb-foreground);
+  font-weight: 600;
+}
+
+.approval-package-pdf-action-primary:hover {
+  background: color-mix(in srgb, var(--wb-muted) 85%, var(--wb-foreground));
+}
+
+.approval-package-pdf-pages {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-5);
+  padding: var(--space-5);
+  border: 1px solid var(--wb-border);
+  border-radius: var(--radius-panel);
+  background: color-mix(in srgb, var(--wb-muted) 65%, var(--wb-background));
+}
+
+.approval-package-pdf-page {
+  margin: 0 auto;
+  width: 100%;
+  max-width: 56rem;
+}
+
+.approval-package-source-link {
+  padding: 0;
+  border: 0;
+  background: none;
+  color: var(--wb-foreground);
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+  text-decoration-line: underline;
+  text-decoration-color: color-mix(
+    in srgb,
+    var(--wb-muted-foreground) 45%,
+    transparent
+  );
+  text-underline-offset: 3px;
+}
+
+.approval-package-source-link:hover {
+  color: var(--wb-primary);
+  text-decoration-color: var(--wb-primary);
+}
+
+.approval-package-source-link:focus-visible {
+  outline: 2px solid var(--wb-ring);
+  outline-offset: 2px;
+  border-radius: 2px;
+}
+
+.approval-package-source-version {
+  font-family: var(--wb-font-mono);
+  font-size: 0.8125rem;
+}
+
+.approval-package-sources {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-5);
+}
+
+.approval-package-reminder {
+  padding: var(--space-3) var(--space-4);
+  border: 1px solid var(--wb-border);
+  border-radius: var(--radius-panel);
+  background: color-mix(in srgb, var(--wb-muted) 40%, var(--wb-card));
+}
+
+.approval-package-reminder p {
+  margin: 0;
+}
+
+.approval-package-manifest {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 12rem), 1fr));
+  gap: var(--space-3);
+  margin: 0;
+  padding: var(--space-4);
+  border: 1px solid var(--wb-border);
+  border-radius: var(--radius-panel);
+  background: var(--wb-card);
+}
+
+.approval-package-manifest dt {
+  font-size: 0.75rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--wb-muted-foreground);
+}
+
+.approval-package-manifest dd {
+  margin: var(--space-1) 0 0;
+  font-size: 0.9375rem;
+}
+
+.approval-package-sources-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.875rem;
+}
+
+.approval-package-sources-table th,
+.approval-package-sources-table td {
+  padding: var(--space-2) var(--space-3);
+  border-bottom: 1px solid var(--wb-border);
+  text-align: left;
+}
+
+.approval-package-sources-table th {
+  font-weight: 600;
+  color: var(--wb-muted-foreground);
+}
+
+.approval-package-documents-list {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-4);
+}
+
+.approval-package-document {
+  padding: var(--space-4);
+  border: 1px solid var(--wb-border);
+  border-radius: var(--radius-panel);
+  background: var(--wb-card);
+}
