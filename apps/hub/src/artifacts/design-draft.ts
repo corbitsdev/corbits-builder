@@ -10,7 +10,45 @@ import { ProjectError } from "../projects/errors.ts";
 import { DESIGN_STYLES } from "./design-tweaks.ts";
 import { designStarterFiles } from "@corbits-builder/designer/skills" with { type: "macro" };
 
-const STARTER_INDEX = designStarterFiles()[".builder/designs/index.html"];
+const STARTER = designStarterFiles();
+const STARTER_HOME = STARTER[".builder/designs/screens/home.html"];
+const STARTER_PAGES = Object.entries(STARTER)
+  .filter(
+    ([path]) => path.startsWith(".builder/designs/") && path.endsWith(".html"),
+  )
+  .map(([path, text]) => [path.slice(".builder/".length), text] as const);
+
+// The starter's home.html stays on disk when a designer builds screens with other names; drop it
+// once another screen exists while home.html is still the starter's.
+export function withoutUnusedStarterHome(
+  files: Record<string, string>,
+): Record<string, string> {
+  if (
+    STARTER_HOME === undefined ||
+    files["designs/screens/home.html"] !== STARTER_HOME
+  )
+    return files;
+  const index = files["designs/index.html"];
+  const hasOtherScreen =
+    Object.keys(files).some(
+      (path) =>
+        path.startsWith("designs/screens/") &&
+        path.endsWith(".html") &&
+        path !== "designs/screens/home.html",
+    ) ||
+    (index !== undefined && /data-screen=/.test(index));
+  if (!hasOtherScreen) return files;
+  const { "designs/screens/home.html": _, ...rest } = files;
+  return rest;
+}
+
+const isStarterPages = (files: Readonly<Record<string, string>>) => {
+  const pages = Object.keys(files).filter((path) => path.endsWith(".html"));
+  return (
+    pages.length === STARTER_PAGES.length &&
+    STARTER_PAGES.every(([path, text]) => files[path] === text)
+  );
+};
 
 // A warm single-step agent's workspace lives at
 // <SIDECAR_DATA_DIR>/workflow-step-state/<run repo id>/warm/<step id>/workspace
@@ -46,9 +84,10 @@ export async function readDesignDraft(workspace: string) {
   if (actual !== join(await realpath(workspace), ".builder", "designs"))
     return undefined;
   const files = await packApp(builder, designs);
-  const index = files["designs/index.html"];
   // The starter mockup is the designer's scaffold, not its draft; the draft begins with its first change.
-  return index === undefined || index === STARTER_INDEX ? undefined : files;
+  if (files["designs/index.html"] === undefined || isStarterPages(files))
+    return undefined;
+  return withoutUnusedStarterHome(files);
 }
 
 const MAX_DESIGN_DOC_BYTES = 256 * 1024;

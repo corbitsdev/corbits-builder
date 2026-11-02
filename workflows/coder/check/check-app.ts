@@ -364,8 +364,77 @@ const EMOJI = /\p{Emoji_Presentation}|\p{Extended_Pictographic}️/gu;
 // Prose in angle brackets, like <App name>; HTML tags carry attributes and code is stripped first.
 const PLACEHOLDER = /<[A-Za-z][^<>=`"]*\s[^<>=`"]*>/g;
 
+const STARTER_HOME_MARK = '<h1 data-testid="home-title">Hello, world</h1>';
+
+function screenNameOf(path: string, html: string): string {
+  const match = html.match(/data-screen=["']([^"']+)["']/);
+  if (match?.[1] !== undefined) return match[1];
+  return basename(path, ".html");
+}
+
+function normalizeScreenHtml(path: string, html: string): string {
+  const body = html.match(/<body[^>]*>([\s\S]*?)<\/body>/i)?.[1] ?? html;
+  const withoutScripts = body
+    .replace(/<script\b[\s\S]*?<\/script>/gi, "")
+    .trim();
+  if (/data-screen=/.test(withoutScripts)) return withoutScripts;
+  const name = screenNameOf(path, withoutScripts);
+  return `<section data-screen="${name}">\n${withoutScripts}\n</section>`;
+}
+
+function spliceScreens(index: string, entries: [string, string][]): string {
+  const inline = new Set(
+    [...index.matchAll(/data-screen=["']([^"']+)["']/g)].flatMap((m) =>
+      m[1] === undefined ? [] : [m[1]],
+    ),
+  );
+  const filtered = entries.filter(([path, html]) => {
+    if (
+      path === "screens/home.html" &&
+      html.includes(STARTER_HOME_MARK) &&
+      (entries.length > 1 || inline.size > 0)
+    )
+      return false;
+    return !inline.has(screenNameOf(path, html));
+  });
+  if (!filtered.length) return index;
+  const order = [...index.matchAll(/href=["']#\/([^/"'\s]+)/g)].flatMap((m) =>
+    m[1] === undefined ? [] : [m[1]],
+  );
+  const rank = (entry: [string, string]) => {
+    const pos = order.indexOf(screenNameOf(entry[0], entry[1]));
+    return pos === -1 ? order.length : pos;
+  };
+  const fragments = filtered
+    .sort((a, b) => rank(a) - rank(b) || a[0].localeCompare(b[0]))
+    .map(([path, html]) => normalizeScreenHtml(path, html))
+    .join("\n");
+  if (/<\/main>/i.test(index))
+    return index.replace(/<\/main>/i, (tag) => `${fragments}\n${tag}`);
+  return `${index}\n${fragments}`;
+}
+
+async function readMockupIndex(root: string): Promise<string | undefined> {
+  const index = Bun.file(join(root, "index.html"));
+  if (!(await index.exists())) return undefined;
+  const paths = await Array.fromAsync(
+    new Bun.Glob("screens/*.html").scan({ cwd: root }),
+  );
+  const entries = await Promise.all(
+    paths.map(async (path): Promise<[string, string]> => [
+      path,
+      await Bun.file(join(root, path)).text(),
+    ]),
+  );
+  return spliceScreens(await index.text(), entries);
+}
+
 // The workspace's documents sit in .inputs beside .builder.
-async function checkCoverage(root: string, design: string) {
+async function checkCoverage(
+  root: string,
+  design: string,
+  mockup: string | undefined,
+) {
   const requirements = Bun.file(
     join(root, "..", "..", ".inputs", "requirements.md"),
   );
@@ -386,12 +455,11 @@ async function checkCoverage(root: string, design: string) {
       kind: "coverage",
       detail: `DESIGN.md names no screen or data source for ${unnamed.join(", ")} from the requirements`,
     });
-  const mockup = Bun.file(join(root, "index.html"));
   const screens = new Set(
     [
-      ...((await mockup.exists()) ? await mockup.text() : "").matchAll(
-        /data-screen=["']([^"']+)["']/g,
-      ),
+      ...(mockup === undefined
+        ? []
+        : mockup.matchAll(/data-screen=["']([^"']+)["']/g)),
     ].map((m) => m[1]),
   );
   const missing = [
@@ -408,7 +476,7 @@ async function checkCoverage(root: string, design: string) {
     });
 }
 
-async function checkDesign(root: string) {
+async function checkDesign(root: string, mockup: string | undefined) {
   const doc = Bun.file(join(root, "..", "DESIGN.md"));
   const design = (await doc.exists()) ? await doc.text() : undefined;
   // The person may ask for emoji; the direction records it on its Icons line.
@@ -431,7 +499,7 @@ async function checkDesign(root: string) {
         kind: "design doc",
         detail: `DESIGN.md still has ${left.length} template placeholder(s): ${left.slice(0, 5).join(", ")}`,
       });
-    await checkCoverage(root, design);
+    await checkCoverage(root, design, mockup);
   }
   const files = await Array.fromAsync(
     new Bun.Glob("**/*.{html,css,js}").scan({ cwd: root }),
@@ -473,15 +541,22 @@ let origin: string;
 let stop: () => void;
 if (staticRoot) {
   const root = resolve(staticRoot);
-  await checkDesign(root);
+  const indexHtml = await readMockupIndex(root);
+  await checkDesign(root, indexHtml);
   const files = Bun.serve({
     hostname: "127.0.0.1",
     port: 0,
     fetch: async (request) => {
       const path = decodeURIComponent(new URL(request.url).pathname);
-      const file = Bun.file(
-        join(root, path.endsWith("/") ? `${path}index.html` : path),
+      const target = join(
+        root,
+        path.endsWith("/") ? `${path}index.html` : path,
       );
+      if (target === join(root, "index.html") && indexHtml !== undefined)
+        return new Response(indexHtml, {
+          headers: { "content-type": "text/html; charset=utf-8" },
+        });
+      const file = Bun.file(target);
       return (await file.exists()) &&
         resolve(file.name ?? "").startsWith(root + sep)
         ? new Response(file)
@@ -587,13 +662,18 @@ if (!chrome) {
 const DEAD_CONTROLS_SCRIPT = `(() => {
   const name = (el) => el.dataset.testid || el.textContent.trim().replace(/\\s+/g, " ").slice(0, 40);
   const dead = [];
+  const linked = new Set();
   for (const a of document.querySelectorAll('a[href^="#/"]')) {
     const [screen, state] = a.getAttribute("href").slice(2).split("/");
+    linked.add(screen);
     const target = [...document.querySelectorAll("[data-screen]")].find((s) => s.dataset.screen === screen);
     if (!target) dead.push(name(a) + " links to #/" + screen + ", which has no data-screen");
     else if (state && !target.querySelector(":scope > [data-state='" + state + "']"))
       dead.push(name(a) + " links to state " + state + " of " + screen + ", which has no such data-state");
   }
+  for (const s of document.querySelectorAll("[data-screen]"))
+    if (s.dataset.screen && !linked.has(s.dataset.screen))
+      dead.push("screen " + s.dataset.screen + " has no #/" + s.dataset.screen + " link to reach it");
   for (const el of document.querySelectorAll("[data-open]:not([data-open=true]):not([data-open=false])"))
     if (document.getElementById(el.dataset.open)?.tagName !== "DIALOG")
       dead.push(name(el) + " opens #" + el.dataset.open + ", which is not a dialog");

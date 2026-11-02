@@ -6,6 +6,7 @@ import { HUB_CREDENTIAL_HANDLE } from "@intx/types/credential-delivery";
 import type { RuntimeCapabilities } from "@intx/types/runtime-capabilities";
 import { DesignBundle } from "@corbits-builder/schemas/artifact";
 import { designCheckFor } from "../builds/design-check.ts";
+import { withoutUnusedStarterHome } from "./design-draft.ts";
 import { withDesignTokens } from "./design-tokens.ts";
 import { DESIGN_STYLES } from "./design-tweaks.ts";
 import { resolveWorkflowProjectScope } from "../workflows/project-scope.ts";
@@ -50,7 +51,7 @@ async function readDesignFolder(workspace: string) {
     cwd: join(workspace, ".builder"),
   }))
     files[path] = await readFile(join(workspace, ".builder", path), "utf8");
-  return files;
+  return withoutUnusedStarterHome(files);
 }
 
 // Files the designer's .builder folder as its design concept's option. The person decides on the
