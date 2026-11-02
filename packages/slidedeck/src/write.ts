@@ -71,11 +71,16 @@ type Media = {
   data: Uint8Array<ArrayBuffer>;
   info: ImageInfo | undefined;
 };
-type AssetUse = { ref: AssetRef; path: string; slide?: number; svg?: true };
+export type AssetUse = {
+  ref: AssetRef;
+  path: string;
+  slide?: number;
+  svg?: true;
+};
 
 const CONTENT_TYPE = "application/vnd.openxmlformats-officedocument";
 const PRESENTATION = `${CONTENT_TYPE}.presentationml`;
-const STACK_GAP = 137160;
+export const STACK_GAP = 137160;
 
 const lines = (text: string) => text.split(/\r?\n/);
 
@@ -163,7 +168,7 @@ function textBodyXml(blocks: readonly TextBlock[], part: SlidePart) {
 const isText = (block: Block): block is TextBlock =>
   block.type === "paragraph" || block.type === "list";
 
-function assetUses(deck: Deck): AssetUse[] {
+export function assetUses(deck: Deck): AssetUse[] {
   const uses: AssetUse[] = deck.theme.logo
     ? [{ ref: deck.theme.logo, path: "theme.logo" }]
     : [];
@@ -197,7 +202,7 @@ const mediaKey = (ref: AssetRef, svg?: true) =>
   svg ? `svg:${assetKey(ref)}` : assetKey(ref);
 
 /** Reads every image the deck names, reporting all missing or unreadable ones at once. */
-function resolveMedia(deck: Deck, assets: Assets) {
+export function resolveMedia(deck: Deck, assets: Assets) {
   const byKey = new Map<string, Media>();
   const issues: DeckIssue[] = [];
   for (const use of assetUses(deck)) {
@@ -335,9 +340,9 @@ class SlidePart {
   }
 }
 
-type Segment = { text: TextBlock[] } | { element: Element };
+export type Segment = { text: TextBlock[] } | { element: Element };
 
-function segments(blocks: readonly Block[]) {
+export function segments(blocks: readonly Block[]) {
   const out: Segment[] = [];
   for (const block of blocks) {
     const last = out.at(-1);
