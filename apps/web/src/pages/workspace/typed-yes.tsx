@@ -98,6 +98,59 @@ export function useTypedYes({
   return { held, hold, undo };
 }
 
+/**
+ * Sends a message while a coordinator approval card may be open: denies the open card first
+ * so the parked coordinator wakes to read the message.
+ */
+export async function deliverWithOpenApproval({
+  openApprovalId,
+  decide,
+  deliver,
+}: {
+  openApprovalId: string | undefined;
+  decide: (decision: {
+    approvalId: string;
+    choice: "yes" | "always" | "no";
+  }) => Promise<string | null>;
+  deliver: () => Promise<boolean>;
+}): Promise<boolean> {
+  if (openApprovalId !== undefined) {
+    const fault = await decide({ approvalId: openApprovalId, choice: "no" });
+    if (fault !== null) return false;
+  }
+  return deliver();
+}
+
+/**
+ * Picks an approach while a coordinator approval card may be open: approves when the open
+ * card asks about the chosen version, or denies any other open coordinator card first.
+ */
+export async function chooseApproachWithOpenApproval({
+  askedApprovalId,
+  openApprovalId,
+  decide,
+  deliver,
+  notSent,
+}: {
+  askedApprovalId: string | undefined;
+  openApprovalId: string | undefined;
+  decide: (decision: {
+    approvalId: string;
+    choice: "yes" | "always" | "no";
+  }) => Promise<string | null>;
+  deliver: () => Promise<boolean>;
+  notSent: string;
+}): Promise<string | null> {
+  if (askedApprovalId !== undefined) {
+    const fault = await decide({ approvalId: askedApprovalId, choice: "yes" });
+    if (fault !== null) return fault;
+  } else if (openApprovalId !== undefined) {
+    const fault = await decide({ approvalId: openApprovalId, choice: "no" });
+    if (fault !== null) return fault;
+  }
+  return (await deliver()) ? null : notSent;
+}
+
 /** The countdown on the card it will approve, with its undo. */
 export function TypedYesCountdown({
   held,

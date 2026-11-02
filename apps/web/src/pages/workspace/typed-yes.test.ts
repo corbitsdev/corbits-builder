@@ -1,5 +1,9 @@
 import { expect, test } from "bun:test";
-import { isAffirmation } from "./typed-yes.tsx";
+import {
+  chooseApproachWithOpenApproval,
+  deliverWithOpenApproval,
+  isAffirmation,
+} from "./typed-yes.tsx";
 
 test("only a whole plain affirmation approves", () => {
   for (const message of [
@@ -21,4 +25,123 @@ test("only a whole plain affirmation approves", () => {
     "yess",
   ])
     expect(isAffirmation(message)).toBe(false);
+});
+
+test("sending a message while a coordinator approval is open denies it first", async () => {
+  const steps: string[] = [];
+  const sent = await deliverWithOpenApproval({
+    openApprovalId: "appr-design",
+    decide: async (decision) => {
+      steps.push(`decide:${decision.approvalId}:${decision.choice}`);
+      return null;
+    },
+    deliver: async () => {
+      steps.push("deliver");
+      return true;
+    },
+  });
+  expect(sent).toBe(true);
+  expect(steps).toEqual(["decide:appr-design:no", "deliver"]);
+});
+
+test("sending a message when no coordinator approval is open delivers directly", async () => {
+  const steps: string[] = [];
+  const sent = await deliverWithOpenApproval({
+    openApprovalId: undefined,
+    decide: async () => {
+      steps.push("decide");
+      return null;
+    },
+    deliver: async () => {
+      steps.push("deliver");
+      return true;
+    },
+  });
+  expect(sent).toBe(true);
+  expect(steps).toEqual(["deliver"]);
+});
+
+test("a failed denial stops before delivering the message", async () => {
+  const steps: string[] = [];
+  const sent = await deliverWithOpenApproval({
+    openApprovalId: "appr-design",
+    decide: async () => {
+      steps.push("decide");
+      return "That decision was not saved.";
+    },
+    deliver: async () => {
+      steps.push("deliver");
+      return true;
+    },
+  });
+  expect(sent).toBe(false);
+  expect(steps).toEqual(["decide"]);
+});
+
+test("choosing an approach approves a matching ask without denying it and denies an unrelated open ask", async () => {
+  const matchingSteps: string[] = [];
+  const matchingFault = await chooseApproachWithOpenApproval({
+    askedApprovalId: "appr-approaches",
+    openApprovalId: "appr-approaches",
+    decide: async (decision) => {
+      matchingSteps.push(`decide:${decision.approvalId}:${decision.choice}`);
+      return null;
+    },
+    deliver: async () => {
+      matchingSteps.push("deliver");
+      return true;
+    },
+    notSent: "not sent",
+  });
+  expect(matchingFault).toBeNull();
+  expect(matchingSteps).toEqual(["decide:appr-approaches:yes", "deliver"]);
+
+  const unrelatedSteps: string[] = [];
+  const unrelatedFault = await chooseApproachWithOpenApproval({
+    askedApprovalId: undefined,
+    openApprovalId: "appr-design",
+    decide: async (decision) => {
+      unrelatedSteps.push(`decide:${decision.approvalId}:${decision.choice}`);
+      return null;
+    },
+    deliver: async () => {
+      unrelatedSteps.push("deliver");
+      return true;
+    },
+    notSent: "not sent",
+  });
+  expect(unrelatedFault).toBeNull();
+  expect(unrelatedSteps).toEqual(["decide:appr-design:no", "deliver"]);
+});
+
+test("sending attached files while a coordinator approval is open denies it before attaching materials", async () => {
+  const steps: string[] = [];
+  const attached = await deliverWithOpenApproval({
+    openApprovalId: "appr-brief",
+    decide: async (decision) => {
+      steps.push(`decide:${decision.approvalId}:${decision.choice}`);
+      return null;
+    },
+    deliver: async () => {
+      steps.push("attachMaterials");
+      return true;
+    },
+  });
+  expect(attached).toBe(true);
+  expect(steps).toEqual(["decide:appr-brief:no", "attachMaterials"]);
+
+  const failedSteps: string[] = [];
+  const notAttached = await deliverWithOpenApproval({
+    openApprovalId: "appr-brief",
+    decide: async (decision) => {
+      failedSteps.push(`decide:${decision.approvalId}:${decision.choice}`);
+      return "That decision was not saved.";
+    },
+    deliver: async () => {
+      failedSteps.push("attachMaterials");
+      return true;
+    },
+  });
+  expect(notAttached).toBe(false);
+  expect(failedSteps).toEqual(["decide:appr-brief:no"]);
 });

@@ -71,7 +71,11 @@ import { cardDocuments } from "./collaboration.ts";
 import { useFiledVersions } from "./filed-versions.tsx";
 import { threadUpdates } from "./specialist-updates.tsx";
 import { useSettledApprovals, type OpenApproval } from "./settled-approvals.ts";
-import { useTypedYes } from "./typed-yes.tsx";
+import {
+  chooseApproachWithOpenApproval,
+  deliverWithOpenApproval,
+  useTypedYes,
+} from "./typed-yes.tsx";
 import { asksAbout, chosenApproach } from "./approach-choice.ts";
 import { selectedDeliverable } from "./reading-selection.ts";
 import {
@@ -90,7 +94,7 @@ import {
   type LiveRun,
 } from "./live-run.ts";
 import { createRoomReloader } from "./room-reload.ts";
-import { decideApproval } from "../../api/decisions.ts";
+import { decideApproval, openDecisions } from "../../api/decisions.ts";
 import type { DeliverableState } from "./deliverable-block.tsx";
 import { formatPassageQuote, type PassageQuote } from "./passage-note.tsx";
 import { DesignTarget } from "./mockup-tweaks.tsx";
@@ -123,6 +127,34 @@ import { useShellReply } from "../../flourish.tsx";
 const FALLBACK_RELOAD_MS = 30_000;
 // After a run closes, the mirror's commit can trail its last frame.
 const SETTLE_RELOAD_MS = [1_000, 3_000, 7_000, 15_000];
+const NO_WAITS: readonly Wait[] = [];
+
+function documentApprovalsFrom(
+  waits: readonly Wait[],
+  artifacts: readonly ProjectArtifact[],
+): OpenApproval[] {
+  return waits.flatMap((wait): OpenApproval[] => {
+    if (wait.approvalId === undefined || wait.tenantId === undefined) return [];
+    const at =
+      wait.createdAt === undefined ? Number.NaN : Date.parse(wait.createdAt);
+    return [
+      {
+        approvalId: wait.approvalId,
+        tenantId: wait.tenantId,
+        ...(Number.isNaN(at) ? {} : { at }),
+        ...cardDocuments(wait, artifacts),
+        ...(wait.toolName === undefined ? {} : { toolName: wait.toolName }),
+        ...(wait.kinds === undefined ? {} : { kinds: wait.kinds }),
+        ...(wait.instruction === undefined
+          ? {}
+          : { instruction: wait.instruction }),
+        ...(wait.subject === undefined ? {} : { subject: wait.subject }),
+        ...(wait.packages === undefined ? {} : { packages: wait.packages }),
+        ...(wait.concepts === undefined ? {} : { concepts: wait.concepts }),
+      },
+    ];
+  });
+}
 
 export { selectedDeliverable };
 
@@ -371,10 +403,28 @@ export function StageWorkspace({
   const committedAtRef = useRef<number | null>(null);
   committedAtRef.current = latestAssistantAt(mirror);
   const reportedFailure = useRef<number | null>(null);
-  const [waits, setWaits] = useState<Wait[]>([]);
   const rolesAtWork = useRolesAtWork(projectId);
   const [caution, setCaution] = useState<string | null>(null);
   const [gateDone, setGateDone] = useState(0);
+  // The waits that belong to this project, from the open decisions.
+  const decisions = useQuery({
+    queryKey: keys.openDecisions.of(projectId),
+    enabled: status === "active",
+    retry: false,
+    staleTime: 0,
+    refetchOnWindowFocus: false,
+    queryFn: () => openDecisions(projectId),
+  });
+  useEffect(() => {
+    if (decisions.error === null) return;
+    toast.error(
+      humanFault(decisions.error, "Open decisions could not be read."),
+      {
+        id: "waits-read",
+      },
+    );
+  }, [decisions.error]);
+  const waits = decisions.data ?? NO_WAITS;
   const reloadRef = useRef<() => void>(() => {});
 
   useEffect(() => {
@@ -457,12 +507,16 @@ export function StageWorkspace({
     };
   }, [projectId, runId]);
 
-  // A room that moved may mean a message reached the coordinator from elsewhere; read who is at work.
+  // A room that moved may mean a message reached the coordinator from elsewhere, or a coordinator
+  // or coder decision opened; read who is at work and the open decisions.
   useEffect(() => {
     void queryClient.invalidateQueries({
       queryKey: keys.projectActivity.of(projectId),
     });
-  }, [projectId, queryClient, snapshot]);
+    void queryClient.invalidateQueries({
+      queryKey: keys.openDecisions.of(projectId),
+    });
+  }, [projectId, queryClient, snapshot, gateDone]);
 
   const settling = awaitingCommit(liveRun, mirror);
   useEffect(() => {
@@ -499,32 +553,6 @@ export function StageWorkspace({
     setSendFault(message);
     toast.error(message);
   }, [events, mirror]);
-
-  // The waits that belong to this project, from the open decisions.
-  useEffect(() => {
-    let cancelled = false;
-    void import("../../api/decisions.ts").then(({ openDecisions }) =>
-      openDecisions()
-        .then((all) => {
-          if (!cancelled)
-            setWaits(all.filter((wait) => wait.projectId === projectId));
-        })
-        .catch((cause: unknown) => {
-          if (!cancelled)
-            toast.error(
-              humanFault(cause, "Open decisions could not be read."),
-              {
-                id: "waits-read",
-              },
-            );
-        }),
-    );
-    return () => {
-      cancelled = true;
-    };
-    // A coordinator decision arrives with a room event; a coder's package
-    // request raises none, so every room reload re-reads the open decisions.
-  }, [projectId, gateDone, snapshot]);
 
   for (const [at, parts] of committedSteps(liveRun, mirror))
     stepsByAt.current.set(at, parts);
@@ -624,7 +652,7 @@ export function StageWorkspace({
     return documents[key];
   };
 
-  const deliver = async (
+  const deliverMail = async (
     body: string,
     clearComposer = false,
   ): Promise<boolean> => {
@@ -693,8 +721,8 @@ export function StageWorkspace({
     setFiles((current) => [...current, ...fitting]);
   };
 
-  const sendFiles = async () => {
-    if (sending) return;
+  const deliverFiles = async (): Promise<boolean> => {
+    if (sending) return false;
     const text = value.trim();
     const attached = files;
     setSending(true);
@@ -732,6 +760,7 @@ export function StageWorkspace({
         setSent((previous) => previous.filter((item) => item !== pending));
       reloadRef.current();
       onChanged();
+      return true;
     } catch (cause) {
       setAwaitingSince(null);
       setSent((previous) => previous.filter((item) => item !== pending));
@@ -739,6 +768,7 @@ export function StageWorkspace({
       setValue((current) => (current === "" ? text : current));
       setFiles(attached);
       setAttachFault(await attachFaultText(cause));
+      return false;
     } finally {
       setSending(false);
     }
@@ -754,37 +784,37 @@ export function StageWorkspace({
   const addToPrompt = (passage: PassageQuote) =>
     addToComposer(formatPassageQuote(passage));
 
-  const documentApprovals = waits.flatMap((wait): OpenApproval[] => {
-    if (wait.approvalId === undefined || wait.tenantId === undefined) return [];
-    const at =
-      wait.createdAt === undefined ? Number.NaN : Date.parse(wait.createdAt);
-    return [
-      {
-        approvalId: wait.approvalId,
-        tenantId: wait.tenantId,
-        ...(Number.isNaN(at) ? {} : { at }),
-        ...cardDocuments(wait, artifacts),
-        ...(wait.toolName === undefined ? {} : { toolName: wait.toolName }),
-        ...(wait.kinds === undefined ? {} : { kinds: wait.kinds }),
-        ...(wait.instruction === undefined
-          ? {}
-          : { instruction: wait.instruction }),
-        ...(wait.subject === undefined ? {} : { subject: wait.subject }),
-        ...(wait.packages === undefined ? {} : { packages: wait.packages }),
-        ...(wait.concepts === undefined ? {} : { concepts: wait.concepts }),
-      },
-    ];
-  });
+  const documentApprovals = documentApprovalsFrom(waits, artifacts);
   const { settled: settledApprovals, settle } = useSettledApprovals(
     projectId,
     documentApprovals,
     artifacts,
   );
   // A card decided here is already its settled line; the pending read lags behind it.
-  const pendingApprovals = documentApprovals.filter(
-    (approval) =>
-      !settledApprovals.some((item) => item.approvalId === approval.approvalId),
-  );
+  const pendingFrom = (list: readonly Wait[]): OpenApproval[] =>
+    documentApprovalsFrom(list, artifacts).filter(
+      (approval) =>
+        !settledApprovals.some(
+          (item) => item.approvalId === approval.approvalId,
+        ),
+    );
+  const pendingApprovals = pendingFrom(waits);
+  // A park created moments after `inference.done` can already stand on the hub before the next
+  // room reload lands; read once on demand when the cached list shows no open ask.
+  const readPendingApprovals = async (): Promise<readonly OpenApproval[]> => {
+    if (pendingApprovals.length > 0) return pendingApprovals;
+    try {
+      const fresh = await queryClient.fetchQuery({
+        queryKey: keys.openDecisions.of(projectId),
+        staleTime: 0,
+        queryFn: () => openDecisions(projectId),
+      });
+      return pendingFrom(fresh);
+    } catch (cause: unknown) {
+      void cause;
+      return pendingApprovals;
+    }
+  };
   const chooseDocument = (id: string) =>
     setDocumentChoice({ id, filedCount: filed.length });
   const openDocument = (id: string) => {
@@ -799,7 +829,13 @@ export function StageWorkspace({
     choice: "yes" | "always" | "no";
   }): Promise<string | null> => {
     const notSaved = "That decision was not saved.";
-    const wait = waits.find((item) => item.approvalId === decision.approvalId);
+    const cachedWaits =
+      queryClient.getQueryData<readonly Wait[]>(
+        keys.openDecisions.of(projectId),
+      ) ?? NO_WAITS;
+    const wait =
+      waits.find((item) => item.approvalId === decision.approvalId) ??
+      cachedWaits.find((item) => item.approvalId === decision.approvalId);
     const approvalId = wait?.approvalId;
     const tenantId = wait?.tenantId;
     if (
@@ -811,9 +847,11 @@ export function StageWorkspace({
       return notSaved;
     setApprovalBusy(true);
     setApprovalError(null);
-    const decided = documentApprovals.find(
-      (item) => item.approvalId === approvalId,
-    );
+    const decided =
+      documentApprovals.find((item) => item.approvalId === approvalId) ??
+      documentApprovalsFrom(cachedWaits, artifacts).find(
+        (item) => item.approvalId === approvalId,
+      );
     try {
       await decideApproval({
         tenantId,
@@ -849,46 +887,73 @@ export function StageWorkspace({
       setApprovalBusy(false);
     }
   };
+  const openApproval = pendingApprovals.find(
+    (approval) => approval.packages === undefined,
+  );
   // Choosing an approach is the person's yes to the version's open ask; the message names the pick.
   const chooseApproach = async (
     message: string,
     version: number,
   ): Promise<string | null> => {
+    const currentApprovals = await readPendingApprovals();
+    const currentOpen = currentApprovals.find(
+      (approval) => approval.packages === undefined,
+    );
     const kind = selected?.kind;
     const asked =
       kind === undefined
         ? undefined
-        : pendingApprovals.find(
+        : currentApprovals.find(
             (approval) =>
               approval.packages === undefined &&
               asksAbout(approval, kind, version),
           );
-    if (asked !== undefined) {
-      const fault = await onDecideApproval({
-        approvalId: asked.approvalId,
-        choice: "yes",
-      });
-      if (fault !== null) return fault;
-    }
-    return (await deliver(message)) ? null : wording.approaches.notSent;
+    return chooseApproachWithOpenApproval({
+      askedApprovalId: asked?.approvalId,
+      openApprovalId: currentOpen?.approvalId,
+      decide: onDecideApproval,
+      deliver: () => deliverMail(message),
+      notSent: wording.approaches.notSent,
+    });
   };
-  const openApproval = pendingApprovals.find(
-    (approval) => approval.packages === undefined,
-  );
+  const deliver = async (body: string, clearComposer = false) => {
+    if (body.trim().length === 0 || sending) return false;
+    const currentApprovals = await readPendingApprovals();
+    const currentOpen = currentApprovals.find(
+      (approval) => approval.packages === undefined,
+    );
+    return deliverWithOpenApproval({
+      openApprovalId: currentOpen?.approvalId,
+      decide: onDecideApproval,
+      deliver: () => deliverMail(body, clearComposer),
+    });
+  };
+  const sendFiles = async () => {
+    if (sending) return false;
+    const currentApprovals = await readPendingApprovals();
+    const currentOpen = currentApprovals.find(
+      (approval) => approval.packages === undefined,
+    );
+    return deliverWithOpenApproval({
+      openApprovalId: currentOpen?.approvalId,
+      decide: onDecideApproval,
+      deliver: deliverFiles,
+    });
+  };
   const sendNow = () => {
     setCaution(null);
     void deliver(value, true);
   };
   const restoreToComposer = (message: string) =>
     setValue((current) => (current.trim().length === 0 ? message : current));
+  const undoTypedYes = async (message: string) => {
+    if (!(await deliver(message))) restoreToComposer(message);
+  };
   const typedYes = useTypedYes({
     pending: pendingApprovals.map((approval) => approval.approvalId),
     onApprove: (approvalId) =>
       void onDecideApproval({ approvalId, choice: "yes" }),
-    onUndo: (message) =>
-      void deliver(message).then((sent) => {
-        if (!sent) restoreToComposer(message);
-      }),
+    onUndo: (message) => void undoTypedYes(message),
     onDropped: restoreToComposer,
   });
   const shell = useShellReply(documentPaneRef);

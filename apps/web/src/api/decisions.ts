@@ -75,13 +75,17 @@ function parkWait(
   };
 }
 
-export async function openDecisions(): Promise<Wait[]> {
+export async function openDecisions(onlyProjectId?: string): Promise<Wait[]> {
   const client = productClient();
   const tenantId = await workspaceTenantId();
   const { projects } = await client.projects(tenantId, { status: "active" });
+  const targetProjects =
+    onlyProjectId === undefined
+      ? projects
+      : projects.filter((record) => record.projectId === onlyProjectId);
 
   const waits: Wait[] = [];
-  for (const record of projects) {
+  for (const record of targetProjects) {
     const [conversation, { data: approvals }] = await Promise.all([
       readConversationEvents(record.projectId),
       client.nativeApprovals(record.tenantId),
