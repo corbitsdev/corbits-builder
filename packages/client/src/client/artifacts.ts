@@ -28,6 +28,11 @@ export function buildArtifactsMethods(
   | "chooseDesign"
   | "acceptedMaterials"
   | "attachMaterials"
+  | "downloadPackageZip"
+  | "approvalRounds"
+  | "startApprovalRound"
+  | "recordReviewerDecision"
+  | "settleApprovalRound"
 > {
   const { request, baseUrl, headers, fetchRequest, options } = deps;
   async function download(
@@ -179,6 +184,47 @@ export function buildArtifactsMethods(
       );
       if (!response.ok) throw new ProductApiError(response);
       return (await response.json()) as MaterialReceipt;
+    },
+    downloadPackageZip(tenantId, projectId, version, signal) {
+      return download(
+        `${projectPath(tenantId, projectId)}/packages/${encodeURIComponent(String(version))}/zip`,
+        `package-v${String(version)}.zip`,
+        signal,
+      );
+    },
+    approvalRounds(tenantId, projectId, signal) {
+      return request(
+        `${projectPath(tenantId, projectId)}/approval-rounds`,
+        signal,
+      );
+    },
+    startApprovalRound(tenantId, projectId, input, signal) {
+      return request(
+        `${projectPath(tenantId, projectId)}/approval-rounds`,
+        signal,
+        input,
+      );
+    },
+    recordReviewerDecision(
+      tenantId,
+      projectId,
+      roundId,
+      reviewerId,
+      input,
+      signal,
+    ) {
+      return request(
+        `${projectPath(tenantId, projectId)}/approval-rounds/${encodeURIComponent(roundId)}/reviewers/${encodeURIComponent(reviewerId)}/decision`,
+        signal,
+        input,
+      );
+    },
+    settleApprovalRound(tenantId, projectId, roundId, signal) {
+      return request(
+        `${projectPath(tenantId, projectId)}/approval-rounds/${encodeURIComponent(roundId)}/settle`,
+        signal,
+        {},
+      );
     },
   };
 }

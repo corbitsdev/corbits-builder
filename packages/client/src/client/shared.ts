@@ -57,6 +57,12 @@ import type {
   LiveApp,
   MaterialReceipt,
 } from "@corbits-builder/schemas/artifact";
+import type {
+  ApprovalRound,
+  ApprovalRoundList,
+  RecordReviewerDecision,
+  StartApprovalRound,
+} from "@corbits-builder/schemas/approval-round";
 import type { ProjectActivity } from "@corbits-builder/schemas/activity";
 import type {
   LiveRunStates,
@@ -495,6 +501,42 @@ export type ProductApiClient = Readonly<{
     message?: string,
     signal?: AbortSignal,
   ): Promise<MaterialReceipt>;
+  /** A filed approval_package version as a deterministic zip of its deck, PDF, README, manifest and documents. */
+  downloadPackageZip(
+    tenantId: string,
+    projectId: string,
+    version: number,
+    signal?: AbortSignal,
+  ): Promise<{ filename: string; archive: Blob }>;
+  /** Every approval round of the project, newest first. */
+  approvalRounds(
+    tenantId: string,
+    projectId: string,
+    signal?: AbortSignal,
+  ): Promise<ApprovalRoundList>;
+  /** Approves the package version as the calling person and opens a review round. */
+  startApprovalRound(
+    tenantId: string,
+    projectId: string,
+    input: StartApprovalRound,
+    signal?: AbortSignal,
+  ): Promise<ApprovalRound>;
+  /** Records or amends one reviewer's decision on an open approval round. */
+  recordReviewerDecision(
+    tenantId: string,
+    projectId: string,
+    roundId: string,
+    reviewerId: string,
+    input: RecordReviewerDecision,
+    signal?: AbortSignal,
+  ): Promise<ApprovalRound>;
+  /** Marks the round settled once every reviewer decided or the round expired. */
+  settleApprovalRound(
+    tenantId: string,
+    projectId: string,
+    roundId: string,
+    signal?: AbortSignal,
+  ): Promise<ApprovalRound>;
 }>;
 
 export class ProductApiError extends Error {
