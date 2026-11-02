@@ -12,6 +12,7 @@ import type { FailedRun, InFlightRun } from "@corbits-builder/schemas/artifact";
 import { wording } from "../../config.ts";
 import type { CallResult } from "./live-run.ts";
 import type { ApprovalOutcome, DocumentApproval } from "./transcript.tsx";
+import { isCredentialFailureText } from "./visible-chat.ts";
 
 const text = wording.dispatch;
 
@@ -315,11 +316,19 @@ export function dispatchStatus(
       ? run.role === dispatch.role && after(run.endedAt)
       : run.runId === dispatch.runId,
   );
-  if (failure !== undefined)
+  if (failure !== undefined) {
+    const raw = failure.error?.message;
+    let reason: string = text.failedUnknown;
+    if (raw !== undefined && isCredentialFailureText(raw)) {
+      reason = wording.credentials.cause;
+    } else if (raw !== undefined && raw.length > 0) {
+      reason = raw;
+    }
     return {
       state: "failed",
-      reason: failure.error?.message ?? text.failedUnknown,
+      reason,
     };
+  }
   const run = room.inFlight.find((item) =>
     dispatch.runId === undefined
       ? item.role === dispatch.role &&

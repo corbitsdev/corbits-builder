@@ -160,9 +160,15 @@ export async function shipProject(
 
 export async function startProjectCoordinator(
   projectId: string,
+  profile?: string,
 ): Promise<void> {
   const tenantId = await workspaceTenantId();
-  await productClient().startProjectCoordinator(tenantId, projectId);
+  await productClient().startProjectCoordinator(
+    tenantId,
+    projectId,
+    undefined,
+    profile === undefined ? undefined : { profile },
+  );
 }
 
 /** Renames through a `rename_project` mutation. */

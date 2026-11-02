@@ -85,7 +85,10 @@ import {
   correlationMiddleware,
   requestContext,
 } from "./middleware/correlation.ts";
-import { createAvailabilityRoutes } from "./availability.ts";
+import {
+  createAvailabilityProbe,
+  createAvailabilityRoutes,
+} from "./availability.ts";
 import { createGitTokenBoundary } from "./git-token-boundary.ts";
 import { createSidecarWebSocket } from "./sidecar-websocket.ts";
 import { createCoordinatorCredentialRefresh } from "./auth/coordinator-credential-refresh.ts";
@@ -318,6 +321,10 @@ export async function createHubRuntime(
       hubId: hexEncode(key.publicKey).slice(0, 24),
     });
     const allocation = workflows.services.workflowAllocationService;
+    const availabilityProbe = createAvailabilityProbe(
+      handle.db,
+      credentialCipher,
+    );
     const coordinatorStartup = createInstalledCoordinatorStartup(
       handle.db,
       assetService,
@@ -355,13 +362,14 @@ export async function createHubRuntime(
       },
       coordinatorStartTimeoutMs,
       workflows.services.workflowLifecycleService.requestCancellation,
+      availabilityProbe,
     );
     const coordinatorUpgrades = createCoordinatorUpgrades({
       db: handle.db,
       runs: createWorkflowRunReader(agentRepoStore.repoStore),
       installed: (actor, projectId) =>
         installForTenant(
-          { db: handle.db, assets: assetService },
+          { db: handle.db, assets: assetService, probe: availabilityProbe },
           actor,
           projectId,
         ),
@@ -525,6 +533,7 @@ export async function createHubRuntime(
         liveApps,
         workflows.services.workflowLifecycleService.requestCancellation,
         agentRepoStore.repoStore,
+        availabilityProbe,
       ),
     );
     app.route(

@@ -274,6 +274,86 @@ export function buildCredentialsMethods(
         signal,
       );
 
+      const matching = (await modelProviders(tenantId, signal)).filter(
+        (row) => row.plugin === input.plugin && row.baseURL === baseURL,
+      );
+      const reusable =
+        matching.find((row) => !row.disabled && row.credentialId !== null) ??
+        matching.find((row) => row.credentialId !== null);
+      if (reusable?.credentialId) {
+        try {
+          const updated = (await request(
+            `${root}/credentials/${encodeURIComponent(reusable.credentialId)}`,
+            signal,
+            { secret: input.secret, status: "active" },
+            "PATCH",
+          )) as { id?: unknown; name?: unknown };
+          if (reusable.disabled) {
+            await request(
+              `${root}/catalog/providers/${encodeURIComponent(reusable.id)}`,
+              signal,
+              { disabled: false },
+              "PATCH",
+            );
+          }
+          for (const other of matching) {
+            if (other.id !== reusable.id && !other.disabled) {
+              try {
+                await request(
+                  `${root}/catalog/providers/${encodeURIComponent(other.id)}`,
+                  signal,
+                  { disabled: true },
+                  "PATCH",
+                );
+              } catch (cause) {
+                void cause;
+              }
+            }
+          }
+          return {
+            provider: {
+              id: nativeProvider.id,
+              name: `byok-${input.plugin}`,
+              plugin: input.plugin,
+              baseURL,
+            },
+            credential: {
+              id:
+                typeof updated?.id === "string"
+                  ? updated.id
+                  : reusable.credentialId,
+              name:
+                typeof updated?.name === "string"
+                  ? updated.name
+                  : reusable.name,
+            },
+            modelProvider: {
+              id: reusable.id,
+              name: reusable.name,
+              credentialId: reusable.credentialId,
+            },
+          };
+        } catch (cause) {
+          // Inherited or deleted credentials cannot be updated in place; mint a fresh tenant row.
+          void cause;
+        }
+      }
+
+      for (const row of matching) {
+        if (!row.disabled) {
+          try {
+            await request(
+              `${root}/catalog/providers/${encodeURIComponent(row.id)}`,
+              signal,
+              { disabled: true },
+              "PATCH",
+            );
+          } catch (cause) {
+            void cause;
+          }
+        }
+      }
+
       // Org-owned (no principalId) so the catalog provider accepts a tenant-owned reference.
       const credential = (await request(`${root}/credentials`, signal, {
         providerId: nativeProvider.id,

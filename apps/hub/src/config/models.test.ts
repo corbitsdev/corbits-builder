@@ -53,6 +53,11 @@ test("a project runs on the only connected provider's profile, a chosen one, or 
     refused: "model_profile_required",
   });
   expect(
+    resolveModelChoice(MODEL_PROVIDERS, { profile: "anthropic_default" }, []),
+  ).toEqual({
+    refused: "model_provider_missing",
+  });
+  expect(
     frozenModelChoice(MODEL_PROVIDERS, { profile: "openai_default" }, [
       "anthropic",
     ]),

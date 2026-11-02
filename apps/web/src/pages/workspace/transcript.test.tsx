@@ -1,8 +1,12 @@
 import { describe, expect, test } from "bun:test";
 import { isValidElement, type ReactNode } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
-import { wording } from "../../config.ts";
+import { SPECIALIST_ENDED_LEAD, wording } from "../../config.ts";
 import { DocumentDecision } from "./document-decision.tsx";
+import {
+  CredentialRecoveryBanner,
+  resolveCredentialRecovery,
+} from "./credential-recovery.tsx";
 import {
   awaitingCommit,
   emptyLiveRun,
@@ -305,5 +309,174 @@ describe("conversation transcript", () => {
     ]) {
       expect(html).not.toContain(hidden);
     }
+  });
+
+  test("scrubs raw credential failure text from turns and specialist ends and terminates live thinking", () => {
+    const rawError =
+      "This agent could not complete your request due to a credential error [HTTP 401]: invalid x-api-key";
+    const html = renderToStaticMarkup(
+      <RoomThread
+        turns={[
+          { role: "person", text: "Design the landing page", at: 1 },
+          {
+            role: "person",
+            text: `${SPECIALIST_ENDED_LEAD}Designer stopped before finishing.\n\nRecorded reason (step_failed): ${rawError}`,
+            at: 2,
+          },
+          { role: "assistant", text: rawError, at: 3 },
+        ]}
+      />,
+    );
+    expect(html).toContain(wording.credentials.stopped);
+    expect(html).toContain(wording.credentials.cause);
+    expect(html).not.toContain("HTTP 401");
+    expect(html).not.toContain("invalid x-api-key");
+
+    const started = foldLiveRun(
+      emptyLiveRun,
+      { type: "message.run.started" },
+      10,
+    ).run;
+    expect(started.running).toBe(true);
+    const failed = foldLiveRun(
+      started,
+      {
+        type: "inference.error",
+        data: {
+          error: {
+            category: "credential_failure",
+            statusCode: 401,
+            message: "invalid x-api-key",
+          },
+        },
+      },
+      20,
+    ).run;
+    expect(failed.running).toBe(false);
+    expect(failed.ended).toBe(true);
+    expect(failed.credentialFailed).toBe(true);
+  });
+
+  test("resolves credential recovery with re-authenticate and handoff actions and clears once a later turn succeeds", () => {
+    const binding = (provider: string) => ({
+      provider,
+      model: "m",
+      effort: "medium" as const,
+    });
+    const catalog = {
+      providers: [
+        {
+          id: "anthropic",
+          plugin: "anthropic",
+          label: "Anthropic",
+          hint: "Claude",
+          baseURL: "https://api.anthropic.com",
+          kind: "api_key" as const,
+          models: [],
+          connections: [
+            {
+              id: "prv_anthropic",
+              name: "Anthropic",
+              credentialSet: true,
+              status: "refused" as const,
+              note: "HTTP 401",
+            },
+          ],
+        },
+        {
+          id: "openai",
+          plugin: "openai",
+          label: "OpenAI",
+          hint: "GPT",
+          baseURL: "https://api.openai.com/v1",
+          kind: "api_key" as const,
+          models: [],
+          connections: [
+            {
+              id: "prv_openai",
+              name: "OpenAI",
+              credentialSet: true,
+              status: "connected" as const,
+            },
+          ],
+        },
+      ],
+      roles: [],
+      tiers: [],
+      efforts: [],
+      customApis: [],
+      profiles: [
+        {
+          id: "anthropic_default",
+          label: "Claude",
+          hint: "HTTP 401",
+          tiers: {
+            low: binding("anthropic"),
+            medium: binding("anthropic"),
+            high: binding("anthropic"),
+            max: binding("anthropic"),
+          },
+          available: false,
+        },
+        {
+          id: "openai_default",
+          label: "GPT",
+          hint: "OpenAI",
+          tiers: {
+            low: binding("openai"),
+            medium: binding("openai"),
+            high: binding("openai"),
+            max: binding("openai"),
+          },
+          available: true,
+        },
+      ],
+    };
+
+    const recovery = resolveCredentialRecovery({
+      turns: [
+        { role: "person", text: "Build the dashboard", at: 100 },
+        {
+          role: "assistant",
+          text: "This agent could not complete your request due to a credential error [HTTP 401]: invalid x-api-key",
+          at: 200,
+        },
+      ],
+      failed: [],
+      events: null,
+      liveCredentialFailed: false,
+      liveEndedAt: null,
+      dismissedAt: 0,
+      catalog,
+      choice: { profile: "anthropic_default" },
+    });
+    expect(recovery).not.toBeNull();
+    expect(recovery?.retryMessage).toBe("Build the dashboard");
+    expect(recovery?.provider?.id).toBe("anthropic");
+    expect(recovery?.alternatives).toEqual([
+      { id: "openai_default", label: "GPT" },
+    ]);
+
+    // Once a later assistant turn succeeds, recovery clears.
+    const cleared = resolveCredentialRecovery({
+      turns: [
+        { role: "person", text: "Build the dashboard", at: 100 },
+        {
+          role: "assistant",
+          text: "This agent could not complete your request due to a credential error [HTTP 401]: invalid x-api-key",
+          at: 200,
+        },
+        { role: "assistant", text: "Here is the dashboard.", at: 300 },
+      ],
+      failed: [],
+      events: null,
+      liveCredentialFailed: false,
+      liveEndedAt: null,
+      dismissedAt: 0,
+      catalog,
+      choice: { profile: "anthropic_default" },
+    });
+    expect(cleared).toBeNull();
+    expect(CredentialRecoveryBanner).toBeDefined();
   });
 });

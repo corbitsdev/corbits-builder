@@ -55,7 +55,11 @@ import { CONV_SCROLL_CLASS } from "./pane-classes.ts";
 import { proseSegments, type NamedDocument } from "./collaboration.ts";
 import { DocumentDecision, PackageDecision } from "./document-decision.tsx";
 import { TypedYesCountdown, type TypedYes } from "./typed-yes.tsx";
-import { turnLabel, visibleTurnParts } from "./visible-chat.ts";
+import {
+  isCredentialFailureText,
+  turnLabel,
+  visibleTurnParts,
+} from "./visible-chat.ts";
 import {
   distinctUpdates,
   FoldedUpdates,
@@ -564,13 +568,14 @@ function SpecialistEnded({ text }: { text: string }) {
   const [line = "", rest = ""] = text.split(/\n\n([\s\S]*)/);
   const recorded = RECORDED_REASON.exec(rest);
   const code = recorded?.[1];
-  const cause =
-    code === undefined ? undefined : wording.specialistEnded.cause[code];
+  let cause: string | undefined;
+  if (isCredentialFailureText(rest)) cause = wording.credentials.cause;
+  else if (code !== undefined) cause = wording.specialistEnded.cause[code];
   return (
     <span className="specialist-ended">
       {cause === undefined ? line : `${line.replace(/\.$/, "")} (${cause}).`}{" "}
       {wording.specialistEnded.restart}
-      {recorded === null ? null : (
+      {recorded === null || isCredentialFailureText(rest) ? null : (
         <details className="specialist-ended-details">
           <summary>{wording.specialistEnded.details}</summary>
           {code === undefined ? recorded[2] : `${code}: ${recorded[2] ?? ""}`}
@@ -841,7 +846,12 @@ export function RoomThread({
   );
   const mapTurns = sections.flatMap(
     (section, position): ConversationMapTurn[] => {
-      if (section.kind !== "person" || section.turn.text.trim() === "")
+      if (
+        section.kind !== "person" ||
+        section.turn.text.trim() === "" ||
+        section.turn.text.startsWith(IMPORTED_PROJECT_LEAD) ||
+        section.turn.text.startsWith(SPECIALIST_ENDED_LEAD)
+      )
         return [];
       const next = sections[position + 1];
       const reply =

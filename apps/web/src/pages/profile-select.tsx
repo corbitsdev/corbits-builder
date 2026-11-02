@@ -14,13 +14,14 @@ import type {
   CustomProfile,
   ModelCatalog,
   ModelChoice,
+  ModelProvider,
 } from "@corbits-builder/schemas/models";
 import { wording } from "../config.ts";
 import { keys } from "../queries/keys.ts";
 import { workspaceTenantId } from "../api/auth.ts";
 import { productClient } from "../api/transport.ts";
 import { available } from "./profiles.jsx";
-import { useModelCatalog } from "./providers.jsx";
+import { ReconnectProviderButton, useModelCatalog } from "./providers.jsx";
 
 const copy = wording.profiles;
 
@@ -42,7 +43,10 @@ function option(
 }
 
 /** The shipped profiles, then the person's, each runnable on a connected provider. */
-function profileOptions(catalog: ModelCatalog, choice: ModelChoice | null) {
+export function profileOptions(
+  catalog: ModelCatalog,
+  choice: ModelChoice | null,
+) {
   return [
     ...catalog.profiles.filter((profile) => profile.available),
     ...(choice?.custom ?? []).filter((profile) =>
@@ -51,13 +55,49 @@ function profileOptions(catalog: ModelCatalog, choice: ModelChoice | null) {
   ].map((profile) => option(catalog, profile));
 }
 
-function useModelChoice() {
+export function useModelChoice() {
   return useQuery({
     queryKey: keys.modelChoice,
     queryFn: async () =>
       (await productClient().personalSettings(await workspaceTenantId())).fields
         .models?.value ?? null,
   });
+}
+
+function isProviderRefused(provider: ModelProvider): boolean {
+  return (
+    !provider.connections.some(
+      (connection) => connection.status === "connected",
+    ) &&
+    provider.connections.some((connection) => connection.status === "refused")
+  );
+}
+
+/** The provider whose refused credential blocks the person's chosen profile, or any refused provider when none can run. */
+export function refusedProviderFor(
+  catalog: ModelCatalog | undefined,
+  choice: ModelChoice | null | undefined,
+  hasRunnableProfile: boolean,
+): ModelProvider | undefined {
+  if (!catalog) return undefined;
+  const targetId = choice?.profile ?? catalog.automaticProfile;
+  if (targetId) {
+    const profile =
+      choice?.custom?.find((entry) => entry.id === targetId) ??
+      catalog.profiles.find((entry) => entry.id === targetId);
+    if (profile) {
+      for (const binding of Object.values(profile.tiers)) {
+        const provider = catalog.providers.find(
+          (entry) => entry.id === binding.provider,
+        );
+        if (provider && isProviderRefused(provider)) return provider;
+      }
+    }
+  }
+  if (!hasRunnableProfile) {
+    return catalog.providers.find(isProviderRefused);
+  }
+  return undefined;
 }
 
 /** Picks the profile a new project starts on, from the person's active one. */
@@ -75,16 +115,30 @@ export function NewProjectProfile({
   const active = choice?.profile ?? catalog?.automaticProfile;
   const shown =
     models.find((model) => model.id === active)?.id ?? models[0]?.id;
+  const selected = models.find((model) => model.id === value)?.id ?? shown;
+  const refused = refusedProviderFor(catalog, choice, shown !== undefined);
   useEffect(() => {
-    if (value === undefined && shown !== undefined) onValueChange(shown);
-  }, [value, shown, onValueChange]);
-  if (shown === undefined) return null;
+    if (selected !== undefined && value !== selected) onValueChange(selected);
+  }, [value, selected, onValueChange]);
+  if (selected === undefined && refused === undefined) return null;
   return (
-    <PromptInputModelSelect
-      label={copy.pick}
-      models={models}
-      value={value ?? shown}
-      onValueChange={onValueChange}
-    />
+    <>
+      {selected === undefined ? null : (
+        <PromptInputModelSelect
+          label={copy.pick}
+          models={models}
+          value={selected}
+          onValueChange={onValueChange}
+        />
+      )}
+      {refused === undefined ? null : (
+        <ReconnectProviderButton
+          provider={refused}
+          onConnected={() => {
+            if (active !== undefined) onValueChange(active);
+          }}
+        />
+      )}
+    </>
   );
 }

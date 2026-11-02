@@ -467,9 +467,9 @@ export const MODEL_CHOICE_REFUSALS: Readonly<
 };
 
 /**
- * The profile a project runs on: the person's choice when this server can run it, else the shipped
- * profile of the only connected provider. With none connected, or several and no runnable choice,
- * there is no profile.
+ * The profile a project runs on: the person's choice when this server can run it on a connected
+ * provider, else the shipped profile of the only connected provider. With none connected, or
+ * several and no runnable choice, there is no profile.
  */
 export function resolveModelChoice(
   directory: ModelDirectory,

@@ -543,9 +543,29 @@ export const wording = {
       cancelled: "it was cancelled",
       timeout: "it ran out of time",
       "timed-out": "it ran out of time",
+      credential_failure: "the model provider refused its credential",
     } as Record<string, string>,
     restart: "The coordinator can start it again.",
     details: "Details",
+  },
+  credentials: {
+    stopped:
+      "The model provider refused its API key or login, so this step could not finish.",
+    cause: "the model provider refused its credential",
+    bannerTitle: (provider?: string) =>
+      provider === undefined
+        ? "Model credential refused"
+        : `${provider} refused its credential`,
+    bannerLead: (provider?: string) =>
+      provider === undefined
+        ? "Re-add the provider's API key or switch to another connected profile to continue."
+        : `Re-add your ${provider} credential or switch to another connected profile to continue.`,
+    readdKey: (provider?: string) =>
+      provider === undefined ? "Re-add provider key" : `Re-add ${provider} key`,
+    reconnect: (provider: string) => `Reconnect ${provider}`,
+    switchTo: (profile: string) => `Switch to ${profile}`,
+    switching: "Switching…",
+    continueMessage: "Continue from where we left off.",
   },
   /** A coordinator hand-off and what came of it, as one message in the conversation. */
   dispatch: {
@@ -860,6 +880,8 @@ export const wording = {
     dialogLead:
       "Pick a provider, paste its key, and test it. It is saved once the test passes.",
     connectOne: (label: string) => `Connect ${label}`,
+    reconnect: (label: string) => `Reconnect ${label}`,
+    readdKey: (label: string) => `Re-add ${label} key`,
     keyLead: "Paste its API key and test it. It is saved once the test passes.",
     provider: "Provider",
     baseUrl: "Base URL",

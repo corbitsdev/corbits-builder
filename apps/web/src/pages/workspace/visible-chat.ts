@@ -21,6 +21,12 @@ const LABELED =
   /\b(?:eventCount|toolCallId|partialArguments|deliverableId|artifactId|projectId|correlationId|runId)\b(?:\s*[:=]\s*(?:"[^"]+"|'[^']+'|\S+))?/;
 // "blocker" is also a plain word a person reads; only its labeled form is bookkeeping.
 const BLOCKER = /\bblockers?\s*[:=]\s*(?:"[^"]+"|'[^']+'|\S+)/;
+const CREDENTIAL_FAILURE_RE =
+  /(?:due to a credential error\b|\bcredential_failure\b|\[HTTP\s*(?:401|403)\]|\binvalid[\s_-]+x-api-key\b|\bauthentication_error\b)/i;
+
+export function isCredentialFailureText(text: string): boolean {
+  return CREDENTIAL_FAILURE_RE.test(text);
+}
 
 const INTERNAL = [
   SNAKE,
@@ -250,6 +256,7 @@ function scrubLine(line: string): string | null {
  * own words stay as they wrote them.
  */
 export function visibleChatText(text: string): string {
+  if (isCredentialFailureText(text)) return wording.credentials.stopped;
   const source = stripInternalCode(
     stripInternalAsides(stripJson(stripInternalFences(text))),
   );

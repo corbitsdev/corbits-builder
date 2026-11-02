@@ -27,6 +27,11 @@ export type RunStreamEvent = {
     callId?: unknown;
     name?: unknown;
     arguments?: unknown;
+    error?: {
+      category?: unknown;
+      message?: unknown;
+      statusCode?: unknown;
+    };
   };
 };
 

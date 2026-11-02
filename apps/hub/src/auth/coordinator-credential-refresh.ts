@@ -1,6 +1,9 @@
-import { and, eq } from "drizzle-orm";
-import type { DB } from "@intx/db";
-import { workflowRunExecutability } from "@intx/db";
+import { and, inArray } from "drizzle-orm";
+import {
+  getDescendantTenants,
+  workflowRunExecutability,
+  type DB,
+} from "@intx/db";
 import { workflowRun as runTable } from "@intx/db/schema";
 import {
   pushCredentialReconcile,
@@ -11,11 +14,10 @@ import type { CredentialCipher } from "@intx/types";
 import type { MiddlewareHandler } from "hono";
 import type { TenantEnv } from "@intx/hub-api";
 import { getLogger } from "@intx/log";
-import { projectCoordinator } from "../db/schema.ts";
 
 const log = getLogger(["corbits-builder", "coordinator-credentials"]);
 
-// After a credential's secret changes, pushes it to every active coordinator run that uses it.
+// After a credential's secret changes, pushes it to every active project run that uses it.
 export function createCoordinatorCredentialRefresh(options: {
   db: DB["db"];
   router: SidecarRouter;
@@ -29,19 +31,20 @@ export function createCoordinatorCredentialRefresh(options: {
       const body = await c.req.json();
       if (body.secret === undefined || body.status === "revoked") return;
       const credentialId = c.req.param("credentialId");
-      if (!credentialId) return;
-      const bindings = await options.db
+      const tenantId = c.req.param("tenantId");
+      if (!credentialId || !tenantId) return;
+      const tenants = await getDescendantTenants(options.db, tenantId);
+      const runs = await options.db
         .select({ run: runTable })
-        .from(projectCoordinator)
-        .innerJoin(runTable, eq(runTable.id, projectCoordinator.runId))
+        .from(runTable)
         .where(
           and(
-            eq(projectCoordinator.active, true),
-            eq(runTable.tenantId, c.req.param("tenantId")!),
+            inArray(runTable.tenantId, tenants.length ? tenants : [tenantId]),
+            inArray(runTable.status, ["deployed", "running"]),
           ),
         );
       await Promise.all(
-        bindings
+        runs
           .filter(
             ({ run }) =>
               run.address &&

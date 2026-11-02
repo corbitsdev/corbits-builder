@@ -108,10 +108,20 @@ export function createAgentActivity(events: Pick<SidecarEventEmitter, "on">) {
         delete run.said;
         return;
       }
-      case "message.run.ended": {
+      case "message.run.ended":
+      case "reactor.done":
+      case "reactor.error": {
         const run = entry(local);
         run.working = false;
         run.since = now;
+        return;
+      }
+      case "inference.error": {
+        if (event.data.error.category === "credential_failure") {
+          const run = entry(local);
+          run.working = false;
+          run.since = now;
+        }
         return;
       }
       case "tool.start": {

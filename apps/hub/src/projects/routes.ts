@@ -31,10 +31,18 @@ import { readProjectImport } from "@corbits-builder/schemas/project-import";
 import {
   createProjectService,
   ProjectError,
+  projectResource,
   type CreateTenant,
   type ProjectCaller,
 } from "./service.ts";
-import { actorOf, resolveProjectTenant } from "./authorization.ts";
+import {
+  actorOf,
+  grantAuthorization,
+  resolveProjectTenant,
+} from "./authorization.ts";
+import { switchProjectModelChoice } from "./model-choice.ts";
+import { modelDirectory } from "../settings/custom-providers.ts";
+import type { AvailabilityState } from "../availability.ts";
 import {
   createProjectNextStep,
   mountProjectNextStepRoutes,
@@ -188,6 +196,7 @@ export function createProjectRoutes(
     reason: string,
   ) => Promise<unknown>,
   repoStore?: RepoStore,
+  probe?: (tenantId: string, providerId: string) => Promise<AvailabilityState>,
 ) {
   const app = new Hono<TenantEnv>();
   const service = createProjectService(db);
@@ -697,6 +706,28 @@ export function createProjectRoutes(
         const view = await service.read(actor, projectId);
         if (view.status !== "active")
           throw new ProjectError(409, "project_archived");
+        const body = await readJson(c.req);
+        const profile =
+          body !== null &&
+          typeof body === "object" &&
+          "profile" in body &&
+          typeof body.profile === "string"
+            ? body.profile.trim()
+            : undefined;
+        if (profile) {
+          const allowed = await grantAuthorization(db, actor);
+          if (!(await allowed(projectResource(projectId), "manage")))
+            throw new ProjectError(403, "forbidden");
+          const directory = await modelDirectory(db, actor.tenantId);
+          await switchProjectModelChoice(
+            db,
+            actor,
+            projectId,
+            profile,
+            directory,
+            probe,
+          );
+        }
         await startCoordinator?.upgrade?.(actor, projectId);
         return c.json({ started: await resumeCoordinator(actor, projectId) });
       } catch (error) {

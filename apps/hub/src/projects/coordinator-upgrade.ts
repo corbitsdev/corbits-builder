@@ -3,6 +3,8 @@ import { type } from "arktype";
 import type { DB } from "@intx/db";
 import {
   approval,
+  modelOffering,
+  modelProvider,
   workflowRun,
   workflowRunDispatch,
   workflowRunLaunchSpec,
@@ -162,6 +164,7 @@ export function createCoordinatorUpgrades(deps: {
         status: workflowRun.status,
         cancellationRequestedAt: workflowRun.cancellationRequestedAt,
         cancellationReason: workflowRun.cancellationReason,
+        credentialRefs: workflowRun.credentialRefs,
         principalId: workflowRunLaunchSpec.sourceAuthorityPrincipalId,
         bundle: workflowRunLaunchSpec.frozenApprovalBundle,
       })
@@ -196,8 +199,18 @@ export function createCoordinatorUpgrades(deps: {
       !["deployed", "running"].includes(latest.status)
     )
       return;
-    const current = (await deps.installed(actor, projectId)).coordinator.pin;
-    if (pinOf(latest.bundle) === current) return;
+    const current = (await deps.installed(actor, projectId)).coordinator;
+    const [offering] = await db
+      .select({ credentialId: modelProvider.credentialId })
+      .from(modelOffering)
+      .innerJoin(modelProvider, eq(modelProvider.id, modelOffering.providerId))
+      .where(eq(modelOffering.id, current.defaultSourceOfferingId));
+    const sameCredential =
+      !offering?.credentialId ||
+      Boolean(
+        latest.credentialRefs?.credentialIds.includes(offering.credentialId),
+      );
+    if (pinOf(latest.bundle) === current.pin && sameCredential) return;
     const parked = await atSafePoint(actor, {
       runId: latest.runId,
       address: latest.address,

@@ -343,6 +343,7 @@ export type ProductApiClient = Readonly<{
     tenantId: string,
     projectId: string,
     signal?: AbortSignal,
+    options?: { profile?: string },
   ): Promise<{ started: boolean }>;
   projectNextStep(
     tenantId: string,

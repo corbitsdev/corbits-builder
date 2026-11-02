@@ -12,6 +12,7 @@ import {
 import type { InstalledWorkflows } from "@corbits-builder/schemas/installed-workflows";
 import type { NativeSpecialistDeployment } from "@corbits-builder/schemas/native-specialist";
 import { createCoordinatorRegistry } from "../auth/coordinator-registry.ts";
+import type { AvailabilityState } from "../availability.ts";
 import { COORDINATOR_CAPACITY_FULL } from "../config/coordinator-start.ts";
 import {
   installForTenant,
@@ -265,11 +266,12 @@ export function createInstalledCoordinatorStartup(
   }) => Promise<{ runId: string }>,
   readyWaitMs: number,
   cancel: CancelRun,
+  probe?: (tenantId: string, providerId: string) => Promise<AvailabilityState>,
 ) {
   const registry = createCoordinatorRegistry(db);
   return createProjectCoordinatorStartup({
     installed(actor, projectId) {
-      return installForTenant({ db, assets }, actor, projectId);
+      return installForTenant({ db, assets, probe }, actor, projectId);
     },
     async boundRun(tenantId, projectId) {
       const [row] = await db

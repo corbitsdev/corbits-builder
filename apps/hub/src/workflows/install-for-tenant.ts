@@ -36,6 +36,7 @@ import {
 } from "../inference/oauth-login-quirks.ts";
 import { projectModelChoice } from "../projects/model-choice.ts";
 import { ProjectError } from "../projects/errors.ts";
+import type { AvailabilityState } from "../availability.ts";
 import { buildWorkflowPackages } from "./build-packages.ts";
 import { resolveRoleInference, type RoleInference } from "./role-inference.ts";
 import type { Actor } from "../lib/actor.ts";
@@ -49,6 +50,9 @@ type InstallForTenantPorts = {
     AssetService,
     "createAsset" | "populateAsset" | "listAssetBlobs"
   >;
+  probe?:
+    | ((tenantId: string, providerId: string) => Promise<AvailabilityState>)
+    | undefined;
 };
 
 type Bindings = Record<WorkflowRole, RoleBinding>;
@@ -422,7 +426,13 @@ export async function installForTenant(
   const directory = await modelDirectory(ports.db, actor.tenantId);
   const bindings = workflowBindings(
     directory,
-    await projectModelChoice(ports.db, actor, projectId, directory),
+    await projectModelChoice(
+      ports.db,
+      actor,
+      projectId,
+      directory,
+      ports.probe,
+    ),
   );
   const built = await builtPackages(
     Object.fromEntries(

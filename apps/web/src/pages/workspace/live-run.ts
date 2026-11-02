@@ -38,6 +38,8 @@ export type LiveRun = {
   readonly running: boolean;
   /** When this stream last saw a message run end, in ms. */
   readonly endedAt: number | null;
+  /** The coordinator's turn stopped because the model provider refused its credential. */
+  readonly credentialFailed?: boolean;
   readonly results: ReadonlyMap<string, CallResult>;
 };
 
@@ -69,6 +71,7 @@ const reloadAfter = new Set([
   "inference.error",
   "tool.done",
   "connector.reply",
+  "turn.committed",
   "message.run.ended",
   "reactor.done",
   "reactor.error",
@@ -107,14 +110,38 @@ export function foldLiveRun(
         segments: run.segments.filter((item) => item.text.length > 0),
         ended: false,
         running: true,
+        credentialFailed: false,
       },
       reload,
     };
   }
-  if (event.type === "message.run.ended" || event.type === "reactor.done") {
+  if (
+    event.type === "message.run.ended" ||
+    event.type === "turn.committed" ||
+    event.type === "reactor.done" ||
+    event.type === "reactor.error"
+  ) {
     return {
       run: { ...run, ended: true, running: false, endedAt: Date.now() },
       reload,
+    };
+  }
+  if (
+    event.type === "inference.error" &&
+    (event.data?.error?.category === "credential_failure" ||
+      event.data?.error?.statusCode === 401 ||
+      event.data?.error?.statusCode === 403)
+  ) {
+    return {
+      run: {
+        ...run,
+        current: emptySegment,
+        ended: true,
+        running: false,
+        endedAt: Date.now(),
+        credentialFailed: true,
+      },
+      reload: true,
     };
   }
   if (event.type === "tool.done") {

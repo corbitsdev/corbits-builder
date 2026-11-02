@@ -53,7 +53,6 @@ import {
   updateCustomProvider,
 } from "./custom-providers.ts";
 import { readJson } from "../lib/json.ts";
-import { connectedProviders } from "../projects/model-choice.ts";
 import {
   createAvailabilityProbe,
   probeKey,
@@ -105,8 +104,8 @@ export function createSettingsRoutes(
   nativeFetch: (request: Request) => Promise<Response>,
 ) {
   const app = new Hono<TenantEnv>();
-  const service = createSettingsService(db);
   const probe = createAvailabilityProbe(db, cipher);
+  const service = createSettingsService(db, probe);
   const requireManage = async (c: Context<TenantEnv>) => {
     const allowed = await reportAuthorization(db, actor(c));
     if (!(await allowed("sb-settings:tenant", "manage")))
@@ -289,14 +288,15 @@ export function createSettingsRoutes(
       );
       const answering = new Set(
         connections
-          .filter((row) => row.status === "connected")
+          .filter(
+            (row): row is typeof row & { entry: string } =>
+              row.entry !== undefined &&
+              (row.status === "connected" ||
+                (row.status === undefined && row.credentialSet)),
+          )
           .map((row) => row.entry),
       );
-      const automatic = resolveModelChoice(
-        directory,
-        null,
-        await connectedProviders(db, directory, tenantId),
-      );
+      const automatic = resolveModelChoice(directory, null, [...answering]);
       return c.json({
         providers: directory
           // A custom provider shows only to someone who may read the connection it runs on.

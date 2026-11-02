@@ -119,6 +119,12 @@ import {
 } from "./design-concepts.tsx";
 import { useLiveAppPresence } from "./live-app.tsx";
 import { NextStepLine } from "./next-step.tsx";
+import {
+  CredentialRecoveryBanner,
+  resolveCredentialRecovery,
+} from "./credential-recovery.tsx";
+import { useModelChoice } from "../profile-select.tsx";
+import { useModelCatalog } from "../providers.tsx";
 import { Dictated } from "../../dictation.jsx";
 import { useShellReply } from "../../flourish.tsx";
 
@@ -381,6 +387,10 @@ export function StageWorkspace({
   const [startFault, setStartFault] = useState<string | null>(null);
   // Why the coordinator has no model to run on, which only the person can settle.
   const [modelNeeded, setModelNeeded] = useState<string | null>(null);
+  const [dismissedCredentialAt, setDismissedCredentialAt] = useState(0);
+  const [recoveringCredential, setRecoveringCredential] = useState(false);
+  const modelCatalog = useModelCatalog().data;
+  const personalChoice = useModelChoice().data;
   const accepted = useQuery({
     queryKey: keys.acceptedMaterials.of(projectId),
     retry: false,
@@ -453,6 +463,8 @@ export function StageWorkspace({
     setSendFailed(false);
     setSendFault(null);
     setAwaitingSince(null);
+    setDismissedCredentialAt(0);
+    setRecoveringCredential(false);
     setCaution(null);
     setFiles([]);
     setAttachFault(null);
@@ -1016,6 +1028,49 @@ export function StageWorkspace({
     runId,
     liveRun.running,
   );
+  const credentialRecovery = archived
+    ? null
+    : resolveCredentialRecovery({
+        turns: mirror,
+        failed: snapshot?.failed,
+        events,
+        liveCredentialFailed: Boolean(liveRun.credentialFailed),
+        liveEndedAt: liveRun.endedAt,
+        dismissedAt: dismissedCredentialAt,
+        catalog: modelCatalog,
+        choice: personalChoice,
+      });
+
+  const resumeAfterCredentialUpdate = async (profileId?: string) => {
+    const retryMessage =
+      credentialRecovery?.retryMessage ?? wording.credentials.continueMessage;
+    setRecoveringCredential(true);
+    setStartFault(null);
+    setModelNeeded(null);
+    setSendFailed(false);
+    setSendFault(null);
+    try {
+      await startProjectCoordinator(projectId, profileId);
+      setDismissedCredentialAt(Date.now());
+      await queryClient.invalidateQueries({ queryKey: keys.modelCatalog });
+      await queryClient.invalidateQueries({ queryKey: keys.modelChoice });
+      await room.refetch();
+      await deliver(retryMessage);
+    } catch (cause) {
+      const needed = await modelRefusal(cause);
+      if (needed !== undefined) return setModelNeeded(needed);
+      const fault = await humanFaultWithCode(
+        cause,
+        wording.message.coordinatorNotStarted,
+      );
+      setSendFailed(true);
+      setSendFault(fault);
+      toast.error(fault);
+    } finally {
+      setRecoveringCredential(false);
+    }
+  };
+
   // A message sent here waits on the coordinator from the moment it leaves, before the stream
   // reports its run: until a reply follows it or a run ends after it.
   const awaitingReply =
@@ -1024,11 +1079,14 @@ export function StageWorkspace({
     (liveRun.endedAt === null || liveRun.endedAt < awaitingSince) &&
     !archived &&
     startFault === null &&
-    modelNeeded === null;
+    modelNeeded === null &&
+    credentialRecovery === null;
   // The mark stays for the whole turn: between model calls and during long tool work the live
   // reply shows nothing moving.
   const thinking =
-    !sendFailed && (sending || awaitingReply || (working && !held));
+    !sendFailed &&
+    credentialRecovery === null &&
+    (sending || awaitingReply || (working && !held));
   // Each concept's option is its own tab beside the others, never an ordinary document.
   const options = artifacts.filter((item) => item.kind === DESIGN_OPTION);
   const paneDeliverables = documentsForPane(
@@ -1383,6 +1441,16 @@ export function StageWorkspace({
                   className="composer"
                   data-working={working || sending ? "" : undefined}
                 >
+                  {credentialRecovery === null ? null : (
+                    <CredentialRecoveryBanner
+                      recovery={credentialRecovery}
+                      busy={recoveringCredential || sending}
+                      onReconnected={() => void resumeAfterCredentialUpdate()}
+                      onSwitchProfile={(profileId) =>
+                        void resumeAfterCredentialUpdate(profileId)
+                      }
+                    />
+                  )}
                   {attachFault === null ? null : (
                     <p className="workspace-fault" role="alert">
                       {attachFault}

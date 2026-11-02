@@ -198,6 +198,12 @@ export function ProvidersSection({ onChanged }: { onChanged: () => void }) {
                 {copy.status[connection.status]}
               </QuietState>
             ) : null}
+            {connection.status === "refused" ? (
+              <ReconnectProviderButton
+                provider={provider}
+                onConnected={onChanged}
+              />
+            ) : null}
           </div>
         );
       })}
@@ -233,6 +239,43 @@ export function ProvidersSection({ onChanged }: { onChanged: () => void }) {
         onConnected={onChanged}
       />
     </Section>
+  );
+}
+
+export function ReconnectProviderButton({
+  provider,
+  onConnected,
+}: {
+  provider: ModelProvider;
+  onConnected: () => void;
+}) {
+  const [open, setOpen] = useState(false);
+  const { signingIn, signIn } = useSubscriptionLogins(onConnected);
+  if (provider.kind === "login") {
+    return (
+      <Button
+        loading={signingIn === provider.id}
+        disabled={signingIn !== null}
+        onClick={() => void signIn(provider)}
+      >
+        {signingIn === provider.id
+          ? copy.waiting
+          : copy.reconnect(provider.label)}
+      </Button>
+    );
+  }
+  return (
+    <>
+      <Button onClick={() => setOpen(true)}>
+        {copy.readdKey(provider.label)}
+      </Button>
+      <AddProviderDialog
+        open={open}
+        onOpenChange={setOpen}
+        providerId={provider.id}
+        onConnected={onConnected}
+      />
+    </>
   );
 }
 

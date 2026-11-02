@@ -71,11 +71,11 @@ export function buildProjectsMethods(
         {},
       );
     },
-    startProjectCoordinator(tenantId, projectId, signal) {
+    startProjectCoordinator(tenantId, projectId, signal, options) {
       return request(
         `${projectPath(tenantId, projectId)}/coordinator`,
         signal,
-        {},
+        { profile: options?.profile },
       );
     },
     projectNextStep(tenantId, projectId, signal) {

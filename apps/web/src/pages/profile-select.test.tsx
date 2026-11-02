@@ -149,6 +149,104 @@ describe("NewProjectProfile", () => {
     }));
     expect(render(undefined, models)).toBe("");
   });
+
+  test("falls back to an available profile and offers reconnect when the active profile's provider is refused", () => {
+    const models = catalog();
+    models.providers = [
+      {
+        id: "anthropic",
+        plugin: "anthropic",
+        label: "Anthropic",
+        hint: "Claude",
+        baseURL: "https://api.anthropic.com",
+        kind: "api_key",
+        models: [],
+        connections: [
+          {
+            id: "prv_anthropic",
+            name: "Anthropic",
+            credentialSet: true,
+            status: "refused",
+            note: "HTTP 401",
+          },
+        ],
+      },
+      {
+        id: "openai",
+        plugin: "openai",
+        label: "OpenAI",
+        hint: "GPT",
+        baseURL: "https://api.openai.com/v1",
+        kind: "api_key",
+        models: [],
+        connections: [
+          {
+            id: "prv_openai",
+            name: "OpenAI",
+            credentialSet: true,
+            status: "connected",
+          },
+        ],
+      },
+    ];
+    models.profiles = [
+      {
+        id: "anthropic_default",
+        label: "Claude",
+        hint: "HTTP 401",
+        tiers: tiers("anthropic"),
+        available: false,
+      },
+      {
+        id: "openai_default",
+        label: "GPT",
+        hint: "OpenAI",
+        tiers: tiers("openai"),
+        available: true,
+      },
+    ];
+    const client = new QueryClient({
+      defaultOptions: { queries: { retry: false, staleTime: Infinity } },
+    });
+    client.setQueryData(keys.modelCatalog, models);
+    client.setQueryData(keys.modelChoice, { profile: "anthropic_default" });
+    const html = renderToStaticMarkup(
+      <QueryClientProvider client={client}>
+        <NewProjectProfile value="anthropic_default" onValueChange={() => {}} />
+      </QueryClientProvider>,
+    );
+    expect(html).toContain("Model profile, GPT");
+    expect(html).toContain("Re-add Anthropic key");
+  });
+
+  test("offers reconnect when the only configured provider is refused", () => {
+    const models = catalog();
+    models.providers = [
+      {
+        id: "anthropic",
+        plugin: "anthropic",
+        label: "Anthropic",
+        hint: "Claude",
+        baseURL: "https://api.anthropic.com",
+        kind: "api_key",
+        models: [],
+        connections: [
+          {
+            id: "prv_anthropic",
+            name: "Anthropic",
+            credentialSet: true,
+            status: "refused",
+            note: "HTTP 401",
+          },
+        ],
+      },
+    ];
+    models.profiles = models.profiles.map((profile) => ({
+      ...profile,
+      available: false,
+    }));
+    expect(render(undefined, models)).toContain("Re-add Anthropic key");
+  });
 });
 
 describe("Profiles", () => {

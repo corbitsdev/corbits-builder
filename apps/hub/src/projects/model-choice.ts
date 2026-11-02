@@ -2,9 +2,11 @@ import { and, eq } from "drizzle-orm";
 import { listVisibleProviders, type DB } from "@intx/db";
 import { principal, tenant } from "@intx/db/schema";
 import type { ModelChoice } from "@corbits-builder/schemas/models";
+import type { AvailabilityState } from "../availability.ts";
 import {
   MODEL_CHOICE_REFUSALS,
   frozenModelChoice,
+  pickedModelChoice,
   providerOfRow,
   resolveModelChoice,
   type ModelDirectory,
@@ -19,16 +21,28 @@ import { userPrincipalIn } from "./authorization.ts";
 import { ProjectError } from "./errors.ts";
 import type { Actor } from "../lib/actor.ts";
 
-/** The provider entries a tenant can run on: each enabled connection with a credential. */
+/** The provider entries a tenant can run on: each enabled connection with a non-refused credential. */
 export async function connectedProviders(
   db: DB["db"],
   directory: ModelDirectory,
   tenantId: string,
+  probe?: (tenantId: string, providerId: string) => Promise<AvailabilityState>,
 ): Promise<string[]> {
-  const ids = (await listVisibleProviders(db, tenantId))
-    .filter(({ row }) => row.credentialId !== null && !row.disabled)
-    .map(({ row }) => providerOfRow(directory, row)?.id)
-    .filter((id) => id !== undefined);
+  const visible = (await listVisibleProviders(db, tenantId)).filter(
+    ({ row }) => row.credentialId !== null && !row.disabled,
+  );
+  const ids: string[] = [];
+  for (const { row } of visible) {
+    const entry = providerOfRow(directory, row);
+    if (!entry) continue;
+    if (
+      probe &&
+      entry.kind !== "custom" &&
+      (await probe(tenantId, row.id)) === "refused"
+    )
+      continue;
+    ids.push(entry.id);
+  }
   return [...new Set(ids)];
 }
 
@@ -62,9 +76,15 @@ export async function projectModelChoice(
   actor: Actor,
   projectId: string,
   directory: ModelDirectory,
+  probe?: (tenantId: string, providerId: string) => Promise<AvailabilityState>,
 ): Promise<ModelChoice> {
   const { models } = await loadSettings(db, actor.tenantId, projectId);
-  const connected = await connectedProviders(db, directory, actor.tenantId);
+  const connected = await connectedProviders(
+    db,
+    directory,
+    actor.tenantId,
+    probe,
+  );
   const kept = frozenModelChoice(directory, models.value, connected);
   if (kept) return kept;
   const resolved = resolveModelChoice(
@@ -93,4 +113,50 @@ export async function projectModelChoice(
       ),
     );
   return resolved.choice;
+}
+
+/** Switches a project onto one of the caller's runnable profiles. */
+export async function switchProjectModelChoice(
+  db: DB["db"],
+  actor: Actor,
+  projectId: string,
+  profile: string,
+  directory: ModelDirectory,
+  probe?: (tenantId: string, providerId: string) => Promise<AvailabilityState>,
+): Promise<ModelChoice> {
+  const { models } = await loadSettings(db, actor.tenantId, projectId);
+  const personal = await personalChoice(db, actor);
+  const picked =
+    pickedModelChoice(personal, profile) ??
+    pickedModelChoice(models.value, profile);
+  if (!picked)
+    throw new ProjectError(400, "model_profile_unknown", { profile });
+  const connected = await connectedProviders(
+    db,
+    directory,
+    actor.tenantId,
+    probe,
+  );
+  const frozen = frozenModelChoice(directory, picked, connected);
+  if (!frozen)
+    throw new ProjectError(409, "model_provider_missing", {
+      message: MODEL_CHOICE_REFUSALS.model_provider_missing,
+    });
+  const scopeKey = `project:${projectId}`;
+  const fields = await loadSettingsAt(db, actor.tenantId, scopeKey);
+  await db
+    .update(settingsRecord)
+    .set({
+      fields: {
+        ...fields,
+        models: { value: frozen, version: fields.models.version + 1 },
+      },
+    })
+    .where(
+      and(
+        eq(settingsRecord.tenantId, actor.tenantId),
+        eq(settingsRecord.scopeKey, scopeKey),
+      ),
+    );
+  return frozen;
 }

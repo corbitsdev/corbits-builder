@@ -26,6 +26,7 @@ import {
 } from "./policy.ts";
 import { invalidPreference } from "../config/preferences.ts";
 import { invalidModelChoice } from "../config/models.ts";
+import type { AvailabilityState } from "../availability.ts";
 import { connectedProviders } from "../projects/model-choice.ts";
 import { modelDirectory } from "./custom-providers.ts";
 import { digest } from "../lib/digest.ts";
@@ -41,7 +42,10 @@ const record = (
   fields,
 });
 
-export function createSettingsService(db: DB["db"]) {
+export function createSettingsService(
+  db: DB["db"],
+  probe?: (tenantId: string, providerId: string) => Promise<AvailabilityState>,
+) {
   async function authorize(
     actor: Actor,
     projectId: string | undefined,
@@ -93,7 +97,12 @@ export function createSettingsService(db: DB["db"]) {
     const models = input.fields.models?.value;
     if (models) {
       const directory = await modelDirectory(db, actor.tenantId);
-      const connected = await connectedProviders(db, directory, actor.tenantId);
+      const connected = await connectedProviders(
+        db,
+        directory,
+        actor.tenantId,
+        probe,
+      );
       const refused = invalidModelChoice(directory, models, connected);
       if (refused)
         throw new ProjectError(400, "unknown_model_choice", {
