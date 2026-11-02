@@ -19,7 +19,7 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@corbits/react-ui/ui/dialog";
-import { useEffect, useState } from "react";
+import { useEffect, useState, type FormEvent } from "react";
 import { useQueryClient } from "@tanstack/react-query";
 import type {
   CustomProfile,
@@ -90,7 +90,6 @@ function complete(draft: Draft, tiers: readonly Tier[]): Tiers | null {
 }
 
 export function Profiles({ initialField }: { initialField?: Field } = {}) {
-
   const catalog = useModelCatalog();
   const queryClient = useQueryClient();
   const [field, setField] = useState<Field | null>(initialField ?? null);
@@ -294,14 +293,13 @@ export function Profiles({ initialField }: { initialField?: Field } = {}) {
                     entry.id === profile.id ? profile : entry,
                   )
                 : [...custom, profile];
-            const profileId =
-              editing.mode === "new" && makeDefault
-                ? profile.id
-                : editing.mode === "new"
-                  ? (active?.id ?? field.value?.profile)
-                  : field.value?.profile;
+            let profileId = field.value?.profile;
+            if (editing.mode === "new" && makeDefault) {
+              profileId = profile.id;
+            } else if (editing.mode === "new") {
+              profileId = active?.id ?? field.value?.profile;
+            }
             if (await save(choice(profileId, list))) setEditing(null);
-
           }}
         />
       ) : null}
@@ -353,6 +351,30 @@ function ProfileEditor({
       tiers: { ...current.tiers, [tier]: binding },
     }));
 
+  async function submitProfile(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    if (!ready || busy || filled === null) return;
+    setBusy(true);
+    try {
+      await onSave(
+        {
+          id:
+            editing.mode === "edit"
+              ? editing.profile.id
+              : `custom_${crypto.randomUUID().replaceAll("-", "").slice(0, 12)}`,
+          label: draft.label.trim(),
+          tiers: filled,
+        },
+        replacing !== null && makeDefault,
+      );
+    } catch (cause) {
+      if (cause instanceof Error) throw cause;
+      throw new Error(message(cause), { cause });
+    } finally {
+      setBusy(false);
+    }
+  }
+
   return (
     <Dialog
       open
@@ -365,24 +387,7 @@ function ProfileEditor({
           </DialogTitle>
           <DialogDescription>{copy.editorLead}</DialogDescription>
         </DialogHeader>
-        <form
-          onSubmit={(event) => {
-            event.preventDefault();
-            if (!ready || busy) return;
-            setBusy(true);
-            void onSave(
-              {
-                id:
-                  editing.mode === "edit"
-                    ? editing.profile.id
-                    : `custom_${crypto.randomUUID().replaceAll("-", "").slice(0, 12)}`,
-                label: draft.label.trim(),
-                tiers: filled,
-              },
-              replacing !== null && makeDefault,
-            ).finally(() => setBusy(false));
-          }}
-        >
+        <form onSubmit={submitProfile}>
           <DialogBody className="provider-form">
             {editing.mode === "new" ? (
               <div className="provider-field">
