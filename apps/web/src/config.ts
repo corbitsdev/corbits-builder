@@ -709,8 +709,6 @@ export const wording = {
     actions: {
       design_app: {
         approve: "Start the design",
-        /** Later design starts in this project's run go ahead without a card. */
-        approveAlways: "Start designs without asking",
         deny: "Not yet",
       },
     } as Record<

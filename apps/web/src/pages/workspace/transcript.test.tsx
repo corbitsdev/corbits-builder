@@ -112,6 +112,20 @@ describe("conversation transcript", () => {
     expect(html).not.toContain("sha256");
   });
 
+  test("a design start does not offer to go ahead without asking", () => {
+    const html = renderToStaticMarkup(
+      <DocumentDecision
+        approval={{ approvalId: "appr-1", toolName: "design_app" }}
+        onYes={() => {}}
+        onAlways={() => {}}
+        onNo={() => {}}
+      />,
+    );
+    expect(html).toContain("document-decision-once");
+    expect(html).toContain(">Start the design<");
+    expect(html).not.toContain("Start designs without asking");
+  });
+
   test("Not yet denies the approval and then takes the person to the composer", () => {
     const calls: string[] = [];
     const thread = RoomThread({

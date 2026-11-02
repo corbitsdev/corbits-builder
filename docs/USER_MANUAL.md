@@ -246,8 +246,6 @@ Before any designer starts, a card asks **Ready to start the design?** and lists
 the **Design concepts to compare** it will make.
 
 - **Start the design** lets it begin.
-- **Start designs without asking** also lets later design starts in this
-  project go ahead without a card.
 - **Not yet** stops it so you can say what to change.
 
 If you asked to explore, you get as many concepts as **Design concepts to

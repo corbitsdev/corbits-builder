@@ -22,10 +22,6 @@ import type { ApprovalOutcome, DocumentApproval } from "./transcript.tsx";
 const text = wording.approval;
 const INSTRUCTION_ASKS = new Set(["instruct_coder"]);
 const FOLDED_INSTRUCTION_ASKS = new Set(["design_app"]);
-// Asks that record no approval of document versions, where the native standing
-// grant only lets later calls in the run go ahead. Every other card records an
-// approval of the exact versions shown, so it hides the library's Approve always.
-const STANDING_ASKS = new Set(["design_app"]);
 
 function shortName(approval: DocumentApproval): string | undefined {
   const { document } = approval;
@@ -118,7 +114,6 @@ export function DocumentDecision({
   disabled = false,
   error,
   onYes,
-  onAlways,
   onNo,
   countdown,
 }: {
@@ -149,10 +144,8 @@ export function DocumentDecision({
   };
   const instruction = approval.instruction;
   const tool = approval.toolName ?? "";
-  const standing = STANDING_ASKS.has(tool);
   const decide = (decision: ToolApprovalDecision) => {
     if (decision.outcome === "rejected") onNo();
-    else if (standing && decision.scope === "always") onAlways();
     else onYes();
   };
   const sources = approval.sources ?? [];
@@ -184,11 +177,7 @@ export function DocumentDecision({
     );
   return (
     <ToolApproval
-      className={
-        standing
-          ? "document-decision"
-          : "document-decision document-decision-once"
-      }
+      className="document-decision document-decision-once"
       part={approvalToolPart(approval.approvalId, approval.outcome)}
       onDecide={decide}
       disabled={disabled}
