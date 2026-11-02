@@ -14,20 +14,21 @@ const DocumentKind = type(
   "'problem_brief' | 'constraints' | 'approaches' | 'product_requirements' | 'build_plan'",
 );
 const WritableArtifactKind = DocumentKind.or(
-  "'design' | 'design_option' | 'app'",
+  "'design' | 'design_option' | 'app' | 'deck'",
 );
 const content = type("string > 0").atMostLength(256 * 1024);
 export const DocumentContent = content;
 // A working weather app packed to about 270 KB of source.
 export const MAX_APP_BYTES = 1024 * 1024;
+export const MAX_DECK_BYTES = 4 * 1024 * 1024;
 
-// A filed app runs up to MAX_APP_BYTES, which the hub checks in bytes; it holds every other kind to
-// DocumentContent.
+// A filed deck runs up to MAX_DECK_BYTES and a filed app up to MAX_APP_BYTES, which the hub checks
+// in bytes; it holds every other kind to DocumentContent.
 export const ArtifactKindWrite = type({
   "+": "reject",
   kind: WritableArtifactKind,
   title: text,
-  content: type("string > 0").atMostLength(MAX_APP_BYTES),
+  content: "string > 0",
   "openQuestions?": OpenQuestions,
   "approaches?": ApproachesMeta,
 });
@@ -40,6 +41,16 @@ export const DocumentWrite = type({
   "openQuestions?": OpenQuestions,
   "approaches?": ApproachesMeta,
 });
+
+// A filed slide deck's content: the validated deck JSON alongside its rendered PowerPoint and PDF
+// binaries in base64, filed when check_deck passes so the deck survives after the sidecar ends.
+export const DeckBundle = type({
+  "+": "reject",
+  deck: "Record<string, unknown>",
+  pptxBase64: "string > 0",
+  pdfBase64: "string > 0",
+});
+export type DeckBundle = typeof DeckBundle.infer;
 
 // A design document's content: the designer's .builder files keyed by path, DESIGN.md and
 // designs/index.html among them.
