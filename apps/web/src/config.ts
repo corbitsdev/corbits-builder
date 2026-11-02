@@ -313,6 +313,21 @@ export const wording = {
     dropFiles: "Drop files to attach them",
     noCoordinator: "This project has no running coordinator.",
   },
+  /** The composer's placeholder when no approval is open. An open approval keeps approval.composerPlaceholder. */
+  composer: {
+    passAlong: (role: string) => `Ask the ${role}…`,
+    role: {
+      coordinator: "coordinator",
+      writer: "writer",
+      reviewer: "reviewer",
+      designer: "designer",
+      coder: "app builder",
+    },
+    change: "What needs to change…",
+    fix: "What needs fixing…",
+    making: "What are you making…",
+    reply: "What do you want to say…",
+  },
   /** What a person's move is waiting on, as the bell and gate name it. */
   wait: {
     permission: "The coordinator asks permission to continue",
