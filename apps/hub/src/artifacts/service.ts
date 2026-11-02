@@ -1,5 +1,5 @@
 import { stat } from "node:fs/promises";
-import { join } from "node:path";
+import { dirname, join } from "node:path";
 import { type } from "arktype";
 import { and, desc, eq, inArray, ne, sql } from "drizzle-orm";
 import { PostgresJsDatabase } from "drizzle-orm/postgres-js";
@@ -83,9 +83,11 @@ import {
   ProjectExportMaterial,
 } from "@corbits-builder/schemas/project";
 import JSZip from "jszip";
-import type {
-  AgentActivity,
-  ProjectActivity,
+import {
+  COMMAND_PROGRESS_FILE,
+  CommandProgress,
+  type AgentActivity,
+  type ProjectActivity,
 } from "@corbits-builder/schemas/activity";
 import {
   artifactApproval,
@@ -174,6 +176,8 @@ const APPROVAL_COVERS: Record<string, (kind: string) => boolean> = {
 // Whole documents, the filed app and approval package among them.
 const MAX_READ_CHARS = MAX_APPROVAL_PACKAGE_BYTES;
 const RECENT_FAILURES = 5;
+// A command's progress line older than this was left by a command that died; it is not shown.
+const COMMAND_PROGRESS_STALE_MS = 5 * 60_000;
 // A run held on an approval is mid-turn, so its activity reads as work; the pending record is what
 // says it waits on the person. Otherwise it is at work or parked between turns, which is idle.
 const inFlightState = (
@@ -865,6 +869,36 @@ export function createArtifactService(
     // or running between turns.
     async activity(actor: Actor, projectId: string): Promise<ProjectActivity> {
       await requireProject(actor, projectId, "read");
+      // What a long command the run executes last said about itself, from the file the sandbox
+      // keeps beside the workspace on this machine's sidecar. A command that died leaves its file
+      // behind, so a stale line is not shown.
+      const commandProgress = async (
+        address: string | null,
+        bundle: unknown,
+      ): Promise<CommandProgress | undefined> => {
+        if (!sidecarDataDir || address === null) return undefined;
+        const step = spawnedWorkflowStep(bundle);
+        if (!step) return undefined;
+        const file = join(
+          dirname(warmStepWorkspace(sidecarDataDir, address, step.stepId)),
+          COMMAND_PROGRESS_FILE,
+        );
+        // No file is the usual case: nothing long is running. A file caught mid-write reads as
+        // broken JSON for a moment and is read again on the next poll.
+        let raw: unknown;
+        try {
+          raw = await Bun.file(file).json();
+        } catch (error) {
+          if (hasCode(error) && error.code === "ENOENT") return undefined;
+          if (error instanceof SyntaxError) return undefined;
+          throw error;
+        }
+        const progress = CommandProgress(raw);
+        if (progress instanceof type.errors) return undefined;
+        if (Date.now() - Date.parse(progress.at) > COMMAND_PROGRESS_STALE_MS)
+          return undefined;
+        return progress;
+      };
       const agents: AgentActivity[] = [];
       const coordinator = await activeCoordinator(projectId);
       const seen = coordinator && tracker?.of(coordinator.runId);
@@ -879,6 +913,7 @@ export function createArtifactService(
       const specialists = await rawDB
         .select({
           runId: workflowRun.id,
+          address: workflowRun.address,
           bundle: workflowRunLaunchSpec.frozenApprovalBundle,
         })
         .from(workflowRun)
@@ -900,12 +935,14 @@ export function createArtifactService(
         // A finished specialist stays parked for follow-up mail; only a turn in progress is work,
         // timed from that turn's start rather than the run's deploy.
         if (!shown?.working || !shown.since) continue;
+        const command = await commandProgress(run.address, run.bundle);
         agents.push({
           runId: run.runId,
           role,
           since: shown.since,
           tools: shown.tools,
           ...(shown.said ? { said: shown.said } : {}),
+          ...(command ? { command } : {}),
         });
       }
       return { agents };
