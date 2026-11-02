@@ -5,49 +5,71 @@ import { type } from "arktype";
 import { workflowRunRepoIdForAddress } from "@intx/hub-sessions";
 import { hasCode } from "@intx/types";
 import { packApp } from "../builds/app-snapshot.ts";
+import {
+  spliceDesignScreens,
+  STARTER_HOME_SCREEN,
+  STARTER_INDEX,
+  STARTER_SPLICED_INDEX,
+} from "../builds/starter.ts";
 import { parseJson } from "../lib/json.ts";
 import { ProjectError } from "../projects/errors.ts";
 import { DESIGN_STYLES } from "./design-tweaks.ts";
-import { designStarterFiles } from "@corbits-builder/designer/skills" with { type: "macro" };
 
-const STARTER = designStarterFiles();
-const STARTER_HOME = STARTER[".builder/designs/screens/home.html"];
-const STARTER_PAGES = Object.entries(STARTER)
-  .filter(
-    ([path]) => path.startsWith(".builder/designs/") && path.endsWith(".html"),
-  )
-  .map(([path, text]) => [path.slice(".builder/".length), text] as const);
+const hasInlineNonHomeScreen = (index: string | undefined) => {
+  if (index === undefined) return false;
+  for (const match of index.matchAll(/data-screen=["']([^"']+)["']/g)) {
+    if (match[1] !== "home") return true;
+  }
+  return false;
+};
 
 // The starter's home.html stays on disk when a designer builds screens with other names; drop it
 // once another screen exists while home.html is still the starter's.
 export function withoutUnusedStarterHome(
   files: Record<string, string>,
 ): Record<string, string> {
-  if (
-    STARTER_HOME === undefined ||
-    files["designs/screens/home.html"] !== STARTER_HOME
-  )
-    return files;
-  const index = files["designs/index.html"];
+  const screens = Object.fromEntries(
+    Object.entries(files).filter(
+      ([path]) => path.startsWith("designs/screens/") && path.endsWith(".html"),
+    ),
+  );
+  const next =
+    files["designs/index.html"] !== undefined && Object.keys(screens).length > 0
+      ? {
+          ...files,
+          "designs/index.html": spliceDesignScreens(
+            files["designs/index.html"],
+            screens,
+          ),
+        }
+      : files;
+  if (next["designs/screens/home.html"] !== STARTER_HOME_SCREEN) return next;
+  const index = next["designs/index.html"];
   const hasOtherScreen =
-    Object.keys(files).some(
-      (path) =>
+    Object.entries(next).some(
+      ([path, content]) =>
         path.startsWith("designs/screens/") &&
         path.endsWith(".html") &&
-        path !== "designs/screens/home.html",
-    ) ||
-    (index !== undefined && /data-screen=/.test(index));
-  if (!hasOtherScreen) return files;
-  const { "designs/screens/home.html": _, ...rest } = files;
+        path !== "designs/screens/home.html" &&
+        content.trim().length > 0,
+    ) || hasInlineNonHomeScreen(index);
+  if (!hasOtherScreen) return next;
+  const { "designs/screens/home.html": _, ...rest } = next;
   return rest;
 }
 
 const isStarterPages = (files: Readonly<Record<string, string>>) => {
-  const pages = Object.keys(files).filter((path) => path.endsWith(".html"));
-  return (
-    pages.length === STARTER_PAGES.length &&
-    STARTER_PAGES.every(([path, text]) => files[path] === text)
+  const index = files["designs/index.html"];
+  if (index !== STARTER_INDEX && index !== STARTER_SPLICED_INDEX) return false;
+  const otherPages = Object.keys(files).filter(
+    (path) =>
+      path.endsWith(".html") &&
+      path !== "designs/index.html" &&
+      path !== "designs/screens/home.html",
   );
+  if (otherPages.length > 0) return false;
+  const home = files["designs/screens/home.html"];
+  return home === undefined || home === STARTER_HOME_SCREEN;
 };
 
 // A warm single-step agent's workspace lives at

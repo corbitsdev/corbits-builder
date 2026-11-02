@@ -364,7 +364,13 @@ const EMOJI = /\p{Emoji_Presentation}|\p{Extended_Pictographic}️/gu;
 // Prose in angle brackets, like <App name>; HTML tags carry attributes and code is stripped first.
 const PLACEHOLDER = /<[A-Za-z][^<>=`"]*\s[^<>=`"]*>/g;
 
-const STARTER_HOME_MARK = '<h1 data-testid="home-title">Hello, world</h1>';
+const STARTER_HOME_SCREEN = [
+  '<section data-screen="home" data-testid="screen-home">',
+  '  <div data-state="populated" data-testid="home-populated">',
+  '    <h1 data-testid="home-title">Hello, world</h1>',
+  "  </div>",
+  "</section>",
+].join("\n");
 
 function screenNameOf(path: string, html: string): string {
   const match = html.match(/data-screen=["']([^"']+)["']/);
@@ -391,7 +397,7 @@ function spliceScreens(index: string, entries: [string, string][]): string {
   const filtered = entries.filter(([path, html]) => {
     if (
       path === "screens/home.html" &&
-      html.includes(STARTER_HOME_MARK) &&
+      html.trim() === STARTER_HOME_SCREEN &&
       (entries.length > 1 || inline.size > 0)
     )
       return false;

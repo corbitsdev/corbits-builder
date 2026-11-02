@@ -2,6 +2,7 @@ import { expect, test } from "bun:test";
 import {
   mkdir,
   mkdtemp,
+  readFile,
   realpath,
   rm,
   stat,
@@ -35,7 +36,11 @@ import {
   touchesDesigns,
 } from "../builds/design-check.ts";
 import { designPath, type CodingSidecarEnv } from "../builds/sidecar-tools.ts";
-import { prepareWorkspace } from "../builds/starter.ts";
+import {
+  prepareWorkspace,
+  spliceDesignScreens,
+  syncDesignScreensOnDisk,
+} from "../builds/starter.ts";
 import {
   compactingDirector,
   dropDegenerateTurn,
@@ -65,7 +70,10 @@ test("the draft serves only regular files inside .builder/designs", async () => 
       '<section data-screen="list"><h1>List</h1></section>',
     );
     expect(await readDesignDraft(workspace)).toEqual({
-      "designs/index.html": STARTER[".builder/designs/index.html"]!,
+      "designs/index.html": spliceDesignScreens(
+        STARTER[".builder/designs/index.html"]!,
+        { "list.html": '<section data-screen="list"><h1>List</h1></section>' },
+      ),
       "designs/screens/list.html":
         '<section data-screen="list"><h1>List</h1></section>',
       "designs/styles.css": STARTER[".builder/designs/styles.css"]!,
@@ -84,7 +92,9 @@ test("the draft serves only regular files inside .builder/designs", async () => 
     await symlink(join(outside, "secret.txt"), join(designs, "secret.txt"));
     await symlink(outside, join(designs, "home"));
     expect(await readDesignDraft(workspace)).toEqual({
-      "designs/index.html": "<p>mockup</p>",
+      "designs/index.html": spliceDesignScreens("<p>mockup</p>", {
+        "list.html": "<p>list</p>",
+      }),
       "designs/screens/list.html": "<p>list</p>",
     });
 
@@ -403,6 +413,7 @@ test("designer agent writes per-screen files, is held by checkBeforeDone until c
                 }
               : rawCall;
           if (call.name === CHECK_DESIGN_TOOL) {
+            await syncDesignScreensOnDisk(workspace);
             const { checklist } = await check.current(signal);
             return { callId: call.id, content: checklist };
           }
@@ -412,8 +423,10 @@ test("designer agent writes per-screen files, is held by checkBeforeDone until c
             !result.isError &&
             typeof path === "string" &&
             touchesDesigns(workspace, path)
-          )
+          ) {
+            await syncDesignScreensOnDisk(workspace);
             check.changed();
+          }
           return result;
         },
         dispose: async () => {
@@ -619,6 +632,11 @@ test("designer agent writes per-screen files, is held by checkBeforeDone until c
 
     const draft = await readDesignDraft(workspace);
     expect(draft?.["designs/screens/home.html"]).toBeUndefined();
+    expect(draft?.["designs/index.html"]).toContain(
+      "<!-- builder:screens:start -->",
+    );
+    expect(draft?.["designs/index.html"]).toContain('data-screen="overview"');
+    expect(draft?.["designs/index.html"]).toContain('data-screen="orders"');
     expect(draft?.["designs/screens/overview.html"]).toContain(
       'data-screen="overview"',
     );
@@ -626,8 +644,20 @@ test("designer agent writes per-screen files, is held by checkBeforeDone until c
       'data-screen="orders"',
     );
 
+    const diskIndex = await readFile(
+      join(workspace, ".builder", "designs", "index.html"),
+      "utf8",
+    );
+    expect(diskIndex).toContain("<!-- builder:screens:start -->");
+    expect(diskIndex).toContain('data-screen="overview"');
+    expect(diskIndex).toContain('data-screen="orders"');
+    expect(diskIndex).toContain("<!-- builder:screens:end -->");
+
     const parsed = DesignBundle.assert(JSON.parse(filedBody!.content));
     expect(parsed.files["designs/screens/home.html"]).toBeUndefined();
+    expect(parsed.files["designs/index.html"]).toContain(
+      "<!-- builder:screens:start -->",
+    );
     expect(parsed.files["designs/screens/overview.html"]).toContain(
       'data-screen="overview"',
     );
@@ -639,5 +669,37 @@ test("designer agent writes per-screen files, is held by checkBeforeDone until c
     await agent.close();
     check.dispose();
     await rm(root, { recursive: true, force: true });
+  }
+});
+
+test("readDesignDraft serves spliced index.html whether synced on disk or packed on read", async () => {
+  const workspace = await mkdtemp(join(tmpdir(), "sb-design-sync-"));
+  const designs = join(workspace, ".builder", "designs");
+  try {
+    for (const [path, text] of Object.entries(STARTER)) {
+      const target = join(workspace, path);
+      await mkdir(dirname(target), { recursive: true });
+      await writeFile(target, text);
+    }
+    await syncDesignScreensOnDisk(workspace);
+    expect(await readDesignDraft(workspace)).toBeUndefined();
+
+    await writeFile(
+      join(designs, "screens", "place.html"),
+      '<section data-screen="place"><h1>Places</h1></section>',
+    );
+    const beforeSync = await readDesignDraft(workspace);
+    await syncDesignScreensOnDisk(workspace);
+    const afterSync = await readDesignDraft(workspace);
+
+    expect(afterSync).toEqual(beforeSync);
+    expect(afterSync?.["designs/screens/home.html"]).toBeUndefined();
+    expect(afterSync?.["designs/index.html"]).toContain(
+      "<!-- builder:screens:start -->",
+    );
+    expect(afterSync?.["designs/index.html"]).toContain('data-screen="place"');
+    expect(afterSync?.["designs/index.html"]).not.toContain("Hello, world");
+  } finally {
+    await rm(workspace, { recursive: true, force: true });
   }
 });

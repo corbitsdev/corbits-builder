@@ -98,7 +98,13 @@ export function parseBundle(content: string): Record<string, string> | null {
 }
 
 const SCREEN_PREFIX = "designs/screens/";
-const STARTER_HOME_MARK = '<h1 data-testid="home-title">Hello, world</h1>';
+const STARTER_HOME_SCREEN = [
+  '<section data-screen="home" data-testid="screen-home">',
+  '  <div data-state="populated" data-testid="home-populated">',
+  '    <h1 data-testid="home-title">Hello, world</h1>',
+  "  </div>",
+  "</section>",
+].join("\n");
 
 function screenNameOf(path: string, html: string): string {
   const match = html.match(/data-screen=["']([^"']+)["']/);
@@ -128,7 +134,7 @@ function screenFragments(files: DesignFiles, page: string): string {
   const filtered = raw.filter(([path, html]) => {
     if (
       path === "designs/screens/home.html" &&
-      html.includes(STARTER_HOME_MARK) &&
+      html.trim() === STARTER_HOME_SCREEN &&
       (raw.length > 1 || inline.size > 0)
     )
       return false;

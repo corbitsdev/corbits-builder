@@ -30,8 +30,13 @@ describe("device preview", () => {
     const rendered = firstPage({
       "designs/index.html":
         '<nav><a href="#/overview">Overview</a><a href="#/orders">Orders</a></nav><main class="app-main"></main>',
-      "designs/screens/home.html":
-        '<section data-screen="home"><h1 data-testid="home-title">Hello, world</h1></section>',
+      "designs/screens/home.html": [
+        '<section data-screen="home" data-testid="screen-home">',
+        '  <div data-state="populated" data-testid="home-populated">',
+        '    <h1 data-testid="home-title">Hello, world</h1>',
+        "  </div>",
+        "</section>",
+      ].join("\n"),
       "designs/screens/orders.html":
         '<section data-screen="orders"><h1>Orders</h1></section>',
       "designs/screens/overview.html":
@@ -44,6 +49,26 @@ describe("device preview", () => {
     expect(rendered.indexOf('data-screen="orders"')).toBeLessThan(
       rendered.indexOf("</main>"),
     );
+  });
+
+  test("keeps a home screen that retains the starter heading and adds copy", () => {
+    const rendered = firstPage({
+      "designs/index.html":
+        '<nav><a href="#/home">Home</a><a href="#/orders">Orders</a></nav><main class="app-main"></main>',
+      "designs/screens/home.html": [
+        '<section data-screen="home" data-testid="screen-home">',
+        '  <div data-state="populated" data-testid="home-populated">',
+        '    <h1 data-testid="home-title">Hello, world</h1>',
+        "    <p>Welcome back to the studio.</p>",
+        "  </div>",
+        "</section>",
+      ].join("\n"),
+      "designs/screens/orders.html":
+        '<section data-screen="orders"><h1>Orders</h1></section>',
+    });
+    expect(rendered).toContain('data-screen="home"');
+    expect(rendered).toContain("Welcome back to the studio.");
+    expect(rendered).toContain('data-screen="orders"');
   });
 
   test("wraps a screen file that omits data-screen or includes a body tag", () => {

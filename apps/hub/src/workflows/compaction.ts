@@ -344,9 +344,9 @@ function taskCalls(turns: readonly ConversationTurn[]) {
 function unchecked(turns: readonly ConversationTurn[]): boolean {
   for (const call of taskCalls(turns)) {
     if (call.name === "run_shell" && /check-app/.test(call.command))
-      return !/check passed/.test(call.result);
+      return call.isError || !/check passed/.test(call.result);
     if (call.name === CHECK_DESIGN_TOOL)
-      return !/check passed/.test(call.result);
+      return call.isError || !/check passed/.test(call.result);
     if (call.name === "file_design_option") return call.isError;
     if (
       WRITE_TOOLS.has(call.name) ||
@@ -357,14 +357,43 @@ function unchecked(turns: readonly ConversationTurn[]): boolean {
   return false;
 }
 
+const filed = (call: ReturnType<typeof taskCalls>[number]) =>
+  !call.isError &&
+  (call.name === "write_artifact" ||
+    call.name === "file_package" ||
+    call.name === "file_design_option" ||
+    (call.name === CHECK_DESIGN_TOOL &&
+      /Filed design_option:/.test(call.result)));
+
 // A writer on 2026-10-30 replied with the whole approaches document as text and never filed it;
-// the coordinator waited on a writer that had already answered.
-const unfiled = (turns: readonly ConversationTurn[]) =>
-  !taskCalls(turns).some(
-    (call) =>
-      (call.name === "write_artifact" || call.name === "file_package") &&
-      !call.isError,
-  );
+// the coordinator waited on a writer that had already answered. A designer's reply also waits for a
+// filed design option after the last file change. A presenter files the approval package with
+// file_package.
+function unfiled(turns: readonly ConversationTurn[]): boolean {
+  for (const call of taskCalls(turns)) {
+    if (filed(call)) return false;
+    if (
+      WRITE_TOOLS.has(call.name) ||
+      (call.name === "run_shell" && SHELL_WRITE.test(call.command))
+    )
+      return true;
+  }
+  return true;
+}
+
+function holdReply(
+  config: { checkBeforeDone?: boolean; fileBeforeDone?: boolean },
+  turns: readonly ConversationTurn[],
+): string | undefined {
+  if (config.checkBeforeDone && unchecked(turns))
+    return "Files changed after the last passing check-app, so the work is not done yet.";
+  if (config.fileBeforeDone && unfiled(turns)) {
+    if (config.checkBeforeDone)
+      return "The design option is not filed yet; check_design or file_design_option files it.";
+    return "The document is not filed yet; write_artifact files it.";
+  }
+  return undefined;
+}
 
 /**
  * The default director, plus these rules. Once a turn's input passes compactAt of the model's context
@@ -476,12 +505,9 @@ export const compactingDirector = (packageName: string) =>
             const replying = !event.turn.content.some(
               (block) => block.type === "tool_call",
             );
-            const notDone =
-              replying && config.checkBeforeDone && unchecked(state.turns)
-                ? "Files changed after the last passing check-app, so the work is not done yet."
-                : replying && config.fileBeforeDone && unfiled(state.turns)
-                  ? "The document is not filed yet; write_artifact files it."
-                  : undefined;
+            const notDone = replying
+              ? holdReply(config, state.turns)
+              : undefined;
             if (notDone) {
               uncheckedReplies += 1;
               if (uncheckedReplies <= MAX_UNCHECKED_REPLIES) {

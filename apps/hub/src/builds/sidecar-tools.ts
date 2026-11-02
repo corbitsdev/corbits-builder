@@ -22,6 +22,7 @@ import {
   WATCH_PAGE,
   prepareWorkspace,
   sharedBrowser,
+  syncDesignScreensOnDisk,
 } from "./starter.ts";
 import {
   fileApp,
@@ -534,6 +535,7 @@ export function createSidecarCodingTools(policy: {
           if (design && call.name === CHECK_DESIGN_TOOL) {
             await open(signal);
             if (!designCheck) throw new Error("design_check_missing");
+            await syncDesignScreensOnDisk(await realpath(env.toolCwd));
             const { checklist } = await designCheck.current(signal);
             return { callId: call.id, content: checklist };
           }
@@ -567,23 +569,19 @@ export function createSidecarCodingTools(policy: {
           const path = call.arguments["path"];
           const executor = await sandbox;
           if (WRITES.has(call.name) && typeof path === "string") {
+            const workspace = await realpath(env.toolCwd);
             if (policy.packageInstall)
               notes.push(await installImports(call, path, signal));
             // After the import scan, so a package it installed resolves.
             if (policy.workspace === "app" && executor)
               notes.push(
-                await typeProbe(
-                  executor,
-                  await realpath(env.toolCwd),
-                  path,
-                  call.id,
-                  signal,
-                ),
+                await typeProbe(executor, workspace, path, call.id, signal),
               );
+            if (touchesDesigns(workspace, path))
+              await syncDesignScreensOnDisk(workspace);
             if (designCheck) {
               notes.push(await designCheck.unheard());
-              if (touchesDesigns(await realpath(env.toolCwd), path))
-                designCheck.changed();
+              if (touchesDesigns(workspace, path)) designCheck.changed();
             }
           }
           if (call.name === PACKAGE_INSTALL_TOOL && succeeded(result))
