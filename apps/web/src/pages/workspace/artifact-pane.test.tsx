@@ -2,6 +2,7 @@ import { describe, expect, test } from "bun:test";
 import { renderToStaticMarkup } from "react-dom/server";
 import type { ProjectArtifact } from "@corbits-builder/client";
 import { ArtifactPane } from "./artifact-pane.tsx";
+import { APPROVAL_PACKAGE_MEDIA_TYPE } from "./approval-package-preview.tsx";
 import type { DeliverableState } from "./deliverable-block.tsx";
 
 type Deliverable = ProjectArtifact;
@@ -124,5 +125,56 @@ describe("persistent artifact pane", () => {
         retryable: true,
       }),
     ).toContain("Retained content unavailable");
+  });
+  test("renders approval_package deliverable with Approval package tab and slides view", () => {
+    if (document.status !== "ready") throw new Error("invalid fixture");
+    const pkgDeliverable: Deliverable = {
+      artifactId: "pkg-1",
+      kind: "approval_package",
+      title: "Executive Sign-off Package",
+      version: 1,
+      sha256: "b".repeat(64),
+    };
+    const bundleContent = JSON.stringify({
+      manifest: {
+        audience: "Board",
+        decisionNeeded: "Approve launch",
+        tone: "Concise",
+        length: "3 slides",
+        sources: [
+          {
+            artifactId: "11111111-1111-4111-8111-111111111111",
+            kind: "problem_brief",
+            title: "Problem brief",
+            version: 2,
+            sha256: "a".repeat(64),
+          },
+        ],
+      },
+      deck: {
+        slides: [
+          {
+            layout: "title",
+            title: "Launch Readiness",
+            subtitle: "Summary of approved scope",
+          },
+        ],
+      },
+      pptxBase64: Buffer.from("pptx").toString("base64"),
+      pdfBase64: Buffer.from("pdf").toString("base64"),
+    });
+    const html = render(pkgDeliverable, {
+      status: "ready",
+      document: {
+        ...document.document,
+        title: "Executive Sign-off Package",
+        mediaType: APPROVAL_PACKAGE_MEDIA_TYPE,
+        version: 1,
+        content: bundleContent,
+      },
+    });
+    expect(html).toContain(">Approval package<");
+    expect(html).toContain("Launch Readiness");
+    expect(html).toContain("Summary of approved scope");
   });
 });

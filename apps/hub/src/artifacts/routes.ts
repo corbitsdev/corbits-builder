@@ -24,6 +24,7 @@ import {
   DesignTweaks,
   DesignTweaksReceipt,
   LiveApp,
+  MAX_APPROVAL_PACKAGE_BYTES,
   MaterialReceipt,
 } from "@corbits-builder/schemas/artifact";
 import { ProjectActivity } from "@corbits-builder/schemas/activity";
@@ -123,6 +124,10 @@ export function mountArtifactRoutes(
   );
   app.post(
     "/:projectId/artifacts",
+    bodyLimit({
+      maxSize: MAX_APPROVAL_PACKAGE_BYTES + 1024 * 1024,
+      onError: (c) => c.json({ code: "artifact_too_large" }, 413),
+    }),
     describeRoute({
       tags: ["Artifacts"],
       operationId: "writeProjectArtifact",

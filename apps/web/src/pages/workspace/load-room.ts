@@ -18,6 +18,7 @@ import {
 } from "../../api/conversation.ts";
 import { keys } from "../../queries/keys.ts";
 import { documentReadFailure } from "./document-read.ts";
+import { APPROVAL_PACKAGE_MEDIA_TYPE } from "./approval-package-preview.tsx";
 import { DESIGN_MEDIA_TYPE } from "./design-preview.tsx";
 import { humanFault } from "./human-fault.ts";
 import type {
@@ -93,6 +94,13 @@ export function roomSnapshotReady(
   return true;
 }
 
+function deliverableMediaType(kind: string, content: string): string {
+  if (DESIGN_KINDS.has(kind)) return DESIGN_MEDIA_TYPE;
+  if (kind === "approval_package") return APPROVAL_PACKAGE_MEDIA_TYPE;
+  if (kind === MATERIAL_KIND) return materialMediaType(content);
+  return "text/markdown";
+}
+
 async function loadDeliverable(
   projectId: string,
   source: ProjectArtifact,
@@ -123,11 +131,7 @@ async function loadDeliverable(
       historyError = humanFault(cause, "Earlier versions are not available.");
     }
   }
-  const mediaType = DESIGN_KINDS.has(source.kind)
-    ? DESIGN_MEDIA_TYPE
-    : source.kind === MATERIAL_KIND
-      ? materialMediaType(current.content)
-      : "text/markdown";
+  const mediaType = deliverableMediaType(source.kind, current.content);
   return {
     title: current.title,
     mediaType,

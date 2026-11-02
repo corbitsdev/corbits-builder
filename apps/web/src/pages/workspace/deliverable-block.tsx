@@ -9,6 +9,12 @@ import { useRef, useState } from "react";
 import { Button, CsvTable, ShimmerText } from "@corbits/react-ui";
 import { Markdown } from "../../markdown.jsx";
 import {
+  APPROVAL_PACKAGE_MEDIA_TYPE,
+  ApprovalPackagePreview,
+  approvalPackagePdfFile,
+  parseApprovalPackage,
+} from "./approval-package-preview.tsx";
+import {
   DESIGN_MEDIA_TYPE,
   DesignPreview,
   parseBundle,
@@ -62,9 +68,19 @@ export type DeliverableState =
 function mediaKind(
   mediaType: string,
   title: string,
-): "html" | "design" | "json" | "prose" | "sheet" | "text" | "image" | "file" {
+):
+  | "html"
+  | "design"
+  | "approval_package"
+  | "json"
+  | "prose"
+  | "sheet"
+  | "text"
+  | "image"
+  | "file" {
   if (mediaType === "text/html") return "html";
   if (mediaType === DESIGN_MEDIA_TYPE) return "design";
+  if (mediaType === APPROVAL_PACKAGE_MEDIA_TYPE) return "approval_package";
   if (mediaType === "application/json") return "json";
   if (mediaType === "text/markdown") return "prose";
   // A material is titled with its file name; a CSV that is not UTF-8 is a data: URL, so it stays a file.
@@ -310,6 +326,16 @@ function ReadyDocument({
         prepare: "shown",
         build: async () => ({ file: await zipFile(stem, design) }),
       };
+    if (kind === "approval_package" && afterText !== null) {
+      const pkg = parseApprovalPackage(afterText);
+      if (pkg !== null) {
+        return shownFile(
+          approvalPackagePdfFile(stem, pkg),
+          wording.paneFile.downloadPackagePdf,
+          wording.paneFile.sharePackagePdf,
+        );
+      }
+    }
     if (kind === "sheet" && afterText !== null)
       return shownFile(
         csvFile(stem, afterText),
@@ -327,6 +353,7 @@ function ReadyDocument({
       canCompare:
         predecessor !== null &&
         !comparing &&
+        kind !== "approval_package" &&
         kind !== "image" &&
         kind !== "file",
       onView: selectVersion,
@@ -357,6 +384,8 @@ function ReadyDocument({
           trailing={barGroups}
         />
       );
+    if (kind === "approval_package")
+      return <ApprovalPackagePreview content={body} stem={stem} />;
     if (kind === "sheet")
       return <CsvTable text={body} caption={title} interactive />;
     if (kind === "json" || kind === "text")

@@ -12,8 +12,10 @@ import {
   ArtifactList,
   ArtifactRead,
   ArtifactReceipt,
+  MAX_APPROVAL_PACKAGE_BYTES,
 } from "@corbits-builder/schemas/artifact";
 import type { WorkflowRole } from "@corbits-builder/schemas/installed-workflows";
+import { stripApprovalPackageBinaries } from "./approval-package.ts";
 import { unpackDesign } from "./design-tools.ts";
 import {
   projectScopeFailure,
@@ -25,7 +27,7 @@ interface ArtifactToolEnv extends BaseEnv {
   capabilities: RuntimeCapabilities;
 }
 
-const MAX_RESULT_BYTES = 300 * 1024;
+const MAX_RESULT_BYTES = MAX_APPROVAL_PACKAGE_BYTES + 256 * 1024;
 
 // A deployed agent keeps the tool bundle it started with while the hub moves on; a field a newer
 // hub adds must not fail every read of an older agent.
@@ -194,20 +196,27 @@ export function createArtifactTools(
                 }),
               };
             }
+            const prepared =
+              document.kind === "approval_package"
+                ? {
+                    ...document,
+                    content: stripApprovalPackageBinaries(document.content),
+                  }
+                : document;
             const parts = Math.max(
               1,
-              Math.ceil(document.content.length / PART_CHARS),
+              Math.ceil(prepared.content.length / PART_CHARS),
             );
             const part = Math.min(input.part ?? 1, parts);
             if (parts === 1)
-              return { callId: call.id, content: JSON.stringify(document) };
+              return { callId: call.id, content: JSON.stringify(prepared) };
             return {
               callId: call.id,
               content: JSON.stringify({
-                ...document,
+                ...prepared,
                 part,
                 parts,
-                content: document.content.slice(
+                content: prepared.content.slice(
                   (part - 1) * PART_CHARS,
                   part * PART_CHARS,
                 ),
