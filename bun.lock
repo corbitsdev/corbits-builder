@@ -47,6 +47,7 @@
         "@corbits-builder/presenter": "workspace:*",
         "@corbits-builder/schemas": "workspace:*",
         "@corbits-builder/writer": "workspace:*",
+        "@corbits/slidedeck": "workspace:*",
         "@emulators/core": "0.12.3",
         "@emulators/google": "0.12.3",
         "@intx/sidecar-app": "workspace:*",

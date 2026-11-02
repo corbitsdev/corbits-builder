@@ -1,10 +1,26 @@
+import { createHash } from "node:crypto";
 import { readFile, readdir } from "node:fs/promises";
 import { join, relative, resolve } from "node:path";
 import type { ApproachesMeta } from "@corbits-builder/schemas/approaches";
 import type {
-  AppBundle,
-  DesignBundle as DesignBundleType,
+  ExpiryPreset,
+  ReviewerDecision,
+  TriageItemStatus,
+} from "@corbits-builder/schemas/approval-round";
+import {
+  ApprovalPackageBundle,
+  type AppBundle,
+  type ApprovalPackageBundle as ApprovalPackageBundleType,
+  type ApprovalPackageSource,
+  type DesignBundle as DesignBundleType,
 } from "@corbits-builder/schemas/artifact";
+import { base64Encode } from "@intx/types";
+import {
+  checkDeck,
+  validateDeck,
+  writeDeckPdf,
+  writePptx,
+} from "@corbits/slidedeck";
 
 export const SEED_STAGES = [
   "idea",
@@ -35,6 +51,41 @@ export type SeedDesignOptionMetadata = Readonly<{
   path: string;
 }>;
 
+export type SeedApprovalPackageMetadata = Readonly<{
+  title: string;
+  audience: string;
+  decisionNeeded: string;
+  tone: string;
+  length: string;
+  deckPath: string;
+}>;
+
+export type SeedApprovalReviewerMetadata = Readonly<{
+  id: string;
+  name: string;
+  persona: string;
+  email?: string;
+  goal?: string;
+  decision?: ReviewerDecision;
+}>;
+
+export type SeedApprovalTriageMetadata = Readonly<{
+  itemId: string;
+  reviewerId: string;
+  reviewerName: string;
+  persona: string;
+  slide?: number;
+  text: string;
+  status: TriageItemStatus;
+  reply?: string;
+}>;
+
+export type SeedApprovalRoundMetadata = Readonly<{
+  expiry: ExpiryPreset;
+  reviewers: readonly SeedApprovalReviewerMetadata[];
+  triage: readonly SeedApprovalTriageMetadata[];
+}>;
+
 export type SeedProjectMetadata = Readonly<{
   slug: SeedFixtureId;
   id: SeedFixtureId;
@@ -59,6 +110,8 @@ export type SeedProjectMetadata = Readonly<{
   }>;
   designOptions: readonly [SeedDesignOptionMetadata, SeedDesignOptionMetadata];
   app: Readonly<{ path: string }>;
+  approvalPackage?: SeedApprovalPackageMetadata;
+  approvalRound?: SeedApprovalRoundMetadata;
 }>;
 
 export type SeedDesignOptionFixture = Readonly<{
@@ -66,6 +119,11 @@ export type SeedDesignOptionFixture = Readonly<{
   title: string;
   direction: string;
   bundle: DesignBundleType;
+}>;
+
+export type SeedApprovalPackageFixture = Readonly<{
+  title: string;
+  bundle: ApprovalPackageBundleType;
 }>;
 
 export type SeedProjectFixture = Readonly<{
@@ -92,6 +150,8 @@ export type SeedProjectFixture = Readonly<{
   }>;
   designOptions: readonly [SeedDesignOptionFixture, SeedDesignOptionFixture];
   app: AppBundle;
+  approvalPackage?: SeedApprovalPackageFixture;
+  approvalRound?: SeedApprovalRoundMetadata;
 }>;
 
 export const DEFAULT_SEED_ROOT = resolve(import.meta.dir);
@@ -154,6 +214,104 @@ async function loadDesignOptionBundle(
   return { files: bundleFiles };
 }
 
+function sha256Hex(content: string): string {
+  return createHash("sha256").update(content).digest("hex");
+}
+
+async function loadApprovalPackageFixture(
+  projectDir: string,
+  metadata: SeedProjectMetadata,
+  pkgMeta: SeedApprovalPackageMetadata,
+  docs: SeedProjectFixture["documents"],
+): Promise<SeedApprovalPackageFixture> {
+  const deckRaw = await readFile(resolve(projectDir, pkgMeta.deckPath), "utf8");
+  const validated = validateDeck(JSON.parse(deckRaw));
+  if (!validated.ok) {
+    throw new Error(
+      `Invalid seed slide deck in ${projectDir}: ${JSON.stringify(validated.issues)}`,
+    );
+  }
+  const issues = checkDeck(validated.deck, new Map());
+  if (issues.length > 0) {
+    throw new Error(
+      `Seed slide deck check failed in ${projectDir}: ${JSON.stringify(issues)}`,
+    );
+  }
+  const pptxBytes = await writePptx(validated.deck, new Map());
+  const pdfBytes = writeDeckPdf(validated.deck, new Map());
+
+  const defaultSources: ApprovalPackageSource[] = [
+    {
+      artifactId: `seed-${metadata.id}-problem_brief`,
+      kind: "problem_brief",
+      title: docs.problem_brief.title,
+      version: 1,
+      sha256: sha256Hex(docs.problem_brief.content),
+    },
+    {
+      artifactId: `seed-${metadata.id}-constraints`,
+      kind: "constraints",
+      title: docs.constraints.title,
+      version: 1,
+      sha256: sha256Hex(docs.constraints.content),
+    },
+    {
+      artifactId: `seed-${metadata.id}-approaches`,
+      kind: "approaches",
+      title: docs.approaches.title,
+      version: 1,
+      sha256: sha256Hex(docs.approaches.content),
+    },
+    {
+      artifactId: `seed-${metadata.id}-product_requirements`,
+      kind: "product_requirements",
+      title: docs.product_requirements.title,
+      version: 1,
+      sha256: sha256Hex(docs.product_requirements.content),
+    },
+    {
+      artifactId: `seed-${metadata.id}-design`,
+      kind: "design",
+      title: docs.design.title,
+      version: 1,
+      sha256: sha256Hex(docs.design.content),
+    },
+    {
+      artifactId: `seed-${metadata.id}-build_plan`,
+      kind: "build_plan",
+      title: docs.build_plan.title,
+      version: 1,
+      sha256: sha256Hex(docs.build_plan.content),
+    },
+  ];
+
+  const bundle = ApprovalPackageBundle.assert({
+    manifest: {
+      audience: pkgMeta.audience,
+      decisionNeeded: pkgMeta.decisionNeeded,
+      tone: pkgMeta.tone,
+      length: pkgMeta.length,
+      sources: defaultSources,
+    },
+    deck: validated.deck as unknown as Record<string, unknown>,
+    pptxBase64: base64Encode(pptxBytes),
+    pdfBase64: base64Encode(pdfBytes),
+    documents: {
+      problem_brief: docs.problem_brief.content,
+      constraints: docs.constraints.content,
+      approaches: docs.approaches.content,
+      product_requirements: docs.product_requirements.content,
+      design: docs.design.content,
+      build_plan: docs.build_plan.content,
+    },
+  });
+
+  return {
+    title: pkgMeta.title,
+    bundle,
+  };
+}
+
 export async function loadSeedProjectFixture(
   id: SeedFixtureId,
   seedRootDir: string = DEFAULT_SEED_ROOT,
@@ -190,6 +348,44 @@ export async function loadSeedProjectFixture(
     readDirectoryFiles(resolve(projectDir, metadata.app.path)),
   ]);
 
+  const documents: SeedProjectFixture["documents"] = {
+    problem_brief: {
+      title: metadata.documents.problem_brief.title,
+      content: problemBriefContent,
+    },
+    constraints: {
+      title: metadata.documents.constraints.title,
+      content: constraintsContent,
+    },
+    approaches: {
+      title: metadata.documents.approaches.title,
+      content: approachesContent,
+      approaches: metadata.documents.approaches.approaches,
+    },
+    product_requirements: {
+      title: metadata.documents.product_requirements.title,
+      content: productRequirementsContent,
+    },
+    design: {
+      title: metadata.documents.design.title,
+      content: designContent,
+    },
+    build_plan: {
+      title: metadata.documents.build_plan.title,
+      content: buildPlanContent,
+    },
+  };
+
+  const approvalPackage =
+    metadata.approvalPackage === undefined
+      ? undefined
+      : await loadApprovalPackageFixture(
+          projectDir,
+          metadata,
+          metadata.approvalPackage,
+          documents,
+        );
+
   return {
     id: metadata.id,
     slug: metadata.slug,
@@ -200,33 +396,7 @@ export async function loadSeedProjectFixture(
     problemStatement: metadata.problemStatement,
     chosenConceptId: metadata.chosenConceptId,
     chosenDesignOption: metadata.chosenDesignOption,
-    documents: {
-      problem_brief: {
-        title: metadata.documents.problem_brief.title,
-        content: problemBriefContent,
-      },
-      constraints: {
-        title: metadata.documents.constraints.title,
-        content: constraintsContent,
-      },
-      approaches: {
-        title: metadata.documents.approaches.title,
-        content: approachesContent,
-        approaches: metadata.documents.approaches.approaches,
-      },
-      product_requirements: {
-        title: metadata.documents.product_requirements.title,
-        content: productRequirementsContent,
-      },
-      design: {
-        title: metadata.documents.design.title,
-        content: designContent,
-      },
-      build_plan: {
-        title: metadata.documents.build_plan.title,
-        content: buildPlanContent,
-      },
-    },
+    documents,
     designOptions: [
       {
         conceptId: metadata.designOptions[0].conceptId,
@@ -244,6 +414,10 @@ export async function loadSeedProjectFixture(
     app: {
       files: appFiles,
     },
+    ...(approvalPackage === undefined ? {} : { approvalPackage }),
+    ...(metadata.approvalRound === undefined
+      ? {}
+      : { approvalRound: metadata.approvalRound }),
   };
 }
 
