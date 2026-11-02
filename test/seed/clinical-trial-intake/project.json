@@ -1,0 +1,103 @@
+{
+  "slug": "clinical-trial-intake",
+  "id": "clinical-trial-intake",
+  "title": "Clinical Trial Patient Intake & Consent Portal",
+  "complexity": "complex",
+  "defaultStage": "ready_to_build",
+  "idea": "Build a clinical trial patient intake, multi-step eligibility screening, e-consent verification, and study coordinator review portal with protocol version tracking and an immutable audit trail.",
+  "problemStatement": "Build a clinical trial patient intake, multi-step eligibility screening, e-consent verification, and study coordinator review portal with protocol version tracking and an immutable audit trail.",
+  "chosenConceptId": "rounded-enterprise",
+  "chosenDesignOption": "Rounded enterprise",
+  "documents": {
+    "problem_brief": {
+      "title": "Problem Brief — Clinical Trial Patient Intake & Consent Portal",
+      "path": "docs/problem_brief.md"
+    },
+    "constraints": {
+      "title": "Constraints — Clinical Trial Patient Intake & Consent Portal",
+      "path": "docs/constraints.md"
+    },
+    "approaches": {
+      "title": "Approaches — Clinical Trial Patient Intake & Consent Portal",
+      "path": "docs/approaches.md",
+      "approaches": {
+        "recommended": "coordinator-workbench-ledger",
+        "approaches": [
+          {
+            "id": "coordinator-workbench-ledger",
+            "name": "Rule-Checked Coordinator Workbench & Audit Ledger",
+            "summary": "Structured screening checklist, IRB consent version tracker, PI review queue, and append-only audit log in one cohesive workbench.",
+            "bestFor": "Multi-site clinical coordinators who need immediate eligibility feedback and regulatory auditability.",
+            "pros": [
+              "Enforces inclusion, exclusion, and active IRB consent version rules before enrollment",
+              "Provides a dedicated PI sign-off queue for pending enrollments",
+              "Every state transition writes a queryable audit event automatically"
+            ],
+            "cons": [
+              "Requires relational schema across candidates, criteria responses, consents, and audit logs"
+            ],
+            "effort": "medium",
+            "risks": [
+              "Must clearly explain why enrollment is blocked when any single criterion or consent version fails"
+            ]
+          },
+          {
+            "id": "static-form-wizard",
+            "name": "Static Form Wizard with Manual Status",
+            "summary": "Free-text intake notes and manual status dropdowns without criterion-level validation.",
+            "bestFor": "Informal pre-screening contact lists.",
+            "pros": ["Minimal schema and fast initial implementation"],
+            "cons": [
+              "Allows accidental enrollment of candidates with failed exclusion criteria",
+              "Cannot detect outdated IRB consent versions automatically"
+            ],
+            "effort": "low",
+            "risks": ["High risk of protocol deviations during site audits"]
+          },
+          {
+            "id": "external-bpmn-engine",
+            "name": "External BPMN State Engine",
+            "summary": "Encode screening and consent workflows as external BPMN XML definitions.",
+            "bestFor": "Enterprise CROs integrating dozens of legacy hospital systems.",
+            "pros": ["Formal XML process diagrams"],
+            "cons": [
+              "Heavy infrastructure overhead and poor UI responsiveness for coordinators",
+              "Splits validation logic away from the application database"
+            ],
+            "effort": "high",
+            "risks": ["Schema drift between BPMN state variables and UI forms"]
+          }
+        ]
+      }
+    },
+    "product_requirements": {
+      "title": "Product Requirements — Clinical Trial Patient Intake & Consent Portal",
+      "path": "docs/product_requirements.md"
+    },
+    "design": {
+      "title": "Rounded enterprise",
+      "path": "docs/design.md"
+    },
+    "build_plan": {
+      "title": "Build Plan — Clinical Trial Patient Intake & Consent Portal",
+      "path": "docs/build_plan.md"
+    }
+  },
+  "designOptions": [
+    {
+      "conceptId": "rounded-enterprise",
+      "title": "Rounded enterprise",
+      "direction": "Calm clinical blue primary (#1d5bd6), generous 1rem card radii, soft cool-grey surfaces, and unmistakable semantic status badges for eligibility and consent gates.",
+      "path": "designs/rounded-enterprise"
+    },
+    {
+      "conceptId": "editorial",
+      "title": "Editorial",
+      "direction": "Warm parchment canvas (#faf7f2) with Georgia serif headings, ink-black primary actions, and document-grade typography suited to consent reading.",
+      "path": "designs/editorial"
+    }
+  ],
+  "app": {
+    "path": "app"
+  }
+}

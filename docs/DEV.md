@@ -91,8 +91,25 @@ real API ([CONTRIBUTING.md](https://github.com/corbitsdev/corbits-builder/blob/m
 | `bun run docker:sidecar`  | Builds the sidecar Docker image.                                                                                                 |
 | `bun run auth:bootstrap`  | Migrates and creates the `BOOTSTRAP_*` machine account and workspace.                                                            |
 | `bun run auth:emulate`    | Starts a loopback Google sign-in emulator (`GOOGLE_EMULATE_URL` in `.env.hub.example`).                                          |
+| `bun run dev:seed`        | Seeds dummy projects (`habit-tracker`, `field-service-dispatch`, `clinical-trial-intake`) at a chosen lifecycle stage.           |
 | `bun run vendor:verify`   | Checks `vendor/interchange` matches its pinned upstream commit.                                                                  |
 | `bun run skills:react-ui` | Regenerates the designer's `@corbits/react-ui` API reference.                                                                    |
+
+## Seeding dummy projects
+
+`bun run dev:seed` populates a workspace tenant (defaulting to the first
+workspace tenant in Postgres, or creating a local development workspace if the
+database is empty) with up to three realistic dummy projects across any stage
+(`idea`, `brief`, `planning`, `design_options`, `designed`, `ready_to_build`,
+`shipped`):
+
+```sh
+bun run dev:seed                                                      # all 3 fixtures at their default stages
+bun run dev:seed -- --fixture=habit-tracker --stage=planning          # single fixture with planning docs approved
+bun run dev:seed -- --fixture=field-service-dispatch --stage=planning --no-approve
+bun run dev:seed -- --fixture=clinical-trial-intake --stage=design_options
+bun run dev:seed -- --stage=ready_to_build --tenant=<workspaceTenantId>
+```
 
 ## Where things live
 

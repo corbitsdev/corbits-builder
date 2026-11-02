@@ -1,0 +1,81 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Field Service Dispatch Board</title>
+    <link rel="stylesheet" href="styles.css" />
+  </head>
+  <body>
+    <header
+      style="
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        padding: 12px 24px;
+        border-bottom: 1px solid var(--border);
+        background: var(--card);
+      "
+    >
+      <strong>NorthGrid Field Dispatch</strong>
+      <nav style="display: flex; gap: 12px">
+        <a href="#/dispatch">Dispatch Queue</a>
+        <a href="#/technicians">Technicians</a>
+      </nav>
+      <button type="button" data-theme-toggle>Theme</button>
+    </header>
+    <main
+      style="max-width: 1200px; margin: 0 auto; padding: 24px"
+      data-screen="dispatch"
+    >
+      <section data-state="populated">
+        <h1 data-testid="dispatch-title">Dispatch Queue</h1>
+        <div
+          data-testid="sla-alert-banner"
+          style="
+            padding: 12px 16px;
+            margin: 16px 0;
+            background: var(--warning);
+            color: var(--warning-foreground);
+            border-radius: var(--radius);
+          "
+        >
+          2 Emergency HVAC work orders breach SLA within 22 minutes
+        </div>
+        <div
+          data-testid="work-order-table"
+          style="
+            padding: 16px;
+            background: var(--card);
+            border: 1px solid var(--border);
+            border-radius: var(--radius-lg);
+          "
+        >
+          <p>
+            <strong>WO-4821</strong> · Mercy West Cold Storage · Chiller
+            Compressor Fault · SLA 18m
+          </p>
+          <p>
+            <strong>WO-4824</strong> · Harborview Logistics · Main Breaker Trip
+            · SLA 41m
+          </p>
+        </div>
+      </section>
+      <section data-state="empty" hidden>
+        <p>No active work orders match this filter.</p>
+      </section>
+    </main>
+    <section
+      style="max-width: 1200px; margin: 0 auto; padding: 24px"
+      data-screen="technicians"
+      hidden
+    >
+      <div data-state="populated">
+        <h1 data-testid="technicians-title">Technician Roster</h1>
+        <p data-testid="technicians-grid">
+          8 technicians on shift · 5 on site · 3 available
+        </p>
+      </div>
+    </section>
+  </body>
+</html>
