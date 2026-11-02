@@ -37,10 +37,10 @@ Commands, run from the root:
 
 `check-app` checks the app the way it ships. It takes up to two minutes. It:
 
-1. fails when `README.md` is missing, still the starter's placeholder, or names a local port or machine path, and, once a `docs/USER-MANUAL.md` is written, the same for the manual and when it shows no picture from `docs/manual/`;
+1. fails when `README.md` or `docs/USER-MANUAL.md` is missing, still the starter's placeholder, or names a local port or machine path, and when the manual shows no picture from `docs/manual/`, shows a picture of a page it did not open, or leaves an area of the app it opened without a picture;
 2. runs `bun run typecheck` and `bun run build`, then `bun run start` on a free `PORT`, and waits for the server to answer;
 3. opens `/` in a headless browser at 1280 px and 390 px, follows every same-origin link it finds, and loads each page by its own URL, the way a person opening a link or refreshing does;
-4. once a manual is written, saves a 1280 px picture of each page it opens as `docs/manual/<page>.png` (`/` is `home.png`, `/board/new` is `board-new.png`), draws each highlight the manual names, and lists every picture it saved;
+4. saves a 1280 px picture of each page it opens as `docs/manual/<page>.png` (`/` is `home.png`, `/board/new` is `board-new.png`), draws each highlight the manual names, and lists every picture it saved;
 5. fails on an uncaught error, a console error, a failed request or any response of 400 or more, a request that leaves the app, a page with no text, content wider than the screen, a highlighted element it cannot find, or a picture the manual shows that is not there after capture.
 
 It does not try features: confirm each requirement in the running app, against the acceptance checklist and the design.
@@ -49,14 +49,14 @@ The app's dev server runs while you build and reloads as files change; `app_stat
 
 ## The app's documents
 
-The app ships `README.md`, and a `docs/USER-MANUAL.md` when the person asks for one after the build. Both describe the app as built. Write them once the features work, and update them whenever a later change alters what they describe:
+The app ships `README.md` and `docs/USER-MANUAL.md`. Both describe the app as built. Write them once the features work and before you file the app, and update them whenever a later change alters what they describe; `check-app` fails a manual that has fallen behind the app:
 
 - `README.md`, for whoever installs and runs the app (an installer, a sysadmin, an IT person): what it is; how to run it in development and in deployment; every environment variable and any `.env` file, with what each value is and where it comes from; the seed file or first-run step, when there is one; what it needs from the systems around it (database, mail, accounts, network, credentials) and what must be declared or configured there; how to tell it is running; and how its code is laid out. A script the README or a `package.json` tells anyone to run directly starts with a shebang line and is committed executable (`chmod +x`, then `git add --chmod=+x`), so it runs as unpacked.
-- `docs/USER-MANUAL.md`, only when the person asks for it, for the people who use it, who are not developers: clear, plain, non-technical prose, one section per screen and per task, saying what the person sees and what to do. Illustrate it with the pictures `check-app` saves, each referenced with a caption: `![The board](manual/board.png)`. To point at the area or button a step refers to, reference a picture named after its page plus a word of your own, titled `highlight:` with a CSS selector and, after a bar, the text the element shows: `![Adding a card](manual/board.new-card.png "highlight: button | New card")`. `check-app` captures that page with a bright rounded outline and a short label around the first visible match.
+- `docs/USER-MANUAL.md`, for the people who use it, who are not developers: clear, plain, non-technical prose in standard American English, one section per screen and per task, saying what the person sees and what to do, never how the code works. Illustrate it with the pictures `check-app` saves, each referenced with a caption: `![The board](manual/board.png)`. To point at the area or button a step refers to, reference a picture named after its page plus a word of your own, titled `highlight:` with a CSS selector and, after a bar, the text the element shows: `![Adding a card](manual/board.new-card.png "highlight: button | New card")`. `check-app` captures that page with a bright rounded outline and a short label around the first visible match.
 
 `README.md` replaces the starter's placeholder. Both documents refer to "the address the server prints" for where the app runs.
 
-The app is done when every item of the build plan's acceptance checklist works in the running app, `ACCEPTANCE.md` records what you did and saw for each, `README.md` describes it, and `check-app` passes after the last change you made.
+The app is done when every item of the build plan's acceptance checklist works in the running app, `ACCEPTANCE.md` records what you did and saw for each, `README.md` and `docs/USER-MANUAL.md` describe it, and `check-app` passes after the last change you made.
 
 ## What stays as it is
 

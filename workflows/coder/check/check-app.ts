@@ -36,7 +36,7 @@ const staticRoot =
 const RULES = [
   {
     kind: "docs",
-    rule: "README.md describes this app, and a docs/USER-MANUAL.md, when written, describes it with pictures from docs/manual/",
+    rule: "README.md and docs/USER-MANUAL.md describe this app, the manual with pictures from docs/manual/",
     app: true,
   },
   {
@@ -92,7 +92,7 @@ const RULES = [
   },
   {
     kind: "manual",
-    rule: "every picture the manual shows exists after capture, and every element it highlights is found",
+    rule: "every picture the manual shows is of a page that was opened and exists after capture, every element it highlights is found, and every area of the app that was opened appears in the manual",
     app: true,
   },
 ].filter((rule) => rule.app === undefined || rule.app === !staticRoot);
@@ -287,6 +287,7 @@ const notes: Problem[] = [];
 const visited: string[] = [];
 const queue = ["/"];
 let pictures: Picture[] = [];
+let manualWritten = false;
 const saved: string[] = [];
 const drawn = new Set<string>();
 
@@ -572,8 +573,15 @@ if (staticRoot) {
   origin = `http://127.0.0.1:${files.port}`;
   stop = () => files.stop(true);
 } else {
-  // The user manual is a later step the person asks for, so the app is done without one.
-  const manualWritten = await Bun.file("docs/USER-MANUAL.md").exists();
+  // The manual is part of a finished app. Until it is written the rest of the check still runs and
+  // saves the pictures it will show, so its absence is reported here rather than stopping the run.
+  manualWritten = await Bun.file("docs/USER-MANUAL.md").exists();
+  if (!manualWritten)
+    problems.push({
+      kind: "docs",
+      detail:
+        "docs/USER-MANUAL.md is missing: the app ships a user manual for the people who use it, in plain language, with pictures from docs/manual/",
+    });
   for (const doc of manualWritten
     ? ["README.md", "docs/USER-MANUAL.md"]
     : ["README.md"]) {
@@ -612,11 +620,13 @@ if (staticRoot) {
       };
     })
     .filter(({ file }) => file.startsWith(MANUAL + sep));
+  // Reported, not stopped at: the run goes on to save the pictures the manual can then show.
   if (manualWritten && !pictures.length)
-    fail(
-      "docs",
-      "docs/USER-MANUAL.md shows no picture of the app from docs/manual/",
-    );
+    problems.push({
+      kind: "docs",
+      detail:
+        "docs/USER-MANUAL.md shows no picture of the app from docs/manual/",
+    });
   // Vite builds code that does not typecheck, so a pass would otherwise not mean the code compiles.
   for (const script of ["typecheck", "build"]) {
     const step = Bun.spawn(["bun", "run", script], {
@@ -862,8 +872,9 @@ while (queue.length && visited.length < MAX_PAGES && Date.now() < DEADLINE) {
       if (found.kind === "overlap") notes.push({ page, width, ...found });
       else report(found.kind, found.detail);
     queue.push(...facts.links.filter((link) => !visited.includes(link)));
-    if (!staticRoot && pictures.length && w === WIDTHS[0][0])
-      await capture(path);
+    // Every page's picture is saved whether or not the manual shows it yet, so writing the manual
+    // starts from pictures of the app as it is.
+    if (!staticRoot && w === WIDTHS[0][0]) await capture(path);
     if (staticRoot && visited.length === 1 && w === WIDTHS[0][0])
       for (const detail of await view.evaluate<string[]>(DEAD_CONTROLS_SCRIPT))
         report("dead controls", detail);
@@ -877,16 +888,39 @@ if (!visited.length)
     "no page was opened: the steps before the browser used up the 100 s time limit",
   );
 // A highlight capture either saved its picture or already reported why it could not.
+const openedSlugs = visited.map(slugOf);
+const pageOf = (picture: Picture) => basename(picture.file).split(".")[0]!;
 for (const picture of pictures)
   if (picture.highlight) {
     if (!drawn.has(picture.file))
       problems.push({
         kind: "manual",
-        detail: `${picture.file} highlights an element, but its name starts with no opened page's slug (${visited.map(slugOf).join(", ")})`,
+        detail: `${picture.file} highlights an element, but its name starts with no opened page's slug (${openedSlugs.join(", ")})`,
       });
-  } else if (!(await Bun.file(picture.file).exists()))
+  } else if (!openedSlugs.includes(pageOf(picture)))
+    // The manual follows the app: a picture of a page that is gone was left by an earlier version.
+    problems.push({
+      kind: "manual",
+      detail: `docs/USER-MANUAL.md shows ${picture.file}, but no opened page is named ${pageOf(picture)}; the page may have moved or gone (opened: ${openedSlugs.join(", ")})`,
+    });
+  else if (!(await Bun.file(picture.file).exists()))
     problems.push({
       kind: "manual",
       detail: `docs/USER-MANUAL.md shows ${picture.file}, which is not there; the pictures saved are ${saved.join(", ")}`,
     });
+// And an area of the app the manual never shows is a change it has not caught up with. An area is
+// a page's first path segment, so one picture covers every record a list opens onto.
+if (!staticRoot && manualWritten) {
+  const areaOf = (path: string) =>
+    slugOf(
+      new URL(path, "http://app").pathname.split("/").filter(Boolean)[0] ?? "/",
+    );
+  const shown = pictures.map(pageOf);
+  for (const area of new Set(visited.map(areaOf)))
+    if (!shown.some((page) => page === area || page.startsWith(`${area}-`)))
+      problems.push({
+        kind: "manual",
+        detail: `docs/USER-MANUAL.md shows no picture of ${area === "home" ? "the home page" : `the ${area} pages`}; a picture of each page opened is saved under docs/manual/`,
+      });
+}
 finish();

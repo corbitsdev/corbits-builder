@@ -44,6 +44,8 @@ const DEFAULT_LIVE_APP_WORKSPACE =
   join(REPO_ROOT, "data", "hub", "live-apps", "sb-4k5vv91vz", "workspace");
 
 const MAX_SCENARIO_BYTES = 2 * 1024 * 1024;
+const USER_MANUAL_PATH = "docs/USER-MANUAL.md";
+const USER_MANUAL_SOURCE = join(import.meta.dir, "weather-app-user-manual.md");
 
 const ZESTY_RUNS = {
   coordinatorDocs:
@@ -1406,6 +1408,13 @@ export async function extractWeatherAppFixture(options?: {
   };
 
   const appFiles = await loadWeatherAppSourceFiles(liveAppWorkspace);
+  // The app was recorded before a finished app shipped a user manual; the check now asks for one,
+  // so the coder writes it with the rest.
+  if (!appFiles.some((f) => f.path === USER_MANUAL_PATH))
+    appFiles.push({
+      path: USER_MANUAL_PATH,
+      content: await readFile(USER_MANUAL_SOURCE, "utf8"),
+    });
   const acceptanceFile = appFiles.find((f) => f.path === "ACCEPTANCE.md");
   if (!acceptanceFile) {
     throw new Error("Expected ACCEPTANCE.md in liveAppWorkspace");
