@@ -8,7 +8,7 @@
  * project keeps the bindings it started with, so a change here never alters a running project.
  */
 import { wording } from "../config.ts";
-import { Input, Section } from "@corbits/react-ui";
+import { Input, Section, Switch } from "@corbits/react-ui";
 import {
   Dialog,
   DialogBody,
@@ -19,7 +19,7 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@corbits/react-ui/ui/dialog";
-import { useEffect, useState } from "react";
+import { useEffect, useState, type FormEvent } from "react";
 import { useQueryClient } from "@tanstack/react-query";
 import type {
   CustomProfile,
@@ -285,14 +285,21 @@ export function Profiles({ initialField }: { initialField?: Field } = {}) {
           )}
           editing={editing}
           onClose={() => setEditing(null)}
-          onSave={async (profile) => {
+          replacing={editing.mode === "new" ? (active?.label ?? null) : null}
+          onSave={async (profile, makeDefault) => {
             const list =
               editing.mode === "edit"
                 ? custom.map((entry) =>
                     entry.id === profile.id ? profile : entry,
                   )
                 : [...custom, profile];
-            if (await save(choice(active?.id, list))) setEditing(null);
+            let profileId = field.value?.profile;
+            if (editing.mode === "new" && makeDefault) {
+              profileId = profile.id;
+            } else if (editing.mode === "new") {
+              profileId = active?.id ?? field.value?.profile;
+            }
+            if (await save(choice(profileId, list))) setEditing(null);
           }}
         />
       ) : null}
@@ -311,20 +318,24 @@ function ProfileEditor({
   catalog,
   profiles,
   editing,
+  replacing,
   onClose,
   onSave,
 }: {
   catalog: ModelCatalog;
   profiles: readonly Profile[];
   editing: Editing;
+  /** Label of the current default, when a new profile can replace it. */
+  replacing: string | null;
   onClose: () => void;
-  onSave: (profile: CustomProfile) => Promise<void>;
+  onSave: (profile: CustomProfile, makeDefault: boolean) => Promise<void>;
 }) {
   const [draft, setDraft] = useState<Draft>(
     editing.mode === "edit"
       ? { label: editing.profile.label, tiers: editing.profile.tiers }
       : { label: "", tiers: {} },
   );
+  const [makeDefault, setMakeDefault] = useState(false);
   const [busy, setBusy] = useState(false);
   const filled = complete(
     draft,
@@ -340,6 +351,30 @@ function ProfileEditor({
       tiers: { ...current.tiers, [tier]: binding },
     }));
 
+  async function submitProfile(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    if (!ready || busy || filled === null) return;
+    setBusy(true);
+    try {
+      await onSave(
+        {
+          id:
+            editing.mode === "edit"
+              ? editing.profile.id
+              : `custom_${crypto.randomUUID().replaceAll("-", "").slice(0, 12)}`,
+          label: draft.label.trim(),
+          tiers: filled,
+        },
+        replacing !== null && makeDefault,
+      );
+    } catch (cause) {
+      if (cause instanceof Error) throw cause;
+      throw new Error(message(cause), { cause });
+    } finally {
+      setBusy(false);
+    }
+  }
+
   return (
     <Dialog
       open
@@ -352,21 +387,7 @@ function ProfileEditor({
           </DialogTitle>
           <DialogDescription>{copy.editorLead}</DialogDescription>
         </DialogHeader>
-        <form
-          onSubmit={(event) => {
-            event.preventDefault();
-            if (!ready || busy) return;
-            setBusy(true);
-            void onSave({
-              id:
-                editing.mode === "edit"
-                  ? editing.profile.id
-                  : `custom_${crypto.randomUUID().replaceAll("-", "").slice(0, 12)}`,
-              label: draft.label.trim(),
-              tiers: filled,
-            }).finally(() => setBusy(false));
-          }}
-        >
+        <form onSubmit={submitProfile}>
           <DialogBody className="provider-form">
             {editing.mode === "new" ? (
               <div className="provider-field">
@@ -498,6 +519,19 @@ function ProfileEditor({
                 </fieldset>
               );
             })}
+            {replacing ? (
+              <div className="provider-field">
+                <DialogFieldLabel htmlFor="profile-replace-default">
+                  {copy.replaceDefault(replacing)}
+                </DialogFieldLabel>
+                <Switch
+                  id="profile-replace-default"
+                  checked={makeDefault}
+                  disabled={busy}
+                  onCheckedChange={setMakeDefault}
+                />
+              </div>
+            ) : null}
           </DialogBody>
           <DialogFooter>
             <Button variant="ghost" disabled={busy} onClick={onClose}>

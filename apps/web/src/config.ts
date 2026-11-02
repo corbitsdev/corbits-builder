@@ -1000,6 +1000,8 @@ export const wording = {
     model: (tier: string) => `${tier} model`,
     effort: (tier: string) => `${tier} effort`,
     pick: "Model profile",
+    replaceDefault: (name: string) =>
+      `Do you want to make this your new default profile? It will replace ${name}.`,
   },
   settings: {
     title: "Settings",
