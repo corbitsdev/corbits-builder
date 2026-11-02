@@ -305,3 +305,40 @@ export const customModelProvider = pgTable("sb_custom_model_provider", {
   // Its connection carries a placeholder in place of a key; the placeholder itself is never shown.
   keyless: boolean("keyless").notNull(),
 });
+
+// Sharing an approval package starts a review round in the hub without parking a long-lived
+// workflow on a sidecar. Reviewer decisions and triaged items stay here until the owner acts.
+export const approvalRound = pgTable(
+  "sb_approval_round",
+  {
+    id: text("id").primaryKey(),
+    tenantId: text("tenant_id")
+      .notNull()
+      .references(() => tenant.id),
+    projectId: text("project_id")
+      .notNull()
+      .references(() => project.id),
+    artifactId: text("artifact_id").notNull(),
+    packageVersion: integer("package_version").notNull(),
+    packageSha256: text("package_sha256").notNull(),
+    startedBy: text("started_by")
+      .notNull()
+      .references(() => principal.id),
+    expiryPreset: text("expiry_preset").notNull(),
+    expiresAt: timestamp("expires_at", { withTimezone: true }).notNull(),
+    settledAt: timestamp("settled_at", { withTimezone: true }),
+    reviewers: jsonb("reviewers").notNull(),
+    triage: jsonb("triage").notNull().default([]),
+    triggeredRunId: text("triggered_run_id"),
+    createdAt: timestamp("created_at", { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+  },
+  (t) => [
+    index("sb_approval_round_project_idx").on(
+      t.tenantId,
+      t.projectId,
+      t.createdAt,
+    ),
+  ],
+);

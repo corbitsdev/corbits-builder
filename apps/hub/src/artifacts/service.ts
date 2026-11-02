@@ -151,6 +151,10 @@ import {
   readProjectPackageSource,
   validateApprovalPackage,
 } from "./approval-package.ts";
+import {
+  createApprovalRoundService,
+  createPgApprovalRoundStore,
+} from "./approval-rounds.ts";
 import { requestErrorMetadata } from "../request-error.ts";
 
 const log = getLogger(["corbits-builder", "hub", "artifacts"]);
@@ -2181,5 +2185,9 @@ export function createArtifactService(
         );
       return { design, concept: stored.title };
     },
+
+    approvalRounds: createApprovalRoundService(
+      createPgApprovalRoundStore(rawDB),
+    ),
   };
 }

@@ -31,6 +31,7 @@ export type {
 export type {
   ApprovalScope,
   NativeApproval,
+  PackageZipReviewerQuery,
   ProductApiClient,
   ProductApiClientOptions,
   ProjectArtifact,
@@ -48,6 +49,25 @@ export type {
   AgentActivity,
   ProjectActivity,
 } from "@corbits-builder/schemas/activity";
+export type {
+  ApprovalReviewer,
+  ApprovalRound,
+  ApprovalRoundList,
+  ApprovalRoundStatus,
+  ExpiryPreset,
+  RecordReviewerDecision,
+  ReviewerDecision,
+  ReviewerInput,
+  ReviewerOutcome,
+  ReviewerState,
+  SlideNote,
+  StartApprovalRound,
+  TriageAction,
+  TriageDecisionInput,
+  TriageItem,
+  TriageItemStatus,
+  WorkspaceReviewer,
+} from "@corbits-builder/schemas/approval-round";
 export { ProductApiError };
 
 export function createProductApiClient(

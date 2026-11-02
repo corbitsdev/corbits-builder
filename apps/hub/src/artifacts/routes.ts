@@ -37,6 +37,7 @@ import { actorOf } from "../projects/authorization.ts";
 import { ProjectError } from "../projects/errors.ts";
 import { readJson } from "../lib/json.ts";
 import { mailRunAsCaller } from "../mail/caller-mail.ts";
+import { mountApprovalRoundRoutes } from "./approval-rounds.ts";
 import type { createArtifactService } from "./service.ts";
 
 const security = [
@@ -755,4 +756,5 @@ export function mountArtifactRoutes(
       );
     },
   );
+  mountApprovalRoundRoutes(app, service.approvalRounds);
 }

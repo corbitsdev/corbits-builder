@@ -60,6 +60,13 @@ import type {
   LiveApp,
   MaterialReceipt,
 } from "@corbits-builder/schemas/artifact";
+import type {
+  ApprovalRound,
+  ApprovalRoundList,
+  RecordReviewerDecision,
+  StartApprovalRound,
+  TriageDecisionInput,
+} from "@corbits-builder/schemas/approval-round";
 import type { ProjectActivity } from "@corbits-builder/schemas/activity";
 import type {
   LiveRunStates,
@@ -112,6 +119,13 @@ export type NativeApproval = {
 
 /** "always" turns the ask into a standing grant for the rest of the run (AUTH.md). */
 export type ApprovalScope = "once" | "always";
+
+export type PackageZipReviewerQuery = {
+  roundId?: string;
+  reviewerId?: string;
+  name?: string;
+  persona?: string;
+};
 
 /** One row of the artifact list route: the current version of a project document. */
 export type ProjectArtifact = {
@@ -516,6 +530,52 @@ export type ProductApiClient = Readonly<{
     message?: string,
     signal?: AbortSignal,
   ): Promise<MaterialReceipt>;
+  /** A filed approval_package version as a deterministic zip of its deck, PDF, README, manifest and documents. */
+  downloadPackageZip(
+    tenantId: string,
+    projectId: string,
+    version: number,
+    signalOrReviewer?: AbortSignal | PackageZipReviewerQuery,
+    signal?: AbortSignal,
+  ): Promise<{ filename: string; archive: Blob }>;
+  /** Every approval round of the project, newest first. */
+  approvalRounds(
+    tenantId: string,
+    projectId: string,
+    signal?: AbortSignal,
+  ): Promise<ApprovalRoundList>;
+  /** Approves the package version as the calling person and opens a review round. */
+  startApprovalRound(
+    tenantId: string,
+    projectId: string,
+    input: StartApprovalRound,
+    signal?: AbortSignal,
+  ): Promise<ApprovalRound>;
+  /** Records or amends one reviewer's decision on an open approval round. */
+  recordReviewerDecision(
+    tenantId: string,
+    projectId: string,
+    roundId: string,
+    reviewerId: string,
+    input: RecordReviewerDecision,
+    signal?: AbortSignal,
+  ): Promise<ApprovalRound>;
+  /** Marks the round settled once every reviewer decided or the round expired. */
+  settleApprovalRound(
+    tenantId: string,
+    projectId: string,
+    roundId: string,
+    signal?: AbortSignal,
+  ): Promise<ApprovalRound>;
+  /** Records the owner's triage decision on a reviewer feedback bullet, mailing the coordinator when incorporated. */
+  triageReviewerFeedback(
+    tenantId: string,
+    projectId: string,
+    roundId: string,
+    itemId: string,
+    input: TriageDecisionInput,
+    signal?: AbortSignal,
+  ): Promise<ApprovalRound>;
 }>;
 
 export class ProductApiError extends Error {

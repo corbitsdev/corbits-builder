@@ -2367,17 +2367,6 @@ button[aria-disabled="true"] {
   gap: var(--space-5);
 }
 
-.approval-package-reminder {
-  padding: var(--space-3) var(--space-4);
-  border: 1px solid var(--wb-border);
-  border-radius: var(--radius-panel);
-  background: color-mix(in srgb, var(--wb-muted) 40%, var(--wb-card));
-}
-
-.approval-package-reminder p {
-  margin: 0;
-}
-
 .approval-package-manifest {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(min(100%, 12rem), 1fr));
@@ -2431,4 +2420,293 @@ button[aria-disabled="true"] {
   border: 1px solid var(--wb-border);
   border-radius: var(--radius-panel);
   background: var(--wb-card);
+}
+
+/* ---- Stage 5: approval package review rounds ---- */
+
+.approval-rounds-panel {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+  margin-top: var(--space-6);
+  padding-top: var(--space-4);
+  padding-bottom: 5rem;
+  border-top: 1px solid var(--wb-border);
+}
+
+.approval-rounds-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-3);
+}
+
+.approval-rounds-header h2 {
+  margin: 0;
+  font-size: 1rem;
+  font-weight: 600;
+}
+
+.approval-rounds-actions {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+}
+
+.approval-rounds-list {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+}
+
+.approval-share-dialog {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+  padding: var(--space-4);
+  border: 1px solid var(--wb-border);
+  border-radius: var(--radius-panel);
+  background: var(--wb-card);
+}
+
+.approval-share-field {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+  font-size: 0.875rem;
+}
+
+.approval-share-reviewers {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+}
+
+.approval-share-reviewer-row {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(9rem, 1fr));
+  align-items: center;
+  gap: var(--space-2);
+}
+
+.approval-custom-persona-row {
+  grid-column: 1 / -1;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-2);
+}
+
+.approval-save-workspace-toggle {
+  grid-column: 1 / -1;
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2);
+  font-size: 0.8125rem;
+  color: var(--wb-muted-foreground);
+  cursor: pointer;
+}
+
+.approval-package-reminder {
+  margin: 0 var(--space-7) var(--space-3);
+  padding: var(--space-3) var(--space-4);
+  border: 1px solid var(--wb-border);
+  border-radius: var(--radius-panel);
+  background: var(--wb-muted);
+  color: var(--wb-muted-foreground);
+}
+
+.approval-package-reminder p {
+  margin: 0;
+}
+
+.approval-share-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-2);
+}
+
+.approval-round-card {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+  padding: var(--space-4);
+  border: 1px solid var(--wb-border);
+  border-radius: var(--radius-panel);
+  background: var(--wb-card);
+}
+
+.approval-round-meta {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-2);
+}
+
+.approval-reviewer-list {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.approval-reviewer-item {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  padding-top: var(--space-3);
+  border-top: 1px solid var(--wb-border);
+}
+
+.approval-reviewer-item:first-child {
+  padding-top: 0;
+  border-top: 0;
+}
+
+.approval-reviewer-summary {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-2);
+}
+
+.approval-reviewer-identity {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-2);
+}
+
+.approval-reviewer-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-2);
+}
+
+.approval-reviewer-decision {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+  padding: var(--space-2) var(--space-3);
+  border-left: 2px solid var(--wb-border);
+}
+
+.approval-reviewer-decision-header {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+}
+
+.approval-reviewer-decision p {
+  margin: 0;
+}
+
+.approval-reviewer-editor {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+  padding: var(--space-3);
+  border: 1px solid var(--wb-border);
+  border-radius: var(--radius-control);
+  background: color-mix(in srgb, var(--wb-muted) 35%, var(--wb-card));
+}
+
+.approval-feedback-attachments {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  font-size: 0.875rem;
+}
+
+.approval-feedback-attach-bar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-2);
+}
+
+.approval-feedback-file-list {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-2);
+}
+
+.approval-feedback-file-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-1);
+}
+
+.approval-editor-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-2);
+}
+
+/* Approval round feedback triage items. */
+.approval-triage-section {
+  display: grid;
+  gap: var(--space-2);
+  padding-top: var(--space-3);
+  border-top: 1px solid var(--wb-border);
+}
+
+.approval-triage-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: var(--space-2);
+}
+
+.approval-triage-item {
+  display: grid;
+  gap: var(--space-2);
+  padding: var(--space-3);
+  border: 1px solid var(--wb-border);
+  border-radius: var(--radius-md);
+  background: var(--wb-card);
+}
+
+.approval-triage-summary {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-2);
+}
+
+.approval-triage-meta {
+  font-size: 0.8125rem;
+  color: var(--wb-muted-foreground);
+}
+
+.approval-triage-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-2);
+}
+
+.approval-triage-text {
+  margin: 0;
+  font-size: 0.875rem;
+}
+
+.approval-triage-reply {
+  margin: 0;
+  font-size: 0.8125rem;
+  color: var(--wb-muted-foreground);
+}
+
+.approval-triage-reply-editor {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
 }

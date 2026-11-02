@@ -28,6 +28,12 @@ export function buildArtifactsMethods(
   | "chooseDesign"
   | "acceptedMaterials"
   | "attachMaterials"
+  | "downloadPackageZip"
+  | "approvalRounds"
+  | "startApprovalRound"
+  | "recordReviewerDecision"
+  | "settleApprovalRound"
+  | "triageReviewerFeedback"
 > {
   const { request, baseUrl, headers, fetchRequest, options } = deps;
   async function download(
@@ -179,6 +185,96 @@ export function buildArtifactsMethods(
       );
       if (!response.ok) throw new ProductApiError(response);
       return (await response.json()) as MaterialReceipt;
+    },
+    downloadPackageZip(
+      tenantId,
+      projectId,
+      version,
+      signalOrReviewer,
+      maybeSignal,
+    ) {
+      const isSignal =
+        signalOrReviewer instanceof AbortSignal ||
+        signalOrReviewer === undefined;
+      const reviewer = isSignal ? undefined : signalOrReviewer;
+      const signal = isSignal ? signalOrReviewer : maybeSignal;
+      const params = new URLSearchParams();
+      if (reviewer?.roundId !== undefined && reviewer.roundId !== "") {
+        params.set("roundId", reviewer.roundId);
+      }
+      if (reviewer?.reviewerId !== undefined && reviewer.reviewerId !== "") {
+        params.set("reviewerId", reviewer.reviewerId);
+      }
+      if (reviewer?.name !== undefined && reviewer.name !== "") {
+        params.set("reviewerName", reviewer.name);
+      }
+      if (reviewer?.persona !== undefined && reviewer.persona !== "") {
+        params.set("persona", reviewer.persona);
+      }
+      const query = params.size === 0 ? "" : `?${params.toString()}`;
+      const slug = (value: string) =>
+        value
+          .trim()
+          .toLowerCase()
+          .replace(/[^a-z0-9]+/g, "-")
+          .replace(/^-+|-+$/g, "") || "package";
+      const fallback =
+        reviewer?.name !== undefined && reviewer.name.trim() !== ""
+          ? `${slug(projectId)}-approval-package-for-${slug(reviewer.name)}-${slug(reviewer.persona ?? "reviewer")}.zip`
+          : `package-v${String(version)}.zip`;
+      return download(
+        `${projectPath(tenantId, projectId)}/packages/${encodeURIComponent(String(version))}/zip${query}`,
+        fallback,
+        signal,
+      );
+    },
+    approvalRounds(tenantId, projectId, signal) {
+      return request(
+        `${projectPath(tenantId, projectId)}/approval-rounds`,
+        signal,
+      );
+    },
+    startApprovalRound(tenantId, projectId, input, signal) {
+      return request(
+        `${projectPath(tenantId, projectId)}/approval-rounds`,
+        signal,
+        input,
+      );
+    },
+    recordReviewerDecision(
+      tenantId,
+      projectId,
+      roundId,
+      reviewerId,
+      input,
+      signal,
+    ) {
+      return request(
+        `${projectPath(tenantId, projectId)}/approval-rounds/${encodeURIComponent(roundId)}/reviewers/${encodeURIComponent(reviewerId)}/decision`,
+        signal,
+        input,
+      );
+    },
+    settleApprovalRound(tenantId, projectId, roundId, signal) {
+      return request(
+        `${projectPath(tenantId, projectId)}/approval-rounds/${encodeURIComponent(roundId)}/settle`,
+        signal,
+        {},
+      );
+    },
+    triageReviewerFeedback(
+      tenantId,
+      projectId,
+      roundId,
+      itemId,
+      input,
+      signal,
+    ) {
+      return request(
+        `${projectPath(tenantId, projectId)}/approval-rounds/${encodeURIComponent(roundId)}/triage/${encodeURIComponent(itemId)}`,
+        signal,
+        input,
+      );
     },
   };
 }

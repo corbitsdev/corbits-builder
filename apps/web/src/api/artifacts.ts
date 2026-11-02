@@ -1,8 +1,16 @@
-import { ProductApiError } from "@corbits-builder/client";
+import {
+  ProductApiError,
+  type PackageZipReviewerQuery,
+} from "@corbits-builder/client";
 import type {
   DesignChoice,
   DesignTweaks,
 } from "@corbits-builder/schemas/artifact";
+import type {
+  RecordReviewerDecision,
+  StartApprovalRound,
+  TriageDecisionInput,
+} from "@corbits-builder/schemas/approval-round";
 import { productClient } from "./transport.ts";
 import { workspaceTenantId } from "./auth.ts";
 import { ApiFailure } from "./types.ts";
@@ -199,4 +207,93 @@ export async function attachMaterials(
 ) {
   const tenantId = await workspaceTenantId();
   return productClient().attachMaterials(tenantId, projectId, files, message);
+}
+
+export async function downloadPackageZip(
+  projectId: string,
+  version: number,
+  signalOrReviewer?: AbortSignal | PackageZipReviewerQuery,
+  signal?: AbortSignal,
+) {
+  const tenantId = await workspaceTenantId();
+  return productClient().downloadPackageZip(
+    tenantId,
+    projectId,
+    version,
+    signalOrReviewer,
+    signal,
+  );
+}
+
+export async function downloadApprovalPackageZip(
+  projectId: string,
+  version: number,
+  reviewer?: {
+    name: string;
+    persona: string;
+    reviewerId?: string;
+    roundId?: string;
+  },
+  signal?: AbortSignal,
+): Promise<File> {
+  const { filename, archive } = await downloadPackageZip(
+    projectId,
+    version,
+    reviewer,
+    signal,
+  );
+  return new File([archive], filename, { type: "application/zip" });
+}
+
+export async function listApprovalRounds(
+  projectId: string,
+  signal?: AbortSignal,
+) {
+  const tenantId = await workspaceTenantId();
+  return productClient().approvalRounds(tenantId, projectId, signal);
+}
+
+export async function startApprovalRound(
+  projectId: string,
+  input: StartApprovalRound,
+) {
+  const tenantId = await workspaceTenantId();
+  return productClient().startApprovalRound(tenantId, projectId, input);
+}
+
+export async function recordReviewerDecision(
+  projectId: string,
+  roundId: string,
+  reviewerId: string,
+  input: RecordReviewerDecision,
+) {
+  const tenantId = await workspaceTenantId();
+  return productClient().recordReviewerDecision(
+    tenantId,
+    projectId,
+    roundId,
+    reviewerId,
+    input,
+  );
+}
+
+export async function settleApprovalRound(projectId: string, roundId: string) {
+  const tenantId = await workspaceTenantId();
+  return productClient().settleApprovalRound(tenantId, projectId, roundId);
+}
+
+export async function triageReviewerFeedback(
+  projectId: string,
+  roundId: string,
+  itemId: string,
+  input: TriageDecisionInput,
+) {
+  const tenantId = await workspaceTenantId();
+  return productClient().triageReviewerFeedback(
+    tenantId,
+    projectId,
+    roundId,
+    itemId,
+    input,
+  );
 }
