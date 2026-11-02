@@ -78,6 +78,7 @@
     "@corbits-builder/coordinator": "workspace:*",
     "@corbits-builder/designer": "workspace:*",
     "@corbits-builder/hub": "workspace:*",
+    "@corbits-builder/presenter": "workspace:*",
     "@corbits-builder/schemas": "workspace:*",
     "@corbits-builder/writer": "workspace:*",
     "@emulators/core": "0.12.3",

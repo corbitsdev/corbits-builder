@@ -44,6 +44,7 @@
         "@corbits-builder/coordinator": "workspace:*",
         "@corbits-builder/designer": "workspace:*",
         "@corbits-builder/hub": "workspace:*",
+        "@corbits-builder/presenter": "workspace:*",
         "@corbits-builder/schemas": "workspace:*",
         "@corbits-builder/writer": "workspace:*",
         "@emulators/core": "0.12.3",
@@ -65,6 +66,7 @@
         "@corbits-builder/coder": "workspace:*",
         "@corbits-builder/coordinator": "workspace:*",
         "@corbits-builder/designer": "workspace:*",
+        "@corbits-builder/presenter": "workspace:*",
         "@corbits-builder/reviewer": "workspace:*",
         "@corbits-builder/schemas": "workspace:*",
         "@corbits-builder/writer": "workspace:*",
@@ -641,6 +643,14 @@
         "@intx/workflow": "workspace:*",
       },
     },
+    "workflows/presenter": {
+      "name": "@corbits-builder/presenter",
+      "version": "0.1.0-rc.3",
+      "dependencies": {
+        "@intx/agent": "workspace:*",
+        "@intx/workflow": "workspace:*",
+      },
+    },
     "workflows/reviewer": {
       "name": "@corbits-builder/reviewer",
       "version": "0.6.0",
@@ -747,6 +757,8 @@
     "@corbits-builder/designer": ["@corbits-builder/designer@workspace:workflows/designer"],
 
     "@corbits-builder/hub": ["@corbits-builder/hub@workspace:apps/hub"],
+
+    "@corbits-builder/presenter": ["@corbits-builder/presenter@workspace:workflows/presenter"],
 
     "@corbits-builder/reviewer": ["@corbits-builder/reviewer@workspace:workflows/reviewer"],
 

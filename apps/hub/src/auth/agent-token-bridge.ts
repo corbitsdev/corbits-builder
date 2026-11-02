@@ -299,6 +299,7 @@ export function createAgentTokenBridge(
             ? installed.coderAnyPackage
             : installed.coder,
           designer: installed.designer,
+          ...(installed.presenter ? { presenter: installed.presenter } : {}),
         },
         openNetwork: opensNetwork(preferences.value),
         build: await buildLayout(),

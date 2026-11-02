@@ -217,6 +217,14 @@ export const MODEL_ROLES: readonly Readonly<{
     workflow: "reviewer",
     limits: "document",
   },
+  {
+    id: "presenter",
+    label: "Presenter",
+    hint: "Builds slide decks and approval packages for an audience.",
+    tier: "medium",
+    workflow: "presenter",
+    limits: "presenter",
+  },
 ];
 
 export const EFFORTS: readonly Readonly<{ id: Effort; label: string }>[] = [

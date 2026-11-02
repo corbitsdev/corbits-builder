@@ -31,12 +31,14 @@ test("production entries expose concrete native workflows without callback crede
   const coderAnyPackage = (await import("./entries/coder-any-package.ts"))
     .default;
   const designer = (await import("./entries/designer.ts")).default;
+  const presenter = (await import("./entries/presenter.ts")).default;
   expect(coordinator.steps.coordinate).toMatchObject({ triggers: "unbounded" });
   expect(writer.steps.write).toMatchObject({ triggers: 1 });
   expect(reviewer.steps.review).toMatchObject({ triggers: 1 });
   expect(coder.steps.build).toMatchObject({ triggers: "unbounded" });
   expect(coderAnyPackage.steps.build).toMatchObject({ triggers: "unbounded" });
   expect(designer.steps.design).toMatchObject({ triggers: "unbounded" });
+  expect(presenter.steps.present).toMatchObject({ triggers: 1 });
   // Secure by default: only the coder a person opted into declares install_packages without an ask.
   const installTool = (workflow: typeof coder) => {
     const step = workflow.steps.build;
@@ -58,6 +60,7 @@ test("production entries expose concrete native workflows without callback crede
     coder,
     coderAnyPackage,
     designer,
+    presenter,
   ])
     expect(workflow.credentialBindings ?? []).toEqual([]);
   expect(
@@ -68,6 +71,7 @@ test("production entries expose concrete native workflows without callback crede
       coder,
       coderAnyPackage,
       designer,
+      presenter,
     ]),
   ).not.toMatch(/prepareOwnerContext|finish_task/);
 });
@@ -83,7 +87,7 @@ test("built npm tarballs contain importable production workflow metadata and def
   );
   try {
     const manifest = await buildWorkflowPackages(directory, "1.0.0", bindings);
-    expect(manifest).toHaveLength(6);
+    expect(manifest).toHaveLength(7);
     for (const metadata of manifest) {
       const extracted = join(directory, metadata.assetName);
       await mkdir(extracted);

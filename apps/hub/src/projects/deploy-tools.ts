@@ -50,6 +50,12 @@ import {
   designLookIdeas,
 } from "../config/design.ts";
 import { QUESTIONS_ASKED } from "../config/questions.ts";
+import {
+  formatPersonasCatalog,
+  presenterAssignmentMessage,
+  type PresenterDesignTokens,
+} from "../config/personas.ts";
+import { DESIGN_STYLES } from "../artifacts/design-tweaks.ts";
 import { workflowHttpJson, WorkflowHttpError } from "../workflows/http-json.ts";
 import { assignmentToWriterMessage } from "../workflows/writer-task.ts";
 import { coderTaskMessage } from "@corbits-builder/coder/contract";
@@ -110,6 +116,18 @@ const DesignApp = type({
   instruction: Instruction,
   lookIdeas: "string > 0",
   concepts: DesignConcept.array().atLeastLength(1).atMostLength(5),
+});
+const DeployPresenter = type({
+  "+": "reject",
+  audience: "string > 0",
+  decisionNeeded: "string > 0",
+  kinds: type
+    .enumerated(...APPROVABLE)
+    .array()
+    .atLeastLength(1),
+  tone: "string > 0",
+  length: "string > 0",
+  instruction: Instruction,
 });
 const ArtifactList = type({
   "+": "ignore",
@@ -221,11 +239,13 @@ export function createDeployTools(options?: {
     reviewer: NativeSpecialistDeployment;
     coder: NativeSpecialistDeployment;
     designer: NativeSpecialistDeployment;
+    presenter?: NativeSpecialistDeployment;
   };
   maxResultBytes: number;
 }): AnnotatedToolFactory<DeployEnv> {
   if (options)
     for (const deployment of Object.values(options.workflows)) {
+      if (!deployment) continue;
       const checked = NativeSpecialistDeployment.assert(deployment);
       if (!checked.sourceOfferingIds.includes(checked.defaultSourceOfferingId))
         throw new Error("invalid_specialist_default_offering");
@@ -278,6 +298,13 @@ export function createDeployTools(options?: {
         ).join("\n"),
       inputSchema: { ...DesignApp.toJsonSchema() },
     },
+    {
+      name: "deploy_presenter",
+      description:
+        "Have a presenter build a slide deck (.pptx and .pdf) and file an approval package for a specific audience from the selected approved documents and the project's filed design tokens. Interview the person first with ask_questions on the audience persona, decision needed, documents to include, and tone and length. Each selected document must be filed and approved at its current version. When a design is filed, its tokens are included and pinned automatically.\n\nStarting audience personas:\n" +
+        formatPersonasCatalog(),
+      inputSchema: { ...DeployPresenter.toJsonSchema() },
+    },
   ];
   return defineTool<DeployEnv>({
     id: DEPLOY_TOOLS,
@@ -291,6 +318,7 @@ export function createDeployTools(options?: {
       { name: "deploy_coder" },
       { name: "instruct_coder", approval: "ask" },
       { name: "design_app", approval: "ask" },
+      { name: "deploy_presenter" },
     ],
     factory: (env) => ({
       definitions,
@@ -425,7 +453,7 @@ export function createDeployTools(options?: {
         // Every assignment carries the person's preferences that apply to the receiving role.
         const assign = (
           runId: string,
-          role: "writer" | "reviewer" | "coder" | "designer",
+          role: "writer" | "reviewer" | "coder" | "designer" | "presenter",
           preferences: Preferences,
           correlationId: string,
           content: string,
@@ -442,18 +470,23 @@ export function createDeployTools(options?: {
         // Mail to a fresh deployment lands in its durable inbox and fires the
         // run, so the deploy response is enough to send the assignment.
         const deploy = async (
-          role: "writer" | "reviewer" | "coder" | "designer",
+          role: "writer" | "reviewer" | "coder" | "designer" | "presenter",
           preferences: Preferences,
           correlationId: string,
           content: string,
           beforeAssign?: (runId: string) => Promise<unknown>,
         ) => {
+          const workflowSpec = options.workflows[role];
+          if (!workflowSpec)
+            throw new Refusal(
+              role + "_unavailable: no " + role + " workflow is installed",
+            );
           const deployment = WorkflowDeploymentResponse.assert(
             await hub(
               "/api/tenants/" +
                 encodeURIComponent(options.tenantId) +
                 "/workflows/deployments",
-              options.workflows[role],
+              workflowSpec,
               DEPLOY_TIMEOUT_MS,
             ),
           );
@@ -713,6 +746,73 @@ export function createDeployTools(options?: {
                       concept: input.concepts[index]!.label,
                       error: refusalText(outcome.reason),
                     },
+            );
+          } else if (call.name === "deploy_presenter") {
+            const input = validArguments(DeployPresenter, call.arguments);
+            const { byKind, approved, preferences } = await listed();
+            const selectedKinds = [...new Set(input.kinds)];
+            for (const kind of selectedKinds) {
+              const ref = required(byKind, kind);
+              if (
+                !agentDecidesApprovals(preferences) &&
+                approved.get(kind) !== ref.version
+              )
+                throw notApproved(kind, ref.version);
+            }
+            const documents = await Promise.all(
+              selectedKinds.map(async (kind) => {
+                const ref = required(byKind, kind);
+                const loaded = await readSource(ref);
+                return {
+                  artifactId: ref.artifactId,
+                  kind,
+                  title: loaded.title,
+                  version: ref.version,
+                  sha256: ref.sha256,
+                  content: loaded.content,
+                };
+              }),
+            );
+            const designRef = byKind.get("design");
+            let design: PresenterDesignTokens | undefined;
+            if (designRef) {
+              const rawDesign = ArtifactContent.assert(
+                await hub(
+                  projectPath +
+                    "/artifacts/" +
+                    encodeURIComponent(designRef.artifactId) +
+                    "?version=" +
+                    String(designRef.version),
+                ),
+              );
+              const { files } = DesignBundle.assert(
+                JSON.parse(rawDesign.content),
+              );
+              const stylesCss = files[DESIGN_STYLES];
+              design = {
+                artifactId: designRef.artifactId,
+                kind: "design",
+                title: rawDesign.title,
+                version: designRef.version,
+                sha256: designRef.sha256,
+                designMd: files["DESIGN.md"]!,
+                ...(stylesCss ? { stylesCss } : {}),
+              };
+            }
+            result = await deploy(
+              "presenter",
+              preferences,
+              "presenter-" + input.audience,
+              presenterAssignmentMessage({
+                projectId: options.projectId,
+                audience: input.audience,
+                decisionNeeded: input.decisionNeeded,
+                tone: input.tone,
+                length: input.length,
+                instruction: input.instruction,
+                documents,
+                ...(design ? { design } : {}),
+              }),
             );
           } else
             return {
