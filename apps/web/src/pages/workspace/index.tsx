@@ -118,7 +118,8 @@ import {
   DESIGN_OPTION,
 } from "./design-concepts.tsx";
 import { useLiveAppPresence } from "./live-app.tsx";
-import { NextStepLine } from "./next-step.tsx";
+import { NextStepLine, useProjectNextStep } from "./next-step.tsx";
+import { composerPlaceholder } from "./composer-placeholder.ts";
 import { Dictated } from "../../dictation.jsx";
 import { useShellReply } from "../../flourish.tsx";
 
@@ -404,6 +405,8 @@ export function StageWorkspace({
   committedAtRef.current = latestAssistantAt(mirror);
   const reportedFailure = useRef<number | null>(null);
   const rolesAtWork = useRolesAtWork(projectId);
+  // The line above the conversation is preference-gated; the placeholder is not.
+  const projectStatus = useProjectNextStep(projectId);
   const [caution, setCaution] = useState<string | null>(null);
   const [gateDone, setGateDone] = useState(0);
   // The waits that belong to this project, from the open decisions.
@@ -1491,11 +1494,11 @@ export function StageWorkspace({
                           )}
                           <PromptInputTextarea
                             ref={composerRef}
-                            placeholder={
-                              openApproval === undefined
-                                ? "Say what you need…"
-                                : wording.approval.composerPlaceholder
-                            }
+                            placeholder={composerPlaceholder({
+                              approvalOpen: openApproval !== undefined,
+                              status: projectStatus.data,
+                              chatFirst,
+                            })}
                           />
                           <PromptInputToolbar>
                             {mic}

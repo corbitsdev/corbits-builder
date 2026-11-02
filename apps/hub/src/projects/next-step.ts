@@ -48,6 +48,18 @@ type ProjectRun = {
   failureMessage: string | null;
 };
 
+// Runs are newest first. A failure stands on the newest run of a role, and the
+// first such specialist in that order is the one the next step already names.
+function newestFailedSpecialist(
+  runs: readonly ProjectRun[],
+): ProjectRun | undefined {
+  const newest = new Map<WorkflowRole, ProjectRun>();
+  for (const run of runs) if (!newest.has(run.role)) newest.set(run.role, run);
+  return [...newest.values()].find(
+    (run) => run.role !== "coordinator" && run.status === "failed",
+  );
+}
+
 /**
  * Where the project stands and the person's one next step, from native state only: run status,
  * each live run's latest committed event, pending approval records of live runs, the hub's live
@@ -194,6 +206,11 @@ export function createProjectNextStep(
     async status(actor: Actor, projectId: string): Promise<ProjectStatus> {
       const { status } = await readableProject(actor, projectId);
       const all = await projectRuns(actor);
+      const failed = newestFailedSpecialist(all);
+      const note = (body: ProjectStatus): ProjectStatus =>
+        failed === undefined
+          ? body
+          : { ...body, failedSpecialist: failed.role };
       const states = await liveStates(all);
       const pending = await db
         .select({
@@ -256,19 +273,19 @@ export function createProjectNextStep(
       const now = (lead: string) => `${lead} ${appNow}`;
 
       if (status === "archived")
-        return {
+        return note({
           working,
           now: now(text.archived),
           app,
           next: { text: text.next.archived },
-        };
+        });
       const asked = pending[0];
       if (asked) {
         const name = (asked.tool as { name?: unknown } | null)?.name;
         const tool =
           typeof name === "string" && name !== "" ? name : "approval";
         const kinds = (asked.args as { kinds?: unknown } | null)?.kinds;
-        return {
+        return note({
           working,
           now: now(who),
           waiting: { kind: "approval", approvalId: asked.id, tool },
@@ -281,10 +298,10 @@ export function createProjectNextStep(
                 : [],
             ),
           },
-        };
+        });
       }
       if (!states.some((run) => run.role === "coordinator"))
-        return {
+        return note({
           working,
           now: now(text.stopped("coordinator", undefined)),
           app,
@@ -292,64 +309,57 @@ export function createProjectNextStep(
             text: text.next.resumeCoordinator,
             action: "resume_coordinator",
           },
-        };
+        });
       const waitOn = busy[0] ?? starting[0];
       if (waitOn !== undefined)
-        return {
+        return note({
           working,
           now: now(who),
           app,
           next: { text: text.next.wait(waitOn) },
-        };
+        });
       if (unknown)
-        return {
+        return note({
           working,
           now: now(who),
           app,
           next: { text: text.next.unknown },
-        };
-      // A failure stands while its run is the newest of its role; runs are newest first.
-      const newest = new Map<WorkflowRole, ProjectRun>();
-      for (const run of all)
-        if (!newest.has(run.role)) newest.set(run.role, run);
-      const failed = [...newest.values()].find(
-        (run) => run.role !== "coordinator" && run.status === "failed",
-      );
+        });
       if (failed)
-        return {
+        return note({
           working,
           now: now(text.stopped(failed.role, await failureReason(failed))),
           app,
           next: { text: text.next.retry, action: "reply" },
-        };
+        });
       if (coderRan && app.state === "failed")
-        return {
+        return note({
           working,
           now: now(who),
           app,
           next: { text: text.next.fixApp, action: "reply" },
-        };
+        });
       if (coderRan && app.state === "running")
-        return {
+        return note({
           working,
           now: now(who),
           app,
           next: { text: text.next.tryApp, action: "open_app" },
-        };
+        });
       if (coderRan && app.state === "starting")
-        return {
+        return note({
           working,
           now: now(who),
           app,
           next: { text: text.next.waitApp },
-        };
-      return {
+        });
+      return note({
         working,
         now: now(who),
         waiting: { kind: "reply" },
         app,
         next: { text: text.next.reply, action: "reply" },
-      };
+      });
     },
   };
 }
@@ -369,7 +379,7 @@ export function mountProjectNextStepRoutes(
       tags: ["Projects"],
       operationId: "readProjectNextStep",
       description:
-        "Who is at work in the project, what waits on the person, the app's state and the person's one next step, derived only from native state: run status and each live run's latest committed event (a run parked on input is idle), pending approval records of live runs, the hub's live app and the latest filed app version. Never from model text.",
+        "Who is at work in the project, what waits on the person, the app's state and the person's one next step, derived only from native state: run status and each live run's latest committed event (a run parked on input is idle), pending approval records of live runs, the hub's live app and the latest filed app version. failedSpecialist is the specialist whose newest run failed, when one has. Never from model text.",
       security,
       responses: {
         200: {

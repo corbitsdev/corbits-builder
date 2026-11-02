@@ -58,5 +58,8 @@ export const ProjectStatus = type({
   "waiting?": ProjectWaiting,
   app: ProjectAppStatus,
   next: { "+": "reject", text: "string > 0", "action?": ProjectNextAction },
+  // Which specialist's newest run failed. The workspace must not infer this from
+  // next-step prose. Absent when no specialist's newest run failed.
+  "failedSpecialist?": WorkflowRole,
 });
 export type ProjectStatus = typeof ProjectStatus.infer;
