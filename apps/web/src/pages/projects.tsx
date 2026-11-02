@@ -44,7 +44,6 @@ export function Projects({
   const [problem, setProblem] = useState("");
   const [profile, setProfile] = useState<string>();
   const [busy, setBusy] = useState<"start" | "import" | null>(null);
-  const [error, setError] = useState<string | null>(null);
   const starting = busy === "start";
   const shell = useShellReply(useRef<HTMLElement>(null));
 
@@ -52,11 +51,10 @@ export function Projects({
     if (busy !== null) return;
     if (shell.answers(problem)) return setProblem("");
     if (!canStartProject(problem)) {
-      setError(wording.message.projectTooShort);
+      toast.error(wording.message.projectTooShort);
       return;
     }
     setBusy("start");
-    setError(null);
     try {
       const created = await createProject({
         problemStatement: problem.trim(),
@@ -69,7 +67,7 @@ export function Projects({
       // shows it until the conversation records it.
       onOpen(created.projectId, opening);
     } catch (cause) {
-      setError(
+      toast.error(
         cause instanceof ApiFailure ? cause.detail.message : String(cause),
       );
     } finally {
@@ -143,7 +141,6 @@ export function Projects({
           <h1 id="new-project-title">{wording.newProject.title}</h1>
           <p>{wording.newProject.lead}</p>
         </hgroup>
-        {error ? <Banner tone="error" title={error} /> : null}
         {needsProvider ? (
           <Banner tone="warning" title={wording.providers.none}>
             <p>{wording.providers.noneHint}</p>

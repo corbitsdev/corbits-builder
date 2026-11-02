@@ -9,6 +9,7 @@
  */
 import { wording } from "../config.ts";
 import { useCallback, useEffect, useState } from "react";
+import { toast } from "sonner";
 import { Banner, Button, QuietSelect, StateLabel } from "../components.jsx";
 import { productClient } from "../api/transport.ts";
 import { workspaceTenantId, type HubUser } from "../api/auth.ts";
@@ -108,7 +109,7 @@ export function Collaborators({ user }: { user: HubUser | null }) {
       setEmail("");
       await read();
     } catch (cause) {
-      setError(await refusal(cause));
+      toast.error(await refusal(cause));
     } finally {
       setBusy(false);
     }
@@ -122,7 +123,7 @@ export function Collaborators({ user }: { user: HubUser | null }) {
       await client.revokeInvitation(await workspaceTenantId(), invitationId);
       await read();
     } catch (cause) {
-      setError(await refusal(cause));
+      toast.error(await refusal(cause));
     } finally {
       setBusy(false);
     }

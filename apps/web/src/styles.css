@@ -727,9 +727,6 @@ h3 {
 }
 
 /* Severity reads from the words and the state label, not a coloured edge. */
-.banner.is-error {
-  border-color: var(--wb-destructive);
-}
 .banner.is-okay {
   border-color: var(--wb-okay);
 }

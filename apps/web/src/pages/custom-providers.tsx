@@ -39,7 +39,7 @@ import type {
   ModelCatalog,
   ModelProvider,
 } from "@corbits-builder/schemas/models";
-import { Banner, Button, QuietState } from "../components.jsx";
+import { Button, QuietState } from "../components.jsx";
 import { keys } from "../queries/keys.ts";
 import { productClient } from "../api/transport.ts";
 import { workspaceTenantId } from "../api/auth.ts";
@@ -128,13 +128,12 @@ export function message(cause: unknown): string {
   return cause instanceof Error ? cause.message : String(cause);
 }
 
-/** Title, lead, the fields, the last error, and Cancel or Back beside the dialog's action. */
+/** Title, lead, the fields, and Cancel or Back beside the dialog's action. */
 export function ProviderDialog(props: {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   title: string;
   description: string;
-  error: string | null;
   busy: boolean;
   ready: boolean;
   /** Whether submitting tests a connection first. */
@@ -148,7 +147,7 @@ export function ProviderDialog(props: {
   focusDialog?: boolean;
   children: ReactNode;
 }) {
-  const { busy, error, onBack, onOpenChange } = props;
+  const { busy, onBack, onOpenChange } = props;
   return (
     <Dialog open={props.open} onOpenChange={onOpenChange}>
       <DialogContent
@@ -178,7 +177,6 @@ export function ProviderDialog(props: {
             }
           >
             {props.children}
-            {error ? <Banner tone="error" title={error} /> : null}
           </DialogBody>
           <DialogFooter>
             <Button
@@ -724,12 +722,10 @@ export function CustomProviderRow({
   provider,
   apis,
   onChanged,
-  onError,
 }: {
   provider: ModelProvider;
   apis: Apis;
   onChanged: () => void;
-  onError: (message: string | null) => void;
 }) {
   const [open, setOpen] = useState(false);
   const listId = `custom-models-${provider.id}`;
@@ -755,7 +751,6 @@ export function CustomProviderRow({
             provider={provider}
             apis={apis}
             onChanged={onChanged}
-            onError={onError}
           />
         </span>
       </div>
@@ -780,7 +775,6 @@ function CustomProviderModels({
     provider.models.map((model) => ({ ...modelDraftOf(model), fixed: true })),
   );
   const [saveState, setSaveState] = useState<SaveState | null>(null);
-  const [error, setError] = useState<string | null>(null);
   const saved = useRef(JSON.stringify(parsedModels(models)));
 
   // Saves once the list is complete and differs from what the hub holds; a half-typed model waits.
@@ -789,7 +783,6 @@ function CustomProviderModels({
     const snapshot = JSON.stringify(parsed);
     if (!parsed || snapshot === saved.current) return;
     setSaveState("saving");
-    setError(null);
     try {
       await productClient().updateCustomProvider(
         await workspaceTenantId(),
@@ -808,7 +801,7 @@ function CustomProviderModels({
       onChanged();
     } catch (cause) {
       setSaveState("failed");
-      setError(message(cause));
+      toast.error(message(cause));
     }
   };
 
@@ -861,7 +854,6 @@ function CustomProviderModels({
           {copy.custom.addModel}
         </Button>
       </div>
-      {error ? <Banner tone="error" title={error} /> : null}
     </>
   );
 }
@@ -871,12 +863,10 @@ function CustomProviderActions({
   provider,
   apis,
   onChanged,
-  onError,
 }: {
   provider: ModelProvider;
   apis: Apis;
   onChanged: () => void;
-  onError: (message: string | null) => void;
 }) {
   const queryClient = useQueryClient();
   const [editing, setEditing] = useState(false);
@@ -886,7 +876,6 @@ function CustomProviderActions({
 
   const remove = async () => {
     setRemoving(true);
-    onError(null);
     try {
       await productClient().removeCustomProvider(
         await workspaceTenantId(),
@@ -896,7 +885,7 @@ function CustomProviderActions({
       await queryClient.invalidateQueries({ queryKey: keys.modelCatalog });
       onChanged();
     } catch (cause) {
-      onError(message(cause));
+      toast.error(message(cause));
     } finally {
       setRemoving(false);
     }
@@ -971,12 +960,10 @@ function EditCustomProviderDialog({
   const queryClient = useQueryClient();
   const form = useCustomProviderForm(apis, provider);
   const [busy, setBusy] = useState(false);
-  const [error, setError] = useState<string | null>(null);
 
   const save = async () => {
     if (!form.ready || busy) return;
     setBusy(true);
-    setError(null);
     try {
       await form.save();
       toast.success(copy.custom.saved(form.name));
@@ -984,7 +971,7 @@ function EditCustomProviderDialog({
       onSaved();
       onClose();
     } catch (cause) {
-      setError(message(cause));
+      toast.error(message(cause));
     } finally {
       setBusy(false);
     }
@@ -996,7 +983,6 @@ function EditCustomProviderDialog({
       onOpenChange={(open) => (open || busy ? undefined : onClose())}
       title={copy.custom.editTitle(provider.label)}
       description={copy.custom.editLead}
-      error={error}
       busy={busy}
       ready={form.ready}
       tests={form.tests}

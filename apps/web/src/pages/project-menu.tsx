@@ -35,7 +35,7 @@ import {
   restoreProject,
   shipProject,
 } from "../api/projects.ts";
-import { Banner, Button, type NoticeAction } from "../components.jsx";
+import { Button, type NoticeAction } from "../components.jsx";
 import { Dictated } from "../dictation.jsx";
 
 /** What the menu needs of a project: the summaries (rail, top bar) both have it. */
@@ -324,7 +324,6 @@ export function ProjectInfoDialog({
   const [title, setTitle] = useState(project.title);
   const [saving, setSaving] = useState(false);
   const [archiving, setArchiving] = useState(false);
-  const [error] = useState<string | null>(null);
 
   const act = async (work: () => Promise<unknown>) => {
     try {
@@ -366,7 +365,6 @@ export function ProjectInfoDialog({
           <DialogTitle>{project.title}</DialogTitle>
         </DialogHeader>
         <DialogBody>
-          {error ? <Banner tone="error" title={error} /> : null}
           <div className="field">
             <label htmlFor={`project-name-${project.id}`}>Name</label>
             <Dictated value={title} onValueChange={setTitle} align="center">

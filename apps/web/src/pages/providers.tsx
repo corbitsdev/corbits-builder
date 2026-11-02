@@ -88,26 +88,24 @@ export function useSubscriptionLogins(onConnected: () => void) {
   const catalog = useModelCatalog();
   const queryClient = useQueryClient();
   const [signingIn, setSigningIn] = useState<string | null>(null);
-  const [error, setError] = useState<string | null>(null);
   const logins = (catalog.data?.providers ?? []).filter(
     (provider) => provider.kind === "login",
   );
 
   const signIn = async (provider: ModelProvider) => {
     setSigningIn(provider.id);
-    setError(null);
     try {
       await logIn(provider);
       await queryClient.invalidateQueries({ queryKey: keys.modelCatalog });
       onConnected();
     } catch (cause) {
-      setError(message(cause));
+      toast.error(message(cause));
     } finally {
       setSigningIn(null);
     }
   };
 
-  return { logins, signingIn, error, signIn };
+  return { logins, signingIn, signIn };
 }
 
 /** One row per subscription login, each running the real sign-in through the hub. */
@@ -116,12 +114,10 @@ export function SubscriptionLogins({
 }: {
   onConnected: () => void;
 }) {
-  const { logins, signingIn, error, signIn } =
-    useSubscriptionLogins(onConnected);
+  const { logins, signingIn, signIn } = useSubscriptionLogins(onConnected);
 
   return (
     <>
-      {error ? <Banner tone="error" title={error} /> : null}
       {logins.map((provider) => {
         const live = provider.connections.find(
           (connection) => connection.status === "connected",
@@ -154,7 +150,6 @@ export function SubscriptionLogins({
 export function ProvidersSection({ onChanged }: { onChanged: () => void }) {
   const catalog = useModelCatalog();
   const [adding, setAdding] = useState(false);
-  const [error, setError] = useState<string | null>(null);
   const providers = catalog.data?.providers ?? [];
   const customApis = catalog.data?.customApis;
   const hasLogins = providers.some((provider) => provider.kind === "login");
@@ -186,7 +181,6 @@ export function ProvidersSection({ onChanged }: { onChanged: () => void }) {
               provider={provider}
               apis={customApis}
               onChanged={onChanged}
-              onError={setError}
             />
           );
         }
@@ -207,7 +201,6 @@ export function ProvidersSection({ onChanged }: { onChanged: () => void }) {
           </div>
         );
       })}
-      {error ? <Banner tone="error" title={error} /> : null}
     </>
   );
   const addAction =
@@ -288,7 +281,6 @@ export function AddProviderDialog({
   const [secret, setSecret] = useState("");
   const customForm = useCustomProviderForm(apis);
   const [busy, setBusy] = useState(false);
-  const [error, setError] = useState<string | null>(null);
   const custom = providerId === undefined && chosenId === CUSTOM_ENDPOINT;
   const chosen: ModelProvider | undefined =
     providers.find((provider) => provider.id === (providerId ?? chosenId)) ??
@@ -313,7 +305,6 @@ export function AddProviderDialog({
     if (!next) {
       setSecret("");
       customForm.reset();
-      setError(null);
     }
     onOpenChange(next);
   };
@@ -330,7 +321,6 @@ export function AddProviderDialog({
   const testAndSave = async () => {
     if (!ready || busy) return;
     setBusy(true);
-    setError(null);
     try {
       if (custom) {
         await customForm.save();
@@ -345,7 +335,7 @@ export function AddProviderDialog({
         secret: secret.trim(),
       });
       if (status !== "connected") {
-        setError(copy.failed[status]);
+        toast.error(copy.failed[status]);
         return;
       }
       await setCredential({
@@ -356,7 +346,7 @@ export function AddProviderDialog({
       });
       await saved(chosen.label);
     } catch (cause) {
-      setError(message(cause));
+      toast.error(message(cause));
     } finally {
       setBusy(false);
     }
@@ -378,7 +368,6 @@ export function AddProviderDialog({
       onOpenChange={close}
       title={dialogTitle}
       description={dialogDescription}
-      error={error}
       busy={busy}
       ready={ready}
       tests
@@ -387,7 +376,6 @@ export function AddProviderDialog({
         custom
           ? () => {
               setChosenId(null);
-              setError(null);
             }
           : undefined
       }
@@ -408,7 +396,6 @@ export function AddProviderDialog({
             labelledBy="provider-choice-label"
             onChoose={(id) => {
               setChosenId(id);
-              setError(null);
             }}
           />
         </div>

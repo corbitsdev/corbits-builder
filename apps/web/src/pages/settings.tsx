@@ -18,6 +18,7 @@ import {
   type ThemeMode,
 } from "@corbits/react-ui";
 import { useEffect, useState, type ReactNode } from "react";
+import { toast } from "sonner";
 import { useQueryClient } from "@tanstack/react-query";
 import { keys } from "../queries/keys.ts";
 import { ProvidersSection } from "./providers.jsx";
@@ -264,10 +265,10 @@ function WorkingPreferences() {
       void queryClient.invalidateQueries({ queryKey: keys.preferences });
       const conflicted = receipt.conflicts.length > 0;
       setSave({ id, state: conflicted ? "failed" : "saved" });
-      setError(conflicted ? wording.message.stepFailed : null);
+      if (conflicted) toast.error(wording.message.stepFailed);
     } catch (cause) {
       setSave({ id, state: "failed" });
-      setError(cause instanceof Error ? cause.message : String(cause));
+      toast.error(cause instanceof Error ? cause.message : String(cause));
     }
   };
   const copy = wording.settings.preferences;
