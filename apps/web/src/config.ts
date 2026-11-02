@@ -315,7 +315,7 @@ export const wording = {
   },
   /** The composer's placeholder when no approval is open. An open approval keeps approval.composerPlaceholder. */
   composer: {
-    passAlong: (role: string) => `Message for the ${role}…`,
+    passAlong: (role: string) => `Ask the ${role}…`,
     role: {
       coordinator: "coordinator",
       writer: "writer",

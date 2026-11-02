@@ -45,7 +45,7 @@ describe("composer placeholder", () => {
           failedSpecialist: "coder",
         }),
       }),
-    ).toBe("Message for the reviewer…");
+    ).toBe("Ask the reviewer…");
   });
 
   test("a starting role is named when nobody is working", () => {
@@ -60,7 +60,7 @@ describe("composer placeholder", () => {
           app: { state: "running" },
         }),
       }),
-    ).toBe("Message for the writer…");
+    ).toBe("Ask the writer…");
   });
 
   test("the coder is called the app builder", () => {
@@ -71,7 +71,7 @@ describe("composer placeholder", () => {
           app: { state: "running" },
         }),
       }),
-    ).toBe("Message for the app builder…");
+    ).toBe("Ask the app builder…");
   });
 
   test("a running app beats a failure", () => {
