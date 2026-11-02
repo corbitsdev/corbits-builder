@@ -143,20 +143,32 @@ test("writer write_artifact exposes only writer kinds and validates approaches",
   const definition = writer.definitions.find(
     (item) => item.name === "write_artifact",
   );
-  const properties = (
+  const branches = (
     definition?.inputSchema as
       | {
-          properties?: { kind?: { enum?: string[] }; approaches?: unknown };
+          anyOf?: {
+            additionalProperties?: boolean;
+            properties?: {
+              kind?: { const?: string; enum?: string[] };
+              approaches?: unknown;
+            };
+          }[];
         }
       | undefined
-  )?.properties;
-  expect(properties?.kind?.enum).toEqual([
-    "approaches",
-    "build_plan",
-    "constraints",
-    "product_requirements",
-  ]);
-  expect(properties?.approaches).toBeDefined();
+  )?.anyOf;
+  const branchFor = (kind: string) =>
+    branches?.find(
+      (branch) =>
+        branch.properties?.kind?.const === kind ||
+        branch.properties?.kind?.enum?.includes(kind),
+    );
+  expect(branchFor("approaches")?.properties?.approaches).toBeDefined();
+  for (const kind of ["constraints", "product_requirements", "build_plan"]) {
+    const branch = branchFor(kind);
+    expect(branch?.additionalProperties).toBe(false);
+    expect(branch?.properties?.approaches).toBeUndefined();
+  }
+  expect(branchFor("problem_brief")).toBeUndefined();
 
   const briefAttempt = await writer.write({
     kind: "problem_brief",
@@ -166,6 +178,19 @@ test("writer write_artifact exposes only writer kinds and validates approaches",
   expect(briefAttempt.isError).toBe(true);
   expect(briefAttempt.content).toStartWith("invalid_arguments:");
 
+  for (const kind of ["constraints", "product_requirements", "build_plan"]) {
+    const rejected = await writer.write({
+      kind,
+      title: "Doc",
+      content: "# Doc",
+      approaches: sampleApproaches,
+    });
+    expect(rejected.isError).toBe(true);
+    expect(rejected.content).toStartWith("invalid_arguments:");
+    expect(rejected.content).toContain("approaches");
+  }
+  expect(writer.written).toHaveLength(0);
+
   const validApproaches = await writer.write({
     kind: "approaches",
     title: "Approaches",
@@ -173,5 +198,12 @@ test("writer write_artifact exposes only writer kinds and validates approaches",
     approaches: sampleApproaches,
   });
   expect(validApproaches.isError).toBeUndefined();
-  expect(writer.written).toHaveLength(1);
+  expect(writer.written).toEqual([
+    {
+      kind: "approaches",
+      title: "Approaches",
+      content: "# Approaches",
+      approaches: sampleApproaches,
+    },
+  ]);
 });

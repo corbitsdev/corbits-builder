@@ -105,22 +105,6 @@ test("a rejected write_artifact call reaches the agent with {path, message} issu
 
   expect(
     await write({
-      kind: "constraints",
-      approaches: { approaches: [approach("a"), approach("b")] },
-    }),
-  ).toEqual({
-    code: "invalid_artifact_write",
-    status: 400,
-    issues: [
-      {
-        path: "approaches",
-        message:
-          "goes on the approaches document; write this constraints without it",
-      },
-    ],
-  });
-  expect(
-    await write({
       kind: "approaches",
       approaches: { approaches: [approach("a"), approach("a")] },
     }),
