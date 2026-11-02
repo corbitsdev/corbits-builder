@@ -9,7 +9,7 @@ project's own documents and the instruction's stack.
 
 - **Approach A on the default stack**: one server with its own database
   serving the member and staff screens.
-- **Four phases**, each ending in something a person can try.
+- **Six phases**; the designed screens show in the preview from phase 2, on labelled sample data until phase 5.
 - The riskiest part is **the timetable import**; the fallback is entering
   classes by hand on the timetable screen.
 
@@ -36,16 +36,24 @@ and sends the confirmation email (IR-2). Rosters read the bookings table.
 
 ## Phases
 
-1. Data and import: `server/db/schema.ts`, `server/routes/import.ts`,
-   `client/src/pages/import.tsx`. Delivers IR-3. Exit: importing the sample
-   timetable lists every class with its capacity.
-2. Booking: `server/routes/bookings.ts`, `client/src/pages/timetable.tsx`,
-   `client/src/pages/my-bookings.tsx`. Delivers FR-1, FR-2, FR-3, FR-4,
-   IR-1. Exit: a member books, sees and cancels a class; a full class shows
-   "Full".
-3. Staff: `client/src/pages/roster.tsx`. Delivers the roster and check-in
-   requirements. Exit: staff mark attendance on a roster.
-4. Email and polish: confirmation email (IR-2), accessibility pass (NFR-1).
+1. Contract and sample data: `packages/shared/src/index.ts` (class, booking,
+   roster schemas), `client/src/sample-data.tsx`. Exit: typecheck passes.
+2. Theme and shell: `client/src/styles.css`, `client/src/components/layout.tsx`.
+   Exit: the preview shows the designed header and navigation with the
+   sample data note.
+3. Screens on sample data: `client/src/pages/timetable.tsx`,
+   `client/src/pages/my-bookings.tsx`, `client/src/pages/roster.tsx`,
+   `client/src/pages/import.tsx`, each added to `client/src/routes.tsx` as it
+   is written. Exit: each screen shows sample classes.
+4. Server: `server/src/store.ts`, `server/src/routes/import.ts`,
+   `server/src/routes/bookings.ts`, `server/src/routes/rosters.ts`. Delivers
+   IR-3, FR-2. Exit: a booking for a full class is refused with a 4xx.
+5. Wiring: `client/src/api.ts` reads `/api`; `client/src/sample-data.tsx` is
+   deleted. Delivers FR-1, FR-3, FR-4, IR-1 and the roster and check-in
+   requirements. Exit: a member books, sees and cancels a class; a full class
+   shows "Full"; staff mark attendance on a roster; the sample data note is
+   gone.
+6. Email and polish: confirmation email (IR-2), accessibility pass (NFR-1).
    Exit: a booking sends one email; check-app passes.
 
 ## Install and run
