@@ -45,7 +45,7 @@ describe("composer placeholder", () => {
           failedSpecialist: "coder",
         }),
       }),
-    ).toBe("I'll pass this to the reviewer…");
+    ).toBe("Message for the reviewer…");
   });
 
   test("a starting role is named when nobody is working", () => {
@@ -60,7 +60,7 @@ describe("composer placeholder", () => {
           app: { state: "running" },
         }),
       }),
-    ).toBe("I'll pass this to the writer…");
+    ).toBe("Message for the writer…");
   });
 
   test("the coder is called the app builder", () => {
@@ -71,7 +71,7 @@ describe("composer placeholder", () => {
           app: { state: "running" },
         }),
       }),
-    ).toBe("I'll pass this to the app builder…");
+    ).toBe("Message for the app builder…");
   });
 
   test("a running app beats a failure", () => {
@@ -83,7 +83,7 @@ describe("composer placeholder", () => {
           failedSpecialist: "writer",
         }),
       }),
-    ).toBe("What to change…");
+    ).toBe("What needs to change…");
   });
 
   test("a failed app beats an empty project", () => {
@@ -92,7 +92,7 @@ describe("composer placeholder", () => {
         chatFirst: true,
         status: standing({ app: { state: "failed" } }),
       }),
-    ).toBe("What to fix…");
+    ).toBe("What needs fixing…");
   });
 
   test("a failed specialist beats an empty project", () => {
@@ -104,7 +104,7 @@ describe("composer placeholder", () => {
           failedSpecialist: "designer",
         }),
       }),
-    ).toBe("What to fix…");
+    ).toBe("What needs fixing…");
   });
 
   test("an empty project beats the fallback", () => {
@@ -127,7 +127,7 @@ describe("composer placeholder", () => {
           app: { state: "stopped" },
         }),
       }),
-    ).toBe("Reply here…");
+    ).toBe("What do you want to say…");
   });
 
   test("an open approval keeps the approval placeholder", () => {

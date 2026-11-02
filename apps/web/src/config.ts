@@ -315,7 +315,7 @@ export const wording = {
   },
   /** The composer's placeholder when no approval is open. An open approval keeps approval.composerPlaceholder. */
   composer: {
-    passAlong: (role: string) => `I'll pass this to the ${role}…`,
+    passAlong: (role: string) => `Message for the ${role}…`,
     role: {
       coordinator: "coordinator",
       writer: "writer",
@@ -323,10 +323,10 @@ export const wording = {
       designer: "designer",
       coder: "app builder",
     },
-    change: "What to change…",
-    fix: "What to fix…",
+    change: "What needs to change…",
+    fix: "What needs fixing…",
     making: "What are you making…",
-    reply: "Reply here…",
+    reply: "What do you want to say…",
   },
   /** What a person's move is waiting on, as the bell and gate name it. */
   wait: {
