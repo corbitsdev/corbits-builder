@@ -332,6 +332,26 @@ export async function createPosixBuildExecutor(
         : undefined,
     );
     initialized = true;
+    // On Linux srt relays the sandbox's proxy ports to the host over Unix sockets in the host's temp
+    // folder, which the default-deny read policy hides; srt binds them before that deny lands, so
+    // every connection through the proxy was reset. Named in allowRead, they are bound back over it.
+    if (process.platform === "linux") {
+      await SandboxManager.waitForNetworkInitialization();
+      const bridges = new Set(
+        [
+          SandboxManager.getLinuxHttpSocketPath(),
+          SandboxManager.getLinuxSocksSocketPath(),
+        ].filter((path): path is string => path !== undefined),
+      );
+      if (bridges.size)
+        SandboxManager.updateConfig({
+          ...policy,
+          filesystem: {
+            ...policy.filesystem,
+            allowRead: [...(policy.filesystem.allowRead ?? []), ...bridges],
+          },
+        });
+    }
     stage = "wrap";
     // The child resolves the workspace packages from source like the hub does;
     // the vendored packages ship no built dist.
