@@ -3,7 +3,12 @@ import { isValidElement, type ReactNode } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { wording } from "../../config.ts";
 import { DocumentDecision } from "./document-decision.tsx";
-import { waitingOnPerson } from "./live-run.ts";
+import {
+  awaitingCommit,
+  emptyLiveRun,
+  foldLiveRun,
+  waitingOnPerson,
+} from "./live-run.ts";
 import { RoomThread } from "./transcript.tsx";
 
 function findElement(
@@ -140,6 +145,30 @@ describe("conversation transcript", () => {
     expect(waitingOnPerson([coder], new Set(["appr-2"]), "run-c", true)).toBe(
       false,
     );
+  });
+
+  test("an inference call that finishes with tool work settles even while the message run stays open on a park", () => {
+    const started = foldLiveRun(
+      emptyLiveRun,
+      { type: "inference.start" },
+      null,
+    ).run;
+    const withTool = foldLiveRun(
+      started,
+      {
+        type: "inference.tool_call.end",
+        data: {
+          callId: "call-1",
+          name: "request_approval",
+          arguments: { kinds: ["approaches"] },
+        },
+      },
+      null,
+    ).run;
+    expect(awaitingCommit(withTool, [])).toBe(false);
+    const done = foldLiveRun(withTool, { type: "inference.done" }, null).run;
+    expect(done.ended).toBe(false);
+    expect(awaitingCommit(done, [])).toBe(true);
   });
 
   test("a specialist's report joins its hand-off as one message and a long run of lone ones folds", () => {

@@ -237,13 +237,19 @@ export function pendingLiveTurn(
   };
 }
 
-/** The run closed with text the mirror has not committed yet. */
+/**
+ * The run closed with text the mirror has not committed yet, or an inference
+ * call finished with tool work whose sidecar park can land just after
+ * `inference.done`.
+ */
 export function awaitingCommit(
   run: LiveRun,
   mirror: readonly ConversationTurn[],
 ): boolean {
-  if (!run.ended) return false;
-  return (pendingLiveTurn(run, mirror)?.text.length ?? 0) > 0;
+  const pending = pendingLiveTurn(run, mirror);
+  if (pending === null) return false;
+  if (run.ended) return pending.text.length > 0;
+  return !hasContent(run.current) && pending.parts.length > 0;
 }
 
 /**

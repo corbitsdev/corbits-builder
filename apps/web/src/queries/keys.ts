@@ -45,6 +45,10 @@ export const keys = {
     all: ["decidedApprovals"] as const,
     of: (projectId: string) => ["decidedApprovals", projectId] as const,
   },
+  openDecisions: {
+    all: ["openDecisions"] as const,
+    of: (projectId: string) => ["openDecisions", projectId] as const,
+  },
   projectNextStep: {
     all: ["projectNextStep"] as const,
     of: (projectId: string) => ["projectNextStep", projectId] as const,
