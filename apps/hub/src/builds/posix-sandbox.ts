@@ -236,7 +236,12 @@ export async function createPosixBuildExecutor(
           `command_build_failed:${name} ${built.logs.join("; ")}`,
         );
       const shim = join(shimDirectory, name);
-      await writeFile(shim, `#!/bin/sh\nexec ${quote(binary)} "$@"\n`);
+      // srt points TMPDIR at a folder it does not make inside the sandbox's own /tmp, and Bun's
+      // WebView cannot start Chrome without a temp folder.
+      await writeFile(
+        shim,
+        `#!/bin/sh\n[ -z "$TMPDIR" ] || mkdir -p -- "$TMPDIR"\nexec ${quote(binary)} "$@"\n`,
+      );
       await chmod(shim, 0o755);
     }
     const pageWatcher = join(shimDirectory, "watch-page.ts");
