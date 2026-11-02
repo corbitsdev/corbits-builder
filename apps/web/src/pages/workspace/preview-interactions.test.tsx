@@ -1,6 +1,6 @@
 import { describe, expect, test } from "bun:test";
 import { renderToStaticMarkup } from "react-dom/server";
-import { firstPage } from "./design-preview.tsx";
+import { designDraftFiled, firstPage } from "./design-preview.tsx";
 import { predecessorOf } from "./document-versions.ts";
 import { DevicePreview } from "./device-preview.tsx";
 
@@ -81,5 +81,25 @@ describe("device preview", () => {
     expect(rendered).toContain('<section data-screen="orders">');
     expect(rendered).toContain("<div><h1>Orders</h1></div>");
     expect(rendered).not.toContain("alert(1)");
+  });
+});
+
+describe("design draft", () => {
+  test("keeps reading when the room snapshot has not loaded", () => {
+    expect(designDraftFiled(false, undefined)).toBe(false);
+  });
+
+  test("stops once a design is filed or no whole-mockup designer is running", () => {
+    expect(designDraftFiled(true, undefined)).toBe(true);
+    expect(designDraftFiled(false, [])).toBe(true);
+    expect(
+      designDraftFiled(false, [{ role: "designer", concept: "Quiet" }]),
+    ).toBe(true);
+    expect(designDraftFiled(false, [{ role: "coder" }])).toBe(true);
+  });
+
+  test("keeps reading while a designer drafts the whole mockup", () => {
+    expect(designDraftFiled(false, [{ role: "designer" }])).toBe(false);
+    expect(designDraftFiled(true, [{ role: "designer" }])).toBe(true);
   });
 });

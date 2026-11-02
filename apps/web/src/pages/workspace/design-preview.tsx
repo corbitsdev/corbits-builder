@@ -524,6 +524,24 @@ export function DesignPreview({
 }
 
 /**
+ * Whether the live mockup should stop. A filed design stops it, as does a loaded snapshot whose
+ * designer is not drafting the whole mockup. A missing snapshot does not: an empty stand-in would
+ * hide a designer the room has not loaded yet.
+ */
+export function designDraftFiled(
+  hasFiledDesign: boolean,
+  inFlight:
+    | readonly { readonly role: string; readonly concept?: string }[]
+    | undefined,
+): boolean {
+  if (hasFiledDesign) return true;
+  if (inFlight === undefined) return false;
+  return !inFlight.some(
+    (run) => run.role === "designer" && run.concept === undefined,
+  );
+}
+
+/**
  * The live designer's unfiled mockup until a design is filed: read again as soon as the activity
  * read shows the designer finish a file write, and on a slower poll in case a write is missed.
  * With a concept, that concept's designer until its option is filed.
