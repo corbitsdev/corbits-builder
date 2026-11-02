@@ -53,3 +53,20 @@ export function packageReadme(input: {
   lines.push("");
   return lines.join("\n");
 }
+
+export function incorporatedFeedbackMessage(item: {
+  reviewerName: string;
+  persona: string;
+  slide?: number;
+  text: string;
+}): string {
+  const slideLabel =
+    item.slide === undefined ? "overall" : `slide ${String(item.slide)}`;
+  return [
+    "Please revise the project to incorporate this reviewer feedback:",
+    "",
+    `--- reviewer feedback (external, persona: ${item.persona}, reviewer: ${item.reviewerName}, slide: ${slideLabel}) ---`,
+    item.text,
+    "--- end reviewer feedback ---",
+  ].join("\n");
+}

@@ -93,9 +93,11 @@ function createFakeStore(options?: {
   initialNow?: Date;
   pkg?: StoredPackageVersion;
   nonPersonIds?: readonly string[];
+  coordinatorRunId?: string;
 }) {
   let currentNow = options?.initialNow ?? new Date("2026-04-01T12:00:00.000Z");
   let pkg = options?.pkg ?? makePackageFixture();
+  const coordinatorRunId = options?.coordinatorRunId ?? "wfr_coord_1";
   const nonPerson = new Set(
     options?.nonPersonIds ?? [AGENT_CALLER.principalId],
   );
@@ -157,6 +159,9 @@ function createFakeStore(options?: {
     async updateRound(round) {
       rounds.set(round.roundId, structuredClone(round));
     },
+    async activeCoordinatorRunId() {
+      return coordinatorRunId;
+    },
     async triggerFeedbackRun(_actor, projectId, round, reviewerId) {
       triggeredRuns.push({
         projectId,
@@ -184,6 +189,7 @@ function createFakeStore(options?: {
 function createTestApp(
   service: ReturnType<typeof createApprovalRoundService>,
   actor: Actor = OWNER,
+  nativeFetch?: (request: Request) => Promise<Response>,
 ) {
   const app = new Hono<TenantEnv>();
   app.use("*", async (c, next) => {
@@ -200,7 +206,7 @@ function createTestApp(
     }
     throw err;
   });
-  mountApprovalRoundRoutes(app, service);
+  mountApprovalRoundRoutes(app, service, nativeFetch);
   return app;
 }
 
@@ -486,6 +492,159 @@ describe("approval package zip and approval rounds", () => {
     expect(settleRes.status).toBe(200);
     expect(((await settleRes.json()) as { status: string }).status).toBe(
       "settled",
+    );
+  });
+
+  test("extracts triage bullets without messaging the coordinator, and only mails the coordinator when the owner incorporates an item", async () => {
+    const mailedRequests: Array<{
+      url: string;
+      cookie: string | null;
+      body: { content: string };
+    }> = [];
+    const { store } = createFakeStore({ coordinatorRunId: "wfr_coord_99" });
+    const service = createApprovalRoundService(store);
+    const app = createTestApp(service, OWNER, async (request) => {
+      mailedRequests.push({
+        url: new URL(request.url).pathname,
+        cookie: request.headers.get("cookie"),
+        body: (await request.json()) as { content: string },
+      });
+      return new Response(JSON.stringify({ ok: true }), { status: 200 });
+    });
+
+    const created = await service.start(OWNER, "proj_1", {
+      packageVersion: 1,
+      expiry: "7d",
+      reviewers: [{ name: "Dana Reviewer", persona: "Finance VP" }],
+    });
+    const reviewerId = created.reviewers[0]!.id;
+
+    // 1. Recording feedback splits multi-bullet overall notes and per-slide notes into triage items without mailing the coordinator
+    const decisionRes = await app.request(
+      `/proj_1/approval-rounds/${created.roundId}/reviewers/${reviewerId}/decision`,
+      {
+        method: "POST",
+        headers: {
+          "content-type": "application/json",
+          cookie: "session=owner_cookie",
+        },
+        body: JSON.stringify({
+          outcome: "request_changes",
+          note: "- Add sensitivity table for Q3.\n- Clarify cloud vendor commits.",
+          slideNotes: [
+            {
+              slide: 4,
+              text: "Break out contractor headcount by month.",
+            },
+          ],
+        }),
+      },
+    );
+    expect(decisionRes.status).toBe(200);
+    const afterDecision = (await decisionRes.json()) as {
+      triage: Array<{
+        itemId: string;
+        reviewerName: string;
+        persona: string;
+        slide?: number;
+        text: string;
+        status: string;
+        reply?: string;
+      }>;
+    };
+    expect(afterDecision.triage).toHaveLength(3);
+    expect(afterDecision.triage.map((item) => item.text)).toEqual([
+      "Add sensitivity table for Q3.",
+      "Clarify cloud vendor commits.",
+      "Break out contractor headcount by month.",
+    ]);
+    expect(afterDecision.triage[2]?.slide).toBe(4);
+    expect(afterDecision.triage.map((item) => item.status)).toEqual([
+      "pending",
+      "pending",
+      "pending",
+    ]);
+    expect(mailedRequests).toHaveLength(0);
+
+    const [firstItem, secondItem, slideItem] = afterDecision.triage;
+
+    // 2. Dismissing an item updates triage state without messaging the coordinator
+    const dismissRes = await app.request(
+      `/proj_1/approval-rounds/${created.roundId}/triage/${firstItem!.itemId}`,
+      {
+        method: "POST",
+        headers: {
+          "content-type": "application/json",
+          cookie: "session=owner_cookie",
+        },
+        body: JSON.stringify({ action: "dismiss" }),
+      },
+    );
+    expect(dismissRes.status).toBe(200);
+    const afterDismiss = (await dismissRes.json()) as typeof afterDecision;
+    expect(
+      afterDismiss.triage.find((item) => item.itemId === firstItem!.itemId)
+        ?.status,
+    ).toBe("dismissed");
+    expect(mailedRequests).toHaveLength(0);
+
+    // 3. Replying to an item records the owner's reply without messaging the coordinator
+    const replyRes = await app.request(
+      `/proj_1/approval-rounds/${created.roundId}/triage/${secondItem!.itemId}`,
+      {
+        method: "POST",
+        headers: {
+          "content-type": "application/json",
+          cookie: "session=owner_cookie",
+        },
+        body: JSON.stringify({
+          action: "reply",
+          reply: "Handled in the appendix contract schedule.",
+        }),
+      },
+    );
+    expect(replyRes.status).toBe(200);
+    const afterReply = (await replyRes.json()) as typeof afterDecision;
+    const replied = afterReply.triage.find(
+      (item) => item.itemId === secondItem!.itemId,
+    );
+    expect(replied?.status).toBe("replied");
+    expect(replied?.reply).toBe("Handled in the appendix contract schedule.");
+    expect(mailedRequests).toHaveLength(0);
+
+    // 4. Incorporating an item marks it incorporated and mails the coordinator as the owner with the delimited external block
+    const incorporateRes = await app.request(
+      `/proj_1/approval-rounds/${created.roundId}/triage/${slideItem!.itemId}`,
+      {
+        method: "POST",
+        headers: {
+          "content-type": "application/json",
+          cookie: "session=owner_cookie",
+        },
+        body: JSON.stringify({ action: "incorporate" }),
+      },
+    );
+    expect(incorporateRes.status).toBe(200);
+    const afterIncorporate =
+      (await incorporateRes.json()) as typeof afterDecision;
+    expect(
+      afterIncorporate.triage.find((item) => item.itemId === slideItem!.itemId)
+        ?.status,
+    ).toBe("incorporated");
+
+    expect(mailedRequests).toHaveLength(1);
+    expect(mailedRequests[0]?.url).toBe(
+      "/api/tenants/tenant_proj_1/workflows/runs/wfr_coord_99/mail",
+    );
+    expect(mailedRequests[0]?.cookie).toBe("session=owner_cookie");
+    expect(mailedRequests[0]?.body.content).toBe(
+      [
+        "Please revise the project to incorporate this reviewer feedback:",
+        "",
+        "--- reviewer feedback (external, persona: Finance VP, reviewer: Dana Reviewer, slide: slide 4) ---",
+        "Break out contractor headcount by month.",
+        "--- end reviewer feedback ---",
+      ].join("\n"),
     );
   });
 });

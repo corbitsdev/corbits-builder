@@ -33,6 +33,7 @@ export function buildArtifactsMethods(
   | "startApprovalRound"
   | "recordReviewerDecision"
   | "settleApprovalRound"
+  | "triageReviewerFeedback"
 > {
   const { request, baseUrl, headers, fetchRequest, options } = deps;
   async function download(
@@ -224,6 +225,20 @@ export function buildArtifactsMethods(
         `${projectPath(tenantId, projectId)}/approval-rounds/${encodeURIComponent(roundId)}/settle`,
         signal,
         {},
+      );
+    },
+    triageReviewerFeedback(
+      tenantId,
+      projectId,
+      roundId,
+      itemId,
+      input,
+      signal,
+    ) {
+      return request(
+        `${projectPath(tenantId, projectId)}/approval-rounds/${encodeURIComponent(roundId)}/triage/${encodeURIComponent(itemId)}`,
+        signal,
+        input,
       );
     },
   };

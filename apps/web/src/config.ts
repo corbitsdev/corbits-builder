@@ -1060,5 +1060,21 @@ export const wording = {
     empty: "No review rounds started yet.",
     failed: "That review round action did not go through.",
     slidePrefix: (slide: number) => `Slide ${String(slide)}`,
+    triageHeading: "Feedback triage",
+    triageLead:
+      "Reviewer notes stay here until you incorporate, dismiss, or reply to each item.",
+    triageStatus: {
+      pending: "Pending",
+      incorporated: "Incorporated",
+      dismissed: "Dismissed",
+      replied: "Replied",
+    },
+    incorporate: "Incorporate",
+    dismiss: "Dismiss",
+    reply: "Reply",
+    replyPlaceholder: "Write a reply…",
+    sendReply: "Save reply",
+    overallScope: "Overall",
+    ownerReplyLabel: (reply: string) => `Reply: ${reply}`,
   },
 } as const;

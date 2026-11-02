@@ -6,6 +6,7 @@ import type {
 import type {
   RecordReviewerDecision,
   StartApprovalRound,
+  TriageDecisionInput,
 } from "@corbits-builder/schemas/approval-round";
 import { productClient } from "./transport.ts";
 import { workspaceTenantId } from "./auth.ts";
@@ -254,4 +255,20 @@ export async function recordReviewerDecision(
 export async function settleApprovalRound(projectId: string, roundId: string) {
   const tenantId = await workspaceTenantId();
   return productClient().settleApprovalRound(tenantId, projectId, roundId);
+}
+
+export async function triageReviewerFeedback(
+  projectId: string,
+  roundId: string,
+  itemId: string,
+  input: TriageDecisionInput,
+) {
+  const tenantId = await workspaceTenantId();
+  return productClient().triageReviewerFeedback(
+    tenantId,
+    projectId,
+    roundId,
+    itemId,
+    input,
+  );
 }
