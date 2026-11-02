@@ -46,7 +46,7 @@ export type ModelProvider = typeof ModelProvider.infer;
 export const Effort = type("'low' | 'medium' | 'high' | 'max'");
 export type Effort = typeof Effort.infer;
 export const ModelRole = type(
-  "'coordinator' | 'writer' | 'designer' | 'builder' | 'reviewer'",
+  "'coordinator' | 'writer' | 'designer' | 'builder' | 'reviewer' | 'presenter'",
 );
 export type ModelRole = typeof ModelRole.infer;
 export const Tier = type("'low' | 'medium' | 'high' | 'max'");

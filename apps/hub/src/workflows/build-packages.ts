@@ -14,12 +14,19 @@ function contentVersion(base: string, bundle: string): string {
 
 // Each package is an entry under entries/ built on its role's model binding.
 const WORKFLOW_PACKAGES: readonly { name: string; role: WorkflowRole }[] = [
-  ...(["coordinator", "writer", "reviewer", "coder", "designer"] as const).map(
-    (role) => ({
-      name: role,
-      role,
-    }),
-  ),
+  ...(
+    [
+      "coordinator",
+      "writer",
+      "reviewer",
+      "coder",
+      "designer",
+      "presenter",
+    ] as const
+  ).map((role) => ({
+    name: role,
+    role,
+  })),
   { name: "coder-any-package", role: "coder" },
 ];
 

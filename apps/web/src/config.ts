@@ -342,6 +342,7 @@ export const wording = {
       reviewer: "Reviewer",
       designer: "Designer",
       coder: "App builder",
+      presenter: "Presenter",
     },
     /** Before the run's first tool call: the hub has seen nothing from it yet. */
     starting: "getting started",
@@ -606,6 +607,7 @@ export const wording = {
       reviewer: (subject: string) => `Reviewed ${subject}`,
       designer: (subject: string) => `Drafted ${subject}`,
       coder: (subject: string) => `Built ${subject}`,
+      presenter: (subject: string) => `Prepared ${subject}`,
     },
     /** The run ended without filing what it was asked for. */
     ended: (subject: string) => `Worked on ${subject}`,

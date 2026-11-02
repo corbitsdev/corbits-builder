@@ -7,6 +7,7 @@ const ROLE: Record<WorkflowRole, string> = {
   reviewer: "a reviewer",
   designer: "the designer",
   coder: "the app builder",
+  presenter: "the presenter",
 };
 
 const capital = (text: string) => text.charAt(0).toUpperCase() + text.slice(1);

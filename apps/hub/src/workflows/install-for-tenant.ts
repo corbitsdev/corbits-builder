@@ -291,6 +291,7 @@ const ROLES = [
   "reviewer",
   "coder",
   "designer",
+  "presenter",
 ] as const;
 
 /** A stored descriptor is current only while it pins this build's packages and, for each role, an offering serving its source. */
@@ -305,15 +306,18 @@ async function isCurrent(
     built.map((item) => item.packageName + "@" + item.version),
   );
   if (
-    ![...ROLES, "coderAnyPackage" as const].every((key) =>
-      pins.has(installed[key].pin),
-    )
+    ![...ROLES, "coderAnyPackage" as const].every((key) => {
+      const entry = installed[key];
+      return entry !== undefined && pins.has(entry.pin);
+    })
   )
     return false;
   const visible = await listVisibleOfferings(db, tenantId);
   for (const role of ROLES) {
+    const entry = installed[role];
+    if (!entry) return false;
     const row = visible.find(
-      (entry) => entry.offering.id === installed[role].defaultSourceOfferingId,
+      (candidate) => candidate.offering.id === entry.defaultSourceOfferingId,
     );
     if (!row || !(await servesSource(db, row, bindings[role]))) return false;
   }
@@ -461,6 +465,7 @@ export async function installForTenant(
       "coder",
     ),
     designer: deployment("@corbits-builder/designer-native", "designer"),
+    presenter: deployment("@corbits-builder/presenter-native", "presenter"),
   });
   await ports.db.transaction(async (tx) => {
     const [current] = await tx

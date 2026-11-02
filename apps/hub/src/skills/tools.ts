@@ -1,9 +1,14 @@
 import { type } from "arktype";
 import { defineTool } from "@intx/agent/authoring";
 import { designSkills } from "@corbits-builder/designer/skills" with { type: "macro" };
+import { presentingSkills } from "@corbits-builder/presenter/skills" with { type: "macro" };
 import { documentSkills } from "@corbits-builder/writer/skills" with { type: "macro" };
 
-const SKILLS = { ...designSkills(), ...documentSkills() };
+const SKILLS = {
+  ...designSkills(),
+  ...documentSkills(),
+  ...presentingSkills(),
+};
 const ReadSkill = type({
   "+": "reject",
   name: "string > 0",
