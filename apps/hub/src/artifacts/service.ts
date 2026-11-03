@@ -148,6 +148,7 @@ import { materialsNote } from "../config/materials.ts";
 import { servingOffering } from "../workflows/install-for-tenant.ts";
 import {
   acceptedMaterials,
+  mailAttachmentName,
   materialContent,
   materialMimeType,
 } from "./materials.ts";
@@ -1238,7 +1239,11 @@ export function createArtifactService(
       await mailRun(
         coordinator.runId,
         message.trim() || materialsNote(inputs.map((input) => input.name)),
-        inputs.map((input) => ({ ...input, data: base64Encode(input.data) })),
+        inputs.map((input) => ({
+          name: mailAttachmentName(input.name),
+          mimeType: input.mimeType,
+          data: base64Encode(input.data),
+        })),
       );
       return { materials };
     },
