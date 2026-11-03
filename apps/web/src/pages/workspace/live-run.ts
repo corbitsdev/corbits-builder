@@ -111,7 +111,12 @@ export function foldLiveRun(
       reload,
     };
   }
-  if (event.type === "message.run.ended" || event.type === "reactor.done") {
+  // A connector reply is terminal for this message even if the following end frame is missed.
+  if (
+    event.type === "connector.reply" ||
+    event.type === "message.run.ended" ||
+    event.type === "reactor.done"
+  ) {
     return {
       run: { ...run, ended: true, running: false, endedAt: Date.now() },
       reload,
