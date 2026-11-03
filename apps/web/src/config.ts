@@ -544,7 +544,12 @@ export const wording = {
       file_package: () => "filing the approval package",
       instruct_coder: () =>
         "waiting for you to approve a change for the app builder",
+      exec: () => "rewriting a tool call",
     } as Record<string, (subject?: string) => string>,
+    /** What a call returned, in plain words, for a tool whose raw result means nothing to a person. */
+    toolResult: {
+      exec: "The assistant wrote this step in a form the app can't run, so it was asked to write it again.",
+    } as Record<string, string>,
     otherTool: (name: string) => `using ${name.replaceAll("_", " ")}`,
     elapsed: (minutes: number, seconds: number) =>
       minutes === 0 ? `${seconds}s` : `${minutes}m`,

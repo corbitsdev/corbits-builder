@@ -48,7 +48,7 @@ import {
   type ToolApprovalDecision,
   type ToolApprovalStatus,
 } from "@corbits/react-ui";
-import { toolPhrase, toolSubject } from "./agent-activity.tsx";
+import { toolPhrase, toolResult, toolSubject } from "./agent-activity.tsx";
 import { DOCUMENT_LINK, Markdown } from "../../markdown.jsx";
 import { toast } from "sonner";
 import { CONV_SCROLL_CLASS } from "./pane-classes.ts";
@@ -174,15 +174,6 @@ function instructionOf(input: unknown): string | undefined {
     : undefined;
 }
 
-function resultValue(content: unknown): unknown {
-  if (typeof content !== "string") return content;
-  try {
-    return JSON.parse(content) as unknown;
-  } catch {
-    return content;
-  }
-}
-
 /**
  * A call named in plain words, so the activity's live line and steps read like
  * a person at work. A finished hand-off says whom it started. Opened, it shows
@@ -206,7 +197,7 @@ function readableTool(
     ...(result === undefined
       ? {}
       : {
-          output: resultValue(result.content),
+          output: toolResult(part.name, result.content),
           ...(result.isError ? { status: "error" as const } : {}),
         }),
   };
