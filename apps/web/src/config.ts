@@ -246,6 +246,27 @@ export const wording = {
     },
     action: "Export",
   },
+  updateProject: {
+    menu: "Update…",
+    title: "Update this project",
+    lead: `Moves the project onto the current ${productName}: the assistants running on older tool code are replaced with fresh ones. The documents, the design and the filed app stay. Work the app builder has not filed yet is lost, so wait for it to finish first.`,
+    after:
+      "Afterwards, ask the coordinator to carry on; it picks up where the project left off.",
+    action: "Update",
+    done: "The project is updated. Ask the coordinator to carry on.",
+    reason: {
+      current: `Every assistant on this project already runs the current ${productName}.`,
+      no_coordinator:
+        "This project has no coordinator running to update. Open the project and send it a message first.",
+      coordinator_busy:
+        "The coordinator is mid-turn. Wait for its reply, then try again.",
+      approval_pending:
+        "A decision is waiting on you. Answer it, then try again.",
+      specialist_working:
+        "An assistant is mid-task. Wait for it to report, then try again.",
+    } as Record<string, string | undefined>,
+    unexplained: "The project was not updated.",
+  },
   importProject: {
     action: "Import project",
     source: `A project ${productName} or the original Solution Builder exported`,

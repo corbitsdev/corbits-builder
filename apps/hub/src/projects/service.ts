@@ -332,6 +332,15 @@ export function createProjectService(db: DB["db"]) {
       }
       return ProjectSummaryList.assert({ projects });
     },
+    /** The project, for an action on its runs that needs manage authority; read without a lock. */
+    async manage(actor: Actor, rawId: unknown) {
+      const id = ProjectId(rawId);
+      if (id instanceof type.errors)
+        throw new ProjectError(400, "invalid_project_id");
+      const allowed = await authorizationFor(actor);
+      await requireActor(db, actor, id, "manage", allowed);
+      return load(db, actor, id);
+    },
     async lifecycle(
       actor: Actor,
       rawId: unknown,

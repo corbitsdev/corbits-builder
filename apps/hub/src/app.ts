@@ -504,6 +504,7 @@ export async function createHubRuntime(
           ...(coordinatorUpgrade.enabled
             ? { upgrade: coordinatorUpgrades.open }
             : {}),
+          update: coordinatorUpgrades.update,
         },
         async (actor, projectId) => {
           const bound = await coordinatorStartup.release(actor, projectId);

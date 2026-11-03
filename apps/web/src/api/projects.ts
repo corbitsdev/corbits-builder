@@ -17,6 +17,7 @@ import {
   exportSection,
   ProjectExport,
   type ProjectSummary as ProjectSummaryRow,
+  type ProjectUpdateReceipt,
 } from "@corbits-builder/schemas/project";
 import {
   readProjectImport,
@@ -147,6 +148,14 @@ export async function archiveProject(projectId: string): Promise<void> {
 export async function restoreProject(projectId: string): Promise<void> {
   const tenantId = await workspaceTenantId();
   await productClient().restoreProject(tenantId, projectId);
+}
+
+/** Moves the project's runs onto the current tool code, or says why that waits. */
+export async function updateProject(
+  projectId: string,
+): Promise<ProjectUpdateReceipt> {
+  const tenantId = await workspaceTenantId();
+  return productClient().updateProject(tenantId, projectId);
 }
 
 /** Sets or clears the person's shipped mark; the project stays active either way. */
