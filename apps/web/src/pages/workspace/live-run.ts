@@ -118,7 +118,12 @@ export function foldLiveRun(
     event.type === "reactor.done"
   ) {
     return {
-      run: { ...run, ended: true, running: false, endedAt: Date.now() },
+      run: {
+        ...run,
+        ended: true,
+        running: false,
+        endedAt: run.ended ? run.endedAt : Date.now(),
+      },
       reload,
     };
   }

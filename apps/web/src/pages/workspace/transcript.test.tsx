@@ -1,4 +1,4 @@
-import { describe, expect, test } from "bun:test";
+import { describe, expect, spyOn, test } from "bun:test";
 import { isValidElement, type ReactNode } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { wording } from "../../config.ts";
@@ -196,6 +196,35 @@ describe("conversation transcript", () => {
     const next = foldLiveRun(replied.run, { type: "inference.start" }, 1).run;
     expect(next.running).toBe(true);
     expect(next.ended).toBe(false);
+  });
+
+  test("duplicate completion frames keep the first end time before a new send", () => {
+    const clock = spyOn(Date, "now").mockReturnValue(100);
+    try {
+      const replied = foldLiveRun(
+        emptyLiveRun,
+        { type: "connector.reply" },
+        null,
+      ).run;
+      const sentAt = 150;
+      clock.mockReturnValue(200);
+      const ended = foldLiveRun(
+        replied,
+        { type: "message.run.ended" },
+        null,
+      ).run;
+      expect(ended.endedAt).toBe(replied.endedAt);
+      expect(ended.endedAt).toBeLessThan(sentAt);
+      const next = foldLiveRun(ended, { type: "inference.start" }, null).run;
+      const nextReply = foldLiveRun(
+        next,
+        { type: "connector.reply" },
+        null,
+      ).run;
+      expect(nextReply.endedAt).toBe(200);
+    } finally {
+      clock.mockRestore();
+    }
   });
 
   test("an inference call that finishes with tool work settles even while the message run stays open on a park", () => {
