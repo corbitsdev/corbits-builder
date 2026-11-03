@@ -1,7 +1,13 @@
 import { describe, expect, test } from "bun:test";
 import { renderToStaticMarkup } from "react-dom/server";
 import type { ProjectArtifact } from "@corbits-builder/client";
-import { ArtifactPane, LIVE_TAB, defaultTab } from "./artifact-pane.tsx";
+import {
+  ArtifactPane,
+  LIVE_TAB,
+  availableTab,
+  defaultTab,
+  resolveSelection,
+} from "./artifact-pane.tsx";
 import { APPROVAL_PACKAGE_MEDIA_TYPE } from "./approval-package-preview.tsx";
 import type { DeliverableState } from "./deliverable-block.tsx";
 import { writeWorkspaceApprovalsEnabled } from "../../workspace-approvals-setting.ts";
@@ -214,5 +220,53 @@ describe("default tab", () => {
   test("before the build it shows the document furthest along, and nothing before any", () => {
     expect(defaultTab(false, [ready, plan])).toBe("build_plan");
     expect(defaultTab(false, [])).toBeNull();
+  });
+});
+
+describe("remembered tab", () => {
+  const plan: Deliverable = {
+    artifactId: "plan",
+    kind: "build_plan",
+    title: "Build plan",
+    version: 1,
+    sha256: "b".repeat(64),
+  };
+  const have = {
+    liveApp: false,
+    manual: false,
+    themes: false,
+    draft: false,
+    concepts: [] as string[],
+    deliverables: [ready, plan],
+  };
+  test("a remembered tab counts only while the pane can show it", () => {
+    expect(availableTab("build_plan", have)).toBe("build_plan");
+    expect(availableTab("design-mockup", have)).toBeNull();
+    expect(availableTab(LIVE_TAB, have)).toBeNull();
+    expect(availableTab(LIVE_TAB, { ...have, liveApp: true })).toBe(LIVE_TAB);
+    expect(availableTab("user-manual", { ...have, manual: true })).toBe(
+      "user-manual",
+    );
+    expect(availableTab(null, have)).toBeNull();
+  });
+  test("with nothing chosen yet, the remembered document opens instead of the default", () => {
+    expect(resolveSelection(null, true, [ready, plan], ready.kind)).toEqual({
+      selectedId: null,
+      documentToOpen: ready.kind,
+    });
+    // A remembered side tab is the pane's own to restore; the default stands meanwhile.
+    expect(resolveSelection(null, true, [ready, plan], LIVE_TAB)).toEqual({
+      selectedId: LIVE_TAB,
+      documentToOpen: null,
+    });
+    // One that is not filed here falls back to the default.
+    expect(resolveSelection(null, false, [ready, plan], "design")).toEqual({
+      selectedId: null,
+      documentToOpen: "build_plan",
+    });
+    // The person's own choice always wins.
+    expect(
+      resolveSelection("build_plan", true, [ready, plan], ready.kind),
+    ).toEqual({ selectedId: "build_plan", documentToOpen: null });
   });
 });

@@ -54,6 +54,10 @@ import {
   writeDocumentPaneWidth,
 } from "./document-pane-width.ts";
 import { LiveApp } from "./live-app.tsx";
+import {
+  readStoredPreference,
+  writeStoredPreference,
+} from "../../stored-preference.ts";
 import { markSeen, useSeenVersions } from "./seen-versions.ts";
 import { useTipsGroup } from "./document-tips.tsx";
 import { printDocument } from "./print-document.ts";
@@ -133,12 +137,47 @@ export function resolveSelection(
   chosenId: string | null,
   liveApp: boolean,
   deliverables: readonly Deliverable[],
+  remembered: string | null = null,
 ): { selectedId: string | null; documentToOpen: string | null } {
   if (chosenId !== null) return { selectedId: chosenId, documentToOpen: null };
+  // The document the person was on at their last visit, once it is here, beats the default.
+  const kind = remembered === MOCKUP_TAB ? "design" : remembered;
+  if (
+    kind !== null &&
+    !isSideTab(kind) &&
+    deliverables.some((item) => item.kind === kind)
+  )
+    return { selectedId: null, documentToOpen: kind };
   const fallback = defaultTab(liveApp, deliverables);
   return fallback === LIVE_TAB
     ? { selectedId: LIVE_TAB, documentToOpen: null }
     : { selectedId: null, documentToOpen: fallback };
+}
+
+/** Where the pane keeps the tab the person was on, per project, in this browser. */
+export const paneTabKey = (projectId: string) => `sb.paneTab.${projectId}`;
+
+/** The remembered tab when the pane can show it now, else null. */
+export function availableTab(
+  id: string | null,
+  have: {
+    liveApp: boolean;
+    manual: boolean;
+    themes: boolean;
+    draft: boolean;
+    concepts: readonly string[];
+    deliverables: readonly Deliverable[];
+  },
+): string | null {
+  if (id === null) return null;
+  if (id === LIVE_TAB) return have.liveApp ? id : null;
+  if (id === MANUAL_TAB) return have.manual ? id : null;
+  if (id === THEMES_TAB) return have.themes ? id : null;
+  if (id === DRAFT_TAB) return have.draft ? id : null;
+  const concept = conceptOfTab(id);
+  if (concept !== undefined) return have.concepts.includes(concept) ? id : null;
+  const kind = id === MOCKUP_TAB ? "design" : id;
+  return have.deliverables.some((item) => item.kind === kind) ? id : null;
 }
 const liveIds = panelTabIds(TAB_PREFIX, LIVE_TAB);
 const THEMES_TAB = "design-themes";
@@ -198,6 +237,7 @@ function documentStatus(item: Deliverable): string {
  * stay mounted so a later editor can keep its place.
  */
 export function ArtifactPane({
+  projectId,
   projectTitle,
   draft = null,
   manual = null,
@@ -219,6 +259,8 @@ export function ArtifactPane({
   approachChoice,
 }: {
   /** Names the files the panes download and share. */
+  /** Names the browser's memory of the tab the person was on; without it the pane remembers nothing. */
+  projectId?: string | undefined;
   projectTitle: string;
   /** The live designer's unfiled mockup, shown in its own tab until a design is filed. */
   draft?: DesignFiles | null;
@@ -254,24 +296,65 @@ export function ArtifactPane({
   const draftShown = draft !== null;
   const conceptViews = concepts?.views ?? [];
   const firstConcept = conceptViews[0]?.label;
+  // The tab the person was on at their last visit to this project, until it is shown again or they
+  // choose another; the pane's own jumps to new work wait for that.
+  const memoryKey = projectId === undefined ? null : paneTabKey(projectId);
+  const [memory, setMemory] = useState(() => ({
+    key: memoryKey,
+    id: memoryKey === null ? null : readStoredPreference(memoryKey),
+  }));
+  if (memory.key !== memoryKey)
+    setMemory({
+      key: memoryKey,
+      id: memoryKey === null ? null : readStoredPreference(memoryKey),
+    });
+  const remember = (id: string) => {
+    if (memoryKey !== null) writeStoredPreference(memoryKey, id);
+  };
+  const restoring = memory.id !== null;
+  const restorable = availableTab(memory.id, {
+    liveApp: liveApp !== null,
+    manual: manual !== null,
+    themes: themes !== null,
+    draft: draftShown,
+    concepts: conceptViews.map((view) => view.label),
+    deliverables,
+  });
+  useEffect(() => {
+    if (restorable === null) return;
+    setMemory((current) => ({ ...current, id: null }));
+    if (isSideTab(restorable)) {
+      setSide(restorable);
+      return;
+    }
+    // A document is opened through the page by resolveSelection; only the mockup's half is set here.
+    if (restorable === MOCKUP_TAB) setDesignPart("mockup");
+  }, [restorable]);
   // The draft opens once when it first appears, so the person watches the mockup take shape.
   useEffect(() => {
-    if (draftShown) setSide(DRAFT_TAB);
+    if (draftShown && !restoring) {
+      setSide(DRAFT_TAB);
+      remember(DRAFT_TAB);
+    }
   }, [draftShown]);
   // Likewise the first concept, when concepts start.
   const conceptsStarted = firstConcept !== undefined;
   useEffect(() => {
-    if (firstConcept !== undefined) setSide(conceptTab(firstConcept));
+    if (firstConcept !== undefined && !restoring) {
+      setSide(conceptTab(firstConcept));
+      remember(conceptTab(firstConcept));
+    }
   }, [conceptsStarted]);
   useEffect(() => {
-    if (openTab !== null)
-      setSide(
-        openTab.value === LIVE_TAB ||
-          openTab.value === MANUAL_TAB ||
-          conceptOfTab(openTab.value) !== undefined
-          ? openTab.value
-          : null,
-      );
+    if (openTab === null) return;
+    setSide(
+      openTab.value === LIVE_TAB ||
+        openTab.value === MANUAL_TAB ||
+        conceptOfTab(openTab.value) !== undefined
+        ? openTab.value
+        : null,
+    );
+    remember(openTab.value);
   }, [openTab]);
   const sideConcept = side === null ? undefined : conceptOfTab(side);
   const conceptShown = conceptViews.some((view) => view.label === sideConcept);
@@ -289,6 +372,7 @@ export function ArtifactPane({
     chosenId,
     liveApp !== null,
     deliverables,
+    memory.id,
   );
   // A document is chosen through the page, which reads it; the live app the pane shows itself.
   useEffect(() => {
@@ -298,6 +382,10 @@ export function ArtifactPane({
     Record<string, { version: number; seq: number }>
   >({});
   const choose = (id: string) => {
+    remember(id);
+    setMemory((current) =>
+      current.id === null ? current : { ...current, id: null },
+    );
     if (isSideTab(id)) return setSide(id);
     setSide(null);
     if (id === MOCKUP_TAB || id === "design")
