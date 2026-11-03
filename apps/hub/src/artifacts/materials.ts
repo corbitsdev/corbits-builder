@@ -44,6 +44,22 @@ export function materialMimeType(file: { name: string; type: string }): string {
   return declared;
 }
 
+// A mailed attachment's name sits in a signed MIME header with no encoding, so the assembler takes
+// US-ASCII only; the validator the hub runs first does not check that. The material keeps the
+// person's name; the mailed copy carries this one, which the coordinator still reads as the file.
+const ASCII_SPACE_LIKE = /[\u00a0\u2000-\u200b\u202f\u205f\u3000]/g;
+
+/** The name a file is mailed under: the person's, with every non-ASCII character made plain. */
+export function mailAttachmentName(name: string): string {
+  const plain = name
+    .replace(ASCII_SPACE_LIKE, " ")
+    .normalize("NFKD")
+    .replace(/[^\x20-\x7e]/g, "")
+    .replace(/"/g, "'")
+    .trim();
+  return plain === "" ? "attachment" : plain;
+}
+
 function utf8(bytes: Uint8Array): string | undefined {
   try {
     return new TextDecoder("utf-8", { fatal: true }).decode(bytes);
