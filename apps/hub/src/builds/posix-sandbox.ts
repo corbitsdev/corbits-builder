@@ -530,8 +530,6 @@ export async function createPosixBuildExecutor(
           executable,
           shimDirectory,
           ...layout.dependencyRoots,
-          // Bun lists the entry module's directory before loading it.
-          layout.assetDirectory,
           home,
           ...(options.browsers ? [options.browsers] : []),
           ...(sockets ? [sockets] : []),

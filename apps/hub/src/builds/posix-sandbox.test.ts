@@ -82,6 +82,9 @@ test.skipIf(
       const denied = await run("read_file", { path: outside });
       expect(denied.isError).toBe(true);
       expect(denied.content).not.toContain("host-only-sentinel");
+      expect((await run("read_file", { path: layout.childPath })).isError).toBe(
+        true,
+      );
       expect(
         (await run("write_file", { path: "brief.md", content: "changed" }))
           .isError,
