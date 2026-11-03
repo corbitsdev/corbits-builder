@@ -7,6 +7,7 @@ import {
   awaitingCommit,
   emptyLiveRun,
   foldLiveRun,
+  pendingLiveTurn,
   waitingOnPerson,
 } from "./live-run.ts";
 import { RoomThread } from "./transcript.tsx";
@@ -162,6 +163,39 @@ describe("conversation transcript", () => {
     expect(waitingOnPerson([coder], new Set(["appr-2"]), "run-c", true)).toBe(
       false,
     );
+  });
+
+  test("a connector reply stops thinking without an end frame and keeps text until it is committed", () => {
+    const started = foldLiveRun(
+      emptyLiveRun,
+      { type: "inference.start" },
+      null,
+    ).run;
+    const generated = foldLiveRun(
+      started,
+      {
+        type: "inference.text.delta",
+        data: { partial: { text: "The constraints are ready." } },
+      },
+      null,
+    ).run;
+    const done = foldLiveRun(generated, { type: "inference.done" }, null).run;
+    expect(done.running).toBe(true);
+    const replied = foldLiveRun(done, { type: "connector.reply" }, null);
+    expect(replied.reload).toBe(true);
+    expect(replied.run.running).toBe(false);
+    expect(replied.run.ended).toBe(true);
+    expect(replied.run.endedAt).not.toBeNull();
+    expect(pendingLiveTurn(replied.run, [])?.text).toBe(
+      "The constraints are ready.",
+    );
+    const committed = [
+      { role: "assistant" as const, text: "The constraints are ready.", at: 1 },
+    ];
+    expect(pendingLiveTurn(replied.run, committed)).toBeNull();
+    const next = foldLiveRun(replied.run, { type: "inference.start" }, 1).run;
+    expect(next.running).toBe(true);
+    expect(next.ended).toBe(false);
   });
 
   test("an inference call that finishes with tool work settles even while the message run stays open on a park", () => {
