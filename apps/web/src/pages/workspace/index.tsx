@@ -1561,6 +1561,7 @@ export function StageWorkspace({
           {chatFirst ? null : (
             <DesignTarget.Provider value={{ projectId }}>
               <ArtifactPane
+                projectId={projectId}
                 projectTitle={projectTitle}
                 draft={designDraft}
                 manual={userManual}
