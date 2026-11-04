@@ -473,6 +473,8 @@ export const MaterialRemovedReceipt = type({
   "+": "reject",
   artifactId: "string > 0",
   title: "string",
+  // Whether a running coordinator was told the file is withdrawn.
+  told: "boolean",
 });
 export type MaterialRemovedReceipt = typeof MaterialRemovedReceipt.infer;
 

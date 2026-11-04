@@ -405,7 +405,7 @@ export function mountArtifactRoutes(
       tags: ["Artifacts"],
       operationId: "removeMaterial",
       description:
-        "Takes an attached file back: the material is archived, so it leaves the project's documents and the coordinator's filed materials while its versions stay, and the coordinator, when one runs, is told the file is withdrawn. The message it was sent with keeps showing it.",
+        "Takes an attached file back. The coordinator, when one runs, is told the file is withdrawn first, so a note that cannot be sent leaves the material in place for another try; then the material is archived, so it leaves the project's documents and the coordinator's filed materials while its versions stay. The message it was sent with keeps showing it. `told` says whether a coordinator was mailed.",
       security,
       responses: {
         200: {

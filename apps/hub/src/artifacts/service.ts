@@ -1250,8 +1250,9 @@ export function createArtifactService(
       return { materials };
     },
 
-    // A material the person takes back: archived, so every list leaves it out while its versions
-    // stay, and the coordinator told, when one runs, that the file is withdrawn.
+    // A material the person takes back: the coordinator, when one runs, is told first, so a note
+    // that cannot be sent leaves the material in place for another try; then it is archived, so
+    // every list leaves it out while its versions stay.
     async removeMaterial(
       actor: Actor,
       projectId: string,
@@ -1266,13 +1267,17 @@ export function createArtifactService(
       const row = await getArtifact(db, artifactId);
       if (!row || row.tenantId !== actor.tenantId || row.kind !== MATERIAL_KIND)
         throw new ProjectError(404, "material_not_found", { artifactId });
-      if (row.archivedAt === null) {
-        await setArtifactArchived(db, row, true);
-        const coordinator = await activeCoordinator(projectId);
-        if (coordinator)
-          await mailRun(coordinator.runId, materialRemovedNote(row.title));
-      }
-      return { artifactId: row.id, title: row.title };
+      if (row.archivedAt !== null)
+        return { artifactId: row.id, title: row.title, told: false };
+      const coordinator = await activeCoordinator(projectId);
+      if (coordinator)
+        await mailRun(coordinator.runId, materialRemovedNote(row.title));
+      await setArtifactArchived(db, row, true);
+      return {
+        artifactId: row.id,
+        title: row.title,
+        told: coordinator !== null,
+      };
     },
 
     // An imported document with no kind of its own, filed as a material without mail: the
