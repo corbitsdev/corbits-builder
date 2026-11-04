@@ -52,7 +52,10 @@ export function InvitationAccept({ invitationId }: { invitationId: string }) {
             !(cause instanceof ProductApiError) ||
             (cause.response.status !== 403 && cause.response.status !== 404)
           )
-            throw cause;
+            console.warn(
+              "The invitation's role name could not be read.",
+              cause,
+            );
         }
       } catch (cause) {
         if (!cancelled)

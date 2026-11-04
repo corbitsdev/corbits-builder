@@ -271,16 +271,16 @@ const startsWithZipSignature = (bytes: Uint8Array) =>
   bytes[0] === 0x50 && bytes[1] === 0x4b;
 
 async function projectJsonOf(archive: Uint8Array): Promise<string> {
-  let zip: JSZip;
   try {
-    zip = await JSZip.loadAsync(archive);
+    const entry = (await JSZip.loadAsync(archive)).file("project.json");
+    if (entry === null) throw invalidImport();
+    // JSZip inflates lazily, so a damaged entry only fails here.
+    return await entry.async("string");
   } catch (cause) {
     // JSZip rejects only an archive it cannot read.
+    if (cause instanceof ApiFailure) throw cause;
     throw invalidImport(cause);
   }
-  const entry = zip.file("project.json");
-  if (entry === null) throw invalidImport();
-  return entry.async("string");
 }
 
 /** The project.json of an export's zip, or the file itself when it is that JSON. */

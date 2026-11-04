@@ -32,11 +32,13 @@ async function hubAuth(
   init: RequestInit,
 ): Promise<{ response: Response; parsed: unknown }> {
   let response: Response;
+  let text: string;
   try {
     response = await fetch(`${hubOrigin()}/api/auth${path}`, {
       ...init,
       credentials: hubCredentials(),
     });
+    text = await response.text();
   } catch (cause) {
     throw new ApiFailure(
       {
@@ -49,7 +51,6 @@ async function hubAuth(
       { cause },
     );
   }
-  const text = await response.text();
   let parsed: unknown;
   try {
     parsed = text.length === 0 ? undefined : JSON.parse(text);
