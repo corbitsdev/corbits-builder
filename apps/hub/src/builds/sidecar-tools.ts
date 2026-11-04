@@ -20,6 +20,7 @@ import {
   noteCommandProgress,
 } from "./posix-sandbox.ts";
 import { browserTools } from "./browser.ts";
+import type { CheckDetail } from "./check-detail.ts";
 import type { BrowserCatalog } from "./browser-catalog.ts";
 import {
   CHECK_APP,
@@ -149,12 +150,25 @@ const succeeded = (result: ToolResult) =>
 const VERSIONED = new Set([...WRITES, "run_shell", PACKAGE_INSTALL_TOOL]);
 // Bounds teardown: the wait for the last version, then the revoke.
 const VERSION_CLOSE_MS = 15_000;
+// check-app run as a command, not mentioned in one such as grep -rn check-app.
+const RUNS_CHECK_APP = /(?:^|[;&|(]\s*)check-app(?=$|[\s;&|)])/m;
+const ranAppCheck = (call: ToolCall) =>
+  call.name === "run_shell" &&
+  RUNS_CHECK_APP.test(String(call.arguments["command"]));
 // An app-mode check-app pass; a mockup check in the same workspace passes without building anything.
 const passedAppCheck = (call: ToolCall, result: ToolResult) =>
-  call.name === "run_shell" &&
-  /check-app/.test(String(call.arguments["command"])) &&
+  ranAppCheck(call) &&
   typeof result.content === "string" &&
   /check passed: built, started,/.test(result.content);
+/** A check-app run's verdict; check-app && npm test passes only when both do. */
+export function appCheckDetail(
+  call: ToolCall,
+  result: ToolResult,
+): CheckDetail | undefined {
+  if (!ranAppCheck(call)) return undefined;
+  const passed = /^check passed:/m.test(String(result.content));
+  return { checkPassed: succeeded(result) && passed };
+}
 
 // A cold install; under the executor's own ceiling.
 const SETUP_TIMEOUT_MS = 115_000;
@@ -552,8 +566,13 @@ export function createSidecarCodingTools(policy: {
             await open(signal);
             if (!designCheck) throw new Error("design_check_missing");
             await syncDesignScreensOnDisk(await realpath(env.toolCwd));
-            const { checklist } = await designCheck.current(signal);
-            return { callId: call.id, content: checklist };
+            const { checklist, passed, artifact } =
+              await designCheck.current(signal);
+            const detail: CheckDetail = {
+              checkPassed: passed,
+              filed: artifact !== undefined,
+            };
+            return { callId: call.id, content: checklist, detail };
           }
           if (!offered(call.name))
             return {
@@ -561,7 +580,9 @@ export function createSidecarCodingTools(policy: {
               content: `unknown_tool: ${call.name}`,
               isError: true,
             };
-          const result = await native.run(call, signal);
+          const ran = await native.run(call, signal);
+          const detail = appCheckDetail(call, ran);
+          const result = detail ? { ...ran, detail } : ran;
           if (repository && VERSIONED.has(call.name))
             repository.schedule(
               passedAppCheck(call, result) ? CHECK_PASSED : EDIT,

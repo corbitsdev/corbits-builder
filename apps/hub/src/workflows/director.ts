@@ -10,7 +10,7 @@ import type {
   RetryPolicy,
 } from "@intx/types/runtime";
 import { REPETITION_ABORT } from "../inference/repetition.ts";
-import { CHECK_DESIGN_TOOL } from "../builds/design-check.ts";
+import { readCheckDetail, type CheckDetail } from "../builds/check-detail.ts";
 import { COMPACTOR, DROP_DEGENERATE } from "./compaction.ts";
 
 // About 1 coder turn in 100 skipped reasoning and repeated one sentence ("Ok to write. Let me
@@ -144,11 +144,11 @@ const SHELL_WRITE =
 const WRITE_TOOLS = new Set(["write_file", "edit_file"]);
 // The current task's calls, newest first: everything after the last mail the agent was handed.
 function taskCalls(turns: readonly ConversationTurn[]) {
-  const results = new Map<string, { text: string; isError: boolean }>();
+  const results = new Map<string, { detail: unknown; isError: boolean }>();
   const calls: {
     name: string;
     command: unknown;
-    result: string | undefined;
+    check: CheckDetail | undefined;
     isError: boolean;
   }[] = [];
   for (let index = turns.length - 1; index >= 0; index--) {
@@ -161,7 +161,7 @@ function taskCalls(turns: readonly ConversationTurn[]) {
     for (const block of [...turn.content].reverse()) {
       if (block.type === "tool_result")
         results.set(block.callId, {
-          text: textOf(block.content),
+          detail: block.detail,
           isError: block.isError === true,
         });
       if (block.type === "tool_call") {
@@ -169,7 +169,7 @@ function taskCalls(turns: readonly ConversationTurn[]) {
         calls.push({
           name: block.name,
           command: (block.arguments as Record<string, unknown>)["command"],
-          result: result?.text,
+          check: readCheckDetail(result?.detail),
           isError: result?.isError ?? true,
         });
       }
@@ -185,18 +185,12 @@ const ranShell = (call: TaskCall, pattern: RegExp) =>
   typeof call.command === "string" &&
   pattern.test(call.command);
 
-const says = (call: TaskCall, pattern: RegExp) =>
-  call.result !== undefined && pattern.test(call.result);
-
 // Run 36's coder passed check-app, kept editing, broke the app and would have replied done; a reply
 // counts as done only when no file changed after the last passing check. check_design is the
 // designer's check-app; file_design_option files only a design it passed as it stands.
 function unchecked(turns: readonly ConversationTurn[]): boolean {
   for (const call of taskCalls(turns)) {
-    if (ranShell(call, /check-app/))
-      return call.isError || !says(call, /check passed/);
-    if (call.name === CHECK_DESIGN_TOOL)
-      return call.isError || !says(call, /check passed/);
+    if (call.check) return call.isError || !call.check.checkPassed;
     if (call.name === "file_design_option") return call.isError;
     if (WRITE_TOOLS.has(call.name) || ranShell(call, SHELL_WRITE)) return true;
   }
@@ -208,7 +202,7 @@ const filed = (call: TaskCall) =>
   (call.name === "write_artifact" ||
     call.name === "file_package" ||
     call.name === "file_design_option" ||
-    (call.name === CHECK_DESIGN_TOOL && says(call, /Filed design_option:/)));
+    call.check?.filed === true);
 
 // A writer on 2026-10-30 replied with the whole approaches document as text and never filed it;
 // the coordinator waited on a writer that had already answered. A designer's reply also waits for a
