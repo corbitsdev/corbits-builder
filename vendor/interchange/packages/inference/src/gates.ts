@@ -98,7 +98,9 @@ export function createGateManager() {
   // cleared-event enqueue that onCleared drives. Used by the approval
   // re-dispatch path, which resumes by re-running the parked tool call rather
   // than by re-inferring off a gate-cleared event: firing onCleared there
-  // would enqueue a second, spurious continuation.
+  // would enqueue a second, spurious continuation. The async correlation path
+  // also uses it, then drives the cleared handler itself so the resume can
+  // carry the correlated message.
   function clearSilently(gateId: string): boolean {
     const gate = gates.get(gateId);
     if (gate === undefined) return false;

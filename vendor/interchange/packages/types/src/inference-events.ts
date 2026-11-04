@@ -471,7 +471,10 @@ export type InferenceEvent =
   | {
       /**
        * Per-message run-bracket open. Emitted by the reactor when it
-       * dequeues an inbound mail message and begins per-message work.
+       * dequeues an inbound mail message and begins per-message work, or
+       * when it resumes parked work (a correlated response or a gate
+       * timeout) while no run is open; that run is named for the
+       * correlated message, if any.
        *
        * `messageRunId` is reactor-minted, unique per dequeue. It is
        * non-negotiable for crash-replay correlation: the reactor can

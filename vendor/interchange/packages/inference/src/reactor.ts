@@ -383,9 +383,10 @@ export function createReactor(config: ReactorConfig): Reactor {
   // for a new conversation message during that startup window.
   let startupDeliveries: InboundMessage[] | null = [];
 
-  // Per-message run-bracket state. Set when the loop dequeues a
-  // message.received and begins per-message work; cleared at the
-  // terminal point (wait/reply/done) or at a reactor-fatal abandon.
+  // Per-message run-bracket state. Set when the loop starts per-message
+  // work: on a message.received, or on a resume of parked work when no run
+  // is open. Cleared at the terminal point (wait/reply/done) or at a
+  // reactor-fatal abandon.
   // `messageRunId` is reactor-minted per dequeue via crypto.randomUUID
   // so a crash-and-replay that re-delivers the same messageId still
   // produces unambiguous start/end pairs downstream.
@@ -398,6 +399,13 @@ export function createReactor(config: ReactorConfig): Reactor {
     PerCallInferenceOptions
   >();
   let messageRunInference: PerCallInferenceOptions | undefined;
+  // Maps each event that resumes parked work to the message that resumed it
+  // (undefined when a gate timed out), so the loop can open a run named after
+  // it when none is open.
+  const resumedBy = new WeakMap<
+    ReactorInboundEvent,
+    InboundMessage | undefined
+  >();
   // Correlation ids the currently open message run suspended on, cleared
   // whenever that run closes. This is what tells a late correlated response
   // apart from one that correlates to an operation some earlier, already-
@@ -606,6 +614,14 @@ export function createReactor(config: ReactorConfig): Reactor {
     }
   }
 
+  function enqueueResume(
+    event: ReactorInboundEvent,
+    message: InboundMessage | undefined,
+  ): void {
+    resumedBy.set(event, message);
+    enqueue(event);
+  }
+
   async function tryCorrelate(message: InboundMessage): Promise<boolean> {
     const correlationId = message.headers.interchangeCorrelationId;
     if (correlationId === undefined) return false;
@@ -666,7 +682,10 @@ export function createReactor(config: ReactorConfig): Reactor {
         // so it runs on the loop with normal event ordering. The director seeds
         // its outstanding-result count off this event before the call's
         // tool.done arrives.
-        enqueue({ type: "resume.execute_tools", calls: dispatch.calls });
+        enqueueResume(
+          { type: "resume.execute_tools", calls: dispatch.calls },
+          message,
+        );
         break;
       }
       case "error_result": {
@@ -684,15 +703,20 @@ export function createReactor(config: ReactorConfig): Reactor {
         if (stateManager !== null) {
           stateManager.removePendingOperation(correlationId);
         }
-        enqueue({ type: "resume.tool_result", result: dispatch.result });
+        enqueueResume(
+          { type: "resume.tool_result", result: dispatch.result },
+          message,
+        );
         break;
       }
       case "gate-cleared": {
-        // Async-tool resumption: clear the gate normally so the director
-        // re-infers, and append the correlated response to history so the model
-        // sees the content it was waiting on.
+        // Async-tool resumption: clear the gate without its handler, then run
+        // the handler with the correlated message, so a run opened for this
+        // resume is named for that message. Append the correlated response to
+        // history so the model sees the content it was waiting on.
         if (gate !== undefined) {
-          gates.clear(gate.gateId);
+          gates.clearSilently(gate.gateId);
+          onGateCleared(gate.gateId, "resolved", message);
         }
         correlations.remove(correlationId);
         if (stateManager !== null) {
@@ -1199,6 +1223,7 @@ export function createReactor(config: ReactorConfig): Reactor {
   function onGateCleared(
     gateId: string,
     reason: "resolved" | "timeout" | "shutdown",
+    message?: InboundMessage,
   ): void {
     // A clear that fires while this gate's suspend is still committing must not
     // take effect before `reactor.gate.blocked` is emitted. Record it and let
@@ -1223,14 +1248,17 @@ export function createReactor(config: ReactorConfig): Reactor {
         if (stateManager !== null) {
           stateManager.removePendingOperation(op.correlationId);
         }
-        enqueue({
-          type: "resume.tool_result",
-          result: {
-            callId: op.suspendedCall.id,
-            content: "approval timed out",
-            isError: true,
+        enqueueResume(
+          {
+            type: "resume.tool_result",
+            result: {
+              callId: op.suspendedCall.id,
+              content: "approval timed out",
+              isError: true,
+            },
           },
-        });
+          undefined,
+        );
         return;
       }
     }
@@ -1240,7 +1268,7 @@ export function createReactor(config: ReactorConfig): Reactor {
       seq: nextSeq(),
       data: { gateId, reason },
     });
-    enqueue({ type: "reactor.gate.cleared", gateId, reason });
+    enqueueResume({ type: "reactor.gate.cleared", gateId, reason }, message);
   }
 
   // Parks the reactor on a gate. Shared by the director's `suspend` action and
@@ -1417,6 +1445,17 @@ export function createReactor(config: ReactorConfig): Reactor {
         openMessageRun(event.message.headers.messageId);
         messageRunInference = deliveredInference.get(event.message);
         deliveredInference.delete(event.message);
+      }
+
+      // If no run is open when a resume of parked work is dequeued (after a
+      // restart, or after the run that parked it closed), open one named for
+      // the message that resumed it, if any, so the resumed work has a start
+      // and an end.
+      if (resumedBy.has(event) && currentMessageRunId === null) {
+        const message = resumedBy.get(event);
+        openMessageRun(message?.headers.messageId);
+        messageRunInference =
+          message === undefined ? undefined : deliveredInference.get(message);
       }
 
       // A parked approval that ended without running its tool (rejected or
@@ -1755,8 +1794,8 @@ export function createReactor(config: ReactorConfig): Reactor {
 
   function processDelivery(message: InboundMessage): void {
     void (async () => {
-      // A correlated resume continues the parked run rather than opening a
-      // new one, and the loop may re-infer before tryCorrelate settles, so
+      // A correlated resume continues the parked run while that run is open,
+      // and the loop may re-infer before tryCorrelate settles, so
       // the resume's options are adopted up front whenever this message's
       // correlation ID is one the currently open run suspended on
       // (`openRunCorrelationIds`). `gates.has` alone is not enough: a gate an
