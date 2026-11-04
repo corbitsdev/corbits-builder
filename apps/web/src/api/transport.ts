@@ -63,12 +63,19 @@ export async function timedCall<T>(
   }
 }
 
-/** A refusal's body as JSON; undefined when it is not JSON, such as a proxy's error page. */
+/**
+ * A refusal's body as JSON; undefined when it is not JSON, such as a proxy's
+ * error page, or when the connection dropped while it was read, so the caller
+ * still says the refusal in its own words.
+ */
 export async function refusalBody(cause: ProductApiError): Promise<unknown> {
   try {
     return await cause.response.clone().json();
   } catch (failure) {
-    if (!(failure instanceof SyntaxError)) throw failure;
+    if (failure instanceof SyntaxError) return undefined;
+    if (!(failure instanceof TypeError || failure instanceof DOMException))
+      throw failure;
+    console.warn("A refusal's body could not be read.", failure);
     return undefined;
   }
 }
