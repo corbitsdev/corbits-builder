@@ -1,21 +1,7 @@
 import { expect, test } from "bun:test";
 import { CODEX_RESPONSES_PATH } from "@corbits/codex-provider";
 import type { LastCycleSource } from "@intx/types/runtime";
-
-const originalFetch = globalThis.fetch;
-let stubResponse: Response | undefined;
-globalThis.fetch = Object.assign(
-  async (
-    input: string | URL | Request,
-    init?: RequestInit,
-  ): Promise<Response> => {
-    if (stubResponse !== undefined) return stubResponse;
-    return originalFetch(input, init);
-  },
-  { preconnect: originalFetch.preconnect },
-);
-
-const { createCodexResponsesAdapter } = await import("./codex-adapter.ts");
+import { createCodexResponsesAdapter } from "./codex-adapter.ts";
 
 const codexSource: LastCycleSource = {
   sourceId: "codex-default",
@@ -55,14 +41,16 @@ test("enables parallel tool calls and repairs missing Codex Content-Type headers
   expect(body["store"]).toBe(false);
   expect(body["reasoning"]).toEqual({ effort: "max" });
 
-  stubResponse = new Response(null, { status: 200 });
-  try {
-    const response = await globalThis.fetch(
-      `https://chatgpt.com/backend-api${CODEX_RESPONSES_PATH}`,
-      { headers: request.headers },
-    );
-    expect(response.headers.get("content-type")).toBe("text/event-stream");
-  } finally {
-    stubResponse = undefined;
-  }
+  // A real server rather than a fetch stub: another test file may import the adapter first, and the repair then
+  // wraps whatever fetch existed at that moment.
+  using server = Bun.serve({
+    port: 0,
+    hostname: "127.0.0.1",
+    fetch: () => new Response(null, { status: 200 }),
+  });
+  const response = await globalThis.fetch(
+    new URL(`backend-api${CODEX_RESPONSES_PATH}`, server.url),
+    { headers: request.headers },
+  );
+  expect(response.headers.get("content-type")).toBe("text/event-stream");
 });
