@@ -973,8 +973,8 @@ export const wording = {
     steps: "Questions",
     /** The keyboard hint under each step, by the kind of step. */
     keys: {
-      single: "↑↓ move · Enter choose · ← back",
-      multi: "↑↓ move · Space tick · Enter next · ← back",
+      single: "↑↓ move · Enter choose · ← back · → next",
+      multi: "↑↓ move · Space tick · Enter next · ← back · → next",
       review: "Enter send · ← back",
     },
     composerPlaceholder: "Type here to respond to the above question",

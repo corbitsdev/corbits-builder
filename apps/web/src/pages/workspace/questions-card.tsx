@@ -425,6 +425,11 @@ function StepQuestion({
       },
       " ": () => onChange(pick(active)),
       Enter: () => {
+        // Back on an Other already chosen: its text answers the step, or the field takes focus again.
+        if (active === otherIndex && answer.other) {
+          if (complete(answer)) return onDone(answer);
+          return list.current?.querySelector("input")?.focus();
+        }
         if (!multi || active === otherIndex) return choose(active);
         if (complete(answer)) return onDone(answer);
         const next = pick(active);
@@ -478,7 +483,7 @@ function StepQuestion({
         {labels.map((label, index) =>
           index === otherIndex && answer.other ? (
             <div
-              key={label}
+              key={optionId(index)}
               id={optionId(index)}
               role="option"
               aria-selected
@@ -500,7 +505,7 @@ function StepQuestion({
             </div>
           ) : (
             <div
-              key={label}
+              key={optionId(index)}
               id={optionId(index)}
               role="option"
               aria-selected={chosen(index)}
@@ -733,7 +738,7 @@ export function QuestionsCard({
           questions={ask.questions}
           answerOf={answerOf}
           setAnswer={setAnswer}
-          disabled={state.disabled}
+          disabled={disabled}
           sending={sending}
           onSend={() => void send()}
         />
