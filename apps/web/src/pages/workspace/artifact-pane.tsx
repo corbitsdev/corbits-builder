@@ -461,6 +461,29 @@ export function ArtifactPane({
     if (item !== undefined && pane !== null)
       printDocument(pane, item.title, documentStatus(item));
   };
+  // The menu's remove item for an attached file's tab: a first click asks, the second removes.
+  const removeItem = (value: string) => {
+    if (onRemove === undefined || !removable(value)) return null;
+    if (confirmingRemove)
+      return (
+        <MenuItem className="menu-danger" onSelect={() => onRemove(value)}>
+          <Trash2 size={16} aria-hidden="true" />
+          {wording.removeAttachment.confirm}
+        </MenuItem>
+      );
+    return (
+      <MenuItem
+        className="menu-danger"
+        onSelect={(event) => {
+          event.preventDefault();
+          setConfirmingRemove(true);
+        }}
+      >
+        <Trash2 size={16} aria-hidden="true" />
+        {wording.removeAttachment.menu}
+      </MenuItem>
+    );
+  };
   const outputs =
     visibleDeliverables.length > 0 || draftShown || conceptViews.length > 0;
   const hasTabs = outputs || themes !== null;
@@ -657,27 +680,7 @@ export function ArtifactPane({
                   <Printer size={16} aria-hidden="true" />
                   {wording.printDocument}
                 </MenuItem>
-                {onRemove === undefined ||
-                !removable(tabMenu.value) ? null : confirmingRemove ? (
-                  <MenuItem
-                    className="menu-danger"
-                    onSelect={() => onRemove(tabMenu.value)}
-                  >
-                    <Trash2 size={16} aria-hidden="true" />
-                    {wording.removeAttachment.confirm}
-                  </MenuItem>
-                ) : (
-                  <MenuItem
-                    className="menu-danger"
-                    onSelect={(event) => {
-                      event.preventDefault();
-                      setConfirmingRemove(true);
-                    }}
-                  >
-                    <Trash2 size={16} aria-hidden="true" />
-                    {wording.removeAttachment.menu}
-                  </MenuItem>
-                )}
+                {removeItem(tabMenu.value)}
               </MenuContent>
             </Menu>
           )}
