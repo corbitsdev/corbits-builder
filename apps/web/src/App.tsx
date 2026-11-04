@@ -187,16 +187,17 @@ function ProjectLoadFailure({
   onBackToProjects: () => void;
 }) {
   const [copied, setCopied] = useState(false);
-  const copyDetail = () => {
-    void navigator.clipboard
-      .writeText(detail)
-      .then(() => {
-        setCopied(true);
-        setTimeout(() => setCopied(false), 1500);
-      })
-      .catch(() => {
-        // Clipboard access can be denied; the text is still selectable in the disclosure.
-      });
+  const copyDetail = async () => {
+    try {
+      await navigator.clipboard.writeText(detail);
+    } catch (cause) {
+      // Clipboard access can be denied; the text is still selectable in the disclosure.
+      if (!(cause instanceof DOMException)) throw cause;
+      toast.error(wording.message.copyFailed);
+      return;
+    }
+    setCopied(true);
+    setTimeout(() => setCopied(false), 1500);
   };
 
   return (
@@ -216,7 +217,7 @@ function ProjectLoadFailure({
       <details className="project-load-failure-details">
         <summary>{wording.projectLoadFailure.details}</summary>
         <pre>{detail}</pre>
-        <Button variant="outline" onClick={copyDetail}>
+        <Button variant="outline" onClick={() => void copyDetail()}>
           {copied
             ? wording.projectLoadFailure.copied
             : wording.projectLoadFailure.copy}
@@ -600,15 +601,18 @@ export function App() {
       return;
     }
     let cancelled = false;
-    void getHubSession()
-      .then((session) => {
+    const readUser = async () => {
+      try {
+        const session = await getHubSession();
         if (!cancelled) setUser(session?.user ?? null);
-      })
-      .catch((cause: unknown) => {
-        // A dropped connection is the loading screen's to show, never a toast.
-        if (!cancelled && cause instanceof ApiFailure)
-          toast.error(humanFault(cause, wording.auth.accountUnreadable));
-      });
+      } catch (cause) {
+        if (cancelled) return;
+        // A hub that is down or unreachable is the loading screen's to show, never a toast.
+        if (cause instanceof ApiFailure && cause.detail.retryable) return;
+        toast.error(humanFault(cause, wording.auth.accountUnreadable));
+      }
+    };
+    void readUser();
     return () => {
       cancelled = true;
     };
@@ -616,8 +620,9 @@ export function App() {
   const signOut = async () => {
     try {
       await signOutHub();
-    } catch {
-      // The session is ended locally either way.
+    } catch (cause) {
+      // The session is ended locally either way; the person hears the hub kept it.
+      toast.error(humanFault(cause, wording.auth.signOutFailed));
     }
     setUser(null);
     setAuth("signed-out");

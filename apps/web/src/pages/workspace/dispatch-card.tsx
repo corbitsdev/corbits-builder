@@ -63,7 +63,8 @@ function parsed(content: unknown): unknown {
   if (typeof content !== "string") return content;
   try {
     return JSON.parse(content) as unknown;
-  } catch {
+  } catch (cause) {
+    if (!(cause instanceof SyntaxError)) throw cause;
     return content;
   }
 }

@@ -10,6 +10,7 @@
 import { wording } from "../config.ts";
 import { useEffect, useState } from "react";
 import { toast } from "sonner";
+import { ProductApiError } from "@corbits-builder/client";
 import { Banner, Button, Mark, StateLabel } from "../components.jsx";
 import { productClient } from "../api/transport.ts";
 import { getHubSession, type HubUser } from "../api/auth.ts";
@@ -44,8 +45,14 @@ export function InvitationAccept({ invitationId }: { invitationId: string }) {
               roles.data.find((role) => role.id === record.roleId)?.name ??
                 null,
             );
-        } catch {
-          // The role name is a courtesy; the accept does not depend on it.
+        } catch (cause) {
+          // The role name is a courtesy the invitee may not be allowed to
+          // read; the accept does not depend on it.
+          if (
+            !(cause instanceof ProductApiError) ||
+            (cause.response.status !== 403 && cause.response.status !== 404)
+          )
+            throw cause;
         }
       } catch (cause) {
         if (!cancelled)

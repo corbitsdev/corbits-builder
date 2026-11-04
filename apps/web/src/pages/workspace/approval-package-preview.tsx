@@ -4,7 +4,13 @@ import {
   type ApprovalPackageSource,
 } from "@corbits-builder/schemas/artifact";
 import { type } from "arktype";
-import { useEffect, useState, type CSSProperties, type ReactNode } from "react";
+import {
+  useEffect,
+  useMemo,
+  useState,
+  type CSSProperties,
+  type ReactNode,
+} from "react";
 import { wording } from "../../config.ts";
 import { Markdown } from "../../markdown.jsx";
 
@@ -189,24 +195,28 @@ export function parseApprovalPackage(
   }
 }
 
+/** The package's PDF as a file, or null when its base64 does not decode. */
 export function approvalPackagePdfFile(
   stem: string,
   bundle: ApprovalPackageBundle,
-): File {
+): File | null {
   const dataUrlMatch = /^data:[^;,]*;base64,(.*)$/s.exec(bundle.pdfBase64);
   const encoded = (
     dataUrlMatch === null ? bundle.pdfBase64 : (dataUrlMatch[1] as string)
   ).replace(/\s+/g, "");
-  let bytes = new Uint8Array(0);
+  let binary: string;
   try {
-    const binary = atob(encoded);
-    bytes = new Uint8Array(binary.length);
-    for (let index = 0; index < binary.length; index += 1) {
-      bytes[index] = binary.charCodeAt(index);
-    }
+    binary = atob(encoded);
   } catch (error) {
-    if (!(error instanceof Error)) throw error;
-    bytes = new Uint8Array(0);
+    if (
+      !(error instanceof DOMException && error.name === "InvalidCharacterError")
+    )
+      throw error;
+    return null;
+  }
+  const bytes = new Uint8Array(binary.length);
+  for (let index = 0; index < binary.length; index += 1) {
+    bytes[index] = binary.charCodeAt(index);
   }
   return new File([bytes], `${stem}.pdf`, { type: "application/pdf" });
 }
@@ -566,20 +576,24 @@ function PdfView({
   stem: string;
 }) {
   const [blobUrl, setBlobUrl] = useState<string | null>(null);
+  const file = useMemo(
+    () => approvalPackagePdfFile(stem, bundle),
+    [stem, bundle],
+  );
   useEffect(() => {
     if (
+      file === null ||
       typeof URL === "undefined" ||
       typeof URL.createObjectURL !== "function"
     ) {
       return;
     }
-    const file = approvalPackagePdfFile(stem, bundle);
     const objectUrl = URL.createObjectURL(file);
     setBlobUrl(objectUrl);
     return () => {
       URL.revokeObjectURL(objectUrl);
     };
-  }, [stem, bundle]);
+  }, [file]);
 
   const dataUrlMatch = /^data:[^;,]*;base64,(.*)$/s.exec(bundle.pdfBase64);
   const fallbackHref =
@@ -600,25 +614,29 @@ function PdfView({
           </strong>
           <span className="approval-package-pdf-filename">{stem}.pdf</span>
         </div>
-        <div className="approval-package-pdf-toolbar-actions">
-          {blobUrl === null ? null : (
+        {file === null ? (
+          <p className="inline-note">{text.pdfUnreadable}</p>
+        ) : (
+          <div className="approval-package-pdf-toolbar-actions">
+            {blobUrl !== null && (
+              <a
+                className="approval-package-pdf-action"
+                href={blobUrl}
+                target="_blank"
+                rel="noopener noreferrer"
+              >
+                {text.openPdf}
+              </a>
+            )}
             <a
-              className="approval-package-pdf-action"
-              href={blobUrl}
-              target="_blank"
-              rel="noopener noreferrer"
+              className="approval-package-pdf-action approval-package-pdf-action-primary"
+              href={pdfHref}
+              download={`${stem}.pdf`}
             >
-              {text.openPdf}
+              {text.downloadPdf}
             </a>
-          )}
-          <a
-            className="approval-package-pdf-action approval-package-pdf-action-primary"
-            href={pdfHref}
-            download={`${stem}.pdf`}
-          >
-            {text.downloadPdf}
-          </a>
-        </div>
+          </div>
+        )}
       </div>
       {slides.length === 0 ? (
         <p className="inline-note">{text.noSlides}</p>
