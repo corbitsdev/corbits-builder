@@ -1,10 +1,12 @@
+import { createHash } from "node:crypto";
+import { readFileSync } from "node:fs";
+import path from "node:path";
 import { hasCode } from "@intx/types";
 import type {
   LocalSidecarExit,
-  LocalSidecarProcess,
+  ReclaimLocalSidecar,
   SpawnLocalSidecar,
 } from "./local-provisioner.ts";
-import type { LocalSidecarPid } from "./manifest-store.ts";
 
 /** The variables a sidecar needs to find binaries and scratch space; nothing else from the hub env crosses over. */
 type ChildProcessEnv = { PATH?: string; HOME?: string; TMPDIR?: string };
@@ -20,7 +22,7 @@ export function childProcessEnv(
   };
 }
 
-type CreateSpawnLocalSidecarOpts = {
+type CreateLocalSidecarLauncherOpts = {
   readonly interchangeDir: string;
   readonly credentialEncryptionKey: string;
   readonly maxActiveDeployments: number;
@@ -28,23 +30,10 @@ type CreateSpawnLocalSidecarOpts = {
 };
 
 const SIDECAR_ENTRY = "apps/sidecar/src/index.ts";
+const WATCHDOG_ENTRY = path.join(import.meta.dir, "watchdog.ts");
+// How long a sidecar left running waits for a hub to answer before it stops itself.
+const ORPHAN_TIMEOUT_MS = 10 * 60_000;
 const EXIT_POLL_MS = 100;
-
-// When the process at `pid` started, and its command. Together they tell one process from a later one that reuses
-// its pid.
-function processAt(pid: number): string | undefined {
-  const ps = Bun.spawnSync(
-    ["ps", "-o", "lstart=", "-o", "command=", "-p", String(pid)],
-    { env: { ...process.env, LC_ALL: "C" }, stderr: "ignore" },
-  );
-  return ps.exitCode === 0 ? ps.stdout.toString().trim() : undefined;
-}
-
-/** The identity of the sidecar running at `pid`, or undefined when no sidecar runs there. */
-function localSidecarIdentity(pid: number): string | undefined {
-  const identity = processAt(pid);
-  return identity?.includes(SIDECAR_ENTRY) ? identity : undefined;
-}
 
 // Signals a process that is still running; false when it no longer exists.
 function sendSignal(pid: number, name: NodeJS.Signals | 0): boolean {
@@ -57,48 +46,89 @@ function sendSignal(pid: number, name: NodeJS.Signals | 0): boolean {
   }
 }
 
+type ProcessRow = {
+  readonly pid: number;
+  readonly ppid: number;
+  readonly command: string;
+};
+
+function processes(pid?: number): ProcessRow[] {
+  const ps = Bun.spawnSync(
+    [
+      "ps",
+      "-ww",
+      "-o",
+      "pid=,ppid=,command=",
+      ...(pid === undefined ? ["-A"] : ["-p", String(pid)]),
+    ],
+    { stderr: "ignore" },
+  );
+  return ps.stdout
+    .toString()
+    .split("\n")
+    .flatMap((line) => {
+      const match = /^\s*(\d+)\s+(\d+)\s+(.*)$/.exec(line);
+      return match === null
+        ? []
+        : [
+            {
+              pid: Number(match[1]),
+              ppid: Number(match[2]),
+              command: match[3]!,
+            },
+          ];
+    });
+}
+
+function commandAt(pid: number): string | undefined {
+  return processes(pid)[0]?.command;
+}
+
+function hasArgument(command: string, argument: string): boolean {
+  return `${command} `.includes(` ${argument} `);
+}
+
+// Signals `pid` only while it still runs `command`, so a pid the system has since reused is never signalled.
+function signalIfStill(
+  pid: number,
+  command: string,
+  name: NodeJS.Signals | 0,
+): boolean {
+  return commandAt(pid) === command && sendSignal(pid, name);
+}
+
+async function stopProcessAt(
+  pid: number,
+  command: string,
+  timeoutMs: number,
+): Promise<void> {
+  for (const name of ["SIGTERM", "SIGKILL"] as const) {
+    if (!signalIfStill(pid, command, name)) return;
+    for (const deadline = Date.now() + timeoutMs; Date.now() < deadline;) {
+      if (!signalIfStill(pid, command, 0)) return;
+      await Bun.sleep(EXIT_POLL_MS);
+    }
+  }
+  throw new Error(`Local sidecar process ${String(pid)} did not exit`);
+}
+
 /**
- * Stop the sidecar a hub that recorded no identity left running at `pid`, so two processes never share one identity
- * and data dir. The process is no child of this hub, so its exit is polled. A pid that no longer runs the
- * sidecar entry is left alone.
+ * Stop the sidecar a hub from before data-dir tagging left running at `pid`, so two processes never share one
+ * identity and data dir. A pid that runs anything else, a tagged sidecar included, is left alone.
  */
 export async function stopStaleLocalSidecar(
   pid: number,
   timeoutMs: number,
 ): Promise<boolean> {
-  if (localSidecarIdentity(pid) === undefined) return false;
-  for (const name of ["SIGTERM", "SIGKILL"] as const) {
-    if (!sendSignal(pid, name)) return true;
-    for (const deadline = Date.now() + timeoutMs; Date.now() < deadline;) {
-      if (!sendSignal(pid, 0)) return true;
-      await Bun.sleep(EXIT_POLL_MS);
-    }
-  }
-  throw new Error(`Stale local sidecar process ${String(pid)} did not exit`);
-}
-
-/**
- * The sidecar a previous hub left running, when the process at `record.pid` is still the one it started. The process
- * is no child of this hub, so its exit is polled.
- */
-export function adoptLocalSidecar(
-  record: LocalSidecarPid,
-): LocalSidecarProcess | undefined {
-  const { pid, identity } = record;
-  if (identity === undefined || localSidecarIdentity(pid) !== identity)
-    return undefined;
-  const exited = (async (): Promise<LocalSidecarExit> => {
-    while (sendSignal(pid, 0)) await Bun.sleep(EXIT_POLL_MS);
-    return { code: null, signal: null };
-  })();
-  return {
-    pid,
-    identity,
-    exited,
-    kill(signal) {
-      sendSignal(pid, signal);
-    },
-  };
+  const command = commandAt(pid);
+  if (
+    command === undefined ||
+    !command.includes(SIDECAR_ENTRY) ||
+    command.includes("--data-dir=")
+  )
+    return false;
+  await stopProcessAt(pid, command, timeoutMs);
+  return true;
 }
 
 async function exitOf(child: Bun.Subprocess): Promise<LocalSidecarExit> {
@@ -110,37 +140,149 @@ async function exitOf(child: Bun.Subprocess): Promise<LocalSidecarExit> {
   };
 }
 
-export function createSpawnLocalSidecar({
+function recordedInterchangeRevision(interchangeDir: string): string {
+  try {
+    const manifest: unknown = JSON.parse(
+      readFileSync(`${interchangeDir}.manifest.json`, "utf8"),
+    );
+    if (
+      manifest !== null &&
+      typeof manifest === "object" &&
+      "revision" in manifest &&
+      typeof manifest.revision === "string"
+    )
+      return manifest.revision;
+  } catch (error) {
+    if (!(hasCode(error) && error.code === "ENOENT")) throw error;
+  }
+  return "unrecorded";
+}
+
+export function createLocalSidecarLauncher({
   interchangeDir,
   credentialEncryptionKey,
   maxActiveDeployments,
   processEnv,
-}: CreateSpawnLocalSidecarOpts): SpawnLocalSidecar {
-  return function spawnSidecar({ manifest, adapterManifest }) {
-    const child = Bun.spawn(["bun", "--conditions=intx-src", SIDECAR_ENTRY], {
-      cwd: interchangeDir,
-      env: {
-        ...processEnv,
-        HUB_WS_URL: manifest.hubWebSocketUrl,
-        SIDECAR_ID: manifest.sidecarId,
-        SIDECAR_TOKEN: manifest.token,
-        SIDECAR_DATA_DIR: manifest.dataDir,
-        SIDECAR_CREDENTIAL_ENCRYPTION_KEY: credentialEncryptionKey,
-        SIDECAR_ADAPTER_MANIFEST: JSON.stringify(adapterManifest),
-        SIDECAR_MAX_ACTIVE_DEPLOYMENTS: String(maxActiveDeployments),
+}: CreateLocalSidecarLauncherOpts): {
+  readonly spawnSidecar: SpawnLocalSidecar;
+  readonly reclaimSidecar: ReclaimLocalSidecar;
+} {
+  const interchangeRevision = recordedInterchangeRevision(interchangeDir);
+  const absolute = (dataDir: string) => path.resolve(interchangeDir, dataDir);
+
+  // Everything the sidecar is spawned from; a sidecar spawned from anything else is not adopted.
+  const fingerprintOf: (...args: Parameters<SpawnLocalSidecar>) => string = ({
+    manifest,
+    adapterManifest,
+  }) =>
+    createHash("sha256")
+      .update(
+        JSON.stringify([
+          interchangeRevision,
+          manifest.hubWebSocketUrl,
+          manifest.sidecarId,
+          manifest.token,
+          absolute(manifest.dataDir),
+          credentialEncryptionKey,
+          maxActiveDeployments,
+          processEnv,
+          adapterManifest,
+          ORPHAN_TIMEOUT_MS,
+        ]),
+      )
+      .digest("hex");
+
+  const spawnSidecar: SpawnLocalSidecar = (args) => {
+    const { manifest, adapterManifest } = args;
+    const child = Bun.spawn(
+      [
+        "bun",
+        WATCHDOG_ENTRY,
+        `--data-dir=${absolute(manifest.dataDir)}`,
+        `--fingerprint=${fingerprintOf(args)}`,
+        `--orphan-timeout-ms=${String(ORPHAN_TIMEOUT_MS)}`,
+      ],
+      {
+        cwd: interchangeDir,
+        env: {
+          ...processEnv,
+          HUB_WS_URL: manifest.hubWebSocketUrl,
+          SIDECAR_ID: manifest.sidecarId,
+          SIDECAR_TOKEN: manifest.token,
+          SIDECAR_DATA_DIR: manifest.dataDir,
+          SIDECAR_CREDENTIAL_ENCRYPTION_KEY: credentialEncryptionKey,
+          SIDECAR_ADAPTER_MANIFEST: JSON.stringify(adapterManifest),
+          SIDECAR_MAX_ACTIVE_DEPLOYMENTS: String(maxActiveDeployments),
+        },
+        stdin: "ignore",
+        stdout: "inherit",
+        stderr: "inherit",
       },
-      stdin: "ignore",
-      stdout: "inherit",
-      stderr: "inherit",
-    });
-    const identity = localSidecarIdentity(child.pid);
+    );
     return {
       pid: child.pid,
-      ...(identity !== undefined && { identity }),
       exited: exitOf(child),
       kill(signal) {
         child.kill(signal);
       },
+      release() {
+        child.unref();
+      },
     };
   };
+
+  // Any process tagged with the data dir is ours, whoever started it: one spawned from exactly the inputs given is
+  // adopted, and every other one is stopped, so two sidecars never run on one data dir.
+  const reclaimSidecar: ReclaimLocalSidecar = async ({
+    dataDir,
+    spawnedFrom,
+    timeoutMs,
+  }) => {
+    const tag = `--data-dir=${absolute(dataDir)}`;
+    const ours = processes().filter(
+      ({ command }) =>
+        (command.includes(WATCHDOG_ENTRY) || command.includes(SIDECAR_ENTRY)) &&
+        hasArgument(command, tag),
+    );
+    const fingerprint =
+      spawnedFrom === undefined
+        ? undefined
+        : `--fingerprint=${fingerprintOf(spawnedFrom)}`;
+    const kept =
+      fingerprint === undefined
+        ? undefined
+        : ours.find(
+            ({ command }) =>
+              command.includes(WATCHDOG_ENTRY) &&
+              hasArgument(command, fingerprint),
+          );
+    await Promise.all(
+      ours
+        .filter((row) => row !== kept && row.ppid !== kept?.pid)
+        .map(({ pid, command }) => stopProcessAt(pid, command, timeoutMs)),
+    );
+    if (kept === undefined) return undefined;
+    const { pid, command } = kept;
+    let released = false;
+    const exited = (async (): Promise<LocalSidecarExit> => {
+      while (signalIfStill(pid, command, 0)) {
+        // A released sidecar outlives this hub, so its exit is never seen here.
+        if (released) return new Promise<never>(() => undefined);
+        await Bun.sleep(EXIT_POLL_MS);
+      }
+      return { code: null, signal: null };
+    })();
+    return {
+      pid,
+      exited,
+      kill(signal) {
+        signalIfStill(pid, command, signal);
+      },
+      release() {
+        released = true;
+      },
+    };
+  };
+
+  return { spawnSidecar, reclaimSidecar };
 }

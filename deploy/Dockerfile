@@ -84,7 +84,7 @@ COPY --from=deps --chown=bun:bun /app/workflows ./workflows
 COPY --from=deps --chown=bun:bun /app/vendor/interchange ./vendor/interchange
 RUN mkdir -p /app/data/hub && chown -R bun:bun /app/data
 USER bun
-ENV HOST=0.0.0.0 PORT=8000 HUB_DATA_DIR=/app/data/hub HUB_WEB_DIR=/app/apps/web/dist
+ENV HOST=0.0.0.0 PORT=8000 HUB_DATA_DIR=/app/data/hub HUB_WEB_DIR=/app/apps/web/dist SIDECAR_LOCAL_OUTLIVES_HUB=false
 EXPOSE 8000
 # ChatGPT (1455) and xAI (1456) send a subscription login back to a fixed localhost port, where the
 # hub listens on loopback only. socat carries the published port from the container's address to it.

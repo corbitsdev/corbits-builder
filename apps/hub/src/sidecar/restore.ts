@@ -12,6 +12,7 @@ export async function restoreLocalSidecars(
   db: DB["db"],
   local: LocalProcessSidecarProvisioner,
   adapterManifest: AdapterManifest,
+  connected: (hold: LocalSidecarHold) => boolean,
 ): Promise<void> {
   const credentials = createSidecarCredentialResolver({ db });
   const currentDigest = adapterManifestDigest(adapterManifest);
@@ -67,5 +68,5 @@ export async function restoreLocalSidecars(
       );
     return new Set([...allocations, ...probes].map((row) => row.id));
   }
-  await local.restore({ isLive, hasWork, stillOpen, reusable });
+  await local.restore({ isLive, hasWork, stillOpen, reusable, connected });
 }

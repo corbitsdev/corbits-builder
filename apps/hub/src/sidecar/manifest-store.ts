@@ -34,14 +34,6 @@ const LocalSidecarFence = type({
 export type LocalSidecarFence = typeof LocalSidecarFence.infer;
 const LocalSidecarFences = LocalSidecarFence.array();
 
-/** The sidecar process last started on a data root, and what `ps` reported it started as. */
-const LocalSidecarPid = type({
-  pid: "number.integer > 0",
-  "identity?": "string > 0",
-});
-export type LocalSidecarPid = typeof LocalSidecarPid.infer;
-const StoredLocalSidecarPid = type("string.json.parse").to(LocalSidecarPid);
-
 export interface LocalSidecarManifestStore {
   read(): Promise<LocalSidecarManifest | null>;
   write(manifest: LocalSidecarManifest): Promise<void>;
@@ -51,9 +43,8 @@ export interface LocalSidecarManifestStore {
   /** The stored fences, or null when the file could not be read and was moved aside. */
   readFences(): Promise<LocalSidecarFence[] | null>;
   writeFences(fences: readonly LocalSidecarFence[]): Promise<void>;
-  /** The sidecar process last started on this data root, or null when none is recorded. */
-  readPid(): Promise<LocalSidecarPid | null>;
-  writePid(record: LocalSidecarPid): Promise<void>;
+  /** The pid a hub from before data-dir tagging recorded for its sidecar, or null when none is recorded. */
+  readPid(): Promise<number | null>;
   removePid(): Promise<void>;
 }
 
@@ -187,18 +178,9 @@ export function createLocalSidecarManifestStore({
     await writeAtomically(fencesFile, JSON.stringify(fences));
   }
 
-  // A bare pid is what hubs before identities wrote; it is still stopped, never adopted.
-  async function readPid(): Promise<LocalSidecarPid | null> {
-    const text = (await readOptional(pidFile))?.trim();
-    if (text === undefined) return null;
-    const stored = StoredLocalSidecarPid(text);
-    if (!(stored instanceof type.errors)) return stored;
-    const pid = Number(text);
-    return Number.isSafeInteger(pid) && pid > 0 ? { pid } : null;
-  }
-
-  async function writePid(record: LocalSidecarPid): Promise<void> {
-    await writeAtomically(pidFile, JSON.stringify(record));
+  async function readPid(): Promise<number | null> {
+    const pid = Number((await readOptional(pidFile))?.trim());
+    return Number.isSafeInteger(pid) && pid > 0 ? pid : null;
   }
 
   async function removePid(): Promise<void> {
@@ -214,7 +196,6 @@ export function createLocalSidecarManifestStore({
     readFences,
     writeFences,
     readPid,
-    writePid,
     removePid,
   };
 }

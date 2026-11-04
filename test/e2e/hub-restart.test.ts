@@ -35,9 +35,9 @@ async function poll<T>(
   throw new Error(`Timed out waiting for ${description}`);
 }
 
-// A writer whose model reply is still in flight when the hub restarts. The sidecar outlives the hub, the new hub
-// adopts it, and the writer's turn files its document as if nothing happened: no failed run, and no notice that would
-// send the coordinator an exchange the recording does not have.
+// A writer whose model reply is still in flight when the hub process gets SIGTERM and a new one starts. The sidecar
+// outlives the hub, the new hub adopts it, and the writer's turn files its document as if nothing happened: no failed
+// run, and no notice that would send the coordinator an exchange the recording does not have.
 test(
   "a specialist mid-turn finishes its turn across a hub restart",
   async () => {
@@ -202,14 +202,14 @@ test(
       const writerTurn = model.hold("writer-1", 0);
       let writing = false;
       void writerTurn.reached.then(() => (writing = true));
-      // The ask's time comes from Postgres's clock and the brief's from the hub's, so the ask waits until the brief
-      // is plainly older than it.
+      // The hub compares the ask's time, from Postgres's clock, with the brief's, from its own, so the ask waits until
+      // the brief is plainly older. Goes once that comparison uses one clock, which a separate fix does.
       const ask = model.hold("coordinator-1", 1);
       void ask.reached.then(async () => {
         await Bun.sleep(1_000);
         ask.release();
       });
-      const started = await startTestHub(model);
+      const started = await startTestHub(model, { process: true });
       hub = started;
       const { client, workspaceTenantId } = started;
       const projectId = "restart-pitch";

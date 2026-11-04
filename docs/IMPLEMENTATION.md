@@ -47,9 +47,13 @@ Agents run on sidecars, which the hub provisions
   `HUB_DATA_DIR`, and restores them after a restart. One holds up to
   `SIDECAR_LOCAL_MAX_ACTIVE` deployments. A hub restart (SIGTERM, a fatal
   error, a failed start or a crash) leaves the sidecar running, and the next
-  hub adopts it when it is still the process it recorded, so turns in flight
-  carry on over Interchange's reconnect. SIGINT, as when the dev script exits,
-  stops it.
+  hub adopts it when it was spawned from the same inputs, so turns in flight
+  carry on over Interchange's reconnect. Any other sidecar on the hub's data
+  dir is stopped, as is an adopted one that does not reconnect within a
+  minute. SIGINT, as when the dev script exits, stops it, and so does its
+  watchdog once no hub has answered for ten minutes. A hub that is a
+  container's first process, or that sets `SIDECAR_LOCAL_OUTLIVES_HUB=false`,
+  stops it on every shutdown.
 - **Docker sidecars** are added when `SIDECAR_IMAGE` names an image (built
   from the `sidecar` target of
   [deploy/Dockerfile](https://github.com/corbitsdev/corbits-builder/blob/main/deploy/Dockerfile)),

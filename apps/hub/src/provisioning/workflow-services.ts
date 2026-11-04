@@ -49,9 +49,8 @@ import { createLocalSidecarManifestStore } from "../sidecar/manifest-store.ts";
 import { createPlacementChooser } from "../sidecar/placement.ts";
 import { restoreLocalSidecars } from "../sidecar/restore.ts";
 import {
-  adoptLocalSidecar,
   childProcessEnv,
-  createSpawnLocalSidecar,
+  createLocalSidecarLauncher,
   stopStaleLocalSidecar,
 } from "../sidecar/spawn.ts";
 
@@ -124,15 +123,19 @@ export async function createWorkflowServices(options: {
   const dataRoot = localSidecarDataRoot(
     environment["HUB_DATA_DIR"] ?? "data/hub",
   );
+  // A container's runtime stops every process in it once the hub, its first process, exits, so a sidecar left running
+  // there is never adopted; the hub stops it gracefully instead.
+  const sidecarOutlivesHub =
+    (environment["SIDECAR_LOCAL_OUTLIVES_HUB"] ?? String(process.pid !== 1)) ===
+    "true";
   const local = createLocalProcessSidecarProvisioner({
     dataRoot,
-    spawnSidecar: createSpawnLocalSidecar({
+    ...createLocalSidecarLauncher({
       interchangeDir: INTERCHANGE_DIR,
       credentialEncryptionKey,
       maxActiveDeployments,
       processEnv: childProcessEnv(environment),
     }),
-    adoptSidecar: adoptLocalSidecar,
     stopStaleSidecar: stopStaleLocalSidecar,
     manifests: createLocalSidecarManifestStore({
       dataRoot,
@@ -290,7 +293,12 @@ export async function createWorkflowServices(options: {
     retireProvisionerSidecar: allocationStore.retireProvisionerSidecar,
     isConnected: router.holdsAllocatedBinding,
   });
-  await restoreLocalSidecars(db, local, adapterManifest);
+  await restoreLocalSidecars(
+    db,
+    local,
+    adapterManifest,
+    router.holdsAllocatedBinding,
+  );
   const pending = new Set<Promise<unknown>>();
   const track = <T>(run: () => Promise<T>): Promise<T> => {
     const task = Promise.resolve().then(run);
@@ -394,7 +402,9 @@ export async function createWorkflowServices(options: {
     },
     async drain(options?: { readonly keepSidecar?: boolean }) {
       await Promise.allSettled(pending);
-      await local.shutdown(options);
+      await local.shutdown({
+        keepSidecar: sidecarOutlivesHub && options?.keepSidecar === true,
+      });
     },
   };
 }

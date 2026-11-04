@@ -20,7 +20,9 @@ export type TestHubHandle = Readonly<{
     runId: string,
     onFrame: (event: string, data: string) => void,
   ) => () => void;
-  /** Stops the hub as a supervisor restart does, leaving its sidecar running, and boots a new one in its place. */
+  /**
+   * Sends a hub started with `process` SIGTERM, as a supervisor restarting it does, and starts another in its place.
+   */
   restart: () => Promise<void>;
   close: () => Promise<void>;
 }>;
@@ -52,24 +54,15 @@ async function signUpSessionCookie(
   password: string,
   name: string,
 ): Promise<string> {
-  const signUp = () =>
-    fetch(new URL("/api/auth/sign-up/email", baseUrl), {
-      method: "POST",
-      redirect: "error",
-      headers: {
-        "Content-Type": "application/json",
-        Origin: baseUrl,
-      },
-      body: JSON.stringify({ email, password, name }),
-    });
-  let response = await signUp();
-  // Hubs in one test process share the auth library's sign-up limit, so a hub booted right after another waits it out.
-  if (response.status === 429) {
-    await response.body?.cancel();
-    const retryAfter = Number(response.headers.get("X-Retry-After") ?? "10");
-    await Bun.sleep((retryAfter + 1) * 1_000);
-    response = await signUp();
-  }
+  const response = await fetch(new URL("/api/auth/sign-up/email", baseUrl), {
+    method: "POST",
+    redirect: "error",
+    headers: {
+      "Content-Type": "application/json",
+      Origin: baseUrl,
+    },
+    body: JSON.stringify({ email, password, name }),
+  });
   if (!response.ok) {
     const body = await response.text();
     throw new Error(`E2E sign-up failed (${response.status}): ${body}`);
@@ -85,8 +78,13 @@ async function signUpSessionCookie(
   return cookies.join("; ");
 }
 
+const REPO_ROOT = join(import.meta.dir, "..", "..", "..");
+const HUB_READY_TIMEOUT_MS = 120_000;
+
+/** `process` runs the hub as its own `server.ts` process instead of inside the test, so it can be restarted for real. */
 export async function startTestHub(
   recordedModel: RecordedModelServer,
+  options: { readonly process?: boolean } = {},
 ): Promise<TestHubHandle> {
   const dbServer = readTestDbServerConfig();
   const dbName = `builder_e2e_${crypto.randomUUID().replaceAll("-", "").slice(0, 16)}`;
@@ -153,6 +151,7 @@ export async function startTestHub(
 
   let runtime: Awaited<ReturnType<typeof createHubRuntime>> | undefined;
   let server: ReturnType<typeof Bun.serve> | undefined;
+  let hubProcess: Bun.Subprocess | undefined;
   const activeStreams = new Set<AbortController>();
 
   async function dropDatabase(): Promise<void> {
@@ -172,20 +171,65 @@ export async function startTestHub(
     }
   }
 
-  async function boot(): Promise<void> {
-    runtime = await createHubRuntime(hubEnv);
-    server = Bun.serve({
-      hostname: runtime.hostname,
-      port: runtime.port,
-      fetch: runtime.app.fetch,
-      websocket: runtime.websocket,
-    });
-    runtime.start();
+  // The hub serves only once its runtime is built, sidecars restored or adopted included.
+  async function spawnHub(): Promise<void> {
+    const started = Bun.spawn(
+      [
+        "bun",
+        "--no-env-file",
+        "--conditions=intx-src",
+        "apps/hub/src/server.ts",
+      ],
+      {
+        cwd: REPO_ROOT,
+        env: hubEnv,
+        stdin: "ignore",
+        stdout: "inherit",
+        stderr: "inherit",
+      },
+    );
+    hubProcess = started;
+    for (const deadline = Date.now() + HUB_READY_TIMEOUT_MS; ;) {
+      if (started.exitCode !== null)
+        throw new Error(`E2E hub exited with code ${String(started.exitCode)}`);
+      try {
+        await (await fetch(baseUrl)).body?.cancel();
+        return;
+      } catch {
+        if (Date.now() > deadline) throw new Error("E2E hub did not start");
+        await Bun.sleep(200);
+      }
+    }
+  }
+
+  // SIGINT is the hub's full stop, sidecar included.
+  async function stopHub(signal: NodeJS.Signals): Promise<void> {
+    if (!hubProcess) return;
+    hubProcess.kill(signal);
+    await hubProcess.exited;
+    hubProcess = undefined;
+  }
+
+  async function shutDown(): Promise<void> {
+    if (server) await server.stop(true);
+    if (runtime) await runtime.close();
+    await stopHub("SIGINT");
   }
 
   try {
     await migrateDatabase(hubEnv);
-    await boot();
+    if (options.process) {
+      await spawnHub();
+    } else {
+      runtime = await createHubRuntime(hubEnv);
+      server = Bun.serve({
+        hostname: runtime.hostname,
+        port: runtime.port,
+        fetch: runtime.app.fetch,
+        websocket: runtime.websocket,
+      });
+      runtime.start();
+    }
 
     const cookie = await signUpSessionCookie(
       baseUrl,
@@ -327,17 +371,17 @@ export async function startTestHub(
       fakeCredentialSecret,
       subscribeRunStream,
       restart: async () => {
-        await server?.stop(true);
-        await runtime?.close({ keepSidecar: true });
-        await boot();
+        if (!options.process)
+          throw new Error("Restarting the E2E hub needs a hub process");
+        await stopHub("SIGTERM");
+        await spawnHub();
       },
       close: async () => {
         for (const controller of activeStreams) {
           controller.abort();
         }
         activeStreams.clear();
-        if (server) await server.stop(true);
-        if (runtime) await runtime.close();
+        await shutDown();
         await rm(dataDir, { recursive: true, force: true });
         await dropDatabase();
       },
@@ -347,8 +391,7 @@ export async function startTestHub(
       controller.abort();
     }
     activeStreams.clear();
-    if (server) await server.stop(true);
-    if (runtime) await runtime.close();
+    await shutDown();
     await rm(dataDir, { recursive: true, force: true });
     await dropDatabase();
     throw error;
