@@ -375,10 +375,13 @@ function threadSections(
 ): Section[] {
   const sections: Section[] = [];
   let open: Extract<Section, { kind: "coordinator" }> | null = null;
+  // Whether this stretch made an ask_questions call, running or failed included.
+  let called = false;
   for (const item of items) {
     if (item.kind === "turn" && item.turn.role === "person") {
       sections.push({ kind: "person", turn: item.turn, index: item.index });
       open = null;
+      called = false;
       continue;
     }
     if (open === null) {
@@ -396,8 +399,8 @@ function threadSections(
       if (ask !== undefined)
         open.cards.push({ kind: "questions", callId: tool.toolCallId, ask });
     }
-    // Only a turn that made no ask_questions call, running or failed included, falls back to its text.
-    const called = tools.some((tool) => tool.name === ASK_QUESTIONS);
+    // Only a stretch that made no ask_questions call falls back to questions written in its text.
+    called ||= tools.some((tool) => tool.name === ASK_QUESTIONS);
     const written =
       item.turn.role === "assistant" && !called
         ? writtenQuestions(item.turn.text)

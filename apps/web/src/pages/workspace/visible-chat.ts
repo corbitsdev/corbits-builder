@@ -157,6 +157,11 @@ export function jsonValues(text: string): unknown[] {
   return values;
 }
 
+const asksQuestions = (value: unknown) =>
+  typeof value === "object" &&
+  value !== null &&
+  Array.isArray((value as { questions?: unknown }).questions);
+
 /** Drop JSON values. A status object is not a sentence. */
 function stripJson(text: string): string {
   let out = "";
@@ -292,7 +297,10 @@ export function visibleChatText(text: string): string {
     .join("\n\n")
     .replace(/(\S)[ \t]{2,}/g, "$1 ")
     .trim();
-  return prose.length > 0 ? prose : plainFallback(text);
+  if (prose.length > 0) return prose;
+  // Questions written as JSON become a card of their own; words in them are not a failure to report.
+  if (jsonValues(text).some(asksQuestions)) return "";
+  return plainFallback(text);
 }
 
 const roleLabels: Readonly<Record<string, string>> = wording.activity.role;

@@ -481,4 +481,52 @@ describe("conversation transcript", () => {
     );
     expect(html).not.toContain("Who is it for?");
   });
+
+  test("questions repeated as JSON after an ask_questions call add no second card", () => {
+    const html = renderToStaticMarkup(
+      <RoomThread
+        turns={[
+          {
+            role: "assistant",
+            text: "",
+            at: 1,
+            parts: [
+              {
+                kind: "tool-trace",
+                toolCallId: "call-ask",
+                name: "ask_questions",
+                status: "output-available",
+                input: JSON.parse(writtenAsk) as unknown,
+              },
+            ],
+          },
+          { role: "assistant", text: writtenAsk, at: 2 },
+        ]}
+        onAnswerQuestions={() => Promise.resolve(true)}
+      />,
+    );
+    expect(html.split("Who is it for?")).toHaveLength(2);
+    expect(html).not.toContain(wording.questions.replaced);
+  });
+
+  test("a reply that is only written questions shows no failure", () => {
+    const failing = writtenAsk.replace(
+      "Who is it for?",
+      "What should an error say?",
+    );
+    const html = renderToStaticMarkup(
+      <RoomThread
+        turns={[
+          {
+            role: "assistant",
+            text: "```json\n" + failing + "\n```",
+            at: 1,
+          },
+        ]}
+        onAnswerQuestions={() => Promise.resolve(true)}
+      />,
+    );
+    expect(html).toContain("What should an error say?");
+    expect(html).not.toContain(wording.message.stepFailed);
+  });
 });
