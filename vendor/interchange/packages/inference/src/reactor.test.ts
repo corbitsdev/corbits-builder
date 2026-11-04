@@ -6175,6 +6175,354 @@ describe("createReactor — message.run bracket emission", () => {
   });
 });
 
+describe("createReactor — message.run bracket on resumed parked work", () => {
+  // Emits inference.start for every call; returns `firstTurn` on the first
+  // call if given, else a text reply.
+  function startReportingRunner(firstTurn?: AssistantTurn) {
+    let calls = 0;
+    return async function* (
+      opts: InferenceHarnessOptions,
+    ): AsyncGenerator<InferenceEvent> {
+      calls += 1;
+      yield {
+        type: "inference.start",
+        seq: opts.nextSeq(),
+        data: { model: "test-model" },
+      };
+      yield {
+        type: "inference.done",
+        seq: opts.nextSeq(),
+        data: {
+          turn:
+            calls === 1 && firstTurn !== undefined
+              ? firstTurn
+              : {
+                  role: "assistant",
+                  content: [{ type: "text", text: "acknowledged" }],
+                  model: "test-model",
+                  timestamp: 2000 + calls,
+                },
+          usage: emptyUsage(),
+          source: TEST_SOURCE,
+        },
+      };
+    };
+  }
+
+  // What a previous process persisted when it parked `call-ask` for approval.
+  function restoredCell(
+    correlationId: string,
+    timeoutAt = Date.now() + 60_000,
+  ): PersistedCell {
+    return {
+      turns: [{ ...suspendToolCallTurn, timestamp: 500 }],
+      pendingOperations: [
+        {
+          correlationId,
+          kind: "approval",
+          registeredAt: Date.now(),
+          gateId: `pending-${correlationId}`,
+          timeoutAt,
+          suspendedCall: { id: "call-ask", name: "charge_card", arguments: {} },
+        },
+      ],
+      tokenUsage: emptyUsage(),
+    };
+  }
+
+  const askExtension = (approvalTimeoutMs = 60_000) =>
+    createAuthzExtension({
+      authorize: async () => ({
+        effect: "ask" as const,
+        matchingGrants: [],
+        resolvedBy: null,
+      }),
+      approvalTimeoutMs,
+    });
+
+  const chargeRunner = makeToolRunner(async (call) => ({
+    callId: call.id,
+    content: "charged",
+  }));
+
+  // A reactor whose first inference asks for `call-ask`, which the ask
+  // extension parks for approval.
+  function parkingReactor(approvalTimeoutMs?: number) {
+    return createTestReactor({
+      contextStore: makePersistingContextStore({
+        turns: [],
+        pendingOperations: [],
+        tokenUsage: emptyUsage(),
+      }),
+      director: createDefaultDirector("test agent", []),
+      inferenceRunner: startReportingRunner(suspendToolCallTurn),
+      toolRunner: chargeRunner,
+      beforeToolExtensions: [askExtension(approvalTimeoutMs)],
+    });
+  }
+
+  // A first message parks on a correlated gate; a second closes that run and
+  // completes its own, leaving the gate parked with no run open. Returns the
+  // gate's correlation ID and how many events had been emitted then.
+  async function parkWithNoRunOpen({
+    reactor,
+    events,
+    waitFor,
+  }: TestReactorHandle) {
+    reactor.start();
+    reactor.deliver(makeInboundMessage());
+    const blocked = await waitFor("reactor.gate.blocked");
+    if (blocked.type !== "reactor.gate.blocked") throw new Error("unreachable");
+    const correlationId = blocked.data.correlationId;
+    if (correlationId === undefined) throw new Error("expected correlationId");
+    reactor.deliver(makeInboundMessage());
+    await waitUntil(() => bracketEvents(events).ended.length === 2);
+    return { correlationId, emitted: events.length };
+  }
+
+  function bracketEvents(events: ReactorEmittedEvent[]) {
+    const started = events.filter(
+      (e): e is Extract<ReactorEmittedEvent, { type: "message.run.started" }> =>
+        e.type === "message.run.started",
+    );
+    const ended = events.filter(
+      (e): e is Extract<ReactorEmittedEvent, { type: "message.run.ended" }> =>
+        e.type === "message.run.ended",
+    );
+    return { started, ended };
+  }
+
+  // One completed run named `messageId` that opens before the resumed work's
+  // first tool or inference start and ends after its reply.
+  function expectOneRunAroundReply(
+    events: ReactorEmittedEvent[],
+    messageId: string | undefined,
+  ) {
+    const { started, ended } = bracketEvents(events);
+    expect(started).toHaveLength(1);
+    expect(ended).toHaveLength(1);
+    expect(started[0]?.data.messageId).toBe(messageId);
+    expect(ended[0]?.data.messageRunId).toBe(started[0]?.data.messageRunId);
+    expect(ended[0]?.data.status).toBe("completed");
+
+    const types = events.map((e) => e.type);
+    const firstWorkIdx = types.findIndex(
+      (t) => t === "tool.start" || t === "inference.start",
+    );
+    const replyIdx = types.indexOf("connector.reply");
+    expect(firstWorkIdx).toBeGreaterThan(-1);
+    expect(replyIdx).toBeGreaterThan(-1);
+    expect(types.indexOf("message.run.started")).toBeLessThan(firstWorkIdx);
+    expect(types.indexOf("message.run.ended")).toBeGreaterThan(replyIdx);
+  }
+
+  for (const outcome of ["approved", "rejected"] as const) {
+    test(`a restored approval decided as ${outcome} after a restart opens one run named for the decision`, async () => {
+      const correlationId = `restored-${outcome}`;
+      const { reactor, events, waitFor } = createTestReactor({
+        contextStore: makePersistingContextStore(restoredCell(correlationId)),
+        director: createDefaultDirector("test agent", []),
+        inferenceRunner: startReportingRunner(),
+        toolRunner: chargeRunner,
+        beforeToolExtensions: [askExtension()],
+      });
+
+      reactor.start();
+      await waitFor("reactor.start");
+      const decision = makeApprovalMessage(correlationId, outcome);
+      reactor.deliver(decision);
+      await waitFor("message.run.ended");
+
+      expectOneRunAroundReply(events, decision.headers.messageId);
+      expect(events.some((e) => e.type === "tool.start")).toBe(
+        outcome === "approved",
+      );
+      reactor.abort("admin_kill");
+    });
+  }
+
+  test("a restored approval that times out after a restart opens one run", async () => {
+    const { reactor, events, waitFor } = createTestReactor({
+      contextStore: makePersistingContextStore(
+        restoredCell("restored-timeout", Date.now() + 30),
+      ),
+      director: createDefaultDirector("test agent", []),
+      inferenceRunner: startReportingRunner(),
+      toolRunner: chargeRunner,
+      beforeToolExtensions: [askExtension()],
+    });
+
+    reactor.start();
+    await waitFor("message.run.ended");
+
+    expectOneRunAroundReply(events, undefined);
+    expect(events.some((e) => e.type === "tool.start")).toBe(false);
+    reactor.abort("admin_kill");
+  });
+
+  test("a restored async correlation answered after a restart opens one run named for the response", async () => {
+    const { reactor, events, waitFor } = createTestReactor({
+      contextStore: makePersistingContextStore({
+        turns: [
+          {
+            role: "assistant",
+            content: [{ type: "text", text: "waiting" }],
+            model: "test-model",
+            timestamp: 500,
+          },
+        ],
+        pendingOperations: [
+          {
+            correlationId: "restored-async",
+            kind: "approval",
+            registeredAt: Date.now(),
+            gateId: "gate-restored-async",
+            timeoutAt: Date.now() + 60_000,
+          },
+        ],
+        tokenUsage: emptyUsage(),
+      }),
+      director: createDefaultDirector("test agent", []),
+      inferenceRunner: startReportingRunner(),
+    });
+
+    reactor.start();
+    await waitFor("reactor.start");
+    const response = makeInboundMessage("restored-async");
+    reactor.deliver(response);
+    await waitFor("message.run.ended");
+
+    expectOneRunAroundReply(events, response.headers.messageId);
+    reactor.abort("admin_kill");
+  });
+
+  for (const outcome of ["approved", "rejected"] as const) {
+    test(`an approval decided as ${outcome} after its run closed opens one run named for the decision`, async () => {
+      const handle = parkingReactor();
+      const { correlationId, emitted } = await parkWithNoRunOpen(handle);
+      const decision = makeApprovalMessage(correlationId, outcome);
+      handle.reactor.deliver(decision);
+      await waitUntil(() => bracketEvents(handle.events).ended.length === 3);
+
+      expectOneRunAroundReply(
+        handle.events.slice(emitted),
+        decision.headers.messageId,
+      );
+      handle.reactor.abort("admin_kill");
+    });
+  }
+
+  test("an approval that times out after its run closed opens one run", async () => {
+    const handle = parkingReactor(150);
+    const { emitted } = await parkWithNoRunOpen(handle);
+    await waitUntil(() => bracketEvents(handle.events).ended.length === 3);
+
+    expectOneRunAroundReply(handle.events.slice(emitted), undefined);
+    handle.reactor.abort("admin_kill");
+  });
+
+  test("an async correlation answered after its run closed opens one run named for the response", async () => {
+    const sendCall = { id: "call-send", name: "send_msg", arguments: {} };
+    const handle = createTestReactor({
+      contextStore: makePersistingContextStore({
+        turns: [],
+        pendingOperations: [],
+        tokenUsage: emptyUsage(),
+      }),
+      director: directorFromTable({
+        "message.received": (_e, _s, caps) => caps.infer(),
+        "inference.done": (e, _s, caps) =>
+          e.turn.content.some((c) => c.type === "tool_call")
+            ? caps.executeTools([sendCall])
+            : caps.reply("done"),
+        "tool.done": (_e, _s, caps) =>
+          caps.suspend({
+            type: "message_response",
+            gateId: "gate-async",
+            timeoutMs: 60_000,
+            correlationId: "async-after-close",
+          }),
+        "reactor.gate.cleared": (_e, _s, caps) => caps.infer(),
+      }),
+      inferenceRunner: startReportingRunner({
+        role: "assistant",
+        content: [{ type: "tool_call", ...sendCall }],
+        model: "test-model",
+        timestamp: 1000,
+      }),
+      toolRunner: makeToolRunner(async (call) => ({
+        callId: call.id,
+        content: "sent",
+        pendingMarker: {
+          status: "pending" as const,
+          correlationId: "async-after-close",
+        },
+      })),
+    });
+    const { correlationId, emitted } = await parkWithNoRunOpen(handle);
+    const response = makeInboundMessage(correlationId);
+    handle.reactor.deliver(response);
+    await waitUntil(() => bracketEvents(handle.events).ended.length === 3);
+
+    expectOneRunAroundReply(
+      handle.events.slice(emitted),
+      response.headers.messageId,
+    );
+    handle.reactor.abort("admin_kill");
+  });
+
+  test("a restored approval whose resumed turn waits without replying still ends its run", async () => {
+    const correlationId = "restored-wait";
+    const { reactor, events, waitFor } = createTestReactor({
+      contextStore: makePersistingContextStore(restoredCell(correlationId)),
+      director: directorFromTable({
+        "resume.tool_result": (_e, _s, caps) => caps.infer(),
+        "inference.done": (_e, _s, caps) => caps.wait(),
+      }),
+      inferenceRunner: startReportingRunner(),
+      toolRunner: chargeRunner,
+      beforeToolExtensions: [askExtension()],
+    });
+
+    reactor.start();
+    await waitFor("reactor.start");
+    reactor.deliver(makeApprovalMessage(correlationId, "rejected"));
+    await waitFor("message.run.ended");
+
+    const types = events.map((e) => e.type);
+    expect(types).not.toContain("connector.reply");
+    expect(types.indexOf("message.run.started")).toBeLessThan(
+      types.indexOf("inference.start"),
+    );
+    const { started, ended } = bracketEvents(events);
+    expect(started).toHaveLength(1);
+    expect(ended).toHaveLength(1);
+    expect(ended[0]?.data.status).toBe("completed");
+    reactor.abort("admin_kill");
+  });
+
+  test("an approval raised and decided in one run keeps that run's single bracket", async () => {
+    const { reactor, events, waitFor } = parkingReactor();
+
+    reactor.start();
+    const inbound = makeInboundMessage();
+    reactor.deliver(inbound);
+    const blocked = await waitFor("reactor.gate.blocked");
+    if (blocked.type !== "reactor.gate.blocked") throw new Error("unreachable");
+    const correlationId = blocked.data.correlationId;
+    if (correlationId === undefined) throw new Error("expected correlationId");
+    reactor.deliver(makeApprovalMessage(correlationId));
+    await waitFor("message.run.ended");
+
+    const { started, ended } = bracketEvents(events);
+    expect(started).toHaveLength(1);
+    expect(ended).toHaveLength(1);
+    expect(started[0]?.data.messageId).toBe(inbound.headers.messageId);
+    expect(events.at(-1)?.type).toBe("message.run.ended");
+    reactor.abort("admin_kill");
+  });
+});
+
 describe("createReactor — source failover", () => {
   // Simulates a priority-ordered source list the reactor fails over through.
   // `resultFor(id, attemptOnThisSource)` decides what the inference runner
@@ -7068,10 +7416,9 @@ describe("createReactor — per-send inference options", () => {
   });
 
   test("a correlated resume with no run open does not leak options into the next", async () => {
-    // Rehydrated gates resume without ever opening a message run (only
-    // message.received opens one), so the options a resume adopts must
-    // still be discarded when its cycle closes: a later resume that sets
-    // none infers with none.
+    // A rehydrated gate resumed with no run open gets a run of its own, so
+    // the options it adopts must be discarded when that run closes: a later
+    // resume that sets none infers with none.
     const correlationIds = ["rehydrated-corr-a", "rehydrated-corr-b"];
     const cell: PersistedCell = {
       turns: [
