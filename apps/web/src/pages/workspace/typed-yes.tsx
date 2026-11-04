@@ -34,8 +34,8 @@ export function useTypedYes({
   onUndo,
   onDropped,
 }: {
-  /** The open approval cards, by id. */
-  pending: readonly string[];
+  /** The open approval cards, by id; undefined until the open decisions are read. */
+  pending: readonly string[] | undefined;
   onApprove: (approvalId: string) => void;
   onUndo: (message: string) => void;
   /** The card was answered some other way during the countdown. */
@@ -70,7 +70,7 @@ export function useTypedYes({
     };
   }, [held]);
 
-  const open = held !== null && pending.includes(held.approvalId);
+  const open = held !== null && pending?.includes(held.approvalId) === true;
   useEffect(() => {
     if (held === null || open) return;
     setHeld(null);
@@ -79,6 +79,7 @@ export function useTypedYes({
 
   /** Holds the message when it answers the one open card; false means send it as usual. */
   const hold = (message: string): boolean => {
+    if (pending === undefined) return false;
     const [only] = pending;
     if (
       held !== null ||

@@ -8,27 +8,38 @@
  * `status` frames say the room's durable state moved (mail delivered for the
  * run, or its sidecar route lost) without carrying that state.
  */
+import { type } from "arktype";
 import { hubEventSourceCredentials, hubOrigin } from "./origin.ts";
 import { openSharedEventSource } from "../shared-event-source.ts";
+import { readJson } from "../json.ts";
 
-export type RunStreamEvent = {
-  type: string;
-  seq?: number;
-  data?: {
-    partial?: {
-      text?: string;
-      thinking?: string;
-      toolCalls?: readonly {
-        id?: unknown;
-        name?: unknown;
-        partialArguments?: unknown;
-      }[];
-    };
-    callId?: unknown;
-    name?: unknown;
-    arguments?: unknown;
-  };
-};
+// The fields this interface reads from Interchange's `InferenceEvent` variants; a frame carries
+// more. A tool frame's `partial` is its output text, so it may be a string.
+const RunStreamEvent = type({
+  type: "string",
+  "seq?": "number",
+  "data?": {
+    "partial?": type({
+      "text?": "string",
+      "thinking?": "string",
+      "toolCalls?": type({
+        "id?": "unknown",
+        "name?": "unknown",
+        "partialArguments?": "unknown",
+      }).array(),
+    }).or("string"),
+    "callId?": "unknown",
+    "name?": "unknown",
+    "arguments?": "unknown",
+  },
+});
+export type RunStreamEvent = typeof RunStreamEvent.infer;
+
+/** An inference frame's partial message; a tool frame's text output is not one. */
+export function partialOf(event: RunStreamEvent) {
+  const partial = event.data?.partial;
+  return typeof partial === "object" ? partial : undefined;
+}
 
 const MAX_BACKOFF_MS = 30_000;
 const BASE_BACKOFF_MS = 1_000;
@@ -44,8 +55,11 @@ export function applyRunStreamEvent(
 ): { live: string; refresh: boolean } {
   if (event.type === "inference.start") return { live: "", refresh: false };
   if (event.type === "inference.text.delta") {
-    const text = event.data?.partial?.text ?? "";
-    return { live: text.length > 0 ? text : live, refresh: false };
+    const text = partialOf(event)?.text;
+    return {
+      live: text !== undefined && text.length > 0 ? text : live,
+      refresh: false,
+    };
   }
   if (event.type === "inference.error") return { live: "", refresh: true };
   if (event.type === "inference.done") return { live, refresh: true };
@@ -69,8 +83,8 @@ export type SubscribeRunStreamDeps = {
 const defaultDeps: SubscribeRunStreamDeps = {
   createEventSource: (url, withCredentials) =>
     openSharedEventSource(url, withCredentials),
-  setTimeout: (callback, ms) => setTimeout(callback, ms) as unknown as number,
-  clearTimeout: (handle) => clearTimeout(handle),
+  setTimeout: (callback, ms) => window.setTimeout(callback, ms),
+  clearTimeout: (handle) => window.clearTimeout(handle),
 };
 
 export type RunStreamHandlers = {
@@ -108,11 +122,9 @@ export function subscribeWorkflowRun(
     });
     es.addEventListener("run", (message) => {
       if (closed) return;
-      let event: RunStreamEvent;
-      try {
-        event = JSON.parse(message.data) as RunStreamEvent;
-      } catch {
-        // A frame that is not JSON is not a run event.
+      const event = readJson(message.data, RunStreamEvent);
+      if (event === null) {
+        console.warn("A run frame was not a run event.");
         return;
       }
       handlers.onEvent(event);

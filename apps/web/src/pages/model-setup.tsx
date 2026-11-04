@@ -29,7 +29,11 @@ export const MODEL_SETUP_LATER_KEY = "sb.model-setup.later";
 export function modelSetupDeferred(): boolean {
   try {
     return sessionStorage.getItem(MODEL_SETUP_LATER_KEY) === "1";
-  } catch {
+  } catch (error) {
+    console.warn(
+      "Browser storage is unavailable; model setup asks again.",
+      error,
+    );
     return false;
   }
 }
@@ -38,8 +42,9 @@ export function modelSetupDeferred(): boolean {
 export function clearModelSetupDeferral(): void {
   try {
     sessionStorage.removeItem(MODEL_SETUP_LATER_KEY);
-  } catch {
+  } catch (error) {
     // Unavailable storage never held the deferral either.
+    console.warn("Browser storage is unavailable.", error);
   }
 }
 
@@ -160,8 +165,12 @@ export function ModelSetup({
             onClick={() => {
               try {
                 sessionStorage.setItem(MODEL_SETUP_LATER_KEY, "1");
-              } catch {
+              } catch (error) {
                 // Continuing still leaves this screen for the rest of the mount.
+                console.warn(
+                  "Browser storage refused the deferral; model setup asks again next visit.",
+                  error,
+                );
               }
               onLater();
             }}

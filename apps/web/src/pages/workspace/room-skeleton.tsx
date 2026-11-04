@@ -12,7 +12,7 @@ export function RoomSkeleton() {
   return (
     <div className="stage-view workspace-room-skeleton" aria-busy="true">
       <p className="workspace-status" role="status">
-        Loading this project…
+        {wording.message.projectLoading}
       </p>
       <div className={`${PANES_CLASS} workspace-split`}>
         <Skeleton className="workspace-skeleton-pane" />

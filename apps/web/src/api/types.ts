@@ -15,8 +15,12 @@ export type ApiErrorDetail = {
 export class ApiFailure extends Error {
   readonly detail: ApiErrorDetail;
   readonly httpStatus: number | undefined;
-  constructor(detail: ApiErrorDetail, httpStatus?: number) {
-    super(detail.message);
+  constructor(
+    detail: ApiErrorDetail,
+    httpStatus?: number,
+    options?: ErrorOptions,
+  ) {
+    super(detail.message, options);
     this.name = "ApiFailure";
     this.detail = detail;
     this.httpStatus = httpStatus;

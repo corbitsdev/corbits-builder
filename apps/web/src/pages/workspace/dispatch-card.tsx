@@ -64,7 +64,8 @@ function parsed(content: unknown): unknown {
   if (typeof content !== "string") return content;
   try {
     return JSON.parse(content) as unknown;
-  } catch {
+  } catch (cause) {
+    if (!(cause instanceof SyntaxError)) throw cause;
     return content;
   }
 }
@@ -77,9 +78,10 @@ export function dispatchesOf(
   const role = ROLE_OF[part.name];
   if (role === undefined) return [];
   const pending = part.status !== "output-available";
-  const args = record(part.input) ?? {};
-  const instruction = str(args["instruction"]);
-  const kind = str(args["kind"]);
+  // A call still streaming its arguments has none to read yet.
+  const args = record(part.input);
+  const instruction = str(args?.["instruction"]);
+  const kind = str(args?.["kind"]);
   const base = {
     call: part.toolCallId,
     tool: part.name,
@@ -103,8 +105,9 @@ export function dispatchesOf(
         refused: str(result.content) ?? text.refusedUnknown,
       },
     ];
-  const concepts = Array.isArray(args["concepts"])
-    ? args["concepts"].flatMap((item) => {
+  const named = args?.["concepts"];
+  const concepts = Array.isArray(named)
+    ? named.flatMap((item) => {
         const label = str(record(item)?.["label"]);
         return label === undefined ? [] : [label];
       })
@@ -168,8 +171,8 @@ export type DispatchRoom = {
   >;
   /** The native approvals, pending or as their records settled them. */
   readonly approvals: readonly DocumentApproval[];
-  /** The runs mid-turn, with the tool calls and words their own inference events carried. */
-  readonly activity: readonly AgentActivity[];
+  /** The runs mid-turn, with the tool calls and words their own inference events carried; undefined until read. */
+  readonly activity: readonly AgentActivity[] | undefined;
   readonly onOpenDocument?: (kind: string) => void;
 };
 

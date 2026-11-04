@@ -56,7 +56,7 @@ export type LoadedDeliverable = ReadVersion & {
   sha256: string;
   before: (ReadVersion & { version: number }) | null;
   historyError?: string;
-  versions?: readonly RetainedVersion[];
+  versions: readonly RetainedVersion[];
 };
 
 export type DeliverableState =
@@ -238,7 +238,7 @@ function ReadyDocument({
   const compareWith = changesOpen ? (baseline ?? predecessor) : null;
   const afterText = textFor(viewing);
   const beforeText = compareWith === null ? null : textFor(compareWith);
-  const viewed = document.versions?.find((item) => item.version === viewing);
+  const viewed = document.versions.find((item) => item.version === viewing);
   const mediaType = viewed?.mediaType ?? document.mediaType;
   const title = viewed?.title ?? document.title;
   const kind = mediaKind(mediaType, title);
@@ -262,6 +262,20 @@ function ReadyDocument({
     return loaded.content;
   };
 
+  // Reads a version the room has not loaded, then acts on it; a failed read is the block's error line.
+  const withVersion = async (version: number, use: () => void) => {
+    setPendingVersion(version);
+    setReadError(null);
+    try {
+      await fetchVersion(version);
+      use();
+    } catch (cause) {
+      setReadError(cause instanceof Error ? cause.message : String(cause));
+    } finally {
+      setPendingVersion(null);
+    }
+  };
+
   const selectVersion = (version: number) => {
     if (version === viewing) return;
     onViewVersion?.();
@@ -270,13 +284,7 @@ function ReadyDocument({
       setViewing(version);
       return;
     }
-    setPendingVersion(version);
-    void fetchVersion(version)
-      .then(() => setViewing(version))
-      .catch((cause: unknown) => {
-        setReadError(cause instanceof Error ? cause.message : String(cause));
-      })
-      .finally(() => setPendingVersion(null));
+    void withVersion(version, () => setViewing(version));
   };
 
   const appliedRequestSeq = useRef<number | null>(null);
@@ -292,17 +300,10 @@ function ReadyDocument({
 
   const comparePrevious = () => {
     if (predecessor === null) return;
-    setPendingVersion(predecessor);
-    setReadError(null);
-    void fetchVersion(predecessor)
-      .then(() => {
-        setBaseline(predecessor);
-        if (!changesOpen) onToggleChanges();
-      })
-      .catch((cause: unknown) => {
-        setReadError(cause instanceof Error ? cause.message : String(cause));
-      })
-      .finally(() => setPendingVersion(null));
+    void withVersion(predecessor, () => {
+      setBaseline(predecessor);
+      if (!changesOpen) onToggleChanges();
+    });
   };
 
   const stopComparing = () => {
@@ -381,7 +382,7 @@ function ReadyDocument({
   const barGroups = [
     approvalGroup,
     versionGroup({
-      versions: document.versions ?? [],
+      versions: document.versions,
       viewing,
       pending: pendingVersion !== null,
       canCompare:
@@ -526,7 +527,7 @@ function ReadyDocument({
           <ContextualApprovalRounds
             packageVersion={viewing}
             packageContent={body}
-            packageVersions={document.versions?.map((item) => item.version)}
+            packageVersions={document.versions.map((item) => item.version)}
             onReadPackageVersion={fetchVersion}
             shareOpen={shareOpen}
             onShareOpenChange={setShareOpen}

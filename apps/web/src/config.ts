@@ -109,6 +109,7 @@ export const wording = {
     user_manual: "User Manual",
   } as Record<string, string>,
   documentUnread: "new version",
+  documentRetryFailed: "The project could not be read. Try again.",
   tips: {
     label: "Tips",
     setting: "Show tips",
@@ -422,6 +423,7 @@ export const wording = {
   },
   activity: {
     label: "Who is working",
+    notRead: "Who is working could not be read.",
     role: {
       coordinator: "Coordinator",
       writer: "Writer",
@@ -633,12 +635,15 @@ export const wording = {
       `Slide ${String(index)} of ${String(total)}`,
     pageCount: (index: number, total: number) =>
       `Page ${String(index)} of ${String(total)}`,
-    noSlides: "This approval package contains no slides.",
+    loadingSlides: "Loading slides…",
+    slidesUnavailable:
+      "The slides could not load. Reload the page to try again.",
     speakerNotes: "Speaker notes",
     downloadPdf: "Download PDF",
     openPdf: "Open PDF",
     downloadPptx: "Download PPTX",
     pdfTitle: "Approval package PDF preview",
+    pdfUnreadable: "The PDF in this package could not be read.",
     manifest: {
       audience: "Audience",
       decisionNeeded: "Decision needed",
@@ -808,6 +813,10 @@ export const wording = {
       instruct_coder: () => "Send this change to the app builder?",
     } as Record<string, (subject?: string) => string>,
     document: (document: string) => `Happy with the ${document}?`,
+    /** An ask that names neither a document nor a tool. */
+    unnamed: "Happy for this to go ahead?",
+    /** The settled line of an ask that names neither a document nor a tool. */
+    settledUnnamed: "the request",
     /** A request_approval ask that covers several documents, by their short names. */
     documents: (names: readonly string[]) =>
       `Happy with the ${names.slice(0, -1).join(", ")} and ${names.at(-1) ?? ""}?`,
@@ -971,6 +980,7 @@ export const wording = {
     coordinatorStopped: "The coordinator stopped before it replied.",
     coordinatorNotStarted: "The coordinator for this project did not start.",
     projectNotOpened: "The project could not be opened.",
+    projectLoading: "Loading this project…",
     projectTooShort: "At least ten characters to start a project.",
     stepFailed: "That step could not finish.",
   },
@@ -1028,6 +1038,8 @@ export const wording = {
     addLater: "You can add one later in Settings → Providers.",
     login: (label: string) => `Login with ${label} (Subscription)`,
     loginConnection: (label: string) => `${productName} ${label} login`,
+    loginUnsupported: (label: string) =>
+      `${productName} cannot sign in to ${label} yet.`,
     signIn: "Log in",
     signInAgain: "Log in again",
     waiting: "Waiting for sign-in…",
@@ -1048,6 +1060,8 @@ export const wording = {
     keylessHint: `For servers that need no API key; ${productName} sends a placeholder.`,
     custom: {
       tile: "Custom endpoint",
+      modelsUnreadable:
+        "This provider's models could not be read, so nothing was saved.",
       tileHint: "Your own server, on the API it speaks.",
       addTitle: "Add a custom endpoint",
       addLead: "Connect your own server. It is saved once the test passes.",

@@ -758,6 +758,14 @@ function Account({
   onSignOut?: () => Promise<void>;
 }) {
   const [signingOut, setSigningOut] = useState(false);
+  const signOut = async (leave: () => Promise<void>) => {
+    setSigningOut(true);
+    try {
+      await leave();
+    } finally {
+      setSigningOut(false);
+    }
+  };
   const copy = wording.settings.account;
   return (
     <Section title={copy.section} description={copy.lead}>
@@ -773,10 +781,7 @@ function Account({
             <Button
               variant="outline"
               loading={signingOut}
-              onClick={() => {
-                setSigningOut(true);
-                void onSignOut().finally(() => setSigningOut(false));
-              }}
+              onClick={() => void signOut(onSignOut)}
             >
               {wording.action.signOut}
             </Button>
