@@ -193,8 +193,7 @@ function ProjectLoadFailure({
     } catch (cause) {
       // Clipboard access can be denied, or missing outside a secure origin;
       // the text stays selectable in the disclosure.
-      if (!(cause instanceof DOMException || cause instanceof TypeError))
-        throw cause;
+      console.warn("Copying the failure detail failed.", cause);
       toast.error(wording.message.copyFailed);
       return;
     }
