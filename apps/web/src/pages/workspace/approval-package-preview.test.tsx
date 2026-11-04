@@ -148,6 +148,24 @@ describe("approval package preview", () => {
     expect(html).toContain("Page 1 of 2");
   });
 
+  test("a deck that is not a valid slide deck says it could not be read instead of drawing slides", () => {
+    const html = renderToStaticMarkup(
+      <ApprovalPackagePreview
+        content={JSON.stringify({
+          ...sampleBundle,
+          deck: {
+            theme: { colors: { background: "#ffffff" } },
+            slides: [{ layout: "title", title: "Half a deck" }],
+          },
+        })}
+        stem="portal-package-v1"
+        initialTab="slides"
+      />,
+    );
+    expect(html).toContain(wording.approvalPackage.unreadable);
+    expect(html).not.toContain("Half a deck");
+  });
+
   test("enforces high-contrast text on dark-background slide decks", () => {
     const darkDeckBundle: ApprovalPackageBundle = {
       ...sampleBundle,
@@ -161,6 +179,7 @@ describe("approval package preview", () => {
             text: "#f8fafc",
             muted: "#64748b",
           },
+          fonts: { heading: "Inter", body: "Inter" },
         },
         slides: [
           {

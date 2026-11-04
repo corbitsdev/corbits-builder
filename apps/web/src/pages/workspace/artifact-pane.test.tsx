@@ -160,6 +160,17 @@ describe("persistent artifact pane", () => {
         ],
       },
       deck: {
+        theme: {
+          colors: {
+            primary: "#1e293b",
+            secondary: "#334155",
+            accent: "#2563eb",
+            background: "#ffffff",
+            text: "#0f172a",
+            muted: "#64748b",
+          },
+          fonts: { heading: "Inter", body: "Inter" },
+        },
         slides: [
           {
             layout: "title",

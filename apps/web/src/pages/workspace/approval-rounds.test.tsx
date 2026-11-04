@@ -274,6 +274,17 @@ const sampleBundle: ApprovalPackageBundle = {
     ],
   },
   deck: {
+    theme: {
+      colors: {
+        primary: "#1e293b",
+        secondary: "#334155",
+        accent: "#2563eb",
+        background: "#ffffff",
+        text: "#0f172a",
+        muted: "#64748b",
+      },
+      fonts: { heading: "Inter", body: "Inter" },
+    },
     slides: [
       {
         layout: "title",
@@ -670,6 +681,7 @@ describe("approval rounds panel", () => {
         decisionNeeded: "Approve Q3 executive budget",
       },
       deck: {
+        ...sampleBundle.deck,
         slides: [
           {
             layout: "title",
@@ -687,6 +699,7 @@ describe("approval rounds panel", () => {
         decisionNeeded: "Approve technical architecture",
       },
       deck: {
+        ...sampleBundle.deck,
         slides: [
           {
             layout: "title",
