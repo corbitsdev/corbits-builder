@@ -1,4 +1,5 @@
 import type { ConversationTextTurn } from "@corbits-builder/schemas/conversation";
+import type { ApprovalDecision } from "@intx/types/signals";
 import { IMPORTED_PROJECT_LEAD } from "./import.ts";
 import { SPECIALIST_ENDED_LEAD } from "./specialist-ended.ts";
 
@@ -59,6 +60,10 @@ export function resumeContext(state: {
 
 export const resumeMessage = (context: string | undefined, message: string) =>
   context === undefined ? message : context + RESUME_CONTEXT_END + message;
+
+/** The person's approval decision as a resumed coordinator reads it. */
+export const approvalDecisionLine = ({ outcome, message }: ApprovalDecision) =>
+  `${outcome === "approved" ? "Approved" : "Rejected"} a request${message === undefined ? "." : `: ${message}`}`;
 
 /** A person-sent turn without the held resume context, or undefined for a hub-written opening. */
 export function withoutResumeContext(text: string): string | undefined {
