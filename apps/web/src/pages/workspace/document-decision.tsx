@@ -136,10 +136,9 @@ function settledLine(approval: DocumentApproval): string {
         .map(({ title, version }) => `${title} v${String(version)}`)
         .join(", "),
     );
-  const settled =
-    approval.toolName === undefined
-      ? undefined
-      : text.settled[approval.toolName];
+  if (approval.toolName === undefined)
+    return text.approved(text.settledUnnamed);
+  const settled = text.settled[approval.toolName];
   return text.approved(
     settled ?? approvalQuestion(approval.toolName, undefined, approval.subject),
   );

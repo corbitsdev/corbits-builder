@@ -4,7 +4,7 @@
  * carried. A phrase is a fixed reading of the latest call, never a guess at
  * progress.
  */
-import { useQuery } from "@tanstack/react-query";
+import { queryOptions, useQuery } from "@tanstack/react-query";
 import type { AgentActivity } from "@corbits-builder/client";
 import {
   readProjectActivity,
@@ -135,8 +135,8 @@ export function activityPhrase(agent: AgentActivity): {
   };
 }
 
-export function useProjectActivity(projectId: string) {
-  return useQuery({
+export function projectActivityQuery(projectId: string) {
+  return queryOptions({
     queryKey: keys.projectActivity.of(projectId),
     queryFn: ({ signal }) => readProjectActivity(projectId, signal),
     // While anyone is mid-turn, a hand-off and each step read sooner.
@@ -146,12 +146,16 @@ export function useProjectActivity(projectId: string) {
   });
 }
 
+export function useProjectActivity(projectId: string) {
+  return useQuery(projectActivityQuery(projectId));
+}
+
 /**
  * Each live run's state by its latest committed event, polled while any run is live. A run that
  * parks on an approval raises no room event, so this is how the page learns the person's turn came.
  */
-export function useProjectRunStates(projectId: string) {
-  return useQuery({
+export function projectRunStatesQuery(projectId: string) {
+  return queryOptions({
     queryKey: keys.projectRunStates.of(projectId),
     queryFn: ({ signal }) => readProjectRunStates(projectId, signal),
     refetchInterval: (query) =>
@@ -160,6 +164,10 @@ export function useProjectRunStates(projectId: string) {
         : POLL_MS,
     refetchOnWindowFocus: false,
   });
+}
+
+export function useProjectRunStates(projectId: string) {
+  return useQuery(projectRunStatesQuery(projectId));
 }
 
 /** The runs held on an approval, as one string a React effect can depend on. */

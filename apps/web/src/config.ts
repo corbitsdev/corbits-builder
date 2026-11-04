@@ -814,6 +814,8 @@ export const wording = {
     document: (document: string) => `Happy with the ${document}?`,
     /** An ask that names neither a document nor a tool. */
     unnamed: "Happy for this to go ahead?",
+    /** The settled line of an ask that names neither a document nor a tool. */
+    settledUnnamed: "the request",
     /** A request_approval ask that covers several documents, by their short names. */
     documents: (names: readonly string[]) =>
       `Happy with the ${names.slice(0, -1).join(", ")} and ${names.at(-1) ?? ""}?`,
@@ -977,6 +979,7 @@ export const wording = {
     coordinatorStopped: "The coordinator stopped before it replied.",
     coordinatorNotStarted: "The coordinator for this project did not start.",
     projectNotOpened: "The project could not be opened.",
+    projectLoading: "Loading this project…",
     projectTooShort: "At least ten characters to start a project.",
     stepFailed: "That step could not finish.",
   },

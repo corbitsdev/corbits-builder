@@ -12,7 +12,13 @@
  */
 import { wording } from "../../config.ts";
 import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
-import { useQuery, useQueryClient } from "@tanstack/react-query";
+import {
+  queryOptions,
+  skipToken,
+  usePrefetchQuery,
+  useQuery,
+  useQueryClient,
+} from "@tanstack/react-query";
 import { Paperclip, Sparkles } from "lucide-react";
 import {
   Attachment,
@@ -36,6 +42,8 @@ import {
 } from "@corbits/react-ui";
 import {
   heldOnApproval,
+  projectActivityQuery,
+  projectRunStatesQuery,
   useProjectActivity,
   useProjectRunStates,
   useRolesAtWork,
@@ -136,7 +144,11 @@ import {
 } from "./design-concepts.tsx";
 import { useLiveAppPresence } from "./live-app.tsx";
 import { useQuestionsLayout } from "../../questions-layout-setting.ts";
-import { NextStepLine, useProjectNextStep } from "./next-step.tsx";
+import {
+  NextStepLine,
+  projectNextStepQuery,
+  useProjectNextStep,
+} from "./next-step.tsx";
 import { composerPlaceholder } from "./composer-placeholder.ts";
 import { Dictated } from "../../dictation.jsx";
 import { useShellReply } from "../../flourish.tsx";
@@ -148,7 +160,26 @@ import { useModelCatalog } from "../providers.tsx";
 const FALLBACK_RELOAD_MS = 30_000;
 // After a run closes, the mirror's commit can trail its last frame.
 const SETTLE_RELOAD_MS = [1_000, 3_000, 7_000, 15_000];
-const NO_WAITS: readonly Wait[] = [];
+
+function acceptedMaterialsQuery(projectId: string) {
+  return queryOptions({
+    queryKey: keys.acceptedMaterials.of(projectId),
+    retry: false,
+    refetchOnWindowFocus: false,
+    queryFn: () => acceptedMaterials(projectId),
+  });
+}
+
+// Only an active project has a coordinator whose decisions can be open.
+function openDecisionsQuery(projectId: string, active: boolean) {
+  return queryOptions({
+    queryKey: keys.openDecisions.of(projectId),
+    retry: false,
+    staleTime: 0,
+    refetchOnWindowFocus: false,
+    queryFn: active ? () => openDecisions(projectId) : skipToken,
+  });
+}
 
 function documentApprovalsFrom(
   waits: readonly Wait[],
@@ -357,6 +388,14 @@ export function StageWorkspace(props: StageWorkspaceProps) {
   useEffect(() => {
     if (providerConnected && providerMissing) void startCoordinator();
   }, [providerConnected]);
+  // The room's other reads start with it, so the ready room mounts with them in hand.
+  usePrefetchQuery(projectActivityQuery(projectId));
+  usePrefetchQuery(projectRunStatesQuery(projectId));
+  usePrefetchQuery(projectNextStepQuery(projectId));
+  usePrefetchQuery(acceptedMaterialsQuery(projectId));
+  // A prefetch cannot wait on the project's status, so this read observes the decisions instead.
+  useQuery(openDecisionsQuery(projectId, status === "active"));
+  useLiveAppPresence(projectId);
 
   if (status === undefined) {
     if (projectRead.isError)
@@ -375,7 +414,12 @@ export function StageWorkspace(props: StageWorkspaceProps) {
       // Each project is its own tenant beneath the workspace, and its runs live there.
       runTenantId={project?.tenantId}
       snapshot={snapshot}
-      start={{ fault: startFault, modelNeeded, retry: startCoordinator }}
+      start={{
+        fault: startFault,
+        modelNeeded,
+        providerMissing,
+        retry: startCoordinator,
+      }}
       refetchProject={projectRead.refetch}
     />
   );
@@ -401,6 +445,7 @@ function ReadyRoom({
   start: {
     fault: string | null;
     modelNeeded: ModelNeeded | null;
+    providerMissing: boolean;
     retry: () => Promise<void>;
   };
   refetchProject: () => Promise<unknown>;
@@ -410,7 +455,7 @@ function ReadyRoom({
   const startFault = start.fault;
   const modelNeeded = start.modelNeeded;
   const startCoordinator = start.retry;
-  const providerMissing = modelNeeded?.code === "model_provider_missing";
+  const providerMissing = start.providerMissing;
   const events = snapshot.conversation.events;
   const mirror = snapshot.conversation.turns;
   const runId = archived ? null : snapshot.conversation.runId;
@@ -459,12 +504,7 @@ function ReadyRoom({
   // When this session last sent the coordinator a message, until a run ends after it or it fails.
   const [awaitingSince, setAwaitingSince] = useState<number | null>(null);
   const [enablingAi, setEnablingAi] = useState(false);
-  const accepted = useQuery({
-    queryKey: keys.acceptedMaterials.of(projectId),
-    retry: false,
-    refetchOnWindowFocus: false,
-    queryFn: () => acceptedMaterials(projectId),
-  });
+  const accepted = useQuery(acceptedMaterialsQuery(projectId));
   const limits = accepted.data;
   const [files, setFiles] = useState<readonly AttachmentItem[]>([]);
   const [attachFault, setAttachFault] = useState<string | null>(null);
@@ -485,31 +525,28 @@ function ReadyRoom({
   const [caution, setCaution] = useState<string | null>(null);
   const [gateDone, setGateDone] = useState(0);
   // The waits that belong to this project, from the open decisions.
-  const decisions = useQuery({
-    queryKey: keys.openDecisions.of(projectId),
-    enabled: status === "active",
-    retry: false,
-    staleTime: 0,
-    refetchOnWindowFocus: false,
-    queryFn: () => openDecisions(projectId),
-  });
+  const decisions = useQuery(
+    openDecisionsQuery(projectId, status === "active"),
+  );
+  // Once per outage: each failed poll is a new error, and a dismissed toast stays dismissed.
   useEffect(() => {
-    if (decisions.error === null) return;
+    if (!decisions.isError) return;
     toast.error(
       humanFault(decisions.error, "Open decisions could not be read."),
       {
         id: "waits-read",
       },
     );
-  }, [decisions.error]);
-  const waits = decisions.data ?? NO_WAITS;
+  }, [decisions.isError]);
+  // Undefined until read: an unread list is not one with nothing open.
+  const waits = decisions.data;
   const activity = useProjectActivity(projectId);
   useEffect(() => {
-    if (activity.error === null) return;
+    if (!activity.isError) return;
     toast.error(humanFault(activity.error, wording.activity.notRead), {
       id: "activity-read",
     });
-  }, [activity.error]);
+  }, [activity.isError]);
   const reloadRef = useRef<() => void>(() => {});
 
   useEffect(() => {
@@ -652,7 +689,8 @@ function ReadyRoom({
   );
   const latestAssistant =
     [...mirror].reverse().find((turn) => turn.role === "assistant")?.text ?? "";
-  const documentApprovals = documentApprovalsFrom(waits, artifacts);
+  const documentApprovals =
+    waits === undefined ? undefined : documentApprovalsFrom(waits, artifacts);
   const { settled: settledApprovals, settle } = useSettledApprovals(
     projectId,
     documentApprovals,
@@ -666,16 +704,19 @@ function ReadyRoom({
           (item) => item.approvalId === approval.approvalId,
         ),
     );
-  const pendingApprovals = pendingFrom(waits);
+  const pendingApprovals = waits === undefined ? undefined : pendingFrom(waits);
+  const shownApprovals =
+    pendingApprovals === undefined
+      ? settledApprovals
+      : [...settledApprovals, ...pendingApprovals];
   const openApprovalIds = new Set(
-    pendingApprovals.map((approval) => approval.approvalId),
+    pendingApprovals?.map((approval) => approval.approvalId),
   );
+  // Until the open decisions are read, no approval is known to hold the coordinator.
+  const parked =
+    waits !== undefined && parkedOnApproval(waits, openApprovalIds, runId);
   const liveTurn = pendingLiveTurn(liveRun, mirror);
-  const streaming = liveTurnStreaming(
-    liveRun,
-    mirror,
-    parkedOnApproval(waits, openApprovalIds, runId),
-  );
+  const streaming = liveTurnStreaming(liveRun, mirror, parked);
   const liveText = liveTurn?.text ?? "";
   const shownTurns =
     liveTurn === null
@@ -866,14 +907,15 @@ function ReadyRoom({
 
   // A park created moments after `inference.done` can already stand on the hub before the next
   // room reload lands; read once on demand when the cached list shows no open ask.
-  const readPendingApprovals = async (): Promise<readonly OpenApproval[]> => {
-    if (pendingApprovals.length > 0) return pendingApprovals;
+  const readPendingApprovals = async (): Promise<
+    readonly OpenApproval[] | undefined
+  > => {
+    if (pendingApprovals !== undefined && pendingApprovals.length > 0)
+      return pendingApprovals;
     try {
-      const fresh = await queryClient.fetchQuery({
-        queryKey: keys.openDecisions.of(projectId),
-        staleTime: 0,
-        queryFn: () => openDecisions(projectId),
-      });
+      const fresh = await queryClient.fetchQuery(
+        openDecisionsQuery(projectId, true),
+      );
       return pendingFrom(fresh);
     } catch (cause) {
       // The cached list is still the best answer; the send that follows reports a hub that is down.
@@ -918,13 +960,12 @@ function ReadyRoom({
     choice: "yes" | "always" | "no";
   }): Promise<string | null> => {
     const notSaved = "That decision was not saved.";
-    const cachedWaits =
-      queryClient.getQueryData<readonly Wait[]>(
-        keys.openDecisions.of(projectId),
-      ) ?? NO_WAITS;
+    const cachedWaits = queryClient.getQueryData<readonly Wait[]>(
+      keys.openDecisions.of(projectId),
+    );
     const wait =
-      waits.find((item) => item.approvalId === decision.approvalId) ??
-      cachedWaits.find((item) => item.approvalId === decision.approvalId);
+      waits?.find((item) => item.approvalId === decision.approvalId) ??
+      cachedWaits?.find((item) => item.approvalId === decision.approvalId);
     const approvalId = wait?.approvalId;
     const tenantId = wait?.tenantId;
     if (
@@ -937,10 +978,12 @@ function ReadyRoom({
     setApprovalBusy(true);
     setApprovalError(null);
     const decided =
-      documentApprovals.find((item) => item.approvalId === approvalId) ??
-      documentApprovalsFrom(cachedWaits, artifacts).find(
-        (item) => item.approvalId === approvalId,
-      );
+      documentApprovals?.find((item) => item.approvalId === approvalId) ??
+      (cachedWaits === undefined
+        ? undefined
+        : documentApprovalsFrom(cachedWaits, artifacts).find(
+            (item) => item.approvalId === approvalId,
+          ));
     try {
       await decideApproval({
         tenantId,
@@ -976,7 +1019,7 @@ function ReadyRoom({
       setApprovalBusy(false);
     }
   };
-  const openApproval = pendingApprovals.find(
+  const openApproval = pendingApprovals?.find(
     (approval) => approval.packages === undefined,
   );
   // Choosing an approach is the person's yes to the version's open ask; the message names the pick.
@@ -985,14 +1028,14 @@ function ReadyRoom({
     version: number,
   ): Promise<string | null> => {
     const currentApprovals = await readPendingApprovals();
-    const currentOpen = currentApprovals.find(
+    const currentOpen = currentApprovals?.find(
       (approval) => approval.packages === undefined,
     );
     const kind = selected?.kind;
     const asked =
       kind === undefined
         ? undefined
-        : currentApprovals.find(
+        : currentApprovals?.find(
             (approval) =>
               approval.packages === undefined &&
               asksAbout(approval, kind, version),
@@ -1008,7 +1051,7 @@ function ReadyRoom({
   const deliver = async (body: string, clearComposer = false) => {
     if (body.trim().length === 0 || sending) return false;
     const currentApprovals = await readPendingApprovals();
-    const currentOpen = currentApprovals.find(
+    const currentOpen = currentApprovals?.find(
       (approval) => approval.packages === undefined,
     );
     return deliverWithOpenApproval({
@@ -1020,7 +1063,7 @@ function ReadyRoom({
   const sendFiles = async () => {
     if (sending) return false;
     const currentApprovals = await readPendingApprovals();
-    const currentOpen = currentApprovals.find(
+    const currentOpen = currentApprovals?.find(
       (approval) => approval.packages === undefined,
     );
     return deliverWithOpenApproval({
@@ -1039,7 +1082,7 @@ function ReadyRoom({
     if (!(await deliver(message))) restoreToComposer(message);
   };
   const typedYes = useTypedYes({
-    pending: pendingApprovals.map((approval) => approval.approvalId),
+    pending: pendingApprovals?.map((approval) => approval.approvalId),
     onApprove: (approvalId) =>
       void onDecideApproval({ approvalId, choice: "yes" }),
     onUndo: (message) => void undoTypedYes(message),
@@ -1082,14 +1125,11 @@ function ReadyRoom({
       setRestoring(false);
     }
   };
-  const held = waitingOnPerson(waits, openApprovalIds, runId, liveRun.running);
+  const held =
+    waits !== undefined &&
+    waitingOnPerson(waits, openApprovalIds, runId, liveRun.running);
   const awaiting =
-    awaitingReply(
-      awaitingSince,
-      turns.at(-1)?.role,
-      liveRun.endedAt,
-      parkedOnApproval(waits, openApprovalIds, runId),
-    ) &&
+    awaitingReply(awaitingSince, turns.at(-1)?.role, liveRun.endedAt, parked) &&
     !archived &&
     startFault === null &&
     modelNeeded === null;
@@ -1115,7 +1155,7 @@ function ReadyRoom({
     inFlight,
     failed: snapshot.failed,
     seen: dispatchSeen.current,
-    approvals: [...settledApprovals, ...pendingApprovals],
+    approvals: shownApprovals,
     activity: agents,
     onOpenDocument: (kind) =>
       openDocument(
@@ -1184,9 +1224,7 @@ function ReadyRoom({
       : designConcepts(
           options,
           inFlight,
-          [...settledApprovals, ...pendingApprovals].flatMap(
-            (approval) => approval.concepts ?? [],
-          ),
+          shownApprovals.flatMap((approval) => approval.concepts ?? []),
           (option) => {
             const state = documentState(option);
             return state?.status === "ready"
@@ -1230,7 +1268,6 @@ function ReadyRoom({
     ) ||
     options.length > 0 ||
     inFlight.some((run) => run.concept !== undefined);
-  useLiveAppPresence(projectId);
   const appFiled = snapshot.artifacts.some((item) => item.kind === "app");
   const firstBuilder = appFiled
     ? undefined
@@ -1246,7 +1283,7 @@ function ReadyRoom({
   );
   // While an approval is open the pane follows the document it approves.
   const approvalDeliverableId =
-    pendingApprovals.find((approval) => approval.document !== undefined)
+    pendingApprovals?.find((approval) => approval.document !== undefined)
       ?.document?.kind ?? null;
   const filed = useFiledVersions({
     projectId,
@@ -1602,7 +1639,7 @@ function ReadyRoom({
                   }))}
                   onOpenDocument={openDocument}
                   shownDocument={chatFirst ? null : (selected?.kind ?? null)}
-                  approvals={[...settledApprovals, ...pendingApprovals]}
+                  approvals={shownApprovals}
                   results={liveRun.results}
                   runs={unseenRuns}
                   {...(shownChoice === undefined || archived

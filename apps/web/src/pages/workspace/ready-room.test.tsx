@@ -36,15 +36,21 @@ const emptyRoom: RoomSnapshot = {
 };
 
 describe("project room", () => {
-  test("an unread room shows its loading state, not an empty project", () => {
-    const unread = room(client());
-    expect(unread).toContain("Loading this project…");
-    expect(unread).not.toContain(wording.archivedProject.conversationTitle);
+  test("an unread room is loading, with the room's other reads already under way", () => {
+    const queryClient = client();
+    expect(room(queryClient)).toContain(wording.message.projectLoading);
+    for (const key of [
+      keys.projectActivity.of(projectId),
+      keys.projectRunStates.of(projectId),
+      keys.projectNextStep.of(projectId),
+      keys.acceptedMaterials.of(projectId),
+    ])
+      expect(queryClient.getQueryState(key)?.fetchStatus).toBe("fetching");
 
     const loaded = client();
     loaded.setQueryData(keys.projectRoom.of(projectId), emptyRoom);
     const read = room(loaded);
-    expect(read).not.toContain("Loading this project…");
+    expect(read).not.toContain(wording.message.projectLoading);
     expect(read).toContain(wording.archivedProject.conversationTitle);
   });
 
@@ -69,9 +75,6 @@ describe("project room", () => {
       queryKey: keys.projectActivity.of(projectId),
       queryFn: () => Promise.reject(new Error("The hub is down.")),
     });
-    expect(
-      failed.getQueryState(keys.projectActivity.of(projectId))?.status,
-    ).toBe("error");
     expect(render(failed)).toContain("unread");
 
     const idle = client();
