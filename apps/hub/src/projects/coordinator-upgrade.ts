@@ -1,6 +1,6 @@
-import { and, desc, eq, inArray } from "drizzle-orm";
+import { and, desc, eq, inArray, ne } from "drizzle-orm";
 import { type } from "arktype";
-import type { DB } from "@intx/db";
+import { createApprovalStore, type DB } from "@intx/db";
 import {
   approval,
   workflowRun,
@@ -21,6 +21,8 @@ import {
 import type { ProjectUpdateReceipt } from "@corbits-builder/schemas/project";
 import { spawnedWorkflowRole } from "../workflows/spawn-role.ts";
 import { MODEL_CHOICE_REFUSALS } from "../config/models.ts";
+import { ASKING_HANDOFF_OPENING, HANDOFF_OPENING } from "../config/resume.ts";
+import type { HubMail } from "../mail/hub-mail.ts";
 import { project, projectCoordinator } from "../db/schema.ts";
 import type { Actor } from "../lib/actor.ts";
 import { settle } from "../lib/serial-queue.ts";
@@ -85,10 +87,12 @@ export function createCoordinatorUpgrades(deps: {
     release(actor: Actor, projectId: string): Promise<unknown>;
   };
   cancel: (tenantId: string, runId: string, reason: string) => Promise<unknown>;
+  mail: HubMail;
 }) {
   const { db } = deps;
+  const approvals = createApprovalStore(db);
 
-  async function parkedOnInput(run: { runId: string; address: string }) {
+  async function parkOf(run: { runId: string; address: string }) {
     const events = await deps.runs.readRunEvents(
       workflowRunRepoIdForAddress(run.address),
       WORKFLOW_RUN_REF,
@@ -98,7 +102,11 @@ export function createCoordinatorUpgrades(deps: {
       (event) =>
         event.type === "SignalAwaited" || event.type === "SignalReceived",
     );
-    return last?.type === "SignalAwaited" && last.body["parkKind"] === "input";
+    return last?.type === "SignalAwaited" ? last.body["parkKind"] : undefined;
+  }
+
+  async function parkedOnInput(run: { runId: string; address: string }) {
+    return (await parkOf(run)) === "input";
   }
 
   // The specialists to close with the coordinator, or undefined while one is still at work. A designer
@@ -140,40 +148,66 @@ export function createCoordinatorUpgrades(deps: {
     return parked;
   }
 
-  // Parked on the person's input with every delivery to it settled.
-  async function coordinatorIdle(run: { runId: string; address: string }) {
-    if (!(await parkedOnInput(run))) return false;
+  // Mail or a signal the run has not yet taken; a run stopped now would lose it.
+  async function undelivered(runId: string) {
     const [delivery] = await db
       .select({ id: workflowRunDispatch.id })
       .from(workflowRunDispatch)
       .where(
         and(
-          eq(workflowRunDispatch.anchorRunId, run.runId),
+          eq(workflowRunDispatch.anchorRunId, runId),
           inArray(workflowRunDispatch.status, ["pending", "acknowledged"]),
         ),
       )
       .limit(1);
-    return delivery === undefined;
+    return delivery !== undefined;
   }
 
-  async function approvalPending(tenantId: string) {
+  // Parked on the person's input with every delivery to it settled.
+  async function coordinatorIdle(run: { runId: string; address: string }) {
+    return (await parkedOnInput(run)) && !(await undelivered(run.runId));
+  }
+
+  async function approvalPending(tenantId: string, besides?: string) {
     const [asked] = await db
       .select({ id: approval.id })
       .from(approval)
       .where(
-        and(eq(approval.tenantId, tenantId), eq(approval.status, "pending")),
+        and(
+          eq(approval.tenantId, tenantId),
+          eq(approval.status, "pending"),
+          besides === undefined ? undefined : ne(approval.runId, besides),
+        ),
       )
       .limit(1);
     return asked !== undefined;
   }
 
+  // The coordinator's own undecided approval, which it waits on.
+  async function ownApproval(runId: string) {
+    const [asked] = await db
+      .select({ correlationId: approval.correlationId })
+      .from(approval)
+      .where(and(eq(approval.runId, runId), eq(approval.status, "pending")))
+      .limit(1);
+    return asked?.correlationId;
+  }
+
+  // A coordinator waiting on its own approval is replaced too: approved, the outdated run would act
+  // on it with old code, so the person would be asked again by its successor.
   async function atSafePoint(
     actor: Actor,
     run: { runId: string; address: string },
   ) {
-    if (!(await coordinatorIdle(run))) return undefined;
-    if (await approvalPending(actor.tenantId)) return undefined;
-    return settledSpecialists(actor.tenantId);
+    if (await undelivered(run.runId)) return undefined;
+    const park = await parkOf(run);
+    const asked =
+      park === "approval" ? await ownApproval(run.runId) : undefined;
+    if (park !== "input" && asked === undefined) return undefined;
+    if (await approvalPending(actor.tenantId, asked && run.runId))
+      return undefined;
+    const parked = await settledSpecialists(actor.tenantId);
+    return parked && { parked, asked };
   }
 
   async function start(actor: Actor, projectId: string) {
@@ -187,8 +221,9 @@ export function createCoordinatorUpgrades(deps: {
           eq(projectCoordinator.active, true),
         ),
       );
-    if (!bound) return;
+    if (!bound) return undefined;
     log.info("Coordinator upgraded", { projectId, runId: bound.runId });
+    return bound.runId;
   }
 
   // The project's active coordinator, or the latest one when none is active.
@@ -245,16 +280,100 @@ export function createCoordinatorUpgrades(deps: {
       return;
     const current = (await deps.installed(actor, projectId)).coordinator.pin;
     if (pinOf(latest.bundle) === current) return;
-    const parked = await atSafePoint(actor, {
+    const safe = await atSafePoint(actor, {
       runId: latest.runId,
       address: latest.address,
     });
-    if (!parked) return;
+    if (!safe) return;
     await deps.startup.release(actor, projectId);
-    for (const runId of parked)
+    for (const runId of safe.parked)
       await deps.cancel(tenantId, runId, COORDINATOR_UPGRADED);
     await deps.cancel(tenantId, latest.runId, COORDINATOR_UPGRADED);
-    await start(actor, projectId);
+    if (safe.asked === undefined) {
+      await start(actor, projectId);
+      return;
+    }
+    // Interchange resolves an approval only through its decision, which a stopping run cannot take,
+    // so the question is closed here or it would wait on the person forever.
+    await approvals.resolve(safe.asked, {
+      status: "expired",
+      resolvedAt: new Date(),
+    });
+    const next = await start(actor, projectId);
+    if (next)
+      await deps.mail({
+        tenantId,
+        runId: next,
+        principalId: actor.principalId,
+        content: ASKING_HANDOFF_OPENING,
+      });
+  }
+
+  /**
+   * Replaces an outdated coordinator the moment it starts a specialist, before the deploy lands. A
+   * coordinator from before writers were split reads one writer entry, the constraints writer, and
+   * would start it for whatever document it means; the replacement on the current bundle picks the
+   * writer from the documents. It is told at once, so the person sees the work carry on rather than
+   * wait for their next message. Interchange drops mail to a stopping run, so a specialist still at
+   * work or a delivery the coordinator has not taken leaves it to the safe-point pass instead.
+   */
+  async function handoff(
+    projectId: string,
+    tenantId: string,
+    runId: string,
+  ): Promise<"current" | "busy" | "handed_off"> {
+    const latest = await latestCoordinator(projectId, tenantId);
+    if (!latest || latest.runId !== runId) return "handed_off";
+    if (
+      !latest.active ||
+      latest.cancellationRequestedAt !== null ||
+      !["deployed", "running"].includes(latest.status)
+    )
+      return "handed_off";
+    const [parent] = await db
+      .select({ status: project.status })
+      .from(project)
+      .where(eq(project.id, projectId));
+    if (parent?.status !== "active") return "handed_off";
+    const actor = { tenantId, principalId: latest.principalId };
+    let current: string;
+    try {
+      current = (await deps.installed(actor, projectId)).coordinator.pin;
+    } catch (error) {
+      // The pass and the person's next open meet the same refusal; this deploy goes ahead as it did
+      // before handoffs existed.
+      log.warn("Coordinator handoff check failed", {
+        projectId,
+        ...requestErrorMetadata(error),
+      });
+      return "current";
+    }
+    if (pinOf(latest.bundle) === current) return "current";
+    if (await undelivered(runId)) return "busy";
+    const parked = await settledSpecialists(tenantId);
+    if (!parked) return "busy";
+    await deps.startup.release(actor, projectId);
+    for (const id of parked)
+      await deps.cancel(tenantId, id, COORDINATOR_UPGRADED);
+    await deps.cancel(tenantId, runId, COORDINATOR_UPGRADED);
+    // The old run is stopping either way, so its deploy is held whatever happens next; the pass
+    // starts a successor that failed to start here, as it does after any replacement.
+    try {
+      const next = await start(actor, projectId);
+      if (next)
+        await deps.mail({
+          tenantId,
+          runId: next,
+          principalId: actor.principalId,
+          content: HANDOFF_OPENING,
+        });
+    } catch (error) {
+      log.error("Coordinator handoff start failed", {
+        projectId,
+        ...requestErrorMetadata(error),
+      });
+    }
+    return "handed_off";
   }
 
   /**
@@ -383,8 +502,33 @@ export function createCoordinatorUpgrades(deps: {
     return work;
   }
 
+  // A deploy from a project's coordinator, checked under the project's upgrade lock so a pass, an
+  // update or an archive never replaces the same coordinator at the same time. A deploy from a run
+  // that is no coordinator, a specialist, goes ahead.
+  async function handoffOnce(tenantId: string, runId: string) {
+    const [bound] = await db
+      .select({ projectId: projectCoordinator.projectId })
+      .from(projectCoordinator)
+      .where(eq(projectCoordinator.runId, runId));
+    if (!bound) return "current";
+    const { projectId } = bound;
+    const pending = inflight.get(projectId);
+    async function handoffAfterPending() {
+      try {
+        await settle(pending?.work);
+        return await handoff(projectId, tenantId, runId);
+      } finally {
+        if (inflight.get(projectId)?.work === work) inflight.delete(projectId);
+      }
+    }
+    const work = handoffAfterPending();
+    inflight.set(projectId, { opened: true, work });
+    return work;
+  }
+
   return {
     reconcile,
+    handoff: handoffOnce,
     open: (actor: Actor, projectId: string) =>
       upgradeOnce(projectId, actor.tenantId, actor),
     update: updateOnce,

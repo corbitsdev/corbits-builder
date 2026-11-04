@@ -12,6 +12,13 @@ const RESUME_CONTEXT_END = "\n\nThe person's new message:\n\n";
 // Hubs before the held resume context mailed this opening on the person's behalf.
 const LEGACY_RESUME_OPENING = "I'm picking this project back up.";
 
+// Sent by the hub, never shown to the person, when a coordinator on an outdated version was replaced
+// as it started a writer: its writer did not start, and the person is not waiting to be asked.
+const HANDOFF_LEAD =
+  "Hub note, not from the person: Builder moved this project to a new version";
+export const HANDOFF_OPENING = `${HANDOFF_LEAD} as you were starting a specialist, so it did not start. Check which documents are filed and approved, start the specialist the work needs next, and carry on without mentioning the move.`;
+export const ASKING_HANDOFF_OPENING = `${HANDOFF_LEAD} as you were asking the person to approve something, so they never saw the question. Check which documents are filed and approved, ask for the approval the work needs next, and carry on without mentioning the move.`;
+
 const TURN_CHARS = 2_000;
 const CONTEXT_CHARS = 16_000;
 
@@ -74,9 +81,13 @@ export function approvalDecisionLine({
 /** A person-sent turn without the held resume context, or undefined for a hub-written opening. */
 export function withoutResumeContext(text: string): string | undefined {
   if (text.startsWith(LEGACY_RESUME_OPENING)) return undefined;
-  if (!text.startsWith(RESUME_CONTEXT_LEAD)) return text;
-  const end = text.indexOf(RESUME_CONTEXT_END);
-  if (end !== -1) return text.slice(end + RESUME_CONTEXT_END.length);
-  // Delivered text is trimmed, so a blank new message leaves the marker without its blank line.
-  return text.endsWith(RESUME_CONTEXT_END.trimEnd()) ? "" : text;
+  let message = text;
+  if (text.startsWith(RESUME_CONTEXT_LEAD)) {
+    const end = text.indexOf(RESUME_CONTEXT_END);
+    // Delivered text is trimmed, so a blank new message leaves the marker without its blank line.
+    if (end === -1)
+      return text.endsWith(RESUME_CONTEXT_END.trimEnd()) ? "" : text;
+    message = text.slice(end + RESUME_CONTEXT_END.length);
+  }
+  return message.startsWith(HANDOFF_LEAD) ? undefined : message;
 }

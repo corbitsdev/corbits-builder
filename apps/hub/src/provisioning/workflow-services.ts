@@ -240,6 +240,11 @@ export async function createWorkflowServices(options: {
     historyReceives,
     sendControl: (target, command, timeout) =>
       router.sendWorkflowControl(target, command, timeout),
+    // A graceful cancel ends only the turn of a single-step agent such as the coordinator; its model
+    // keeps answering tool results until the run is stopped. No Builder workflow does work on
+    // cancel, so every cancel here (replacement, archive, lifetime, start timeout) stops the run on
+    // the next sweep, and a replaced coordinator cannot act or talk after it.
+    cancelGraceMs: 0,
   });
   const projection = createWorkflowDispatchProjection({
     db,

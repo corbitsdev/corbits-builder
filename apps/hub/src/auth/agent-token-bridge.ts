@@ -2,6 +2,7 @@ import { type } from "arktype";
 import {
   InstalledWorkflows,
   INSTALLED_WORKFLOWS_KEY,
+  WRITER_PACKAGES,
   type WorkflowRole,
 } from "@corbits-builder/schemas/installed-workflows";
 import { projectCoordinator } from "../db/schema.ts";
@@ -23,7 +24,7 @@ import {
   type AppEnv,
 } from "@intx/hub-api";
 import { and, eq } from "drizzle-orm";
-import type { MiddlewareHandler } from "hono";
+import type { Context, MiddlewareHandler } from "hono";
 import { getLogger } from "@intx/log";
 import type { Actor } from "../lib/actor.ts";
 import { createCoordinatorRegistry } from "./coordinator-registry.ts";
@@ -31,6 +32,9 @@ import { projectResource } from "../projects/errors.ts";
 import { spawnedWorkflowRole } from "../workflows/spawn-role.ts";
 import { buildPackageLayout } from "../builds/package-layout.ts";
 import { scopeWorkflows } from "../workflows/project-scope.ts";
+import { nativePackageName } from "../workflows/package-name.ts";
+import { readJson } from "../lib/json.ts";
+import { coordinatorUpgrading } from "@corbits-builder/schemas/conversation";
 import { installsAnyPackage, opensNetwork } from "../config/preferences.ts";
 import { loadSettings } from "../settings/policy.ts";
 
@@ -113,6 +117,63 @@ function isNativeWorkflowDeploy(method: string, path: string): boolean {
   );
 }
 
+// A deploy of any writer package. An outdated coordinator names the constraints writer whatever
+// document it means, so that deploy is refused while a handoff waits on busy specialists.
+async function startsWriter(request: Request) {
+  const body = await readJson(request.clone());
+  const pin =
+    typeof body === "object" && body !== null && "pin" in body
+      ? body.pin
+      : undefined;
+  return (
+    typeof pin === "string" &&
+    Object.values(WRITER_PACKAGES).some((name) =>
+      pin.startsWith(nativePackageName(name) + "@"),
+    )
+  );
+}
+
+// The replaced coordinator is stopped within about a second. Answering would hand its model a
+// result to act on and talk about while it still runs, so the call stays open until the stop closes
+// it; a stop that never comes ends in the same refusal a busy handoff gives.
+const HELD_DEPLOY_MS = 30_000;
+async function heldUntilStopped(c: Context) {
+  const closed = c.req.raw.signal;
+  await new Promise<void>((resolve) => {
+    const timer = setTimeout(resolve, HELD_DEPLOY_MS);
+    closed.addEventListener(
+      "abort",
+      () => {
+        clearTimeout(timer);
+        resolve();
+      },
+      { once: true },
+    );
+  });
+  return c.json({ code: coordinatorUpgrading }, 409);
+}
+
+// Right after an approval the writer that filed the document is still finishing, so a coordinator
+// replaced at once would be refused and retry in front of the person. The call waits for the
+// specialists to settle and is handed off then; only a wait that outlasts the hold is refused.
+const SETTLE_RECHECK_MS = 1_000;
+async function settledHandoff(
+  c: Context,
+  check: () => Promise<"current" | "busy" | "handed_off">,
+) {
+  const until = Date.now() + HELD_DEPLOY_MS;
+  let outcome = await check();
+  while (
+    outcome === "busy" &&
+    Date.now() < until &&
+    !c.req.raw.signal.aborted
+  ) {
+    await Bun.sleep(SETTLE_RECHECK_MS);
+    outcome = await check();
+  }
+  return outcome;
+}
+
 type RunTokenLookup = {
   findByHash(
     tokenHash: Uint8Array,
@@ -170,8 +231,14 @@ async function nativeRunIdentity(
 export function createAgentTokenBridge(
   db: ReturnType<typeof createDB>["db"],
   runTokens?: RunTokenLookup,
-  // Reinstalls a tenant whose stored packages predate this hub, so a run is never refused for it.
-  install?: (actor: Actor, projectId: string) => Promise<InstalledWorkflows>,
+  upgrades?: {
+    // Reinstalls a tenant whose stored packages predate this hub, so a run is never refused for it.
+    install: (actor: Actor, projectId: string) => Promise<InstalledWorkflows>;
+    handoff: (
+      tenantId: string,
+      runId: string,
+    ) => Promise<"current" | "busy" | "handed_off">;
+  },
 ) {
   const registry = createCoordinatorRegistry(db);
   const authenticated = new WeakSet<Request>();
@@ -236,12 +303,21 @@ export function createAgentTokenBridge(
           runTokens === undefined
             ? null
             : await nativeRunIdentity(db, runTokens, bearer);
-        if (deployer?.runId && deployer.tenantId === c.req.param("tenantId"))
+        if (deployer?.runId && deployer.tenantId === c.req.param("tenantId")) {
+          if (upgrades) {
+            const outcome = await settledHandoff(c, () =>
+              upgrades.handoff(deployer.tenantId, deployer.runId),
+            );
+            if (outcome === "handed_off") return heldUntilStopped(c);
+            if (outcome === "busy" && (await startsWriter(c.req.raw)))
+              return c.json({ code: coordinatorUpgrading }, 409);
+          }
           await mirrorDelegatableDeployerGrants(db, {
             tenantId: deployer.tenantId,
             runId: deployer.runId,
             principalId: deployer.id,
           });
+        }
       }
       if (!nativeBearer) recordRefusal("token_unverified");
       return next();
@@ -287,9 +363,9 @@ export function createAgentTokenBridge(
       const stored = InstalledWorkflows(config?.[INSTALLED_WORKFLOWS_KEY]);
       const installed =
         stored instanceof type.errors
-          ? install &&
+          ? upgrades &&
             binding.run.principalId &&
-            (await install(
+            (await upgrades.install(
               { tenantId: row.id, principalId: binding.run.principalId },
               binding.projectId,
             ))
@@ -307,7 +383,6 @@ export function createAgentTokenBridge(
         role,
         workflows: scopeWorkflows(
           installed,
-          role,
           installsAnyPackage(preferences.value),
         ),
         openNetwork: opensNetwork(preferences.value),

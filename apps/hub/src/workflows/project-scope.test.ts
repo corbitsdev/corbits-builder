@@ -27,7 +27,8 @@ const installed = {
   ),
 } as InstalledWorkflows;
 
-// The scope workflows of the last release, as a bundle frozen on it parses them.
+// The scope workflows as a bundle frozen on the last release parses them. A coordinator that could
+// not read its scope failed the tool that carried the person's approval and asked for it again.
 const ReleasedScopeWorkflows = type({
   "+": "reject",
   writer: NativeSpecialistDeployment,
@@ -37,15 +38,8 @@ const ReleasedScopeWorkflows = type({
   "presenter?": NativeSpecialistDeployment,
 }).onDeepUndeclaredKey("ignore");
 
-test("a specialist frozen on the last release still reads its scope", () => {
-  for (const role of [
-    "writer",
-    "reviewer",
-    "coder",
-    "designer",
-    "presenter",
-  ] as const)
-    expect(
-      ReleasedScopeWorkflows(scopeWorkflows(installed, role, false)),
-    ).not.toBeInstanceOf(type.errors);
+test("a run frozen on the last release still reads its scope", () => {
+  expect(
+    ReleasedScopeWorkflows(scopeWorkflows(installed, false)),
+  ).not.toBeInstanceOf(type.errors);
 });

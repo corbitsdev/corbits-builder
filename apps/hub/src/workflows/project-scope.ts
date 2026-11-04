@@ -14,10 +14,9 @@ const SAFE_CODE = /^[a-z0-9_:]+$/;
 // A deployed agent keeps the bundle it started with; a field a newer hub adds must not refuse its scope.
 const HubProjectScope = WorkflowProjectScope.onDeepUndeclaredKey("ignore");
 
-/** The packages a run of the role may deploy or read, the coder resolved for the project. */
+/** The packages any run in the project may deploy or read, the coder resolved for the project. */
 export function scopeWorkflows(
   installed: InstalledWorkflows,
-  role: WorkflowRole,
   installsAnyPackage: boolean,
 ): WorkflowProjectScope["workflows"] {
   return {
@@ -25,12 +24,11 @@ export function scopeWorkflows(
     "writer-approaches": installed["writer-approaches"],
     "writer-product-requirements": installed["writer-product-requirements"],
     "writer-build-plan": installed["writer-build-plan"],
-    // A bundle frozen before writers were split requires writer to read its scope. Only a
-    // coordinator deploys from it, and an old one would start the constraints writer for any
-    // kind, so a coordinator goes without until it is upgraded.
-    ...(role === "coordinator"
-      ? {}
-      : { writer: installed["writer-constraints"] }),
+    // A bundle frozen before writers were split cannot read its scope without writer, and a
+    // coordinator waiting on the person must still finish their approval. Starting a writer from it
+    // would start the constraints writer for any document, so the hub hands such a coordinator off
+    // before that deploy lands (coordinator-upgrade handoff).
+    writer: installed["writer-constraints"],
     reviewer: installed.reviewer,
     coder: installsAnyPackage
       ? installed["coder-any-package"]
