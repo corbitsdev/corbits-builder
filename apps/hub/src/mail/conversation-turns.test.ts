@@ -3,6 +3,8 @@ import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { $ } from "bun";
+import { resumeMessage } from "../config/resume.ts";
+import { specialistEndedMessage } from "../config/specialist-ended.ts";
 import { readDurableConversationTurns } from "./conversation-turns.ts";
 
 const person = "b65b0e2f4c4a444db11b7321dc413964@sunny-harbor-panda.localhost";
@@ -14,7 +16,7 @@ afterEach(async () => {
   );
 });
 
-// A run repo whose committed coordinator mirror holds these inbound messages, as Interchange stores them.
+// A run repo whose committed coordinator mirror holds these inbound messages, with the CRLF line breaks mail delivers.
 async function runRepo(inbound: { from: string; text: string }[]) {
   const dir = await mkdtemp(join(tmpdir(), "sb-conversation-turns-"));
   dirs.push(dir);
@@ -22,7 +24,12 @@ async function runRepo(inbound: { from: string; text: string }[]) {
   await mkdir(wal, { recursive: true });
   const turns = inbound.map(({ from, text }, at) => ({
     role: "user",
-    content: [{ type: "text", text: `[From: ${from}]\n\n${text}` }],
+    content: [
+      {
+        type: "text",
+        text: `[From: ${from}]\n\n${text.replaceAll("\n", "\r\n")}`,
+      },
+    ],
     timestamp: at + 1,
   }));
   const metadata = {
@@ -95,5 +102,72 @@ test("resume turns read each approval decision as a plain line", async () => {
     { role: "person", text: "Rejected a request." },
     { role: "person", text: "Rejected a request: Keep it free" },
     { role: "person", text: "Approved a request." },
+  ]);
+});
+
+test("a person's words read back with the line breaks they typed", async () => {
+  const typed =
+    'I dont get this one bit\n\nOn "Constraints" v1:\n\n> Use $5 per month';
+  const dir = await runRepo([
+    { from: person, text: typed },
+    { from: person, text: "Sure" },
+  ]);
+  expect(await personTexts(dir, "note")).toEqual([
+    { role: "person", text: typed },
+    { role: "person", text: "Sure" },
+  ]);
+});
+
+test("a specialist-ended notice reads back without its coordinator-only part", async () => {
+  const notice = specialistEndedMessage({
+    role: "writer",
+    status: "failed",
+    reason: { message: "provider refused the request" },
+  });
+  const dir = await runRepo([{ from: person, text: notice }]);
+  expect(await personTexts(dir, "note")).toEqual([
+    {
+      role: "person",
+      text: "Status update: The writer stopped before finishing.",
+    },
+  ]);
+});
+
+test("a resumed message reads back without its held context", async () => {
+  const context =
+    "Background: this project's conversation continues from an earlier session. This is where it stood, not a new request.\n\nEarlier conversation, oldest first:\n\nPerson: hi";
+  const dir = await runRepo([
+    { from: person, text: resumeMessage(context, "Line one\n\nLine two") },
+  ]);
+  expect(await personTexts(dir, "note")).toEqual([
+    { role: "person", text: "Line one\n\nLine two" },
+  ]);
+});
+
+test("a person's own message with the notice lead reads back whole", async () => {
+  const typed = "Status update: done\n\nmore details";
+  const dir = await runRepo([{ from: person, text: typed }]);
+  expect(await personTexts(dir, "note")).toEqual([
+    { role: "person", text: typed },
+  ]);
+});
+
+test("a resumed message with no words leaves no turn", async () => {
+  const context =
+    "Background: this project's conversation continues from an earlier session. This is where it stood, not a new request.\n\nEarlier conversation, oldest first:\n\nPerson: hi";
+  const dir = await runRepo([
+    { from: person, text: resumeMessage(context, " ") },
+  ]);
+  expect(await personTexts(dir, "note")).toEqual([]);
+});
+
+test("a resumed message is read after the separator, not at a quoted line that starts like it", async () => {
+  const context =
+    "Background: this project's conversation continues from an earlier session. This is where it stood, not a new request.\n\nEarlier conversation, oldest first:\n\nPerson: hi\n\nThe person's new message: quoted earlier";
+  const dir = await runRepo([
+    { from: person, text: resumeMessage(context, "Real words") },
+  ]);
+  expect(await personTexts(dir, "note")).toEqual([
+    { role: "person", text: "Real words" },
   ]);
 });

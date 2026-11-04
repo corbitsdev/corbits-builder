@@ -9,6 +9,8 @@ import { isRunAddress } from "@intx/types/agent-address";
 import { ApprovalDecision } from "@intx/types/signals";
 import { type } from "arktype";
 import {
+  clippedTurnText,
+  deliveredText,
   maxConversationTurns,
   type ConversationTextTurn,
   type ConversationThread,
@@ -19,10 +21,7 @@ import {
   withoutResumeContext,
 } from "../config/resume.ts";
 import { personTurnText } from "../config/specialist-ended.ts";
-import {
-  maxTurnText,
-  readCoordinatorMailThreads,
-} from "./conversation-threads.ts";
+import { readCoordinatorMailThreads } from "./conversation-threads.ts";
 import { withCommittedAgentState } from "./committed-agent-state.ts";
 import type { CoordinatorRepoDirSource } from "./coordinator-question.ts";
 import { getLogger } from "@intx/log";
@@ -52,9 +51,6 @@ const textFromContent = (content: unknown): string | undefined => {
   }
   return text.trim() === "" ? undefined : text;
 };
-
-const clipTurn = (text: string) =>
-  text.length > maxTurnText ? text.slice(0, maxTurnText) : text;
 
 // The durable copy of a person's mail keeps the routing line the runtime
 // wrapped around their words. That line is not part of what they wrote.
@@ -103,7 +99,7 @@ function mapMirrorConversationTurns(
     const raw = textFromContent(turn["content"]);
     if (raw === undefined) continue;
     if (role === "assistant") {
-      mapped.push({ role, text: clipTurn(raw), at });
+      mapped.push({ role, text: clippedTurnText(raw), at });
       continue;
     }
     const from = inboundEnvelope.exec(raw)?.[1];
@@ -114,12 +110,18 @@ function mapMirrorConversationTurns(
     ) {
       const text = approvalText(raw.replace(inboundEnvelope, ""), decisions);
       if (text !== undefined && text.trim() !== "")
-        mapped.push({ role: "person", text: clipTurn(text), at });
+        mapped.push({ role: "person", text: clippedTurnText(text), at });
       continue;
     }
-    const text = withoutResumeContext(raw.replace(inboundEnvelope, ""));
+    const text = withoutResumeContext(
+      deliveredText(raw.replace(inboundEnvelope, "")),
+    );
     if (text === undefined || text.trim() === "") continue;
-    mapped.push({ role: "person", text: clipTurn(personTurnText(text)), at });
+    mapped.push({
+      role: "person",
+      text: clippedTurnText(personTurnText(text)),
+      at,
+    });
   }
   mapped.sort((left, right) => left.at - right.at);
   return mapped.length > maxConversationTurns

@@ -8,8 +8,6 @@ import { SPECIALIST_ENDED_LEAD } from "./specialist-ended.ts";
 const RESUME_CONTEXT_LEAD =
   "Background: this project's conversation continues from an earlier session. This is where it stood, not a new request.";
 const RESUME_CONTEXT_END = "\n\nThe person's new message:\n\n";
-// Mail delivery turns every line break into CRLF.
-const DELIVERED_CONTEXT_END = /\r?\n\r?\nThe person's new message:\r?\n\r?\n/;
 
 // Hubs before the held resume context mailed this opening on the person's behalf.
 const LEGACY_RESUME_OPENING = "I'm picking this project back up.";
@@ -77,6 +75,8 @@ export function approvalDecisionLine({
 export function withoutResumeContext(text: string): string | undefined {
   if (text.startsWith(LEGACY_RESUME_OPENING)) return undefined;
   if (!text.startsWith(RESUME_CONTEXT_LEAD)) return text;
-  const end = DELIVERED_CONTEXT_END.exec(text);
-  return end === null ? text : text.slice(end.index + end[0].length);
+  const end = text.indexOf(RESUME_CONTEXT_END);
+  if (end !== -1) return text.slice(end + RESUME_CONTEXT_END.length);
+  // Delivered text is trimmed, so a blank new message leaves the marker without its blank line.
+  return text.endsWith(RESUME_CONTEXT_END.trimEnd()) ? "" : text;
 }
