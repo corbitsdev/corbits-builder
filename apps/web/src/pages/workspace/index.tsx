@@ -56,7 +56,6 @@ import type { InFlightRun } from "@corbits-builder/schemas/artifact";
 import { toast } from "sonner";
 import { sendMessage, type ConversationTurn } from "../../api/conversation.ts";
 import { subscribeWorkflowRun } from "../../api/run-stream.ts";
-import { workspaceTenantId } from "../../api/auth.ts";
 import {
   acceptedMaterials,
   attachMaterials,
@@ -308,26 +307,25 @@ export function StageWorkspace({
   // for a read that has not happened.
   const queryClient = useQueryClient();
   // An archived project has no coordinator or conversation to read, so the room waits on its lifecycle.
-  const lifecycle = useQuery({
-    queryKey: keys.projectLifecycle.of(projectId),
+  const projectRead = useQuery({
+    queryKey: keys.project.of(projectId),
     retry: false,
     refetchOnMount: "always",
     refetchOnWindowFocus: false,
-    queryFn: async () => (await getProject(projectId)).status,
+    queryFn: () => getProject(projectId),
   });
   // A status restored from the saved cache may predate an archive, so only a read made since
   // opening counts. The project list learns of an archive first, so it wins while the read catches up.
-  const status = listedArchived
-    ? "archived"
-    : lifecycle.isFetchedAfterMount
-      ? lifecycle.data
-      : undefined;
+  const project = projectRead.isFetchedAfterMount
+    ? projectRead.data
+    : undefined;
+  const status = listedArchived ? "archived" : project?.status;
   const archived = status === "archived";
   const listedBefore = useRef(listedArchived);
   useEffect(() => {
     if (listedBefore.current === listedArchived) return;
     listedBefore.current = listedArchived;
-    void lifecycle.refetch();
+    void projectRead.refetch();
   }, [listedArchived]);
   const roomKey = keys.projectRoom.of(projectId);
   const room = useQuery({
@@ -342,6 +340,8 @@ export function StageWorkspace({
   const events = snapshot?.conversation.events ?? null;
   const mirror = snapshot?.conversation.turns ?? [];
   const runId = archived ? null : (snapshot?.conversation.runId ?? null);
+  // Each project is its own tenant beneath the workspace, and its runs live there.
+  const runTenantId = project?.tenantId;
   // The coder's filed app source is the resume point for a later coder, not a document to read.
   const artifacts = (snapshot?.artifacts ?? [])
     .filter((item) => item.kind !== "app")
@@ -481,40 +481,24 @@ export function StageWorkspace({
   useEffect(() => {
     liveRunRef.current = emptyLiveRun;
     setLiveRun(emptyLiveRun);
-    if (runId === null) return;
-    let unsubscribe = () => {};
-    let cancelled = false;
+    if (runId === null || runTenantId === undefined) return;
     const reload = () => reloadRef.current();
-    void workspaceTenantId()
-      .then((tenantId) => {
-        if (cancelled) return;
-        unsubscribe = subscribeWorkflowRun(tenantId, runId, {
-          onEvent: (event) => {
-            const next = foldLiveRun(
-              liveRunRef.current,
-              event,
-              committedAtRef.current,
-            );
-            liveRunRef.current = next.run;
-            setLiveRun(next.run);
-            if (next.reload) reload();
-          },
-          onChange: reload,
-          onReconnect: reload,
-          onError: reload,
-        }).unsubscribe;
-      })
-      .catch((cause: unknown) => {
-        if (!cancelled)
-          toast.error(humanFault(cause, "Live updates are not available."), {
-            id: "live-subscription",
-          });
-      });
-    return () => {
-      cancelled = true;
-      unsubscribe();
-    };
-  }, [projectId, runId]);
+    return subscribeWorkflowRun(runTenantId, runId, {
+      onEvent: (event) => {
+        const next = foldLiveRun(
+          liveRunRef.current,
+          event,
+          committedAtRef.current,
+        );
+        liveRunRef.current = next.run;
+        setLiveRun(next.run);
+        if (next.reload) reload();
+      },
+      onChange: reload,
+      onReconnect: reload,
+      onError: reload,
+    }).unsubscribe;
+  }, [projectId, runId, runTenantId]);
 
   // The runs held on an approval, from the polled run states: a coder's package request raises no
   // room event, so the room alone would not say the person's turn came until something else moved.
@@ -1013,7 +997,7 @@ export function StageWorkspace({
     setRestoreFault(null);
     try {
       await restoreProject(projectId);
-      await lifecycle.refetch();
+      await projectRead.refetch();
       onChanged();
     } catch (cause) {
       setRestoreFault(
@@ -1228,8 +1212,8 @@ export function StageWorkspace({
     paneDeliverables.find((item) => item.kind === shownId) ?? null;
   const selectedState = selected === null ? undefined : documentState(selected);
 
-  if (lifecycle.isError && status === undefined)
-    return <RoomFault onRetry={() => void lifecycle.refetch()} />;
+  if (projectRead.isError && status === undefined)
+    return <RoomFault onRetry={() => void projectRead.refetch()} />;
   if (!roomSnapshotReady(projectId, snapshot)) {
     if (room.isError) return <RoomFault onRetry={() => void room.refetch()} />;
     return <RoomSkeleton />;
