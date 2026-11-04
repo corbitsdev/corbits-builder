@@ -1,6 +1,7 @@
 import { createHash } from "node:crypto";
 import { readFile, realpath } from "node:fs/promises";
 import { join, relative, resolve, sep } from "node:path";
+import { hasCode } from "@intx/types";
 import { withDesignTokens } from "../artifacts/design-tokens.ts";
 import { DESIGN_STYLES } from "../artifacts/design-tweaks.ts";
 
@@ -62,10 +63,14 @@ const DESIGN_INDEX_PATH = join(".builder", "designs", "index.html");
 const PLACEHOLDER = /<[A-Za-z][^<>=`"]*\s[^<>=`"]*>/g;
 
 async function readTextIfPresent(path: string): Promise<string | undefined> {
+  return (await readIfPresent(path))?.toString("utf8");
+}
+
+async function readIfPresent(path: string): Promise<Buffer | undefined> {
   try {
-    return await readFile(path, "utf8");
+    return await readFile(path);
   } catch (error) {
-    if ((error as NodeJS.ErrnoException).code === "ENOENT") return undefined;
+    if (hasCode(error) && error.code === "ENOENT") return undefined;
     throw error;
   }
 }
@@ -140,16 +145,20 @@ export function createDesignCheck(workspace: string, run: Run) {
   const fingerprint = async () => {
     const hash = createHash("sha256");
     const root = join(workspace, DESIGNS);
-    const paths = await Array.fromAsync(
-      new Bun.Glob("**/*").scan({ cwd: root }),
-    ).catch(() => [] as string[]);
+    let paths: string[];
+    try {
+      paths = await Array.fromAsync(new Bun.Glob("**/*").scan({ cwd: root }));
+    } catch (error) {
+      if (!(hasCode(error) && error.code === "ENOENT")) throw error;
+      paths = [];
+    }
     for (const path of paths.sort())
       hash
         .update(`${path}\0`)
-        .update(await readFile(join(root, path)).catch(() => ""));
+        .update((await readIfPresent(join(root, path))) ?? "");
     hash
       .update(`\0${DESIGN_DOC}\0`)
-      .update(await readFile(join(workspace, DESIGN_DOC)).catch(() => ""));
+      .update((await readIfPresent(join(workspace, DESIGN_DOC))) ?? "");
     return hash.digest("hex");
   };
 
