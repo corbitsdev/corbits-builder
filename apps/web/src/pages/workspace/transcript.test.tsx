@@ -6,6 +6,7 @@ import {
   maxTurnText,
 } from "@corbits-builder/schemas/conversation";
 import { wording } from "../../config.ts";
+import { Markdown } from "../../markdown.tsx";
 import { DocumentDecision } from "./document-decision.tsx";
 import {
   awaitingCommit,
@@ -94,6 +95,44 @@ describe("conversation transcript", () => {
     expect(html).toContain("What should the outcome be?");
     expect(html).not.toContain(briefId);
     expect(html).not.toContain("sha256");
+  });
+
+  test("a bold document name stays a link inside its sentence and still opens", () => {
+    const source =
+      "Already written into **Ways to build your list**. What the app does is next.";
+    const documents = [{ id: "approaches", title: "Ways to build your list" }];
+    const html = renderToStaticMarkup(
+      <RoomThread
+        turns={[{ role: "assistant", text: source, at: 2 }]}
+        documents={documents}
+        onOpenDocument={() => {}}
+      />,
+    );
+    // A link, not a button: a button is one unbreakable box, so the title would leave the line.
+    expect(html).toContain(
+      'into <strong><a href="#" class="artifact-mention">Ways to build your list</a></strong>. What',
+    );
+
+    const opened: string[] = [];
+    const link = findElement(
+      Markdown({
+        source: "See [Ways to build your list](document:approaches).",
+        openDocument: (id) => opened.push(id),
+      }),
+      "a",
+    );
+    let prevented = false;
+    (
+      link?.props["onClick"] as
+        | ((event: { preventDefault(): void }) => void)
+        | undefined
+    )?.({
+      preventDefault: () => {
+        prevented = true;
+      },
+    });
+    expect(opened).toEqual(["approaches"]);
+    expect(prevented).toBe(true);
   });
 
   test("an approval asks about the document in words", () => {

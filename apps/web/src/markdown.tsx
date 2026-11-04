@@ -73,15 +73,20 @@ function inline(
       const href = match[5].replace(MARKS, "");
       if (href.startsWith(DOCUMENT_LINK) && openDocument !== undefined) {
         const id = decodeURIComponent(href.slice(DOCUMENT_LINK.length));
+        // A link rather than a button: a button never breaks across lines, so a
+        // title in a sentence would jump to its own line and shed its punctuation.
         out.push(
-          <button
+          <a
             key={key}
-            type="button"
+            href="#"
             className="artifact-mention"
-            onClick={() => openDocument(id)}
+            onClick={(event) => {
+              event.preventDefault();
+              openDocument(id);
+            }}
           >
             {label}
-          </button>,
+          </a>,
         );
       } else if (href.startsWith("https://") || href.startsWith("http://")) {
         out.push(
