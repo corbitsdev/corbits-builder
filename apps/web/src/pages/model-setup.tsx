@@ -72,15 +72,17 @@ function ProviderTiles({
   const { logins, signingIn, signIn } = subscriptions;
   const [keyOpen, setKeyOpen] = useState(false);
   const [keyProviderId, setKeyProviderId] = useState<string>();
-  if (catalog.error)
-    return <Banner tone="error" title={catalog.error.message} />;
-  // No tiles until the catalog says which providers exist.
-  if (catalog.data === undefined) return null;
+  const fault = catalog.error ? (
+    <Banner tone="error" title={catalog.error.message} />
+  ) : null;
+  // No tiles until the catalog says which providers exist; a failed refetch keeps the last read.
+  if (catalog.data === undefined) return fault;
   const apiKeyProviders = catalog.data.providers.filter(
     (provider) => provider.kind === "api_key",
   );
   return (
     <>
+      {fault}
       <KindCardGrid
         label={copy.loginGroup}
         className="provider-tiles"
@@ -173,20 +175,20 @@ export function ModelSetup({
   );
 }
 
-/** The same tiles over the open project, so connecting never leaves it. */
+/**
+ * The same tiles over the open project, so connecting never leaves it. A connection refreshes the
+ * shared model catalog, which is what the project watches to start its coordinator.
+ */
 export function EnableAiDialog({
   open,
   onOpenChange,
-  onConnected,
 }: {
   open: boolean;
   onOpenChange: (open: boolean) => void;
-  onConnected: () => void;
 }) {
   const connected = () => {
     clearModelSetupDeferral();
     onOpenChange(false);
-    onConnected();
   };
   const subscriptions = useSubscriptionLogins(connected);
   return (
