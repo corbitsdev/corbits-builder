@@ -432,6 +432,22 @@ export async function createPosixBuildExecutor(
     const nodeShim = join(shimDirectory, "node");
     await writeFile(nodeShim, `#!/bin/sh\nexec ${quote(executable)} "$@"\n`);
     await chmod(nodeShim, 0o755);
+    // Resolve workspace packages before isolation: Bun's runtime lookup scans repository paths
+    // the sandbox must keep hidden. The bundled runner needs no host package discovery.
+    const toolChild = join(shimDirectory, "posix-child.js");
+    const toolBuild = await Bun.build({
+      entrypoints: [layout.childPath],
+      outdir: shimDirectory,
+      naming: "posix-child.js",
+      target: "bun",
+      conditions: ["intx-src"],
+      packages: "bundle",
+      minify: true,
+    });
+    if (!toolBuild.success)
+      throw new BuildExecutionError(
+        `tool_runner_build_failed: ${toolBuild.logs.join("; ")}`,
+      );
     // An agent that can read check-app's source reads it instead of its own work. Each command is
     // compiled to an executable, which macOS runs with its reads denied (Seatbelt checks
     // process-exec apart from file-read*), so the source never sits where the agent can read it.
@@ -514,8 +530,6 @@ export async function createPosixBuildExecutor(
           executable,
           shimDirectory,
           ...layout.dependencyRoots,
-          // Bun lists the entry module's directory before loading it.
-          layout.assetDirectory,
           home,
           ...(options.browsers ? [options.browsers] : []),
           ...(sockets ? [sockets] : []),
@@ -580,7 +594,7 @@ export async function createPosixBuildExecutor(
       return linux ? `exec ${wrappedCommand}` : wrappedCommand;
     };
     stage = "wrap";
-    const childCommand = `exec ${[executable, "--no-env-file", "--conditions=intx-src", layout.childPath, cwd].map(quote).join(" ")}`;
+    const childCommand = `exec ${[executable, "--no-env-file", toolChild, cwd].map(quote).join(" ")}`;
     const wrapped = await wrapShell(childCommand);
     // Agent tool calls use `wrapped` above with Unix sockets blocked by seccomp;
     // sidecar-owned helpers wrapped below (dev app relay, browser, check-app)
