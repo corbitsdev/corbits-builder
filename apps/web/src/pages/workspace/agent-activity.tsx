@@ -84,6 +84,19 @@ export function toolPhrase(name: string, subject: string | undefined): string {
   return phrase.charAt(0).toUpperCase() + phrase.slice(1);
 }
 
+/** What a call returned, in plain words when its raw result means nothing to a person. */
+export function toolResult(name: string, content: unknown): unknown {
+  const plain = text.toolResult[name];
+  if (plain !== undefined) return plain;
+  if (typeof content !== "string") return content;
+  try {
+    return JSON.parse(content) as unknown;
+  } catch (error) {
+    if (error instanceof SyntaxError) return content;
+    throw error;
+  }
+}
+
 // One verb per file, so the line changes when the file does and not on every poll.
 function verbFor(verbs: readonly string[], subject: string): string {
   let hash = 0;
