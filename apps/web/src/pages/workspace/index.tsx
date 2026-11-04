@@ -13,7 +13,7 @@
 import { wording } from "../../config.ts";
 import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { Paperclip } from "lucide-react";
+import { Paperclip, Sparkles } from "lucide-react";
 import {
   Attachment,
   type AttachmentItem,
@@ -129,6 +129,7 @@ import { NextStepLine, useProjectNextStep } from "./next-step.tsx";
 import { composerPlaceholder } from "./composer-placeholder.ts";
 import { Dictated } from "../../dictation.jsx";
 import { useShellReply } from "../../flourish.tsx";
+import { EnableAiDialog } from "../model-setup.tsx";
 
 // The stream says when the room moved. This read covers what it cannot see,
 // such as a coordinator run replaced while its old stream stays quiet.
@@ -266,7 +267,9 @@ const MODEL_CHOICE_REFUSALS: ReadonlySet<string> = new Set([
 ]);
 
 // The hub's own sentence for a project with no model to run on, which only the person can settle.
-async function modelRefusal(cause: unknown): Promise<string | undefined> {
+async function modelRefusal(
+  cause: unknown,
+): Promise<{ code: string; message: string } | undefined> {
   if (!(cause instanceof ProductApiError) || cause.response.status !== 409)
     return undefined;
   const body: unknown = await cause.response
@@ -280,7 +283,7 @@ async function modelRefusal(cause: unknown): Promise<string | undefined> {
     typeof body.code === "string" &&
     MODEL_CHOICE_REFUSALS.has(body.code) &&
     typeof body.message === "string"
-    ? body.message
+    ? { code: body.code, message: body.message }
     : undefined;
 }
 
@@ -389,7 +392,13 @@ export function StageWorkspace({
   const [awaitingSince, setAwaitingSince] = useState<number | null>(null);
   const [startFault, setStartFault] = useState<string | null>(null);
   // Why the coordinator has no model to run on, which only the person can settle.
-  const [modelNeeded, setModelNeeded] = useState<string | null>(null);
+  const [modelNeeded, setModelNeeded] = useState<{
+    code: string;
+    message: string;
+  } | null>(null);
+  // Only a missing provider is settled by connecting one; a profile choice needs Settings.
+  const providerMissing = modelNeeded?.code === "model_provider_missing";
+  const [enablingAi, setEnablingAi] = useState(false);
   const accepted = useQuery({
     queryKey: keys.acceptedMaterials.of(projectId),
     retry: false,
@@ -1255,11 +1264,11 @@ export function StageWorkspace({
         </div>
       </div>
     );
-  } else if (modelNeeded !== null) {
+  } else if (modelNeeded !== null && !providerMissing) {
     // A coordinator with no model to run on cannot answer, even one still bound from before.
     dock = (
       <div className="banner" role="alert">
-        <p className="banner-title">{modelNeeded}</p>
+        <p className="banner-title">{modelNeeded.message}</p>
         <div className="banner-action">
           <UiButton type="button" size="sm" onClick={onOpenSettings}>
             {wording.action.openSettings}
@@ -1275,7 +1284,7 @@ export function StageWorkspace({
         </div>
       </div>
     );
-  } else if (unbound) {
+  } else if (unbound && !providerMissing) {
     // The person does not start the coordinator by typing: an unbound room waits for the
     // start that opening it asked for, and a refused start says why and offers it again.
     if (startFault === null) {
@@ -1381,7 +1390,7 @@ export function StageWorkspace({
                 onSubmit={send}
                 canSubmit={value.trim() !== "" || files.length > 0}
                 status={sending || approvalBusy ? "submitted" : "ready"}
-                disabled={sending || approvalBusy}
+                disabled={sending || approvalBusy || providerMissing}
               >
                 {files.length === 0 ? null : (
                   <PromptInputFloat>
@@ -1408,15 +1417,20 @@ export function StageWorkspace({
                 )}
                 <PromptInputTextarea
                   ref={composerRef}
-                  placeholder={composerPlaceholder({
-                    approvalOpen: openApproval !== undefined,
-                    status: projectStatus.data,
-                    chatFirst,
-                  })}
+                  placeholder={
+                    providerMissing
+                      ? wording.conversation.enableAiFirst
+                      : composerPlaceholder({
+                          approvalOpen: openApproval !== undefined,
+                          status: projectStatus.data,
+                          chatFirst,
+                        })
+                  }
                 />
                 <PromptInputToolbar>
-                  {mic}
-                  {limits === undefined ||
+                  {providerMissing ? null : mic}
+                  {providerMissing ||
+                  limits === undefined ||
                   limits.mimeTypes.length === 0 ? null : (
                     <>
                       <input
@@ -1440,7 +1454,19 @@ export function StageWorkspace({
                       </PromptInputButton>
                     </>
                   )}
-                  <PromptInputSubmit className="ms-auto" />
+                  {!providerMissing ? (
+                    <PromptInputSubmit className="ms-auto" />
+                  ) : (
+                    <UiButton
+                      type="button"
+                      size="sm"
+                      className="ms-auto"
+                      onClick={() => setEnablingAi(true)}
+                    >
+                      {wording.action.enableAi}
+                      <Sparkles size={14} aria-hidden="true" />
+                    </UiButton>
+                  )}
                 </PromptInputToolbar>
               </PromptInput>
             )}
@@ -1544,6 +1570,11 @@ export function StageWorkspace({
                 </RoomThread>
               </DispatchRoomContext.Provider>
               {dock}
+              <EnableAiDialog
+                open={enablingAi}
+                onOpenChange={setEnablingAi}
+                onConnected={() => void startCoordinator()}
+              />
             </div>
           </section>
           {chatFirst ? null : (
