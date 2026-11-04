@@ -172,20 +172,20 @@ describe("conversation transcript", () => {
     );
   });
 
-  test("a sent message waits on the coordinator until it is held on the person, and again once answered", () => {
+  test("a sent message waits on the coordinator until its approval card opens, and through an answered question", () => {
     const approval = { runId: "run-c", approvalId: "appr-1" };
     const question = { runId: "run-c", park: { seq: 4 } };
-    const heldOnCard = waitingOnPerson(
+    const heldOnCard = parkedOnApproval(
       [approval],
       new Set(["appr-1"]),
       "run-c",
-      true,
     );
     expect(awaitingReply(10, "person", null, false)).toBe(true);
     expect(awaitingReply(10, "person", null, heldOnCard)).toBe(false);
     expect(awaitingReply(10, "assistant", null, false)).toBe(false);
     expect(awaitingReply(10, "person", 12, false)).toBe(false);
-    const answered = waitingOnPerson([question], new Set(), "run-c", true);
+    // The answer is sent while the question still stands and before the stream reports the run.
+    const answered = parkedOnApproval([question], new Set(), "run-c");
     expect(awaitingReply(20, "person", 12, answered)).toBe(true);
   });
 

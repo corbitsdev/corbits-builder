@@ -1000,7 +1000,12 @@ export function StageWorkspace({
   };
   const held = waitingOnPerson(waits, openApprovalIds, runId, liveRun.running);
   const awaiting =
-    awaitingReply(awaitingSince, turns.at(-1)?.role, liveRun.endedAt, held) &&
+    awaitingReply(
+      awaitingSince,
+      turns.at(-1)?.role,
+      liveRun.endedAt,
+      parkedOnApproval(waits, openApprovalIds, runId),
+    ) &&
     !archived &&
     startFault === null &&
     modelNeeded === null;
