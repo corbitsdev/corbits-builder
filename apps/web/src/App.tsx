@@ -446,8 +446,10 @@ export function AppSidebar({
         <ul className="app-sidebar-list">
           <SidebarItem asChild>
             <button type="button" onClick={onOpenWhatsNew}>
-              <span>{wording.shell.whatsNew}</span>
-              <Badge tone="neutral">{wording.shell.whatsNewBadge}</Badge>
+              <span className="app-sidebar-whats-new">
+                <span>{wording.shell.whatsNew}</span>
+                <Badge tone="neutral">{wording.shell.whatsNewBadge}</Badge>
+              </span>
             </button>
           </SidebarItem>
           <SidebarItem asChild active={inSettings} icon={<SettingsIcon />}>
