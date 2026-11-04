@@ -160,7 +160,7 @@
   flex-direction: row;
   align-items: center;
   gap: var(--space-3);
-  padding: var(--space-2) var(--space-10) var(--space-2) var(--space-3);
+  padding: var(--space-2) var(--space-12) var(--space-2) var(--space-3);
 }
 
 .library-page .library-grid[data-view="rows"] .library-cover {
