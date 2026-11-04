@@ -94,6 +94,8 @@ import {
   foldLiveRun,
   latestAssistantAt,
   pendingLiveTurn,
+  liveTurnStreaming,
+  parkedOnApproval,
   waitingOnPerson,
   type LiveRun,
 } from "./live-run.ts";
@@ -589,8 +591,30 @@ export function StageWorkspace({
   );
   const latestAssistant =
     [...mirror].reverse().find((turn) => turn.role === "assistant")?.text ?? "";
+  const documentApprovals = documentApprovalsFrom(waits, artifacts);
+  const { settled: settledApprovals, settle } = useSettledApprovals(
+    projectId,
+    documentApprovals,
+    artifacts,
+  );
+  // A card decided here is already its settled line; the pending read lags behind it.
+  const pendingFrom = (list: readonly Wait[]): OpenApproval[] =>
+    documentApprovalsFrom(list, artifacts).filter(
+      (approval) =>
+        !settledApprovals.some(
+          (item) => item.approvalId === approval.approvalId,
+        ),
+    );
+  const pendingApprovals = pendingFrom(waits);
+  const openApprovalIds = new Set(
+    pendingApprovals.map((approval) => approval.approvalId),
+  );
   const liveTurn = pendingLiveTurn(liveRun, mirror);
-  const streaming = liveTurn !== null && !liveRun.ended;
+  const streaming = liveTurnStreaming(
+    liveRun,
+    mirror,
+    parkedOnApproval(waits, openApprovalIds, runId),
+  );
   const liveText = liveTurn?.text ?? "";
   const shownTurns =
     liveTurn === null
@@ -781,21 +805,6 @@ export function StageWorkspace({
   const addToPrompt = (passage: PassageQuote) =>
     addToComposer(formatPassageQuote(passage));
 
-  const documentApprovals = documentApprovalsFrom(waits, artifacts);
-  const { settled: settledApprovals, settle } = useSettledApprovals(
-    projectId,
-    documentApprovals,
-    artifacts,
-  );
-  // A card decided here is already its settled line; the pending read lags behind it.
-  const pendingFrom = (list: readonly Wait[]): OpenApproval[] =>
-    documentApprovalsFrom(list, artifacts).filter(
-      (approval) =>
-        !settledApprovals.some(
-          (item) => item.approvalId === approval.approvalId,
-        ),
-    );
-  const pendingApprovals = pendingFrom(waits);
   // A park created moments after `inference.done` can already stand on the hub before the next
   // room reload lands; read once on demand when the cached list shows no open ask.
   const readPendingApprovals = async (): Promise<readonly OpenApproval[]> => {
@@ -1007,12 +1016,7 @@ export function StageWorkspace({
       setRestoring(false);
     }
   };
-  const held = waitingOnPerson(
-    waits,
-    new Set(pendingApprovals.map((approval) => approval.approvalId)),
-    runId,
-    liveRun.running,
-  );
+  const held = waitingOnPerson(waits, openApprovalIds, runId, liveRun.running);
   // A message sent here waits on the coordinator from the moment it leaves, before the stream
   // reports its run: until a reply follows it or a run ends after it.
   const awaitingReply =
