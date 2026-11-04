@@ -144,7 +144,6 @@ export const MODEL_PROVIDERS: readonly ShippedEntry[] = [
       { id: "gpt-5.6-sol", label: "gpt-5.6-sol" },
       { id: "gpt-5.6-terra", label: "gpt-5.6-terra" },
       { id: "gpt-5.6-luna", label: "gpt-5.6-luna" },
-      { id: "gpt-5.5", label: "gpt-5.5" },
     ],
   },
   {
