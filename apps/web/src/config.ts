@@ -638,10 +638,8 @@ export const wording = {
     loadingSlides: "Loading slides…",
     slidesUnavailable:
       "The slides could not load. Reload the page to try again.",
-    speakerNotes: "Speaker notes",
     downloadPdf: "Download PDF",
     openPdf: "Open PDF",
-    downloadPptx: "Download PPTX",
     pdfTitle: "Approval package PDF preview",
     pdfUnreadable: "The PDF in this package could not be read.",
     manifest: {

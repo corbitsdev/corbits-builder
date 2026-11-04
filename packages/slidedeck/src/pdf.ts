@@ -104,13 +104,6 @@ function scaleRadius(radius: PdfRadius): PdfRadius {
   ];
 }
 
-function scaleRadiusToPt(
-  radius: PictureElement["radius"],
-): PdfRadius | undefined {
-  if (radius === undefined) return undefined;
-  return scaleRadius(radius);
-}
-
 function richRunsToPdf(
   theme: Theme,
   text: RichText,
@@ -406,7 +399,7 @@ function renderPictureElement(
 ): PdfElement {
   const box = pxBoxToPt(el);
   const data = media.get(el.image).data;
-  const radius = scaleRadiusToPt(el.radius);
+  const radius = el.radius === undefined ? undefined : scaleRadius(el.radius);
   const border = resolvePdfBorder(theme, el.border);
   return {
     type: "image",

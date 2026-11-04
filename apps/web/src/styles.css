@@ -2232,21 +2232,6 @@ button[aria-disabled="true"] {
   opacity: 0.8;
 }
 
-.approval-package-slide-notes {
-  padding: var(--space-3) var(--space-4);
-  border-radius: var(--radius-md);
-  border: 1px solid var(--wb-border);
-  background: color-mix(in srgb, var(--wb-muted) 50%, var(--wb-card));
-  font-size: 0.84375rem;
-  line-height: 1.55;
-  color: var(--wb-foreground);
-}
-
-.approval-package-slide-notes-label {
-  color: var(--wb-muted-foreground);
-  font-weight: 600;
-}
-
 .approval-package-pdf {
   display: flex;
   flex-direction: column;
