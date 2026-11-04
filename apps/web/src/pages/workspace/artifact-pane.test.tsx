@@ -38,6 +38,7 @@ const document: DeliverableState = {
       content: "Previous content",
       filedAt: "2026-10-30T11:00:00.000Z",
     },
+    versions: [],
   },
 };
 function render(

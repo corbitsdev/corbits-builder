@@ -727,16 +727,16 @@ export function App() {
       ? opening.text
       : undefined;
 
+  const reportRefusal = async (cause: ProductApiError) => {
+    const code = await responseCode(cause);
+    const refused =
+      code === undefined ? undefined : wording.library.refused[code];
+    toast.error(refused ?? humanFault(cause, wording.library.actionFailed));
+    void refresh();
+  };
   const reportProjectError = (cause: unknown) => {
     if (cause instanceof ApiFailure) toast.error(cause.detail.message);
-    else if (cause instanceof ProductApiError)
-      void responseCode(cause).then((code) => {
-        toast.error(
-          wording.library.refused[code ?? ""] ??
-            humanFault(cause, wording.library.actionFailed),
-        );
-        void refresh();
-      });
+    else if (cause instanceof ProductApiError) void reportRefusal(cause);
     else void refresh();
   };
 

@@ -393,6 +393,23 @@ describe("conversation transcript", () => {
     }
   });
 
+  test("a document with a blank name is asked about by its tool", () => {
+    const html = renderToStaticMarkup(
+      <DocumentDecision
+        approval={{
+          approvalId: "appr-blank",
+          toolName: "browser.browser_navigate",
+          document: { kind: "notes", title: "", version: 1 },
+        }}
+        onYes={() => {}}
+        onAlways={() => {}}
+        onNo={() => {}}
+      />,
+    );
+    expect(html).toContain("browser navigate");
+    expect(html).not.toContain(wording.approval.document(""));
+  });
+
   test("a design approval lists each look and starts one by name", () => {
     const html = renderToStaticMarkup(
       <DocumentDecision

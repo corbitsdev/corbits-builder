@@ -13,11 +13,10 @@ export type FiledVersion = {
 
 export function useFiledVersions(input: {
   readonly projectId: string;
-  /** The room has its first read; versions before it are history, not news. */
-  readonly ready: boolean;
+  /** From the room's first read on; versions in that read are history, not news. */
   readonly documents: readonly FiledVersion[];
 }): readonly FiledVersion[] {
-  const { projectId, ready, documents } = input;
+  const { projectId, documents } = input;
   const seen = useRef<Map<string, number> | null>(null);
   const [filed, setFiled] = useState<readonly FiledVersion[]>([]);
 
@@ -27,7 +26,6 @@ export function useFiledVersions(input: {
   }, [projectId]);
 
   useEffect(() => {
-    if (!ready) return;
     const known = seen.current;
     seen.current = new Map(documents.map((item) => [item.kind, item.version]));
     if (known === null) return;
@@ -35,7 +33,7 @@ export function useFiledVersions(input: {
       .filter((item) => item.version > (known.get(item.kind) ?? 0))
       .map(({ kind, title, version }) => ({ kind, title, version }));
     if (fresh.length > 0) setFiled((current) => [...current, ...fresh]);
-  }, [ready, documents]);
+  }, [documents]);
 
   return filed;
 }

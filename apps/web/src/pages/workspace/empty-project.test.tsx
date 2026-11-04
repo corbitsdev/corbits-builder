@@ -26,6 +26,7 @@ function ready(title: string, content: string): DeliverableState {
       version: 1,
       sha256: sha,
       before: null,
+      versions: [],
     },
   };
 }

@@ -132,14 +132,14 @@ export function shortDocumentName(kind: string, title: string): string {
  */
 export function approvalQuestion(
   toolName: string | undefined,
-  document: string,
+  document: string | undefined,
   subject?: string,
 ): string {
   const asked =
     toolName === undefined ? undefined : wording.approval.question[toolName];
   if (asked !== undefined) return asked(subject);
-  if (document !== "" || toolName === undefined)
-    return wording.approval.document(document);
+  if (document !== undefined) return wording.approval.document(document);
+  if (toolName === undefined) return wording.approval.unnamed;
   const tool = toolName
     .slice(toolName.lastIndexOf(".") + 1)
     .replaceAll("_", " ");
