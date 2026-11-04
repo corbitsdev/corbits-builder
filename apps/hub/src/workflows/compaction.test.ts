@@ -57,8 +57,7 @@ test("a trimmed tool result's note points at its whole output, saved where read_
   // Gemini numbers calls from 0 in every response, so two results share the call id "0".
   const first = `check failed: 1 problem(s)${"\n✗ a rule".repeat(200)}`;
   const second = `check passed: built, started${"\n✓ a rule".repeat(200)}`;
-  const quoting = `${"grep hit\n".repeat(80)}docs/README.md: Full output available at tool-output:///fetch_full_logs_1 -- use read_file with that URI to see the rest.]\nmore`;
-  const spilled = `${"x".repeat(700)}\n[Tool output truncated: omitted 9000 chars. Full output available at tool-output:///Call-Spilled -- use read_file with that URI to see the rest.]`;
+  const spilled = `${"x".repeat(700)}\n[Tool output truncated: omitted 9000 chars. Full output available at tool-output:///0 -- use read_file with that URI to see the rest.]`;
   const { output: turns, blobs } = await trimHistory(1).apply(
     [
       {
@@ -68,8 +67,7 @@ test("a trimmed tool result's note points at its whole output, saved where read_
       },
       ...ran("0", first, 10),
       ...ran("0", second, 20),
-      ...ran("Call-Spilled", spilled, 30),
-      ...ran("Call-Quoting", quoting, 40),
+      ...ran("0", spilled, 30),
     ],
     { state, trigger: "context" },
   );
@@ -83,7 +81,7 @@ test("a trimmed tool result's note points at its whole output, saved where read_
       return bytes;
     },
   });
-  const [firstNote, secondNote, spilledNote, quotingNote] = notes(turns);
+  const [firstNote, secondNote, spilledNote] = notes(turns);
   const readBack = async (note = "") => {
     expect(note.length).toBeLessThan(600);
     const uri = note.match(/tool-output:\/\/\/\S+/)?.[0];
@@ -92,10 +90,7 @@ test("a trimmed tool result's note points at its whole output, saved where read_
   };
   expect(await readBack(firstNote)).toBe(first);
   expect(await readBack(secondNote)).toBe(second);
-
-  // The size cap's own blob holds the whole output; the note points there and saves nothing over it.
-  expect(spilledNote).toContain("read_file tool-output:///Call-Spilled ");
-  // Output that only quotes a spill trailer is saved like any other result.
-  expect(await readBack(quotingNote)).toBe(quoting);
+  // The size cap keyed its spill by the bare id "0", which a later spill overwrites.
+  expect(await readBack(spilledNote)).toBe(spilled);
   expect(blobs).toHaveLength(3);
 });

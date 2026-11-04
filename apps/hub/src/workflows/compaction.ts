@@ -31,33 +31,10 @@ export const textOf = (blocks: readonly ContentBlock[]) =>
     .map((block) => block.text)
     .join("");
 
-/** The note that replaces a trimmed result, saying where read_file finds the whole of it. */
-function savedNote(
-  text: string,
-  callId: string,
-  key: string,
-  blobs: StrategyBlob[],
-): string {
-  // Interchange's size cap ends a result it spilled with this trailer naming the call; the same
-  // words quoted elsewhere in an output, such as grep over its docs, are not a spill.
-  const spill = `tool-output:///${callId}`;
-  if (
-    text.endsWith(
-      `Full output available at ${spill} -- use read_file with that URI to see the rest.]`,
-    )
-  )
-    return `[An earlier result, not kept after compaction; read_file ${spill} returns all of it]`;
-  blobs.push({
-    key,
-    bytes: new TextEncoder().encode(text),
-    contentType: "text/plain",
-  });
-  return `[${text.length} characters of an earlier result, not kept after compaction; read_file tool-output:///${key} returns all of it]`;
-}
-
 // A trimmed result is saved where the agent's read_file finds it, as the size cap's are; asking for a
 // rerun cost the coder a whole check-app. The key carries the turn's time because a provider such as
-// Gemini numbers calls from 0 in every response, so call ids repeat within one conversation.
+// Gemini numbers calls from 0 in every response, so call ids repeat within one conversation. A result
+// the size cap spilled is saved too: its spill is keyed by the bare call id, which a later spill overwrites.
 function trimBlock(
   block: ContentBlock,
   timestamp: number,
@@ -77,12 +54,13 @@ function trimBlock(
       item.type === "text" && item.text.length > KEEP_CHARS;
     if (!block.content.some(long)) return [block];
     const text = textOf(block.content);
-    const note = savedNote(
-      text,
-      block.callId,
-      `trimmed-${timestamp}-${block.callId}`,
-      blobs,
-    );
+    const key = `trimmed-${timestamp}-${block.callId}`;
+    blobs.push({
+      key,
+      bytes: new TextEncoder().encode(text),
+      contentType: "text/plain",
+    });
+    const note = `[${text.length} characters of an earlier result, not kept after compaction; read_file tool-output:///${key} returns it]`;
     return [
       {
         ...block,
