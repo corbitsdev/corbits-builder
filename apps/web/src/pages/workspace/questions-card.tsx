@@ -3,7 +3,13 @@
  * person's next message, the way the composer sends one; the card holds no state of its own past
  * that message, so a later person turn is what marks it answered.
  */
-import { useEffect, useRef, useState, type KeyboardEvent } from "react";
+import {
+  useEffect,
+  useRef,
+  useState,
+  type KeyboardEvent,
+  type ReactNode,
+} from "react";
 import { Check, CornerDownRight } from "lucide-react";
 import {
   Button,
@@ -110,25 +116,42 @@ function AnswerList({
 
 /** The card once done, the same in either layout: its outcome, and the answers the reply carried. */
 function Settled({ ask, reply }: { ask: AskQuestions; reply?: string }) {
-  const answers =
-    reply === undefined ? [] : repliedAnswers(ask.questions, reply);
-  const title =
-    reply === undefined
-      ? text.replaced
-      : answers.length === 0
-        ? text.answeredInChat
-        : text.answered;
+  if (reply === undefined)
+    return (
+      <SettledBox
+        title={text.replaced}
+        mark={<CornerDownRight className="questions-card-settled-mark" />}
+      />
+    );
+  const answers = repliedAnswers(ask.questions, reply);
+  const mark = (
+    <Check className="questions-card-settled-mark questions-card-settled-ok" />
+  );
+  if (answers.length === 0)
+    return <SettledBox title={text.answeredInChat} mark={mark} />;
+  return (
+    <SettledBox title={text.answered} mark={mark}>
+      <AnswerList answers={answers} />
+    </SettledBox>
+  );
+}
+
+function SettledBox({
+  title,
+  mark,
+  children,
+}: {
+  title: string;
+  mark: ReactNode;
+  children?: ReactNode;
+}) {
   return (
     <section className="questions-card-settled" aria-label={title}>
       <p className="questions-card-settled-title">
-        {reply === undefined ? (
-          <CornerDownRight className="questions-card-settled-mark" />
-        ) : (
-          <Check className="questions-card-settled-mark questions-card-settled-ok" />
-        )}
+        {mark}
         {title}
       </p>
-      {answers.length === 0 ? null : <AnswerList answers={answers} />}
+      {children}
     </section>
   );
 }
@@ -245,7 +268,6 @@ function MultiField({
   disabled: boolean;
   onChange: (answer: Answer) => void;
 }) {
-  const otherId = `${idPrefix}-${question.id}-other`;
   return (
     <fieldset className="questions-card-question" disabled={disabled}>
       <legend>{question.prompt}</legend>
@@ -266,39 +288,63 @@ function MultiField({
           }
         />
       ))}
-      {question.allowOther !== true ? null : answer.other ? (
-        // Ticked, Other becomes the field it names; left empty, it unticks.
-        <div className="questions-card-other">
-          <Checkbox
-            id={otherId}
-            className="questions-card-option"
-            checked
-            disabled={disabled}
-            onCheckedChange={() =>
-              onChange({ ...answer, other: false, otherText: "" })
-            }
-          />
-          <OtherInput
-            question={question}
-            value={answer.otherText}
-            disabled={disabled}
-            onChange={(otherText) => onChange({ ...answer, otherText })}
-            onBlur={() => {
-              if (answer.otherText.trim() === "")
-                onChange({ ...answer, other: false, otherText: "" });
-            }}
-          />
-        </div>
-      ) : (
-        <Checkbox
-          className="questions-card-option"
-          label={text.other}
-          checked={false}
+      {question.allowOther === true ? (
+        <MultiOther
+          id={`${idPrefix}-${question.id}-other`}
+          question={question}
+          answer={answer}
           disabled={disabled}
-          onCheckedChange={() => onChange({ ...answer, other: true })}
+          onChange={onChange}
         />
-      )}
+      ) : null}
     </fieldset>
+  );
+}
+
+/** Other on a multi-choice question: ticked, it becomes the field it names; left empty, it unticks. */
+function MultiOther({
+  id,
+  question,
+  answer,
+  disabled,
+  onChange,
+}: {
+  id: string;
+  question: Question;
+  answer: Answer;
+  disabled: boolean;
+  onChange: (answer: Answer) => void;
+}) {
+  const untick = () => onChange({ ...answer, other: false, otherText: "" });
+  if (!answer.other)
+    return (
+      <Checkbox
+        className="questions-card-option"
+        label={text.other}
+        checked={false}
+        disabled={disabled}
+        onCheckedChange={() => onChange({ ...answer, other: true })}
+      />
+    );
+  return (
+    <div className="questions-card-other">
+      <Checkbox
+        id={id}
+        className="questions-card-option"
+        checked
+        disabled={disabled}
+        onCheckedChange={untick}
+      />
+      <OtherInput
+        question={question}
+        value={answer.otherText}
+        disabled={disabled}
+        onChange={(otherText) => onChange({ ...answer, otherText })}
+        onBlur={() => {
+          if (answer.otherText.trim() === "") untick();
+        }}
+      />
+    </div>
   );
 }
 
@@ -404,10 +450,11 @@ function StepQuestion({
   };
 
   const optionId = (index: number) => `${idPrefix}-${question.id}-${index}`;
-  const chosen = (index: number) =>
-    index === otherIndex
-      ? answer.other
-      : answer.chosen.includes(question.options[index]?.value ?? "");
+  const chosen = (index: number) => {
+    if (index === otherIndex) return answer.other;
+    const option = question.options[index];
+    return option !== undefined && answer.chosen.includes(option.value);
+  };
   const labels = [
     ...question.options.map((option) => option.label),
     ...(allowOther ? [text.other] : []),

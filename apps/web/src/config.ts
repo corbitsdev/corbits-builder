@@ -961,12 +961,11 @@ export const wording = {
   },
   /** The coordinator's questions as a card the person answers in the conversation. */
   questions: {
+    /** The card's heading by how many questions it asks; three or more read "a few". */
     title: (count: number) =>
-      count === 1
-        ? "A question for you"
-        : count === 2
-          ? "A couple of questions for you"
-          : "A few questions for you",
+      ({ 1: "A question for you", 2: "A couple of questions for you" })[
+        count
+      ] ?? "A few questions for you",
     other: "Other",
     otherAnswer: "Your own answer",
     /** The last step tab, where every answer is shown before it is sent. */
