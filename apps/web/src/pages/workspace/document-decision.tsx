@@ -42,9 +42,10 @@ const FOLDED_INSTRUCTION_ASKS = new Set(["design_app"]);
 
 function shortName(approval: DocumentApproval): string | undefined {
   const { document } = approval;
-  return document === undefined
-    ? undefined
-    : shortDocumentName(document.kind, document.title);
+  if (document === undefined) return undefined;
+  const name = shortDocumentName(document.kind, document.title);
+  // A blank title has no name to ask about, so the card falls back to the tool's wording.
+  return name === "" ? undefined : name;
 }
 
 // The documents a request_approval ask approves together, when it covers more than one.
