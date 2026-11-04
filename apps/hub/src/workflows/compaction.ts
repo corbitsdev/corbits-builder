@@ -31,15 +31,22 @@ export const textOf = (blocks: readonly ContentBlock[]) =>
     .map((block) => block.text)
     .join("");
 
-// Interchange's size cap already saved the whole of a result past its limit and says where.
-const SPILLED =
-  /Full output available at (tool-output:\/\/\/\S+) -- use read_file/;
-
 /** The note that replaces a trimmed result, saying where read_file finds the whole of it. */
-function savedNote(text: string, key: string, blobs: StrategyBlob[]): string {
-  const spilled = SPILLED.exec(text);
-  if (spilled)
-    return `[An earlier result, not kept after compaction; read_file ${spilled[1]} returns all of it]`;
+function savedNote(
+  text: string,
+  callId: string,
+  key: string,
+  blobs: StrategyBlob[],
+): string {
+  // Interchange's size cap ends a result it spilled with this trailer naming the call; the same
+  // words quoted elsewhere in an output, such as grep over its docs, are not a spill.
+  const spill = `tool-output:///${callId}`;
+  if (
+    text.endsWith(
+      `Full output available at ${spill} -- use read_file with that URI to see the rest.]`,
+    )
+  )
+    return `[An earlier result, not kept after compaction; read_file ${spill} returns all of it]`;
   blobs.push({
     key,
     bytes: new TextEncoder().encode(text),
@@ -70,7 +77,12 @@ function trimBlock(
       item.type === "text" && item.text.length > KEEP_CHARS;
     if (!block.content.some(long)) return [block];
     const text = textOf(block.content);
-    const note = savedNote(text, `trimmed-${timestamp}-${block.callId}`, blobs);
+    const note = savedNote(
+      text,
+      block.callId,
+      `trimmed-${timestamp}-${block.callId}`,
+      blobs,
+    );
     return [
       {
         ...block,
