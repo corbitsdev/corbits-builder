@@ -44,6 +44,8 @@ services:
       retries: 30
   hub:
     <<: *hub
+    # The hub exits on a fatal error so it restarts from a clean state.
+    restart: unless-stopped
     # The coder and designer run their commands under bubblewrap, which gives
     # each one its own user, pid and mount namespaces with a fresh /proc.
     # Docker's default seccomp profile refuses the namespaces without
