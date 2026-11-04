@@ -11,6 +11,7 @@ import {
   listArtifacts,
   listArtifactVersions,
   MAX_LIST_LIMIT,
+  setArtifactArchived,
   VersionConflictError,
   writeArtifactVersion,
   type ArtifactDb,
@@ -54,6 +55,7 @@ import {
   type AcceptedMaterials,
   type UserManual,
   type MaterialReceipt,
+  MaterialRemovedReceipt,
   type DesignTweaksReceipt,
   type DesignChoiceReceipt,
   type LiveApp,
@@ -144,7 +146,7 @@ import {
 import { awaitingApproval } from "../projects/deploy-tools.ts";
 import { frozenModelChoice, workflowBindings } from "../config/models.ts";
 import { modelDirectory } from "../settings/custom-providers.ts";
-import { materialsNote } from "../config/materials.ts";
+import { materialRemovedNote, materialsNote } from "../config/materials.ts";
 import { servingOffering } from "../workflows/install-for-tenant.ts";
 import {
   acceptedMaterials,
@@ -1246,6 +1248,31 @@ export function createArtifactService(
         })),
       );
       return { materials };
+    },
+
+    // A material the person takes back: archived, so every list leaves it out while its versions
+    // stay, and the coordinator told, when one runs, that the file is withdrawn.
+    async removeMaterial(
+      actor: Actor,
+      projectId: string,
+      artifactId: string,
+      mailRun: (runId: string, content: string) => Promise<void>,
+    ): Promise<MaterialRemovedReceipt> {
+      const allowed = await requireProject(actor, projectId, "manage");
+      if (!(await allowed(artifactResource(MATERIAL_KIND), "write")))
+        throw new ProjectError(403, "artifact_write_refused", {
+          kind: MATERIAL_KIND,
+        });
+      const row = await getArtifact(db, artifactId);
+      if (!row || row.tenantId !== actor.tenantId || row.kind !== MATERIAL_KIND)
+        throw new ProjectError(404, "material_not_found", { artifactId });
+      if (row.archivedAt === null) {
+        await setArtifactArchived(db, row, true);
+        const coordinator = await activeCoordinator(projectId);
+        if (coordinator)
+          await mailRun(coordinator.runId, materialRemovedNote(row.title));
+      }
+      return { artifactId: row.id, title: row.title };
     },
 
     // An imported document with no kind of its own, filed as a material without mail: the

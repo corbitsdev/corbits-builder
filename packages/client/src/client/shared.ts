@@ -61,6 +61,7 @@ import type {
   InFlightRun,
   LiveApp,
   MaterialReceipt,
+  MaterialRemovedReceipt,
 } from "@corbits-builder/schemas/artifact";
 import type {
   ApprovalRound,
@@ -544,6 +545,13 @@ export type ProductApiClient = Readonly<{
     message?: string,
     signal?: AbortSignal,
   ): Promise<MaterialReceipt>;
+  /** Takes an attached file back: the material is archived and the coordinator told. */
+  removeMaterial(
+    tenantId: string,
+    projectId: string,
+    artifactId: string,
+    signal?: AbortSignal,
+  ): Promise<MaterialRemovedReceipt>;
   /** A filed approval_package version as a deterministic zip of its deck, PDF, README, manifest and documents. */
   downloadPackageZip(
     tenantId: string,
