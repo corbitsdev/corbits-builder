@@ -14,17 +14,17 @@ if (import.meta.main) {
   const log = getLogger(["corbits-builder", "hub"]);
   let close = async () => {};
   let stopping: Promise<void> | undefined;
-  const stop = () =>
-    (stopping ??= (async () => {
-      for (const step of [close, dispose]) {
-        try {
-          await step();
-        } catch (error) {
-          log.error("Hub shutdown failed", errorMetadata(error));
-          process.exitCode = 1;
-        }
+  const shutDown = async () => {
+    for (const step of [close, dispose]) {
+      try {
+        await step();
+      } catch (error) {
+        log.error("Hub shutdown failed", errorMetadata(error));
+        process.exitCode = 1;
       }
-    })());
+    }
+  };
+  const stop = () => (stopping ??= shutDown());
   const exitOnFatal = (message: string) => async (error: unknown) => {
     try {
       log.error(message, errorMetadata(error));
