@@ -1224,7 +1224,10 @@ function ReadyRoom({
       : designConcepts(
           options,
           inFlight,
-          shownApprovals.flatMap((approval) => approval.concepts ?? []),
+          // An ask that names no concepts adds none.
+          shownApprovals.flatMap((approval) =>
+            approval.concepts === undefined ? [] : approval.concepts,
+          ),
           (option) => {
             const state = documentState(option);
             return state?.status === "ready"
