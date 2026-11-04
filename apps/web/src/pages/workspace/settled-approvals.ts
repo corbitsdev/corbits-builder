@@ -49,7 +49,8 @@ function settledCard(
 
 export function useSettledApprovals(
   projectId: string,
-  open: readonly OpenApproval[],
+  /** Undefined until the open decisions are read. */
+  open: readonly OpenApproval[] | undefined,
   artifacts: readonly ProjectArtifact[],
 ): {
   settled: readonly DocumentApproval[];
@@ -70,8 +71,9 @@ export function useSettledApprovals(
   }, [projectId]);
 
   // An ask that leaves the pending list was decided, here or elsewhere.
-  const openKey = open.map((approval) => approval.approvalId).join("\n");
+  const openKey = open?.map((approval) => approval.approvalId).join("\n");
   useEffect(() => {
+    if (openKey === undefined) return;
     void queryClient.invalidateQueries({ queryKey });
   }, [projectId, openKey]);
 

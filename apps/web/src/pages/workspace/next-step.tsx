@@ -2,7 +2,7 @@
  * Where the project stands and the person's one next step, as the hub derives them from native
  * state. The line is pinned above the conversation when the person's preference turns it on.
  */
-import { useQuery } from "@tanstack/react-query";
+import { queryOptions, useQuery } from "@tanstack/react-query";
 import { Button, StatusDot } from "@corbits/react-ui";
 import type {
   ProjectNextAction,
@@ -19,14 +19,17 @@ const POLL_MS = 5_000;
 const NEXT_STEP_LINE = "next_step_line";
 const text = wording.nextStep;
 
-export function useProjectNextStep(projectId: string, enabled = true) {
-  return useQuery({
+export function projectNextStepQuery(projectId: string) {
+  return queryOptions({
     queryKey: keys.projectNextStep.of(projectId),
-    enabled,
     queryFn: ({ signal }) => readProjectNextStep(projectId, signal),
     refetchInterval: POLL_MS,
     refetchOnWindowFocus: false,
   });
+}
+
+export function useProjectNextStep(projectId: string, enabled = true) {
+  return useQuery({ ...projectNextStepQuery(projectId), enabled });
 }
 
 function useNextStepLineOn() {
