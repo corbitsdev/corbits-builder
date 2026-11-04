@@ -109,7 +109,7 @@ export const wording = {
     user_manual: "User Manual",
   } as Record<string, string>,
   documentUnread: "new version",
-  documentRetryFailed: "The document could not be read again. Try again.",
+  documentRetryFailed: "The project could not be read. Try again.",
   tips: {
     label: "Tips",
     setting: "Show tips",

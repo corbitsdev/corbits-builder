@@ -191,8 +191,10 @@ function ProjectLoadFailure({
     try {
       await navigator.clipboard.writeText(detail);
     } catch (cause) {
-      // Clipboard access can be denied; the text is still selectable in the disclosure.
-      if (!(cause instanceof DOMException)) throw cause;
+      // Clipboard access can be denied, or missing outside a secure origin;
+      // the text stays selectable in the disclosure.
+      if (!(cause instanceof DOMException || cause instanceof TypeError))
+        throw cause;
       toast.error(wording.message.copyFailed);
       return;
     }
