@@ -1,3 +1,4 @@
+import type { ModelLoginPlugin } from "@corbits-builder/schemas/models";
 import { tenantPath, type ClientDeps, type ProductApiClient } from "./shared";
 
 /**
@@ -62,7 +63,13 @@ export type ModelLoginState = Readonly<
   | { status: "completed"; credentialId: string }
   | { status: "failed"; message: string }
 >;
-export type ModelLoginPlugin = "codex" | "xai";
+export type { ModelLoginPlugin };
+
+// CODEX_BASE_URL and XAI_OAUTH_PROXY_BASE_URL: the only endpoints these logins' tokens work on.
+const LOGIN_BASE_URLS: Record<ModelLoginPlugin, string> = {
+  codex: "https://chatgpt.com/backend-api",
+  xai: "https://cli-chat-proxy.grok.com/v1",
+};
 
 const DEFAULT_BASE_URLS: Record<string, string> = {
   openai: "https://api.openai.com/v1",
@@ -70,9 +77,7 @@ const DEFAULT_BASE_URLS: Record<string, string> = {
   anthropic: "https://api.anthropic.com/v1",
   "google-genai": "https://generativelanguage.googleapis.com/v1beta",
   "openai-compatible": "",
-  // CODEX_BASE_URL and XAI_OAUTH_PROXY_BASE_URL: the only endpoints these logins' tokens work on.
-  codex: "https://chatgpt.com/backend-api",
-  xai: "https://cli-chat-proxy.grok.com/v1",
+  ...LOGIN_BASE_URLS,
 };
 
 function uniqueSuffix(): string {
@@ -204,7 +209,7 @@ export function buildCredentialsMethods(
     // tenant-owned credential. A new credential name per sign-in, because a tenant-owned login
     // never replaces an existing credential.
     async startModelLogin(tenantId, plugin, name, signal) {
-      const baseURL = DEFAULT_BASE_URLS[plugin]!;
+      const baseURL = LOGIN_BASE_URLS[plugin];
       const nativeProvider = await ensureNativeProvider(
         tenantId,
         plugin,
@@ -250,7 +255,7 @@ export function buildCredentialsMethods(
       const created = (await request(`${root}/catalog/providers`, signal, {
         name: `${name} ${uniqueSuffix()}`,
         plugin,
-        baseURL: DEFAULT_BASE_URLS[plugin],
+        baseURL: LOGIN_BASE_URLS[plugin],
         credentialId,
       })) as { id?: unknown };
       if (typeof created?.id !== "string")

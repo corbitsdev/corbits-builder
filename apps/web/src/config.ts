@@ -1038,6 +1038,8 @@ export const wording = {
     addLater: "You can add one later in Settings → Providers.",
     login: (label: string) => `Login with ${label} (Subscription)`,
     loginConnection: (label: string) => `${productName} ${label} login`,
+    loginUnsupported: (label: string) =>
+      `${productName} cannot sign in to ${label} yet.`,
     signIn: "Log in",
     signInAgain: "Log in again",
     waiting: "Waiting for sign-in…",
@@ -1058,6 +1060,8 @@ export const wording = {
     keylessHint: `For servers that need no API key; ${productName} sends a placeholder.`,
     custom: {
       tile: "Custom endpoint",
+      modelsUnreadable:
+        "This provider's models could not be read, so nothing was saved.",
       tileHint: "Your own server, on the API it speaks.",
       addTitle: "Add a custom endpoint",
       addLead: "Connect your own server. It is saved once the test passes.",

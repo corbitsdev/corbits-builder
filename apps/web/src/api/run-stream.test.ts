@@ -1,4 +1,4 @@
-import { expect, test } from "bun:test";
+import { expect, spyOn, test } from "bun:test";
 import { subscribeWorkflowRun, type RunStreamSource } from "./run-stream.ts";
 
 test("a dropped stream says so, retries, and a reopen reports the gap", () => {
@@ -47,4 +47,30 @@ test("a dropped stream says so, retries, and a reopen reports the gap", () => {
     data: JSON.stringify({ type: "inference.done" }),
   });
   expect(seen).toEqual(["inference.start", "change", "error", "reconnect"]);
+});
+
+test("a run frame that is not a run event never reaches the handler", () => {
+  const listeners = new Map<string, (event: { data: string }) => void>();
+  const seen: string[] = [];
+  const warn = spyOn(console, "warn").mockImplementation(() => {});
+  subscribeWorkflowRun(
+    "tenant",
+    "run_1",
+    { onEvent: (event) => seen.push(event.type) },
+    {
+      createEventSource: (): RunStreamSource => ({
+        addEventListener: (type, listener) => listeners.set(type, listener),
+        close() {},
+      }),
+      setTimeout: () => 0,
+      clearTimeout: () => {},
+    },
+  );
+  const run = listeners.get("run");
+  run?.({ data: "not json" });
+  run?.({ data: "null" });
+  run?.({ data: JSON.stringify({ type: 7 }) });
+  run?.({ data: JSON.stringify({ type: "inference.done" }) });
+  expect(seen).toEqual(["inference.done"]);
+  warn.mockRestore();
 });
