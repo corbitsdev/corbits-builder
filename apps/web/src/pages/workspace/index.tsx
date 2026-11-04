@@ -54,7 +54,7 @@ import "./persistent-workspace.css";
 import { ProductApiError, type ProjectArtifact } from "@corbits-builder/client";
 import type { InFlightRun } from "@corbits-builder/schemas/artifact";
 import { toast } from "sonner";
-import { sendMessage, type ConversationTurn } from "../../api/conversation.ts";
+import { sendMessage } from "../../api/conversation.ts";
 import { subscribeWorkflowRun } from "../../api/run-stream.ts";
 import {
   acceptedMaterials,
@@ -67,15 +67,10 @@ import {
   restoreProject,
   startProjectCoordinator,
 } from "../../api/projects.ts";
-import type { ChatMessage, Wait } from "../../api/types.ts";
+import type { Wait } from "../../api/types.ts";
 import { keys } from "../../queries/keys.ts";
 import { COMPOSER_BOX_CLASS, CONV_CLASS, PANES_CLASS } from "./pane-classes.ts";
-import {
-  questionsOpen,
-  RoomThread,
-  turnItemId,
-  type TranscriptTurn,
-} from "./transcript.tsx";
+import { questionsOpen, RoomThread, turnItemId } from "./transcript.tsx";
 import { cardDocuments } from "./collaboration.ts";
 import { useFiledVersions } from "./filed-versions.tsx";
 import { threadUpdates } from "./specialist-updates.tsx";
@@ -105,6 +100,12 @@ import {
   type LiveRun,
 } from "./live-run.ts";
 import { createRoomReloader } from "./room-reload.ts";
+import {
+  latestTurnAt,
+  SENDING,
+  withPendingSends,
+  type SentMessage,
+} from "./pending-sends.ts";
 import { decideApproval, openDecisions } from "../../api/decisions.ts";
 import type { DeliverableState } from "./deliverable-block.tsx";
 import { formatPassageQuote, type PassageQuote } from "./passage-note.tsx";
@@ -177,7 +178,7 @@ export { selectedDeliverable };
 function openingDraft(
   projectId: string,
   openingMessage: string | undefined,
-): ChatMessage[] {
+): SentMessage[] {
   const text = openingMessage?.trim() ?? "";
   if (text.length === 0) return [];
   return [
@@ -186,38 +187,9 @@ function openingDraft(
       author: "me",
       body: text,
       at: new Date(0).toISOString(),
+      after: Number.NEGATIVE_INFINITY,
     },
   ];
-}
-
-// A message's stand-in id until the hub's receipt replaces it.
-const SENDING = "sending:";
-
-function withPendingSends(
-  mirror: readonly ConversationTurn[],
-  sent: readonly ChatMessage[],
-): TranscriptTurn[] {
-  const pending = [...sent];
-  const shown: TranscriptTurn[] = [];
-  for (const turn of mirror) {
-    const index = pending.findIndex(
-      (message) =>
-        message.body === turn.text &&
-        (message.author === "agent") === (turn.role === "assistant"),
-    );
-    if (index >= 0) pending.splice(index, 1);
-    shown.push(turn);
-  }
-  for (const message of pending) {
-    const at = Date.parse(message.at);
-    shown.push({
-      role: message.author === "agent" ? "assistant" : "person",
-      text: message.body,
-      at: Number.isNaN(at) ? 0 : at,
-      ...(message.id.startsWith(SENDING) ? { sending: true } : {}),
-    });
-  }
-  return shown;
 }
 
 // The hand-offs that name the document their run works on, by the role they start.
@@ -389,7 +361,7 @@ export function StageWorkspace({
   const [mobilePane, setMobilePane] = useState<"conversation" | "artifacts">(
     "conversation",
   );
-  const [sent, setSent] = useState<ChatMessage[]>(() =>
+  const [sent, setSent] = useState<SentMessage[]>(() =>
     openingDraft(projectId, openingMessage),
   );
   const [value, setValue] = useState("");
@@ -423,8 +395,6 @@ export function StageWorkspace({
       ? {}
       : { maxFiles: limits.maxFiles, maxFileBytes: limits.maxFileBytes }),
   });
-  // The files each sent message carried, by its text, as this session sent them.
-  const filesByText = useRef(new Map<string, readonly ConversationPart[]>());
   const liveRunRef = useRef<LiveRun>(emptyLiveRun);
   const committedAtRef = useRef<number | null>(null);
   committedAtRef.current = latestAssistantAt(mirror);
@@ -490,7 +460,6 @@ export function StageWorkspace({
     runKinds.current.clear();
     usedCalls.current.clear();
     runCards.current.clear();
-    filesByText.current.clear();
   }, [projectId, openingMessage]);
 
   // The durable mirror is the committed transcript. The stream fills the gap
@@ -575,18 +544,7 @@ export function StageWorkspace({
   const turns = useMemo(
     () =>
       withPendingSends(mirror, sent).map((turn) => {
-        const attached =
-          turn.role === "person"
-            ? filesByText.current.get(turn.text)
-            : undefined;
-        if (attached !== undefined)
-          return {
-            ...turn,
-            parts:
-              turn.text.length === 0
-                ? attached
-                : [...attached, { kind: "text" as const, text: turn.text }],
-          };
+        if (turn.parts !== undefined) return turn;
         const steps =
           turn.role === "assistant"
             ? stepsByAt.current.get(turn.at)
@@ -701,21 +659,21 @@ export function StageWorkspace({
     setSendFault(null);
     setAwaitingSince(Date.now());
     // The person's words show the moment they send; the receipt replaces this stand-in.
-    const pending: ChatMessage = {
+    const pending: SentMessage = {
       id: `${SENDING}${String(Date.now())}`,
       author: "me",
       body: text,
       at: new Date().toISOString(),
+      after: latestTurnAt(mirror),
     };
-    setSent((previous) => [
-      ...previous.filter((item) => item.author !== "me" || item.body !== text),
-      pending,
-    ]);
+    setSent((previous) => [...previous, pending]);
     if (clearComposer) setValue("");
     try {
       const { message, receipt } = await sendMessage(projectId, text);
       setSent((previous) =>
-        previous.map((item) => (item === pending ? message : item)),
+        previous.map((item) =>
+          item === pending ? { ...pending, ...message } : item,
+        ),
       );
       void receipt;
       reloadRef.current();
@@ -768,19 +726,17 @@ export function StageWorkspace({
     setSendFault(null);
     setAwaitingSince(Date.now());
     setAttachFault(null);
-    filesByText.current.set(
-      text,
-      attached.map((item) => ({
-        kind: "file" as const,
-        name: item.name,
-        mediaType: item.mediaType,
-      })),
-    );
-    const pending: ChatMessage = {
+    const pending: SentMessage = {
       id: `${SENDING}${String(Date.now())}`,
       author: "me",
       body: text,
       at: new Date().toISOString(),
+      after: latestTurnAt(mirror),
+      files: attached.map((item) => ({
+        kind: "file" as const,
+        name: item.name,
+        mediaType: item.mediaType,
+      })),
     };
     setSent((previous) => [...previous, pending]);
     setValue("");
@@ -802,7 +758,6 @@ export function StageWorkspace({
     } catch (cause) {
       setAwaitingSince(null);
       setSent((previous) => previous.filter((item) => item !== pending));
-      filesByText.current.delete(text);
       setValue((current) => (current === "" ? text : current));
       setFiles(attached);
       setAttachFault(await attachFaultText(cause));

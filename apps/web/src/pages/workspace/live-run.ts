@@ -12,6 +12,7 @@ import type { ConversationTurn } from "../../api/conversation.ts";
 import type { Wait } from "../../api/types.ts";
 import type { RunStreamEvent } from "../../api/run-stream.ts";
 import type { ConversationPart } from "@corbits/react-ui";
+import { clippedTurnText } from "@corbits-builder/schemas/conversation";
 import {
   emptyLiveTurn,
   foldLiveTurn,
@@ -73,9 +74,6 @@ const reloadAfter = new Set([
   "reactor.done",
   "reactor.error",
 ]);
-
-// The mirror caps each turn's text at this length.
-const MIRROR_TEXT_LIMIT = 20_000;
 
 function hasContent(segment: LiveTurnState): boolean {
   return segment.text.length > 0 || segment.parts.length > 0;
@@ -162,9 +160,8 @@ export function foldLiveRun(
 }
 
 function sameText(committed: string, live: string): boolean {
-  const a = committed.trim();
-  const b = live.trim();
-  return a === b || (a.length >= MIRROR_TEXT_LIMIT && b.startsWith(a));
+  const text = committed.trim();
+  return text === live.trim() || text === clippedTurnText(live).trim();
 }
 
 function committedTurn(
