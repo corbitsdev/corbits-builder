@@ -111,7 +111,13 @@ export function foldLiveRun(
       reload,
     };
   }
-  if (event.type === "message.run.ended" || event.type === "reactor.done") {
+  // The reactor closes the message run right after it replies, but a turn resumed from an approval
+  // restored after a restart has no message run to close, so its reply is the only end it sends.
+  if (
+    event.type === "message.run.ended" ||
+    event.type === "connector.reply" ||
+    event.type === "reactor.done"
+  ) {
     return {
       run: { ...run, ended: true, running: false, endedAt: Date.now() },
       reload,

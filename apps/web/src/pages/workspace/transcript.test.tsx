@@ -188,6 +188,18 @@ describe("conversation transcript", () => {
     expect(awaitingCommit(done, [])).toBe(true);
   });
 
+  test("a turn resumed from an approval after a restart ends on its reply", () => {
+    const resumed = [
+      { type: "message.correlated" },
+      { type: "inference.start" },
+      { type: "inference.done" },
+    ].reduce((run, event) => foldLiveRun(run, event, null).run, emptyLiveRun);
+    expect(resumed.running).toBe(true);
+    const replied = foldLiveRun(resumed, { type: "connector.reply" }, null).run;
+    expect(replied.running).toBe(false);
+    expect(replied.ended).toBe(true);
+  });
+
   test("a specialist's report joins its hand-off as one message and a long run of lone ones folds", () => {
     const summary =
       "Wrote the limits for your weather app, covering offline use and units.";
