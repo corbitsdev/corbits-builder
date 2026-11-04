@@ -29,6 +29,7 @@ import {
 import type { ProjectStage } from "@corbits-builder/schemas/project";
 import type { ProjectSummary } from "../api/types.ts";
 import type { NoticeAction } from "../components.jsx";
+import { ProjectCover } from "./project-cover.tsx";
 import { ProjectMenu } from "./project-menu.jsx";
 import "./project-library.css";
 
@@ -229,11 +230,11 @@ export function ProjectLibrary({
                 className="library-card-open"
                 onClick={() => onOpen(project.id)}
               >
-                <span
-                  className="library-cover"
-                  data-pattern={cover.pattern}
+                <ProjectCover
+                  projectId={project.id}
+                  pattern={cover.pattern}
                   style={cover.style}
-                  aria-hidden="true"
+                  mockup={view === "grid"}
                 />
                 <span className="library-card-body">
                   <span className="library-card-title">{project.title}</span>
