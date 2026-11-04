@@ -9,7 +9,8 @@ end-to-end tests:
   `bun run test` with no database.
 - **`test/e2e/`:** end-to-end tests against an isolated Postgres, the real hub
   and real sidecars (`custom-provider.test.ts`, `oauth-model-login.test.ts`,
-  `specialist-end-notices.test.ts` and `pipeline.test.ts`).
+  `specialist-end-notices.test.ts` and `pipeline.test.ts`). Each test
+  database's `now()` runs five minutes behind the hub's clock.
 - **`test/e2e/support/`:** shared harness (`hub.ts`), the recorded
   OpenAI-compatible model server (`recorded-model.ts` and its unit tests in
   `recorded-model.test.ts`) and the fixture extractor (`extract.ts`).

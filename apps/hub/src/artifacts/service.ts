@@ -2145,7 +2145,9 @@ export function createArtifactService(
         const [granted] = await tx
           .select({
             id: approval.id,
-            askedAt: approval.createdAt,
+            // The database stamps the ask and the hub stamps versions, so the ask's
+            // age moves it onto the hub's clock.
+            askedAgoMs: sql<number>`extract(epoch from now()::timestamp - ${approval.createdAt})::float8 * 1000`,
             askedKinds: sql<string | null>`${approval.toolArguments}->>'kinds'`,
           })
           .from(approval)
@@ -2183,8 +2185,9 @@ export function createArtifactService(
         if (recorded || !artifacts.length)
           return { approvalId: granted.id, artifacts: [] };
         // A version written while the person was deciding is not one they saw.
+        const askedAt = Date.now() - granted.askedAgoMs;
         const changed = artifacts.find(
-          ({ writtenAt }) => writtenAt > granted.askedAt,
+          ({ writtenAt }) => writtenAt.getTime() > askedAt,
         )?.ref;
         if (changed)
           throw new ProjectError(409, "artifact_changed_during_approval", {

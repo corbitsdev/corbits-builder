@@ -23,6 +23,8 @@ export type TestHubHandle = Readonly<{
   close: () => Promise<void>;
 }>;
 
+const DB_CLOCK_LAG = "5 minutes";
+
 function readTestDbServerConfig(): {
   host: string;
   port: number;
@@ -92,8 +94,29 @@ export async function startTestHub(
 
   try {
     await adminSql.unsafe(`CREATE DATABASE "${dbName}"`);
+    // The database clock runs behind the hub's, as a separately hosted database's can, so
+    // nothing passes only because both stamp time from one machine's clock.
+    await adminSql.unsafe(
+      `ALTER DATABASE "${dbName}" SET search_path = "$user", public, pg_catalog`,
+    );
   } finally {
     await adminSql.end();
+  }
+  const lagSql = postgres({
+    host: dbServer.host,
+    port: dbServer.port,
+    user: dbServer.user,
+    password: dbServer.password,
+    database: dbName,
+    max: 1,
+    onnotice: () => undefined,
+  });
+  try {
+    await lagSql.unsafe(
+      `CREATE FUNCTION public.now() RETURNS timestamptz LANGUAGE sql STABLE AS $$ SELECT pg_catalog.now() - interval '${DB_CLOCK_LAG}' $$`,
+    );
+  } finally {
+    await lagSql.end();
   }
 
   const dataDir = await mkdtemp(join(tmpdir(), "builder-e2e-hub-"));
