@@ -443,6 +443,10 @@ export function useCustomProviderForm(apis: Apis, original?: EditableProvider) {
       </>
     ),
     save: async (): Promise<void> => {
+      const models = parsedModels(
+        original ? original.models.map(modelDraftOf) : [draft.model],
+      );
+      if (models === null) throw new Error(copy.custom.modelsUnreadable);
       if (tests) await testConnection(draft);
       const tenantId = await workspaceTenantId();
       const client = productClient();
@@ -450,14 +454,14 @@ export function useCustomProviderForm(apis: Apis, original?: EditableProvider) {
       if (!original) {
         await client.createCustomProvider(tenantId, {
           name,
-          models: parsedModels([draft.model])!,
+          models,
           connection: endpointOf(draft),
         });
         return;
       }
       await client.updateCustomProvider(tenantId, original.id, {
         name,
-        models: parsedModels(original.models.map(modelDraftOf))!,
+        models,
         ...(tests ? { connection: endpointOf(draft) } : {}),
       });
     },

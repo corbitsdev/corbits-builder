@@ -1061,6 +1061,8 @@ export const wording = {
     keylessHint: `For servers that need no API key; ${productName} sends a placeholder.`,
     custom: {
       tile: "Custom endpoint",
+      modelsUnreadable:
+        "This provider's models could not be read, so nothing was saved.",
       tileHint: "Your own server, on the API it speaks.",
       addTitle: "Add a custom endpoint",
       addLead: "Connect your own server. It is saved once the test passes.",
