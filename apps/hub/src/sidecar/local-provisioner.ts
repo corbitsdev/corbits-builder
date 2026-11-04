@@ -24,6 +24,7 @@ import type {
   LocalSidecarHold,
   LocalSidecarManifest,
   LocalSidecarManifestStore,
+  LocalSidecarPid,
 } from "./manifest-store.ts";
 
 const DEFAULT_STOP_TIMEOUT_MS = 25_000;
@@ -39,8 +40,10 @@ export type LocalSidecarExit = {
   readonly signal: string | null;
 };
 
-interface LocalSidecarProcess {
+export interface LocalSidecarProcess {
   readonly pid: number;
+  /** What `ps` reported the process started as, so a later hub can tell it from a process that reuses its pid. */
+  readonly identity?: string;
   readonly exited: Promise<LocalSidecarExit>;
   kill(signal: NodeJS.Signals): void;
 }
@@ -53,6 +56,10 @@ export type SpawnLocalSidecar = (args: {
 type CreateLocalProcessSidecarProvisionerOpts = {
   readonly dataRoot: string;
   readonly spawnSidecar: SpawnLocalSidecar;
+  /** The sidecar a previous hub left running, when it is still the process recorded. */
+  readonly adoptSidecar: (
+    record: LocalSidecarPid,
+  ) => LocalSidecarProcess | undefined;
   /** Stops a sidecar still running at a recorded pid; resolves whether one was running there. */
   readonly stopStaleSidecar: (
     pid: number,
@@ -82,7 +89,11 @@ type LocalSidecarRecords = {
 export interface LocalProcessSidecarProvisioner {
   readonly provisioner: SidecarProvisioner;
   restore(records: LocalSidecarRecords): Promise<void>;
-  shutdown(): Promise<void>;
+  /**
+   * Stops taking work. The sidecar is stopped too unless `keepSidecar`, which leaves it running for the next hub to
+   * adopt: it reconnects to that hub and its turns carry on.
+   */
+  shutdown(options?: { readonly keepSidecar?: boolean }): Promise<void>;
 }
 
 type ManagedProcess = {
@@ -114,6 +125,7 @@ async function exitedWithin(
 export function createLocalProcessSidecarProvisioner({
   dataRoot,
   spawnSidecar,
+  adoptSidecar,
   stopStaleSidecar,
   manifests,
   capacity,
@@ -194,19 +206,29 @@ export function createLocalProcessSidecarProvisioner({
     }
   }
 
-  // The recorded pid lets the next hub stop this process if this one dies without shutting it down.
+  function manage(
+    handle: LocalSidecarProcess,
+    sidecarId: string,
+  ): ManagedProcess {
+    const managed: ManagedProcess = { handle, exited: false };
+    void trackExit(managed, sidecarId);
+    running = managed;
+    return managed;
+  }
+
+  // The recorded pid and identity let the next hub adopt this process, or stop it when it is no longer this one.
   async function start(current: LocalSidecarManifest): Promise<ManagedProcess> {
     const handle = spawnSidecar({ manifest: current, adapterManifest });
     try {
-      await manifests.writePid(handle.pid);
+      await manifests.writePid({
+        pid: handle.pid,
+        ...(handle.identity !== undefined && { identity: handle.identity }),
+      });
     } catch (error) {
       handle.kill("SIGKILL");
       throw error;
     }
-    const managed: ManagedProcess = { handle, exited: false };
-    void trackExit(managed, current.sidecarId);
-    running = managed;
-    return managed;
+    return manage(handle, current.sidecarId);
   }
 
   /** The running sidecar, started under `request`'s identity when none was minted yet. */
@@ -446,25 +468,46 @@ export function createLocalProcessSidecarProvisioner({
     await fs.rm(dataDir, { recursive: true, force: true });
   }
 
-  // A copy whose hold a destroy released is removed only once the sidecar reconnects and the hub undeploys it, so the
-  // sidecar comes back for that cleanup too; forgetting it would leave the copy holding a slot for good.
-  async function stopStale(): Promise<void> {
-    const pid = await manifests.readPid();
-    if (pid === null) return;
-    if (await stopStaleSidecar(pid, stopTimeoutMs))
-      log({ level: "warn", msg: "local_sidecar_stale_stopped", pid });
+  // The sidecar a previous hub left running, still the process it recorded. A process at that pid that is not the
+  // recorded one is not ours and is left alone; only a bare pid from a hub before identities is stopped there, so
+  // two processes never share one identity and data dir.
+  async function reclaim(): Promise<LocalSidecarProcess | undefined> {
+    const record = await manifests.readPid();
+    if (record === null) return undefined;
+    const adopted = adoptSidecar(record);
+    if (adopted !== undefined) return adopted;
+    if (
+      record.identity === undefined &&
+      (await stopStaleSidecar(record.pid, stopTimeoutMs))
+    )
+      log({
+        level: "warn",
+        msg: "local_sidecar_stale_stopped",
+        pid: record.pid,
+      });
     await manifests.removePid();
+    return undefined;
   }
 
+  // A copy whose hold a destroy released is removed only once the sidecar reconnects and the hub undeploys it, so the
+  // sidecar comes back for that cleanup too; forgetting it would leave the copy holding a slot for good.
   async function restoreSidecar(records: LocalSidecarRecords): Promise<void> {
     const { isLive, hasWork, reusable } = records;
     stillOpen = records.stillOpen;
-    await stopStale();
+    const left = await reclaim();
+    // A sidecar left running for an identity this hub does not keep has nothing to come back for.
+    const retire = async (): Promise<void> => {
+      if (left === undefined) return;
+      await stopProcess({ handle: left, exited: false });
+      log({ level: "info", msg: "local_sidecar_retired", pid: left.pid });
+    };
     await restoreFences();
     const stored = await manifests.read();
     const recorded = await manifests.readHolds();
     if (stored === null) {
+      await retire();
       if (recorded.length > 0) await forget();
+      else if (left !== undefined) await manifests.removePid();
       return;
     }
     const live: LocalSidecarHold[] = [];
@@ -480,6 +523,7 @@ export function createLocalProcessSidecarProvisioner({
     if (!(await reusable(stored.sidecarId))) {
       if (host === undefined)
         throw new Error("Local sidecar provisioner has not been attached");
+      await retire();
       const report = await host.sidecarStopped(stored.sidecarId, {
         endReconnectWindow: true,
       });
@@ -494,6 +538,7 @@ export function createLocalProcessSidecarProvisioner({
       return;
     }
     if (live.length === 0 && !(await hasWork(stored.sidecarId))) {
+      await retire();
       await forget();
       log({
         level: "info",
@@ -506,6 +551,18 @@ export function createLocalProcessSidecarProvisioner({
     manifest = stored;
     for (const hold of live) holds.set(hold.allocationId, hold);
     await manifests.writeHolds(live);
+    if (left !== undefined) {
+      manage(left, stored.sidecarId);
+      log({
+        level: "info",
+        msg: "local_sidecar_adopted",
+        sidecarId: stored.sidecarId,
+        pid: left.pid,
+        holds: live.length,
+        dropped,
+      });
+      return;
+    }
     const child = await start(stored);
     log({
       level: "info",
@@ -533,9 +590,18 @@ export function createLocalProcessSidecarProvisioner({
     }
   }
 
-  // The manifest, holds and data dir survive shutdown so the next hub boot can respawn the sidecar.
-  async function stopAll(): Promise<void> {
+  // The manifest, holds and data dir survive shutdown so the next hub boot can adopt or respawn the sidecar.
+  async function stopAll(keepSidecar: boolean): Promise<void> {
     await queue.idle();
+    if (keepSidecar) {
+      if (running !== null && !running.exited)
+        log({
+          level: "info",
+          msg: "local_sidecar_left_running",
+          pid: running.handle.pid,
+        });
+      return;
+    }
     if (running !== null) await stopProcess(running);
     running = null;
     await manifests.removePid();
@@ -572,8 +638,8 @@ export function createLocalProcessSidecarProvisioner({
   return {
     provisioner,
     restore: restoreOnce,
-    shutdown() {
-      shutdownPromise ??= stopAll();
+    shutdown({ keepSidecar = false } = {}) {
+      shutdownPromise ??= stopAll(keepSidecar);
       return shutdownPromise;
     },
   };

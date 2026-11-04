@@ -142,6 +142,11 @@ export type RecordedModelServer = Readonly<{
   assertClean: () => void;
   firstFailure: () => Error | undefined;
   onActivity: (listener: () => void) => () => void;
+  /** Holds the response to one exchange of a run until released, so a test can act while that turn is in flight. */
+  hold: (
+    runKey: string,
+    exchange: number,
+  ) => Readonly<{ reached: Promise<void>; release: () => void }>;
   stop: () => Promise<void>;
 }>;
 
@@ -305,6 +310,13 @@ export async function startRecordedModelServer(
   const cursors = new Map<string, number>(runs.map((r) => [r.runKey, 0]));
   const bindings = new Map<string, string>();
   const listeners = new Set<() => void>();
+  const holds = new Map<
+    string,
+    {
+      reached: PromiseWithResolvers<void>;
+      released: PromiseWithResolvers<void>;
+    }
+  >();
   let failure: Error | undefined;
 
   function cursorFor(runKey: string): number {
@@ -511,6 +523,8 @@ export async function startRecordedModelServer(
   const server = Bun.serve({
     hostname: "127.0.0.1",
     port: 0,
+    // A held response must outlive Bun's 10-second idle default.
+    idleTimeout: 0,
     fetch: async (request) => {
       const url = new URL(request.url);
       if (request.method === "GET" && url.pathname.endsWith("/models")) {
@@ -556,6 +570,11 @@ export async function startRecordedModelServer(
         });
         cursors.set(run.runKey, cursor + 1);
         notify();
+        const held = holds.get(`${run.runKey}#${cursor}`);
+        if (held) {
+          held.reached.resolve();
+          await held.released.promise;
+        }
         return new Response(sse, {
           status: 200,
           headers: exchange.responseHeaders,
@@ -581,6 +600,17 @@ export async function startRecordedModelServer(
       listeners.add(listener);
       return () => {
         listeners.delete(listener);
+      };
+    },
+    hold: (runKey, exchange) => {
+      const held = {
+        reached: Promise.withResolvers<void>(),
+        released: Promise.withResolvers<void>(),
+      };
+      holds.set(`${runKey}#${exchange}`, held);
+      return {
+        reached: held.reached.promise,
+        release: () => held.released.resolve(),
       };
     },
     assertClean: () => {

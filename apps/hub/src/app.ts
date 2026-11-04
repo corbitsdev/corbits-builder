@@ -667,7 +667,8 @@ export async function createHubRuntime(
         workflows.start();
         for (const scheduler of projectSchedulers) scheduler.start();
       },
-      async close() {
+      /** `keepSidecar` leaves the local sidecar running for the next hub to adopt; a full stop takes it down. */
+      async close(options?: { readonly keepSidecar?: boolean }) {
         modelLogins.stop();
         for (const scheduler of projectSchedulers) scheduler.stop();
         workflows.stop();
@@ -675,7 +676,7 @@ export async function createHubRuntime(
         liveApps.proxy.close();
         agentActivity.dispose();
         sidecarWebSocket.close();
-        await workflows.drain();
+        await workflows.drain(options);
         sessions.dispose();
         authEmail?.close();
         await handle.close();

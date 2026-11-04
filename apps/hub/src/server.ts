@@ -12,10 +12,11 @@ const errorMetadata = (error: unknown) => ({
 if (import.meta.main) {
   await setupHubLogging();
   const log = getLogger(["corbits-builder", "hub"]);
-  let close = async () => {};
+  type Stop = { readonly keepSidecar: boolean };
+  let close: (how: Stop) => Promise<void> = async () => {};
   let stopping: Promise<void> | undefined;
-  const shutDown = async () => {
-    for (const step of [close, dispose]) {
+  const shutDown = async (how: Stop) => {
+    for (const step of [() => close(how), dispose]) {
       try {
         await step();
       } catch (error) {
@@ -24,11 +25,14 @@ if (import.meta.main) {
       }
     }
   };
-  const stop = () => (stopping ??= shutDown());
+  // A restart (SIGTERM from a supervisor, a fatal error or a failed start) leaves the local sidecar running for the next hub to
+  // adopt, so turns in flight carry on; SIGINT, as when the dev script exits, is a full stop that takes it down.
+  const stop = (how: Stop) => (stopping ??= shutDown(how));
+  const restart = { keepSidecar: true };
   const exitOnFatal = (message: string) => async (error: unknown) => {
     try {
       log.error(message, errorMetadata(error));
-      await stop();
+      await stop(restart);
     } finally {
       // Handles a failed shutdown left open would keep a broken hub alive instead of letting its supervisor restart it.
       process.exit(1);
@@ -40,10 +44,10 @@ if (import.meta.main) {
   );
   process.on("uncaughtException", exitOnFatal("Hub hit an uncaught exception"));
   process.once("SIGTERM", () => {
-    void stop();
+    void stop(restart);
   });
   process.once("SIGINT", () => {
-    void stop();
+    void stop({ keepSidecar: false });
   });
   try {
     const runtime = await createHubRuntime();
@@ -55,9 +59,9 @@ if (import.meta.main) {
       fetch: runtime.app.fetch,
       websocket: runtime.websocket,
     });
-    close = async () => {
+    close = async (how) => {
       await server.stop(true);
-      await runtime.close();
+      await runtime.close(how);
     };
     await runtime.start();
     log.info(
@@ -69,6 +73,6 @@ if (import.meta.main) {
       errorMetadata(error),
     );
     process.exitCode = 1;
-    await stop();
+    await stop(restart);
   }
 }

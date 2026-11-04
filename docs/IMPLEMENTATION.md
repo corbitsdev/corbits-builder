@@ -45,7 +45,11 @@ Agents run on sidecars, which the hub provisions
 - **Local process sidecars** are always available. The hub spawns them from
   the vendored sidecar app on the same machine, keeps their state under
   `HUB_DATA_DIR`, and restores them after a restart. One holds up to
-  `SIDECAR_LOCAL_MAX_ACTIVE` deployments.
+  `SIDECAR_LOCAL_MAX_ACTIVE` deployments. A hub restart (SIGTERM, a fatal
+  error, a failed start or a crash) leaves the sidecar running, and the next
+  hub adopts it when it is still the process it recorded, so turns in flight
+  carry on over Interchange's reconnect. SIGINT, as when the dev script exits,
+  stops it.
 - **Docker sidecars** are added when `SIDECAR_IMAGE` names an image (built
   from the `sidecar` target of
   [deploy/Dockerfile](https://github.com/corbitsdev/corbits-builder/blob/main/deploy/Dockerfile)),

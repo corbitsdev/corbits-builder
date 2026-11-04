@@ -49,6 +49,7 @@ import { createLocalSidecarManifestStore } from "../sidecar/manifest-store.ts";
 import { createPlacementChooser } from "../sidecar/placement.ts";
 import { restoreLocalSidecars } from "../sidecar/restore.ts";
 import {
+  adoptLocalSidecar,
   childProcessEnv,
   createSpawnLocalSidecar,
   stopStaleLocalSidecar,
@@ -131,6 +132,7 @@ export async function createWorkflowServices(options: {
       maxActiveDeployments,
       processEnv: childProcessEnv(environment),
     }),
+    adoptSidecar: adoptLocalSidecar,
     stopStaleSidecar: stopStaleLocalSidecar,
     manifests: createLocalSidecarManifestStore({
       dataRoot,
@@ -390,9 +392,9 @@ export async function createWorkflowServices(options: {
       for (const scheduler of schedulers) scheduler.stop();
       for (const off of unsubscribers) off();
     },
-    async drain() {
+    async drain(options?: { readonly keepSidecar?: boolean }) {
       await Promise.allSettled(pending);
-      await local.shutdown();
+      await local.shutdown(options);
     },
   };
 }

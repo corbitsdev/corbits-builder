@@ -20,6 +20,8 @@ export type TestHubHandle = Readonly<{
     runId: string,
     onFrame: (event: string, data: string) => void,
   ) => () => void;
+  /** Stops the hub as a supervisor restart does, leaving its sidecar running, and boots a new one in its place. */
+  restart: () => Promise<void>;
   close: () => Promise<void>;
 }>;
 
@@ -50,15 +52,24 @@ async function signUpSessionCookie(
   password: string,
   name: string,
 ): Promise<string> {
-  const response = await fetch(new URL("/api/auth/sign-up/email", baseUrl), {
-    method: "POST",
-    redirect: "error",
-    headers: {
-      "Content-Type": "application/json",
-      Origin: baseUrl,
-    },
-    body: JSON.stringify({ email, password, name }),
-  });
+  const signUp = () =>
+    fetch(new URL("/api/auth/sign-up/email", baseUrl), {
+      method: "POST",
+      redirect: "error",
+      headers: {
+        "Content-Type": "application/json",
+        Origin: baseUrl,
+      },
+      body: JSON.stringify({ email, password, name }),
+    });
+  let response = await signUp();
+  // Hubs in one test process share the auth library's sign-up limit, so a hub booted right after another waits it out.
+  if (response.status === 429) {
+    await response.body?.cancel();
+    const retryAfter = Number(response.headers.get("X-Retry-After") ?? "10");
+    await Bun.sleep((retryAfter + 1) * 1_000);
+    response = await signUp();
+  }
   if (!response.ok) {
     const body = await response.text();
     throw new Error(`E2E sign-up failed (${response.status}): ${body}`);
@@ -161,8 +172,7 @@ export async function startTestHub(
     }
   }
 
-  try {
-    await migrateDatabase(hubEnv);
+  async function boot(): Promise<void> {
     runtime = await createHubRuntime(hubEnv);
     server = Bun.serve({
       hostname: runtime.hostname,
@@ -171,6 +181,11 @@ export async function startTestHub(
       websocket: runtime.websocket,
     });
     runtime.start();
+  }
+
+  try {
+    await migrateDatabase(hubEnv);
+    await boot();
 
     const cookie = await signUpSessionCookie(
       baseUrl,
@@ -311,6 +326,11 @@ export async function startTestHub(
       client,
       fakeCredentialSecret,
       subscribeRunStream,
+      restart: async () => {
+        await server?.stop(true);
+        await runtime?.close({ keepSidecar: true });
+        await boot();
+      },
       close: async () => {
         for (const controller of activeStreams) {
           controller.abort();
