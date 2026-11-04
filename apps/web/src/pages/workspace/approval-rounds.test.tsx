@@ -1,6 +1,7 @@
-import { describe, expect, mock, test } from "bun:test";
+import { beforeAll, describe, expect, mock, test } from "bun:test";
 import React, { isValidElement, type ReactNode } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
+import { prerender } from "react-dom/static";
 import { ThemeProvider } from "@corbits/react-ui";
 import { QueryClientProvider } from "@tanstack/react-query";
 import type { ApprovalPackageBundle } from "@corbits-builder/schemas/artifact";
@@ -212,6 +213,7 @@ mock.module("../../api/artifacts.ts", () => ({
 
 const { ApprovalRoundsPanel, SharePackageDialog } =
   await import("./approval-rounds.tsx");
+const { SlidesView } = await import("./approval-package-preview.tsx");
 
 const openRound: ApprovalRound = {
   roundId: "rnd_1",
@@ -274,6 +276,17 @@ const sampleBundle: ApprovalPackageBundle = {
     ],
   },
   deck: {
+    theme: {
+      colors: {
+        primary: "#1e293b",
+        secondary: "#334155",
+        accent: "#2563eb",
+        background: "#ffffff",
+        text: "#0f172a",
+        muted: "#64748b",
+      },
+      fonts: { heading: "Inter", body: "Inter" },
+    },
     slides: [
       {
         layout: "title",
@@ -606,6 +619,11 @@ function createStatefulHarness(renderRoot: () => ReactNode) {
 }
 
 describe("approval rounds panel", () => {
+  // Loads the lazily split slides once, as a browser would, so synchronous renders draw them.
+  beforeAll(async () => {
+    await prerender(<SlidesView deck={sampleBundle.deck} />);
+  });
+
   test("renders open round with reviewer states, Add new reviewer button, per-person Download package buttons, inline feedback triage with Incorporate and Dismiss (no Reply), and disabled settle button while a reviewer is pending", () => {
     const html = renderToStaticMarkup(
       <ApprovalRoundsPanel
@@ -670,6 +688,7 @@ describe("approval rounds panel", () => {
         decisionNeeded: "Approve Q3 executive budget",
       },
       deck: {
+        ...sampleBundle.deck,
         slides: [
           {
             layout: "title",
@@ -687,6 +706,7 @@ describe("approval rounds panel", () => {
         decisionNeeded: "Approve technical architecture",
       },
       deck: {
+        ...sampleBundle.deck,
         slides: [
           {
             layout: "title",

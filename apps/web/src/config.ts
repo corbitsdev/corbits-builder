@@ -634,7 +634,9 @@ export const wording = {
       `Slide ${String(index)} of ${String(total)}`,
     pageCount: (index: number, total: number) =>
       `Page ${String(index)} of ${String(total)}`,
-    noSlides: "This approval package contains no slides.",
+    loadingSlides: "Loading slides…",
+    slidesUnavailable:
+      "The slides could not load. Reload the page to try again.",
     speakerNotes: "Speaker notes",
     downloadPdf: "Download PDF",
     openPdf: "Open PDF",

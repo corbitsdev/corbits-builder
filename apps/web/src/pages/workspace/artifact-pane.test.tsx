@@ -1,5 +1,6 @@
-import { describe, expect, test } from "bun:test";
+import { beforeAll, describe, expect, test } from "bun:test";
 import { renderToStaticMarkup } from "react-dom/server";
+import { prerender } from "react-dom/static";
 import type { ProjectArtifact } from "@corbits-builder/client";
 import {
   ArtifactPane,
@@ -8,7 +9,10 @@ import {
   defaultTab,
   resolveSelection,
 } from "./artifact-pane.tsx";
-import { APPROVAL_PACKAGE_MEDIA_TYPE } from "./approval-package-preview.tsx";
+import {
+  APPROVAL_PACKAGE_MEDIA_TYPE,
+  SlidesView,
+} from "./approval-package-preview.tsx";
 import type { DeliverableState } from "./deliverable-block.tsx";
 import { writeWorkspaceApprovalsEnabled } from "../../workspace-approvals-setting.ts";
 
@@ -55,6 +59,11 @@ function render(
 }
 
 describe("persistent artifact pane", () => {
+  // Loads the lazily split slides once, as a browser would, so synchronous renders draw them.
+  beforeAll(async () => {
+    await prerender(<SlidesView deck={{}} />);
+  });
+
   test("exists before artifacts without modal or Expand controls", () => {
     const html = render(null);
     expect(html).toContain('aria-label="Artifacts"');
@@ -160,6 +169,17 @@ describe("persistent artifact pane", () => {
         ],
       },
       deck: {
+        theme: {
+          colors: {
+            primary: "#1e293b",
+            secondary: "#334155",
+            accent: "#2563eb",
+            background: "#ffffff",
+            text: "#0f172a",
+            muted: "#64748b",
+          },
+          fonts: { heading: "Inter", body: "Inter" },
+        },
         slides: [
           {
             layout: "title",
