@@ -262,10 +262,13 @@ function ReadyDocument({
     return loaded.content;
   };
 
-  const showVersion = async (version: number) => {
+  // Reads a version the room has not loaded, then acts on it; a failed read is the block's error line.
+  const withVersion = async (version: number, use: () => void) => {
+    setPendingVersion(version);
+    setReadError(null);
     try {
       await fetchVersion(version);
-      setViewing(version);
+      use();
     } catch (cause) {
       setReadError(cause instanceof Error ? cause.message : String(cause));
     } finally {
@@ -281,8 +284,7 @@ function ReadyDocument({
       setViewing(version);
       return;
     }
-    setPendingVersion(version);
-    void showVersion(version);
+    void withVersion(version, () => setViewing(version));
   };
 
   const appliedRequestSeq = useRef<number | null>(null);
@@ -296,19 +298,12 @@ function ReadyDocument({
     }
   }, [requestedVersion]);
 
-  const comparePrevious = async () => {
+  const comparePrevious = () => {
     if (predecessor === null) return;
-    setPendingVersion(predecessor);
-    setReadError(null);
-    try {
-      await fetchVersion(predecessor);
+    void withVersion(predecessor, () => {
       setBaseline(predecessor);
       if (!changesOpen) onToggleChanges();
-    } catch (cause) {
-      setReadError(cause instanceof Error ? cause.message : String(cause));
-    } finally {
-      setPendingVersion(null);
-    }
+    });
   };
 
   const stopComparing = () => {
