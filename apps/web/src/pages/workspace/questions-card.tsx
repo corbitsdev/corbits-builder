@@ -8,7 +8,6 @@ import { Check, CornerDownRight } from "lucide-react";
 import {
   Button,
   Checkbox,
-  ConversationNotice,
   GateBlock,
   Input,
   IntakeForm,
@@ -77,39 +76,60 @@ export function stepName(id: string): string {
   return words.charAt(0).toUpperCase() + words.slice(1);
 }
 
-/** Each question's answer as the person's reply carries it, by the line the card composed. */
+/** Each question with its answer as the person's reply carries it, by the line the card composed. */
 function repliedAnswers(
   questions: readonly Question[],
   reply: string,
-): string[] {
+): { prompt: string; answer: string }[] {
   const lines = reply.split("\n");
   return questions.flatMap((question) => {
     const lead = text.answerLine(question.prompt, []);
     const line = lines.find((candidate) => candidate.startsWith(lead));
-    return line === undefined ? [] : [line.slice(lead.length)];
+    return line === undefined
+      ? []
+      : [{ prompt: question.prompt, answer: line.slice(lead.length) }];
   });
 }
 
-function Settled({ ask, reply }: { ask: AskQuestions; reply?: string }) {
-  if (reply === undefined)
-    return (
-      <ConversationNotice
-        className="questions-card-settled"
-        icon={<CornerDownRight />}
-      >
-        <span>{text.replaced}</span>
-      </ConversationNotice>
-    );
-  const answers = repliedAnswers(ask.questions, reply);
+function AnswerList({
+  answers,
+}: {
+  answers: readonly { prompt: string; answer: string }[];
+}) {
   return (
-    <ConversationNotice
-      className="questions-card-settled"
-      icon={<Check className="questions-card-settled-ok" />}
-    >
-      <span>
-        {answers.length === 0 ? text.answeredInChat : text.answered(answers)}
-      </span>
-    </ConversationNotice>
+    <dl className="questions-card-answers">
+      {answers.map(({ prompt, answer }) => (
+        <div key={prompt}>
+          <dt>{prompt}</dt>
+          <dd>{answer}</dd>
+        </div>
+      ))}
+    </dl>
+  );
+}
+
+/** The card once done, the same in either layout: its outcome, and the answers the reply carried. */
+function Settled({ ask, reply }: { ask: AskQuestions; reply?: string }) {
+  const answers =
+    reply === undefined ? [] : repliedAnswers(ask.questions, reply);
+  const title =
+    reply === undefined
+      ? text.replaced
+      : answers.length === 0
+        ? text.answeredInChat
+        : text.answered;
+  return (
+    <section className="questions-card-settled" aria-label={title}>
+      <p className="questions-card-settled-title">
+        {reply === undefined ? (
+          <CornerDownRight className="questions-card-settled-mark" />
+        ) : (
+          <Check className="questions-card-settled-mark questions-card-settled-ok" />
+        )}
+        {title}
+      </p>
+      {answers.length === 0 ? null : <AnswerList answers={answers} />}
+    </section>
   );
 }
 
@@ -487,14 +507,12 @@ function StepReview({
         onBack();
       }}
     >
-      <dl>
-        {questions.map((question) => (
-          <div key={question.id}>
-            <dt>{question.prompt}</dt>
-            <dd>{answerLabels(question, answerOf(question)).join(", ")}</dd>
-          </div>
-        ))}
-      </dl>
+      <AnswerList
+        answers={questions.map((question) => ({
+          prompt: question.prompt,
+          answer: answerLabels(question, answerOf(question)).join(", "),
+        }))}
+      />
       <Button
         autoFocus={focus}
         type="button"

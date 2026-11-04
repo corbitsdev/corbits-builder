@@ -78,21 +78,39 @@ describe("questions card", () => {
     expect(html).not.toContain('role="tablist"');
   });
 
-  test("an answered card settles whichever layout asked it", () => {
+  test("an answered card settles the same whichever layout asked it", () => {
     const reply = [
       text.answerLine("Who is it for?", ["Small teams"]),
       text.answerLine("What must the first version do?", ["Track tasks"]),
     ].join("\n");
-    for (const layout of ["steps", "all"] as const) {
-      const html = renderToStaticMarkup(
+    const settled = (["steps", "all"] as const).map((layout) =>
+      renderToStaticMarkup(
         <QuestionsCard
           id="call-1"
           ask={ask}
           state={{ kind: "answered", reply }}
           layout={layout}
         />,
-      );
-      expect(html).toContain(text.answered(["Small teams", "Track tasks"]));
-    }
+      ),
+    );
+    expect(settled[0]).toBe(settled[1]!);
+    expect(settled[0]).toContain(`aria-label="${text.answered}"`);
+    expect(settled[0]).toContain("<dt>Who is it for?</dt><dd>Small teams</dd>");
+    expect(settled[0]).toContain(
+      "<dt>What must the first version do?</dt><dd>Track tasks</dd>",
+    );
+  });
+
+  test("a card answered in the person's own words shows no answers", () => {
+    const html = renderToStaticMarkup(
+      <QuestionsCard
+        id="call-1"
+        ask={ask}
+        state={{ kind: "answered", reply: "Actually, let's build a game." }}
+        layout="steps"
+      />,
+    );
+    expect(html).toContain(text.answeredInChat);
+    expect(html).not.toContain("<dl");
   });
 });

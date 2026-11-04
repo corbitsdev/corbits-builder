@@ -986,11 +986,10 @@ export const wording = {
     send: "Send answers",
     sending: "Sending…",
     notSent: "Your answers were not sent. Your choices are kept; try again.",
-    /** The settled card's one line: each question's answer, in order. */
-    answered: (answers: readonly string[]) =>
-      `Answered: ${answers.join(" · ")}`,
-    answeredInChat: "Answered in the conversation.",
-    replaced: "Replaced by the questions that followed.",
+    /** The settled card's heading, over each question and its answer. */
+    answered: "Answered",
+    answeredInChat: "Answered in the conversation",
+    replaced: "Replaced by the questions that followed",
     /** One list item of the person's reply per question: "- Who signs in? — Staff, Guests". */
     answerLine: (prompt: string, answers: readonly string[]) =>
       `- ${prompt} — ${answers.join(", ")}`,

@@ -87,7 +87,7 @@
   min-width: 0;
 }
 
-.questions-card-review dl {
+.questions-card-answers {
   display: flex;
   flex-direction: column;
   gap: var(--space-2);
@@ -95,12 +95,13 @@
   font-size: 0.875rem;
 }
 
-.questions-card-review dt {
+.questions-card-answers dt {
   color: var(--muted-foreground);
 }
 
-.questions-card-review dd {
+.questions-card-answers dd {
   margin: 0;
+  overflow-wrap: anywhere;
 }
 
 .questions-card-keys {
@@ -149,16 +150,35 @@
   min-width: 0;
 }
 
+/* The open card's frame, quiet: done, not waiting on anyone. */
 .questions-card-settled {
-  justify-content: flex-start;
-  text-align: start;
+  max-width: 100%;
+  min-width: 0;
+  padding: 0.75rem 0.875rem;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg, 0.5rem);
 }
 
-.questions-card-settled > span:last-child {
-  min-width: 0;
-  overflow-wrap: anywhere;
+.questions-card-settled-title {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  margin: 0;
+  font-size: 0.875rem;
+  font-weight: 500;
+  color: var(--muted-foreground);
+}
+
+.questions-card-settled-mark {
+  flex: none;
+  width: 1rem;
+  height: 1rem;
 }
 
 .questions-card-settled-ok {
   color: var(--ok);
+}
+
+.questions-card-settled .questions-card-answers {
+  margin: var(--space-3) 0 0;
 }
