@@ -23,7 +23,7 @@ import {
   createDesignCheck,
 } from "../builds/design-check.ts";
 import { REPETITION_ABORT } from "../inference/repetition.ts";
-import { compactingDirector } from "./compaction.ts";
+import { compactingDirector } from "./director.ts";
 
 const director = (replyOnFailure: boolean) =>
   compactingDirector("@corbits-builder/test").factory(
