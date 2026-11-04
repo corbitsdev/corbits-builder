@@ -2,7 +2,6 @@ import { deflateSync } from "node:zlib";
 import { type } from "arktype";
 import { defaultDirectorFactory, defineDirector } from "@intx/agent/authoring";
 import type {
-  ContentBlock,
   ConversationTurn,
   InferenceError,
   ReactorAction,
@@ -11,7 +10,7 @@ import type {
 } from "@intx/types/runtime";
 import { REPETITION_ABORT } from "../inference/repetition.ts";
 import { readCheckDetail, type CheckDetail } from "../builds/check-detail.ts";
-import { COMPACTOR, DROP_DEGENERATE } from "./compaction.ts";
+import { COMPACTOR, DROP_DEGENERATE, textOf } from "./compaction.ts";
 
 // About 1 coder turn in 100 skipped reasoning and repeated one sentence ("Ok to write. Let me
 // write.") for 220000 to 280000 characters until the output cap. The default director mailed it to
@@ -42,12 +41,6 @@ const DEGENERATE_REASONING_COMPRESSION = 0.08;
 const compressesBelow = (text: string, ratio: number) =>
   text.length > 8000 &&
   deflateSync(text).length < Buffer.byteLength(text) * ratio;
-
-const textOf = (blocks: readonly ContentBlock[]) =>
-  blocks
-    .filter((block) => block.type === "text")
-    .map((block) => block.text)
-    .join("");
 
 function isDegenerate(turn: ConversationTurn): boolean {
   if (

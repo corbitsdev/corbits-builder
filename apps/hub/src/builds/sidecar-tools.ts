@@ -387,8 +387,9 @@ export function createSidecarCodingTools(policy: {
             };
           const workspace = await realpath(env.toolCwd);
           const path = (call.arguments as { path?: unknown } | undefined)?.path;
-          // A large result is spilled to tool-output://<callId>; the sandboxed child has no blob
-          // reader, so read_file of one is answered here from the run's own storage.
+          // A result the size cap spilled or compaction trimmed is saved under a tool-output:/// URI;
+          // the sandboxed child has no blob reader, so read_file of one is answered here from the
+          // run's own storage.
           if (
             call.name === "read_file" &&
             typeof path === "string" &&
