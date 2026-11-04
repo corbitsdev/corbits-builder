@@ -1049,13 +1049,26 @@ h3 {
   gap: var(--space-2);
   flex: none;
   position: relative;
-  /* However long the text gets, the box stops at a share of the window and
-     the text scrolls inside it (#160): a `flex: none` row that outgrew the
-     column pushed the send, stop, attach and mic controls below the pane's
-     edge, where nothing could reach them. */
+  /* Capped so the send, stop, attach and mic controls never leave the pane.
+     The composer itself must not scroll: the attachment tray and the model
+     list float above the box, and a scrolling composer clips them. The
+     textarea scrolls its own text, and the notes above the box give way. */
   max-height: 70vh;
   min-height: 0;
+}
+
+/* Errors, the earlier-document caution and suggested replies share one
+   region that scrolls once the composer reaches its cap, so the box below
+   keeps its full height. */
+.composer > .composer-notes {
+  display: grid;
+  gap: var(--space-2);
+  min-height: 0;
   overflow-y: auto;
+}
+
+.composer > .composer-notes:empty {
+  display: none;
 }
 
 /* The box itself is a flex column: textarea body above, action row beneath.
@@ -1088,18 +1101,6 @@ h3 {
 .home-page .composer-box textarea {
   max-height: min(200px, 30vh);
   overflow-y: auto;
-}
-
-/* The send-back picker a hold on send raises, the reviewer's notes and the
-   model profile list float above the composer, anchored to it rather than the
-   viewport. The composer scrolls its own overflow (#160), which would clip them
-   above it, so it stops while one is open (#210). */
-.composer:has(> .sbpick),
-.composer:has([data-slot="prompt-input-model-select"][data-state="open"]),
-.composer:has(.reviewer-stance[data-open]),
-.composer:has(.reviewer-stance:hover),
-.composer:has(.reviewer-stance:focus-within) {
-  overflow: visible;
 }
 
 .document {
