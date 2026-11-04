@@ -1200,7 +1200,10 @@ export function createReactor(config: ReactorConfig): Reactor {
   // deferred until `blocked` has fired.
   type InFlightSuspend = {
     gateId: string;
-    deferredClear: { reason: "resolved" | "timeout" | "shutdown" } | null;
+    deferredClear: {
+      reason: "resolved" | "timeout" | "shutdown";
+      message: InboundMessage | undefined;
+    } | null;
   };
   let suspendingGate: InFlightSuspend | null = null;
 
@@ -1233,7 +1236,7 @@ export function createReactor(config: ReactorConfig): Reactor {
       suspendingGate.gateId === gateId &&
       suspendingGate.deferredClear === null
     ) {
-      suspendingGate.deferredClear = { reason };
+      suspendingGate.deferredClear = { reason, message };
       return;
     }
 
@@ -1356,7 +1359,8 @@ export function createReactor(config: ReactorConfig): Reactor {
     // now, in order.
     suspendingGate = null;
     if (inFlightSuspend.deferredClear !== null) {
-      onGateCleared(gateId, inFlightSuspend.deferredClear.reason);
+      const { reason, message } = inFlightSuspend.deferredClear;
+      onGateCleared(gateId, reason, message);
     }
   }
 
