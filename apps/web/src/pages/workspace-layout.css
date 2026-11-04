@@ -218,12 +218,13 @@
   margin-inline-start: 0;
 }
 
-/* Design approval: the two actions share one width and one height, and
-   Not yet is not pinned to the right edge. A long label wraps between words;
-   the button centres its text, so clipping it would cut both ends. Each
-   button is at least as wide as its longest word, so the pair stacks once
-   even that does not fit. */
+/* Design approval: the two actions share one line and one height, and Not
+   yet is not pinned to the right edge. Each starts at its label's width and
+   shares the spare room, so a label wraps between words only once the line
+   is too narrow for it; the button centres its text, so clipping it would
+   cut both ends. */
 .document-decision-design [data-slot="tool-approval-card"] > div:last-child {
+  flex-wrap: nowrap;
   align-items: stretch;
 }
 
@@ -231,7 +232,7 @@
   [data-slot="tool-approval-card"]
   > div:last-child
   > button {
-  flex: 1 1 0;
+  flex: 1 1 auto;
   margin-inline-start: 0;
   height: auto;
   min-height: 2rem;
