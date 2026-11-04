@@ -6,6 +6,7 @@ import {
   maxTurnText,
 } from "@corbits-builder/schemas/conversation";
 import { wording } from "../../config.ts";
+import { Markdown } from "../../markdown.tsx";
 import { DocumentDecision } from "./document-decision.tsx";
 import {
   awaitingCommit,
@@ -94,6 +95,43 @@ describe("conversation transcript", () => {
     expect(html).toContain("What should the outcome be?");
     expect(html).not.toContain(briefId);
     expect(html).not.toContain("sha256");
+  });
+
+  test("a bold document name stays inline in its sentence and opens by click or key", () => {
+    const source =
+      "Already written into **Ways to build your list**. What the app does is next.";
+    const documents = [{ id: "approaches", title: "Ways to build your list" }];
+    const html = renderToStaticMarkup(
+      <RoomThread
+        turns={[{ role: "assistant", text: source, at: 2 }]}
+        documents={documents}
+        onOpenDocument={() => {}}
+      />,
+    );
+    // Inline, not a <button>: a button is one unbreakable box, so the title would leave the line.
+    expect(html).toContain(
+      'into <strong><span role="button" tabindex="0" class="artifact-mention">Ways to build your list</span></strong>. What',
+    );
+    expect(html).not.toContain("href");
+
+    const opened: string[] = [];
+    const mention = findElement(
+      Markdown({
+        source: "See [Ways to build your list](document:approaches).",
+        openDocument: (id) => opened.push(id),
+      }),
+      "span",
+    );
+    (mention?.props["onClick"] as (() => void) | undefined)?.();
+    const onKeyDown = mention?.props["onKeyDown"] as
+      | ((event: { key: string; preventDefault(): void }) => void)
+      | undefined;
+    const prevented: string[] = [];
+    for (const key of ["Enter", " ", "Tab"]) {
+      onKeyDown?.({ key, preventDefault: () => prevented.push(key) });
+    }
+    expect(opened).toEqual(["approaches", "approaches", "approaches"]);
+    expect(prevented).toEqual(["Enter", " "]);
   });
 
   test("an approval asks about the document in words", () => {
