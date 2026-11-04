@@ -70,16 +70,17 @@ function ProviderTiles({
 }) {
   const catalog = useModelCatalog();
   const { logins, signingIn, signIn } = subscriptions;
-  const apiKeyProviders = (catalog.data?.providers ?? []).filter(
-    (provider) => provider.kind === "api_key",
-  );
   const [keyOpen, setKeyOpen] = useState(false);
   const [keyProviderId, setKeyProviderId] = useState<string>();
+  if (catalog.error)
+    return <Banner tone="error" title={catalog.error.message} />;
+  // No tiles until the catalog says which providers exist.
+  if (catalog.data === undefined) return null;
+  const apiKeyProviders = catalog.data.providers.filter(
+    (provider) => provider.kind === "api_key",
+  );
   return (
     <>
-      {catalog.error ? (
-        <Banner tone="error" title={catalog.error.message} />
-      ) : null}
       <KindCardGrid
         label={copy.loginGroup}
         className="provider-tiles"
