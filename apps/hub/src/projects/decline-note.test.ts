@@ -9,7 +9,8 @@ async function rejected(approvalId: string, body: unknown) {
   app.use(
     "/api/tenants/:tenantId/approvals/:approvalId/reject",
     createDeclineNote({
-      coordinatorAsk: async (id) => id === "appr_brief",
+      coordinatorAsk: async (tenantId, id) =>
+        tenantId === "tenant_1" && id === "appr_brief",
     }),
   );
   app.post("/api/tenants/:tenantId/approvals/:approvalId/reject", async (c) =>
@@ -41,5 +42,11 @@ test("a coordinator ask's decline without words asks the coordinator to find out
 test("a decline of another run's ask passes through unchanged", async () => {
   expect(await rejected("appr_packages", { message: "Not that one" })).toEqual({
     message: "Not that one",
+  });
+});
+
+test("a decline whose message Interchange would refuse passes through unchanged", async () => {
+  expect(await rejected("appr_brief", { message: 42 })).toEqual({
+    message: 42,
   });
 });

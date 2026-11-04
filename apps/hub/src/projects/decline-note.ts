@@ -1,4 +1,4 @@
-import { eq } from "drizzle-orm";
+import { and, eq } from "drizzle-orm";
 import type { MiddlewareHandler } from "hono";
 import type { DB } from "@intx/db";
 import { approval } from "@intx/db/schema";
@@ -7,15 +7,13 @@ import { declineNote } from "../config/decline.ts";
 import { projectCoordinator } from "../db/schema.ts";
 import { requestErrorMetadata } from "../request-error.ts";
 import { readJson } from "../lib/json.ts";
+import { isRecord } from "../mail/conversation-turns.ts";
 
 const log = getLogger(["corbits-builder", "hub", "decline-note"]);
 
-const isRecord = (value: unknown): value is Record<string, unknown> =>
-  typeof value === "object" && value !== null && !Array.isArray(value);
-
 /** Whether an approval is one of a project coordinator's own asks. */
 export function coordinatorAskReader(db: DB["db"]) {
-  return async (approvalId: string): Promise<boolean> => {
+  return async (tenantId: string, approvalId: string): Promise<boolean> => {
     const [asked] = await db
       .select({ runId: approval.runId })
       .from(approval)
@@ -23,7 +21,7 @@ export function coordinatorAskReader(db: DB["db"]) {
         projectCoordinator,
         eq(projectCoordinator.runId, approval.runId),
       )
-      .where(eq(approval.id, approvalId))
+      .where(and(eq(approval.id, approvalId), eq(approval.tenantId, tenantId)))
       .limit(1);
     return asked !== undefined;
   };
@@ -35,18 +33,19 @@ export function coordinatorAskReader(db: DB["db"]) {
  * a body Interchange's own validation should refuse, pass through unchanged.
  */
 export function createDeclineNote(deps: {
-  coordinatorAsk: (approvalId: string) => Promise<boolean>;
+  coordinatorAsk: (tenantId: string, approvalId: string) => Promise<boolean>;
 }): MiddlewareHandler {
   return async (c, next) => {
+    const tenantId = c.req.param("tenantId");
     const approvalId = c.req.param("approvalId");
-    if (c.req.method !== "POST" || !approvalId) return next();
+    if (c.req.method !== "POST" || !tenantId || !approvalId) return next();
     const body: unknown = await readJson(c.req.raw.clone());
     if (!isRecord(body)) return next();
     const words = body["message"];
     if (words !== undefined && typeof words !== "string") return next();
     // A note that cannot be written must not cost the person their decision.
     try {
-      if (!(await deps.coordinatorAsk(approvalId))) return next();
+      if (!(await deps.coordinatorAsk(tenantId, approvalId))) return next();
     } catch (error) {
       log.error("Decline note unavailable", {
         approvalId,

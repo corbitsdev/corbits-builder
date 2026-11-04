@@ -129,13 +129,15 @@ export async function deliverWithOpenApproval({
 
 /**
  * Picks an approach while a coordinator approval card may be open: approves when the open
- * card asks about the chosen version, or denies any other open coordinator card first.
+ * card asks about the chosen version, or declines any other open coordinator card with the
+ * choice as the person's reason.
  */
 export async function chooseApproachWithOpenApproval({
   askedApprovalId,
   openApprovalId,
   decide,
   deliver,
+  decline,
   notSent,
 }: {
   askedApprovalId: string | undefined;
@@ -145,15 +147,14 @@ export async function chooseApproachWithOpenApproval({
     choice: "yes" | "always" | "no";
   }) => Promise<string | null>;
   deliver: () => Promise<boolean>;
+  decline: (approvalId: string) => Promise<boolean>;
   notSent: string;
 }): Promise<string | null> {
   if (askedApprovalId !== undefined) {
     const fault = await decide({ approvalId: askedApprovalId, choice: "yes" });
     if (fault !== null) return fault;
-  } else if (openApprovalId !== undefined) {
-    const fault = await decide({ approvalId: openApprovalId, choice: "no" });
-    if (fault !== null) return fault;
-  }
+  } else if (openApprovalId !== undefined)
+    return (await decline(openApprovalId)) ? null : notSent;
   return (await deliver()) ? null : notSent;
 }
 

@@ -99,7 +99,7 @@ test("a failed denial stops before delivering the message", async () => {
   expect(steps).toEqual(["decide"]);
 });
 
-test("choosing an approach approves a matching ask without denying it and denies an unrelated open ask", async () => {
+test("choosing an approach approves a matching ask, and declines an unrelated open ask with the choice as its reason", async () => {
   const matchingSteps: string[] = [];
   const matchingFault = await chooseApproachWithOpenApproval({
     askedApprovalId: "appr-approaches",
@@ -110,6 +110,10 @@ test("choosing an approach approves a matching ask without denying it and denies
     },
     deliver: async () => {
       matchingSteps.push("deliver");
+      return true;
+    },
+    decline: async (approvalId) => {
+      matchingSteps.push(`decline:${approvalId}`);
       return true;
     },
     notSent: "not sent",
@@ -129,10 +133,14 @@ test("choosing an approach approves a matching ask without denying it and denies
       unrelatedSteps.push("deliver");
       return true;
     },
+    decline: async (approvalId) => {
+      unrelatedSteps.push(`decline:${approvalId}`);
+      return true;
+    },
     notSent: "not sent",
   });
   expect(unrelatedFault).toBeNull();
-  expect(unrelatedSteps).toEqual(["decide:appr-design:no", "deliver"]);
+  expect(unrelatedSteps).toEqual(["decline:appr-design"]);
 });
 
 test("sending attached files while a coordinator approval is open denies it before attaching materials", async () => {

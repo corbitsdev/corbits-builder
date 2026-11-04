@@ -652,6 +652,7 @@ export function StageWorkspace({
     return documents[key];
   };
 
+  const notSent = "That message was not sent.";
   const mail = async (text: string) =>
     (await sendMessage(projectId, text)).message;
   const deliverMail = async (
@@ -690,10 +691,7 @@ export function StageWorkspace({
       setSent((previous) => previous.filter((item) => item !== pending));
       if (clearComposer)
         setValue((current) => (current === "" ? text : current));
-      const message = await humanFaultWithCode(
-        cause,
-        "That message was not sent.",
-      );
+      const message = await humanFaultWithCode(cause, notSent);
       setSendFailed(true);
       setSendFault(message);
       toast.error(message);
@@ -830,12 +828,13 @@ export function StageWorkspace({
     setMobilePane("artifacts");
     queueMicrotask(() => documentPaneRef.current?.focus());
   };
-  // "taken" is a decision someone else already made, in another tab or as a collaborator.
+  // "taken" is a decision someone else already made, in another tab or as a collaborator;
+  // "moved" is any other conflict, after which the page reads where the ask stands.
   const saveDecision = async (decision: {
     approvalId: string;
     choice: "yes" | "always" | "no";
     message?: string;
-  }): Promise<"saved" | "taken" | { fault: string }> => {
+  }): Promise<"saved" | "taken" | "moved" | { fault: string }> => {
     const notSaved = { fault: "That decision was not saved." };
     const cachedWaits =
       queryClient.getQueryData<readonly Wait[]>(
@@ -885,11 +884,12 @@ export function StageWorkspace({
       onChanged();
       return "saved";
     } catch (cause: unknown) {
-      // 409: someone already decided it; show where it stands.
       if (cause instanceof ProductApiError && cause.response.status === 409) {
         setGateDone((value) => value + 1);
         onChanged();
-        return "taken";
+        return (await responseCode(cause)) === "already_resolved"
+          ? "taken"
+          : "moved";
       }
       const fault = await humanFaultWithCode(cause, notSaved.fault);
       setApprovalError(fault);
@@ -917,7 +917,12 @@ export function StageWorkspace({
         message: deliveredText(text),
       });
       if (saved === "taken") return mail(text);
-      if (typeof saved === "object") throw new Error(saved.fault);
+      if (saved === "moved") throw new Error(notSent);
+      if (typeof saved === "object") {
+        // The composer reports the fault; the card keeps no second copy of it.
+        setApprovalError(null);
+        throw new Error(saved.fault);
+      }
       return {
         id: `declined:${approvalId}`,
         author: "me",
@@ -951,6 +956,8 @@ export function StageWorkspace({
       openApprovalId: currentOpen?.approvalId,
       decide: onDecideApproval,
       deliver: () => deliverMail(message),
+      decline: (approvalId) =>
+        deliverMail(message, false, declineWith(approvalId)),
       notSent: wording.approaches.notSent,
     });
   };
