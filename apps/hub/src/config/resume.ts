@@ -62,8 +62,16 @@ export const resumeMessage = (context: string | undefined, message: string) =>
   context === undefined ? message : context + RESUME_CONTEXT_END + message;
 
 /** The person's approval decision as a resumed coordinator reads it. */
-export const approvalDecisionLine = ({ outcome, message }: ApprovalDecision) =>
-  `${outcome === "approved" ? "Approved" : "Rejected"} a request${message === undefined ? "." : `: ${message}`}`;
+export function approvalDecisionLine({
+  outcome,
+  message,
+}: ApprovalDecision): string {
+  const decided = outcome === "approved" ? "Approved" : "Rejected";
+  // A blank note is no note: the line ends at the decision, not at a dangling colon.
+  const note = message?.trim();
+  if (note === undefined || note === "") return `${decided} a request.`;
+  return `${decided} a request: ${note}`;
+}
 
 /** A person-sent turn without the held resume context, or undefined for a hub-written opening. */
 export function withoutResumeContext(text: string): string | undefined {

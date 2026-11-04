@@ -62,6 +62,10 @@ const decisions = () =>
       from: "signal@local",
       text: JSON.stringify({ outcome: "rejected", message: "Keep it free" }),
     },
+    {
+      from: "signal@local",
+      text: JSON.stringify({ outcome: "approved", message: "  " }),
+    },
   ]);
 
 const personTexts = async (
@@ -90,5 +94,6 @@ test("resume turns read each approval decision as a plain line", async () => {
     { role: "person", text: "Approved a request." },
     { role: "person", text: "Rejected a request." },
     { role: "person", text: "Rejected a request: Keep it free" },
+    { role: "person", text: "Approved a request." },
   ]);
 });
