@@ -1,3 +1,5 @@
+import { type } from "arktype";
+import { DesignConcept } from "@corbits-builder/schemas/artifact";
 import type { Wait } from "./types.ts";
 
 /** What an ask asks, from its native tool name and arguments, as the decision card reads it. */
@@ -14,15 +16,8 @@ export function askOf(
   const subject = Object.values(args).find(
     (value) => typeof value === "string",
   );
-  const concepts = args["concepts"];
-  const designConcepts =
-    Array.isArray(concepts) &&
-    concepts.every(
-      (item: { label?: unknown; direction?: unknown } | null) =>
-        typeof item?.label === "string" && typeof item.direction === "string",
-    )
-      ? (concepts as { label: string; direction: string }[])
-      : undefined;
+  const concepts = DesignConcept.array()(args["concepts"]);
+  const designConcepts = concepts instanceof type.errors ? undefined : concepts;
   const installs =
     Array.isArray(packages) &&
     packages.every((item) => typeof item === "string")

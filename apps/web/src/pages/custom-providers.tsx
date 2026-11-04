@@ -31,12 +31,12 @@ import { useQueryClient } from "@tanstack/react-query";
 import { ChevronDown, Ellipsis, X } from "lucide-react";
 import { useRef, useState, type KeyboardEvent, type ReactNode } from "react";
 import { toast } from "sonner";
-import type {
+import {
   CustomApi,
-  CustomModel,
-  CustomProviderCreate,
-  ModelCatalog,
-  ModelProvider,
+  type CustomModel,
+  type CustomProviderCreate,
+  type ModelCatalog,
+  type ModelProvider,
 } from "@corbits-builder/schemas/models";
 import { Button, QuietState } from "../components.jsx";
 import { keys } from "../queries/keys.ts";
@@ -318,10 +318,16 @@ function keylessOf(provider: ModelProvider): boolean {
   return provider.connections.some((connection) => connection.keyless);
 }
 
-function draftOf(provider: ModelProvider): CustomDraft {
+/** A custom provider whose plugin is an API this form can edit. */
+type EditableProvider = ModelProvider & { plugin: CustomApi };
+
+const editable = (provider: ModelProvider): provider is EditableProvider =>
+  CustomApi.allows(provider.plugin);
+
+function draftOf(provider: EditableProvider): CustomDraft {
   return {
     name: provider.label,
-    api: provider.plugin as CustomApi,
+    api: provider.plugin,
     baseURL: provider.baseURL,
     secret: "",
     keyless: keylessOf(provider),
@@ -403,7 +409,7 @@ async function testConnection(draft: CustomDraft): Promise<void> {
  * One custom provider's connection form: its rows, whether it can be submitted, whether
  * submitting tests a new connection first, and `save`, which throws a failed test's reason.
  */
-export function useCustomProviderForm(apis: Apis, original?: ModelProvider) {
+export function useCustomProviderForm(apis: Apis, original?: EditableProvider) {
   const [draft, setDraft] = useState(() =>
     original ? draftOf(original) : BLANK_DRAFT,
   );
@@ -848,6 +854,12 @@ function CustomProviderActions({
 }) {
   const queryClient = useQueryClient();
   const [editing, setEditing] = useState(false);
+  const editableProvider = editable(provider) ? provider : null;
+  const edit = () => {
+    if (editableProvider === null)
+      toast.error(copy.custom.notEditable(provider.label));
+    else setEditing(true);
+  };
   const [removing, setRemoving] = useState(false);
   // Removing takes two clicks, both in the menu, as deleting a project does.
   const [confirming, setConfirming] = useState(false);
@@ -886,7 +898,7 @@ function CustomProviderActions({
           </UiButton>
         </MenuTrigger>
         <MenuContent align="end">
-          <MenuItem disabled={removing} onSelect={() => setEditing(true)}>
+          <MenuItem disabled={removing} onSelect={edit}>
             {copy.custom.edit}
           </MenuItem>
           <MenuSeparator />
@@ -912,9 +924,9 @@ function CustomProviderActions({
           )}
         </MenuContent>
       </Menu>
-      {editing ? (
+      {editing && editableProvider !== null ? (
         <EditCustomProviderDialog
-          provider={provider}
+          provider={editableProvider}
           apis={apis}
           onClose={() => setEditing(false)}
           onSaved={onChanged}
@@ -930,7 +942,7 @@ function EditCustomProviderDialog({
   onClose,
   onSaved,
 }: {
-  provider: ModelProvider;
+  provider: EditableProvider;
   apis: Apis;
   onClose: () => void;
   onSaved: () => void;

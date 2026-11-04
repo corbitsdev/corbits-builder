@@ -16,6 +16,8 @@ import {
 } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { wording } from "../../config.ts";
+import { DesignBundle } from "@corbits-builder/schemas/artifact";
+import { readJson } from "../../json.ts";
 import { Markdown } from "../../markdown.jsx";
 import { keys } from "../../queries/keys.ts";
 import { readProjectActivity } from "../../api/activity.ts";
@@ -87,14 +89,7 @@ const stateHash = (screen: string, state: string | null) =>
   state === null ? `#/${screen}` : `#/${screen}/${state}`;
 
 export function parseBundle(content: string): Record<string, string> | null {
-  try {
-    const parsed = JSON.parse(content) as { files?: unknown };
-    return typeof parsed.files === "object" && parsed.files !== null
-      ? (parsed.files as Record<string, string>)
-      : null;
-  } catch {
-    return null;
-  }
+  return readJson(content, DesignBundle)?.files ?? null;
 }
 
 const SCREEN_PREFIX = "designs/screens/";

@@ -1,3 +1,4 @@
+import type { ModelLoginPlugin } from "@corbits-builder/schemas/models";
 import { tenantPath, type ClientDeps, type ProductApiClient } from "./shared";
 
 /**
@@ -62,7 +63,7 @@ export type ModelLoginState = Readonly<
   | { status: "completed"; credentialId: string }
   | { status: "failed"; message: string }
 >;
-export type ModelLoginPlugin = "codex" | "xai";
+export type { ModelLoginPlugin };
 
 const DEFAULT_BASE_URLS: Record<string, string> = {
   openai: "https://api.openai.com/v1",

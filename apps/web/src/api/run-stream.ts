@@ -8,27 +8,31 @@
  * `status` frames say the room's durable state moved (mail delivered for the
  * run, or its sidecar route lost) without carrying that state.
  */
+import { type } from "arktype";
 import { hubEventSourceCredentials, hubOrigin } from "./origin.ts";
 import { openSharedEventSource } from "../shared-event-source.ts";
+import { readJson } from "../json.ts";
 
-export type RunStreamEvent = {
-  type: string;
-  seq?: number;
-  data?: {
-    partial?: {
-      text?: string;
-      thinking?: string;
-      toolCalls?: readonly {
-        id?: unknown;
-        name?: unknown;
-        partialArguments?: unknown;
-      }[];
-    };
-    callId?: unknown;
-    name?: unknown;
-    arguments?: unknown;
-  };
-};
+// Only the fields this interface reads; a native frame carries more.
+const RunStreamEvent = type({
+  type: "string",
+  "seq?": "number",
+  "data?": {
+    "partial?": {
+      "text?": "string",
+      "thinking?": "string",
+      "toolCalls?": type({
+        "id?": "unknown",
+        "name?": "unknown",
+        "partialArguments?": "unknown",
+      }).array(),
+    },
+    "callId?": "unknown",
+    "name?": "unknown",
+    "arguments?": "unknown",
+  },
+});
+export type RunStreamEvent = typeof RunStreamEvent.infer;
 
 const MAX_BACKOFF_MS = 30_000;
 const BASE_BACKOFF_MS = 1_000;
@@ -69,8 +73,8 @@ export type SubscribeRunStreamDeps = {
 const defaultDeps: SubscribeRunStreamDeps = {
   createEventSource: (url, withCredentials) =>
     openSharedEventSource(url, withCredentials),
-  setTimeout: (callback, ms) => setTimeout(callback, ms) as unknown as number,
-  clearTimeout: (handle) => clearTimeout(handle),
+  setTimeout: (callback, ms) => window.setTimeout(callback, ms),
+  clearTimeout: (handle) => window.clearTimeout(handle),
 };
 
 export type RunStreamHandlers = {
@@ -108,11 +112,9 @@ export function subscribeWorkflowRun(
     });
     es.addEventListener("run", (message) => {
       if (closed) return;
-      let event: RunStreamEvent;
-      try {
-        event = JSON.parse(message.data) as RunStreamEvent;
-      } catch {
-        // A frame that is not JSON is not a run event.
+      const event = readJson(message.data, RunStreamEvent);
+      if (event === null) {
+        console.warn("A run frame was not a run event.", message.data);
         return;
       }
       handlers.onEvent(event);

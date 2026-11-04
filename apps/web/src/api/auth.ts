@@ -4,6 +4,7 @@
  * `sign-up/email`, `sign-out`), all with the session cookie included.
  */
 import type { Workspace } from "@corbits-builder/client";
+import { type } from "arktype";
 import { productName, wording } from "../config.ts";
 import { hubCredentials, hubOrigin } from "./origin.ts";
 import { productClient, timedCall } from "./transport.ts";
@@ -21,11 +22,12 @@ export type HubUser = {
 
 export type HubSession = { user: HubUser } | null;
 
-type AuthJson = {
-  user?: { id?: unknown; name?: unknown; email?: unknown } | null;
-  message?: unknown;
-  error?: { code?: unknown; message?: unknown };
-};
+// better-auth answers with `message` or `error.message` on a refusal, and `user` on a session.
+const AuthMessage = type({ message: "string > 0" });
+const AuthErrorMessage = type({ error: { message: "string > 0" } });
+const AuthSession = type({
+  user: { id: "string", email: "string", "name?": "unknown" },
+});
 
 async function hubAuth(
   path: string,
@@ -63,25 +65,20 @@ async function hubAuth(
 }
 
 function messageOf(parsed: unknown, fallback: string): string {
-  const body = parsed as AuthJson | undefined;
-  if (typeof body?.message === "string" && body.message.length > 0)
-    return body.message;
-  if (typeof body?.error?.message === "string" && body.error.message.length > 0)
-    return body.error.message;
-  return fallback;
+  const body = AuthMessage(parsed);
+  if (!(body instanceof type.errors)) return body.message;
+  const nested = AuthErrorMessage(parsed);
+  return nested instanceof type.errors ? fallback : nested.error.message;
 }
 
 function userOf(parsed: unknown): HubUser | null {
-  const user = (parsed as AuthJson | undefined)?.user;
-  if (!user || typeof user.id !== "string" || typeof user.email !== "string")
-    return null;
+  const session = AuthSession(parsed);
+  if (session instanceof type.errors) return null;
+  const { id, email, name } = session.user;
   return {
-    id: user.id,
-    name:
-      typeof user.name === "string" && user.name.trim().length > 0
-        ? user.name
-        : user.email,
-    email: user.email,
+    id,
+    name: typeof name === "string" && name.trim().length > 0 ? name : email,
+    email,
   };
 }
 

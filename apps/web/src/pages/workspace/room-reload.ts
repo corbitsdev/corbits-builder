@@ -13,8 +13,8 @@ export type RoomReloadDeps = {
 
 const defaultDeps: RoomReloadDeps = {
   now: () => Date.now(),
-  setTimeout: (callback, ms) => setTimeout(callback, ms) as unknown as number,
-  clearTimeout: (handle) => clearTimeout(handle),
+  setTimeout: (callback, ms) => window.setTimeout(callback, ms),
+  clearTimeout: (handle) => window.clearTimeout(handle),
 };
 
 export function createRoomReloader(
