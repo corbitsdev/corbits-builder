@@ -1,6 +1,7 @@
 // Interchange answers a declined call with "denied by approver: " and the decline's message. The
 // hub writes that message for the coordinator's asks, so it reads the person's answer rather than
-// a failed call.
+// a failed call. Stored declines keep this wording, and the conversation finds the person's words
+// by it, so rewording it shows earlier declines' whole note as the person's message.
 const DECLINE_LEAD = "The person has chosen to decline this tool call.";
 const FEEDBACK_LEAD = DECLINE_LEAD + "\n\nTheir feedback is: ";
 const NO_FEEDBACK =
