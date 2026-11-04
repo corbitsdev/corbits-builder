@@ -915,9 +915,12 @@ export const wording = {
   documentBar: "Document controls",
   printDocument: "Save as PDF or print",
   removeAttachment: {
-    menu: "Remove attachment",
-    done: (name: string) =>
-      `${name} is removed; the coordinator has been told.`,
+    menu: "Remove attachment…",
+    confirm: "Yes, remove it",
+    done: (name: string, told: boolean) =>
+      told
+        ? `${name} is removed; the coordinator has been told.`
+        : `${name} is removed.`,
     failed: "The attachment could not be removed.",
   },
   versions: {

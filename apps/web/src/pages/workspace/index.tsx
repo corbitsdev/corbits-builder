@@ -812,6 +812,7 @@ export function StageWorkspace({
       toast.success(
         wording.removeAttachment.done(
           title === undefined ? removed.title : title,
+          removed.told,
         ),
       );
       reloadRef.current();
