@@ -27,7 +27,7 @@ export function InvitationAccept({ invitationId }: { invitationId: string }) {
 
   useEffect(() => {
     let cancelled = false;
-    void (async () => {
+    async function load() {
       try {
         const client = productClient();
         const [record, session] = await Promise.all([
@@ -61,7 +61,8 @@ export function InvitationAccept({ invitationId }: { invitationId: string }) {
         if (!cancelled)
           setFailed(cause instanceof Error ? cause.message : String(cause));
       }
-    })();
+    }
+    void load();
     return () => {
       cancelled = true;
     };
