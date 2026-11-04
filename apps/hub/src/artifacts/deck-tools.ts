@@ -1,9 +1,9 @@
 import { createHash } from "node:crypto";
 import { mkdir, readFile, realpath, rm, writeFile } from "node:fs/promises";
 import { dirname, join, resolve, sep } from "node:path";
+import { type } from "arktype";
 import {
   Deck,
-  DeckError,
   assetKey,
   assetUses,
   checkDeck,
@@ -15,72 +15,76 @@ import {
   type DeckIssue,
 } from "@corbits/slidedeck";
 import { defineTool, type BaseEnv } from "@intx/agent/authoring";
+import { parseJson } from "../lib/json.ts";
+import { failure } from "./tools.ts";
 
 interface DeckToolEnv extends BaseEnv {
   toolCwd: string;
 }
 
-export interface CheckedDeckArtifact {
-  deck: SlideDeck;
-  jsonBytes: Uint8Array;
-  pptxBytes: Uint8Array;
-  pdfBytes: Uint8Array;
-  sha256: string;
-  pptxSha256: string;
-  pdfSha256: string;
-}
-
-export interface DeckToolsOptions {
-  assets?: Assets;
-  onDeckChecked?: (artifact: CheckedDeckArtifact) => Promise<void>;
-}
-
 export const DECK_JSON = ".builder/deck.json";
 export const DECK_PPTX = ".builder/deck.pptx";
 export const DECK_PDF = ".builder/deck.pdf";
-const DECK_CHECK_PATH = ".builder/deck-check.json";
+export const DECK_CHECK = ".builder/deck-check.json";
 
-function sha256Hex(bytes: Uint8Array): string {
-  return createHash("sha256").update(bytes).digest("hex");
+const HexSha256 = /^[a-f0-9]{64}$/;
+
+// check_deck's verdict on the exact deck, slides file and handout it checked, so filing refuses a
+// deck changed after it passed.
+const DeckCheckRecord = type({
+  "+": "ignore",
+  passed: "boolean",
+  sha256: HexSha256,
+  pptxSha256: HexSha256,
+  pdfSha256: HexSha256,
+  checklist: "string",
+});
+type DeckCheckRecord = typeof DeckCheckRecord.infer;
+
+const WriteDeckArgs = type({
+  "+": "ignore",
+  deck: Deck,
+});
+
+function sha256Hex(input: string | Uint8Array): string {
+  return createHash("sha256").update(input).digest("hex");
 }
 
-function isAssetsMap(
-  optionsOrAssets: Assets | DeckToolsOptions,
-): optionsOrAssets is Assets {
-  return optionsOrAssets instanceof Map;
-}
-
-function normalizeDeckToolsOptions(
-  optionsOrAssets?: Assets | DeckToolsOptions,
-): DeckToolsOptions {
-  if (!optionsOrAssets) return {};
-  if (isAssetsMap(optionsOrAssets)) {
-    return { assets: optionsOrAssets };
-  }
-  return optionsOrAssets;
-}
-
-async function readExistingBytes(
-  filePath: string,
-): Promise<Uint8Array | undefined> {
+async function readIfPresent(path: string): Promise<Buffer | undefined> {
   try {
-    return new Uint8Array(await readFile(filePath));
+    return await readFile(path);
   } catch (error) {
     if ((error as NodeJS.ErrnoException).code === "ENOENT") return undefined;
     throw error;
   }
 }
 
+async function readDeckFiles(workspace: string) {
+  const deckText = (await readIfPresent(join(workspace, DECK_JSON)))?.toString(
+    "utf8",
+  );
+  const pptxBytes = await readIfPresent(join(workspace, DECK_PPTX));
+  const pdfBytes = await readIfPresent(join(workspace, DECK_PDF));
+  if (!deckText || !pptxBytes?.byteLength || !pdfBytes?.byteLength)
+    return undefined;
+  return { deckText, pptxBytes, pdfBytes };
+}
+
+function issueLines(issues: readonly DeckIssue[], separator: string): string {
+  return issues
+    .map((issue) => `${issue.path}: ${issue.message}`)
+    .join(separator);
+}
+
 async function resolveWorkspaceAssets(
   workspace: string,
   deck: SlideDeck,
-  provided?: Assets,
 ): Promise<Assets> {
-  const merged = new Map<string, Uint8Array<ArrayBuffer>>(provided);
+  const assets = new Map<string, Uint8Array<ArrayBuffer>>();
   const root = await realpath(workspace);
   for (const { ref } of assetUses(deck)) {
     const key = assetKey(ref);
-    if (merged.has(key) || !("path" in ref)) continue;
+    if (assets.has(key) || !("path" in ref)) continue;
     const candidate = resolve(root, ref.path);
     if (!candidate.startsWith(root + sep)) continue;
     try {
@@ -89,133 +93,183 @@ async function resolveWorkspaceAssets(
       const bytes = await readFile(target);
       const copy = new Uint8Array(bytes.byteLength);
       copy.set(bytes);
-      merged.set(key, copy);
+      assets.set(key, copy);
     } catch (error) {
       const code = (error as NodeJS.ErrnoException).code;
       if (code !== "ENOENT" && code !== "EISDIR" && code !== "ENOTDIR")
         throw error;
     }
   }
-  return merged;
+  return assets;
 }
 
-export async function writeDeckToWorkspace(
-  workspace: string,
-  deckInput: unknown,
-  assets?: Assets,
-) {
-  const validated = validateDeck(deckInput);
-  if (!validated.ok) throw new DeckError(validated.issues);
-  const { deck } = validated;
-  const resolvedAssets = await resolveWorkspaceAssets(workspace, deck, assets);
-  const issues = checkDeck(deck, resolvedAssets);
-
+async function writeDeckToWorkspace(workspace: string, deck: SlideDeck) {
+  const assets = await resolveWorkspaceAssets(workspace, deck);
+  const issues = checkDeck(deck, assets);
   if (issues.length > 0) {
-    await rm(join(workspace, DECK_JSON), { force: true });
-    await rm(join(workspace, DECK_PPTX), { force: true });
-    await rm(join(workspace, DECK_PDF), { force: true });
-    await rm(join(workspace, DECK_CHECK_PATH), { force: true });
-    return {
-      deck,
-      slideCount: deck.slides.length,
-      pptxBytes: 0,
-      pdfBytes: 0,
-      passed: false,
-      issues,
-    };
+    for (const path of [DECK_JSON, DECK_PPTX, DECK_PDF, DECK_CHECK])
+      await rm(join(workspace, path), { force: true });
+    return { passed: false, issues };
   }
   const jsonTarget = join(workspace, DECK_JSON);
   await mkdir(dirname(jsonTarget), { recursive: true });
   await writeFile(jsonTarget, `${JSON.stringify(deck, null, 2)}\n`, "utf8");
-  const pptx = await writePptx(deck, resolvedAssets);
-  const pdf = writeDeckPdf(deck, resolvedAssets);
-  await writeFile(join(workspace, DECK_PPTX), pptx);
-  await writeFile(join(workspace, DECK_PDF), pdf);
-
-  return {
-    deck,
-    slideCount: deck.slides.length,
-    pptxBytes: pptx.byteLength,
-    pdfBytes: pdf.byteLength,
-    passed: true,
-    issues,
-  };
+  await writeFile(join(workspace, DECK_PPTX), await writePptx(deck, assets));
+  await writeFile(join(workspace, DECK_PDF), writeDeckPdf(deck, assets));
+  return { passed: true, issues };
 }
 
-export async function checkDeckInWorkspace(
+async function runWriteDeck(
   workspace: string,
-  optionsOrAssets?: Assets | DeckToolsOptions,
+  callId: string,
+  rawArgs: unknown,
 ) {
-  const { assets, onDeckChecked } = normalizeDeckToolsOptions(optionsOrAssets);
-  const raw = await readFile(join(workspace, DECK_JSON), "utf8");
-  const parsed: unknown = JSON.parse(raw);
-  const validated = validateDeck(parsed);
-  if (!validated.ok) {
+  const input = WriteDeckArgs(rawArgs);
+  if (input instanceof type.errors) {
     return {
-      passed: false,
-      issues: validated.issues,
+      callId,
+      content: `invalid_deck: ${input.summary}`,
+      isError: true,
     };
   }
-  const resolvedAssets = await resolveWorkspaceAssets(
-    workspace,
-    validated.deck,
-    assets,
-  );
-  const issues = checkDeck(validated.deck, resolvedAssets);
-  const passed = issues.length === 0;
-  if (passed && onDeckChecked) {
-    const jsonBytes = new TextEncoder().encode(raw);
-    const pptxBytes =
-      (await readExistingBytes(join(workspace, DECK_PPTX))) ??
-      (await writePptx(validated.deck, resolvedAssets));
-    const pdfBytes =
-      (await readExistingBytes(join(workspace, DECK_PDF))) ??
-      writeDeckPdf(validated.deck, resolvedAssets);
-    await onDeckChecked({
-      deck: validated.deck,
-      jsonBytes,
-      pptxBytes,
-      pdfBytes,
-      sha256: sha256Hex(jsonBytes),
-      pptxSha256: sha256Hex(pptxBytes),
-      pdfSha256: sha256Hex(pdfBytes),
-    });
+  const validated = validateDeck(input.deck);
+  if (!validated.ok) {
+    return {
+      callId,
+      content: `invalid_deck: ${issueLines(validated.issues, "; ")}`,
+      isError: true,
+    };
   }
+  const written = await writeDeckToWorkspace(workspace, validated.deck);
   return {
-    passed,
-    issues,
+    callId,
+    content: JSON.stringify({
+      slides: validated.deck.slides.length,
+      deckPath: DECK_JSON,
+      pptxPath: DECK_PPTX,
+      pdfPath: DECK_PDF,
+      passed: written.passed,
+      issues: written.issues,
+    }),
+    ...(written.passed ? {} : { isError: true }),
   };
 }
 
-function isObjectRecord(value: unknown): value is Record<string, unknown> {
-  return typeof value === "object" && value !== null;
+async function recordDeckCheck(
+  workspace: string,
+  record: DeckCheckRecord,
+): Promise<void> {
+  const target = join(workspace, DECK_CHECK);
+  await mkdir(dirname(target), { recursive: true });
+  await writeFile(target, JSON.stringify(record, null, 2), "utf8");
 }
 
-function errorIssues(path: string, error: unknown): DeckIssue[] {
-  if (error instanceof DeckError) return error.issues;
-  return [
-    {
-      path,
-      message: error instanceof Error ? error.message : String(error),
-    },
-  ];
+async function runCheckDeck(workspace: string, callId: string) {
+  const files = await readDeckFiles(workspace);
+  if (!files) {
+    return {
+      callId,
+      content: `deck_check_failed: ${DECK_JSON}, ${DECK_PPTX} and ${DECK_PDF} must be written first`,
+      isError: true,
+    };
+  }
+  const hashes = {
+    sha256: sha256Hex(files.deckText),
+    pptxSha256: sha256Hex(files.pptxBytes),
+    pdfSha256: sha256Hex(files.pdfBytes),
+  };
+  const validated = validateDeck(parseJson(files.deckText));
+  const issues = validated.ok
+    ? checkDeck(
+        validated.deck,
+        await resolveWorkspaceAssets(workspace, validated.deck),
+      )
+    : validated.issues;
+  if (issues.length > 0) {
+    const checklist = issueLines(issues, "\n");
+    await recordDeckCheck(workspace, { passed: false, ...hashes, checklist });
+    return {
+      callId,
+      content: `deck_check_failed:\n${checklist}`,
+      isError: true,
+    };
+  }
+  const checklist = `check passed: verified ${DECK_JSON}, ${DECK_PPTX} and ${DECK_PDF}.`;
+  await recordDeckCheck(workspace, { passed: true, ...hashes, checklist });
+  return { callId, content: checklist };
 }
 
-export function createDeckTools(optionsOrAssets?: Assets | DeckToolsOptions) {
-  const { assets, onDeckChecked } = normalizeDeckToolsOptions(optionsOrAssets);
+/** The workspace's deck and its renders, refused unless check_deck passed on exactly these files. */
+export async function readCheckedDeck(
+  workspace: string,
+): Promise<
+  | { ok: true; deck: SlideDeck; pptxBytes: Buffer; pdfBytes: Buffer }
+  | { ok: false; message: string }
+> {
+  const files = await readDeckFiles(workspace);
+  if (!files) {
+    return {
+      ok: false,
+      message: `deck_check_failed: ${DECK_JSON}, ${DECK_PPTX} and ${DECK_PDF} must exist before filing`,
+    };
+  }
+  const recordText = await readIfPresent(join(workspace, DECK_CHECK));
+  if (recordText === undefined) {
+    return {
+      ok: false,
+      message:
+        "deck_check_failed: check_deck has not run on the current deck yet",
+    };
+  }
+  const record = DeckCheckRecord(parseJson(recordText.toString("utf8")));
+  if (record instanceof type.errors) {
+    return {
+      ok: false,
+      message: `deck_check_failed: invalid ${DECK_CHECK} (${record.summary})`,
+    };
+  }
+  if (!record.passed) {
+    return {
+      ok: false,
+      message: `deck_check_failed: the deck is filed only once check_deck passes.\n${record.checklist}`,
+    };
+  }
+  for (const [path, recorded, current] of [
+    [DECK_JSON, record.sha256, files.deckText],
+    [DECK_PPTX, record.pptxSha256, files.pptxBytes],
+    [DECK_PDF, record.pdfSha256, files.pdfBytes],
+  ] as const) {
+    if (recorded !== sha256Hex(current)) {
+      return {
+        ok: false,
+        message: `deck_check_failed: ${path} changed after check_deck passed; run check_deck again`,
+      };
+    }
+  }
+  const validated = validateDeck(parseJson(files.deckText));
+  if (!validated.ok) {
+    return {
+      ok: false,
+      message: `deck_check_failed: ${issueLines(validated.issues, "; ")}`,
+    };
+  }
+  return {
+    ok: true,
+    deck: validated.deck,
+    pptxBytes: files.pptxBytes,
+    pdfBytes: files.pdfBytes,
+  };
+}
+
+export function createDeckTools() {
   const definitions = [
     {
       name: "write_deck",
-      description:
-        "Validate, check and render a slide deck to .builder/deck.json, .builder/deck.pptx and .builder/deck.pdf in the workspace.",
+      description: `Write the slide deck to ${DECK_JSON} and render ${DECK_PPTX} and ${DECK_PDF}.`,
       inputSchema: {
         type: "object",
         properties: {
-          deck: {
-            ...Deck.toJsonSchema({
-              fallback: { default: (ctx) => ctx.base },
-            }),
-          },
+          deck: Deck.toJsonSchema({ fallback: { default: (ctx) => ctx.base } }),
         },
         required: ["deck"],
         additionalProperties: false,
@@ -223,8 +277,7 @@ export function createDeckTools(optionsOrAssets?: Assets | DeckToolsOptions) {
     },
     {
       name: "check_deck",
-      description:
-        "Check .builder/deck.json in the workspace for empty placeholders, text overflow, broken images and low contrast.",
+      description: `Check ${DECK_JSON}, ${DECK_PPTX} and ${DECK_PDF} for structural and visual validity before filing the approval package.`,
       inputSchema: {
         type: "object",
         properties: {},
@@ -232,7 +285,6 @@ export function createDeckTools(optionsOrAssets?: Assets | DeckToolsOptions) {
       },
     },
   ];
-
   return defineTool<DeckToolEnv>({
     id: "@corbits-builder/artifacts/deck-tools",
     requires: ["toolCwd"],
@@ -240,68 +292,20 @@ export function createDeckTools(optionsOrAssets?: Assets | DeckToolsOptions) {
     factory: (env) => ({
       definitions,
       run: async (call) => {
-        if (call.name === "write_deck") {
-          const deckArg =
-            isObjectRecord(call.arguments) && "deck" in call.arguments
-              ? call.arguments.deck
-              : call.arguments;
-          try {
-            const written = await writeDeckToWorkspace(
-              env.toolCwd,
-              deckArg,
-              assets,
-            );
-            return {
-              callId: call.id,
-              content: JSON.stringify({
-                slideCount: written.slideCount,
-                pptxBytes: written.pptxBytes,
-                pdfBytes: written.pdfBytes,
-                passed: written.passed,
-                issues: written.issues,
-              }),
-              ...(written.passed ? {} : { isError: true }),
-            };
-          } catch (error) {
-            return {
-              callId: call.id,
-              content: JSON.stringify({
-                passed: false,
-                issues: errorIssues("deck", error),
-              }),
-              isError: true,
-            };
-          }
+        try {
+          const workspace = await realpath(env.toolCwd);
+          if (call.name === "write_deck")
+            return await runWriteDeck(workspace, call.id, call.arguments);
+          if (call.name === "check_deck")
+            return await runCheckDeck(workspace, call.id);
+          return {
+            callId: call.id,
+            content: "unknown_deck_tool",
+            isError: true,
+          };
+        } catch (error) {
+          return failure(call.id, error);
         }
-
-        if (call.name === "check_deck") {
-          try {
-            const checked = await checkDeckInWorkspace(env.toolCwd, {
-              ...(assets ? { assets } : {}),
-              ...(onDeckChecked ? { onDeckChecked } : {}),
-            });
-            return {
-              callId: call.id,
-              content: JSON.stringify(checked),
-              ...(checked.passed ? {} : { isError: true }),
-            };
-          } catch (error) {
-            return {
-              callId: call.id,
-              content: JSON.stringify({
-                passed: false,
-                issues: errorIssues(DECK_JSON, error),
-              }),
-              isError: true,
-            };
-          }
-        }
-
-        return {
-          callId: call.id,
-          content: "unknown_deck_tool",
-          isError: true,
-        };
       },
     }),
   });

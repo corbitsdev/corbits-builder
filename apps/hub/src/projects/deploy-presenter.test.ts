@@ -15,11 +15,12 @@ import {
   preferenceRegistry,
 } from "../config/preferences.ts";
 import {
-  createPackageTools,
+  createDeckTools,
   DECK_CHECK,
   DECK_JSON,
   DECK_PDF,
-} from "../artifacts/package-tools.ts";
+} from "../artifacts/deck-tools.ts";
+import { createPackageTools } from "../artifacts/package-tools.ts";
 import { createDeployTools } from "./deploy-tools.ts";
 
 const deployment = {
@@ -335,7 +336,8 @@ test("file_package refuses until check_deck passes on the current deck, then fil
   const capabilities = {
     resolve: () => ({ resolve: async () => ({ kind: "http", fetch }) }),
   } as unknown as RuntimeCapabilities;
-  const runner = createPackageTools()({
+  const deckTools = createDeckTools()({ toolCwd: workspace } as never);
+  const packageTools = createPackageTools()({
     toolCwd: workspace,
     capabilities,
   } as never);
@@ -361,7 +363,7 @@ test("file_package refuses until check_deck passes on the current deck, then fil
   };
 
   try {
-    const wrote = await runner.run(
+    const wrote = await deckTools.run(
       { id: "w1", name: "write_deck", arguments: { deck } },
       new AbortController().signal,
     );
@@ -373,7 +375,7 @@ test("file_package refuses until check_deck passes on the current deck, then fil
     });
 
     // Filing before check_deck must refuse with deck_check_failed.
-    const beforeCheck = await runner.run(
+    const beforeCheck = await packageTools.run(
       { id: "f1", name: "file_package", arguments: {} },
       new AbortController().signal,
     );
@@ -382,7 +384,7 @@ test("file_package refuses until check_deck passes on the current deck, then fil
     expect(posted).toHaveLength(0);
 
     // Run check_deck.
-    const checked = await runner.run(
+    const checked = await deckTools.run(
       { id: "c1", name: "check_deck", arguments: {} },
       new AbortController().signal,
     );
@@ -395,7 +397,7 @@ test("file_package refuses until check_deck passes on the current deck, then fil
       JSON.stringify({ ...deck, slides: [...deck.slides] }),
       "utf8",
     );
-    const staleCheck = await runner.run(
+    const staleCheck = await packageTools.run(
       { id: "f2", name: "file_package", arguments: {} },
       new AbortController().signal,
     );
@@ -408,7 +410,7 @@ test("file_package refuses until check_deck passes on the current deck, then fil
       JSON.stringify({ passed: true }),
       "utf8",
     );
-    const hashlessCheck = await runner.run(
+    const hashlessCheck = await packageTools.run(
       { id: "f2b", name: "file_package", arguments: {} },
       new AbortController().signal,
     );
@@ -416,13 +418,13 @@ test("file_package refuses until check_deck passes on the current deck, then fil
     expect(hashlessCheck.content).toStartWith("deck_check_failed:");
 
     // Re-check, then mutate deck.pdf on disk: file_package must refuse because pdfSha256 changed.
-    await runner.run(
+    await deckTools.run(
       { id: "c2a", name: "check_deck", arguments: {} },
       new AbortController().signal,
     );
     const originalPdf = await Bun.file(join(workspace, DECK_PDF)).bytes();
     await writeFile(join(workspace, DECK_PDF), "%PDF-1.4\ntampered", "utf8");
-    const tamperedPdfRes = await runner.run(
+    const tamperedPdfRes = await packageTools.run(
       { id: "f2c", name: "file_package", arguments: {} },
       new AbortController().signal,
     );
@@ -430,11 +432,11 @@ test("file_package refuses until check_deck passes on the current deck, then fil
     expect(tamperedPdfRes.content).toContain(".builder/deck.pdf changed");
     await writeFile(join(workspace, DECK_PDF), originalPdf);
 
-    await runner.run(
+    await deckTools.run(
       { id: "c2", name: "check_deck", arguments: {} },
       new AbortController().signal,
     );
-    const filed = await runner.run(
+    const filed = await packageTools.run(
       { id: "f3", name: "file_package", arguments: {} },
       new AbortController().signal,
     );

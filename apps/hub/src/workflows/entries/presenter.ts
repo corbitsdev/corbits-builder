@@ -1,6 +1,7 @@
 import { createPresenterAgent } from "@corbits-builder/presenter/agent";
 import { createPresenterWorkflow } from "@corbits-builder/presenter";
 import { mail, type MailToolEnv } from "@intx/tools-mail/sidecar-bundle";
+import { createDeckTools } from "../../artifacts/deck-tools.ts";
 import {
   createPackageTools,
   type PackageToolEnv,
@@ -23,7 +24,12 @@ const agent = createPresenterAgent<PackageToolEnv & MailToolEnv>({
   id: "presenter",
   capabilities: [],
   inference: { ...source, parameters },
-  tools: [createPackageTools(), mail, createSkillTools(["presenting"])],
+  tools: [
+    createDeckTools(),
+    createPackageTools(),
+    mail,
+    createSkillTools(["presenting"]),
+  ],
 });
 const workflow = createPresenterWorkflow({
   id: "corbits-builder-presenter",
