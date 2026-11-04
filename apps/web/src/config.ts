@@ -337,6 +337,11 @@ export const wording = {
       archived: "Archived",
     },
     lastActivity: (relative: string) => `Active ${relative}`,
+    view: {
+      label: "Show projects as",
+      grid: "Tiles",
+      rows: "List",
+    },
     loading: "Reading your projects…",
     emptyTitle: "No projects yet",
     emptyLead: "Start one from New project; it shows here from then on.",

@@ -13,7 +13,12 @@ import {
   formatRelativeTime,
   type BadgeTone,
 } from "@corbits/react-ui";
-import { Ellipsis, Plus } from "lucide-react";
+import { Ellipsis, LayoutGrid, List, Plus } from "lucide-react";
+import {
+  useLibraryView,
+  writeLibraryView,
+  type ViewMode,
+} from "../library-view-setting.ts";
 import { useEffect, useRef, useState, type CSSProperties } from "react";
 import type { ProjectStage } from "@corbits-builder/schemas/project";
 import type { ProjectSummary } from "../api/types.ts";
@@ -75,6 +80,42 @@ function coverOf(projectId: string) {
   };
 }
 
+/**
+ * Tiles or a list, as two pressed-state buttons in a group: each names itself for assistive tech,
+ * and the page owns the choice, which outlives the page.
+ */
+function ViewToggle({
+  mode,
+  onChange,
+}: {
+  mode: ViewMode;
+  onChange: (mode: ViewMode) => void;
+}) {
+  const text = wording.library.view;
+  return (
+    <div className="library-view" role="group" aria-label={text.label}>
+      <Button
+        variant={mode === "grid" ? "outline" : "ghost"}
+        size="icon"
+        aria-pressed={mode === "grid"}
+        aria-label={text.grid}
+        onClick={() => onChange("grid")}
+      >
+        <LayoutGrid aria-hidden="true" />
+      </Button>
+      <Button
+        variant={mode === "rows" ? "outline" : "ghost"}
+        size="icon"
+        aria-pressed={mode === "rows"}
+        aria-label={text.rows}
+        onClick={() => onChange("rows")}
+      >
+        <List aria-hidden="true" />
+      </Button>
+    </div>
+  );
+}
+
 export function ProjectLibrary({
   projects,
   loaded,
@@ -100,6 +141,7 @@ export function ProjectLibrary({
   ) => void;
 }) {
   const [filter, setFilter] = useState<Filter | null>(null);
+  const view = useLibraryView();
   const sorted = projects.toSorted((a, b) =>
     b.lastActivityAt.localeCompare(a.lastActivityAt),
   );
@@ -162,6 +204,7 @@ export function ProjectLibrary({
             </FilterChip>
           ))}
         </div>
+        <ViewToggle mode={view} onChange={writeLibraryView} />
         <Button variant="primary" onClick={onNewProject}>
           <Plus aria-hidden="true" />
           {wording.shell.newProject}
@@ -199,7 +242,7 @@ export function ProjectLibrary({
           />
         )
       ) : (
-        <ul className="library-grid">
+        <ul className="library-grid" data-view={view}>
           {shown.map((project, index) => {
             const cover = coverOf(project.id);
             return (
