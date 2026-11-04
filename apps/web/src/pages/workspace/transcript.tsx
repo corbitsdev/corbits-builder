@@ -75,11 +75,9 @@ import { workUnits, type WorkUnit } from "./work-unit.ts";
 import { WorkUnitView } from "./work-unit-view.tsx";
 import type { CallResult } from "./live-run.ts";
 import {
-  ASK_QUESTIONS,
   askedQuestions,
   QuestionsCard,
   type QuestionsState,
-  writtenQuestions,
 } from "./questions-card.tsx";
 import type { AskQuestions } from "@corbits-builder/schemas/questions";
 
@@ -375,8 +373,6 @@ function threadSections(
 ): Section[] {
   const sections: Section[] = [];
   let open: Extract<Section, { kind: "coordinator" }> | null = null;
-  // Stretches that made an ask_questions call in any turn, running or failed included.
-  const calling = new Set<Extract<Section, { kind: "coordinator" }>>();
   for (const item of items) {
     if (item.kind === "turn" && item.turn.role === "person") {
       sections.push({ kind: "person", turn: item.turn, index: item.index });
@@ -392,33 +388,14 @@ function threadSections(
       continue;
     }
     open.turns.push({ turn: item.turn, index: item.index });
-    const tools = toolsOf(visibleTurnParts(item.turn));
-    for (const tool of tools) {
+    for (const tool of toolsOf(visibleTurnParts(item.turn))) {
       const ask = askedQuestions(tool, results.get(tool.toolCallId));
       if (ask !== undefined)
         open.cards.push({ kind: "questions", callId: tool.toolCallId, ask });
     }
-    if (tools.some((tool) => tool.name === ASK_QUESTIONS)) calling.add(open);
-    const written =
-      item.turn.role === "assistant"
-        ? writtenQuestions(item.turn.text)
-        : undefined;
-    if (written !== undefined)
-      open.cards.push({
-        kind: "questions",
-        callId: `${WRITTEN}${String(item.index)}`,
-        ask: written,
-      });
   }
-  // Only a stretch that made no ask_questions call, in any of its turns, keeps questions written in its text.
-  for (const section of calling)
-    section.cards = section.cards.filter(
-      (card) => card.kind !== "questions" || !card.callId.startsWith(WRITTEN),
-    );
   return sections;
 }
-
-const WRITTEN = "written-";
 
 /**
  * A piece of work still at work is current, so it sits after the reports and decisions that came

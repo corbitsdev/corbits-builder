@@ -6,10 +6,6 @@
  * the question, the decision, the document, or a plain failure — not the
  * coordinator's bookkeeping.
  */
-import {
-  AskQuestions,
-  askQuestionsIssue,
-} from "@corbits-builder/schemas/questions";
 import { wording } from "../../config.ts";
 import type { ConversationPart } from "@corbits/react-ui";
 
@@ -142,29 +138,6 @@ function jsonEnd(text: string, start: number): number {
   return -1;
 }
 
-/** The JSON objects and arrays written in the text, outermost only. */
-export function jsonValues(text: string): unknown[] {
-  const values: unknown[] = [];
-  for (let index = 0; index < text.length; index += 1) {
-    const char = text.charAt(index);
-    if (char !== "{" && char !== "[") continue;
-    const end = jsonEnd(text, index);
-    if (end === -1) continue;
-    try {
-      values.push(JSON.parse(text.slice(index, end)) as unknown);
-      index = end - 1;
-    } catch (error) {
-      // Not a payload: keep scanning. Anything else is a real failure.
-      if (!(error instanceof SyntaxError)) throw error;
-    }
-  }
-  return values;
-}
-
-/** Whether a JSON value is ask_questions data the hub would accept, so it can stand as a card. */
-export const isAskQuestions = (value: unknown): value is AskQuestions =>
-  AskQuestions.allows(value) && askQuestionsIssue(value) === undefined;
-
 /** Drop JSON values. A status object is not a sentence. */
 function stripJson(text: string): string {
   let out = "";
@@ -283,9 +256,7 @@ export function visibleChatText(text: string): string {
   const kept: string[] = [];
   for (const block of source.split(/(```[^\n]*\n[\s\S]*?```)/)) {
     if (block.startsWith("```")) {
-      // A fence that held only JSON is empty once the JSON is dropped.
-      if (block.replace(/```[^\n]*/g, "").trim().length > 0)
-        kept.push(block.trim());
+      kept.push(block.trim());
       continue;
     }
     for (const paragraph of block.split(/\n{2,}/)) {
@@ -300,10 +271,7 @@ export function visibleChatText(text: string): string {
     .join("\n\n")
     .replace(/(\S)[ \t]{2,}/g, "$1 ")
     .trim();
-  if (prose.length > 0) return prose;
-  // Questions written as JSON become a card of their own; words in them are not a failure to report.
-  if (jsonValues(text).some(isAskQuestions)) return "";
-  return plainFallback(text);
+  return prose.length > 0 ? prose : plainFallback(text);
 }
 
 const roleLabels: Readonly<Record<string, string>> = wording.activity.role;
