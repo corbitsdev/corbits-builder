@@ -855,11 +855,6 @@ function CustomProviderActions({
   const queryClient = useQueryClient();
   const [editing, setEditing] = useState(false);
   const editableProvider = editable(provider) ? provider : null;
-  const edit = () => {
-    if (editableProvider === null)
-      toast.error(copy.custom.notEditable(provider.label));
-    else setEditing(true);
-  };
   const [removing, setRemoving] = useState(false);
   // Removing takes two clicks, both in the menu, as deleting a project does.
   const [confirming, setConfirming] = useState(false);
@@ -898,7 +893,10 @@ function CustomProviderActions({
           </UiButton>
         </MenuTrigger>
         <MenuContent align="end">
-          <MenuItem disabled={removing} onSelect={edit}>
+          <MenuItem
+            disabled={removing || editableProvider === null}
+            onSelect={() => setEditing(true)}
+          >
             {copy.custom.edit}
           </MenuItem>
           <MenuSeparator />

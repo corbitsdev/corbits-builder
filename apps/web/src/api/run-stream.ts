@@ -13,12 +13,13 @@ import { hubEventSourceCredentials, hubOrigin } from "./origin.ts";
 import { openSharedEventSource } from "../shared-event-source.ts";
 import { readJson } from "../json.ts";
 
-// Only the fields this interface reads; a native frame carries more.
+// The fields this interface reads from Interchange's `InferenceEvent` variants; a frame carries
+// more. A tool frame's `partial` is its output text, so it may be a string.
 const RunStreamEvent = type({
   type: "string",
   "seq?": "number",
   "data?": {
-    "partial?": {
+    "partial?": type({
       "text?": "string",
       "thinking?": "string",
       "toolCalls?": type({
@@ -26,13 +27,19 @@ const RunStreamEvent = type({
         "name?": "unknown",
         "partialArguments?": "unknown",
       }).array(),
-    },
+    }).or("string"),
     "callId?": "unknown",
     "name?": "unknown",
     "arguments?": "unknown",
   },
 });
 export type RunStreamEvent = typeof RunStreamEvent.infer;
+
+/** An inference frame's partial message; a tool frame's text output is not one. */
+export function partialOf(event: RunStreamEvent) {
+  const partial = event.data?.partial;
+  return typeof partial === "object" ? partial : undefined;
+}
 
 const MAX_BACKOFF_MS = 30_000;
 const BASE_BACKOFF_MS = 1_000;
@@ -48,7 +55,7 @@ export function applyRunStreamEvent(
 ): { live: string; refresh: boolean } {
   if (event.type === "inference.start") return { live: "", refresh: false };
   if (event.type === "inference.text.delta") {
-    const text = event.data?.partial?.text ?? "";
+    const text = partialOf(event)?.text ?? "";
     return { live: text.length > 0 ? text : live, refresh: false };
   }
   if (event.type === "inference.error") return { live: "", refresh: true };
@@ -114,7 +121,7 @@ export function subscribeWorkflowRun(
       if (closed) return;
       const event = readJson(message.data, RunStreamEvent);
       if (event === null) {
-        console.warn("A run frame was not a run event.", message.data);
+        console.warn("A run frame was not a run event.");
         return;
       }
       handlers.onEvent(event);

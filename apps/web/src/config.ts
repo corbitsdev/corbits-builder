@@ -1061,8 +1061,6 @@ export const wording = {
     keylessHint: `For servers that need no API key; ${productName} sends a placeholder.`,
     custom: {
       tile: "Custom endpoint",
-      notEditable: (label: string) =>
-        `${label} speaks an API this form cannot edit.`,
       tileHint: "Your own server, on the API it speaks.",
       addTitle: "Add a custom endpoint",
       addLead: "Connect your own server. It is saved once the test passes.",

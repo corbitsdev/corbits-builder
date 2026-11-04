@@ -33,12 +33,13 @@ export type UpdateGroup = {
   readonly updates: readonly SpecialistUpdate[];
 };
 
+const MailEnvelope = type("object");
 const MailResult = type({ result: { summary: "string" } });
 
 // Mail between agents is a JSON envelope; its prose field is what a person can read.
 // A task envelope is the hand-off, already shown as that call in the coordinator's turn.
 function mailProse(text: string): string {
-  const envelope = readJson(text, type("object"));
+  const envelope = readJson(text, MailEnvelope);
   if (envelope === null) return text;
   const result = MailResult(envelope);
   return result instanceof type.errors ? "" : result.result.summary;
