@@ -2,12 +2,12 @@
 
 **Prototype quickly. Build with a clear plan.**
 
-*For vendors and service providers.*
+_For vendors and service providers._
 
 ![Builder's start screen: the question "What do you want to build today?" above a box where the idea is typed or dictated](images/builder.png)
 
-*It starts with a sentence. Type the client's need, or say it out loud, and
-Builder takes it from there.*
+_It starts with a sentence. Type the client's need, or say it out loud, and
+Builder takes it from there._
 
 ---
 
@@ -60,8 +60,8 @@ compare and choose.
 
 ![Two ways to build a field service dispatch board, side by side: a recommended queue-and-capacity split view and a drag-and-drop Gantt timeline, each with pros, cons and risks and a "Choose this one" button](images/brochure-approaches.png)
 
-*Builder lays out the options side by side, in plain language, with one
-recommended. You read, compare and choose.*
+_Builder lays out the options side by side, in plain language, with one
+recommended. You read, compare and choose._
 
 **3. Choose a look.**
 Tell Builder the style you have in mind, or let it show you several design
@@ -71,18 +71,18 @@ fonts and corners until it feels right, then pick one.
 
 ![A clickable mockup of the dispatch queue on a desktop: the client's name in the top bar, a warning that two emergency work orders will breach their service level within 22 minutes, and the two work orders listed with their remaining time](images/brochure-design.png)
 
-*Every design is a working mockup you can click through. This one is the
-dispatch queue of a field service board.*
+_Every design is a working mockup you can click through. This one is the
+dispatch queue of a field service board._
 
 ![The same dispatch queue mockup at phone width, with the navigation, warning and work orders laid out for a narrow screen](images/brochure-design-phone.png)
 
-*The same screen at phone width. Builder checks every page at 1280 px and
-390 px before a design is filed.*
+_The same screen at phone width. Builder checks every page at 1280 px and
+390 px before a design is filed._
 
 ![A second design concept for a different project, a daily habit tracker, in a warm serif style with a summary card and a list of streaks](images/brochure-concept-habits.png)
 
-*Concepts differ in more than color. Builder can start three at once so the
-client sees genuinely different directions.*
+_Concepts differ in more than color. Builder can start three at once so the
+client sees genuinely different directions._
 
 **4. Watch it get built.**
 Builder writes a build plan and then builds the app in front of you. A live
@@ -135,13 +135,13 @@ your own. Each project runs on the model profile you pick for it.
 
 ## What you end up with
 
-| Deliverable | What it is |
-| --- | --- |
-| Five planning documents | Brief, constraints, approaches, requirements and build plan, each approved by you at a known version |
-| A design | Every screen as a clickable mockup, with the colors, fonts and corners you chose |
-| A working web app | Running in the live preview and downloadable as source, with a README and a user manual |
-| A slide deck, when you ask | PowerPoint and PDF for the audience you name |
-| One project file | The whole project as a zip you can archive, hand over or import again |
+| Deliverable                | What it is                                                                                           |
+| -------------------------- | ---------------------------------------------------------------------------------------------------- |
+| Five planning documents    | Brief, constraints, approaches, requirements and build plan, each approved by you at a known version |
+| A design                   | Every screen as a clickable mockup, with the colors, fonts and corners you chose                     |
+| A working web app          | Running in the live preview and downloadable as source, with a README and a user manual              |
+| A slide deck, when you ask | PowerPoint and PDF for the audience you name                                                         |
+| One project file           | The whole project as a zip you can archive, hand over or import again                                |
 
 ---
 
