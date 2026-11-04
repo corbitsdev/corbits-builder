@@ -454,4 +454,30 @@ describe("conversation transcript", () => {
     );
     expect(html.split("Who is it for?")).toHaveLength(2);
   });
+
+  test("written questions add no card while an ask_questions call is still running", () => {
+    const html = renderToStaticMarkup(
+      <RoomThread
+        turns={[
+          {
+            role: "assistant",
+            text: writtenAsk,
+            at: 1,
+            parts: [
+              {
+                kind: "tool-trace",
+                toolCallId: "call-ask",
+                name: "ask_questions",
+                status: "running",
+                input: JSON.parse(writtenAsk) as unknown,
+              },
+              { kind: "text", text: writtenAsk },
+            ],
+          },
+        ]}
+        onAnswerQuestions={() => Promise.resolve(true)}
+      />,
+    );
+    expect(html).not.toContain("Who is it for?");
+  });
 });

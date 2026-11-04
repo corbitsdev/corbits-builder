@@ -75,6 +75,7 @@ import { workUnits, type WorkUnit } from "./work-unit.ts";
 import { WorkUnitView } from "./work-unit-view.tsx";
 import type { CallResult } from "./live-run.ts";
 import {
+  ASK_QUESTIONS,
   askedQuestions,
   QuestionsCard,
   type QuestionsState,
@@ -389,14 +390,16 @@ function threadSections(
       continue;
     }
     open.turns.push({ turn: item.turn, index: item.index });
-    const asked = open.cards.length;
-    for (const tool of toolsOf(visibleTurnParts(item.turn))) {
+    const tools = toolsOf(visibleTurnParts(item.turn));
+    for (const tool of tools) {
       const ask = askedQuestions(tool, results.get(tool.toolCallId));
       if (ask !== undefined)
         open.cards.push({ kind: "questions", callId: tool.toolCallId, ask });
     }
+    // Only a turn that made no ask_questions call, running or failed included, falls back to its text.
+    const called = tools.some((tool) => tool.name === ASK_QUESTIONS);
     const written =
-      item.turn.role === "assistant" && open.cards.length === asked
+      item.turn.role === "assistant" && !called
         ? writtenQuestions(item.turn.text)
         : undefined;
     if (written !== undefined)
