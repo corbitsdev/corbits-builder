@@ -1,5 +1,7 @@
 import { describe, expect, test } from "bun:test";
+import type { ReactNode } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
+import { prerender } from "react-dom/static";
 import type { ApprovalPackageBundle } from "@corbits-builder/schemas/artifact";
 import { wording } from "../../config.ts";
 import {
@@ -8,6 +10,12 @@ import {
   approvalPackagePdfFile,
   parseApprovalPackage,
 } from "./approval-package-preview.tsx";
+
+// Waits for the lazily loaded slides, as a browser would.
+async function render(node: ReactNode) {
+  const { prelude } = await prerender(node);
+  return new Response(prelude).text();
+}
 
 const sampleBundle: ApprovalPackageBundle = {
   manifest: {
@@ -97,8 +105,8 @@ describe("approval package preview", () => {
     expect(APPROVAL_PACKAGE_MEDIA_TYPE).toContain("approval-package+json");
   });
 
-  test("renders slides view with theme colors, comparison columns, and speaker notes", () => {
-    const html = renderToStaticMarkup(
+  test("renders slides view with theme colors, comparison columns, and speaker notes", async () => {
+    const html = await render(
       <ApprovalPackagePreview
         content={JSON.stringify(sampleBundle)}
         stem="portal-package-v1"
@@ -118,8 +126,8 @@ describe("approval package preview", () => {
     expect(html).toContain("#1e293b");
   });
 
-  test("renders PDF view with print-accurate page sheets and download link without blocked data: iframe", () => {
-    const html = renderToStaticMarkup(
+  test("renders PDF view with print-accurate page sheets and download link without blocked data: iframe", async () => {
+    const html = await render(
       <ApprovalPackagePreview
         content={JSON.stringify(sampleBundle)}
         stem="portal-package-v1"
@@ -135,8 +143,8 @@ describe("approval package preview", () => {
     expect(html).toContain("Customer Portal Approval Package");
   });
 
-  test("a PDF whose base64 does not decode offers no download and says it could not be read", () => {
-    const html = renderToStaticMarkup(
+  test("a PDF whose base64 does not decode offers no download and says it could not be read", async () => {
+    const html = await render(
       <ApprovalPackagePreview
         content={JSON.stringify({ ...sampleBundle, pdfBase64: "not base64!" })}
         stem="portal-package-v1"
@@ -148,7 +156,87 @@ describe("approval package preview", () => {
     expect(html).toContain("Page 1 of 2");
   });
 
-  test("enforces high-contrast text on dark-background slide decks", () => {
+  test("a deck that is not a valid slide deck says it could not be read in place of its slides and pages, and keeps the PDF download and sources", async () => {
+    const content = JSON.stringify({
+      ...sampleBundle,
+      deck: {
+        theme: { colors: { background: "#ffffff" } },
+        slides: [{ layout: "title", title: "Half a deck" }],
+      },
+    });
+    const views = await Promise.all(
+      (["slides", "pdf", "sources"] as const).map((tab) =>
+        render(
+          <ApprovalPackagePreview
+            content={content}
+            stem="portal-package-v1"
+            initialTab={tab}
+          />,
+        ),
+      ),
+    );
+    const [slides, pdf, sources] = views;
+    expect(slides).toContain(wording.approvalPackage.unreadable);
+    expect(slides).not.toContain("Half a deck");
+    expect(pdf).toContain(wording.approvalPackage.unreadable);
+    expect(pdf).toContain(wording.approvalPackage.downloadPdf);
+    expect(pdf).not.toContain("Half a deck");
+    expect(sources).toContain("Customer Portal Brief");
+  });
+
+  test("draws text inside groups on free slides, and nested list items are numbered like their parent unless they say otherwise", async () => {
+    const html = await render(
+      <ApprovalPackagePreview
+        content={JSON.stringify({
+          ...sampleBundle,
+          deck: {
+            ...sampleBundle.deck,
+            slides: [
+              {
+                layout: "free",
+                elements: [
+                  {
+                    type: "group",
+                    children: [
+                      {
+                        type: "text",
+                        x: 0,
+                        y: 0,
+                        w: 400,
+                        h: 100,
+                        paragraphs: [{ runs: ["Grouped headline"] }],
+                      },
+                    ],
+                  },
+                ],
+              },
+              {
+                layout: "content",
+                title: "Rollout steps",
+                body: [
+                  {
+                    type: "list",
+                    ordered: true,
+                    items: [
+                      { text: "Pilot", items: ["Pick regions"] },
+                      { text: "Launch", ordered: false, items: ["Announce"] },
+                    ],
+                  },
+                ],
+              },
+            ],
+          },
+        })}
+        stem="portal-package-v1"
+        initialTab="slides"
+      />,
+    );
+    expect(html).toContain("<p>Grouped headline</p>");
+    expect(html).toContain("Pilot<ol><li>Pick regions</li></ol>");
+    expect(html).toContain("Launch<ul><li>Announce</li></ul>");
+  });
+
+  test("enforces high-contrast text on dark-background slide decks", async () => {
     const darkDeckBundle: ApprovalPackageBundle = {
       ...sampleBundle,
       deck: {
@@ -161,6 +249,7 @@ describe("approval package preview", () => {
             text: "#f8fafc",
             muted: "#64748b",
           },
+          fonts: { heading: "Inter", body: "Inter" },
         },
         slides: [
           {
@@ -172,7 +261,7 @@ describe("approval package preview", () => {
         ],
       },
     };
-    const html = renderToStaticMarkup(
+    const html = await render(
       <ApprovalPackagePreview
         content={JSON.stringify(darkDeckBundle)}
         stem="aurora-package-v1"

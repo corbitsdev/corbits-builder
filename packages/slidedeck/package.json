@@ -6,7 +6,8 @@
   "author": "Sawyer Cutler <sawyer@dirtroad.dev>",
   "type": "module",
   "exports": {
-    ".": "./src/index.ts"
+    ".": "./src/index.ts",
+    "./deck": "./src/deck.ts"
   },
   "dependencies": {
     "@corbits/pdf": "workspace:*",

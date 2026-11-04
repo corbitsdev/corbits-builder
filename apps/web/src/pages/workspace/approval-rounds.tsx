@@ -891,7 +891,7 @@ function PaneSlideDeckView({
         </Button>
       </div>
       {bundle === null ? (
-        <p className="inline-note">{wording.approvalPackage.noSlides}</p>
+        <p className="inline-note">{wording.approvalPackage.unreadable}</p>
       ) : (
         <SlidesView deck={bundle.deck} />
       )}
@@ -902,7 +902,9 @@ function PaneSlideDeckView({
           </DialogHeader>
           <div className="approval-slide-deck-modal-body">
             {bundle === null ? (
-              <p className="inline-note">{wording.approvalPackage.noSlides}</p>
+              <p className="inline-note">
+                {wording.approvalPackage.unreadable}
+              </p>
             ) : (
               <SlidesView deck={bundle.deck} />
             )}
