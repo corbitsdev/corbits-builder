@@ -1,5 +1,5 @@
 import { expect, test } from "bun:test";
-import { coverArtifact } from "./project-cover.tsx";
+import { coverArtifact, coverPage } from "./project-cover.tsx";
 
 const item = (kind: string, artifactId: string) => ({
   artifactId,
@@ -20,4 +20,14 @@ test("the chosen design is the cover, else the first concept filed, else none", 
   expect(coverArtifact([brief, first, second])?.artifactId).toBe("first");
   expect(coverArtifact([brief])).toBeNull();
   expect(coverArtifact([])).toBeNull();
+});
+
+test("a bundle with no page to show leaves the tile its pattern", () => {
+  expect(coverPage({})).toBeNull();
+  expect(coverPage({ "designs/index.html": "   " })).toBeNull();
+  expect(
+    coverPage({
+      "designs/index.html": "<html><body><main>Hi</main></body></html>",
+    }),
+  ).toContain("<main>");
 });

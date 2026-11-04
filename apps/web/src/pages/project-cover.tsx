@@ -25,13 +25,21 @@ export function coverArtifact(
   return concept === undefined ? null : concept;
 }
 
+/** The bundle's first page as the tile shows it, or null for a bundle with no page to show yet. */
+export function coverPage(
+  files: Readonly<Record<string, string>>,
+): string | null {
+  const page = firstPage(files);
+  return page.trim() === "" ? null : page;
+}
+
 async function readCoverPage(projectId: string): Promise<string | null> {
   const { artifacts } = await listProjectArtifacts(projectId);
   const pick = coverArtifact(artifacts);
   if (pick === null) return null;
   const filed = await readArtifact(projectId, pick.artifactId, pick.version);
   const files = parseBundle(filed.content);
-  return files === null ? null : firstPage(files);
+  return files === null ? null : coverPage(files);
 }
 
 /** True once the element has come within a screen of the viewport, and from then on. */
