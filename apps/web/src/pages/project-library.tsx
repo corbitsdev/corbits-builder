@@ -19,7 +19,13 @@ import {
   writeLibraryView,
   type ViewMode,
 } from "../library-view-setting.ts";
-import { useEffect, useRef, useState, type CSSProperties } from "react";
+import {
+  useEffect,
+  useRef,
+  useState,
+  type CSSProperties,
+  type ReactNode,
+} from "react";
 import type { ProjectStage } from "@corbits-builder/schemas/project";
 import type { ProjectSummary } from "../api/types.ts";
 import type { NoticeAction } from "../components.jsx";
@@ -176,6 +182,111 @@ export function ProjectLibrary({
     next?.focus();
   }, [projects, shown]);
 
+  let body: ReactNode;
+  if (!loaded)
+    body = (
+      <p role="status" className="library-note">
+        {failed ? wording.library.failed : wording.library.loading}
+      </p>
+    );
+  else if (shown.length === 0)
+    body =
+      filter === null ? (
+        <EmptyState
+          title={
+            sorted.length === 0
+              ? wording.library.emptyTitle
+              : wording.library.allArchivedTitle
+          }
+          description={
+            sorted.length === 0
+              ? wording.library.emptyLead
+              : wording.library.allArchivedLead
+          }
+          action={
+            <Button variant="primary" onClick={onNewProject}>
+              {wording.shell.newProject}
+            </Button>
+          }
+        />
+      ) : (
+        <EmptyState
+          title={wording.library.emptyFilterTitle(
+            wording.library.filter[filter],
+          )}
+          description={wording.library.emptyFilterLead}
+        />
+      );
+  else
+    body = (
+      <ul className="library-grid" data-view={view}>
+        {shown.map((project, index) => {
+          const cover = coverOf(project.id);
+          return (
+            <li key={project.id} className="library-card">
+              <button
+                type="button"
+                className="library-card-open"
+                onClick={() => onOpen(project.id)}
+              >
+                <span
+                  className="library-cover"
+                  data-pattern={cover.pattern}
+                  style={cover.style}
+                  aria-hidden="true"
+                />
+                <span className="library-card-body">
+                  <span className="library-card-title">{project.title}</span>
+                  <span className="library-card-meta">
+                    <Badge
+                      tone={
+                        project.archivedAt
+                          ? "neutral"
+                          : STAGE_TONE[project.stage]
+                      }
+                    >
+                      {
+                        wording.library.filter[
+                          project.archivedAt ? "archived" : project.stage
+                        ]
+                      }
+                    </Badge>
+                    <time dateTime={project.lastActivityAt}>
+                      {wording.library.lastActivity(
+                        formatRelativeTime(project.lastActivityAt),
+                      )}
+                    </time>
+                  </span>
+                </span>
+              </button>
+              <ProjectMenu
+                project={project}
+                trigger={
+                  <Button
+                    variant="ghost"
+                    size="icon"
+                    className="library-card-menu"
+                    aria-label={wording.shell.projectOptions(project.title)}
+                  >
+                    <Ellipsis aria-hidden="true" />
+                  </Button>
+                }
+                onChanged={() => {
+                  changed.current = {
+                    id: project.id,
+                    index,
+                    before: projects,
+                  };
+                  onChanged();
+                }}
+                onError={onError}
+                onNotice={onNotice}
+              />
+            </li>
+          );
+        })}
+      </ul>
+    );
   return (
     <section className="library-page" ref={section}>
       <LibraryPageHeader
@@ -210,106 +321,7 @@ export function ProjectLibrary({
           {wording.shell.newProject}
         </Button>
       </LibraryPageHeader>
-      {!loaded ? (
-        <p role="status" className="library-note">
-          {failed ? wording.library.failed : wording.library.loading}
-        </p>
-      ) : shown.length === 0 ? (
-        filter === null ? (
-          <EmptyState
-            title={
-              sorted.length === 0
-                ? wording.library.emptyTitle
-                : wording.library.allArchivedTitle
-            }
-            description={
-              sorted.length === 0
-                ? wording.library.emptyLead
-                : wording.library.allArchivedLead
-            }
-            action={
-              <Button variant="primary" onClick={onNewProject}>
-                {wording.shell.newProject}
-              </Button>
-            }
-          />
-        ) : (
-          <EmptyState
-            title={wording.library.emptyFilterTitle(
-              wording.library.filter[filter],
-            )}
-            description={wording.library.emptyFilterLead}
-          />
-        )
-      ) : (
-        <ul className="library-grid" data-view={view}>
-          {shown.map((project, index) => {
-            const cover = coverOf(project.id);
-            return (
-              <li key={project.id} className="library-card">
-                <button
-                  type="button"
-                  className="library-card-open"
-                  onClick={() => onOpen(project.id)}
-                >
-                  <span
-                    className="library-cover"
-                    data-pattern={cover.pattern}
-                    style={cover.style}
-                    aria-hidden="true"
-                  />
-                  <span className="library-card-body">
-                    <span className="library-card-title">{project.title}</span>
-                    <span className="library-card-meta">
-                      <Badge
-                        tone={
-                          project.archivedAt
-                            ? "neutral"
-                            : STAGE_TONE[project.stage]
-                        }
-                      >
-                        {
-                          wording.library.filter[
-                            project.archivedAt ? "archived" : project.stage
-                          ]
-                        }
-                      </Badge>
-                      <time dateTime={project.lastActivityAt}>
-                        {wording.library.lastActivity(
-                          formatRelativeTime(project.lastActivityAt),
-                        )}
-                      </time>
-                    </span>
-                  </span>
-                </button>
-                <ProjectMenu
-                  project={project}
-                  trigger={
-                    <Button
-                      variant="ghost"
-                      size="icon"
-                      className="library-card-menu"
-                      aria-label={wording.shell.projectOptions(project.title)}
-                    >
-                      <Ellipsis aria-hidden="true" />
-                    </Button>
-                  }
-                  onChanged={() => {
-                    changed.current = {
-                      id: project.id,
-                      index,
-                      before: projects,
-                    };
-                    onChanged();
-                  }}
-                  onError={onError}
-                  onNotice={onNotice}
-                />
-              </li>
-            );
-          })}
-        </ul>
-      )}
+      {body}
     </section>
   );
 }
