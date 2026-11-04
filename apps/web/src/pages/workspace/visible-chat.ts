@@ -142,15 +142,16 @@ function jsonEnd(text: string, start: number): number {
 export function jsonValues(text: string): unknown[] {
   const values: unknown[] = [];
   for (let index = 0; index < text.length; index += 1) {
-    const char = text[index] ?? "";
+    const char = text.charAt(index);
     if (char !== "{" && char !== "[") continue;
     const end = jsonEnd(text, index);
     if (end === -1) continue;
     try {
       values.push(JSON.parse(text.slice(index, end)) as unknown);
       index = end - 1;
-    } catch {
-      // Not a payload. Keep scanning.
+    } catch (error) {
+      // Not a payload: keep scanning. Anything else is a real failure.
+      if (!(error instanceof SyntaxError)) throw error;
     }
   }
   return values;
