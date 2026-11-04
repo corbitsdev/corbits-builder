@@ -60,6 +60,7 @@ import { subscribeWorkflowRun } from "../../api/run-stream.ts";
 import {
   acceptedMaterials,
   attachMaterials,
+  removeMaterial,
   readArtifact,
 } from "../../api/artifacts.ts";
 import { documentsForPane } from "./document-read.ts";
@@ -797,6 +798,29 @@ export function StageWorkspace({
   };
   const chooseDocument = (id: string) =>
     setDocumentChoice({ id, filedCount: filed.length });
+  // An attached file taken back: its tab goes with the next room read, and the person hears so.
+  const removeAttachment = (id: string) => {
+    if (!id.startsWith(MATERIAL_TAB)) return;
+    const artifactId = id.slice(MATERIAL_TAB.length);
+    const item = paneDeliverables.find((entry) => entry.kind === id);
+    void takeBack(artifactId, item?.title);
+  };
+  const takeBack = async (artifactId: string, title: string | undefined) => {
+    try {
+      const removed = await removeMaterial(projectId, artifactId);
+      setDocumentChoice(null);
+      toast.success(
+        wording.removeAttachment.done(
+          title === undefined ? removed.title : title,
+          removed.told,
+        ),
+      );
+      reloadRef.current();
+      onChanged();
+    } catch (cause) {
+      toast.error(humanFault(cause, wording.removeAttachment.failed));
+    }
+  };
   const openDocument = (id: string) => {
     setPaneTab({ value: id });
     if (conceptOfTab(id) === undefined) chooseDocument(id);
@@ -1595,6 +1619,7 @@ export function StageWorkspace({
                     }
                   : {})}
                 onSelect={chooseDocument}
+                onRemove={removeAttachment}
                 changesOpen={selected !== null && changesFor === selected.kind}
                 onToggleChanges={() =>
                   setChangesFor((current) =>

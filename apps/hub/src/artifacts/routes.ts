@@ -27,6 +27,7 @@ import {
   LiveApp,
   MAX_APPROVAL_PACKAGE_BYTES,
   MaterialReceipt,
+  MaterialRemovedReceipt,
 } from "@corbits-builder/schemas/artifact";
 import { ProjectActivity } from "@corbits-builder/schemas/activity";
 import {
@@ -394,6 +395,37 @@ export function mountArtifactRoutes(
               content,
               attachments,
             ),
+        ),
+      );
+    },
+  );
+  app.delete(
+    "/:projectId/materials/:artifactId",
+    describeRoute({
+      tags: ["Artifacts"],
+      operationId: "removeMaterial",
+      description:
+        "Takes an attached file back. The coordinator, when one runs, is told the file is withdrawn first, so a note that cannot be sent leaves the material in place for another try; then the material is archived, so it leaves the project's documents and the coordinator's filed materials while its versions stay. The message it was sent with keeps showing it. `told` says whether a coordinator was mailed.",
+      security,
+      responses: {
+        200: {
+          description: "The material taken back",
+          content: {
+            "application/json": { schema: resolver(MaterialRemovedReceipt) },
+          },
+        },
+        404: { description: "No such material in this project" },
+      },
+    }),
+    async (c) => {
+      const current = actorOf(c);
+      return c.json(
+        await service.removeMaterial(
+          current,
+          c.req.param("projectId"),
+          c.req.param("artifactId"),
+          (runId, content) =>
+            mailRunAsCaller(c, nativeFetch, current.tenantId, runId, content),
         ),
       );
     },

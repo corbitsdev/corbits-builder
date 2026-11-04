@@ -468,6 +468,16 @@ export const MaterialReceipt = type({
 });
 export type MaterialReceipt = typeof MaterialReceipt.infer;
 
+// A material the person took back: archived, so it leaves every list while its versions stay.
+export const MaterialRemovedReceipt = type({
+  "+": "reject",
+  artifactId: "string > 0",
+  title: "string",
+  // Whether a running coordinator was told the file is withdrawn.
+  told: "boolean",
+});
+export type MaterialRemovedReceipt = typeof MaterialRemovedReceipt.infer;
+
 // The attachment types the project's coordinator model reads, and Interchange's attachment limits.
 // Empty when the model's catalog offering declares neither vision-input nor document-input.
 export const AcceptedMaterials = type({

@@ -29,6 +29,7 @@ export function buildArtifactsMethods(
   | "chooseDesign"
   | "acceptedMaterials"
   | "attachMaterials"
+  | "removeMaterial"
   | "downloadPackageZip"
   | "approvalRounds"
   | "startApprovalRound"
@@ -167,6 +168,14 @@ export function buildArtifactsMethods(
       return request(
         `${projectPath(tenantId, projectId)}/materials/accepted`,
         signal,
+      );
+    },
+    removeMaterial(tenantId, projectId, artifactId, signal) {
+      return request(
+        `${projectPath(tenantId, projectId)}/materials/${encodeURIComponent(artifactId)}`,
+        signal,
+        null,
+        "DELETE",
       );
     },
     async attachMaterials(tenantId, projectId, files, message, signal) {

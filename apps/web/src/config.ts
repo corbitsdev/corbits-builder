@@ -914,6 +914,15 @@ export const wording = {
   passage: { addToPrompt: "Add to prompt" },
   documentBar: "Document controls",
   printDocument: "Save as PDF or print",
+  removeAttachment: {
+    menu: "Remove attachment…",
+    confirm: "Yes, remove it",
+    done: (name: string, told: boolean) =>
+      told
+        ? `${name} is removed; the coordinator has been told.`
+        : `${name} is removed.`,
+    failed: "The attachment could not be removed.",
+  },
   versions: {
     menu: (version: number) => `Version ${String(version)}, choose a version`,
     comparePrevious: "Compare with previous",
