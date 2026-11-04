@@ -6,7 +6,10 @@ import { $ } from "bun";
 import { declineNote } from "../config/decline.ts";
 import { resumeMessage } from "../config/resume.ts";
 import { specialistEndedMessage } from "../config/specialist-ended.ts";
-import { readDurableConversationTurns } from "./conversation-turns.ts";
+import {
+  readDurableConversationTurns,
+  unsavedPersonTurns,
+} from "./conversation-turns.ts";
 
 const person = "b65b0e2f4c4a444db11b7321dc413964@sunny-harbor-panda.localhost";
 const dirs: string[] = [];
@@ -200,4 +203,49 @@ test("a resumed message is read after the separator, not at a quoted line that s
   expect(await personTexts(dir, "note")).toEqual([
     { role: "person", text: "Real words" },
   ]);
+});
+
+const received = (seq: number, at: string, from: string, text: string) => ({
+  seq,
+  type: "SignalReceived",
+  body: {
+    type: "SignalReceived",
+    seq,
+    signalName: "input",
+    signalId: `<m${String(seq)}@example.com>`,
+    at,
+    payload: {
+      headers: { from, to: ["coordinator@example.com"] },
+      rawHeaders: {},
+      parts: [{ contentType: "text/plain", ref: "r", text }],
+    },
+  },
+});
+
+test("a person's received message reads as a turn until the coordinator saves it", () => {
+  const savedAt = Date.parse("2026-11-04T10:00:00.000Z");
+  const saved = [{ role: "person" as const, text: "First", at: savedAt }];
+  const events = [
+    received(1, "2026-11-04T09:59:59.900Z", person, "First"),
+    received(
+      2,
+      "2026-11-04T10:00:05.000Z",
+      "run_04ba732b8686649f77a2797393bafbc5@sunny-harbor-panda.localhost",
+      "From a run",
+    ),
+    received(3, "2026-11-04T10:00:06.000Z", person, "Second\r\n"),
+  ];
+  expect(unsavedPersonTurns(events, saved)).toEqual([
+    {
+      role: "person",
+      text: "Second",
+      at: Date.parse("2026-11-04T10:00:06.000Z"),
+    },
+  ]);
+  expect(
+    unsavedPersonTurns(events, [
+      ...saved,
+      { role: "person", text: "Second", at: savedAt + 6001 },
+    ]),
+  ).toEqual([]);
 });

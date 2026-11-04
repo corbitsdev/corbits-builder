@@ -25,7 +25,11 @@ import {
   createCoordinatorQuestionProseReader,
   type CoordinatorRepoDirSource,
 } from "./coordinator-question.ts";
-import { isRecord, projectRunTurns } from "./conversation-turns.ts";
+import {
+  isRecord,
+  projectRunTurns,
+  unsavedPersonTurns,
+} from "./conversation-turns.ts";
 import type { Actor } from "../lib/actor.ts";
 
 const log = getLogger(["corbits-builder", "hub", "conversation"]);
@@ -244,7 +248,11 @@ export function createConversationRoutes(
           }
           if (isRecord(payload)) {
             const live = await read(repoStore, current);
-            const turns = [...live.turns, ...(await priorTurns(repoStore))];
+            const turns = [
+              ...live.turns,
+              ...unsavedPersonTurns(events, live.turns),
+              ...(await priorTurns(repoStore)),
+            ];
             turns.sort((left, right) => left.at - right.at);
             if (live.threads !== undefined) payload["threads"] = live.threads;
             payload["turns"] = turns.slice(-maxConversationTurns);
