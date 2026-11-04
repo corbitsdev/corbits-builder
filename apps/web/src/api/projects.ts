@@ -255,19 +255,30 @@ export async function exportSections(
   }
 }
 
-const invalidImport = () =>
-  new ApiFailure({
-    code: "invalid_project_import",
-    message: wording.importProject.invalid,
-    correlationId: "-",
-    retryable: false,
-  });
+const invalidImport = (cause?: unknown) =>
+  new ApiFailure(
+    {
+      code: "invalid_project_import",
+      message: wording.importProject.invalid,
+      correlationId: "-",
+      retryable: false,
+    },
+    undefined,
+    { cause },
+  );
 
 const startsWithZipSignature = (bytes: Uint8Array) =>
   bytes[0] === 0x50 && bytes[1] === 0x4b;
 
 async function projectJsonOf(archive: Uint8Array): Promise<string> {
-  const entry = (await JSZip.loadAsync(archive)).file("project.json");
+  let zip: JSZip;
+  try {
+    zip = await JSZip.loadAsync(archive);
+  } catch (cause) {
+    // JSZip rejects only an archive it cannot read.
+    throw invalidImport(cause);
+  }
+  const entry = zip.file("project.json");
   if (entry === null) throw invalidImport();
   return entry.async("string");
 }
@@ -275,14 +286,14 @@ async function projectJsonOf(archive: Uint8Array): Promise<string> {
 /** The project.json of an export's zip, or the file itself when it is that JSON. */
 async function importJson(file: Blob): Promise<unknown> {
   const bytes = new Uint8Array(await file.arrayBuffer());
+  const text = startsWithZipSignature(bytes)
+    ? await projectJsonOf(bytes)
+    : new TextDecoder().decode(bytes);
   try {
-    return JSON.parse(
-      startsWithZipSignature(bytes)
-        ? await projectJsonOf(bytes)
-        : new TextDecoder().decode(bytes),
-    );
-  } catch {
-    throw invalidImport();
+    return JSON.parse(text);
+  } catch (cause) {
+    if (!(cause instanceof SyntaxError)) throw cause;
+    throw invalidImport(cause);
   }
 }
 

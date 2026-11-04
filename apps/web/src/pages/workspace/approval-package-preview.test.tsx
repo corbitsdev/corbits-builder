@@ -1,6 +1,7 @@
 import { describe, expect, test } from "bun:test";
 import { renderToStaticMarkup } from "react-dom/server";
 import type { ApprovalPackageBundle } from "@corbits-builder/schemas/artifact";
+import { wording } from "../../config.ts";
 import {
   APPROVAL_PACKAGE_MEDIA_TYPE,
   ApprovalPackagePreview,
@@ -91,8 +92,8 @@ describe("approval package preview", () => {
     expect(parseApprovalPackage(JSON.stringify({ manifest: {} }))).toBeNull();
 
     const pdfFile = approvalPackagePdfFile("portal-package-v1", sampleBundle);
-    expect(pdfFile.name).toBe("portal-package-v1.pdf");
-    expect(pdfFile.type).toBe("application/pdf");
+    expect(pdfFile?.name).toBe("portal-package-v1.pdf");
+    expect(pdfFile?.type).toBe("application/pdf");
     expect(APPROVAL_PACKAGE_MEDIA_TYPE).toContain("approval-package+json");
   });
 
@@ -132,6 +133,19 @@ describe("approval package preview", () => {
     expect(html).toContain("Page 1 of 2");
     expect(html).toContain("Page 2 of 2");
     expect(html).toContain("Customer Portal Approval Package");
+  });
+
+  test("a PDF whose base64 does not decode offers no download and says it could not be read", () => {
+    const html = renderToStaticMarkup(
+      <ApprovalPackagePreview
+        content={JSON.stringify({ ...sampleBundle, pdfBase64: "not base64!" })}
+        stem="portal-package-v1"
+        initialTab="pdf"
+      />,
+    );
+    expect(html).toContain(wording.approvalPackage.pdfUnreadable);
+    expect(html).not.toContain(wording.approvalPackage.downloadPdf);
+    expect(html).toContain("Page 1 of 2");
   });
 
   test("enforces high-contrast text on dark-background slide decks", () => {

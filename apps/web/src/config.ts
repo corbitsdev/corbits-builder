@@ -109,6 +109,7 @@ export const wording = {
     user_manual: "User Manual",
   } as Record<string, string>,
   documentUnread: "new version",
+  documentRetryFailed: "The document could not be read again. Try again.",
   tips: {
     label: "Tips",
     setting: "Show tips",
@@ -639,6 +640,7 @@ export const wording = {
     openPdf: "Open PDF",
     downloadPptx: "Download PPTX",
     pdfTitle: "Approval package PDF preview",
+    pdfUnreadable: "The PDF in this package could not be read.",
     manifest: {
       audience: "Audience",
       decisionNeeded: "Decision needed",

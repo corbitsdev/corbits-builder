@@ -7,6 +7,7 @@ import type { Workspace } from "@corbits-builder/client";
 import { productName, wording } from "../config.ts";
 import { hubCredentials, hubOrigin } from "./origin.ts";
 import { productClient, timedCall } from "./transport.ts";
+import { ApiFailure } from "./types.ts";
 import {
   readStoredPreference,
   writeStoredPreference,
@@ -36,14 +37,25 @@ async function hubAuth(
       ...init,
       credentials: hubCredentials(),
     });
-  } catch {
-    throw new Error(wording.auth.hubUnreachable);
+  } catch (cause) {
+    throw new ApiFailure(
+      {
+        code: "host_unreachable",
+        message: wording.auth.hubUnreachable,
+        correlationId: "-",
+        retryable: true,
+      },
+      undefined,
+      { cause },
+    );
   }
   const text = await response.text();
   let parsed: unknown;
   try {
     parsed = text.length === 0 ? undefined : JSON.parse(text);
-  } catch {
+  } catch (cause) {
+    // A proxy in front of the hub can answer with a page instead of JSON.
+    if (!(cause instanceof SyntaxError)) throw cause;
     parsed = undefined;
   }
   return { response, parsed };
@@ -76,7 +88,15 @@ export async function getHubSession(): Promise<HubSession> {
   const { response, parsed } = await hubAuth("/get-session", { method: "GET" });
   if (response.status === 401) return null;
   if (!response.ok) {
-    throw new Error(messageOf(parsed, `HTTP ${String(response.status)}`));
+    throw new ApiFailure(
+      {
+        code: "session_unreadable",
+        message: messageOf(parsed, `HTTP ${String(response.status)}`),
+        correlationId: "-",
+        retryable: response.status >= 500,
+      },
+      response.status,
+    );
   }
   const user = userOf(parsed);
   return user ? { user } : null;

@@ -639,15 +639,17 @@ export function StageWorkspace({
           return turn.role === "person" ? turnItemId(turn, index) : found;
         }, undefined);
   const [retryingKey, setRetryingKey] = useState<string | null>(null);
-  const retryDocument = (item: ProjectArtifact) => {
+  const retryDocument = async (item: ProjectArtifact) => {
     const key = documentKey(projectId, item);
     if (documents[key]?.status !== "error") return;
     setRetryingKey(key);
-    void reloadProjectDocument(projectId, key, queryClient, !archived).finally(
-      () => {
-        setRetryingKey((current) => (current === key ? null : current));
-      },
-    );
+    try {
+      await reloadProjectDocument(projectId, key, queryClient, !archived);
+    } catch (cause) {
+      toast.error(humanFault(cause, wording.documentRetryFailed));
+    } finally {
+      setRetryingKey((current) => (current === key ? null : current));
+    }
   };
   const documentState = (
     item: ProjectArtifact,
@@ -797,8 +799,9 @@ export function StageWorkspace({
         queryFn: () => openDecisions(projectId),
       });
       return pendingFrom(fresh);
-    } catch (cause: unknown) {
-      void cause;
+    } catch (cause) {
+      // The cached list is still the best answer; the send that follows reports a hub that is down.
+      console.warn("Open decisions could not be re-read.", cause);
       return pendingApprovals;
     }
   };
@@ -1691,7 +1694,7 @@ export function StageWorkspace({
                 selectedState.retryable
                   ? {
                       onRetry: () => {
-                        if (selected) retryDocument(selected);
+                        if (selected) void retryDocument(selected);
                       },
                     }
                   : {})}

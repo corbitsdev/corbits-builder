@@ -159,8 +159,9 @@ function stripJson(text: string): string {
         index = end - 1;
         continue;
       }
-    } catch {
+    } catch (cause) {
       // Not a payload. Keep the brace and keep scanning.
+      if (!(cause instanceof SyntaxError)) throw cause;
     }
     out += char;
   }
