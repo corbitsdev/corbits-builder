@@ -99,13 +99,16 @@ export function useTypedYes({
 }
 
 /**
- * Sends a message while a coordinator approval card may be open: denies the open card first
- * so the parked coordinator wakes to read the message.
+ * Sends a message while a coordinator approval card may be open. The parked coordinator wakes
+ * only once the card is declined: `decline` sends the message as the decline's reason, so the
+ * coordinator reads the person's words as their answer; without it the card is declined
+ * first and the message follows.
  */
 export async function deliverWithOpenApproval({
   openApprovalId,
   decide,
   deliver,
+  decline,
 }: {
   openApprovalId: string | undefined;
   decide: (decision: {
@@ -113,7 +116,10 @@ export async function deliverWithOpenApproval({
     choice: "yes" | "always" | "no";
   }) => Promise<string | null>;
   deliver: () => Promise<boolean>;
+  decline?: (approvalId: string) => Promise<boolean>;
 }): Promise<boolean> {
+  if (openApprovalId !== undefined && decline !== undefined)
+    return decline(openApprovalId);
   if (openApprovalId !== undefined) {
     const fault = await decide({ approvalId: openApprovalId, choice: "no" });
     if (fault !== null) return false;

@@ -44,6 +44,27 @@ test("sending a message while a coordinator approval is open denies it first", a
   expect(steps).toEqual(["decide:appr-design:no", "deliver"]);
 });
 
+test("a message sent while a coordinator approval is open is the decline's reason, not separate mail", async () => {
+  const steps: string[] = [];
+  const sent = await deliverWithOpenApproval({
+    openApprovalId: "appr-brief",
+    decide: async () => {
+      steps.push("decide");
+      return null;
+    },
+    deliver: async () => {
+      steps.push("deliver");
+      return true;
+    },
+    decline: async (approvalId) => {
+      steps.push(`decline:${approvalId}`);
+      return true;
+    },
+  });
+  expect(sent).toBe(true);
+  expect(steps).toEqual(["decline:appr-brief"]);
+});
+
 test("sending a message when no coordinator approval is open delivers directly", async () => {
   const steps: string[] = [];
   const sent = await deliverWithOpenApproval({

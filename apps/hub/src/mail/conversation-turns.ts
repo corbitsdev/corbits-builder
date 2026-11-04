@@ -21,6 +21,7 @@ import {
   withoutResumeContext,
 } from "../config/resume.ts";
 import { personTurnText } from "../config/specialist-ended.ts";
+import { declinedWords } from "../config/decline.ts";
 import { readCoordinatorMailThreads } from "./conversation-threads.ts";
 import { withCommittedAgentState } from "./committed-agent-state.ts";
 import type { CoordinatorRepoDirSource } from "./coordinator-question.ts";
@@ -78,9 +79,13 @@ function approvalText(
 ): string | undefined {
   const decision = ApprovalDecision(parseJson(body));
   if (decision instanceof type.errors) return undefined;
+  const words = declinedWords(decision.message);
   return decisions === "note"
-    ? decision.message
-    : approvalDecisionLine(decision);
+    ? words
+    : approvalDecisionLine({
+        outcome: decision.outcome,
+        ...(words === undefined ? {} : { message: words }),
+      });
 }
 
 // A missing or corrupt turn list is empty; it does not throw.

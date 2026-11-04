@@ -102,6 +102,10 @@ import { requestErrorMetadata } from "./request-error.ts";
 import { createLiveAppProxy } from "./live-app/proxy.ts";
 import { createLiveAppRunner } from "./live-app/runner.ts";
 import { mountWebUi } from "./web-ui.ts";
+import {
+  coordinatorAskReader,
+  createDeclineNote,
+} from "./projects/decline-note.ts";
 import { version } from "../package.json";
 
 const log = getLogger(["corbits-builder", "hub"]);
@@ -459,6 +463,10 @@ export async function createHubRuntime(
         runs: createWorkflowRunReader(agentRepoStore.repoStore),
         repoStore: agentRepoStore.repoStore,
       }),
+    );
+    app.use(
+      "/api/tenants/:tenantId/approvals/:approvalId/reject",
+      createDeclineNote({ coordinatorAsk: coordinatorAskReader(handle.db) }),
     );
     mountHubRoutes(app, {
       db: handle.db,

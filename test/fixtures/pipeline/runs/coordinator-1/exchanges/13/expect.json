@@ -15,7 +15,7 @@
       "callId": "coord_approve_approaches_v1",
       "toolName": "request_approval",
       "isError": true,
-      "contains": "I think Approach B is the best"
+      "contains": "Their feedback is: I think Approach B is the best"
     }
   ]
 }
