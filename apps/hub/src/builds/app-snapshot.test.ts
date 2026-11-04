@@ -71,6 +71,7 @@ test("the collected app keeps binaries and byte-order marks, honors .gitignore a
       "server/data.sqlite3": png,
       "debug.log": "left out",
       "node_modules/react/index.js": "left out",
+      ".scratch/shots/new-dialog.png": "left out",
       "../home/secret.txt": "home\n",
     };
     for (const [path, content] of Object.entries(files)) {
