@@ -89,8 +89,13 @@ export function createLiveAppRunner(options: {
     }
   }
 
-  async function failOnExit(projectId: string, run: Run) {
-    const code = await run.child.exited;
+  async function failOnExit(
+    projectId: string,
+    run: Run,
+    reading: Promise<void>,
+  ) {
+    // Lines the host wrote just before exiting are applied first, so the exit has the last word.
+    const [code] = await Promise.all([run.child.exited, reading]);
     if (runs.get(projectId) !== run) return;
     // A failed check is passing; the exit code says more about why the app is gone.
     if (
@@ -134,9 +139,9 @@ export function createLiveAppRunner(options: {
       lastSeen: Date.now(),
     };
     runs.set(projectId, run);
-    void follow(projectId, run);
+    const reading = follow(projectId, run);
     void collect(projectId, run);
-    void failOnExit(projectId, run);
+    void failOnExit(projectId, run, reading);
     return run;
   }
 
