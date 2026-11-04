@@ -23,28 +23,36 @@ const EXTENSIONS: Readonly<Record<string, string>> = {
   "application/json": "json",
 };
 
-/** "pasted-2026-11-04-10-52-07.png": a name a person can tell apart from the last paste. */
-export function pastedName(type: string, at: Date): string {
+// Counts up for the page's life, so two pastes in one second still get different names.
+let pasted = 0;
+
+/** "pasted-2026-11-04-10-52-07-3.png": the time for the person, the count so no two collide. */
+export function pastedName(type: string, at: Date, serial: number): string {
   const stamp = at
     .toISOString()
     .slice(0, 19)
     .replace("T", "-")
     .replaceAll(":", "-");
   const extension = EXTENSIONS[type];
-  return extension === undefined
-    ? `pasted-${stamp}`
-    : `pasted-${stamp}.${extension}`;
+  const base = `pasted-${stamp}-${String(serial)}`;
+  return extension === undefined ? base : `${base}.${extension}`;
 }
 
-/** The files on the clipboard, each with a name of its own; empty when the paste is text. */
+/**
+ * The files on the clipboard, each with a name of its own, or none when the paste carries text:
+ * an office app copies a picture of the cells beside the text, and the text is what was meant.
+ */
 export function pastedFiles(
-  clipboard: { files: ArrayLike<File> } | null,
+  clipboard: { files: ArrayLike<File>; getData(type: string): string } | null,
   at: Date = new Date(),
 ): File[] {
   if (clipboard === null) return [];
-  return Array.from(clipboard.files, (file, index) => {
+  if (clipboard.getData("text/plain").trim() !== "") return [];
+  return Array.from(clipboard.files, (file) => {
     if (!GENERIC_NAMES.has(file.name.toLowerCase())) return file;
-    const stamp = new Date(at.getTime() + index * 1000);
-    return new File([file], pastedName(file.type, stamp), { type: file.type });
+    pasted += 1;
+    return new File([file], pastedName(file.type, at, pasted), {
+      type: file.type,
+    });
   });
 }

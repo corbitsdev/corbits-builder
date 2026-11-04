@@ -1286,6 +1286,14 @@ export function StageWorkspace({
       );
     }
   } else {
+    // Files can be attached while the hub offers kinds it reads, the provider is set and nothing is
+    // mid-send; the drop zone, the paperclip and a paste all follow this.
+    const attaching =
+      limits !== undefined &&
+      limits.mimeTypes.length > 0 &&
+      !sending &&
+      !approvalBusy &&
+      !providerMissing;
     dock = (
       <div
         className="composer"
@@ -1343,13 +1351,7 @@ export function StageWorkspace({
         ) : null}
         <AttachmentDropZone
           onFiles={addFiles}
-          disabled={
-            limits === undefined ||
-            limits.mimeTypes.length === 0 ||
-            sending ||
-            approvalBusy ||
-            providerMissing
-          }
+          disabled={!attaching}
           label={wording.conversation.dropFiles}
         >
           <Dictated
@@ -1392,8 +1394,10 @@ export function StageWorkspace({
                 )}
                 <PromptInputTextarea
                   ref={composerRef}
-                  // A picture on the clipboard attaches like a chosen file; text pastes as text.
+                  // A picture on the clipboard attaches like a chosen file, while attaching is
+                  // offered at all; text, and anything else, pastes as the browser would.
                   onPaste={(event) => {
+                    if (!attaching) return;
                     const files = pastedFiles(event.clipboardData);
                     if (files.length === 0) return;
                     event.preventDefault();
