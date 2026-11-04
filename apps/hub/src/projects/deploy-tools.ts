@@ -18,7 +18,10 @@ import {
   NativeSpecialistDeployment,
 } from "@corbits-builder/schemas/native-specialist";
 import { SourceRef } from "@corbits-builder/schemas";
-import type { WorkflowProjectScope } from "@corbits-builder/schemas/installed-workflows";
+import {
+  WRITER_PACKAGES,
+  type WorkflowProjectScope,
+} from "@corbits-builder/schemas/installed-workflows";
 import {
   ArtifactContent,
   DesignBundle,
@@ -241,11 +244,7 @@ export function createDeployTools(options?: {
   maxResultBytes: number;
 }): AnnotatedToolFactory<DeployEnv> {
   if (options) {
-    const { writers, ...specialists } = options.workflows;
-    for (const deployment of [
-      ...Object.values(writers),
-      ...Object.values(specialists),
-    ]) {
+    for (const deployment of Object.values(options.workflows)) {
       if (!deployment) continue;
       const checked = NativeSpecialistDeployment.assert(deployment);
       if (!checked.sourceOfferingIds.includes(checked.defaultSourceOfferingId))
@@ -573,7 +572,7 @@ export function createDeployTools(options?: {
               .map(([, ref]) => ref);
             result = await deploy(
               "writer",
-              options.workflows.writers[input.kind],
+              options.workflows[WRITER_PACKAGES[input.kind]],
               preferences,
               "writer-" + input.kind,
               await assignmentToWriterMessage(

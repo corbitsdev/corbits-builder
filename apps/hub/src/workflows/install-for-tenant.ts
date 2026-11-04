@@ -20,7 +20,8 @@ import {
 import {
   InstalledWorkflows,
   INSTALLED_WORKFLOWS_KEY,
-  roleDeployments,
+  WORKFLOW_PACKAGES,
+  type WorkflowPackage,
 } from "@corbits-builder/schemas/installed-workflows";
 import type { RoleBinding } from "@corbits-builder/schemas/models";
 import type { WorkflowRole } from "@corbits-builder/schemas/installed-workflows";
@@ -38,7 +39,7 @@ import {
 import { projectModelChoice } from "../projects/model-choice.ts";
 import { ProjectError } from "../projects/errors.ts";
 import { buildWorkflowPackages } from "./build-packages.ts";
-import { nativePackageName, WRITER_PACKAGES } from "./package-name.ts";
+import { nativePackageName } from "./package-name.ts";
 import { resolveRoleInference, type RoleInference } from "./role-inference.ts";
 import type { Actor } from "../lib/actor.ts";
 
@@ -325,7 +326,7 @@ const ROLES = [
   "presenter",
 ] as const;
 
-/** A stored descriptor is current only while it pins this build's packages and, for each role, an offering serving its source. */
+/** A stored descriptor is current only while it pins this build's packages and each package's offering still serves its role's source. */
 async function isCurrent(
   db: DB["db"],
   directory: ModelDirectory,
@@ -337,24 +338,16 @@ async function isCurrent(
   const pins = new Set(
     built.map((item) => item.packageName + "@" + item.version),
   );
-  if (
-    !ROLES.every((role) =>
-      roleDeployments(installed, role).every((entry) => pins.has(entry.pin)),
-    )
-  )
-    return false;
+  const packages = Object.entries(WORKFLOW_PACKAGES) as [
+    WorkflowPackage,
+    WorkflowRole,
+  ][];
+  if (!packages.every(([name]) => pins.has(installed[name].pin))) return false;
   const visible = await listVisibleOfferings(db, tenantId);
-  // A role's packages are installed on the one offering its binding resolved to.
-  for (const role of ROLES) {
-    const offeringIds = new Set(
-      roleDeployments(installed, role).map(
-        (entry) => entry.defaultSourceOfferingId,
-      ),
-    );
-    if (offeringIds.size !== 1) return false;
-    const [offeringId] = offeringIds;
+  for (const [name, role] of packages) {
     const row = visible.find(
-      (candidate) => candidate.offering.id === offeringId,
+      (candidate) =>
+        candidate.offering.id === installed[name].defaultSourceOfferingId,
     );
     if (!row || !(await servesSource(db, directory, row, bindings[role])))
       return false;
@@ -506,25 +499,13 @@ export async function installForTenant(
     };
   };
   const descriptor = InstalledWorkflows.assert({
-    schemaVersion: 1,
-    coordinator: deployment(
-      "@corbits-builder/coordinator-native",
-      "coordinator",
-    ),
-    writers: Object.fromEntries(
-      Object.entries(WRITER_PACKAGES).map(([kind, name]) => [
-        kind,
-        deployment(nativePackageName(name), "writer"),
+    schemaVersion: 2,
+    ...Object.fromEntries(
+      Object.entries(WORKFLOW_PACKAGES).map(([name, role]) => [
+        name,
+        deployment(nativePackageName(name), role),
       ]),
     ),
-    reviewer: deployment("@corbits-builder/reviewer-native", "reviewer"),
-    coder: deployment("@corbits-builder/coder-native", "coder"),
-    coderAnyPackage: deployment(
-      "@corbits-builder/coder-any-package-native",
-      "coder",
-    ),
-    designer: deployment("@corbits-builder/designer-native", "designer"),
-    presenter: deployment("@corbits-builder/presenter-native", "presenter"),
   });
   await ports.db.transaction(async (tx) => {
     const [current] = await tx

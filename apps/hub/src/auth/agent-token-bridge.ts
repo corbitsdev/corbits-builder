@@ -1,3 +1,4 @@
+import { type } from "arktype";
 import {
   InstalledWorkflows,
   INSTALLED_WORKFLOWS_KEY,
@@ -24,10 +25,12 @@ import {
 import { and, eq } from "drizzle-orm";
 import type { MiddlewareHandler } from "hono";
 import { getLogger } from "@intx/log";
+import type { Actor } from "../lib/actor.ts";
 import { createCoordinatorRegistry } from "./coordinator-registry.ts";
 import { projectResource } from "../projects/errors.ts";
 import { spawnedWorkflowRole } from "../workflows/spawn-role.ts";
 import { buildPackageLayout } from "../builds/package-layout.ts";
+import { scopeWorkflows } from "../workflows/project-scope.ts";
 import { installsAnyPackage, opensNetwork } from "../config/preferences.ts";
 import { loadSettings } from "../settings/policy.ts";
 
@@ -167,6 +170,8 @@ async function nativeRunIdentity(
 export function createAgentTokenBridge(
   db: ReturnType<typeof createDB>["db"],
   runTokens?: RunTokenLookup,
+  // Reinstalls a tenant whose stored packages predate this hub, so a run is never refused for it.
+  install?: (actor: Actor, projectId: string) => Promise<InstalledWorkflows>,
 ) {
   const registry = createCoordinatorRegistry(db);
   const authenticated = new WeakSet<Request>();
@@ -279,9 +284,17 @@ export function createAgentTokenBridge(
       });
       if (!row) return denied();
       const config = row.config as Record<string, unknown> | null;
-      const installed = InstalledWorkflows.assert(
-        config?.[INSTALLED_WORKFLOWS_KEY],
-      );
+      const stored = InstalledWorkflows(config?.[INSTALLED_WORKFLOWS_KEY]);
+      const installed =
+        stored instanceof type.errors
+          ? install &&
+            binding.run.principalId &&
+            (await install(
+              { tenantId: row.id, principalId: binding.run.principalId },
+              binding.projectId,
+            ))
+          : stored;
+      if (!installed) return denied();
       const { preferences } = await loadSettings(
         db,
         identity.tenantId,
@@ -292,21 +305,11 @@ export function createAgentTokenBridge(
         domain: row.domain,
         projectId: binding.projectId,
         role,
-        workflows: {
-          writers: installed.writers,
-          // A bundle frozen before writers were split requires writer to read its scope. Only a
-          // coordinator deploys from it, and an old one would start the constraints writer for any
-          // kind, so a coordinator goes without until it is upgraded.
-          ...(role === "coordinator"
-            ? {}
-            : { writer: installed.writers.constraints }),
-          reviewer: installed.reviewer,
-          coder: installsAnyPackage(preferences.value)
-            ? installed.coderAnyPackage
-            : installed.coder,
-          designer: installed.designer,
-          ...(installed.presenter ? { presenter: installed.presenter } : {}),
-        },
+        workflows: scopeWorkflows(
+          installed,
+          role,
+          installsAnyPackage(preferences.value),
+        ),
         openNetwork: opensNetwork(preferences.value),
         build: await buildLayout(),
       });

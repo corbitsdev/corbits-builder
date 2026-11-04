@@ -6,7 +6,8 @@ import { createSkillTools } from "../skills/tools.ts";
 import { roleInference } from "./role-inference.ts";
 import { compactingDirector } from "./director.ts";
 import { dropDegenerateTurn, trimHistory } from "./compaction.ts";
-import { nativePackageName, WRITER_PACKAGES } from "./package-name.ts";
+import { WRITER_PACKAGES } from "@corbits-builder/schemas/installed-workflows";
+import { nativePackageName } from "./package-name.ts";
 
 /** The writer's workflow package for one document kind, whose write_artifact saves only that kind. */
 export function writerPackage(kind: WriterDocumentKind) {

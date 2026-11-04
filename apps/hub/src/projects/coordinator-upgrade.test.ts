@@ -14,25 +14,25 @@ const deployment = (pin: string) => ({
   defaultSourceOfferingId: "offering",
 });
 const installed: InstalledWorkflows = {
-  schemaVersion: 1,
+  schemaVersion: 2,
   coordinator: deployment("@corbits-builder/coordinator-native@1.0.0-sha-new"),
-  writers: {
-    constraints: deployment(
-      "@corbits-builder/writer-constraints-native@1.0.0-sha-new",
-    ),
-    approaches: deployment(
-      "@corbits-builder/writer-approaches-native@1.0.0-sha-new",
-    ),
-    product_requirements: deployment(
-      "@corbits-builder/writer-product-requirements-native@1.0.0-sha-new",
-    ),
-    build_plan: deployment(
-      "@corbits-builder/writer-build-plan-native@1.0.0-sha-new",
-    ),
-  },
+  "writer-constraints": deployment(
+    "@corbits-builder/writer-constraints-native@1.0.0-sha-new",
+  ),
+  "writer-approaches": deployment(
+    "@corbits-builder/writer-approaches-native@1.0.0-sha-new",
+  ),
+  "writer-product-requirements": deployment(
+    "@corbits-builder/writer-product-requirements-native@1.0.0-sha-new",
+  ),
+  "writer-build-plan": deployment(
+    "@corbits-builder/writer-build-plan-native@1.0.0-sha-new",
+  ),
   reviewer: deployment("@corbits-builder/reviewer-native@1.0.0-sha-new"),
   coder: deployment("@corbits-builder/coder-native@1.0.0-sha-new"),
-  coderAnyPackage: deployment("@corbits-builder/coder-native@1.0.0-sha-any"),
+  "coder-any-package": deployment(
+    "@corbits-builder/coder-native@1.0.0-sha-any",
+  ),
   designer: deployment("@corbits-builder/designer-native@1.0.0-sha-new"),
   presenter: deployment("@corbits-builder/presenter-native@1.0.0-sha-new"),
 };

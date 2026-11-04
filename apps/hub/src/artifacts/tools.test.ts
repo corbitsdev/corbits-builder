@@ -74,12 +74,10 @@ function harness(
         domain: "example.invalid",
         role,
         workflows: {
-          writers: {
-            constraints: deployment,
-            approaches: deployment,
-            product_requirements: deployment,
-            build_plan: deployment,
-          },
+          "writer-constraints": deployment,
+          "writer-approaches": deployment,
+          "writer-product-requirements": deployment,
+          "writer-build-plan": deployment,
           reviewer: deployment,
           coder: deployment,
           designer: deployment,

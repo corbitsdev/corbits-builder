@@ -1,50 +1,68 @@
 import { type } from "arktype";
 import { NativeSpecialistDeployment } from "./native-specialist.ts";
 import { ProjectId } from "./project.ts";
+import type { WriterDocumentKind } from "./artifact.ts";
 import { WorkflowRole } from "./roles.ts";
 export { SpawnedRole, WorkflowRole } from "./roles.ts";
 
 export const INSTALLED_WORKFLOWS_KEY = "sb.installedWorkflows";
-// One writer package per document kind, each saving only its kind.
-const WriterDeployments = type({
-  "+": "reject",
-  constraints: NativeSpecialistDeployment,
-  approaches: NativeSpecialistDeployment,
-  product_requirements: NativeSpecialistDeployment,
-  build_plan: NativeSpecialistDeployment,
-});
+
+// Every workflow package Builder installs, and the role its runs play. A role names the label, model
+// and guidance its packages share; a package is what a run is deployed from.
+export const WORKFLOW_PACKAGES = {
+  coordinator: "coordinator",
+  "writer-constraints": "writer",
+  "writer-approaches": "writer",
+  "writer-product-requirements": "writer",
+  "writer-build-plan": "writer",
+  reviewer: "reviewer",
+  coder: "coder",
+  // The coder whose install_packages does not ask, for a project that turned asking off.
+  "coder-any-package": "coder",
+  designer: "designer",
+  presenter: "presenter",
+} as const satisfies Record<string, WorkflowRole>;
+export type WorkflowPackage = keyof typeof WORKFLOW_PACKAGES;
+
+// Each writer package saves only its own document kind.
+export const WRITER_PACKAGES = {
+  constraints: "writer-constraints",
+  approaches: "writer-approaches",
+  product_requirements: "writer-product-requirements",
+  build_plan: "writer-build-plan",
+} as const satisfies Record<WriterDocumentKind, WorkflowPackage>;
+
+const writerDeployments = {
+  "writer-constraints": NativeSpecialistDeployment,
+  "writer-approaches": NativeSpecialistDeployment,
+  "writer-product-requirements": NativeSpecialistDeployment,
+  "writer-build-plan": NativeSpecialistDeployment,
+} as const satisfies Record<
+  (typeof WRITER_PACKAGES)[WriterDocumentKind],
+  unknown
+>;
+
 export const InstalledWorkflows = type({
   "+": "reject",
-  schemaVersion: "1",
+  schemaVersion: "2",
   coordinator: NativeSpecialistDeployment,
-  writers: WriterDeployments,
+  ...writerDeployments,
   reviewer: NativeSpecialistDeployment,
   coder: NativeSpecialistDeployment,
-  // The coder whose install_packages does not ask, for a project that turned asking off.
-  coderAnyPackage: NativeSpecialistDeployment,
+  "coder-any-package": NativeSpecialistDeployment,
   designer: NativeSpecialistDeployment,
   presenter: NativeSpecialistDeployment,
 });
 export type InstalledWorkflows = typeof InstalledWorkflows.infer;
 
-// Every installed package a run of each role may run on.
-const DEPLOYMENTS_BY_ROLE: Record<
-  WorkflowRole,
-  (installed: InstalledWorkflows) => NativeSpecialistDeployment[]
-> = {
-  coordinator: (installed) => [installed.coordinator],
-  writer: (installed) => Object.values(installed.writers),
-  reviewer: (installed) => [installed.reviewer],
-  coder: (installed) => [installed.coder, installed.coderAnyPackage],
-  designer: (installed) => [installed.designer],
-  presenter: (installed) => [installed.presenter],
-};
-
+/** Every installed package a run of the role may run on. */
 export function roleDeployments(
   installed: InstalledWorkflows,
   role: WorkflowRole,
 ) {
-  return DEPLOYMENTS_BY_ROLE[role](installed);
+  return (Object.keys(WORKFLOW_PACKAGES) as WorkflowPackage[])
+    .filter((name) => WORKFLOW_PACKAGES[name] === role)
+    .map((name) => installed[name]);
 }
 
 // Returned only to an authenticated native run. Scope comes from the protected
@@ -57,7 +75,7 @@ export const WorkflowProjectScope = type({
   role: WorkflowRole,
   workflows: {
     "+": "reject",
-    writers: WriterDeployments,
+    ...writerDeployments,
     // Read only by bundles frozen before writers were split; nothing deploys from it now.
     "writer?": NativeSpecialistDeployment,
     reviewer: NativeSpecialistDeployment,

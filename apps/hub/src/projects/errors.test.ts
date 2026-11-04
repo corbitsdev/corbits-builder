@@ -63,12 +63,10 @@ test("a rejected write_artifact call reaches the agent with {path, message} issu
       domain: "example.invalid",
       role: "writer",
       workflows: {
-        writers: {
-          constraints: deployment,
-          approaches: deployment,
-          product_requirements: deployment,
-          build_plan: deployment,
-        },
+        "writer-constraints": deployment,
+        "writer-approaches": deployment,
+        "writer-product-requirements": deployment,
+        "writer-build-plan": deployment,
         reviewer: deployment,
         coder: deployment,
         designer: deployment,

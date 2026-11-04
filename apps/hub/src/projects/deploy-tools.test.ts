@@ -18,12 +18,12 @@ const writerDeployment = (name: string) => ({
   pin: `@corbits-builder/${name}-native@1.0.0`,
 });
 const workflows = {
-  writers: {
-    constraints: writerDeployment("writer-constraints"),
-    approaches: writerDeployment("writer-approaches"),
-    product_requirements: writerDeployment("writer-product-requirements"),
-    build_plan: writerDeployment("writer-build-plan"),
-  },
+  "writer-constraints": writerDeployment("writer-constraints"),
+  "writer-approaches": writerDeployment("writer-approaches"),
+  "writer-product-requirements": writerDeployment(
+    "writer-product-requirements",
+  ),
+  "writer-build-plan": writerDeployment("writer-build-plan"),
   reviewer: deployment,
   coder: deployment,
   designer: deployment,

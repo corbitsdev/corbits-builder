@@ -200,12 +200,10 @@ test("deploy_presenter requires approved documents and pins source refs and file
     projectId: "project",
     domain: "example.invalid",
     workflows: {
-      writers: {
-        constraints: deployment,
-        approaches: deployment,
-        product_requirements: deployment,
-        build_plan: deployment,
-      },
+      "writer-constraints": deployment,
+      "writer-approaches": deployment,
+      "writer-product-requirements": deployment,
+      "writer-build-plan": deployment,
       reviewer: deployment,
       coder: deployment,
       designer: deployment,
@@ -286,12 +284,10 @@ test("file_package refuses until check_deck passes on the current deck, then fil
         domain: "example.invalid",
         role: "presenter",
         workflows: {
-          writers: {
-            constraints: deployment,
-            approaches: deployment,
-            product_requirements: deployment,
-            build_plan: deployment,
-          },
+          "writer-constraints": deployment,
+          "writer-approaches": deployment,
+          "writer-product-requirements": deployment,
+          "writer-build-plan": deployment,
           reviewer: deployment,
           coder: deployment,
           designer: deployment,

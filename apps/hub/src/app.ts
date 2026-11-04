@@ -419,7 +419,16 @@ export async function createHubRuntime(
     app.use(liveAppProxy.refuseAppOrigins);
     app.use(createHubContextMiddleware({ getSession }));
     app.use(gitTokens.middleware);
-    const coordinatorTokens = createAgentTokenBridge(handle.db, runTokenStore);
+    const coordinatorTokens = createAgentTokenBridge(
+      handle.db,
+      runTokenStore,
+      (actor, projectId) =>
+        installForTenant(
+          { db: handle.db, assets: assetService },
+          actor,
+          projectId,
+        ),
+    );
     app.use("/api/tenants/:tenantId/*", coordinatorTokens.middleware);
     app.use("/api/workflow-project-scope", coordinatorTokens.middleware);
     app.use(
