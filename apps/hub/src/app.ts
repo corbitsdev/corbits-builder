@@ -513,6 +513,9 @@ export async function createHubRuntime(
       createConversationRoutes(handle.db, (request) => app.fetch(request), {
         repoStore: agentRepoStore.repoStore,
         mailDirectory: reportMailDirectory,
+        ...(coordinatorUpgrade.enabled
+          ? { upgrade: coordinatorUpgrades.open }
+          : {}),
       }),
     );
     app.route(

@@ -69,7 +69,7 @@ const conversationThread = type({
   turns: turnList,
 });
 export const ConversationEvents = type({
-  runId: "string",
+  runId: "string | null",
   events: type({
     seq: "number",
     type: "string",

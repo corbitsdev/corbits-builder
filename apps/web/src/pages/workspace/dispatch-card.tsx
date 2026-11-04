@@ -9,6 +9,7 @@ import { createContext } from "react";
 import type { ConversationPart, PartTool } from "@corbits/react-ui";
 import type { AgentActivity, ProjectArtifact } from "@corbits-builder/client";
 import type { FailedRun, InFlightRun } from "@corbits-builder/schemas/artifact";
+import { coordinatorUpgrading } from "@corbits-builder/schemas/conversation";
 import { wording } from "../../config.ts";
 import type { CallResult } from "./live-run.ts";
 import type { ApprovalOutcome, DocumentApproval } from "./transcript.tsx";
@@ -88,6 +89,12 @@ export function dispatchesOf(
     ...(kind === undefined ? {} : { kind }),
   };
   const output = result === undefined ? undefined : parsed(result.content);
+  // A replaced coordinator's start is redone by its successor, so it is not the person's failure.
+  if (
+    result?.isError === true &&
+    str(result.content)?.includes(coordinatorUpgrading) === true
+  )
+    return [];
   if (result?.isError === true)
     return [
       {

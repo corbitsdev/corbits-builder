@@ -146,6 +146,11 @@ import { useModelCatalog } from "../providers.tsx";
 // The stream says when the room moved. This read covers what it cannot see,
 // such as a coordinator run replaced while its old stream stays quiet.
 const FALLBACK_RELOAD_MS = 30_000;
+// No coordinator's stream announces the next one binding, so an unbound room reads again until it does.
+const BIND_POLL_MS = 1_000;
+// A handoff binds within seconds; past this the room starts the coordinator itself, so a start the
+// hub could not make shows its refusal instead of an endless thinking mark.
+const BIND_WAIT_MS = 15_000;
 // After a run closes, the mirror's commit can trail its last frame.
 const SETTLE_RELOAD_MS = [1_000, 3_000, 7_000, 15_000];
 const NO_WAITS: readonly Wait[] = [];
@@ -1016,14 +1021,19 @@ export function StageWorkspace({
     setMobilePane("conversation");
     setChangesAsked(true);
   };
-  const composerDisabled = sending || approvalBusy || providerMissing;
+  const unbound = snapshot !== undefined && events === null;
+  const composerDisabled =
+    sending || approvalBusy || providerMissing || unbound;
   useEffect(() => {
     if (!changesAsked || composerDisabled) return;
     setChangesAsked(false);
     composerRef.current?.focus();
   }, [changesAsked, composerDisabled]);
 
-  const unbound = snapshot !== undefined && events === null;
+  // A project that has talked before is between coordinators (an upgrade, a reopen): its thread
+  // stays and reads as the coordinator at work, not as a project starting from nothing.
+  const between =
+    unbound && mirror.length > 0 && startFault === null && modelNeeded === null;
   const startCoordinator = async () => {
     setStartFault(null);
     setModelNeeded(null);
@@ -1045,6 +1055,20 @@ export function StageWorkspace({
     else if (status === "archived" && room.data !== undefined)
       void room.refetch();
   }, [projectId, status]);
+  const awaitingBind =
+    status === "active" &&
+    unbound &&
+    startFault === null &&
+    modelNeeded === null;
+  useEffect(() => {
+    if (!awaitingBind) return;
+    const timer = setInterval(() => reloadRef.current(), BIND_POLL_MS);
+    const fallback = setTimeout(() => void startCoordinator(), BIND_WAIT_MS);
+    return () => {
+      clearInterval(timer);
+      clearTimeout(fallback);
+    };
+  }, [awaitingBind]);
   const catalog = useModelCatalog();
   const providerConnected =
     catalog.data !== undefined && !needsModelSetup(catalog.data.providers);
@@ -1084,7 +1108,8 @@ export function StageWorkspace({
     modelNeeded === null;
   // The mark stays for the whole turn: between model calls and during long tool work the live
   // reply shows nothing moving.
-  const thinking = !sendFailed && (sending || awaiting || (working && !held));
+  const thinking =
+    !sendFailed && (sending || awaiting || (working && !held) || between);
   // Each concept's option is its own tab beside the others, never an ordinary document.
   const options = artifacts.filter((item) => item.kind === DESIGN_OPTION);
   const paneDeliverables = documentsForPane(
@@ -1330,7 +1355,7 @@ export function StageWorkspace({
         </div>
       </div>
     );
-  } else if (unbound && !providerMissing) {
+  } else if (unbound && !providerMissing && !between) {
     // The person does not start the coordinator by typing: an unbound room waits for the
     // start that opening it asked for, and a refused start says why and offers it again.
     if (startFault === null) {
