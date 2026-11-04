@@ -65,9 +65,10 @@ export const keys = {
     all: ["projectRoom"] as const,
     of: (projectId: string) => ["projectRoom", projectId] as const,
   },
-  projectLifecycle: {
-    all: ["projectLifecycle"] as const,
-    of: (projectId: string) => ["projectLifecycle", projectId] as const,
+  /** A project: its lifecycle status and the tenant its runs live under. */
+  project: {
+    all: ["project"] as const,
+    of: (projectId: string) => ["project", projectId] as const,
   },
   modelCatalog: ["modelCatalog"] as const,
   /** The person's own model choice. */

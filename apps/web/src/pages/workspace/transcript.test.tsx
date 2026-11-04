@@ -7,6 +7,8 @@ import {
   awaitingCommit,
   emptyLiveRun,
   foldLiveRun,
+  liveTurnStreaming,
+  parkedOnApproval,
   waitingOnPerson,
 } from "./live-run.ts";
 import { RoomThread } from "./transcript.tsx";
@@ -186,6 +188,36 @@ describe("conversation transcript", () => {
     const done = foldLiveRun(withTool, { type: "inference.done" }, null).run;
     expect(done.ended).toBe(false);
     expect(awaitingCommit(done, [])).toBe(true);
+  });
+
+  test("a turn held on the person's approval is no longer being written", () => {
+    const held = [
+      { type: "message.run.started" },
+      { type: "inference.start" },
+      {
+        type: "inference.tool_call.end",
+        data: {
+          callId: "call-1",
+          name: "request_approval",
+          arguments: { kinds: ["brief"] },
+        },
+      },
+      { type: "inference.done" },
+    ].reduce((run, event) => foldLiveRun(run, event, null).run, emptyLiveRun);
+    const waits = [
+      { runId: "run-c", approvalId: "appr-1" },
+      { runId: "run-coder", approvalId: "appr-2" },
+    ];
+    const streaming = (open: string[]) =>
+      liveTurnStreaming(
+        held,
+        [],
+        parkedOnApproval(waits, new Set(open), "run-c"),
+      );
+    expect(held.ended).toBe(false);
+    expect(streaming(["appr-1"])).toBe(false);
+    expect(streaming(["appr-2"])).toBe(true);
+    expect(streaming([])).toBe(true);
   });
 
   test("a specialist's report joins its hand-off as one message and a long run of lone ones folds", () => {

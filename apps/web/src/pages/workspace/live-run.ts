@@ -252,6 +252,29 @@ export function awaitingCommit(
   return !hasContent(run.current) && pending.parts.length > 0;
 }
 
+/** An approval the coordinator's own run raised is still open: the run waits on the person. */
+export function parkedOnApproval(
+  waits: readonly Pick<Wait, "runId" | "approvalId">[],
+  openApprovals: ReadonlySet<string>,
+  coordinatorRunId: string | null,
+): boolean {
+  return waits.some(
+    (wait) =>
+      wait.runId === coordinatorRunId &&
+      wait.approvalId !== undefined &&
+      openApprovals.has(wait.approvalId),
+  );
+}
+
+/** A run held on an approval keeps its message run open with nothing being written. */
+export function liveTurnStreaming(
+  run: LiveRun,
+  mirror: readonly ConversationTurn[],
+  heldOnApproval: boolean,
+): boolean {
+  return pendingLiveTurn(run, mirror) !== null && !run.ended && !heldOnApproval;
+}
+
 /**
  * The coordinator is held on the person: an approval its own run raised is still open, or its
  * question stands and no message run has started since. A held tool call keeps the native message
@@ -263,11 +286,14 @@ export function waitingOnPerson(
   coordinatorRunId: string | null,
   running: boolean,
 ): boolean {
-  return waits.some(
-    (wait) =>
-      wait.runId === coordinatorRunId &&
-      (wait.approvalId === undefined
-        ? wait.park !== undefined && !running
-        : openApprovals.has(wait.approvalId)),
+  return (
+    parkedOnApproval(waits, openApprovals, coordinatorRunId) ||
+    waits.some(
+      (wait) =>
+        wait.runId === coordinatorRunId &&
+        wait.approvalId === undefined &&
+        wait.park !== undefined &&
+        !running,
+    )
   );
 }
