@@ -96,8 +96,20 @@ export async function getHubSession(): Promise<HubSession> {
       response.status,
     );
   }
+  // better-auth answers a request with no session with a JSON null.
+  if (parsed === null) return null;
   const user = userOf(parsed);
-  return user ? { user } : null;
+  if (user === null)
+    throw new ApiFailure(
+      {
+        code: "session_unreadable",
+        message: wording.auth.accountUnreadable,
+        correlationId: "-",
+        retryable: false,
+      },
+      response.status,
+    );
+  return { user };
 }
 
 async function emailAuth(

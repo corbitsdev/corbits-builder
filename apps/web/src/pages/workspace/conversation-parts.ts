@@ -14,6 +14,7 @@ import type {
 } from "@corbits/react-ui";
 import {
   applyRunStreamEvent,
+  partialOf,
   type RunStreamEvent,
 } from "../../api/run-stream.ts";
 
@@ -124,7 +125,7 @@ export function foldLiveTurn(
   if (event.type === "inference.start" || event.type === "inference.error") {
     return { turn: { text: folded.live, parts: [] }, refresh: folded.refresh };
   }
-  const partial = event.data?.partial;
+  const partial = partialOf(event);
   const thinking =
     typeof partial?.thinking === "string"
       ? partial.thinking

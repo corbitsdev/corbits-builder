@@ -266,7 +266,8 @@ export async function loadProjectRoom(
   );
   for (const key of settled.keys()) {
     if (generation.get(projectId) !== ticket) break;
-    // Every key is a `roomDocumentKey`, so it always parses.
+    // Every key is a `roomDocumentKey`, written by this loader or restored from the saved cache
+    // it persisted, so it always parses.
     const owner: unknown = JSON.parse(key);
     if (Array.isArray(owner) && owner[0] === projectId && !live.has(key))
       settled.delete(key);
