@@ -43,18 +43,15 @@ const persistOptions: PersistQueryClientOptions = {
 };
 
 /**
- * Puts the saved cache on the client and saves it from then on. A cache that
- * is damaged or cannot be stored leaves the client empty, and the page loads
- * from the network; the persister has already discarded it.
+ * Puts the saved cache on the client and saves it from then on. The cache only
+ * spares the first reads, so a restore that fails for any reason leaves the
+ * client empty and the page loads from the network.
  */
 async function restoreQueryCache(): Promise<void> {
-  // Without IndexedDB, as in a browser with site storage off, there is no cache to keep.
-  if (typeof indexedDB === "undefined") return;
   try {
     await persistQueryClientRestore(persistOptions);
   } catch (cause) {
-    if (!(cause instanceof SyntaxError || cause instanceof DOMException))
-      throw cause;
+    console.warn("The saved query cache could not be restored.", cause);
   }
   persistQueryClientSubscribe(persistOptions);
 }
