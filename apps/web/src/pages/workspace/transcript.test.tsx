@@ -1,6 +1,10 @@
 import { describe, expect, test } from "bun:test";
 import { isValidElement, type ReactNode } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
+import {
+  clippedTurnText,
+  maxTurnText,
+} from "@corbits-builder/schemas/conversation";
 import { wording } from "../../config.ts";
 import { DocumentDecision } from "./document-decision.tsx";
 import {
@@ -9,6 +13,7 @@ import {
   foldLiveRun,
   liveTurnStreaming,
   parkedOnApproval,
+  pendingLiveTurn,
   waitingOnPerson,
 } from "./live-run.ts";
 import { RoomThread } from "./transcript.tsx";
@@ -188,6 +193,20 @@ describe("conversation transcript", () => {
     const done = foldLiveRun(withTool, { type: "inference.done" }, null).run;
     expect(done.ended).toBe(false);
     expect(awaitingCommit(done, [])).toBe(true);
+  });
+
+  test("a reply over a turn's length is committed by its clipped copy, even when the clip drops half an emoji", () => {
+    const reply = `${"a".repeat(maxTurnText - 1)}😀 and more`;
+    const run = [
+      { type: "inference.start" },
+      { type: "inference.text.delta", data: { partial: { text: reply } } },
+      { type: "inference.done" },
+    ].reduce((live, event) => foldLiveRun(live, event, null).run, emptyLiveRun);
+    expect(
+      pendingLiveTurn(run, [
+        { role: "assistant", text: clippedTurnText(reply), at: 5 },
+      ]),
+    ).toBeNull();
   });
 
   test("a turn held on the person's approval is no longer being written", () => {

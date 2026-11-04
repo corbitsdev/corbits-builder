@@ -4,8 +4,9 @@ Unit tests sit next to the code they test. This folder holds cross-package and
 end-to-end tests:
 
 - **`test/integration/`:** architecture and boundary checks (package imports,
-  vendored Interchange revision, workspace exports). Runs in `bun run test`
-  with no database.
+  vendored Interchange revision, workspace exports) and Builder's contracts
+  with vendored Interchange, such as the text its mail delivers. Runs in
+  `bun run test` with no database.
 - **`test/e2e/`:** end-to-end tests against an isolated Postgres, the real hub
   and real sidecars (`custom-provider.test.ts`, `oauth-model-login.test.ts`,
   `specialist-end-notices.test.ts` and `pipeline.test.ts`).
