@@ -1,14 +1,20 @@
 import { describe, expect, test } from "bun:test";
 import { isValidElement, type ReactNode } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
+import {
+  clippedTurnText,
+  maxTurnText,
+} from "@corbits-builder/schemas/conversation";
 import { wording } from "../../config.ts";
 import { DocumentDecision } from "./document-decision.tsx";
 import {
   awaitingCommit,
+  awaitingReply,
   emptyLiveRun,
   foldLiveRun,
   liveTurnStreaming,
   parkedOnApproval,
+  pendingLiveTurn,
   waitingOnPerson,
 } from "./live-run.ts";
 import { RoomThread } from "./transcript.tsx";
@@ -166,6 +172,23 @@ describe("conversation transcript", () => {
     );
   });
 
+  test("a sent message waits on the coordinator until its approval card opens, and through an answered question", () => {
+    const approval = { runId: "run-c", approvalId: "appr-1" };
+    const question = { runId: "run-c", park: { seq: 4 } };
+    const heldOnCard = parkedOnApproval(
+      [approval],
+      new Set(["appr-1"]),
+      "run-c",
+    );
+    expect(awaitingReply(10, "person", null, false)).toBe(true);
+    expect(awaitingReply(10, "person", null, heldOnCard)).toBe(false);
+    expect(awaitingReply(10, "assistant", null, false)).toBe(false);
+    expect(awaitingReply(10, "person", 12, false)).toBe(false);
+    // The answer is sent while the question still stands and before the stream reports the run.
+    const answered = parkedOnApproval([question], new Set(), "run-c");
+    expect(awaitingReply(20, "person", 12, answered)).toBe(true);
+  });
+
   test("an inference call that finishes with tool work settles even while the message run stays open on a park", () => {
     const started = foldLiveRun(
       emptyLiveRun,
@@ -188,6 +211,20 @@ describe("conversation transcript", () => {
     const done = foldLiveRun(withTool, { type: "inference.done" }, null).run;
     expect(done.ended).toBe(false);
     expect(awaitingCommit(done, [])).toBe(true);
+  });
+
+  test("a reply over a turn's length is committed by its clipped copy, even when the clip drops half an emoji", () => {
+    const reply = `${"a".repeat(maxTurnText - 1)}😀 and more`;
+    const run = [
+      { type: "inference.start" },
+      { type: "inference.text.delta", data: { partial: { text: reply } } },
+      { type: "inference.done" },
+    ].reduce((live, event) => foldLiveRun(live, event, null).run, emptyLiveRun);
+    expect(
+      pendingLiveTurn(run, [
+        { role: "assistant", text: clippedTurnText(reply), at: 5 },
+      ]),
+    ).toBeNull();
   });
 
   test("a turn held on the person's approval is no longer being written", () => {

@@ -261,7 +261,7 @@ export function createDeployTools(options?: {
     {
       name: "ask_questions",
       description:
-        "Put up to five questions to the person, each shown as a card they answer. id is a short slug unique within the call. kind single takes one option and multi any number. preselected holds the option values you recommend, at most one for single. allowOther lets the person answer in their own words. Their answers arrive as their next message.",
+        "Put up to five questions to the person on one card shown below your reply; your reply introduces them without repeating them. id is a short slug unique within the call. kind single takes one option and multi any number. preselected holds the option values you recommend, at most one for single. allowOther lets the person answer in their own words. Their answers arrive as their next message.",
       inputSchema: { ...AskQuestions.toJsonSchema() },
     },
     {

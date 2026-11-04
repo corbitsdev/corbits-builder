@@ -77,6 +77,7 @@ export function createCoordinatorResumeContext(deps: {
           ...(await readDurableConversationTurns({
             repoStore: deps.repoStore,
             address,
+            approvalDecisions: "decision",
           })),
         );
     turns.sort((left, right) => left.at - right.at);

@@ -6,22 +6,27 @@ import { reconstructDurableConversation } from "@intx/workflow-host";
 import { deriveWorkflowRunRepoId } from "@intx/workflow-deploy";
 import { extractAddrSpec } from "@intx/mime";
 import { isRunAddress } from "@intx/types/agent-address";
+import { ApprovalDecision } from "@intx/types/signals";
+import { type } from "arktype";
 import {
+  clippedTurnText,
+  deliveredText,
   maxConversationTurns,
   type ConversationTextTurn,
   type ConversationThread,
 } from "@corbits-builder/schemas/conversation";
 
-import { withoutResumeContext } from "../config/resume.ts";
-import { personTurnText } from "../config/specialist-ended.ts";
 import {
-  maxTurnText,
-  readCoordinatorMailThreads,
-} from "./conversation-threads.ts";
+  approvalDecisionLine,
+  withoutResumeContext,
+} from "../config/resume.ts";
+import { personTurnText } from "../config/specialist-ended.ts";
+import { readCoordinatorMailThreads } from "./conversation-threads.ts";
 import { withCommittedAgentState } from "./committed-agent-state.ts";
 import type { CoordinatorRepoDirSource } from "./coordinator-question.ts";
 import { getLogger } from "@intx/log";
 import { errorCode, requestErrorMetadata } from "../request-error.ts";
+import { parseJson } from "../lib/json.ts";
 
 const log = getLogger(["corbits-builder", "hub", "conversation-turns"]);
 
@@ -47,9 +52,6 @@ const textFromContent = (content: unknown): string | undefined => {
   return text.trim() === "" ? undefined : text;
 };
 
-const clipTurn = (text: string) =>
-  text.length > maxTurnText ? text.slice(0, maxTurnText) : text;
-
 // The durable copy of a person's mail keeps the routing line the runtime
 // wrapped around their words. That line is not part of what they wrote.
 const inboundEnvelope =
@@ -59,8 +61,33 @@ const inboundEnvelope =
 // thread headers; the mirror's routing line names only its sender.
 const runSent = (from: string): boolean => isRunAddress(extractAddrSpec(from));
 
+// Interchange delivers the person's approval decision to the waiting tool from this address, as
+// JSON. The page already shows the decision on its approval card; a resumed coordinator has no card.
+const APPROVAL_SIGNAL_SENDER = "signal@local";
+
+/**
+ * How the person's approval decisions read: "note" keeps only the note they sent with a
+ * decision, for the page; "decision" reads each decision as a plain line, for a resumed
+ * coordinator.
+ */
+export type ApprovalDecisionTurns = "note" | "decision";
+
+function approvalText(
+  body: string,
+  decisions: ApprovalDecisionTurns,
+): string | undefined {
+  const decision = ApprovalDecision(parseJson(body));
+  if (decision instanceof type.errors) return undefined;
+  return decisions === "note"
+    ? decision.message
+    : approvalDecisionLine(decision);
+}
+
 // A missing or corrupt turn list is empty; it does not throw.
-function mapMirrorConversationTurns(turns: unknown): ConversationTextTurn[] {
+function mapMirrorConversationTurns(
+  turns: unknown,
+  decisions: ApprovalDecisionTurns,
+): ConversationTextTurn[] {
   if (!Array.isArray(turns)) return [];
   const mapped: ConversationTextTurn[] = [];
   for (const turn of turns) {
@@ -72,14 +99,29 @@ function mapMirrorConversationTurns(turns: unknown): ConversationTextTurn[] {
     const raw = textFromContent(turn["content"]);
     if (raw === undefined) continue;
     if (role === "assistant") {
-      mapped.push({ role, text: clipTurn(raw), at });
+      mapped.push({ role, text: clippedTurnText(raw), at });
       continue;
     }
     const from = inboundEnvelope.exec(raw)?.[1];
     if (from !== undefined && runSent(from)) continue;
-    const text = withoutResumeContext(raw.replace(inboundEnvelope, ""));
+    if (
+      from !== undefined &&
+      extractAddrSpec(from) === APPROVAL_SIGNAL_SENDER
+    ) {
+      const text = approvalText(raw.replace(inboundEnvelope, ""), decisions);
+      if (text !== undefined && text.trim() !== "")
+        mapped.push({ role: "person", text: clippedTurnText(text), at });
+      continue;
+    }
+    const text = withoutResumeContext(
+      deliveredText(raw.replace(inboundEnvelope, "")),
+    );
     if (text === undefined || text.trim() === "") continue;
-    mapped.push({ role: "person", text: clipTurn(personTurnText(text)), at });
+    mapped.push({
+      role: "person",
+      text: clippedTurnText(personTurnText(text)),
+      at,
+    });
   }
   mapped.sort((left, right) => left.at - right.at);
   return mapped.length > maxConversationTurns
@@ -95,6 +137,7 @@ function mapMirrorConversationTurns(turns: unknown): ConversationTextTurn[] {
 export async function readDurableConversationTurns(input: {
   repoStore: CoordinatorRepoDirSource;
   address: string;
+  approvalDecisions: ApprovalDecisionTurns;
 }): Promise<ConversationTextTurn[]> {
   try {
     const repoDir = input.repoStore.getRepoDir({
@@ -128,7 +171,8 @@ export async function readDurableConversationTurns(input: {
         return collected;
       },
     );
-    return mapMirrorConversationTurns(turns ?? []);
+    if (turns === undefined) return [];
+    return mapMirrorConversationTurns(turns, input.approvalDecisions);
   } catch (error) {
     log.warn("Durable conversation unreadable", {
       ...errorCode(error),
@@ -151,7 +195,10 @@ export async function projectRunTurns(input: {
   runId: string;
   address: string;
 }): Promise<{ turns: ConversationTextTurn[]; threads?: ConversationThread[] }> {
-  const turns = await readDurableConversationTurns(input);
+  const turns = await readDurableConversationTurns({
+    ...input,
+    approvalDecisions: "note",
+  });
   if (input.mailDirectory === undefined) return { turns };
   const mail = await readCoordinatorMailThreads({
     ...input,

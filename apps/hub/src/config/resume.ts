@@ -1,4 +1,5 @@
 import type { ConversationTextTurn } from "@corbits-builder/schemas/conversation";
+import type { ApprovalDecision } from "@intx/types/signals";
 import { IMPORTED_PROJECT_LEAD } from "./import.ts";
 import { SPECIALIST_ENDED_LEAD } from "./specialist-ended.ts";
 
@@ -7,8 +8,6 @@ import { SPECIALIST_ENDED_LEAD } from "./specialist-ended.ts";
 const RESUME_CONTEXT_LEAD =
   "Background: this project's conversation continues from an earlier session. This is where it stood, not a new request.";
 const RESUME_CONTEXT_END = "\n\nThe person's new message:\n\n";
-// Mail delivery turns every line break into CRLF.
-const DELIVERED_CONTEXT_END = /\r?\n\r?\nThe person's new message:\r?\n\r?\n/;
 
 // Hubs before the held resume context mailed this opening on the person's behalf.
 const LEGACY_RESUME_OPENING = "I'm picking this project back up.";
@@ -60,10 +59,24 @@ export function resumeContext(state: {
 export const resumeMessage = (context: string | undefined, message: string) =>
   context === undefined ? message : context + RESUME_CONTEXT_END + message;
 
+/** The person's approval decision as a resumed coordinator reads it. */
+export function approvalDecisionLine({
+  outcome,
+  message,
+}: ApprovalDecision): string {
+  const decided = outcome === "approved" ? "Approved" : "Rejected";
+  // A blank note is no note: the line ends at the decision, not at a dangling colon.
+  const note = message?.trim();
+  if (note === undefined || note === "") return `${decided} a request.`;
+  return `${decided} a request: ${note}`;
+}
+
 /** A person-sent turn without the held resume context, or undefined for a hub-written opening. */
 export function withoutResumeContext(text: string): string | undefined {
   if (text.startsWith(LEGACY_RESUME_OPENING)) return undefined;
   if (!text.startsWith(RESUME_CONTEXT_LEAD)) return text;
-  const end = DELIVERED_CONTEXT_END.exec(text);
-  return end === null ? text : text.slice(end.index + end[0].length);
+  const end = text.indexOf(RESUME_CONTEXT_END);
+  if (end !== -1) return text.slice(end + RESUME_CONTEXT_END.length);
+  // Delivered text is trimmed, so a blank new message leaves the marker without its blank line.
+  return text.endsWith(RESUME_CONTEXT_END.trimEnd()) ? "" : text;
 }

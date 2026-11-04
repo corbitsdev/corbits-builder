@@ -8,6 +8,7 @@ import { listMail } from "@intx/storage-isogit/node";
 import { isRunAddress, parseRunAddress } from "@intx/types/agent-address";
 import { SPECIALIST_RESULT_TYPE } from "@corbits-builder/schemas/native-specialist";
 import {
+  clippedTurnText,
   maxConversationTurns,
   type ConversationTextTurn,
   type ConversationThread,
@@ -19,9 +20,6 @@ import { getLogger } from "@intx/log";
 import { requestErrorMetadata } from "../request-error.ts";
 
 const log = getLogger(["corbits-builder", "hub", "conversation-threads"]);
-
-// ConversationEvents rejects a longer turn than this.
-export const maxTurnText = 20000;
 
 type ThreadMail = {
   ordinal: number;
@@ -104,10 +102,7 @@ export async function readCoordinatorMailThreads(input: {
     );
     if (from === undefined || part === undefined || !Number.isFinite(at))
       continue;
-    const text = new TextDecoder()
-      .decode(part.content)
-      .trim()
-      .slice(0, maxTurnText);
+    const text = clippedTurnText(new TextDecoder().decode(part.content).trim());
     const thread = mail.get(entry.threadId) ?? {
       participants: new Set(),
       messages: [],

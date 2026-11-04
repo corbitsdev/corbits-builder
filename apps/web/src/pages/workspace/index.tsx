@@ -13,7 +13,7 @@
 import { wording } from "../../config.ts";
 import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { Paperclip } from "lucide-react";
+import { Paperclip, Sparkles } from "lucide-react";
 import {
   Attachment,
   type AttachmentItem,
@@ -54,7 +54,7 @@ import "./persistent-workspace.css";
 import { ProductApiError, type ProjectArtifact } from "@corbits-builder/client";
 import type { InFlightRun } from "@corbits-builder/schemas/artifact";
 import { toast } from "sonner";
-import { sendMessage, type ConversationTurn } from "../../api/conversation.ts";
+import { sendMessage } from "../../api/conversation.ts";
 import { subscribeWorkflowRun } from "../../api/run-stream.ts";
 import {
   acceptedMaterials,
@@ -67,10 +67,10 @@ import {
   restoreProject,
   startProjectCoordinator,
 } from "../../api/projects.ts";
-import type { ChatMessage, Wait } from "../../api/types.ts";
+import type { Wait } from "../../api/types.ts";
 import { keys } from "../../queries/keys.ts";
 import { COMPOSER_BOX_CLASS, CONV_CLASS, PANES_CLASS } from "./pane-classes.ts";
-import { RoomThread, turnItemId, type TranscriptTurn } from "./transcript.tsx";
+import { questionsOpen, RoomThread, turnItemId } from "./transcript.tsx";
 import { cardDocuments } from "./collaboration.ts";
 import { useFiledVersions } from "./filed-versions.tsx";
 import { threadUpdates } from "./specialist-updates.tsx";
@@ -89,6 +89,7 @@ import {
 } from "./tab-follow.ts";
 import {
   awaitingCommit,
+  awaitingReply,
   committedSteps,
   emptyLiveRun,
   foldLiveRun,
@@ -100,6 +101,12 @@ import {
   type LiveRun,
 } from "./live-run.ts";
 import { createRoomReloader } from "./room-reload.ts";
+import {
+  latestTurnAt,
+  SENDING,
+  withPendingSends,
+  type SentMessage,
+} from "./pending-sends.ts";
 import { decideApproval, openDecisions } from "../../api/decisions.ts";
 import type { DeliverableState } from "./deliverable-block.tsx";
 import { formatPassageQuote, type PassageQuote } from "./passage-note.tsx";
@@ -125,10 +132,13 @@ import {
   DESIGN_OPTION,
 } from "./design-concepts.tsx";
 import { useLiveAppPresence } from "./live-app.tsx";
+import { useQuestionsLayout } from "../../questions-layout-setting.ts";
 import { NextStepLine, useProjectNextStep } from "./next-step.tsx";
 import { composerPlaceholder } from "./composer-placeholder.ts";
 import { Dictated } from "../../dictation.jsx";
 import { useShellReply } from "../../flourish.tsx";
+import { EnableAiDialog, needsModelSetup } from "../model-setup.tsx";
+import { useModelCatalog } from "../providers.tsx";
 
 // The stream says when the room moved. This read covers what it cannot see,
 // such as a coordinator run replaced while its old stream stays quiet.
@@ -169,7 +179,7 @@ export { selectedDeliverable };
 function openingDraft(
   projectId: string,
   openingMessage: string | undefined,
-): ChatMessage[] {
+): SentMessage[] {
   const text = openingMessage?.trim() ?? "";
   if (text.length === 0) return [];
   return [
@@ -178,38 +188,9 @@ function openingDraft(
       author: "me",
       body: text,
       at: new Date(0).toISOString(),
+      after: Number.NEGATIVE_INFINITY,
     },
   ];
-}
-
-// A message's stand-in id until the hub's receipt replaces it.
-const SENDING = "sending:";
-
-function withPendingSends(
-  mirror: readonly ConversationTurn[],
-  sent: readonly ChatMessage[],
-): TranscriptTurn[] {
-  const pending = [...sent];
-  const shown: TranscriptTurn[] = [];
-  for (const turn of mirror) {
-    const index = pending.findIndex(
-      (message) =>
-        message.body === turn.text &&
-        (message.author === "agent") === (turn.role === "assistant"),
-    );
-    if (index >= 0) pending.splice(index, 1);
-    shown.push(turn);
-  }
-  for (const message of pending) {
-    const at = Date.parse(message.at);
-    shown.push({
-      role: message.author === "agent" ? "assistant" : "person",
-      text: message.body,
-      at: Number.isNaN(at) ? 0 : at,
-      ...(message.id.startsWith(SENDING) ? { sending: true } : {}),
-    });
-  }
-  return shown;
 }
 
 // The hand-offs that name the document their run works on, by the role they start.
@@ -266,7 +247,9 @@ const MODEL_CHOICE_REFUSALS: ReadonlySet<string> = new Set([
 ]);
 
 // The hub's own sentence for a project with no model to run on, which only the person can settle.
-async function modelRefusal(cause: unknown): Promise<string | undefined> {
+async function modelRefusal(
+  cause: unknown,
+): Promise<{ code: string; message: string } | undefined> {
   if (!(cause instanceof ProductApiError) || cause.response.status !== 409)
     return undefined;
   const body: unknown = await cause.response
@@ -280,7 +263,7 @@ async function modelRefusal(cause: unknown): Promise<string | undefined> {
     typeof body.code === "string" &&
     MODEL_CHOICE_REFUSALS.has(body.code) &&
     typeof body.message === "string"
-    ? body.message
+    ? { code: body.code, message: body.message }
     : undefined;
 }
 
@@ -350,6 +333,7 @@ export function StageWorkspace({
     .map(paneArtifact);
   const documents = snapshot?.documents ?? {};
   const [liveRun, setLiveRun] = useState<LiveRun>(emptyLiveRun);
+  const questionsLayout = useQuestionsLayout();
   const [approvalBusy, setApprovalBusy] = useState(false);
   const [approvalError, setApprovalError] = useState<string | null>(null);
   const [changesFor, setChangesFor] = useState<string | null>(null);
@@ -378,7 +362,7 @@ export function StageWorkspace({
   const [mobilePane, setMobilePane] = useState<"conversation" | "artifacts">(
     "conversation",
   );
-  const [sent, setSent] = useState<ChatMessage[]>(() =>
+  const [sent, setSent] = useState<SentMessage[]>(() =>
     openingDraft(projectId, openingMessage),
   );
   const [value, setValue] = useState("");
@@ -389,7 +373,13 @@ export function StageWorkspace({
   const [awaitingSince, setAwaitingSince] = useState<number | null>(null);
   const [startFault, setStartFault] = useState<string | null>(null);
   // Why the coordinator has no model to run on, which only the person can settle.
-  const [modelNeeded, setModelNeeded] = useState<string | null>(null);
+  const [modelNeeded, setModelNeeded] = useState<{
+    code: string;
+    message: string;
+  } | null>(null);
+  // Only a missing provider is settled by connecting one; a profile choice needs Settings.
+  const providerMissing = modelNeeded?.code === "model_provider_missing";
+  const [enablingAi, setEnablingAi] = useState(false);
   const accepted = useQuery({
     queryKey: keys.acceptedMaterials.of(projectId),
     retry: false,
@@ -406,8 +396,6 @@ export function StageWorkspace({
       ? {}
       : { maxFiles: limits.maxFiles, maxFileBytes: limits.maxFileBytes }),
   });
-  // The files each sent message carried, by its text, as this session sent them.
-  const filesByText = useRef(new Map<string, readonly ConversationPart[]>());
   const liveRunRef = useRef<LiveRun>(emptyLiveRun);
   const committedAtRef = useRef<number | null>(null);
   committedAtRef.current = latestAssistantAt(mirror);
@@ -473,7 +461,6 @@ export function StageWorkspace({
     runKinds.current.clear();
     usedCalls.current.clear();
     runCards.current.clear();
-    filesByText.current.clear();
   }, [projectId, openingMessage]);
 
   // The durable mirror is the committed transcript. The stream fills the gap
@@ -558,18 +545,7 @@ export function StageWorkspace({
   const turns = useMemo(
     () =>
       withPendingSends(mirror, sent).map((turn) => {
-        const attached =
-          turn.role === "person"
-            ? filesByText.current.get(turn.text)
-            : undefined;
-        if (attached !== undefined)
-          return {
-            ...turn,
-            parts:
-              turn.text.length === 0
-                ? attached
-                : [...attached, { kind: "text" as const, text: turn.text }],
-          };
+        if (turn.parts !== undefined) return turn;
         const steps =
           turn.role === "assistant"
             ? stepsByAt.current.get(turn.at)
@@ -684,21 +660,21 @@ export function StageWorkspace({
     setSendFault(null);
     setAwaitingSince(Date.now());
     // The person's words show the moment they send; the receipt replaces this stand-in.
-    const pending: ChatMessage = {
+    const pending: SentMessage = {
       id: `${SENDING}${String(Date.now())}`,
       author: "me",
       body: text,
       at: new Date().toISOString(),
+      after: latestTurnAt(mirror),
     };
-    setSent((previous) => [
-      ...previous.filter((item) => item.author !== "me" || item.body !== text),
-      pending,
-    ]);
+    setSent((previous) => [...previous, pending]);
     if (clearComposer) setValue("");
     try {
       const { message, receipt } = await sendMessage(projectId, text);
       setSent((previous) =>
-        previous.map((item) => (item === pending ? message : item)),
+        previous.map((item) =>
+          item === pending ? { ...pending, ...message } : item,
+        ),
       );
       void receipt;
       reloadRef.current();
@@ -751,19 +727,17 @@ export function StageWorkspace({
     setSendFault(null);
     setAwaitingSince(Date.now());
     setAttachFault(null);
-    filesByText.current.set(
-      text,
-      attached.map((item) => ({
-        kind: "file" as const,
-        name: item.name,
-        mediaType: item.mediaType,
-      })),
-    );
-    const pending: ChatMessage = {
+    const pending: SentMessage = {
       id: `${SENDING}${String(Date.now())}`,
       author: "me",
       body: text,
       at: new Date().toISOString(),
+      after: latestTurnAt(mirror),
+      files: attached.map((item) => ({
+        kind: "file" as const,
+        name: item.name,
+        mediaType: item.mediaType,
+      })),
     };
     setSent((previous) => [...previous, pending]);
     setValue("");
@@ -785,7 +759,6 @@ export function StageWorkspace({
     } catch (cause) {
       setAwaitingSince(null);
       setSent((previous) => previous.filter((item) => item !== pending));
-      filesByText.current.delete(text);
       setValue((current) => (current === "" ? text : current));
       setFiles(attached);
       setAttachFault(await attachFaultText(cause));
@@ -999,6 +972,15 @@ export function StageWorkspace({
     else if (status === "archived" && room.data !== undefined)
       void room.refetch();
   }, [projectId, status]);
+  const catalog = useModelCatalog();
+  const providerConnected =
+    catalog.data !== undefined && !needsModelSetup(catalog.data.providers);
+  // However the provider gets connected (Enable AI, Settings, another tab, the server), the
+  // shared catalog read sees it and the refused start is tried again. Only on that change: a hub
+  // that still refuses would otherwise retry on every refusal.
+  useEffect(() => {
+    if (providerConnected && providerMissing) void startCoordinator();
+  }, [providerConnected]);
   const [restoring, setRestoring] = useState(false);
   const [restoreFault, setRestoreFault] = useState<string | null>(null);
   const restore = async () => {
@@ -1017,19 +999,19 @@ export function StageWorkspace({
     }
   };
   const held = waitingOnPerson(waits, openApprovalIds, runId, liveRun.running);
-  // A message sent here waits on the coordinator from the moment it leaves, before the stream
-  // reports its run: until a reply follows it or a run ends after it.
-  const awaitingReply =
-    awaitingSince !== null &&
-    turns.at(-1)?.role === "person" &&
-    (liveRun.endedAt === null || liveRun.endedAt < awaitingSince) &&
+  const awaiting =
+    awaitingReply(
+      awaitingSince,
+      turns.at(-1)?.role,
+      liveRun.endedAt,
+      parkedOnApproval(waits, openApprovalIds, runId),
+    ) &&
     !archived &&
     startFault === null &&
     modelNeeded === null;
   // The mark stays for the whole turn: between model calls and during long tool work the live
   // reply shows nothing moving.
-  const thinking =
-    !sendFailed && (sending || awaitingReply || (working && !held));
+  const thinking = !sendFailed && (sending || awaiting || (working && !held));
   // Each concept's option is its own tab beside the others, never an ordinary document.
   const options = artifacts.filter((item) => item.kind === DESIGN_OPTION);
   const paneDeliverables = documentsForPane(
@@ -1255,11 +1237,11 @@ export function StageWorkspace({
         </div>
       </div>
     );
-  } else if (modelNeeded !== null) {
+  } else if (modelNeeded !== null && !providerMissing) {
     // A coordinator with no model to run on cannot answer, even one still bound from before.
     dock = (
       <div className="banner" role="alert">
-        <p className="banner-title">{modelNeeded}</p>
+        <p className="banner-title">{modelNeeded.message}</p>
         <div className="banner-action">
           <UiButton type="button" size="sm" onClick={onOpenSettings}>
             {wording.action.openSettings}
@@ -1275,7 +1257,7 @@ export function StageWorkspace({
         </div>
       </div>
     );
-  } else if (unbound) {
+  } else if (unbound && !providerMissing) {
     // The person does not start the coordinator by typing: an unbound room waits for the
     // start that opening it asked for, and a refused start says why and offers it again.
     if (startFault === null) {
@@ -1339,7 +1321,7 @@ export function StageWorkspace({
             </div>
           </div>
         )}
-        {replies.length > 0 ? (
+        {replies.length > 0 && !providerMissing ? (
           <div
             className="workspace-replies"
             role="group"
@@ -1364,7 +1346,8 @@ export function StageWorkspace({
             limits === undefined ||
             limits.mimeTypes.length === 0 ||
             sending ||
-            approvalBusy
+            approvalBusy ||
+            providerMissing
           }
           label={wording.conversation.dropFiles}
         >
@@ -1381,7 +1364,7 @@ export function StageWorkspace({
                 onSubmit={send}
                 canSubmit={value.trim() !== "" || files.length > 0}
                 status={sending || approvalBusy ? "submitted" : "ready"}
-                disabled={sending || approvalBusy}
+                disabled={sending || approvalBusy || providerMissing}
               >
                 {files.length === 0 ? null : (
                   <PromptInputFloat>
@@ -1408,15 +1391,23 @@ export function StageWorkspace({
                 )}
                 <PromptInputTextarea
                   ref={composerRef}
-                  placeholder={composerPlaceholder({
-                    approvalOpen: openApproval !== undefined,
-                    status: projectStatus.data,
-                    chatFirst,
-                  })}
+                  placeholder={
+                    providerMissing
+                      ? wording.conversation.enableAiFirst
+                      : composerPlaceholder({
+                          approvalOpen: openApproval !== undefined,
+                          questionsOpen:
+                            !archived &&
+                            questionsOpen(shownTurns, liveRun.results),
+                          status: projectStatus.data,
+                          chatFirst,
+                        })
+                  }
                 />
                 <PromptInputToolbar>
-                  {mic}
-                  {limits === undefined ||
+                  {providerMissing ? null : mic}
+                  {providerMissing ||
+                  limits === undefined ||
                   limits.mimeTypes.length === 0 ? null : (
                     <>
                       <input
@@ -1440,7 +1431,19 @@ export function StageWorkspace({
                       </PromptInputButton>
                     </>
                   )}
-                  <PromptInputSubmit className="ms-auto" />
+                  {!providerMissing ? (
+                    <PromptInputSubmit className="ms-auto" />
+                  ) : (
+                    <UiButton
+                      type="button"
+                      size="sm"
+                      className="ms-auto"
+                      onClick={() => setEnablingAi(true)}
+                    >
+                      {wording.action.enableAi}
+                      <Sparkles size={14} aria-hidden="true" />
+                    </UiButton>
+                  )}
                 </PromptInputToolbar>
               </PromptInput>
             )}
@@ -1529,6 +1532,7 @@ export function StageWorkspace({
                   {...(sentId === undefined ? {} : { sentId })}
                   onAnswerQuestions={(reply) => deliver(reply)}
                   questionsDisabled={sending || archived}
+                  questionsLayout={questionsLayout}
                 >
                   {archived ? (
                     <ConversationEmptyState
@@ -1544,6 +1548,7 @@ export function StageWorkspace({
                 </RoomThread>
               </DispatchRoomContext.Provider>
               {dock}
+              <EnableAiDialog open={enablingAi} onOpenChange={setEnablingAi} />
             </div>
           </section>
           {chatFirst ? null : (

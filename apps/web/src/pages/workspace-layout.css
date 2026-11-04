@@ -193,14 +193,10 @@
 
 /* Not yet is sm:ms-auto, and every action is shrink-0 nowrap. A long middle
    label fills the row, Not yet wraps, and the auto margin pins it to the
-   right edge. Keep the actions on one line; the long label wraps inside
-   its own button. The design card sizes its actions on their own. */
-.document-decision:not(.document-decision-design)
-  [data-slot="tool-approval-card"]
-  > div:last-child {
-  flex-wrap: nowrap;
-}
-
+   right edge, so Not yet drops that margin. A label wider than the card
+   wraps between words inside its own button; the card's overflow-wrap
+   anywhere would otherwise break it a letter at a time. The design card
+   sizes its actions on their own. */
 .document-decision:not(.document-decision-design)
   [data-slot="tool-approval-card"]
   > div:last-child
@@ -210,6 +206,8 @@
   height: auto;
   min-height: 2rem;
   white-space: normal;
+  overflow-wrap: normal;
+  word-break: normal;
 }
 
 .document-decision:not(.document-decision-design)

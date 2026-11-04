@@ -12,6 +12,7 @@ import type { ConversationTurn } from "../../api/conversation.ts";
 import type { Wait } from "../../api/types.ts";
 import type { RunStreamEvent } from "../../api/run-stream.ts";
 import type { ConversationPart } from "@corbits/react-ui";
+import { clippedTurnText } from "@corbits-builder/schemas/conversation";
 import {
   emptyLiveTurn,
   foldLiveTurn,
@@ -73,9 +74,6 @@ const reloadAfter = new Set([
   "reactor.done",
   "reactor.error",
 ]);
-
-// The mirror caps each turn's text at this length.
-const MIRROR_TEXT_LIMIT = 20_000;
 
 function hasContent(segment: LiveTurnState): boolean {
   return segment.text.length > 0 || segment.parts.length > 0;
@@ -162,9 +160,8 @@ export function foldLiveRun(
 }
 
 function sameText(committed: string, live: string): boolean {
-  const a = committed.trim();
-  const b = live.trim();
-  return a === b || (a.length >= MIRROR_TEXT_LIMIT && b.startsWith(a));
+  const text = committed.trim();
+  return text === live.trim() || text === clippedTurnText(live).trim();
 }
 
 function committedTurn(
@@ -295,5 +292,25 @@ export function waitingOnPerson(
         wait.park !== undefined &&
         !running,
     )
+  );
+}
+
+/**
+ * A message sent here waits on the coordinator from the moment it leaves, before the stream
+ * reports its run: until a reply follows it, a run ends after it, or its run is held on an open
+ * approval. An approval card alone brings no reply text while its run stays open. A standing
+ * question does not end the wait: an answer to it is sent before the stream reports the new run.
+ */
+export function awaitingReply(
+  sentAt: number | null,
+  lastTurnRole: ConversationTurn["role"] | undefined,
+  runEndedAt: number | null,
+  heldOnApproval: boolean,
+): boolean {
+  return (
+    sentAt !== null &&
+    lastTurnRole === "person" &&
+    (runEndedAt === null || runEndedAt < sentAt) &&
+    !heldOnApproval
   );
 }

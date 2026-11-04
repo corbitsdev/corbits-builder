@@ -74,6 +74,13 @@ export const MODEL_PROVIDERS: readonly ShippedEntry[] = [
     // All four take reasoning effort max (developers.openai.com/api/docs/models); unset, the
     // adapter sends high for it.
     quirks: { reasoning: { maxEffort: "max" } },
+    // All four read images, PDFs and text documents (checked live against the API).
+    capabilities: [
+      "vision-input",
+      "vision-input-streaming",
+      "document-input",
+      "document-input-streaming",
+    ],
   },
   {
     id: "anthropic",
@@ -144,6 +151,13 @@ export const MODEL_PROVIDERS: readonly ShippedEntry[] = [
       { id: "gpt-5.6-sol", label: "gpt-5.6-sol" },
       { id: "gpt-5.6-terra", label: "gpt-5.6-terra" },
       { id: "gpt-5.6-luna", label: "gpt-5.6-luna" },
+    ],
+    // The ChatGPT backend reads images, PDFs and text documents (checked live against it).
+    capabilities: [
+      "vision-input",
+      "vision-input-streaming",
+      "document-input",
+      "document-input-streaming",
     ],
   },
   {
