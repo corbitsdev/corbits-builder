@@ -1348,7 +1348,7 @@ export function StageWorkspace({
             </div>
           </div>
         )}
-        {replies.length > 0 ? (
+        {replies.length > 0 && !providerMissing ? (
           <div
             className="workspace-replies"
             role="group"
@@ -1373,7 +1373,8 @@ export function StageWorkspace({
             limits === undefined ||
             limits.mimeTypes.length === 0 ||
             sending ||
-            approvalBusy
+            approvalBusy ||
+            providerMissing
           }
           label={wording.conversation.dropFiles}
         >

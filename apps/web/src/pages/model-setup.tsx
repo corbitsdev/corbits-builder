@@ -57,14 +57,19 @@ export function needsModelSetup(
   );
 }
 
-/** A tile per subscription login, then a tile per API-key provider opening the Add provider dialog. */
-function ProviderTiles({ onConnected }: { onConnected: () => void }) {
-  const connected = () => {
-    clearModelSetupDeferral();
-    onConnected();
-  };
+/**
+ * A tile per subscription login, then a tile per API-key provider opening the Add provider dialog.
+ * The caller holds the logins, so a sign-in in flight outlives the tiles when a dialog closes.
+ */
+function ProviderTiles({
+  subscriptions,
+  onConnected,
+}: {
+  subscriptions: ReturnType<typeof useSubscriptionLogins>;
+  onConnected: () => void;
+}) {
   const catalog = useModelCatalog();
-  const { logins, signingIn, signIn } = useSubscriptionLogins(connected);
+  const { logins, signingIn, signIn } = subscriptions;
   const apiKeyProviders = (catalog.data?.providers ?? []).filter(
     (provider) => provider.kind === "api_key",
   );
@@ -111,7 +116,7 @@ function ProviderTiles({ onConnected }: { onConnected: () => void }) {
         providerId={keyProviderId}
         open={keyOpen}
         onOpenChange={setKeyOpen}
-        onConnected={connected}
+        onConnected={onConnected}
       />
     </>
   );
@@ -124,6 +129,11 @@ export function ModelSetup({
   onConnected: () => void;
   onLater: () => void;
 }) {
+  const connected = () => {
+    clearModelSetupDeferral();
+    onConnected();
+  };
+  const subscriptions = useSubscriptionLogins(connected);
   return (
     <AuthLayout
       brand={
@@ -139,7 +149,7 @@ export function ModelSetup({
           <h1>{copy.connect}</h1>
           <p>{copy.noneHint}</p>
         </hgroup>
-        <ProviderTiles onConnected={onConnected} />
+        <ProviderTiles subscriptions={subscriptions} onConnected={connected} />
         <div className="model-setup-later">
           <button
             type="button"
@@ -172,6 +182,12 @@ export function EnableAiDialog({
   onOpenChange: (open: boolean) => void;
   onConnected: () => void;
 }) {
+  const connected = () => {
+    clearModelSetupDeferral();
+    onOpenChange(false);
+    onConnected();
+  };
+  const subscriptions = useSubscriptionLogins(connected);
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent>
@@ -181,10 +197,8 @@ export function EnableAiDialog({
         </DialogHeader>
         <DialogBody className="model-setup">
           <ProviderTiles
-            onConnected={() => {
-              onOpenChange(false);
-              onConnected();
-            }}
+            subscriptions={subscriptions}
+            onConnected={connected}
           />
         </DialogBody>
       </DialogContent>
