@@ -86,26 +86,30 @@ export function stepName(id: string): string {
 function repliedAnswers(
   questions: readonly Question[],
   reply: string,
-): { prompt: string; answer: string }[] {
+): AnswerRow[] {
   const lines = reply.split("\n");
   return questions.flatMap((question) => {
     const lead = text.answerLine(question.prompt, []);
     const line = lines.find((candidate) => candidate.startsWith(lead));
     return line === undefined
       ? []
-      : [{ prompt: question.prompt, answer: line.slice(lead.length) }];
+      : [
+          {
+            id: question.id,
+            prompt: question.prompt,
+            answer: line.slice(lead.length),
+          },
+        ];
   });
 }
 
-function AnswerList({
-  answers,
-}: {
-  answers: readonly { prompt: string; answer: string }[];
-}) {
+type AnswerRow = { id: string; prompt: string; answer: string };
+
+function AnswerList({ answers }: { answers: readonly AnswerRow[] }) {
   return (
     <dl className="questions-card-answers">
-      {answers.map(({ prompt, answer }) => (
-        <div key={prompt}>
+      {answers.map(({ id, prompt, answer }) => (
+        <div key={id}>
           <dt>{prompt}</dt>
           <dd>{answer}</dd>
         </div>
@@ -389,10 +393,12 @@ function StepQuestion({
   }, []);
 
   const pick = (index: number): Answer => {
-    if (index === otherIndex)
-      return multi
-        ? { ...answer, other: true }
-        : { chosen: [], other: true, otherText: answer.otherText };
+    if (index === otherIndex && !multi)
+      return { chosen: [], other: true, otherText: answer.otherText };
+    // On a multi-choice question Other ticks like any option, and unticking clears its text.
+    if (index === otherIndex && answer.other)
+      return { ...answer, other: false, otherText: "" };
+    if (index === otherIndex) return { ...answer, other: true };
     const value = question.options[index]?.value;
     if (value === undefined) return answer;
     if (!multi) return { chosen: [value], other: false, otherText: "" };
@@ -490,7 +496,14 @@ function StepQuestion({
               className="questions-card-choice"
               data-active={active === index ? "" : undefined}
             >
-              <Check className="questions-card-choice-mark" />
+              <Check
+                className="questions-card-choice-mark"
+                onClick={() => {
+                  if (disabled || !multi) return;
+                  onChange(pick(otherIndex));
+                  list.current?.focus();
+                }}
+              />
               <OtherInput
                 question={question}
                 value={answer.otherText}
@@ -561,6 +574,7 @@ function StepReview({
     >
       <AnswerList
         answers={questions.map((question) => ({
+          id: question.id,
           prompt: question.prompt,
           answer: answerLabels(question, answerOf(question)).join(", "),
         }))}
