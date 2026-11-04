@@ -324,7 +324,9 @@ function historyItems(
           ? item["output"]
           : JSON.stringify(item["output"]);
       let output = `Script completed\nOutput:\n${result}`;
-      if (failed.has(callId)) output = `Script failed\nError:\n${result}`;
+      // The adapter wraps a failed result in `<error>`; the script framing already says it failed.
+      const error = result.replace(/^<error>\n([\s\S]*)\n<\/error>$/, "$1");
+      if (failed.has(callId)) output = `Script failed\nError:\n${error}`;
       if (unsupported.has(callId)) output = UNSUPPORTED_SCRIPT;
       return { type: "custom_tool_call_output", call_id: callId, output };
     }

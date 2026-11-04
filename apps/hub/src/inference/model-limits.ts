@@ -106,7 +106,6 @@ const bySource: Record<string, ModelLimits> = {
   "codex\u0000gpt-5.6-sol": codex(272000),
   "codex\u0000gpt-5.6-terra": codex(272000),
   "codex\u0000gpt-5.6-luna": codex(272000),
-  "codex\u0000gpt-5.5": codex(272000),
   "xai\u0000grok-4.7": xai,
   "xai\u0000grok-4.7-build-fast": xai,
   "xai\u0000grok-4.6": xai,
