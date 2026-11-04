@@ -13,7 +13,7 @@ import {
   formatRelativeTime,
   type BadgeTone,
 } from "@corbits/react-ui";
-import { Ellipsis } from "lucide-react";
+import { Ellipsis, Plus } from "lucide-react";
 import { useEffect, useRef, useState, type CSSProperties } from "react";
 import type { ProjectStage } from "@corbits-builder/schemas/project";
 import type { ProjectSummary } from "../api/types.ts";
@@ -162,6 +162,10 @@ export function ProjectLibrary({
             </FilterChip>
           ))}
         </div>
+        <Button variant="primary" onClick={onNewProject}>
+          <Plus aria-hidden="true" />
+          {wording.shell.newProject}
+        </Button>
       </LibraryPageHeader>
       {!loaded ? (
         <p role="status" className="library-note">
