@@ -138,6 +138,24 @@ function jsonEnd(text: string, start: number): number {
   return -1;
 }
 
+/** The JSON objects and arrays written in the text, outermost only. */
+export function jsonValues(text: string): unknown[] {
+  const values: unknown[] = [];
+  for (let index = 0; index < text.length; index += 1) {
+    const char = text[index] ?? "";
+    if (char !== "{" && char !== "[") continue;
+    const end = jsonEnd(text, index);
+    if (end === -1) continue;
+    try {
+      values.push(JSON.parse(text.slice(index, end)) as unknown);
+      index = end - 1;
+    } catch {
+      // Not a payload. Keep scanning.
+    }
+  }
+  return values;
+}
+
 /** Drop JSON values. A status object is not a sentence. */
 function stripJson(text: string): string {
   let out = "";
@@ -256,7 +274,9 @@ export function visibleChatText(text: string): string {
   const kept: string[] = [];
   for (const block of source.split(/(```[^\n]*\n[\s\S]*?```)/)) {
     if (block.startsWith("```")) {
-      kept.push(block.trim());
+      // A fence that held only JSON is empty once the JSON is dropped.
+      if (block.replace(/```[^\n]*/g, "").trim().length > 0)
+        kept.push(block.trim());
       continue;
     }
     for (const paragraph of block.split(/\n{2,}/)) {

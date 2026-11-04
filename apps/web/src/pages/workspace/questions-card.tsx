@@ -21,6 +21,7 @@ import {
 } from "@corbits-builder/schemas/questions";
 import { wording } from "../../config.ts";
 import type { CallResult } from "./live-run.ts";
+import { jsonValues } from "./visible-chat.ts";
 import "./questions-card.css";
 
 const text = wording.questions;
@@ -37,6 +38,17 @@ export function askedQuestions(
   if (result?.isError === true || !AskQuestions.allows(part.input))
     return undefined;
   return askQuestionsIssue(part.input) === undefined ? part.input : undefined;
+}
+
+/**
+ * Questions the coordinator wrote into its reply as ask_questions JSON instead of calling the tool.
+ * The transcript drops JSON from the reply, so without a card the questions would not show at all.
+ */
+export function writtenQuestions(text: string): AskQuestions | undefined {
+  return jsonValues(text).find(
+    (value): value is AskQuestions =>
+      AskQuestions.allows(value) && askQuestionsIssue(value) === undefined,
+  );
 }
 
 type Answer = {

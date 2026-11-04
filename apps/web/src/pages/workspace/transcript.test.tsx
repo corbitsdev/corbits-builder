@@ -372,4 +372,66 @@ describe("conversation transcript", () => {
     expect(several).not.toContain("--radius");
     expect(several).not.toContain(">Start Clear Skies<");
   });
+
+  const writtenAsk = JSON.stringify({
+    questions: [
+      {
+        id: "audience",
+        prompt: "Who is it for?",
+        kind: "single",
+        options: [
+          { value: "teams", label: "Small teams" },
+          { value: "solo", label: "Just me" },
+        ],
+      },
+    ],
+  });
+
+  test("questions written as JSON in a reply become a card", () => {
+    for (const json of [writtenAsk, "```json\n" + writtenAsk + "\n```"]) {
+      const html = renderToStaticMarkup(
+        <RoomThread
+          turns={[
+            {
+              role: "assistant",
+              text: `First questions:\n\n${json}\n\nAnswer them and I'll start the brief.`,
+              at: 1,
+            },
+          ]}
+          onAnswerQuestions={() => Promise.resolve(true)}
+        />,
+      );
+      expect(html).toContain("First questions:");
+      expect(html).toContain("Who is it for?");
+      expect(html).toContain("Small teams");
+      expect(html).not.toContain('"questions"');
+      expect(html).not.toContain("<pre>");
+    }
+  });
+
+  test("written questions add no card beside an ask_questions call", () => {
+    const html = renderToStaticMarkup(
+      <RoomThread
+        turns={[
+          {
+            role: "assistant",
+            text: writtenAsk,
+            at: 1,
+            parts: [
+              {
+                kind: "tool-trace",
+                toolCallId: "call-ask",
+                name: "ask_questions",
+                status: "output-available",
+                input: JSON.parse(writtenAsk) as unknown,
+              },
+              { kind: "text", text: writtenAsk },
+            ],
+          },
+        ]}
+        onAnswerQuestions={() => Promise.resolve(true)}
+      />,
+    );
+    expect(html.split("Who is it for?")).toHaveLength(2);
+  });
 });

@@ -78,6 +78,7 @@ import {
   askedQuestions,
   QuestionsCard,
   type QuestionsState,
+  writtenQuestions,
 } from "./questions-card.tsx";
 import type { AskQuestions } from "@corbits-builder/schemas/questions";
 
@@ -388,11 +389,22 @@ function threadSections(
       continue;
     }
     open.turns.push({ turn: item.turn, index: item.index });
+    const asked = open.cards.length;
     for (const tool of toolsOf(visibleTurnParts(item.turn))) {
       const ask = askedQuestions(tool, results.get(tool.toolCallId));
       if (ask !== undefined)
         open.cards.push({ kind: "questions", callId: tool.toolCallId, ask });
     }
+    const written =
+      item.turn.role === "assistant" && open.cards.length === asked
+        ? writtenQuestions(item.turn.text)
+        : undefined;
+    if (written !== undefined)
+      open.cards.push({
+        kind: "questions",
+        callId: `written-${String(item.index)}`,
+        ask: written,
+      });
   }
   return sections;
 }
