@@ -5,7 +5,7 @@ import { getLogger } from "@intx/log";
 import { errorCode, requestErrorMetadata } from "../request-error.ts";
 import { liveAppWording } from "../config/live-app.ts";
 import type { HostSource } from "./host.ts";
-import { HostReport } from "./host-report.ts";
+import { hostReports, type HostReport } from "./host-report.ts";
 import type { createLiveAppProxy } from "./proxy.ts";
 
 const log = getLogger(["corbits-builder", "hub", "live-app"]);
@@ -57,20 +57,14 @@ export function createLiveAppRunner(options: {
   sweep.unref();
 
   async function follow(projectId: string, run: Run) {
-    const decoder = new TextDecoder();
-    let pending = "";
     try {
-      for await (const chunk of run.child.stdout) {
-        pending += decoder.decode(chunk, { stream: true });
-        for (
-          let end = pending.indexOf("\n");
-          end !== -1;
-          end = pending.indexOf("\n")
-        ) {
-          run.state = HostReport.assert(JSON.parse(pending.slice(0, end)));
-          pending = pending.slice(end + 1);
-        }
-      }
+      for await (const report of hostReports(run.child.stdout, (reason) => {
+        log.warn("Skipped a live app host state line for {projectId}", {
+          projectId,
+          reason,
+        });
+      }))
+        run.state = report;
     } catch (error) {
       log.warn("Reading the live app host's state failed for {projectId}", {
         projectId,
@@ -95,9 +89,19 @@ export function createLiveAppRunner(options: {
     }
   }
 
-  async function failOnExit(projectId: string, run: Run) {
-    const code = await run.child.exited;
-    if (runs.get(projectId) === run && run.state.state !== "failed")
+  async function failOnExit(
+    projectId: string,
+    run: Run,
+    reading: Promise<void>,
+  ) {
+    // Lines the host wrote just before exiting are applied first, so the exit has the last word.
+    const [code] = await Promise.all([run.child.exited, reading]);
+    if (runs.get(projectId) !== run) return;
+    // A failed check is passing; the exit code says more about why the app is gone.
+    if (
+      run.state.state !== "failed" ||
+      run.state.error === liveAppWording.checkFailed
+    )
       run.state = {
         state: "failed",
         error: liveAppWording.hostExited(code),
@@ -135,9 +139,9 @@ export function createLiveAppRunner(options: {
       lastSeen: Date.now(),
     };
     runs.set(projectId, run);
-    void follow(projectId, run);
+    const reading = follow(projectId, run);
     void collect(projectId, run);
-    void failOnExit(projectId, run);
+    void failOnExit(projectId, run, reading);
     return run;
   }
 
