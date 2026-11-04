@@ -828,13 +828,13 @@ export function StageWorkspace({
     setMobilePane("artifacts");
     queueMicrotask(() => documentPaneRef.current?.focus());
   };
-  // "taken" is a decision someone else already made, in another tab or as a collaborator;
-  // "moved" is any other conflict, after which the page reads where the ask stands.
+  // "settled" is a 409: someone already decided the ask, or its run moved on; the page reads
+  // where it stands.
   const saveDecision = async (decision: {
     approvalId: string;
     choice: "yes" | "always" | "no";
     message?: string;
-  }): Promise<"saved" | "taken" | "moved" | { fault: string }> => {
+  }): Promise<"saved" | "settled" | { fault: string }> => {
     const notSaved = { fault: "That decision was not saved." };
     const cachedWaits =
       queryClient.getQueryData<readonly Wait[]>(
@@ -887,9 +887,7 @@ export function StageWorkspace({
       if (cause instanceof ProductApiError && cause.response.status === 409) {
         setGateDone((value) => value + 1);
         onChanged();
-        return (await responseCode(cause)) === "already_resolved"
-          ? "taken"
-          : "moved";
+        return "settled";
       }
       const fault = await humanFaultWithCode(cause, notSaved.fault);
       setApprovalError(fault);
@@ -906,8 +904,8 @@ export function StageWorkspace({
     const saved = await saveDecision(decision);
     return typeof saved === "object" ? saved.fault : null;
   };
-  // The person's words go with the decline as their reason; mailed instead when the ask was
-  // already decided elsewhere.
+  // The person's words go with the decline as their reason; mailed instead when the ask could
+  // not take them, so they are never lost and a failed mail says why.
   const declineWith =
     (approvalId: string) =>
     async (text: string): Promise<ChatMessage> => {
@@ -916,8 +914,7 @@ export function StageWorkspace({
         choice: "no",
         message: deliveredText(text),
       });
-      if (saved === "taken") return mail(text);
-      if (saved === "moved") throw new Error(notSent);
+      if (saved === "settled") return mail(text);
       if (typeof saved === "object") {
         // The composer reports the fault; the card keeps no second copy of it.
         setApprovalError(null);

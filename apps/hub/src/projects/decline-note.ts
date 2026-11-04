@@ -39,13 +39,17 @@ export function createDeclineNote(deps: {
     const tenantId = c.req.param("tenantId");
     const approvalId = c.req.param("approvalId");
     if (c.req.method !== "POST" || !tenantId || !approvalId) return next();
-    const body: unknown = await readJson(c.req.raw.clone());
-    if (!isRecord(body)) return next();
-    const words = body["message"];
-    if (words !== undefined && typeof words !== "string") return next();
     // A note that cannot be written must not cost the person their decision.
+    let body: Record<string, unknown>;
+    let words: string | undefined;
     try {
+      const read = await readJson(c.req.raw.clone());
+      if (!isRecord(read)) return next();
+      const message = read["message"];
+      if (message !== undefined && typeof message !== "string") return next();
       if (!(await deps.coordinatorAsk(tenantId, approvalId))) return next();
+      body = read;
+      words = message;
     } catch (error) {
       log.error("Decline note unavailable", {
         approvalId,

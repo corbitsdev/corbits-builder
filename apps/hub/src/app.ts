@@ -464,8 +464,11 @@ export async function createHubRuntime(
         repoStore: agentRepoStore.repoStore,
       }),
     );
+    // Only a signed-in member of the tenant reaches the note; Interchange's route reuses the
+    // resolved tenant.
     app.use(
       "/api/tenants/:tenantId/approvals/:approvalId/reject",
+      createResolveTenant({ db: handle.db }),
       createDeclineNote({ coordinatorAsk: coordinatorAskReader(handle.db) }),
     );
     mountHubRoutes(app, {
