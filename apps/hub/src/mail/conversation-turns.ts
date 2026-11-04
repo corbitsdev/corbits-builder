@@ -6,6 +6,7 @@ import { reconstructDurableConversation } from "@intx/workflow-host";
 import { deriveWorkflowRunRepoId } from "@intx/workflow-deploy";
 import { extractAddrSpec } from "@intx/mime";
 import { isRunAddress } from "@intx/types/agent-address";
+import { isMail } from "@intx/types/runtime";
 import { ApprovalDecision } from "@intx/types/signals";
 import { type } from "arktype";
 import {
@@ -88,6 +89,12 @@ function approvalText(
       });
 }
 
+function personText(body: string): string | undefined {
+  const text = withoutResumeContext(deliveredText(body));
+  if (text === undefined || text.trim() === "") return undefined;
+  return clippedTurnText(personTurnText(text));
+}
+
 // A missing or corrupt turn list is empty; it does not throw.
 function mapMirrorConversationTurns(
   turns: unknown,
@@ -118,20 +125,52 @@ function mapMirrorConversationTurns(
         mapped.push({ role: "person", text: clippedTurnText(text), at });
       continue;
     }
-    const text = withoutResumeContext(
-      deliveredText(raw.replace(inboundEnvelope, "")),
-    );
-    if (text === undefined || text.trim() === "") continue;
-    mapped.push({
-      role: "person",
-      text: clippedTurnText(personTurnText(text)),
-      at,
-    });
+    const text = personText(raw.replace(inboundEnvelope, ""));
+    if (text !== undefined) mapped.push({ role: "person", text, at });
   }
   mapped.sort((left, right) => left.at - right.at);
   return mapped.length > maxConversationTurns
     ? mapped.slice(-maxConversationTurns)
     : mapped;
+}
+
+/**
+ * The person's mail the run has received but its coordinator has not saved yet. The coordinator
+ * saves a message only with its reply, and takes a message in after the run commits its receipt,
+ * so a received message is unsaved while no saved person turn is as late as the receipt.
+ */
+export function unsavedPersonTurns(
+  events: unknown,
+  saved: readonly ConversationTextTurn[],
+): ConversationTextTurn[] {
+  if (!Array.isArray(events)) return [];
+  const latestSaved = Math.max(
+    -Infinity,
+    ...saved.flatMap((turn) => (turn.role === "person" ? [turn.at] : [])),
+  );
+  const unsaved: ConversationTextTurn[] = [];
+  for (const event of events) {
+    if (!isRecord(event) || event["type"] !== "SignalReceived") continue;
+    const body = event["body"];
+    if (!isRecord(body) || typeof body["at"] !== "string") continue;
+    const at = Date.parse(body["at"]);
+    const mail = body["payload"];
+    if (!(at > latestSaved) || !isMail(mail)) continue;
+    if (mail.headers.from !== undefined && runSent(mail.headers.from)) continue;
+    const text = personText(
+      mail.parts
+        .flatMap((part) =>
+          part.disposition !== "attachment" &&
+          part.contentType.startsWith("text/plain") &&
+          part.text !== undefined
+            ? [part.text]
+            : [],
+        )
+        .join(""),
+    );
+    if (text !== undefined) unsaved.push({ role: "person", text, at });
+  }
+  return unsaved;
 }
 
 /**
