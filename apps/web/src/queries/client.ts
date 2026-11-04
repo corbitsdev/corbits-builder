@@ -36,9 +36,11 @@ const persistOptions: PersistQueryClientOptions = {
     storage: { getItem: get, setItem: set, removeItem: del },
   }),
   maxAge: CACHE_LIFETIME_MS,
-  // A query that still has data is kept after a failed refetch.
+  // A query that still has data is kept after a failed refetch. One marked
+  // `meta: { persist: false }` only matters while this page waits on it.
   dehydrateOptions: {
-    shouldDehydrateQuery: (query) => query.state.data !== undefined,
+    shouldDehydrateQuery: (query) =>
+      query.state.data !== undefined && query.meta?.["persist"] !== false,
   },
 };
 
