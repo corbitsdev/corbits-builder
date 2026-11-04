@@ -1,6 +1,7 @@
-import { describe, expect, mock, test } from "bun:test";
+import { beforeAll, describe, expect, mock, test } from "bun:test";
 import React, { isValidElement, type ReactNode } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
+import { prerender } from "react-dom/static";
 import { ThemeProvider } from "@corbits/react-ui";
 import { QueryClientProvider } from "@tanstack/react-query";
 import type { ApprovalPackageBundle } from "@corbits-builder/schemas/artifact";
@@ -212,6 +213,7 @@ mock.module("../../api/artifacts.ts", () => ({
 
 const { ApprovalRoundsPanel, SharePackageDialog } =
   await import("./approval-rounds.tsx");
+const { SlidesView } = await import("./approval-package-preview.tsx");
 
 const openRound: ApprovalRound = {
   roundId: "rnd_1",
@@ -617,6 +619,11 @@ function createStatefulHarness(renderRoot: () => ReactNode) {
 }
 
 describe("approval rounds panel", () => {
+  // Loads the lazily split slides once, as a browser would, so synchronous renders draw them.
+  beforeAll(async () => {
+    await prerender(<SlidesView deck={sampleBundle.deck} />);
+  });
+
   test("renders open round with reviewer states, Add new reviewer button, per-person Download package buttons, inline feedback triage with Incorporate and Dismiss (no Reply), and disabled settle button while a reviewer is pending", () => {
     const html = renderToStaticMarkup(
       <ApprovalRoundsPanel
