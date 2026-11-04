@@ -9,6 +9,7 @@ import { wording } from "../../config.ts";
 import { DocumentDecision } from "./document-decision.tsx";
 import {
   awaitingCommit,
+  awaitingReply,
   emptyLiveRun,
   foldLiveRun,
   liveTurnStreaming,
@@ -169,6 +170,23 @@ describe("conversation transcript", () => {
     expect(waitingOnPerson([coder], new Set(["appr-2"]), "run-c", true)).toBe(
       false,
     );
+  });
+
+  test("a sent message waits on the coordinator until it is held on the person, and again once answered", () => {
+    const approval = { runId: "run-c", approvalId: "appr-1" };
+    const question = { runId: "run-c", park: { seq: 4 } };
+    const heldOnCard = waitingOnPerson(
+      [approval],
+      new Set(["appr-1"]),
+      "run-c",
+      true,
+    );
+    expect(awaitingReply(10, "person", null, false)).toBe(true);
+    expect(awaitingReply(10, "person", null, heldOnCard)).toBe(false);
+    expect(awaitingReply(10, "assistant", null, false)).toBe(false);
+    expect(awaitingReply(10, "person", 12, false)).toBe(false);
+    const answered = waitingOnPerson([question], new Set(), "run-c", true);
+    expect(awaitingReply(20, "person", 12, answered)).toBe(true);
   });
 
   test("an inference call that finishes with tool work settles even while the message run stays open on a park", () => {

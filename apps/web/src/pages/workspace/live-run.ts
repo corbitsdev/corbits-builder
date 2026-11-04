@@ -294,3 +294,22 @@ export function waitingOnPerson(
     )
   );
 }
+
+/**
+ * A message sent here waits on the coordinator from the moment it leaves, before the stream
+ * reports its run: until a reply follows it, a run ends after it, or the coordinator is held on
+ * the person. An approval card alone brings no reply text while its run stays open.
+ */
+export function awaitingReply(
+  sentAt: number | null,
+  lastTurnRole: ConversationTurn["role"] | undefined,
+  runEndedAt: number | null,
+  held: boolean,
+): boolean {
+  return (
+    sentAt !== null &&
+    lastTurnRole === "person" &&
+    (runEndedAt === null || runEndedAt < sentAt) &&
+    !held
+  );
+}

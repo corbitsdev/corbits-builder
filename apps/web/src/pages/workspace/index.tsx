@@ -89,6 +89,7 @@ import {
 } from "./tab-follow.ts";
 import {
   awaitingCommit,
+  awaitingReply,
   committedSteps,
   emptyLiveRun,
   foldLiveRun,
@@ -998,19 +999,14 @@ export function StageWorkspace({
     }
   };
   const held = waitingOnPerson(waits, openApprovalIds, runId, liveRun.running);
-  // A message sent here waits on the coordinator from the moment it leaves, before the stream
-  // reports its run: until a reply follows it or a run ends after it.
-  const awaitingReply =
-    awaitingSince !== null &&
-    turns.at(-1)?.role === "person" &&
-    (liveRun.endedAt === null || liveRun.endedAt < awaitingSince) &&
+  const awaiting =
+    awaitingReply(awaitingSince, turns.at(-1)?.role, liveRun.endedAt, held) &&
     !archived &&
     startFault === null &&
     modelNeeded === null;
   // The mark stays for the whole turn: between model calls and during long tool work the live
   // reply shows nothing moving.
-  const thinking =
-    !sendFailed && (sending || awaitingReply || (working && !held));
+  const thinking = !sendFailed && (sending || awaiting || (working && !held));
   // Each concept's option is its own tab beside the others, never an ordinary document.
   const options = artifacts.filter((item) => item.kind === DESIGN_OPTION);
   const paneDeliverables = documentsForPane(
