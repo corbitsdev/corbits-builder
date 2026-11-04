@@ -49,6 +49,7 @@ import {
   type DispatchRoom,
 } from "./dispatch-card.tsx";
 import { earlierDocumentRole } from "./earlier-document.ts";
+import { pastedFiles } from "./pasted-files.ts";
 import { ArtifactPane, LIVE_TAB } from "./artifact-pane.tsx";
 import "./persistent-workspace.css";
 import { ProductApiError, type ProjectArtifact } from "@corbits-builder/client";
@@ -1391,6 +1392,13 @@ export function StageWorkspace({
                 )}
                 <PromptInputTextarea
                   ref={composerRef}
+                  // A picture on the clipboard attaches like a chosen file; text pastes as text.
+                  onPaste={(event) => {
+                    const files = pastedFiles(event.clipboardData);
+                    if (files.length === 0) return;
+                    event.preventDefault();
+                    addFiles(files);
+                  }}
                   placeholder={
                     providerMissing
                       ? wording.conversation.enableAiFirst
