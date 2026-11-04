@@ -57,13 +57,6 @@ export function resolveThemeHex(theme: Theme, color: string): string {
   return raw.startsWith("#") ? raw.toUpperCase() : `#${raw.toUpperCase()}`;
 }
 
-export function resolvePaintHex(theme: Theme, paint: Paint): string {
-  if (typeof paint === "string") return resolveThemeHex(theme, paint);
-  const first = paint.stops[0];
-  if (!first) return resolveThemeHex(theme, "background");
-  return resolveThemeHex(theme, first.color);
-}
-
 function srgbChannelLuminance(byte: number): number {
   const s = byte / 255;
   if (s <= 0.04045) return s / 12.92;
