@@ -145,6 +145,13 @@ export const MODEL_PROVIDERS: readonly ShippedEntry[] = [
       { id: "gpt-5.6-terra", label: "gpt-5.6-terra" },
       { id: "gpt-5.6-luna", label: "gpt-5.6-luna" },
     ],
+    // The ChatGPT backend reads images, PDFs and text documents (checked live against it).
+    capabilities: [
+      "vision-input",
+      "vision-input-streaming",
+      "document-input",
+      "document-input-streaming",
+    ],
   },
   {
     id: "xai",
