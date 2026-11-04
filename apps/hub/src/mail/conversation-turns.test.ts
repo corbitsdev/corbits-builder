@@ -3,6 +3,7 @@ import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { $ } from "bun";
+import { declineNote } from "../config/decline.ts";
 import { resumeMessage } from "../config/resume.ts";
 import { specialistEndedMessage } from "../config/specialist-ended.ts";
 import { readDurableConversationTurns } from "./conversation-turns.ts";
@@ -102,6 +103,35 @@ test("resume turns read each approval decision as a plain line", async () => {
     { role: "person", text: "Rejected a request." },
     { role: "person", text: "Rejected a request: Keep it free" },
     { role: "person", text: "Approved a request." },
+  ]);
+});
+
+test("a coordinator ask's decline reads back as the person's words alone", async () => {
+  const dir = await runRepo([
+    {
+      from: "signal@local",
+      text: JSON.stringify({
+        outcome: "rejected",
+        message: declineNote("Make it shorter\n\nand warmer"),
+      }),
+    },
+    {
+      from: "signal@local",
+      text: JSON.stringify({
+        outcome: "rejected",
+        message: declineNote(undefined),
+      }),
+    },
+  ]);
+  expect(await personTexts(dir, "note")).toEqual([
+    { role: "person", text: "Make it shorter\n\nand warmer" },
+  ]);
+  expect(await personTexts(dir, "decision")).toEqual([
+    {
+      role: "person",
+      text: "Rejected a request: Make it shorter\n\nand warmer",
+    },
+    { role: "person", text: "Rejected a request." },
   ]);
 });
 

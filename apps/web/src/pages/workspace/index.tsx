@@ -69,7 +69,8 @@ import {
   restoreProject,
   startProjectCoordinator,
 } from "../../api/projects.ts";
-import type { Wait } from "../../api/types.ts";
+import type { ChatMessage, Wait } from "../../api/types.ts";
+import { deliveredText } from "@corbits-builder/schemas/conversation";
 import { keys } from "../../queries/keys.ts";
 import { COMPOSER_BOX_CLASS, CONV_CLASS, PANES_CLASS } from "./pane-classes.ts";
 import { questionsOpen, RoomThread, turnItemId } from "./transcript.tsx";
@@ -651,9 +652,13 @@ export function StageWorkspace({
     return documents[key];
   };
 
+  const notSent = "That message was not sent.";
+  const mail = async (text: string) =>
+    (await sendMessage(projectId, text)).message;
   const deliverMail = async (
     body: string,
     clearComposer = false,
+    post: (text: string) => Promise<ChatMessage> = mail,
   ): Promise<boolean> => {
     const text = body.trim();
     if (text.length === 0 || sending) return false;
@@ -672,13 +677,12 @@ export function StageWorkspace({
     setSent((previous) => [...previous, pending]);
     if (clearComposer) setValue("");
     try {
-      const { message, receipt } = await sendMessage(projectId, text);
+      const message = await post(text);
       setSent((previous) =>
         previous.map((item) =>
           item === pending ? { ...pending, ...message } : item,
         ),
       );
-      void receipt;
       reloadRef.current();
       onChanged();
       return true;
@@ -687,10 +691,7 @@ export function StageWorkspace({
       setSent((previous) => previous.filter((item) => item !== pending));
       if (clearComposer)
         setValue((current) => (current === "" ? text : current));
-      const message = await humanFaultWithCode(
-        cause,
-        "That message was not sent.",
-      );
+      const message = await humanFaultWithCode(cause, notSent);
       setSendFailed(true);
       setSendFault(message);
       toast.error(message);
@@ -827,12 +828,14 @@ export function StageWorkspace({
     setMobilePane("artifacts");
     queueMicrotask(() => documentPaneRef.current?.focus());
   };
-  // Resolves to the fault the person sees, or null once the decision stands.
-  const onDecideApproval = async (decision: {
+  // "settled" is a 409: someone already decided the ask, or its run moved on; the page reads
+  // where it stands.
+  const saveDecision = async (decision: {
     approvalId: string;
     choice: "yes" | "always" | "no";
-  }): Promise<string | null> => {
-    const notSaved = "That decision was not saved.";
+    message?: string;
+  }): Promise<"saved" | "settled" | { fault: string }> => {
+    const notSaved = { fault: "That decision was not saved." };
     const cachedWaits =
       queryClient.getQueryData<readonly Wait[]>(
         keys.openDecisions.of(projectId),
@@ -865,6 +868,9 @@ export function StageWorkspace({
             ? "approve"
             : "reject",
         ...(decision.choice === "always" ? { scope: "always" as const } : {}),
+        ...(decision.message === undefined
+          ? {}
+          : { message: decision.message }),
       });
       if (decided !== undefined)
         settle(decided, {
@@ -876,21 +882,51 @@ export function StageWorkspace({
         });
       setGateDone((value) => value + 1);
       onChanged();
-      return null;
+      return "saved";
     } catch (cause: unknown) {
-      // 409: someone already decided it (another tab or collaborator); show where it stands.
       if (cause instanceof ProductApiError && cause.response.status === 409) {
         setGateDone((value) => value + 1);
         onChanged();
-        return null;
+        return "settled";
       }
-      const fault = await humanFaultWithCode(cause, notSaved);
+      const fault = await humanFaultWithCode(cause, notSaved.fault);
       setApprovalError(fault);
-      return fault;
+      return { fault };
     } finally {
       setApprovalBusy(false);
     }
   };
+  // Resolves to the fault the person sees, or null once the decision stands.
+  const onDecideApproval = async (decision: {
+    approvalId: string;
+    choice: "yes" | "always" | "no";
+  }): Promise<string | null> => {
+    const saved = await saveDecision(decision);
+    return typeof saved === "object" ? saved.fault : null;
+  };
+  // The person's words go with the decline as their reason; mailed instead when the ask could
+  // not take them, so they are never lost and a failed mail says why.
+  const declineWith =
+    (approvalId: string) =>
+    async (text: string): Promise<ChatMessage> => {
+      const saved = await saveDecision({
+        approvalId,
+        choice: "no",
+        message: deliveredText(text),
+      });
+      if (saved === "settled") return mail(text);
+      if (typeof saved === "object") {
+        // The composer reports the fault; the card keeps no second copy of it.
+        setApprovalError(null);
+        throw new Error(saved.fault);
+      }
+      return {
+        id: `declined:${approvalId}`,
+        author: "me",
+        body: text,
+        at: new Date().toISOString(),
+      };
+    };
   const openApproval = pendingApprovals.find(
     (approval) => approval.packages === undefined,
   );
@@ -917,6 +953,8 @@ export function StageWorkspace({
       openApprovalId: currentOpen?.approvalId,
       decide: onDecideApproval,
       deliver: () => deliverMail(message),
+      decline: (approvalId) =>
+        deliverMail(message, false, declineWith(approvalId)),
       notSent: wording.approaches.notSent,
     });
   };
@@ -930,6 +968,8 @@ export function StageWorkspace({
       openApprovalId: currentOpen?.approvalId,
       decide: onDecideApproval,
       deliver: () => deliverMail(body, clearComposer),
+      decline: (approvalId) =>
+        deliverMail(body, clearComposer, declineWith(approvalId)),
     });
   };
   const sendFiles = async () => {
@@ -970,10 +1010,18 @@ export function StageWorkspace({
     if (role === undefined || caution === role) return sendNow();
     setCaution(role);
   };
+  // The composer is disabled while the decline saves, so the cursor goes there once it can take it.
+  const [changesAsked, setChangesAsked] = useState(false);
   const requestChanges = () => {
     setMobilePane("conversation");
-    composerRef.current?.focus();
+    setChangesAsked(true);
   };
+  const composerDisabled = sending || approvalBusy || providerMissing;
+  useEffect(() => {
+    if (!changesAsked || composerDisabled) return;
+    setChangesAsked(false);
+    composerRef.current?.focus();
+  }, [changesAsked, composerDisabled]);
 
   const unbound = snapshot !== undefined && events === null;
   const startCoordinator = async () => {
@@ -1395,7 +1443,7 @@ export function StageWorkspace({
                 onSubmit={send}
                 canSubmit={value.trim() !== "" || files.length > 0}
                 status={sending || approvalBusy ? "submitted" : "ready"}
-                disabled={sending || approvalBusy || providerMissing}
+                disabled={composerDisabled}
               >
                 {files.length === 0 ? null : (
                   <PromptInputFloat>

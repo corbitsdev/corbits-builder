@@ -776,9 +776,8 @@ export const wording = {
     approve: "Yes, go ahead",
     notYet: "Not yet",
     decline: "Decline",
-    /** The composer's placeholder while an approval is open: a message leaves the card open. */
-    composerPlaceholder:
-      "Ask a question, or choose Not yet to request changes…",
+    /** The composer's placeholder while an approval is open: a message declines it, with these words as the reason. */
+    composerPlaceholder: "Say what you'd like changed, or ask a question…",
     /** A whole message that approves the one open card, after a countdown the person can undo. */
     typedYes: {
       affirmations: [
