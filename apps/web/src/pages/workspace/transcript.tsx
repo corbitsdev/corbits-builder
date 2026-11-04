@@ -11,6 +11,7 @@ import {
   SPECIALIST_ENDED_LEAD,
   wording,
 } from "../../config.ts";
+import type { QuestionsLayout } from "../../questions-layout-setting.ts";
 import { Fragment, useState, type ReactNode } from "react";
 import { Check, Copy } from "lucide-react";
 import {
@@ -362,6 +363,22 @@ function toolsOf(parts: readonly ConversationPart[]): readonly PartTool[] {
   );
 }
 
+/** Whether questions the coordinator asked since the person's last turn still wait on them. */
+export function questionsOpen(
+  turns: readonly TranscriptTurn[],
+  results: ReadonlyMap<string, CallResult>,
+): boolean {
+  const since = turns.findLastIndex((turn) => turn.role === "person") + 1;
+  return turns
+    .slice(since)
+    .some((turn) =>
+      toolsOf(visibleTurnParts(turn)).some(
+        (tool) =>
+          askedQuestions(tool, results.get(tool.toolCallId)) !== undefined,
+      ),
+    );
+}
+
 /**
  * The thread cut at the person's turns. Between two of them the coordinator
  * speaks once: its turns' words under one header, then every card from that
@@ -591,6 +608,7 @@ export function RoomThread({
   typedYes,
   onAnswerQuestions,
   questionsDisabled = false,
+  questionsLayout = "steps",
   children,
 }: {
   turns: readonly TranscriptTurn[];
@@ -628,6 +646,8 @@ export function RoomThread({
   /** Sends the person's answers to the coordinator's questions as their next message. */
   onAnswerQuestions?: (reply: string) => Promise<boolean>;
   questionsDisabled?: boolean;
+  /** Whether question cards ask one question at a time or all at once. */
+  questionsLayout?: QuestionsLayout;
   /** Agent output rendered in the same log, after the turns. */
   children?: ReactNode;
 }) {
@@ -689,6 +709,7 @@ export function RoomThread({
               id={card.callId}
               ask={card.ask}
               state={questions(card.callId)}
+              layout={questionsLayout}
             />
           </Message>
         </ConversationItem>

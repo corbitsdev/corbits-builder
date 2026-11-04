@@ -961,9 +961,28 @@ export const wording = {
   },
   /** The coordinator's questions as a card the person answers in the conversation. */
   questions: {
-    title: "A few questions before going on",
+    title: (count: number) =>
+      count === 1
+        ? "A question for you"
+        : count === 2
+          ? "A couple of questions for you"
+          : "A few questions for you",
     other: "Other",
     otherAnswer: "Your own answer",
+    /** The last step tab, where every answer is shown before it is sent. */
+    submit: "Submit",
+    steps: "Questions",
+    /** The keyboard hint under each step, by the kind of step. */
+    keys: {
+      single: "↑↓ move · Enter choose · ← back",
+      multi: "↑↓ move · Space tick · Enter next · ← back",
+      review: "Enter send · ← back",
+    },
+    composerPlaceholder: "Type here to respond to the above question",
+    /** The Settings switch between one question at a time and all at once. */
+    layoutSetting: "Ask questions one at a time",
+    layoutHint:
+      "On, each question is its own step you answer from the keyboard. Off, every question shows at once.",
     send: "Send answers",
     sending: "Sending…",
     notSent: "Your answers were not sent. Your choices are kept; try again.",
