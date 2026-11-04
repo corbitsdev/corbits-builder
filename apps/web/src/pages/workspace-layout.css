@@ -218,10 +218,12 @@
   margin-inline-start: 0;
 }
 
-/* Design approval: the two actions share one line, one width and one
-   height. Not yet is not pinned to the right edge, and the labels do not wrap. */
+/* Design approval: the two actions share one width and one height, and
+   Not yet is not pinned to the right edge. A long label wraps between words;
+   the button centres its text, so clipping it would cut both ends. Each
+   button is at least as wide as its longest word, so the pair stacks once
+   even that does not fit. */
 .document-decision-design [data-slot="tool-approval-card"] > div:last-child {
-  flex-wrap: nowrap;
   align-items: stretch;
 }
 
@@ -230,11 +232,13 @@
   > div:last-child
   > button {
   flex: 1 1 0;
-  min-width: 0;
   margin-inline-start: 0;
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
+  height: auto;
+  min-height: 2rem;
+  white-space: normal;
+  overflow-wrap: normal;
+  word-break: normal;
+  text-align: center;
 }
 
 /* The library keeps a settled line's words from shrinking, so a long document title ran past the
