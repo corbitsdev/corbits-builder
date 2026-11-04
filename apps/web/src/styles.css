@@ -1049,11 +1049,26 @@ h3 {
   gap: var(--space-2);
   flex: none;
   position: relative;
-  /* The composer must not clip: the attachment tray, the send-back picker,
-     the model list and the reviewer's notes float above it. Long text stays
-     in reach because the textarea caps its own height and scrolls, so the
-     send, stop, attach and mic controls never leave the pane. */
+  /* Capped so the send, stop, attach and mic controls never leave the pane.
+     The composer itself must not scroll: the attachment tray and the model
+     list float above the box, and a scrolling composer clips them. The
+     textarea scrolls its own text, and the notes above the box give way. */
+  max-height: 70vh;
   min-height: 0;
+}
+
+/* Errors, the earlier-document caution and suggested replies share one
+   region that scrolls once the composer reaches its cap, so the box below
+   keeps its full height. */
+.composer > .composer-notes {
+  display: grid;
+  gap: var(--space-2);
+  min-height: 0;
+  overflow-y: auto;
+}
+
+.composer > .composer-notes:empty {
+  display: none;
 }
 
 /* The box itself is a flex column: textarea body above, action row beneath.

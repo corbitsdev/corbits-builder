@@ -1323,56 +1323,60 @@ export function StageWorkspace({
         className="composer"
         data-working={working || sending ? "" : undefined}
       >
-        {attachFault === null ? null : (
-          <p className="workspace-fault" role="alert">
-            {attachFault}
-          </p>
-        )}
-        {sendFailed && sendFault ? (
-          <p className="workspace-fault" role="alert">
-            {sendFault}
-          </p>
-        ) : null}
-        {caution === null ? null : (
-          <div className="workspace-caution" role="alert">
-            <p>{wording.earlierDocument.warning(participantLabel(caution))}</p>
-            <div className="workspace-caution-actions">
-              <UiButton type="button" size="sm" onClick={sendNow}>
-                {wording.earlierDocument.sendAnyway}
-              </UiButton>
-              <UiButton
-                type="button"
-                size="sm"
-                variant="ghost"
-                onClick={() => {
-                  setCaution(null);
-                  composerRef.current?.focus();
-                }}
-              >
-                {wording.action.cancel}
-              </UiButton>
+        <div className="composer-notes">
+          {attachFault === null ? null : (
+            <p className="workspace-fault" role="alert">
+              {attachFault}
+            </p>
+          )}
+          {sendFailed && sendFault ? (
+            <p className="workspace-fault" role="alert">
+              {sendFault}
+            </p>
+          ) : null}
+          {caution === null ? null : (
+            <div className="workspace-caution" role="alert">
+              <p>
+                {wording.earlierDocument.warning(participantLabel(caution))}
+              </p>
+              <div className="workspace-caution-actions">
+                <UiButton type="button" size="sm" onClick={sendNow}>
+                  {wording.earlierDocument.sendAnyway}
+                </UiButton>
+                <UiButton
+                  type="button"
+                  size="sm"
+                  variant="ghost"
+                  onClick={() => {
+                    setCaution(null);
+                    composerRef.current?.focus();
+                  }}
+                >
+                  {wording.action.cancel}
+                </UiButton>
+              </div>
             </div>
-          </div>
-        )}
-        {replies.length > 0 && !providerMissing ? (
-          <div
-            className="workspace-replies"
-            role="group"
-            aria-label="Suggested replies"
-          >
-            {replies.map((reply) => (
-              <UiButton
-                key={reply}
-                type="button"
-                variant="outline"
-                size="sm"
-                onClick={() => void deliver(reply)}
-              >
-                {reply}
-              </UiButton>
-            ))}
-          </div>
-        ) : null}
+          )}
+          {replies.length > 0 && !providerMissing ? (
+            <div
+              className="workspace-replies"
+              role="group"
+              aria-label="Suggested replies"
+            >
+              {replies.map((reply) => (
+                <UiButton
+                  key={reply}
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  onClick={() => void deliver(reply)}
+                >
+                  {reply}
+                </UiButton>
+              ))}
+            </div>
+          ) : null}
+        </div>
         <AttachmentDropZone
           onFiles={addFiles}
           disabled={!attaching}
