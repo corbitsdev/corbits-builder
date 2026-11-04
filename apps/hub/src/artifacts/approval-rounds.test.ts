@@ -111,6 +111,17 @@ function createFakeStore(options?: {
     sha256: string;
   }> = [];
   const rounds = new Map<string, StoredApprovalRound>();
+  const roundLocks = new Map<string, Promise<unknown>>();
+  const readRound = async (
+    tenantId: string,
+    projectId: string,
+    roundId: string,
+  ) => {
+    const found = rounds.get(roundId);
+    if (!found || found.tenantId !== tenantId || found.projectId !== projectId)
+      return undefined;
+    return structuredClone(found);
+  };
   const workspaceReviewers: WorkspaceReviewer[] = [
     ...DEFAULT_WORKSPACE_REVIEWERS,
   ];
@@ -145,19 +156,20 @@ function createFakeStore(options?: {
         (item) => item.tenantId === tenantId && item.projectId === projectId,
       );
     },
-    async readRound(tenantId, projectId, roundId) {
-      const found = rounds.get(roundId);
-      if (
-        !found ||
-        found.tenantId !== tenantId ||
-        found.projectId !== projectId
-      ) {
-        return undefined;
-      }
-      return structuredClone(found);
-    },
-    async updateRound(round) {
-      rounds.set(round.roundId, structuredClone(round));
+    readRound,
+    // Runs each round's transactions one at a time, as the row lock does in Postgres.
+    async transactRound(tenantId, projectId, roundId, fn) {
+      const transaction = (roundLocks.get(roundId) ?? Promise.resolve()).then(
+        async () =>
+          fn(await readRound(tenantId, projectId, roundId), async (updated) => {
+            rounds.set(updated.roundId, structuredClone(updated));
+          }),
+      );
+      roundLocks.set(
+        roundId,
+        transaction.catch(() => undefined),
+      );
+      return transaction;
     },
     async activeCoordinatorRunId() {
       return coordinatorRunId;

@@ -136,8 +136,9 @@ export type ApprovalRoundStore = {
     projectId: string,
     roundId: string,
   ): Promise<StoredApprovalRound | undefined>;
-  updateRound(round: StoredApprovalRound): Promise<void>;
-  transactRound?<T>(
+  // Reads the round and saves its update in one transaction holding the round's row lock, so
+  // concurrent reviewer decisions and triage never overwrite each other.
+  transactRound<T>(
     tenantId: string,
     projectId: string,
     roundId: string,
@@ -637,23 +638,6 @@ export function createPgApprovalRoundStore(
       };
     },
 
-    async updateRound(round) {
-      await rawDB
-        .update(approvalRound)
-        .set({
-          settledAt: round.settledAt,
-          reviewers: round.reviewers,
-          triage: round.triage,
-        })
-        .where(
-          and(
-            eq(approvalRound.id, round.roundId),
-            eq(approvalRound.tenantId, round.tenantId),
-            eq(approvalRound.projectId, round.projectId),
-          ),
-        );
-    },
-
     async transactRound(tenantId, projectId, roundId, fn) {
       return rawDB.transaction(async (tx) => {
         const [row] = await tx
@@ -796,48 +780,6 @@ export type PackageZipReviewerFilter = {
 
 export function createApprovalRoundService(store: ApprovalRoundStore) {
   const currentNow = () => (store.now === undefined ? new Date() : store.now());
-  const roundLocks = new Map<string, Promise<unknown>>();
-
-  async function waitForLock(
-    prev: Promise<unknown> | undefined,
-    gate: Promise<void>,
-  ): Promise<void> {
-    if (prev !== undefined) await prev;
-    await gate;
-  }
-
-  async function withRoundLock<T>(
-    tenantId: string,
-    projectId: string,
-    roundId: string,
-    fn: (
-      round: StoredApprovalRound | undefined,
-      save: (updated: StoredApprovalRound) => Promise<void>,
-    ) => Promise<T>,
-  ): Promise<T> {
-    const key = `${tenantId}:${projectId}:${roundId}`;
-    const prev = roundLocks.get(key);
-    let release!: () => void;
-    const gate = new Promise<void>((resolve) => {
-      release = resolve;
-    });
-    const queued = waitForLock(prev, gate);
-    roundLocks.set(key, queued);
-    if (prev !== undefined) await prev;
-    try {
-      if (store.transactRound !== undefined) {
-        return await store.transactRound(tenantId, projectId, roundId, fn);
-      }
-      const round = await store.readRound(tenantId, projectId, roundId);
-      return await fn(round, (updated) => store.updateRound(updated));
-    } finally {
-      release();
-      if (roundLocks.get(key) === queued) {
-        roundLocks.delete(key);
-      }
-    }
-  }
-
   async function resolveReviewerRecipient(
     tenantId: string,
     projectId: string,
@@ -999,7 +941,7 @@ export function createApprovalRoundService(store: ApprovalRoundStore) {
         });
       }
       await store.authorize(actor, projectId, "manage", true);
-      return withRoundLock(
+      return store.transactRound(
         actor.tenantId,
         projectId,
         roundId,
@@ -1134,7 +1076,7 @@ export function createApprovalRoundService(store: ApprovalRoundStore) {
         throw new ProjectError(400, "invalid_triage_decision");
       }
       await store.authorize(actor, projectId, "manage", true);
-      return withRoundLock(
+      return store.transactRound(
         actor.tenantId,
         projectId,
         roundId,
@@ -1243,7 +1185,7 @@ export function createApprovalRoundService(store: ApprovalRoundStore) {
       roundId: string,
     ): Promise<ApprovalRound> {
       await store.authorize(actor, projectId, "manage", true);
-      return withRoundLock(
+      return store.transactRound(
         actor.tenantId,
         projectId,
         roundId,
