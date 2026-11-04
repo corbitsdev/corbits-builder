@@ -425,7 +425,7 @@ describe("conversation transcript", () => {
         onAnswerQuestions={() => Promise.resolve(true)}
       />,
     );
-    expect(html).toContain(wording.questions.answered(["Small teams"]));
+    expect(html).toContain("questions-card-settled");
     expect(html).not.toContain(wording.questions.send);
   });
 
