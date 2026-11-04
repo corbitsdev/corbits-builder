@@ -345,7 +345,12 @@ describe("approval package validation and secret scanning", () => {
           domain: "example.invalid",
           role: "coordinator",
           workflows: {
-            writer: deployment,
+            writers: {
+              constraints: deployment,
+              approaches: deployment,
+              product_requirements: deployment,
+              build_plan: deployment,
+            },
             reviewer: deployment,
             coder: deployment,
             designer: deployment,

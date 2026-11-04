@@ -443,7 +443,12 @@ test("check_design validates DESIGN.md and .dark in styles.css and auto-files th
           domain: "example.invalid",
           role: "designer",
           workflows: {
-            writer: deployment,
+            writers: {
+              constraints: deployment,
+              approaches: deployment,
+              product_requirements: deployment,
+              build_plan: deployment,
+            },
             reviewer: deployment,
             coder: deployment,
             designer: deployment,

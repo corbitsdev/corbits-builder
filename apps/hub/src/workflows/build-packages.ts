@@ -2,7 +2,7 @@ import { createHash } from "node:crypto";
 import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
 import { join, resolve } from "node:path";
 import { tmpdir } from "node:os";
-import { nativePackageName } from "./package-name.ts";
+import { nativePackageName, WRITER_PACKAGES } from "./package-name.ts";
 import type { RoleInference } from "./role-inference.ts";
 import type { WorkflowRole } from "@corbits-builder/schemas/installed-workflows";
 
@@ -15,17 +15,14 @@ function contentVersion(base: string, bundle: string): string {
 // Each package is an entry under entries/ built on what its role's model binding resolved to.
 const WORKFLOW_PACKAGES: readonly { name: string; role: WorkflowRole }[] = [
   ...(
-    [
-      "coordinator",
-      "writer",
-      "reviewer",
-      "coder",
-      "designer",
-      "presenter",
-    ] as const
+    ["coordinator", "reviewer", "coder", "designer", "presenter"] as const
   ).map((role) => ({
     name: role,
     role,
+  })),
+  ...Object.values(WRITER_PACKAGES).map((name) => ({
+    name,
+    role: "writer" as const,
   })),
   { name: "coder-any-package", role: "coder" },
 ];

@@ -293,7 +293,7 @@ export function createAgentTokenBridge(
         projectId: binding.projectId,
         role,
         workflows: {
-          writer: installed.writer,
+          writers: installed.writers,
           reviewer: installed.reviewer,
           coder: installsAnyPackage(preferences.value)
             ? installed.coderAnyPackage

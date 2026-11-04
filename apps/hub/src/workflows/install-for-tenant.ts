@@ -20,6 +20,7 @@ import {
 import {
   InstalledWorkflows,
   INSTALLED_WORKFLOWS_KEY,
+  roleDeployments,
 } from "@corbits-builder/schemas/installed-workflows";
 import type { RoleBinding } from "@corbits-builder/schemas/models";
 import type { WorkflowRole } from "@corbits-builder/schemas/installed-workflows";
@@ -37,6 +38,7 @@ import {
 import { projectModelChoice } from "../projects/model-choice.ts";
 import { ProjectError } from "../projects/errors.ts";
 import { buildWorkflowPackages } from "./build-packages.ts";
+import { nativePackageName, WRITER_PACKAGES } from "./package-name.ts";
 import { resolveRoleInference, type RoleInference } from "./role-inference.ts";
 import type { Actor } from "../lib/actor.ts";
 
@@ -336,15 +338,15 @@ async function isCurrent(
     built.map((item) => item.packageName + "@" + item.version),
   );
   if (
-    ![...ROLES, "coderAnyPackage" as const].every((key) => {
-      const entry = installed[key];
-      return entry !== undefined && pins.has(entry.pin);
-    })
+    !ROLES.every((role) =>
+      roleDeployments(installed, role).every((entry) => pins.has(entry.pin)),
+    )
   )
     return false;
   const visible = await listVisibleOfferings(db, tenantId);
+  // A role's packages are installed on the one offering its binding resolved to.
   for (const role of ROLES) {
-    const entry = installed[role];
+    const [entry] = roleDeployments(installed, role);
     if (!entry) return false;
     const row = visible.find(
       (candidate) => candidate.offering.id === entry.defaultSourceOfferingId,
@@ -504,7 +506,12 @@ export async function installForTenant(
       "@corbits-builder/coordinator-native",
       "coordinator",
     ),
-    writer: deployment("@corbits-builder/writer-native", "writer"),
+    writers: Object.fromEntries(
+      Object.entries(WRITER_PACKAGES).map(([kind, name]) => [
+        kind,
+        deployment(nativePackageName(name), "writer"),
+      ]),
+    ),
     reviewer: deployment("@corbits-builder/reviewer-native", "reviewer"),
     coder: deployment("@corbits-builder/coder-native", "coder"),
     coderAnyPackage: deployment(

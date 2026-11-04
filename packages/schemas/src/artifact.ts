@@ -10,9 +10,10 @@ const sha256 = /^[a-f0-9]{64}$/;
 // Documents a model writes as text. A design concept's option is filed from the designer's
 // workspace by file_design_option, the design by the person's choice among the options, and the
 // app from the coder's workspace each time check-app passes.
-const WriterDocumentKind = type(
+export const WriterDocumentKind = type(
   "'constraints' | 'approaches' | 'product_requirements' | 'build_plan'",
 );
+export type WriterDocumentKind = typeof WriterDocumentKind.infer;
 const DocumentKind = WriterDocumentKind.or("'problem_brief'");
 const WritableArtifactKind = DocumentKind.or(
   "'design' | 'design_option' | 'app' | 'approval_package'",
@@ -42,36 +43,23 @@ export const BriefWrite = type({
   "openQuestions?": OpenQuestions,
 });
 export type BriefWrite = typeof BriefWrite.infer;
-export const WriterDocumentWrite = type({
-  "+": "reject",
-  kind: "'constraints'",
+const documentFields = {
   title: text,
   content,
   "openQuestions?": OpenQuestions,
-})
-  .or({
+};
+// The fields a writer saves, by the kind it was deployed for; the hub adds the kind. A flat object,
+// since some providers read only a tool schema's top-level properties and send nothing for a union.
+export const WriterDocumentFields = {
+  constraints: type({ "+": "reject", ...documentFields }),
+  approaches: type({
     "+": "reject",
-    kind: "'product_requirements'",
-    title: text,
-    content,
-    "openQuestions?": OpenQuestions,
-  })
-  .or({
-    "+": "reject",
-    kind: "'build_plan'",
-    title: text,
-    content,
-    "openQuestions?": OpenQuestions,
-  })
-  .or({
-    "+": "reject",
-    kind: "'approaches'",
-    title: text,
-    content,
-    "openQuestions?": OpenQuestions,
+    ...documentFields,
     "approaches?": ApproachesMeta,
-  });
-export type WriterDocumentWrite = typeof WriterDocumentWrite.infer;
+  }),
+  product_requirements: type({ "+": "reject", ...documentFields }),
+  build_plan: type({ "+": "reject", ...documentFields }),
+};
 export const DocumentWrite = type({
   "+": "reject",
   kind: DocumentKind,

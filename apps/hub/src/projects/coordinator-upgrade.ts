@@ -13,9 +13,10 @@ import {
   type WorkflowRunReader,
 } from "@intx/hub-sessions";
 import { getLogger } from "@intx/log";
-import type {
-  InstalledWorkflows,
-  WorkflowRole,
+import {
+  roleDeployments,
+  type InstalledWorkflows,
+  type WorkflowRole,
 } from "@corbits-builder/schemas/installed-workflows";
 import type { ProjectUpdateReceipt } from "@corbits-builder/schemas/project";
 import { spawnedWorkflowRole } from "../workflows/spawn-role.ts";
@@ -50,11 +51,10 @@ const pinOf = (bundle: unknown) => {
   return top && top.name + "@" + top.version;
 };
 
-// The pins a role may run on: a coder is either coder package, by the project's package choice.
+// The pins a role may run on: a coder is either coder package, by the project's package choice, and a
+// writer the package for the kind it was deployed for.
 const pinsFor = (installed: InstalledWorkflows, role: WorkflowRole) =>
-  role === "coder"
-    ? [installed.coder.pin, installed.coderAnyPackage.pin]
-    : [installed[role].pin];
+  roleDeployments(installed, role).map((deployment) => deployment.pin);
 
 /** The runs whose frozen package is not the one installed for their role, or has no readable pin. */
 export function staleRuns<T extends { role: WorkflowRole; bundle: unknown }>(

@@ -11,7 +11,7 @@ import {
 import { ProjectExportMaterial } from "@corbits-builder/schemas/project";
 import { mountArtifactRoutes } from "../artifacts/routes.ts";
 import { createArtifactService } from "../artifacts/service.ts";
-import { createArtifactTools } from "../artifacts/tools.ts";
+import { createWriterArtifactTools } from "../artifacts/tools.ts";
 import { ProjectError, typeIssues } from "./errors.ts";
 
 const deployment = {
@@ -63,7 +63,12 @@ test("a rejected write_artifact call reaches the agent with {path, message} issu
       domain: "example.invalid",
       role: "writer",
       workflows: {
-        writer: deployment,
+        writers: {
+          constraints: deployment,
+          approaches: deployment,
+          product_requirements: deployment,
+          build_plan: deployment,
+        },
         reviewer: deployment,
         coder: deployment,
         designer: deployment,
@@ -79,7 +84,7 @@ test("a rejected write_artifact call reaches the agent with {path, message} issu
       },
     }),
   );
-  const tools = createArtifactTools("writer")({
+  const tools = createWriterArtifactTools("approaches")({
     capabilities: {
       resolve: () => ({
         resolve: async () => ({
@@ -105,7 +110,6 @@ test("a rejected write_artifact call reaches the agent with {path, message} issu
 
   expect(
     await write({
-      kind: "approaches",
       approaches: { approaches: [approach("a"), approach("a")] },
     }),
   ).toEqual({
@@ -120,7 +124,6 @@ test("a rejected write_artifact call reaches the agent with {path, message} issu
   });
   expect(
     await write({
-      kind: "approaches",
       approaches: {
         approaches: [approach("a"), approach("b")],
         recommended: "c",

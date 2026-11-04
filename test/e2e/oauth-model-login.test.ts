@@ -358,8 +358,7 @@ test("ChatGPT and xAI logins are providers a profile binds roles to, and install
         projectId,
       );
       const visible = await listVisibleOfferings(handle.db, tenantId);
-      const served = (role: keyof typeof installed) => {
-        if (role === "schemaVersion") throw new Error("not a role");
+      const served = (role: "coder" | "coordinator") => {
         const row = visible.find(
           (entry) =>
             entry.offering.id === installed[role].defaultSourceOfferingId,

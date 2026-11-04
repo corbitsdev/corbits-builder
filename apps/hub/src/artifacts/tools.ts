@@ -13,7 +13,9 @@ import {
   ArtifactRead,
   ArtifactReceipt,
   MAX_APPROVAL_PACKAGE_BYTES,
-  WriterDocumentWrite,
+  WriterDocumentFields,
+  type DocumentWrite,
+  type WriterDocumentKind,
 } from "@corbits-builder/schemas/artifact";
 import type { WorkflowRole } from "@corbits-builder/schemas/installed-workflows";
 import { stripApprovalPackageBinaries } from "./approval-package.ts";
@@ -54,15 +56,29 @@ const briefWriteDefinition = {
     "Write the next version of the problem brief. The hub assigns its id, version and sha256 and returns them. Writing a version is not approval.\nopenQuestions lists each question in the document's Open questions section that the person must answer: a short id, the question as they would read it, whyItBlocks, and suggestedAnswers, your recommendation first. A version written without openQuestions leaves none open.",
   inputSchema: { ...BriefWrite.toJsonSchema() },
 };
-const writerWriteDefinition = {
-  name: "write_artifact",
-  description:
-    "Write the next version of the project document of one kind. The hub assigns its id, version and sha256 and returns them. Writing a version is not approval.\nopenQuestions lists each question in the document's Open questions section that the person must answer: a short id, the question as they would read it, whyItBlocks, and suggestedAnswers, your recommendation first. A version written without openQuestions leaves none open.\nOn the approaches document, approaches carries the approaches it compares, for the person to see side by side: each with a short id, its name, a one-line summary, bestFor, its pros, cons and risks as short phrases, and its effort; recommended names the id of the one you recommend.",
-  inputSchema: {
-    type: "object" as const,
-    ...WriterDocumentWrite.toJsonSchema(),
+// Each writer's document by name, and what its write_artifact says about the fields only it has.
+const WRITER_DOCUMENTS: Record<
+  WriterDocumentKind,
+  { name: string; fieldNotes: string }
+> = {
+  constraints: { name: "constraints", fieldNotes: "" },
+  approaches: {
+    name: "approaches document",
+    fieldNotes:
+      "\napproaches carries the approaches the document compares, for the person to see side by side: each with a short id, its name, a one-line summary, bestFor, its pros, cons and risks as short phrases, and its effort; recommended names the id of the one you recommend.",
   },
+  product_requirements: { name: "product requirements", fieldNotes: "" },
+  build_plan: { name: "build plan", fieldNotes: "" },
 };
+
+function writerWriteDefinition(kind: WriterDocumentKind) {
+  const { name, fieldNotes } = WRITER_DOCUMENTS[kind];
+  return {
+    name: "write_artifact",
+    description: `Write the next version of the ${name}. The hub assigns its id, version and sha256 and returns them. Writing a version is not approval.\nopenQuestions lists each question in the document's Open questions section that the person must answer: a short id, the question as they would read it, whyItBlocks, and suggestedAnswers, your recommendation first. A version written without openQuestions leaves none open.${fieldNotes}`,
+    inputSchema: { ...WriterDocumentFields[kind].toJsonSchema() },
+  };
+}
 
 export function failure(callId: string, error: unknown) {
   if (error instanceof WorkflowHttpError && error.status)
@@ -79,24 +95,49 @@ export function failure(callId: string, error: unknown) {
   return projectScopeFailure(callId, error);
 }
 
-const DEFINITIONS_BY_ROLE: Record<
-  WorkflowRole,
-  readonly (typeof readDefinition)[]
+// The tools a role gets, and for a role that writes, the kind it files and the fields it checks.
+interface ArtifactToolSet {
+  definitions: readonly (typeof readDefinition)[];
+  save?: {
+    kind: typeof DocumentWrite.infer.kind;
+    fields:
+      | typeof BriefWrite
+      | (typeof WriterDocumentFields)[WriterDocumentKind];
+  };
+}
+
+// A writer's or reviewer's task carries every document it needs in full; a read tool sends
+// writers looking for documents that do not exist.
+const TOOLS_BY_ROLE: Record<
+  Exclude<WorkflowRole, "writer">,
+  ArtifactToolSet
 > = {
-  coordinator: [readDefinition, briefWriteDefinition],
-  writer: [writerWriteDefinition],
-  reviewer: [readDefinition],
-  coder: [readDefinition],
-  designer: [readDefinition],
-  presenter: [readDefinition],
+  coordinator: {
+    definitions: [readDefinition, briefWriteDefinition],
+    save: { kind: "problem_brief", fields: BriefWrite },
+  },
+  reviewer: { definitions: [readDefinition] },
+  coder: { definitions: [readDefinition] },
+  designer: { definitions: [readDefinition] },
+  presenter: { definitions: [readDefinition] },
 };
 
-export function createArtifactTools(
+export function createArtifactTools(role: Exclude<WorkflowRole, "writer">) {
+  return artifactTools(role, TOOLS_BY_ROLE[role]);
+}
+
+// A writer is deployed for one kind and saves only that kind.
+export function createWriterArtifactTools(kind: WriterDocumentKind) {
+  return artifactTools("writer", {
+    definitions: [writerWriteDefinition(kind)],
+    save: { kind, fields: WriterDocumentFields[kind] },
+  });
+}
+
+function artifactTools(
   role: WorkflowRole,
+  { definitions, save }: ArtifactToolSet,
 ): AnnotatedToolFactory<ArtifactToolEnv> {
-  // A writer's or reviewer's task carries every document it needs in full; a read tool sends
-  // writers looking for documents that do not exist.
-  const definitions = DEFINITIONS_BY_ROLE[role];
   return defineTool<ArtifactToolEnv>({
     id: "@corbits-builder/artifacts/tools",
     credentials: [{ handle: HUB_CREDENTIAL_HANDLE }],
@@ -138,7 +179,7 @@ export function createArtifactTools(
                 maxResponseBytes: MAX_RESULT_BYTES,
                 signal,
               });
-            if (call.name === "write_artifact") {
+            if (call.name === "write_artifact" && save) {
               // The coordinator's writers own every kind but the brief, so the documents the person
               // decides on come from them.
               const rawKind = (call.arguments as { kind?: unknown } | undefined)
@@ -153,16 +194,14 @@ export function createArtifactTools(
                   content: `brief_only: you write the problem brief; deploy_writer has a writer write the ${rawKind}`,
                   isError: true,
                 };
-              const input =
-                role === "coordinator"
-                  ? BriefWrite(call.arguments)
-                  : WriterDocumentWrite(call.arguments);
-              if (input instanceof type.errors)
+              const fields = save.fields(call.arguments);
+              if (fields instanceof type.errors)
                 return {
                   callId: call.id,
-                  content: "invalid_arguments: " + input.summary,
+                  content: "invalid_arguments: " + fields.summary,
                   isError: true,
                 };
+              const input = { ...fields, kind: save.kind };
               const body = JSON.stringify(input);
               const earlier = written.get(input.kind);
               if (earlier?.body === body)

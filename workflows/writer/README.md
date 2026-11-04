@@ -8,11 +8,12 @@ coordinator hands it.
 
 This package only declares data. It imports `@intx/agent/authoring` and
 `@intx/workflow/definition` from Interchange, plus arktype. The
-[hub's writer entry][entry] imports it, supplies the model, director and
-tools, and builds it into the workflow the [coordinator][coordinator] starts
-with `deploy_writer`. The writer's tools are the hub's `write_artifact` and
-`read_skill`; it has no read tool, because its task carries every document it
-needs in full.
+[hub's writer package][entry] imports it, supplies the model, director and
+tools, and builds one workflow per document kind; the
+[coordinator][coordinator]'s `deploy_writer` starts the one for the kind it
+asks for. The writer's tools are the hub's `write_artifact`, which saves only
+its own kind's fields, and `read_skill`; it has no read tool, because its task
+carries every document it needs in full.
 
 ## Layout
 
@@ -34,6 +35,6 @@ What a document should contain lives in its skill rather than the prompt;
 prompt conventions are in [AGENTS.md][agents]. `bun run typecheck` and `bun run test` cover it, and `bun run dev` runs it in a
 real project.
 
-[entry]: https://github.com/corbitsdev/corbits-builder/blob/main/apps/hub/src/workflows/entries/writer.ts
+[entry]: https://github.com/corbitsdev/corbits-builder/blob/main/apps/hub/src/workflows/writer-package.ts
 [coordinator]: https://github.com/corbitsdev/corbits-builder/tree/main/workflows/coordinator
 [agents]: https://github.com/corbitsdev/corbits-builder/blob/main/AGENTS.md

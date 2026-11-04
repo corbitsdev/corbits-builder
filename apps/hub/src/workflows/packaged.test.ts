@@ -35,7 +35,12 @@ test("native specialist accepts installed tarballs only with an exact package pi
 test("production entries expose concrete native workflows without callback credentials", async () => {
   process.env.BUILDER_ROLE_INFERENCE = JSON.stringify(inference.coordinator);
   const coordinator = (await import("./entries/coordinator.ts")).default;
-  const writer = (await import("./entries/writer.ts")).default;
+  const writers = [
+    (await import("./entries/writer-constraints.ts")).default,
+    (await import("./entries/writer-approaches.ts")).default,
+    (await import("./entries/writer-product-requirements.ts")).default,
+    (await import("./entries/writer-build-plan.ts")).default,
+  ];
   const reviewer = (await import("./entries/reviewer.ts")).default;
   const coder = (await import("./entries/coder.ts")).default;
   const coderAnyPackage = (await import("./entries/coder-any-package.ts"))
@@ -43,7 +48,8 @@ test("production entries expose concrete native workflows without callback crede
   const designer = (await import("./entries/designer.ts")).default;
   const presenter = (await import("./entries/presenter.ts")).default;
   expect(coordinator.steps.coordinate).toMatchObject({ triggers: "unbounded" });
-  expect(writer.steps.write).toMatchObject({ triggers: 1 });
+  for (const writer of writers)
+    expect(writer.steps.write).toMatchObject({ triggers: 1 });
   expect(reviewer.steps.review).toMatchObject({ triggers: 1 });
   expect(coder.steps.build).toMatchObject({ triggers: "unbounded" });
   expect(coderAnyPackage.steps.build).toMatchObject({ triggers: "unbounded" });
@@ -65,7 +71,7 @@ test("production entries expose concrete native workflows without callback crede
   expect(installTool(coderAnyPackage)).toEqual({ name: "install_packages" });
   for (const workflow of [
     coordinator,
-    writer,
+    ...writers,
     reviewer,
     coder,
     coderAnyPackage,
@@ -76,7 +82,7 @@ test("production entries expose concrete native workflows without callback crede
   expect(
     JSON.stringify([
       coordinator,
-      writer,
+      ...writers,
       reviewer,
       coder,
       coderAnyPackage,
@@ -97,7 +103,7 @@ test("built npm tarballs contain importable production workflow metadata and def
   );
   try {
     const manifest = await buildWorkflowPackages(directory, "1.0.0", inference);
-    expect(manifest).toHaveLength(7);
+    expect(manifest).toHaveLength(10);
     for (const metadata of manifest) {
       const extracted = join(directory, metadata.assetName);
       await mkdir(extracted);

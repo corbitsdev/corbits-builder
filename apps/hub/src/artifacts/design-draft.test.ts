@@ -175,7 +175,12 @@ test("file_design_option packs per-screen files and drops the untouched starter 
           domain: "example.invalid",
           role: "designer",
           workflows: {
-            writer: deployment,
+            writers: {
+              constraints: deployment,
+              approaches: deployment,
+              product_requirements: deployment,
+              build_plan: deployment,
+            },
             reviewer: deployment,
             coder: deployment,
             designer: deployment,
@@ -456,7 +461,12 @@ test("designer agent writes per-screen files, is held by checkBeforeDone until c
         domain: "example.invalid",
         role: "designer",
         workflows: {
-          writer: deployment,
+          writers: {
+            constraints: deployment,
+            approaches: deployment,
+            product_requirements: deployment,
+            build_plan: deployment,
+          },
           reviewer: deployment,
           coder: deployment,
           designer: deployment,
