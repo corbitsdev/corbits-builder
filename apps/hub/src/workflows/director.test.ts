@@ -23,6 +23,7 @@ import {
   createDesignCheck,
 } from "../builds/design-check.ts";
 import { REPETITION_ABORT } from "../inference/repetition.ts";
+import { trimHistory } from "./compaction.ts";
 import { compactingDirector } from "./director.ts";
 
 const director = (replyOnFailure: boolean) =>
@@ -280,6 +281,7 @@ test("designer director holds replies until the latest edits pass check_design a
               text: 'check passed: served .builder/designs\nFiled design_option: {"artifactId":"design-1","kind":"design_option","version":1,"sha256":"a"}',
             },
           ],
+          detail: { checkPassed: true, filed: true },
         },
       ],
       timestamp: 4,
@@ -293,6 +295,115 @@ test("designer director holds replies until the latest edits pass check_design a
     source: cycleSource,
   });
   expect(accepted.some((action) => action.type === "reply")).toBe(true);
+});
+
+test("coder director takes a check-app verdict from the result's detail after trimming drops its text", async () => {
+  const subject = compactingDirector("@corbits-builder/coder-test").factory(
+    { contextWindow: 200_000, compactAt: 0.8, checkBeforeDone: true },
+    {} as never,
+    { systemPrompt: "", toolDefinitions: [], compactorNames: [] },
+  ) as ReactorDirector;
+  const replyTurn = {
+    role: "assistant" as const,
+    model: "gpt-5",
+    content: [{ type: "text" as const, text: "Done." }],
+    timestamp: 5,
+  };
+  const checked = (
+    output: string,
+    checkPassed: boolean,
+  ): ConversationTurn[] => [
+    {
+      role: "user",
+      content: [{ type: "text", text: "Build the app." }],
+      timestamp: 0,
+    },
+    {
+      role: "assistant",
+      content: [
+        {
+          type: "tool_call",
+          id: "call-write",
+          name: "write_file",
+          arguments: { path: "src/App.tsx", content: "export {}" },
+        },
+      ],
+      timestamp: 1,
+    },
+    {
+      role: "user",
+      content: [
+        {
+          type: "tool_result",
+          callId: "call-write",
+          content: [{ type: "text", text: "wrote src/App.tsx" }],
+        },
+      ],
+      timestamp: 2,
+    },
+    {
+      role: "assistant",
+      content: [
+        {
+          type: "tool_call",
+          id: "call-check",
+          name: "run_shell",
+          arguments: { command: "check-app" },
+        },
+      ],
+      timestamp: 3,
+    },
+    {
+      role: "user",
+      content: [
+        {
+          type: "tool_result",
+          callId: "call-check",
+          content: [{ type: "text", text: output }],
+          detail: { checkPassed },
+        },
+      ],
+      timestamp: 4,
+    },
+  ];
+  const decideTrimmed = async (output: string, checkPassed: boolean) => {
+    const { output: turns } = await trimHistory(1).apply(
+      checked(output, checkPassed),
+      { state, trigger: "context" },
+    );
+    const result = turns
+      .flatMap((turn) => turn.content)
+      .find(
+        (block) =>
+          block.type === "tool_result" && block.callId === "call-check",
+      );
+    expect(JSON.stringify(result)).not.toContain(output.slice(0, 20));
+    const actions = await subject.decide(
+      {
+        type: "inference.done",
+        turn: replyTurn,
+        usage: state.tokenUsage,
+        source: { sourceId: "openai", provider: "openai", model: "gpt-5" },
+      },
+      { ...state, turns: [...turns, replyTurn] },
+      createCapabilities(),
+    );
+    return (Array.isArray(actions) ? actions : [actions]) as ReactorAction[];
+  };
+  const checklist = "\n✓ every page opened with no errors".repeat(40);
+
+  const passed = await decideTrimmed(
+    `check passed: built, started, and opened / at 1280 and 390 px with no errors${checklist}`,
+    true,
+  );
+  expect(passed.some((action) => action.type === "reply")).toBe(true);
+
+  const failed = await decideTrimmed(
+    `check failed: 1 problem(s) across 1 page(s)${checklist}`,
+    false,
+  );
+  expect(failed.some((action) => action.type === "reply")).toBe(false);
+  expect(failed.some((action) => action.type === "compact")).toBe(true);
 });
 
 test("check_design validates DESIGN.md and .dark in styles.css and auto-files the design option on pass", async () => {
