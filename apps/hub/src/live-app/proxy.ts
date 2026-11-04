@@ -145,8 +145,11 @@ export function createLiveAppProxy(options: {
           if (!(await allows(request, entry)))
             return new Response(liveAppWording.signIn, { status: 401 });
           entry.lastUsed = Date.now();
-          if (request.headers.get("upgrade")?.toLowerCase() !== "websocket")
+          if (request.headers.get("upgrade")?.toLowerCase() !== "websocket") {
+            // The app decides how long a response may stay quiet, not Bun's 10-second default.
+            server.timeout(request, 0);
             return forward(request, entry);
+          }
           const url = new URL(request.url);
           const socketUrl = new URL(url.pathname + url.search, entry.target);
           socketUrl.protocol = "ws:";

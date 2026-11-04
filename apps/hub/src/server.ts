@@ -11,6 +11,8 @@ if (import.meta.main) {
     const server = Bun.serve({
       hostname: runtime.hostname,
       port: runtime.port,
+      // Bun's 10-second default drops slow routes; the run stream's 5-second heartbeat stays well inside this.
+      idleTimeout: 120,
       fetch: runtime.app.fetch,
       websocket: runtime.websocket,
     });
