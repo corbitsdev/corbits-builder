@@ -3,7 +3,10 @@
  * chosen in Settings or while sharing a package and synced across tabs.
  */
 import { useSyncExternalStore } from "react";
-import type { WorkspaceReviewer } from "@corbits-builder/client";
+import {
+  DEFAULT_WORKSPACE_REVIEWERS,
+  type WorkspaceReviewer,
+} from "@corbits-builder/client";
 import { wording } from "./config.ts";
 import {
   readStoredPreference,
@@ -34,31 +37,6 @@ export function writeWorkspaceApprovalsEnabled(choice: OnOff): void {
   writeStoredPreference(APPROVALS_ENABLED_KEY, choice);
   notifyReviewers();
 }
-
-/** Seeded workspace reviewers available out of the box across all projects in the workspace. */
-export const DEFAULT_WORKSPACE_REVIEWERS: readonly WorkspaceReviewer[] = [
-  {
-    id: "ws-rev-dana-chen",
-    name: "Dana Chen",
-    persona: "CEO",
-    email: "dana.chen@example.com",
-    goal: "Approve Aurora Weather Studio scope, timeline, and Q3 budget to begin the Coder phase",
-  },
-  {
-    id: "ws-rev-marcus-vance",
-    name: "Marcus Vance",
-    persona: "CTO",
-    email: "marcus.vance@example.com",
-    goal: "Sign off on radar tile payload budget, latency SLAs, and offline caching architecture",
-  },
-  {
-    id: "ws-rev-priya-patel",
-    name: "Priya Patel",
-    persona: "VP Product",
-    email: "priya.patel@example.com",
-    goal: "Confirm user journey, severe alert triage flow, and accessibility targets",
-  },
-];
 
 let cachedReviewersRaw: string | null = null;
 let cachedReviewersList: readonly WorkspaceReviewer[] =

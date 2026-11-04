@@ -12,7 +12,7 @@ import {
   type StoredApprovalRound,
   type StoredPackageVersion,
 } from "./approval-rounds.ts";
-import { DEFAULT_WORKSPACE_REVIEWERS } from "../config/approval-rounds.ts";
+import { DEFAULT_WORKSPACE_REVIEWERS } from "@corbits-builder/schemas/approval-round";
 import type { WorkspaceReviewer } from "@corbits-builder/schemas/approval-round";
 import { ProjectError } from "../projects/errors.ts";
 import type { Actor } from "../lib/actor.ts";

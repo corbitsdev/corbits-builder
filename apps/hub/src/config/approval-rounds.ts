@@ -5,30 +5,6 @@ export type PackageManifestSource = {
   title?: string;
 };
 
-export const DEFAULT_WORKSPACE_REVIEWERS = [
-  {
-    id: "ws-rev-dana-chen",
-    name: "Dana Chen",
-    persona: "CEO",
-    email: "dana.chen@example.com",
-    goal: "Approve Aurora Weather Studio scope, timeline, and Q3 budget to begin the Coder phase",
-  },
-  {
-    id: "ws-rev-marcus-vance",
-    name: "Marcus Vance",
-    persona: "CTO",
-    email: "marcus.vance@example.com",
-    goal: "Sign off on radar tile payload budget, latency SLAs, and offline caching architecture",
-  },
-  {
-    id: "ws-rev-priya-patel",
-    name: "Priya Patel",
-    persona: "VP Product",
-    email: "priya.patel@example.com",
-    goal: "Confirm user journey, severe alert triage flow, and accessibility targets",
-  },
-] as const;
-
 export function packageReadme(input: {
   projectTitle: string;
   packageTitle: string;

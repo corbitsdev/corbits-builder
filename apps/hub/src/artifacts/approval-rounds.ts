@@ -23,6 +23,7 @@ import {
 import {
   ApprovalRound,
   ApprovalRoundList,
+  DEFAULT_WORKSPACE_REVIEWERS,
   RecordReviewerDecision,
   StartApprovalRound,
   TriageDecisionInput,
@@ -42,7 +43,6 @@ import {
   settingsRecord,
 } from "../db/schema.ts";
 import {
-  DEFAULT_WORKSPACE_REVIEWERS,
   incorporatedFeedbackMessage,
   packageReadme,
   type PackageManifestSource,

@@ -68,6 +68,7 @@ export type {
   TriageItemStatus,
   WorkspaceReviewer,
 } from "@corbits-builder/schemas/approval-round";
+export { DEFAULT_WORKSPACE_REVIEWERS } from "@corbits-builder/schemas/approval-round";
 export { ProductApiError };
 
 export function createProductApiClient(
