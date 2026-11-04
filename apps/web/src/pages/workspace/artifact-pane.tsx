@@ -1,4 +1,4 @@
-import { FileText, Printer } from "lucide-react";
+import { FileText, Printer, Trash2 } from "lucide-react";
 import {
   useEffect,
   useRef,
@@ -81,6 +81,9 @@ function filterVisibleDeliverables(
 
 const TAB_PREFIX = "workspace-document";
 const DRAFT_TAB = "design-draft";
+// The page names each attached file's tab "material:<artifact id>"; only those can be taken back.
+export const MATERIAL_TAB_PREFIX = "material:";
+const removable = (id: string) => id.startsWith(MATERIAL_TAB_PREFIX);
 const draftIds = panelTabIds(TAB_PREFIX, DRAFT_TAB);
 const MANUAL_TAB = "user-manual";
 const manualIds = panelTabIds(TAB_PREFIX, MANUAL_TAB);
@@ -249,6 +252,7 @@ export function ArtifactPane({
   selected,
   state,
   onSelect,
+  onRemove,
   paneRef,
   changesOpen,
   onToggleChanges,
@@ -278,6 +282,8 @@ export function ArtifactPane({
   selected: Deliverable | null;
   state: DeliverableState | undefined;
   onSelect: (id: string) => void;
+  /** Takes an attached file back, for a tab that is one; absent where nothing can be removed. */
+  onRemove?: ((id: string) => void) | undefined;
   paneRef?: Ref<HTMLElement>;
   changesOpen: boolean;
   onToggleChanges: () => void;
@@ -644,6 +650,15 @@ export function ArtifactPane({
                   <Printer size={16} aria-hidden="true" />
                   {wording.printDocument}
                 </MenuItem>
+                {onRemove === undefined || !removable(tabMenu.value) ? null : (
+                  <MenuItem
+                    className="menu-danger"
+                    onSelect={() => onRemove(tabMenu.value)}
+                  >
+                    <Trash2 size={16} aria-hidden="true" />
+                    {wording.removeAttachment.menu}
+                  </MenuItem>
+                )}
               </MenuContent>
             </Menu>
           )}

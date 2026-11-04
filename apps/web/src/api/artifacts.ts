@@ -219,6 +219,12 @@ export async function attachMaterials(
   return productClient().attachMaterials(tenantId, projectId, files, message);
 }
 
+/** Takes an attached file back; the coordinator is told and the file leaves the documents. */
+export async function removeMaterial(projectId: string, artifactId: string) {
+  const tenantId = await workspaceTenantId();
+  return productClient().removeMaterial(tenantId, projectId, artifactId);
+}
+
 export async function downloadPackageZip(
   projectId: string,
   version: number,
