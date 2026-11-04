@@ -634,10 +634,8 @@ export const wording = {
     pageCount: (index: number, total: number) =>
       `Page ${String(index)} of ${String(total)}`,
     noSlides: "This approval package contains no slides.",
-    speakerNotes: "Speaker notes",
     downloadPdf: "Download PDF",
     openPdf: "Open PDF",
-    downloadPptx: "Download PPTX",
     pdfTitle: "Approval package PDF preview",
     manifest: {
       audience: "Audience",
