@@ -6,6 +6,10 @@
  * the question, the decision, the document, or a plain failure — not the
  * coordinator's bookkeeping.
  */
+import {
+  AskQuestions,
+  askQuestionsIssue,
+} from "@corbits-builder/schemas/questions";
 import { wording } from "../../config.ts";
 import type { ConversationPart } from "@corbits/react-ui";
 
@@ -157,10 +161,9 @@ export function jsonValues(text: string): unknown[] {
   return values;
 }
 
-const asksQuestions = (value: unknown) =>
-  typeof value === "object" &&
-  value !== null &&
-  Array.isArray((value as { questions?: unknown }).questions);
+/** Whether a JSON value is ask_questions data the hub would accept, so it can stand as a card. */
+export const isAskQuestions = (value: unknown): value is AskQuestions =>
+  AskQuestions.allows(value) && askQuestionsIssue(value) === undefined;
 
 /** Drop JSON values. A status object is not a sentence. */
 function stripJson(text: string): string {
@@ -299,7 +302,7 @@ export function visibleChatText(text: string): string {
     .trim();
   if (prose.length > 0) return prose;
   // Questions written as JSON become a card of their own; words in them are not a failure to report.
-  if (jsonValues(text).some(asksQuestions)) return "";
+  if (jsonValues(text).some(isAskQuestions)) return "";
   return plainFallback(text);
 }
 

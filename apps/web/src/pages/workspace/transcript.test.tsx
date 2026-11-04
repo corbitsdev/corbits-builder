@@ -482,31 +482,51 @@ describe("conversation transcript", () => {
     expect(html).not.toContain("Who is it for?");
   });
 
-  test("questions repeated as JSON after an ask_questions call add no second card", () => {
+  test("questions written as JSON in a stretch that calls ask_questions add no second card", () => {
+    const call = {
+      role: "assistant" as const,
+      text: "",
+      at: 1,
+      parts: [
+        {
+          kind: "tool-trace" as const,
+          toolCallId: "call-ask",
+          name: "ask_questions",
+          status: "output-available" as const,
+          input: JSON.parse(writtenAsk) as unknown,
+        },
+      ],
+    };
+    const written = { role: "assistant" as const, text: writtenAsk, at: 2 };
+    for (const turns of [
+      [call, written],
+      [written, call],
+    ]) {
+      const html = renderToStaticMarkup(
+        <RoomThread
+          turns={turns}
+          onAnswerQuestions={() => Promise.resolve(true)}
+        />,
+      );
+      expect(html.split("Who is it for?")).toHaveLength(2);
+      expect(html).not.toContain(wording.questions.replaced);
+    }
+  });
+
+  test("questions JSON the card cannot take is not hidden", () => {
     const html = renderToStaticMarkup(
       <RoomThread
         turns={[
           {
             role: "assistant",
-            text: "",
+            text: JSON.stringify({ questions: [{ prompt: "An error?" }] }),
             at: 1,
-            parts: [
-              {
-                kind: "tool-trace",
-                toolCallId: "call-ask",
-                name: "ask_questions",
-                status: "output-available",
-                input: JSON.parse(writtenAsk) as unknown,
-              },
-            ],
           },
-          { role: "assistant", text: writtenAsk, at: 2 },
         ]}
         onAnswerQuestions={() => Promise.resolve(true)}
       />,
     );
-    expect(html.split("Who is it for?")).toHaveLength(2);
-    expect(html).not.toContain(wording.questions.replaced);
+    expect(html).toContain(wording.message.stepFailed);
   });
 
   test("a reply that is only written questions shows no failure", () => {

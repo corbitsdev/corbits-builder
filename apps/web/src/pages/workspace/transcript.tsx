@@ -375,13 +375,12 @@ function threadSections(
 ): Section[] {
   const sections: Section[] = [];
   let open: Extract<Section, { kind: "coordinator" }> | null = null;
-  // Whether this stretch made an ask_questions call, running or failed included.
-  let called = false;
+  // Stretches that made an ask_questions call in any turn, running or failed included.
+  const calling = new Set<Extract<Section, { kind: "coordinator" }>>();
   for (const item of items) {
     if (item.kind === "turn" && item.turn.role === "person") {
       sections.push({ kind: "person", turn: item.turn, index: item.index });
       open = null;
-      called = false;
       continue;
     }
     if (open === null) {
@@ -399,21 +398,27 @@ function threadSections(
       if (ask !== undefined)
         open.cards.push({ kind: "questions", callId: tool.toolCallId, ask });
     }
-    // Only a stretch that made no ask_questions call falls back to questions written in its text.
-    called ||= tools.some((tool) => tool.name === ASK_QUESTIONS);
+    if (tools.some((tool) => tool.name === ASK_QUESTIONS)) calling.add(open);
     const written =
-      item.turn.role === "assistant" && !called
+      item.turn.role === "assistant"
         ? writtenQuestions(item.turn.text)
         : undefined;
     if (written !== undefined)
       open.cards.push({
         kind: "questions",
-        callId: `written-${String(item.index)}`,
+        callId: `${WRITTEN}${String(item.index)}`,
         ask: written,
       });
   }
+  // Only a stretch that made no ask_questions call, in any of its turns, keeps questions written in its text.
+  for (const section of calling)
+    section.cards = section.cards.filter(
+      (card) => card.kind !== "questions" || !card.callId.startsWith(WRITTEN),
+    );
   return sections;
 }
+
+const WRITTEN = "written-";
 
 /**
  * A piece of work still at work is current, so it sits after the reports and decisions that came

@@ -21,7 +21,7 @@ import {
 } from "@corbits-builder/schemas/questions";
 import { wording } from "../../config.ts";
 import type { CallResult } from "./live-run.ts";
-import { jsonValues } from "./visible-chat.ts";
+import { isAskQuestions, jsonValues } from "./visible-chat.ts";
 import "./questions-card.css";
 
 const text = wording.questions;
@@ -45,10 +45,7 @@ export function askedQuestions(
  * The transcript drops JSON from the reply, so without a card the questions would not show at all.
  */
 export function writtenQuestions(text: string): AskQuestions | undefined {
-  return jsonValues(text).find(
-    (value): value is AskQuestions =>
-      AskQuestions.allows(value) && askQuestionsIssue(value) === undefined,
-  );
+  return jsonValues(text).find(isAskQuestions);
 }
 
 type Answer = {
