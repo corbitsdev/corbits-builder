@@ -4,7 +4,10 @@ import { join, resolve } from "node:path";
 import { tmpdir } from "node:os";
 import { nativePackageName } from "./package-name.ts";
 import type { RoleInference } from "./role-inference.ts";
-import type { WorkflowRole } from "@corbits-builder/schemas/installed-workflows";
+import {
+  WORKFLOW_PACKAGES,
+  type WorkflowRole,
+} from "@corbits-builder/schemas/installed-workflows";
 
 // The version follows the bundle bytes, so a rebuilt workflow publishes beside the old one instead of
 // colliding with a tarball the registry already holds.
@@ -13,22 +16,10 @@ function contentVersion(base: string, bundle: string): string {
 }
 
 // Each package is an entry under entries/ built on what its role's model binding resolved to.
-const WORKFLOW_PACKAGES: readonly { name: string; role: WorkflowRole }[] = [
-  ...(
-    [
-      "coordinator",
-      "writer",
-      "reviewer",
-      "coder",
-      "designer",
-      "presenter",
-    ] as const
-  ).map((role) => ({
-    name: role,
-    role,
-  })),
-  { name: "coder-any-package", role: "coder" },
-];
+const PACKAGES = Object.entries(WORKFLOW_PACKAGES).map(([name, role]) => ({
+  name,
+  role,
+}));
 
 export async function buildWorkflowPackages(
   destination: string,
@@ -39,7 +30,7 @@ export async function buildWorkflowPackages(
   const output = resolve(destination);
   await mkdir(output, { recursive: true });
   const manifest = [];
-  for (const { name, role } of WORKFLOW_PACKAGES) {
+  for (const { name, role } of PACKAGES) {
     const result = await Bun.build({
       define: {
         "process.env.BUILDER_ROLE_INFERENCE": JSON.stringify(

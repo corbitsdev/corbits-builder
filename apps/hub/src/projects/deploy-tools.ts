@@ -19,10 +19,15 @@ import {
 } from "@corbits-builder/schemas/native-specialist";
 import { SourceRef } from "@corbits-builder/schemas";
 import {
+  WRITER_PACKAGES,
+  type WorkflowProjectScope,
+} from "@corbits-builder/schemas/installed-workflows";
+import {
   ArtifactContent,
   DesignBundle,
   DesignConcept,
   MATERIAL_KIND,
+  WriterDocumentKind,
   type ArtifactRef,
 } from "@corbits-builder/schemas/artifact";
 import { Preferences } from "@corbits-builder/schemas/preferences";
@@ -69,7 +74,7 @@ const Instruction =
   NativeSpecialistAssignment.get("instruction").and("string >= 40");
 const DeployWriter = type({
   "+": "reject",
-  kind: NativeDocumentKind,
+  kind: WriterDocumentKind,
   instruction: Instruction,
 });
 const APPROVABLE = [
@@ -235,22 +240,17 @@ export function createDeployTools(options?: {
   tenantId: string;
   projectId: string;
   domain: string;
-  workflows: {
-    writer: NativeSpecialistDeployment;
-    reviewer: NativeSpecialistDeployment;
-    coder: NativeSpecialistDeployment;
-    designer: NativeSpecialistDeployment;
-    presenter?: NativeSpecialistDeployment;
-  };
+  workflows: WorkflowProjectScope["workflows"];
   maxResultBytes: number;
 }): AnnotatedToolFactory<DeployEnv> {
-  if (options)
+  if (options) {
     for (const deployment of Object.values(options.workflows)) {
       if (!deployment) continue;
       const checked = NativeSpecialistDeployment.assert(deployment);
       if (!checked.sourceOfferingIds.includes(checked.defaultSourceOfferingId))
         throw new Error("invalid_specialist_default_offering");
     }
+  }
   const definitions = [
     {
       name: "request_approval",
@@ -472,12 +472,12 @@ export function createDeployTools(options?: {
         // run, so the deploy response is enough to send the assignment.
         const deploy = async (
           role: "writer" | "reviewer" | "coder" | "designer" | "presenter",
+          workflowSpec: NativeSpecialistDeployment | undefined,
           preferences: Preferences,
           correlationId: string,
           content: string,
           beforeAssign?: (runId: string) => Promise<unknown>,
         ) => {
-          const workflowSpec = options.workflows[role];
           if (!workflowSpec)
             throw new Refusal(
               role + "_unavailable: no " + role + " workflow is installed",
@@ -535,13 +535,10 @@ export function createDeployTools(options?: {
             const input = validArguments(DeployWriter, call.arguments);
             const { byKind, approved, preferences } = await listed();
             const briefRef = required(byKind, "problem_brief");
-            const position = DOCUMENT_ORDER.indexOf(
-              input.kind as (typeof DOCUMENT_ORDER)[number],
+            const earlier = DOCUMENT_ORDER.slice(
+              0,
+              DOCUMENT_ORDER.indexOf(input.kind),
             );
-            const earlier =
-              position < 0
-                ? DOCUMENT_ORDER.slice(0, 1)
-                : DOCUMENT_ORDER.slice(0, position);
             // An imported project may lack an earlier document that its later ones were written without.
             const writtenWithout = (index: number) =>
               DOCUMENT_ORDER.slice(index + 1).some((kind) => byKind.has(kind));
@@ -575,6 +572,7 @@ export function createDeployTools(options?: {
               .map(([, ref]) => ref);
             result = await deploy(
               "writer",
+              options.workflows[WRITER_PACKAGES[input.kind]],
               preferences,
               "writer-" + input.kind,
               await assignmentToWriterMessage(
@@ -603,6 +601,7 @@ export function createDeployTools(options?: {
             const target = required(byKind, input.kind);
             result = await deploy(
               "reviewer",
+              options.workflows.reviewer,
               preferences,
               "reviewer-" + input.kind,
               await assignmentToWriterMessage(
@@ -647,6 +646,7 @@ export function createDeployTools(options?: {
                 const design = required(byKind, "design");
                 return deploy(
                   "coder",
+                  options.workflows.coder,
                   preferences,
                   "coder",
                   startHere(inputs(CODER_INPUTS, byKind), design.version) +
@@ -724,6 +724,7 @@ export function createDeployTools(options?: {
                   }
                   const started = await deploy(
                     "designer",
+                    options.workflows.designer,
                     preferences,
                     "designer",
                     startHere(inputs(DESIGNER_INPUTS, byKind)) +
@@ -815,6 +816,7 @@ export function createDeployTools(options?: {
             const assignment = buildPackageAssignment(assignmentPayload);
             result = await deploy(
               "presenter",
+              options.workflows.presenter,
               preferences,
               "presenter-" + input.audience,
               presenterAssignmentMessage(assignmentPayload),

@@ -242,7 +242,10 @@ export async function loadProjectRoom(
     ]);
     fresh = {
       conversation: {
-        events: conversation?.events ?? null,
+        events:
+          conversation === null || conversation.runId === null
+            ? null
+            : conversation.events,
         turns: conversation?.turns ?? [],
         threads: conversation?.threads ?? [],
         runId: conversation?.runId ?? null,

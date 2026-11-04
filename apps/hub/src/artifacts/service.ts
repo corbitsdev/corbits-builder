@@ -1,7 +1,7 @@
 import { stat } from "node:fs/promises";
 import { dirname, join } from "node:path";
 import { type } from "arktype";
-import { and, desc, eq, inArray, ne, sql } from "drizzle-orm";
+import { and, desc, eq, inArray, ne, notInArray, sql } from "drizzle-orm";
 import { PostgresJsDatabase } from "drizzle-orm/postgres-js";
 import {
   createArtifact,
@@ -975,7 +975,8 @@ export function createArtifactService(
         .where(
           and(
             eq(approval.tenantId, actor.tenantId),
-            ne(approval.status, "pending"),
+            // An expired ask is one a coordinator upgrade withdrew; its successor asks again.
+            notInArray(approval.status, ["pending", "expired"]),
           ),
         )
         .orderBy(approval.createdAt);

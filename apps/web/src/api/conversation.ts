@@ -8,6 +8,7 @@
  * shape and `events` derives the latest person-input question (an input park
  * and its releasing signal) from the events.
  */
+import type { ConversationEvents } from "@corbits-builder/schemas/conversation";
 import { wording } from "../config.ts";
 import { productClient } from "./transport.ts";
 import {
@@ -31,35 +32,16 @@ export type ConversationThread = {
 };
 
 /**
- * The committed conversation, or null while the project has no bound
- * coordinator (the hub answers 409 `{ code: "coordinator_unavailable" }`).
+ * The committed conversation. `runId` is null while no coordinator is bound; the turns still
+ * carry what the project's earlier coordinators said.
  */
-export async function readConversationEvents(projectId: string): Promise<{
-  runId: string;
-  events: ConversationEvent[];
-  turns: ConversationTurn[];
-  threads: ConversationThread[];
-} | null> {
-  const client = productClient();
-  const tenantId = await workspaceTenantId();
-  try {
-    const body = await client.conversationEvents(tenantId, projectId);
-    return {
-      runId: body.runId,
-      events: body.events,
-      turns: body.turns ?? [],
-      threads: body.threads ?? [],
-    };
-  } catch (cause) {
-    const status =
-      cause instanceof Error &&
-      "response" in cause &&
-      cause.response instanceof Response
-        ? cause.response.status
-        : undefined;
-    if (status === 409) return null;
-    throw cause;
-  }
+export async function readConversationEvents(
+  projectId: string,
+): Promise<ConversationEvents> {
+  return productClient().conversationEvents(
+    await workspaceTenantId(),
+    projectId,
+  );
 }
 
 export type SendReceipt = { runId: string; address: string; messageId: string };

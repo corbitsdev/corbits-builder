@@ -360,18 +360,6 @@ export async function createHubRuntime(
       coordinatorStartTimeoutMs,
       workflows.services.workflowLifecycleService.requestCancellation,
     );
-    const coordinatorUpgrades = createCoordinatorUpgrades({
-      db: handle.db,
-      runs: createWorkflowRunReader(agentRepoStore.repoStore),
-      installed: (actor, projectId) =>
-        installForTenant(
-          { db: handle.db, assets: assetService },
-          actor,
-          projectId,
-        ),
-      startup: coordinatorStartup,
-      cancel: workflows.services.workflowLifecycleService.requestCancellation,
-    });
     const sidecarWebSocket = createSidecarWebSocket(sidecarRouter);
     const agentActivity = createAgentActivity(sidecarRouter.events);
     const getSession: GetSession = async (headers) => {
@@ -388,6 +376,24 @@ export async function createHubRuntime(
     const sessionCookieName = (await auth.$context).authCookies.sessionToken
       .name;
     const app = new Hono<AppEnv>();
+    const hubMail = createHubMail(
+      handle.db,
+      async (request) => app.fetch(request),
+      env.hubApiOrigin,
+    );
+    const coordinatorUpgrades = createCoordinatorUpgrades({
+      db: handle.db,
+      runs: createWorkflowRunReader(agentRepoStore.repoStore),
+      installed: (actor, projectId) =>
+        installForTenant(
+          { db: handle.db, assets: assetService },
+          actor,
+          projectId,
+        ),
+      startup: coordinatorStartup,
+      cancel: workflows.services.workflowLifecycleService.requestCancellation,
+      mail: hubMail,
+    });
     const liveAppProxy = createLiveAppProxy({
       hostname: env.hostname,
       ports: env.liveAppPorts,
@@ -419,7 +425,15 @@ export async function createHubRuntime(
     app.use(liveAppProxy.refuseAppOrigins);
     app.use(createHubContextMiddleware({ getSession }));
     app.use(gitTokens.middleware);
-    const coordinatorTokens = createAgentTokenBridge(handle.db, runTokenStore);
+    const coordinatorTokens = createAgentTokenBridge(handle.db, runTokenStore, {
+      install: (actor, projectId) =>
+        installForTenant(
+          { db: handle.db, assets: assetService },
+          actor,
+          projectId,
+        ),
+      handoff: coordinatorUpgrades.handoff,
+    });
     app.use("/api/tenants/:tenantId/*", coordinatorTokens.middleware);
     app.use("/api/workflow-project-scope", coordinatorTokens.middleware);
     app.use(
@@ -499,6 +513,9 @@ export async function createHubRuntime(
       createConversationRoutes(handle.db, (request) => app.fetch(request), {
         repoStore: agentRepoStore.repoStore,
         mailDirectory: reportMailDirectory,
+        ...(coordinatorUpgrade.enabled
+          ? { upgrade: coordinatorUpgrades.open }
+          : {}),
       }),
     );
     app.route(
@@ -618,11 +635,6 @@ export async function createHubRuntime(
         500,
       );
     });
-    const hubMail = createHubMail(
-      handle.db,
-      async (request) => app.fetch(request),
-      env.hubApiOrigin,
-    );
     const projectSchedulers = [
       createReconciliationScheduler({
         name: "Specialist end notice",

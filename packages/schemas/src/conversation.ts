@@ -56,6 +56,8 @@ const conversationTextTurn = type({
   at: "number",
 });
 export const maxConversationTurns = 2000;
+/** The hub's refusal of a deploy from a coordinator it is replacing; the replacement redoes it. */
+export const coordinatorUpgrading = "coordinator_upgrading";
 const turnList = conversationTextTurn
   .array()
   .atMostLength(maxConversationTurns);
@@ -67,7 +69,7 @@ const conversationThread = type({
   turns: turnList,
 });
 export const ConversationEvents = type({
-  runId: "string",
+  runId: "string | null",
   events: type({
     seq: "number",
     type: "string",
