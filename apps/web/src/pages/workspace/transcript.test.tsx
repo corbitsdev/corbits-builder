@@ -404,7 +404,8 @@ describe("conversation transcript", () => {
       expect(html).toContain("First questions:");
       expect(html).toContain("Who is it for?");
       expect(html).toContain("Small teams");
-      expect(html).not.toContain('"questions"');
+      // Text content escapes quotes, so leaked JSON would show as &quot;questions&quot;.
+      expect(html).not.toContain("&quot;questions&quot;");
       expect(html).not.toContain("<pre>");
     }
   });
