@@ -174,8 +174,12 @@ export function heldOnApproval(
     .join(",");
 }
 
-/** The roles with a run mid-turn right now, from the hub's native activity read. */
-export function useRolesAtWork(projectId: string): ReadonlySet<string> {
-  const agents = useProjectActivity(projectId).data?.agents ?? [];
-  return new Set(agents.map((agent) => agent.role));
+/** The roles with a run mid-turn right now, from the hub's native activity read; undefined until it is read. */
+export function useRolesAtWork(
+  projectId: string,
+): ReadonlySet<string> | undefined {
+  const agents = useProjectActivity(projectId).data?.agents;
+  return agents === undefined
+    ? undefined
+    : new Set(agents.map((agent) => agent.role));
 }

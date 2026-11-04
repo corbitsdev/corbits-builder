@@ -60,9 +60,9 @@ function Elapsed({ since }: { since: string }) {
 function liveLine(
   dispatch: Dispatch,
   subject: string,
-  activity: readonly AgentActivity[],
+  activity: readonly AgentActivity[] | undefined,
 ): string {
-  const agent = activity.find((item) =>
+  const agent = activity?.find((item) =>
     dispatch.runId === undefined
       ? item.role === dispatch.role
       : item.runId === dispatch.runId,
@@ -84,7 +84,7 @@ function WorkLine({
   status: DispatchStatus;
   subject: string;
   steps: number;
-  activity: readonly AgentActivity[];
+  activity: readonly AgentActivity[] | undefined;
 }): ReactNode {
   switch (status.state) {
     case "waiting":
@@ -217,7 +217,7 @@ export function WorkUnitView({
                       status={status}
                       subject={subject}
                       steps={steps.length}
-                      activity={room?.activity ?? []}
+                      activity={room?.activity}
                     />
                   }
                   labels={wording.activity.trigger}

@@ -62,7 +62,7 @@ function decisionTitle(approval: DocumentApproval, shown: boolean): string {
     );
   const question = approvalQuestion(
     approval.toolName,
-    shortName(approval) ?? "",
+    shortName(approval),
     approval.subject,
   );
   return shown ? `${question} ${text.openOnRight}` : question;
@@ -141,7 +141,7 @@ function settledLine(approval: DocumentApproval): string {
       ? undefined
       : text.settled[approval.toolName];
   return text.approved(
-    settled ?? approvalQuestion(approval.toolName, "", approval.subject),
+    settled ?? approvalQuestion(approval.toolName, undefined, approval.subject),
   );
 }
 

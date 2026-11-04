@@ -42,11 +42,12 @@ function expiresInLabel(expiresAt: string): string {
 async function refusal(cause: unknown): Promise<string> {
   if (!(cause instanceof ProductApiError))
     return cause instanceof Error ? cause.message : String(cause);
-  const code = (await responseCode(cause)) ?? "";
-  return (
-    wording.settings.collaborators.refused[code] ??
-    wording.settings.collaborators.failed
-  );
+  const code = await responseCode(cause);
+  const refused =
+    code === undefined
+      ? undefined
+      : wording.settings.collaborators.refused[code];
+  return refused ?? wording.settings.collaborators.failed;
 }
 
 export function Collaborators({ user }: { user: HubUser | null }) {

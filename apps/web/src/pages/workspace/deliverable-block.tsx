@@ -56,7 +56,7 @@ export type LoadedDeliverable = ReadVersion & {
   sha256: string;
   before: (ReadVersion & { version: number }) | null;
   historyError?: string;
-  versions?: readonly RetainedVersion[];
+  versions: readonly RetainedVersion[];
 };
 
 export type DeliverableState =
@@ -238,7 +238,7 @@ function ReadyDocument({
   const compareWith = changesOpen ? (baseline ?? predecessor) : null;
   const afterText = textFor(viewing);
   const beforeText = compareWith === null ? null : textFor(compareWith);
-  const viewed = document.versions?.find((item) => item.version === viewing);
+  const viewed = document.versions.find((item) => item.version === viewing);
   const mediaType = viewed?.mediaType ?? document.mediaType;
   const title = viewed?.title ?? document.title;
   const kind = mediaKind(mediaType, title);
@@ -381,7 +381,7 @@ function ReadyDocument({
   const barGroups = [
     approvalGroup,
     versionGroup({
-      versions: document.versions ?? [],
+      versions: document.versions,
       viewing,
       pending: pendingVersion !== null,
       canCompare:
@@ -526,7 +526,7 @@ function ReadyDocument({
           <ContextualApprovalRounds
             packageVersion={viewing}
             packageContent={body}
-            packageVersions={document.versions?.map((item) => item.version)}
+            packageVersions={document.versions.map((item) => item.version)}
             onReadPackageVersion={fetchVersion}
             shareOpen={shareOpen}
             onShareOpenChange={setShareOpen}

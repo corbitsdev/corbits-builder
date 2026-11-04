@@ -121,6 +121,7 @@ import {
   reloadProjectDocument,
   roomDocumentKey,
   roomSnapshotReady,
+  type RoomSnapshot,
 } from "./load-room.ts";
 import { RoomFault, RoomSkeleton } from "./room-skeleton.tsx";
 import { designDraftFiled, useDesignDraft } from "./design-preview.tsx";
@@ -269,14 +270,9 @@ async function modelRefusal(
     : undefined;
 }
 
-export function StageWorkspace({
-  projectId,
-  projectTitle,
-  onChanged,
-  onOpenSettings,
-  openingMessage,
-  listedArchived,
-}: {
+type ModelNeeded = { code: string; message: string };
+
+type StageWorkspaceProps = {
   /** The open project's id. */
   projectId: string;
   projectTitle: string;
@@ -288,11 +284,14 @@ export function StageWorkspace({
    *  artifact but the first conversation message, sent here once the
    *  coordinator binds. */
   openingMessage?: string;
-}) {
-  // The conversation record comes from the room query. Null events means no
-  // coordinator is bound yet (the hub's 409). Empty arrays are not a stand-in
-  // for a read that has not happened.
-  const queryClient = useQueryClient();
+};
+
+/**
+ * Reads the project and its room, and starts its coordinator, while the room shows its loading
+ * or fault state; the ready room mounts only with a loaded snapshot.
+ */
+export function StageWorkspace(props: StageWorkspaceProps) {
+  const { projectId, listedArchived } = props;
   // An archived project has no coordinator or conversation to read, so the room waits on its lifecycle.
   const projectRead = useQuery({
     queryKey: keys.project.of(projectId),
@@ -323,17 +322,103 @@ export function StageWorkspace({
     refetchOnWindowFocus: false,
     queryFn: ({ client }) => loadProjectRoom(projectId, client, !archived),
   });
-  const snapshot = status === undefined ? undefined : room.data;
-  const events = snapshot?.conversation.events ?? null;
-  const mirror = snapshot?.conversation.turns ?? [];
-  const runId = archived ? null : (snapshot?.conversation.runId ?? null);
-  // Each project is its own tenant beneath the workspace, and its runs live there.
-  const runTenantId = project?.tenantId;
+  const [startFault, setStartFault] = useState<string | null>(null);
+  // Why the coordinator has no model to run on, which only the person can settle.
+  const [modelNeeded, setModelNeeded] = useState<ModelNeeded | null>(null);
+  // Only a missing provider is settled by connecting one; a profile choice needs Settings.
+  const providerMissing = modelNeeded?.code === "model_provider_missing";
+  const startCoordinator = async () => {
+    setStartFault(null);
+    setModelNeeded(null);
+    try {
+      await startProjectCoordinator(projectId);
+      await room.refetch();
+    } catch (cause) {
+      const needed = await modelRefusal(cause);
+      if (needed !== undefined) return setModelNeeded(needed);
+      setStartFault(
+        await humanFaultWithCode(cause, wording.message.coordinatorNotStarted),
+      );
+    }
+  };
+  // Opening an active project starts its coordinator when it is not running; a running one is
+  // left alone. A project archived while open drops the conversation it can no longer read.
+  useEffect(() => {
+    if (status === "active") void startCoordinator();
+    else if (status === "archived" && room.data !== undefined)
+      void room.refetch();
+  }, [projectId, status]);
+  const catalog = useModelCatalog();
+  const providerConnected =
+    catalog.data !== undefined && !needsModelSetup(catalog.data.providers);
+  // However the provider gets connected (Enable AI, Settings, another tab, the server), the
+  // shared catalog read sees it and the refused start is tried again. Only on that change: a hub
+  // that still refuses would otherwise retry on every refusal.
+  useEffect(() => {
+    if (providerConnected && providerMissing) void startCoordinator();
+  }, [providerConnected]);
+
+  if (status === undefined) {
+    if (projectRead.isError)
+      return <RoomFault onRetry={() => void projectRead.refetch()} />;
+    return <RoomSkeleton />;
+  }
+  const snapshot = room.data;
+  if (!roomSnapshotReady(projectId, snapshot)) {
+    if (room.isError) return <RoomFault onRetry={() => void room.refetch()} />;
+    return <RoomSkeleton />;
+  }
+  return (
+    <ReadyRoom
+      {...props}
+      status={status}
+      // Each project is its own tenant beneath the workspace, and its runs live there.
+      runTenantId={project?.tenantId}
+      snapshot={snapshot}
+      start={{ fault: startFault, modelNeeded, retry: startCoordinator }}
+      refetchProject={projectRead.refetch}
+    />
+  );
+}
+
+/** The room with its first read in hand: everything here works on a loaded snapshot. */
+function ReadyRoom({
+  projectId,
+  projectTitle,
+  onChanged,
+  onOpenSettings,
+  openingMessage,
+  status,
+  runTenantId,
+  snapshot,
+  start,
+  refetchProject,
+}: StageWorkspaceProps & {
+  status: string;
+  runTenantId: string | undefined;
+  /** Null events means no coordinator is bound yet (the hub's 409). */
+  snapshot: RoomSnapshot;
+  start: {
+    fault: string | null;
+    modelNeeded: ModelNeeded | null;
+    retry: () => Promise<void>;
+  };
+  refetchProject: () => Promise<unknown>;
+}) {
+  const queryClient = useQueryClient();
+  const archived = status === "archived";
+  const startFault = start.fault;
+  const modelNeeded = start.modelNeeded;
+  const startCoordinator = start.retry;
+  const providerMissing = modelNeeded?.code === "model_provider_missing";
+  const events = snapshot.conversation.events;
+  const mirror = snapshot.conversation.turns;
+  const runId = archived ? null : snapshot.conversation.runId;
   // The coder's filed app source is the resume point for a later coder, not a document to read.
-  const artifacts = (snapshot?.artifacts ?? [])
+  const artifacts = snapshot.artifacts
     .filter((item) => item.kind !== "app")
     .map(paneArtifact);
-  const documents = snapshot?.documents ?? {};
+  const documents = snapshot.documents;
   const [liveRun, setLiveRun] = useState<LiveRun>(emptyLiveRun);
   const questionsLayout = useQuestionsLayout();
   const [approvalBusy, setApprovalBusy] = useState(false);
@@ -373,14 +458,6 @@ export function StageWorkspace({
   const [sendFault, setSendFault] = useState<string | null>(null);
   // When this session last sent the coordinator a message, until a run ends after it or it fails.
   const [awaitingSince, setAwaitingSince] = useState<number | null>(null);
-  const [startFault, setStartFault] = useState<string | null>(null);
-  // Why the coordinator has no model to run on, which only the person can settle.
-  const [modelNeeded, setModelNeeded] = useState<{
-    code: string;
-    message: string;
-  } | null>(null);
-  // Only a missing provider is settled by connecting one; a profile choice needs Settings.
-  const providerMissing = modelNeeded?.code === "model_provider_missing";
   const [enablingAi, setEnablingAi] = useState(false);
   const accepted = useQuery({
     queryKey: keys.acceptedMaterials.of(projectId),
@@ -426,10 +503,16 @@ export function StageWorkspace({
     );
   }, [decisions.error]);
   const waits = decisions.data ?? NO_WAITS;
+  const activity = useProjectActivity(projectId);
+  useEffect(() => {
+    if (activity.error === null) return;
+    toast.error(humanFault(activity.error, wording.activity.notRead), {
+      id: "activity-read",
+    });
+  }, [activity.error]);
   const reloadRef = useRef<() => void>(() => {});
 
   useEffect(() => {
-    if (status === undefined) return;
     const reloader = createRoomReloader(() =>
       loadProjectRoom(projectId, queryClient, status === "active"),
     );
@@ -562,9 +645,9 @@ export function StageWorkspace({
     // The steps map only grows as the live run commits, which re-renders with a new mirror.
     [mirror, sent],
   );
-  const mailThreads = snapshot?.conversation.threads;
+  const mailThreads = snapshot.conversation.threads;
   const specialistUpdates = useMemo(
-    () => threadUpdates(mailThreads ?? []),
+    () => threadUpdates(mailThreads),
     [mailThreads],
   );
   const latestAssistant =
@@ -614,8 +697,8 @@ export function StageWorkspace({
       : [];
   // Mid-turn by native state, whoever sent the message: this stream saw the message run start and
   // not end, or the hub's activity read saw one start after the last end this stream saw.
-  const agents = useProjectActivity(projectId).data?.agents ?? [];
-  const coordinatorTurnSince = agents.find(
+  const agents = activity.data?.agents;
+  const coordinatorTurnSince = agents?.find(
     (agent) => agent.role === "coordinator",
   )?.since;
   const working =
@@ -968,7 +1051,11 @@ export function StageWorkspace({
     if (files.length > 0) return void sendFiles();
     if (shell.answers(value)) return setValue("");
     if (typedYes.hold(value)) return setValue("");
-    const role = earlierDocumentRole(value, artifacts, rolesAtWork);
+    // Without a read of who is at work there is no one to warn about.
+    const role =
+      rolesAtWork === undefined
+        ? undefined
+        : earlierDocumentRole(value, artifacts, rolesAtWork);
     if (role === undefined || caution === role) return sendNow();
     setCaution(role);
   };
@@ -977,37 +1064,7 @@ export function StageWorkspace({
     composerRef.current?.focus();
   };
 
-  const unbound = snapshot !== undefined && events === null;
-  const startCoordinator = async () => {
-    setStartFault(null);
-    setModelNeeded(null);
-    try {
-      await startProjectCoordinator(projectId);
-      await room.refetch();
-    } catch (cause) {
-      const needed = await modelRefusal(cause);
-      if (needed !== undefined) return setModelNeeded(needed);
-      setStartFault(
-        await humanFaultWithCode(cause, wording.message.coordinatorNotStarted),
-      );
-    }
-  };
-  // Opening an active project starts its coordinator when it is not running; a running one is
-  // left alone. A project archived while open drops the conversation it can no longer read.
-  useEffect(() => {
-    if (status === "active") void startCoordinator();
-    else if (status === "archived" && room.data !== undefined)
-      void room.refetch();
-  }, [projectId, status]);
-  const catalog = useModelCatalog();
-  const providerConnected =
-    catalog.data !== undefined && !needsModelSetup(catalog.data.providers);
-  // However the provider gets connected (Enable AI, Settings, another tab, the server), the
-  // shared catalog read sees it and the refused start is tried again. Only on that change: a hub
-  // that still refuses would otherwise retry on every refusal.
-  useEffect(() => {
-    if (providerConnected && providerMissing) void startCoordinator();
-  }, [providerConnected]);
+  const unbound = events === null;
   const [restoring, setRestoring] = useState(false);
   const [restoreFault, setRestoreFault] = useState<string | null>(null);
   const restore = async () => {
@@ -1015,7 +1072,7 @@ export function StageWorkspace({
     setRestoreFault(null);
     try {
       await restoreProject(projectId);
-      await projectRead.refetch();
+      await refetchProject();
       onChanged();
     } catch (cause) {
       setRestoreFault(
@@ -1049,14 +1106,14 @@ export function StageWorkspace({
     projectId,
     designDraftFiled(
       artifacts.some((item) => item.kind === "design"),
-      snapshot?.inFlight,
+      snapshot.inFlight,
     ),
   );
-  const inFlight = snapshot?.inFlight ?? [];
+  const inFlight = snapshot.inFlight;
   const dispatchRoom: DispatchRoom = {
-    artifacts: snapshot?.artifacts ?? [],
+    artifacts: snapshot.artifacts,
     inFlight,
-    failed: snapshot?.failed ?? [],
+    failed: snapshot.failed,
     seen: dispatchSeen.current,
     approvals: [...settledApprovals, ...pendingApprovals],
     activity: agents,
@@ -1073,16 +1130,19 @@ export function StageWorkspace({
   for (const dispatch of dispatches) noteDispatch(dispatchRoom, dispatch);
   // The document a writer or reviewer run works on, from the coordinator's own hand-off call as
   // the hub's activity read saw it start: the latest such call made before the run started.
-  for (const tool of agents.find((agent) => agent.role === "coordinator")
-    ?.tools ?? []) {
-    const role = HANDOFF_ROLE[tool.name];
-    if (role !== undefined && tool.subject !== undefined)
-      handoffCalls.current.set(`${tool.at}:${tool.name}`, {
-        role,
-        kind: tool.subject,
-        at: Date.parse(tool.at),
-      });
-  }
+  const coordinatorTools = agents?.find(
+    (agent) => agent.role === "coordinator",
+  )?.tools;
+  if (coordinatorTools !== undefined)
+    for (const tool of coordinatorTools) {
+      const role = HANDOFF_ROLE[tool.name];
+      if (role !== undefined && tool.subject !== undefined)
+        handoffCalls.current.set(`${tool.at}:${tool.name}`, {
+          role,
+          kind: tool.subject,
+          at: Date.parse(tool.at),
+        });
+    }
   const handoffKind = (run: InFlightRun): string | undefined => {
     const known = runKinds.current.get(run.runId);
     if (known !== undefined) return known;
@@ -1171,9 +1231,7 @@ export function StageWorkspace({
     options.length > 0 ||
     inFlight.some((run) => run.concept !== undefined);
   useLiveAppPresence(projectId);
-  const appFiled = (snapshot?.artifacts ?? []).some(
-    (item) => item.kind === "app",
-  );
+  const appFiled = snapshot.artifacts.some((item) => item.kind === "app");
   const firstBuilder = appFiled
     ? undefined
     : inFlight.find((run) => run.role === "coder");
@@ -1184,7 +1242,7 @@ export function StageWorkspace({
   const userManual = useUserManual(
     projectId,
     liveApp !== null,
-    rolesAtWork.has("coder"),
+    rolesAtWork?.has("coder") === true,
   );
   // While an approval is open the pane follows the document it approves.
   const approvalDeliverableId =
@@ -1192,7 +1250,6 @@ export function StageWorkspace({
       ?.document?.kind ?? null;
   const filed = useFiledVersions({
     projectId,
-    ready: roomSnapshotReady(projectId, snapshot),
     documents: artifacts.map((item) =>
       item.kind === DESIGN_OPTION
         ? {
@@ -1224,13 +1281,6 @@ export function StageWorkspace({
   const selected =
     paneDeliverables.find((item) => item.kind === shownId) ?? null;
   const selectedState = selected === null ? undefined : documentState(selected);
-
-  if (projectRead.isError && status === undefined)
-    return <RoomFault onRetry={() => void projectRead.refetch()} />;
-  if (!roomSnapshotReady(projectId, snapshot)) {
-    if (room.isError) return <RoomFault onRetry={() => void room.refetch()} />;
-    return <RoomSkeleton />;
-  }
 
   // Until the first document is filed there is nothing to read beside the conversation, so it
   // takes the whole width; the document pane arrives with that document.

@@ -732,10 +732,9 @@ export function App() {
     if (cause instanceof ApiFailure) toast.error(cause.detail.message);
     else if (cause instanceof ProductApiError)
       void responseCode(cause).then((code) => {
-        toast.error(
-          wording.library.refused[code ?? ""] ??
-            humanFault(cause, wording.library.actionFailed),
-        );
+        const refused =
+          code === undefined ? undefined : wording.library.refused[code];
+        toast.error(refused ?? humanFault(cause, wording.library.actionFailed));
         void refresh();
       });
     else void refresh();
