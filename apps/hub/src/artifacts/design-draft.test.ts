@@ -41,11 +41,8 @@ import {
   spliceDesignScreens,
   syncDesignScreensOnDisk,
 } from "../builds/starter.ts";
-import {
-  compactingDirector,
-  dropDegenerateTurn,
-  trimHistory,
-} from "../workflows/compaction.ts";
+import { compactingDirector } from "../workflows/director.ts";
+import { dropDegenerateTurn, trimHistory } from "../workflows/compaction.ts";
 import {
   readDesignBundle,
   readDesignDraft,

@@ -2,11 +2,8 @@ import { createReviewerAgent } from "@corbits-builder/reviewer/agent";
 import { createReviewerWorkflow } from "@corbits-builder/reviewer";
 import { mail } from "@intx/tools-mail/sidecar-bundle";
 import { roleInference } from "../role-inference.ts";
-import {
-  compactingDirector,
-  dropDegenerateTurn,
-  trimHistory,
-} from "../compaction.ts";
+import { compactingDirector } from "../director.ts";
+import { dropDegenerateTurn, trimHistory } from "../compaction.ts";
 import { nativePackageName } from "../package-name.ts";
 
 const compacting = compactingDirector(nativePackageName("reviewer"));

@@ -4,11 +4,8 @@ import { createArtifactTools } from "../../artifacts/tools.ts";
 import { createDeployTools } from "../../projects/deploy-tools.ts";
 import { createSkillTools } from "../../skills/tools.ts";
 import { roleInference } from "../role-inference.ts";
-import {
-  compactingDirector,
-  dropDegenerateTurn,
-  trimHistory,
-} from "../compaction.ts";
+import { compactingDirector } from "../director.ts";
+import { dropDegenerateTurn, trimHistory } from "../compaction.ts";
 import { nativePackageName } from "../package-name.ts";
 
 const compacting = compactingDirector(nativePackageName("coordinator"));
