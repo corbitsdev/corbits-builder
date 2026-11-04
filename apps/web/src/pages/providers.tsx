@@ -12,15 +12,19 @@
 import { wording } from "../config.ts";
 import { EmptyState, Input, Section } from "@corbits/react-ui";
 import { DialogFieldLabel } from "@corbits/react-ui/ui/dialog";
-import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { QueryObserver, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useState } from "react";
 import { toast } from "sonner";
 import type {
   ModelProvider,
   ProviderStatus,
 } from "@corbits-builder/schemas/models";
-import type { ModelLoginPlugin } from "@corbits-builder/client";
+import type {
+  ModelLoginPlugin,
+  ModelLoginState,
+} from "@corbits-builder/client";
 import { Banner, Button, QuietState } from "../components.jsx";
+import { queryClient } from "../queries/client.ts";
 import { keys } from "../queries/keys.ts";
 import { productClient } from "../api/transport.ts";
 import { workspaceTenantId } from "../api/auth.ts";
@@ -65,22 +69,53 @@ async function logIn(provider: ModelProvider) {
   const connection = copy.loginConnection(provider.label);
   const login = await client.startModelLogin(tenantId, plugin, connection);
   window.open(login.authorizeUrl, "_blank", "noopener");
-  const deadline = Date.now() + LOGIN_DEADLINE_MS;
-  for (;;) {
-    if (Date.now() > deadline) throw new Error(copy.timedOut);
-    const state = await client.modelLogin(tenantId, login.loginId);
-    if (state.status === "failed") throw new Error(state.message);
-    if (state.status === "completed") {
-      await client.finishModelLogin(
-        tenantId,
-        plugin,
-        state.credentialId,
-        connection,
-      );
-      return;
-    }
-    await new Promise((resolve) => setTimeout(resolve, POLL_MS));
-  }
+  const state = await loginOutcome(
+    tenantId,
+    login.loginId,
+    Date.now() + LOGIN_DEADLINE_MS,
+  );
+  if (state.status === "failed") throw new Error(state.message);
+  await client.finishModelLogin(
+    tenantId,
+    plugin,
+    state.credentialId,
+    connection,
+  );
+}
+
+/**
+ * How the hub's login ended, polled until it does. The person signs in on the
+ * provider's tab, so the poll runs while this one is in the background.
+ */
+function loginOutcome(
+  tenantId: string,
+  loginId: string,
+  deadline: number,
+): Promise<Exclude<ModelLoginState, { status: "pending" }>> {
+  const observer = new QueryObserver(queryClient, {
+    queryKey: keys.modelLogin(loginId),
+    queryFn: async () => {
+      if (Date.now() > deadline) throw new Error(copy.timedOut);
+      return productClient().modelLogin(tenantId, loginId);
+    },
+    refetchInterval: POLL_MS,
+    refetchIntervalInBackground: true,
+    retry: false,
+    gcTime: 0,
+  });
+  return new Promise((resolve, reject) => {
+    const stop = observer.subscribe((result) => {
+      if (result.isError) {
+        stop();
+        reject(result.error);
+        return;
+      }
+      const state = result.data;
+      if (state === undefined || state.status === "pending") return;
+      stop();
+      resolve(state);
+    });
+  });
 }
 
 /** The subscription logins in the catalog, and one at a time signing in through the hub. */
