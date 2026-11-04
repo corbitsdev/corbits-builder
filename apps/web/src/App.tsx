@@ -651,20 +651,31 @@ export function App() {
   };
 
   useEffect(() => {
-    void getHubSession()
-      .then((session) => setAuth(session ? "signed-in" : "signed-out"))
-      .catch(() => setSessionReadFailed(true));
+    const readSession = async () => {
+      try {
+        const session = await getHubSession();
+        setAuth(session ? "signed-in" : "signed-out");
+      } catch (cause) {
+        if (!(cause instanceof ApiFailure)) throw cause;
+        setSessionReadFailed(true);
+      }
+    };
+    void readSession();
   }, []);
 
   // The workspace tenant is created the first time this session signs in; the
   // fold reads below all scope themselves with it, so they wait for it.
   useEffect(() => {
     if (auth !== "signed-in") return;
-    void ensureWorkspace()
-      .then(() => refresh())
-      .catch((cause: unknown) =>
-        setError(humanFault(cause, wording.workspace.setupFailed)),
-      );
+    const setUpWorkspace = async () => {
+      try {
+        await ensureWorkspace();
+        await refresh();
+      } catch (cause) {
+        setError(humanFault(cause, wording.workspace.setupFailed));
+      }
+    };
+    void setUpWorkspace();
   }, [auth, refresh]);
 
   // The summary of the open project, from the list read; null when none or
@@ -688,9 +699,14 @@ export function App() {
     if (recheckedListFor.current === selected) return;
     recheckedListFor.current = selected;
     const id = selected;
-    void projectsRead.refetch().finally(() => {
-      setSettledMissId(id);
-    });
+    const recheck = async () => {
+      try {
+        await projectsRead.refetch();
+      } finally {
+        setSettledMissId(id);
+      }
+    };
+    void recheck();
   }, [
     view,
     selected,

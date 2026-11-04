@@ -262,6 +262,17 @@ function ReadyDocument({
     return loaded.content;
   };
 
+  const showVersion = async (version: number) => {
+    try {
+      await fetchVersion(version);
+      setViewing(version);
+    } catch (cause) {
+      setReadError(cause instanceof Error ? cause.message : String(cause));
+    } finally {
+      setPendingVersion(null);
+    }
+  };
+
   const selectVersion = (version: number) => {
     if (version === viewing) return;
     onViewVersion?.();
@@ -271,12 +282,7 @@ function ReadyDocument({
       return;
     }
     setPendingVersion(version);
-    void fetchVersion(version)
-      .then(() => setViewing(version))
-      .catch((cause: unknown) => {
-        setReadError(cause instanceof Error ? cause.message : String(cause));
-      })
-      .finally(() => setPendingVersion(null));
+    void showVersion(version);
   };
 
   const appliedRequestSeq = useRef<number | null>(null);
@@ -290,19 +296,19 @@ function ReadyDocument({
     }
   }, [requestedVersion]);
 
-  const comparePrevious = () => {
+  const comparePrevious = async () => {
     if (predecessor === null) return;
     setPendingVersion(predecessor);
     setReadError(null);
-    void fetchVersion(predecessor)
-      .then(() => {
-        setBaseline(predecessor);
-        if (!changesOpen) onToggleChanges();
-      })
-      .catch((cause: unknown) => {
-        setReadError(cause instanceof Error ? cause.message : String(cause));
-      })
-      .finally(() => setPendingVersion(null));
+    try {
+      await fetchVersion(predecessor);
+      setBaseline(predecessor);
+      if (!changesOpen) onToggleChanges();
+    } catch (cause) {
+      setReadError(cause instanceof Error ? cause.message : String(cause));
+    } finally {
+      setPendingVersion(null);
+    }
   };
 
   const stopComparing = () => {

@@ -98,12 +98,17 @@ export function Profiles({ initialField }: { initialField?: Field } = {}) {
   const [viewing, setViewing] = useState<string | null>(null);
   useEffect(() => {
     if (initialField) return;
-    void workspaceTenantId()
-      .then((tenantId) => productClient().personalSettings(tenantId))
-      .then((record) =>
-        setField(record.fields.models ?? { value: null, version: 0 }),
-      )
-      .catch((cause: unknown) => setError(message(cause)));
+    const readField = async () => {
+      try {
+        const record = await productClient().personalSettings(
+          await workspaceTenantId(),
+        );
+        setField(record.fields.models ?? { value: null, version: 0 });
+      } catch (cause) {
+        setError(message(cause));
+      }
+    };
+    void readField();
   }, [initialField]);
 
   const save = async (choice: ModelChoice) => {
