@@ -635,6 +635,8 @@ export const wording = {
     pageCount: (index: number, total: number) =>
       `Page ${String(index)} of ${String(total)}`,
     loadingSlides: "Loading slides…",
+    slidesUnavailable:
+      "The slides could not load. Reload the page to try again.",
     speakerNotes: "Speaker notes",
     downloadPdf: "Download PDF",
     openPdf: "Open PDF",

@@ -15,12 +15,27 @@ const text = wording.approvalPackage;
 
 export type ApprovalPackageViewTab = "slides" | "pdf" | "sources";
 
+function SlidesUnavailable() {
+  return <p className="inline-note">{text.slidesUnavailable}</p>;
+}
+
 // The slide deck schema is costly to build, so it loads only once a package's slides are shown.
+// A chunk that fails to load (a redeploy dropped its hash, the network, a blocker) would throw
+// while rendering and take the whole app down, so it shows a line in the slides' place instead.
+async function slidesModule() {
+  try {
+    return await import("./approval-package-slides.tsx");
+  } catch (cause) {
+    if (!(cause instanceof TypeError)) throw cause;
+    console.warn("The approval package slides could not load.", cause);
+    return null;
+  }
+}
 const DeckSlides = lazy(async () => ({
-  default: (await import("./approval-package-slides.tsx")).DeckSlides,
+  default: (await slidesModule())?.DeckSlides ?? SlidesUnavailable,
 }));
 const DeckPages = lazy(async () => ({
-  default: (await import("./approval-package-slides.tsx")).DeckPages,
+  default: (await slidesModule())?.DeckPages ?? SlidesUnavailable,
 }));
 
 const loadingSlides = <p className="inline-note">{text.loadingSlides}</p>;
