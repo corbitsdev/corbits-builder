@@ -961,17 +961,34 @@ export const wording = {
   },
   /** The coordinator's questions as a card the person answers in the conversation. */
   questions: {
-    title: "A few questions before going on",
+    /** The card's heading by how many questions it asks; three or more read "a few". */
+    title: (count: number) =>
+      ({ 1: "A question for you", 2: "A couple of questions for you" })[
+        count
+      ] ?? "A few questions for you",
     other: "Other",
     otherAnswer: "Your own answer",
+    /** The last step tab, where every answer is shown before it is sent. */
+    submit: "Submit",
+    steps: "Questions",
+    /** The keyboard hint under each step, by the kind of step. */
+    keys: {
+      single: "↑↓ move · Enter choose · ← back · → next",
+      multi: "↑↓ move · Space tick · Enter next · ← back · → next",
+      review: "Enter send · ← back",
+    },
+    composerPlaceholder: "Type here to respond to the above question",
+    /** The Settings switch between one question at a time and all at once. */
+    layoutSetting: "Ask questions one at a time",
+    layoutHint:
+      "On, each question is its own step you answer from the keyboard. Off, every question shows at once.",
     send: "Send answers",
     sending: "Sending…",
     notSent: "Your answers were not sent. Your choices are kept; try again.",
-    /** The settled card's one line: each question's answer, in order. */
-    answered: (answers: readonly string[]) =>
-      `Answered: ${answers.join(" · ")}`,
-    answeredInChat: "Answered in the conversation.",
-    replaced: "Replaced by the questions that followed.",
+    /** The settled card's heading, over each question and its answer. */
+    answered: "Answered",
+    answeredInChat: "Answered in the conversation",
+    replaced: "Replaced by the questions that followed",
     /** One list item of the person's reply per question: "- Who signs in? — Staff, Guests". */
     answerLine: (prompt: string, answers: readonly string[]) =>
       `- ${prompt} — ${answers.join(", ")}`,

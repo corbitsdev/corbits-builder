@@ -70,7 +70,12 @@ import {
 import type { ChatMessage, Wait } from "../../api/types.ts";
 import { keys } from "../../queries/keys.ts";
 import { COMPOSER_BOX_CLASS, CONV_CLASS, PANES_CLASS } from "./pane-classes.ts";
-import { RoomThread, turnItemId, type TranscriptTurn } from "./transcript.tsx";
+import {
+  questionsOpen,
+  RoomThread,
+  turnItemId,
+  type TranscriptTurn,
+} from "./transcript.tsx";
 import { cardDocuments } from "./collaboration.ts";
 import { useFiledVersions } from "./filed-versions.tsx";
 import { threadUpdates } from "./specialist-updates.tsx";
@@ -125,6 +130,7 @@ import {
   DESIGN_OPTION,
 } from "./design-concepts.tsx";
 import { useLiveAppPresence } from "./live-app.tsx";
+import { useQuestionsLayout } from "../../questions-layout-setting.ts";
 import { NextStepLine, useProjectNextStep } from "./next-step.tsx";
 import { composerPlaceholder } from "./composer-placeholder.ts";
 import { Dictated } from "../../dictation.jsx";
@@ -350,6 +356,7 @@ export function StageWorkspace({
     .map(paneArtifact);
   const documents = snapshot?.documents ?? {};
   const [liveRun, setLiveRun] = useState<LiveRun>(emptyLiveRun);
+  const questionsLayout = useQuestionsLayout();
   const [approvalBusy, setApprovalBusy] = useState(false);
   const [approvalError, setApprovalError] = useState<string | null>(null);
   const [changesFor, setChangesFor] = useState<string | null>(null);
@@ -1410,6 +1417,8 @@ export function StageWorkspace({
                   ref={composerRef}
                   placeholder={composerPlaceholder({
                     approvalOpen: openApproval !== undefined,
+                    questionsOpen:
+                      !archived && questionsOpen(shownTurns, liveRun.results),
                     status: projectStatus.data,
                     chatFirst,
                   })}
@@ -1529,6 +1538,7 @@ export function StageWorkspace({
                   {...(sentId === undefined ? {} : { sentId })}
                   onAnswerQuestions={(reply) => deliver(reply)}
                   questionsDisabled={sending || archived}
+                  questionsLayout={questionsLayout}
                 >
                   {archived ? (
                     <ConversationEmptyState
