@@ -43,13 +43,21 @@ const persistOptions: PersistQueryClientOptions = {
 };
 
 /**
- * Resolves after the saved cache is on the client, before the first paint. An
- * unreadable cache leaves the client empty and the page loads from the network.
+ * Puts the saved cache on the client and saves it from then on. A cache that
+ * is damaged or cannot be stored leaves the client empty, and the page loads
+ * from the network; the persister has already discarded it.
  */
-export const queryCacheReady: Promise<void> = persistQueryClientRestore(
-  persistOptions,
-)
-  .catch(() => undefined)
-  .then(() => {
-    persistQueryClientSubscribe(persistOptions);
-  });
+async function restoreQueryCache(): Promise<void> {
+  // Without IndexedDB, as in a browser with site storage off, there is no cache to keep.
+  if (typeof indexedDB === "undefined") return;
+  try {
+    await persistQueryClientRestore(persistOptions);
+  } catch (cause) {
+    if (!(cause instanceof SyntaxError || cause instanceof DOMException))
+      throw cause;
+  }
+  persistQueryClientSubscribe(persistOptions);
+}
+
+/** Resolves after the saved cache is on the client, before the first paint. */
+export const queryCacheReady: Promise<void> = restoreQueryCache();

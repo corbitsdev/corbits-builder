@@ -5,6 +5,7 @@
  * sentence, or the caller's own plain words when those words are already human.
  */
 import { ProductApiError } from "@corbits-builder/client";
+import { refusalBody } from "../../api/transport.ts";
 
 const STATUS_LINE =
   /^(?:bad request|unauthorized|forbidden|not found|method not allowed|not acceptable|conflict|gone|unprocessable content|too many requests|internal server error|not implemented|bad gateway|service unavailable|gateway timeout)$/i;
@@ -62,10 +63,7 @@ export async function responseCode(
   cause: unknown,
 ): Promise<string | undefined> {
   if (!(cause instanceof ProductApiError)) return undefined;
-  const body: unknown = await cause.response
-    .clone()
-    .json()
-    .catch(() => undefined);
+  const body = await refusalBody(cause);
   return body !== null &&
     typeof body === "object" &&
     "code" in body &&

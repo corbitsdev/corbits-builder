@@ -63,6 +63,16 @@ export async function timedCall<T>(
   }
 }
 
+/** A refusal's body as JSON; undefined when it is not JSON, such as a proxy's error page. */
+export async function refusalBody(cause: ProductApiError): Promise<unknown> {
+  try {
+    return await cause.response.clone().json();
+  } catch (failure) {
+    if (!(failure instanceof SyntaxError)) throw failure;
+    return undefined;
+  }
+}
+
 let client: ProductApiClient | undefined;
 
 /** The typed client against the hub origin, cookies included. */
