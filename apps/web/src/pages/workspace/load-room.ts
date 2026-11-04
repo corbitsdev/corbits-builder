@@ -266,13 +266,10 @@ export async function loadProjectRoom(
   );
   for (const key of settled.keys()) {
     if (generation.get(projectId) !== ticket) break;
-    try {
-      const owner = JSON.parse(key) as unknown;
-      if (Array.isArray(owner) && owner[0] === projectId && !live.has(key))
-        settled.delete(key);
-    } catch {
-      // A key this loader did not write. Leave it.
-    }
+    // Every key is a `roomDocumentKey`, so it always parses.
+    const owner: unknown = JSON.parse(key);
+    if (Array.isArray(owner) && owner[0] === projectId && !live.has(key))
+      settled.delete(key);
   }
 
   const settleDocument = async (artifact: ProjectArtifact, key: string) => {

@@ -15,11 +15,12 @@ import { DialogFieldLabel } from "@corbits/react-ui/ui/dialog";
 import { QueryObserver, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useState } from "react";
 import { toast } from "sonner";
-import type {
-  ModelProvider,
-  ProviderStatus,
+import {
+  ModelLoginPlugin,
+  type ModelProvider,
+  type ProviderStatus,
 } from "@corbits-builder/schemas/models";
-import type { ModelLoginPlugin } from "@corbits-builder/client";
+import { type } from "arktype";
 import { Banner, Button, QuietState } from "../components.jsx";
 import { queryClient } from "../queries/client.ts";
 import { keys } from "../queries/keys.ts";
@@ -62,7 +63,9 @@ export function useModelCatalog() {
 async function logIn(provider: ModelProvider) {
   const tenantId = await workspaceTenantId();
   const client = productClient();
-  const plugin = provider.plugin as ModelLoginPlugin;
+  const plugin = ModelLoginPlugin(provider.plugin);
+  if (plugin instanceof type.errors)
+    throw new Error(copy.loginUnsupported(provider.label));
   const connection = copy.loginConnection(provider.label);
   const login = await client.startModelLogin(tenantId, plugin, connection);
   window.open(login.authorizeUrl, "_blank", "noopener");
