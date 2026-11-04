@@ -125,6 +125,17 @@ export function ProjectMenu({
     }
   };
 
+  const runExport = async (sections: ExportSection[]) => {
+    try {
+      await act(async () => {
+        const note = await exportProject(project, sections);
+        if (note !== undefined) onNotice?.(note, true);
+      });
+    } finally {
+      setExporting(false);
+    }
+  };
+
   const openInfo = (withName = false) => {
     setFocusName(withName);
     setInfoOpen(true);
@@ -243,12 +254,7 @@ export function ProjectMenu({
           <ExportDialog
             projectId={project.id}
             onClose={() => setExporting(false)}
-            onExport={(sections) =>
-              void act(async () => {
-                const note = await exportProject(project, sections);
-                if (note !== undefined) onNotice?.(note, true);
-              }).then(() => setExporting(false))
-            }
+            onExport={(sections) => void runExport(sections)}
           />
         </div>
       ) : null}

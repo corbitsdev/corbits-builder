@@ -12,7 +12,7 @@
 import { wording } from "../config.ts";
 import { EmptyState, Input, Section } from "@corbits/react-ui";
 import { DialogFieldLabel } from "@corbits/react-ui/ui/dialog";
-import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { QueryObserver, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useState } from "react";
 import { toast } from "sonner";
 import type {
@@ -21,6 +21,7 @@ import type {
 } from "@corbits-builder/schemas/models";
 import type { ModelLoginPlugin } from "@corbits-builder/client";
 import { Banner, Button, QuietState } from "../components.jsx";
+import { queryClient } from "../queries/client.ts";
 import { keys } from "../queries/keys.ts";
 import { productClient } from "../api/transport.ts";
 import { workspaceTenantId } from "../api/auth.ts";
@@ -65,22 +66,47 @@ async function logIn(provider: ModelProvider) {
   const connection = copy.loginConnection(provider.label);
   const login = await client.startModelLogin(tenantId, plugin, connection);
   window.open(login.authorizeUrl, "_blank", "noopener");
-  const deadline = Date.now() + LOGIN_DEADLINE_MS;
-  for (;;) {
-    if (Date.now() > deadline) throw new Error(copy.timedOut);
-    const state = await client.modelLogin(tenantId, login.loginId);
-    if (state.status === "failed") throw new Error(state.message);
-    if (state.status === "completed") {
-      await client.finishModelLogin(
-        tenantId,
-        plugin,
-        state.credentialId,
-        connection,
-      );
-      return;
-    }
-    await new Promise((resolve) => setTimeout(resolve, POLL_MS));
-  }
+  const credentialId = await loginCredential(
+    tenantId,
+    login.loginId,
+    Date.now() + LOGIN_DEADLINE_MS,
+  );
+  await client.finishModelLogin(tenantId, plugin, credentialId, connection);
+}
+
+/**
+ * The credential a hub login ends with, polled until it ends. The person signs
+ * in on the provider's tab, so the poll runs while this one is in the
+ * background, and the deadline holds even while the browser says it is offline.
+ */
+export function loginCredential(
+  tenantId: string,
+  loginId: string,
+  deadline: number,
+): Promise<string> {
+  const observer = new QueryObserver(queryClient, {
+    queryKey: keys.modelLogin(loginId),
+    queryFn: async ({ signal }) => {
+      if (Date.now() > deadline) throw new Error(copy.timedOut);
+      return productClient().modelLogin(tenantId, loginId, signal);
+    },
+    refetchInterval: POLL_MS,
+    refetchIntervalInBackground: true,
+    networkMode: "always",
+    retry: false,
+    gcTime: 0,
+    meta: { persist: false },
+  });
+  return new Promise((resolve, reject) => {
+    const stop = observer.subscribe((result) => {
+      const state = result.data;
+      if (result.isError) reject(result.error);
+      else if (state?.status === "failed") reject(new Error(state.message));
+      else if (state?.status === "completed") resolve(state.credentialId);
+      else return;
+      stop();
+    });
+  });
 }
 
 /** The subscription logins in the catalog, and one at a time signing in through the hub. */

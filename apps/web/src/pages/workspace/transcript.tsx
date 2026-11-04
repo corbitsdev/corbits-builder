@@ -517,18 +517,21 @@ function renderStep(step: ActivityStep): ReactNode {
 /** Copies a message's words to the clipboard, and says so for a moment. */
 function CopyAction({ text }: { text: string }) {
   const [copied, setCopied] = useState(false);
+  const copy = async () => {
+    try {
+      await navigator.clipboard.writeText(text);
+    } catch (cause) {
+      if (!(cause instanceof DOMException)) throw cause;
+      toast.error(wording.message.copyFailed);
+      return;
+    }
+    setCopied(true);
+    setTimeout(() => setCopied(false), COPIED_MS);
+  };
   return (
     <MessageAction
       label={copied ? wording.message.copied : wording.message.copy}
-      onClick={() => {
-        navigator.clipboard.writeText(text).then(
-          () => {
-            setCopied(true);
-            setTimeout(() => setCopied(false), COPIED_MS);
-          },
-          () => toast.error(wording.message.copyFailed),
-        );
-      }}
+      onClick={() => void copy()}
     >
       {copied ? <Check aria-hidden="true" /> : <Copy aria-hidden="true" />}
     </MessageAction>

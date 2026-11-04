@@ -6,12 +6,15 @@
 /** Wraps an async function so concurrent calls share the one in-flight promise. */
 export function singleFlight<T>(run: () => Promise<T>): () => Promise<T> {
   let pending: Promise<T> | null = null;
-  return () => {
-    if (pending) return pending;
-    const call = run().finally(() => {
+  const settle = async (call: Promise<T>) => {
+    try {
+      return await call;
+    } finally {
       pending = null;
-    });
-    pending = call;
-    return call;
+    }
+  };
+  return () => {
+    pending ??= settle(run());
+    return pending;
   };
 }

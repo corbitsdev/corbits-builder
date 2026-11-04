@@ -36,20 +36,27 @@ const persistOptions: PersistQueryClientOptions = {
     storage: { getItem: get, setItem: set, removeItem: del },
   }),
   maxAge: CACHE_LIFETIME_MS,
-  // A query that still has data is kept after a failed refetch.
+  // A query that still has data is kept after a failed refetch. One marked
+  // `meta: { persist: false }` only matters while this page waits on it.
   dehydrateOptions: {
-    shouldDehydrateQuery: (query) => query.state.data !== undefined,
+    shouldDehydrateQuery: (query) =>
+      query.state.data !== undefined && query.meta?.["persist"] !== false,
   },
 };
 
 /**
- * Resolves after the saved cache is on the client, before the first paint. An
- * unreadable cache leaves the client empty and the page loads from the network.
+ * Puts the saved cache on the client and saves it from then on. The cache only
+ * spares the first reads, so a restore that fails for any reason leaves the
+ * client empty and the page loads from the network.
  */
-export const queryCacheReady: Promise<void> = persistQueryClientRestore(
-  persistOptions,
-)
-  .catch(() => undefined)
-  .then(() => {
-    persistQueryClientSubscribe(persistOptions);
-  });
+async function restoreQueryCache(): Promise<void> {
+  try {
+    await persistQueryClientRestore(persistOptions);
+  } catch (cause) {
+    console.warn("The saved query cache could not be restored.", cause);
+  }
+  persistQueryClientSubscribe(persistOptions);
+}
+
+/** Resolves after the saved cache is on the client, before the first paint. */
+export const queryCacheReady: Promise<void> = restoreQueryCache();
