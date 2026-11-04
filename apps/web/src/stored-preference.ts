@@ -55,5 +55,5 @@ export function useStoredPreference<T extends string>(
     const raw = readStoredPreference(key);
     return (raw === null ? null : parse(raw)) ?? fallback;
   };
-  return useSyncExternalStore(subscribe, read, () => fallback);
+  return useSyncExternalStore(subscribe, read, read);
 }

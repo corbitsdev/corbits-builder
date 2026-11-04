@@ -2,7 +2,7 @@
  * Workspace-level stakeholder approval settings and saved workspace reviewers,
  * chosen in Settings or while sharing a package and synced across tabs.
  */
-import { useSyncExternalStore } from "react";
+import { useMemo } from "react";
 import {
   DEFAULT_WORKSPACE_REVIEWERS,
   type WorkspaceReviewer,
@@ -10,37 +10,27 @@ import {
 import { wording } from "./config.ts";
 import {
   readStoredPreference,
+  useStoredPreference,
   writeStoredPreference,
 } from "./stored-preference.ts";
 
 const APPROVALS_ENABLED_KEY = "builder-workspace-approvals-enabled";
 const WORKSPACE_REVIEWERS_KEY = "builder-workspace-reviewers";
 const CUSTOM_PERSONAS_KEY = "builder-workspace-custom-personas";
+const DEFAULT_REVIEWERS_JSON = JSON.stringify(DEFAULT_WORKSPACE_REVIEWERS);
 
 export type OnOff = "on" | "off";
 
-const parseDefaultOff = (raw: string | null): OnOff =>
-  raw === "on" ? "on" : "off";
-
-const readApprovalsEnabled = (): OnOff =>
-  parseDefaultOff(readStoredPreference(APPROVALS_ENABLED_KEY));
+const parseOnOff = (raw: string): OnOff | null =>
+  raw === "on" || raw === "off" ? raw : null;
 
 export function useWorkspaceApprovalsEnabled(): OnOff {
-  return useSyncExternalStore(
-    subscribeReviewers,
-    readApprovalsEnabled,
-    readApprovalsEnabled,
-  );
+  return useStoredPreference(APPROVALS_ENABLED_KEY, parseOnOff, "off");
 }
 
 export function writeWorkspaceApprovalsEnabled(choice: OnOff): void {
   writeStoredPreference(APPROVALS_ENABLED_KEY, choice);
-  notifyReviewers();
 }
-
-let cachedReviewersRaw: string | null = null;
-let cachedReviewersList: readonly WorkspaceReviewer[] =
-  DEFAULT_WORKSPACE_REVIEWERS;
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null;
@@ -68,19 +58,10 @@ function parseReviewerEntry(entry: unknown): WorkspaceReviewer | null {
   };
 }
 
-function parseReviewers(raw: string | null): readonly WorkspaceReviewer[] {
-  if (raw === cachedReviewersRaw) return cachedReviewersList;
-  cachedReviewersRaw = raw;
-  if (raw === null) {
-    cachedReviewersList = DEFAULT_WORKSPACE_REVIEWERS;
-    return cachedReviewersList;
-  }
+function parseReviewers(raw: string): readonly WorkspaceReviewer[] {
   try {
     const parsed: unknown = JSON.parse(raw);
-    if (!Array.isArray(parsed)) {
-      cachedReviewersList = DEFAULT_WORKSPACE_REVIEWERS;
-      return cachedReviewersList;
-    }
+    if (!Array.isArray(parsed)) return DEFAULT_WORKSPACE_REVIEWERS;
     const valid: WorkspaceReviewer[] = [];
     for (const item of parsed) {
       const reviewer = parseReviewerEntry(item);
@@ -88,43 +69,23 @@ function parseReviewers(raw: string | null): readonly WorkspaceReviewer[] {
         valid.push(reviewer);
       }
     }
-    cachedReviewersList = valid;
-    return cachedReviewersList;
+    return valid;
   } catch (error) {
     console.warn("Invalid stored workspace reviewers JSON.", error);
-    cachedReviewersList = DEFAULT_WORKSPACE_REVIEWERS;
-    return cachedReviewersList;
+    return DEFAULT_WORKSPACE_REVIEWERS;
   }
-}
-
-const reviewersListeners = new Set<() => void>();
-
-function subscribeReviewers(listener: () => void): () => void {
-  reviewersListeners.add(listener);
-  if (typeof window !== "undefined") {
-    window.addEventListener("storage", listener);
-  }
-  return () => {
-    reviewersListeners.delete(listener);
-    if (typeof window !== "undefined") {
-      window.removeEventListener("storage", listener);
-    }
-  };
-}
-
-function notifyReviewers(): void {
-  for (const listener of reviewersListeners) listener();
 }
 
 export function readWorkspaceReviewers(): readonly WorkspaceReviewer[] {
-  return parseReviewers(readStoredPreference(WORKSPACE_REVIEWERS_KEY));
+  return parseReviewers(
+    readStoredPreference(WORKSPACE_REVIEWERS_KEY) ?? DEFAULT_REVIEWERS_JSON,
+  );
 }
 
 export function writeWorkspaceReviewers(
   reviewers: readonly WorkspaceReviewer[],
 ): void {
   writeStoredPreference(WORKSPACE_REVIEWERS_KEY, JSON.stringify(reviewers));
-  notifyReviewers();
 }
 
 export function addWorkspaceReviewer(input: {
@@ -201,43 +162,30 @@ export function mergeWorkspaceReviewers(
 }
 
 export function useWorkspaceReviewers(): readonly WorkspaceReviewer[] {
-  return useSyncExternalStore(
-    subscribeReviewers,
-    readWorkspaceReviewers,
-    () => DEFAULT_WORKSPACE_REVIEWERS,
+  const raw = useStoredPreference(
+    WORKSPACE_REVIEWERS_KEY,
+    (value) => value,
+    DEFAULT_REVIEWERS_JSON,
   );
+  return useMemo(() => parseReviewers(raw), [raw]);
 }
 
-let cachedPersonasRaw: string | null = null;
-let cachedPersonasList: readonly string[] = [];
-
-function parseCustomPersonas(raw: string | null): readonly string[] {
-  if (raw === cachedPersonasRaw) return cachedPersonasList;
-  cachedPersonasRaw = raw;
-  if (raw === null) {
-    cachedPersonasList = [];
-    return cachedPersonasList;
-  }
+function parseCustomPersonas(raw: string): readonly string[] {
   try {
     const parsed: unknown = JSON.parse(raw);
-    if (!Array.isArray(parsed)) {
-      cachedPersonasList = [];
-      return cachedPersonasList;
-    }
-    cachedPersonasList = parsed.filter(
+    if (!Array.isArray(parsed)) return [];
+    return parsed.filter(
       (item): item is string =>
         typeof item === "string" && item.trim().length > 0,
     );
-    return cachedPersonasList;
   } catch (error) {
     console.warn("Invalid stored custom personas JSON.", error);
-    cachedPersonasList = [];
-    return cachedPersonasList;
+    return [];
   }
 }
 
 export function readCustomReviewerPersonas(): readonly string[] {
-  return parseCustomPersonas(readStoredPreference(CUSTOM_PERSONAS_KEY));
+  return parseCustomPersonas(readStoredPreference(CUSTOM_PERSONAS_KEY) ?? "[]");
 }
 
 export function addCustomReviewerPersona(persona: string): void {
@@ -253,15 +201,11 @@ export function addCustomReviewerPersona(persona: string): void {
   }
   current.push(trimmed);
   writeStoredPreference(CUSTOM_PERSONAS_KEY, JSON.stringify(current));
-  notifyReviewers();
 }
 
 export function useCustomReviewerPersonas(): readonly string[] {
-  return useSyncExternalStore(
-    subscribeReviewers,
-    readCustomReviewerPersonas,
-    () => cachedPersonasList,
-  );
+  const raw = useStoredPreference(CUSTOM_PERSONAS_KEY, (value) => value, "[]");
+  return useMemo(() => parseCustomPersonas(raw), [raw]);
 }
 
 export function allReviewerPersonas(
