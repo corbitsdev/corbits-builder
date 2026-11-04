@@ -90,6 +90,26 @@
   bottom: var(--space-3);
 }
 
+/* A cover that shows the mockup lays its first page out at four times the tile's width, the way a
+   desktop would, and scales it down; the pattern stays beneath while the page loads. */
+.library-page .library-cover[data-mockup] {
+  position: relative;
+  overflow: hidden;
+}
+
+.library-page .library-cover .gui-frame {
+  position: absolute;
+  inset: 0 auto auto 0;
+  width: 400%;
+  height: 400%;
+  min-height: 0;
+  border: 0;
+  background: var(--wb-background);
+  transform: scale(0.25);
+  transform-origin: 0 0;
+  pointer-events: none;
+}
+
 /* Each cover mixes two theme colours into the card's own surface, so it stays
    soft in light mode and does not glare in dark mode. */
 .library-page .library-cover {
