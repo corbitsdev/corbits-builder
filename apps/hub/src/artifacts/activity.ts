@@ -108,7 +108,10 @@ export function createAgentActivity(events: Pick<SidecarEventEmitter, "on">) {
         delete run.said;
         return;
       }
-      case "message.run.ended": {
+      // The reactor ends a message run right after it replies, but a turn resumed from an approval
+      // restored after a restart has no message run, so its reply is the only end it sends.
+      case "message.run.ended":
+      case "connector.reply": {
         const run = entry(local);
         run.working = false;
         run.since = now;
