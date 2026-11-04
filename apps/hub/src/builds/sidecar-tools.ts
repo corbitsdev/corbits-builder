@@ -150,25 +150,31 @@ const succeeded = (result: ToolResult) =>
 const VERSIONED = new Set([...WRITES, "run_shell", PACKAGE_INSTALL_TOOL]);
 // Bounds teardown: the wait for the last version, then the revoke.
 const VERSION_CLOSE_MS = 15_000;
-// check-app run as a command, not mentioned in one such as grep -rn check-app.
-const RUNS_CHECK_APP = /(?:^|[;&|(]\s*)check-app(?=$|[\s;&|)])/m;
-const ranAppCheck = (call: ToolCall) =>
-  call.name === "run_shell" &&
-  RUNS_CHECK_APP.test(String(call.arguments["command"]));
-// An app-mode check-app pass; a mockup check in the same workspace passes without building anything.
-const passedAppCheck = (call: ToolCall, result: ToolResult) =>
-  ranAppCheck(call) &&
-  typeof result.content === "string" &&
-  /check passed: built, started,/.test(result.content);
-/** A check-app run's verdict; check-app && npm test passes only when both do. */
+// check-app's verdict heads a line of its output, however the command runs it (timeout, env, a
+// wrapper or a pipe); a command that only names check-app, such as grep -rn check-app, prints none.
+const CHECK_APP_VERDICT = /^check (?:passed|failed):/m;
+// A mockup check passes without building anything; only this verdict says the app built and ran.
+const APP_CHECK_PASSED = /^check passed: built, started,/m;
+
+/** A check-app run's verdict; check-app && bun test passes only when both do. */
 export function appCheckDetail(
   call: ToolCall,
   result: ToolResult,
 ): CheckDetail | undefined {
-  if (!ranAppCheck(call)) return undefined;
-  const passed = /^check passed:/m.test(String(result.content));
-  return { checkPassed: succeeded(result) && passed };
+  const command = call.arguments["command"];
+  if (
+    call.name !== "run_shell" ||
+    typeof command !== "string" ||
+    !command.includes("check-app")
+  )
+    return undefined;
+  const output = String(result.content);
+  if (!CHECK_APP_VERDICT.test(output)) return undefined;
+  return { checkPassed: succeeded(result) && APP_CHECK_PASSED.test(output) };
 }
+
+const passedAppCheck = (call: ToolCall, result: ToolResult) =>
+  appCheckDetail(call, result)?.checkPassed === true;
 
 // A cold install; under the executor's own ceiling.
 const SETUP_TIMEOUT_MS = 115_000;
