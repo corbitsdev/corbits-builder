@@ -221,8 +221,8 @@ const flowRank = (kind: string) => {
   return rank === -1 ? FLOW.length : rank;
 };
 
-// The document may take most of the row; the conversation folds away entirely when it needs all of it.
-const CONVERSATION_MIN_PX = 240;
+// Keep messages, approval cards and the composer readable beside a wide preview.
+const CONVERSATION_MIN_PX = 400;
 const DOCUMENT_MIN_PX = 360;
 
 function documentStatus(item: Deliverable): string {
@@ -406,7 +406,7 @@ export function ArtifactPane({
     });
     choose(kind);
   };
-  const width = useDocumentPaneWidth();
+  const width = useDocumentPaneWidth(projectId);
   const seen = useSeenVersions();
   const tipsGroup = useTipsGroup();
   const shown =
@@ -464,7 +464,9 @@ export function ArtifactPane({
       className="workspace-artifacts"
       aria-label="Artifacts"
       width={width}
-      onWidthChange={writeDocumentPaneWidth}
+      onWidthChange={(nextWidth) =>
+        writeDocumentPaneWidth(projectId, nextWidth)
+      }
       minWidth={DOCUMENT_MIN_PX}
       mainMinWidth={CONVERSATION_MIN_PX}
     >
