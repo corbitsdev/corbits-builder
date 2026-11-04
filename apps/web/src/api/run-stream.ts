@@ -55,8 +55,11 @@ export function applyRunStreamEvent(
 ): { live: string; refresh: boolean } {
   if (event.type === "inference.start") return { live: "", refresh: false };
   if (event.type === "inference.text.delta") {
-    const text = partialOf(event)?.text ?? "";
-    return { live: text.length > 0 ? text : live, refresh: false };
+    const text = partialOf(event)?.text;
+    return {
+      live: text !== undefined && text.length > 0 ? text : live,
+      refresh: false,
+    };
   }
   if (event.type === "inference.error") return { live: "", refresh: true };
   if (event.type === "inference.done") return { live, refresh: true };
