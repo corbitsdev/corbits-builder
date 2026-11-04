@@ -59,23 +59,28 @@ const briefWriteDefinition = {
 // Each writer's document by name, and what its write_artifact says about the fields only it has.
 const WRITER_DOCUMENTS: Record<
   WriterDocumentKind,
-  { name: string; fieldNotes: string }
+  { name: string; fieldNotes: string[] }
 > = {
-  constraints: { name: "constraints", fieldNotes: "" },
+  constraints: { name: "constraints", fieldNotes: [] },
   approaches: {
     name: "approaches document",
-    fieldNotes:
-      "\napproaches carries the approaches the document compares, for the person to see side by side: each with a short id, its name, a one-line summary, bestFor, its pros, cons and risks as short phrases, and its effort; recommended names the id of the one you recommend.",
+    fieldNotes: [
+      "approaches carries the approaches the document compares, for the person to see side by side: each with a short id, its name, a one-line summary, bestFor, its pros, cons and risks as short phrases, and its effort; recommended names the id of the one you recommend.",
+    ],
   },
-  product_requirements: { name: "product requirements", fieldNotes: "" },
-  build_plan: { name: "build plan", fieldNotes: "" },
+  product_requirements: { name: "product requirements", fieldNotes: [] },
+  build_plan: { name: "build plan", fieldNotes: [] },
 };
 
 function writerWriteDefinition(kind: WriterDocumentKind) {
   const { name, fieldNotes } = WRITER_DOCUMENTS[kind];
   return {
     name: "write_artifact",
-    description: `Write the next version of the ${name}. The hub assigns its id, version and sha256 and returns them. Writing a version is not approval.\nopenQuestions lists each question in the document's Open questions section that the person must answer: a short id, the question as they would read it, whyItBlocks, and suggestedAnswers, your recommendation first. A version written without openQuestions leaves none open.${fieldNotes}`,
+    description: [
+      `Write the next version of the ${name}. The hub assigns its id, version and sha256 and returns them. Writing a version is not approval.`,
+      "openQuestions lists each question in the document's Open questions section that the person must answer: a short id, the question as they would read it, whyItBlocks, and suggestedAnswers, your recommendation first. A version written without openQuestions leaves none open.",
+      ...fieldNotes,
+    ].join("\n"),
     inputSchema: { ...WriterDocumentFields[kind].toJsonSchema() },
   };
 }

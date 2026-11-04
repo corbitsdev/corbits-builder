@@ -52,7 +52,7 @@ const pinOf = (bundle: unknown) => {
 };
 
 // The pins a role may run on: a coder is either coder package, by the project's package choice, and a
-// writer the package for the kind it was deployed for.
+// writer any writer package, one per document kind.
 const pinsFor = (installed: InstalledWorkflows, role: WorkflowRole) =>
   roleDeployments(installed, role).map((deployment) => deployment.pin);
 

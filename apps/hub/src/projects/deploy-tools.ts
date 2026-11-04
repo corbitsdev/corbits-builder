@@ -18,6 +18,7 @@ import {
   NativeSpecialistDeployment,
 } from "@corbits-builder/schemas/native-specialist";
 import { SourceRef } from "@corbits-builder/schemas";
+import type { WorkflowProjectScope } from "@corbits-builder/schemas/installed-workflows";
 import {
   ArtifactContent,
   DesignBundle,
@@ -70,7 +71,7 @@ const Instruction =
   NativeSpecialistAssignment.get("instruction").and("string >= 40");
 const DeployWriter = type({
   "+": "reject",
-  kind: NativeDocumentKind,
+  kind: WriterDocumentKind,
   instruction: Instruction,
 });
 const APPROVABLE = [
@@ -236,13 +237,7 @@ export function createDeployTools(options?: {
   tenantId: string;
   projectId: string;
   domain: string;
-  workflows: {
-    writers: Record<WriterDocumentKind, NativeSpecialistDeployment>;
-    reviewer: NativeSpecialistDeployment;
-    coder: NativeSpecialistDeployment;
-    designer: NativeSpecialistDeployment;
-    presenter?: NativeSpecialistDeployment;
-  };
+  workflows: WorkflowProjectScope["workflows"];
   maxResultBytes: number;
 }): AnnotatedToolFactory<DeployEnv> {
   if (options) {
@@ -539,21 +534,12 @@ export function createDeployTools(options?: {
             result = { approved: documents };
           } else if (call.name === "deploy_writer") {
             const input = validArguments(DeployWriter, call.arguments);
-            const writerKind = WriterDocumentKind(input.kind);
-            if (writerKind instanceof type.errors)
-              throw new Refusal(
-                "no_writer_for_kind: review_artifact has the reviewer write the " +
-                  input.kind,
-              );
             const { byKind, approved, preferences } = await listed();
             const briefRef = required(byKind, "problem_brief");
-            const position = DOCUMENT_ORDER.indexOf(
-              input.kind as (typeof DOCUMENT_ORDER)[number],
+            const earlier = DOCUMENT_ORDER.slice(
+              0,
+              DOCUMENT_ORDER.indexOf(input.kind),
             );
-            const earlier =
-              position < 0
-                ? DOCUMENT_ORDER.slice(0, 1)
-                : DOCUMENT_ORDER.slice(0, position);
             // An imported project may lack an earlier document that its later ones were written without.
             const writtenWithout = (index: number) =>
               DOCUMENT_ORDER.slice(index + 1).some((kind) => byKind.has(kind));
@@ -587,7 +573,7 @@ export function createDeployTools(options?: {
               .map(([, ref]) => ref);
             result = await deploy(
               "writer",
-              options.workflows.writers[writerKind],
+              options.workflows.writers[input.kind],
               preferences,
               "writer-" + input.kind,
               await assignmentToWriterMessage(

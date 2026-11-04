@@ -45,10 +45,10 @@ const sampleApproaches = {
 
 // The fields each writer's save takes.
 const WRITER_FIELDS: Record<WriterDocumentKind, string[]> = {
-  constraints: ["content", "openQuestions", "title"],
-  approaches: ["approaches", "content", "openQuestions", "title"],
-  product_requirements: ["content", "openQuestions", "title"],
-  build_plan: ["content", "openQuestions", "title"],
+  constraints: ["content", "kind", "openQuestions", "title"],
+  approaches: ["approaches", "content", "kind", "openQuestions", "title"],
+  product_requirements: ["content", "kind", "openQuestions", "title"],
+  build_plan: ["content", "kind", "openQuestions", "title"],
 };
 const WRITER_KINDS = Object.keys(WRITER_FIELDS).map((kind) =>
   WriterDocumentKind.assert(kind),
@@ -199,38 +199,39 @@ test("each writer's write_artifact lists only its own fields, at the top level",
   }
 });
 
-test("a writer saves without a kind and files under the kind it was deployed for", async () => {
-  const constraints = harness(
-    "writer",
-    createWriterArtifactTools("constraints"),
-  );
-  const named = await constraints.write({
-    kind: "build_plan",
-    title: "Build Plan",
-    content: "# Build Plan",
-  });
-  expect(named.isError).toBe(true);
-  expect(named.content).toStartWith("invalid_arguments:");
-  const withApproaches = await constraints.write({
-    title: "Constraints",
-    content: "# Constraints",
-    approaches: sampleApproaches,
-  });
-  expect(withApproaches.isError).toBe(true);
-  expect(withApproaches.content).toContain("approaches");
-  expect(
-    (await constraints.write({ title: "Constraints", content: "" })).isError,
-  ).toBe(true);
-  expect(constraints.written).toHaveLength(0);
+test("a writer files under the kind it was deployed for, with or without naming it", async () => {
+  for (const kind of WRITER_KINDS) {
+    const writer = harness("writer", createWriterArtifactTools(kind));
+    const otherKind = await writer.write({
+      kind: WRITER_KINDS.find((other) => other !== kind),
+      title: "Doc",
+      content: "# Doc",
+    });
+    expect(otherKind.content).toStartWith("invalid_arguments:");
+    const empty = await writer.write({ title: "Doc", content: "" });
+    expect(empty.content).toStartWith("invalid_arguments:");
+    expect(writer.written).toHaveLength(0);
 
-  const saved = await constraints.write({
-    title: "Constraints",
-    content: "# Constraints",
-  });
-  expect(saved.isError).toBeUndefined();
-  expect(constraints.written).toEqual([
-    { kind: "constraints", title: "Constraints", content: "# Constraints" },
-  ]);
+    await writer.write({ title: "Unnamed", content: "# Doc" });
+    await writer.write({ kind, title: "Named", content: "# Doc" });
+    expect(writer.written).toEqual([
+      { kind, title: "Unnamed", content: "# Doc" },
+      { kind, title: "Named", content: "# Doc" },
+    ]);
+  }
+});
+
+test("only the approaches writer saves approaches", async () => {
+  for (const kind of WRITER_KINDS.filter((kind) => kind !== "approaches")) {
+    const writer = harness("writer", createWriterArtifactTools(kind));
+    const result = await writer.write({
+      title: "Doc",
+      content: "# Doc",
+      approaches: sampleApproaches,
+    });
+    expect(result.content).toStartWith("invalid_arguments:");
+    expect(result.content).toContain("approaches");
+  }
 
   const approaches = harness("writer", createWriterArtifactTools("approaches"));
   const valid = await approaches.write({

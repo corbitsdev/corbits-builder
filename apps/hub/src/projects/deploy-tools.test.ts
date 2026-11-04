@@ -335,11 +335,11 @@ test("one ask approves several documents, and a writer starts once every earlier
   ]);
 });
 
-test("deploy_writer has no writer for the reviewer's engineering review", async () => {
+test("deploy_writer offers only the kinds a writer saves", async () => {
   const { run, deployed } = writerTools({ agent_decides_approvals: "yes" });
   expect(
-    (await run("deploy_writer", writer("engineering_review"))).content,
-  ).toStartWith("no_writer_for_kind:");
+    (await run("deploy_writer", writer("engineering_review"))).isError,
+  ).toBe(true);
   expect(deployed).toEqual([]);
 });
 

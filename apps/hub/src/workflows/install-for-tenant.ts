@@ -346,10 +346,15 @@ async function isCurrent(
   const visible = await listVisibleOfferings(db, tenantId);
   // A role's packages are installed on the one offering its binding resolved to.
   for (const role of ROLES) {
-    const [entry] = roleDeployments(installed, role);
-    if (!entry) return false;
+    const offeringIds = new Set(
+      roleDeployments(installed, role).map(
+        (entry) => entry.defaultSourceOfferingId,
+      ),
+    );
+    if (offeringIds.size !== 1) return false;
+    const [offeringId] = offeringIds;
     const row = visible.find(
-      (candidate) => candidate.offering.id === entry.defaultSourceOfferingId,
+      (candidate) => candidate.offering.id === offeringId,
     );
     if (!row || !(await servesSource(db, directory, row, bindings[role])))
       return false;

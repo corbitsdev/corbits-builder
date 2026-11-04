@@ -58,6 +58,8 @@ export const WorkflowProjectScope = type({
   workflows: {
     "+": "reject",
     writers: WriterDeployments,
+    // Read only by bundles frozen before writers were split; nothing deploys from it now.
+    "writer?": NativeSpecialistDeployment,
     reviewer: NativeSpecialistDeployment,
     coder: NativeSpecialistDeployment,
     designer: NativeSpecialistDeployment,

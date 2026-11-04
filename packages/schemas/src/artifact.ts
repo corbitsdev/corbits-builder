@@ -48,17 +48,31 @@ const documentFields = {
   content,
   "openQuestions?": OpenQuestions,
 };
-// The fields a writer saves, by the kind it was deployed for; the hub adds the kind. A flat object,
-// since some providers read only a tool schema's top-level properties and send nothing for a union.
+// The fields a writer saves, by the kind it was deployed for; the hub files it under that kind, and a
+// kind the writer repeats from its task must match. A flat object, since some providers read only a
+// tool schema's top-level properties and send nothing for a union.
 export const WriterDocumentFields = {
-  constraints: type({ "+": "reject", ...documentFields }),
+  constraints: type({
+    "+": "reject",
+    "kind?": "'constraints'",
+    ...documentFields,
+  }),
   approaches: type({
     "+": "reject",
+    "kind?": "'approaches'",
     ...documentFields,
     "approaches?": ApproachesMeta,
   }),
-  product_requirements: type({ "+": "reject", ...documentFields }),
-  build_plan: type({ "+": "reject", ...documentFields }),
+  product_requirements: type({
+    "+": "reject",
+    "kind?": "'product_requirements'",
+    ...documentFields,
+  }),
+  build_plan: type({
+    "+": "reject",
+    "kind?": "'build_plan'",
+    ...documentFields,
+  }),
 };
 export const DocumentWrite = type({
   "+": "reject",

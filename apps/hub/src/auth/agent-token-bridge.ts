@@ -294,6 +294,12 @@ export function createAgentTokenBridge(
         role,
         workflows: {
           writers: installed.writers,
+          // A bundle frozen before writers were split requires writer to read its scope. Only a
+          // coordinator deploys from it, and an old one would start the constraints writer for any
+          // kind, so a coordinator goes without until it is upgraded.
+          ...(role === "coordinator"
+            ? {}
+            : { writer: installed.writers.constraints }),
           reviewer: installed.reviewer,
           coder: installsAnyPackage(preferences.value)
             ? installed.coderAnyPackage
