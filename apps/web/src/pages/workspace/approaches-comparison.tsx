@@ -18,6 +18,7 @@ import type {
 } from "@corbits-builder/schemas/approaches";
 import { useState } from "react";
 import { wording } from "../../config.ts";
+import { humanFault } from "./human-fault.ts";
 
 const text = wording.approaches;
 
@@ -48,14 +49,17 @@ export function ApproachesComparison({
 }) {
   const [choosing, setChoosing] = useState<string | null>(null);
   const [fault, setFault] = useState<string | null>(null);
-  const choose = (approach: Approach) => {
+  const choose = async (approach: Approach) => {
     if (onChoose === undefined) return;
     setChoosing(approach.id);
     setFault(null);
-    void onChoose(text.message(approach.name))
-      .then(setFault)
-      .catch(() => setFault(text.notSent))
-      .finally(() => setChoosing(null));
+    try {
+      setFault(await onChoose(text.message(approach.name)));
+    } catch (cause) {
+      setFault(humanFault(cause, text.notSent));
+    } finally {
+      setChoosing(null);
+    }
   };
   return (
     <section className="approaches" aria-label={text.label}>
@@ -95,7 +99,7 @@ export function ApproachesComparison({
                     size="sm"
                     variant={recommended ? "primary" : "outline"}
                     disabled={choosing !== null}
-                    onClick={() => choose(approach)}
+                    onClick={() => void choose(approach)}
                   >
                     {choosing === approach.id ? text.choosing : text.choose}
                   </Button>

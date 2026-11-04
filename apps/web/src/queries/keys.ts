@@ -76,6 +76,8 @@ export const keys = {
     of: (projectId: string) => ["project", projectId] as const,
   },
   modelCatalog: ["modelCatalog"] as const,
+  /** One subscription login the hub is waiting on. */
+  modelLogin: (loginId: string) => ["modelLogin", loginId] as const,
   /** The person's own model choice. */
   modelChoice: ["modelChoice"] as const,
   /** The person's own working preferences. */

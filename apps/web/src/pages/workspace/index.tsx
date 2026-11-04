@@ -65,6 +65,7 @@ import type { InFlightRun } from "@corbits-builder/schemas/artifact";
 import { toast } from "sonner";
 import { sendMessage } from "../../api/conversation.ts";
 import { subscribeWorkflowRun } from "../../api/run-stream.ts";
+import { refusalBody } from "../../api/transport.ts";
 import {
   acceptedMaterials,
   attachMaterials,
@@ -286,10 +287,7 @@ async function modelRefusal(
 ): Promise<{ code: string; message: string } | undefined> {
   if (!(cause instanceof ProductApiError) || cause.response.status !== 409)
     return undefined;
-  const body: unknown = await cause.response
-    .clone()
-    .json()
-    .catch(() => undefined);
+  const body = await refusalBody(cause);
   return body !== null &&
     typeof body === "object" &&
     "code" in body &&

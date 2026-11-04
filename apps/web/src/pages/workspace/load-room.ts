@@ -275,31 +275,30 @@ export async function loadProjectRoom(
     }
   }
 
+  const settleDocument = async (artifact: ProjectArtifact, key: string) => {
+    let state: DeliverableState;
+    try {
+      state = {
+        status: "ready",
+        document: await loadDeliverable(projectId, artifact),
+      };
+    } catch (cause) {
+      const failure = documentReadFailure(cause);
+      state = {
+        status: "error",
+        message: failure.message,
+        retryable: failure.retryable,
+      };
+    }
+    if (stale()) return;
+    settled.set(key, state);
+  };
   await Promise.all(
     fresh.artifacts.flatMap((artifact) => {
       const key = roomDocumentKey(projectId, artifact);
       const have = settled.get(key);
       if (have !== undefined && have.status !== "loading") return [];
-      return [
-        (async () => {
-          let state: DeliverableState;
-          try {
-            state = {
-              status: "ready",
-              document: await loadDeliverable(projectId, artifact),
-            };
-          } catch (cause) {
-            const failure = documentReadFailure(cause);
-            state = {
-              status: "error",
-              message: failure.message,
-              retryable: failure.retryable,
-            };
-          }
-          if (generation.get(projectId) !== ticket) return;
-          settled.set(key, state);
-        })(),
-      ];
+      return [settleDocument(artifact, key)];
     }),
   );
 
@@ -316,7 +315,7 @@ export async function loadProjectRoom(
 }
 
 /** Reads one document again. The last real record stays until the new read finishes. */
-export function reloadProjectDocument(
+export async function reloadProjectDocument(
   projectId: string,
   docKey: string,
   client: QueryClient,
@@ -324,7 +323,9 @@ export function reloadProjectDocument(
 ): Promise<RoomSnapshot> {
   settled.delete(docKey);
   refetchKeys.add(docKey);
-  return loadProjectRoom(projectId, client, withConversation).finally(() => {
+  try {
+    return await loadProjectRoom(projectId, client, withConversation);
+  } finally {
     refetchKeys.delete(docKey);
-  });
+  }
 }

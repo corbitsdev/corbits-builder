@@ -3,7 +3,7 @@
  * typed client. Fields the hub does not record carry their empty value (see
  * `types.ts`).
  */
-import { productClient } from "./transport.ts";
+import { productClient, refusalBody } from "./transport.ts";
 import { ApiFailure, type ProjectSummary } from "./types.ts";
 import { workspaceTenantId } from "./auth.ts";
 import {
@@ -91,10 +91,7 @@ export async function createProject(payload: {
 /** The hub's refusal to create a project, with its code and message when it gave them. */
 async function creationFailure(cause: unknown): Promise<unknown> {
   if (!(cause instanceof ProductApiError)) return cause;
-  const body: unknown = await cause.response
-    .clone()
-    .json()
-    .catch(() => undefined);
+  const body = await refusalBody(cause);
   const record = body !== null && typeof body === "object" ? body : {};
   const code =
     "code" in record && typeof record.code === "string"
