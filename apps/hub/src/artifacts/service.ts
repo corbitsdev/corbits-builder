@@ -158,6 +158,7 @@ import {
   parseApprovalPackageBundle,
   readProjectPackageSource,
   validateApprovalPackage,
+  verifySourcePin,
 } from "./approval-package.ts";
 import {
   createApprovalRoundService,
@@ -2069,30 +2070,8 @@ export function createArtifactService(
           );
         },
       );
-      for (const source of input.assignment.sources) {
-        const stored = await readSource(source.artifactId, source.version);
-        if (
-          !stored ||
-          stored.kind !== source.kind ||
-          stored.version !== source.version ||
-          stored.sha256 !== source.sha256
-        ) {
-          throw new ProjectError(422, "invalid_package_source", [
-            {
-              path: "assignment.sources",
-              message: `${source.artifactId}@${String(source.version)}`,
-            },
-          ]);
-        }
-        if (stored.approved === false) {
-          throw new ProjectError(422, "unapproved_package_source", [
-            {
-              path: "assignment.sources",
-              message: `${source.kind}@${String(source.version)}`,
-            },
-          ]);
-        }
-      }
+      for (const source of input.assignment.sources)
+        await verifySourcePin(source, readSource, "assignment.sources");
       const sealedAssignment = {
         ...input.assignment,
         sealed: true as const,
