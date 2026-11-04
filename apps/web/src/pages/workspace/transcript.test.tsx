@@ -409,6 +409,26 @@ describe("conversation transcript", () => {
     }
   });
 
+  test("a written questions card settles once the person answers", () => {
+    const html = renderToStaticMarkup(
+      <RoomThread
+        turns={[
+          { role: "assistant", text: writtenAsk, at: 1 },
+          {
+            role: "person",
+            text: wording.questions.answerLine("Who is it for?", [
+              "Small teams",
+            ]),
+            at: 2,
+          },
+        ]}
+        onAnswerQuestions={() => Promise.resolve(true)}
+      />,
+    );
+    expect(html).toContain(wording.questions.answered(["Small teams"]));
+    expect(html).not.toContain(wording.questions.send);
+  });
+
   test("written questions add no card beside an ask_questions call", () => {
     const html = renderToStaticMarkup(
       <RoomThread
