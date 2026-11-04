@@ -91,7 +91,12 @@ export function createLiveAppRunner(options: {
 
   async function failOnExit(projectId: string, run: Run) {
     const code = await run.child.exited;
-    if (runs.get(projectId) === run && run.state.state !== "failed")
+    if (runs.get(projectId) !== run) return;
+    // A failed check is passing; the exit code says more about why the app is gone.
+    if (
+      run.state.state !== "failed" ||
+      run.state.error === liveAppWording.checkFailed
+    )
       run.state = {
         state: "failed",
         error: liveAppWording.hostExited(code),
