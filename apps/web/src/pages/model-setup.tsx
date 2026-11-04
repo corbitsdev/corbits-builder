@@ -6,6 +6,14 @@
 import { useState } from "react";
 import { productName, wording } from "../config.ts";
 import { AuthLayout, DitherCanvas, KindCardGrid } from "@corbits/react-ui";
+import {
+  Dialog,
+  DialogBody,
+  DialogContent,
+  DialogDescription,
+  DialogHeader,
+  DialogTitle,
+} from "@corbits/react-ui/ui/dialog";
 import { Banner, Mark, QUIET_CONTROL } from "../components.jsx";
 import {
   AddProviderDialog,
@@ -49,13 +57,8 @@ export function needsModelSetup(
   );
 }
 
-export function ModelSetup({
-  onConnected,
-  onLater,
-}: {
-  onConnected: () => void;
-  onLater: () => void;
-}) {
+/** A tile per subscription login, then a tile per API-key provider opening the Add provider dialog. */
+function ProviderTiles({ onConnected }: { onConnected: () => void }) {
   const connected = () => {
     clearModelSetupDeferral();
     onConnected();
@@ -67,6 +70,60 @@ export function ModelSetup({
   );
   const [keyOpen, setKeyOpen] = useState(false);
   const [keyProviderId, setKeyProviderId] = useState<string>();
+  return (
+    <>
+      {catalog.error ? (
+        <Banner tone="error" title={catalog.error.message} />
+      ) : null}
+      <KindCardGrid
+        label={copy.loginGroup}
+        className="provider-tiles"
+        options={logins.map((provider) => ({
+          id: provider.id,
+          title: provider.label,
+          description: signingIn === provider.id ? copy.waiting : provider.hint,
+          icon: <ProviderLogo providerId={provider.id} />,
+          disabled: signingIn !== null,
+        }))}
+        onChange={(id) => {
+          const provider = logins.find((login) => login.id === id);
+          if (provider) void signIn(provider);
+        }}
+      />
+      <hr className="model-setup-divider" />
+      <KindCardGrid
+        label={copy.apiKeyGroup}
+        className="provider-tiles"
+        options={apiKeyProviders.map((provider) => ({
+          id: provider.id,
+          title: provider.label,
+          description: provider.hint,
+          icon: <ProviderLogo providerId={provider.id} />,
+          disabled: signingIn !== null,
+        }))}
+        onChange={(id) => {
+          setKeyProviderId(id);
+          setKeyOpen(true);
+        }}
+      />
+      <AddProviderDialog
+        key={keyProviderId}
+        providerId={keyProviderId}
+        open={keyOpen}
+        onOpenChange={setKeyOpen}
+        onConnected={connected}
+      />
+    </>
+  );
+}
+
+export function ModelSetup({
+  onConnected,
+  onLater,
+}: {
+  onConnected: () => void;
+  onLater: () => void;
+}) {
   return (
     <AuthLayout
       brand={
@@ -82,48 +139,7 @@ export function ModelSetup({
           <h1>{copy.connect}</h1>
           <p>{copy.noneHint}</p>
         </hgroup>
-        {catalog.error ? (
-          <Banner tone="error" title={catalog.error.message} />
-        ) : null}
-        <KindCardGrid
-          label={copy.loginGroup}
-          className="provider-tiles"
-          options={logins.map((provider) => ({
-            id: provider.id,
-            title: provider.label,
-            description:
-              signingIn === provider.id ? copy.waiting : provider.hint,
-            icon: <ProviderLogo providerId={provider.id} />,
-            disabled: signingIn !== null,
-          }))}
-          onChange={(id) => {
-            const provider = logins.find((login) => login.id === id);
-            if (provider) void signIn(provider);
-          }}
-        />
-        <hr className="model-setup-divider" />
-        <KindCardGrid
-          label={copy.apiKeyGroup}
-          className="provider-tiles"
-          options={apiKeyProviders.map((provider) => ({
-            id: provider.id,
-            title: provider.label,
-            description: provider.hint,
-            icon: <ProviderLogo providerId={provider.id} />,
-            disabled: signingIn !== null,
-          }))}
-          onChange={(id) => {
-            setKeyProviderId(id);
-            setKeyOpen(true);
-          }}
-        />
-        <AddProviderDialog
-          key={keyProviderId}
-          providerId={keyProviderId}
-          open={keyOpen}
-          onOpenChange={setKeyOpen}
-          onConnected={connected}
-        />
+        <ProviderTiles onConnected={onConnected} />
         <div className="model-setup-later">
           <button
             type="button"
@@ -143,5 +159,35 @@ export function ModelSetup({
         </div>
       </div>
     </AuthLayout>
+  );
+}
+
+/** The same tiles over the open project, so connecting never leaves it. */
+export function EnableAiDialog({
+  open,
+  onOpenChange,
+  onConnected,
+}: {
+  open: boolean;
+  onOpenChange: (open: boolean) => void;
+  onConnected: () => void;
+}) {
+  return (
+    <Dialog open={open} onOpenChange={onOpenChange}>
+      <DialogContent className="enable-ai-dialog">
+        <DialogHeader>
+          <DialogTitle>{copy.connect}</DialogTitle>
+          <DialogDescription>{copy.noneHint}</DialogDescription>
+        </DialogHeader>
+        <DialogBody className="model-setup">
+          <ProviderTiles
+            onConnected={() => {
+              onOpenChange(false);
+              onConnected();
+            }}
+          />
+        </DialogBody>
+      </DialogContent>
+    </Dialog>
   );
 }

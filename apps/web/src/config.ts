@@ -84,6 +84,7 @@ export const wording = {
     signOut: "Sign out",
     tryAgain: "Try again",
     openSettings: "Open Settings",
+    enableAi: "Enable AI",
     unarchive: "Unarchive",
     markShipped: "Mark as shipped",
     reopen: "Reopen",

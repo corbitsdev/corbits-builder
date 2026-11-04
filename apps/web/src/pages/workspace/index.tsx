@@ -13,7 +13,7 @@
 import { wording } from "../../config.ts";
 import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { Paperclip } from "lucide-react";
+import { Paperclip, Sparkles } from "lucide-react";
 import {
   Attachment,
   type AttachmentItem,
@@ -128,6 +128,7 @@ import { NextStepLine, useProjectNextStep } from "./next-step.tsx";
 import { composerPlaceholder } from "./composer-placeholder.ts";
 import { Dictated } from "../../dictation.jsx";
 import { useShellReply } from "../../flourish.tsx";
+import { EnableAiDialog } from "../model-setup.tsx";
 
 // The stream says when the room moved. This read covers what it cannot see,
 // such as a coordinator run replaced while its old stream stays quiet.
@@ -287,7 +288,6 @@ export function StageWorkspace({
   projectId,
   projectTitle,
   onChanged,
-  onOpenSettings,
   openingMessage,
   listedArchived,
 }: {
@@ -297,7 +297,6 @@ export function StageWorkspace({
   /** Whether the project list shows it archived, so an archive or restore made elsewhere is read again. */
   listedArchived?: boolean;
   onChanged: () => void;
-  onOpenSettings: () => void;
   /** The opening sentence the project was started with. It is not a stored
    *  artifact but the first conversation message, sent here once the
    *  coordinator binds. */
@@ -388,6 +387,7 @@ export function StageWorkspace({
   const [startFault, setStartFault] = useState<string | null>(null);
   // Why the coordinator has no model to run on, which only the person can settle.
   const [modelNeeded, setModelNeeded] = useState<string | null>(null);
+  const [enablingAi, setEnablingAi] = useState(false);
   const accepted = useQuery({
     queryKey: keys.acceptedMaterials.of(projectId),
     retry: false,
@@ -1267,27 +1267,7 @@ export function StageWorkspace({
         </div>
       </div>
     );
-  } else if (modelNeeded !== null) {
-    // A coordinator with no model to run on cannot answer, even one still bound from before.
-    dock = (
-      <div className="banner" role="alert">
-        <p className="banner-title">{modelNeeded}</p>
-        <div className="banner-action">
-          <UiButton type="button" size="sm" onClick={onOpenSettings}>
-            {wording.action.openSettings}
-          </UiButton>
-          <UiButton
-            type="button"
-            size="sm"
-            variant="outline"
-            onClick={() => void startCoordinator()}
-          >
-            {wording.action.retry}
-          </UiButton>
-        </div>
-      </div>
-    );
-  } else if (unbound) {
+  } else if (unbound && modelNeeded === null) {
     // The person does not start the coordinator by typing: an unbound room waits for the
     // start that opening it asked for, and a refused start says why and offers it again.
     if (startFault === null) {
@@ -1393,7 +1373,7 @@ export function StageWorkspace({
                 onSubmit={send}
                 canSubmit={value.trim() !== "" || files.length > 0}
                 status={sending || approvalBusy ? "submitted" : "ready"}
-                disabled={sending || approvalBusy}
+                disabled={sending || approvalBusy || modelNeeded !== null}
               >
                 {files.length === 0 ? null : (
                   <PromptInputFloat>
@@ -1452,7 +1432,19 @@ export function StageWorkspace({
                       </PromptInputButton>
                     </>
                   )}
-                  <PromptInputSubmit className="ms-auto" />
+                  {modelNeeded === null ? (
+                    <PromptInputSubmit className="ms-auto" />
+                  ) : (
+                    <UiButton
+                      type="button"
+                      size="sm"
+                      className="ms-auto"
+                      onClick={() => setEnablingAi(true)}
+                    >
+                      {wording.action.enableAi}
+                      <Sparkles size={14} aria-hidden="true" />
+                    </UiButton>
+                  )}
                 </PromptInputToolbar>
               </PromptInput>
             )}
@@ -1556,6 +1548,11 @@ export function StageWorkspace({
                 </RoomThread>
               </DispatchRoomContext.Provider>
               {dock}
+              <EnableAiDialog
+                open={enablingAi}
+                onOpenChange={setEnablingAi}
+                onConnected={() => void startCoordinator()}
+              />
             </div>
           </section>
           {chatFirst ? null : (

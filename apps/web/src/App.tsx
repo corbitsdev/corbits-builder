@@ -869,7 +869,6 @@ export function App() {
                         listedArchived: openProjectSummary.archivedAt !== null,
                       })}
                   onChanged={refresh}
-                  onOpenSettings={openSettings}
                   {...(openingMessage !== undefined ? { openingMessage } : {})}
                 />
               ) : (
