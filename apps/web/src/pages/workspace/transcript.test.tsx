@@ -97,7 +97,7 @@ describe("conversation transcript", () => {
     expect(html).not.toContain("sha256");
   });
 
-  test("a bold document name stays a link inside its sentence and still opens", () => {
+  test("a bold document name stays inline in its sentence and opens by click or key", () => {
     const source =
       "Already written into **Ways to build your list**. What the app does is next.";
     const documents = [{ id: "approaches", title: "Ways to build your list" }];
@@ -108,31 +108,30 @@ describe("conversation transcript", () => {
         onOpenDocument={() => {}}
       />,
     );
-    // A link, not a button: a button is one unbreakable box, so the title would leave the line.
+    // Inline, not a <button>: a button is one unbreakable box, so the title would leave the line.
     expect(html).toContain(
-      'into <strong><a href="#" class="artifact-mention">Ways to build your list</a></strong>. What',
+      'into <strong><span role="button" tabindex="0" class="artifact-mention">Ways to build your list</span></strong>. What',
     );
+    expect(html).not.toContain("href");
 
     const opened: string[] = [];
-    const link = findElement(
+    const mention = findElement(
       Markdown({
         source: "See [Ways to build your list](document:approaches).",
         openDocument: (id) => opened.push(id),
       }),
-      "a",
+      "span",
     );
-    let prevented = false;
-    (
-      link?.props["onClick"] as
-        | ((event: { preventDefault(): void }) => void)
-        | undefined
-    )?.({
-      preventDefault: () => {
-        prevented = true;
-      },
-    });
-    expect(opened).toEqual(["approaches"]);
-    expect(prevented).toBe(true);
+    (mention?.props["onClick"] as (() => void) | undefined)?.();
+    const onKeyDown = mention?.props["onKeyDown"] as
+      | ((event: { key: string; preventDefault(): void }) => void)
+      | undefined;
+    const prevented: string[] = [];
+    for (const key of ["Enter", " ", "Tab"]) {
+      onKeyDown?.({ key, preventDefault: () => prevented.push(key) });
+    }
+    expect(opened).toEqual(["approaches", "approaches", "approaches"]);
+    expect(prevented).toEqual(["Enter", " "]);
   });
 
   test("an approval asks about the document in words", () => {
