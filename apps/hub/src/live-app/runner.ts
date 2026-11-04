@@ -5,7 +5,7 @@ import { getLogger } from "@intx/log";
 import { errorCode, requestErrorMetadata } from "../request-error.ts";
 import { liveAppWording } from "../config/live-app.ts";
 import type { HostSource } from "./host.ts";
-import { HostReport } from "./host-report.ts";
+import { hostReports, type HostReport } from "./host-report.ts";
 import type { createLiveAppProxy } from "./proxy.ts";
 
 const log = getLogger(["corbits-builder", "hub", "live-app"]);
@@ -57,20 +57,14 @@ export function createLiveAppRunner(options: {
   sweep.unref();
 
   async function follow(projectId: string, run: Run) {
-    const decoder = new TextDecoder();
-    let pending = "";
     try {
-      for await (const chunk of run.child.stdout) {
-        pending += decoder.decode(chunk, { stream: true });
-        for (
-          let end = pending.indexOf("\n");
-          end !== -1;
-          end = pending.indexOf("\n")
-        ) {
-          run.state = HostReport.assert(JSON.parse(pending.slice(0, end)));
-          pending = pending.slice(end + 1);
-        }
-      }
+      for await (const report of hostReports(run.child.stdout, (reason) => {
+        log.warn("Skipped a live app host state line for {projectId}", {
+          projectId,
+          reason,
+        });
+      }))
+        run.state = report;
     } catch (error) {
       log.warn("Reading the live app host's state failed for {projectId}", {
         projectId,
