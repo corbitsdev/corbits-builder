@@ -101,6 +101,19 @@ export const ApprovalPackageManifest = type({
 });
 export type ApprovalPackageManifest = typeof ApprovalPackageManifest.infer;
 
+// What a presenter run was deployed to package: the manifest it files and the persona its deck
+// is titled for when the deck names no title of its own.
+export const PresenterAssignment = type({
+  "+": "delete",
+  audience: "string > 0",
+  personaLabel: "string > 0",
+  decisionNeeded: "string > 0",
+  tone: "string > 0",
+  length: "string > 0",
+  sources: ApprovalPackageSource.array().atLeastLength(1),
+});
+export type PresenterAssignment = typeof PresenterAssignment.infer;
+
 export const ApprovalPackageBundle = type({
   "+": "reject",
   manifest: ApprovalPackageManifest,

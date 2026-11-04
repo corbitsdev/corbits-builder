@@ -215,7 +215,7 @@ export function createAgentTokenBridge(
     }
     const nativeBearer = bearer.startsWith(NATIVE_RUN_TOKEN_PREFIX);
     const artifactRoute =
-      /^\/api\/tenants\/[^/]+\/projects\/[^/]+\/(?:artifacts(?:\/[^/]+)?|artifact-approvals|design-themes\/run|design-draft\/previous|app-repository(?:\/revoke)?)$/.test(
+      /^\/api\/tenants\/[^/]+\/projects\/[^/]+\/(?:artifacts(?:\/[^/]+)?|artifact-approvals|design-themes\/run|design-draft\/previous|presenter-assignment|app-repository(?:\/revoke)?)$/.test(
         c.req.path,
       );
     const runtimeScope = c.req.path === "/api/workflow-project-scope";

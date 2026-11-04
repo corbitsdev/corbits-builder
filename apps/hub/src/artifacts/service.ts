@@ -71,6 +71,7 @@ import {
   type AppSnapshotState,
   type AppVersion,
   type AppVersionList,
+  PresenterAssignment,
 } from "@corbits-builder/schemas/artifact";
 import type { SpawnedRole } from "@corbits-builder/schemas/installed-workflows";
 import { OpenQuestions } from "@corbits-builder/schemas/questions";
@@ -95,9 +96,9 @@ import {
   artifactApproval,
   artifactImportApproval,
   designConcept,
+  presenterAssignment,
   project,
   projectCoordinator,
-  settingsRecord,
 } from "../db/schema.ts";
 import type { AgentActivityTracker } from "./activity.ts";
 import type { Actor } from "../lib/actor.ts";
@@ -220,6 +221,12 @@ async function isDirectory(path: string) {
 }
 
 const artifactResource = (kind: string) => "sb-artifact:" + kind;
+
+const PresenterAssignmentRecord = type({
+  "+": "reject",
+  runId: "string > 0",
+  assignment: PresenterAssignment,
+});
 
 function validateArtifactWriteContent(
   input: typeof ArtifactKindWrite.infer,
@@ -689,6 +696,28 @@ export function createArtifactService(
         ),
       );
     return row?.label;
+  }
+
+  // The package assignment of the presenter run acting as actor, as runConcept reads a designer's.
+  async function runPresenterAssignment(actor: Actor, projectId: string) {
+    const [row] = await rawDB
+      .select({
+        runId: presenterAssignment.runId,
+        assignment: presenterAssignment.assignment,
+      })
+      .from(principal)
+      .innerJoin(
+        presenterAssignment,
+        eq(presenterAssignment.runId, principal.refId),
+      )
+      .where(
+        and(
+          eq(principal.id, actor.principalId),
+          eq(presenterAssignment.tenantId, actor.tenantId),
+          eq(presenterAssignment.projectId, projectId),
+        ),
+      );
+    return row;
   }
 
   // A workflow writes the app only as the coder's run: its tools hold no app write, and its
@@ -1493,61 +1522,15 @@ export function createArtifactService(
       if (input.kind === "approval_package") {
         const settings = await loadSettings(rawDB, actor.tenantId, projectId);
         const preferences = resolvePreferences(settings.preferences.value);
-        let sealed:
-          | {
-              audience: string;
-              decisionNeeded?: string;
-              sources: {
-                artifactId: string;
-                kind: string;
-                version: number;
-                sha256: string;
-              }[];
-            }
-          | undefined;
-        if (active?.kind === "workflow" && active.refId) {
-          const [row] = await rawDB
-            .select({ fields: settingsRecord.fields })
-            .from(settingsRecord)
-            .where(
-              and(
-                eq(settingsRecord.tenantId, actor.tenantId),
-                eq(settingsRecord.scopeKey, `presenter:${active.refId}`),
-              ),
-            );
-          const rawAssignment =
-            row && typeof row.fields === "object" && row.fields !== null
-              ? (row.fields as unknown as Record<string, unknown>)["assignment"]
-              : undefined;
-          if (
-            typeof rawAssignment === "object" &&
-            rawAssignment !== null &&
-            "audience" in rawAssignment &&
-            typeof rawAssignment.audience === "string" &&
-            "sources" in rawAssignment &&
-            Array.isArray(rawAssignment.sources)
-          ) {
-            sealed = {
-              audience: rawAssignment.audience,
-              ...("decisionNeeded" in rawAssignment &&
-              typeof rawAssignment.decisionNeeded === "string"
-                ? { decisionNeeded: rawAssignment.decisionNeeded }
-                : {}),
-              sources: rawAssignment.sources as {
-                artifactId: string;
-                kind: string;
-                version: number;
-                sha256: string;
-              }[],
-            };
-          } else {
-            throw new ProjectError(
-              403,
-              "approval_package_assignment_mismatch",
-              { runId: active.refId },
-            );
-          }
-        }
+        // A presenter run files only the package it was deployed for; a person's filing is an import.
+        const sealed =
+          active?.kind === "workflow"
+            ? (await runPresenterAssignment(actor, projectId))?.assignment
+            : undefined;
+        if (active?.kind === "workflow" && !sealed)
+          throw new ProjectError(403, "approval_package_assignment_mismatch", {
+            runId: active.refId,
+          });
         await validateApprovalPackage(
           input.content,
           readProjectPackageSource(
@@ -2029,27 +2012,6 @@ export function createArtifactService(
       projectId: string,
       raw: unknown,
     ) {
-      const PresenterAssignmentRecord = type({
-        "+": "ignore",
-        runId: "string > 0",
-        assignment: {
-          "+": "ignore",
-          audience: "string > 0",
-          decisionNeeded: "string > 0",
-          "tone?": "string",
-          "length?": "string",
-          sources: type({
-            "+": "ignore",
-            artifactId: "string > 0",
-            kind: "string > 0",
-            title: "string > 0",
-            version: "number.integer > 0",
-            sha256: /^[a-f0-9]{64}$/,
-          })
-            .array()
-            .atLeastLength(1),
-        },
-      });
       const input = PresenterAssignmentRecord(raw);
       if (input instanceof type.errors)
         throw new ProjectError(400, "invalid_presenter_assignment", {
@@ -2071,29 +2033,28 @@ export function createArtifactService(
       );
       for (const source of input.assignment.sources)
         await verifySourcePin(source, readSource, "assignment.sources");
-      const sealedAssignment = {
-        ...input.assignment,
-        sealed: true as const,
-      };
       await rawDB
-        .insert(settingsRecord)
+        .insert(presenterAssignment)
         .values({
+          runId: input.runId,
           tenantId: actor.tenantId,
-          scopeKey: `presenter:${input.runId}`,
           projectId,
-          fields: {
-            assignment: sealedAssignment,
-          } as unknown as typeof settingsRecord.$inferInsert.fields,
+          assignment: input.assignment,
         })
         .onConflictDoUpdate({
-          target: [settingsRecord.tenantId, settingsRecord.scopeKey],
-          set: {
-            fields: {
-              assignment: sealedAssignment,
-            } as unknown as typeof settingsRecord.$inferInsert.fields,
-          },
+          target: presenterAssignment.runId,
+          set: { assignment: input.assignment },
         });
-      return { runId: input.runId, assignment: sealedAssignment };
+      return input;
+    },
+
+    // The calling presenter run's assignment, so file_package builds its manifest from the hub's
+    // record rather than from anything the model wrote.
+    async presenterAssignment(actor: Actor, projectId: string) {
+      await requireProject(actor, projectId, "read");
+      const row = await runPresenterAssignment(actor, projectId);
+      if (!row) throw new ProjectError(404, "presenter_assignment_unknown");
+      return row;
     },
 
     // Called by an asking tool after its native approval resolved. The hub

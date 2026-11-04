@@ -13,7 +13,6 @@ An approval package gives one audience what they need to understand the project 
 2. **One idea per slide**: Give each slide a headline that states its takeaway as a complete thought, backed by concrete facts, numbers and names from the selected documents.
 3. **Reuse the project's design tokens for the deck theme**: Pull `primary`, `secondary`, `accent`, `background`, `text`, `muted` and font families (`heading`, `body`) from the project's filed `DESIGN.md` and `styles.css` when a design exists so the deck matches the product's look.
 4. **End with the explicit ask**: Close the deck with a slide that states the exact decision needed, the scope being approved, and what happens next once approved.
-5. **Record the pinned package assignment**: Pass the pinned `assignment` object from your assignment message as the `assignment` argument to `write_deck` (or `file_package`) so `.builder/package-assignment.json` is recorded before filing.
 
 ## Per-persona guidance
 

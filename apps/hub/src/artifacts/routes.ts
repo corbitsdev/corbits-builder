@@ -472,6 +472,11 @@ export function mountArtifactRoutes(
       ),
     );
   });
+  app.get("/:projectId/presenter-assignment", async (c) => {
+    return c.json(
+      await service.presenterAssignment(actorOf(c), c.req.param("projectId")),
+    );
+  });
   app.get(
     "/:projectId/manual",
     describeRoute({

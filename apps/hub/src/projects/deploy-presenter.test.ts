@@ -19,7 +19,6 @@ import {
   DECK_CHECK,
   DECK_JSON,
   DECK_PDF,
-  writePackageAssignment,
 } from "../artifacts/package-tools.ts";
 import { createDeployTools } from "./deploy-tools.ts";
 
@@ -270,7 +269,7 @@ test("deploy_presenter requires approved documents and pins source refs and file
   expect(mailed[0]).toContain('"artifactId": "id-design"');
 });
 
-test("file_package refuses until check_deck passes on the current deck, then files approval_package with pinned sources", async () => {
+test("file_package refuses until check_deck passes on the current deck, then files approval_package with the run's assignment", async () => {
   const workspace = await mkdtemp(join(tmpdir(), "sb-package-tools-test-"));
   const posted: { path: string; body: unknown }[] = [];
   const fetch = async (path: string, init: RequestInit) => {
@@ -295,6 +294,27 @@ test("file_package refuses until check_deck passes on the current deck, then fil
           dependencyRoots: ["/tmp"],
           ripgrepPath: "/tmp/rg",
           runtimeVersion: "1.0.0",
+        },
+      });
+    }
+    if (path.endsWith("/presenter-assignment") && init.method === "GET") {
+      return Response.json({
+        runId: "run-presenter-1",
+        assignment: {
+          audience: "ceo",
+          personaLabel: "CEO",
+          decisionNeeded: "Approve Q3 staffing and scope",
+          tone: "Executive and direct",
+          length: "6 slides",
+          sources: [
+            {
+              artifactId: "id-brief",
+              kind: "problem_brief",
+              title: "Problem Brief",
+              version: 2,
+              sha256: "1".repeat(64),
+            },
+          ],
         },
       });
     }
@@ -341,24 +361,6 @@ test("file_package refuses until check_deck passes on the current deck, then fil
   };
 
   try {
-    await writePackageAssignment(workspace, {
-      audience: "ceo",
-      personaId: "ceo",
-      personaLabel: "CEO",
-      decisionNeeded: "Approve Q3 staffing and scope",
-      tone: "Executive and direct",
-      length: "6 slides",
-      sources: [
-        {
-          artifactId: "id-brief",
-          kind: "problem_brief",
-          title: "Problem Brief",
-          version: 2,
-          sha256: "1".repeat(64),
-        },
-      ],
-    });
-
     const wrote = await runner.run(
       { id: "w1", name: "write_deck", arguments: { deck } },
       new AbortController().signal,
@@ -428,22 +430,9 @@ test("file_package refuses until check_deck passes on the current deck, then fil
     expect(tamperedPdfRes.content).toContain(".builder/deck.pdf changed");
     await writeFile(join(workspace, DECK_PDF), originalPdf);
 
-    // Re-check and verify file_package refuses overriding sealed audience or sources.
     await runner.run(
       { id: "c2", name: "check_deck", arguments: {} },
       new AbortController().signal,
-    );
-    const mismatchedAudience = await runner.run(
-      {
-        id: "f2d",
-        name: "file_package",
-        arguments: { audience: "investor" },
-      },
-      new AbortController().signal,
-    );
-    expect(mismatchedAudience.isError).toBe(true);
-    expect(mismatchedAudience.content).toStartWith(
-      "invalid_package_assignment:",
     );
     const filed = await runner.run(
       { id: "f3", name: "file_package", arguments: {} },
@@ -463,6 +452,8 @@ test("file_package refuses until check_deck passes on the current deck, then fil
     expect(bundle.manifest.decisionNeeded).toBe(
       "Approve Q3 staffing and scope",
     );
+    expect(bundle.manifest.tone).toBe("Executive and direct");
+    expect(bundle.manifest.length).toBe("6 slides");
     expect(bundle.manifest.sources).toEqual([
       {
         artifactId: "id-brief",

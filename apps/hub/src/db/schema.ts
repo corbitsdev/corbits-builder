@@ -21,6 +21,7 @@ import {
   workflowRun,
 } from "@intx/db/schema";
 import type { CustomModel } from "@corbits-builder/schemas/models";
+import type { PresenterAssignment } from "@corbits-builder/schemas/artifact";
 
 export const project = pgTable(
   "project",
@@ -233,6 +234,25 @@ export const designConcept = pgTable(
   },
   (t) => [index("sb_design_concept_tenant_idx").on(t.tenantId, t.label)],
 );
+
+// The package assignment a presenter run was deployed for. The hub hands it to that run's
+// file_package and holds the filed package to it, so the audience, decision and pinned sources
+// are never model-authored.
+export const presenterAssignment = pgTable("sb_presenter_assignment", {
+  runId: text("run_id")
+    .primaryKey()
+    .references(() => workflowRun.id),
+  tenantId: text("tenant_id")
+    .notNull()
+    .references(() => tenant.id),
+  projectId: text("project_id")
+    .notNull()
+    .references(() => project.id),
+  assignment: jsonb("assignment").$type<PresenterAssignment>().notNull(),
+  createdAt: timestamp("created_at", { withTimezone: true })
+    .notNull()
+    .defaultNow(),
+});
 
 // Invitation lifecycle is product audit data. Identity, role assignments and
 // effective authority remain native Interchange rows, created only on acceptance.

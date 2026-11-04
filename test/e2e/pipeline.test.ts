@@ -727,10 +727,6 @@ describe("Builder E2E pipeline replay", () => {
                         toolName: "write_artifact",
                         isError: false,
                         keys: ["artifactId", "kind", "version", "sha256"],
-                        bind: {
-                          "brief.artifactId": "artifactId",
-                          "brief.sha256": "sha256",
-                        },
                       },
                     ],
                   },
@@ -821,22 +817,7 @@ describe("Builder E2E pipeline replay", () => {
                       {
                         id: "pres_write_deck",
                         name: "write_deck",
-                        arguments: {
-                          deck,
-                          assignment: {
-                            audience: "ceo",
-                            decisionNeeded: "Approve scope",
-                            sources: [
-                              {
-                                artifactId: "{{bind:brief.artifactId}}",
-                                kind: "problem_brief",
-                                title: "Brief",
-                                version: 1,
-                                sha256: "{{bind:brief.sha256}}",
-                              },
-                            ],
-                          },
-                        },
+                        arguments: { deck },
                       },
                     ],
                   }),

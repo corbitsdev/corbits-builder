@@ -235,7 +235,7 @@ export function presenterAssignmentMessage(
       `Chosen length: ${assignment.length}`,
       `Coordinator instruction: ${assignment.instruction}`,
     ].join("\n"),
-    `Pinned package assignment (pass this object as the \`assignment\` argument to \`write_deck\` or \`file_package\`):\n${JSON.stringify(assignment, null, 2)}`,
+    `Pinned package assignment (file_package files the deck for this audience, decision and these sources):\n${JSON.stringify(assignment, null, 2)}`,
   ];
   if (input.design) {
     const designLines = [

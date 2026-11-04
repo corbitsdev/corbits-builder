@@ -6,6 +6,7 @@ import { defineTool, type BaseEnv } from "@intx/agent/authoring";
 import { HUB_CREDENTIAL_HANDLE } from "@intx/types/credential-delivery";
 import type { RuntimeCapabilities } from "@intx/types/runtime-capabilities";
 import { Deck, DeckError, validateDeck } from "@corbits/slidedeck";
+import { PresenterAssignment } from "@corbits-builder/schemas/artifact";
 import { defaultPackageTitle } from "../config/personas.ts";
 import { resolveWorkflowProjectScope } from "../workflows/project-scope.ts";
 import { workflowHttpJson } from "../workflows/http-json.ts";
@@ -16,6 +17,7 @@ import {
   checkDeckInWorkspace,
   writeDeckToWorkspace,
 } from "./deck-tools.ts";
+import { parseJson } from "../lib/json.ts";
 import { failure, HubArtifactReceipt } from "./tools.ts";
 
 export { DECK_JSON, DECK_PDF, DECK_PPTX };
@@ -26,32 +28,6 @@ export interface PackageToolEnv extends BaseEnv {
 }
 
 export const DECK_CHECK = join(".builder", "deck-check.json");
-export const PACKAGE_ASSIGNMENT = join(".builder", "package-assignment.json");
-
-export const PackageSourcePin = type({
-  "+": "ignore",
-  artifactId: "string > 0",
-  kind: "string > 0",
-  title: "string > 0",
-  version: "number.integer > 0",
-  sha256: /^[a-f0-9]{64}$/,
-});
-export type PackageSourcePin = typeof PackageSourcePin.infer;
-
-export const PackageAssignmentFile = type({
-  "+": "ignore",
-  "sealed?": "boolean",
-  audience: "string > 0",
-  decisionNeeded: "string > 0",
-  "personaId?": "string > 0",
-  "personaLabel?": "string > 0",
-  "tone?": "string",
-  "length?": "string",
-  "title?": "string",
-  "summary?": "string",
-  sources: PackageSourcePin.array().atLeastLength(1),
-});
-export type PackageAssignmentFile = typeof PackageAssignmentFile.infer;
 
 const HexSha256 = /^[a-f0-9]{64}$/;
 
@@ -67,129 +43,29 @@ const DeckCheckRecord = type({
 const FilePackageArgs = type({
   "+": "ignore",
   "title?": "string > 0",
-  "summary?": "string > 0",
-  "audience?": "string > 0",
-  "decisionNeeded?": "string > 0",
-  "tone?": "string > 0",
-  "length?": "string > 0",
-  "sources?": PackageSourcePin.array().atLeastLength(1),
-  "assignment?": PackageAssignmentFile,
+});
+
+const PresenterAssignmentReceipt = type({
+  "+": "ignore",
+  assignment: PresenterAssignment,
 });
 
 const WriteDeckArgs = type({
   "+": "ignore",
   deck: Deck,
-  "assignment?": PackageAssignmentFile,
 });
 
-type DeckCheckState = {
-  passed: boolean;
-  sha256: string;
-  pptxSha256: string;
-  pdfSha256: string;
-  checklist: string;
-};
-
-const deckChecks = new Map<string, DeckCheckState>();
+type DeckCheckState = typeof DeckCheckRecord.infer & { checklist: string };
 
 function sha256Hex(input: string | Uint8Array): string {
   return createHash("sha256").update(input).digest("hex");
 }
 
-function assignmentsMatch(
-  expected: PackageAssignmentFile,
-  candidate: {
-    audience?: string;
-    decisionNeeded?: string;
-    sources?: readonly PackageSourcePin[];
-  },
-): boolean {
-  if (
-    candidate.audience !== undefined &&
-    candidate.audience.trim() !== expected.audience.trim()
-  ) {
-    return false;
-  }
-  if (
-    candidate.decisionNeeded !== undefined &&
-    candidate.decisionNeeded.trim() !== expected.decisionNeeded.trim()
-  ) {
-    return false;
-  }
-  if (candidate.sources !== undefined) {
-    const expectedKeys = expected.sources.map(
-      (s) => `${s.artifactId}:${s.kind}:${String(s.version)}:${s.sha256}`,
-    );
-    const candidateKeys = candidate.sources.map(
-      (s) => `${s.artifactId}:${s.kind}:${String(s.version)}:${s.sha256}`,
-    );
-    if (
-      expectedKeys.length !== candidateKeys.length ||
-      expectedKeys.some((key, index) => key !== candidateKeys[index])
-    ) {
-      return false;
-    }
-  }
-  return true;
-}
-
-export async function writePackageAssignment(
+async function recordDeckCheck(
   workspace: string,
-  assignment: PackageAssignmentFile,
+  state: DeckCheckState,
 ): Promise<void> {
-  const checked = PackageAssignmentFile.assert({
-    ...assignment,
-    sealed: true,
-  });
-  const target = join(workspace, PACKAGE_ASSIGNMENT);
-  const existingText = await readTextIfPresent(target);
-  if (existingText !== undefined) {
-    const existing = PackageAssignmentFile(JSON.parse(existingText));
-    if (
-      !(existing instanceof type.errors) &&
-      existing.sealed === true &&
-      !assignmentsMatch(existing, checked)
-    ) {
-      throw new Error(
-        "invalid_package_assignment: sealed hand-off assignment cannot be overwritten with a different audience or sources",
-      );
-    }
-  }
-  await mkdir(dirname(target), { recursive: true });
-  await writeFile(target, JSON.stringify(checked, null, 2), "utf8");
-}
-
-export async function recordDeckCheck(
-  workspace: string,
-  result: {
-    passed: boolean;
-    checklist: string;
-    sha256?: string;
-    pptxSha256?: string;
-    pdfSha256?: string;
-  },
-): Promise<void> {
-  const root = await realpath(workspace);
-  let sha256 = result.sha256;
-  if (!sha256) {
-    const rawDeck = await readFile(join(root, DECK_JSON), "utf8");
-    sha256 = sha256Hex(rawDeck);
-  }
-  const pptxBytes = await readBytesIfPresent(join(root, DECK_PPTX));
-  const pdfBytes = await readBytesIfPresent(join(root, DECK_PDF));
-  const pptxSha256 =
-    result.pptxSha256 ?? (pptxBytes ? sha256Hex(pptxBytes) : "0".repeat(64));
-  const pdfSha256 =
-    result.pdfSha256 ?? (pdfBytes ? sha256Hex(pdfBytes) : "0".repeat(64));
-  const state: DeckCheckState = {
-    passed: result.passed,
-    sha256,
-    pptxSha256,
-    pdfSha256,
-    checklist: result.checklist,
-  };
-  deckChecks.set(root, state);
-  const target = join(root, DECK_CHECK);
+  const target = join(workspace, DECK_CHECK);
   await mkdir(dirname(target), { recursive: true });
   await writeFile(target, JSON.stringify(state, null, 2), "utf8");
 }
@@ -221,32 +97,19 @@ async function verifyDeckCheckPassed(
   const currentSha = sha256Hex(deckJsonText);
   const currentPptxSha = sha256Hex(pptxBytes);
   const currentPdfSha = sha256Hex(pdfBytes);
-  const inMemory = deckChecks.get(workspace);
-  const diskText = await readTextIfPresent(join(workspace, DECK_CHECK));
-  let diskRecord: typeof DeckCheckRecord.infer | undefined;
-  if (diskText !== undefined) {
-    try {
-      const parsed = DeckCheckRecord(JSON.parse(diskText));
-      if (parsed instanceof type.errors) {
-        return {
-          ok: false,
-          message: `deck_check_failed: invalid ${DECK_CHECK} (${parsed.summary})`,
-        };
-      }
-      diskRecord = parsed;
-    } catch (error) {
-      return {
-        ok: false,
-        message: `deck_check_failed: invalid ${DECK_CHECK} (${error instanceof Error ? error.message : String(error)})`,
-      };
-    }
-  }
-  const record = diskRecord ?? inMemory;
-  if (!record) {
+  const recordText = await readTextIfPresent(join(workspace, DECK_CHECK));
+  if (recordText === undefined) {
     return {
       ok: false,
       message:
         "deck_check_failed: check_deck has not run on the current deck yet",
+    };
+  }
+  const record = DeckCheckRecord(parseJson(recordText));
+  if (record instanceof type.errors) {
+    return {
+      ok: false,
+      message: `deck_check_failed: invalid ${DECK_CHECK} (${record.summary})`,
     };
   }
   if (!record.passed) {
@@ -280,77 +143,6 @@ async function verifyDeckCheckPassed(
   return { ok: true };
 }
 
-async function resolveAssignment(
-  workspace: string,
-  args: typeof FilePackageArgs.infer,
-): Promise<
-  | { ok: true; assignment: PackageAssignmentFile }
-  | { ok: false; message: string }
-> {
-  const diskText = await readTextIfPresent(join(workspace, PACKAGE_ASSIGNMENT));
-  if (diskText !== undefined) {
-    let diskParsed: unknown;
-    try {
-      diskParsed = JSON.parse(diskText);
-    } catch (error) {
-      return {
-        ok: false,
-        message: `invalid_package_assignment: ${error instanceof Error ? error.message : String(error)}`,
-      };
-    }
-    const sealed = PackageAssignmentFile(diskParsed);
-    if (sealed instanceof type.errors) {
-      return {
-        ok: false,
-        message: `invalid_package_assignment: ${sealed.summary}`,
-      };
-    }
-    if (
-      !assignmentsMatch(sealed, {
-        ...(args.audience !== undefined ? { audience: args.audience } : {}),
-        ...(args.decisionNeeded !== undefined
-          ? { decisionNeeded: args.decisionNeeded }
-          : {}),
-        ...(args.sources !== undefined ? { sources: args.sources } : {}),
-      }) ||
-      (args.assignment !== undefined &&
-        !assignmentsMatch(sealed, args.assignment))
-    ) {
-      return {
-        ok: false,
-        message:
-          "invalid_package_assignment: audience, decisionNeeded and sources must match the sealed hand-off assignment",
-      };
-    }
-    return {
-      ok: true,
-      assignment: {
-        ...sealed,
-        ...(args.title ? { title: args.title } : {}),
-        ...(args.summary ? { summary: args.summary } : {}),
-      },
-    };
-  }
-  const merged = {
-    ...(args.assignment ?? undefined),
-    ...(args.audience ? { audience: args.audience } : {}),
-    ...(args.decisionNeeded ? { decisionNeeded: args.decisionNeeded } : {}),
-    ...(args.tone ? { tone: args.tone } : {}),
-    ...(args.length ? { length: args.length } : {}),
-    ...(args.title ? { title: args.title } : {}),
-    ...(args.summary ? { summary: args.summary } : {}),
-    ...(args.sources ? { sources: args.sources } : {}),
-  };
-  const checked = PackageAssignmentFile(merged);
-  if (checked instanceof type.errors) {
-    return {
-      ok: false,
-      message: `invalid_package_assignment: ${checked.summary}`,
-    };
-  }
-  return { ok: true, assignment: checked };
-}
-
 async function runWriteDeck(
   workspace: string,
   callId: string,
@@ -365,9 +157,6 @@ async function runWriteDeck(
     };
   }
   try {
-    if (input.assignment) {
-      await writePackageAssignment(workspace, input.assignment);
-    }
     const written = await writeDeckToWorkspace(workspace, input.deck);
     return {
       callId,
@@ -386,16 +175,6 @@ async function runWriteDeck(
       return {
         callId,
         content: `invalid_deck: ${error.issues.map((issue) => `${issue.path}: ${issue.message}`).join("; ")}`,
-        isError: true,
-      };
-    }
-    if (
-      error instanceof Error &&
-      error.message.startsWith("invalid_package_assignment:")
-    ) {
-      return {
-        callId,
-        content: error.message,
         isError: true,
       };
     }
@@ -458,15 +237,15 @@ async function runCheckDeck(workspace: string, callId: string) {
 
 function deriveDeckTitle(
   deck: typeof Deck.infer,
-  assignment: PackageAssignmentFile,
+  assignment: PresenterAssignment,
+  title: string | undefined,
 ): string {
-  if (assignment.title?.trim()) return assignment.title.trim();
+  if (title?.trim()) return title.trim();
   const firstSlide = deck.slides[0];
   if (firstSlide && "title" in firstSlide && firstSlide.title.trim()) {
     return firstSlide.title.trim();
   }
-  const label = assignment.personaLabel ?? assignment.audience;
-  return defaultPackageTitle(label);
+  return defaultPackageTitle(assignment.personaLabel);
 }
 
 export function createPackageTools() {
@@ -474,12 +253,11 @@ export function createPackageTools() {
     {
       name: "write_deck",
       description:
-        "Write the slide deck to .builder/deck.json, render .builder/deck.pptx and .builder/deck.pdf, and optionally record .builder/package-assignment.json.",
+        "Write the slide deck to .builder/deck.json and render .builder/deck.pptx and .builder/deck.pdf.",
       inputSchema: {
         type: "object",
         properties: {
           deck: Deck.toJsonSchema({ fallback: { default: (ctx) => ctx.base } }),
-          assignment: { ...PackageAssignmentFile.toJsonSchema() },
         },
         required: ["deck"],
         additionalProperties: false,
@@ -498,7 +276,7 @@ export function createPackageTools() {
     {
       name: "file_package",
       description:
-        "File the checked deck (.builder/deck.json, .builder/deck.pptx, .builder/deck.pdf) and .builder/package-assignment.json as the next version of the project's approval_package artifact. Refuses with deck_check_failed unless check_deck passed on the current deck.",
+        "File the checked deck (.builder/deck.json, .builder/deck.pptx, .builder/deck.pdf) for your assignment's audience and pinned sources as the next version of the project's approval_package artifact. Refuses with deck_check_failed unless check_deck passed on the current deck.",
       inputSchema: { ...FilePackageArgs.toJsonSchema() },
     },
   ];
@@ -572,17 +350,7 @@ export function createPackageTools() {
               isError: true,
             };
           }
-          let parsedDeck: unknown;
-          try {
-            parsedDeck = JSON.parse(deckText);
-          } catch (error) {
-            return {
-              callId: call.id,
-              content: `deck_check_failed: invalid JSON in ${DECK_JSON} (${error instanceof Error ? error.message : String(error)})`,
-              isError: true,
-            };
-          }
-          const validated = validateDeck(parsedDeck);
+          const validated = validateDeck(parseJson(deckText));
           if (!validated.ok) {
             return {
               callId: call.id,
@@ -590,49 +358,37 @@ export function createPackageTools() {
               isError: true,
             };
           }
-          const resolved = await resolveAssignment(workspace, args);
-          if (!resolved.ok) {
-            return {
-              callId: call.id,
-              content: resolved.message,
-              isError: true,
-            };
-          }
-          const { assignment } = resolved;
-          const pptxBase64 = pptxBytes.toString("base64");
-          const pdfBase64 = pdfBytes.toString("base64");
-          const sources = assignment.sources.map((source) => ({
-            artifactId: source.artifactId,
-            kind: source.kind,
-            title: source.title,
-            version: source.version,
-            sha256: source.sha256,
-          }));
-          const payloadContent = JSON.stringify({
-            manifest: {
-              audience: assignment.audience,
-              decisionNeeded: assignment.decisionNeeded,
-              tone: assignment.tone?.trim()
-                ? assignment.tone.trim()
-                : "concise",
-              length: assignment.length?.trim()
-                ? assignment.length.trim()
-                : "short",
-              sources,
-            },
-            deck: validated.deck,
-            pptxBase64,
-            pdfBase64,
-          });
-          const title = deriveDeckTitle(validated.deck, assignment).slice(
-            0,
-            512,
-          );
           const projectPath =
             "/api/tenants/" +
             encodeURIComponent(scope.tenantId) +
             "/projects/" +
             encodeURIComponent(scope.projectId);
+          const { assignment } = PresenterAssignmentReceipt.assert(
+            await workflowHttpJson({
+              capabilities: env.capabilities,
+              handle: HUB_CREDENTIAL_HANDLE,
+              path: projectPath + "/presenter-assignment",
+              maxResponseBytes: 65536,
+              signal,
+            }),
+          );
+          const content = JSON.stringify({
+            manifest: {
+              audience: assignment.audience,
+              decisionNeeded: assignment.decisionNeeded,
+              tone: assignment.tone,
+              length: assignment.length,
+              sources: assignment.sources,
+            },
+            deck: validated.deck,
+            pptxBase64: pptxBytes.toString("base64"),
+            pdfBase64: pdfBytes.toString("base64"),
+          });
+          const title = deriveDeckTitle(
+            validated.deck,
+            assignment,
+            args.title,
+          ).slice(0, 512);
           const { artifact } = HubArtifactReceipt.assert(
             await workflowHttpJson({
               capabilities: env.capabilities,
@@ -641,7 +397,7 @@ export function createPackageTools() {
               body: {
                 kind: "approval_package",
                 title,
-                content: payloadContent,
+                content,
               },
               maxResponseBytes: 16384,
               signal,

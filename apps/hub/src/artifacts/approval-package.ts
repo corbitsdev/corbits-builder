@@ -7,6 +7,7 @@ import {
 import {
   ApprovalPackageBundle,
   type ApprovalPackageSource,
+  type PresenterAssignment,
 } from "@corbits-builder/schemas/artifact";
 import { parseJson } from "../lib/json.ts";
 import { ProjectError, type ProjectErrorIssue } from "../projects/errors.ts";
@@ -46,17 +47,6 @@ export type StoredPackageSource = {
   version: number;
   sha256: string;
   approved?: boolean;
-};
-
-export type SealedPackageAssignment = {
-  audience: string;
-  decisionNeeded?: string;
-  sources: readonly {
-    artifactId: string;
-    kind: string;
-    version: number;
-    sha256: string;
-  }[];
 };
 
 export type StoredSourceReader = (
@@ -142,7 +132,7 @@ export async function verifySourcePin(
 
 function verifySealedAssignment(
   bundle: ApprovalPackageBundle,
-  sealed: SealedPackageAssignment,
+  sealed: PresenterAssignment,
 ): void {
   if (bundle.manifest.audience.trim() !== sealed.audience.trim()) {
     throw new ProjectError(422, "package_assignment_mismatch", [
@@ -152,10 +142,7 @@ function verifySealedAssignment(
       },
     ]);
   }
-  if (
-    sealed.decisionNeeded !== undefined &&
-    bundle.manifest.decisionNeeded.trim() !== sealed.decisionNeeded.trim()
-  ) {
+  if (bundle.manifest.decisionNeeded.trim() !== sealed.decisionNeeded.trim()) {
     throw new ProjectError(422, "package_assignment_mismatch", [
       {
         path: "manifest.decisionNeeded",
@@ -185,7 +172,7 @@ function verifySealedAssignment(
 export async function validateApprovalPackage(
   input: string | ApprovalPackageBundle,
   readSource: StoredSourceReader,
-  sealedAssignment?: SealedPackageAssignment,
+  sealedAssignment?: PresenterAssignment,
 ): Promise<ApprovalPackageBundle> {
   const bundle =
     typeof input === "string" ? parseApprovalPackageBundle(input) : input;
