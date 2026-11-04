@@ -109,13 +109,14 @@ export function parseApprovalPackageBundle(
   return bundle;
 }
 
-async function verifySourcePin(
+export async function verifySourcePin(
   source: ApprovalPackageSource,
   readSource: StoredSourceReader,
+  path: string,
 ): Promise<void> {
   if (EXCLUDED_PACKAGE_SOURCE_KINDS.has(source.kind))
     throw new ProjectError(422, "excluded_package_source_kind", [
-      { path: "manifest.sources", message: source.kind },
+      { path, message: source.kind },
     ]);
   const stored = await readSource(source.artifactId, source.version);
   if (
@@ -126,14 +127,14 @@ async function verifySourcePin(
   )
     throw new ProjectError(422, "invalid_package_source", [
       {
-        path: "manifest.sources",
+        path,
         message: `${source.artifactId}@${String(source.version)}`,
       },
     ]);
   if (stored.approved === false)
     throw new ProjectError(422, "unapproved_package_source", [
       {
-        path: "manifest.sources",
+        path,
         message: `${source.kind}@${String(source.version)}`,
       },
     ]);
@@ -199,7 +200,7 @@ export async function validateApprovalPackage(
     verifySealedAssignment(bundle, sealedAssignment);
   }
   for (const source of bundle.manifest.sources)
-    await verifySourcePin(source, readSource);
+    await verifySourcePin(source, readSource, "manifest.sources");
   return bundle;
 }
 
