@@ -850,9 +850,8 @@ function ReadyRoom({
     setFiles((current) => [...current, ...fitting]);
   };
 
-  const deliverFiles = async (): Promise<boolean> => {
+  const deliverFiles = async (text: string): Promise<boolean> => {
     if (sending) return false;
-    const text = value.trim();
     const attached = files;
     setSending(true);
     setSendFailed(false);
@@ -1106,14 +1105,27 @@ function ReadyRoom({
   };
   const sendFiles = async () => {
     if (sending) return false;
+    const text = value.trim();
     const currentApprovals = await readPendingApprovals();
     const currentOpen = currentApprovals?.find(
       (approval) => approval.packages === undefined,
     );
-    return deliverWithOpenApproval({
+    const send = {
       openApprovalId: currentOpen?.approvalId,
       decide: onDecideApproval,
-      deliver: deliverFiles,
+      deliver: () => deliverFiles(text),
+    };
+    if (text.length === 0) return deliverWithOpenApproval(send);
+    return deliverWithOpenApproval({
+      ...send,
+      // The words go first as the decline's reason, so the coordinator reads them as the
+      // person's answer; a failed decline uploads nothing and leaves both in the composer.
+      decline: async (approvalId) => {
+        if (!(await deliverMail(text, true, declineWith(approvalId))))
+          return false;
+        // The words already went with the decline; alone, the files get the hub's own note.
+        return deliverFiles("");
+      },
     });
   };
   const sendNow = () => {
