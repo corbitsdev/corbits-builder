@@ -6,11 +6,19 @@ groups:
       - brianjfox
       - pratikbuilds
       - etodanik
+  outside:
+    association:
+      - CONTRIBUTOR
+      - FIRST_TIME_CONTRIBUTOR
+      - FIRST_TIMER
+      - NONE
+      - MANNEQUIN
 rules:
   - check: linked-issue
     text: Link a GitHub or Linear issue. Open an issue for the change first, then a pull request that links it.
     tracker: either
-    reason: Every change starts from an issue that says what and why.
+    enabled: false
+    reason: Outside contributors start from an issue that says what and why; the actions close their pull requests that link none.
     evidence:
       - maintainer-stated
   - check: focused
@@ -239,25 +247,62 @@ actions:
           above: P2
         author:
           - approved
+    - do: comment
+      target:
+        body: Open an issue for this change first, then a pull request that links it.
+      when:
+        linkedIssue: false
+        author:
+          - group: outside
+    - do: close
+      when:
+        linkedIssue: false
+        author:
+          - group: outside
     - do: request-review
       target:
         to: codeowners
       when:
+        linkedIssue: true
         author:
-          - external
+          - group: outside
   fail:
     - do: comment
       target:
         body: Open an issue for this change first, then a pull request that links it.
       when:
         linkedIssue: false
+        author:
+          - group: outside
     - do: close
       when:
         linkedIssue: false
+        author:
+          - group: outside
     - do: request-changes
       when:
         linkedIssue: true
+        author:
+          - group: outside
+    - do: request-changes
+      when:
+        author:
+          - maintainers
+          - bots
+          - group: approved
   unsure:
+    - do: comment
+      target:
+        body: Open an issue for this change first, then a pull request that links it.
+      when:
+        linkedIssue: false
+        author:
+          - group: outside
+    - do: close
+      when:
+        linkedIssue: false
+        author:
+          - group: outside
     - do: assign
       target:
         to: users
