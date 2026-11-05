@@ -49,7 +49,7 @@ test("a run held on an approval reads as paused for the person, not as at work",
   expect(dispatchLive(coder, room("approval"))).toBe(true);
 });
 
-test("the hand-off's own step shows the approval wait instead of running", () => {
+test("the hand-off's own step does not ask the person while its run waits on an approval", () => {
   const [unit] = workUnits([{ at: 100, dispatch: coder }], [], []).units;
   if (unit === undefined) throw new Error("no unit");
   const message = workUnitMessage(unit, { state: "approval" });
@@ -57,7 +57,7 @@ test("the hand-off's own step shows the approval wait instead of running", () =>
   expect(step).toMatchObject({
     kind: "tool-trace",
     toolCallId: "call-coder",
-    status: "approval-requested",
+    status: "running",
   });
   // Nothing streams while the person is the one being waited on.
   expect(message.status).toBe("sent");
