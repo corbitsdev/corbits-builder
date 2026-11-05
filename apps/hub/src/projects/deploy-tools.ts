@@ -303,7 +303,7 @@ export function createDeployTools(options?: {
     {
       name: "choose_design",
       description:
-        "Ask the person to choose the filed design option of one design concept, by its label, as the design the build plan and app are built from. Ask about the concept they picked, or the one you recommend when they have not said. Once they approve, the option at the version they saw is filed as the design, approved by them, and the other concepts' designers stop.",
+        "Ask the person to choose the filed design option of one design concept, by its label, as the design the build plan and app are built from. Ask about the concept they picked, or the one you recommend when they have not said. Once they approve, the concept's newest option, with any look tweaks they saved, is filed as the design, approved by them, and the other concepts' designers stop.",
       inputSchema: { ...ChooseDesign.toJsonSchema() },
     },
     {
@@ -759,10 +759,17 @@ export function createDeployTools(options?: {
             );
           } else if (call.name === "choose_design") {
             // This handler runs only after the native approval resolved; the hub binds the choice to it.
-            result = await hub(
-              projectPath + "/design-choice",
-              validArguments(ChooseDesign, call.arguments),
-            );
+            try {
+              result = await hub(
+                projectPath + "/design-choice",
+                validArguments(ChooseDesign, call.arguments),
+              );
+            } catch (error) {
+              throw new Refusal(
+                refusalText(error) +
+                  "; no design was filed, so ask the person again with choose_design",
+              );
+            }
           } else if (call.name === "deploy_presenter") {
             const input = validArguments(DeployPresenter, call.arguments);
             const { byKind, approved, preferences } = await listed();

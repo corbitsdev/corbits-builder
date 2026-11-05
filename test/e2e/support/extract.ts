@@ -602,6 +602,7 @@ export async function extractWeatherAppFixture(options?: {
     "design_app",
     "deploy_coder",
     "instruct_coder",
+    "choose_design",
   ];
 
   const coordinatorRun: RunSpec = {
@@ -1052,8 +1053,20 @@ export async function extractWeatherAppFixture(options?: {
           ],
         },
       },
+      // The recorded run chose the design through the retired Confirm prompt; the coordinator
+      // now asks through choose_design's approval card, so its reply names the card.
       {
-        text: extractTurnText(coord2[39]),
+        text: extractTurnText(coord2[39]).replace(
+          "choose it there",
+          "choose it on the card below",
+        ),
+        toolCalls: [
+          {
+            id: "coord_choose_design",
+            name: "choose_design",
+            arguments: { concept: "Adaptive weather-driven" },
+          },
+        ],
         expect: {
           lastMessageRole: "user",
           userTextContains: "weather-driven design is filed",
@@ -1070,10 +1083,17 @@ export async function extractWeatherAppFixture(options?: {
           },
         ],
         expect: {
-          lastMessageRole: "user",
-          userTextContains: "Adaptive weather-driven",
+          lastMessageRole: "tool",
           requiredTools: coordinatorTools,
-          toolResults: [],
+          toolResults: [
+            {
+              callId: "coord_choose_design",
+              toolName: "choose_design",
+              isError: false,
+              keys: ["design", "concept"],
+              contains: "Adaptive weather-driven",
+            },
+          ],
         },
       },
       {

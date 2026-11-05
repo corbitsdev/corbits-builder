@@ -9,7 +9,8 @@ end-to-end tests:
   `bun run test` with no database.
 - **`test/e2e/`:** end-to-end tests against an isolated Postgres, the real hub
   and real sidecars (`custom-provider.test.ts`, `oauth-model-login.test.ts`,
-  `specialist-end-notices.test.ts` and `pipeline.test.ts`).
+  `specialist-end-notices.test.ts`, `design-choice.test.ts` and
+  `pipeline.test.ts`).
 - **`test/e2e/support/`:** shared harness (`hub.ts`), the recorded
   OpenAI-compatible model server (`recorded-model.ts` and its unit tests in
   `recorded-model.test.ts`) and the fixture extractor (`extract.ts`).
@@ -45,6 +46,6 @@ With the `builder-e2e` database running ([docs/DEV.md](../docs/DEV.md#tests)):
 ```sh
 bun run test:e2e
 bun --conditions=intx-src test test/e2e/support/recorded-model.test.ts
-bun --env-file=.env.hub --conditions=intx-src test test/e2e/custom-provider.test.ts test/e2e/oauth-model-login.test.ts test/e2e/specialist-end-notices.test.ts
+bun --env-file=.env.hub --conditions=intx-src test test/e2e/custom-provider.test.ts test/e2e/oauth-model-login.test.ts test/e2e/specialist-end-notices.test.ts test/e2e/design-choice.test.ts
 bun --env-file=.env.hub --conditions=intx-src test test/e2e/pipeline.test.ts
 ```

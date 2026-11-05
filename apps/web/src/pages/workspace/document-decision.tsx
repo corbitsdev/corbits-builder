@@ -140,6 +140,9 @@ function settledLine(approval: DocumentApproval): string {
     );
   if (approval.toolName === undefined)
     return text.approved(text.settledUnnamed);
+  // The choice is made only once the hub files the design; until then the card does not say approved.
+  if (approval.toolName === "choose_design" && approval.filed !== true)
+    return text.choiceNotFiled(approval.subject);
   const settled = text.settled[approval.toolName];
   return text.approved(
     settled?.(approval.subject) ??
@@ -150,6 +153,7 @@ function settledLine(approval: DocumentApproval): string {
 export function DocumentDecision({
   approval,
   shownDocument,
+  conceptTabs = [],
   onShowDocument,
   disabled = false,
   error,
@@ -160,6 +164,8 @@ export function DocumentDecision({
   approval: DocumentApproval;
   /** The document the reading pane shows, by kind. */
   shownDocument?: string | null;
+  /** The design concepts the reading pane has a tab for, by label. */
+  conceptTabs?: readonly string[];
   /** Takes the reading pane to that document. */
   onShowDocument?: (kind: string) => void;
   disabled?: boolean;
@@ -180,8 +186,14 @@ export function DocumentDecision({
   const instruction = approval.instruction;
   const tool = approval.toolName ?? "";
   const design = tool === "design_app";
-  // A design choice names its concept; the card opens that concept's mockup.
-  const concept = tool === "choose_design" ? approval.subject : undefined;
+  // A pending design choice names its concept; the card opens that concept's mockup while it has a tab.
+  const concept =
+    tool === "choose_design" &&
+    approval.outcome === undefined &&
+    approval.subject !== undefined &&
+    conceptTabs.includes(approval.subject)
+      ? approval.subject
+      : undefined;
   const decide = (decision: ToolApprovalDecision) => {
     if (decision.outcome === "rejected") onNo();
     else onYes();

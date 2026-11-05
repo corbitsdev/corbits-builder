@@ -92,8 +92,10 @@ it covered, and only those whose hash still matches storage.
 
 - Versions and hashes come from the hub, never from model input, so an
   approval cannot be pointed at a version the person did not see.
-- Choosing a design option is a `choose_design` approval; each approval files
-  one design, so a standing grant never chooses one for the person.
+- Choosing a design option is a `choose_design` approval. It covers the
+  concept, so the option's newest version, with any look tweaks the person
+  saved while deciding, is filed. Each approval files one design, so a
+  standing grant never chooses one for the person.
 - Importing a project as approved is the person's own act; the hub records
   that person as the approver.
 - Hand-off tools check approvals before they start the next writer.

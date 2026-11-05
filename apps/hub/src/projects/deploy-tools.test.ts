@@ -394,3 +394,32 @@ test("the build plan starts only from the design the person chose", async () => 
   ).toBeUndefined();
   expect(deployed).toHaveLength(1);
 });
+
+test("a design choice the hub refuses tells the coordinator to ask the person again", async () => {
+  const fetch = async () =>
+    Response.json(
+      { code: "approval_already_used", tool: "choose_design" },
+      { status: 409 },
+    );
+  const capabilities = {
+    resolve: (name: string) =>
+      name === "credentials"
+        ? { resolve: async () => ({ kind: "http", fetch }) }
+        : { send: async () => undefined },
+  } as unknown as RuntimeCapabilities;
+  const result = await createDeployTools({
+    tenantId: "tenant",
+    projectId: "project",
+    domain: "example.invalid",
+    workflows,
+    maxResultBytes: 16384,
+  })({ capabilities } as never).run(
+    { id: "call", name: "choose_design", arguments: { concept: "Harbour" } },
+    new AbortController().signal,
+  );
+  expect(result.isError).toBe(true);
+  expect(result.content).toStartWith("approval_already_used");
+  expect(result.content).toEndWith(
+    "no design was filed, so ask the person again with choose_design",
+  );
+});

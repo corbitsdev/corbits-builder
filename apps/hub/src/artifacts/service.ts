@@ -168,9 +168,8 @@ import { requestErrorMetadata } from "../request-error.ts";
 const log = getLogger(["corbits-builder", "hub", "artifacts"]);
 
 // The native asks are the human approvals. A request_approval approval covers the documents of
-// the kinds it asked about and an instruct_coder approval every filed document. A choose_design
-// approval covers the option the person chose and the design filed from it. The app is the coder's
-// own output, filed while it works, so no approval covers it.
+// the kinds it asked about and an instruct_coder approval every filed document. The app is the
+// coder's own output, filed while it works, so no approval covers it.
 const APPROVAL_COVERS: Record<string, (kind: string) => boolean> = {
   request_approval: (kind) =>
     kind !== "app" && kind !== "design" && kind !== "design_option",
@@ -2204,9 +2203,11 @@ export function createArtifactService(
       });
     },
 
-    // Called by choose_design after the person approved its native ask. The concept's option at the
-    // version they saw is filed as the design, and that approval covers exactly that design version.
-    // An approval is used once, so a standing grant never chooses a design without the person.
+    // Called by choose_design after the person approved its native ask. A choose_design approval
+    // covers the concept the person chose, so the option's newest version is filed as the design,
+    // look tweaks they saved while deciding included, and the approval covers the option and the
+    // design filed from it. An approval is used once, so a standing grant never chooses a design
+    // without the person. The approval, the design and both records commit together or not at all.
     async chooseDesign(
       actor: Actor,
       projectId: string,
@@ -2218,32 +2219,9 @@ export function createArtifactService(
           issues: input,
         });
       await requireProject(actor, projectId, "manage");
-      const option = (
-        await listArtifacts(db, actor.tenantId, {
-          kind: "design_option",
-          limit: MAX_LIST_LIMIT,
-        })
-      ).rows.find((row) => row.title === input.concept);
-      const [newest] = option
-        ? (await listArtifactVersions(db, option.id, { limit: 1 })).versions
-        : [];
-      const stored =
-        option && newest
-          ? await getArtifactVersion(db, option.id, newest.version)
-          : undefined;
-      if (!option || !newest || !stored?.contentSha256)
-        throw new ProjectError(404, "design_option_not_found", {
-          concept: input.concept,
-        });
-      const optionRef: ArtifactRef = {
-        artifactId: option.id,
-        kind: "design_option",
-        version: stored.version,
-        sha256: stored.contentSha256,
-      };
-      const approvalId = await rawDB.transaction(async (tx) => {
+      const { design, title } = await db.transaction(async (tx) => {
         const [granted] = await tx
-          .select({ id: approval.id, askedAt: approval.createdAt })
+          .select({ id: approval.id })
           .from(approval)
           .where(
             and(
@@ -2256,64 +2234,75 @@ export function createArtifactService(
           .orderBy(desc(approval.resolvedAt))
           .limit(1)
           .for("update");
-        const [recorded] = granted
-          ? await tx
-              .select({ approvalId: artifactApproval.approvalId })
-              .from(artifactApproval)
-              .where(eq(artifactApproval.approvalId, granted.id))
-              .limit(1)
-          : [];
-        if (!granted || recorded)
+        if (!granted)
           throw new ProjectError(409, "approval_not_resolved", {
             tool: "choose_design",
           });
-        // A version filed while the person was deciding is not the one they saw.
-        if (new Date(newest.createdAt) > granted.askedAt)
-          throw new ProjectError(409, "artifact_changed_during_approval", {
-            kind: optionRef.kind,
-            version: optionRef.version,
+        const [recorded] = await tx
+          .select({ approvalId: artifactApproval.approvalId })
+          .from(artifactApproval)
+          .where(eq(artifactApproval.approvalId, granted.id))
+          .limit(1);
+        if (recorded)
+          throw new ProjectError(409, "approval_already_used", {
+            tool: "choose_design",
           });
-        await tx.insert(artifactApproval).values({
-          approvalId: granted.id,
-          tenantId: actor.tenantId,
-          projectId,
-          tool: "choose_design",
-          ...optionRef,
-        });
-        return granted.id;
-      });
-      const [existing] = (
-        await listArtifacts(db, actor.tenantId, { kind: "design", limit: 1 })
-      ).rows;
-      const written = existing
-        ? await writeArtifactVersion(db, {
-            scope: actor,
-            artifactId: existing.id,
-            title: stored.title,
-            content: stored.content,
+        const option = (
+          await listArtifacts(tx, actor.tenantId, {
+            kind: "design_option",
+            limit: MAX_LIST_LIMIT,
           })
-        : await db.transaction((tx) =>
-            createArtifact(tx, {
+        ).rows.find((row) => row.title === input.concept);
+        const stored = option
+          ? await getArtifactVersion(tx, option.id, option.version)
+          : undefined;
+        if (!option || !stored?.contentSha256)
+          throw new ProjectError(404, "design_option_not_found", {
+            concept: input.concept,
+          });
+        const [existing] = (
+          await listArtifacts(tx, actor.tenantId, {
+            kind: "design",
+            limit: 1,
+          })
+        ).rows;
+        const written = existing
+          ? await writeArtifactVersion(tx, {
+              scope: actor,
+              artifactId: existing.id,
+              title: stored.title,
+              content: stored.content,
+            })
+          : await createArtifact(tx, {
               scope: actor,
               ownerPrincipalId: actor.principalId,
               kind: "design",
               title: stored.title,
               content: stored.content,
               source: { origin: "manual" },
-            }),
-          );
-      const design: ArtifactRef = {
-        artifactId: "artifactId" in written ? written.artifactId : written.id,
-        kind: "design",
-        version: written.version,
-        sha256: written.contentSha256!,
-      };
-      await rawDB.insert(artifactApproval).values({
-        approvalId,
-        tenantId: actor.tenantId,
-        projectId,
-        tool: "choose_design",
-        ...design,
+            });
+        const design: ArtifactRef = {
+          artifactId: "artifactId" in written ? written.artifactId : written.id,
+          kind: "design",
+          version: written.version,
+          sha256: written.contentSha256!,
+        };
+        const optionRef: ArtifactRef = {
+          artifactId: option.id,
+          kind: "design_option",
+          version: stored.version,
+          sha256: stored.contentSha256,
+        };
+        await tx.insert(artifactApproval).values(
+          [optionRef, design].map((ref) => ({
+            approvalId: granted.id,
+            tenantId: actor.tenantId,
+            projectId,
+            tool: "choose_design",
+            ...ref,
+          })),
+        );
+        return { design, title: stored.title };
       });
       // The other concepts' designers would file options nobody compares and hold their slots.
       const others = await rawDB
@@ -2324,7 +2313,7 @@ export function createArtifactService(
           and(
             eq(designConcept.tenantId, actor.tenantId),
             eq(designConcept.projectId, projectId),
-            ne(designConcept.label, stored.title),
+            ne(designConcept.label, title),
             inArray(workflowRun.status, ["deployed", "running"]),
           ),
         );
@@ -2333,7 +2322,7 @@ export function createArtifactService(
           cancelRun?.(actor.tenantId, runId, "design_concept_not_picked"),
         ),
       );
-      return { design, concept: stored.title };
+      return { design, concept: title };
     },
 
     approvalRounds: createApprovalRoundService(

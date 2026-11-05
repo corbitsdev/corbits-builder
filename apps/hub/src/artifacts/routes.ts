@@ -265,7 +265,7 @@ export function mountArtifactRoutes(
       tags: ["Artifacts"],
       operationId: "chooseDesign",
       description:
-        "Called by the coordinator's choose_design tool once the person approved its native ask. The hub files the concept's design_option, at the version the person saw, as the project's design, records that approval against exactly that option and design version and hash, and stops the other concepts' designers. Each approval chooses once.",
+        "Called by the coordinator's choose_design tool once the person approved its native ask. The approval covers the concept, so the hub files the concept's newest design_option version, look tweaks the person saved while deciding included, as the project's design, records that approval against exactly that option and design version and hash in the same transaction, and stops the other concepts' designers. Each approval chooses once.",
       security,
       requestBody: {
         required: true,
@@ -283,7 +283,7 @@ export function mountArtifactRoutes(
         404: { description: "No filed design option for that concept" },
         409: {
           description:
-            "No unused approval of choose_design for that concept, or the option changed while the person decided",
+            "No approval of choose_design for that concept (approval_not_resolved), or it already chose a design (approval_already_used)",
         },
       },
     }),

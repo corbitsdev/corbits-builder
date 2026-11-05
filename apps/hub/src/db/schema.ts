@@ -140,7 +140,8 @@ export const artifactApproval = pgTable(
 );
 
 // Importing a project file is the person's own decision, so no native approval
-// exists to reference; the row names that person instead.
+// exists to reference; the row names that person instead. The seed script imports
+// its fixture projects the same way, their chosen design included.
 export const artifactImportApproval = pgTable(
   "sb_artifact_import_approval",
   {

@@ -907,6 +907,11 @@ export const wording = {
       choose_design: (subject?: string) =>
         subject ? `the ${subject} design` : "the design",
     } as Record<string, (subject?: string) => string>,
+    /** An approved design choice the hub has not filed; a failed one is asked again. */
+    choiceNotFiled: (subject?: string) =>
+      subject
+        ? `Chosen · the ${subject} design, not filed yet`
+        : "Chosen · the design, not filed yet",
     /** A declined card's one line: "Not yet · Approaches". */
     declined: (documents?: string) =>
       documents === undefined ? "Not yet" : `Not yet · ${documents}`,

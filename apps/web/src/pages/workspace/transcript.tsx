@@ -129,6 +129,8 @@ export type DocumentApproval = {
   at?: number;
   /** How the native record settled it, once it is no longer pending. */
   outcome?: ApprovalOutcome;
+  /** For an ask that files a document once approved, whether the hub recorded it filed. */
+  filed?: boolean;
 };
 
 export type ApprovalOutcome = {
@@ -582,6 +584,7 @@ export function RoomThread({
   documents = [],
   onOpenDocument,
   shownDocument = null,
+  conceptTabs = [],
   approvals = [],
   results = new Map(),
   runs = [],
@@ -609,6 +612,8 @@ export function RoomThread({
   onOpenDocument?: (id: string) => void;
   /** The document the reading pane shows, by kind, so a card can say where it is. */
   shownDocument?: string | null;
+  /** The design concepts the reading pane has a tab for, by label. */
+  conceptTabs?: readonly string[];
   /** Pending document decisions. Not decided here. */
   approvals?: readonly DocumentApproval[];
   /** Native results of the coordinator's calls this session saw, by call id. */
@@ -743,6 +748,7 @@ export function RoomThread({
       <DocumentDecision
         approval={approval}
         shownDocument={shownDocument}
+        conceptTabs={conceptTabs}
         {...(onOpenDocument === undefined
           ? {}
           : { onShowDocument: onOpenDocument })}

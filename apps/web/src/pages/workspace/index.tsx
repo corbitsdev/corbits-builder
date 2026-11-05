@@ -1677,6 +1677,7 @@ function ReadyRoom({
                   }))}
                   onOpenDocument={openDocument}
                   shownDocument={chatFirst ? null : (selected?.kind ?? null)}
+                  conceptTabs={concepts.map((view) => view.label)}
                   approvals={shownApprovals}
                   results={liveRun.results}
                   runs={unseenRuns}
