@@ -265,7 +265,7 @@ export function mountArtifactRoutes(
       tags: ["Artifacts"],
       operationId: "chooseDesign",
       description:
-        "The person chooses a filed design_option at the version they saw. The hub files it as the project's design, records the person's approval of exactly that design version and hash, stops the other concepts' designers, and tells the coordinator which design the person chose. Only a person may choose; the coordinator never does.",
+        "Called by the coordinator's choose_design tool once the person approved its native ask. The hub files the concept's design_option, at the version the person saw, as the project's design, records that approval against exactly that option and design version and hash, and stops the other concepts' designers. Each approval chooses once.",
       security,
       requestBody: {
         required: true,
@@ -279,27 +279,22 @@ export function mountArtifactRoutes(
             "application/json": { schema: resolver(DesignChoiceReceipt) },
           },
         },
-        403: {
-          description: "The caller is not a person who manages the project",
-        },
-        404: { description: "No filed design option with that id" },
+        403: { description: "The caller does not manage the project" },
+        404: { description: "No filed design option for that concept" },
         409: {
-          description: "The option has a newer version than the one chosen",
+          description:
+            "No unused approval of choose_design for that concept, or the option changed while the person decided",
         },
       },
     }),
-    async (c) => {
-      const current = actorOf(c);
-      return c.json(
+    async (c) =>
+      c.json(
         await service.chooseDesign(
-          current,
+          actorOf(c),
           c.req.param("projectId"),
           await body(c),
-          (runId, content) =>
-            mailRunAsCaller(c, nativeFetch, current.tenantId, runId, content),
         ),
-      );
-    },
+      ),
   );
   app.get(
     "/:projectId/materials/accepted",

@@ -18,7 +18,12 @@ const BUSY_POLL_MS = 3_000;
 const RUN_STATE_POLL_MS = 5_000;
 const text = wording.activity;
 // The calls that hold until the person answers.
-const ASKS = new Set(["instruct_coder", "request_approval", "design_app"]);
+const ASKS = new Set([
+  "instruct_coder",
+  "request_approval",
+  "design_app",
+  "choose_design",
+]);
 const CHECK_SCRIPT = /\bcheck-app\b/;
 
 /** A person sees what the file is, never where it lives: no folders, no internal ids. */
@@ -60,6 +65,7 @@ const SUBJECT_KEYS = [
   "query",
   "kind",
   "packages",
+  "concept",
 ];
 
 /** What a call's arguments say it touches, as the hub's activity reads it. */

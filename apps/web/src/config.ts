@@ -553,6 +553,10 @@ export const wording = {
       file_package: () => "filing the approval package",
       instruct_coder: () =>
         "waiting for you to approve a change for the app builder",
+      choose_design: (subject?: string) =>
+        subject
+          ? `waiting for you to choose the ${subject} design`
+          : "waiting for you to choose a design",
       exec: () => "rewriting a tool call",
     } as Record<string, (subject?: string) => string>,
     /** What a call returned, in plain words, for a tool whose raw result means nothing to a person. */
@@ -585,17 +589,6 @@ export const wording = {
       `The designer of your ${label} concept is waiting for its next instruction.`,
     /** The pane bar's control that shows what a design concept is going for. */
     conceptDirection: "What this design mockup is going for",
-    /** The conversation's ask to confirm the one filed design concept. */
-    confirmOne:
-      "If you like the design and want to move on to preparing a build plan, confirm. Otherwise, tell me what to change.",
-    /** The same ask when several concepts are filed; each concept's name opens its mockup. */
-    confirmSeveral:
-      "If you like one of the designs and want to move on to preparing a build plan, confirm it. Otherwise, tell me what to change.",
-    confirm: "Confirm",
-    confirmConcept: (label: string) => `Confirm the ${label} design`,
-    confirming: "Confirming…",
-    chosen: (label: string) => `✓ Using ${label}`,
-    chooseFailed: "The design could not be chosen.",
   },
   /** Prebuilt looks a person previews, tweaks and picks before any design exists. */
   themes: {
@@ -809,6 +802,10 @@ export const wording = {
     question: {
       design_app: () => "Ready to start the design?",
       instruct_coder: () => "Send this change to the app builder?",
+      choose_design: (subject?: string) =>
+        subject
+          ? `Build from the ${subject} design?`
+          : "Build from this design?",
     } as Record<string, (subject?: string) => string>,
     document: (document: string) => `Happy with the ${document}?`,
     /** An ask that names neither a document nor a tool. */
@@ -826,6 +823,8 @@ export const wording = {
     /** The line under an ask that covers no one document. */
     body: {
       design_app: "If these look right, the design starts from them.",
+      choose_design:
+        "If you like it, the build plan is written from it next. Otherwise, tell the coordinator what to change.",
     } as Record<string, string>,
     /** What the card asks the person to approve, so several open cards never blur together. */
     approving: {
@@ -868,6 +867,7 @@ export const wording = {
         startNamed: (label: string) => `Start ${label}`,
         deny: "Not Yet",
       },
+      choose_design: { approve: "Use This Design", deny: "Not Yet" },
     } as Record<
       string,
       {
@@ -902,9 +902,11 @@ export const wording = {
     approved: (document: string) => `Approved · ${document}`,
     /** What an approved ask let go ahead, as its decided line names it: "Approved · the design". */
     settled: {
-      design_app: "the design",
-      instruct_coder: "the change for the app builder",
-    } as Record<string, string>,
+      design_app: () => "the design",
+      instruct_coder: () => "the change for the app builder",
+      choose_design: (subject?: string) =>
+        subject ? `the ${subject} design` : "the design",
+    } as Record<string, (subject?: string) => string>,
     /** A declined card's one line: "Not yet · Approaches". */
     declined: (documents?: string) =>
       documents === undefined ? "Not yet" : `Not yet · ${documents}`,

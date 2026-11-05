@@ -4,16 +4,12 @@
  * concept named after a design theme starts from that theme's sample app, so its draft shows only
  * once the designer has changed a page of it.
  */
-import { useState, type CSSProperties } from "react";
-import { Badge, Button } from "@corbits/react-ui";
+import type { CSSProperties } from "react";
 import { MenuLabel } from "@corbits/react-ui/ui/menu";
 import { Info } from "lucide-react";
-import { toast } from "sonner";
 import type { ProjectArtifact } from "@corbits-builder/client";
 import type { InFlightRun } from "@corbits-builder/schemas/artifact";
 import { wording } from "../../config.ts";
-import { chooseDesign } from "../../api/artifacts.ts";
-import { humanFault } from "./human-fault.ts";
 import {
   DesignPreview,
   draftBadge,
@@ -35,10 +31,6 @@ export type ConceptView = {
   readonly direction?: string;
   /** The filed option's design bundle, once its designer filed one. */
   readonly content?: string;
-  /** The filed option at the version the person sees, which they choose by. */
-  readonly option?: { readonly artifactId: string; readonly version: number };
-  /** The person chose this concept, and its option is the approved design. */
-  readonly chosen?: boolean;
   /** When the concept's designer started, and whether it is mid-turn or parked waiting for mail. */
   readonly run?: { readonly startedAt: string; readonly working: boolean };
 };
@@ -57,7 +49,6 @@ export function designConcepts(
   inFlight: readonly InFlightRun[],
   asked: readonly { readonly label: string; readonly direction: string }[],
   content: (option: ProjectArtifact) => string | undefined,
-  chosen?: string,
 ): ConceptView[] {
   const labels = new Set([
     ...asked.map((concept) => concept.label),
@@ -90,16 +81,7 @@ export function designConcepts(
                 working: run.state === "working",
               },
             }),
-        ...(body === undefined || option === undefined
-          ? {}
-          : {
-              content: body,
-              option: {
-                artifactId: option.artifactId,
-                version: option.version,
-              },
-            }),
-        ...(label === chosen ? { chosen: true } : {}),
+        ...(body === undefined ? {} : { content: body }),
       };
     });
 }
@@ -281,88 +263,6 @@ function ConceptSketching({
       {concept.direction === undefined ? null : (
         <p className="concept-sketching-direction">{concept.direction}</p>
       )}
-    </div>
-  );
-}
-
-/** The design the person chose in the conversation, in place of the ask it answered. */
-export const DesignChosen = ({ concept }: { concept: string }) => (
-  <p className="design-choice">
-    <Badge tone="success">{wording.design.chosen(concept)}</Badge>
-  </p>
-);
-
-/**
- * The person's choice of a filed concept, asked in the conversation; the hub files it as the
- * approved design and tells the coordinator.
- */
-export function DesignChoice({
-  projectId,
-  concepts,
-  onShowConcept,
-  onChosen,
-}: {
-  projectId: string;
-  /** The concepts with a filed option, each confirmable. */
-  concepts: readonly ConceptView[];
-  onShowConcept: (tab: string) => void;
-  onChosen: (concept: string) => void;
-}) {
-  const [choosing, setChoosing] = useState(false);
-  const choose = async (concept: ConceptView) => {
-    if (concept.option === undefined) return;
-    setChoosing(true);
-    try {
-      const receipt = await chooseDesign(projectId, concept.option);
-      onChosen(receipt.concept);
-    } catch (cause) {
-      toast.error(humanFault(cause, wording.design.chooseFailed));
-    } finally {
-      setChoosing(false);
-    }
-  };
-  const [only] = concepts;
-  if (concepts.length === 1 && only !== undefined)
-    return (
-      <div className="design-choice">
-        <p>{wording.design.confirmOne}</p>
-        <Button
-          type="button"
-          size="sm"
-          disabled={choosing}
-          onClick={() => void choose(only)}
-        >
-          {choosing ? wording.design.confirming : wording.design.confirm}
-        </Button>
-      </div>
-    );
-  return (
-    <div className="design-choice">
-      <p>{wording.design.confirmSeveral}</p>
-      <ul className="design-choice-options">
-        {concepts.map((concept) => (
-          <li key={concept.label}>
-            <Button
-              type="button"
-              variant="link"
-              size="sm"
-              title={concept.direction}
-              onClick={() => onShowConcept(conceptTab(concept.label))}
-            >
-              {concept.label}
-            </Button>
-            <Button
-              type="button"
-              size="sm"
-              disabled={choosing}
-              aria-label={wording.design.confirmConcept(concept.label)}
-              onClick={() => void choose(concept)}
-            >
-              {choosing ? wording.design.confirming : wording.design.confirm}
-            </Button>
-          </li>
-        ))}
-      </ul>
     </div>
   );
 }

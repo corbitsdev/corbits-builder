@@ -443,7 +443,7 @@ export function createAgentTokenBridge(
       ((c.req.method === "GET" &&
         /^(|\/audit|\/artifacts(?:\/[^/]+)?)$/.test(suffix)) ||
         (c.req.method === "POST" &&
-          /^(\/mutations|\/artifacts|\/artifact-approvals|\/design-concepts|\/presenter-assignments)$/.test(
+          /^(\/mutations|\/artifacts|\/artifact-approvals|\/design-choice|\/design-concepts|\/presenter-assignments)$/.test(
             suffix,
           )));
     const deployRoute =

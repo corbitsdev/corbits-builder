@@ -19,6 +19,7 @@ const list = (items: readonly string[]) =>
 const APPROVAL: Record<string, string> = {
   instruct_coder: "Approve the change for the app builder",
   design_app: "Approve the design work",
+  choose_design: "Choose the design to build from",
   install_packages: "Approve the packages the app builder asked for",
 };
 

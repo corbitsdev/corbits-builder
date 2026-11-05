@@ -318,12 +318,11 @@ export const DesignTweaksReceipt = type({
 });
 export type DesignTweaksReceipt = typeof DesignTweaksReceipt.infer;
 
-// The person's choice of a filed design option at the version they saw; the hub files it as the
-// design and records the person's approval of exactly that design version.
+// The design concept whose filed option the person approved through choose_design; the hub files
+// that option's current version as the design.
 export const DesignChoice = type({
   "+": "reject",
-  artifactId: "string > 0",
-  version: "number.integer > 0",
+  concept: "string > 0",
 });
 export type DesignChoice = typeof DesignChoice.infer;
 

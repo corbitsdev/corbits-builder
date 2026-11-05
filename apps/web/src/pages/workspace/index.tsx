@@ -139,8 +139,6 @@ import { useUserManual } from "./user-manual.tsx";
 import {
   conceptOfTab,
   conceptTab,
-  DesignChoice,
-  DesignChosen,
   designConcepts,
   DESIGN_OPTION,
 } from "./design-concepts.tsx";
@@ -477,11 +475,6 @@ function ReadyRoom({
     null,
   );
   const [paneTab, setPaneTab] = useState<{ value: string } | null>(null);
-  // The design the person chose here, by the hub's receipt, and when, so the outcome keeps its place.
-  const [designChoice, setDesignChoice] = useState<{
-    concept: string;
-    at: number;
-  } | null>(null);
   const documentPaneRef = useRef<HTMLElement>(null);
   const composerRef = useRef<HTMLTextAreaElement>(null);
   // Each committed reply's thinking and tool work, as this session watched it.
@@ -572,7 +565,6 @@ function ReadyRoom({
     setChangesFor(null);
     setDocumentChoice(null);
     setPaneTab(null);
-    setDesignChoice(null);
     setMobilePane("conversation");
     setSent(openingDraft(projectId, openingMessage));
     setSendFailed(false);
@@ -1306,36 +1298,7 @@ function ReadyRoom({
               ? state.document.content
               : undefined;
           },
-          design !== undefined && design.approvedVersion === design.version
-            ? design.title
-            : undefined,
         );
-  // Filed concepts wait on the person's choice, asked last in the conversation; a choice made here
-  // keeps its outcome where it was made.
-  const choosable = concepts.some((concept) => concept.chosen)
-    ? []
-    : concepts.filter((concept) => concept.option !== undefined);
-  const shownChoice =
-    designChoice !== null
-      ? {
-          at: designChoice.at,
-          card: <DesignChosen concept={designChoice.concept} />,
-        }
-      : choosable.length > 0
-        ? {
-            card: (
-              <DesignChoice
-                projectId={projectId}
-                concepts={choosable}
-                onShowConcept={openDocument}
-                onChosen={(concept) => {
-                  setDesignChoice({ concept, at: Date.now() });
-                  onChanged();
-                }}
-              />
-            ),
-          }
-        : undefined;
   // The themes join the pane at the point the coordinator may start the design.
   const designReached =
     DESIGN_INPUTS.every((kind) =>
@@ -1717,9 +1680,6 @@ function ReadyRoom({
                   approvals={shownApprovals}
                   results={liveRun.results}
                   runs={unseenRuns}
-                  {...(shownChoice === undefined || archived
-                    ? {}
-                    : { designChoice: shownChoice })}
                   live={(dispatch) => dispatchLive(dispatch, dispatchRoom)}
                   onDecide={onDecideApproval}
                   onRequestChanges={requestChanges}

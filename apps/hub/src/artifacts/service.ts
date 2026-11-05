@@ -136,7 +136,6 @@ import {
   coordinatorTweaksNote,
   designerTweaksNote,
 } from "../config/design-tweaks.ts";
-import { designChosenNote } from "../config/design.ts";
 import { loadSettings } from "../settings/policy.ts";
 import {
   agentDecidesApprovals,
@@ -169,9 +168,9 @@ import { requestErrorMetadata } from "../request-error.ts";
 const log = getLogger(["corbits-builder", "hub", "artifacts"]);
 
 // The native asks are the human approvals. A request_approval approval covers the documents of
-// the kinds it asked about and an instruct_coder approval every filed document. The person approves
-// the design by choosing a design option. The app is the coder's own output, filed while it works,
-// so no approval covers it.
+// the kinds it asked about and an instruct_coder approval every filed document. A choose_design
+// approval covers the option the person chose and the design filed from it. The app is the coder's
+// own output, filed while it works, so no approval covers it.
 const APPROVAL_COVERS: Record<string, (kind: string) => boolean> = {
   request_approval: (kind) =>
     kind !== "app" && kind !== "design" && kind !== "design_option",
@@ -2205,13 +2204,13 @@ export function createArtifactService(
       });
     },
 
-    // The person's own choice among the filed design options, never the coordinator's: the option
-    // at the version they saw is filed as the design, and they approve exactly that design version.
+    // Called by choose_design after the person approved its native ask. The concept's option at the
+    // version they saw is filed as the design, and that approval covers exactly that design version.
+    // An approval is used once, so a standing grant never chooses a design without the person.
     async chooseDesign(
       actor: Actor,
       projectId: string,
       raw: unknown,
-      mailRun: (runId: string, content: string) => Promise<void>,
     ): Promise<DesignChoiceReceipt> {
       const input = DesignChoice(raw);
       if (input instanceof type.errors)
@@ -2219,29 +2218,70 @@ export function createArtifactService(
           issues: input,
         });
       await requireProject(actor, projectId, "manage");
-      const [chooser] = await rawDB
-        .select({ kind: principal.kind })
-        .from(principal)
-        .where(eq(principal.id, actor.principalId));
-      if (chooser?.kind !== "user")
-        throw new ProjectError(403, "design_choice_person_only");
-      const option = await getArtifact(db, input.artifactId);
-      if (
-        !option ||
-        option.tenantId !== actor.tenantId ||
-        option.kind !== "design_option"
-      )
+      const option = (
+        await listArtifacts(db, actor.tenantId, {
+          kind: "design_option",
+          limit: MAX_LIST_LIMIT,
+        })
+      ).rows.find((row) => row.title === input.concept);
+      const [newest] = option
+        ? (await listArtifactVersions(db, option.id, { limit: 1 })).versions
+        : [];
+      const stored =
+        option && newest
+          ? await getArtifactVersion(db, option.id, newest.version)
+          : undefined;
+      if (!option || !newest || !stored?.contentSha256)
         throw new ProjectError(404, "design_option_not_found", {
-          artifactId: input.artifactId,
+          concept: input.concept,
         });
-      const [newest] = (await listArtifactVersions(db, option.id, { limit: 1 }))
-        .versions;
-      const stored = await getArtifactVersion(db, option.id, input.version);
-      if (!stored || newest?.version !== input.version)
-        throw new ProjectError(409, "artifact_ref_stale", {
-          artifactId: input.artifactId,
-          version: input.version,
+      const optionRef: ArtifactRef = {
+        artifactId: option.id,
+        kind: "design_option",
+        version: stored.version,
+        sha256: stored.contentSha256,
+      };
+      const approvalId = await rawDB.transaction(async (tx) => {
+        const [granted] = await tx
+          .select({ id: approval.id, askedAt: approval.createdAt })
+          .from(approval)
+          .where(
+            and(
+              eq(approval.tenantId, actor.tenantId),
+              eq(approval.status, "approved"),
+              eq(sql`${approval.toolDefinition}->>'name'`, "choose_design"),
+              eq(sql`${approval.toolArguments}->>'concept'`, input.concept),
+            ),
+          )
+          .orderBy(desc(approval.resolvedAt))
+          .limit(1)
+          .for("update");
+        const [recorded] = granted
+          ? await tx
+              .select({ approvalId: artifactApproval.approvalId })
+              .from(artifactApproval)
+              .where(eq(artifactApproval.approvalId, granted.id))
+              .limit(1)
+          : [];
+        if (!granted || recorded)
+          throw new ProjectError(409, "approval_not_resolved", {
+            tool: "choose_design",
+          });
+        // A version filed while the person was deciding is not the one they saw.
+        if (new Date(newest.createdAt) > granted.askedAt)
+          throw new ProjectError(409, "artifact_changed_during_approval", {
+            kind: optionRef.kind,
+            version: optionRef.version,
+          });
+        await tx.insert(artifactApproval).values({
+          approvalId: granted.id,
+          tenantId: actor.tenantId,
+          projectId,
+          tool: "choose_design",
+          ...optionRef,
         });
+        return granted.id;
+      });
       const [existing] = (
         await listArtifacts(db, actor.tenantId, { kind: "design", limit: 1 })
       ).rows;
@@ -2268,11 +2308,12 @@ export function createArtifactService(
         version: written.version,
         sha256: written.contentSha256!,
       };
-      await rawDB.insert(artifactImportApproval).values({
-        ...design,
+      await rawDB.insert(artifactApproval).values({
+        approvalId,
         tenantId: actor.tenantId,
         projectId,
-        principalId: actor.principalId,
+        tool: "choose_design",
+        ...design,
       });
       // The other concepts' designers would file options nobody compares and hold their slots.
       const others = await rawDB
@@ -2292,12 +2333,6 @@ export function createArtifactService(
           cancelRun?.(actor.tenantId, runId, "design_concept_not_picked"),
         ),
       );
-      const coordinator = await activeCoordinator(projectId);
-      if (coordinator)
-        await mailRun(
-          coordinator.runId,
-          designChosenNote(stored.title, design.version),
-        );
       return { design, concept: stored.title };
     },
 

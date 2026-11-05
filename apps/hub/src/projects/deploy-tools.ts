@@ -116,6 +116,7 @@ const ReviewArtifact = type({
   instruction: Instruction,
 });
 const DeployCoder = type({ "+": "reject", "instruction?": Instruction });
+const ChooseDesign = type({ "+": "reject", concept: "string > 0" });
 const InstructCoder = type({ "+": "reject", instruction: Instruction });
 const DesignApp = type({
   "+": "reject",
@@ -172,7 +173,7 @@ const notApproved = (kind: string, version: number) =>
       " version " +
       String(version) +
       (kind === "design"
-        ? "; they approve a design by confirming a design option in the conversation"
+        ? "; ask them to choose a design option with choose_design"
         : "; ask them with request_approval"),
   );
 
@@ -279,7 +280,7 @@ export function createDeployTools(options?: {
     {
       name: "deploy_coder",
       description:
-        "Have the coder build the whole app from the filed problem brief, constraints, approaches, product requirements, build plan and design. The documents are the assignment; an optional instruction adds a note to it. It starts once a person approved the current version of each document: the design by confirming a design option in the conversation, the others through request_approval.",
+        "Have the coder build the whole app from the filed problem brief, constraints, approaches, product requirements, build plan and design. The documents are the assignment; an optional instruction adds a note to it. It starts once a person approved the current version of each document: the design through choose_design, the others through request_approval.",
       inputSchema: { ...DeployCoder.toJsonSchema() },
     },
     {
@@ -298,6 +299,12 @@ export function createDeployTools(options?: {
           ({ label, direction }) => "- " + label + ": " + direction,
         ).join("\n"),
       inputSchema: { ...DesignApp.toJsonSchema() },
+    },
+    {
+      name: "choose_design",
+      description:
+        "Ask the person to choose the filed design option of one design concept, by its label, as the design the build plan and app are built from. Ask about the concept they picked, or the one you recommend when they have not said. Once they approve, the option at the version they saw is filed as the design, approved by them, and the other concepts' designers stop.",
+      inputSchema: { ...ChooseDesign.toJsonSchema() },
     },
     {
       name: "deploy_presenter",
@@ -319,6 +326,7 @@ export function createDeployTools(options?: {
       { name: "deploy_coder" },
       { name: "instruct_coder", approval: "ask" },
       { name: "design_app", approval: "ask" },
+      { name: "choose_design", approval: "ask" },
       { name: "deploy_presenter" },
     ],
     factory: (env) => ({
@@ -748,6 +756,12 @@ export function createDeployTools(options?: {
                       concept: input.concepts[index]!.label,
                       error: refusalText(outcome.reason),
                     },
+            );
+          } else if (call.name === "choose_design") {
+            // This handler runs only after the native approval resolved; the hub binds the choice to it.
+            result = await hub(
+              projectPath + "/design-choice",
+              validArguments(ChooseDesign, call.arguments),
             );
           } else if (call.name === "deploy_presenter") {
             const input = validArguments(DeployPresenter, call.arguments);

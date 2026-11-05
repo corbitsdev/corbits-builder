@@ -16,6 +16,7 @@ import {
 } from "@corbits/react-ui";
 import { approvalQuestion, shortDocumentName } from "./collaboration.ts";
 import { approvalToolPart } from "./conversation-parts.ts";
+import { conceptTab } from "./design-concepts.tsx";
 import type { ApprovalOutcome, DocumentApproval } from "./transcript.tsx";
 
 /** At most ten words of a design direction, with parenthetical notes removed. */
@@ -141,7 +142,8 @@ function settledLine(approval: DocumentApproval): string {
     return text.approved(text.settledUnnamed);
   const settled = text.settled[approval.toolName];
   return text.approved(
-    settled ?? approvalQuestion(approval.toolName, undefined, approval.subject),
+    settled?.(approval.subject) ??
+      approvalQuestion(approval.toolName, undefined, approval.subject),
   );
 }
 
@@ -178,6 +180,8 @@ export function DocumentDecision({
   const instruction = approval.instruction;
   const tool = approval.toolName ?? "";
   const design = tool === "design_app";
+  // A design choice names its concept; the card opens that concept's mockup.
+  const concept = tool === "choose_design" ? approval.subject : undefined;
   const decide = (decision: ToolApprovalDecision) => {
     if (decision.outcome === "rejected") onNo();
     else onYes();
@@ -286,6 +290,17 @@ export function DocumentDecision({
           onClick={() => onShowDocument(asked.kind)}
         >
           {text.show(name)}
+        </UiButton>
+      )}
+      {concept === undefined || onShowDocument === undefined ? null : (
+        <UiButton
+          type="button"
+          variant="link"
+          size="sm"
+          className="document-decision-show"
+          onClick={() => onShowDocument(conceptTab(concept))}
+        >
+          {text.show(wording.design.conceptTitle(concept))}
         </UiButton>
       )}
       {instruction !== undefined && FOLDED_INSTRUCTION_ASKS.has(tool) ? (
