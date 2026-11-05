@@ -6,6 +6,7 @@ import { createSkillTools } from "../skills/tools.ts";
 import { roleInference } from "./role-inference.ts";
 import { compactingDirector } from "./director.ts";
 import { dropDegenerateTurn, trimHistory } from "./compaction.ts";
+import { savedResultTools } from "./saved-result-tools.ts";
 import { WRITER_PACKAGES } from "@corbits-builder/schemas/installed-workflows";
 import { nativePackageName } from "./package-name.ts";
 
@@ -31,6 +32,7 @@ export function writerPackage(kind: WriterDocumentKind) {
         "product-requirements",
         "build-plan",
       ]),
+      savedResultTools,
     ],
   });
   return {

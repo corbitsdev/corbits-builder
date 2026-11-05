@@ -2,17 +2,12 @@ import { defineTool, type BaseEnv } from "@intx/agent/authoring";
 import { HUB_CREDENTIAL_HANDLE } from "@intx/types/credential-delivery";
 import { readFile, realpath, stat } from "node:fs/promises";
 import { isAbsolute, join, relative, resolve, sep } from "node:path";
-import { createPosixTools } from "@intx/tools-posix";
 import { posix } from "@intx/tools-posix/sidecar-bundle";
-import {
-  createBlobReader,
-  type ToolCall,
-  type ToolResult,
-  type ToolRunner,
-} from "@intx/types/runtime";
+import type { ToolCall, ToolResult, ToolRunner } from "@intx/types/runtime";
 import type { RuntimeCapabilities } from "@intx/types/runtime-capabilities";
 import { resolveWorkflowProjectScope } from "../workflows/project-scope.ts";
 import { WorkflowHttpError } from "../workflows/http-json.ts";
+import { savedResultTools } from "../workflows/saved-result-tools.ts";
 import { APP_STATUS_TOOL, createCodingTools } from "./coding-tools.ts";
 import {
   clearCommandProgress,
@@ -218,7 +213,7 @@ export function createSidecarCodingTools(policy: {
     ],
     factory: (env) => {
       let sandbox: ReturnType<typeof createPosixBuildExecutor> | undefined;
-      let spilled: ReturnType<typeof createPosixTools> | undefined;
+      const savedResults = savedResultTools(env);
       // The coder learns whether its passing app reached the person; a failure leaves the build
       // going but is never silent.
       const fileCheckedApp = async (workspace: string, signal: AbortSignal) => {
@@ -395,19 +390,7 @@ export function createSidecarCodingTools(policy: {
             typeof path === "string" &&
             path.startsWith("tool-output://")
           ) {
-            spilled ??= createPosixTools({
-              cwd: workspace,
-              blobReader: createBlobReader(env.storage),
-            });
-            // Models drop a slash from tool-output:///<callId> and retry the same URI verbatim.
-            const uri = path.replace(
-              /^tool-output:\/\/(?!\/)/,
-              "tool-output:///",
-            );
-            return spilled.run(
-              { ...call, arguments: { ...call.arguments, path: uri } },
-              signal,
-            );
+            return savedResults.run(call, signal);
           }
           // The sandbox refuses an outside write with a bare EPERM, which a model retries
           // verbatim until the doom guard fails the run; name the mistake instead.
@@ -641,7 +624,6 @@ export function createSidecarCodingTools(policy: {
           await opened?.close(AbortSignal.timeout(VERSION_CLOSE_MS));
           designCheck?.dispose();
           await native.dispose?.();
-          await spilled?.dispose();
           await browser?.tools.then(
             (tools) => tools.dispose?.(),
             () => undefined,

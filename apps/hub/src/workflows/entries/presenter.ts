@@ -9,6 +9,7 @@ import { createSkillTools } from "../../skills/tools.ts";
 import { roleInference } from "../role-inference.ts";
 import { compactingDirector } from "../director.ts";
 import { dropDegenerateTurn, trimHistory } from "../compaction.ts";
+import { savedResultTools } from "../saved-result-tools.ts";
 import { nativePackageName } from "../package-name.ts";
 
 const compacting = compactingDirector(nativePackageName("presenter"));
@@ -23,7 +24,12 @@ const agent = createPresenterAgent<PackageToolEnv & MailToolEnv>({
   id: "presenter",
   capabilities: [],
   inference: { ...source, parameters },
-  tools: [createPackageTools(), mail, createSkillTools(["presenting"])],
+  tools: [
+    createPackageTools(),
+    mail,
+    createSkillTools(["presenting"]),
+    savedResultTools,
+  ],
 });
 const workflow = createPresenterWorkflow({
   id: "corbits-builder-presenter",
