@@ -242,7 +242,10 @@ export async function loadProjectRoom(
     ]);
     fresh = {
       conversation: {
-        events: conversation?.events ?? null,
+        events:
+          conversation === null || conversation.runId === null
+            ? null
+            : conversation.events,
         turns: conversation?.turns ?? [],
         threads: conversation?.threads ?? [],
         runId: conversation?.runId ?? null,
@@ -266,40 +269,37 @@ export async function loadProjectRoom(
   );
   for (const key of settled.keys()) {
     if (generation.get(projectId) !== ticket) break;
-    try {
-      const owner = JSON.parse(key) as unknown;
-      if (Array.isArray(owner) && owner[0] === projectId && !live.has(key))
-        settled.delete(key);
-    } catch {
-      // A key this loader did not write. Leave it.
-    }
+    // Every key is a `roomDocumentKey`, written by this loader or restored from the saved cache
+    // it persisted, so it always parses.
+    const owner: unknown = JSON.parse(key);
+    if (Array.isArray(owner) && owner[0] === projectId && !live.has(key))
+      settled.delete(key);
   }
 
+  const settleDocument = async (artifact: ProjectArtifact, key: string) => {
+    let state: DeliverableState;
+    try {
+      state = {
+        status: "ready",
+        document: await loadDeliverable(projectId, artifact),
+      };
+    } catch (cause) {
+      const failure = documentReadFailure(cause);
+      state = {
+        status: "error",
+        message: failure.message,
+        retryable: failure.retryable,
+      };
+    }
+    if (stale()) return;
+    settled.set(key, state);
+  };
   await Promise.all(
     fresh.artifacts.flatMap((artifact) => {
       const key = roomDocumentKey(projectId, artifact);
       const have = settled.get(key);
       if (have !== undefined && have.status !== "loading") return [];
-      return [
-        (async () => {
-          let state: DeliverableState;
-          try {
-            state = {
-              status: "ready",
-              document: await loadDeliverable(projectId, artifact),
-            };
-          } catch (cause) {
-            const failure = documentReadFailure(cause);
-            state = {
-              status: "error",
-              message: failure.message,
-              retryable: failure.retryable,
-            };
-          }
-          if (generation.get(projectId) !== ticket) return;
-          settled.set(key, state);
-        })(),
-      ];
+      return [settleDocument(artifact, key)];
     }),
   );
 
@@ -316,7 +316,7 @@ export async function loadProjectRoom(
 }
 
 /** Reads one document again. The last real record stays until the new read finishes. */
-export function reloadProjectDocument(
+export async function reloadProjectDocument(
   projectId: string,
   docKey: string,
   client: QueryClient,
@@ -324,7 +324,9 @@ export function reloadProjectDocument(
 ): Promise<RoomSnapshot> {
   settled.delete(docKey);
   refetchKeys.add(docKey);
-  return loadProjectRoom(projectId, client, withConversation).finally(() => {
+  try {
+    return await loadProjectRoom(projectId, client, withConversation);
+  } finally {
     refetchKeys.delete(docKey);
-  });
+  }
 }

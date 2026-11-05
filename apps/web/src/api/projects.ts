@@ -3,7 +3,7 @@
  * typed client. Fields the hub does not record carry their empty value (see
  * `types.ts`).
  */
-import { productClient } from "./transport.ts";
+import { productClient, refusalBody } from "./transport.ts";
 import { ApiFailure, type ProjectSummary } from "./types.ts";
 import { workspaceTenantId } from "./auth.ts";
 import {
@@ -91,10 +91,7 @@ export async function createProject(payload: {
 /** The hub's refusal to create a project, with its code and message when it gave them. */
 async function creationFailure(cause: unknown): Promise<unknown> {
   if (!(cause instanceof ProductApiError)) return cause;
-  const body: unknown = await cause.response
-    .clone()
-    .json()
-    .catch(() => undefined);
+  const body = await refusalBody(cause);
   const record = body !== null && typeof body === "object" ? body : {};
   const code =
     "code" in record && typeof record.code === "string"
@@ -255,34 +252,45 @@ export async function exportSections(
   }
 }
 
-const invalidImport = () =>
-  new ApiFailure({
-    code: "invalid_project_import",
-    message: wording.importProject.invalid,
-    correlationId: "-",
-    retryable: false,
-  });
+const invalidImport = (cause?: unknown) =>
+  new ApiFailure(
+    {
+      code: "invalid_project_import",
+      message: wording.importProject.invalid,
+      correlationId: "-",
+      retryable: false,
+    },
+    undefined,
+    { cause },
+  );
 
 const startsWithZipSignature = (bytes: Uint8Array) =>
   bytes[0] === 0x50 && bytes[1] === 0x4b;
 
 async function projectJsonOf(archive: Uint8Array): Promise<string> {
-  const entry = (await JSZip.loadAsync(archive)).file("project.json");
-  if (entry === null) throw invalidImport();
-  return entry.async("string");
+  try {
+    const entry = (await JSZip.loadAsync(archive)).file("project.json");
+    if (entry === null) throw invalidImport();
+    // JSZip inflates lazily, so a damaged entry only fails here.
+    return await entry.async("string");
+  } catch (cause) {
+    // JSZip rejects only an archive it cannot read.
+    if (cause instanceof ApiFailure) throw cause;
+    throw invalidImport(cause);
+  }
 }
 
 /** The project.json of an export's zip, or the file itself when it is that JSON. */
 async function importJson(file: Blob): Promise<unknown> {
   const bytes = new Uint8Array(await file.arrayBuffer());
+  const text = startsWithZipSignature(bytes)
+    ? await projectJsonOf(bytes)
+    : new TextDecoder().decode(bytes);
   try {
-    return JSON.parse(
-      startsWithZipSignature(bytes)
-        ? await projectJsonOf(bytes)
-        : new TextDecoder().decode(bytes),
-    );
-  } catch {
-    throw invalidImport();
+    return JSON.parse(text);
+  } catch (cause) {
+    if (!(cause instanceof SyntaxError)) throw cause;
+    throw invalidImport(cause);
   }
 }
 

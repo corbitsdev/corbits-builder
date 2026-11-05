@@ -16,13 +16,14 @@ import { WorkflowHttpError, workflowHttpJson } from "../workflows/http-json.ts";
 import { INPUTS_DIRECTORY } from "../config/inputs.ts";
 import { spliceDesignScreens } from "./starter.ts";
 
-// Installs and builds are rebuilt by setup and check-app, and .builder and the inputs come from
-// filed documents.
+// Installs and builds are rebuilt by setup and check-app, .builder and the inputs come from filed
+// documents, and .scratch holds the coder's throwaway files, such as the screenshots it takes.
 export const EXCLUDED_DIRECTORIES: ReadonlySet<string> = new Set([
   "node_modules",
   "dist",
   ".git",
   ".builder",
+  ".scratch",
   INPUTS_DIRECTORY,
 ]);
 // Secrets (environment files, keys, registry credentials) and local databases never leave the

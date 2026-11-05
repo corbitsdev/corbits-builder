@@ -2,17 +2,12 @@ import { defineTool, type BaseEnv } from "@intx/agent/authoring";
 import { HUB_CREDENTIAL_HANDLE } from "@intx/types/credential-delivery";
 import { readFile, realpath, stat } from "node:fs/promises";
 import { isAbsolute, join, relative, resolve, sep } from "node:path";
-import { createPosixTools } from "@intx/tools-posix";
 import { posix } from "@intx/tools-posix/sidecar-bundle";
-import {
-  createBlobReader,
-  type ToolCall,
-  type ToolResult,
-  type ToolRunner,
-} from "@intx/types/runtime";
+import type { ToolCall, ToolResult, ToolRunner } from "@intx/types/runtime";
 import type { RuntimeCapabilities } from "@intx/types/runtime-capabilities";
 import { resolveWorkflowProjectScope } from "../workflows/project-scope.ts";
 import { WorkflowHttpError } from "../workflows/http-json.ts";
+import { savedResultTools } from "../workflows/saved-result-tools.ts";
 import { APP_STATUS_TOOL, createCodingTools } from "./coding-tools.ts";
 import {
   clearCommandProgress,
@@ -20,6 +15,7 @@ import {
   noteCommandProgress,
 } from "./posix-sandbox.ts";
 import { browserTools } from "./browser.ts";
+import type { CheckDetail } from "./check-detail.ts";
 import type { BrowserCatalog } from "./browser-catalog.ts";
 import {
   CHECK_APP,
@@ -149,12 +145,31 @@ const succeeded = (result: ToolResult) =>
 const VERSIONED = new Set([...WRITES, "run_shell", PACKAGE_INSTALL_TOOL]);
 // Bounds teardown: the wait for the last version, then the revoke.
 const VERSION_CLOSE_MS = 15_000;
-// An app-mode check-app pass; a mockup check in the same workspace passes without building anything.
+// check-app's verdict heads a line of its output, however the command runs it (timeout, env, a
+// wrapper or a pipe); a command that only names check-app, such as grep -rn check-app, prints none.
+const CHECK_APP_VERDICT = /^check (?:passed|failed):/m;
+// A mockup check passes without building anything; only this verdict says the app built and ran.
+const APP_CHECK_PASSED = /^check passed: built, started,/m;
+
+/** A check-app run's verdict; check-app && bun test passes only when both do. */
+export function appCheckDetail(
+  call: ToolCall,
+  result: ToolResult,
+): CheckDetail | undefined {
+  const command = call.arguments["command"];
+  if (
+    call.name !== "run_shell" ||
+    typeof command !== "string" ||
+    !command.includes("check-app")
+  )
+    return undefined;
+  const output = String(result.content);
+  if (!CHECK_APP_VERDICT.test(output)) return undefined;
+  return { checkPassed: succeeded(result) && APP_CHECK_PASSED.test(output) };
+}
+
 const passedAppCheck = (call: ToolCall, result: ToolResult) =>
-  call.name === "run_shell" &&
-  /check-app/.test(String(call.arguments["command"])) &&
-  typeof result.content === "string" &&
-  /check passed: built, started,/.test(result.content);
+  appCheckDetail(call, result)?.checkPassed === true;
 
 // A cold install; under the executor's own ceiling.
 const SETUP_TIMEOUT_MS = 115_000;
@@ -198,7 +213,7 @@ export function createSidecarCodingTools(policy: {
     ],
     factory: (env) => {
       let sandbox: ReturnType<typeof createPosixBuildExecutor> | undefined;
-      let spilled: ReturnType<typeof createPosixTools> | undefined;
+      const savedResults = savedResultTools(env);
       // The coder learns whether its passing app reached the person; a failure leaves the build
       // going but is never silent.
       const fileCheckedApp = async (workspace: string, signal: AbortSignal) => {
@@ -367,26 +382,15 @@ export function createSidecarCodingTools(policy: {
             };
           const workspace = await realpath(env.toolCwd);
           const path = (call.arguments as { path?: unknown } | undefined)?.path;
-          // A large result is spilled to tool-output://<callId>; the sandboxed child has no blob
-          // reader, so read_file of one is answered here from the run's own storage.
+          // A result the size cap spilled or compaction trimmed is saved under a tool-output:/// URI;
+          // the sandboxed child has no blob reader, so read_file of one is answered here from the
+          // run's own storage.
           if (
             call.name === "read_file" &&
             typeof path === "string" &&
             path.startsWith("tool-output://")
           ) {
-            spilled ??= createPosixTools({
-              cwd: workspace,
-              blobReader: createBlobReader(env.storage),
-            });
-            // Models drop a slash from tool-output:///<callId> and retry the same URI verbatim.
-            const uri = path.replace(
-              /^tool-output:\/\/(?!\/)/,
-              "tool-output:///",
-            );
-            return spilled.run(
-              { ...call, arguments: { ...call.arguments, path: uri } },
-              signal,
-            );
+            return savedResults.run(call, signal);
           }
           // The sandbox refuses an outside write with a bare EPERM, which a model retries
           // verbatim until the doom guard fails the run; name the mistake instead.
@@ -552,8 +556,13 @@ export function createSidecarCodingTools(policy: {
             await open(signal);
             if (!designCheck) throw new Error("design_check_missing");
             await syncDesignScreensOnDisk(await realpath(env.toolCwd));
-            const { checklist } = await designCheck.current(signal);
-            return { callId: call.id, content: checklist };
+            const { checklist, passed, artifact } =
+              await designCheck.current(signal);
+            const detail: CheckDetail = {
+              checkPassed: passed,
+              filed: artifact !== undefined,
+            };
+            return { callId: call.id, content: checklist, detail };
           }
           if (!offered(call.name))
             return {
@@ -561,7 +570,9 @@ export function createSidecarCodingTools(policy: {
               content: `unknown_tool: ${call.name}`,
               isError: true,
             };
-          const result = await native.run(call, signal);
+          const ran = await native.run(call, signal);
+          const detail = appCheckDetail(call, ran);
+          const result = detail ? { ...ran, detail } : ran;
           if (repository && VERSIONED.has(call.name))
             repository.schedule(
               passedAppCheck(call, result) ? CHECK_PASSED : EDIT,
@@ -613,7 +624,6 @@ export function createSidecarCodingTools(policy: {
           await opened?.close(AbortSignal.timeout(VERSION_CLOSE_MS));
           designCheck?.dispose();
           await native.dispose?.();
-          await spilled?.dispose();
           await browser?.tools.then(
             (tools) => tools.dispose?.(),
             () => undefined,

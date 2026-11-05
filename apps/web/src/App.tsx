@@ -187,16 +187,18 @@ function ProjectLoadFailure({
   onBackToProjects: () => void;
 }) {
   const [copied, setCopied] = useState(false);
-  const copyDetail = () => {
-    void navigator.clipboard
-      .writeText(detail)
-      .then(() => {
-        setCopied(true);
-        setTimeout(() => setCopied(false), 1500);
-      })
-      .catch(() => {
-        // Clipboard access can be denied; the text is still selectable in the disclosure.
-      });
+  const copyDetail = async () => {
+    try {
+      await navigator.clipboard.writeText(detail);
+    } catch (cause) {
+      // Clipboard access can be denied, or missing outside a secure origin;
+      // the text stays selectable in the disclosure.
+      console.warn("Copying the failure detail failed.", cause);
+      toast.error(wording.message.copyFailed);
+      return;
+    }
+    setCopied(true);
+    setTimeout(() => setCopied(false), 1500);
   };
 
   return (
@@ -216,7 +218,7 @@ function ProjectLoadFailure({
       <details className="project-load-failure-details">
         <summary>{wording.projectLoadFailure.details}</summary>
         <pre>{detail}</pre>
-        <Button variant="outline" onClick={copyDetail}>
+        <Button variant="outline" onClick={() => void copyDetail()}>
           {copied
             ? wording.projectLoadFailure.copied
             : wording.projectLoadFailure.copy}
@@ -446,8 +448,10 @@ export function AppSidebar({
         <ul className="app-sidebar-list">
           <SidebarItem asChild>
             <button type="button" onClick={onOpenWhatsNew}>
-              <span>{wording.shell.whatsNew}</span>
-              <Badge tone="neutral">{wording.shell.whatsNewBadge}</Badge>
+              <span className="app-sidebar-whats-new">
+                <span>{wording.shell.whatsNew}</span>
+                <Badge tone="neutral">{wording.shell.whatsNewBadge}</Badge>
+              </span>
             </button>
           </SidebarItem>
           <SidebarItem asChild active={inSettings} icon={<SettingsIcon />}>
@@ -598,15 +602,18 @@ export function App() {
       return;
     }
     let cancelled = false;
-    void getHubSession()
-      .then((session) => {
+    const readUser = async () => {
+      try {
+        const session = await getHubSession();
         if (!cancelled) setUser(session?.user ?? null);
-      })
-      .catch((cause: unknown) => {
-        // A dropped connection is the loading screen's to show, never a toast.
-        if (!cancelled && cause instanceof ApiFailure)
-          toast.error(humanFault(cause, wording.auth.accountUnreadable));
-      });
+      } catch (cause) {
+        if (cancelled) return;
+        // A hub that is down or unreachable is the loading screen's to show, never a toast.
+        if (cause instanceof ApiFailure && cause.detail.retryable) return;
+        toast.error(humanFault(cause, wording.auth.accountUnreadable));
+      }
+    };
+    void readUser();
     return () => {
       cancelled = true;
     };
@@ -614,8 +621,9 @@ export function App() {
   const signOut = async () => {
     try {
       await signOutHub();
-    } catch {
-      // The session is ended locally either way.
+    } catch (cause) {
+      // The session is ended locally either way; the person hears the hub kept it.
+      toast.error(humanFault(cause, wording.auth.signOutFailed));
     }
     setUser(null);
     setAuth("signed-out");
@@ -643,20 +651,31 @@ export function App() {
   };
 
   useEffect(() => {
-    void getHubSession()
-      .then((session) => setAuth(session ? "signed-in" : "signed-out"))
-      .catch(() => setSessionReadFailed(true));
+    const readSession = async () => {
+      try {
+        const session = await getHubSession();
+        setAuth(session ? "signed-in" : "signed-out");
+      } catch (cause) {
+        if (!(cause instanceof ApiFailure)) throw cause;
+        setSessionReadFailed(true);
+      }
+    };
+    void readSession();
   }, []);
 
   // The workspace tenant is created the first time this session signs in; the
   // fold reads below all scope themselves with it, so they wait for it.
   useEffect(() => {
     if (auth !== "signed-in") return;
-    void ensureWorkspace()
-      .then(() => refresh())
-      .catch((cause: unknown) =>
-        setError(humanFault(cause, wording.workspace.setupFailed)),
-      );
+    const setUpWorkspace = async () => {
+      try {
+        await ensureWorkspace();
+        await refresh();
+      } catch (cause) {
+        setError(humanFault(cause, wording.workspace.setupFailed));
+      }
+    };
+    void setUpWorkspace();
   }, [auth, refresh]);
 
   // The summary of the open project, from the list read; null when none or
@@ -680,9 +699,14 @@ export function App() {
     if (recheckedListFor.current === selected) return;
     recheckedListFor.current = selected;
     const id = selected;
-    void projectsRead.refetch().finally(() => {
-      setSettledMissId(id);
-    });
+    const recheck = async () => {
+      try {
+        await projectsRead.refetch();
+      } finally {
+        setSettledMissId(id);
+      }
+    };
+    void recheck();
   }, [
     view,
     selected,
@@ -719,16 +743,16 @@ export function App() {
       ? opening.text
       : undefined;
 
+  const reportRefusal = async (cause: ProductApiError) => {
+    const code = await responseCode(cause);
+    const refused =
+      code === undefined ? undefined : wording.library.refused[code];
+    toast.error(refused ?? humanFault(cause, wording.library.actionFailed));
+    void refresh();
+  };
   const reportProjectError = (cause: unknown) => {
     if (cause instanceof ApiFailure) toast.error(cause.detail.message);
-    else if (cause instanceof ProductApiError)
-      void responseCode(cause).then((code) => {
-        toast.error(
-          wording.library.refused[code ?? ""] ??
-            humanFault(cause, wording.library.actionFailed),
-        );
-        void refresh();
-      });
+    else if (cause instanceof ProductApiError) void reportRefusal(cause);
     else void refresh();
   };
 

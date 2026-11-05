@@ -1,7 +1,7 @@
 import { stat } from "node:fs/promises";
 import { dirname, join } from "node:path";
 import { type } from "arktype";
-import { and, desc, eq, inArray, ne, sql } from "drizzle-orm";
+import { and, desc, eq, inArray, ne, notInArray, sql } from "drizzle-orm";
 import { PostgresJsDatabase } from "drizzle-orm/postgres-js";
 import {
   createArtifact,
@@ -11,6 +11,7 @@ import {
   listArtifacts,
   listArtifactVersions,
   MAX_LIST_LIMIT,
+  setArtifactArchived,
   VersionConflictError,
   writeArtifactVersion,
   type ArtifactDb,
@@ -54,6 +55,7 @@ import {
   type AcceptedMaterials,
   type UserManual,
   type MaterialReceipt,
+  MaterialRemovedReceipt,
   type DesignTweaksReceipt,
   type DesignChoiceReceipt,
   type LiveApp,
@@ -144,7 +146,7 @@ import {
 import { awaitingApproval } from "../projects/deploy-tools.ts";
 import { frozenModelChoice, workflowBindings } from "../config/models.ts";
 import { modelDirectory } from "../settings/custom-providers.ts";
-import { materialsNote } from "../config/materials.ts";
+import { materialRemovedNote, materialsNote } from "../config/materials.ts";
 import { servingOffering } from "../workflows/install-for-tenant.ts";
 import {
   acceptedMaterials,
@@ -156,6 +158,7 @@ import {
   parseApprovalPackageBundle,
   readProjectPackageSource,
   validateApprovalPackage,
+  verifySourcePin,
 } from "./approval-package.ts";
 import {
   createApprovalRoundService,
@@ -973,7 +976,8 @@ export function createArtifactService(
         .where(
           and(
             eq(approval.tenantId, actor.tenantId),
-            ne(approval.status, "pending"),
+            // An expired ask is one a coordinator upgrade withdrew; its successor asks again.
+            notInArray(approval.status, ["pending", "expired"]),
           ),
         )
         .orderBy(approval.createdAt);
@@ -1248,6 +1252,36 @@ export function createArtifactService(
       return { materials };
     },
 
+    // A material the person takes back: the coordinator, when one runs, is told first, so a note
+    // that cannot be sent leaves the material in place for another try; then it is archived, so
+    // every list leaves it out while its versions stay.
+    async removeMaterial(
+      actor: Actor,
+      projectId: string,
+      artifactId: string,
+      mailRun: (runId: string, content: string) => Promise<void>,
+    ): Promise<MaterialRemovedReceipt> {
+      const allowed = await requireProject(actor, projectId, "manage");
+      if (!(await allowed(artifactResource(MATERIAL_KIND), "write")))
+        throw new ProjectError(403, "artifact_write_refused", {
+          kind: MATERIAL_KIND,
+        });
+      const row = await getArtifact(db, artifactId);
+      if (!row || row.tenantId !== actor.tenantId || row.kind !== MATERIAL_KIND)
+        throw new ProjectError(404, "material_not_found", { artifactId });
+      if (row.archivedAt !== null)
+        return { artifactId: row.id, title: row.title, told: false };
+      const coordinator = await activeCoordinator(projectId);
+      if (coordinator)
+        await mailRun(coordinator.runId, materialRemovedNote(row.title));
+      await setArtifactArchived(db, row, true);
+      return {
+        artifactId: row.id,
+        title: row.title,
+        told: coordinator !== null,
+      };
+    },
+
     // An imported document with no kind of its own, filed as a material without mail: the
     // import's opening message names it to the coordinator.
     async fileMaterial(
@@ -1390,7 +1424,7 @@ export function createArtifactService(
       // readArtifact is the model-facing chunked reader (8000-character budget);
       // the hub serves whole documents, so it reads the stored version directly.
       const row = await getArtifact(db, artifactId);
-      if (!row || row.tenantId !== actor.tenantId)
+      if (!row || row.tenantId !== actor.tenantId || row.archivedAt !== null)
         throw new ProjectError(404, "artifact_not_found", { artifactId });
       // The app by its kind is the main line; snapshots are read by their version.
       const resolved =
@@ -2036,30 +2070,8 @@ export function createArtifactService(
           );
         },
       );
-      for (const source of input.assignment.sources) {
-        const stored = await readSource(source.artifactId, source.version);
-        if (
-          !stored ||
-          stored.kind !== source.kind ||
-          stored.version !== source.version ||
-          stored.sha256 !== source.sha256
-        ) {
-          throw new ProjectError(422, "invalid_package_source", [
-            {
-              path: "assignment.sources",
-              message: `${source.artifactId}@${String(source.version)}`,
-            },
-          ]);
-        }
-        if (stored.approved === false) {
-          throw new ProjectError(422, "unapproved_package_source", [
-            {
-              path: "assignment.sources",
-              message: `${source.kind}@${String(source.version)}`,
-            },
-          ]);
-        }
-      }
+      for (const source of input.assignment.sources)
+        await verifySourcePin(source, readSource, "assignment.sources");
       const sealedAssignment = {
         ...input.assignment,
         sealed: true as const,

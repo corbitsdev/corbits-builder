@@ -12,8 +12,14 @@
  */
 import { wording } from "../../config.ts";
 import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
-import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { Paperclip } from "lucide-react";
+import {
+  queryOptions,
+  skipToken,
+  usePrefetchQuery,
+  useQuery,
+  useQueryClient,
+} from "@tanstack/react-query";
+import { Paperclip, Sparkles } from "lucide-react";
 import {
   Attachment,
   type AttachmentItem,
@@ -36,6 +42,8 @@ import {
 } from "@corbits/react-ui";
 import {
   heldOnApproval,
+  projectActivityQuery,
+  projectRunStatesQuery,
   useProjectActivity,
   useProjectRunStates,
   useRolesAtWork,
@@ -49,17 +57,19 @@ import {
   type DispatchRoom,
 } from "./dispatch-card.tsx";
 import { earlierDocumentRole } from "./earlier-document.ts";
+import { pastedFiles } from "./pasted-files.ts";
 import { ArtifactPane, LIVE_TAB } from "./artifact-pane.tsx";
 import "./persistent-workspace.css";
 import { ProductApiError, type ProjectArtifact } from "@corbits-builder/client";
 import type { InFlightRun } from "@corbits-builder/schemas/artifact";
 import { toast } from "sonner";
-import { sendMessage, type ConversationTurn } from "../../api/conversation.ts";
+import { sendMessage } from "../../api/conversation.ts";
 import { subscribeWorkflowRun } from "../../api/run-stream.ts";
-import { workspaceTenantId } from "../../api/auth.ts";
+import { refusalBody } from "../../api/transport.ts";
 import {
   acceptedMaterials,
   attachMaterials,
+  removeMaterial,
   readArtifact,
 } from "../../api/artifacts.ts";
 import { documentsForPane } from "./document-read.ts";
@@ -69,9 +79,10 @@ import {
   startProjectCoordinator,
 } from "../../api/projects.ts";
 import type { ChatMessage, Wait } from "../../api/types.ts";
+import { deliveredText } from "@corbits-builder/schemas/conversation";
 import { keys } from "../../queries/keys.ts";
 import { COMPOSER_BOX_CLASS, CONV_CLASS, PANES_CLASS } from "./pane-classes.ts";
-import { RoomThread, turnItemId, type TranscriptTurn } from "./transcript.tsx";
+import { questionsOpen, RoomThread, turnItemId } from "./transcript.tsx";
 import { cardDocuments } from "./collaboration.ts";
 import { useFiledVersions } from "./filed-versions.tsx";
 import { threadUpdates } from "./specialist-updates.tsx";
@@ -90,15 +101,24 @@ import {
 } from "./tab-follow.ts";
 import {
   awaitingCommit,
+  awaitingReply,
   committedSteps,
   emptyLiveRun,
   foldLiveRun,
   latestAssistantAt,
   pendingLiveTurn,
+  liveTurnStreaming,
+  parkedOnApproval,
   waitingOnPerson,
   type LiveRun,
 } from "./live-run.ts";
 import { createRoomReloader } from "./room-reload.ts";
+import {
+  latestTurnAt,
+  SENDING,
+  withPendingSends,
+  type SentMessage,
+} from "./pending-sends.ts";
 import { decideApproval, openDecisions } from "../../api/decisions.ts";
 import type { DeliverableState } from "./deliverable-block.tsx";
 import { formatPassageQuote, type PassageQuote } from "./passage-note.tsx";
@@ -111,6 +131,7 @@ import {
   reloadProjectDocument,
   roomDocumentKey,
   roomSnapshotReady,
+  type RoomSnapshot,
 } from "./load-room.ts";
 import { RoomFault, RoomSkeleton } from "./room-skeleton.tsx";
 import { designDraftFiled, useDesignDraft } from "./design-preview.tsx";
@@ -124,17 +145,48 @@ import {
   DESIGN_OPTION,
 } from "./design-concepts.tsx";
 import { useLiveAppPresence } from "./live-app.tsx";
-import { NextStepLine, useProjectNextStep } from "./next-step.tsx";
+import { useQuestionsLayout } from "../../questions-layout-setting.ts";
+import {
+  NextStepLine,
+  projectNextStepQuery,
+  useProjectNextStep,
+} from "./next-step.tsx";
 import { composerPlaceholder } from "./composer-placeholder.ts";
 import { Dictated } from "../../dictation.jsx";
 import { useShellReply } from "../../flourish.tsx";
+import { EnableAiDialog, needsModelSetup } from "../model-setup.tsx";
+import { useModelCatalog } from "../providers.tsx";
 
 // The stream says when the room moved. This read covers what it cannot see,
 // such as a coordinator run replaced while its old stream stays quiet.
 const FALLBACK_RELOAD_MS = 30_000;
+// No coordinator's stream announces the next one binding, so an unbound room reads again until it does.
+const BIND_POLL_MS = 1_000;
+// A handoff binds within seconds; past this the room starts the coordinator itself, so a start the
+// hub could not make shows its refusal instead of an endless thinking mark.
+const BIND_WAIT_MS = 15_000;
 // After a run closes, the mirror's commit can trail its last frame.
 const SETTLE_RELOAD_MS = [1_000, 3_000, 7_000, 15_000];
-const NO_WAITS: readonly Wait[] = [];
+
+function acceptedMaterialsQuery(projectId: string) {
+  return queryOptions({
+    queryKey: keys.acceptedMaterials.of(projectId),
+    retry: false,
+    refetchOnWindowFocus: false,
+    queryFn: () => acceptedMaterials(projectId),
+  });
+}
+
+// Only an active project has a coordinator whose decisions can be open.
+function openDecisionsQuery(projectId: string, active: boolean) {
+  return queryOptions({
+    queryKey: keys.openDecisions.of(projectId),
+    retry: false,
+    staleTime: 0,
+    refetchOnWindowFocus: false,
+    queryFn: active ? () => openDecisions(projectId) : skipToken,
+  });
+}
 
 function documentApprovalsFrom(
   waits: readonly Wait[],
@@ -168,7 +220,7 @@ export { selectedDeliverable };
 function openingDraft(
   projectId: string,
   openingMessage: string | undefined,
-): ChatMessage[] {
+): SentMessage[] {
   const text = openingMessage?.trim() ?? "";
   if (text.length === 0) return [];
   return [
@@ -177,38 +229,9 @@ function openingDraft(
       author: "me",
       body: text,
       at: new Date(0).toISOString(),
+      after: Number.NEGATIVE_INFINITY,
     },
   ];
-}
-
-// A message's stand-in id until the hub's receipt replaces it.
-const SENDING = "sending:";
-
-function withPendingSends(
-  mirror: readonly ConversationTurn[],
-  sent: readonly ChatMessage[],
-): TranscriptTurn[] {
-  const pending = [...sent];
-  const shown: TranscriptTurn[] = [];
-  for (const turn of mirror) {
-    const index = pending.findIndex(
-      (message) =>
-        message.body === turn.text &&
-        (message.author === "agent") === (turn.role === "assistant"),
-    );
-    if (index >= 0) pending.splice(index, 1);
-    shown.push(turn);
-  }
-  for (const message of pending) {
-    const at = Date.parse(message.at);
-    shown.push({
-      role: message.author === "agent" ? "assistant" : "person",
-      text: message.body,
-      at: Number.isNaN(at) ? 0 : at,
-      ...(message.id.startsWith(SENDING) ? { sending: true } : {}),
-    });
-  }
-  return shown;
 }
 
 // The hand-offs that name the document their run works on, by the role they start.
@@ -265,13 +288,12 @@ const MODEL_CHOICE_REFUSALS: ReadonlySet<string> = new Set([
 ]);
 
 // The hub's own sentence for a project with no model to run on, which only the person can settle.
-async function modelRefusal(cause: unknown): Promise<string | undefined> {
+async function modelRefusal(
+  cause: unknown,
+): Promise<{ code: string; message: string } | undefined> {
   if (!(cause instanceof ProductApiError) || cause.response.status !== 409)
     return undefined;
-  const body: unknown = await cause.response
-    .clone()
-    .json()
-    .catch(() => undefined);
+  const body = await refusalBody(cause);
   return body !== null &&
     typeof body === "object" &&
     "code" in body &&
@@ -279,18 +301,13 @@ async function modelRefusal(cause: unknown): Promise<string | undefined> {
     typeof body.code === "string" &&
     MODEL_CHOICE_REFUSALS.has(body.code) &&
     typeof body.message === "string"
-    ? body.message
+    ? { code: body.code, message: body.message }
     : undefined;
 }
 
-export function StageWorkspace({
-  projectId,
-  projectTitle,
-  onChanged,
-  onOpenSettings,
-  openingMessage,
-  listedArchived,
-}: {
+type ModelNeeded = { code: string; message: string };
+
+type StageWorkspaceProps = {
   /** The open project's id. */
   projectId: string;
   projectTitle: string;
@@ -302,32 +319,34 @@ export function StageWorkspace({
    *  artifact but the first conversation message, sent here once the
    *  coordinator binds. */
   openingMessage?: string;
-}) {
-  // The conversation record comes from the room query. Null events means no
-  // coordinator is bound yet (the hub's 409). Empty arrays are not a stand-in
-  // for a read that has not happened.
-  const queryClient = useQueryClient();
+};
+
+/**
+ * Reads the project and its room, and starts its coordinator, while the room shows its loading
+ * or fault state; the ready room mounts only with a loaded snapshot.
+ */
+export function StageWorkspace(props: StageWorkspaceProps) {
+  const { projectId, listedArchived } = props;
   // An archived project has no coordinator or conversation to read, so the room waits on its lifecycle.
-  const lifecycle = useQuery({
-    queryKey: keys.projectLifecycle.of(projectId),
+  const projectRead = useQuery({
+    queryKey: keys.project.of(projectId),
     retry: false,
     refetchOnMount: "always",
     refetchOnWindowFocus: false,
-    queryFn: async () => (await getProject(projectId)).status,
+    queryFn: () => getProject(projectId),
   });
   // A status restored from the saved cache may predate an archive, so only a read made since
   // opening counts. The project list learns of an archive first, so it wins while the read catches up.
-  const status = listedArchived
-    ? "archived"
-    : lifecycle.isFetchedAfterMount
-      ? lifecycle.data
-      : undefined;
+  const project = projectRead.isFetchedAfterMount
+    ? projectRead.data
+    : undefined;
+  const status = listedArchived ? "archived" : project?.status;
   const archived = status === "archived";
   const listedBefore = useRef(listedArchived);
   useEffect(() => {
     if (listedBefore.current === listedArchived) return;
     listedBefore.current = listedArchived;
-    void lifecycle.refetch();
+    void projectRead.refetch();
   }, [listedArchived]);
   const roomKey = keys.projectRoom.of(projectId);
   const room = useQuery({
@@ -338,16 +357,119 @@ export function StageWorkspace({
     refetchOnWindowFocus: false,
     queryFn: ({ client }) => loadProjectRoom(projectId, client, !archived),
   });
-  const snapshot = status === undefined ? undefined : room.data;
-  const events = snapshot?.conversation.events ?? null;
-  const mirror = snapshot?.conversation.turns ?? [];
-  const runId = archived ? null : (snapshot?.conversation.runId ?? null);
+  const [startFault, setStartFault] = useState<string | null>(null);
+  // Why the coordinator has no model to run on, which only the person can settle.
+  const [modelNeeded, setModelNeeded] = useState<ModelNeeded | null>(null);
+  // Only a missing provider is settled by connecting one; a profile choice needs Settings.
+  const providerMissing = modelNeeded?.code === "model_provider_missing";
+  const startCoordinator = async () => {
+    setStartFault(null);
+    setModelNeeded(null);
+    try {
+      await startProjectCoordinator(projectId);
+      await room.refetch();
+    } catch (cause) {
+      const needed = await modelRefusal(cause);
+      if (needed !== undefined) return setModelNeeded(needed);
+      setStartFault(
+        await humanFaultWithCode(cause, wording.message.coordinatorNotStarted),
+      );
+    }
+  };
+  // Opening an active project starts its coordinator when it is not running; a running one is
+  // left alone. A project archived while open drops the conversation it can no longer read.
+  useEffect(() => {
+    if (status === "active") void startCoordinator();
+    else if (status === "archived" && room.data !== undefined)
+      void room.refetch();
+  }, [projectId, status]);
+  const catalog = useModelCatalog();
+  const providerConnected =
+    catalog.data !== undefined && !needsModelSetup(catalog.data.providers);
+  // However the provider gets connected (Enable AI, Settings, another tab, the server), the
+  // shared catalog read sees it and the refused start is tried again. Only on that change: a hub
+  // that still refuses would otherwise retry on every refusal.
+  useEffect(() => {
+    if (providerConnected && providerMissing) void startCoordinator();
+  }, [providerConnected]);
+  // The room's other reads start with it, so the ready room mounts with them in hand.
+  usePrefetchQuery(projectActivityQuery(projectId));
+  usePrefetchQuery(projectRunStatesQuery(projectId));
+  usePrefetchQuery(projectNextStepQuery(projectId));
+  usePrefetchQuery(acceptedMaterialsQuery(projectId));
+  // A prefetch cannot wait on the project's status, so this read observes the decisions instead.
+  useQuery(openDecisionsQuery(projectId, status === "active"));
+  useLiveAppPresence(projectId);
+
+  if (status === undefined) {
+    if (projectRead.isError)
+      return <RoomFault onRetry={() => void projectRead.refetch()} />;
+    return <RoomSkeleton />;
+  }
+  const snapshot = room.data;
+  if (!roomSnapshotReady(projectId, snapshot)) {
+    if (room.isError) return <RoomFault onRetry={() => void room.refetch()} />;
+    return <RoomSkeleton />;
+  }
+  return (
+    <ReadyRoom
+      {...props}
+      status={status}
+      // Each project is its own tenant beneath the workspace, and its runs live there.
+      runTenantId={project?.tenantId}
+      snapshot={snapshot}
+      start={{
+        fault: startFault,
+        modelNeeded,
+        providerMissing,
+        retry: startCoordinator,
+      }}
+      refetchProject={projectRead.refetch}
+    />
+  );
+}
+
+/** The room with its first read in hand: everything here works on a loaded snapshot. */
+function ReadyRoom({
+  projectId,
+  projectTitle,
+  onChanged,
+  onOpenSettings,
+  openingMessage,
+  status,
+  runTenantId,
+  snapshot,
+  start,
+  refetchProject,
+}: StageWorkspaceProps & {
+  status: string;
+  runTenantId: string | undefined;
+  /** Null events means no coordinator is bound yet (the hub's 409). */
+  snapshot: RoomSnapshot;
+  start: {
+    fault: string | null;
+    modelNeeded: ModelNeeded | null;
+    providerMissing: boolean;
+    retry: () => Promise<void>;
+  };
+  refetchProject: () => Promise<unknown>;
+}) {
+  const queryClient = useQueryClient();
+  const archived = status === "archived";
+  const startFault = start.fault;
+  const modelNeeded = start.modelNeeded;
+  const startCoordinator = start.retry;
+  const providerMissing = start.providerMissing;
+  const events = snapshot.conversation.events;
+  const mirror = snapshot.conversation.turns;
+  const runId = archived ? null : snapshot.conversation.runId;
   // The coder's filed app source is the resume point for a later coder, not a document to read.
-  const artifacts = (snapshot?.artifacts ?? [])
+  const artifacts = snapshot.artifacts
     .filter((item) => item.kind !== "app")
     .map(paneArtifact);
-  const documents = snapshot?.documents ?? {};
+  const documents = snapshot.documents;
   const [liveRun, setLiveRun] = useState<LiveRun>(emptyLiveRun);
+  const questionsLayout = useQuestionsLayout();
   const [approvalBusy, setApprovalBusy] = useState(false);
   const [approvalError, setApprovalError] = useState<string | null>(null);
   const [changesFor, setChangesFor] = useState<string | null>(null);
@@ -376,7 +498,7 @@ export function StageWorkspace({
   const [mobilePane, setMobilePane] = useState<"conversation" | "artifacts">(
     "conversation",
   );
-  const [sent, setSent] = useState<ChatMessage[]>(() =>
+  const [sent, setSent] = useState<SentMessage[]>(() =>
     openingDraft(projectId, openingMessage),
   );
   const [value, setValue] = useState("");
@@ -385,15 +507,8 @@ export function StageWorkspace({
   const [sendFault, setSendFault] = useState<string | null>(null);
   // When this session last sent the coordinator a message, until a run ends after it or it fails.
   const [awaitingSince, setAwaitingSince] = useState<number | null>(null);
-  const [startFault, setStartFault] = useState<string | null>(null);
-  // Why the coordinator has no model to run on, which only the person can settle.
-  const [modelNeeded, setModelNeeded] = useState<string | null>(null);
-  const accepted = useQuery({
-    queryKey: keys.acceptedMaterials.of(projectId),
-    retry: false,
-    refetchOnWindowFocus: false,
-    queryFn: () => acceptedMaterials(projectId),
-  });
+  const [enablingAi, setEnablingAi] = useState(false);
+  const accepted = useQuery(acceptedMaterialsQuery(projectId));
   const limits = accepted.data;
   const [files, setFiles] = useState<readonly AttachmentItem[]>([]);
   const [attachFault, setAttachFault] = useState<string | null>(null);
@@ -404,8 +519,6 @@ export function StageWorkspace({
       ? {}
       : { maxFiles: limits.maxFiles, maxFileBytes: limits.maxFileBytes }),
   });
-  // The files each sent message carried, by its text, as this session sent them.
-  const filesByText = useRef(new Map<string, readonly ConversationPart[]>());
   const liveRunRef = useRef<LiveRun>(emptyLiveRun);
   const committedAtRef = useRef<number | null>(null);
   committedAtRef.current = latestAssistantAt(mirror);
@@ -416,28 +529,31 @@ export function StageWorkspace({
   const [caution, setCaution] = useState<string | null>(null);
   const [gateDone, setGateDone] = useState(0);
   // The waits that belong to this project, from the open decisions.
-  const decisions = useQuery({
-    queryKey: keys.openDecisions.of(projectId),
-    enabled: status === "active",
-    retry: false,
-    staleTime: 0,
-    refetchOnWindowFocus: false,
-    queryFn: () => openDecisions(projectId),
-  });
+  const decisions = useQuery(
+    openDecisionsQuery(projectId, status === "active"),
+  );
+  // Once per outage: each failed poll is a new error, and a dismissed toast stays dismissed.
   useEffect(() => {
-    if (decisions.error === null) return;
+    if (!decisions.isError) return;
     toast.error(
       humanFault(decisions.error, "Open decisions could not be read."),
       {
         id: "waits-read",
       },
     );
-  }, [decisions.error]);
-  const waits = decisions.data ?? NO_WAITS;
+  }, [decisions.isError]);
+  // Undefined until read: an unread list is not one with nothing open.
+  const waits = decisions.data;
+  const activity = useProjectActivity(projectId);
+  useEffect(() => {
+    if (!activity.isError) return;
+    toast.error(humanFault(activity.error, wording.activity.notRead), {
+      id: "activity-read",
+    });
+  }, [activity.isError]);
   const reloadRef = useRef<() => void>(() => {});
 
   useEffect(() => {
-    if (status === undefined) return;
     const reloader = createRoomReloader(() =>
       loadProjectRoom(projectId, queryClient, status === "active"),
     );
@@ -471,7 +587,6 @@ export function StageWorkspace({
     runKinds.current.clear();
     usedCalls.current.clear();
     runCards.current.clear();
-    filesByText.current.clear();
   }, [projectId, openingMessage]);
 
   // The durable mirror is the committed transcript. The stream fills the gap
@@ -481,40 +596,24 @@ export function StageWorkspace({
   useEffect(() => {
     liveRunRef.current = emptyLiveRun;
     setLiveRun(emptyLiveRun);
-    if (runId === null) return;
-    let unsubscribe = () => {};
-    let cancelled = false;
+    if (runId === null || runTenantId === undefined) return;
     const reload = () => reloadRef.current();
-    void workspaceTenantId()
-      .then((tenantId) => {
-        if (cancelled) return;
-        unsubscribe = subscribeWorkflowRun(tenantId, runId, {
-          onEvent: (event) => {
-            const next = foldLiveRun(
-              liveRunRef.current,
-              event,
-              committedAtRef.current,
-            );
-            liveRunRef.current = next.run;
-            setLiveRun(next.run);
-            if (next.reload) reload();
-          },
-          onChange: reload,
-          onReconnect: reload,
-          onError: reload,
-        }).unsubscribe;
-      })
-      .catch((cause: unknown) => {
-        if (!cancelled)
-          toast.error(humanFault(cause, "Live updates are not available."), {
-            id: "live-subscription",
-          });
-      });
-    return () => {
-      cancelled = true;
-      unsubscribe();
-    };
-  }, [projectId, runId]);
+    return subscribeWorkflowRun(runTenantId, runId, {
+      onEvent: (event) => {
+        const next = foldLiveRun(
+          liveRunRef.current,
+          event,
+          committedAtRef.current,
+        );
+        liveRunRef.current = next.run;
+        setLiveRun(next.run);
+        if (next.reload) reload();
+      },
+      onChange: reload,
+      onReconnect: reload,
+      onError: reload,
+    }).unsubscribe;
+  }, [projectId, runId, runTenantId]);
 
   // The runs held on an approval, from the polled run states: a coder's package request raises no
   // room event, so the room alone would not say the person's turn came until something else moved.
@@ -572,18 +671,7 @@ export function StageWorkspace({
   const turns = useMemo(
     () =>
       withPendingSends(mirror, sent).map((turn) => {
-        const attached =
-          turn.role === "person"
-            ? filesByText.current.get(turn.text)
-            : undefined;
-        if (attached !== undefined)
-          return {
-            ...turn,
-            parts:
-              turn.text.length === 0
-                ? attached
-                : [...attached, { kind: "text" as const, text: turn.text }],
-          };
+        if (turn.parts !== undefined) return turn;
         const steps =
           turn.role === "assistant"
             ? stepsByAt.current.get(turn.at)
@@ -598,15 +686,41 @@ export function StageWorkspace({
     // The steps map only grows as the live run commits, which re-renders with a new mirror.
     [mirror, sent],
   );
-  const mailThreads = snapshot?.conversation.threads;
+  const mailThreads = snapshot.conversation.threads;
   const specialistUpdates = useMemo(
-    () => threadUpdates(mailThreads ?? []),
+    () => threadUpdates(mailThreads),
     [mailThreads],
   );
   const latestAssistant =
     [...mirror].reverse().find((turn) => turn.role === "assistant")?.text ?? "";
+  const documentApprovals =
+    waits === undefined ? undefined : documentApprovalsFrom(waits, artifacts);
+  const { settled: settledApprovals, settle } = useSettledApprovals(
+    projectId,
+    documentApprovals,
+    artifacts,
+  );
+  // A card decided here is already its settled line; the pending read lags behind it.
+  const pendingFrom = (list: readonly Wait[]): OpenApproval[] =>
+    documentApprovalsFrom(list, artifacts).filter(
+      (approval) =>
+        !settledApprovals.some(
+          (item) => item.approvalId === approval.approvalId,
+        ),
+    );
+  const pendingApprovals = waits === undefined ? undefined : pendingFrom(waits);
+  const shownApprovals =
+    pendingApprovals === undefined
+      ? settledApprovals
+      : [...settledApprovals, ...pendingApprovals];
+  const openApprovalIds = new Set(
+    pendingApprovals?.map((approval) => approval.approvalId),
+  );
+  // Until the open decisions are read, no approval is known to hold the coordinator.
+  const parked =
+    waits !== undefined && parkedOnApproval(waits, openApprovalIds, runId);
   const liveTurn = pendingLiveTurn(liveRun, mirror);
-  const streaming = liveTurn !== null && !liveRun.ended;
+  const streaming = liveTurnStreaming(liveRun, mirror, parked);
   const liveText = liveTurn?.text ?? "";
   const shownTurns =
     liveTurn === null
@@ -628,8 +742,8 @@ export function StageWorkspace({
       : [];
   // Mid-turn by native state, whoever sent the message: this stream saw the message run start and
   // not end, or the hub's activity read saw one start after the last end this stream saw.
-  const agents = useProjectActivity(projectId).data?.agents ?? [];
-  const coordinatorTurnSince = agents.find(
+  const agents = activity.data?.agents;
+  const coordinatorTurnSince = agents?.find(
     (agent) => agent.role === "coordinator",
   )?.since;
   const working =
@@ -647,15 +761,17 @@ export function StageWorkspace({
           return turn.role === "person" ? turnItemId(turn, index) : found;
         }, undefined);
   const [retryingKey, setRetryingKey] = useState<string | null>(null);
-  const retryDocument = (item: ProjectArtifact) => {
+  const retryDocument = async (item: ProjectArtifact) => {
     const key = documentKey(projectId, item);
     if (documents[key]?.status !== "error") return;
     setRetryingKey(key);
-    void reloadProjectDocument(projectId, key, queryClient, !archived).finally(
-      () => {
-        setRetryingKey((current) => (current === key ? null : current));
-      },
-    );
+    try {
+      await reloadProjectDocument(projectId, key, queryClient, !archived);
+    } catch (cause) {
+      toast.error(humanFault(cause, wording.documentRetryFailed));
+    } finally {
+      setRetryingKey((current) => (current === key ? null : current));
+    }
   };
   const documentState = (
     item: ProjectArtifact,
@@ -665,9 +781,13 @@ export function StageWorkspace({
     return documents[key];
   };
 
+  const notSent = "That message was not sent.";
+  const mail = async (text: string) =>
+    (await sendMessage(projectId, text)).message;
   const deliverMail = async (
     body: string,
     clearComposer = false,
+    post: (text: string) => Promise<ChatMessage> = mail,
   ): Promise<boolean> => {
     const text = body.trim();
     if (text.length === 0 || sending) return false;
@@ -676,23 +796,22 @@ export function StageWorkspace({
     setSendFault(null);
     setAwaitingSince(Date.now());
     // The person's words show the moment they send; the receipt replaces this stand-in.
-    const pending: ChatMessage = {
+    const pending: SentMessage = {
       id: `${SENDING}${String(Date.now())}`,
       author: "me",
       body: text,
       at: new Date().toISOString(),
+      after: latestTurnAt(mirror),
     };
-    setSent((previous) => [
-      ...previous.filter((item) => item.author !== "me" || item.body !== text),
-      pending,
-    ]);
+    setSent((previous) => [...previous, pending]);
     if (clearComposer) setValue("");
     try {
-      const { message, receipt } = await sendMessage(projectId, text);
+      const message = await post(text);
       setSent((previous) =>
-        previous.map((item) => (item === pending ? message : item)),
+        previous.map((item) =>
+          item === pending ? { ...pending, ...message } : item,
+        ),
       );
-      void receipt;
       reloadRef.current();
       onChanged();
       return true;
@@ -701,10 +820,7 @@ export function StageWorkspace({
       setSent((previous) => previous.filter((item) => item !== pending));
       if (clearComposer)
         setValue((current) => (current === "" ? text : current));
-      const message = await humanFaultWithCode(
-        cause,
-        "That message was not sent.",
-      );
+      const message = await humanFaultWithCode(cause, notSent);
       setSendFailed(true);
       setSendFault(message);
       toast.error(message);
@@ -743,19 +859,17 @@ export function StageWorkspace({
     setSendFault(null);
     setAwaitingSince(Date.now());
     setAttachFault(null);
-    filesByText.current.set(
-      text,
-      attached.map((item) => ({
-        kind: "file" as const,
-        name: item.name,
-        mediaType: item.mediaType,
-      })),
-    );
-    const pending: ChatMessage = {
+    const pending: SentMessage = {
       id: `${SENDING}${String(Date.now())}`,
       author: "me",
       body: text,
       at: new Date().toISOString(),
+      after: latestTurnAt(mirror),
+      files: attached.map((item) => ({
+        kind: "file" as const,
+        name: item.name,
+        mediaType: item.mediaType,
+      })),
     };
     setSent((previous) => [...previous, pending]);
     setValue("");
@@ -777,7 +891,6 @@ export function StageWorkspace({
     } catch (cause) {
       setAwaitingSince(null);
       setSent((previous) => previous.filter((item) => item !== pending));
-      filesByText.current.delete(text);
       setValue((current) => (current === "" ? text : current));
       setFiles(attached);
       setAttachFault(await attachFaultText(cause));
@@ -797,58 +910,69 @@ export function StageWorkspace({
   const addToPrompt = (passage: PassageQuote) =>
     addToComposer(formatPassageQuote(passage));
 
-  const documentApprovals = documentApprovalsFrom(waits, artifacts);
-  const { settled: settledApprovals, settle } = useSettledApprovals(
-    projectId,
-    documentApprovals,
-    artifacts,
-  );
-  // A card decided here is already its settled line; the pending read lags behind it.
-  const pendingFrom = (list: readonly Wait[]): OpenApproval[] =>
-    documentApprovalsFrom(list, artifacts).filter(
-      (approval) =>
-        !settledApprovals.some(
-          (item) => item.approvalId === approval.approvalId,
-        ),
-    );
-  const pendingApprovals = pendingFrom(waits);
   // A park created moments after `inference.done` can already stand on the hub before the next
   // room reload lands; read once on demand when the cached list shows no open ask.
-  const readPendingApprovals = async (): Promise<readonly OpenApproval[]> => {
-    if (pendingApprovals.length > 0) return pendingApprovals;
+  const readPendingApprovals = async (): Promise<
+    readonly OpenApproval[] | undefined
+  > => {
+    if (pendingApprovals !== undefined && pendingApprovals.length > 0)
+      return pendingApprovals;
     try {
-      const fresh = await queryClient.fetchQuery({
-        queryKey: keys.openDecisions.of(projectId),
-        staleTime: 0,
-        queryFn: () => openDecisions(projectId),
-      });
+      const fresh = await queryClient.fetchQuery(
+        openDecisionsQuery(projectId, true),
+      );
       return pendingFrom(fresh);
-    } catch (cause: unknown) {
-      void cause;
+    } catch (cause) {
+      // The cached list is still the best answer; the send that follows reports a hub that is down.
+      console.warn("Open decisions could not be re-read.", cause);
       return pendingApprovals;
     }
   };
   const chooseDocument = (id: string) =>
     setDocumentChoice({ id, filedCount: filed.length });
+  // An attached file taken back: its tab goes with the next room read, and the person hears so.
+  const removeAttachment = (id: string) => {
+    if (!id.startsWith(MATERIAL_TAB)) return;
+    const artifactId = id.slice(MATERIAL_TAB.length);
+    const item = paneDeliverables.find((entry) => entry.kind === id);
+    void takeBack(artifactId, item?.title);
+  };
+  const takeBack = async (artifactId: string, title: string | undefined) => {
+    try {
+      const removed = await removeMaterial(projectId, artifactId);
+      setDocumentChoice(null);
+      toast.success(
+        wording.removeAttachment.done(
+          title === undefined ? removed.title : title,
+          removed.told,
+        ),
+      );
+      reloadRef.current();
+      onChanged();
+    } catch (cause) {
+      toast.error(humanFault(cause, wording.removeAttachment.failed));
+    }
+  };
   const openDocument = (id: string) => {
     setPaneTab({ value: id });
     if (conceptOfTab(id) === undefined) chooseDocument(id);
     setMobilePane("artifacts");
     queueMicrotask(() => documentPaneRef.current?.focus());
   };
-  // Resolves to the fault the person sees, or null once the decision stands.
-  const onDecideApproval = async (decision: {
+  // "settled" is a 409: someone already decided the ask, or its run moved on; the page reads
+  // where it stands.
+  const saveDecision = async (decision: {
     approvalId: string;
     choice: "yes" | "always" | "no";
-  }): Promise<string | null> => {
-    const notSaved = "That decision was not saved.";
-    const cachedWaits =
-      queryClient.getQueryData<readonly Wait[]>(
-        keys.openDecisions.of(projectId),
-      ) ?? NO_WAITS;
+    message?: string;
+  }): Promise<"saved" | "settled" | { fault: string }> => {
+    const notSaved = { fault: "That decision was not saved." };
+    const cachedWaits = queryClient.getQueryData<readonly Wait[]>(
+      keys.openDecisions.of(projectId),
+    );
     const wait =
-      waits.find((item) => item.approvalId === decision.approvalId) ??
-      cachedWaits.find((item) => item.approvalId === decision.approvalId);
+      waits?.find((item) => item.approvalId === decision.approvalId) ??
+      cachedWaits?.find((item) => item.approvalId === decision.approvalId);
     const approvalId = wait?.approvalId;
     const tenantId = wait?.tenantId;
     if (
@@ -861,10 +985,12 @@ export function StageWorkspace({
     setApprovalBusy(true);
     setApprovalError(null);
     const decided =
-      documentApprovals.find((item) => item.approvalId === approvalId) ??
-      documentApprovalsFrom(cachedWaits, artifacts).find(
-        (item) => item.approvalId === approvalId,
-      );
+      documentApprovals?.find((item) => item.approvalId === approvalId) ??
+      (cachedWaits === undefined
+        ? undefined
+        : documentApprovalsFrom(cachedWaits, artifacts).find(
+            (item) => item.approvalId === approvalId,
+          ));
     try {
       await decideApproval({
         tenantId,
@@ -874,6 +1000,9 @@ export function StageWorkspace({
             ? "approve"
             : "reject",
         ...(decision.choice === "always" ? { scope: "always" as const } : {}),
+        ...(decision.message === undefined
+          ? {}
+          : { message: decision.message }),
       });
       if (decided !== undefined)
         settle(decided, {
@@ -885,22 +1014,52 @@ export function StageWorkspace({
         });
       setGateDone((value) => value + 1);
       onChanged();
-      return null;
+      return "saved";
     } catch (cause: unknown) {
-      // 409: someone already decided it (another tab or collaborator); show where it stands.
       if (cause instanceof ProductApiError && cause.response.status === 409) {
         setGateDone((value) => value + 1);
         onChanged();
-        return null;
+        return "settled";
       }
-      const fault = await humanFaultWithCode(cause, notSaved);
+      const fault = await humanFaultWithCode(cause, notSaved.fault);
       setApprovalError(fault);
-      return fault;
+      return { fault };
     } finally {
       setApprovalBusy(false);
     }
   };
-  const openApproval = pendingApprovals.find(
+  // Resolves to the fault the person sees, or null once the decision stands.
+  const onDecideApproval = async (decision: {
+    approvalId: string;
+    choice: "yes" | "always" | "no";
+  }): Promise<string | null> => {
+    const saved = await saveDecision(decision);
+    return typeof saved === "object" ? saved.fault : null;
+  };
+  // The person's words go with the decline as their reason; mailed instead when the ask could
+  // not take them, so they are never lost and a failed mail says why.
+  const declineWith =
+    (approvalId: string) =>
+    async (text: string): Promise<ChatMessage> => {
+      const saved = await saveDecision({
+        approvalId,
+        choice: "no",
+        message: deliveredText(text),
+      });
+      if (saved === "settled") return mail(text);
+      if (typeof saved === "object") {
+        // The composer reports the fault; the card keeps no second copy of it.
+        setApprovalError(null);
+        throw new Error(saved.fault);
+      }
+      return {
+        id: `declined:${approvalId}`,
+        author: "me",
+        body: text,
+        at: new Date().toISOString(),
+      };
+    };
+  const openApproval = pendingApprovals?.find(
     (approval) => approval.packages === undefined,
   );
   // Choosing an approach is the person's yes to the version's open ask; the message names the pick.
@@ -909,14 +1068,14 @@ export function StageWorkspace({
     version: number,
   ): Promise<string | null> => {
     const currentApprovals = await readPendingApprovals();
-    const currentOpen = currentApprovals.find(
+    const currentOpen = currentApprovals?.find(
       (approval) => approval.packages === undefined,
     );
     const kind = selected?.kind;
     const asked =
       kind === undefined
         ? undefined
-        : currentApprovals.find(
+        : currentApprovals?.find(
             (approval) =>
               approval.packages === undefined &&
               asksAbout(approval, kind, version),
@@ -926,25 +1085,29 @@ export function StageWorkspace({
       openApprovalId: currentOpen?.approvalId,
       decide: onDecideApproval,
       deliver: () => deliverMail(message),
+      decline: (approvalId) =>
+        deliverMail(message, false, declineWith(approvalId)),
       notSent: wording.approaches.notSent,
     });
   };
   const deliver = async (body: string, clearComposer = false) => {
     if (body.trim().length === 0 || sending) return false;
     const currentApprovals = await readPendingApprovals();
-    const currentOpen = currentApprovals.find(
+    const currentOpen = currentApprovals?.find(
       (approval) => approval.packages === undefined,
     );
     return deliverWithOpenApproval({
       openApprovalId: currentOpen?.approvalId,
       decide: onDecideApproval,
       deliver: () => deliverMail(body, clearComposer),
+      decline: (approvalId) =>
+        deliverMail(body, clearComposer, declineWith(approvalId)),
     });
   };
   const sendFiles = async () => {
     if (sending) return false;
     const currentApprovals = await readPendingApprovals();
-    const currentOpen = currentApprovals.find(
+    const currentOpen = currentApprovals?.find(
       (approval) => approval.packages === undefined,
     );
     return deliverWithOpenApproval({
@@ -963,7 +1126,7 @@ export function StageWorkspace({
     if (!(await deliver(message))) restoreToComposer(message);
   };
   const typedYes = useTypedYes({
-    pending: pendingApprovals.map((approval) => approval.approvalId),
+    pending: pendingApprovals?.map((approval) => approval.approvalId),
     onApprove: (approvalId) =>
       void onDecideApproval({ approvalId, choice: "yes" }),
     onUndo: (message) => void undoTypedYes(message),
@@ -975,37 +1138,47 @@ export function StageWorkspace({
     if (files.length > 0) return void sendFiles();
     if (shell.answers(value)) return setValue("");
     if (typedYes.hold(value)) return setValue("");
-    const role = earlierDocumentRole(value, artifacts, rolesAtWork);
+    // Without a read of who is at work there is no one to warn about.
+    const role =
+      rolesAtWork === undefined
+        ? undefined
+        : earlierDocumentRole(value, artifacts, rolesAtWork);
     if (role === undefined || caution === role) return sendNow();
     setCaution(role);
   };
+  // The composer is disabled while the decline saves, so the cursor goes there once it can take it.
+  const [changesAsked, setChangesAsked] = useState(false);
   const requestChanges = () => {
     setMobilePane("conversation");
-    composerRef.current?.focus();
+    setChangesAsked(true);
   };
-
-  const unbound = snapshot !== undefined && events === null;
-  const startCoordinator = async () => {
-    setStartFault(null);
-    setModelNeeded(null);
-    try {
-      await startProjectCoordinator(projectId);
-      await room.refetch();
-    } catch (cause) {
-      const needed = await modelRefusal(cause);
-      if (needed !== undefined) return setModelNeeded(needed);
-      setStartFault(
-        await humanFaultWithCode(cause, wording.message.coordinatorNotStarted),
-      );
-    }
-  };
-  // Opening an active project starts its coordinator when it is not running; a running one is
-  // left alone. A project archived while open drops the conversation it can no longer read.
+  const unbound = events === null;
+  const composerDisabled =
+    sending || approvalBusy || providerMissing || unbound;
   useEffect(() => {
-    if (status === "active") void startCoordinator();
-    else if (status === "archived" && room.data !== undefined)
-      void room.refetch();
-  }, [projectId, status]);
+    if (!changesAsked || composerDisabled) return;
+    setChangesAsked(false);
+    composerRef.current?.focus();
+  }, [changesAsked, composerDisabled]);
+
+  // A project that has talked before is between coordinators (an upgrade, a reopen): its thread
+  // stays and reads as the coordinator at work, not as a project starting from nothing.
+  const between =
+    unbound && mirror.length > 0 && startFault === null && modelNeeded === null;
+  const awaitingBind =
+    status === "active" &&
+    unbound &&
+    startFault === null &&
+    modelNeeded === null;
+  useEffect(() => {
+    if (!awaitingBind) return;
+    const timer = setInterval(() => reloadRef.current(), BIND_POLL_MS);
+    const fallback = setTimeout(() => void startCoordinator(), BIND_WAIT_MS);
+    return () => {
+      clearInterval(timer);
+      clearTimeout(fallback);
+    };
+  }, [awaitingBind]);
   const [restoring, setRestoring] = useState(false);
   const [restoreFault, setRestoreFault] = useState<string | null>(null);
   const restore = async () => {
@@ -1013,7 +1186,7 @@ export function StageWorkspace({
     setRestoreFault(null);
     try {
       await restoreProject(projectId);
-      await lifecycle.refetch();
+      await refetchProject();
       onChanged();
     } catch (cause) {
       setRestoreFault(
@@ -1023,25 +1196,18 @@ export function StageWorkspace({
       setRestoring(false);
     }
   };
-  const held = waitingOnPerson(
-    waits,
-    new Set(pendingApprovals.map((approval) => approval.approvalId)),
-    runId,
-    liveRun.running,
-  );
-  // A message sent here waits on the coordinator from the moment it leaves, before the stream
-  // reports its run: until a reply follows it or a run ends after it.
-  const awaitingReply =
-    awaitingSince !== null &&
-    turns.at(-1)?.role === "person" &&
-    (liveRun.endedAt === null || liveRun.endedAt < awaitingSince) &&
+  const held =
+    waits !== undefined &&
+    waitingOnPerson(waits, openApprovalIds, runId, liveRun.running);
+  const awaiting =
+    awaitingReply(awaitingSince, turns.at(-1)?.role, liveRun.endedAt, parked) &&
     !archived &&
     startFault === null &&
     modelNeeded === null;
   // The mark stays for the whole turn: between model calls and during long tool work the live
   // reply shows nothing moving.
   const thinking =
-    !sendFailed && (sending || awaitingReply || (working && !held));
+    !sendFailed && (sending || awaiting || (working && !held) || between);
   // Each concept's option is its own tab beside the others, never an ordinary document.
   const options = artifacts.filter((item) => item.kind === DESIGN_OPTION);
   const paneDeliverables = documentsForPane(
@@ -1052,16 +1218,16 @@ export function StageWorkspace({
     projectId,
     designDraftFiled(
       artifacts.some((item) => item.kind === "design"),
-      snapshot?.inFlight,
+      snapshot.inFlight,
     ),
   );
-  const inFlight = snapshot?.inFlight ?? [];
+  const inFlight = snapshot.inFlight;
   const dispatchRoom: DispatchRoom = {
-    artifacts: snapshot?.artifacts ?? [],
+    artifacts: snapshot.artifacts,
     inFlight,
-    failed: snapshot?.failed ?? [],
+    failed: snapshot.failed,
     seen: dispatchSeen.current,
-    approvals: [...settledApprovals, ...pendingApprovals],
+    approvals: shownApprovals,
     activity: agents,
     onOpenDocument: (kind) =>
       openDocument(
@@ -1076,16 +1242,19 @@ export function StageWorkspace({
   for (const dispatch of dispatches) noteDispatch(dispatchRoom, dispatch);
   // The document a writer or reviewer run works on, from the coordinator's own hand-off call as
   // the hub's activity read saw it start: the latest such call made before the run started.
-  for (const tool of agents.find((agent) => agent.role === "coordinator")
-    ?.tools ?? []) {
-    const role = HANDOFF_ROLE[tool.name];
-    if (role !== undefined && tool.subject !== undefined)
-      handoffCalls.current.set(`${tool.at}:${tool.name}`, {
-        role,
-        kind: tool.subject,
-        at: Date.parse(tool.at),
-      });
-  }
+  const coordinatorTools = agents?.find(
+    (agent) => agent.role === "coordinator",
+  )?.tools;
+  if (coordinatorTools !== undefined)
+    for (const tool of coordinatorTools) {
+      const role = HANDOFF_ROLE[tool.name];
+      if (role !== undefined && tool.subject !== undefined)
+        handoffCalls.current.set(`${tool.at}:${tool.name}`, {
+          role,
+          kind: tool.subject,
+          at: Date.parse(tool.at),
+        });
+    }
   const handoffKind = (run: InFlightRun): string | undefined => {
     const known = runKinds.current.get(run.runId);
     if (known !== undefined) return known;
@@ -1127,8 +1296,9 @@ export function StageWorkspace({
       : designConcepts(
           options,
           inFlight,
-          [...settledApprovals, ...pendingApprovals].flatMap(
-            (approval) => approval.concepts ?? [],
+          // An ask that names no concepts adds none.
+          shownApprovals.flatMap((approval) =>
+            approval.concepts === undefined ? [] : approval.concepts,
           ),
           (option) => {
             const state = documentState(option);
@@ -1173,10 +1343,7 @@ export function StageWorkspace({
     ) ||
     options.length > 0 ||
     inFlight.some((run) => run.concept !== undefined);
-  useLiveAppPresence(projectId);
-  const appFiled = (snapshot?.artifacts ?? []).some(
-    (item) => item.kind === "app",
-  );
+  const appFiled = snapshot.artifacts.some((item) => item.kind === "app");
   const firstBuilder = appFiled
     ? undefined
     : inFlight.find((run) => run.role === "coder");
@@ -1187,15 +1354,14 @@ export function StageWorkspace({
   const userManual = useUserManual(
     projectId,
     liveApp !== null,
-    rolesAtWork.has("coder"),
+    rolesAtWork?.has("coder") === true,
   );
   // While an approval is open the pane follows the document it approves.
   const approvalDeliverableId =
-    pendingApprovals.find((approval) => approval.document !== undefined)
+    pendingApprovals?.find((approval) => approval.document !== undefined)
       ?.document?.kind ?? null;
   const filed = useFiledVersions({
     projectId,
-    ready: roomSnapshotReady(projectId, snapshot),
     documents: artifacts.map((item) =>
       item.kind === DESIGN_OPTION
         ? {
@@ -1227,13 +1393,6 @@ export function StageWorkspace({
   const selected =
     paneDeliverables.find((item) => item.kind === shownId) ?? null;
   const selectedState = selected === null ? undefined : documentState(selected);
-
-  if (lifecycle.isError && status === undefined)
-    return <RoomFault onRetry={() => void lifecycle.refetch()} />;
-  if (!roomSnapshotReady(projectId, snapshot)) {
-    if (room.isError) return <RoomFault onRetry={() => void room.refetch()} />;
-    return <RoomSkeleton />;
-  }
 
   // Until the first document is filed there is nothing to read beside the conversation, so it
   // takes the whole width; the document pane arrives with that document.
@@ -1267,11 +1426,11 @@ export function StageWorkspace({
         </div>
       </div>
     );
-  } else if (modelNeeded !== null) {
+  } else if (modelNeeded !== null && !providerMissing) {
     // A coordinator with no model to run on cannot answer, even one still bound from before.
     dock = (
       <div className="banner" role="alert">
-        <p className="banner-title">{modelNeeded}</p>
+        <p className="banner-title">{modelNeeded.message}</p>
         <div className="banner-action">
           <UiButton type="button" size="sm" onClick={onOpenSettings}>
             {wording.action.openSettings}
@@ -1287,7 +1446,7 @@ export function StageWorkspace({
         </div>
       </div>
     );
-  } else if (unbound) {
+  } else if (unbound && !providerMissing && !between) {
     // The person does not start the coordinator by typing: an unbound room waits for the
     // start that opening it asked for, and a refused start says why and offers it again.
     if (startFault === null) {
@@ -1315,69 +1474,76 @@ export function StageWorkspace({
       );
     }
   } else {
+    // Files can be attached while the hub offers kinds it reads, the provider is set and nothing is
+    // mid-send; the drop zone, the paperclip and a paste all follow this.
+    const attaching =
+      limits !== undefined &&
+      limits.mimeTypes.length > 0 &&
+      !sending &&
+      !approvalBusy &&
+      !providerMissing;
     dock = (
       <div
         className="composer"
         data-working={working || sending ? "" : undefined}
       >
-        {attachFault === null ? null : (
-          <p className="workspace-fault" role="alert">
-            {attachFault}
-          </p>
-        )}
-        {sendFailed && sendFault ? (
-          <p className="workspace-fault" role="alert">
-            {sendFault}
-          </p>
-        ) : null}
-        {caution === null ? null : (
-          <div className="workspace-caution" role="alert">
-            <p>{wording.earlierDocument.warning(participantLabel(caution))}</p>
-            <div className="workspace-caution-actions">
-              <UiButton type="button" size="sm" onClick={sendNow}>
-                {wording.earlierDocument.sendAnyway}
-              </UiButton>
-              <UiButton
-                type="button"
-                size="sm"
-                variant="ghost"
-                onClick={() => {
-                  setCaution(null);
-                  composerRef.current?.focus();
-                }}
-              >
-                {wording.action.cancel}
-              </UiButton>
+        <div className="composer-notes">
+          {attachFault === null ? null : (
+            <p className="workspace-fault" role="alert">
+              {attachFault}
+            </p>
+          )}
+          {sendFailed && sendFault ? (
+            <p className="workspace-fault" role="alert">
+              {sendFault}
+            </p>
+          ) : null}
+          {caution === null ? null : (
+            <div className="workspace-caution" role="alert">
+              <p>
+                {wording.earlierDocument.warning(participantLabel(caution))}
+              </p>
+              <div className="workspace-caution-actions">
+                <UiButton type="button" size="sm" onClick={sendNow}>
+                  {wording.earlierDocument.sendAnyway}
+                </UiButton>
+                <UiButton
+                  type="button"
+                  size="sm"
+                  variant="ghost"
+                  onClick={() => {
+                    setCaution(null);
+                    composerRef.current?.focus();
+                  }}
+                >
+                  {wording.action.cancel}
+                </UiButton>
+              </div>
             </div>
-          </div>
-        )}
-        {replies.length > 0 ? (
-          <div
-            className="workspace-replies"
-            role="group"
-            aria-label="Suggested replies"
-          >
-            {replies.map((reply) => (
-              <UiButton
-                key={reply}
-                type="button"
-                variant="outline"
-                size="sm"
-                onClick={() => void deliver(reply)}
-              >
-                {reply}
-              </UiButton>
-            ))}
-          </div>
-        ) : null}
+          )}
+          {replies.length > 0 && !providerMissing ? (
+            <div
+              className="workspace-replies"
+              role="group"
+              aria-label="Suggested replies"
+            >
+              {replies.map((reply) => (
+                <UiButton
+                  key={reply}
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  onClick={() => void deliver(reply)}
+                >
+                  {reply}
+                </UiButton>
+              ))}
+            </div>
+          ) : null}
+        </div>
         <AttachmentDropZone
           onFiles={addFiles}
-          disabled={
-            limits === undefined ||
-            limits.mimeTypes.length === 0 ||
-            sending ||
-            approvalBusy
-          }
+          disabled={!attaching}
           label={wording.conversation.dropFiles}
         >
           <Dictated
@@ -1393,7 +1559,7 @@ export function StageWorkspace({
                 onSubmit={send}
                 canSubmit={value.trim() !== "" || files.length > 0}
                 status={sending || approvalBusy ? "submitted" : "ready"}
-                disabled={sending || approvalBusy}
+                disabled={composerDisabled}
               >
                 {files.length === 0 ? null : (
                   <PromptInputFloat>
@@ -1420,15 +1586,32 @@ export function StageWorkspace({
                 )}
                 <PromptInputTextarea
                   ref={composerRef}
-                  placeholder={composerPlaceholder({
-                    approvalOpen: openApproval !== undefined,
-                    status: projectStatus.data,
-                    chatFirst,
-                  })}
+                  // A picture on the clipboard attaches like a chosen file, while attaching is
+                  // offered at all; text, and anything else, pastes as the browser would.
+                  onPaste={(event) => {
+                    if (!attaching) return;
+                    const files = pastedFiles(event.clipboardData);
+                    if (files.length === 0) return;
+                    event.preventDefault();
+                    addFiles(files);
+                  }}
+                  placeholder={
+                    providerMissing
+                      ? wording.conversation.enableAiFirst
+                      : composerPlaceholder({
+                          approvalOpen: openApproval !== undefined,
+                          questionsOpen:
+                            !archived &&
+                            questionsOpen(shownTurns, liveRun.results),
+                          status: projectStatus.data,
+                          chatFirst,
+                        })
+                  }
                 />
                 <PromptInputToolbar>
-                  {mic}
-                  {limits === undefined ||
+                  {providerMissing ? null : mic}
+                  {providerMissing ||
+                  limits === undefined ||
                   limits.mimeTypes.length === 0 ? null : (
                     <>
                       <input
@@ -1452,7 +1635,19 @@ export function StageWorkspace({
                       </PromptInputButton>
                     </>
                   )}
-                  <PromptInputSubmit className="ms-auto" />
+                  {!providerMissing ? (
+                    <PromptInputSubmit className="ms-auto" />
+                  ) : (
+                    <UiButton
+                      type="button"
+                      size="sm"
+                      className="ms-auto"
+                      onClick={() => setEnablingAi(true)}
+                    >
+                      {wording.action.enableAi}
+                      <Sparkles size={14} aria-hidden="true" />
+                    </UiButton>
+                  )}
                 </PromptInputToolbar>
               </PromptInput>
             )}
@@ -1519,7 +1714,7 @@ export function StageWorkspace({
                   }))}
                   onOpenDocument={openDocument}
                   shownDocument={chatFirst ? null : (selected?.kind ?? null)}
-                  approvals={[...settledApprovals, ...pendingApprovals]}
+                  approvals={shownApprovals}
                   results={liveRun.results}
                   runs={unseenRuns}
                   {...(shownChoice === undefined || archived
@@ -1541,6 +1736,7 @@ export function StageWorkspace({
                   {...(sentId === undefined ? {} : { sentId })}
                   onAnswerQuestions={(reply) => deliver(reply)}
                   questionsDisabled={sending || archived}
+                  questionsLayout={questionsLayout}
                 >
                   {archived ? (
                     <ConversationEmptyState
@@ -1556,6 +1752,7 @@ export function StageWorkspace({
                 </RoomThread>
               </DispatchRoomContext.Provider>
               {dock}
+              <EnableAiDialog open={enablingAi} onOpenChange={setEnablingAi} />
             </div>
           </section>
           {chatFirst ? null : (
@@ -1585,11 +1782,12 @@ export function StageWorkspace({
                 selectedState.retryable
                   ? {
                       onRetry: () => {
-                        if (selected) retryDocument(selected);
+                        if (selected) void retryDocument(selected);
                       },
                     }
                   : {})}
                 onSelect={chooseDocument}
+                onRemove={removeAttachment}
                 changesOpen={selected !== null && changesFor === selected.kind}
                 onToggleChanges={() =>
                   setChangesFor((current) =>

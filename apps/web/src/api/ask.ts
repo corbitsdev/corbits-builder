@@ -1,4 +1,8 @@
+import { type } from "arktype";
+import { DesignConcept } from "@corbits-builder/schemas/artifact";
 import type { Wait } from "./types.ts";
+
+const Names = type("string[]");
 
 /** What an ask asks, from its native tool name and arguments, as the decision card reads it. */
 export function askOf(
@@ -9,33 +13,20 @@ export function askOf(
   "toolName" | "packages" | "concepts" | "instruction" | "subject" | "kinds"
 > {
   const packages = args["packages"];
-  const kinds = args["kinds"];
+  const listed = Names(args["kinds"]);
   const instruction = args["instruction"];
   const subject = Object.values(args).find(
     (value) => typeof value === "string",
   );
-  const concepts = args["concepts"];
-  const designConcepts =
-    Array.isArray(concepts) &&
-    concepts.every(
-      (item: { label?: unknown; direction?: unknown } | null) =>
-        typeof item?.label === "string" && typeof item.direction === "string",
-    )
-      ? (concepts as { label: string; direction: string }[])
-      : undefined;
-  const installs =
-    Array.isArray(packages) &&
-    packages.every((item) => typeof item === "string")
-      ? (packages as string[])
-      : undefined;
+  const concepts = DesignConcept.array()(args["concepts"]);
+  const designConcepts = concepts instanceof type.errors ? undefined : concepts;
+  const installs = Names(packages);
   return {
     ...(toolName === undefined ? {} : { toolName }),
-    ...(installs === undefined ? {} : { packages: installs }),
+    ...(installs instanceof type.errors ? {} : { packages: installs }),
     ...(designConcepts === undefined ? {} : { concepts: designConcepts }),
     ...(typeof instruction === "string" ? { instruction } : {}),
     ...(typeof subject === "string" ? { subject } : {}),
-    ...(Array.isArray(kinds) && kinds.every((item) => typeof item === "string")
-      ? { kinds: kinds as string[] }
-      : {}),
+    ...(listed instanceof type.errors ? {} : { kinds: listed }),
   };
 }

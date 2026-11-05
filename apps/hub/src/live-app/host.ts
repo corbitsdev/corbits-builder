@@ -12,7 +12,7 @@ import { type } from "arktype";
 import { hasCode } from "@intx/types";
 import { liveAppWording } from "../config/live-app.ts";
 import { errorCode } from "../request-error.ts";
-import type { HostReport } from "./host-report.ts";
+import { reportState, type HostReport } from "./host-report.ts";
 import { parseJson } from "../lib/json.ts";
 import { writeBundle } from "../artifacts/design-tools.ts";
 import { bundleFiles, collectApp } from "../builds/app-snapshot.ts";
@@ -271,27 +271,32 @@ async function answers(url: string) {
   }
 }
 
-setInterval(async () => {
-  if (installing)
-    return report({ state: "starting", phase: "installing", log: [] });
-  if (failure) return report({ state: "failed", ...failure });
+async function currentState(): Promise<HostReport | undefined> {
+  if (installing) return { state: "starting", phase: "installing", log: [] };
+  if (failure) return { state: "failed", ...failure };
   const app = executor.appState();
-  if (!app) return report({ state: "starting", phase: "starting", log: [] });
+  if (!app) return { state: "starting", phase: "starting", log: [] };
   if (!app.running || app.stopped !== undefined) {
     if (!restartedSinceChange) {
       restartedSinceChange = true;
       enqueue(async () => void (await executor.app()));
-      return;
+      return undefined;
     }
-    return report({
+    return {
       state: "failed",
       error: app.running ? liveAppWording.partStopped : liveAppWording.stopped,
       log: app.log,
-    });
+    };
   }
-  report(
-    (await answers(app.url))
-      ? { state: "running", url: app.url }
-      : { state: "starting", phase: "starting", log: app.log },
-  );
-}, STATE_MS);
+  return (await answers(app.url))
+    ? { state: "running", url: app.url }
+    : { state: "starting", phase: "starting", log: app.log };
+}
+
+setInterval(
+  () =>
+    void reportState(currentState, report, (error) =>
+      stderrLine("Checking on the app failed", error),
+    ),
+  STATE_MS,
+);

@@ -360,7 +360,7 @@
   color: var(--wb-foreground);
 }
 
-.composer > .workspace-fault {
+.composer-notes > .workspace-fault {
   padding: 0;
 }
 

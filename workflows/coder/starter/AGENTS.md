@@ -45,7 +45,7 @@ Commands, run from the root:
 
 It does not try features: confirm each requirement in the running app, against the acceptance checklist and the design.
 
-The app's dev server runs while you build and reloads as files change; `app_status` gives its address and the server log. Use the browser tools on that address to try features the way a person would.
+The app's dev server runs while you build and reloads as files change; `app_status` gives its address and the server log. Use the browser tools on that address to try features the way a person would. Keep throwaway files, such as the screenshots you take while trying it, under `.scratch/`; nothing there is part of the app.
 
 ## The app's documents
 

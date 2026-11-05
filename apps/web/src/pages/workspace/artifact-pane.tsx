@@ -1,4 +1,4 @@
-import { FileText, Printer } from "lucide-react";
+import { FileText, Printer, Trash2 } from "lucide-react";
 import {
   useEffect,
   useRef,
@@ -81,6 +81,9 @@ function filterVisibleDeliverables(
 
 const TAB_PREFIX = "workspace-document";
 const DRAFT_TAB = "design-draft";
+// The page names each attached file's tab "material:<artifact id>"; only those can be taken back.
+export const MATERIAL_TAB_PREFIX = "material:";
+const removable = (id: string) => id.startsWith(MATERIAL_TAB_PREFIX);
 const draftIds = panelTabIds(TAB_PREFIX, DRAFT_TAB);
 const MANUAL_TAB = "user-manual";
 const manualIds = panelTabIds(TAB_PREFIX, MANUAL_TAB);
@@ -221,8 +224,8 @@ const flowRank = (kind: string) => {
   return rank === -1 ? FLOW.length : rank;
 };
 
-// The document may take most of the row; the conversation folds away entirely when it needs all of it.
-const CONVERSATION_MIN_PX = 240;
+// Keep messages, approval cards and the composer readable beside a wide preview.
+const CONVERSATION_MIN_PX = 400;
 const DOCUMENT_MIN_PX = 360;
 
 function documentStatus(item: Deliverable): string {
@@ -249,6 +252,7 @@ export function ArtifactPane({
   selected,
   state,
   onSelect,
+  onRemove,
   paneRef,
   changesOpen,
   onToggleChanges,
@@ -278,6 +282,8 @@ export function ArtifactPane({
   selected: Deliverable | null;
   state: DeliverableState | undefined;
   onSelect: (id: string) => void;
+  /** Takes an attached file back, for a tab that is one; absent where nothing can be removed. */
+  onRemove?: ((id: string) => void) | undefined;
   paneRef?: Ref<HTMLElement>;
   changesOpen: boolean;
   onToggleChanges: () => void;
@@ -406,7 +412,7 @@ export function ArtifactPane({
     });
     choose(kind);
   };
-  const width = useDocumentPaneWidth();
+  const width = useDocumentPaneWidth(projectId);
   const seen = useSeenVersions();
   const tipsGroup = useTipsGroup();
   const shown =
@@ -422,8 +428,11 @@ export function ArtifactPane({
     y: number;
   } | null>(null);
   const printing = useRef<string | null>(null);
+  // Removing takes two clicks, both in the menu: the second item only exists after the first.
+  const [confirmingRemove, setConfirmingRemove] = useState(false);
   const openTabMenu = (value: string, x: number, y: number) => {
     choose(value);
+    setConfirmingRemove(false);
     setTabMenu({ value, x, y });
   };
   const tabMenuProps = (value: string) => ({
@@ -452,6 +461,29 @@ export function ArtifactPane({
     if (item !== undefined && pane !== null)
       printDocument(pane, item.title, documentStatus(item));
   };
+  // The menu's remove item for an attached file's tab: a first click asks, the second removes.
+  const removeItem = (value: string) => {
+    if (onRemove === undefined || !removable(value)) return null;
+    if (confirmingRemove)
+      return (
+        <MenuItem className="menu-danger" onSelect={() => onRemove(value)}>
+          <Trash2 size={16} aria-hidden="true" />
+          {wording.removeAttachment.confirm}
+        </MenuItem>
+      );
+    return (
+      <MenuItem
+        className="menu-danger"
+        onSelect={(event) => {
+          event.preventDefault();
+          setConfirmingRemove(true);
+        }}
+      >
+        <Trash2 size={16} aria-hidden="true" />
+        {wording.removeAttachment.menu}
+      </MenuItem>
+    );
+  };
   const outputs =
     visibleDeliverables.length > 0 || draftShown || conceptViews.length > 0;
   const hasTabs = outputs || themes !== null;
@@ -464,7 +496,9 @@ export function ArtifactPane({
       className="workspace-artifacts"
       aria-label="Artifacts"
       width={width}
-      onWidthChange={writeDocumentPaneWidth}
+      onWidthChange={(nextWidth) =>
+        writeDocumentPaneWidth(projectId, nextWidth)
+      }
       minWidth={DOCUMENT_MIN_PX}
       mainMinWidth={CONVERSATION_MIN_PX}
     >
@@ -617,7 +651,11 @@ export function ArtifactPane({
           {tabMenu === null ? null : (
             <Menu
               open
-              onOpenChange={(open) => (open ? undefined : setTabMenu(null))}
+              onOpenChange={(open) => {
+                if (open) return;
+                setTabMenu(null);
+                setConfirmingRemove(false);
+              }}
             >
               <MenuTrigger asChild>
                 <span
@@ -642,6 +680,7 @@ export function ArtifactPane({
                   <Printer size={16} aria-hidden="true" />
                   {wording.printDocument}
                 </MenuItem>
+                {removeItem(tabMenu.value)}
               </MenuContent>
             </Menu>
           )}

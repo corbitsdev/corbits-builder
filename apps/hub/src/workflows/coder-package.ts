@@ -10,11 +10,8 @@ import { mail, type MailToolEnv } from "@intx/tools-mail/sidecar-bundle";
 import { createArtifactTools } from "../artifacts/tools.ts";
 import { createSkillTools } from "../skills/tools.ts";
 import { roleInference } from "./role-inference.ts";
-import {
-  compactingDirector,
-  dropDegenerateTurn,
-  trimHistory,
-} from "./compaction.ts";
+import { compactingDirector } from "./director.ts";
+import { dropDegenerateTurn, trimHistory } from "./compaction.ts";
 import { nativePackageName } from "./package-name.ts";
 import { DESIGN_STANDARD } from "../config/design.ts";
 import { CODER_MCP } from "../config/mcp.ts";

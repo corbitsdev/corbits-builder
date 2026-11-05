@@ -29,6 +29,32 @@ const WAVE_BARS = 24;
 const SILENCE_AFTER_SPEECH_MS = 1500;
 const SOUND_FLOOR = 0.015;
 
+/**
+ * The microphone and an analyser reading its level, or null when either is
+ * refused or missing. A failure after the microphone opens closes it again.
+ */
+export async function openMicrophone(): Promise<{
+  stream: MediaStream;
+  context: AudioContext;
+  analyser: AnalyserNode;
+} | null> {
+  let stream: MediaStream | undefined;
+  let context: AudioContext | undefined;
+  try {
+    stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+    context = new AudioContext();
+    const analyser = context.createAnalyser();
+    analyser.fftSize = 512;
+    context.createMediaStreamSource(stream).connect(analyser);
+    return { stream, context, analyser };
+  } catch (cause) {
+    stream?.getTracks().forEach((track) => track.stop());
+    void context?.close();
+    console.warn("The microphone level is unavailable.", cause);
+    return null;
+  }
+}
+
 /** Why it stopped, in words a person can act on. Anything else is shown as is. */
 const REFUSALS: Record<string, string> = {
   "not-allowed":
@@ -152,14 +178,9 @@ function useDictation(value: string, onValueChange: (value: string) => void) {
       void meter.context.close();
       meter = null;
     };
-    try {
-      const stream = await navigator.mediaDevices.getUserMedia({
-        audio: true,
-      });
-      const context = new AudioContext();
-      const analyser = context.createAnalyser();
-      analyser.fftSize = 512;
-      context.createMediaStreamSource(stream).connect(analyser);
+    const microphone = await openMicrophone();
+    if (microphone !== null) {
+      const { stream, context, analyser } = microphone;
       const samples = new Float32Array(analyser.fftSize);
       const timer = window.setInterval(() => {
         analyser.getFloatTimeDomainData(samples);
@@ -177,8 +198,6 @@ function useDictation(value: string, onValueChange: (value: string) => void) {
         }
       }, 50);
       meter = { stream, context, timer };
-    } catch {
-      meter = null;
     }
 
     recognition.onresult = (event) => {

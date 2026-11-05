@@ -1,6 +1,6 @@
 const SHEET_CLASS = "print-sheet";
-// Controls and selection affordances stay on screen; a document mention prints as its text.
-const SCREEN_ONLY = ".pane-bar, .passage-offer, button:not(.artifact-mention)";
+// Controls and selection affordances stay on screen.
+const SCREEN_ONLY = ".pane-bar, .passage-offer, button";
 
 /**
  * Prints the document a pane shows through the browser's dialog, whose "Save as PDF"

@@ -48,14 +48,12 @@ function providerOf(row: ModelProviderView): Provider {
 }
 
 /** Stores one API key behind the onboarding "connect inference" step. */
-export function setCredential(input: {
+export async function setCredential(input: {
   plugin: string;
   secret: string;
   baseURL?: string;
   label?: string;
 }) {
-  const client = productClient();
-  return workspaceTenantId().then((tenantId) =>
-    client.addModelCredential(tenantId, input),
-  );
+  const tenantId = await workspaceTenantId();
+  return productClient().addModelCredential(tenantId, input);
 }

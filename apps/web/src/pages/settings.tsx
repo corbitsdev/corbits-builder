@@ -29,6 +29,10 @@ import {
   writeDocumentTips,
 } from "../document-tips-setting.ts";
 import {
+  useQuestionsLayout,
+  writeQuestionsLayout,
+} from "../questions-layout-setting.ts";
+import {
   addCustomReviewerPersona,
   addWorkspaceReviewer,
   allReviewerPersonas,
@@ -438,10 +442,11 @@ export function WorkspaceApprovals() {
   );
 }
 
-/** The theme, and the document tips choice kept in this browser. */
+/** The theme, and the document tips and questions layout choices kept in this browser. */
 function Appearance() {
   const { mode, setMode } = useTheme();
   const tips = useDocumentTips();
+  const questionsLayout = useQuestionsLayout();
   const copy = wording.settings.appearance;
   return (
     <Section title={copy.section} description={copy.lead}>
@@ -464,6 +469,16 @@ function Appearance() {
             label={wording.tips.setting}
             checked={tips === "on"}
             onCheckedChange={(on) => writeDocumentTips(on ? "on" : "off")}
+          />
+        </Row>
+        <Row
+          label={wording.questions.layoutSetting}
+          hint={wording.questions.layoutHint}
+        >
+          <Switch
+            label={wording.questions.layoutSetting}
+            checked={questionsLayout === "steps"}
+            onCheckedChange={(on) => writeQuestionsLayout(on ? "steps" : "all")}
           />
         </Row>
       </div>
@@ -743,6 +758,14 @@ function Account({
   onSignOut?: () => Promise<void>;
 }) {
   const [signingOut, setSigningOut] = useState(false);
+  const signOut = async (leave: () => Promise<void>) => {
+    setSigningOut(true);
+    try {
+      await leave();
+    } finally {
+      setSigningOut(false);
+    }
+  };
   const copy = wording.settings.account;
   return (
     <Section title={copy.section} description={copy.lead}>
@@ -758,10 +781,7 @@ function Account({
             <Button
               variant="outline"
               loading={signingOut}
-              onClick={() => {
-                setSigningOut(true);
-                void onSignOut().finally(() => setSigningOut(false));
-              }}
+              onClick={() => void signOut(onSignOut)}
             >
               {wording.action.signOut}
             </Button>

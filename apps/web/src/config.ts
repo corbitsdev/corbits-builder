@@ -84,6 +84,7 @@ export const wording = {
     signOut: "Sign out",
     tryAgain: "Try again",
     openSettings: "Open Settings",
+    enableAi: "Enable AI",
     unarchive: "Unarchive",
     markShipped: "Mark as shipped",
     reopen: "Reopen",
@@ -108,6 +109,7 @@ export const wording = {
     user_manual: "User Manual",
   } as Record<string, string>,
   documentUnread: "new version",
+  documentRetryFailed: "The project could not be read. Try again.",
   tips: {
     label: "Tips",
     setting: "Show tips",
@@ -336,6 +338,11 @@ export const wording = {
       archived: "Archived",
     },
     lastActivity: (relative: string) => `Active ${relative}`,
+    view: {
+      label: "Show projects as",
+      grid: "Tiles",
+      rows: "List",
+    },
     loading: "Reading your projects…",
     emptyTitle: "No projects yet",
     emptyLead: "Start one from New project; it shows here from then on.",
@@ -376,6 +383,7 @@ export const wording = {
     empty: "Nothing in the conversation yet",
     emptyLead: "Replies show here. Saved documents show on the right.",
     startingCoordinator: "Starting the coordinator…",
+    enableAiFirst: "Enable AI to start the conversation",
     dropFiles: "Drop files to attach them",
     noCoordinator: "This project has no running coordinator.",
   },
@@ -415,6 +423,7 @@ export const wording = {
   },
   activity: {
     label: "Who is working",
+    notRead: "Who is working could not be read.",
     role: {
       coordinator: "Coordinator",
       writer: "Writer",
@@ -544,7 +553,12 @@ export const wording = {
       file_package: () => "filing the approval package",
       instruct_coder: () =>
         "waiting for you to approve a change for the app builder",
+      exec: () => "rewriting a tool call",
     } as Record<string, (subject?: string) => string>,
+    /** What a call returned, in plain words, for a tool whose raw result means nothing to a person. */
+    toolResult: {
+      exec: "The assistant wrote this step in a form the app can't run, so it was asked to write it again.",
+    } as Record<string, string>,
     otherTool: (name: string) => `using ${name.replaceAll("_", " ")}`,
     elapsed: (minutes: number, seconds: number) =>
       minutes === 0 ? `${seconds}s` : `${minutes}m`,
@@ -621,12 +635,13 @@ export const wording = {
       `Slide ${String(index)} of ${String(total)}`,
     pageCount: (index: number, total: number) =>
       `Page ${String(index)} of ${String(total)}`,
-    noSlides: "This approval package contains no slides.",
-    speakerNotes: "Speaker notes",
+    loadingSlides: "Loading slides…",
+    slidesUnavailable:
+      "The slides could not load. Reload the page to try again.",
     downloadPdf: "Download PDF",
     openPdf: "Open PDF",
-    downloadPptx: "Download PPTX",
     pdfTitle: "Approval package PDF preview",
+    pdfUnreadable: "The PDF in this package could not be read.",
     manifest: {
       audience: "Audience",
       decisionNeeded: "Decision needed",
@@ -764,9 +779,8 @@ export const wording = {
     approve: "Yes, go ahead",
     notYet: "Not yet",
     decline: "Decline",
-    /** The composer's placeholder while an approval is open: a message leaves the card open. */
-    composerPlaceholder:
-      "Ask a question, or choose Not yet to request changes…",
+    /** The composer's placeholder while an approval is open: a message declines it, with these words as the reason. */
+    composerPlaceholder: "Say what you'd like changed, or ask a question…",
     /** A whole message that approves the one open card, after a countdown the person can undo. */
     typedYes: {
       affirmations: [
@@ -797,6 +811,10 @@ export const wording = {
       instruct_coder: () => "Send this change to the app builder?",
     } as Record<string, (subject?: string) => string>,
     document: (document: string) => `Happy with the ${document}?`,
+    /** An ask that names neither a document nor a tool. */
+    unnamed: "Happy for this to go ahead?",
+    /** The settled line of an ask that names neither a document nor a tool. */
+    settledUnnamed: "the request",
     /** A request_approval ask that covers several documents, by their short names. */
     documents: (names: readonly string[]) =>
       `Happy with the ${names.slice(0, -1).join(", ")} and ${names.at(-1) ?? ""}?`,
@@ -902,6 +920,15 @@ export const wording = {
   passage: { addToPrompt: "Add to prompt" },
   documentBar: "Document controls",
   printDocument: "Save as PDF or print",
+  removeAttachment: {
+    menu: "Remove attachment…",
+    confirm: "Yes, remove it",
+    done: (name: string, told: boolean) =>
+      told
+        ? `${name} is removed; the coordinator has been told.`
+        : `${name} is removed.`,
+    failed: "The attachment could not be removed.",
+  },
   versions: {
     menu: (version: number) => `Version ${String(version)}, choose a version`,
     comparePrevious: "Compare with previous",
@@ -951,22 +978,40 @@ export const wording = {
     coordinatorStopped: "The coordinator stopped before it replied.",
     coordinatorNotStarted: "The coordinator for this project did not start.",
     projectNotOpened: "The project could not be opened.",
+    projectLoading: "Loading this project…",
     projectTooShort: "At least ten characters to start a project.",
     stepFailed: "That step could not finish.",
   },
   /** The coordinator's questions as a card the person answers in the conversation. */
   questions: {
-    title: "A few questions before going on",
+    /** The card's heading by how many questions it asks; three or more read "a few". */
+    title: (count: number) =>
+      ({ 1: "A question for you", 2: "A couple of questions for you" })[
+        count
+      ] ?? "A few questions for you",
     other: "Other",
     otherAnswer: "Your own answer",
+    /** The last step tab, where every answer is shown before it is sent. */
+    submit: "Submit",
+    steps: "Questions",
+    /** The keyboard hint under each step, by the kind of step. */
+    keys: {
+      single: "↑↓ move · Enter choose · ← back · → next",
+      multi: "↑↓ move · Space tick · Enter next · ← back · → next",
+      review: "Enter send · ← back",
+    },
+    composerPlaceholder: "Type here to respond to the above question",
+    /** The Settings switch between one question at a time and all at once. */
+    layoutSetting: "Ask questions one at a time",
+    layoutHint:
+      "On, each question is its own step you answer from the keyboard. Off, every question shows at once.",
     send: "Send answers",
     sending: "Sending…",
     notSent: "Your answers were not sent. Your choices are kept; try again.",
-    /** The settled card's one line: each question's answer, in order. */
-    answered: (answers: readonly string[]) =>
-      `Answered: ${answers.join(" · ")}`,
-    answeredInChat: "Answered in the conversation.",
-    replaced: "Replaced by the questions that followed.",
+    /** The settled card's heading, over each question and its answer. */
+    answered: "Answered",
+    answeredInChat: "Answered in the conversation",
+    replaced: "Replaced by the questions that followed",
     /** One list item of the person's reply per question: "- Who signs in? — Staff, Guests". */
     answerLine: (prompt: string, answers: readonly string[]) =>
       `- ${prompt} — ${answers.join(", ")}`,
@@ -991,6 +1036,8 @@ export const wording = {
     addLater: "You can add one later in Settings → Providers.",
     login: (label: string) => `Login with ${label} (Subscription)`,
     loginConnection: (label: string) => `${productName} ${label} login`,
+    loginUnsupported: (label: string) =>
+      `${productName} cannot sign in to ${label} yet.`,
     signIn: "Log in",
     signInAgain: "Log in again",
     waiting: "Waiting for sign-in…",
@@ -1011,6 +1058,8 @@ export const wording = {
     keylessHint: `For servers that need no API key; ${productName} sends a placeholder.`,
     custom: {
       tile: "Custom endpoint",
+      modelsUnreadable:
+        "This provider's models could not be read, so nothing was saved.",
       tileHint: "Your own server, on the API it speaks.",
       addTitle: "Add a custom endpoint",
       addLead: "Connect your own server. It is saved once the test passes.",

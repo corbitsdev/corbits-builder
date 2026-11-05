@@ -12,6 +12,7 @@ import type { ConversationTurn } from "../../api/conversation.ts";
 import type { Wait } from "../../api/types.ts";
 import type { RunStreamEvent } from "../../api/run-stream.ts";
 import type { ConversationPart } from "@corbits/react-ui";
+import { clippedTurnText } from "@corbits-builder/schemas/conversation";
 import {
   emptyLiveTurn,
   foldLiveTurn,
@@ -73,9 +74,6 @@ const reloadAfter = new Set([
   "reactor.done",
   "reactor.error",
 ]);
-
-// The mirror caps each turn's text at this length.
-const MIRROR_TEXT_LIMIT = 20_000;
 
 function hasContent(segment: LiveTurnState): boolean {
   return segment.text.length > 0 || segment.parts.length > 0;
@@ -162,9 +160,8 @@ export function foldLiveRun(
 }
 
 function sameText(committed: string, live: string): boolean {
-  const a = committed.trim();
-  const b = live.trim();
-  return a === b || (a.length >= MIRROR_TEXT_LIMIT && b.startsWith(a));
+  const text = committed.trim();
+  return text === live.trim() || text === clippedTurnText(live).trim();
 }
 
 function committedTurn(
@@ -252,6 +249,29 @@ export function awaitingCommit(
   return !hasContent(run.current) && pending.parts.length > 0;
 }
 
+/** An approval the coordinator's own run raised is still open: the run waits on the person. */
+export function parkedOnApproval(
+  waits: readonly Pick<Wait, "runId" | "approvalId">[],
+  openApprovals: ReadonlySet<string>,
+  coordinatorRunId: string | null,
+): boolean {
+  return waits.some(
+    (wait) =>
+      wait.runId === coordinatorRunId &&
+      wait.approvalId !== undefined &&
+      openApprovals.has(wait.approvalId),
+  );
+}
+
+/** A run held on an approval keeps its message run open with nothing being written. */
+export function liveTurnStreaming(
+  run: LiveRun,
+  mirror: readonly ConversationTurn[],
+  heldOnApproval: boolean,
+): boolean {
+  return pendingLiveTurn(run, mirror) !== null && !run.ended && !heldOnApproval;
+}
+
 /**
  * The coordinator is held on the person: an approval its own run raised is still open, or its
  * question stands and no message run has started since. A held tool call keeps the native message
@@ -263,11 +283,34 @@ export function waitingOnPerson(
   coordinatorRunId: string | null,
   running: boolean,
 ): boolean {
-  return waits.some(
-    (wait) =>
-      wait.runId === coordinatorRunId &&
-      (wait.approvalId === undefined
-        ? wait.park !== undefined && !running
-        : openApprovals.has(wait.approvalId)),
+  return (
+    parkedOnApproval(waits, openApprovals, coordinatorRunId) ||
+    waits.some(
+      (wait) =>
+        wait.runId === coordinatorRunId &&
+        wait.approvalId === undefined &&
+        wait.park !== undefined &&
+        !running,
+    )
+  );
+}
+
+/**
+ * A message sent here waits on the coordinator from the moment it leaves, before the stream
+ * reports its run: until a reply follows it, a run ends after it, or its run is held on an open
+ * approval. An approval card alone brings no reply text while its run stays open. A standing
+ * question does not end the wait: an answer to it is sent before the stream reports the new run.
+ */
+export function awaitingReply(
+  sentAt: number | null,
+  lastTurnRole: ConversationTurn["role"] | undefined,
+  runEndedAt: number | null,
+  heldOnApproval: boolean,
+): boolean {
+  return (
+    sentAt !== null &&
+    lastTurnRole === "person" &&
+    (runEndedAt === null || runEndedAt < sentAt) &&
+    !heldOnApproval
   );
 }

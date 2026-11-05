@@ -73,15 +73,24 @@ function inline(
       const href = match[5].replace(MARKS, "");
       if (href.startsWith(DOCUMENT_LINK) && openDocument !== undefined) {
         const id = decodeURIComponent(href.slice(DOCUMENT_LINK.length));
+        // An inline span rather than a button: a button never breaks across lines,
+        // so a title in a sentence would jump to its own line and shed its
+        // punctuation. No href, since a document has no address to open elsewhere.
         out.push(
-          <button
+          <span
             key={key}
-            type="button"
+            role="button"
+            tabIndex={0}
             className="artifact-mention"
             onClick={() => openDocument(id)}
+            onKeyDown={(event) => {
+              if (event.key !== "Enter" && event.key !== " ") return;
+              event.preventDefault();
+              openDocument(id);
+            }}
           >
             {label}
-          </button>,
+          </span>,
         );
       } else if (href.startsWith("https://") || href.startsWith("http://")) {
         out.push(

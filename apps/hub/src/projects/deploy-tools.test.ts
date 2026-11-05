@@ -13,6 +13,21 @@ const deployment = {
   sourceOfferingIds: ["offering"],
   defaultSourceOfferingId: "offering",
 };
+const writerDeployment = (name: string) => ({
+  ...deployment,
+  pin: `@corbits-builder/${name}-native@1.0.0`,
+});
+const workflows = {
+  "writer-constraints": writerDeployment("writer-constraints"),
+  "writer-approaches": writerDeployment("writer-approaches"),
+  "writer-product-requirements": writerDeployment(
+    "writer-product-requirements",
+  ),
+  "writer-build-plan": writerDeployment("writer-build-plan"),
+  reviewer: deployment,
+  coder: deployment,
+  designer: deployment,
+};
 
 type Filed = { version: number; approvedVersion?: number } | undefined;
 
@@ -65,12 +80,7 @@ function coderSpawn(changed: Record<string, Filed>) {
     tenantId: "tenant",
     projectId: "project",
     domain: "example.invalid",
-    workflows: {
-      writer: deployment,
-      reviewer: deployment,
-      coder: deployment,
-      designer: deployment,
-    },
+    workflows,
     maxResultBytes: 16384,
   });
   return {
@@ -167,12 +177,7 @@ test("design_app starts one designer per concept within the person's limit, each
     tenantId: "tenant",
     projectId: "project",
     domain: "example.invalid",
-    workflows: {
-      writer: deployment,
-      reviewer: deployment,
-      coder: deployment,
-      designer: deployment,
-    },
+    workflows,
     maxResultBytes: 16384,
   })({ capabilities } as never);
   const run = (name: string, args: Record<string, unknown>) =>
@@ -220,7 +225,7 @@ function writerTools(preferences: Record<string, string> = {}) {
   const fetch = async (path: string, init: RequestInit) => {
     const body = init.body ? JSON.parse(String(init.body)) : undefined;
     if (path.endsWith("/workflows/deployments")) {
-      deployed.push(path);
+      deployed.push(body.pin);
       return Response.json({
         id: "run-writer",
         tenantId: "tenant",
@@ -274,12 +279,7 @@ function writerTools(preferences: Record<string, string> = {}) {
     tenantId: "tenant",
     projectId: "project",
     domain: "example.invalid",
-    workflows: {
-      writer: deployment,
-      reviewer: deployment,
-      coder: deployment,
-      designer: deployment,
-    },
+    workflows,
     maxResultBytes: 16384,
   })({ capabilities } as never);
   const run = (name: string, args: Record<string, unknown>) =>
@@ -329,7 +329,18 @@ test("one ask approves several documents, and a writer starts once every earlier
   expect(
     (await run("deploy_writer", writer("constraints"))).isError,
   ).toBeUndefined();
-  expect(deployed).toHaveLength(2);
+  expect(deployed).toEqual([
+    "@corbits-builder/writer-approaches-native@1.0.0",
+    "@corbits-builder/writer-constraints-native@1.0.0",
+  ]);
+});
+
+test("deploy_writer offers only the kinds a writer saves", async () => {
+  const { run, deployed } = writerTools({ agent_decides_approvals: "yes" });
+  expect(
+    (await run("deploy_writer", writer("engineering_review"))).isError,
+  ).toBe(true);
+  expect(deployed).toEqual([]);
 });
 
 test("with the agent deciding approvals, a filed earlier document is enough", async () => {

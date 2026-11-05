@@ -52,7 +52,10 @@ import { parseJson, readJson } from "../lib/json.ts";
 import { mailRunAsCaller } from "../mail/caller-mail.ts";
 import { actorOf, authorizeProject } from "../projects/authorization.ts";
 import { ProjectError } from "../projects/errors.ts";
-import { parseApprovalPackageBundle } from "./approval-package.ts";
+import {
+  EXCLUDED_PACKAGE_SOURCE_KINDS,
+  parseApprovalPackageBundle,
+} from "./approval-package.ts";
 
 export const APPROVAL_PACKAGE_KIND = "approval_package";
 
@@ -219,8 +222,7 @@ function extractSupportingDocuments(
     }
   }
   for (const source of bundle.manifest.sources) {
-    if (source.kind === "app" || source.kind === APPROVAL_PACKAGE_KIND)
-      continue;
+    if (EXCLUDED_PACKAGE_SOURCE_KINDS.has(source.kind)) continue;
     const path = `documents/${source.kind}.md`;
     if (docMap.has(path) || !isSafeRelativePath(path)) continue;
     const matched = projectDocuments.find(
@@ -513,9 +515,7 @@ export function createPgApprovalRoundStore(
       const bundle = parseApprovalPackageBundle(stored.content);
       const projectDocuments: StoredPackageDocument[] = [];
       for (const source of bundle.manifest.sources) {
-        if (source.kind === "app" || source.kind === APPROVAL_PACKAGE_KIND) {
-          continue;
-        }
+        if (EXCLUDED_PACKAGE_SOURCE_KINDS.has(source.kind)) continue;
         const row = await getArtifact(db, source.artifactId);
         if (!row || row.tenantId !== actor.tenantId) {
           continue;

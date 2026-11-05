@@ -262,7 +262,9 @@ test("ChatGPT and xAI logins are providers a profile binds roles to, and install
       expect(
         listed[plugin]!.connections.map((connection) => connection.status),
       ).toEqual(["connected"]);
-    expect(listed.codex!.models.map((entry) => entry.id)).toContain("gpt-5.5");
+    expect(listed.codex!.models.map((entry) => entry.id)).toContain(
+      "gpt-5.6-sol",
+    );
     expect(listed.xai!.models.map((entry) => entry.id)).toContain("grok-4.7");
     // Two logins and no choice: the person picks a profile before a coordinator starts.
     expect(catalog.unresolved?.code).toBe("model_profile_required");
@@ -292,7 +294,7 @@ test("ChatGPT and xAI logins are providers a profile binds roles to, and install
           tiers: {
             low: { provider: "codex", model: "gpt-6-luna", effort: "low" },
             medium: { provider: "xai", model: "grok-4.7", effort: "low" },
-            high: { provider: "codex", model: "gpt-5.5", effort: "max" },
+            high: { provider: "codex", model: "gpt-5.6-sol", effort: "max" },
             max: { provider: "codex", model: "gpt-6-sol", effort: "high" },
           },
         },
@@ -356,8 +358,7 @@ test("ChatGPT and xAI logins are providers a profile binds roles to, and install
         projectId,
       );
       const visible = await listVisibleOfferings(handle.db, tenantId);
-      const served = (role: keyof typeof installed) => {
-        if (role === "schemaVersion") throw new Error("not a role");
+      const served = (role: "coder" | "coordinator") => {
         const row = visible.find(
           (entry) =>
             entry.offering.id === installed[role].defaultSourceOfferingId,
@@ -370,7 +371,7 @@ test("ChatGPT and xAI logins are providers a profile binds roles to, and install
       };
       expect(served("coder")).toEqual({
         plugin: "codex",
-        model: "gpt-5.5",
+        model: "gpt-5.6-sol",
         quirks: {
           productName: "Builder",
           environmentTagName: "builder_environment",
@@ -401,7 +402,7 @@ test("ChatGPT and xAI logins are providers a profile binds roles to, and install
           source.baseURL,
         ]),
       ).toEqual([
-        ["codex", "gpt-5.5", "https://chatgpt.com/backend-api"],
+        ["codex", "gpt-5.6-sol", "https://chatgpt.com/backend-api"],
         ["xai", "grok-4.7", "https://cli-chat-proxy.grok.com/v1"],
       ]);
       // The secret each source's credential delivers to a sidecar is the login's access token.

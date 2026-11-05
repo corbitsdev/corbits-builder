@@ -42,6 +42,10 @@ export const CustomModel = type({
 );
 export type CustomModel = typeof CustomModel.infer;
 
+// The subscriptions a person signs in to through the hub instead of pasting a key.
+export const ModelLoginPlugin = type("'codex' | 'xai'");
+export type ModelLoginPlugin = typeof ModelLoginPlugin.infer;
+
 // The wire API a custom provider speaks, named by the native adapter plugin that serves it.
 export const CustomApi = type(
   "'openai-compatible' | 'openai-responses' | 'anthropic'",

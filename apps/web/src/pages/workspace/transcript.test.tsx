@@ -1,12 +1,21 @@
 import { describe, expect, test } from "bun:test";
 import { isValidElement, type ReactNode } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
+import {
+  clippedTurnText,
+  maxTurnText,
+} from "@corbits-builder/schemas/conversation";
 import { wording } from "../../config.ts";
+import { Markdown } from "../../markdown.tsx";
 import { DocumentDecision } from "./document-decision.tsx";
 import {
   awaitingCommit,
+  awaitingReply,
   emptyLiveRun,
   foldLiveRun,
+  liveTurnStreaming,
+  parkedOnApproval,
+  pendingLiveTurn,
   waitingOnPerson,
 } from "./live-run.ts";
 import { RoomThread } from "./transcript.tsx";
@@ -88,6 +97,43 @@ describe("conversation transcript", () => {
     expect(html).not.toContain("sha256");
   });
 
+  test("a bold document name stays inline in its sentence and opens by click or key", () => {
+    const source =
+      "Already written into **Ways to build your list**. What the app does is next.";
+    const documents = [{ id: "approaches", title: "Ways to build your list" }];
+    const html = renderToStaticMarkup(
+      <RoomThread
+        turns={[{ role: "assistant", text: source, at: 2 }]}
+        documents={documents}
+        onOpenDocument={() => {}}
+      />,
+    );
+    // Inline, not a <button>: a button is one unbreakable box, so the title would leave the line.
+    expect(html).toContain(
+      'into <strong><span role="button" tabindex="0" class="artifact-mention">Ways to build your list</span></strong>. What',
+    );
+    expect(html).not.toContain("href");
+
+    const opened: string[] = [];
+    const mention = findElement(
+      Markdown({
+        source: "See [Ways to build your list](document:approaches).",
+        openDocument: (id) => opened.push(id),
+      }),
+      "span",
+    );
+    (mention?.props["onClick"] as (() => void) | undefined)?.();
+    const onKeyDown = mention?.props["onKeyDown"] as
+      | ((event: { key: string; preventDefault(): void }) => void)
+      | undefined;
+    const prevented: string[] = [];
+    for (const key of ["Enter", " ", "Tab"]) {
+      onKeyDown?.({ key, preventDefault: () => prevented.push(key) });
+    }
+    expect(opened).toEqual(["approaches", "approaches", "approaches"]);
+    expect(prevented).toEqual(["Enter", " "]);
+  });
+
   test("an approval asks about the document in words", () => {
     const html = renderToStaticMarkup(
       <RoomThread
@@ -164,6 +210,23 @@ describe("conversation transcript", () => {
     );
   });
 
+  test("a sent message waits on the coordinator until its approval card opens, and through an answered question", () => {
+    const approval = { runId: "run-c", approvalId: "appr-1" };
+    const question = { runId: "run-c", park: { seq: 4 } };
+    const heldOnCard = parkedOnApproval(
+      [approval],
+      new Set(["appr-1"]),
+      "run-c",
+    );
+    expect(awaitingReply(10, "person", null, false)).toBe(true);
+    expect(awaitingReply(10, "person", null, heldOnCard)).toBe(false);
+    expect(awaitingReply(10, "assistant", null, false)).toBe(false);
+    expect(awaitingReply(10, "person", 12, false)).toBe(false);
+    // The answer is sent while the question still stands and before the stream reports the run.
+    const answered = parkedOnApproval([question], new Set(), "run-c");
+    expect(awaitingReply(20, "person", 12, answered)).toBe(true);
+  });
+
   test("an inference call that finishes with tool work settles even while the message run stays open on a park", () => {
     const started = foldLiveRun(
       emptyLiveRun,
@@ -186,6 +249,50 @@ describe("conversation transcript", () => {
     const done = foldLiveRun(withTool, { type: "inference.done" }, null).run;
     expect(done.ended).toBe(false);
     expect(awaitingCommit(done, [])).toBe(true);
+  });
+
+  test("a reply over a turn's length is committed by its clipped copy, even when the clip drops half an emoji", () => {
+    const reply = `${"a".repeat(maxTurnText - 1)}😀 and more`;
+    const run = [
+      { type: "inference.start" },
+      { type: "inference.text.delta", data: { partial: { text: reply } } },
+      { type: "inference.done" },
+    ].reduce((live, event) => foldLiveRun(live, event, null).run, emptyLiveRun);
+    expect(
+      pendingLiveTurn(run, [
+        { role: "assistant", text: clippedTurnText(reply), at: 5 },
+      ]),
+    ).toBeNull();
+  });
+
+  test("a turn held on the person's approval is no longer being written", () => {
+    const held = [
+      { type: "message.run.started" },
+      { type: "inference.start" },
+      {
+        type: "inference.tool_call.end",
+        data: {
+          callId: "call-1",
+          name: "request_approval",
+          arguments: { kinds: ["brief"] },
+        },
+      },
+      { type: "inference.done" },
+    ].reduce((run, event) => foldLiveRun(run, event, null).run, emptyLiveRun);
+    const waits = [
+      { runId: "run-c", approvalId: "appr-1" },
+      { runId: "run-coder", approvalId: "appr-2" },
+    ];
+    const streaming = (open: string[]) =>
+      liveTurnStreaming(
+        held,
+        [],
+        parkedOnApproval(waits, new Set(open), "run-c"),
+      );
+    expect(held.ended).toBe(false);
+    expect(streaming(["appr-1"])).toBe(false);
+    expect(streaming(["appr-2"])).toBe(true);
+    expect(streaming([])).toBe(true);
   });
 
   test("a specialist's report joins its hand-off as one message and a long run of lone ones folds", () => {
@@ -322,6 +429,23 @@ describe("conversation transcript", () => {
     ]) {
       expect(html).not.toContain(hidden);
     }
+  });
+
+  test("a document with a blank name is asked about by its tool", () => {
+    const html = renderToStaticMarkup(
+      <DocumentDecision
+        approval={{
+          approvalId: "appr-blank",
+          toolName: "browser.browser_navigate",
+          document: { kind: "notes", title: "", version: 1 },
+        }}
+        onYes={() => {}}
+        onAlways={() => {}}
+        onNo={() => {}}
+      />,
+    );
+    expect(html).toContain("browser navigate");
+    expect(html).not.toContain(wording.approval.document(""));
   });
 
   test("a design approval lists each look and starts one by name", () => {

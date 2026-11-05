@@ -5,6 +5,7 @@ export const liveAppWording = {
     "The app is not answering. The Live Preview tab in Builder says why.",
   partStopped: "The app's server stopped.",
   stopped: "The app stopped.",
+  checkFailed: "Checking on the app failed.",
   commandFailed: (command: string) => `\`${command}\` failed.`,
   hostExited: (code: number) =>
     `The process running the app exited with code ${String(code)}.`,

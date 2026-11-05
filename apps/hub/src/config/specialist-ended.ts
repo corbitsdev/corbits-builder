@@ -33,6 +33,10 @@ const PERSON_LINES: Record<SpawnedRole, Record<Outcome, string>> = {
   },
 };
 
+const NOTICE_LINES = new Set(
+  Object.values(PERSON_LINES).flatMap((lines) => Object.values(lines)),
+);
+
 const TASKS: Record<SpawnedRole, (kind: string | undefined) => string> = {
   writer: (kind) => `The writer writing the ${kind ?? "assigned"} document`,
   reviewer: (kind) =>
@@ -59,5 +63,9 @@ export function specialistEndedMessage(ended: {
 export function personTurnText(text: string): string {
   if (!text.startsWith(SPECIALIST_ENDED_LEAD)) return text;
   const end = text.indexOf(COORDINATOR_ONLY);
-  return end === -1 ? text : text.slice(0, end);
+  if (end === -1) return text;
+  // A person may type the same lead; only the hub's own notice lines are cut.
+  return NOTICE_LINES.has(text.slice(SPECIALIST_ENDED_LEAD.length, end))
+    ? text.slice(0, end)
+    : text;
 }

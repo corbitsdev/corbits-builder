@@ -41,11 +41,8 @@ import {
   spliceDesignScreens,
   syncDesignScreensOnDisk,
 } from "../builds/starter.ts";
-import {
-  compactingDirector,
-  dropDegenerateTurn,
-  trimHistory,
-} from "../workflows/compaction.ts";
+import { compactingDirector } from "../workflows/director.ts";
+import { dropDegenerateTurn, trimHistory } from "../workflows/compaction.ts";
 import {
   readDesignBundle,
   readDesignDraft,
@@ -178,7 +175,10 @@ test("file_design_option packs per-screen files and drops the untouched starter 
           domain: "example.invalid",
           role: "designer",
           workflows: {
-            writer: deployment,
+            "writer-constraints": deployment,
+            "writer-approaches": deployment,
+            "writer-product-requirements": deployment,
+            "writer-build-plan": deployment,
             reviewer: deployment,
             coder: deployment,
             designer: deployment,
@@ -459,7 +459,10 @@ test("designer agent writes per-screen files, is held by checkBeforeDone until c
         domain: "example.invalid",
         role: "designer",
         workflows: {
-          writer: deployment,
+          "writer-constraints": deployment,
+          "writer-approaches": deployment,
+          "writer-product-requirements": deployment,
+          "writer-build-plan": deployment,
           reviewer: deployment,
           coder: deployment,
           designer: deployment,

@@ -12,7 +12,7 @@ import type {
   StartApprovalRound,
   TriageDecisionInput,
 } from "@corbits-builder/schemas/approval-round";
-import { productClient } from "./transport.ts";
+import { productClient, refusalBody } from "./transport.ts";
 import { workspaceTenantId } from "./auth.ts";
 import { ApiFailure } from "./types.ts";
 import { wording } from "../config.ts";
@@ -76,10 +76,7 @@ export async function keepLiveApp(projectId: string, signal?: AbortSignal) {
 /** A hub refusal's status, code and body, whatever the body holds; undefined for other failures. */
 async function refusal(cause: unknown) {
   if (!(cause instanceof ProductApiError)) return undefined;
-  const body: unknown = await cause.response
-    .clone()
-    .json()
-    .catch(() => undefined);
+  const body = await refusalBody(cause);
   const record = (
     body !== null && typeof body === "object" ? body : {}
   ) as Record<string, unknown>;
@@ -217,6 +214,12 @@ export async function attachMaterials(
 ) {
   const tenantId = await workspaceTenantId();
   return productClient().attachMaterials(tenantId, projectId, files, message);
+}
+
+/** Takes an attached file back; the coordinator is told and the file leaves the documents. */
+export async function removeMaterial(projectId: string, artifactId: string) {
+  const tenantId = await workspaceTenantId();
+  return productClient().removeMaterial(tenantId, projectId, artifactId);
 }
 
 export async function downloadPackageZip(

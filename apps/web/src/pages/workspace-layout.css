@@ -145,19 +145,9 @@
 }
 
 .artifact-mention {
-  display: inline-flex;
-  align-items: center;
-  min-height: 44px;
-  min-width: 44px;
-  margin: 0;
-  padding: 0 var(--space-1);
-  border: 0;
-  background: transparent;
   color: var(--wb-foreground);
-  font: inherit;
   text-decoration: underline;
   text-underline-offset: 0.15em;
-  cursor: pointer;
 }
 
 .artifact-mention:focus-visible {
@@ -193,14 +183,10 @@
 
 /* Not yet is sm:ms-auto, and every action is shrink-0 nowrap. A long middle
    label fills the row, Not yet wraps, and the auto margin pins it to the
-   right edge. Keep the actions on one line; the long label wraps inside
-   its own button. The design card sizes its actions on their own. */
-.document-decision:not(.document-decision-design)
-  [data-slot="tool-approval-card"]
-  > div:last-child {
-  flex-wrap: nowrap;
-}
-
+   right edge, so Not yet drops that margin. A label wider than the card
+   wraps between words inside its own button; the card's overflow-wrap
+   anywhere would otherwise break it a letter at a time. The design card
+   sizes its actions on their own. */
 .document-decision:not(.document-decision-design)
   [data-slot="tool-approval-card"]
   > div:last-child
@@ -210,6 +196,8 @@
   height: auto;
   min-height: 2rem;
   white-space: normal;
+  overflow-wrap: normal;
+  word-break: normal;
 }
 
 .document-decision:not(.document-decision-design)
@@ -220,8 +208,11 @@
   margin-inline-start: 0;
 }
 
-/* Design approval: the two actions share one line, one width and one
-   height. Not yet is not pinned to the right edge, and the labels do not wrap. */
+/* Design approval: the two actions share one line and one height, and Not
+   yet is not pinned to the right edge. Each starts at its label's width and
+   shares the spare room, so a label wraps between words only once the line
+   is too narrow for it; the button centres its text, so clipping it would
+   cut both ends. */
 .document-decision-design [data-slot="tool-approval-card"] > div:last-child {
   flex-wrap: nowrap;
   align-items: stretch;
@@ -231,12 +222,14 @@
   [data-slot="tool-approval-card"]
   > div:last-child
   > button {
-  flex: 1 1 0;
-  min-width: 0;
+  flex: 1 1 auto;
   margin-inline-start: 0;
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
+  height: auto;
+  min-height: 2rem;
+  white-space: normal;
+  overflow-wrap: normal;
+  word-break: normal;
+  text-align: center;
 }
 
 /* The library keeps a settled line's words from shrinking, so a long document title ran past the

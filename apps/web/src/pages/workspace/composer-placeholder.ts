@@ -23,12 +23,15 @@ function passAlongRole(
 
 export function composerPlaceholder(input: {
   approvalOpen: boolean;
+  /** The coordinator's questions wait on the person; a message sent instead answers them in its own words. */
+  questionsOpen: boolean;
   /** Absent until project status has loaded. */
   status: ProjectStatus | undefined;
   /** No pane deliverables, design draft, or concepts yet. */
   chatFirst: boolean;
 }): string {
   if (input.approvalOpen) return wording.approval.composerPlaceholder;
+  if (input.questionsOpen) return wording.questions.composerPlaceholder;
   const status = input.status;
   if (status === undefined) return copy.reply;
   const role = passAlongRole(status.working);

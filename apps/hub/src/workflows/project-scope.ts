@@ -2,6 +2,7 @@ import { HUB_CREDENTIAL_HANDLE } from "@intx/types/credential-delivery";
 import type { RuntimeCapabilities } from "@intx/types/runtime-capabilities";
 import {
   WorkflowProjectScope,
+  type InstalledWorkflows,
   type WorkflowRole,
 } from "@corbits-builder/schemas/installed-workflows";
 import { getLogger } from "@intx/log";
@@ -12,6 +13,30 @@ const log = getLogger(["corbits-builder", "hub", "workflow-project-scope"]);
 const SAFE_CODE = /^[a-z0-9_:]+$/;
 // A deployed agent keeps the bundle it started with; a field a newer hub adds must not refuse its scope.
 const HubProjectScope = WorkflowProjectScope.onDeepUndeclaredKey("ignore");
+
+/** The packages any run in the project may deploy or read, the coder resolved for the project. */
+export function scopeWorkflows(
+  installed: InstalledWorkflows,
+  installsAnyPackage: boolean,
+): WorkflowProjectScope["workflows"] {
+  return {
+    "writer-constraints": installed["writer-constraints"],
+    "writer-approaches": installed["writer-approaches"],
+    "writer-product-requirements": installed["writer-product-requirements"],
+    "writer-build-plan": installed["writer-build-plan"],
+    // A bundle frozen before writers were split cannot read its scope without writer, and a
+    // coordinator waiting on the person must still finish their approval. Starting a writer from it
+    // would start the constraints writer for any document, so the hub hands such a coordinator off
+    // before that deploy lands (coordinator-upgrade handoff).
+    writer: installed["writer-constraints"],
+    reviewer: installed.reviewer,
+    coder: installsAnyPackage
+      ? installed["coder-any-package"]
+      : installed.coder,
+    designer: installed.designer,
+    presenter: installed.presenter,
+  };
+}
 
 // The model sees only the original code (never a refusal body or arbitrary message); the cause stays in the hub log.
 export function projectScopeFailure(callId: string, error: unknown) {

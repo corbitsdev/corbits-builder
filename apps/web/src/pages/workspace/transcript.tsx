@@ -11,6 +11,7 @@ import {
   SPECIALIST_ENDED_LEAD,
   wording,
 } from "../../config.ts";
+import type { QuestionsLayout } from "../../questions-layout-setting.ts";
 import { Fragment, useState, type ReactNode } from "react";
 import { Check, Copy } from "lucide-react";
 import {
@@ -48,7 +49,7 @@ import {
   type ToolApprovalDecision,
   type ToolApprovalStatus,
 } from "@corbits/react-ui";
-import { toolPhrase, toolSubject } from "./agent-activity.tsx";
+import { toolPhrase, toolResult, toolSubject } from "./agent-activity.tsx";
 import { DOCUMENT_LINK, Markdown } from "../../markdown.jsx";
 import { toast } from "sonner";
 import { CONV_SCROLL_CLASS } from "./pane-classes.ts";
@@ -174,15 +175,6 @@ function instructionOf(input: unknown): string | undefined {
     : undefined;
 }
 
-function resultValue(content: unknown): unknown {
-  if (typeof content !== "string") return content;
-  try {
-    return JSON.parse(content) as unknown;
-  } catch {
-    return content;
-  }
-}
-
 /**
  * A call named in plain words, so the activity's live line and steps read like
  * a person at work. A finished hand-off says whom it started. Opened, it shows
@@ -206,7 +198,7 @@ function readableTool(
     ...(result === undefined
       ? {}
       : {
-          output: resultValue(result.content),
+          output: toolResult(part.name, result.content),
           ...(result.isError ? { status: "error" as const } : {}),
         }),
   };
@@ -371,6 +363,22 @@ function toolsOf(parts: readonly ConversationPart[]): readonly PartTool[] {
   );
 }
 
+/** Whether questions the coordinator asked since the person's last turn still wait on them. */
+export function questionsOpen(
+  turns: readonly TranscriptTurn[],
+  results: ReadonlyMap<string, CallResult>,
+): boolean {
+  const since = turns.findLastIndex((turn) => turn.role === "person") + 1;
+  return turns
+    .slice(since)
+    .some((turn) =>
+      toolsOf(visibleTurnParts(turn)).some(
+        (tool) =>
+          askedQuestions(tool, results.get(tool.toolCallId)) !== undefined,
+      ),
+    );
+}
+
 /**
  * The thread cut at the person's turns. Between two of them the coordinator
  * speaks once: its turns' words under one header, then every card from that
@@ -509,18 +517,21 @@ function renderStep(step: ActivityStep): ReactNode {
 /** Copies a message's words to the clipboard, and says so for a moment. */
 function CopyAction({ text }: { text: string }) {
   const [copied, setCopied] = useState(false);
+  const copy = async () => {
+    try {
+      await navigator.clipboard.writeText(text);
+    } catch (cause) {
+      if (!(cause instanceof DOMException)) throw cause;
+      toast.error(wording.message.copyFailed);
+      return;
+    }
+    setCopied(true);
+    setTimeout(() => setCopied(false), COPIED_MS);
+  };
   return (
     <MessageAction
       label={copied ? wording.message.copied : wording.message.copy}
-      onClick={() => {
-        navigator.clipboard.writeText(text).then(
-          () => {
-            setCopied(true);
-            setTimeout(() => setCopied(false), COPIED_MS);
-          },
-          () => toast.error(wording.message.copyFailed),
-        );
-      }}
+      onClick={() => void copy()}
     >
       {copied ? <Check aria-hidden="true" /> : <Copy aria-hidden="true" />}
     </MessageAction>
@@ -600,6 +611,7 @@ export function RoomThread({
   typedYes,
   onAnswerQuestions,
   questionsDisabled = false,
+  questionsLayout = "steps",
   children,
 }: {
   turns: readonly TranscriptTurn[];
@@ -637,6 +649,8 @@ export function RoomThread({
   /** Sends the person's answers to the coordinator's questions as their next message. */
   onAnswerQuestions?: (reply: string) => Promise<boolean>;
   questionsDisabled?: boolean;
+  /** Whether question cards ask one question at a time or all at once. */
+  questionsLayout?: QuestionsLayout;
   /** Agent output rendered in the same log, after the turns. */
   children?: ReactNode;
 }) {
@@ -698,6 +712,7 @@ export function RoomThread({
               id={card.callId}
               ask={card.ask}
               state={questions(card.callId)}
+              layout={questionsLayout}
             />
           </Message>
         </ConversationItem>

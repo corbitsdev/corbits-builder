@@ -1,5 +1,7 @@
 /** The version of each document this viewer last opened, kept in this browser. */
 import { useMemo } from "react";
+import { type } from "arktype";
+import { readJson } from "../../json.ts";
 import {
   useStoredPreference,
   writeStoredPreference,
@@ -9,17 +11,12 @@ const SEEN_KEY = "builder-seen-document-versions";
 
 export type SeenVersions = Readonly<Record<string, number>>;
 
+const Seen = type({ "[string]": "number" });
+// Nothing stored, or nothing readable, means no version has been opened yet.
+const NONE_SEEN: SeenVersions = {};
+
 function parseSeen(raw: string): SeenVersions {
-  try {
-    const parsed: unknown = JSON.parse(raw);
-    return typeof parsed === "object" &&
-      parsed !== null &&
-      !Array.isArray(parsed)
-      ? (parsed as SeenVersions)
-      : {};
-  } catch {
-    return {};
-  }
+  return readJson(raw, Seen) ?? NONE_SEEN;
 }
 
 export function useSeenVersions(): SeenVersions {

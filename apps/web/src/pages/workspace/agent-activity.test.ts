@@ -1,5 +1,6 @@
 import { expect, test } from "bun:test";
-import { activityPhrase } from "./agent-activity.tsx";
+import { wording } from "../../config.ts";
+import { activityPhrase, toolResult } from "./agent-activity.tsx";
 
 const coder = {
   runId: "run-coder",
@@ -26,4 +27,11 @@ test("a long command's own word on its progress replaces the reading of the call
       },
     }),
   ).toEqual({ phrase: "installing the app's packages", asking: false });
+});
+
+test("a call whose raw result means nothing to a person is described in plain words", () => {
+  expect(toolResult("exec", "unknown tool: exec")).toBe(
+    wording.activity.toolResult["exec"],
+  );
+  expect(toolResult("read_file", '{"lines":3}')).toEqual({ lines: 3 });
 });

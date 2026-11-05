@@ -90,7 +90,7 @@ export async function openDecisions(onlyProjectId?: string): Promise<Wait[]> {
       readConversationEvents(record.projectId),
       client.nativeApprovals(record.tenantId),
     ]);
-    if (conversation === null) continue;
+    if (conversation.runId === null) continue;
     const pending = approvals.filter(
       (approval) => approval.status === "pending",
     );

@@ -42,9 +42,10 @@ const FOLDED_INSTRUCTION_ASKS = new Set(["design_app"]);
 
 function shortName(approval: DocumentApproval): string | undefined {
   const { document } = approval;
-  return document === undefined
-    ? undefined
-    : shortDocumentName(document.kind, document.title);
+  if (document === undefined) return undefined;
+  const name = shortDocumentName(document.kind, document.title);
+  // A blank title has no name to ask about, so the card falls back to the tool's wording.
+  return name === "" ? undefined : name;
 }
 
 // The documents a request_approval ask approves together, when it covers more than one.
@@ -62,7 +63,7 @@ function decisionTitle(approval: DocumentApproval, shown: boolean): string {
     );
   const question = approvalQuestion(
     approval.toolName,
-    shortName(approval) ?? "",
+    shortName(approval),
     approval.subject,
   );
   return shown ? `${question} ${text.openOnRight}` : question;
@@ -136,12 +137,11 @@ function settledLine(approval: DocumentApproval): string {
         .map(({ title, version }) => `${title} v${String(version)}`)
         .join(", "),
     );
-  const settled =
-    approval.toolName === undefined
-      ? undefined
-      : text.settled[approval.toolName];
+  if (approval.toolName === undefined)
+    return text.approved(text.settledUnnamed);
+  const settled = text.settled[approval.toolName];
   return text.approved(
-    settled ?? approvalQuestion(approval.toolName, "", approval.subject),
+    settled ?? approvalQuestion(approval.toolName, undefined, approval.subject),
   );
 }
 

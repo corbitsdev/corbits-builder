@@ -2,11 +2,9 @@ import { createReviewerAgent } from "@corbits-builder/reviewer/agent";
 import { createReviewerWorkflow } from "@corbits-builder/reviewer";
 import { mail } from "@intx/tools-mail/sidecar-bundle";
 import { roleInference } from "../role-inference.ts";
-import {
-  compactingDirector,
-  dropDegenerateTurn,
-  trimHistory,
-} from "../compaction.ts";
+import { compactingDirector } from "../director.ts";
+import { dropDegenerateTurn, trimHistory } from "../compaction.ts";
+import { savedResultTools } from "../saved-result-tools.ts";
 import { nativePackageName } from "../package-name.ts";
 
 const compacting = compactingDirector(nativePackageName("reviewer"));
@@ -20,7 +18,7 @@ const agent = createReviewerAgent({
   id: "reviewer",
   capabilities: [],
   inference: { ...source, parameters },
-  tools: [mail],
+  tools: [mail, savedResultTools],
 });
 const workflow = createReviewerWorkflow({
   id: "corbits-builder-reviewer",

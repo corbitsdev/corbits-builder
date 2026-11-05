@@ -21,11 +21,13 @@ function standing(input: {
 
 function placeholder(input: {
   approvalOpen?: boolean;
+  questionsOpen?: boolean;
   chatFirst?: boolean;
   status?: ProjectStatus;
 }): string {
   return composerPlaceholder({
     approvalOpen: input.approvalOpen ?? false,
+    questionsOpen: input.questionsOpen ?? false,
     chatFirst: input.chatFirst ?? false,
     status: input.status,
   });
@@ -152,6 +154,16 @@ describe("composer placeholder", () => {
           failedSpecialist: "coder",
         }),
       }),
+    ).toBe(wording.approval.composerPlaceholder);
+  });
+
+  test("open questions point at the card, after an open approval", () => {
+    const status = standing({ working: [{ role: "coder", state: "working" }] });
+    expect(placeholder({ questionsOpen: true, status })).toBe(
+      wording.questions.composerPlaceholder,
+    );
+    expect(
+      placeholder({ approvalOpen: true, questionsOpen: true, status }),
     ).toBe(wording.approval.composerPlaceholder);
   });
 });

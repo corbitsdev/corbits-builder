@@ -1,7 +1,9 @@
 import { expect, test } from "bun:test";
+import { type } from "arktype";
 import type { RuntimeCapabilities } from "@intx/types/runtime-capabilities";
+import { WriterDocumentKind } from "@corbits-builder/schemas/artifact";
 import type { WorkflowRole } from "@corbits-builder/schemas/installed-workflows";
-import { createArtifactTools } from "./tools.ts";
+import { createArtifactTools, createWriterArtifactTools } from "./tools.ts";
 
 const deployment = {
   source: {
@@ -41,7 +43,28 @@ const sampleApproaches = {
   recommended: "simple",
 };
 
-function harness(role: WorkflowRole) {
+// The fields each writer's save takes.
+const WRITER_FIELDS: Record<WriterDocumentKind, string[]> = {
+  constraints: ["content", "kind", "openQuestions", "title"],
+  approaches: ["approaches", "content", "kind", "openQuestions", "title"],
+  product_requirements: ["content", "kind", "openQuestions", "title"],
+  build_plan: ["content", "kind", "openQuestions", "title"],
+};
+const WRITER_KINDS = Object.keys(WRITER_FIELDS).map((kind) =>
+  WriterDocumentKind.assert(kind),
+);
+// A provider that reads only top-level properties sees nothing to fill in a union and sends {}.
+const FlatToolSchema = type({
+  type: "'object'",
+  additionalProperties: "false",
+  properties: "Record<string, object>",
+  "anyOf?": "never",
+});
+
+function harness(
+  role: WorkflowRole,
+  tools: ReturnType<typeof createArtifactTools>,
+) {
   const written: unknown[] = [];
   const fetch = async (path: string, init: RequestInit) => {
     if (path === "/api/workflow-project-scope")
@@ -51,7 +74,10 @@ function harness(role: WorkflowRole) {
         domain: "example.invalid",
         role,
         workflows: {
-          writer: deployment,
+          "writer-constraints": deployment,
+          "writer-approaches": deployment,
+          "writer-product-requirements": deployment,
+          "writer-build-plan": deployment,
           reviewer: deployment,
           coder: deployment,
           designer: deployment,
@@ -83,7 +109,7 @@ function harness(role: WorkflowRole) {
   const capabilities = {
     resolve: () => ({ resolve: async () => ({ kind: "http", fetch }) }),
   } as unknown as RuntimeCapabilities;
-  const instance = createArtifactTools(role)({ capabilities } as never);
+  const instance = tools({ capabilities } as never);
   return {
     definitions: instance.definitions,
     written,
@@ -96,7 +122,10 @@ function harness(role: WorkflowRole) {
 }
 
 test("coordinator write_artifact exposes only problem_brief without approaches", async () => {
-  const coordinator = harness("coordinator");
+  const coordinator = harness(
+    "coordinator",
+    createArtifactTools("coordinator"),
+  );
   const definition = coordinator.definitions.find(
     (item) => item.name === "write_artifact",
   );
@@ -139,15 +168,16 @@ test("coordinator write_artifact exposes only problem_brief without approaches",
 });
 
 test("every role's artifact tool definitions declare top-level type: object", () => {
-  const roles: WorkflowRole[] = [
-    "coordinator",
-    "writer",
-    "reviewer",
-    "coder",
-    "designer",
+  const tools = [
+    ...(["coordinator", "reviewer", "coder", "designer"] as const).map((role) =>
+      harness(role, createArtifactTools(role)),
+    ),
+    ...WRITER_KINDS.map((kind) =>
+      harness("writer", createWriterArtifactTools(kind)),
+    ),
   ];
-  for (const role of roles) {
-    for (const definition of harness(role).definitions) {
+  for (const tool of tools) {
+    for (const definition of tool.definitions) {
       expect(
         (definition.inputSchema as { type?: unknown } | undefined)?.type,
       ).toBe("object");
@@ -155,80 +185,60 @@ test("every role's artifact tool definitions declare top-level type: object", ()
   }
 });
 
-test("writer write_artifact exposes only writer kinds and validates approaches", async () => {
-  const writer = harness("writer");
-  const definition = writer.definitions.find(
-    (item) => item.name === "write_artifact",
-  );
-  expect(
-    (definition?.inputSchema as { type?: unknown } | undefined)?.type,
-  ).toBe("object");
-  const branches = (
-    definition?.inputSchema as
-      | {
-          anyOf?: {
-            additionalProperties?: boolean;
-            properties?: {
-              kind?: { const?: string };
-              approaches?: unknown;
-            };
-          }[];
-        }
-      | undefined
-  )?.anyOf;
-  const branchFor = (kind: string) =>
-    branches?.find((branch) => branch.properties?.kind?.const === kind);
-  expect(branches).toHaveLength(4);
-  const approaches = branchFor("approaches");
-  expect(approaches?.additionalProperties).toBe(false);
-  expect(Object.keys(approaches?.properties ?? {}).sort()).toEqual([
-    "approaches",
-    "content",
-    "kind",
-    "openQuestions",
-    "title",
-  ]);
-  for (const kind of ["constraints", "product_requirements", "build_plan"]) {
-    const branch = branchFor(kind);
-    expect(branch?.additionalProperties).toBe(false);
-    expect(Object.keys(branch?.properties ?? {}).sort()).toEqual([
-      "content",
-      "kind",
-      "openQuestions",
-      "title",
+test("each writer's write_artifact lists only its own fields, at the top level", () => {
+  for (const [kind, fields] of Object.entries(WRITER_FIELDS)) {
+    const tools = harness(
+      "writer",
+      createWriterArtifactTools(WriterDocumentKind.assert(kind)),
+    );
+    const [definition] = tools.definitions;
+    const schema = FlatToolSchema.assert(definition?.inputSchema);
+    expect(Object.keys(schema.properties).sort()).toEqual(fields);
+  }
+});
+
+test("a writer files under the kind it was deployed for, with or without naming it", async () => {
+  for (const kind of WRITER_KINDS) {
+    const writer = harness("writer", createWriterArtifactTools(kind));
+    const otherKind = await writer.write({
+      kind: WRITER_KINDS.find((other) => other !== kind),
+      title: "Doc",
+      content: "# Doc",
+    });
+    expect(otherKind.content).toStartWith("invalid_arguments:");
+    const empty = await writer.write({ title: "Doc", content: "" });
+    expect(empty.content).toStartWith("invalid_arguments:");
+    expect(writer.written).toHaveLength(0);
+
+    await writer.write({ title: "Unnamed", content: "# Doc" });
+    await writer.write({ kind, title: "Named", content: "# Doc" });
+    expect(writer.written).toEqual([
+      { kind, title: "Unnamed", content: "# Doc" },
+      { kind, title: "Named", content: "# Doc" },
     ]);
   }
-  expect(branchFor("problem_brief")).toBeUndefined();
+});
 
-  const briefAttempt = await writer.write({
-    kind: "problem_brief",
-    title: "Problem Brief",
-    content: "# Problem Brief",
-  });
-  expect(briefAttempt.isError).toBe(true);
-  expect(briefAttempt.content).toStartWith("invalid_arguments:");
-
-  for (const kind of ["constraints", "product_requirements", "build_plan"]) {
-    const rejected = await writer.write({
-      kind,
+test("only the approaches writer saves approaches", async () => {
+  for (const kind of WRITER_KINDS.filter((kind) => kind !== "approaches")) {
+    const writer = harness("writer", createWriterArtifactTools(kind));
+    const result = await writer.write({
       title: "Doc",
       content: "# Doc",
       approaches: sampleApproaches,
     });
-    expect(rejected.isError).toBe(true);
-    expect(rejected.content).toStartWith("invalid_arguments:");
-    expect(rejected.content).toContain("approaches");
+    expect(result.content).toStartWith("invalid_arguments:");
+    expect(result.content).toContain("approaches");
   }
-  expect(writer.written).toHaveLength(0);
 
-  const validApproaches = await writer.write({
-    kind: "approaches",
+  const approaches = harness("writer", createWriterArtifactTools("approaches"));
+  const valid = await approaches.write({
     title: "Approaches",
     content: "# Approaches",
     approaches: sampleApproaches,
   });
-  expect(validApproaches.isError).toBeUndefined();
-  expect(writer.written).toEqual([
+  expect(valid.isError).toBeUndefined();
+  expect(approaches.written).toEqual([
     {
       kind: "approaches",
       title: "Approaches",

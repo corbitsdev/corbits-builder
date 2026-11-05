@@ -1,4 +1,11 @@
 # Corbits Triage policy.
+groups:
+  approved:
+    users:
+      - thegreataxios
+      - brianjfox
+      - pratikbuilds
+      - etodanik
 rules:
   - check: linked-issue
     text: Link a GitHub or Linear issue. Open an issue for the change first, then a pull request that links it.
@@ -220,15 +227,18 @@ rules:
     evidence:
       - maintainer-stated
 code-review:
-  on: false
+  on: true
+  for:
+    - approved
+  provider: anthropic
 actions:
   pass:
     - do: approve
       when:
+        findings:
+          above: P2
         author:
-          - users:
-              - thegreataxios
-              - brianjfox
+          - approved
     - do: request-review
       target:
         to: codeowners

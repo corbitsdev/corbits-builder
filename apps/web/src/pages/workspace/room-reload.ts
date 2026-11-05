@@ -13,8 +13,8 @@ export type RoomReloadDeps = {
 
 const defaultDeps: RoomReloadDeps = {
   now: () => Date.now(),
-  setTimeout: (callback, ms) => setTimeout(callback, ms) as unknown as number,
-  clearTimeout: (handle) => clearTimeout(handle),
+  setTimeout: (callback, ms) => window.setTimeout(callback, ms),
+  clearTimeout: (handle) => window.clearTimeout(handle),
 };
 
 export function createRoomReloader(
@@ -26,9 +26,18 @@ export function createRoomReloader(
   let timer: number | null = null;
   let disposed = false;
 
+  const read = async () => {
+    try {
+      await load();
+    } catch (cause) {
+      // `loadProjectRoom` keeps the last room on a failed read, and with none it fails the room
+      // read itself, which shows the fault. A background read has nothing more to show.
+      console.warn("The room could not be reloaded.", cause);
+    }
+  };
   const fire = () => {
     last = deps.now();
-    void load().catch(() => undefined);
+    void read();
   };
 
   return {

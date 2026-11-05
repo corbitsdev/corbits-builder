@@ -69,11 +69,23 @@ const canShare = (type: string) =>
     files: [new File([], `file.${EXTENSION[type] ?? "bin"}`, { type })],
   }) === true;
 
-function share(file: File) {
-  navigator.share({ files: [file] }).catch((cause: unknown) => {
+async function share(file: File) {
+  try {
+    await navigator.share({ files: [file] });
+  } catch (cause) {
     if (!(cause instanceof DOMException && cause.name === "AbortError"))
       failed(cause);
-  });
+  }
+}
+
+// Only the build is caught: a failure in what the press then does with the file is not a failed build.
+async function builtOrReported(prepared: Prepared): Promise<Built | null> {
+  try {
+    return await prepared.built;
+  } catch (cause) {
+    failed(cause);
+    return null;
+  }
 }
 
 type Built = { file: File; note?: string; stale?: boolean };
@@ -118,16 +130,34 @@ export function useFileGroup(source: PaneFile | null): PaneBarGroup {
       at: Date.now(),
       built: file.build(),
     };
-    next.built.then(
-      (built) => {
-        next.ready = built;
-      },
-      () => {
-        if (prepared.current === next) prepared.current = null;
-      },
-    );
+    void keepOrForget(next);
     prepared.current = next;
     return next;
+  };
+  // A failed build is reported by the press that waits on it; this only lets the next press build again.
+  const keepOrForget = async (held: Prepared) => {
+    const [outcome] = await Promise.allSettled([held.built]);
+    if (outcome.status === "fulfilled") held.ready = outcome.value;
+    else if (prepared.current === held) prepared.current = null;
+  };
+  const download = async (file: PaneFile) => {
+    const built = await builtOrReported(prepare(file));
+    if (built === null) return;
+    save(built.file);
+    (built.stale === true ? toast.warning : toast.success)(
+      built.note ?? wording.paneFile.downloaded(built.file.name),
+    );
+  };
+  // The build outlived the press, so sharing needs a press of its own.
+  const offerShare = async (held: Prepared) => {
+    const built = await builtOrReported(held);
+    if (built === null) return;
+    toast(wording.paneFile.shareReady(built.file.name), {
+      action: {
+        label: wording.paneFile.shareNow,
+        onClick: () => void share(built.file),
+      },
+    });
   };
   useEffect(() => {
     if (source?.prepare === "shown") prepare(source);
@@ -138,14 +168,7 @@ export function useFileGroup(source: PaneFile | null): PaneBarGroup {
       id: "download",
       label: source.download,
       icon: <Download size={16} aria-hidden="true" />,
-      onSelect: () => {
-        prepare(source).built.then(({ file, note, stale }) => {
-          save(file);
-          (stale === true ? toast.warning : toast.success)(
-            note ?? wording.paneFile.downloaded(file.name),
-          );
-        }, failed);
-      },
+      onSelect: () => void download(source),
     },
     ...(canShare(source.type)
       ? [
@@ -157,20 +180,9 @@ export function useFileGroup(source: PaneFile | null): PaneBarGroup {
               prepare(source);
             },
             onSelect: () => {
-              const { ready, built } = prepare(source);
-              if (ready !== undefined) {
-                share(ready.file);
-                return;
-              }
-              // The build outlived the press, so sharing needs a press of its own.
-              built.then(({ file }) => {
-                toast(wording.paneFile.shareReady(file.name), {
-                  action: {
-                    label: wording.paneFile.shareNow,
-                    onClick: () => share(file),
-                  },
-                });
-              }, failed);
+              const held = prepare(source);
+              if (held.ready === undefined) void offerShare(held);
+              else void share(held.ready.file);
             },
           },
         ]

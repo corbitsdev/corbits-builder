@@ -8,13 +8,41 @@ export type ConversationMessage = Readonly<{
     Readonly<{ mimeType: string; data: string; name?: string }>
   >;
 }>;
+
+/**
+ * A person's words as mail delivers them and the conversation reads them back: LF line breaks, no
+ * spaces or tabs at the end of a line, trimmed.
+ */
+export const deliveredText = (text: string) =>
+  text
+    .replace(/\r\n?/g, "\n")
+    .split("\n")
+    .map(withoutTrailingBlanks)
+    .join("\n")
+    .trim();
+
+// A scan from the end, since a regex for trailing blanks backtracks quadratically on a long run.
+function withoutTrailingBlanks(line: string) {
+  let end = line.length;
+  while (end > 0 && (line[end - 1] === " " || line[end - 1] === "\t")) end -= 1;
+  return line.slice(0, end);
+}
+
+export const maxTurnText = 20000;
+
+export function clippedTurnText(text: string) {
+  const clipped = text.slice(0, maxTurnText);
+  // A cut between the halves of a surrogate pair would leave half a character.
+  return /[\uD800-\uDBFF]$/.test(clipped) ? clipped.slice(0, -1) : clipped;
+}
+
 export const ConversationReceipt = type({
   runId: "string",
   address: "string",
   messageId: "string",
 });
 export type ConversationReceipt = typeof ConversationReceipt.infer;
-const turnText = type("string > 0").atMostLength(20000);
+const turnText = type("string > 0").atMostLength(maxTurnText);
 // A participant turn is mail from a workflow run other than the coordinator;
 // `sender` names its role or run.
 const conversationTextTurn = type({
@@ -28,6 +56,8 @@ const conversationTextTurn = type({
   at: "number",
 });
 export const maxConversationTurns = 2000;
+/** The hub's refusal of a deploy from a coordinator it is replacing; the replacement redoes it. */
+export const coordinatorUpgrading = "coordinator_upgrading";
 const turnList = conversationTextTurn
   .array()
   .atMostLength(maxConversationTurns);
@@ -39,7 +69,7 @@ const conversationThread = type({
   turns: turnList,
 });
 export const ConversationEvents = type({
-  runId: "string",
+  runId: "string | null",
   events: type({
     seq: "number",
     type: "string",

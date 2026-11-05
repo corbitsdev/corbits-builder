@@ -7,11 +7,8 @@ import {
 } from "../../builds/sidecar-tools.ts";
 import { createDesignTools } from "../../artifacts/design-tools.ts";
 import { roleInference } from "../role-inference.ts";
-import {
-  compactingDirector,
-  dropDegenerateTurn,
-  trimHistory,
-} from "../compaction.ts";
+import { compactingDirector } from "../director.ts";
+import { dropDegenerateTurn, trimHistory } from "../compaction.ts";
 import { nativePackageName } from "../package-name.ts";
 
 const compacting = compactingDirector(nativePackageName("designer"));

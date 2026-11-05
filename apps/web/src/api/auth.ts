@@ -4,9 +4,11 @@
  * `sign-up/email`, `sign-out`), all with the session cookie included.
  */
 import type { Workspace } from "@corbits-builder/client";
+import { type } from "arktype";
 import { productName, wording } from "../config.ts";
 import { hubCredentials, hubOrigin } from "./origin.ts";
 import { productClient, timedCall } from "./transport.ts";
+import { ApiFailure } from "./types.ts";
 import {
   readStoredPreference,
   writeStoredPreference,
@@ -20,55 +22,63 @@ export type HubUser = {
 
 export type HubSession = { user: HubUser } | null;
 
-type AuthJson = {
-  user?: { id?: unknown; name?: unknown; email?: unknown } | null;
-  message?: unknown;
-  error?: { code?: unknown; message?: unknown };
-};
+// better-auth answers with `message` or `error.message` on a refusal, and `user` on a session.
+const AuthMessage = type({ message: "string > 0" });
+const AuthErrorMessage = type({ error: { message: "string > 0" } });
+const AuthSession = type({
+  user: { id: "string", email: "string", "name?": "unknown" },
+});
 
 async function hubAuth(
   path: string,
   init: RequestInit,
 ): Promise<{ response: Response; parsed: unknown }> {
   let response: Response;
+  let text: string;
   try {
     response = await fetch(`${hubOrigin()}/api/auth${path}`, {
       ...init,
       credentials: hubCredentials(),
     });
-  } catch {
-    throw new Error(wording.auth.hubUnreachable);
+    text = await response.text();
+  } catch (cause) {
+    throw new ApiFailure(
+      {
+        code: "host_unreachable",
+        message: wording.auth.hubUnreachable,
+        correlationId: "-",
+        retryable: true,
+      },
+      undefined,
+      { cause },
+    );
   }
-  const text = await response.text();
   let parsed: unknown;
   try {
     parsed = text.length === 0 ? undefined : JSON.parse(text);
-  } catch {
+  } catch (cause) {
+    // A proxy in front of the hub can answer with a page instead of JSON.
+    if (!(cause instanceof SyntaxError)) throw cause;
     parsed = undefined;
   }
   return { response, parsed };
 }
 
 function messageOf(parsed: unknown, fallback: string): string {
-  const body = parsed as AuthJson | undefined;
-  if (typeof body?.message === "string" && body.message.length > 0)
-    return body.message;
-  if (typeof body?.error?.message === "string" && body.error.message.length > 0)
-    return body.error.message;
-  return fallback;
+  const body = AuthMessage(parsed);
+  if (!(body instanceof type.errors)) return body.message;
+  const nested = AuthErrorMessage(parsed);
+  return nested instanceof type.errors ? fallback : nested.error.message;
 }
 
 function userOf(parsed: unknown): HubUser | null {
-  const user = (parsed as AuthJson | undefined)?.user;
-  if (!user || typeof user.id !== "string" || typeof user.email !== "string")
-    return null;
+  const session = AuthSession(parsed);
+  if (session instanceof type.errors) return null;
+  const { id, email, name } = session.user;
   return {
-    id: user.id,
-    name:
-      typeof user.name === "string" && user.name.trim().length > 0
-        ? user.name
-        : user.email,
-    email: user.email,
+    id,
+    name: typeof name === "string" && name.trim().length > 0 ? name : email,
+    email,
   };
 }
 
@@ -76,10 +86,30 @@ export async function getHubSession(): Promise<HubSession> {
   const { response, parsed } = await hubAuth("/get-session", { method: "GET" });
   if (response.status === 401) return null;
   if (!response.ok) {
-    throw new Error(messageOf(parsed, `HTTP ${String(response.status)}`));
+    throw new ApiFailure(
+      {
+        code: "session_unreadable",
+        message: messageOf(parsed, `HTTP ${String(response.status)}`),
+        correlationId: "-",
+        retryable: response.status >= 500,
+      },
+      response.status,
+    );
   }
+  // better-auth answers a request with no session with a JSON null.
+  if (parsed === null) return null;
   const user = userOf(parsed);
-  return user ? { user } : null;
+  if (user === null)
+    throw new ApiFailure(
+      {
+        code: "session_unreadable",
+        message: wording.auth.accountUnreadable,
+        correlationId: "-",
+        retryable: false,
+      },
+      response.status,
+    );
+  return { user };
 }
 
 async function emailAuth(
