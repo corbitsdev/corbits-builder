@@ -4,9 +4,15 @@ import { join } from "node:path";
 import { getLogger } from "@intx/log";
 import { reconstructDurableConversation } from "@intx/workflow-host";
 import { deriveWorkflowRunRepoId } from "@intx/workflow-deploy";
+import {
+  AskQuestions,
+  askQuestionsIssue,
+  type OpenAsk,
+} from "@corbits-builder/schemas/questions";
 
 import { errorCode, requestErrorMetadata } from "../request-error.ts";
 import { withCommittedAgentState } from "./committed-agent-state.ts";
+import { isRecord, mapMirrorConversationTurns } from "./conversation-turns.ts";
 
 const log = getLogger(["corbits-builder", "hub", "coordinator-question"]);
 
@@ -23,7 +29,15 @@ export type CoordinatorRepoDirSource = {
 type CoordinatorQuestionProse = Readonly<{
   prose: string;
   source: Readonly<{ kind: "coordinator-turn"; agentKey: string }>;
+  ask?: OpenAsk;
 }>;
+
+type Asking = {
+  prose: string;
+  agentKey: string;
+  timestamp: number;
+  ask?: OpenAsk | undefined;
+};
 
 export function createCoordinatorQuestionProseReader(options: {
   repoStore: CoordinatorRepoDirSource;
@@ -43,18 +57,14 @@ export function createCoordinatorQuestionProseReader(options: {
       typeof parkedAt === "string" && Number.isFinite(Date.parse(parkedAt))
         ? Date.parse(parkedAt)
         : undefined;
-    let best:
-      | { prose: string; agentKey: string; timestamp: number }
-      | undefined;
+    let best: Asking | undefined;
     try {
       best = await withCommittedAgentState(repoDir, async (agentStateRoot) => {
         const entries = await readdir(agentStateRoot, { withFileTypes: true });
         const keys = entries
           .filter((entry) => entry.isDirectory())
           .map((entry) => entry.name);
-        let found:
-          | { prose: string; agentKey: string; timestamp: number }
-          | undefined;
+        let found: Asking | undefined;
         for (const agentKey of keys) {
           let turns: unknown[];
           try {
@@ -88,6 +98,8 @@ export function createCoordinatorQuestionProseReader(options: {
                 timestamp: candidate.timestamp,
               };
           }
+          if (found?.agentKey === agentKey)
+            found.ask = lastOpenAsk(turns, deadline);
         }
         return found;
       });
@@ -102,6 +114,7 @@ export function createCoordinatorQuestionProseReader(options: {
     return {
       prose: best.prose,
       source: { kind: "coordinator-turn", agentKey: best.agentKey },
+      ...(best.ask === undefined ? {} : { ask: best.ask }),
     };
   };
 }
@@ -129,4 +142,47 @@ function assistantText(
     .join("");
   if (text.trim() === "") return undefined;
   return { text, timestamp: record.timestamp };
+}
+
+/** The last ask_questions call the tool accepted after the person's last turn; that turn answers it. */
+export function lastOpenAsk(
+  turns: unknown[],
+  deadline: number | undefined,
+): OpenAsk | undefined {
+  const asked = turns.filter(
+    (turn): turn is Record<string, unknown> & { timestamp: number } =>
+      isRecord(turn) &&
+      typeof turn["timestamp"] === "number" &&
+      (deadline === undefined || turn["timestamp"] <= deadline),
+  );
+  const answeredAt =
+    mapMirrorConversationTurns(asked, "note").findLast(
+      (turn) => turn.role === "person",
+    )?.at ?? -Infinity;
+  let found: OpenAsk | undefined;
+  for (const turn of asked) {
+    if (turn.timestamp <= answeredAt) continue;
+    found = acceptedAsk(turn) ?? found;
+  }
+  return found;
+}
+
+/** The turn's last ask_questions call that passes the same checks the tool makes. */
+function acceptedAsk(turn: Record<string, unknown>): OpenAsk | undefined {
+  if (turn["role"] !== "assistant" || !Array.isArray(turn["content"]))
+    return undefined;
+  let found: OpenAsk | undefined;
+  for (const block of turn["content"]) {
+    if (
+      !isRecord(block) ||
+      block["type"] !== "tool_call" ||
+      block["name"] !== "ask_questions" ||
+      typeof block["id"] !== "string"
+    )
+      continue;
+    const input = block["arguments"];
+    if (AskQuestions.allows(input) && askQuestionsIssue(input) === undefined)
+      found = { callId: block["id"], arguments: input };
+  }
+  return found;
 }

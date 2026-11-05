@@ -9,6 +9,7 @@
  * and its releasing signal) from the events.
  */
 import type { ConversationEvents } from "@corbits-builder/schemas/conversation";
+import { OpenAsk } from "@corbits-builder/schemas/questions";
 import { wording } from "../config.ts";
 import { productClient } from "./transport.ts";
 import {
@@ -170,4 +171,11 @@ export function latestQuestion(
     answeredByYou,
     ...(correlationId === undefined ? {} : { correlationId }),
   };
+}
+
+/** The questions the coordinator waits on, which the hub attaches only to a still-open input park. */
+export function openAsk(events: ConversationEvent[]): OpenAsk | undefined {
+  const question = events.findLast(isInputPark)?.body["question"];
+  const ask = (question as { ask?: unknown } | null | undefined)?.ask;
+  return OpenAsk.allows(ask) ? ask : undefined;
 }

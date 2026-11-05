@@ -63,7 +63,7 @@ import "./persistent-workspace.css";
 import { ProductApiError, type ProjectArtifact } from "@corbits-builder/client";
 import type { InFlightRun } from "@corbits-builder/schemas/artifact";
 import { toast } from "sonner";
-import { sendMessage } from "../../api/conversation.ts";
+import { openAsk, sendMessage } from "../../api/conversation.ts";
 import { subscribeWorkflowRun } from "../../api/run-stream.ts";
 import { refusalBody } from "../../api/transport.ts";
 import {
@@ -82,7 +82,13 @@ import type { ChatMessage, Wait } from "../../api/types.ts";
 import { deliveredText } from "@corbits-builder/schemas/conversation";
 import { keys } from "../../queries/keys.ts";
 import { COMPOSER_BOX_CLASS, CONV_CLASS, PANES_CLASS } from "./pane-classes.ts";
-import { questionsOpen, RoomThread, turnItemId } from "./transcript.tsx";
+import {
+  questionsOpen,
+  RoomThread,
+  toolsOf,
+  turnItemId,
+} from "./transcript.tsx";
+import { ASK_QUESTIONS } from "./questions-card.tsx";
 import { cardDocuments } from "./collaboration.ts";
 import { useFiledVersions } from "./filed-versions.tsx";
 import { threadUpdates } from "./specialist-updates.tsx";
@@ -668,6 +674,28 @@ function ReadyRoom({
 
   for (const [at, parts] of committedSteps(liveRun, mirror))
     stepsByAt.current.set(at, parts);
+  // A session that did not watch the coordinator ask its waiting questions draws their card from the
+  // hub's copy, on the reply that introduces them. A reply before the person's last turn did not ask
+  // them, and the card would read as answered.
+  const ask = events === null ? undefined : openAsk(events);
+  const lastTurn = mirror.findLast((turn) => turn.role !== "participant");
+  const askedAt = lastTurn?.role === "assistant" ? lastTurn.at : null;
+  const shown =
+    ask !== undefined &&
+    [...stepsByAt.current.values()].some((parts) =>
+      toolsOf(parts).some((tool) => tool.toolCallId === ask.callId),
+    );
+  if (ask !== undefined && askedAt !== null && !shown)
+    stepsByAt.current.set(askedAt, [
+      ...(stepsByAt.current.get(askedAt) ?? []),
+      {
+        kind: "tool-trace",
+        toolCallId: ask.callId,
+        name: ASK_QUESTIONS,
+        status: "output-available",
+        input: ask.arguments,
+      },
+    ]);
   const turns = useMemo(
     () =>
       withPendingSends(mirror, sent).map((turn) => {
@@ -683,8 +711,9 @@ function ReadyRoom({
               parts: [...steps, { kind: "text" as const, text: turn.text }],
             };
       }),
-    // The steps map only grows as the live run commits, which re-renders with a new mirror.
-    [mirror, sent],
+    // The steps map only grows as the live run commits, which re-renders with a new mirror, or as
+    // the hub's copy of a waiting ask arrives.
+    [mirror, sent, ask?.callId],
   );
   const mailThreads = snapshot.conversation.threads;
   const specialistUpdates = useMemo(

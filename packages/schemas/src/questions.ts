@@ -23,6 +23,15 @@ export const AskQuestions = type({
 });
 export type AskQuestions = typeof AskQuestions.infer;
 
+// The ask_questions call the coordinator waits on, which the conversation read attaches to its open
+// input park so a page opened later can still show the card.
+export const OpenAsk = type({
+  "+": "reject",
+  callId: "string > 0",
+  arguments: AskQuestions,
+});
+export type OpenAsk = typeof OpenAsk.infer;
+
 export const duplicate = (values: readonly string[]) =>
   values.find((value, index) => values.indexOf(value) !== index);
 

@@ -353,7 +353,9 @@ type Section =
       cards: Card[];
     };
 
-function toolsOf(parts: readonly ConversationPart[]): readonly PartTool[] {
+export function toolsOf(
+  parts: readonly ConversationPart[],
+): readonly PartTool[] {
   return parts.flatMap((part) =>
     part.kind === "tool-trace"
       ? [part]

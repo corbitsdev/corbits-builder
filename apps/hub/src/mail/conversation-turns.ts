@@ -96,7 +96,7 @@ function personText(body: string): string | undefined {
 }
 
 // A missing or corrupt turn list is empty; it does not throw.
-function mapMirrorConversationTurns(
+export function mapMirrorConversationTurns(
   turns: unknown,
   decisions: ApprovalDecisionTurns,
 ): ConversationTextTurn[] {
