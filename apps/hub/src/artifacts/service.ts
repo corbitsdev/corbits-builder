@@ -2141,12 +2141,14 @@ export function createArtifactService(
           });
         artifacts.push({ ref, writtenAt: new Date(newest.createdAt) });
       }
+      // The database stamps the ask and the hub stamps versions, so the ask's age at the
+      // transaction's start moves it onto the hub's clock. Reading the hub's clock first
+      // places the ask no later than it was, so any doubt refuses.
+      const checkedAt = Date.now();
       return rawDB.transaction(async (tx) => {
         const [granted] = await tx
           .select({
             id: approval.id,
-            // The database stamps the ask and the hub stamps versions, so the ask's
-            // age moves it onto the hub's clock.
             askedAgoMs: sql<number>`extract(epoch from now()::timestamp - ${approval.createdAt})::float8 * 1000`,
             askedKinds: sql<string | null>`${approval.toolArguments}->>'kinds'`,
           })
@@ -2185,7 +2187,7 @@ export function createArtifactService(
         if (recorded || !artifacts.length)
           return { approvalId: granted.id, artifacts: [] };
         // A version written while the person was deciding is not one they saw.
-        const askedAt = Date.now() - granted.askedAgoMs;
+        const askedAt = checkedAt - granted.askedAgoMs;
         const changed = artifacts.find(
           ({ writtenAt }) => writtenAt.getTime() > askedAt,
         )?.ref;

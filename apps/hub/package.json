@@ -7,6 +7,7 @@
   "type": "module",
   "exports": {
     "./app": "./src/app.ts",
+    "./artifacts/service": "./src/artifacts/service.ts",
     "./environment": "./src/environment.ts",
     "./migrate": "./src/migrate.ts",
     "./workflows/install-for-tenant": "./src/workflows/install-for-tenant.ts",

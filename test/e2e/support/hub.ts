@@ -23,8 +23,6 @@ export type TestHubHandle = Readonly<{
   close: () => Promise<void>;
 }>;
 
-const DB_CLOCK_LAG = "5 minutes";
-
 function readTestDbServerConfig(): {
   host: string;
   port: number;
@@ -76,48 +74,47 @@ async function signUpSessionCookie(
   return cookies.join("; ");
 }
 
+// An empty database of its own on the e2e server, with the hub's DB_* settings for it.
+export async function createTestDatabase(): Promise<{
+  env: Record<string, string>;
+  drop: () => Promise<void>;
+}> {
+  const dbServer = readTestDbServerConfig();
+  const dbName = `builder_e2e_${crypto.randomUUID().replaceAll("-", "").slice(0, 16)}`;
+  const admin = async (statement: string) => {
+    const adminSql = postgres({
+      host: dbServer.host,
+      port: dbServer.port,
+      user: dbServer.user,
+      password: dbServer.password,
+      database: dbServer.adminDatabase,
+      max: 1,
+      onnotice: () => undefined,
+    });
+    try {
+      await adminSql.unsafe(statement);
+    } finally {
+      await adminSql.end();
+    }
+  };
+  await admin(`CREATE DATABASE "${dbName}"`);
+  return {
+    env: {
+      DB_HOST: dbServer.host,
+      DB_PORT: String(dbServer.port),
+      DB_USER: dbServer.user,
+      DB_PASSWORD: dbServer.password,
+      DB_NAME: dbName,
+      DB_SSL: "false",
+    },
+    drop: () => admin(`DROP DATABASE IF EXISTS "${dbName}" WITH (FORCE)`),
+  };
+}
+
 export async function startTestHub(
   recordedModel: RecordedModelServer,
 ): Promise<TestHubHandle> {
-  const dbServer = readTestDbServerConfig();
-  const dbName = `builder_e2e_${crypto.randomUUID().replaceAll("-", "").slice(0, 16)}`;
-
-  const adminSql = postgres({
-    host: dbServer.host,
-    port: dbServer.port,
-    user: dbServer.user,
-    password: dbServer.password,
-    database: dbServer.adminDatabase,
-    max: 1,
-    onnotice: () => undefined,
-  });
-
-  try {
-    await adminSql.unsafe(`CREATE DATABASE "${dbName}"`);
-    // The database clock runs behind the hub's, as a separately hosted database's can, so
-    // nothing passes only because both stamp time from one machine's clock.
-    await adminSql.unsafe(
-      `ALTER DATABASE "${dbName}" SET search_path = "$user", public, pg_catalog`,
-    );
-  } finally {
-    await adminSql.end();
-  }
-  const lagSql = postgres({
-    host: dbServer.host,
-    port: dbServer.port,
-    user: dbServer.user,
-    password: dbServer.password,
-    database: dbName,
-    max: 1,
-    onnotice: () => undefined,
-  });
-  try {
-    await lagSql.unsafe(
-      `CREATE FUNCTION public.now() RETURNS timestamptz LANGUAGE sql STABLE AS $$ SELECT pg_catalog.now() - interval '${DB_CLOCK_LAG}' $$`,
-    );
-  } finally {
-    await lagSql.end();
-  }
+  const database = await createTestDatabase();
 
   const dataDir = await mkdtemp(join(tmpdir(), "builder-e2e-hub-"));
   const fakeCredentialSecret = `sk-fake-e2e-secret-${crypto.randomUUID()}`;
@@ -140,12 +137,7 @@ export async function startTestHub(
     HOME: process.env["HOME"] ?? tmpdir(),
     USER: process.env["USER"] ?? "e2e",
     TMPDIR: process.env["TMPDIR"] ?? tmpdir(),
-    DB_HOST: dbServer.host,
-    DB_PORT: String(dbServer.port),
-    DB_USER: dbServer.user,
-    DB_PASSWORD: dbServer.password,
-    DB_NAME: dbName,
-    DB_SSL: "false",
+    ...database.env,
     HOST: "127.0.0.1",
     PORT: String(port),
     BETTER_AUTH_BASE_URL: baseUrl,
@@ -166,23 +158,6 @@ export async function startTestHub(
   let runtime: Awaited<ReturnType<typeof createHubRuntime>> | undefined;
   let server: ReturnType<typeof Bun.serve> | undefined;
   const activeStreams = new Set<AbortController>();
-
-  async function dropDatabase(): Promise<void> {
-    const dropSql = postgres({
-      host: dbServer.host,
-      port: dbServer.port,
-      user: dbServer.user,
-      password: dbServer.password,
-      database: dbServer.adminDatabase,
-      max: 1,
-      onnotice: () => undefined,
-    });
-    try {
-      await dropSql.unsafe(`DROP DATABASE IF EXISTS "${dbName}" WITH (FORCE)`);
-    } finally {
-      await dropSql.end();
-    }
-  }
 
   try {
     await migrateDatabase(hubEnv);
@@ -342,7 +317,7 @@ export async function startTestHub(
         if (server) await server.stop(true);
         if (runtime) await runtime.close();
         await rm(dataDir, { recursive: true, force: true });
-        await dropDatabase();
+        await database.drop();
       },
     };
   } catch (error) {
@@ -353,7 +328,7 @@ export async function startTestHub(
     if (server) await server.stop(true);
     if (runtime) await runtime.close();
     await rm(dataDir, { recursive: true, force: true });
-    await dropDatabase();
+    await database.drop();
     throw error;
   }
 }
