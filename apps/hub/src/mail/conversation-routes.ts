@@ -220,9 +220,9 @@ export function createConversationRoutes(
             if (
               asking !== undefined &&
               upgrade !== undefined &&
-              checked.get(current.runId) !== asking["correlationId"]
+              checked.get(current.runId) !== asking["signalName"]
             ) {
-              checked.set(current.runId, asking["correlationId"]);
+              checked.set(current.runId, asking["signalName"]);
               // The pass would leave the question up to its interval; replacing the coordinator
               // now withdraws it before the person decides it.
               const withdraw = async () => {
