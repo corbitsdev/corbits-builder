@@ -42,7 +42,6 @@ import {
   settingsRecord,
 } from "../db/schema.ts";
 import {
-  DEFAULT_WORKSPACE_REVIEWERS,
   incorporatedFeedbackMessage,
   packageReadme,
   type PackageManifestSource,
@@ -472,10 +471,9 @@ export function createPgApprovalRoundStore(
           eq(settingsRecord.scopeKey, WORKSPACE_REVIEWERS_SCOPE_KEY),
         ),
       );
-    const stored =
-      row === undefined ? null : parseWorkspaceReviewersField(row.fields);
-    if (stored !== null) return stored;
-    return DEFAULT_WORKSPACE_REVIEWERS.map((entry) => ({ ...entry }));
+    return row === undefined
+      ? []
+      : (parseWorkspaceReviewersField(row.fields) ?? []);
   }
 
   return {

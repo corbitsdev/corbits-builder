@@ -16,6 +16,10 @@ import { WhatsNewDialog } from "../../App.tsx";
 import { wording } from "../../config.ts";
 import { queryClient } from "../../queries/client.ts";
 import { Settings, WorkspaceApprovals } from "../settings.tsx";
+import {
+  readWorkspaceReviewers,
+  writeWorkspaceReviewers,
+} from "../../workspace-approvals-setting.ts";
 
 const realArtifacts = { ...actualArtifacts };
 const realConversation = { ...actualConversation };
@@ -1082,11 +1086,7 @@ describe("approval rounds panel", () => {
     expect(html).toContain(
       'class="approval-inline-fields settings-reviewer-form"',
     );
-    expect(html).toContain('aria-label="Reviewer 1 Pick from workspace"');
-    expect(html).toContain("Choose saved reviewer…");
-    expect(html).toContain("Dana Chen (CEO)");
-    expect(html).toContain("Marcus Vance (CTO)");
-    expect(html).toContain("Priya Patel (VP Product)");
+    expect(html).not.toContain("Pick from workspace");
     expect(html).toContain('aria-label="Reviewer 1 Reviewer name"');
     expect(html).toContain('aria-label="Reviewer 1 Persona"');
     expect(html).toContain("Budget approver");
@@ -1104,26 +1104,49 @@ describe("approval rounds panel", () => {
     expect(html).toContain("Cancel");
   });
 
-  test("renders WorkspaceApprovals settings section with require stakeholder approval toggle and seeded workspace reviewers", () => {
+  test("renders WorkspaceApprovals settings section with require stakeholder approval toggle and no workspace reviewers until some are saved", () => {
     const html = renderToStaticMarkup(<WorkspaceApprovals />);
     expect(html).toContain("Workspace approvals");
     expect(html).toContain("Require stakeholder approval");
     expect(html).toContain("Workspace reviewers");
-    expect(html).toContain("Dana Chen");
-    expect(html).toContain('<span class="approval-status-text">CEO</span>');
-    expect(html).toContain("Marcus Vance");
-    expect(html).toContain('<span class="approval-status-text">CTO</span>');
-    expect(html).toContain("Priya Patel");
-    expect(html).toContain(
-      '<span class="approval-status-text">VP Product</span>',
-    );
+    expect(html).toContain("No saved workspace reviewers yet.");
     expect(html).not.toContain("invite-form");
     expect(html).toContain("settings-reviewer-form");
     expect(html).toContain("approval-lean-input");
     expect(html).toContain("approval-lean-select");
-    expect(html).toContain("Remove");
     expect(html).toContain("Add reviewer");
     expect(html).toContain("Other…");
+  });
+
+  test("lists saved workspace reviewers in Settings and the share dialog picker", () => {
+    writeWorkspaceReviewers([
+      { id: "ws-rev-jordan-lee", name: "Jordan Lee", persona: "CTO" },
+    ]);
+    readWorkspaceReviewers();
+    try {
+      const settingsHtml = renderToStaticMarkup(<WorkspaceApprovals />);
+      expect(settingsHtml).toContain("Jordan Lee");
+      expect(settingsHtml).toContain(
+        '<span class="approval-status-text">CTO</span>',
+      );
+      expect(settingsHtml).toContain("Remove");
+      const dialogHtml = renderToStaticMarkup(
+        <SharePackageDialog
+          projectId="proj_1"
+          packageVersion={1}
+          onCreated={() => {}}
+          onCancel={() => {}}
+          onFault={() => {}}
+        />,
+      );
+      expect(dialogHtml).toContain(
+        'aria-label="Reviewer 1 Pick from workspace"',
+      );
+      expect(dialogHtml).toContain("Jordan Lee (CTO)");
+    } finally {
+      writeWorkspaceReviewers([]);
+      readWorkspaceReviewers();
+    }
   });
 
   test("renders WhatsNewDialog with Slide Decks and Approvals tabs, where Slide Decks is built-in and only Approvals is Experimental", () => {

@@ -6,6 +6,7 @@ import type {
   ExpiryPreset,
   ReviewerDecision,
   TriageItemStatus,
+  WorkspaceReviewer,
 } from "@corbits-builder/schemas/approval-round";
 import {
   ApprovalPackageBundle,
@@ -43,6 +44,30 @@ export const SEED_FIXTURE_IDS = [
 export type SeedFixtureId = (typeof SEED_FIXTURE_IDS)[number];
 
 export type SeedFixtureSelector = SeedFixtureId | "all";
+
+export const SEED_WORKSPACE_REVIEWERS: readonly WorkspaceReviewer[] = [
+  {
+    id: "ws-rev-dana-chen",
+    name: "Dana Chen",
+    persona: "CEO",
+    email: "dana.chen@example.com",
+    goal: "Approve Aurora Weather Studio scope, timeline, and Q3 budget to begin the Coder phase",
+  },
+  {
+    id: "ws-rev-marcus-vance",
+    name: "Marcus Vance",
+    persona: "CTO",
+    email: "marcus.vance@example.com",
+    goal: "Sign off on radar tile payload budget, latency SLAs, and offline caching architecture",
+  },
+  {
+    id: "ws-rev-priya-patel",
+    name: "Priya Patel",
+    persona: "VP Product",
+    email: "priya.patel@example.com",
+    goal: "Confirm user journey, severe alert triage flow, and accessibility targets",
+  },
+];
 
 export type SeedDesignOptionMetadata = Readonly<{
   conceptId: string;
