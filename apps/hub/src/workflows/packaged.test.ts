@@ -77,8 +77,18 @@ test("production entries expose concrete native workflows without callback crede
     coderAnyPackage,
     designer,
     presenter,
-  ])
+  ]) {
     expect(workflow.credentialBindings ?? []).toEqual([]);
+    // A trimmed result's note names read_file, so every agent needs one.
+    const tools = Object.values(workflow.steps).flatMap((step) =>
+      "agent" in step
+        ? step.agent.toolFactories.flatMap(
+            (factory) => factory.definitions ?? [],
+          )
+        : [],
+    );
+    expect(tools.map((tool) => tool.name)).toContain("read_file");
+  }
   expect(
     JSON.stringify([
       coordinator,
