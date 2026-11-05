@@ -1424,7 +1424,7 @@ export function createArtifactService(
       // readArtifact is the model-facing chunked reader (8000-character budget);
       // the hub serves whole documents, so it reads the stored version directly.
       const row = await getArtifact(db, artifactId);
-      if (!row || row.tenantId !== actor.tenantId)
+      if (!row || row.tenantId !== actor.tenantId || row.archivedAt !== null)
         throw new ProjectError(404, "artifact_not_found", { artifactId });
       // The app by its kind is the main line; snapshots are read by their version.
       const resolved =
