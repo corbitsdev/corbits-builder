@@ -850,9 +850,8 @@ function ReadyRoom({
     setFiles((current) => [...current, ...fitting]);
   };
 
-  const deliverFiles = async (): Promise<boolean> => {
+  const deliverFiles = async (text = value.trim()): Promise<boolean> => {
     if (sending) return false;
-    const text = value.trim();
     const attached = files;
     setSending(true);
     setSendFailed(false);
@@ -1106,6 +1105,7 @@ function ReadyRoom({
   };
   const sendFiles = async () => {
     if (sending) return false;
+    const text = value.trim();
     const currentApprovals = await readPendingApprovals();
     const currentOpen = currentApprovals?.find(
       (approval) => approval.packages === undefined,
@@ -1114,6 +1114,13 @@ function ReadyRoom({
       openApprovalId: currentOpen?.approvalId,
       decide: onDecideApproval,
       deliver: deliverFiles,
+      ...(text.length === 0
+        ? {}
+        : {
+            decline: async (approvalId: string) =>
+              (await deliverMail(text, true, declineWith(approvalId))) &&
+              deliverFiles(""),
+          }),
     });
   };
   const sendNow = () => {
