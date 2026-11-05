@@ -514,6 +514,7 @@ form:has(> div > textarea) textarea:focus-visible {
   > div
   > button:first-child {
   justify-content: center;
+  gap: 0;
   padding: 0;
 }
 
