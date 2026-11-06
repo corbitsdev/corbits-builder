@@ -688,7 +688,8 @@ function ReadyRoom({
     drawn.some((parts) =>
       toolsOf(parts).some((tool) => tool.toolCallId === ask.callId),
     );
-  if (ask !== undefined && askedAt !== null && !shown) {
+  const restored = ask !== undefined && askedAt !== null && !shown;
+  if (restored) {
     const card: ConversationPart = {
       kind: "tool-trace",
       toolCallId: ask.callId,
@@ -718,8 +719,8 @@ function ReadyRoom({
             };
       }),
     // The steps map only grows as the live run commits, which re-renders with a new mirror, or as
-    // the hub's copy of a waiting ask arrives.
-    [mirror, sent, ask?.callId],
+    // a waiting ask's card is restored.
+    [mirror, sent, restored],
   );
   const mailThreads = snapshot.conversation.threads;
   const specialistUpdates = useMemo(
