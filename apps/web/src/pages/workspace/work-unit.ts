@@ -200,11 +200,7 @@ export function workUnitMessage(
     !dispatch.pending &&
     status.state !== "waiting" &&
     status.state !== "declined";
-  const handoff = (
-    dispatch.refused === undefined
-      ? wording.activity.handoff
-      : wording.activity.handoffRefused
-  )[dispatch.tool];
+  const handoff = wording.activity.handoff[dispatch.tool];
   const parts: ConversationPart[] = [
     {
       kind: "tool-trace",

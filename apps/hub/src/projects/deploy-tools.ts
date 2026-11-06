@@ -380,9 +380,14 @@ export function createDeployTools(options?: {
           const materials: ArtifactRef[] = [];
           const approved = new Map<string, number>();
           const openQuestions = new Map<string, number>();
+          // Options a person has yet to choose from mean the design is already under way.
+          let designOptions = false;
           for (const item of list.artifacts) {
             const { kind, artifactId, version, sha256, approvedVersion } = item;
-            if (kind === "design_option") continue;
+            if (kind === "design_option") {
+              designOptions = true;
+              continue;
+            }
             if (kind === MATERIAL_KIND)
               materials.push({ kind, artifactId, version, sha256 });
             byKind.set(kind, { artifactId, version, sha256 });
@@ -396,6 +401,7 @@ export function createDeployTools(options?: {
             materials,
             approved,
             openQuestions,
+            designOptions,
             inFlight: list.inFlight,
             preferences: list.preferences,
           };
@@ -430,17 +436,95 @@ export function createDeployTools(options?: {
         ) => hub(projectPath + "/artifact-approvals", { tool, artifacts });
         const refsOf = (byKind: Map<string, Ref>) =>
           [...byKind].map(([kind, ref]) => ({ kind, ...ref }));
+        const notFiled = (kind: string) =>
+          new Refusal(
+            kind +
+              "_not_filed: " +
+              (kind === "design"
+                ? "have the designer make it with design_app first"
+                : "write and file the " + kind + " first"),
+          );
         const required = (byKind: Map<string, Ref>, kind: string) => {
           const ref = byKind.get(kind);
-          if (!ref)
-            throw new Refusal(
-              kind +
-                "_not_filed: " +
-                (kind === "design"
-                  ? "have the designer make it with design_app first"
-                  : "write and file the " + kind + " first"),
-            );
+          if (!ref) throw notFiled(kind);
           return ref;
+        };
+        type Listed = Awaited<ReturnType<typeof listed>>;
+        /*
+         * Each start tool refuses with its gate's answer, and an approval reports the steps whose
+         * gates then pass. The coordinator learns what it may start from the rule that enforces it,
+         * so loosening a gate loosens what it is told.
+         */
+        const writerGate = (
+          { byKind, approved, preferences }: Listed,
+          kind: (typeof DOCUMENT_ORDER)[number],
+        ): Refusal | undefined => {
+          if (!byKind.has("problem_brief")) return notFiled("problem_brief");
+          const earlier = DOCUMENT_ORDER.slice(0, DOCUMENT_ORDER.indexOf(kind));
+          // An imported project may lack an earlier document that its later ones were written without.
+          const writtenWithout = (index: number) =>
+            DOCUMENT_ORDER.slice(index + 1).some((later) => byKind.has(later));
+          for (const [index, before] of earlier.entries()) {
+            const ref = byKind.get(before);
+            if (!ref) {
+              if (writtenWithout(index)) continue;
+              return new Refusal(
+                before +
+                  "_missing: " +
+                  (before === "design"
+                    ? "have the designer make it with design_app"
+                    : "write and file the " + before) +
+                  " before the " +
+                  kind,
+              );
+            }
+            if (
+              !agentDecidesApprovals(preferences) &&
+              approved.get(before) !== ref.version
+            )
+              return notApproved(before, ref.version);
+          }
+          return undefined;
+        };
+        const designGate = ({ byKind }: Listed) => {
+          const missing = DESIGNER_INPUTS.find((kind) => !byKind.has(kind));
+          return missing === undefined ? undefined : notFiled(missing);
+        };
+        const coderGate = ({ byKind, approved, preferences }: Listed) => {
+          const missing = CODER_DOCUMENTS.find((kind) => !byKind.has(kind));
+          if (missing !== undefined) return notFiled(missing);
+          for (const kind of DOCUMENT_ORDER) {
+            const ref = byKind.get(kind);
+            if (!ref) return notFiled(kind);
+            // The design is approved by choosing it, whoever decides the other documents.
+            if (
+              (kind === "design" || !agentDecidesApprovals(preferences)) &&
+              approved.get(kind) !== ref.version
+            )
+              return notApproved(kind, ref.version);
+          }
+          return undefined;
+        };
+        // A step already made or under way is not offered again, whatever its gate says.
+        const startable = (state: Listed) => {
+          const busy = new Set(state.inFlight.map((run) => run.role));
+          const open = (
+            step: string,
+            role: string,
+            gate: Refusal | undefined,
+          ) => !state.byKind.has(step) && !busy.has(role) && gate === undefined;
+          return [
+            ...DOCUMENT_ORDER.filter(
+              (kind) =>
+                kind in WRITER_PACKAGES &&
+                open(kind, "writer", writerGate(state, kind)),
+            ),
+            ...(!state.designOptions &&
+            open("design", "designer", designGate(state))
+              ? ["design"]
+              : []),
+            ...(open("app", "coder", coderGate(state)) ? ["app"] : []),
+          ];
         };
         // A fresh deployment warms its workspace with the current versions, the ones named here.
         const inputs = (
@@ -504,10 +588,11 @@ export function createDeployTools(options?: {
         try {
           signal.throwIfAborted();
           let result: unknown;
+          let canStart: readonly string[] = [];
           if (call.name === "request_approval") {
             const { kinds } = validArguments(RequestApproval, call.arguments);
-            const { byKind, materials, openQuestions, preferences } =
-              await listed();
+            const state = await listed();
+            const { byKind, materials, openQuestions, preferences } = state;
             const open = [...new Set(kinds)].flatMap((kind) => {
               const count = openQuestions.get(kind);
               return count
@@ -530,38 +615,17 @@ export function createDeployTools(options?: {
               return materials;
             });
             await recordApproval("request_approval", documents);
-            result = { approved: documents };
+            for (const { kind, version } of documents)
+              state.approved.set(kind, version);
+            canStart = startable(state);
+            result = { approved: documents, canStart };
           } else if (call.name === "deploy_writer") {
             const input = validArguments(DeployWriter, call.arguments);
-            const { byKind, approved, preferences } = await listed();
+            const state = await listed();
+            const { byKind, preferences } = state;
+            const refusal = writerGate(state, input.kind);
+            if (refusal) throw refusal;
             const briefRef = required(byKind, "problem_brief");
-            const earlier = DOCUMENT_ORDER.slice(
-              0,
-              DOCUMENT_ORDER.indexOf(input.kind),
-            );
-            // An imported project may lack an earlier document that its later ones were written without.
-            const writtenWithout = (index: number) =>
-              DOCUMENT_ORDER.slice(index + 1).some((kind) => byKind.has(kind));
-            for (const [index, kind] of earlier.entries()) {
-              const ref = byKind.get(kind);
-              if (!ref) {
-                if (writtenWithout(index)) continue;
-                throw new Refusal(
-                  kind +
-                    "_missing: " +
-                    (kind === "design"
-                      ? "have the designer make it with design_app"
-                      : "write and file the " + kind) +
-                    " before the " +
-                    input.kind,
-                );
-              }
-              if (
-                !agentDecidesApprovals(preferences) &&
-                approved.get(kind) !== ref.version
-              )
-                throw notApproved(kind, ref.version);
-            }
             const target = byKind.get(input.kind);
             const sourceRefs = [...byKind]
               .filter(
@@ -623,9 +687,8 @@ export function createDeployTools(options?: {
               options.projectId + ":coder",
               "coder",
               async () => {
-                const { byKind, approved, inFlight, preferences } =
-                  await listed();
-                for (const kind of CODER_DOCUMENTS) required(byKind, kind);
+                const state = await listed();
+                const { byKind, inFlight, preferences } = state;
                 const live = inFlight.find((run) => run.role === "coder");
                 if (live)
                   throw new Refusal(
@@ -633,16 +696,8 @@ export function createDeployTools(options?: {
                       live.runId +
                       "; send it changes with instruct_coder",
                   );
-                // The design is approved by choosing it, whoever decides the other documents.
-                for (const kind of DOCUMENT_ORDER) {
-                  const { version } = required(byKind, kind);
-                  if (
-                    (kind === "design" ||
-                      !agentDecidesApprovals(preferences)) &&
-                    approved.get(kind) !== version
-                  )
-                    throw notApproved(kind, version);
-                }
+                const refusal = coderGate(state);
+                if (refusal) throw refusal;
                 const design = required(byKind, "design");
                 return deploy(
                   "coder",
@@ -696,8 +751,10 @@ export function createDeployTools(options?: {
                 options.projectId + ":designer:" + concept.label,
                 "designer",
                 async () => {
-                  const { byKind, inFlight, preferences } = await listed();
-                  for (const kind of DESIGNER_INPUTS) required(byKind, kind);
+                  const state = await listed();
+                  const { byKind, inFlight, preferences } = state;
+                  const refusal = designGate(state);
+                  if (refusal) throw refusal;
                   const message =
                     designLookIdeas(input.lookIdeas) +
                     coderTaskMessage(input.instruction);
@@ -832,7 +889,11 @@ export function createDeployTools(options?: {
               content: "unknown_deploy_tool",
               isError: true,
             };
-          return { callId: call.id, content: JSON.stringify(result) };
+          return {
+            callId: call.id,
+            content: JSON.stringify(result),
+            ...(canStart.length ? { detail: { canStart } } : {}),
+          };
         } catch (error) {
           return {
             callId: call.id,

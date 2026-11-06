@@ -222,6 +222,7 @@ function writerTools(preferences: Record<string, string> = {}) {
   ].map((item) => ({ ...item, sha256: "a".repeat(64) }));
   const deployed: string[] = [];
   const approvals: unknown[] = [];
+  const inFlight: Record<string, unknown>[] = [];
   const fetch = async (path: string, init: RequestInit) => {
     const body = init.body ? JSON.parse(String(init.body)) : undefined;
     if (path.endsWith("/workflows/deployments")) {
@@ -235,7 +236,7 @@ function writerTools(preferences: Record<string, string> = {}) {
       });
     }
     if (path.endsWith("/artifacts") && init.method === "GET")
-      return Response.json({ artifacts: documents, inFlight: [], preferences });
+      return Response.json({ artifacts: documents, inFlight, preferences });
     if (path.includes("/artifacts/") && init.method === "GET") {
       const source = documents.find((item) =>
         path.includes("/artifacts/" + item["artifactId"]),
@@ -287,13 +288,55 @@ function writerTools(preferences: Record<string, string> = {}) {
       { id: "call", name, arguments: args },
       new AbortController().signal,
     );
-  return { run, deployed, approvals, documents };
+  return { run, deployed, approvals, documents, inFlight };
 }
 
 const writer = (kind: string) => ({
   kind,
   instruction:
     "Write the " + kind + " from the filed documents and the person's answers.",
+});
+
+test("an approval reports the steps whose gates it opened, unless one is under way", async () => {
+  const { run, documents, inFlight } = writerTools();
+  const canStart = async (kinds: string[]) => {
+    const result = await run("request_approval", { kinds });
+    return [JSON.parse(String(result.content)).canStart, result.detail];
+  };
+
+  // The filed constraints are not approved yet, so approving the brief opens nothing.
+  expect(await canStart(["problem_brief"])).toEqual([[], undefined]);
+  inFlight.push({ runId: "w", role: "writer", status: "running" });
+  expect(await canStart(["constraints"])).toEqual([[], undefined]);
+  inFlight.pop();
+  expect(await canStart(["constraints"])).toEqual([
+    ["approaches"],
+    { canStart: ["approaches"] },
+  ]);
+
+  for (const kind of ["approaches", "product_requirements"])
+    documents.push({
+      kind,
+      artifactId: kind,
+      title: kind,
+      version: 1,
+      sha256: "a".repeat(64),
+    });
+  expect(await canStart(["approaches", "product_requirements"])).toEqual([
+    ["design"],
+    { canStart: ["design"] },
+  ]);
+  inFlight.push({ runId: "d", role: "designer", status: "running" });
+  expect(await canStart(["product_requirements"])).toEqual([[], undefined]);
+  inFlight.pop();
+  documents.push({
+    kind: "design_option",
+    artifactId: "o",
+    title: "Calm",
+    version: 1,
+    sha256: "a".repeat(64),
+  });
+  expect(await canStart(["product_requirements"])).toEqual([[], undefined]);
 });
 
 test("one ask approves several documents, and a writer starts once every earlier one is approved", async () => {

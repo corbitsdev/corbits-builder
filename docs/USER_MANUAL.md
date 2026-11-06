@@ -98,8 +98,8 @@ tips**) and your **Account**, with **Sign out**.
 
 From **New project** in the sidebar you see "What do you want to build today?"
 
-1. Type your idea in the box that says "Describe the thing you want built…".
-   You can also dictate with the microphone.
+1. Type your idea in the box that says "Describe the thing you want built…". It
+   needs at least ten characters. You can also dictate with the microphone.
 2. The **Model profile** picker in the box shows the profile the project will
    use. Change it here if you want a different one.
 3. Send it. You see "Starting your project…" and then the project opens.
@@ -379,8 +379,8 @@ provider's status in **Settings → Providers**, then send your message again.
   whoever runs it to restart it.
 - **"Builder is responding slowly"**: everything waits on the server. If it
   stays slow, restart it.
-- **"Describe what you want built to start a project."**: the box is empty;
-  type your idea first.
+- **"At least ten characters to start a project."**: describe the idea in a
+  little more detail.
 - **"No model provider connected"**: choose **Connect a model provider**.
 - **"The provider refused this key."**: check the key and test again.
 - **"The provider did not answer with a model list."**: check the **Base URL**
