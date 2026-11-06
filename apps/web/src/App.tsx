@@ -81,11 +81,7 @@ import {
 } from "@corbits/react-ui/ui/dialog";
 import { Auth } from "./pages/auth.jsx";
 import { StageWorkspace } from "./pages/workspace/index.tsx";
-import {
-  firstRunScreen,
-  hubReadState,
-  type HubAuthState,
-} from "./first-run.ts";
+import { firstRunScreen, type HubAuthState } from "./first-run.ts";
 import {
   ModelSetup,
   clearModelSetupDeferral,
@@ -575,10 +571,32 @@ export function App() {
   const [chosen, setSelected] = useState<string | null>(projectInUrl);
   const selected = urlProject ?? chosen;
   const [error, setError] = useState<string | null>(null);
-  // The hub going away is a visible state, not a blank screen.
-  const reads = hubReadState([providersRead, projectsRead]);
-  const signedOutByHost = reads.signedOut;
-  const offline = sessionReadFailed || reads.offline;
+  // A fold read that failed. A 401/403 means the session cookie no longer
+  // holds: that is "not signed in", not "not answering". Only a dropped
+  // connection or a real server error is offline: the hub going away is a
+  // visible state, not a blank screen.
+  const readFailure = providersRead.error ?? projectsRead.error ?? null;
+  const readStatus =
+    readFailure instanceof ApiFailure
+      ? readFailure.httpStatus
+      : readFailure instanceof Error &&
+          "response" in readFailure &&
+          readFailure.response instanceof Response
+        ? readFailure.response.status
+        : undefined;
+  const signedOutByHost = readStatus === 401 || readStatus === 403;
+  // Auth and "no coordinator yet" are not a dead hub. Only a dropped
+  // connection or a 5xx is offline.
+  const offline =
+    sessionReadFailed ||
+    (readFailure !== null &&
+      !signedOutByHost &&
+      (readStatus === undefined || readStatus >= 500));
+  // A failed refresh keeps its last data, so only a read that never answered
+  // hides the shell.
+  const nothingToShow =
+    (providersRead.isError && providersRead.data === undefined) ||
+    (projectsRead.isError && projectsRead.data === undefined);
   useEffect(() => {
     if (signedOutByHost) setAuth("signed-out");
   }, [signedOutByHost]);
@@ -762,7 +780,7 @@ export function App() {
   // A refused read stays on the shell, which already says the hub is down.
   const modelCatalogUnsettled =
     !setupLater && view !== "invite" && providersRead.isPending;
-  if (modelCatalogUnsettled || sessionReadFailed || reads.blocksShell) {
+  if (modelCatalogUnsettled || (offline && nothingToShow)) {
     return <Booting offline={offline} />;
   }
   if (
