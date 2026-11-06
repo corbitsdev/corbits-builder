@@ -1,6 +1,6 @@
 import { afterAll, expect, mock, test } from "bun:test";
 
-const realIdb = await import("idb-keyval");
+const realIdb = { ...(await import("idb-keyval")) };
 const stored = new Map<string, unknown>();
 mock.module("idb-keyval", () => ({
   get: (key: string) => Promise.resolve(stored.get(key)),
