@@ -1,4 +1,3 @@
-import { type } from "arktype";
 import ignore, { type Ignore } from "ignore";
 import { constants } from "node:fs";
 import { open, readdir, realpath } from "node:fs/promises";
@@ -11,28 +10,25 @@ import {
   ArtifactReceipt,
   DesignDraft,
 } from "@corbits-builder/schemas/artifact";
+import {
+  EXCLUDED_DIRECTORIES,
+  addBundleFile,
+  bundleContent,
+  excludedFile,
+} from "@corbits-builder/schemas/app-files";
 import { WorkflowHttpError, workflowHttpJson } from "../workflows/http-json.ts";
-import { INPUTS_DIRECTORY } from "../config/inputs.ts";
 import { spliceDesignScreens } from "./starter.ts";
 
-// Installs and builds are rebuilt by setup and check-app, .builder and the inputs come from filed
-// documents, and .scratch holds the coder's throwaway files, such as the screenshots it takes.
-export const EXCLUDED_DIRECTORIES: ReadonlySet<string> = new Set([
-  "node_modules",
-  "dist",
-  ".git",
-  ".builder",
-  ".scratch",
-  INPUTS_DIRECTORY,
-]);
-// Secrets (environment files, keys, registry credentials) and local databases never leave the
-// workspace; an example environment file holds no secret and documents the app's settings.
-const EXCLUDED_FILE =
-  /^(\.env(\..*)?|\.npmrc|\.dev\.vars|.*\.(db|db-wal|db-shm|pem|key|p12)|.*\.sqlite.*)$/;
-export const excludedFile = (name: string) => {
-  const lower = name.toLowerCase();
-  return lower !== ".env.example" && EXCLUDED_FILE.test(lower);
-};
+// The rules for which files are the app's and how they pack live with the schemas, so the UI's
+// repository import and the import script pack a person's code the way the hub packs a workspace.
+export {
+  EXCLUDED_DIRECTORIES,
+  addBundleFile,
+  bundleContent,
+  bundleFiles,
+  excludedFile,
+} from "@corbits-builder/schemas/app-files";
+
 // Byte-order marks stay in the text, so a file reads back exactly as it was.
 const utf8 = new TextDecoder("utf-8", { fatal: true, ignoreBOM: true });
 
@@ -160,58 +156,9 @@ export async function collectApp(
   return bundle;
 }
 
-// Keeps a UTF-8 file as text and any other base64-encoded under binary.
-export function addBundleFile(
-  bundle: Required<AppBundle>,
-  path: string,
-  bytes: Uint8Array,
-) {
-  try {
-    bundle.files[path] = utf8.decode(bytes);
-  } catch (error) {
-    if (!(error instanceof TypeError)) throw error;
-    bundle.binary[path] = Buffer.from(bytes).toString("base64");
-  }
-}
-
-// A bundle's files as they are written to disk: text as is, binaries decoded.
-export function bundleFiles(bundle: {
-  files: Readonly<Record<string, string>>;
-  binary?: Readonly<Record<string, string>>;
-}): Record<string, string | Uint8Array> {
-  return {
-    ...bundle.files,
-    ...Object.fromEntries(
-      Object.entries(bundle.binary ?? {}).map(([path, data]) => [
-        path,
-        Buffer.from(data, "base64"),
-      ]),
-    ),
-  };
-}
-
-// Keys in order, so the same files always make the same content and an unchanged app files nothing.
-const sorted = (record: Record<string, string>) =>
-  Object.fromEntries(
-    Object.entries(record).sort(([a], [b]) => (a < b ? -1 : a > b ? 1 : 0)),
-  );
-
 // The workspace as app document content, checked against the app limit.
 export async function appContent(workspace: string) {
   return bundleContent(await collectApp(workspace)).content;
-}
-
-// Collected files as an app bundle and its document content. An app is as large as it is: a
-// resource that runs out on the way, such as memory or a request body, reports its own error.
-export function bundleContent(collected: Required<AppBundle>) {
-  const files = sorted(collected.files);
-  const binary = sorted(collected.binary);
-  const bundle = AppBundle(
-    Object.keys(binary).length ? { files, binary } : { files },
-  );
-  if (bundle instanceof type.errors)
-    throw new Error("invalid_app: " + bundle.summary);
-  return { bundle, content: JSON.stringify(bundle) };
 }
 
 const projectPath = (scope: { tenantId: string; projectId: string }) =>

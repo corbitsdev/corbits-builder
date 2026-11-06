@@ -65,7 +65,7 @@ the app or in `.env.hub`
 - [Self-hosting](https://github.com/corbitsdev/corbits-builder/blob/main/docs/SELF_HOST.md): running it with Docker.
 - [Development](https://github.com/corbitsdev/corbits-builder/blob/main/docs/DEV.md) and [Contributing](https://github.com/corbitsdev/corbits-builder/blob/main/CONTRIBUTING.md): working on the code.
 - [AGENTS.md](https://github.com/corbitsdev/corbits-builder/blob/main/AGENTS.md): conventions for coding agents.
-- [skills/](https://github.com/corbitsdev/corbits-builder/tree/main/skills): agent skills to install Builder and drive it through its API.
+- [skills/](https://github.com/corbitsdev/corbits-builder/tree/main/skills): agent skills to install Builder, drive it through its API and import a repository as a project.
 
 Builder runs on [Interchange](https://github.com/faremeter/interchange), which
 runs the agents and handles their messages, approvals and credentials.

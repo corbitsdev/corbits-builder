@@ -166,6 +166,7 @@
       "version": "0.1.0-rc.3",
       "dependencies": {
         "arktype": "catalog:",
+        "ignore": "5.3.2",
       },
     },
     "packages/slidedeck": {
@@ -630,7 +631,7 @@
     },
     "workflows/coordinator": {
       "name": "@corbits-builder/coordinator",
-      "version": "0.35.0",
+      "version": "0.35.1",
       "dependencies": {
         "@intx/agent": "workspace:*",
         "@intx/workflow": "workspace:*",
@@ -638,7 +639,7 @@
     },
     "workflows/designer": {
       "name": "@corbits-builder/designer",
-      "version": "0.1.0",
+      "version": "0.2.0",
       "dependencies": {
         "@intx/agent": "workspace:*",
         "@intx/workflow": "workspace:*",
@@ -662,7 +663,7 @@
     },
     "workflows/writer": {
       "name": "@corbits-builder/writer",
-      "version": "0.7.0",
+      "version": "0.7.1",
       "dependencies": {
         "@intx/agent": "workspace:*",
         "@intx/workflow": "workspace:*",

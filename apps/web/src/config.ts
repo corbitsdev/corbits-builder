@@ -272,6 +272,25 @@ export const wording = {
     source: `A project ${productName} or the original Solution Builder exported`,
     invalid: `This file is not a project ${productName} or the original Solution Builder exported.`,
     omitted: (kinds: string[]) => `Not carried over: ${kinds.join(", ")}.`,
+    folderAction: "Import a folder",
+    folderSource:
+      "A folder of code, usually a git repository, to make a project from",
+    folderTitle: (title: string, folder: string) =>
+      `Import ${title} from ${folder}?`,
+    folderCode: (files: number, size: string) =>
+      `Code: ${files} files, ${size}. It is filed as the app, and the app builder starts from it.`,
+    folderNoCode:
+      "No package.json was found, so no code is filed; only the documents found are.",
+    folderNothing: "Nothing to import: no code and no documents were found.",
+    folderFound: (names: string) => `Found in the folder: ${names}.`,
+    folderToWrite: (names: string) =>
+      `${productName} writes with you, for your approval: ${names}.`,
+    folderLeaveOut: "Leave out:",
+    folderReasons: {
+      secret: "looks like a secret",
+      lockfile: `a lockfile ${productName} does not use`,
+    },
+    folderImport: "Import",
   },
   shell: {
     back: "Back",
