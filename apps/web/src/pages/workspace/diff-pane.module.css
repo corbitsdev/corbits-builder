@@ -1,0 +1,10 @@
+.read {
+  padding: var(--space-5);
+}
+
+.lines {
+  font-family: var(--wb-font-mono);
+  font-size: 12px;
+  white-space: pre-wrap;
+  margin: 0;
+}

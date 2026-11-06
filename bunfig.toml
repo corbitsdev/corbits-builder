@@ -1,0 +1,3 @@
+[test]
+# The interface's CSS modules, readable in rendered markup.
+preload = ["./apps/web/src/css-modules-preload.ts"]

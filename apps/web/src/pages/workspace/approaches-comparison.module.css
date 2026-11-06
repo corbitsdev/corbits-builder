@@ -1,0 +1,63 @@
+/* The approaches a version filed, as columns. The grid fits as many as the
+   pane's width allows and stacks the rest, so a narrow pane never scrolls
+   sideways. */
+.approaches {
+  align-self: stretch;
+  margin: var(--space-4) 0 var(--space-6);
+}
+
+.grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 14rem), 1fr));
+  gap: var(--space-4);
+}
+
+.approaches .card {
+  min-width: 0;
+  gap: var(--space-3);
+  padding: var(--space-4);
+  border-radius: var(--radius-panel);
+  border-color: var(--wb-border);
+  background: var(--wb-card);
+}
+
+.approaches .card[data-chosen],
+.grid:not(:has([data-chosen])) .card[data-recommended] {
+  border-color: var(--wb-border-strong);
+  background: color-mix(in srgb, var(--wb-muted) 45%, var(--wb-card));
+}
+
+.badges {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-1);
+  margin-bottom: var(--space-1);
+}
+
+.approaches .card p,
+.points ul {
+  margin: 0;
+}
+
+.points h4 {
+  margin: 0 0 var(--space-1);
+  font-size: 0.75rem;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--wb-muted-foreground);
+}
+
+.points ul {
+  padding-inline-start: 1.1em;
+  list-style: disc;
+}
+
+.points li + li {
+  margin-top: var(--space-1);
+}
+
+.approaches .footer {
+  margin-top: auto;
+  padding-top: var(--space-2);
+}

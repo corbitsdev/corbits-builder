@@ -14,13 +14,14 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@corbits/react-ui/ui/dialog";
-import { Banner, Mark, QUIET_CONTROL } from "../components.jsx";
+import { Banner, Mark, QuietButton } from "../components.jsx";
 import {
   AddProviderDialog,
   useModelCatalog,
   useSubscriptionLogins,
-} from "./providers.jsx";
-import { ProviderLogo } from "./provider-logos.tsx";
+} from "./settings/providers.jsx";
+import { ProviderLogo } from "./settings/provider-logos.tsx";
+import styles from "./model-setup.module.css";
 
 const copy = wording.providers;
 
@@ -90,7 +91,7 @@ function ProviderTiles({
       {fault}
       <KindCardGrid
         label={copy.loginGroup}
-        className="provider-tiles"
+        className={styles.tiles}
         options={logins.map((provider) => ({
           id: provider.id,
           title: provider.label,
@@ -103,10 +104,10 @@ function ProviderTiles({
           if (provider) void signIn(provider);
         }}
       />
-      <hr className="model-setup-divider" />
+      <hr className={styles.divider} />
       <KindCardGrid
         label={copy.apiKeyGroup}
-        className="provider-tiles"
+        className={styles.tiles}
         options={apiKeyProviders.map((provider) => ({
           id: provider.id,
           title: provider.label,
@@ -152,16 +153,14 @@ export function ModelSetup({
       }
       panel={<DitherCanvas />}
     >
-      <div className="model-setup">
+      <div className={styles.setup}>
         <hgroup>
           <h1>{copy.connect}</h1>
           <p>{copy.noneHint}</p>
         </hgroup>
         <ProviderTiles subscriptions={subscriptions} onConnected={connected} />
-        <div className="model-setup-later">
-          <button
-            type="button"
-            className={QUIET_CONTROL}
+        <div className={styles.later}>
+          <QuietButton
             onClick={() => {
               try {
                 sessionStorage.setItem(MODEL_SETUP_LATER_KEY, "1");
@@ -176,7 +175,7 @@ export function ModelSetup({
             }}
           >
             {wording.action.skipForNow}
-          </button>
+          </QuietButton>
           <p>{copy.addLater}</p>
         </div>
       </div>
@@ -207,7 +206,7 @@ export function EnableAiDialog({
           <DialogTitle>{copy.connect}</DialogTitle>
           <DialogDescription>{copy.noneHint}</DialogDescription>
         </DialogHeader>
-        <DialogBody className="model-setup">
+        <DialogBody className={styles.setup}>
           <ProviderTiles
             subscriptions={subscriptions}
             onConnected={connected}

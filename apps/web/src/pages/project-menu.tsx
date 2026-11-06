@@ -37,7 +37,14 @@ import {
   shipProject,
   updateProject,
 } from "../api/projects.ts";
-import { Button, type NoticeAction } from "../components.jsx";
+import {
+  Button,
+  DangerMenuItem,
+  Fault,
+  Field,
+  type NoticeAction,
+} from "../components.jsx";
+import styles from "./project-menu.module.css";
 import { Dictated } from "../dictation.jsx";
 
 /** What the menu needs of a project: the summaries (rail, top bar) both have it. */
@@ -186,8 +193,7 @@ export function ProjectMenu({
           </MenuItem>
           <MenuSeparator />
           {confirming ? (
-            <MenuItem
-              className="menu-danger"
+            <DangerMenuItem
               onSelect={() =>
                 void act(async () => {
                   await archiveProject(project.id);
@@ -196,17 +202,16 @@ export function ProjectMenu({
               }
             >
               Yes, delete it
-            </MenuItem>
+            </DangerMenuItem>
           ) : (
-            <MenuItem
-              className="menu-danger"
+            <DangerMenuItem
               onSelect={(event) => {
                 event.preventDefault();
                 setConfirming(true);
               }}
             >
               Delete…
-            </MenuItem>
+            </DangerMenuItem>
           )}
         </MenuContent>
       </Menu>
@@ -214,7 +219,6 @@ export function ProjectMenu({
         // Portaled, but React-nested in the host: its events bubble to a
         // card face's handlers unless stopped here, the same as the menu's.
         <div
-          className="card-dialog"
           onClick={(event) => event.stopPropagation()}
           onPointerDown={(event) => event.stopPropagation()}
           onContextMenu={(event) => event.stopPropagation()}
@@ -231,7 +235,6 @@ export function ProjectMenu({
       ) : null}
       {updating ? (
         <div
-          className="card-dialog"
           onClick={(event) => event.stopPropagation()}
           onPointerDown={(event) => event.stopPropagation()}
           onContextMenu={(event) => event.stopPropagation()}
@@ -245,7 +248,6 @@ export function ProjectMenu({
       ) : null}
       {exporting ? (
         <div
-          className="card-dialog"
           onClick={(event) => event.stopPropagation()}
           onPointerDown={(event) => event.stopPropagation()}
           onContextMenu={(event) => event.stopPropagation()}
@@ -352,11 +354,7 @@ function ExportDialog({
           {available === null ? (
             <p role="status">{wording.exportProject.loading}</p>
           ) : null}
-          {failure === null ? null : (
-            <p className="inline-note" role="alert">
-              {failure}
-            </p>
-          )}
+          {failure === null ? null : <Fault>{failure}</Fault>}
           {EXPORT_SECTIONS.map((section) => (
             <Checkbox
               key={section}
@@ -442,12 +440,12 @@ export function ProjectInfoDialog({
 
   return (
     <Dialog open onOpenChange={(open) => (open ? undefined : onClose())}>
-      <DialogContent className="project-info">
+      <DialogContent className={styles.info}>
         <DialogHeader>
           <DialogTitle>{project.title}</DialogTitle>
         </DialogHeader>
         <DialogBody>
-          <div className="field">
+          <Field>
             <label htmlFor={`project-name-${project.id}`}>Name</label>
             <Dictated value={title} onValueChange={setTitle} align="center">
               <Input
@@ -462,8 +460,8 @@ export function ProjectInfoDialog({
                 aria-label="Project name"
               />
             </Dictated>
-          </div>
-          <dl className="version-list project-info-facts">
+          </Field>
+          <dl className={styles.facts}>
             {project.createdAt !== undefined ? (
               <div>
                 <dt>Created</dt>

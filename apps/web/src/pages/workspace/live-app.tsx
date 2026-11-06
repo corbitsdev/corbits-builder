@@ -41,11 +41,17 @@ import { keys } from "../../queries/keys.ts";
 import { wording } from "../../config.ts";
 import { activityPhrase, useProjectActivity } from "./agent-activity.tsx";
 import { setupProgressLine } from "./setup-progress.ts";
-import { AppSketch } from "./design-concepts.tsx";
-import { clock, useElapsedMs } from "./elapsed.tsx";
+import {
+  Sketching,
+  SketchingClock,
+  SketchingLead,
+  SketchingNote,
+} from "./sketching.tsx";
+import { useElapsedMs } from "./elapsed.tsx";
 import { DevicePreview, type PreviewDevice } from "./device-preview.tsx";
 import { PaneBar, type PaneBarGroup } from "./pane-bar.tsx";
 import { useFileGroup, ZIP_TYPE } from "./pane-file.tsx";
+import styles from "./live-app.module.css";
 
 const POLL_MS = 10_000;
 const STARTING_POLL_MS = 2_000;
@@ -94,7 +100,7 @@ function BuilderStatus({ projectId }: { projectId: string }) {
   if (builder === undefined) return null;
   const { phrase, asking } = activityPhrase(builder);
   return (
-    <p className="live-app-status" role="status">
+    <p className={styles.status} role="status">
       <StatusDot
         label=""
         live={!asking}
@@ -106,14 +112,7 @@ function BuilderStatus({ projectId }: { projectId: string }) {
   );
 }
 
-function SetupClock({ since }: { since: string }) {
-  const seconds = Math.floor(useElapsedMs(since) / 1_000);
-  return (
-    <span className="concept-sketching-clock" role="timer" aria-live="off">
-      {text.setup.elapsed(clock(seconds))}
-    </span>
-  );
-}
+const STATE = styles.state;
 
 /** The Builder's first app taking shape: what its own tool events say it is doing, while it does. */
 function BuilderSetup({
@@ -132,22 +131,24 @@ function BuilderSetup({
   const quietMs = useElapsedMs(builder.progress?.lastActivityAt);
   const progress = setupProgressLine(builder.progress, quietMs);
   return (
-    <div className="concept-sketching" data-state="working" role="status">
-      <AppSketch />
-      <p className="concept-sketching-lead">{text.setup.working}</p>
+    <Sketching working>
+      <SketchingLead>{text.setup.working}</SketchingLead>
       {phrase === undefined ? null : (
-        <p className="live-app-setup-activity">
+        <p className={styles.setupActivity}>
           <ShimmerText key={phrase}>{phrase}</ShimmerText>
         </p>
       )}
       {progress === undefined ? null : (
-        <p className="live-app-setup-activity">{progress}</p>
+        <p className={styles.setupActivity}>{progress}</p>
       )}
-      <p className="concept-sketching-note">
+      <SketchingNote>
         {text.setup.note}{" "}
-        <SetupClock since={builder.since ?? builder.startedAt} />
-      </p>
-    </div>
+        <SketchingClock
+          since={builder.since ?? builder.startedAt}
+          label={text.setup.elapsed}
+        />
+      </SketchingNote>
+    </Sketching>
   );
 }
 
@@ -160,7 +161,7 @@ function StarterHeld({ coder }: { coder: "checking" | "unknown" | "idle" }) {
   }[coder];
   return (
     <EmptyState
-      className="live-app-state"
+      className={STATE}
       icon={<AppWindow />}
       title={text.notBuiltTitle}
       description={description}
@@ -170,7 +171,7 @@ function StarterHeld({ coder }: { coder: "checking" | "unknown" | "idle" }) {
 
 function Log({ lines }: { lines: readonly string[] | undefined }) {
   if (!lines?.length) return null;
-  return <pre className="live-app-log">{lines.join("\n")}</pre>;
+  return <pre className={styles.log}>{lines.join("\n")}</pre>;
 }
 
 function AppState({
@@ -185,7 +186,7 @@ function AppState({
   if (unavailable)
     return (
       <EmptyState
-        className="live-app-state"
+        className={STATE}
         icon={<AppWindow />}
         title={text.unavailableTitle}
         description={text.unavailable}
@@ -194,14 +195,14 @@ function AppState({
   if (app === undefined) return null;
   if (app.state === "failed")
     return (
-      <div className="live-app-state" role="alert">
+      <div className={styles.state} role="alert">
         <EmptyState
           icon={<TriangleAlert />}
           title={app.error ?? text.failed}
           description={text.restarts}
         />
         {app.log?.length ? (
-          <details className="live-app-output">
+          <details className={styles.output}>
             <summary>{text.lastOutput}</summary>
             <Log lines={app.log.slice(-FAILED_LOG_LINES)} />
           </details>
@@ -211,7 +212,7 @@ function AppState({
   if (app.state === "not_built")
     return (
       <EmptyState
-        className="live-app-state"
+        className={STATE}
         icon={<AppWindow />}
         title={text.notBuiltTitle}
         description={text.notBuilt}
@@ -221,16 +222,16 @@ function AppState({
   if (app.state === "stopped")
     return (
       <EmptyState
-        className="live-app-state"
+        className={STATE}
         icon={<AppWindow />}
         title={text.stopped}
         description={text.stoppedNote}
       />
     );
   return (
-    <div className="live-app-state" role="status">
+    <div className={styles.state} role="status">
       <EmptyState
-        icon={<LoaderCircle className="live-app-spinner" />}
+        icon={<LoaderCircle className={styles.spinner} />}
         title={text.phase[app.phase ?? "starting"]}
         {...(app.version !== undefined
           ? { description: text.filedVersion(app.version) }
@@ -292,7 +293,7 @@ export function LiveApp({
     const onPointerDown = (event: PointerEvent) => {
       if (
         event.target instanceof Element &&
-        event.target.closest(".pane-bar") !== null &&
+        event.target.closest('[data-slot="pane-bar"]') !== null &&
         triggerRef.current?.contains(event.target) !== true
       )
         setChecklistOpen(false);
@@ -406,7 +407,7 @@ export function LiveApp({
       <Checklist markdown={markdown} onClose={popover.close} />
     ) : null;
   return (
-    <div className="live-app">
+    <div className={styles.app} data-slot="live-app">
       {url !== undefined && !held ? (
         <DevicePreview
           src={{ url, title: text.frameTitle }}
@@ -415,6 +416,7 @@ export function LiveApp({
           trailing={[own, checklistGroup, files, ...trailing]}
           popover={checklistPopover}
           popoverRef={popover.rootRef}
+          fill
         />
       ) : (
         <>
@@ -556,23 +558,23 @@ function ChecklistRow({ item }: { item: ChecklistItem }) {
   return (
     <li data-done={item.done ? "" : undefined}>
       {evidence === "" ? (
-        <div className="live-app-checklist-row">
+        <div className={styles.checklistRow}>
           {mark}
           <span>{item.title}</span>
         </div>
       ) : (
         <details>
-          <summary className="live-app-checklist-row">
+          <summary className={styles.checklistRow}>
             {mark}
             <span>{item.title}</span>
           </summary>
-          <div className="live-app-checklist-evidence">
-            <Markdown source={evidence} />
+          <div className={styles.checklistEvidence}>
+            <Markdown source={evidence} document />
           </div>
         </details>
       )}
       {item.children.length === 0 ? null : (
-        <ul className="live-app-checklist-children">
+        <ul className={styles.checklistChildren}>
           {item.children.map((child, index) => (
             <ChecklistRow key={index} item={child} />
           ))}
@@ -599,14 +601,14 @@ function Checklist({
   return (
     <aside
       ref={panel}
-      className="live-app-checklist"
+      className={styles.checklist}
       aria-label={text.checklistTitle}
       role="dialog"
       tabIndex={-1}
     >
-      <header className="live-app-checklist-header">
+      <header className={styles.checklistHeader}>
         <h3>{text.checklistTitle}</h3>
-        <span className="live-app-checklist-progress" role="status">
+        <span className={styles.checklistProgress} role="status">
           {text.checklistProgress(done, total)}
         </span>
         <Button
@@ -621,12 +623,12 @@ function Checklist({
         </Button>
       </header>
       {total === 0 ? (
-        <Markdown source={markdown} />
+        <Markdown source={markdown} document />
       ) : (
-        <ul className="live-app-checklist-items">
+        <ul className={styles.checklistItems}>
           {entries.map((entry, index) =>
             "note" in entry ? (
-              <li key={index} className="live-app-checklist-note">
+              <li key={index} className={styles.checklistNote}>
                 <Markdown source={entry.note} />
               </li>
             ) : (

@@ -1,0 +1,57 @@
+/* Connect a model: the sign-in column's rhythm and LoginForm's heading, for
+   the one screen before the project list. */
+.setup {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-4);
+}
+
+.setup hgroup {
+  display: grid;
+  gap: var(--space-2);
+}
+
+.setup h1 {
+  margin: 0;
+  font-size: 1.875rem;
+  font-weight: 600;
+  line-height: 1;
+  letter-spacing: -0.015em;
+  text-wrap: balance;
+}
+
+.setup hgroup p,
+.later p {
+  margin: 0;
+  color: var(--wb-muted-foreground);
+  font-size: 0.875rem;
+  line-height: 1.5;
+}
+
+/* No cursor here: the global button rules give an enabled tile the hand and a
+   disabled one not-allowed. */
+.tiles > button {
+  gap: var(--space-2);
+  min-height: 7.5rem;
+  padding: var(--space-4);
+  border-radius: var(--radius-md);
+}
+
+.tiles > button svg {
+  width: 24px;
+  height: 24px;
+  color: var(--wb-foreground);
+}
+
+.divider {
+  margin: 0;
+  border: 0;
+  border-top: 1px solid var(--wb-border);
+}
+
+.later {
+  display: grid;
+  justify-items: center;
+  gap: var(--space-1);
+  text-align: center;
+}

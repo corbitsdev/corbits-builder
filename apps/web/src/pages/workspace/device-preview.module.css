@@ -1,0 +1,57 @@
+.preview {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  width: 100%;
+  margin: 0;
+}
+
+.bezel {
+  width: 100%;
+  border: 1px solid var(--wb-border);
+  border-radius: var(--radius-panel);
+  background: var(--wb-background);
+  overflow: hidden;
+}
+
+.preview[data-device="phone"] > .bezel {
+  width: min(100%, 24rem);
+  margin-inline: auto;
+}
+
+/* The pane's whole page: the pane is the frame, so only a phone keeps edges, at its sides. */
+.preview[data-fill] {
+  flex: 1;
+  min-height: 0;
+}
+
+.preview[data-fill] > .bezel {
+  display: flex;
+  flex: 1;
+  min-height: 0;
+  border: 0;
+  border-radius: 0;
+}
+
+.preview[data-fill][data-device="phone"] > .bezel {
+  border-inline: 1px solid var(--wb-border);
+}
+
+.expanded {
+  width: calc(100vw - 2rem);
+  max-width: none;
+  height: calc(100dvh - 2rem);
+  max-height: none;
+}
+
+.expanded .bezel {
+  display: flex;
+  flex: 1;
+  min-height: 0;
+}
+
+.expanded .bezel[data-device="phone"] {
+  width: min(100%, 24rem);
+  margin-inline: auto;
+}

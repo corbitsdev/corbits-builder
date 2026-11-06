@@ -5,6 +5,7 @@
 import { useEffect, useRef, useState } from "react";
 import { Button as UiButton } from "@corbits/react-ui";
 import { wording } from "../../config.ts";
+import styles from "./typed-yes.module.css";
 
 const text = wording.approval.typedYes;
 const SECONDS = 5;
@@ -174,10 +175,10 @@ export function TypedYesCountdown({
     return () => clearInterval(tick);
   }, [held]);
   return (
-    <div className="typed-yes" role="status">
-      <span className="typed-yes-count">{text.countdown(seconds)}</span>
+    <div className={styles.countdown} role="status">
+      <span className={styles.count}>{text.countdown(seconds)}</span>
       <span
-        className="typed-yes-bar"
+        className={styles.bar}
         aria-hidden="true"
         style={{ animationDuration: `${String(SECONDS)}s` }}
       />
@@ -185,7 +186,6 @@ export function TypedYesCountdown({
         type="button"
         variant="link"
         size="sm"
-        className="typed-yes-undo"
         title={text.undoHint}
         aria-keyshortcuts="Escape"
         onClick={onUndo}

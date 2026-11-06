@@ -1,0 +1,128 @@
+.bar {
+  position: sticky;
+  bottom: var(--space-3);
+  z-index: 2;
+  display: flex;
+  align-self: center;
+  align-items: center;
+  gap: 2px;
+  max-width: calc(100% - 1rem);
+  margin-top: auto;
+  padding: 3px;
+  border: 1px solid var(--wb-border);
+  border-radius: 999px;
+  background: var(--wb-background);
+}
+
+.bar[data-floating],
+.handle {
+  position: absolute;
+  bottom: var(--space-3);
+  left: 50%;
+  margin: 0;
+  transform: translateX(-50%);
+}
+
+/* One class, not two: the app-wide disabled button colour has to win over the muted one here,
+   while hover and the pressed state still win over it. */
+.action {
+  border-radius: 999px;
+  color: var(--wb-muted-foreground);
+  font-variant-numeric: tabular-nums;
+}
+
+.action:hover,
+.action[aria-pressed="true"] {
+  color: var(--wb-foreground);
+}
+
+.rule {
+  flex-shrink: 0;
+  width: 1px;
+  height: 1.25rem;
+  margin-inline: 2px;
+  background: var(--wb-border);
+}
+
+.tip {
+  max-width: 18rem;
+  color: var(--wb-foreground);
+  font-size: 0.8125rem;
+  font-weight: 400;
+  line-height: 1.45;
+  text-transform: none;
+  letter-spacing: normal;
+}
+
+.note {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-1);
+  padding: 0 var(--space-2);
+  color: var(--wb-muted-foreground);
+  font-size: 0.75rem;
+  font-weight: 500;
+  white-space: nowrap;
+}
+
+/* The only part of the bar that gives way, so a long strip scrolls inside a narrow pane. The
+   padding keeps a focused chip's ring inside the scroll box, which would clip it. */
+.row {
+  position: relative;
+  display: flex;
+  flex: 0 1 auto;
+  gap: 2px;
+  min-width: 0;
+  margin-block: -4px;
+  padding: 4px;
+  overflow-x: auto;
+  scrollbar-width: none;
+}
+
+.row > * {
+  flex-shrink: 0;
+}
+
+/* The folded bar: a small tab at the page's foot that brings the bar back. */
+.handle {
+  z-index: 2;
+  width: 2.5rem;
+  height: 1.25rem;
+  border: 1px solid var(--wb-border);
+  border-radius: 999px;
+  background: var(--wb-background);
+  color: var(--wb-muted-foreground);
+  opacity: 0.8;
+}
+
+.handle:hover {
+  opacity: 1;
+}
+
+/* A floating bar with a popover: the anchor carries the bar's placement, so the popover sits on
+   whatever the bar is (the pill, a wrapped pill, or the folded handle) and a press on either is
+   inside it. It spans the page so a tall popover shrinks to fit rather than leave the pane; only
+   its own children take presses. */
+.anchor {
+  position: absolute;
+  inset: var(--space-3) 0;
+  z-index: 3;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: flex-end;
+  gap: var(--space-2);
+  pointer-events: none;
+}
+
+.anchor > * {
+  pointer-events: auto;
+}
+
+.anchor > .bar[data-floating],
+.anchor > .handle {
+  position: static;
+  flex-shrink: 0;
+  margin: 0;
+  transform: none;
+}

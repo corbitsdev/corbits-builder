@@ -1,0 +1,184 @@
+.card {
+  max-width: 100%;
+  min-width: 0;
+}
+
+/* GateBlock's "Needs you · form" label: the heading and the step tabs say what the card is. */
+.card > p:first-child {
+  display: none;
+}
+
+.card > h3 {
+  margin-top: 0;
+}
+
+.steps {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-1);
+  margin-bottom: var(--space-3);
+}
+
+.step {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-1);
+  padding: 2px var(--space-2);
+  border: 1px solid transparent;
+  border-radius: 999px;
+  font-size: 0.75rem;
+  color: var(--muted-foreground);
+}
+
+.step[aria-selected="true"] {
+  border-color: var(--primary-emphasis);
+  color: var(--foreground);
+}
+
+.step:disabled {
+  opacity: 0.5;
+}
+
+.stepMark {
+  width: 0.75rem;
+  height: 0.75rem;
+  color: var(--ok);
+}
+
+.prompt {
+  margin: 0;
+  font-size: 0.875rem;
+  font-weight: 500;
+}
+
+.options {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  border-radius: var(--radius-sm);
+  outline: none;
+}
+
+.choice {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  min-height: 2rem;
+  padding: var(--space-1) var(--space-2);
+  border-radius: var(--radius-sm);
+  font-size: 0.875rem;
+  cursor: pointer;
+}
+
+.options:focus-visible .choice[data-active],
+.choice:hover {
+  background: color-mix(in oklab, var(--primary-emphasis) 12%, transparent);
+}
+
+.choiceMark {
+  flex: none;
+  width: 1rem;
+  height: 1rem;
+  color: var(--primary-emphasis);
+}
+
+.choice .otherInput {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
+.answers {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  margin: 0 0 var(--space-3);
+  font-size: 0.875rem;
+}
+
+.answers dt {
+  color: var(--muted-foreground);
+}
+
+.answers dd {
+  margin: 0;
+  overflow-wrap: anywhere;
+}
+
+.keys {
+  margin: var(--space-3) 0 0;
+  font-size: 0.6875rem;
+  color: var(--muted-foreground);
+}
+
+.fields {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-4);
+}
+
+.question {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  min-width: 0;
+  margin: 0;
+  padding: 0;
+  border: 0;
+}
+
+/* Reads as the label IntakeForm gives a single-choice question. */
+.question legend {
+  margin-bottom: var(--space-1);
+  padding: 0;
+  font-size: 0.875rem;
+  font-weight: 500;
+}
+
+.option {
+  align-items: center;
+}
+
+.other {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-2);
+}
+
+.other .otherInput {
+  flex: 1 1 12rem;
+  min-width: 0;
+}
+
+/* The open card's frame, quiet: done, not waiting on anyone. */
+.settled {
+  max-width: 100%;
+  min-width: 0;
+  padding: 0.75rem 0.875rem;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg, 0.5rem);
+}
+
+.settledTitle {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  margin: 0;
+  font-size: 0.875rem;
+  font-weight: 500;
+  color: var(--muted-foreground);
+}
+
+.settledMark {
+  flex: none;
+  width: 1rem;
+  height: 1rem;
+}
+
+.settledOk {
+  color: var(--ok);
+}
+
+.settled .answers {
+  margin: var(--space-3) 0 0;
+}

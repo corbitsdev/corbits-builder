@@ -12,7 +12,9 @@ import {
   type Theme,
 } from "@corbits/slidedeck/deck";
 import { useMemo, type CSSProperties, type ReactNode } from "react";
+import { InlineNote } from "../../components.tsx";
 import { wording } from "../../config.ts";
+import styles from "./approval-package-slides.module.css";
 
 const text = wording.approvalPackage;
 
@@ -203,7 +205,7 @@ function SlideBlock({ block }: { block: Block }) {
 function SlideBlocks({ blocks }: { blocks: readonly Block[] }) {
   if (blocks.length === 0) return null;
   return (
-    <div className="approval-package-slide-body">
+    <div className={styles.body}>
       {blocks.map((block, index) => (
         <SlideBlock key={index} block={block} />
       ))}
@@ -221,12 +223,9 @@ function SlideColumn({
   headingColor: string;
 }) {
   return (
-    <div className="approval-package-column">
+    <div className={styles.column}>
       {heading === undefined ? null : (
-        <h4
-          className="approval-package-column-heading"
-          style={{ color: headingColor }}
-        >
+        <h4 className={styles.columnHeading} style={{ color: headingColor }}>
           {heading}
         </h4>
       )}
@@ -248,7 +247,7 @@ function FreeText({ elements }: { elements: readonly FreeElement[] }) {
     }
   }
   if (paragraphs.length === 0) return null;
-  return <div className="approval-package-slide-body">{paragraphs}</div>;
+  return <div className={styles.body}>{paragraphs}</div>;
 }
 
 function SlideContent({
@@ -264,14 +263,14 @@ function SlideContent({
       return <SlideBlocks blocks={slide.body} />;
     case "two-column":
       return (
-        <div className="approval-package-columns">
+        <div className={styles.columns}>
           <SlideColumn blocks={slide.left} headingColor={headingColor} />
           <SlideColumn blocks={slide.right} headingColor={headingColor} />
         </div>
       );
     case "comparison":
       return (
-        <div className="approval-package-columns">
+        <div className={styles.columns}>
           <SlideColumn
             heading={slide.left.heading}
             blocks={slide.left.body}
@@ -310,29 +309,29 @@ function SlideCanvas({
   const caption = slide.layout === "image" ? slide.caption : undefined;
   return (
     <div
-      className="approval-package-slide-stage"
+      className={styles.stage}
       style={slideStageStyle(theme, palette)}
       data-slide-layout={slide.layout}
       data-slide-tone={palette.isDark ? "dark" : "light"}
     >
       <div
-        className="approval-package-slide-accent-bar"
+        className={styles.accentBar}
         style={{ backgroundColor: palette.accentBar }}
         aria-hidden="true"
       />
-      <div className="approval-package-slide-canvas">
+      <div className={styles.canvas}>
         {title === undefined && subtitle === undefined ? null : (
-          <header className="approval-package-slide-heading">
+          <header className={styles.heading}>
             {slide.layout === "title" ? (
               <span
-                className="approval-package-slide-kicker"
+                className={styles.kicker}
                 style={{ backgroundColor: palette.accentBar }}
                 aria-hidden="true"
               />
             ) : null}
             {title === undefined ? null : (
               <h3
-                className="approval-package-slide-title"
+                className={styles.title}
                 style={{
                   color: palette.heading,
                   fontFamily: theme.fonts.heading,
@@ -343,7 +342,7 @@ function SlideCanvas({
             )}
             {subtitle === undefined ? null : (
               <p
-                className="approval-package-slide-subtitle"
+                className={styles.subtitle}
                 style={{ color: palette.subtitle }}
               >
                 {subtitle}
@@ -353,16 +352,13 @@ function SlideCanvas({
         )}
         <SlideContent slide={slide} headingColor={palette.columnHeading} />
         {caption === undefined ? null : (
-          <p
-            className="approval-package-slide-caption"
-            style={{ color: palette.subtitle }}
-          >
+          <p className={styles.caption} style={{ color: palette.subtitle }}>
             {caption}
           </p>
         )}
       </div>
       <footer
-        className="approval-package-slide-stage-footer"
+        className={styles.stageFooter}
         style={{ color: palette.subtitle }}
       >
         <span>{pageFooter ?? `${String(index + 1)} / ${String(total)}`}</span>
@@ -383,12 +379,9 @@ function SlideCard({
   theme: Theme;
 }) {
   return (
-    <article
-      className="approval-package-slide"
-      data-slide-layout={slide.layout}
-    >
-      <div className="approval-package-slide-meta">
-        <span className="approval-package-slide-index">
+    <article className={styles.slide} data-slide-layout={slide.layout}>
+      <div className={styles.slideMeta}>
+        <span className={styles.slideIndex}>
           {text.slideCount(index + 1, total)}
         </span>
         <Badge tone="neutral">{slide.layout}</Badge>
@@ -402,10 +395,10 @@ function SlideCard({
 export function DeckSlides({ deck }: { deck: Record<string, unknown> }) {
   const readable = useMemo(() => readDeck(deck), [deck]);
   if (readable === null) {
-    return <p className="inline-note">{text.unreadable}</p>;
+    return <InlineNote>{text.unreadable}</InlineNote>;
   }
   return (
-    <div className="approval-package-slides">
+    <div className={styles.slides} data-slot="approval-package-slides">
       {readable.slides.map((slide, index) => (
         <SlideCard
           key={index}
@@ -423,12 +416,12 @@ export function DeckSlides({ deck }: { deck: Record<string, unknown> }) {
 export function DeckPages({ deck }: { deck: Record<string, unknown> }) {
   const readable = useMemo(() => readDeck(deck), [deck]);
   if (readable === null) {
-    return <p className="inline-note">{text.unreadable}</p>;
+    return <InlineNote>{text.unreadable}</InlineNote>;
   }
   return (
-    <div className="approval-package-pdf-pages">
+    <div className={styles.pdfPages} data-slot="approval-package-pages">
       {readable.slides.map((slide, index) => (
-        <div key={index} className="approval-package-pdf-page">
+        <div key={index} className={styles.pdfPage}>
           <SlideCanvas
             slide={slide}
             index={index}

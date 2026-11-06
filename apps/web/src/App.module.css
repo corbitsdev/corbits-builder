@@ -1,0 +1,486 @@
+/* ---- App shell: a rail on the left, a filling canvas beside it ---- */
+
+.app {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  grid-template-rows: minmax(0, 1fr);
+  /* The window is the app. Nothing scrolls but the one region meant to. */
+  height: 100vh;
+  overflow: hidden;
+  background: var(--wb-frame);
+}
+
+/* A grid item defaults to min-content width, so anything wide inside — a
+   table, the stage timeline — pushes the whole page sideways instead of
+   scrolling within its own panel. */
+.app > * {
+  min-width: 0;
+}
+
+/* ---- Rail: quiet type on the frame, no rules or boxes of its own ----
+   32px rows with 16px icons on one left edge; the current row is lifted
+   onto the page surface rather than tinted. */
+
+.sidebar {
+  --rail-hover: color-mix(in srgb, var(--wb-foreground) 5%, transparent);
+  --rail-press: color-mix(in srgb, var(--wb-foreground) 8%, transparent);
+  grid-row: 1 / -1;
+  width: 15rem;
+  padding: 10px 8px 8px;
+  border-right: 0;
+  background: transparent;
+  transition: width 200ms cubic-bezier(0.2, 0, 0, 1);
+}
+
+.sidebar[data-collapsed="true"] {
+  width: 3.5rem;
+}
+
+.sidebar [data-slot="sidebar-header"] {
+  min-height: 40px;
+  gap: 8px;
+  margin-bottom: 8px;
+  padding: 0 2px 0 8px;
+  border: 0;
+}
+
+.sidebar [data-slot="sidebar-collapse-toggle"] {
+  width: 32px;
+  height: 32px;
+  border-radius: var(--radius-md);
+  color: var(--wb-muted-foreground);
+  transition:
+    background-color 120ms ease,
+    color 120ms ease;
+}
+
+.sidebar [data-slot="sidebar-collapse-toggle"]:hover {
+  background: var(--rail-hover);
+  color: var(--wb-foreground);
+}
+
+.sidebar [data-slot="sidebar-content"] {
+  padding: 0;
+}
+
+.list {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+}
+
+/* The projects in progress sit under a thin rule; their label is for assistive tech only. */
+.sidebar [data-slot="sidebar-section"].projects {
+  margin-top: 12px;
+  padding: 12px 0 0;
+  border-top: 1px solid var(--wb-border);
+}
+
+.sidebar [data-slot="sidebar-section"].projects > p {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
+}
+
+.sidebar [data-slot="sidebar-section"] > p {
+  margin: 0 0 3px;
+  padding: 0 8px 4px;
+  font-size: 0.75rem;
+  font-weight: 700;
+  letter-spacing: 0;
+  text-transform: none;
+}
+
+.sidebar [data-slot="sidebar-section"] > ul {
+  gap: 1px;
+}
+
+/* SidebarItem puts all children in one inline label, so the badge needs its own row to centre and space against the text. */
+.whatsNewItem {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  vertical-align: middle;
+}
+
+.sidebar .initial {
+  width: 18px;
+  height: 18px;
+  border-radius: 5px;
+  background: color-mix(in srgb, var(--wb-foreground) 7%, transparent);
+  color: inherit;
+  font-size: 0.625rem;
+}
+
+.sidebar [aria-current] .initial {
+  background: var(--wb-foreground);
+  color: var(--wb-background);
+}
+
+/* Every row's highlight spans the rail, whatever its label's length, with
+   the main pane's corner radius. A project row's highlight is its inner
+   frame, which holds the name and the options menu together. */
+.sidebar li {
+  display: block;
+  width: 100%;
+}
+
+.sidebar [data-slot="sidebar-item"],
+.sidebar [data-slot="sidebar-item-row"] > div {
+  box-sizing: border-box;
+  width: 100%;
+  min-height: 32px;
+  border-radius: var(--radius-panel);
+  background: transparent;
+  color: var(--wb-muted-foreground);
+  font-size: 0.84375rem;
+  font-weight: 500;
+  line-height: 1.25;
+  transition:
+    background-color 120ms ease,
+    color 120ms ease,
+    box-shadow 120ms ease;
+}
+
+.sidebar [data-slot="sidebar-item"] {
+  display: flex;
+  gap: 10px;
+  padding: 5px 8px;
+  border: 0;
+  font: inherit;
+  font-size: 0.84375rem;
+  font-weight: 500;
+  text-align: left;
+  cursor: pointer;
+}
+
+.sidebar [data-slot="sidebar-item-row"] > div {
+  gap: 0;
+  padding-right: 4px;
+}
+
+.sidebar [data-slot="sidebar-item-row"] > div > button:first-child {
+  gap: 10px;
+  padding: 5px 8px;
+}
+
+.sidebar [data-slot="sidebar-item"] > span:first-child {
+  color: var(--wb-muted-foreground);
+  transition: color 120ms ease;
+}
+
+.sidebar [data-slot="sidebar-item"] svg {
+  width: 16px;
+  height: 16px;
+  stroke-width: 1.75;
+}
+
+.sidebar [data-slot="sidebar-item"]:hover,
+.sidebar [data-slot="sidebar-item-row"] > div:hover {
+  background: var(--rail-hover);
+  color: var(--wb-foreground);
+}
+
+.sidebar [data-slot="sidebar-item"]:hover > span:first-child {
+  color: var(--wb-foreground);
+}
+
+.sidebar [data-slot="sidebar-item"]:active,
+.sidebar [data-slot="sidebar-item-row"] > div:active {
+  background: var(--rail-press);
+}
+
+.sidebar [data-slot="sidebar-item"][aria-current="page"],
+.sidebar [data-slot="sidebar-item-row"] > div:has(> [aria-current]) {
+  background: var(--wb-background);
+  box-shadow: var(--wb-shadow);
+  color: var(--wb-foreground);
+  font-weight: 600;
+}
+
+.sidebar [data-slot="sidebar-item"][aria-current="page"] > span:first-child {
+  color: var(--wb-foreground);
+}
+
+.sidebar [data-slot="sidebar-item"]:focus-visible,
+.sidebar [data-slot="sidebar-item-row"] button:focus-visible,
+.sidebar [data-slot="sidebar-collapse-toggle"]:focus-visible {
+  outline: 2px solid var(--wb-ring);
+  outline-offset: -2px;
+}
+
+.sidebar [data-slot="sidebar-footer"] {
+  margin-top: 6px;
+  padding: 8px 0 0;
+  border-top: 1px solid color-mix(in srgb, var(--wb-border) 60%, transparent);
+}
+
+/* Collapsed: the brand mark over its toggle, and every row a centred
+   36px square, so the icon column reads as deliberate rather than clipped. */
+.sidebar[data-collapsed="true"] [data-slot="sidebar-header"] {
+  flex-direction: column;
+  justify-content: center;
+  gap: 6px;
+  padding: 4px 0;
+}
+
+.sidebar[data-collapsed="true"] [data-slot="sidebar-item"],
+.sidebar[data-collapsed="true"] [data-slot="sidebar-item-row"] > div {
+  width: 36px;
+  min-height: 36px;
+  margin: 0 auto;
+  padding: 0;
+}
+
+.sidebar[data-collapsed="true"]
+  [data-slot="sidebar-item-row"]
+  > div
+  > button:first-child {
+  justify-content: center;
+  gap: 0;
+  padding: 0;
+}
+
+/* The one call to action in the rail, in the primary colour. */
+.sidebar [data-slot="sidebar-item"].newProject,
+.sidebar [data-slot="sidebar-item"].newProject > span:first-child {
+  color: var(--primary-emphasis, var(--wb-primary));
+}
+
+.sidebar [data-slot="sidebar-item"].newProject {
+  margin-bottom: 4px;
+  background: color-mix(in srgb, var(--wb-primary) 10%, transparent);
+  box-shadow: inset 0 0 0 1px
+    color-mix(in srgb, var(--wb-primary) 45%, transparent);
+  font-weight: 600;
+}
+
+.sidebar [data-slot="sidebar-item"].newProject:hover {
+  background: color-mix(in srgb, var(--wb-primary) 16%, transparent);
+}
+
+.sidebar [data-slot="sidebar-item"].newProject[aria-current="page"] {
+  background: color-mix(in srgb, var(--wb-primary) 18%, transparent);
+  box-shadow: inset 0 0 0 1px var(--wb-primary);
+}
+
+/* A project row's options: the library reveals the ellipsis while the row
+   is pointed at or focused; an open menu keeps it up. */
+.sidebar .rowMenu {
+  width: 24px;
+  height: 24px;
+  color: var(--wb-muted-foreground);
+}
+
+.sidebar
+  [data-slot="sidebar-item-row"]
+  > div
+  > span:has(> .rowMenu[data-state="open"]) {
+  opacity: 1;
+}
+
+.sidebar .rowMenu:hover,
+.sidebar .rowMenu[data-state="open"] {
+  background: var(--rail-press);
+  color: var(--wb-foreground);
+}
+
+.sidebar[data-collapsed="true"] [data-slot="sidebar-item-row"] > div > span {
+  display: none;
+}
+
+.sidebar[data-collapsed="true"]
+  [data-slot="sidebar-item-row"]
+  button
+  > span:last-child {
+  flex: none;
+  width: 0;
+}
+
+/* ---- Canvas ---- */
+
+.canvas {
+  display: flex;
+  margin: var(--space-2) var(--space-2) var(--space-2) 0;
+  border-radius: var(--radius-panel);
+  box-shadow: var(--wb-pane-shadow);
+  flex-direction: column;
+  min-width: 0;
+  min-height: 0;
+  overflow: hidden;
+  background: var(--wb-pane);
+}
+
+/* Everything beside the rail. Scrolls, except where a surface fills instead. */
+.canvasBody {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  padding: var(--space-4) var(--space-5) var(--space-6);
+  display: grid;
+  gap: var(--space-2);
+  align-content: start;
+  max-width: var(--section-max);
+  width: 100%;
+}
+
+.canvasBody[data-fill] {
+  background: var(--wb-background);
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+  gap: 0;
+  padding: 0;
+  max-width: none;
+}
+
+/* The conversation log is the room's scrollport. A content-sized room lets
+   the settle spacer's height feed back into that measurement, and the page
+   grows on every resize. */
+.canvasBody[data-fill]:has(> [data-slot="stage-view"]) {
+  overflow: hidden;
+}
+
+.canvasBody[data-fill] > * {
+  flex: 1;
+  min-height: 0;
+  gap: 0;
+}
+
+.canvasBody[data-fill] > [data-slot="stage-view"] {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow: hidden;
+}
+
+.canvasBody[data-fill] > [data-slot="banner"] {
+  flex: none;
+  margin: var(--space-3) var(--space-4) 0;
+}
+
+.canvasBody:not([data-fill]) > [data-slot="card"] {
+  background: var(--wb-background);
+  box-shadow: var(--wb-shadow);
+}
+
+.canvasBody[data-fill] > [data-slot="card"] {
+  background: var(--wb-background);
+  border: 0;
+  border-radius: 0;
+}
+
+/* The home page runs edge to edge; its banner keeps the page's inset. */
+.canvasBody:has(> [data-slot="home-page"]) {
+  padding: 0;
+  max-width: none;
+}
+
+.canvasBody:has(> [data-slot="home-page"]) > [data-slot="banner"] {
+  margin: var(--space-4) var(--space-6) 0;
+}
+
+/* Phone widths: the rail stays an icon column, and opening it lays the full
+   rail over the workspace instead of squeezing it. */
+@media (max-width: 640px) {
+  .app {
+    grid-template-columns: 3.5rem minmax(0, 1fr);
+  }
+
+  .sidebar[data-collapsed="false"] {
+    position: fixed;
+    inset: 0 auto 0 0;
+    z-index: 40;
+    background: var(--wb-frame);
+    box-shadow: var(--wb-pane-shadow);
+  }
+
+  .canvas {
+    padding: var(--space-4) var(--space-4) var(--space-8);
+  }
+
+  .canvas:has(> .canvasBody[data-fill]) {
+    padding: 0;
+  }
+}
+
+/* A failed project load: calm and centered, not a raw red box. */
+.loadFailure {
+  max-width: 32rem;
+  margin: var(--space-8) auto;
+  padding: var(--space-6);
+  display: grid;
+  justify-items: center;
+  gap: var(--space-2);
+  text-align: center;
+}
+
+.canvasBody[data-fill] > .loadFailure {
+  place-content: center;
+}
+
+.loadFailure p {
+  margin: 0;
+  color: var(--wb-muted-foreground);
+}
+
+.loadFailureTitle {
+  margin: 0;
+  font-size: 1rem;
+  font-weight: 600;
+}
+
+.loadFailureActions {
+  margin-top: var(--space-2);
+  display: flex;
+  gap: var(--space-2);
+}
+
+.loadFailureDetails {
+  margin-top: var(--space-4);
+  width: 100%;
+  text-align: left;
+}
+
+.loadFailureDetails summary {
+  cursor: pointer;
+  color: var(--wb-muted-foreground);
+  font-size: 0.8125rem;
+}
+
+.loadFailureDetails pre {
+  margin: var(--space-2) 0;
+  padding: var(--space-3);
+  border: 1px solid var(--wb-border-strong);
+  border-radius: var(--radius-panel);
+  background: var(--wb-card);
+  white-space: pre-wrap;
+  word-break: break-word;
+  font-family: var(--wb-font-mono);
+  font-size: 0.8125rem;
+}
+
+.whatsNewPanel {
+  padding-top: 0.75rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.875rem;
+  font-family: var(--font-sans);
+}
+
+.whatsNewCopy {
+  margin: 0;
+  font-size: 0.875rem;
+  line-height: 1.55;
+  color: var(--fg);
+}
+
+.whatsNewActions {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+  padding-top: 0.25rem;
+}

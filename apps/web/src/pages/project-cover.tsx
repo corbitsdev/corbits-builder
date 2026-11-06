@@ -10,6 +10,7 @@ import { listProjectArtifacts, readArtifact } from "../api/artifacts.ts";
 import { keys } from "../queries/keys.ts";
 import { firstPage, parseBundle } from "./workspace/design-preview.tsx";
 import { GuiFrame } from "./workspace/gui-frame.tsx";
+import styles from "./project-cover.module.css";
 
 const COVER_STALE_MS = 5 * 60_000;
 // A tile a screen's height away starts reading, so it is there by the time it scrolls in.
@@ -91,14 +92,15 @@ export function ProjectCover({
     // A still picture: inert, so it neither takes focus nor eats the click that opens the project.
     <span
       ref={ref}
-      className="library-cover"
+      className={styles.cover}
+      data-slot="project-cover"
       data-pattern={pattern}
       data-mockup={html === null ? undefined : ""}
       style={style}
       aria-hidden="true"
       inert
     >
-      {html === null ? null : <GuiFrame html={html} scripts />}
+      {html === null ? null : <GuiFrame html={html} scripts thumbnail />}
     </span>
   );
 }

@@ -4,7 +4,12 @@
  * the same place and look the same.
  */
 import { Button } from "@corbits/react-ui";
-import { Menu, MenuContent, MenuTrigger } from "@corbits/react-ui/ui/menu";
+import {
+  Menu,
+  MenuContent,
+  MenuLabel,
+  MenuTrigger,
+} from "@corbits/react-ui/ui/menu";
 import { ChevronDown, ChevronUp } from "lucide-react";
 import {
   Fragment,
@@ -19,6 +24,7 @@ import {
   useStoredPreference,
   writeStoredPreference,
 } from "../../stored-preference.ts";
+import styles from "./pane-bar.module.css";
 
 export type PaneBarAction = {
   id: string;
@@ -64,7 +70,7 @@ function ActionRow({
       strip.scrollLeft = chip.offsetLeft + chip.offsetWidth - strip.clientWidth;
   }, [pressed, actions.length]);
   return (
-    <div ref={row} className="pane-bar-row" role="group" aria-label={label}>
+    <div ref={row} className={styles.row} role="group" aria-label={label}>
       {actions.map((item) => (
         <ActionButton key={item.id} action={item} />
       ))}
@@ -79,7 +85,7 @@ function ActionButton({ action }: { action: PaneBarAction }) {
   if (action.note)
     return (
       <span
-        className="pane-bar-note"
+        className={styles.note}
         role="status"
         aria-label={action.label}
         title={action.label}
@@ -94,7 +100,7 @@ function ActionButton({ action }: { action: PaneBarAction }) {
       type="button"
       variant={action.active ? "secondary" : "ghost"}
       size={words === null ? "icon" : "sm"}
-      className="pane-bar-action"
+      className={styles.action}
       aria-label={action.label}
       title={action.label}
       disabled={action.disabled}
@@ -118,6 +124,15 @@ function ActionButton({ action }: { action: PaneBarAction }) {
         {action.menu}
       </MenuContent>
     </Menu>
+  );
+}
+
+/** A short tip or note a bar action's menu shows as words rather than items. */
+export function PaneBarTip({ children }: { children: ReactNode }) {
+  return (
+    <MenuLabel className={styles.tip} data-slot="pane-bar-tip">
+      {children}
+    </MenuLabel>
   );
 }
 
@@ -171,7 +186,7 @@ export function PaneBar({
         type="button"
         variant="ghost"
         size="icon"
-        className="pane-bar-handle"
+        className={styles.handle}
         aria-label={wording.paneBar.show}
         title={wording.paneBar.show}
         onClick={() => writeStoredPreference(FLOATING_KEY, "shown")}
@@ -181,14 +196,16 @@ export function PaneBar({
     ) : (
       <div
         ref={floating ? setFloatingBar : undefined}
-        className={floating ? "pane-bar pane-bar-floating" : "pane-bar"}
+        className={styles.bar}
+        data-slot="pane-bar"
+        data-floating={floating ? "" : undefined}
         role="toolbar"
         aria-label={label}
       >
         {shown.map((group, index) => (
           <Fragment key={group.map((action) => action.id).join(" ")}>
             {index > 0 ? (
-              <span className="pane-bar-rule" aria-hidden="true" />
+              <span className={styles.rule} aria-hidden="true" />
             ) : null}
             {group.map((action) => (
               <ActionButton key={action.id} action={action} />
@@ -197,7 +214,7 @@ export function PaneBar({
         ))}
         {floating ? (
           <>
-            <span className="pane-bar-rule" aria-hidden="true" />
+            <span className={styles.rule} aria-hidden="true" />
             <ActionButton
               action={{
                 id: "fold",
@@ -212,7 +229,7 @@ export function PaneBar({
     );
   if (popover === undefined) return bar;
   return (
-    <div ref={popoverRef} className="pane-bar-anchor">
+    <div ref={popoverRef} className={styles.anchor}>
       {popover}
       {bar}
     </div>

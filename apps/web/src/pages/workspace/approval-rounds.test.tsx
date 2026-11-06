@@ -15,7 +15,8 @@ import * as actualConversation from "../../api/conversation.ts";
 import { WhatsNewDialog } from "../../App.tsx";
 import { wording } from "../../config.ts";
 import { queryClient } from "../../queries/client.ts";
-import { Settings, WorkspaceApprovals } from "../settings.tsx";
+import { Settings } from "../settings/settings.tsx";
+import { WorkspaceApprovals } from "../settings/workspace-approvals.tsx";
 import {
   readWorkspaceReviewers,
   writeWorkspaceReviewers,
@@ -649,18 +650,18 @@ describe("approval rounds panel", () => {
     expect(html).toContain("Download package");
     expect(html).toContain("View slide deck");
     expect(html).not.toContain("Ask coordinator to tailor package");
-    expect(html).toContain(
-      '<span class="approval-reviewer-cell-status"><span class="approval-status-text approval-status-warning">Pending Feedback</span></span>',
+    expect(html).toMatch(
+      /data-cell="status"><span [^>]*data-slot="quiet-state" data-tone="warning" data-words="">Pending Feedback<\/span><\/span>/,
     );
     expect(html).not.toContain("Request changes");
     expect(html).toContain("Clarify Q3 staffing assumptions.");
     expect(html).not.toContain(
-      '<span class="approval-status-text approval-status-neutral">Pending</span>',
+      'data-slot="quiet-state" data-tone="info" data-words="">Pending</span>',
     );
     expect(html).toContain('aria-label="Incorporate"');
     expect(html).toContain('aria-label="Dismiss"');
     expect(html).not.toContain(">Reply<");
-    expect(html).toContain('class="approval-reviewer-drawer"');
+    expect(html).toContain('data-slot="reviewer-drawer"');
     expect(html).toContain('aria-label="Dana Reviewer Reviewer name"');
     expect(html).toContain('aria-label="Dana Reviewer Persona"');
     expect(html).toContain(
@@ -668,15 +669,15 @@ describe("approval rounds panel", () => {
     );
     expect(html).toContain('aria-label="Dana Reviewer Decision"');
     expect(html).toContain('aria-label="Dana Reviewer Feedback notes"');
-    expect(html).not.toContain("approval-field-save-btn");
+    expect(html).not.toContain('data-action="save"');
     expect(html).toContain("Eli Security");
     expect(html).toContain("Security Lead");
     expect(html).toContain("Generate slide deck");
     expect(html).not.toContain(
       'aria-label="Download Approval Package for Eli Security"',
     );
-    expect(html).toContain(
-      '<span class="approval-reviewer-cell-status"><span class="approval-status-text approval-status-neutral">Sent</span></span>',
+    expect(html).toMatch(
+      /data-cell="status"><span [^>]*data-slot="quiet-state" data-tone="info" data-words="">Sent<\/span><\/span>/,
     );
     expect(html).toContain("Mark settled");
   });
@@ -956,29 +957,29 @@ describe("approval rounds panel", () => {
       />
     ));
 
-    expect(harness.html()).not.toContain("approval-pane-slides-view");
-    expect(harness.html()).not.toContain("device-preview-expanded");
+    expect(harness.html()).not.toContain('data-slot="pane-slide-deck"');
+    expect(harness.html()).not.toContain('data-slot="slide-deck-modal"');
 
     const viewDeckBtn = harness.findButton("View slide deck");
     (viewDeckBtn.props["onClick"] as () => void)();
 
     const paneHtml = harness.html();
-    expect(paneHtml).toContain("approval-pane-slides-view");
+    expect(paneHtml).toContain('data-slot="pane-slide-deck"');
     expect(paneHtml).toContain("Dana Reviewer — Finance VP");
     expect(paneHtml).toContain("Customer Portal Approval Deck");
-    expect(paneHtml).not.toContain("device-preview-expanded");
+    expect(paneHtml).not.toContain('data-slot="slide-deck-modal"');
 
     const expandBtn = harness.findButton(wording.preview.expand);
     (expandBtn.props["onClick"] as () => void)();
 
     const modalHtml = harness.html();
-    expect(modalHtml).toContain("device-preview-expanded");
+    expect(modalHtml).toContain('data-slot="slide-deck-modal"');
     expect(modalHtml).toContain("Dana Reviewer — Finance VP");
     expect(modalHtml).toContain("Customer Portal Approval Deck");
 
     const backBtn = harness.findButton(wording.shell.back);
     (backBtn.props["onClick"] as () => void)();
-    expect(harness.html()).not.toContain("approval-pane-slides-view");
+    expect(harness.html()).not.toContain('data-slot="pane-slide-deck"');
   });
 
   test("clicking Incorporate synchronously populates onAddToPrompt and optimistically marks the item Incorporated", () => {
@@ -1005,11 +1006,11 @@ describe("approval rounds panel", () => {
       },
     ]);
     expect(harness.html()).toContain(
-      '<span class="approval-status-text approval-status-success">Incorporated</span>',
+      'data-slot="quiet-state" data-tone="success" data-words="">Incorporated</span>',
     );
   });
 
-  test("changing uniform 1-row inline fields (Name, Role, Focus, Decision, Feedback) inside .approval-reviewer-drawer reveals the field's Save button on the right and saves the updated decision/details", async () => {
+  test("changing uniform 1-row inline fields (Name, Role, Focus, Decision, Feedback) inside the reviewer drawer reveals the field's Save button on the right and saves the updated decision/details", async () => {
     recordDecisionCalls = [];
     const harness = createStatefulHarness(() => (
       <ApprovalRoundsPanel
@@ -1083,9 +1084,7 @@ describe("approval rounds panel", () => {
     expect(html).toContain('aria-label="Add new reviewer"');
     expect(html).toContain('aria-label="Expires in"');
     expect(html).toContain('aria-label="Reviewer 1"');
-    expect(html).toContain(
-      'class="approval-inline-fields settings-reviewer-form"',
-    );
+    expect(html).toContain('data-slot="approval-fields" data-variant="form"');
     expect(html).not.toContain("Pick from workspace");
     expect(html).toContain('aria-label="Reviewer 1 Reviewer name"');
     expect(html).toContain('aria-label="Reviewer 1 Persona"');
@@ -1111,9 +1110,13 @@ describe("approval rounds panel", () => {
     expect(html).toContain("Workspace reviewers");
     expect(html).toContain("No saved workspace reviewers yet.");
     expect(html).not.toContain("invite-form");
-    expect(html).toContain("settings-reviewer-form");
-    expect(html).toContain("approval-lean-input");
-    expect(html).toContain("approval-lean-select");
+    expect(html).toContain('data-slot="approval-fields" data-variant="form"');
+    expect(html).toMatch(
+      /<input [^>]*data-slot="lean-input"[^>]*data-variant="form"/,
+    );
+    expect(html).toMatch(
+      /<select [^>]*data-slot="lean-select"[^>]*data-variant="form"/,
+    );
     expect(html).toContain("Add reviewer");
     expect(html).toContain("Other…");
   });
@@ -1126,9 +1129,7 @@ describe("approval rounds panel", () => {
     try {
       const settingsHtml = renderToStaticMarkup(<WorkspaceApprovals />);
       expect(settingsHtml).toContain("Jordan Lee");
-      expect(settingsHtml).toContain(
-        '<span class="approval-status-text">CTO</span>',
-      );
+      expect(settingsHtml).toContain('data-slot="inline-note">CTO</span>');
       expect(settingsHtml).toContain("Remove");
       const dialogHtml = renderToStaticMarkup(
         <SharePackageDialog
@@ -1195,6 +1196,6 @@ describe("approval rounds panel", () => {
     expect(html).toContain("Approvals (Experimental)");
     expect(html).toContain('id="preference-experimental_approvals"');
     expect(html).not.toContain('id="preference-experimental_slide_decks"');
-    expect(html).toContain('data-highlighted="true"');
+    expect(html).toContain('data-highlighted=""');
   });
 });

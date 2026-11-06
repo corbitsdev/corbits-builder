@@ -1,0 +1,190 @@
+.fineBanner {
+  position: fixed;
+  top: 18px;
+  left: 50%;
+  z-index: 1000;
+  transform: translateX(-50%) rotate(-3deg);
+  padding: 10px 22px;
+  border: 4px dashed #0019ff;
+  background: #fff200;
+  color: #ff0000;
+  font:
+    700 28px "Comic Sans MS",
+    "Chalkboard SE",
+    cursive;
+  pointer-events: none;
+}
+
+.logo {
+  display: inline-flex;
+}
+
+.card {
+  position: fixed;
+  left: 16px;
+  bottom: 16px;
+  z-index: 1000;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 14px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-panel);
+  background: var(--background);
+  color: var(--foreground);
+  font-size: 13px;
+  box-shadow: 0 8px 24px rgb(0 0 0 / 0.16);
+  animation: flourish-rise 240ms ease-out;
+}
+
+.card a {
+  color: inherit;
+  font-weight: 600;
+}
+
+.cardMark {
+  display: inline-flex;
+  animation: flourish-climb 1.2s ease-in-out infinite;
+}
+
+.credit {
+  display: block;
+  margin: var(--space-6) auto 0;
+  padding: 0;
+  border: 0;
+  background: none;
+  color: var(--muted-foreground);
+  font: inherit;
+  font-size: 11px;
+  opacity: 0.6;
+  cursor: pointer;
+}
+
+.credit:hover,
+.credit:focus-visible {
+  opacity: 1;
+}
+
+.swarm {
+  position: fixed;
+  inset: 0;
+  z-index: 1000;
+  overflow: hidden;
+  pointer-events: none;
+}
+
+.flyer {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: var(--size);
+  height: var(--size);
+  color: var(--foreground);
+  opacity: 0;
+  animation: flourish-fly linear both;
+}
+
+.fill,
+.fillStrong {
+  fill: var(--primary);
+  fill-opacity: 0.35;
+}
+
+.fillStrong {
+  fill-opacity: 0.75;
+}
+
+@keyframes flourish-rise {
+  from {
+    opacity: 0;
+    transform: translateY(8px);
+  }
+}
+
+@keyframes flourish-climb {
+  50% {
+    transform: translateY(-4px) rotate(-6deg);
+  }
+}
+
+@keyframes flourish-fly {
+  0% {
+    opacity: 1;
+    transform: translate(var(--from-x), var(--from-y)) rotate(0deg);
+  }
+  100% {
+    opacity: 1;
+    transform: translate(var(--to-x), var(--to-y)) rotate(var(--spin));
+  }
+}
+
+.shell {
+  position: fixed;
+  z-index: 1000;
+  display: grid;
+  place-items: center;
+  padding: var(--space-4);
+  pointer-events: none;
+  animation: flourish-shell-fade 4500ms ease-in-out both;
+}
+
+.shellScreen {
+  margin: 0;
+  padding: var(--space-4) var(--space-6);
+  border-radius: var(--radius-panel);
+  background: #111;
+  color: #e6e6e6;
+  font: 13px/1.5 var(--wb-font-mono);
+  box-shadow: 0 8px 24px rgb(0 0 0 / 0.24);
+}
+
+.shellAnswer {
+  animation: flourish-shell-answer 600ms steps(1) both;
+}
+
+@keyframes flourish-shell-fade {
+  0% {
+    opacity: 0;
+  }
+  8%,
+  80% {
+    opacity: 1;
+  }
+  100% {
+    opacity: 0;
+  }
+}
+
+@keyframes flourish-shell-answer {
+  0% {
+    opacity: 0;
+  }
+  100% {
+    opacity: 1;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .card,
+  .cardMark,
+  .shell,
+  .shellAnswer {
+    animation: none;
+  }
+
+  .flyer {
+    animation: flourish-flash 900ms ease-out both;
+    transform: translate(45vw, 40vh);
+  }
+}
+
+@keyframes flourish-flash {
+  0%,
+  100% {
+    opacity: 0;
+  }
+  30%,
+  70% {
+    opacity: 1;
+  }
+}

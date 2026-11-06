@@ -13,6 +13,7 @@ import { useState, type ReactNode, type Ref } from "react";
 import { wording } from "../../config.ts";
 import { AppFrame, GuiFrame } from "./gui-frame.tsx";
 import { PaneBar, type PaneBarGroup } from "./pane-bar.tsx";
+import styles from "./device-preview.module.css";
 
 export type PreviewDevice = "desktop" | "phone";
 
@@ -31,6 +32,7 @@ export function DevicePreview({
   overlay,
   popover,
   popoverRef,
+  fill = false,
 }: {
   html?: string;
   src?: { url: string; title: string };
@@ -50,6 +52,8 @@ export function DevicePreview({
   /** A panel a bar action opens, anchored to the bar so it moves with it. */
   popover?: ReactNode;
   popoverRef?: Ref<HTMLDivElement> | undefined;
+  /** Fills its container edge to edge, without the bezel's border, as a pane's whole page. */
+  fill?: boolean;
 }) {
   const [expanded, setExpanded] = useState(false);
   if (src === undefined && html.trim().length === 0)
@@ -60,14 +64,23 @@ export function DevicePreview({
   };
   return (
     <figure
-      className={`device-preview device-preview-${device}`}
+      className={styles.preview}
+      data-slot="device-preview"
+      data-device={device}
+      data-fill={fill ? "" : undefined}
+      data-expanded={expanded ? "" : undefined}
       aria-label="Device preview"
     >
-      <div className="device-bezel">
+      <div className={styles.bezel}>
         {src === undefined ? (
-          <GuiFrame html={html} scripts={scripts} frameRef={frameRef} />
+          <GuiFrame
+            html={html}
+            scripts={scripts}
+            frameRef={frameRef}
+            fill={fill}
+          />
         ) : (
-          <AppFrame src={src.url} title={src.title} />
+          <AppFrame src={src.url} title={src.title} fill={fill} />
         )}
       </div>
       {overlay}
@@ -106,19 +119,20 @@ export function DevicePreview({
         ]}
       />
       <Dialog open={expanded} onOpenChange={expand}>
-        <DialogContent className="device-preview-expanded">
+        <DialogContent className={styles.expanded}>
           <DialogHeader>
             <DialogTitle>{wording.preview.expandedTitle}</DialogTitle>
           </DialogHeader>
-          <div className={`device-bezel device-preview-${device}`}>
+          <div className={styles.bezel} data-device={device}>
             {src === undefined ? (
               <GuiFrame
                 html={expandedHtml ?? html}
                 scripts={scripts}
                 frameRef={expandedFrameRef}
+                fill
               />
             ) : (
-              <AppFrame src={src.url} title={src.title} />
+              <AppFrame src={src.url} title={src.title} fill />
             )}
           </div>
         </DialogContent>

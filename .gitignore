@@ -1,6 +1,7 @@
 # Dependencies and build output
 node_modules/
 dist/
+storybook-static/
 coverage/
 *.tsbuildinfo
 .cache/
@@ -31,3 +32,6 @@ test-results/
 .DS_Store
 .claude/
 .amp/
+
+# Generated from each CSS module by `bun run --cwd apps/web css-types`
+*.module.css.d.ts

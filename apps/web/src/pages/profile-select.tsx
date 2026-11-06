@@ -19,8 +19,8 @@ import { wording } from "../config.ts";
 import { keys } from "../queries/keys.ts";
 import { workspaceTenantId } from "../api/auth.ts";
 import { productClient } from "../api/transport.ts";
-import { available } from "./profiles.jsx";
-import { useModelCatalog } from "./providers.jsx";
+import { available } from "./settings/profiles.jsx";
+import { useModelCatalog } from "./settings/providers.jsx";
 
 const copy = wording.profiles;
 

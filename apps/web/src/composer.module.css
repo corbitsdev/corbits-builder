@@ -1,0 +1,164 @@
+.composer {
+  padding: var(--space-2) var(--space-4) var(--space-4);
+  display: grid;
+  gap: var(--space-2);
+  flex: none;
+  position: relative;
+  /* Capped so the send, stop, attach and mic controls never leave the pane.
+     The composer itself must not scroll: the attachment tray and the model
+     list float above the box, and a scrolling composer clips them. The
+     textarea scrolls its own text, and the notes above the box give way. */
+  max-height: 70vh;
+  min-height: 0;
+}
+
+.composer[data-variant="page"] {
+  padding: 0;
+}
+
+.composer > form {
+  position: relative;
+}
+
+/* While the specialist writes, a thin ring sweeps the box's border. */
+.composer[data-working] > form::after {
+  content: "";
+  position: absolute;
+  inset: -1px;
+  border-radius: inherit;
+  padding: 2px;
+  background: conic-gradient(
+    from var(--ring-angle),
+    var(--wb-primary),
+    color-mix(in srgb, var(--wb-primary) 15%, transparent),
+    var(--wb-primary)
+  );
+  /* The mask only needs an opaque colour; which one is irrelevant. */
+  -webkit-mask:
+    linear-gradient(currentColor 0 0) content-box,
+    linear-gradient(currentColor 0 0);
+  -webkit-mask-composite: xor;
+  mask-composite: exclude;
+  animation:
+    global(ring-spin) 1.1s linear infinite,
+    global(fade-in) 220ms ease-out both;
+  pointer-events: none;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .composer[data-working] > form::after {
+    animation: none;
+  }
+}
+
+.notes {
+  display: grid;
+  gap: var(--space-2);
+  min-height: 0;
+  overflow-y: auto;
+}
+
+.notes:empty {
+  display: none;
+}
+
+.composer > [data-slot="prompt-input"] {
+  flex-shrink: 0;
+}
+
+/* The library's prompt input: the rounded box around the words and controls. */
+.composer [data-slot="prompt-input"] {
+  display: flex;
+  flex-flow: row nowrap;
+  align-items: flex-end;
+  gap: var(--space-1);
+  min-width: 0;
+  min-height: 0;
+  max-height: min(50vh, 480px);
+  border: 1px solid var(--wb-border);
+  border-radius: var(--radius-lg);
+  background: var(--wb-card);
+  padding: 6px 6px 6px var(--space-2);
+  transition: border-color 150ms;
+}
+
+.composer [data-slot="prompt-input"]:focus-within {
+  outline: none;
+  border-color: var(--wb-border-strong);
+}
+
+.composer [data-slot="prompt-input"] [data-slot="prompt-input-field"] {
+  align-self: center;
+  font-size: 15px;
+  line-height: 1.5;
+}
+
+.composer
+  [data-slot="prompt-input"]
+  :is(textarea, [data-slot="prompt-input-mirror"]) {
+  padding-block: 4px;
+}
+
+.composer [data-slot="prompt-input"] > div:has(> textarea) {
+  align-self: stretch;
+}
+
+/* The library's input row is `flex: 1 1 0%` beside a full-basis toolbar that wraps below it, and
+   with a content-sized textarea the row resolved to 0 px wide: one character per line, and the
+   box grew to fill the page. A full basis gives it the whole first line. */
+.composer[data-variant="page"]
+  [data-slot="prompt-input"]
+  > div:has(> textarea) {
+  flex: 1 1 100%;
+}
+
+.composer [data-slot="prompt-input"] textarea {
+  width: 100%;
+  min-height: 0;
+  max-height: min(200px, 30vh);
+  overflow-y: auto;
+  display: block;
+}
+
+.composer [data-slot="prompt-input"] textarea:placeholder-shown {
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+.composer [data-slot="prompt-input"] textarea::placeholder {
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+.composer [data-slot="prompt-input"] [data-slot="prompt-input-toolbar"] {
+  flex: none;
+  gap: var(--space-1);
+  padding: 0;
+}
+
+.composer [data-slot="prompt-input"] [data-slot="prompt-input-submit"] {
+  width: 32px;
+  height: 32px;
+  min-width: 32px;
+  min-height: 32px;
+  padding: 0;
+  border: 0;
+  background: var(--wb-foreground);
+  color: var(--wb-background);
+  border-radius: 50%;
+  box-shadow: none;
+}
+
+.composer
+  [data-slot="prompt-input"]
+  [data-slot="prompt-input-submit"]:hover:not(:disabled) {
+  background: var(--wb-foreground);
+  opacity: 0.85;
+}
+
+.composer
+  [data-slot="prompt-input"]
+  [data-slot="prompt-input-submit"]:disabled {
+  opacity: 0.2;
+}

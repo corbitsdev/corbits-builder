@@ -30,14 +30,14 @@ import {
   readDirectory,
   type PickedDirectory,
 } from "../api/repository.ts";
-import { Banner, Button } from "../components.jsx";
-import { ConnectProvider } from "./providers.jsx";
+import { Banner, BannerAction, Button } from "../components.jsx";
+import { ConnectProvider } from "./settings/providers.jsx";
 import { NewProjectProfile } from "./profile-select.jsx";
 import { Dictated } from "../dictation.jsx";
 import { useShellReply } from "../flourish.tsx";
-import { COMPOSER_BOX_CLASS } from "./workspace/pane-classes.ts";
+import { Composer } from "../composer.tsx";
 import { HOME_COMPOSER_PLACEHOLDER, canStartProject } from "./home-view.ts";
-import "./home-layout.css";
+import styles from "./projects.module.css";
 import type { ProjectImport } from "@corbits-builder/schemas/project-import";
 import {
   DOCUMENT_LABELS,
@@ -219,22 +219,25 @@ export function Projects({
   };
 
   return (
-    <div className="home-page">
-      <section className="new-project" aria-labelledby="new-project-title">
-        <hgroup className="new-project-head">
+    <div className={styles.homePage} data-slot="home-page">
+      <section
+        className={styles.newProject}
+        aria-labelledby="new-project-title"
+      >
+        <hgroup className={styles.head}>
           <h1 id="new-project-title">{wording.newProject.title}</h1>
           <p>{wording.newProject.lead}</p>
         </hgroup>
         {needsProvider ? (
           <Banner tone="warning" title={wording.providers.none}>
             <p>{wording.providers.noneHint}</p>
-            <div className="banner-action">
+            <BannerAction>
               <ConnectProvider onConnected={onChanged} />
-            </div>
+            </BannerAction>
           </Banner>
         ) : null}
-        {/* The project page's composer, the same markup under the same class. */}
-        <div className="composer">
+        {/* The project page's composer, the same frame as a project's. */}
+        <Composer variant="page">
           <Dictated
             value={problem}
             onValueChange={setProblem}
@@ -242,7 +245,6 @@ export function Projects({
           >
             {(mic) => (
               <PromptInput
-                className={COMPOSER_BOX_CLASS}
                 value={problem}
                 onValueChange={setProblem}
                 onSubmit={() => void start()}
@@ -261,9 +263,9 @@ export function Projects({
               </PromptInput>
             )}
           </Dictated>
-        </div>
+        </Composer>
         {shell.reply}
-        <div className="new-project-actions">
+        <div className={styles.actions}>
           {starting ? (
             <ShimmerText role="status">
               {wording.newProject.starting}
@@ -326,7 +328,7 @@ export function Projects({
               Importing with approvals records your own approval of exactly
               these versions.
             </p>
-            <div className="import-confirm-actions">
+            <div className={styles.importActions}>
               <Button
                 variant="primary"
                 onClick={() =>
@@ -406,14 +408,14 @@ function RepositoryBanner({
         <p>{text.folderToWrite(labels(toWrite))}</p>
       ) : null}
       {report.warnings.length > 0 ? (
-        <ul className="import-folder-notes">
+        <ul className={styles.folderNotes}>
           {report.warnings.map((warning) => (
             <li key={warning}>{warning}</li>
           ))}
         </ul>
       ) : null}
       {choices.size > 0 ? (
-        <div className="import-folder-files">
+        <div className={styles.folderFiles}>
           <p>{text.folderLeaveOut}</p>
           {[...choices].map(([path, reason]) => (
             <Checkbox
@@ -426,7 +428,7 @@ function RepositoryBanner({
           ))}
         </div>
       ) : null}
-      <div className="import-confirm-actions">
+      <div className={styles.importActions}>
         <Button variant="primary" disabled={busy || nothing} onClick={onImport}>
           {text.folderImport}
         </Button>

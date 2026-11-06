@@ -1,6 +1,8 @@
-const SHEET_CLASS = "print-sheet";
+import styles from "./print-document.module.css";
+
 // Controls and selection affordances stay on screen.
-const SCREEN_ONLY = ".pane-bar, .passage-offer, button";
+const SCREEN_ONLY =
+  '[data-slot="pane-bar"], [data-slot="passage-offer"], button';
 
 /**
  * Prints the document a pane shows through the browser's dialog, whose "Save as PDF"
@@ -12,19 +14,19 @@ export function printDocument(
   fileName: string,
   status: string,
 ): void {
-  const body = pane.querySelector(".deliverable-body");
+  const body = pane.querySelector('[data-slot="deliverable-body"]');
   if (body === null) return;
   const copy = body.cloneNode(true) as HTMLElement;
   for (const element of copy.querySelectorAll(SCREEN_ONLY)) element.remove();
   const statusLine = document.createElement("p");
-  statusLine.className = "print-sheet-status";
+  statusLine.className = styles.status;
   statusLine.textContent = status;
-  const header = copy.querySelector(".document-header");
+  const header = copy.querySelector('[data-slot="document-header"]');
   if (header === null) copy.prepend(statusLine);
   else header.append(statusLine);
 
   const sheet = document.createElement("article");
-  sheet.className = SHEET_CLASS;
+  sheet.className = styles.sheet;
   sheet.append(copy);
   const appTitle = document.title;
   // The dialog names the PDF after the page title.

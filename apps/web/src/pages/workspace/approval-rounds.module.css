@@ -1,0 +1,452 @@
+.panel,
+.round,
+.table,
+.list,
+.reviewer,
+.drawer {
+  min-width: 0;
+  max-width: 100%;
+  overflow-x: hidden;
+  box-sizing: border-box;
+}
+
+.panel {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+  padding: 0 var(--space-6) 5rem;
+}
+
+.empty {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: var(--space-3);
+  min-width: 0;
+}
+
+.header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-3);
+  min-width: 0;
+}
+
+.header h2 {
+  margin: 0;
+  font-size: 1rem;
+  font-weight: 600;
+}
+
+.headerActions {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+}
+
+.rounds {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+  min-width: 0;
+}
+
+.shareDialog {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+  padding: 0;
+  border: none;
+  background: transparent;
+  min-width: 0;
+}
+
+.shareReviewers {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  min-width: 0;
+}
+
+/* Laid out like the field's control it fills. */
+.saveToggle {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  width: 100%;
+  min-width: 0;
+  font-size: 0.8125rem;
+  color: var(--wb-muted-foreground);
+  cursor: pointer;
+}
+
+.packageReminder {
+  margin: 0 var(--space-6) var(--space-3);
+  padding: var(--space-2) 0;
+  border: none;
+  border-bottom: 1px solid var(--wb-border);
+  background: transparent;
+  color: var(--wb-muted-foreground);
+}
+
+.shareActions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 0.5rem;
+  padding-top: 0.25rem;
+}
+
+.round {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  padding: 0;
+  border: none;
+  background: transparent;
+}
+
+.roundMeta {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-2);
+  min-width: 0;
+}
+
+.tableHead {
+  display: grid;
+  grid-template-columns: 1rem minmax(0, 1.1fr) minmax(0, 0.75fr) minmax(
+      0,
+      1.85fr
+    ) 5.25rem;
+  align-items: center;
+  gap: 0.75rem;
+  padding: var(--space-2) 0;
+  border-bottom: 1px solid var(--wb-border);
+  font-size: 0.75rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--wb-muted-foreground);
+  min-width: 0;
+}
+
+.tableHead > span {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  text-align: left;
+}
+
+.tableHead > span:last-child {
+  text-align: right;
+}
+
+.table,
+.list {
+  display: flex;
+  flex-direction: column;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.reviewer {
+  display: flex;
+  flex-direction: column;
+  border: none;
+  border-bottom: 1px solid var(--wb-border);
+  border-radius: 0;
+  background: transparent;
+}
+
+.rowToggle {
+  display: grid;
+  grid-template-columns: 1rem minmax(0, 1.1fr) minmax(0, 0.75fr) minmax(
+      0,
+      1.85fr
+    ) 5.25rem;
+  align-items: center;
+  gap: 0.75rem;
+  width: 100%;
+  min-width: 0;
+  max-width: 100%;
+  box-sizing: border-box;
+  padding: var(--space-2) 0;
+  border: 0;
+  background: transparent;
+  color: var(--wb-foreground);
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+.chevron {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--wb-muted-foreground);
+}
+
+.cellName,
+.cellRole,
+.cellGoal {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.cellName {
+  font-weight: 500;
+  font-size: 0.875rem;
+}
+
+.cellRole {
+  font-size: 0.8125rem;
+  color: var(--wb-muted-foreground);
+}
+
+.cellGoal {
+  font-size: 0.8125rem;
+  color: var(--wb-muted-foreground);
+}
+
+.cellStatus {
+  display: inline-flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: var(--space-1);
+  min-width: 0;
+  white-space: nowrap;
+}
+
+.drawer {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: 0.5rem;
+  padding: 0.625rem 1rem 0.75rem 2.25rem;
+  margin: 0;
+  align-items: start;
+  background: var(--surface-subtle, rgba(0, 0, 0, 0.015));
+  border-top: 1px solid var(--border-subtle, var(--border));
+}
+
+.drawer[hidden] {
+  display: none !important;
+}
+
+@media (max-width: 760px) {
+  .drawer {
+    padding-left: 1rem;
+  }
+}
+
+.downloadHead {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-2);
+  font-size: 0.8125rem;
+}
+
+.checklist {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: 0.375rem;
+  max-height: 18rem;
+  overflow-y: auto;
+  margin: 0;
+  padding: 0.25rem 0;
+  list-style: none;
+}
+
+.checkRow {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.375rem 0.5rem;
+  border-radius: var(--radius-sm, 0.25rem);
+  font-size: 0.8125rem;
+  color: var(--wb-foreground);
+  cursor: pointer;
+  min-width: 0;
+}
+
+.checkRow:hover {
+  background: var(--wb-muted);
+}
+
+.reviewerActions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.25rem;
+  padding-top: 0.125rem;
+}
+
+.paneSlidesView {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+  min-width: 0;
+  max-width: 100%;
+  overflow-x: hidden;
+  box-sizing: border-box;
+}
+
+.paneSlidesBar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-2);
+  padding: var(--space-1) 0;
+  border-bottom: 1px solid var(--wb-border);
+  min-width: 0;
+  max-width: 100%;
+  overflow-x: hidden;
+  box-sizing: border-box;
+}
+
+.paneSlidesTitle {
+  flex: 1 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 0.8125rem;
+  font-weight: 500;
+  text-align: center;
+  color: var(--wb-foreground);
+}
+
+.slideDeckDialog {
+  display: flex;
+  flex-direction: column;
+  width: calc(100vw - 2rem);
+  max-width: none;
+  height: calc(100dvh - 2rem);
+  max-height: none;
+  overflow: hidden;
+}
+
+.slideDeckModalBody {
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  min-height: 0;
+  overflow: auto;
+  padding: 1rem;
+}
+
+.slideDeckModalBody > [data-slot="approval-package-slides"] {
+  width: min(100%, 72rem);
+  margin: 0 auto;
+}
+
+.reviewerDecision {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+  padding: 0;
+  border: none;
+  background: transparent;
+  min-width: 0;
+}
+
+.editorActions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-2);
+}
+
+/* Approval round feedback triage items. */
+.triageList {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+
+.triageItem {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.5rem;
+  padding: 0.25rem 0;
+  border-bottom: 1px solid var(--border-subtle, var(--border));
+  color: var(--wb-muted-foreground);
+  min-width: 0;
+}
+
+.triageInline {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0;
+  gap: 0.5rem;
+  border: none;
+  background: transparent;
+  width: 100%;
+  min-width: 0;
+}
+
+.triageSummary {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-2);
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
+.triageMeta {
+  font-size: 0.75rem;
+  color: var(--wb-muted-foreground);
+}
+
+.triageActions {
+  display: inline-flex;
+  flex-shrink: 0;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 0.25rem;
+}
+
+.triageIconButton {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 1.5rem;
+  height: 1.5rem;
+  padding: 0;
+  border: none;
+  background: transparent;
+  box-shadow: none;
+  border-radius: var(--radius-control);
+  color: var(--wb-muted-foreground);
+}
+
+.triageIconButton[data-action="incorporate"]:hover:not(:disabled) {
+  color: #15803d;
+  background: rgba(22, 163, 74, 0.1);
+}
+
+.triageIconButton[data-action="dismiss"]:hover:not(:disabled) {
+  color: #b91c1c;
+  background: rgba(220, 38, 38, 0.1);
+}
+
+.triageText {
+  margin: 0;
+  font-size: 0.8125rem;
+}

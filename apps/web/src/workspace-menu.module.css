@@ -1,0 +1,78 @@
+/* The open workspace and its menu: the mark, the name, a chevron. */
+.trigger {
+  display: flex;
+  flex: 1;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+  min-height: 32px;
+  margin-left: -6px;
+  padding: 4px 6px;
+  border: 0;
+  border-radius: var(--radius-panel);
+  background: transparent;
+  color: var(--wb-foreground);
+  text-align: left;
+  cursor: pointer;
+  transition: background-color 120ms ease;
+}
+
+.trigger:hover,
+.trigger[data-state="open"] {
+  background: var(--rail-hover);
+}
+
+.trigger:focus-visible {
+  outline: 2px solid var(--wb-ring);
+  outline-offset: -2px;
+}
+
+.name {
+  flex: 1;
+  font-size: 0.9375rem;
+  font-weight: 600;
+  letter-spacing: -0.01em;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.chevron {
+  flex: none;
+  width: 14px;
+  height: 14px;
+  color: var(--wb-muted-foreground);
+}
+
+[data-slot="sidebar"][data-collapsed="true"] .trigger {
+  flex: none;
+  margin: 0;
+}
+
+/* Collapsed, the rail shows the mark alone; the name stays for assistive tech. */
+[data-slot="sidebar"][data-collapsed="true"] :is(.name, .chevron) {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
+}
+
+.menu {
+  min-width: 14rem;
+}
+
+.menuName {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.menuCheck {
+  width: 14px;
+  height: 14px;
+  color: var(--wb-muted-foreground);
+}

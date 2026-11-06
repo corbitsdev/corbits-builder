@@ -1,0 +1,58 @@
+/* Each cover mixes two theme colours into the card's own surface, so it stays
+   soft in light mode and does not glare in dark mode. */
+.cover {
+  --cover-1: color-mix(in oklab, var(--cover-a) 65%, var(--wb-card));
+  --cover-2: color-mix(in oklab, var(--cover-b) 45%, var(--wb-card));
+  display: block;
+  aspect-ratio: 16 / 7;
+  background: linear-gradient(
+    var(--cover-angle),
+    var(--cover-1),
+    var(--cover-2)
+  );
+}
+
+/* A cover that shows the mockup holds the frame's scaled-down still of its first page. */
+.cover[data-mockup] {
+  position: relative;
+  overflow: hidden;
+}
+
+.cover[data-pattern="radial"] {
+  background: radial-gradient(
+    circle at var(--cover-x) var(--cover-y),
+    var(--cover-1),
+    var(--cover-2) 75%
+  );
+}
+
+.cover[data-pattern="stripes"] {
+  background: repeating-linear-gradient(
+    var(--cover-angle),
+    var(--cover-1) 0 14px,
+    var(--cover-2) 14px 28px
+  );
+}
+
+.cover[data-pattern="rings"] {
+  background: repeating-radial-gradient(
+    circle at var(--cover-x) var(--cover-y),
+    var(--cover-1) 0 12px,
+    var(--cover-2) 12px 24px
+  );
+}
+
+.cover[data-pattern="mesh"] {
+  background:
+    radial-gradient(
+      at var(--cover-x) var(--cover-y),
+      var(--cover-1),
+      transparent 60%
+    ),
+    radial-gradient(
+      at calc(100% - var(--cover-x)) calc(100% - var(--cover-y)),
+      var(--cover-2),
+      transparent 60%
+    ),
+    color-mix(in oklab, var(--cover-b) 15%, var(--wb-card));
+}

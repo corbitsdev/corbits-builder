@@ -59,7 +59,6 @@ import {
 import { earlierDocumentRole } from "./earlier-document.ts";
 import { pastedFiles } from "./pasted-files.ts";
 import { ArtifactPane, LIVE_TAB } from "./artifact-pane.tsx";
-import "./persistent-workspace.css";
 import { ProductApiError, type ProjectArtifact } from "@corbits-builder/client";
 import type { InFlightRun } from "@corbits-builder/schemas/artifact";
 import { toast } from "sonner";
@@ -81,7 +80,7 @@ import {
 import type { ChatMessage, Wait } from "../../api/types.ts";
 import { deliveredText } from "@corbits-builder/schemas/conversation";
 import { keys } from "../../queries/keys.ts";
-import { COMPOSER_BOX_CLASS, CONV_CLASS, PANES_CLASS } from "./pane-classes.ts";
+import { Composer } from "../../composer.tsx";
 import { questionsOpen, RoomThread, turnItemId } from "./transcript.tsx";
 import { cardDocuments } from "./collaboration.ts";
 import { useFiledVersions } from "./filed-versions.tsx";
@@ -134,6 +133,9 @@ import {
   type RoomSnapshot,
 } from "./load-room.ts";
 import { RoomFault, RoomSkeleton } from "./room-skeleton.tsx";
+import { StageView } from "./stage-view.tsx";
+import { Banner, BannerAction, Fault } from "../../components.jsx";
+import styles from "./index.module.css";
 import { designDraftFiled, useDesignDraft } from "./design-preview.tsx";
 import { useUserManual } from "./user-manual.tsx";
 import {
@@ -155,7 +157,7 @@ import { composerPlaceholder } from "./composer-placeholder.ts";
 import { Dictated } from "../../dictation.jsx";
 import { useShellReply } from "../../flourish.tsx";
 import { EnableAiDialog, needsModelSetup } from "../model-setup.tsx";
-import { useModelCatalog } from "../providers.tsx";
+import { useModelCatalog } from "../settings/providers.tsx";
 
 // The stream says when the room moved. This read covers what it cannot see,
 // such as a coordinator run replaced while its old stream stays quiet.
@@ -1404,15 +1406,10 @@ function ReadyRoom({
   let dock: ReactNode;
   if (archived) {
     dock = (
-      <div className="banner" role="status">
-        <p className="banner-title">{wording.archivedProject.title}</p>
+      <Banner title={wording.archivedProject.title}>
         <p>{wording.archivedProject.lead}</p>
-        {restoreFault === null ? null : (
-          <p className="workspace-fault" role="alert">
-            {restoreFault}
-          </p>
-        )}
-        <div className="banner-action">
+        {restoreFault === null ? null : <Fault>{restoreFault}</Fault>}
+        <BannerAction>
           <UiButton
             type="button"
             size="sm"
@@ -1423,15 +1420,14 @@ function ReadyRoom({
               ? wording.archivedProject.restoring
               : wording.archivedProject.restore}
           </UiButton>
-        </div>
-      </div>
+        </BannerAction>
+      </Banner>
     );
   } else if (modelNeeded !== null && !providerMissing) {
     // A coordinator with no model to run on cannot answer, even one still bound from before.
     dock = (
-      <div className="banner" role="alert">
-        <p className="banner-title">{modelNeeded.message}</p>
-        <div className="banner-action">
+      <Banner tone="error" role="alert" title={modelNeeded.message}>
+        <BannerAction>
           <UiButton type="button" size="sm" onClick={onOpenSettings}>
             {wording.action.openSettings}
           </UiButton>
@@ -1443,25 +1439,18 @@ function ReadyRoom({
           >
             {wording.action.retry}
           </UiButton>
-        </div>
-      </div>
+        </BannerAction>
+      </Banner>
     );
   } else if (unbound && !providerMissing && !between) {
     // The person does not start the coordinator by typing: an unbound room waits for the
     // start that opening it asked for, and a refused start says why and offers it again.
     if (startFault === null) {
-      dock = (
-        <div className="banner" role="status">
-          <p className="banner-title">
-            {wording.conversation.startingCoordinator}
-          </p>
-        </div>
-      );
+      dock = <Banner title={wording.conversation.startingCoordinator} />;
     } else {
       dock = (
-        <div className="banner" role="alert">
-          <p className="banner-title">{startFault}</p>
-          <div className="banner-action">
+        <Banner tone="error" role="alert" title={startFault}>
+          <BannerAction>
             <UiButton
               type="button"
               size="sm"
@@ -1469,8 +1458,8 @@ function ReadyRoom({
             >
               {wording.action.retry}
             </UiButton>
-          </div>
-        </div>
+          </BannerAction>
+        </Banner>
       );
     }
   } else {
@@ -1483,64 +1472,57 @@ function ReadyRoom({
       !approvalBusy &&
       !providerMissing;
     dock = (
-      <div
-        className="composer"
-        data-working={working || sending ? "" : undefined}
-      >
-        <div className="composer-notes">
-          {attachFault === null ? null : (
-            <p className="workspace-fault" role="alert">
-              {attachFault}
-            </p>
-          )}
-          {sendFailed && sendFault ? (
-            <p className="workspace-fault" role="alert">
-              {sendFault}
-            </p>
-          ) : null}
-          {caution === null ? null : (
-            <div className="workspace-caution" role="alert">
-              <p>
-                {wording.earlierDocument.warning(participantLabel(caution))}
-              </p>
-              <div className="workspace-caution-actions">
-                <UiButton type="button" size="sm" onClick={sendNow}>
-                  {wording.earlierDocument.sendAnyway}
-                </UiButton>
-                <UiButton
-                  type="button"
-                  size="sm"
-                  variant="ghost"
-                  onClick={() => {
-                    setCaution(null);
-                    composerRef.current?.focus();
-                  }}
-                >
-                  {wording.action.cancel}
-                </UiButton>
+      <Composer
+        working={working || sending}
+        notes={
+          <>
+            {attachFault === null ? null : <Fault>{attachFault}</Fault>}
+            {sendFailed && sendFault ? <Fault>{sendFault}</Fault> : null}
+            {caution === null ? null : (
+              <div className={styles.caution} role="alert">
+                <p>
+                  {wording.earlierDocument.warning(participantLabel(caution))}
+                </p>
+                <div className={styles.cautionActions}>
+                  <UiButton type="button" size="sm" onClick={sendNow}>
+                    {wording.earlierDocument.sendAnyway}
+                  </UiButton>
+                  <UiButton
+                    type="button"
+                    size="sm"
+                    variant="ghost"
+                    onClick={() => {
+                      setCaution(null);
+                      composerRef.current?.focus();
+                    }}
+                  >
+                    {wording.action.cancel}
+                  </UiButton>
+                </div>
               </div>
-            </div>
-          )}
-          {replies.length > 0 && !providerMissing ? (
-            <div
-              className="workspace-replies"
-              role="group"
-              aria-label="Suggested replies"
-            >
-              {replies.map((reply) => (
-                <UiButton
-                  key={reply}
-                  type="button"
-                  variant="outline"
-                  size="sm"
-                  onClick={() => void deliver(reply)}
-                >
-                  {reply}
-                </UiButton>
-              ))}
-            </div>
-          ) : null}
-        </div>
+            )}
+            {replies.length > 0 && !providerMissing ? (
+              <div
+                className={styles.replies}
+                role="group"
+                aria-label="Suggested replies"
+              >
+                {replies.map((reply) => (
+                  <UiButton
+                    key={reply}
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    onClick={() => void deliver(reply)}
+                  >
+                    {reply}
+                  </UiButton>
+                ))}
+              </div>
+            ) : null}
+          </>
+        }
+      >
         <AttachmentDropZone
           onFiles={addFiles}
           disabled={!attaching}
@@ -1553,7 +1535,6 @@ function ReadyRoom({
           >
             {(mic) => (
               <PromptInput
-                className={COMPOSER_BOX_CLASS}
                 value={value}
                 onValueChange={setValue}
                 onSubmit={send}
@@ -1653,18 +1634,18 @@ function ReadyRoom({
             )}
           </Dictated>
         </AttachmentDropZone>
-      </div>
+      </Composer>
     );
   }
 
   return (
-    <div className="stage-view" aria-label={`Conversation for ${projectTitle}`}>
+    <StageView aria-label={`Conversation for ${projectTitle}`}>
       <div
-        className="room workspace-room"
+        className={styles.room}
         data-mobile-pane={chatFirst ? "conversation" : mobilePane}
       >
         {chatFirst ? null : (
-          <nav className="workspace-mobile-switch" aria-label="Workspace panes">
+          <nav className={styles.mobileSwitch} aria-label="Workspace panes">
             <button
               type="button"
               aria-pressed={mobilePane === "conversation"}
@@ -1682,10 +1663,14 @@ function ReadyRoom({
           </nav>
         )}
         <div
-          className={`${PANES_CLASS} workspace-split${chatFirst ? " chat-first" : ""}`}
+          className={styles.panes}
+          data-chat-first={chatFirst ? "" : undefined}
         >
-          <section className={CONV_CLASS} aria-label="Project conversation">
-            <div className="stage-conversation">
+          <section
+            className={styles.conversationPane}
+            aria-label="Project conversation"
+          >
+            <div className={styles.conversation}>
               {archived ? null : (
                 <NextStepLine
                   projectId={projectId}
@@ -1825,6 +1810,6 @@ function ReadyRoom({
         </div>
       </div>
       {shell.reply}
-    </div>
+    </StageView>
   );
 }

@@ -9,7 +9,7 @@ import {
 } from "react";
 import { wording } from "./config.ts";
 import { Mark } from "./components.jsx";
-import "./flourish.css";
+import styles from "./flourish.module.css";
 
 const FINE_MS = 3000;
 const CARD_MS = 6000;
@@ -47,7 +47,7 @@ function HockeyStick(props: FlyerProps) {
   return (
     <Drawing {...props}>
       <path
-        className="flourish-flyer-fill"
+        className={styles.fill}
         d="M4.2 2.4L6 1.6l8.6 15.4q.4.8 1.4.8h5q1 0 1 1v.8q0 1-1 1h-6.5q-1.9 0-2.7-1.7z"
       />
       <path d="M5 4.4l1.9-.9M5.7 5.9l1.9-.9M6.4 7.4l1.9-.9M17 17.8v2.8M18.2 17.8v2.8M19.4 17.8v2.8" />
@@ -60,20 +60,15 @@ function PalmTree(props: FlyerProps) {
     <Drawing {...props}>
       <path d="M10 22c.4-4.5 1.4-9 3-13M10.6 18.5l1.6.3M11.1 15.4l1.6.4M11.9 12.4l1.5.4" />
       <path
-        className="flourish-flyer-fill"
+        className={styles.fill}
         d="M13 9C10 9 6 11 5 15c2-3 5-4.5 8-6zM13 9c3 0 7 2 8 6-2-3-5-4.5-8-6zM13 9c-1-3 0-5.5 2-6.5-1 2.5-1 4.5-2 6.5z"
       />
       <path
-        className="flourish-flyer-fill-strong"
+        className={styles.fillStrong}
         d="M13 9C10 6 6 6 3 9c3-1 7-1 10 0zM13 9c3-3 7-3 9 0-3-1-6-1-9 0z"
       />
-      <circle
-        className="flourish-flyer-fill-strong"
-        cx="12.2"
-        cy="10.4"
-        r=".9"
-      />
-      <circle className="flourish-flyer-fill-strong" cx="14" cy="10.6" r=".9" />
+      <circle className={styles.fillStrong} cx="12.2" cy="10.4" r=".9" />
+      <circle className={styles.fillStrong} cx="14" cy="10.6" r=".9" />
     </Drawing>
   );
 }
@@ -117,7 +112,7 @@ export function FineMode() {
     };
   }, [on]);
   return on ? (
-    <div className="flourish-fine-banner" role="status">
+    <div className={styles.fineBanner} role="status">
       {wording.flourish.fine}
     </div>
   ) : null;
@@ -158,12 +153,12 @@ export function LogoMark({ size }: { size: number }) {
   }, [shown]);
   return (
     <>
-      <span className="flourish-logo" ref={mark}>
+      <span className={styles.logo} ref={mark}>
         <Mark size={size} />
       </span>
       {shown ? (
-        <div className="flourish-card" role="status">
-          <span className="flourish-card-mark">
+        <div className={styles.card} role="status">
+          <span className={styles.cardMark}>
             <Mark size={28} />
           </span>
           <a href="https://corbits.dev" target="_blank" rel="noreferrer">
@@ -190,7 +185,7 @@ export function Credit() {
     <>
       <button
         type="button"
-        className="flourish-credit"
+        className={styles.credit}
         onClick={() => setSwarm(Date.now())}
       >
         {wording.flourish.forgedBy}
@@ -236,9 +231,9 @@ function FlyerSwarm() {
     });
   }, []);
   return (
-    <div className="flourish-swarm" aria-hidden="true">
+    <div className={styles.swarm} aria-hidden="true">
       {flyers.map(({ Kind, style }, index) => (
-        <Kind key={index} className="flourish-swarm-flyer" style={style} />
+        <Kind key={index} className={styles.flyer} style={style} />
       ))}
     </div>
   );
@@ -280,15 +275,12 @@ export function useShellReply(area: RefObject<HTMLElement | null>) {
     return true;
   };
   const reply = box ? (
-    <div
-      key={box.at}
-      className="flourish-shell"
-      style={box.style}
-      role="status"
-    >
-      <pre className="flourish-shell-screen">
+    <div key={box.at} className={styles.shell} style={box.style} role="status">
+      <pre className={styles.shellScreen}>
         {`$ ${wording.flourish.shellRequest}`}
-        <span className="flourish-shell-answer">{`\n${wording.flourish.shellAnswer}${SANDWICH}`}</span>
+        <span
+          className={styles.shellAnswer}
+        >{`\n${wording.flourish.shellAnswer}${SANDWICH}`}</span>
       </pre>
     </div>
   ) : null;

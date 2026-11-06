@@ -52,7 +52,7 @@ import {
 import { toolPhrase, toolResult, toolSubject } from "./agent-activity.tsx";
 import { DOCUMENT_LINK, Markdown } from "../../markdown.jsx";
 import { toast } from "sonner";
-import { CONV_SCROLL_CLASS } from "./pane-classes.ts";
+import styles from "./transcript.module.css";
 import { proseSegments, type NamedDocument } from "./collaboration.ts";
 import { DocumentDecision, PackageDecision } from "./document-decision.tsx";
 import { TypedYesCountdown, type TypedYes } from "./typed-yes.tsx";
@@ -578,11 +578,11 @@ function SpecialistEnded({ text }: { text: string }) {
   const cause =
     code === undefined ? undefined : wording.specialistEnded.cause[code];
   return (
-    <span className="specialist-ended">
+    <span>
       {cause === undefined ? line : `${line.replace(/\.$/, "")} (${cause}).`}{" "}
       {wording.specialistEnded.restart}
       {recorded === null ? null : (
-        <details className="specialist-ended-details">
+        <details className={styles.endedDetails}>
           <summary>{wording.specialistEnded.details}</summary>
           {code === undefined ? recorded[2] : `${code}: ${recorded[2] ?? ""}`}
         </details>
@@ -884,12 +884,12 @@ export function RoomThread({
     <Conversation
       scrollPolicy="stick"
       sentId={sentId}
-      className="room-thread"
+      className={styles.thread}
       data-mapped={mapTurns.length > 1 ? "" : undefined}
     >
       <ConversationContent
         aria-label={wording.conversation.label}
-        className={CONV_SCROLL_CLASS}
+        className={styles.log}
       >
         {sections.map((section, position) => {
           if (section.kind === "coordinator") {

@@ -10,6 +10,7 @@ import { wording } from "../../config.ts";
 import { Markdown } from "../../markdown.jsx";
 import { markChanges } from "../../revisions.ts";
 import { DiffPane } from "./diff-pane.tsx";
+import styles from "./comparison-view.module.css";
 
 export function ComparisonView({
   before,
@@ -32,8 +33,8 @@ export function ComparisonView({
   const olderText = beforeVersion <= afterVersion ? before : after;
   const newerText = beforeVersion <= afterVersion ? after : before;
   return (
-    <div className="workspace-comparison">
-      <p className="comparison-chip">
+    <div className={styles.comparison} data-slot="comparison-view">
+      <p className={styles.chip}>
         {wording.versions.comparing(older, newer)}
         <button
           type="button"
@@ -45,7 +46,7 @@ export function ComparisonView({
       </p>
       {prose ? (
         <div
-          className="workspace-comparison-modes"
+          className={styles.modes}
           role="group"
           aria-label="Comparison style"
         >
@@ -68,7 +69,7 @@ export function ComparisonView({
         </div>
       ) : null}
       {prose && !lines ? (
-        <div className="workspace-tracked" aria-label="Tracked changes">
+        <div aria-label="Tracked changes">
           <Markdown source={markChanges(olderText, newerText)} />
         </div>
       ) : (

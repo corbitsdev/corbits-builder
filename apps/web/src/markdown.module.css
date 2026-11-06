@@ -1,0 +1,204 @@
+/* The document itself. Measure and rhythm are the whole job here: this is the
+   one surface in the app a person reads rather than scans. */
+.prose {
+  font-size: 0.9375rem;
+  line-height: 1.7;
+}
+
+/* Tracked changes: added in green, removed in red and struck through. */
+.prose ins {
+  text-decoration: none;
+  background: color-mix(in srgb, var(--wb-okay) 18%, transparent);
+  color: color-mix(in srgb, var(--wb-okay) 60%, var(--wb-foreground));
+  border-radius: 2px;
+}
+
+.prose del {
+  background: color-mix(in srgb, var(--wb-destructive) 12%, transparent);
+  color: color-mix(in srgb, var(--wb-destructive) 70%, var(--wb-foreground));
+  text-decoration: line-through;
+  border-radius: 2px;
+}
+
+/* The measure applies to running text, not the block: a table, code fence
+   or embedded frame inside the same document reads better at the pane's
+   full width than squeezed into the same column as the prose around it.
+   Left-aligned rather than centred: the measure lines up with the document
+   header above it, and a centred column in a wide pane reads as a mistake.
+   Wide enough that the card's own width — not this cap — is usually what
+   limits a line: 80ch left a wide empty gutter once the document pane grew
+   to take the room the proportional chat column gave up. */
+.prose > :where(h1, h2, h3, h4, h5, h6, p, ul, ol, blockquote) {
+  max-width: min(120ch, 1100px);
+}
+
+/* In the document pane a line of running text stops at a comfortable reading
+   length, and its last line is not left with one word. */
+.prose[data-document] > :where(p, ul, ol, blockquote) {
+  max-width: 75ch;
+  text-wrap: pretty;
+}
+
+.prose > * + * {
+  margin-top: 1em;
+}
+
+.prose h2,
+.prose h3,
+.prose h4 {
+  font-weight: 500;
+  line-height: 1.3;
+}
+
+.prose > h2 {
+  font-size: 1.25rem;
+  margin-top: 2em;
+}
+
+.prose > h3 {
+  font-size: 1.0625rem;
+  margin-top: 1.75em;
+}
+
+.prose > h4 {
+  font-size: 0.9375rem;
+  margin-top: 1.5em;
+  color: var(--wb-muted-foreground);
+}
+
+.prose > :first-child {
+  margin-top: 0;
+}
+
+.prose ul,
+.prose ol {
+  padding-left: 1.25em;
+}
+
+.prose ul {
+  list-style: disc;
+}
+
+.prose ol {
+  list-style: decimal;
+}
+
+.prose li.task {
+  list-style: none;
+  margin-left: -1.25em;
+}
+
+.prose li + li {
+  margin-top: 0.35em;
+}
+
+.prose blockquote {
+  margin-left: 0;
+  padding-left: var(--space-4);
+  border-left: 2px solid var(--wb-border-strong);
+  color: var(--wb-muted-foreground);
+}
+
+.prose code {
+  font-family: var(--wb-font-mono);
+  font-size: 0.875em;
+  background: var(--wb-muted);
+  padding: 1px var(--space-1);
+}
+
+.prose pre {
+  background: var(--wb-muted);
+  padding: var(--space-3) var(--space-4);
+  overflow-x: auto;
+}
+
+.prose pre code {
+  background: none;
+  padding: 0;
+}
+
+/* A wide table scrolls inside its own box rather than widening the page. */
+.table {
+  overflow-x: auto;
+  margin: 1em 0;
+}
+
+.prose table {
+  border-collapse: collapse;
+  font-size: 0.9375em;
+}
+
+.prose th,
+.prose td {
+  border: 1px solid var(--wb-border);
+  padding: var(--space-2) var(--space-3);
+  text-align: left;
+  vertical-align: top;
+}
+
+.prose th {
+  background: var(--wb-muted);
+  font-weight: 600;
+}
+
+.prose hr {
+  border: 0;
+  border-top: 1px solid var(--wb-border);
+  margin: 2em 0;
+}
+
+.prose ::selection {
+  background: color-mix(in srgb, var(--wb-primary) 26%, transparent);
+}
+
+/* A picture in a document (#737): the PRD for people's screens, captioned. */
+.prose .figure {
+  margin: 1rem 0 1.25rem;
+}
+
+.prose .figure img {
+  display: block;
+  max-width: 100%;
+  height: auto;
+  border: 1px solid var(--wb-border, #e5e7eb);
+  border-radius: 8px;
+}
+
+.prose .figure figcaption {
+  margin-top: 0.375rem;
+  font-size: 0.8125rem;
+  color: var(--wb-muted-foreground);
+}
+
+.prose .missingPicture {
+  color: var(--wb-muted-foreground);
+}
+
+/* A document named in the conversation, opened in the reading pane. */
+.mention {
+  color: var(--wb-foreground);
+  text-decoration: underline;
+  text-underline-offset: 0.15em;
+}
+
+.mention:focus-visible {
+  outline: 2px solid var(--wb-foreground);
+  outline-offset: 2px;
+}
+
+/* On paper the page sets the size and the measure, and nothing scrolls. */
+@media print {
+  .prose {
+    font-size: inherit;
+    line-height: inherit;
+  }
+
+  .prose > *,
+  .prose[data-document] > :where(p, ul, ol, blockquote) {
+    max-width: none;
+  }
+
+  .table {
+    overflow: visible;
+  }
+}

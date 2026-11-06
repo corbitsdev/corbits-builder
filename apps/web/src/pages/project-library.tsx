@@ -31,7 +31,7 @@ import type { ProjectSummary } from "../api/types.ts";
 import type { NoticeAction } from "../components.jsx";
 import { ProjectCover } from "./project-cover.tsx";
 import { ProjectMenu } from "./project-menu.jsx";
-import "./project-library.css";
+import styles from "./project-library.module.css";
 
 type Filter = ProjectStage | "archived";
 const FILTERS: readonly Filter[] = ["idea", "building", "shipped", "archived"];
@@ -100,7 +100,7 @@ function ViewToggle({
 }) {
   const text = wording.library.view;
   return (
-    <div className="library-view" role="group" aria-label={text.label}>
+    <div className={styles.view} role="group" aria-label={text.label}>
       <Button
         variant={mode === "grid" ? "outline" : "ghost"}
         size="icon"
@@ -173,12 +173,11 @@ export function ProjectLibrary({
     changed.current = null;
     if (shown.some((project) => project.id === pending.id)) return;
     const cards =
-      section.current?.querySelectorAll<HTMLElement>(".library-card-open") ??
-      [];
+      section.current?.querySelectorAll<HTMLElement>("[data-card-open]") ?? [];
     const next =
       cards[Math.min(pending.index, cards.length - 1)] ??
       section.current?.querySelector<HTMLElement>(
-        ".library-filters [aria-pressed='true']",
+        "[data-filters] [aria-pressed='true']",
       );
     next?.focus();
   }, [projects, shown]);
@@ -186,7 +185,7 @@ export function ProjectLibrary({
   let body: ReactNode;
   if (!loaded)
     body = (
-      <p role="status" className="library-note">
+      <p role="status" className={styles.note}>
         {failed ? wording.library.failed : wording.library.loading}
       </p>
     );
@@ -220,14 +219,15 @@ export function ProjectLibrary({
       );
   else
     body = (
-      <ul className="library-grid" data-view={view}>
+      <ul className={styles.grid} data-view={view}>
         {shown.map((project, index) => {
           const cover = coverOf(project.id);
           return (
-            <li key={project.id} className="library-card">
+            <li key={project.id} className={styles.card}>
               <button
                 type="button"
-                className="library-card-open"
+                className={styles.cardOpen}
+                data-card-open=""
                 onClick={() => onOpen(project.id)}
               >
                 <ProjectCover
@@ -236,9 +236,9 @@ export function ProjectLibrary({
                   style={cover.style}
                   mockup={view === "grid"}
                 />
-                <span className="library-card-body">
-                  <span className="library-card-title">{project.title}</span>
-                  <span className="library-card-meta">
+                <span className={styles.cardBody}>
+                  <span className={styles.cardTitle}>{project.title}</span>
+                  <span className={styles.cardMeta}>
                     <Badge
                       tone={
                         project.archivedAt
@@ -266,7 +266,7 @@ export function ProjectLibrary({
                   <Button
                     variant="ghost"
                     size="icon"
-                    className="library-card-menu"
+                    className={styles.cardMenu}
                     aria-label={wording.shell.projectOptions(project.title)}
                   >
                     <Ellipsis aria-hidden="true" />
@@ -289,13 +289,14 @@ export function ProjectLibrary({
       </ul>
     );
   return (
-    <section className="library-page" ref={section}>
+    <section className={styles.page} ref={section}>
       <LibraryPageHeader
         title={wording.library.title}
         subtitle={wording.library.subtitle}
       >
         <div
-          className="library-filters"
+          className={styles.filters}
+          data-filters=""
           role="group"
           aria-label={wording.library.filterLabel}
         >

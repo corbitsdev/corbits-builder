@@ -22,6 +22,7 @@ import { Markdown } from "../../markdown.jsx";
 import { keys } from "../../queries/keys.ts";
 import { readProjectActivity } from "../../api/activity.ts";
 import { readDesignDraft } from "../../api/artifacts.ts";
+import { InlineNote, MenuItemLabel } from "../../components.jsx";
 import { DevicePreview, type PreviewDevice } from "./device-preview.tsx";
 import type { PaneBarGroup } from "./pane-bar.tsx";
 import { QuoteOffer } from "./passage-note.tsx";
@@ -31,6 +32,7 @@ import {
   TweakPanel,
   type LookTweaks,
 } from "./mockup-tweaks.tsx";
+import styles from "./design-preview.module.css";
 
 const DRAFT_REFRESH_MS = 12_000;
 const DESIGNER_ACTIVITY_MS = 2_000;
@@ -237,6 +239,7 @@ export function MockupFrame({
   leading = [],
   trailing = [],
   onTweaks,
+  fill = false,
 }: {
   files: DesignFiles;
   device: PreviewDevice;
@@ -246,6 +249,8 @@ export function MockupFrame({
   trailing?: readonly PaneBarGroup[];
   /** Hears the live look tweaks as the person changes them. */
   onTweaks?: (tweaks: LookTweaks) => void;
+  /** Fills its container edge to edge, as a pane's whole page. */
+  fill?: boolean;
 }) {
   const frame = useRef<HTMLIFrameElement>(null);
   const expandedFrame = useRef<HTMLIFrameElement>(null);
@@ -369,7 +374,7 @@ export function MockupFrame({
   const current = screens.find((entry) => entry.screen === shown?.screen);
   // Portaled outside the pane, so the grid reads the pane's width when it opens to wrap within it.
   const fitPane = (grid: HTMLDivElement | null) => {
-    const pane = frame.current?.closest(".device-preview");
+    const pane = frame.current?.closest('[data-slot="device-preview"]');
     if (grid !== null && pane)
       grid.style.maxWidth = `min(${String(pane.clientWidth)}px, var(--radix-dropdown-menu-content-available-width, 100vw) - 0.75rem)`;
   };
@@ -385,11 +390,11 @@ export function MockupFrame({
                 : spoken(current.screen),
             icon: <ChevronDown size={12} aria-hidden="true" />,
             menu: (
-              <div className="screen-menu" ref={fitPane}>
+              <div className={styles.screenMenu} ref={fitPane}>
                 {screens.map((entry) => (
                   <MenuGroup
                     key={entry.screen}
-                    className="screen-menu-column"
+                    className={styles.screenColumn}
                     aria-label={spoken(entry.screen)}
                   >
                     <MenuLabel aria-hidden="true">
@@ -403,12 +408,12 @@ export function MockupFrame({
                             tell({ designGoto: stateHash(entry.screen, state) })
                           }
                         >
-                          <span className="version-menu-item">
+                          <MenuItemLabel>
                             {stateName(state)}
                             {entry === current && shown?.state === state ? (
                               <Check size={14} aria-label="Shown" />
                             ) : null}
-                          </span>
+                          </MenuItemLabel>
                         </MenuItem>
                       ),
                     )}
@@ -464,6 +469,7 @@ export function MockupFrame({
       expandedHtml={expandedHtml}
       expandedFrameRef={expandedFrame}
       trailing={trailing}
+      fill={fill}
       overlay={
         tweaking ? (
           <TweakPanel
@@ -491,16 +497,19 @@ export function DesignPreview({
   device,
   onDevice,
   trailing = [],
+  fill = false,
 }: {
   content: string;
   part: DesignPart;
   device: PreviewDevice;
   onDevice: (device: PreviewDevice) => void;
   trailing?: readonly PaneBarGroup[];
+  /** The mockup fills its container edge to edge, as a pane's whole page. */
+  fill?: boolean;
 }) {
   const files = parseBundle(content);
   if (!files || files[`designs/${INDEX_PAGE}`] === undefined)
-    return <p className="inline-note">This design cannot be shown.</p>;
+    return <InlineNote>This design cannot be shown.</InlineNote>;
   if (part === "mockup")
     return (
       <MockupFrame
@@ -508,13 +517,14 @@ export function DesignPreview({
         device={device}
         onDevice={onDevice}
         trailing={trailing}
+        fill={fill}
       />
     );
   const notes = files["DESIGN.md"];
   return notes === undefined ? (
-    <p className="inline-note">{wording.design.noPlan}</p>
+    <InlineNote>{wording.design.noPlan}</InlineNote>
   ) : (
-    <Markdown source={notes.replace(/^\s*# [^\n]*\n+/, "")} />
+    <Markdown document source={notes.replace(/^\s*# [^\n]*\n+/, "")} />
   );
 }
 

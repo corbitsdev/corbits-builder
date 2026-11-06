@@ -1,0 +1,47 @@
+.comparison {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: var(--space-3);
+  width: 100%;
+  min-width: 0;
+}
+
+.chip {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-1);
+  margin: 0;
+  padding: 2px 4px 2px 10px;
+  border: 1px solid var(--wb-border);
+  border-radius: 999px;
+  color: var(--wb-muted-foreground);
+  font-size: 0.8125rem;
+}
+
+.chip button {
+  display: inline-flex;
+  padding: 3px;
+  border: 0;
+  border-radius: 999px;
+  background: transparent;
+  color: inherit;
+  cursor: pointer;
+}
+
+.chip button:hover {
+  background: var(--wb-muted);
+  color: var(--wb-foreground);
+}
+
+.chip button:focus-visible,
+.modes button:focus-visible {
+  outline: 2px solid var(--wb-ring);
+  outline-offset: 2px;
+}
+
+.modes {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+}

@@ -1,0 +1,21 @@
+/* A column per screen, wrapped to the pane and kept inside the viewport by the menu's own room. */
+.screenMenu {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-1) var(--space-2);
+  max-height: calc(
+    var(--radix-dropdown-menu-content-available-height, 80dvh) - 0.75rem
+  );
+  overflow-y: auto;
+  overscroll-behavior: contain;
+}
+
+.screenColumn {
+  display: flex;
+  flex-direction: column;
+  min-width: 8rem;
+}
+
+.screenColumn [data-slot="menu-item"] {
+  padding-block: var(--space-1);
+}

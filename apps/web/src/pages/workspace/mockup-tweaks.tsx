@@ -1,16 +1,24 @@
 /**
  * Live look tweaks over a designer's mockup: the frame is cross-origin, so the values go in as a
  * stylesheet message the page applies over its own tokens. Nothing changes in the design until
- * the person saves them: the hub writes them into the design's styles.css and tells the
+ * the person saves them: the hub writes them into the design's own stylesheet and tells the
  * coordinator and the designer. A save is never an approval.
  */
 import { Button, Select } from "@corbits/react-ui";
-import { createContext, useContext, useEffect, useRef, useState } from "react";
+import {
+  createContext,
+  useContext,
+  useEffect,
+  useRef,
+  useState,
+  type ReactNode,
+} from "react";
 import { toast } from "sonner";
 import { wording } from "../../config.ts";
 import { saveDesignTweaks } from "../../api/artifacts.ts";
 import type { DesignFiles } from "./design-preview.tsx";
 import { humanFault } from "./human-fault.ts";
+import styles from "./mockup-tweaks.module.css";
 
 export type LookTweaks = {
   primary?: string;
@@ -125,6 +133,30 @@ export function tweakCss(tweaks: LookTweaks): string {
   return rules.join("");
 }
 
+/** A label and its value side by side. */
+function TweakRow({
+  as: Tag = "label",
+  children,
+}: {
+  as?: "label" | "span" | "li";
+  children: ReactNode;
+}) {
+  return (
+    <Tag className={styles.row} data-slot="tweak-row">
+      {children}
+    </Tag>
+  );
+}
+
+/** A row of buttons pushed to the end. */
+function TweakActions({ children }: { children: ReactNode }) {
+  return (
+    <div className={styles.actions} data-slot="tweak-actions">
+      {children}
+    </div>
+  );
+}
+
 function Swatches({
   label,
   colors,
@@ -137,12 +169,12 @@ function Swatches({
   onPick: (color: string) => void;
 }) {
   return (
-    <div className="tweak-swatches" role="group" aria-label={label}>
+    <div className={styles.swatches} role="group" aria-label={label}>
       {colors.map((color) => (
         <button
           key={color}
           type="button"
-          className="tweak-swatch"
+          className={styles.swatch}
           style={{ background: color }}
           aria-label={color}
           aria-pressed={value?.toLowerCase() === color}
@@ -167,7 +199,7 @@ export function TweakPanel({
   const panel = useRef<HTMLDivElement>(null);
   const target = useContext(DesignTarget);
   const [saving, setSaving] = useState(false);
-  // The live tweaks stay applied after a save: they now match the design's own styles.css.
+  // The live tweaks stay applied after a save: they now match the design's own stylesheet.
   const save = async () => {
     if (target === null) return;
     setSaving(true);
@@ -203,41 +235,42 @@ export function TweakPanel({
   return (
     <div
       ref={panel}
-      className="tweak-panel"
+      className={styles.panel}
+      data-slot="tweak-panel"
       role="dialog"
       aria-label={wording.tweak.panel}
     >
-      <label className="tweak-row">
+      <TweakRow>
         <span>{wording.tweak.primary}</span>
         <input
           type="color"
-          className="tweak-color"
+          className={styles.color}
           value={primary}
           onChange={(event) =>
             onChange({ ...tweaks, primary: event.target.value })
           }
         />
-      </label>
+      </TweakRow>
       <Swatches
         label={wording.tweak.primary}
         colors={PRIMARY_SWATCHES}
         value={tweaks.primary ?? look.primary}
         onPick={(color) => onChange({ ...tweaks, primary: color })}
       />
-      <span className="tweak-row">{wording.tweak.background}</span>
+      <TweakRow as="span">{wording.tweak.background}</TweakRow>
       <Swatches
         label={wording.tweak.background}
         colors={BACKGROUND_SWATCHES}
         value={background}
         onPick={(color) => onChange({ ...tweaks, background: color })}
       />
-      <label className="tweak-row">
+      <TweakRow>
         <span>{wording.tweak.radius}</span>
         <output>{`${String(radius)}rem`}</output>
-      </label>
+      </TweakRow>
       <input
         type="range"
-        className="tweak-range"
+        className={styles.range}
         aria-label={wording.tweak.radius}
         min={0}
         max={RADIUS_MAX_REM}
@@ -247,7 +280,7 @@ export function TweakPanel({
           onChange({ ...tweaks, radius: Number(event.target.value) })
         }
       />
-      <label className="tweak-row">
+      <TweakRow>
         <span>{wording.tweak.font}</span>
         <Select
           value={fontKey}
@@ -264,8 +297,8 @@ export function TweakPanel({
             </option>
           ))}
         </Select>
-      </label>
-      <div className="tweak-actions">
+      </TweakRow>
+      <TweakActions>
         <Button
           type="button"
           variant="ghost"
@@ -285,7 +318,7 @@ export function TweakPanel({
             {wording.tweak.save}
           </Button>
         )}
-      </div>
+      </TweakActions>
     </div>
   );
 }
