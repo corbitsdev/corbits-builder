@@ -21,6 +21,7 @@
     "dev": "bun run db:migrate && bun --env-file=.env.web run --parallel dev:hub dev:web",
     "dev:hub": "UI_PUBLIC_URL=http://localhost:${UI_PORT:-5173} bun run start",
     "dev:web": "bun --env-file=.env.web run --cwd apps/web dev",
+    "dev:stop": "bun scripts/dev-stop.ts",
     "start": "exec bun --env-file=.env.hub --conditions=intx-src apps/hub/src/server.ts",
     "db:migrate": "bun --env-file=.env.hub --conditions=intx-src apps/hub/src/migrate.ts",
     "db:generate": "bun --conditions=intx-src ./node_modules/drizzle-kit/bin.cjs generate --config=apps/hub/drizzle.config.ts",

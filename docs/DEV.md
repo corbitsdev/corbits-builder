@@ -78,23 +78,24 @@ real API ([CONTRIBUTING.md](https://github.com/corbitsdev/corbits-builder/blob/m
 
 ## Other scripts
 
-| Script                    | What it does                                                                                                                     |
-| ------------------------- | -------------------------------------------------------------------------------------------------------------------------------- |
-| `bun run start`           | Starts the hub alone, without the migrations or the UI dev server.                                                               |
-| `bun run dev:hub`         | Starts the hub alone for the UI dev server on `UI_PORT` (from the shell; `bun run dev` also reads it from `.env.web`).           |
-| `bun run dev:web`         | Starts the UI dev server alone.                                                                                                  |
-| `bun run format`          | Formats the tree with bun fmt.                                                                                                   |
-| `bun run lint`            | oxlint, warnings are errors.                                                                                                     |
-| `bun run typecheck`       | Typechecks the hub, the client API and the UI.                                                                                   |
-| `bun run db:migrate`      | Applies the migrations.                                                                                                          |
-| `bun run db:generate`     | Generates a migration from `apps/hub/src/db/schema.ts`.                                                                          |
-| `bun run docker:up`       | Builds and starts Builder in Docker ([SELF_HOST.md](https://github.com/corbitsdev/corbits-builder/blob/main/docs/SELF_HOST.md)). |
-| `bun run docker:sidecar`  | Builds the sidecar Docker image.                                                                                                 |
-| `bun run auth:bootstrap`  | Migrates and creates the `BOOTSTRAP_*` machine account and workspace.                                                            |
-| `bun run auth:emulate`    | Starts a loopback Google sign-in emulator (`GOOGLE_EMULATE_URL` in `.env.hub.example`).                                          |
-| `bun run dev:seed`        | Seeds dummy projects (`habit-tracker`, `field-service-dispatch`, `clinical-trial-intake`) at a chosen lifecycle stage.           |
-| `bun run vendor:verify`   | Checks `vendor/interchange` matches its pinned upstream commit.                                                                  |
-| `bun run skills:react-ui` | Regenerates the designer's `@corbits/react-ui` API reference.                                                                    |
+| Script                    | What it does                                                                                                                                                                             |
+| ------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `bun run start`           | Starts the hub alone, without the migrations or the UI dev server.                                                                                                                       |
+| `bun run dev:hub`         | Starts the hub alone for the UI dev server on `UI_PORT` (from the shell; `bun run dev` also reads it from `.env.web`).                                                                   |
+| `bun run dev:web`         | Starts the UI dev server alone.                                                                                                                                                          |
+| `bun run dev:stop`        | Stops every Builder process on this machine (hubs, migrations, UI dev servers, what they spawned) and names whatever else holds a port `bun run dev` needs; `--dry-run` only lists them. |
+| `bun run format`          | Formats the tree with bun fmt.                                                                                                                                                           |
+| `bun run lint`            | oxlint, warnings are errors.                                                                                                                                                             |
+| `bun run typecheck`       | Typechecks the hub, the client API and the UI.                                                                                                                                           |
+| `bun run db:migrate`      | Applies the migrations.                                                                                                                                                                  |
+| `bun run db:generate`     | Generates a migration from `apps/hub/src/db/schema.ts`.                                                                                                                                  |
+| `bun run docker:up`       | Builds and starts Builder in Docker ([SELF_HOST.md](https://github.com/corbitsdev/corbits-builder/blob/main/docs/SELF_HOST.md)).                                                         |
+| `bun run docker:sidecar`  | Builds the sidecar Docker image.                                                                                                                                                         |
+| `bun run auth:bootstrap`  | Migrates and creates the `BOOTSTRAP_*` machine account and workspace.                                                                                                                    |
+| `bun run auth:emulate`    | Starts a loopback Google sign-in emulator (`GOOGLE_EMULATE_URL` in `.env.hub.example`).                                                                                                  |
+| `bun run dev:seed`        | Seeds dummy projects (`habit-tracker`, `field-service-dispatch`, `clinical-trial-intake`) at a chosen lifecycle stage.                                                                   |
+| `bun run vendor:verify`   | Checks `vendor/interchange` matches its pinned upstream commit.                                                                                                                          |
+| `bun run skills:react-ui` | Regenerates the designer's `@corbits/react-ui` API reference.                                                                                                                            |
 
 ## Migrations
 

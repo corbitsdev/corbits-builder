@@ -70,6 +70,9 @@ one [model provider](https://github.com/corbitsdev/corbits-builder/blob/main/doc
    changing `apps/hub`, `workflows/` or `packages/`. If a port is taken, set
    `PORT` or `DB_PORT` in `.env.hub` (and `UI_HUB_ORIGIN` in `.env.web` to
    match `PORT`), or `UI_PORT` in `.env.web`.
+   `bun run dev:stop` stops the whole stack, including anything an earlier
+   run left behind, and names whatever else holds a port `bun run dev` needs,
+   such as another project's dev server or the Compose stack.
 
 5. Sign in. Open http://localhost:5173 and choose **Create an account** with
    any email and password. Locally there is no email to verify.
