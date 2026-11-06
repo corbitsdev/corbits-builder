@@ -166,7 +166,8 @@ const CALL_STATUS: Record<DispatchStatus["state"], ToolTraceStatus> = {
   declined: "output-denied",
   starting: "pending",
   working: "running",
-  approval: "approval-requested",
+  // The approval has its own card; a hand-off marked as asking would draw a second, dead one.
+  approval: "running",
   ready: "output-available",
   finished: "output-available",
   failed: "error",
