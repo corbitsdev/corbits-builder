@@ -41,7 +41,10 @@ import {
 } from "./next-step.ts";
 import type { Actor } from "../lib/actor.ts";
 import type { LiveApps } from "../live-app/runner.ts";
-import { importedProjectMessage } from "../config/import.ts";
+import {
+  PLANNED_DOCUMENT_KINDS,
+  importedProjectMessage,
+} from "../config/import.ts";
 import { MODEL_CHOICE_REFUSALS } from "../config/models.ts";
 import { mailRunAsCaller } from "../mail/caller-mail.ts";
 import { readJson } from "../lib/json.ts";
@@ -322,6 +325,7 @@ export function createProjectRoutes(
             importedProjectMessage(
               materials.map(({ title }) => title),
               kinds.includes("app"),
+              PLANNED_DOCUMENT_KINDS.filter((kind) => !kinds.includes(kind)),
             ),
           );
         } catch (error) {
