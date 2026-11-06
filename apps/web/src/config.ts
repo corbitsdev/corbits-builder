@@ -996,7 +996,7 @@ export const wording = {
     coordinatorNotStarted: "The coordinator for this project did not start.",
     projectNotOpened: "The project could not be opened.",
     projectLoading: "Loading this project…",
-    projectTooShort: "At least ten characters to start a project.",
+    projectEmpty: "Describe what you want built to start a project.",
     stepFailed: "That step could not finish.",
   },
   /** The coordinator's questions as a card the person answers in the conversation. */
