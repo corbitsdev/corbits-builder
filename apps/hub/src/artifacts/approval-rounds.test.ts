@@ -12,7 +12,6 @@ import {
   type StoredApprovalRound,
   type StoredPackageVersion,
 } from "./approval-rounds.ts";
-import { DEFAULT_WORKSPACE_REVIEWERS } from "../config/approval-rounds.ts";
 import type { WorkspaceReviewer } from "@corbits-builder/schemas/approval-round";
 import { ProjectError } from "../projects/errors.ts";
 import type { Actor } from "../lib/actor.ts";
@@ -111,9 +110,7 @@ function createFakeStore(options?: {
     sha256: string;
   }> = [];
   const rounds = new Map<string, StoredApprovalRound>();
-  const workspaceReviewers: WorkspaceReviewer[] = [
-    ...DEFAULT_WORKSPACE_REVIEWERS,
-  ];
+  const workspaceReviewers: WorkspaceReviewer[] = [];
 
   const store: ApprovalRoundStore = {
     now: () => currentNow,

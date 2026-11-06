@@ -63,6 +63,8 @@ function createInMemorySeedDeps(): SeedDeps {
       };
     },
 
+    async seedWorkspaceReviewers() {},
+
     async createProject(workspace, input) {
       const projectId = `project-${input.fixtureId}`;
       projects.set(projectId, {

@@ -12,6 +12,7 @@ import {
   ApprovalRound,
   type ApprovalRound as ApprovalRoundType,
   type ExpiryPreset,
+  type WorkspaceReviewer,
 } from "@corbits-builder/schemas/approval-round";
 import {
   AppBundle,
@@ -58,6 +59,7 @@ import {
   SEED_FIXTURE_IDS,
   SEED_PROJECT_FIXTURES,
   SEED_STAGES,
+  SEED_WORKSPACE_REVIEWERS,
   getSeedProjectFixture,
   loadSeedProjectFixture,
   loadSeedProjectFixtures,
@@ -168,6 +170,16 @@ const approvalRoundTable = pgTable("sb_approval_round", {
     .defaultNow(),
 });
 
+const settingsTable = pgTable(
+  "sb_settings",
+  {
+    tenantId: text("tenant_id").notNull(),
+    scopeKey: text("scope_key").notNull(),
+    fields: jsonb("fields").notNull(),
+  },
+  (table) => [primaryKey({ columns: [table.tenantId, table.scopeKey] })],
+);
+
 export interface ResolvedWorkspaceTenant {
   tenantId: string;
   principalId: string;
@@ -196,6 +208,10 @@ export interface SeedApprovalRoundInput {
 
 export interface SeedDeps {
   resolveWorkspaceTenant(tenantId?: string): Promise<ResolvedWorkspaceTenant>;
+  seedWorkspaceReviewers(
+    workspace: ResolvedWorkspaceTenant,
+    reviewers: readonly WorkspaceReviewer[],
+  ): Promise<void>;
   createProject(
     workspace: ResolvedWorkspaceTenant,
     input: {
@@ -283,6 +299,7 @@ export async function seedDevelopmentProjects(
   const approve: boolean = options.approve ?? true;
   const fixtures = await loadSeedProjectFixtures(selector);
   const workspace = await deps.resolveWorkspaceTenant(options.tenantId);
+  await deps.seedWorkspaceReviewers(workspace, SEED_WORKSPACE_REVIEWERS);
 
   const projects: SeededProjectSummary[] = [];
 
@@ -668,6 +685,21 @@ export function createDatabaseSeedDeps(
   return {
     async resolveWorkspaceTenant(tenantId?: string) {
       return resolveOrCreateWorkspaceTenant(db, principalKeyStore, tenantId);
+    },
+
+    async seedWorkspaceReviewers(workspace, reviewers) {
+      await db
+        .insert(settingsTable)
+        .values({
+          tenantId: workspace.tenantId,
+          scopeKey: "workspace:reviewers",
+          fields: {
+            providerNames: { value: null, version: 0 },
+            title: { value: null, version: 0 },
+            reviewers,
+          },
+        })
+        .onConflictDoNothing();
     },
 
     async createProject(workspace, input) {

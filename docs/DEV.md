@@ -112,7 +112,8 @@ it to one more than the previous entry's. Delete this paragraph after that date.
 workspace tenant in Postgres, or creating a local development workspace if the
 database is empty) with up to three realistic dummy projects across any stage
 (`idea`, `brief`, `planning`, `design_options`, `designed`, `ready_to_build`,
-`shipped`):
+`shipped`), and gives a workspace with no saved reviewers three demo
+reviewers:
 
 ```sh
 bun run dev:seed                                                      # all 3 fixtures at their default stages
