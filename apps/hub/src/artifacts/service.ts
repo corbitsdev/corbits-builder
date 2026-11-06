@@ -950,8 +950,9 @@ export function createArtifactService(
         .where(
           and(
             eq(approval.tenantId, actor.tenantId),
-            // An expired ask is one a coordinator upgrade withdrew; its successor asks again.
-            notInArray(approval.status, ["pending", "expired"]),
+            // An expired ask is one a coordinator upgrade withdrew; its successor asks again. A
+            // responded one was answered with the call's result, not decided.
+            notInArray(approval.status, ["pending", "expired", "responded"]),
           ),
         )
         .orderBy(approval.createdAt);
@@ -970,7 +971,7 @@ export function createArtifactService(
         );
       return {
         approvals: rows.flatMap((row) =>
-          row.status === "pending"
+          row.status === "pending" || row.status === "responded"
             ? []
             : [
                 {

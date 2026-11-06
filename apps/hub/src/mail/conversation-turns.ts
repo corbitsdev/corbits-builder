@@ -79,7 +79,9 @@ function approvalText(
   decisions: ApprovalDecisionTurns,
 ): string | undefined {
   const decision = ApprovalDecision(parseJson(body));
-  if (decision instanceof type.errors) return undefined;
+  // A response is the call's result, not a decision.
+  if (decision instanceof type.errors || decision.outcome === "responded")
+    return undefined;
   const words = declinedWords(decision.message);
   return decisions === "note"
     ? words
