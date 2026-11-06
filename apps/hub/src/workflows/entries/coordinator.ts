@@ -16,6 +16,7 @@ const agent = createCoordinatorAgent({
   director: compacting.build({
     contextWindow,
     compactAt: 0.6,
+    startAfterApproval: true,
     // The coordinator's run is the project's; nothing starts a failed one again.
     replyOnFailure: true,
   }),

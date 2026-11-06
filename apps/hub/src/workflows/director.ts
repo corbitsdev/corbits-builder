@@ -142,6 +142,7 @@ function taskCalls(turns: readonly ConversationTurn[]) {
     name: string;
     command: unknown;
     check: CheckDetail | undefined;
+    detail: unknown;
     isError: boolean;
   }[] = [];
   for (let index = turns.length - 1; index >= 0; index--) {
@@ -163,6 +164,7 @@ function taskCalls(turns: readonly ConversationTurn[]) {
           name: block.name,
           command: (block.arguments as Record<string, unknown>)["command"],
           check: readCheckDetail(result?.detail),
+          detail: result?.detail,
           isError: result?.isError ?? true,
         });
       }
@@ -209,9 +211,43 @@ function unfiled(turns: readonly ConversationTurn[]): boolean {
   return true;
 }
 
-function holdReply(
-  config: { checkBeforeDone?: boolean; fileBeforeDone?: boolean },
+const READ_TOOLS = new Set(["read_artifact", "read_skill", "read_file"]);
+const ApprovalDetail = type({ canStart: "string[] > 0" });
+
+/*
+ * A model often answers an approval by saying the document is ready for approval and starting
+ * nothing. The steps the approval opened are still waiting while only reads follow it.
+ */
+function unstartedSteps(
   turns: readonly ConversationTurn[],
+): string[] | undefined {
+  // A reply that asks the person something hands the turn to them on purpose.
+  const asks = turns
+    .at(-1)
+    ?.content.some(
+      (block) => block.type === "text" && /[?？]/.test(block.text),
+    );
+  if (asks) return undefined;
+  for (const call of taskCalls(turns)) {
+    if (call.name === "request_approval") {
+      const detail = ApprovalDetail(call.detail);
+      return call.isError || detail instanceof type.errors
+        ? undefined
+        : detail.canStart;
+    }
+    if (!READ_TOOLS.has(call.name)) return undefined;
+  }
+  return undefined;
+}
+
+function holdReply(
+  config: {
+    checkBeforeDone?: boolean;
+    fileBeforeDone?: boolean;
+    startAfterApproval?: boolean;
+  },
+  turns: readonly ConversationTurn[],
+  held: number,
 ): string | undefined {
   if (config.checkBeforeDone && unchecked(turns))
     return "Files changed after the last passing check-app, so the work is not done yet.";
@@ -220,6 +256,11 @@ function holdReply(
       return "The design option is not filed yet; check_design or file_design_option files it.";
     return "The document is not filed yet; write_artifact files it.";
   }
+  // The person may have asked to wait, so the approval is a reminder once rather than a rule.
+  const steps =
+    config.startAfterApproval && held === 0 ? unstartedSteps(turns) : undefined;
+  if (steps)
+    return `The approval went through, so these can start now: ${steps.join(", ")}. Start what the person wants next, unless they asked to wait.`;
   return undefined;
 }
 
@@ -230,10 +271,11 @@ function holdReply(
  * turn that only repeats one sentence is dropped and sampled again, as is a stream the source adapter
  * cut for repeating one passage. The third such turn in one task fails the run, or with
  * replyOnFailure is the reply. With checkBeforeDone, a final reply waits for a passing check-app
- * after the last file change; with fileBeforeDone, it waits for a filed document. Every inference
- * retries an overloaded, slow or rate-limited model a few times; once that gives up, the run
- * fails, or with replyOnFailure the error is the reply. The model-specific numbers come from the
- * agent definition's director config.
+ * after the last file change; with fileBeforeDone, it waits for a filed document; with
+ * startAfterApproval, a reply after an approval that starts and asks nothing is held once. Every
+ * inference retries an overloaded, slow or rate-limited model a few times; once that gives up, the
+ * run fails, or with replyOnFailure the error is the reply. The model-specific numbers come from
+ * the agent definition's director config.
  */
 export const compactingDirector = (packageName: string) =>
   defineDirector<{
@@ -243,6 +285,8 @@ export const compactingDirector = (packageName: string) =>
     checkBeforeDone?: boolean;
     // Whether a final reply waits for a write_artifact that filed the task's document.
     fileBeforeDone?: boolean;
+    // Whether a reply after an approval that starts and asks nothing is held once.
+    startAfterApproval?: boolean;
     // Whether a runaway or a model failure is the reply rather than a failed run.
     replyOnFailure?: boolean;
   }>({
@@ -252,6 +296,7 @@ export const compactingDirector = (packageName: string) =>
       compactAt: "0 < number < 1",
       "checkBeforeDone?": "boolean",
       "fileBeforeDone?": "boolean",
+      "startAfterApproval?": "boolean",
       "replyOnFailure?": "boolean",
     }),
     factory: (config, env, agent) => {
@@ -334,7 +379,7 @@ export const compactingDirector = (packageName: string) =>
               (block) => block.type === "tool_call",
             );
             const notDone = replying
-              ? holdReply(config, state.turns)
+              ? holdReply(config, state.turns, uncheckedReplies)
               : undefined;
             if (notDone) {
               uncheckedReplies += 1;
