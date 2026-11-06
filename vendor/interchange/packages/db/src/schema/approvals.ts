@@ -34,7 +34,14 @@ export const approval = pgTable(
     toolArguments: jsonb("tool_arguments").notNull(),
     scope: text("scope", { enum: ["once", "always"] }),
     status: text("status", {
-      enum: ["pending", "approved", "rejected", "timeout", "expired"],
+      enum: [
+        "pending",
+        "approved",
+        "rejected",
+        "responded",
+        "timeout",
+        "expired",
+      ],
     })
       .notNull()
       .default("pending"),

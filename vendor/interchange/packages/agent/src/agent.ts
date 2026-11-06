@@ -245,6 +245,8 @@ export class AgentClosedError extends Error {
 
 interface ResolvedTools {
   readonly definitions: readonly ToolDefinition[];
+  /** The tools declared `approval: "respond"`, by name. */
+  readonly respondable: ReadonlySet<string>;
   readonly runner: ToolRunner & {
     readonly definitions: readonly ToolDefinition[];
   };
@@ -280,6 +282,7 @@ function resolveTools<EnvReq extends BaseEnv>(
 ): ResolvedTools {
   const byName = new Map<string, ToolBundle>();
   const definitions: ToolDefinition[] = [];
+  const respondable = new Set<string>();
   // Track constructed bundles so we can dispose them on a later
   // factory's failure. Once `resolveTools` returns successfully the
   // caller (createAgent) is the lifetime owner per the `ToolBundle`
@@ -288,6 +291,9 @@ function resolveTools<EnvReq extends BaseEnv>(
 
   try {
     for (const factory of def.toolFactories) {
+      for (const declaration of factory.definitions) {
+        if (declaration.approval === "respond") respondable.add(declaration.name);
+      }
       const bundle = factory(env);
       constructed.push(bundle);
       for (const definition of bundle.definitions) {
@@ -355,9 +361,22 @@ function resolveTools<EnvReq extends BaseEnv>(
         };
       }
     },
+    async check(call, signal) {
+      const bundle = byName.get(call.name);
+      if (bundle?.check === undefined) return undefined;
+      try {
+        return await bundle.check(call, signal);
+      } catch (err) {
+        return {
+          callId: call.id,
+          content: err instanceof Error ? err.message : String(err),
+          isError: true,
+        };
+      }
+    },
   };
 
-  return { definitions, runner, bundles: constructed };
+  return { definitions, respondable, runner, bundles: constructed };
 }
 
 function resolveDirector<EnvReq extends BaseEnv>(
@@ -711,6 +730,7 @@ export async function createAgent<EnvReq extends BaseEnv>(
       auditStore,
       authorize,
       toolDefinitions: resolvedTools.definitions,
+      respondableTools: resolvedTools.respondable,
       onShutdown: async () => {
         try {
           await flushErrors();

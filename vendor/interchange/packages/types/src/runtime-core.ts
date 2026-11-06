@@ -720,6 +720,9 @@ export const ApprovalSnapshot = type({
   description: "string",
   inputSchema: "Record<string, unknown>",
   arguments: "Record<string, unknown>",
+  // The tool declared `approval: "respond"`: the person may resolve the call
+  // with its result instead of running it.
+  "respondable?": "true",
 });
 export type ApprovalSnapshot = typeof ApprovalSnapshot.infer;
 
@@ -826,6 +829,12 @@ export interface ToolRunner {
    * errors are returned as `ToolResult` with `isError: true`.
    */
   run(call: ToolCall, signal: AbortSignal): Promise<ToolResult>;
+  /**
+   * Check a call's arguments without running it, before the call would park
+   * on an approval gate. Resolves with the error result to answer a failing
+   * call with, or `undefined` when it passes. Must not throw.
+   */
+  check?(call: ToolCall, signal: AbortSignal): Promise<ToolResult | undefined>;
 }
 
 // ---------------------------------------------------------------------------

@@ -545,10 +545,12 @@ export function createReactor(config: ReactorConfig): Reactor {
   //     response). The gate clears normally, driving the director to re-infer,
   //     and the correlated message body IS appended to history so the model
   //     sees the response it was waiting on.
+  //   tool_result — a rejected or responded approval answers the parked call
+  //     with a result of the approver's making; the tool never runs.
   type ResumeDispatch =
     | { mode: "redispatch"; calls: ToolCall[] }
     | { mode: "gate-cleared" }
-    | { mode: "error_result"; result: ToolResult };
+    | { mode: "tool_result"; result: ToolResult };
 
   // Decide how a correlated approval-kind pending operation resumes, granting
   // any one-shot bypass synchronously so no delivery can interleave between the
@@ -612,12 +614,19 @@ export function createReactor(config: ReactorConfig): Reactor {
               "denied by approver" +
               (decision.message !== undefined ? `: ${decision.message}` : "");
             return {
-              mode: "error_result",
+              mode: "tool_result",
               result: { callId: suspendedCall.id, content, isError: true },
             };
           }
+          case "responded":
+            // The approver supplied the call's result themselves, so it
+            // answers the parked call as a normal result without running it.
+            return {
+              mode: "tool_result",
+              result: { callId: suspendedCall.id, content: decision.result },
+            };
           default:
-            return assertNever(decision.outcome);
+            return assertNever(decision);
         }
       default:
         return assertNever(op.kind);
@@ -699,11 +708,11 @@ export function createReactor(config: ReactorConfig): Reactor {
         );
         break;
       }
-      case "error_result": {
-        // The approver denied the call. Clear the gate SILENTLY (like the
-        // approved redispatch) so it cannot also trip onGateCleared and enqueue
-        // a second continuation. The synthetic error result answers the parked
-        // call; the director appends it and re-infers once.
+      case "tool_result": {
+        // The approver denied or responded to the call. Clear the gate SILENTLY
+        // (like the approved redispatch) so it cannot also trip onGateCleared
+        // and enqueue a second continuation. The approver's result answers the
+        // parked call; the director appends it and re-infers once.
         if (gate !== undefined) {
           gates.clearSilently(gate.gateId);
           if (stateManager !== null) {
@@ -966,6 +975,24 @@ export function createReactor(config: ReactorConfig): Reactor {
         }
 
         if (decision.type === "suspend") {
+          // A call that fails its tool's own argument check is answered with
+          // that error at once rather than parked for a person to decide.
+          let refused: ToolResult | undefined;
+          try {
+            refused = await toolRunner.check?.(call, signal);
+          } catch (cause) {
+            const msg = cause instanceof Error ? cause.message : String(cause);
+            emitError(`ToolRunner.check threw for ${call.name}: ${msg}`, false);
+            refused = { callId: call.id, content: msg, isError: true };
+          }
+          if (refused !== undefined) {
+            emit({
+              type: "tool.done",
+              seq: nextSeq(),
+              data: { result: refused },
+            });
+            return refused;
+          }
           // The call parks once the batch has run. It is neither run nor
           // answered — no tool.start, no tool.done, no tool-result turn.
           parks.set(call.id, decision);
@@ -1413,6 +1440,15 @@ export function createReactor(config: ReactorConfig): Reactor {
     return correlations.all().find((op) => op.batch === batch);
   }
 
+  // How long a gate holds an operation persisted with no deadline. A call the
+  // person answers with their own input holds until they do, as the hub's
+  // approval does; any other falls back to the session's gate timeout.
+  function holdWithoutDeadline(op: PendingOperation): number {
+    return op.approvalSnapshot?.respondable === true
+      ? Number.POSITIVE_INFINITY
+      : gateTimeout;
+  }
+
   // Announces a queued call of a batch whose earlier call was just answered,
   // parking it afresh so its deadline starts now, as if it had parked alone.
   async function announceParked(op: PendingOperation): Promise<void> {
@@ -1421,7 +1457,9 @@ export function createReactor(config: ReactorConfig): Reactor {
       stateManager.removePendingOperation(op.correlationId);
     }
     const timeoutMs =
-      op.timeoutAt !== undefined ? op.timeoutAt - op.registeredAt : gateTimeout;
+      op.timeoutAt !== undefined
+        ? op.timeoutAt - op.registeredAt
+        : holdWithoutDeadline(op);
     const registeredAt = Date.now();
     const announced: PendingOperation = {
       ...op,
@@ -1445,13 +1483,11 @@ export function createReactor(config: ReactorConfig): Reactor {
   // the persisted absolute deadline (`timeoutAt`) against the current clock, so
   // the deadline is preserved across the restart rather than restarted; a
   // deadline already in the past clamps to 1ms so the gate fires on the next
-  // tick. An operation persisted without a `timeoutAt` (hold-indefinitely) has
-  // no deadline to preserve; the gate manager cannot express an indefinite
-  // hold, so it is armed with the session-level `gateTimeout` — the same
-  // effective timeout the director-suspend fallback uses — rather than a
-  // silent zero. This does not run through `suspendOnGate`: rehydration must
-  // not re-emit `reactor.gate.blocked` (the suspension already happened before
-  // the restart) and must not commit (nothing changed). It also must not add
+  // tick. An operation persisted without a `timeoutAt` has no deadline to
+  // preserve and holds as `holdWithoutDeadline` says. This does not run
+  // through `suspendOnGate`: rehydration must not re-emit
+  // `reactor.gate.blocked` (the suspension already happened before the
+  // restart) and must not commit (nothing changed). It also must not add
   // to `openRunCorrelationIds`: a rehydrated gate predates any run this
   // process has opened, so it can never be mistaken for the currently open
   // run's own suspension. A queued operation re-registers its correlation
@@ -1463,7 +1499,7 @@ export function createReactor(config: ReactorConfig): Reactor {
       const timeoutMs =
         op.timeoutAt !== undefined
           ? Math.max(1, op.timeoutAt - Date.now())
-          : gateTimeout;
+          : holdWithoutDeadline(op);
       void gates.register(
         op.gateId,
         signalKindToGateType(op.kind),
@@ -1540,8 +1576,8 @@ export function createReactor(config: ReactorConfig): Reactor {
           message === undefined ? undefined : deliveredInference.get(message);
       }
 
-      // A parked approval that ended without running its tool (rejected or
-      // timed out) carries a synthetic error result answering the parked call.
+      // A parked approval that ended without running its tool (rejected,
+      // responded or timed out) carries the result answering the parked call.
       // Land it in history before the director decides so the tool_result turn
       // closes the dangling tool_use and the re-inference the director returns
       // sees a well-formed sequence. No tool ran, so no tool.done and no

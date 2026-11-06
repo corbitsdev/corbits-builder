@@ -1,8 +1,9 @@
 // Gate management for the agent reactor.
 //
 // Gates block the reactor until an external condition resolves. Each gate has
-// a type, an ID, and a mandatory timeout. The gate manager owns all active
-// gates and exposes methods to register, clear, and time out gates.
+// a type, an ID, and a mandatory timeout; an infinite one holds the gate until
+// it is cleared. The gate manager owns all active gates and exposes methods to
+// register, clear, and time out gates.
 //
 // (INFERENCE.md § Gates, Gate Timeouts, Gate Behavior During Suspension)
 
@@ -18,7 +19,7 @@ export type GateRecord = {
     gateId: string,
     reason: "resolved" | "timeout" | "shutdown",
   ) => void;
-  timer: ReturnType<typeof setTimeout>;
+  timer: ReturnType<typeof setTimeout> | undefined;
 };
 
 export type GateSnapshot = {
@@ -28,7 +29,8 @@ export type GateSnapshot = {
 };
 
 /**
- * Manages active gates. All gates must have a positive timeout.
+ * Manages active gates. All gates must have a positive timeout; an infinite
+ * one never fires.
  */
 export function createGateManager() {
   const gates = new Map<string, GateRecord>();
@@ -62,13 +64,16 @@ export function createGateManager() {
       },
     );
 
-    const timer = setTimeout(() => {
-      if (gates.has(gateId)) {
-        gates.delete(gateId);
-        resolveGate("timeout");
-        onCleared(gateId, "timeout");
-      }
-    }, timeoutMs);
+    const timer =
+      timeoutMs === Number.POSITIVE_INFINITY
+        ? undefined
+        : setTimeout(() => {
+            if (gates.has(gateId)) {
+              gates.delete(gateId);
+              resolveGate("timeout");
+              onCleared(gateId, "timeout");
+            }
+          }, timeoutMs);
 
     gates.set(gateId, {
       gateId,

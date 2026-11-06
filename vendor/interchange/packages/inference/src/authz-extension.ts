@@ -84,6 +84,11 @@ export type AuthzExtensionOptions<Ctx = unknown> = {
    * never register a suspension with the hub.
    */
   toolDefinitions?: readonly ToolDefinition[];
+  /**
+   * Tools declared `approval: "respond"`. Their snapshot is marked
+   * `respondable`, so the person may resolve the parked call with its result.
+   */
+  respondableTools?: ReadonlySet<string>;
 };
 
 type BlockEffect = "deny" | null;
@@ -221,8 +226,13 @@ export function createAuthzExtension<Ctx = unknown>(
         // identity for both the gate and the persisted operation. The
         // reactor persists the operation, so this id survives a restart.
         const correlationId = crypto.randomUUID();
-        const timeoutAt =
-          Date.now() + (opts.approvalTimeoutMs ?? DEFAULT_APPROVAL_TIMEOUT_MS);
+        // A call the person answers with their own input waits for them with
+        // no deadline, as the hub's approval does.
+        const respondable = opts.respondableTools?.has(call.name) === true;
+        const timeoutAt = respondable
+          ? Number.POSITIVE_INFINITY
+          : Date.now() +
+            (opts.approvalTimeoutMs ?? DEFAULT_APPROVAL_TIMEOUT_MS);
         const gateId = `pending-${correlationId}`;
 
         // Build the approver-facing snapshot when tool definitions are wired.
@@ -248,6 +258,7 @@ export function createAuthzExtension<Ctx = unknown>(
             description: def.description,
             inputSchema: def.inputSchema,
             arguments: call.arguments,
+            ...(respondable ? { respondable: true as const } : {}),
           };
         }
 
@@ -256,7 +267,7 @@ export function createAuthzExtension<Ctx = unknown>(
           kind: "approval",
           registeredAt: Date.now(),
           gateId,
-          timeoutAt,
+          ...(respondable ? {} : { timeoutAt }),
           suspendedCall: call,
           ...(approvalSnapshot !== undefined ? { approvalSnapshot } : {}),
         };

@@ -958,6 +958,68 @@ describe("POST /approvals/:approvalId/reject", () => {
   });
 });
 
+describe("POST /approvals/:approvalId/respond", () => {
+  test("resolves responded and delivers the person's result for a tool that takes one", async () => {
+    const signalCalls: SignalCall[] = [];
+    const resolveCalls: ResolveCall[] = [];
+    const base0 = pendingApproval();
+    const app = createTestApp({
+      signalCalls,
+      resolveCalls,
+      approval: pendingApproval({
+        toolDefinition: { ...base0.toolDefinition, respondable: true },
+      }),
+    });
+
+    const res = await app.fetch(
+      authedPost(`${base()}/${APPROVAL_ID}/respond`, { result: "blue" }),
+    );
+
+    expect(res.status).toBe(200);
+    expect(resolveCalls).toEqual([{ status: "responded", scope: undefined }]);
+    expect(signalCalls[0]?.payload).toEqual({
+      outcome: "responded",
+      result: "blue",
+    });
+  });
+
+  test("refuses to approve, or to reject always, a tool that takes a response", async () => {
+    const signalCalls: SignalCall[] = [];
+    const resolveCalls: ResolveCall[] = [];
+    const base0 = pendingApproval();
+    const app = createTestApp({
+      signalCalls,
+      resolveCalls,
+      approval: pendingApproval({
+        toolDefinition: { ...base0.toolDefinition, respondable: true },
+      }),
+    });
+
+    for (const action of ["approve", "reject"]) {
+      const res = await app.fetch(
+        authedPost(`${base()}/${APPROVAL_ID}/${action}`, { scope: "always" }),
+      );
+      expect(res.status).toBe(409);
+    }
+    expect(resolveCalls).toEqual([]);
+    expect(signalCalls).toEqual([]);
+  });
+
+  test("refuses a tool that did not declare it takes a response", async () => {
+    const signalCalls: SignalCall[] = [];
+    const resolveCalls: ResolveCall[] = [];
+    const app = createTestApp({ signalCalls, resolveCalls });
+
+    const res = await app.fetch(
+      authedPost(`${base()}/${APPROVAL_ID}/respond`, { result: "blue" }),
+    );
+
+    expect(res.status).toBe(409);
+    expect(resolveCalls).toEqual([]);
+    expect(signalCalls).toEqual([]);
+  });
+});
+
 describe("GET /approvals/:approvalId", () => {
   test("returns the approval with its tool snapshot for a holder of the resolve grant", async () => {
     // The default grant is `approval:<deployment>` / `resolve` -- the same

@@ -73,7 +73,7 @@ import { collectSidecarCapabilityRules } from "./sidecar-capabilities";
  * optional approval mark. */
 export interface InertToolDeclaration {
   readonly name: string;
-  readonly approval?: "ask";
+  readonly approval?: "ask" | "respond";
 }
 
 /** Plain-data mirror of an `AnnotatedToolFactory`'s static grant surface:

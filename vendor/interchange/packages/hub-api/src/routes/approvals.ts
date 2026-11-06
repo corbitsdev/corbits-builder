@@ -16,6 +16,7 @@ import type {
 import {
   ApprovalResponse,
   ErrorResponse,
+  RespondAction,
   ApprovalDecision,
   ApproveAction,
   RejectAction,
@@ -142,7 +143,7 @@ export type ResolveApprovalRequest = {
   principalId: string;
   /** The caller's run-token consumer, or `undefined`; see `TenantEnv`. */
   consumer: string | undefined;
-  status: "approved" | "rejected";
+  status: "approved" | "rejected" | "responded";
   scope?: "once" | "always";
   decisionPayload: ApprovalDecision;
 };
@@ -151,6 +152,8 @@ export type ResolveApprovalOutcome =
   | { kind: "resolved"; approval: ParsedApproval }
   | { kind: "not_found" }
   | { kind: "forbidden" }
+  | { kind: "not_respondable" }
+  | { kind: "not_approvable" }
   | { kind: "already_resolved" }
   | { kind: "deployment_unavailable" }
   | { kind: "run_not_running" }
@@ -210,6 +213,24 @@ export async function resolveApproval(
   });
   if (!allowed) {
     return { kind: "forbidden" };
+  }
+
+  // Only a tool that declared `approval: "respond"` takes a result from the
+  // person, and such a call is responded to or rejected once: it is never
+  // approved to run, nor given a standing decision that would refuse the
+  // person's later questions. Any other call is approved or rejected.
+  // A resolved approval falls through so the claim reports it as resolved.
+  if (approval.status === "pending") {
+    const respondable = approval.toolDefinition["respondable"] === true;
+    if (args.status === "responded" && !respondable) {
+      return { kind: "not_respondable" };
+    }
+    if (
+      respondable &&
+      (args.status === "approved" || args.scope === "always")
+    ) {
+      return { kind: "not_approvable" };
+    }
   }
 
   // A standing resolution mutates the run's committed grant for the approved
@@ -542,7 +563,7 @@ export function createApprovalRoutes(
           ErrorResponse,
         ),
         409: jsonResponse(
-          "Approval already resolved (takes precedence on retries), workflow run no longer running, or workflow deployment unavailable",
+          "The tool takes a response instead, approval already resolved (takes precedence on retries), workflow run no longer running, or workflow deployment unavailable",
           ErrorResponse,
         ),
         503: jsonResponse(
@@ -587,7 +608,7 @@ export function createApprovalRoutes(
           ErrorResponse,
         ),
         409: jsonResponse(
-          "Approval already resolved (takes precedence on retries), workflow run no longer running, or workflow deployment unavailable",
+          "Scope 'always' on a tool that takes a response instead, approval already resolved (takes precedence on retries), workflow run no longer running, or workflow deployment unavailable",
           ErrorResponse,
         ),
         503: jsonResponse(
@@ -620,6 +641,50 @@ export function createApprovalRoutes(
     },
   );
 
+  app.post(
+    "/:approvalId/respond",
+    describeRoute({
+      tags: ["Approvals"],
+      summary: "Respond to an action",
+      description:
+        "Responds to the pending action with a result of the approver's own, without running it. The agent receives the result as the call's tool result. Only for tools that declared `approval: \"respond\"`, which ask the person for input, such as questions, rather than for permission.",
+      responses: {
+        200: jsonResponse("Action responded to", ApprovalResponse),
+        404: jsonResponse("Approval not found", ErrorResponse),
+        403: jsonResponse(
+          "Approver lacks the approval resolve grant",
+          ErrorResponse,
+        ),
+        409: jsonResponse(
+          "The tool did not declare it takes a response, approval already resolved (takes precedence on retries), workflow run no longer running, or workflow deployment unavailable",
+          ErrorResponse,
+        ),
+        503: jsonResponse(
+          "Durable workflow dispatch unavailable",
+          ErrorResponse,
+        ),
+      },
+    }),
+    validator("json", RespondAction),
+    async (c) => {
+      const tenant = c.get("tenant");
+      const principal = c.get("principal");
+      const approvalId = c.req.param("approvalId");
+      const body = c.req.valid("json");
+
+      const result = await resolveApproval(deps, {
+        approvalId,
+        tenantId: tenant.id,
+        principalId: principal.id,
+        consumer: c.get("consumer"),
+        status: "responded",
+        decisionPayload: { outcome: "responded", result: body.result },
+      });
+
+      return respond(c, result);
+    },
+  );
+
   return app;
 }
 
@@ -634,6 +699,18 @@ function respond(c: Context<TenantEnv>, result: ResolveApprovalOutcome) {
         c,
         "forbidden",
         "You do not have permission to resolve this approval",
+      );
+    case "not_respondable":
+      return errorResponse(
+        c,
+        "not_respondable",
+        "This action's tool does not take a response; approve or reject it",
+      );
+    case "not_approvable":
+      return errorResponse(
+        c,
+        "not_approvable",
+        "This action's tool takes a response; respond to it or reject it once",
       );
     case "already_resolved":
       return errorResponse(

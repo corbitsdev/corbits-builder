@@ -85,6 +85,8 @@ export type ReactorAssemblyConfig = {
    * no-snapshot mode; the production edge always supplies the resolved set.
    */
   toolDefinitions?: readonly ToolDefinition[];
+  /** Tools the person may respond to with a result; marked on their snapshot. */
+  respondableTools?: ReadonlySet<string>;
   auditStore?: AuditStore;
   beforeToolExtensions?: BeforeToolExtension[];
   toolResultTransforms?: ToolResultTransform[];
@@ -139,6 +141,7 @@ export function createReactorAssembly(
     onEvent,
     authorize,
     toolDefinitions,
+    respondableTools,
     auditStore,
     beforeToolExtensions: callerBeforeToolExtensions,
     toolResultTransforms: callerToolResultTransforms,
@@ -187,6 +190,7 @@ export function createReactorAssembly(
             ? { onDecision: (d) => auditCollector.onDecision(d) }
             : {}),
           ...(toolDefinitions !== undefined ? { toolDefinitions } : {}),
+          ...(respondableTools !== undefined ? { respondableTools } : {}),
         })
       : undefined;
 

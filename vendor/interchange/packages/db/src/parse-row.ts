@@ -62,6 +62,7 @@ const approvalStatuses = [
   "pending",
   "approved",
   "rejected",
+  "responded",
   "timeout",
   "expired",
 ] as const;

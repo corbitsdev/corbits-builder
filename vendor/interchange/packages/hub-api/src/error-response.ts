@@ -36,6 +36,8 @@ const STATUS_BY_CODE: Readonly<Record<string, ContentfulStatusCode>> = {
   path_violation: 400,
   gone: 410,
   already_resolved: 409,
+  not_respondable: 409,
+  not_approvable: 409,
   unauthorized: 401,
 };
 

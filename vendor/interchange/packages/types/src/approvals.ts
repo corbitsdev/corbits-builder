@@ -16,7 +16,8 @@ export const ApprovalResponse = type({
   ),
   toolArguments: "Record<string, unknown>",
   scope: "'once' | 'always' | null",
-  status: "'pending' | 'approved' | 'rejected' | 'timeout' | 'expired'",
+  status:
+    "'pending' | 'approved' | 'rejected' | 'responded' | 'timeout' | 'expired'",
   timeoutAt: type("string | null").describe(
     "Deadline after which the approval expires. Null records a hold-indefinitely approval with no deadline.",
   ),
@@ -35,4 +36,8 @@ export const RejectAction = type({
   // a standing deny for the run, so it is blocked without asking again.
   "scope?": "'once' | 'always'",
   "message?": "string",
+});
+
+export const RespondAction = type({
+  result: "string",
 });

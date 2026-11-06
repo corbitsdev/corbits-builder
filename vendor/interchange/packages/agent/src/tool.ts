@@ -132,6 +132,12 @@ export type AgentToolRunner = ToolRunner & {
 export interface ToolBundle {
   readonly definitions: readonly ToolDefinition[];
   run(call: ToolCall, signal: AbortSignal): Promise<ToolResult>;
+  /**
+   * The bundle's own argument check, run without side effects before a call
+   * would park on an approval gate. Resolves with the error result a call
+   * that fails it is answered with, or `undefined` when it passes.
+   */
+  check?(call: ToolCall, signal: AbortSignal): Promise<ToolResult | undefined>;
   dispose?(): Promise<void>;
 }
 
@@ -149,19 +155,21 @@ export type ToolFactory<EnvReq extends BaseEnv = BaseEnv> = (
  * (e.g. the deploy-time capability walk) can enumerate the tool names a
  * factory contributes WITHOUT instantiating it. `approval` marks a tool
  * as requiring per-invocation approval; it is a deliberate subset of
- * GrantEffect (only "ask" is expressible here — a declaration can request
- * a gate, never a pre-deny).
+ * GrantEffect (a declaration can request a gate, never a pre-deny).
+ * `"respond"` gates like `"ask"` and also lets the person resolve the parked
+ * call with its result instead of running it, for a tool whose result is the
+ * person's own input.
  */
 export interface ToolDeclaration {
   readonly name: string;
-  readonly approval?: "ask";
+  readonly approval?: "ask" | "respond";
 }
 
 /**
  * Map a tool's static approval mark to the `GrantEffect` floor its
- * `tool:<name>` grant carries: an `ask`-marked tool floors at `ask` (its
- * invocation must clear an approval gate), every other tool floors at
- * `allow`.
+ * `tool:<name>` grant carries: an `ask`- or `respond`-marked tool floors at
+ * `ask` (its invocation must clear an approval gate), every other tool
+ * floors at `allow`.
  *
  * This is the single canonical derivation of a tool's authorization floor
  * from its declaration. Both the deploy-time capability walk (hub-side)
@@ -174,7 +182,7 @@ export interface ToolDeclaration {
 export function toolApprovalEffect(
   declaration: Pick<ToolDeclaration, "approval">,
 ): GrantEffect {
-  return declaration.approval === "ask" ? "ask" : "allow";
+  return declaration.approval === undefined ? "allow" : "ask";
 }
 
 /**
