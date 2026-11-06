@@ -785,7 +785,7 @@ export function App() {
   }
   if (
     view !== "invite" &&
-    providersRead.isSuccess &&
+    providersRead.data !== undefined &&
     needsModelSetup(providers) &&
     !setupLater
   ) {
@@ -890,7 +890,7 @@ export function App() {
                 onOpen={openProject}
                 onChanged={refresh}
                 needsProvider={
-                  providersRead.isSuccess && needsModelSetup(providers)
+                  providersRead.data !== undefined && needsModelSetup(providers)
                 }
               />
             ) : null}
