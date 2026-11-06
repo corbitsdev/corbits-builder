@@ -14,11 +14,6 @@ import { humanFault, responseCode } from "./pages/workspace/human-fault.ts";
 import { ProductApiError } from "@corbits-builder/client";
 import { queryClient } from "./queries/client.ts";
 import { keys } from "./queries/keys.ts";
-import {
-  sessionAuth,
-  sessionQuery,
-  sessionReadRetryable,
-} from "./queries/session.ts";
 import { hostLatency, productClient } from "./api/transport.ts";
 import { useQuery } from "@tanstack/react-query";
 import { Toaster, toast } from "sonner";
@@ -53,6 +48,7 @@ import { ProjectMenu } from "./pages/project-menu.jsx";
 import { ProjectLibrary } from "./pages/project-library.jsx";
 import {
   ensureWorkspace,
+  getHubSession,
   openWorkspace,
   signOutHub,
   workspaceTenantId,
@@ -84,7 +80,7 @@ import {
 } from "@corbits/react-ui/ui/dialog";
 import { Auth } from "./pages/auth.jsx";
 import { StageWorkspace } from "./pages/workspace/index.tsx";
-import { firstRunScreen } from "./first-run.ts";
+import { firstRunScreen, type HubAuthState } from "./first-run.ts";
 import {
   ModelSetup,
   clearModelSetupDeferral,
@@ -550,8 +546,20 @@ export function App() {
   };
 
   const slowHost = useSlowHost();
-  const sessionRead = useQuery(sessionQuery);
-  const auth = sessionAuth(sessionRead);
+  // Read once and never saved: a stale identity must not open the workspace.
+  const sessionRead = useQuery({
+    queryKey: keys.session,
+    queryFn: getHubSession,
+    staleTime: Infinity,
+    // Only a hub that is down or unreachable answers later.
+    retry: (_, cause) => cause instanceof ApiFailure && cause.detail.retryable,
+    meta: { persist: false },
+  });
+  const auth: HubAuthState = sessionRead.data
+    ? "signed-in"
+    : sessionRead.data === null || sessionRead.isError
+      ? "signed-out"
+      : "unknown";
   const user = sessionRead.data?.user ?? null;
 
   // A refused read says nothing about what there is, so each query keeps what
@@ -593,8 +601,7 @@ export function App() {
   // Auth and "no coordinator yet" are not a dead hub. Only a dropped
   // connection or a 5xx is offline.
   const offline =
-    (sessionRead.data === undefined &&
-      sessionReadRetryable(sessionRead.failureReason)) ||
+    (sessionRead.isPending && sessionRead.failureCount > 0) ||
     (readFailure !== null &&
       !signedOutByHost &&
       (readStatus === undefined || readStatus >= 500));
@@ -614,8 +621,7 @@ export function App() {
     setSelected(null);
   }, [auth]);
   const [setupLater, setSetupLater] = useState(modelSetupDeferred);
-  // A hub that is down or unreachable is retried and is the loading screen's
-  // to show; only a session that will never read is a toast.
+  // Retried failures stay on the loading screen; only a final one is a toast.
   useEffect(() => {
     if (sessionRead.error)
       toast.error(
@@ -787,7 +793,7 @@ export function App() {
   if (view === "invite" && urlInvite !== null) {
     return (
       <>
-        <InvitationAccept invitationId={urlInvite} />
+        <InvitationAccept invitationId={urlInvite} user={user} />
         <Toaster theme={resolvedMode} richColors closeButton />
       </>
     );

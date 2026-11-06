@@ -9,19 +9,23 @@
  */
 import { wording } from "../config.ts";
 import { useEffect, useState } from "react";
-import { useQuery } from "@tanstack/react-query";
 import { toast } from "sonner";
 import { ProductApiError } from "@corbits-builder/client";
 import { Banner, Button, Mark, StateLabel } from "../components.jsx";
 import { productClient } from "../api/transport.ts";
-import { sessionQuery } from "../queries/session.ts";
+import type { HubUser } from "../api/auth.ts";
 import { navigate } from "../routes.ts";
 import type { Invitation } from "@corbits-builder/schemas/invitation";
 
-export function InvitationAccept({ invitationId }: { invitationId: string }) {
+export function InvitationAccept({
+  invitationId,
+  user,
+}: {
+  invitationId: string;
+  user: HubUser | null;
+}) {
   const [invitation, setInvitation] = useState<Invitation | null>(null);
   const [roleName, setRoleName] = useState<string | null>(null);
-  const user = useQuery(sessionQuery).data?.user ?? null;
   const [failed, setFailed] = useState<string | null>(null);
   const [accepted, setAccepted] = useState<Invitation | null>(null);
   const [busy, setBusy] = useState(false);
