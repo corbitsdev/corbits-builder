@@ -898,7 +898,7 @@ export function App() {
             {view === "library" ? (
               <ProjectLibrary
                 projects={projects}
-                loaded={projectsRead.isSuccess}
+                loaded={projectsRead.data !== undefined}
                 failed={projectsRead.isError}
                 onOpen={(projectId) => openProject(projectId)}
                 onNewProject={() => navigate("projects")}
