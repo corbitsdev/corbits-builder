@@ -30,6 +30,7 @@
     "auth:bootstrap": "bun --env-file=.env.hub --conditions=intx-src apps/hub/src/setup.ts",
     "auth:emulate": "bun --env-file=.env.hub scripts/google-emulate.ts",
     "dev:seed": "bun --env-file=.env.hub --conditions=intx-src scripts/seed-projects.ts",
+    "import:repo": "bun --conditions=intx-src scripts/import-repo.ts",
     "lint": "bun --bun run oxlint --deny-warnings",
     "format": "bun fmt --no-script",
     "format:check": "bun fmt --no-script --check",

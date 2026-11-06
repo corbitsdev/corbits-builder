@@ -15,7 +15,7 @@ running with Docker Compose is in
 | `apps/web`           | The UI: Vite and React over that client, with its own small router in `src/routes.ts`.                                                                                                                                                                              |
 | `workflows/*`        | One package per role: its agent, prompt and workflow definition; the hub supplies its tools.                                                                                                                                                                        |
 | `packages/schemas`   | Types and schemas shared by the hub, the client and the workflows.                                                                                                                                                                                                  |
-| `scripts/`           | Dev and verification scripts: pin and vendor checks, the commit check, the Google sign-in emulator and React UI API generation.                                                                                                                                     |
+| `scripts/`           | Dev and verification scripts: pin and vendor checks, the commit check, the Google sign-in emulator, React UI API generation and the repository import (`bun run import:repo`, which writes a directory as a project file the import reads).                         |
 | `deploy/`            | The Dockerfile and Compose files ([SELF_HOST.md](https://github.com/corbitsdev/corbits-builder/blob/main/docs/SELF_HOST.md)).                                                                                                                                       |
 
 The roles:
@@ -94,6 +94,7 @@ real API ([CONTRIBUTING.md](https://github.com/corbitsdev/corbits-builder/blob/m
 | `bun run auth:bootstrap`  | Migrates and creates the `BOOTSTRAP_*` machine account and workspace.                                                                                                                    |
 | `bun run auth:emulate`    | Starts a loopback Google sign-in emulator (`GOOGLE_EMULATE_URL` in `.env.hub.example`).                                                                                                  |
 | `bun run dev:seed`        | Seeds dummy projects (`habit-tracker`, `field-service-dispatch`, `clinical-trial-intake`) at a chosen lifecycle stage.                                                                   |
+| `bun run import:repo`     | Writes a directory, usually a git repository, as the project file **Import project** reads and names the Builder documents it lacks (`--help` lists the options).                        |
 | `bun run vendor:verify`   | Checks `vendor/interchange` matches its pinned upstream commit.                                                                                                                          |
 | `bun run skills:react-ui` | Regenerates the designer's `@corbits/react-ui` API reference.                                                                                                                            |
 
