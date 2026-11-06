@@ -51,7 +51,7 @@ export function Projects({
     if (busy !== null) return;
     if (shell.answers(problem)) return setProblem("");
     if (!canStartProject(problem)) {
-      toast.error(wording.message.projectTooShort);
+      toast.error(wording.message.projectEmpty);
       return;
     }
     setBusy("start");
