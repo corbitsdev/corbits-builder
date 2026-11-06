@@ -555,11 +555,10 @@ export function App() {
     retry: (_, cause) => cause instanceof ApiFailure && cause.detail.retryable,
     meta: { persist: false },
   });
-  const auth: HubAuthState = sessionRead.data
-    ? "signed-in"
-    : sessionRead.data === null || sessionRead.isError
-      ? "signed-out"
-      : "unknown";
+  let auth: HubAuthState = "unknown";
+  if (sessionRead.data) auth = "signed-in";
+  else if (sessionRead.data === null || sessionRead.isError)
+    auth = "signed-out";
   const user = sessionRead.data?.user ?? null;
 
   // A refused read says nothing about what there is, so each query keeps what
