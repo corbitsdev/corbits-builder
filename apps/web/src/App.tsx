@@ -617,7 +617,9 @@ export function App() {
   // signed in. Clearing it also saves the empty cache over the stored one.
   useEffect(() => {
     if (auth !== "signed-out") return;
-    queryClient.clear();
+    queryClient.removeQueries({
+      predicate: ({ queryKey }) => queryKey[0] !== keys.session[0],
+    });
     setSelected(null);
   }, [auth]);
   const [setupLater, setSetupLater] = useState(modelSetupDeferred);
