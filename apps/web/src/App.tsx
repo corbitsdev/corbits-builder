@@ -599,7 +599,9 @@ export function App() {
   // Query keys are not scoped to a person, so the cache belongs to whoever was
   // signed in. Clearing it also saves the empty cache over the stored one.
   useEffect(() => {
-    if (auth === "signed-out") queryClient.clear();
+    if (auth !== "signed-out") return;
+    queryClient.clear();
+    setSelected(null);
   }, [auth]);
   const [setupLater, setSetupLater] = useState(modelSetupDeferred);
   const [user, setUser] = useState<HubUser | null>(null);
