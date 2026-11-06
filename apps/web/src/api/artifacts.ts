@@ -141,13 +141,7 @@ export async function currentAppVersion(
     } catch (cause) {
       const failure = await refusal(cause);
       if (!failure) throw cause;
-      why =
-        failure.code === "app_too_large"
-          ? versionText.why.tooLarge(
-              Number(failure.body["bytes"]),
-              Number(failure.body["limit"]),
-            )
-          : versionText.why.failed(failure.status, failure.code);
+      why = versionText.why.failed(failure.status, failure.code);
     }
   } else why = versionText.why[snapshot.code];
   const latest = versions[0];

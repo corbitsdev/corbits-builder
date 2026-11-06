@@ -226,8 +226,6 @@ export const wording = {
       coder_run_not_found: "The app builder has not started on the code yet.",
       app_workspace_unavailable:
         "The app builder's working copy cannot be read from here, so its current code is not in it.",
-      tooLarge: (bytes: number, limit: number) =>
-        `The current code is ${String(bytes)} bytes, over the ${String(limit)}-byte limit, so it is not in it.`,
       failed: (status: number, code: string) =>
         `Saving the current code failed (HTTP ${String(status)}, ${code}), so it is not in it.`,
     },

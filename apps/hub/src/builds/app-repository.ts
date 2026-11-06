@@ -61,9 +61,6 @@ const PERMANENT =
 // files changed since the check.
 export const CHECK_PASSED = "Check passed";
 export const EDIT = "Edit";
-// The repository carries the app's binary assets, such as images in public/, which the 1 MiB text
-// artifact of the app leaves out.
-const APP_REPOSITORY_MAX_BYTES = 25 * 1024 * 1024;
 // A pkt-line holds at most 65520 bytes: its 4-byte length, the band byte and the data.
 const SIDE_BAND_DATA = 65515;
 const log = getLogger(["corbits-builder", "hub", "app-repository"]);
@@ -227,8 +224,6 @@ export async function signWithSidecarKey(payload: string) {
   );
 }
 
-class AppTooLarge extends Error {}
-
 type Blob = { mode: string; oid: string };
 type Tree = Map<string, Blob | Tree>;
 type WorkspaceFile = { bytes: Buffer; executable: boolean };
@@ -283,11 +278,6 @@ export function createAppRepository(options: {
     password: secret,
   });
 
-  const tooLarge = (filepath: string) =>
-    new AppTooLarge(
-      `app_too_large: the app's files pass the ${APP_REPOSITORY_MAX_BYTES}-byte limit at ${filepath}`,
-    );
-
   // Whether a directory's real location is still the one the walk reached it by.
   const inPlace = async (root: string, directory: string) =>
     (await realpath(directory)) === join(root, relative(workspace, directory));
@@ -326,7 +316,6 @@ export function createAppRepository(options: {
     root: string,
     path: string,
     filepath: string,
-    room: number,
   ): Promise<WorkspaceFile | undefined> {
     let file;
     try {
@@ -347,9 +336,7 @@ export function createAppRepository(options: {
         if (linkOrGone(error)) return undefined;
         throw error;
       }
-      if (stats.size > room) throw tooLarge(filepath);
       const bytes = await file.readFile();
-      if (bytes.length > room) throw tooLarge(filepath);
       if (!(await readInPlace(file.fd, root, path, stats)))
         throw new Error(
           `app_workspace_changed: ${filepath} moved while it was read`,
@@ -400,17 +387,9 @@ export function createAppRepository(options: {
   // The workspace's own files by path.
   async function collect(root: string, signal: AbortSignal) {
     const files = new Map<string, WorkspaceFile>();
-    let bytes = 0;
     await walk(root, workspace, signal, async (path, filepath) => {
-      const file = await readRegular(
-        root,
-        path,
-        filepath,
-        APP_REPOSITORY_MAX_BYTES - bytes,
-      );
-      if (!file) return;
-      bytes += file.bytes.length;
-      files.set(filepath, file);
+      const file = await readRegular(root, path, filepath);
+      if (file) files.set(filepath, file);
     });
     return files;
   }
@@ -633,58 +612,64 @@ export function createAppRepository(options: {
 
   // The workspace's fingerprint at its last version that reached the hub.
   let versioned: string | undefined;
-  // The workspace's fingerprint when its files passed the size limit; it is not read again unchanged.
-  let refused: string | undefined;
+
+  // The fingerprint a check passed on, or undefined once the check failed: its files are then an
+  // edit, not a passed check.
+  const passedFiles = async (checked: Promise<string>) => {
+    try {
+      return await checked;
+    } catch (error) {
+      log.debug("The check did not pass, so the files are an edit: {reason}", {
+        reason: error instanceof Error ? error.message : String(error),
+      });
+      return undefined;
+    }
+  };
 
   // Commits the workspace when it differs from main, then pushes main if the hub lacks it. A
-  // workspace unchanged since its last version, as after a read-only command, is left alone, and
-  // one unchanged since it was refused as too large is skipped, keeping that failure. A check's
-  // label names only a commit of the files it passed on: unchanged since the check, and while read.
+  // workspace unchanged since its last version, as after a read-only command, is left alone. A
+  // check's label names only a commit of the files it passed on: unchanged since the check, and
+  // while read.
   const version = (
     reason: string,
     checked: Promise<string> | undefined,
     signal: AbortSignal,
-  ): Promise<{ commit: string | undefined } | undefined> =>
+  ): Promise<{ commit: string | undefined }> =>
     serial(async () => {
       const files = await fingerprint(signal);
       if (files === versioned) return { commit: undefined };
-      if (files === refused) return undefined;
       let created: string | undefined;
-      try {
-        await attach(signal, false);
-        const head = await headCommit();
-        const { tree, blobs } = await snapshot(signal);
-        if (tree !== head.tree) {
-          const label =
-            checked === undefined ||
-            ((await checked.catch(() => undefined)) === files &&
-              (await fingerprint(signal)) === files)
-              ? reason
-              : EDIT;
-          const { author } = await pushAccess(signal);
-          const { title, body } = summary(await flatten(head.tree), blobs);
-          const identity = {
-            ...author,
-            timestamp: Math.floor(Date.now() / 1000),
-          };
-          created = await git.commit({
-            fs,
-            gitdir,
-            ref: MAIN,
-            tree,
-            parent: [head.oid],
-            author: identity,
-            committer: identity,
-            message: `${label}: ${title}\n\n${body}\n`,
-            signingKey: "sshsig",
-            onSign: async ({ payload }) => ({
-              signature: await options.sign(payload),
-            }),
-          });
-        }
-      } catch (error) {
-        if (error instanceof AppTooLarge) refused = files;
-        throw error;
+      await attach(signal, false);
+      const head = await headCommit();
+      const { tree, blobs } = await snapshot(signal);
+      if (tree !== head.tree) {
+        let label = EDIT;
+        if (checked === undefined) label = reason;
+        else if (
+          (await passedFiles(checked)) === files &&
+          (await fingerprint(signal)) === files
+        )
+          label = reason;
+        const { author } = await pushAccess(signal);
+        const { title, body } = summary(await flatten(head.tree), blobs);
+        const identity = {
+          ...author,
+          timestamp: Math.floor(Date.now() / 1000),
+        };
+        created = await git.commit({
+          fs,
+          gitdir,
+          ref: MAIN,
+          tree,
+          parent: [head.oid],
+          author: identity,
+          committer: identity,
+          message: `${label}: ${title}\n\n${body}\n`,
+          signingKey: "sshsig",
+          onSign: async ({ payload }) => ({
+            signature: await options.sign(payload),
+          }),
+        });
       }
       await push(signal);
       versioned = files;
@@ -759,12 +744,7 @@ export function createAppRepository(options: {
           true,
         );
       } catch (error) {
-        if (
-          attempt === CLONE_ATTEMPTS ||
-          stopping.aborted ||
-          error instanceof AppTooLarge
-        )
-          throw error;
+        if (attempt === CLONE_ATTEMPTS || stopping.aborted) throw error;
       }
       await sleep(CLONE_RETRY_MS, undefined, { signal: stopping });
     }

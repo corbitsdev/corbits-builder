@@ -12,7 +12,6 @@ import {
   ArtifactList,
   ArtifactRead,
   ArtifactReceipt,
-  MAX_APPROVAL_PACKAGE_BYTES,
   WriterDocumentFields,
   type DocumentWrite,
   type WriterDocumentKind,
@@ -29,8 +28,6 @@ import { workflowHttpJson, WorkflowHttpError } from "../workflows/http-json.ts";
 interface ArtifactToolEnv extends BaseEnv {
   capabilities: RuntimeCapabilities;
 }
-
-const MAX_RESULT_BYTES = MAX_APPROVAL_PACKAGE_BYTES + 256 * 1024;
 
 // A deployed agent keeps the tool bundle it started with while the hub moves on; a field a newer
 // hub adds must not fail every read of an older agent.
@@ -181,7 +178,8 @@ function artifactTools(
                 handle: HUB_CREDENTIAL_HANDLE,
                 path,
                 ...(body === undefined ? {} : { body }),
-                maxResponseBytes: MAX_RESULT_BYTES,
+                // A document is as large as it is; the parts below keep the model's read small.
+                maxResponseBytes: Number.POSITIVE_INFINITY,
                 signal,
               });
             if (call.name === "write_artifact" && save) {

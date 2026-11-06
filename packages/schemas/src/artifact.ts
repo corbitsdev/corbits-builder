@@ -20,12 +20,10 @@ const WritableArtifactKind = DocumentKind.or(
 );
 const content = type("string > 0").atMostLength(256 * 1024);
 export const DocumentContent = content;
-// A working weather app packed to about 270 KB of source.
-export const MAX_APP_BYTES = 1024 * 1024;
 export const MAX_APPROVAL_PACKAGE_BYTES = 4 * 1024 * 1024;
 
-// A filed approval package runs up to MAX_APPROVAL_PACKAGE_BYTES and a filed app up to
-// MAX_APP_BYTES, which the hub checks in bytes; it holds every other kind to DocumentContent.
+// A filed approval package runs up to MAX_APPROVAL_PACKAGE_BYTES, which the hub checks in bytes,
+// and a filed app is as large as the app is; the hub holds every other kind to DocumentContent.
 export const ArtifactKindWrite = type({
   "+": "reject",
   kind: WritableArtifactKind,
