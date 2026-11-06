@@ -5048,6 +5048,125 @@ describe("createReactor — approval resume error result", () => {
     expect(() => assertWellFormedToolSequence(cell.turns)).not.toThrow();
   });
 
+  test("a queued sibling's deadline starts when it is announced, not when it parked", async () => {
+    const cell: PersistedCell = {
+      turns: [],
+      pendingOperations: [],
+      tokenUsage: emptyUsage(),
+    };
+    let inferences = 0;
+    const twoCalls: AssistantTurn = {
+      role: "assistant",
+      content: [
+        { type: "tool_call", id: "call-a", name: "charge_card", arguments: {} },
+        { type: "tool_call", id: "call-b", name: "refund_card", arguments: {} },
+      ],
+      model: "test-model",
+      timestamp: 1000,
+    };
+
+    const { reactor, events } = createTestReactor({
+      contextStore: makePersistingContextStore(cell),
+      director: createDefaultDirector("test agent", []),
+      inferenceRunner: async function* (opts) {
+        inferences += 1;
+        yield {
+          type: "inference.done",
+          seq: opts.nextSeq(),
+          data: {
+            turn:
+              inferences === 1
+                ? twoCalls
+                : {
+                    role: "assistant",
+                    content: [{ type: "text", text: "both timed out" }],
+                    model: "test-model",
+                    timestamp: 2000,
+                  },
+            usage: emptyUsage(),
+            source: TEST_SOURCE,
+          },
+        };
+      },
+      beforeToolExtensions: [askExtension(30)],
+    });
+
+    reactor.start();
+    reactor.deliver(makeInboundMessage());
+
+    // Both calls park with the same deadline; the second must still wait its
+    // full deadline once announced, rather than time out alongside the first.
+    await waitUntil(
+      () =>
+        events.filter((e) => e.type === "reactor.gate.blocked").length === 2,
+    );
+    const secondAnnounced = Date.now();
+    expect(inferences).toBe(1);
+
+    await waitForEvent(events, (e) => e.type === "connector.reply");
+    expect(Date.now() - secondAnnounced).toBeGreaterThanOrEqual(25);
+    expect(inferences).toBe(2);
+    expect(() => assertWellFormedToolSequence(cell.turns)).not.toThrow();
+  });
+
+  test("a timed-out call does not wake the model while a sibling of its response still waits", async () => {
+    const cell: PersistedCell = {
+      turns: [],
+      pendingOperations: [],
+      tokenUsage: emptyUsage(),
+    };
+    let inferences = 0;
+    const twoCalls: AssistantTurn = {
+      role: "assistant",
+      content: [
+        { type: "tool_call", id: "call-a", name: "charge_card", arguments: {} },
+        { type: "tool_call", id: "call-b", name: "refund_card", arguments: {} },
+      ],
+      model: "test-model",
+      timestamp: 1000,
+    };
+    const askFor = (tool: string, approvalTimeoutMs: number) =>
+      createAuthzExtension({
+        authorize: async (resource) => ({
+          effect: resource === tool ? ("ask" as const) : ("allow" as const),
+          matchingGrants: [],
+          resolvedBy: null,
+        }),
+        approvalTimeoutMs,
+      });
+
+    const { reactor, events } = createTestReactor({
+      contextStore: makePersistingContextStore(cell),
+      director: createDefaultDirector("test agent", []),
+      inferenceRunner: async function* (opts) {
+        inferences += 1;
+        yield {
+          type: "inference.done",
+          seq: opts.nextSeq(),
+          data: { turn: twoCalls, usage: emptyUsage(), source: TEST_SOURCE },
+        };
+      },
+      beforeToolExtensions: [
+        askFor("tool:charge_card", 1),
+        askFor("tool:refund_card", 60_000),
+      ],
+    });
+
+    reactor.start();
+    reactor.deliver(makeInboundMessage());
+
+    const announced = await waitForEvent(
+      events,
+      (e) =>
+        e.type === "reactor.gate.blocked" &&
+        e.data.correlationId ===
+          cell.pendingOperations.find((op) => op.suspendedCall?.id === "call-b")
+            ?.correlationId,
+    );
+    expect(announced.type).toBe("reactor.gate.blocked");
+    expect(inferences).toBe(1);
+  });
+
   test("a timed-out parked call answers with an error result and re-infers exactly once", async () => {
     // The double-infer regression guard. A gate timeout on a parked ask call
     // must enqueue resume.tool_result INSTEAD OF reactor.gate.cleared. If the

@@ -1278,6 +1278,7 @@ export function createReactor(config: ReactorConfig): Reactor {
     if (reason === "timeout") {
       const op = correlations.findByGateId(gateId);
       if (op !== undefined && op.suspendedCall !== undefined) {
+        noteResumed(op);
         correlations.remove(op.correlationId);
         if (stateManager !== null) {
           stateManager.removePendingOperation(op.correlationId);
