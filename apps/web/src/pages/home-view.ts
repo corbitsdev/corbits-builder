@@ -2,7 +2,7 @@
 
 export const HOME_COMPOSER_PLACEHOLDER = "Describe the thing you want built…";
 
-/** Ten characters is the create gate. */
+/** Any idea starts a project; only an empty box does not. */
 export function canStartProject(problem: string): boolean {
-  return problem.trim().length >= 10;
+  return problem.trim().length > 0;
 }

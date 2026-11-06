@@ -510,6 +510,21 @@ export const wording = {
       review_artifact: (document?: string) =>
         document ? `Asked for a review · ${document}` : "Asked for a review",
     } as Record<string, (subject?: string) => string>,
+    /** A hand-off the hub refused, by tool name: who it did not start. */
+    handoffRefused: {
+      deploy_writer: (document?: string) =>
+        document
+          ? `Could not start the writer · ${document}`
+          : "Could not start the writer",
+      design_app: () => "Could not start the designer",
+      deploy_coder: () => "Could not start the app builder",
+      deploy_presenter: () => "Could not start the presenter",
+      instruct_coder: () => "Could not send the app builder a change",
+      review_artifact: (document?: string) =>
+        document
+          ? `Could not ask for a review · ${document}`
+          : "Could not ask for a review",
+    } as Record<string, (subject?: string) => string>,
     /** What a tool call is doing, by tool name, given its one identifying argument. */
     tool: {
       read_file: (subject?: string) =>
@@ -708,6 +723,8 @@ export const wording = {
       timeout: "Not started — the go-ahead ran out of time",
       expired: "Not started — the go-ahead expired",
     },
+    /** The hub refused the hand-off, so nothing started. */
+    refused: "Not started",
     starting: "Starting…",
     /** At work before its run reports a step of its own. */
     working: (subject: string) => `Working on ${subject}`,
@@ -979,7 +996,7 @@ export const wording = {
     coordinatorNotStarted: "The coordinator for this project did not start.",
     projectNotOpened: "The project could not be opened.",
     projectLoading: "Loading this project…",
-    projectTooShort: "At least ten characters to start a project.",
+    projectEmpty: "Describe what you want built to start a project.",
     stepFailed: "That step could not finish.",
   },
   /** The coordinator's questions as a card the person answers in the conversation. */
