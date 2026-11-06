@@ -24,15 +24,11 @@ import {
   type AssetService,
   type RepoStore,
 } from "@intx/hub-sessions";
-import {
-  MAX_APP_BYTES,
-  type AppBundle,
-} from "@corbits-builder/schemas/artifact";
+import type { AppBundle } from "@corbits-builder/schemas/artifact";
 import { outbox, project, projectCoordinator } from "../db/schema.ts";
 import { spawnedWorkflowRole } from "../workflows/spawn-role.ts";
 import {
   addBundleFile,
-  AppTooLargeError,
   bundleContent,
   EXCLUDED_DIRECTORIES,
   excludedFile,
@@ -247,7 +243,6 @@ export async function appRepositoryMain(dir: string) {
     .commit;
   const read = async () => {
     const collected: Required<AppBundle> = { files: {}, binary: {} };
-    let bytes = 0;
     const walk = async (oid: string, prefix: string) => {
       for (const entry of (await git.readTree({ fs, dir, oid })).tree) {
         if (entry.type === "tree") {
@@ -259,9 +254,6 @@ export async function appRepositoryMain(dir: string) {
           !excludedFile(entry.path)
         ) {
           const { blob } = await git.readBlob({ fs, dir, oid: entry.oid });
-          bytes += blob.length;
-          // Content outgrows its raw bytes, so this stops the read before it outgrows the limit.
-          if (bytes > MAX_APP_BYTES) throw new AppTooLargeError(bytes);
           addBundleFile(collected, prefix + entry.path, blob);
         }
       }

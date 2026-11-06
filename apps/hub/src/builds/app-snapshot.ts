@@ -10,7 +10,6 @@ import {
   ArtifactContent,
   ArtifactReceipt,
   DesignDraft,
-  MAX_APP_BYTES,
 } from "@corbits-builder/schemas/artifact";
 import { WorkflowHttpError, workflowHttpJson } from "../workflows/http-json.ts";
 import { INPUTS_DIRECTORY } from "../config/inputs.ts";
@@ -191,12 +190,6 @@ export function bundleFiles(bundle: {
   };
 }
 
-export class AppTooLargeError extends Error {
-  constructor(readonly bytes: number) {
-    super(`app_too_large: ${bytes} bytes; the limit is ${MAX_APP_BYTES}`);
-  }
-}
-
 // Keys in order, so the same files always make the same content and an unchanged app files nothing.
 const sorted = (record: Record<string, string>) =>
   Object.fromEntries(
@@ -208,7 +201,8 @@ export async function appContent(workspace: string) {
   return bundleContent(await collectApp(workspace)).content;
 }
 
-// Collected files as an app bundle and its document content, checked against the app limit.
+// Collected files as an app bundle and its document content. An app is as large as it is: a
+// resource that runs out on the way, such as memory or a request body, reports its own error.
 export function bundleContent(collected: Required<AppBundle>) {
   const files = sorted(collected.files);
   const binary = sorted(collected.binary);
@@ -217,10 +211,7 @@ export function bundleContent(collected: Required<AppBundle>) {
   );
   if (bundle instanceof type.errors)
     throw new Error("invalid_app: " + bundle.summary);
-  const content = JSON.stringify(bundle);
-  const bytes = Buffer.byteLength(content);
-  if (bytes > MAX_APP_BYTES) throw new AppTooLargeError(bytes);
-  return { bundle, content };
+  return { bundle, content: JSON.stringify(bundle) };
 }
 
 const projectPath = (scope: { tenantId: string; projectId: string }) =>
@@ -274,8 +265,8 @@ export async function readFiledDocument(
       capabilities,
       handle: HUB_CREDENTIAL_HANDLE,
       path: projectPath(scope) + "/artifacts/" + encodeURIComponent(kind),
-      // An app bundle's JSON is escaped again inside the response.
-      maxResponseBytes: 2 * MAX_APP_BYTES + 16384,
+      // The app is as large as it is; memory is what bounds the read.
+      maxResponseBytes: Number.POSITIVE_INFINITY,
       signal,
     }).then((body) => ArtifactContent.assert(body)),
   );
@@ -291,7 +282,7 @@ const readDesignFiles = (
       capabilities,
       handle: HUB_CREDENTIAL_HANDLE,
       path,
-      maxResponseBytes: 2 * MAX_APP_BYTES,
+      maxResponseBytes: Number.POSITIVE_INFINITY,
       signal,
     }).then((body) => DesignDraft.assert(body).files),
   );

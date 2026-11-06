@@ -41,7 +41,6 @@ import {
   AppBundle,
   AppVersionMetadata,
   DocumentContent,
-  MAX_APP_BYTES,
   MAX_APPROVAL_PACKAGE_BYTES,
   MATERIAL_KIND,
   ArtifactKindWrite,
@@ -125,11 +124,7 @@ import {
   warmStepWorkspace,
 } from "./design-draft.ts";
 import type { LiveApps } from "../live-app/runner.ts";
-import {
-  AppTooLargeError,
-  appContent,
-  bundleFiles,
-} from "../builds/app-snapshot.ts";
+import { appContent, bundleFiles } from "../builds/app-snapshot.ts";
 import { MAX_DESIGN_BYTES } from "./design-tools.ts";
 import { DESIGN_STYLES, setThemeTokens } from "./design-tweaks.ts";
 import {
@@ -177,8 +172,6 @@ const APPROVAL_COVERS: Record<string, (kind: string) => boolean> = {
     kind !== "app" && kind !== "design" && kind !== "design_option",
   instruct_coder: (kind) => kind !== "app" && kind !== "design_option",
 };
-// Whole documents, the filed app and approval package among them.
-const MAX_READ_CHARS = MAX_APPROVAL_PACKAGE_BYTES;
 const RECENT_FAILURES = 5;
 // A command's progress line older than this was left by a command that died; it is not shown.
 const COMMAND_PROGRESS_STALE_MS = 5 * 60_000;
@@ -196,14 +189,6 @@ const UUID = "[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}";
 const isUuid = (value: string) => new RegExp("^" + UUID + "$", "i").test(value);
 // The coder task names documents as id@version@sha256 tokens.
 const PINNED_REF = new RegExp("^(" + UUID + ")@(\\d+)@([a-f0-9]{64})$", "i");
-
-const appTooLarge = (error: unknown) =>
-  error instanceof AppTooLargeError
-    ? new ProjectError(413, "app_too_large", {
-        bytes: error.bytes,
-        limit: MAX_APP_BYTES,
-      })
-    : error;
 
 // An imported bundle's paths and a material's filename are the importer's text: none may climb
 // out of the directory it is archived under.
@@ -267,14 +252,8 @@ function validateArtifactWriteContent(
         issues: typeIssues(bundle, "content"),
       });
   }
-  if (input.kind === "app") {
-    const bytes = Buffer.byteLength(input.content);
-    if (bytes > MAX_APP_BYTES)
-      throw new ProjectError(413, "app_too_large", {
-        bytes,
-        limit: MAX_APP_BYTES,
-      });
-  } else if (input.kind === "approval_package") {
+  // An app is as large as it is.
+  if (input.kind === "approval_package") {
     const bytes = Buffer.byteLength(input.content);
     if (bytes > MAX_APPROVAL_PACKAGE_BYTES)
       throw new ProjectError(413, "approval_package_too_large", {
@@ -282,7 +261,7 @@ function validateArtifactWriteContent(
         limit: MAX_APPROVAL_PACKAGE_BYTES,
       });
     parseApprovalPackageBundle(input.content);
-  } else {
+  } else if (input.kind !== "app") {
     const document = DocumentContent(input.content);
     if (document instanceof type.errors)
       throw new ProjectError(400, "invalid_artifact_write", {
@@ -554,16 +533,11 @@ export function createArtifactService(
       await listArtifacts(db, actor.tenantId, { kind: "app", limit: 1 })
     ).rows;
     const filed = latest?.contentSha256 ? latest : undefined;
-    let repository;
-    try {
-      repository = await newerRepositoryApp(
-        actor,
-        projectId,
-        filed && (await filedAt(filed.id, filed.version)),
-      );
-    } catch (error) {
-      throw appTooLarge(error);
-    }
+    const repository = await newerRepositoryApp(
+      actor,
+      projectId,
+      filed && (await filedAt(filed.id, filed.version)),
+    );
     if (repository)
       return {
         name: repository.commit.slice(0, 7),
@@ -1447,12 +1421,6 @@ export function createArtifactService(
           artifactId,
           version,
         });
-      if (stored.content.length > MAX_READ_CHARS)
-        throw new ProjectError(409, "artifact_too_large", {
-          artifactId,
-          contentLength: stored.content.length,
-          limit: MAX_READ_CHARS,
-        });
       const { openQuestions = [], approaches } = documentMetadataOf(
         stored.metadata,
       );
@@ -1714,12 +1682,7 @@ export function createArtifactService(
               runId: workspace.runId,
               reason: workspace.reason,
             });
-      let content: string;
-      try {
-        content = await appContent(workspace.dir);
-      } catch (error) {
-        throw appTooLarge(error);
-      }
+      const content = await appContent(workspace.dir);
       const metadata = AppVersionMetadata.assert({
         source: "snapshot",
         runId: workspace.runId,

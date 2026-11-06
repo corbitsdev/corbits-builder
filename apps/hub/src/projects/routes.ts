@@ -5,7 +5,6 @@ import { createArtifactService } from "../artifacts/service.ts";
 import type { AgentActivityTracker } from "../artifacts/activity.ts";
 import { mountProjectAuditRoutes } from "../audit/routes.ts";
 import { Hono, type Context, type MiddlewareHandler } from "hono";
-import { bodyLimit } from "hono/body-limit";
 import { describeRoute, resolver } from "hono-openapi";
 import {
   createResolveTenant,
@@ -85,7 +84,6 @@ const TENANT_ERROR_STATUS = {
   404: 404,
   409: 409,
 } as const;
-const IMPORT_MAX_BYTES = 20 * 1024 * 1024;
 
 // Tenant creation is native: POST /api/tenants (hub-api routes/tenants.ts
 // createTenantRoutes) runs as the calling user, checks `create` on `tenant:*`
@@ -216,14 +214,8 @@ export function createProjectRoutes(
     c.header("cache-control", "no-store");
     await next();
   });
-  // Registered ahead of the group's 3 MiB limit, which would otherwise run
-  // first: one file carries every document and the app.
   app.post(
     "/import",
-    bodyLimit({
-      maxSize: IMPORT_MAX_BYTES,
-      onError: (c) => c.json({ code: "project_request_too_large" }, 413),
-    }),
     describeRoute({
       tags: ["Projects"],
       operationId: "importProject",
@@ -256,7 +248,6 @@ export function createProjectRoutes(
         409: {
           description: "Tenant slug conflict or coordinator start failed",
         },
-        413: { description: "Request exceeds 20 MiB" },
         415: { description: "JSON content type required" },
         503: { description: "Native tenant creation unavailable" },
       },
@@ -344,14 +335,6 @@ export function createProjectRoutes(
         throw error;
       }
     },
-  );
-  app.use(
-    "*",
-    // Filing an app sends its 1 MiB bundle as a JSON string inside the request, escaped once more.
-    bodyLimit({
-      maxSize: 3 * 1024 * 1024,
-      onError: (c) => c.json({ code: "project_request_too_large" }, 413),
-    }),
   );
   app.get(
     "/",
@@ -497,7 +480,6 @@ export function createProjectRoutes(
             "Project, tenant slug or idempotency conflict, or the new project's coordinator could not start; a project refused with model_provider_missing or model_profile_required is kept",
         },
         503: { description: "Native tenant creation unavailable" },
-        413: { description: "Request exceeds 3 MiB" },
         415: { description: "JSON content type required" },
       },
     }),

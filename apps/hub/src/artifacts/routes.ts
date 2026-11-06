@@ -25,7 +25,6 @@ import {
   DesignTweaks,
   DesignTweaksReceipt,
   LiveApp,
-  MAX_APPROVAL_PACKAGE_BYTES,
   MaterialReceipt,
   MaterialRemovedReceipt,
 } from "@corbits-builder/schemas/artifact";
@@ -127,10 +126,6 @@ export function mountArtifactRoutes(
   );
   app.post(
     "/:projectId/artifacts",
-    bodyLimit({
-      maxSize: MAX_APPROVAL_PACKAGE_BYTES + 1024 * 1024,
-      onError: (c) => c.json({ code: "artifact_too_large" }, 413),
-    }),
     describeRoute({
       tags: ["Artifacts"],
       operationId: "writeProjectArtifact",
@@ -599,10 +594,6 @@ export function mountArtifactRoutes(
         409: {
           description:
             "The newest coder run's workspace cannot be read by this hub (app_workspace_unavailable, with its reason); an older run's workspace is never taken instead",
-        },
-        413: {
-          description:
-            "The app is larger than an app version holds (app_too_large)",
         },
       },
     }),
