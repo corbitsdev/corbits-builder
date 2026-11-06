@@ -12,15 +12,13 @@ function SettingsRowKey({
   htmlFor?: string | undefined;
 }) {
   const hints: readonly ReactNode[] = Array.isArray(hint) ? hint : [hint];
+  let name: ReactNode = null;
+  if (label !== undefined) name = <span className={styles.label}>{label}</span>;
+  if (label !== undefined && htmlFor !== undefined)
+    name = <label htmlFor={htmlFor}>{name}</label>;
   return (
     <div className={styles.key} data-slot="settings-row-key">
-      {label === undefined ? null : htmlFor === undefined ? (
-        <span className={styles.label}>{label}</span>
-      ) : (
-        <label htmlFor={htmlFor}>
-          <span className={styles.label}>{label}</span>
-        </label>
-      )}
+      {name}
       {hints.map((line, index) =>
         line === undefined || line === null || line === "" ? null : (
           <span key={index} className={styles.hint}>

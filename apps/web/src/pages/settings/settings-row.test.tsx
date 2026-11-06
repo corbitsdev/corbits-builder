@@ -14,7 +14,7 @@ test("a row names its control in its key, with one hint line per entry", () => {
   );
 
   expect(html).toMatch(
-    /data-slot="settings-row-key"><label for="theme"><span [^>]*>Theme<\/span><\/label>/,
+    /data-slot="settings-row-key"><label for="theme"><span[^>]*>Theme<\/span><\/label>/,
   );
   expect(html.match(/>Light or dark<|>On this device</g)).toHaveLength(2);
   expect(html).not.toContain("data-highlighted");

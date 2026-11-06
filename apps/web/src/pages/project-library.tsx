@@ -172,13 +172,12 @@ export function ProjectLibrary({
     if (pending === null || pending.before === projects) return;
     changed.current = null;
     if (shown.some((project) => project.id === pending.id)) return;
-    const cards =
-      section.current?.querySelectorAll<HTMLElement>("[data-card-open]") ?? [];
+    const root = section.current;
+    if (root === null) return;
+    const cards = root.querySelectorAll<HTMLElement>("[data-card-open]");
     const next =
       cards[Math.min(pending.index, cards.length - 1)] ??
-      section.current?.querySelector<HTMLElement>(
-        "[data-filters] [aria-pressed='true']",
-      );
+      root.querySelector<HTMLElement>("[data-filters] [aria-pressed='true']");
     next?.focus();
   }, [projects, shown]);
 

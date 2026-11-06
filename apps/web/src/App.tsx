@@ -804,6 +804,41 @@ export function App() {
     );
   }
 
+  const projectView = () => {
+    if (selected === null)
+      return (
+        <div className={styles.loadFailure}>
+          <p className={styles.loadFailureTitle}>
+            {wording.shell.noProjectTitle}
+          </p>
+          <p>{wording.shell.noProjectLead}</p>
+        </div>
+      );
+    if (settledMissId === selected && openProjectSummary === null)
+      return (
+        <ProjectLoadFailure
+          detail={wording.projectLoadFailure.notListed}
+          onRetry={() => void refresh()}
+          onBackToProjects={() => navigate("projects")}
+        />
+      );
+    return (
+      <StageWorkspace
+        key={selected}
+        projectId={selected}
+        projectTitle={
+          openProjectSummary?.title ?? wording.shell.untitledProject
+        }
+        {...(openProjectSummary === null
+          ? {}
+          : { listedArchived: openProjectSummary.archivedAt !== null })}
+        onChanged={refresh}
+        onOpenSettings={openSettings}
+        {...(openingMessage !== undefined ? { openingMessage } : {})}
+      />
+    );
+  };
+
   return (
     <>
       <div className={styles.app}>
@@ -871,40 +906,7 @@ export function App() {
               />
             ) : null}
 
-            {view === "project" ? (
-              selected !== null &&
-              settledMissId === selected &&
-              openProjectSummary === null ? (
-                <ProjectLoadFailure
-                  detail={wording.projectLoadFailure.notListed}
-                  onRetry={() => void refresh()}
-                  onBackToProjects={() => navigate("projects")}
-                />
-              ) : selected !== null ? (
-                <StageWorkspace
-                  key={selected}
-                  projectId={selected}
-                  projectTitle={
-                    openProjectSummary?.title ?? wording.shell.untitledProject
-                  }
-                  {...(openProjectSummary === null
-                    ? {}
-                    : {
-                        listedArchived: openProjectSummary.archivedAt !== null,
-                      })}
-                  onChanged={refresh}
-                  onOpenSettings={openSettings}
-                  {...(openingMessage !== undefined ? { openingMessage } : {})}
-                />
-              ) : (
-                <div className={styles.loadFailure}>
-                  <p className={styles.loadFailureTitle}>
-                    {wording.shell.noProjectTitle}
-                  </p>
-                  <p>{wording.shell.noProjectLead}</p>
-                </div>
-              )
-            ) : null}
+            {view === "project" ? projectView() : null}
 
             {view === "settings" ? (
               <Settings
