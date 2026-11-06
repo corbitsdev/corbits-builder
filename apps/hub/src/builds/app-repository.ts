@@ -613,6 +613,19 @@ export function createAppRepository(options: {
   // The workspace's fingerprint at its last version that reached the hub.
   let versioned: string | undefined;
 
+  // The fingerprint a check passed on, or undefined once the check failed: its files are then an
+  // edit, not a passed check.
+  const passedFiles = async (checked: Promise<string>) => {
+    try {
+      return await checked;
+    } catch (error) {
+      log.debug("The check did not pass, so the files are an edit: {reason}", {
+        reason: error instanceof Error ? error.message : String(error),
+      });
+      return undefined;
+    }
+  };
+
   // Commits the workspace when it differs from main, then pushes main if the hub lacks it. A
   // workspace unchanged since its last version, as after a read-only command, is left alone. A
   // check's label names only a commit of the files it passed on: unchanged since the check, and
@@ -630,12 +643,13 @@ export function createAppRepository(options: {
       const head = await headCommit();
       const { tree, blobs } = await snapshot(signal);
       if (tree !== head.tree) {
-        const label =
-          checked === undefined ||
-          ((await checked.catch(() => undefined)) === files &&
-            (await fingerprint(signal)) === files)
-            ? reason
-            : EDIT;
+        let label = EDIT;
+        if (checked === undefined) label = reason;
+        else if (
+          (await passedFiles(checked)) === files &&
+          (await fingerprint(signal)) === files
+        )
+          label = reason;
         const { author } = await pushAccess(signal);
         const { title, body } = summary(await flatten(head.tree), blobs);
         const identity = {

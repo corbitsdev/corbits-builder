@@ -260,7 +260,7 @@ export async function readFiledDocument(
   kind: string,
   signal: AbortSignal,
 ) {
-  return unlessNotFound(
+  const body = await unlessNotFound(
     workflowHttpJson({
       capabilities,
       handle: HUB_CREDENTIAL_HANDLE,
@@ -268,24 +268,27 @@ export async function readFiledDocument(
       // The app is as large as it is; memory is what bounds the read.
       maxResponseBytes: Number.POSITIVE_INFINITY,
       signal,
-    }).then((body) => ArtifactContent.assert(body)),
+    }),
   );
+  return body === undefined ? undefined : ArtifactContent.assert(body);
 }
 
-const readDesignFiles = (
+const readDesignFiles = async (
   capabilities: RuntimeCapabilities,
   path: string,
   signal: AbortSignal,
-) =>
-  unlessNotFound(
+) => {
+  const body = await unlessNotFound(
     workflowHttpJson({
       capabilities,
       handle: HUB_CREDENTIAL_HANDLE,
       path,
       maxResponseBytes: Number.POSITIVE_INFINITY,
       signal,
-    }).then((body) => DesignDraft.assert(body).files),
+    }),
   );
+  return body === undefined ? undefined : DesignDraft.assert(body).files;
+};
 
 // The draft an earlier designer run left for this run's concept, if any.
 export async function readPreviousDesignDraft(
