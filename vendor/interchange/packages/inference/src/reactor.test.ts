@@ -5083,6 +5083,30 @@ describe("createReactor — approval resume error result", () => {
     expect(announced?.timeoutAt).toBeGreaterThan(now);
   });
 
+  test("a timed-out call announces the call queued behind it instead of waking the model", async () => {
+    const cell: PersistedCell = {
+      turns: [],
+      pendingOperations: [],
+      tokenUsage: emptyUsage(),
+    };
+
+    const { reactor, events } = createTestReactor({
+      contextStore: makePersistingContextStore(cell),
+      director: createDefaultDirector("test agent", []),
+      inferenceRunner: twoPhaseInferenceRunner(twoGatedCalls),
+      beforeToolExtensions: [askExtension(50)],
+    });
+
+    reactor.start();
+    reactor.deliver(makeInboundMessage());
+
+    await waitUntil(
+      () =>
+        events.filter((e) => e.type === "reactor.gate.blocked").length === 2,
+    );
+    expect(inferences(events)).toBe(1);
+  });
+
   test("a timed-out parked call answers with an error result and re-infers exactly once", async () => {
     // The double-infer regression guard. A gate timeout on a parked ask call
     // must enqueue resume.tool_result INSTEAD OF reactor.gate.cleared. If the
