@@ -262,7 +262,13 @@ export type ApprovalResponse = {
   toolDefinition: Record<string, unknown>;
   toolArguments: Record<string, unknown>;
   scope: "once" | "always" | null;
-  status: "pending" | "approved" | "rejected" | "timeout" | "expired";
+  status:
+    | "pending"
+    | "approved"
+    | "rejected"
+    | "responded"
+    | "timeout"
+    | "expired";
   timeoutAt: string | null;
   resolvedAt: string | null;
   createdAt: string;

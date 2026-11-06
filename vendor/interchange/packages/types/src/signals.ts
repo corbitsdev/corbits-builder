@@ -37,10 +37,16 @@ export type ControlSignal = typeof ControlSignal.infer;
  * run's `parkOnSignal` awaitNext returns it verbatim as the correlated inbound.
  * `scope` is deliberately absent: it is a storage-and-grant concern the
  * resolver records on the approval row, not something the resumed run consumes.
+ * `responded` resolves the parked call without running it: the person's
+ * `result` is the call's tool result, for tools whose result is the person's
+ * own input.
  */
 export const ApprovalDecision = type({
   outcome: "'approved' | 'rejected'",
   "message?": "string",
+}).or({
+  outcome: "'responded'",
+  result: "string",
 });
 export type ApprovalDecision = typeof ApprovalDecision.infer;
 

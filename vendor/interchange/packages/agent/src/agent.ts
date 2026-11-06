@@ -288,6 +288,9 @@ function resolveTools<EnvReq extends BaseEnv>(
 
   try {
     for (const factory of def.toolFactories) {
+      const approvals = new Map(
+        factory.definitions.map((d) => [d.name, d.approval]),
+      );
       const bundle = factory(env);
       constructed.push(bundle);
       for (const definition of bundle.definitions) {
@@ -295,7 +298,10 @@ function resolveTools<EnvReq extends BaseEnv>(
           throw new DuplicateToolError(definition.name);
         }
         byName.set(definition.name, bundle);
-        definitions.push(definition);
+        const approval = approvals.get(definition.name);
+        definitions.push(
+          approval === undefined ? definition : { ...definition, approval },
+        );
       }
     }
   } catch (cause) {
@@ -347,6 +353,19 @@ function resolveTools<EnvReq extends BaseEnv>(
       }
       try {
         return await bundle.run(call, signal);
+      } catch (err) {
+        return {
+          callId: call.id,
+          content: err instanceof Error ? err.message : String(err),
+          isError: true,
+        };
+      }
+    },
+    async check(call, signal) {
+      const bundle = byName.get(call.name);
+      if (bundle?.check === undefined) return undefined;
+      try {
+        return await bundle.check(call, signal);
       } catch (err) {
         return {
           callId: call.id,

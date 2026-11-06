@@ -958,6 +958,76 @@ describe("POST /approvals/:approvalId/reject", () => {
   });
 });
 
+describe("POST /approvals/:approvalId/respond", () => {
+  function respondableApp() {
+    const signalCalls: SignalCall[] = [];
+    const resolveCalls: ResolveCall[] = [];
+    const approval = pendingApproval();
+    const app = createTestApp({
+      signalCalls,
+      resolveCalls,
+      approval: {
+        ...approval,
+        toolDefinition: { ...approval.toolDefinition, respondable: true },
+      },
+    });
+    return { app, signalCalls, resolveCalls };
+  }
+
+  test("resolves responded and delivers the person's result for a tool that takes one", async () => {
+    const { app, signalCalls, resolveCalls } = respondableApp();
+
+    const res = await app.fetch(
+      authedPost(`${base()}/${APPROVAL_ID}/respond`, { result: "blue" }),
+    );
+
+    expect(res.status).toBe(200);
+    expect(resolveCalls).toEqual([{ status: "responded", scope: undefined }]);
+    expect(signalCalls[0]?.payload).toEqual({
+      outcome: "responded",
+      result: "blue",
+    });
+  });
+
+  test("refuses to approve a tool that takes a response", async () => {
+    const { app, signalCalls, resolveCalls } = respondableApp();
+
+    const res = await app.fetch(
+      authedPost(`${base()}/${APPROVAL_ID}/approve`, { scope: "once" }),
+    );
+
+    expect(res.status).toBe(409);
+    expect(resolveCalls).toEqual([]);
+    expect(signalCalls).toEqual([]);
+  });
+
+  test("refuses a standing rejection of a tool that takes a response", async () => {
+    const { app, signalCalls, resolveCalls } = respondableApp();
+
+    const res = await app.fetch(
+      authedPost(`${base()}/${APPROVAL_ID}/reject`, { scope: "always" }),
+    );
+
+    expect(res.status).toBe(409);
+    expect(resolveCalls).toEqual([]);
+    expect(signalCalls).toEqual([]);
+  });
+
+  test("refuses a response to a tool that did not declare it takes one", async () => {
+    const signalCalls: SignalCall[] = [];
+    const resolveCalls: ResolveCall[] = [];
+    const app = createTestApp({ signalCalls, resolveCalls });
+
+    const res = await app.fetch(
+      authedPost(`${base()}/${APPROVAL_ID}/respond`, { result: "blue" }),
+    );
+
+    expect(res.status).toBe(409);
+    expect(resolveCalls).toEqual([]);
+    expect(signalCalls).toEqual([]);
+  });
+});
+
 describe("GET /approvals/:approvalId", () => {
   test("returns the approval with its tool snapshot for a holder of the resolve grant", async () => {
     // The default grant is `approval:<deployment>` / `resolve` -- the same

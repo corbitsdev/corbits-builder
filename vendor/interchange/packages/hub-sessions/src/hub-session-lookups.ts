@@ -378,6 +378,9 @@ export function createHubSessionLookups(
               name: approvalSnapshot.name,
               description: approvalSnapshot.description,
               inputSchema: approvalSnapshot.inputSchema,
+              ...(approvalSnapshot.respondable === true
+                ? { respondable: true }
+                : {}),
             },
             toolArguments: approvalSnapshot.arguments,
             scope: null,

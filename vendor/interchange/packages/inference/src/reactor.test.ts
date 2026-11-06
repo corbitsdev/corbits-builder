@@ -195,6 +195,19 @@ function makeApprovalMessage(
   });
 }
 
+// A person's response to a parked call, which becomes the call's result.
+function makeResponseMessage(
+  correlationId: string,
+  result: string,
+): InboundMessage {
+  return createInboundMessage({
+    from: "signal@local",
+    to: "agent@example.com",
+    content: JSON.stringify({ outcome: "responded", result }),
+    correlationId,
+  });
+}
+
 // ---------------------------------------------------------------------------
 // Test harness helpers
 // ---------------------------------------------------------------------------
@@ -4825,6 +4838,11 @@ describe("createReactor — approval resume error result", () => {
   const inferences = (events: readonly ReactorEmittedEvent[]) =>
     events.filter((e) => e.type === "inference.done").length;
 
+  const resultOf = (cell: PersistedCell, callId: string) =>
+    cell.turns
+      .flatMap((turn) => turn.content)
+      .find((block) => block.type === "tool_result" && block.callId === callId);
+
   function askExtension(approvalTimeoutMs = 60_000) {
     return createAuthzExtension({
       authorize: async () => ({
@@ -4959,6 +4977,41 @@ describe("createReactor — approval resume error result", () => {
       .map((c) => c.text)
       .join("");
     expect(text).toBe("denied by approver: too risky");
+  });
+
+  test("a gated call that fails its tool's own check is answered with the error instead of parking", async () => {
+    const cell: PersistedCell = {
+      turns: [],
+      pendingOperations: [],
+      tokenUsage: emptyUsage(),
+    };
+    let ran = false;
+
+    const { reactor, events } = createTestReactor({
+      contextStore: makePersistingContextStore(cell),
+      director: createDefaultDirector("test agent", []),
+      inferenceRunner: twoPhaseInferenceRunner(),
+      toolRunner: {
+        ...makeToolRunner(async (call) => {
+          ran = true;
+          return { callId: call.id, content: "charged" };
+        }),
+        check: async (call) => ({
+          callId: call.id,
+          content: "invalid_arguments: amount is missing",
+          isError: true,
+        }),
+      },
+      beforeToolExtensions: [askExtension()],
+    });
+
+    reactor.start();
+    reactor.deliver(makeInboundMessage());
+
+    await waitForEvent(events, (e) => e.type === "connector.reply");
+    expect(events.some((e) => e.type === "reactor.gate.blocked")).toBe(false);
+    expect(ran).toBe(false);
+    expect(resultOf(cell, "call-ask")?.isError).toBe(true);
   });
 
   test("every gated call of one response parks, and the model continues only once each has its result", async () => {
@@ -5105,6 +5158,140 @@ describe("createReactor — approval resume error result", () => {
         events.filter((e) => e.type === "reactor.gate.blocked").length === 2,
     );
     expect(inferences(events)).toBe(1);
+  });
+
+  test("a responded call is answered with the person's result without running", async () => {
+    const cell: PersistedCell = {
+      turns: [],
+      pendingOperations: [],
+      tokenUsage: emptyUsage(),
+    };
+    let ran = false;
+
+    const { reactor, events, waitFor } = createTestReactor({
+      contextStore: makePersistingContextStore(cell),
+      director: createDefaultDirector("test agent", []),
+      inferenceRunner: twoPhaseInferenceRunner(),
+      toolRunner: makeToolRunner(async (call) => {
+        ran = true;
+        return { callId: call.id, content: "charged" };
+      }),
+      beforeToolExtensions: [askExtension()],
+    });
+
+    reactor.start();
+    reactor.deliver(makeInboundMessage());
+
+    const blocked = await waitFor("reactor.gate.blocked");
+    if (blocked.type !== "reactor.gate.blocked") throw new Error("unreachable");
+    if (blocked.data.correlationId === undefined) {
+      throw new Error("expected correlationId");
+    }
+    reactor.deliver(makeResponseMessage(blocked.data.correlationId, "blue"));
+
+    await waitForEvent(events, (e) => e.type === "connector.reply");
+    expect(resultOf(cell, "call-ask")).toEqual({
+      type: "tool_result",
+      callId: "call-ask",
+      content: [{ type: "text", text: "blue" }],
+    });
+    expect(ran).toBe(false);
+  });
+
+  test("a call the person responds to holds past its approval timeout", async () => {
+    const cell: PersistedCell = {
+      turns: [],
+      pendingOperations: [],
+      tokenUsage: emptyUsage(),
+    };
+
+    const { reactor, events, waitFor } = createTestReactor({
+      contextStore: makePersistingContextStore(cell),
+      director: createDefaultDirector("test agent", []),
+      inferenceRunner: twoPhaseInferenceRunner(),
+      beforeToolExtensions: [
+        createAuthzExtension({
+          authorize: async () => ({
+            effect: "ask" as const,
+            matchingGrants: [],
+            resolvedBy: null,
+          }),
+          approvalTimeoutMs: 1,
+          toolDefinitions: [
+            {
+              name: "charge_card",
+              description: "Charge a card",
+              inputSchema: {},
+              approval: "respond",
+            },
+          ],
+        }),
+      ],
+    });
+
+    reactor.start();
+    reactor.deliver(makeInboundMessage());
+
+    const blocked = await waitFor("reactor.gate.blocked");
+    if (blocked.type !== "reactor.gate.blocked") throw new Error("unreachable");
+    if (blocked.data.correlationId === undefined) {
+      throw new Error("expected correlationId");
+    }
+    await new Promise((resolve) => setTimeout(resolve, 30));
+    reactor.deliver(makeResponseMessage(blocked.data.correlationId, "blue"));
+
+    await waitForEvent(events, (e) => e.type === "connector.reply");
+    expect(resultOf(cell, "call-ask")?.content).toEqual([
+      { type: "text", text: "blue" },
+    ]);
+  });
+
+  test("a call the person responds to holds past the gate timeout after a restore", async () => {
+    const cell: PersistedCell = {
+      turns: [{ ...suspendToolCallTurn }],
+      pendingOperations: [
+        {
+          correlationId: "corr-ask",
+          kind: "approval",
+          registeredAt: Date.now(),
+          gateId: "pending-corr-ask",
+          suspendedCall: { id: "call-ask", name: "charge_card", arguments: {} },
+          approvalSnapshot: {
+            name: "charge_card",
+            description: "",
+            inputSchema: {},
+            arguments: {},
+            respondable: true,
+          },
+        },
+      ],
+      tokenUsage: emptyUsage(),
+    };
+
+    const { reactor, events } = createTestReactor({
+      contextStore: makePersistingContextStore(cell),
+      director: createDefaultDirector("test agent", []),
+      inferenceRunner: makeInferenceRunner({
+        type: "done",
+        turn: {
+          role: "assistant",
+          content: [{ type: "text", text: "thanks" }],
+          model: "test-model",
+          timestamp: 2000,
+        },
+        usage: emptyUsage(),
+      }),
+      gateTimeout: 5,
+    });
+
+    reactor.start();
+    await new Promise((resolve) => setTimeout(resolve, 30));
+    reactor.deliver(makeResponseMessage("corr-ask", "blue"));
+
+    await waitForEvent(events, (e) => e.type === "connector.reply");
+    expect(resultOf(cell, "call-ask")?.content).toEqual([
+      { type: "text", text: "blue" },
+    ]);
   });
 
   test("a timed-out parked call answers with an error result and re-infers exactly once", async () => {
