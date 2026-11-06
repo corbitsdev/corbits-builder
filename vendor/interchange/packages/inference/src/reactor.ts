@@ -67,6 +67,8 @@ const logger = getLogger(["interchange", "reactor"]);
 // excluded from the tool-result history append and from tool.done continuation.
 const SUSPENDED = Symbol("suspended");
 
+type SuspendDecision = Extract<BeforeToolDecision, { type: "suspend" }>;
+
 // Exhaustiveness guard for the resume-dispatch switch. A newly added
 // SignalKind or approval outcome that is not classified fails to type-check
 // here, so the switch cannot silently drop an unhandled case.
@@ -523,6 +525,14 @@ export function createReactor(config: ReactorConfig): Reactor {
   // deliver() is fire-and-forget async, so two rapid delivers can interleave
   // across an await boundary in the validator, causing double-correlation.
   const correlatingIds = new Set<string>();
+  // Calls of a batch answered after parking whose result has not reached the
+  // loop yet, with their batch.
+  const resumedBatches = new Map<string, string>();
+  function noteResumed(op: PendingOperation): void {
+    if (op.batch !== undefined && op.suspendedCall !== undefined) {
+      resumedBatches.set(op.suspendedCall.id, op.batch);
+    }
+  }
 
   // How the reactor resumes a correlated pending operation.
   //
@@ -664,6 +674,7 @@ export function createReactor(config: ReactorConfig): Reactor {
     const gate = gates.findByCorrelationId(correlationId);
     switch (dispatch.mode) {
       case "redispatch": {
+        noteResumed(op);
         // Clear the gate WITHOUT enqueuing gate.cleared: the re-dispatched call
         // is the resumption, so a gate.cleared-driven re-infer would double the
         // continuation. The re-dispatch's own tool.done drives the re-infer.
@@ -699,6 +710,7 @@ export function createReactor(config: ReactorConfig): Reactor {
             stateManager.setGatesSnapshot(gates.snapshot());
           }
         }
+        noteResumed(op);
         correlations.remove(correlationId);
         if (stateManager !== null) {
           stateManager.removePendingOperation(correlationId);
@@ -932,6 +944,7 @@ export function createReactor(config: ReactorConfig): Reactor {
     const state = stateManager;
 
     const signal = operationController.signal;
+    const parks = new Map<string, SuspendDecision>();
 
     const runOne = async (
       call: ToolCall,
@@ -953,17 +966,9 @@ export function createReactor(config: ReactorConfig): Reactor {
         }
 
         if (decision.type === "suspend") {
-          // Park the call: register the gate, persist the pending operation,
-          // snapshot, and commit. The call is neither run nor answered — no
-          // tool.start, no tool.done, no tool-result turn. The gate clears
-          // when the correlated external decision is delivered.
-          await suspendOnGate({
-            gateType: decision.gate.type,
-            gateId: decision.gate.gateId,
-            timeoutMs: Math.max(1, decision.gate.timeoutAt - Date.now()),
-            correlationId: decision.gate.correlationId,
-            pendingOp: decision.pendingOp,
-          });
+          // The call parks once the batch has run. It is neither run nor
+          // answered — no tool.start, no tool.done, no tool-result turn.
+          parks.set(call.id, decision);
           return SUSPENDED;
         }
 
@@ -1035,6 +1040,36 @@ export function createReactor(config: ReactorConfig): Reactor {
     // result to history and no tool.done continuation event.
     const results = outcomes.filter((o): o is ToolResult => o !== SUSPENDED);
 
+    // The batch's results land before it parks, so the commit that parks it
+    // makes them durable before any suspension is announced.
+    if (addToHistory && results.length > 0) {
+      state.appendTurn(createToolResultTurn(results));
+    }
+
+    // Park every gated call before announcing the first: the announcement
+    // settles the send, and a sibling not yet durable by then would be lost
+    // to a restore from that point. The siblings queue behind the first with
+    // no running deadline, and each is announced once the one before it is
+    // answered. Each gate clears when its correlated decision is delivered.
+    const [first, ...siblings] = calls.flatMap(
+      (call) => parks.get(call.id) ?? [],
+    );
+    const batch = siblings.length > 0 ? crypto.randomUUID() : undefined;
+    const park = (decision: SuspendDecision, queued: boolean) =>
+      suspendOnGate({
+        gateType: decision.gate.type,
+        gateId: decision.gate.gateId,
+        timeoutMs: Math.max(1, decision.gate.timeoutAt - Date.now()),
+        correlationId: decision.gate.correlationId,
+        pendingOp: {
+          ...decision.pendingOp,
+          ...(batch !== undefined ? { batch } : {}),
+          ...(queued ? { queued: true as const } : {}),
+        },
+      });
+    for (const sibling of siblings) await park(sibling, true);
+    if (first !== undefined) await park(first, false);
+
     // Doom-loop accounting keys off the calls that actually ran, aligned to
     // their outcome by index (both the parallel and serial paths above keep
     // `outcomes` in `calls` order). A parked call contributes nothing, so a
@@ -1055,10 +1090,6 @@ export function createReactor(config: ReactorConfig): Reactor {
     }
 
     cycleToolCallsExecuted += results.length;
-
-    if (addToHistory && stateManager !== null && results.length > 0) {
-      stateManager.appendTurn(createToolResultTurn(results));
-    }
 
     for (const result of results) {
       enqueue({ type: "tool.done", result });
@@ -1281,6 +1312,8 @@ export function createReactor(config: ReactorConfig): Reactor {
   // durable across restart. When `pendingOp` is supplied its correlation is
   // registered and it is persisted; the director path has already persisted
   // its pending operation (via the tool's pending marker), so it passes none.
+  // A queued operation is only registered and persisted: its gate is armed and
+  // its suspension announced when its turn in the batch comes.
   async function suspendOnGate(args: {
     gateType: GateType;
     gateId: string;
@@ -1294,6 +1327,11 @@ export function createReactor(config: ReactorConfig): Reactor {
       correlations.register(pendingOp);
       if (stateManager !== null) {
         stateManager.addPendingOperation(pendingOp);
+      }
+      if (pendingOp.queued === true) {
+        cycleSuspended = true;
+        await commitCycle();
+        return;
       }
     }
 
@@ -1364,6 +1402,43 @@ export function createReactor(config: ReactorConfig): Reactor {
     }
   }
 
+  // The next call queued behind `callId` in its batch. Only a resumed call
+  // announces a sibling; a call that ran with its batch reaches the director,
+  // which still counts the parked calls outstanding.
+  function parkedSibling(callId: string): PendingOperation | undefined {
+    const batch = resumedBatches.get(callId);
+    if (batch === undefined) return undefined;
+    resumedBatches.delete(callId);
+    return correlations.all().find((op) => op.batch === batch);
+  }
+
+  // Announces a queued call of a batch whose earlier call was just answered,
+  // parking it afresh so its deadline starts now, as if it had parked alone.
+  async function announceParked(op: PendingOperation): Promise<void> {
+    correlations.remove(op.correlationId);
+    if (stateManager !== null) {
+      stateManager.removePendingOperation(op.correlationId);
+    }
+    const timeoutMs =
+      op.timeoutAt !== undefined ? op.timeoutAt - op.registeredAt : gateTimeout;
+    const registeredAt = Date.now();
+    const announced: PendingOperation = {
+      ...op,
+      registeredAt,
+      ...(op.timeoutAt !== undefined
+        ? { timeoutAt: registeredAt + timeoutMs }
+        : {}),
+    };
+    delete announced.queued;
+    await suspendOnGate({
+      gateType: signalKindToGateType(op.kind),
+      gateId: op.gateId,
+      timeoutMs,
+      correlationId: op.correlationId,
+      pendingOp: announced,
+    });
+  }
+
   // Re-registers a live gate and correlation for each pending operation loaded
   // from the context store on restart. The remaining timeout is computed from
   // the persisted absolute deadline (`timeoutAt`) against the current clock, so
@@ -1378,14 +1453,16 @@ export function createReactor(config: ReactorConfig): Reactor {
   // the restart) and must not commit (nothing changed). It also must not add
   // to `openRunCorrelationIds`: a rehydrated gate predates any run this
   // process has opened, so it can never be mistaken for the currently open
-  // run's own suspension.
+  // run's own suspension. A queued operation re-registers its correlation
+  // only; its gate is armed when it is announced.
   function rehydrateGates(ops: PendingOperation[]): void {
     for (const op of ops) {
+      correlations.register(op);
+      if (op.queued === true) continue;
       const timeoutMs =
         op.timeoutAt !== undefined
           ? Math.max(1, op.timeoutAt - Date.now())
           : gateTimeout;
-      correlations.register(op);
       void gates.register(
         op.gateId,
         signalKindToGateType(op.kind),
@@ -1471,6 +1548,18 @@ export function createReactor(config: ReactorConfig): Reactor {
       if (event.type === "resume.tool_result") {
         if (stateManager !== null) {
           stateManager.appendTurn(createToolResultTurn([event.result]));
+        }
+      }
+
+      // Every gated call of one response parks, but a send settles on one
+      // suspension at a time. While another call of the batch still waits, an
+      // answered call announces it instead of reaching the director, so the
+      // model continues only once every call has its result.
+      if (event.type === "resume.tool_result" || event.type === "tool.done") {
+        const waiting = parkedSibling(event.result.callId);
+        if (waiting !== undefined) {
+          await announceParked(waiting);
+          continue;
         }
       }
 

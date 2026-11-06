@@ -460,6 +460,8 @@ For the approval re-run, the reactor raises a `resume.execute_tools` event carry
 
 The two rails are deliberately distinct. `execute_tools` re-runs the approved call: it seeds the outstanding-tool-result count, and a real `tool.done` drives the re-infer. `resume.tool_result` is the reject/timeout path: the reactor injects a synthetic error result answering the parked call and the director re-infers once off it, with no `tool.done` and no count involvement. Keeping `resume.tool_result` off the counter is load-bearing — routing it through the outstanding-tool-result count would decrement past the injected result and re-infer twice.
 
+**Sibling calls.** When one model response makes several gated calls, every one of them parks, and all are durable before the first is announced, because the announcement settles the send. The others queue behind it in the same batch, recorded on their pending operations, with no armed gate and so no running deadline. Answering the announced call does not wake the director while a call of its batch is still queued: the reactor announces the next one instead, arming its gate with a deadline that starts then, and the director re-infers only once every call of the batch has its result.
+
 **Duplicate responses** (same correlation ID, already resolved) are delivered to the director as regular uncorrelated events. The reactor does not deduplicate — the director decides whether to process or ignore.
 
 **Orphaned correlations** (pending operations whose responses never arrive) are cleaned up by gate timeouts.

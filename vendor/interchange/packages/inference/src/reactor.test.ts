@@ -4948,6 +4948,106 @@ describe("createReactor — approval resume error result", () => {
     expect(text).toBe("denied by approver: too risky");
   });
 
+  test("every gated call of one response parks, and the model continues only once each has its result", async () => {
+    const cell: PersistedCell = {
+      turns: [],
+      pendingOperations: [],
+      tokenUsage: emptyUsage(),
+    };
+    let inferences = 0;
+    const toolsRun: string[] = [];
+    const twoCalls: AssistantTurn = {
+      role: "assistant",
+      content: [
+        { type: "tool_call", id: "call-a", name: "charge_card", arguments: {} },
+        { type: "tool_call", id: "call-b", name: "refund_card", arguments: {} },
+      ],
+      model: "test-model",
+      timestamp: 1000,
+    };
+
+    const { reactor, events, waitFor } = createTestReactor({
+      contextStore: makePersistingContextStore(cell),
+      director: createDefaultDirector("test agent", []),
+      inferenceRunner: async function* (opts) {
+        inferences += 1;
+        yield {
+          type: "inference.done",
+          seq: opts.nextSeq(),
+          data: {
+            turn:
+              inferences === 1
+                ? twoCalls
+                : {
+                    role: "assistant",
+                    content: [{ type: "text", text: "both settled" }],
+                    model: "test-model",
+                    timestamp: 2000,
+                  },
+            usage: emptyUsage(),
+            source: TEST_SOURCE,
+          },
+        };
+      },
+      toolRunner: makeToolRunner(async (call) => {
+        toolsRun.push(call.name);
+        return { callId: call.id, content: "ran" };
+      }),
+      // The second call's authorization settles later; the first is still
+      // announced only once both parks are durable.
+      beforeToolExtensions: [
+        createAuthzExtension({
+          authorize: async (resource) => {
+            if (resource === "tool:refund_card") {
+              await new Promise((resolve) => setTimeout(resolve, 20));
+            }
+            return {
+              effect: "ask" as const,
+              matchingGrants: [],
+              resolvedBy: null,
+            };
+          },
+          approvalTimeoutMs: 60_000,
+        }),
+      ],
+    });
+
+    reactor.start();
+    reactor.deliver(makeInboundMessage());
+
+    const first = await waitFor("reactor.gate.blocked");
+    if (first.type !== "reactor.gate.blocked") throw new Error("unreachable");
+    expect(cell.pendingOperations).toHaveLength(2);
+    const firstId = first.data.correlationId;
+    if (firstId === undefined) throw new Error("expected correlationId");
+    const secondOp = cell.pendingOperations.find(
+      (op) => op.correlationId !== firstId,
+    );
+    if (secondOp === undefined) throw new Error("expected a second park");
+
+    reactor.deliver(makeApprovalMessage(firstId, "rejected"));
+
+    // The answered call does not wake the model while its sibling waits; the
+    // sibling is announced as the current suspension instead.
+    const announced = await waitForEvent(
+      events,
+      (e) =>
+        e.type === "reactor.gate.blocked" &&
+        e.data.correlationId === secondOp.correlationId &&
+        e.seq > first.seq,
+    );
+    expect(announced.type).toBe("reactor.gate.blocked");
+    expect(inferences).toBe(1);
+
+    reactor.deliver(makeApprovalMessage(secondOp.correlationId, "approved"));
+
+    await waitForEvent(events, (e) => e.type === "connector.reply");
+    expect(inferences).toBe(2);
+    expect(toolsRun).toHaveLength(1);
+    expect(cell.pendingOperations).toHaveLength(0);
+    expect(() => assertWellFormedToolSequence(cell.turns)).not.toThrow();
+  });
+
   test("a timed-out parked call answers with an error result and re-infers exactly once", async () => {
     // The double-infer regression guard. A gate timeout on a parked ask call
     // must enqueue resume.tool_result INSTEAD OF reactor.gate.cleared. If the

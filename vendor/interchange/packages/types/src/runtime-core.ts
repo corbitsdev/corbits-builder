@@ -1366,6 +1366,17 @@ export type PendingOperation = {
    * markers. Threaded through the suspend hops to the hub co-write.
    */
   approvalSnapshot?: ApprovalSnapshot;
+  /**
+   * Shared by the gated calls of one model response that parked together.
+   * Only one of them is announced at a time; answering it announces the next.
+   */
+  batch?: string;
+  /**
+   * Parked behind a sibling of its batch and not yet announced: no approval
+   * card exists for it and its gate is not armed, so it has no running
+   * deadline. Its deadline starts when it is announced.
+   */
+  queued?: true;
 };
 
 /**
