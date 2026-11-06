@@ -10,6 +10,7 @@
  */
 import type { ConversationEvents } from "@corbits-builder/schemas/conversation";
 import { OpenAsk } from "@corbits-builder/schemas/questions";
+import { type } from "arktype";
 import { wording } from "../config.ts";
 import { productClient } from "./transport.ts";
 import {
@@ -173,9 +174,10 @@ export function latestQuestion(
   };
 }
 
+const AskingQuestion = type({ ask: OpenAsk });
+
 /** The questions the coordinator waits on, which the hub attaches only to a still-open input park. */
 export function openAsk(events: ConversationEvent[]): OpenAsk | undefined {
   const question = events.findLast(isInputPark)?.body["question"];
-  const ask = (question as { ask?: unknown } | null | undefined)?.ask;
-  return OpenAsk.allows(ask) ? ask : undefined;
+  return AskingQuestion.allows(question) ? question.ask : undefined;
 }

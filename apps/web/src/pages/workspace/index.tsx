@@ -675,7 +675,7 @@ function ReadyRoom({
   for (const [at, parts] of committedSteps(liveRun, mirror))
     stepsByAt.current.set(at, parts);
   // A session that did not watch the coordinator ask its waiting questions draws their card from the
-  // hub's copy, on the reply that introduces them. A reply before the person's last turn did not ask
+  // hub's copy, on the coordinator's latest reply. A reply before the person's last turn did not ask
   // them, and the card would read as answered.
   const ask = events === null ? undefined : openAsk(events);
   const lastTurn = mirror.findLast((turn) => turn.role !== "participant");
@@ -689,13 +689,13 @@ function ReadyRoom({
       toolsOf(parts).some((tool) => tool.toolCallId === ask.callId),
     );
   if (ask !== undefined && askedAt !== null && !shown) {
-    const card = {
+    const card: ConversationPart = {
       kind: "tool-trace",
       toolCallId: ask.callId,
       name: ASK_QUESTIONS,
       status: "output-available",
       input: ask.arguments,
-    } as const;
+    };
     const steps = stepsByAt.current.get(askedAt);
     stepsByAt.current.set(
       askedAt,
