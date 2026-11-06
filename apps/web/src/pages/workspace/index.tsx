@@ -680,9 +680,12 @@ function ReadyRoom({
   const ask = events === null ? undefined : openAsk(events);
   const lastTurn = mirror.findLast((turn) => turn.role !== "participant");
   const askedAt = lastTurn?.role === "assistant" ? lastTurn.at : null;
+  const liveTurn = pendingLiveTurn(liveRun, mirror);
+  const drawn = [...stepsByAt.current.values()];
+  if (liveTurn !== null) drawn.push(liveTurn.parts);
   const shown =
     ask !== undefined &&
-    [...stepsByAt.current.values()].some((parts) =>
+    drawn.some((parts) =>
       toolsOf(parts).some((tool) => tool.toolCallId === ask.callId),
     );
   if (ask !== undefined && askedAt !== null && !shown) {
@@ -751,7 +754,6 @@ function ReadyRoom({
   // Until the open decisions are read, no approval is known to hold the coordinator.
   const parked =
     waits !== undefined && parkedOnApproval(waits, openApprovalIds, runId);
-  const liveTurn = pendingLiveTurn(liveRun, mirror);
   const streaming = liveTurnStreaming(liveRun, mirror, parked);
   const liveText = liveTurn?.text ?? "";
   const shownTurns =
