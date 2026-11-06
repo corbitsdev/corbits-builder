@@ -12,7 +12,7 @@ import { wording } from "./config.ts";
 import styles from "./App.module.css";
 import { humanFault, responseCode } from "./pages/workspace/human-fault.ts";
 import { ProductApiError } from "@corbits-builder/client";
-import { forgetQueryCache, queryClient } from "./queries/client.ts";
+import { queryClient } from "./queries/client.ts";
 import { keys } from "./queries/keys.ts";
 import { hostLatency, productClient } from "./api/transport.ts";
 import { useQuery } from "@tanstack/react-query";
@@ -596,10 +596,10 @@ export function App() {
   useEffect(() => {
     if (signedOutByHost) setAuth("signed-out");
   }, [signedOutByHost]);
-  // Query keys are not scoped to a person, so whatever is cached belongs to
-  // whoever was signed in, however the session ended.
+  // Query keys are not scoped to a person, so the cache belongs to whoever was
+  // signed in. Clearing it also saves the empty cache over the stored one.
   useEffect(() => {
-    if (auth === "signed-out") void forgetQueryCache();
+    if (auth === "signed-out") queryClient.clear();
   }, [auth]);
   const [setupLater, setSetupLater] = useState(modelSetupDeferred);
   const [user, setUser] = useState<HubUser | null>(null);

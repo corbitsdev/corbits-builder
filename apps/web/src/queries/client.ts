@@ -60,17 +60,3 @@ async function restoreQueryCache(): Promise<void> {
 
 /** Resolves after the saved cache is on the client, before the first paint. */
 export const queryCacheReady: Promise<void> = restoreQueryCache();
-
-/**
- * Drops everything read for the person who just left, in memory and on disk,
- * so whoever signs in next never sees it. Clearing first means the save that
- * clearing triggers is of an empty cache, never a stale one.
- */
-export async function forgetQueryCache(): Promise<void> {
-  queryClient.clear();
-  try {
-    await persistOptions.persister.removeClient();
-  } catch (cause) {
-    console.warn("The saved query cache could not be removed.", cause);
-  }
-}
