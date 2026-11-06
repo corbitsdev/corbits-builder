@@ -31,6 +31,7 @@ export function useUserManual(
 export function UserManualPane({ manual }: { manual: UserManual }) {
   return (
     <Markdown
+      document
       source={manual.markdown}
       images={new Map(Object.entries(manual.pictures))}
     />

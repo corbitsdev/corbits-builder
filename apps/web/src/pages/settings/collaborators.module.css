@@ -1,0 +1,12 @@
+.inviteForm {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: var(--space-2);
+}
+
+@media (max-width: 560px) {
+  .inviteForm {
+    justify-content: flex-start;
+  }
+}

@@ -13,6 +13,7 @@ import { productClient } from "../../api/transport.ts";
 import { workspaceTenantId } from "../../api/auth.ts";
 import { keys } from "../../queries/keys.ts";
 import { wording } from "../../config.ts";
+import styles from "./next-step.module.css";
 
 const POLL_MS = 5_000;
 // Mirrors the preference's id in apps/hub/src/config/preferences.ts.
@@ -80,15 +81,15 @@ function Line({
   const run = action === undefined ? undefined : actions[action];
   const busy = status.working.some((item) => item.state === "working");
   return (
-    <div className="next-step-line" role="status">
+    <div className={styles.line} role="status">
       <StatusDot
         label=""
         size="xs"
         live={busy}
         tone={busy ? "emphasis" : "neutral"}
       />
-      <p className="next-step-text" title={`${status.now} ${status.next.text}`}>
-        <span className="next-step-now">{status.now}</span>{" "}
+      <p className={styles.text} title={`${status.now} ${status.next.text}`}>
+        <span className={styles.now}>{status.now}</span>{" "}
         <strong>{status.next.text}</strong>
       </p>
       {action === undefined || run === undefined ? null : (

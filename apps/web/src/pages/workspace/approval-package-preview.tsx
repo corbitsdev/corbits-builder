@@ -5,8 +5,11 @@ import {
 } from "@corbits-builder/schemas/artifact";
 import { type } from "arktype";
 import { Suspense, lazy, useEffect, useMemo, useState } from "react";
+import { InlineNote } from "../../components.tsx";
 import { wording } from "../../config.ts";
 import { Markdown } from "../../markdown.jsx";
+import styles from "./approval-package-preview.module.css";
+import { SourceLink } from "./source-link.tsx";
 
 export const APPROVAL_PACKAGE_MEDIA_TYPE =
   "application/vnd.corbits-builder.approval-package+json";
@@ -16,7 +19,7 @@ const text = wording.approvalPackage;
 export type ApprovalPackageViewTab = "slides" | "pdf" | "sources";
 
 function SlidesUnavailable() {
-  return <p className="inline-note">{text.slidesUnavailable}</p>;
+  return <InlineNote>{text.slidesUnavailable}</InlineNote>;
 }
 
 // The slide deck schema is costly to build, so it loads only once a package's slides are shown.
@@ -38,7 +41,7 @@ const DeckPages = lazy(async () => ({
   default: (await slidesModule())?.DeckPages ?? SlidesUnavailable,
 }));
 
-const loadingSlides = <p className="inline-note">{text.loadingSlides}</p>;
+const loadingSlides = <InlineNote>{text.loadingSlides}</InlineNote>;
 
 export function parseApprovalPackage(
   content: string,
@@ -125,21 +128,19 @@ function PdfView({
   const pdfHref = blobUrl ?? fallbackHref;
 
   return (
-    <div className="approval-package-pdf" aria-label={text.pdfTitle}>
-      <div className="approval-package-pdf-toolbar">
-        <div className="approval-package-pdf-toolbar-meta">
-          <strong className="approval-package-pdf-title">
-            {text.pdfTitle}
-          </strong>
-          <span className="approval-package-pdf-filename">{stem}.pdf</span>
+    <div className={styles.pdf} aria-label={text.pdfTitle}>
+      <div className={styles.pdfToolbar}>
+        <div className={styles.pdfToolbarMeta}>
+          <strong className={styles.pdfTitle}>{text.pdfTitle}</strong>
+          <span className={styles.pdfFilename}>{stem}.pdf</span>
         </div>
         {file === null ? (
-          <p className="inline-note">{text.pdfUnreadable}</p>
+          <InlineNote>{text.pdfUnreadable}</InlineNote>
         ) : (
-          <div className="approval-package-pdf-toolbar-actions">
+          <div className={styles.pdfToolbarActions}>
             {blobUrl !== null && (
               <a
-                className="approval-package-pdf-action"
+                className={styles.pdfAction}
                 href={blobUrl}
                 target="_blank"
                 rel="noopener noreferrer"
@@ -148,7 +149,8 @@ function PdfView({
               </a>
             )}
             <a
-              className="approval-package-pdf-action approval-package-pdf-action-primary"
+              className={styles.pdfAction}
+              data-primary=""
               href={pdfHref}
               download={`${stem}.pdf`}
             >
@@ -175,31 +177,22 @@ function SourceRow({
   return (
     <tr>
       <td>
-        <button
-          type="button"
-          className="approval-package-source-link"
-          onClick={() => onOpenSource?.(source.kind, source.version)}
-        >
+        <SourceLink onClick={() => onOpenSource?.(source.kind, source.version)}>
           {kindLabel}
-        </button>
+        </SourceLink>
       </td>
       <td>
-        <button
-          type="button"
-          className="approval-package-source-link"
-          onClick={() => onOpenSource?.(source.kind, source.version)}
-        >
+        <SourceLink onClick={() => onOpenSource?.(source.kind, source.version)}>
           {source.title}
-        </button>
+        </SourceLink>
       </td>
       <td>
-        <button
-          type="button"
-          className="approval-package-source-link approval-package-source-version"
+        <SourceLink
+          version
           onClick={() => onOpenSource?.(source.kind, source.version)}
         >
           v{String(source.version)}
-        </button>
+        </SourceLink>
       </td>
       <td>
         <code>{source.sha256.slice(0, 12)}</code>
@@ -219,8 +212,8 @@ function SourcesView({
   const hasDocuments =
     documents !== undefined && Object.keys(documents).length > 0;
   return (
-    <div className="approval-package-sources">
-      <dl className="approval-package-manifest">
+    <div className={styles.sources}>
+      <dl className={styles.manifest}>
         <div>
           <dt>{text.manifest.audience}</dt>
           <dd>{manifest.audience}</dd>
@@ -240,7 +233,7 @@ function SourcesView({
       </dl>
       <section aria-label={text.manifest.sources}>
         <h3>{text.manifest.sources}</h3>
-        <table className="approval-package-sources-table">
+        <table className={styles.sourcesTable}>
           <thead>
             <tr>
               <th scope="col">{text.manifest.sourceKind}</th>
@@ -263,11 +256,11 @@ function SourcesView({
       {hasDocuments ? (
         <section aria-label={text.manifest.documents}>
           <h3>{text.manifest.documents}</h3>
-          <div className="approval-package-documents-list">
+          <div className={styles.documentsList}>
             {Object.entries(documents).map(([name, docContent]) => (
-              <article key={name} className="approval-package-document">
+              <article key={name} className={styles.document}>
                 <h4>{name}</h4>
-                <Markdown source={docContent} />
+                <Markdown source={docContent} document />
               </article>
             ))}
           </div>
@@ -292,20 +285,20 @@ export function ApprovalPackagePreview({
     useState<ApprovalPackageViewTab>(initialTab);
   const bundle = useMemo(() => parseApprovalPackage(content), [content]);
   if (bundle === null) {
-    return <p className="inline-note">{text.unreadable}</p>;
+    return <InlineNote>{text.unreadable}</InlineNote>;
   }
   return (
-    <section className="approval-package" aria-label={text.label}>
-      <div
-        className="approval-package-tabs"
-        role="tablist"
-        aria-label={text.viewLabel}
-      >
+    <section
+      className={styles.package}
+      data-slot="approval-package-preview"
+      aria-label={text.label}
+    >
+      <div className={styles.tabs} role="tablist" aria-label={text.viewLabel}>
         <Button
           role="tab"
           size="sm"
           variant="ghost"
-          className="approval-package-subtab"
+          className={styles.subtab}
           aria-selected={activeTab === "slides"}
           onClick={() => setActiveTab("slides")}
         >
@@ -315,7 +308,7 @@ export function ApprovalPackagePreview({
           role="tab"
           size="sm"
           variant="ghost"
-          className="approval-package-subtab"
+          className={styles.subtab}
           aria-selected={activeTab === "pdf"}
           onClick={() => setActiveTab("pdf")}
         >
@@ -325,7 +318,7 @@ export function ApprovalPackagePreview({
           role="tab"
           size="sm"
           variant="ghost"
-          className="approval-package-subtab"
+          className={styles.subtab}
           aria-selected={activeTab === "sources"}
           onClick={() => setActiveTab("sources")}
         >

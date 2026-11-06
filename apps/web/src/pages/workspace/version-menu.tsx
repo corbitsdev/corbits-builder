@@ -4,6 +4,7 @@
  */
 import { MenuItem, MenuSeparator } from "@corbits/react-ui/ui/menu";
 import { Check, ChevronDown } from "lucide-react";
+import { MenuItemLabel } from "../../components.jsx";
 import { wording } from "../../config.ts";
 import type { PaneBarGroup } from "./pane-bar.tsx";
 
@@ -38,12 +39,12 @@ export function versionGroup({
         <>
           {ordered.map((item) => (
             <MenuItem key={item.version} onSelect={() => onView(item.version)}>
-              <span className="version-menu-item">
+              <MenuItemLabel>
                 v{String(item.version)}
                 {item.version === viewing ? (
                   <Check size={14} aria-label="Shown" />
                 ) : null}
-              </span>
+              </MenuItemLabel>
             </MenuItem>
           ))}
           {canCompare ? (

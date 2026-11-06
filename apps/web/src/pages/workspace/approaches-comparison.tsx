@@ -18,14 +18,16 @@ import type {
 } from "@corbits-builder/schemas/approaches";
 import { useState } from "react";
 import { wording } from "../../config.ts";
+import { Fault } from "../../components.jsx";
 import { humanFault } from "./human-fault.ts";
+import styles from "./approaches-comparison.module.css";
 
 const text = wording.approaches;
 
 function Points({ label, points }: { label: string; points: string[] }) {
   if (points.length === 0) return null;
   return (
-    <div className="approach-points">
+    <div className={styles.points}>
       <h4>{label}</h4>
       <ul>
         {points.map((point, index) => (
@@ -62,22 +64,26 @@ export function ApproachesComparison({
     }
   };
   return (
-    <section className="approaches" aria-label={text.label}>
-      <div className="approaches-grid">
+    <section
+      className={styles.approaches}
+      data-slot="approaches-comparison"
+      aria-label={text.label}
+    >
+      <div className={styles.grid}>
         {meta.approaches.map((approach) => {
           const recommended = approach.id === meta.recommended;
           const picked = approach.id === chosen;
           return (
             <Card
               key={approach.id}
-              className="approach-card"
+              className={styles.card}
               {...(recommended ? { "data-recommended": "" } : {})}
               {...(picked || choosing === approach.id
                 ? { "data-chosen": "" }
                 : {})}
             >
               <CardHeader>
-                <div className="approach-badges">
+                <div className={styles.badges}>
                   {picked ? <Badge tone="success">{text.chosen}</Badge> : null}
                   {recommended ? (
                     <Badge tone="accent">{text.recommended}</Badge>
@@ -87,14 +93,14 @@ export function ApproachesComparison({
                 <CardTitle>{approach.name}</CardTitle>
                 <CardDescription>{approach.summary}</CardDescription>
               </CardHeader>
-              <p className="approach-best-for">
+              <p>
                 <strong>{text.bestFor}:</strong> {approach.bestFor}
               </p>
               <Points label={text.pros} points={approach.pros} />
               <Points label={text.cons} points={approach.cons} />
               <Points label={text.risks} points={approach.risks} />
               {onChoose === undefined || chosen !== undefined ? null : (
-                <CardFooter className="approach-footer">
+                <CardFooter className={styles.footer}>
                   <Button
                     size="sm"
                     variant={recommended ? "primary" : "outline"}
@@ -109,11 +115,7 @@ export function ApproachesComparison({
           );
         })}
       </div>
-      {fault === null ? null : (
-        <p className="inline-note" role="alert">
-          {fault}
-        </p>
-      )}
+      {fault === null ? null : <Fault>{fault}</Fault>}
     </section>
   );
 }

@@ -13,6 +13,7 @@
  */
 import type { JSX, ReactNode } from "react";
 import { DEL, END, INS } from "./revisions.ts";
+import styles from "./markdown.module.css";
 
 /**
  * Inline spans: code, bold, italic, links, with tracked changes threaded through them.
@@ -57,12 +58,12 @@ function inline(
         images?.get(path) ?? (path.startsWith("data:image/") ? path : null);
       out.push(
         src ? (
-          <figure key={key} className="prose-figure">
+          <figure key={key} className={styles.figure}>
             <img src={src} alt={caption} />
             {caption ? <figcaption>{caption}</figcaption> : null}
           </figure>
         ) : (
-          <em key={key} className="prose-missing-picture">
+          <em key={key} className={styles.missingPicture}>
             {caption || "picture"} (picture in the documents download)
           </em>
         ),
@@ -81,7 +82,8 @@ function inline(
             key={key}
             role="button"
             tabIndex={0}
-            className="artifact-mention"
+            className={styles.mention}
+            data-slot="document-mention"
             onClick={() => openDocument(id)}
             onKeyDown={(event) => {
               if (event.key !== "Enter" && event.key !== " ") return;
@@ -291,17 +293,24 @@ const TASK = /^\[([ xX])\]\s+/;
 
 export function Markdown({
   source,
+  document = false,
   images,
   openDocument,
 }: {
   source: string;
+  /** A document read in the document pane: running text keeps a reading measure. */
+  document?: boolean;
   images?: ReadonlyMap<string, string>;
   /** Opens a `document:` link; without it such a link shows as its words. */
   openDocument?: (id: string) => void;
 }): JSX.Element {
   const blocks = parse(source);
   return (
-    <div className="prose">
+    <div
+      className={styles.prose}
+      data-slot="prose"
+      data-document={document ? "" : undefined}
+    >
       {blocks.map((block, index) => {
         const key = `b${index}`;
         switch (block.kind) {
@@ -333,7 +342,7 @@ export function Markdown({
                 {block.items.map((item, at) => {
                   const task = TASK.exec(item);
                   return task ? (
-                    <li key={`${key}-${at}`} className="task">
+                    <li key={`${key}-${at}`} className={styles.task}>
                       <input
                         type="checkbox"
                         checked={task[1] !== " "}
@@ -376,7 +385,7 @@ export function Markdown({
             );
           case "table":
             return (
-              <div key={key} className="prose-table">
+              <div key={key} className={styles.table} data-slot="prose-table">
                 <table>
                   <thead>
                     <tr>

@@ -1,0 +1,27 @@
+/* A page shown among a document's other parts takes most of the viewport's height. */
+.frame {
+  width: 100%;
+  height: 65dvh;
+  min-height: 480px;
+  border: 0;
+  background: #fff;
+}
+
+.frame[data-fill] {
+  flex: 1;
+  height: auto;
+  min-height: 0;
+}
+
+/* Four times the container's width, as a desktop lays it out, scaled down to fit; the container
+   is positioned and clips it. A still picture, so it takes no pointer. */
+.frame[data-thumbnail] {
+  position: absolute;
+  inset: 0 auto auto 0;
+  width: 400%;
+  height: 400%;
+  min-height: 0;
+  transform: scale(0.25);
+  transform-origin: 0 0;
+  pointer-events: none;
+}

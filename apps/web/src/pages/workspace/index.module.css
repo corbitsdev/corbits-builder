@@ -1,0 +1,178 @@
+.room {
+  display: flex;
+  flex-direction: column;
+  flex: 1 1 auto;
+  min-height: 0;
+  min-width: 0;
+  overflow: hidden;
+}
+
+.mobileSwitch {
+  display: none;
+}
+
+/* The library Panel resizes the document from its start edge, so the row is
+   the flex row it expects: the conversation takes what the panel leaves. */
+.panes {
+  display: flex;
+  flex: 1;
+  min-height: 0;
+  min-width: 0;
+  width: 100%;
+  overflow: hidden;
+}
+
+/* Chat-first: before a stage has a drafted artifact, the conversation is
+   the whole page — one centred column at a reading measure, the composer at
+   its bottom. The split earns its keep only once there is something to split
+   against. */
+.panes[data-chat-first] {
+  flex-direction: column;
+  max-width: 52rem;
+  margin: 0 auto;
+}
+
+.conversationPane {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  min-width: 0;
+  min-height: 0;
+  overflow: hidden;
+  background: var(--wb-background);
+}
+
+/* The column runs the full height, so the composer sits at the window's
+   foot with the thread above it, not just under the last message. */
+.panes[data-chat-first] > .conversationPane {
+  width: 100%;
+}
+
+/* The split's proportions before the person drags it. */
+.panes > [data-slot="artifact-pane"] {
+  width: var(--resizable-width, 58%);
+  background: var(--wb-background);
+}
+
+.conversation {
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  min-height: 0;
+  position: relative;
+}
+
+.conversation > :last-child {
+  flex: none;
+}
+
+/* The composer keeps a reading measure in a wide pane. */
+.conversation > [data-slot="composer"] {
+  box-sizing: border-box;
+  width: 100%;
+  max-width: 46rem;
+  margin-inline: auto;
+}
+
+/* The composer arrives once there is something it could send: it rises
+   into place rather than appearing. */
+.panes[data-chat-first] [data-slot="composer"] {
+  animation: composer-in 280ms ease-out backwards;
+}
+
+@keyframes composer-in {
+  from {
+    opacity: 0;
+    transform: translateY(16px);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .panes[data-chat-first] [data-slot="composer"] {
+    animation: none;
+  }
+}
+
+/* The archived banner's lead, fault and action, spaced as the banner spaces its rows. */
+/* A quiet line before a change to what a specialist builds from, with its two ways on. */
+.caution {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-2) var(--space-3);
+  padding-bottom: var(--space-2);
+  color: var(--wb-muted-foreground);
+  font-size: 0.8125rem;
+}
+
+.caution p {
+  margin: 0;
+  flex: 1 1 18rem;
+}
+
+.cautionActions {
+  display: flex;
+  gap: var(--space-1);
+}
+
+.replies {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+  padding-bottom: var(--space-2);
+}
+
+@media (max-width: 900px) {
+  .conversationPane {
+    border-bottom: 1px solid var(--wb-border);
+  }
+
+  .panes[data-chat-first] [data-slot="composer"] {
+    padding-right: calc(var(--space-4) + 44px + var(--space-6));
+  }
+}
+
+@media (max-width: 760px) {
+  .mobileSwitch {
+    display: flex;
+    flex-shrink: 0;
+    gap: var(--space-2);
+    padding: var(--space-2) var(--space-4);
+    border-bottom: 1px solid var(--wb-border);
+  }
+
+  .mobileSwitch button {
+    flex: 1;
+    min-height: 44px;
+    padding: var(--space-2);
+    border-radius: var(--radius-md);
+    color: var(--wb-muted-foreground);
+    font: inherit;
+  }
+
+  .mobileSwitch button[aria-pressed="true"] {
+    background: var(--wb-muted);
+    color: var(--wb-foreground);
+    font-weight: 600;
+  }
+
+  .mobileSwitch button:focus-visible {
+    outline: 2px solid var(--wb-ring);
+    outline-offset: 2px;
+  }
+
+  /* One pane at a time, chosen by the switch: the document is not resized. */
+  .panes > [data-slot="artifact-pane"] {
+    flex: 1;
+    width: auto;
+    min-width: 0;
+    max-width: none;
+    border-inline-start: 0;
+  }
+
+  .room[data-mobile-pane="conversation"] [data-slot="artifact-pane"],
+  .room[data-mobile-pane="artifacts"] .conversationPane {
+    display: none;
+  }
+}

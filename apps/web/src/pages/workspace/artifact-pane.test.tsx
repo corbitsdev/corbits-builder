@@ -130,6 +130,35 @@ describe("persistent artifact pane", () => {
     expect(html).toContain('title="Design"');
     expect(html).toContain('sandbox=""');
     expect(html).toContain('srcDoc="&lt;h1&gt;Actual design&lt;/h1&gt;"');
+    // A page among a document's parts keeps its own height; only a whole-pane page fills.
+    expect(html).not.toMatch(
+      /<[a-z]+[^>]*data-slot="device-preview"[^>]*data-fill/,
+    );
+    expect(html).not.toMatch(/<iframe[^>]*data-fill/);
+  });
+  test("a page that fills the pane shows its notes as pills over it", () => {
+    if (document.status !== "ready") throw new Error("invalid fixture");
+    const note = (mediaType: string, title: string) =>
+      /<p[^>]*data-slot="inline-note"[^>]*>History unavailable/.exec(
+        render(
+          { ...ready, title },
+          {
+            status: "ready",
+            document: {
+              ...document.document,
+              title,
+              mediaType,
+              content: "name,count\nbolts,4",
+              historyError: "offline",
+            },
+          },
+        ),
+      )?.[0] ?? "";
+    expect(note("text/plain", "parts.csv")).toContain('data-pill=""');
+    expect(note("text/markdown", "Problem brief")).toContain(
+      'data-slot="inline-note"',
+    );
+    expect(note("text/markdown", "Problem brief")).not.toContain("data-pill");
   });
   test("shows compact loading and read errors", () => {
     expect(render(ready, { status: "loading" })).toContain(

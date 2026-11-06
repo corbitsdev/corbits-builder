@@ -1,0 +1,107 @@
+/* Drawn in the custom properties it is given, such as a concept's own theme, else the workspace's. */
+.sketching {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: var(--space-2);
+  min-height: 0;
+  padding: var(--space-6) var(--space-4);
+  font-family: var(--sketch-font, inherit);
+  text-align: center;
+}
+
+.sketch {
+  display: grid;
+  gap: var(--space-2);
+  width: min(22rem, 100%);
+  margin-bottom: var(--space-3);
+  padding: var(--space-4);
+  border: 1px solid
+    color-mix(in srgb, var(--sketch-primary, var(--wb-border)) 35%, transparent);
+  border-radius: var(--sketch-radius, var(--radius-panel));
+  background: var(--sketch-background, var(--wb-background));
+}
+
+.sketch > span,
+.sketchCards > span {
+  display: block;
+  height: 0.625rem;
+  border-radius: calc(var(--sketch-radius, 0.5rem) / 2);
+  background: color-mix(
+    in srgb,
+    var(--sketch-primary, var(--wb-muted-foreground)) 22%,
+    transparent
+  );
+  animation: sketch-pulse 1.8s ease-in-out infinite;
+}
+
+.sketch > .sketchBar {
+  height: 1rem;
+  background: color-mix(
+    in srgb,
+    var(--sketch-primary, var(--wb-muted-foreground)) 45%,
+    transparent
+  );
+}
+
+.sketch > .sketchTitle {
+  width: 60%;
+  height: 1.25rem;
+  animation-delay: 0.15s;
+}
+
+.sketch > .sketchLine {
+  animation-delay: 0.3s;
+}
+
+.sketch > .sketchLineShort {
+  width: 75%;
+  animation-delay: 0.45s;
+}
+
+.sketch > .sketchCards {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: var(--space-2);
+  height: auto;
+  background: none;
+  animation: none;
+}
+
+.sketchCards > span {
+  height: 3.5rem;
+  animation-delay: 0.6s;
+}
+
+.lead {
+  margin: 0;
+  font-weight: 600;
+}
+
+.note {
+  margin: 0;
+  color: var(--wb-muted-foreground);
+  font-size: 0.8125rem;
+}
+
+.clock {
+  font-variant-numeric: tabular-nums;
+}
+
+.sketching[data-state="still"] .sketch span {
+  animation: none;
+}
+
+@keyframes sketch-pulse {
+  50% {
+    opacity: 0.45;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .sketch span {
+    animation: none;
+  }
+}

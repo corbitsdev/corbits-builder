@@ -1,0 +1,138 @@
+.quietState {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2);
+  flex: none;
+  font-size: 0.8125rem;
+  color: var(--wb-muted-foreground);
+}
+
+/* Without the dot, the words carry the tone. */
+.quietState[data-words][data-tone="success"],
+.quietState[data-words][data-tone="okay"] {
+  color: var(--wb-okay);
+}
+
+.quietState[data-words][data-tone="warning"] {
+  color: var(--warn);
+}
+
+.quietState[data-words][data-tone="error"] {
+  color: var(--wb-destructive);
+}
+
+.banner {
+  border: 1px solid var(--wb-border-strong);
+  background: var(--wb-card);
+  padding: var(--space-3) var(--space-4);
+  display: grid;
+  gap: var(--space-1);
+  border-radius: var(--radius-panel);
+}
+
+/* Severity reads from the words and the state label, not a coloured edge. */
+.banner[data-tone="okay"] {
+  border-color: var(--wb-okay);
+}
+
+.banner p {
+  margin: 0;
+}
+
+.bannerTitle {
+  font-weight: 500;
+}
+
+.bannerBody {
+  display: grid;
+  gap: var(--space-1);
+  margin: 0;
+}
+
+.bannerAction {
+  margin-top: var(--space-1);
+}
+
+.inlineNote {
+  font-size: 0.8125rem;
+  color: var(--wb-muted-foreground);
+  margin: 0;
+}
+
+.inlineNote[data-pill] {
+  padding: 2px var(--space-3);
+  border: 1px solid var(--wb-border);
+  border-radius: 999px;
+  background: var(--wb-background);
+  font-size: 0.75rem;
+}
+
+.fault {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: var(--space-2);
+  margin: 0;
+  color: var(--wb-foreground);
+  font-size: 0.8125rem;
+  line-height: 1.6;
+}
+
+.fault > p {
+  margin: 0;
+}
+
+.field {
+  display: grid;
+  gap: var(--space-2);
+}
+
+.danger {
+  color: var(--wb-destructive);
+}
+
+.menuItemLabel {
+  display: flex;
+  flex: 1;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-3);
+}
+
+/* The one look for every select and menu trigger: borderless quiet text
+   that underlines on hover. */
+.quietControl {
+  width: auto;
+  height: auto;
+  padding: 2px 4px;
+  border: 0;
+  border-radius: 4px;
+  background: transparent;
+  box-shadow: none;
+  color: var(--wb-muted-foreground);
+  font: inherit;
+  font-size: 0.8125rem;
+  text-underline-offset: 3px;
+  cursor: pointer;
+}
+
+select.quietControl {
+  padding-right: 22px;
+}
+
+/* A button may carry an icon beside its words, such as a disclosure chevron. */
+button.quietControl {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-1);
+}
+
+.quietControl:hover:not(:disabled) {
+  color: var(--wb-foreground);
+  text-decoration: underline;
+}
+
+.quietControl:focus-visible {
+  outline: 2px solid var(--wb-ring);
+  outline-offset: 2px;
+}

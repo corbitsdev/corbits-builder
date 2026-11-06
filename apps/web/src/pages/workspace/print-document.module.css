@@ -1,0 +1,46 @@
+/* A document copied out of its pane for printing; it exists only on paper. */
+.sheet {
+  display: none;
+}
+
+@media print {
+  /* The app's viewport-high, scrolling layout is set aside for the sheet,
+     which flows across as many pages as the document needs. */
+  body:has(> .sheet) > :not(.sheet) {
+    display: none !important;
+  }
+
+  /* Paper is light whatever theme the app wears, so a dark theme does not
+     print pale text. */
+  .sheet {
+    display: block;
+    color-scheme: light;
+    background: Canvas;
+    font-size: 11pt;
+    line-height: 1.5;
+  }
+
+  .sheet,
+  .sheet * {
+    color: CanvasText;
+  }
+
+  .status {
+    margin: 1mm 0 0;
+    font-size: 9pt;
+  }
+
+  .sheet :is(h1, h2, h3, h4, h5, h6) {
+    break-after: avoid;
+    break-inside: avoid;
+  }
+
+  .sheet :is(pre, figure, blockquote, tr, li) {
+    break-inside: avoid;
+  }
+
+  .sheet pre {
+    overflow: visible;
+    white-space: pre-wrap;
+  }
+}

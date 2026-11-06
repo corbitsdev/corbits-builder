@@ -9,7 +9,7 @@ import type {
 import { wording } from "../config.ts";
 import { keys } from "../queries/keys.ts";
 import { NewProjectProfile } from "./profile-select.tsx";
-import { Profiles, available, editorProviders } from "./profiles.tsx";
+import { Profiles, available, editorProviders } from "./settings/profiles.tsx";
 
 function tiers(provider: string): Tiers {
   const binding = { provider, model: "m", effort: "medium" as const };

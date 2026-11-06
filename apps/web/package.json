@@ -7,8 +7,13 @@
   "author": "Sawyer Cutler <sawyer@dirtroad.dev>",
   "type": "module",
   "scripts": {
-    "dev": "vite",
-    "build": "vite build"
+    "dev": "bun run --parallel css-types:watch serve",
+    "serve": "vite",
+    "build": "vite build",
+    "css-types": "tcm -s -p \"src/**/*.module.css\"",
+    "css-types:watch": "tcm -s -w -p \"src/**/*.module.css\"",
+    "storybook": "storybook dev -p 6006",
+    "build-storybook": "storybook build -o storybook-static"
   },
   "dependencies": {
     "@corbits-builder/client": "workspace:*",
@@ -23,6 +28,7 @@
     "@tanstack/react-query": "5.104.1",
     "@tanstack/react-query-persist-client": "5.104.1",
     "arktype": "catalog:",
+    "clsx": "2.1.1",
     "diff": "9.0.0",
     "idb-keyval": "6.2.2",
     "jszip": "3.10.2",
@@ -32,9 +38,12 @@
     "sonner": "2.0.8"
   },
   "devDependencies": {
+    "@storybook/react-vite": "11.0.0-beta.0",
     "@types/react": "19.3.0",
     "@types/react-dom": "19.3.0",
     "@vitejs/plugin-react": "5.2.0",
+    "storybook": "11.0.0-beta.0",
+    "typed-css-modules": "0.9.1",
     "typescript": "5.9.3",
     "vite": "6.4.5"
   }

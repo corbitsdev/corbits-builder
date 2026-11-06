@@ -1,0 +1,72 @@
+/* ChatThread brings its own transcript layout, scrolling and message
+   treatment; this only places it in the pane's flexible row. */
+.thread {
+  display: flex;
+  flex-direction: column;
+  flex: 1 1 auto;
+  min-height: 0;
+  min-width: 0;
+}
+
+/* The conversation map's rail sits over the column's left edge; the turns start clear of it. */
+.thread[data-mapped]
+  > [data-slot="conversation-content"]
+  > [data-slot="conversation-column"] {
+  padding-inline-start: 2.5rem;
+}
+
+/* The log scrolls inside the room. flex-shrink 0 made its height follow the
+   settle spacer, and the spacer then grew from that new height. */
+.log {
+  flex: 1 1 auto;
+  min-height: 0;
+  /* Never sideways (#321): `overflow-y: auto` alone makes the x axis auto
+     too, so one child wider than the column let a trackpad gesture carry
+     the whole log to the right and hide the start of every message. */
+  overflow-x: hidden;
+  overflow-y: auto;
+  padding: var(--space-5);
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-4);
+  /* The conversation engine writes scrollTop and reads it back in the same
+     turn. A smooth scroll reports the old position, so each correction
+     starts another one. */
+  scroll-behavior: auto;
+}
+
+/* Each turn is held to the column; whatever is wide inside it scrolls or
+   clips within its own box. */
+.log > * {
+  min-width: 0;
+  max-width: 100%;
+}
+
+/* A turn arriving. The newest row rises into place. The reserve under a
+   settled turn is not a turn; animating it moves the measurement the
+   reserve is computed from. */
+.log [data-slot="conversation-item"]:last-child {
+  animation: global(turn-in) var(--duration-standard, 200ms)
+    var(--ease-out, ease) both;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .log [data-slot="conversation-item"]:last-child {
+    animation: none;
+  }
+}
+
+@media (max-width: 640px) {
+  .log {
+    padding: var(--space-4);
+  }
+}
+
+.endedDetails {
+  overflow-wrap: anywhere;
+}
+
+.endedDetails summary {
+  display: inline;
+  cursor: pointer;
+}

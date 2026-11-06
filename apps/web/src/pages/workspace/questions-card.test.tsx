@@ -64,7 +64,7 @@ describe("questions card", () => {
     expect(html).toContain("Small teams");
     expect(html).not.toContain("What must the first version do?");
     expect(html).toContain(text.keys.single);
-    expect(html).not.toContain("questions-card-step-mark");
+    expect(html).not.toContain("data-done");
   });
 
   test("all at once, every question shows and Other is an option until chosen", () => {

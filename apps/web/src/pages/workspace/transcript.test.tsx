@@ -90,7 +90,7 @@ describe("conversation transcript", () => {
         onOpenDocument={() => {}}
       />,
     );
-    expect(html).toContain('class="artifact-mention"');
+    expect(html).toContain('data-slot="document-mention"');
     expect(html).toContain("problem brief");
     expect(html).toContain("What should the outcome be?");
     expect(html).not.toContain(briefId);
@@ -109,8 +109,8 @@ describe("conversation transcript", () => {
       />,
     );
     // Inline, not a <button>: a button is one unbreakable box, so the title would leave the line.
-    expect(html).toContain(
-      'into <strong><span role="button" tabindex="0" class="artifact-mention">Ways to build your list</span></strong>. What',
+    expect(html.replace(/ class="[^"]*"/g, "")).toContain(
+      'into <strong><span role="button" tabindex="0" data-slot="document-mention">Ways to build your list</span></strong>. What',
     );
     expect(html).not.toContain("href");
 
@@ -170,7 +170,7 @@ describe("conversation transcript", () => {
         onNo={() => {}}
       />,
     );
-    expect(html).toContain("document-decision-once");
+    expect(html).toContain('data-once=""');
     expect(html).toContain(">Start Designs<");
     expect(html).not.toContain("Start designs without asking");
   });
@@ -351,9 +351,9 @@ describe("conversation transcript", () => {
     );
     expect(html).toContain('data-item-id="work:call-1"');
     expect(html).toContain(`>${wording.activity.role.writer}<`);
-    expect(html).not.toContain('class="room-mail-names">Constraints<');
+    expect(html).not.toContain('data-slot="update-names">Constraints<');
     expect(html).toContain(wording.updatesFolded(4));
-    expect(html).toContain(`class="room-mail-names">${wording.buildSubject}<`);
+    expect(html).toContain(`data-slot="update-names">${wording.buildSubject}<`);
   });
 
   test("a coordinator stretch has one header, its words first and its cards last", () => {

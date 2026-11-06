@@ -1,0 +1,95 @@
+.dictated {
+  display: grid;
+  gap: var(--space-1);
+  min-width: 0;
+}
+
+.row {
+  display: flex;
+  align-items: flex-end;
+  gap: var(--space-2);
+  min-width: 0;
+}
+
+.row > :last-child {
+  flex: 1;
+  min-width: 0;
+}
+
+.row[data-align="start"] {
+  align-items: flex-start;
+}
+
+.row[data-align="center"] {
+  align-items: center;
+}
+
+.dictate {
+  width: 36px;
+  height: 36px;
+  margin-bottom: var(--space-2);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: var(--radius-control);
+  border: 1px solid var(--wb-border);
+  background: var(--wb-card);
+  color: var(--wb-foreground);
+  cursor: pointer;
+  flex: none;
+}
+
+.row:is([data-align="start"], [data-align="center"]) > .dictate {
+  margin-bottom: 0;
+}
+
+.dictate svg {
+  width: 16px;
+  height: 16px;
+}
+
+.dictate:hover:not(:disabled) {
+  border-color: var(--wb-primary);
+}
+
+/* In a toolbar: a round, borderless icon like the toolbar's own. */
+.dictate.inToolbar {
+  width: 32px;
+  height: 32px;
+  margin: 0;
+  border: 0;
+  border-radius: 50%;
+  background: transparent;
+  color: var(--wb-muted-foreground);
+}
+
+.dictate.inToolbar:hover:not(:disabled) {
+  background: var(--wb-muted);
+  color: var(--wb-foreground);
+}
+
+.dictate:disabled {
+  cursor: default;
+  opacity: 0.5;
+}
+
+/* Listening: the pressed look, green with the stop glyph. */
+.dictate[aria-pressed="true"] {
+  border-color: var(--wb-okay);
+  color: var(--wb-okay);
+  background: color-mix(in srgb, var(--wb-okay) 12%, var(--wb-card));
+}
+
+.state {
+  margin: 0;
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  min-height: 1.25rem;
+  font-size: 0.8125rem;
+  color: var(--wb-muted-foreground);
+}
+
+.state[role="alert"] {
+  color: var(--wb-destructive);
+}

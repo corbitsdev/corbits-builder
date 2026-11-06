@@ -82,7 +82,7 @@ export function InvitationAccept({ invitationId }: { invitationId: string }) {
 
   if (accepted !== null) {
     return (
-      <div className="invite-accept">
+      <div>
         <Mark size={26} />
         <h1>Welcome in</h1>
         <p>
@@ -98,7 +98,7 @@ export function InvitationAccept({ invitationId }: { invitationId: string }) {
 
   if (failed !== null) {
     return (
-      <div className="invite-accept">
+      <div>
         <Mark size={26} />
         <h1>This invitation could not be read</h1>
         <Banner tone="error" title={failed} />
@@ -109,7 +109,7 @@ export function InvitationAccept({ invitationId }: { invitationId: string }) {
 
   if (invitation === null) {
     return (
-      <div className="invite-accept">
+      <div>
         <Mark size={26} />
         <h1>Opening the invitation…</h1>
       </div>
@@ -119,37 +119,37 @@ export function InvitationAccept({ invitationId }: { invitationId: string }) {
   const pending = invitation.state === "pending";
 
   return (
-    <div className="invite-accept">
+    <div>
       <Mark size={26} />
       <h1>You're invited</h1>
-      <div className="section">
-        <div className="section-body">
-          <div className="row">
-            <div className="k">
+      <div>
+        <div>
+          <div>
+            <div>
               <b>Invited by</b>
             </div>
-            <span className="v">{invitation.invitedBy}</span>
+            <span>{invitation.invitedBy}</span>
           </div>
-          <div className="row">
-            <div className="k">
+          <div>
+            <div>
               <b>Workspace</b>
             </div>
-            <span className="v">{invitation.tenantId}</span>
+            <span>{invitation.tenantId}</span>
           </div>
-          <div className="row">
-            <div className="k">
+          <div>
+            <div>
               <b>Role</b>
             </div>
-            <span className="v">{roleName ?? invitation.roleId}</span>
+            <span>{roleName ?? invitation.roleId}</span>
           </div>
-          <div className="row">
-            <div className="k">
+          <div>
+            <div>
               <b>Email</b>
             </div>
-            <span className="v">{invitation.email}</span>
+            <span>{invitation.email}</span>
           </div>
-          <div className="row">
-            <div className="k">
+          <div>
+            <div>
               <b>State</b>
             </div>
             <StateLabel tone={pending ? "info" : "warning"}>

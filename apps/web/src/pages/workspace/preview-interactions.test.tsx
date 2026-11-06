@@ -3,6 +3,7 @@ import { renderToStaticMarkup } from "react-dom/server";
 import { designDraftFiled, firstPage } from "./design-preview.tsx";
 import { predecessorOf } from "./document-versions.ts";
 import { DevicePreview } from "./device-preview.tsx";
+import { GuiFrame } from "./gui-frame.tsx";
 
 describe("document versions", () => {
   test("uses the index when it is present and does not invent a predecessor", () => {
@@ -24,6 +25,42 @@ describe("device preview", () => {
     );
     expect(html).toContain('sandbox=""');
     expect(html).not.toContain("allow-scripts");
+  });
+
+  const tag = (html: string, slot: string) =>
+    new RegExp(`<[a-z]+[^>]*data-slot="${slot}"[^>]*>`).exec(html)?.[0] ?? "";
+
+  test("a preview that fills its pane says so on itself and its frame", () => {
+    const html = renderToStaticMarkup(
+      <DevicePreview
+        html="<h1>Actual design</h1>"
+        device="desktop"
+        onDevice={() => {}}
+        fill
+      />,
+    );
+    expect(tag(html, "device-preview")).toContain('data-fill=""');
+    expect(tag(html, "gui-frame")).toContain('data-fill=""');
+    expect(tag(html, "gui-frame")).not.toContain("data-thumbnail");
+  });
+
+  test("a preview in a document keeps its page-high frame", () => {
+    const html = renderToStaticMarkup(
+      <DevicePreview
+        html="<h1>Actual design</h1>"
+        device="desktop"
+        onDevice={() => {}}
+      />,
+    );
+    expect(html).not.toContain("data-fill");
+  });
+
+  test("a thumbnail frame is marked for its scaled-down size", () => {
+    const html = renderToStaticMarkup(
+      <GuiFrame html="<h1>Theme</h1>" thumbnail />,
+    );
+    expect(tag(html, "gui-frame")).toContain('data-thumbnail=""');
+    expect(tag(html, "gui-frame")).not.toContain("data-fill");
   });
 
   test("splices per-screen files into index.html in navigation order", () => {

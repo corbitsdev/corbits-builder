@@ -288,7 +288,7 @@ describe("approval package preview", () => {
     expect(html).toContain("5 slides");
     expect(html).toContain("Customer Portal Brief");
     expect(html).toContain("Portal Requirements");
-    expect(html).toContain("approval-package-source-link");
+    expect(html).toContain('data-slot="source-link"');
     expect(html).toContain("v2");
     expect(html).toContain("abcdef012345");
     expect(html).toContain("executive-summary.md");

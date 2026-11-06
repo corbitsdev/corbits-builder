@@ -1,0 +1,84 @@
+/* In the pane, the artifact pane lays the body out further; this is all a printed copy keeps. */
+.body {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+}
+
+/* A band across the pane's full width, ruled off from the document it names. */
+.header {
+  display: flex;
+  flex: none;
+  align-self: stretch;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-4);
+  min-width: 0;
+  padding: var(--space-5) var(--space-6);
+  border-bottom: 1px solid var(--wb-border);
+}
+
+.title {
+  flex: 1;
+  min-width: 0;
+  margin: 0;
+  font-size: 1.125rem;
+  text-wrap: balance;
+}
+
+.loading {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  min-height: 32px;
+  padding: var(--space-2) 0;
+  color: var(--wb-muted-foreground);
+  font-size: 0.8125rem;
+}
+
+.raw {
+  max-width: 100%;
+  margin: 0;
+  overflow: auto;
+  font-family: var(--wb-font-mono);
+  font-size: 12px;
+  white-space: pre-wrap;
+}
+
+.image {
+  max-width: 100%;
+  height: auto;
+}
+
+/* A page that fills the pane keeps its notes floating over its top edge. */
+.notes {
+  position: absolute;
+  top: var(--space-3);
+  left: 50%;
+  z-index: 2;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: var(--space-1);
+  max-width: calc(100% - 2rem);
+  transform: translateX(-50%);
+}
+
+.notes:empty {
+  display: none;
+}
+
+/* On paper the rule prints in the text's own ink, with room before the document starts. */
+@media print {
+  .header {
+    margin-bottom: 8mm;
+    padding-bottom: 3mm;
+    border-bottom: 1px solid CanvasText;
+  }
+
+  .title {
+    margin: 0;
+    font-size: 18pt;
+    white-space: normal;
+  }
+}

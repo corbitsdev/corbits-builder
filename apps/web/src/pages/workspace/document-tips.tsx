@@ -1,4 +1,4 @@
-import { MenuItem, MenuLabel } from "@corbits/react-ui/ui/menu";
+import { MenuItem } from "@corbits/react-ui/ui/menu";
 import { Lightbulb } from "lucide-react";
 import { wording } from "../../config.ts";
 import {
@@ -7,7 +7,7 @@ import {
 } from "../../document-tips-setting.ts";
 import { useReducedMotion } from "../../reduced-motion.ts";
 import { useElapsedMs } from "./elapsed.tsx";
-import type { PaneBarGroup } from "./pane-bar.tsx";
+import { PaneBarTip, type PaneBarGroup } from "./pane-bar.tsx";
 
 const TIP_MS = 8_000;
 
@@ -17,11 +17,7 @@ function RotatingTip() {
   const elapsed = useElapsedMs();
   const tips = wording.tips.items;
   const index = still ? 0 : Math.floor(elapsed / TIP_MS) % tips.length;
-  return (
-    <MenuLabel key={index} className="pane-bar-tip">
-      {tips[index]}
-    </MenuLabel>
-  );
+  return <PaneBarTip key={index}>{tips[index]}</PaneBarTip>;
 }
 
 /** The tips as the pane bar's last group: an icon that opens one short tip at a time. */

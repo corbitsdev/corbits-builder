@@ -1,0 +1,22 @@
+.role {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: var(--space-2);
+  margin: 0;
+  padding: 0;
+  border: 0;
+  min-width: 0;
+}
+
+.role > legend {
+  grid-column: 1 / -1;
+  padding: 0 0 6px;
+  font-size: 13px;
+  font-weight: 600;
+}
+
+@media (max-width: 520px) {
+  .role {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}

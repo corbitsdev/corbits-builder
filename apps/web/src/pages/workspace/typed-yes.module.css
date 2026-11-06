@@ -1,0 +1,38 @@
+.countdown {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-1) var(--space-2);
+  margin-top: var(--space-2);
+  color: var(--wb-foreground);
+  font-size: 0.875rem;
+}
+
+.count {
+  font-variant-numeric: tabular-nums;
+}
+
+.bar {
+  flex: 1 1 4rem;
+  height: 2px;
+  border-radius: 1px;
+  background: var(--wb-foreground);
+  transform-origin: left;
+  animation: drain linear forwards;
+}
+
+@keyframes drain {
+  from {
+    transform: scaleX(1);
+  }
+  to {
+    transform: scaleX(0);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .bar {
+    animation: none;
+    opacity: 0.4;
+  }
+}

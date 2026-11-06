@@ -34,6 +34,7 @@ import {
   type DispatchStatus,
 } from "./dispatch-card.tsx";
 import { useElapsedMs } from "./elapsed.tsx";
+import styles from "./work-unit-view.module.css";
 import type { DocumentApproval } from "./transcript.tsx";
 import {
   WORK_RESULT_BLOCK,
@@ -50,7 +51,7 @@ const sentenceStart = (line: string) =>
 function Elapsed({ since }: { since: string }) {
   const seconds = Math.floor(useElapsedMs(since) / 1_000);
   return (
-    <span className="work-unit-time">
+    <span className={styles.time}>
       {wording.activity.elapsed(Math.floor(seconds / 60), seconds % 60)}
     </span>
   );
@@ -124,15 +125,15 @@ function WorkResult({
 }) {
   if (status.state === "failed")
     return (
-      <p className="work-unit-result" data-state="failed" title={status.reason}>
+      <p className={styles.result} data-state="failed" title={status.reason}>
         {text.failed(status.reason)}
       </p>
     );
   if (status.state !== "ready") return null;
   const ready = text.ready(status.title, status.version);
   return (
-    <p className="work-unit-result">
-      <span className="work-unit-ready" title={ready}>
+    <p className={styles.result}>
+      <span className={styles.ready} title={ready}>
         {ready}
       </span>
       {onOpen === undefined ? null : (
@@ -140,7 +141,7 @@ function WorkResult({
           type="button"
           variant="link"
           size="sm"
-          className="work-unit-open"
+          className={styles.open}
           onClick={() => onOpen(status.kind)}
         >
           {text.open}

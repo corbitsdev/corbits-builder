@@ -27,6 +27,8 @@ import {
   MenuItem,
   MenuTrigger,
 } from "@corbits/react-ui/ui/menu";
+import { DangerMenuItem } from "../../components.tsx";
+import styles from "./artifact-pane.module.css";
 import {
   DeliverableBody,
   type DeliverableState,
@@ -186,7 +188,7 @@ const liveIds = panelTabIds(TAB_PREFIX, LIVE_TAB);
 const THEMES_TAB = "design-themes";
 const themesIds = panelTabIds(TAB_PREFIX, THEMES_TAB);
 // A pane whose page fills it edge to edge: the app, a mockup, a spreadsheet or the design draft.
-const FILL_PANE = "workspace-pane-fill";
+const FILL_PANE = styles.fill;
 const POINTER_TABS = "data-pointer-tabs";
 const TAB_KEYS = new Set([
   "ArrowLeft",
@@ -466,14 +468,13 @@ export function ArtifactPane({
     if (onRemove === undefined || !removable(value)) return null;
     if (confirmingRemove)
       return (
-        <MenuItem className="menu-danger" onSelect={() => onRemove(value)}>
+        <DangerMenuItem onSelect={() => onRemove(value)}>
           <Trash2 size={16} aria-hidden="true" />
           {wording.removeAttachment.confirm}
-        </MenuItem>
+        </DangerMenuItem>
       );
     return (
-      <MenuItem
-        className="menu-danger"
+      <DangerMenuItem
         onSelect={(event) => {
           event.preventDefault();
           setConfirmingRemove(true);
@@ -481,7 +482,7 @@ export function ArtifactPane({
       >
         <Trash2 size={16} aria-hidden="true" />
         {wording.removeAttachment.menu}
-      </MenuItem>
+      </DangerMenuItem>
     );
   };
   const outputs =
@@ -493,7 +494,8 @@ export function ArtifactPane({
   return (
     <Panel
       ref={paneRef}
-      className="workspace-artifacts"
+      className={styles.pane}
+      data-slot="artifact-pane"
       aria-label="Artifacts"
       width={width}
       onWidthChange={(nextWidth) =>
@@ -659,7 +661,7 @@ export function ArtifactPane({
             >
               <MenuTrigger asChild>
                 <span
-                  className="document-tab-menu-anchor"
+                  className={styles.menuAnchor}
                   style={{ left: tabMenu.x, top: tabMenu.y }}
                   aria-hidden="true"
                 />
@@ -687,8 +689,8 @@ export function ArtifactPane({
         </PanelHeader>
       ) : null}
       {!outputs && selectedId === null ? (
-        <div className="workspace-artifact-content">
-          <div className="workspace-artifact-empty">
+        <div className={styles.content}>
+          <div className={styles.empty}>
             <FileText size={28} aria-hidden="true" />
             <h2>Your outputs appear here</h2>
             <p>
@@ -701,7 +703,7 @@ export function ArtifactPane({
         <PanelContent
           value={selectedId ?? ""}
           keepMounted
-          className="workspace-artifact-content"
+          className={styles.content}
         >
           {visibleDeliverables.flatMap((item) =>
             documentViews(item).map((view) => {
@@ -826,6 +828,7 @@ export function ArtifactPane({
                 files={draft}
                 device={draftDevice}
                 onDevice={setDraftDevice}
+                fill
                 leading={[
                   [
                     {

@@ -32,7 +32,8 @@ import {
 import { Check, ChevronDown, Plus } from "lucide-react";
 import { useState } from "react";
 import { toast } from "sonner";
-import { Button } from "./components.jsx";
+import { Button, Field } from "./components.jsx";
+import styles from "./workspace-menu.module.css";
 import { LogoMark } from "./flourish.tsx";
 import {
   createWorkspace,
@@ -68,15 +69,15 @@ export function WorkspaceMenu({
         <MenuTrigger asChild>
           <button
             type="button"
-            className="app-sidebar-workspace"
+            className={styles.trigger}
             aria-label={wording.workspace.menu(name)}
           >
             <LogoMark size={20} />
-            <span className="wordmark app-sidebar-name">{name}</span>
-            <ChevronDown className="app-sidebar-name" aria-hidden="true" />
+            <span className={styles.name}>{name}</span>
+            <ChevronDown className={styles.chevron} aria-hidden="true" />
           </button>
         </MenuTrigger>
-        <MenuContent align="start" className="workspace-menu">
+        <MenuContent align="start" className={styles.menu}>
           <MenuGroup>
             <MenuLabel>{wording.workspace.listLabel}</MenuLabel>
             {read.data?.list.map((workspace) => (
@@ -86,9 +87,9 @@ export function WorkspaceMenu({
                   if (workspace.id !== read.data?.openId) onOpen(workspace.id);
                 }}
               >
-                <span className="workspace-menu-name">{workspace.name}</span>
+                <span className={styles.menuName}>{workspace.name}</span>
                 {workspace.id === read.data?.openId ? (
-                  <Check aria-label="Open" className="workspace-menu-check" />
+                  <Check aria-label="Open" className={styles.menuCheck} />
                 ) : null}
               </MenuItem>
             ))}
@@ -161,7 +162,7 @@ function CreateWorkspaceDialog({
               <DialogDescription>{copy.createLead}</DialogDescription>
             </DialogHeader>
             <DialogBody>
-              <div className="field">
+              <Field>
                 <DialogFieldLabel htmlFor="workspace-name">
                   {copy.nameLabel}
                 </DialogFieldLabel>
@@ -174,7 +175,7 @@ function CreateWorkspaceDialog({
                   disabled={busy}
                   onChange={(event) => setName(event.target.value)}
                 />
-              </div>
+              </Field>
             </DialogBody>
             <DialogFooter>
               <Button variant="ghost" disabled={busy} onClick={onClose}>

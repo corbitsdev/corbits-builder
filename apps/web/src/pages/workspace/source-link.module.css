@@ -1,0 +1,32 @@
+.sourceLink {
+  padding: 0;
+  border: 0;
+  background: none;
+  color: var(--wb-foreground);
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+  text-decoration-line: underline;
+  text-decoration-color: color-mix(
+    in srgb,
+    var(--wb-muted-foreground) 45%,
+    transparent
+  );
+  text-underline-offset: 3px;
+}
+
+.sourceLink:hover {
+  color: var(--wb-primary);
+  text-decoration-color: var(--wb-primary);
+}
+
+.sourceLink:focus-visible {
+  outline: 2px solid var(--wb-ring);
+  outline-offset: 2px;
+  border-radius: 2px;
+}
+
+.sourceLink[data-version] {
+  font-family: var(--wb-font-mono);
+  font-size: 0.8125rem;
+}

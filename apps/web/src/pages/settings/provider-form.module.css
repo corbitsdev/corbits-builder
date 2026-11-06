@@ -1,0 +1,17 @@
+.form {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-4);
+  margin: -4px;
+  padding: 4px;
+}
+
+/* Settings rows in a dialog: the body's own gap would double the rows' spacing, and rows sit a
+   little closer so a whole form fits without scrolling. */
+.form[data-rows] {
+  gap: 0;
+}
+
+.form[data-rows] > [data-slot="settings-row"] {
+  padding: var(--space-2) 0;
+}

@@ -10,6 +10,8 @@
  * tap on the microphone ends it, and so does a short silence once something
  * has been said.
  */
+import { clsx } from "clsx";
+import styles from "./dictation.module.css";
 import {
   useCallback,
   useEffect,
@@ -296,7 +298,8 @@ export function Dictated({
     : "idle";
   const control = supported ? (
     <MicButton
-      className="dictate"
+      // Placed in the caller's toolbar, the microphone is one of its round icons.
+      className={clsx(styles.dictate, slotted && styles.inToolbar)}
       state={state}
       disabled={disabled}
       onToggle={listening ? stop : () => void start()}
@@ -305,17 +308,17 @@ export function Dictated({
   const field = slotted ? children(control) : children;
   if (!supported) return <>{field}</>;
   return (
-    <div className="dictated">
+    <div className={styles.dictated}>
       {slotted ? (
         field
       ) : (
-        <div className={`dictated-row dictated-row-${align}`}>
+        <div className={styles.row} data-align={align}>
           {control}
           {field}
         </div>
       )}
       <DictationStatusLine
-        className="dictation-state"
+        className={styles.state}
         state={refusal ? "denied" : state}
         levels={levels}
         startingLabel="Starting the microphone… If macOS asks, allow it."

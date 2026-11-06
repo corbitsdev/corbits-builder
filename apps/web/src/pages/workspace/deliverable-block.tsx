@@ -6,7 +6,7 @@
  */
 import { wording } from "../../config.ts";
 import { useEffect, useRef, useState } from "react";
-import { Button, CsvTable, ShimmerText } from "@corbits/react-ui";
+import { CsvTable, ShimmerText } from "@corbits/react-ui";
 import { Markdown } from "../../markdown.jsx";
 import {
   APPROVAL_PACKAGE_MEDIA_TYPE,
@@ -39,6 +39,8 @@ import type { ApproachesMeta } from "@corbits-builder/schemas/approaches";
 import { ApproachesComparison } from "./approaches-comparison.tsx";
 import type { ApproachChoice } from "./approach-choice.ts";
 import { ContextualApprovalRounds } from "./approval-rounds.tsx";
+import { Fault, InlineNote } from "../../components.jsx";
+import styles from "./deliverable-block.module.css";
 
 export type { RetainedVersion };
 
@@ -127,26 +129,20 @@ export function DeliverableBody({
   /** Opens a pinned source document tab at its pinned version. */
   onOpenSource?: ((kind: string, version: number) => void) | undefined;
 }) {
-  if (state === undefined)
-    return <p className="inline-note">Nothing to read yet.</p>;
+  if (state === undefined) return <InlineNote>Nothing to read yet.</InlineNote>;
   if (state.status === "loading") {
     return (
-      <div className="workspace-loading" role="status">
+      <div
+        className={styles.loading}
+        data-slot="document-loading"
+        role="status"
+      >
         <ShimmerText>Reading the document…</ShimmerText>
       </div>
     );
   }
   if (state.status === "error")
-    return (
-      <div className="workspace-fault" role="alert">
-        <p className="inline-note">{state.message}</p>
-        {onRetry ? (
-          <Button size="sm" variant="outline" onClick={onRetry}>
-            {wording.action.retry}
-          </Button>
-        ) : null}
-      </div>
-    );
+    return <Fault onRetry={onRetry}>{state.message}</Fault>;
   return (
     <ReadyDocument
       key={`${state.document.sha256}:${String(state.document.version)}:${state.document.content}`}
@@ -397,6 +393,9 @@ function ReadyDocument({
     files,
     tipsGroup,
   ];
+  // A mockup or spreadsheet fills the pane edge to edge: its tab names it, and its notes float over the page.
+  const fill =
+    (kind === "design" && designPart === "mockup") || kind === "sheet";
   const visual =
     kind === "html" || (kind === "design" && designPart === "mockup");
   const readingView = () => {
@@ -417,6 +416,7 @@ function ReadyDocument({
           device={device}
           onDevice={setDevice}
           trailing={barGroups}
+          fill={fill}
         />
       );
     if (kind === "approval_package")
@@ -430,9 +430,9 @@ function ReadyDocument({
     if (kind === "sheet")
       return <CsvTable text={body} caption={title} interactive />;
     if (kind === "json" || kind === "text")
-      return <pre className="document-raw">{body}</pre>;
+      return <pre className={styles.raw}>{body}</pre>;
     if (kind === "image")
-      return <img className="document-image" src={body} alt={title} />;
+      return <img className={styles.image} src={body} alt={title} />;
     if (kind === "file")
       return (
         <p>
@@ -460,57 +460,50 @@ function ReadyDocument({
                 })}
           />
         )}
-        <Markdown source={body} />
+        <Markdown source={body} document />
       </>
     );
   };
   const add = onAddToPrompt === undefined ? {} : { onAdd: onAddToPrompt };
 
-  // A mockup or spreadsheet fills the pane edge to edge: its tab names it, and its notes float over the page.
-  const fill =
-    (kind === "design" && designPart === "mockup") || kind === "sheet";
   const notes = (
     <>
       {viewing !== document.version ? (
-        <p className="inline-note" role="status">
+        <InlineNote role="status" pill={fill}>
           Showing v{String(viewing)}. The plan names v{String(document.version)}
           .
-        </p>
+        </InlineNote>
       ) : null}
       {pendingVersion !== null ? (
-        <p className="inline-note" role="status">
+        <InlineNote role="status" pill={fill}>
           Reading v{String(pendingVersion)}…
-        </p>
+        </InlineNote>
       ) : null}
-      {readError !== null ? (
-        <p className="inline-note" role="alert">
-          {readError}
-        </p>
-      ) : null}
+      {readError !== null ? <Fault>{readError}</Fault> : null}
       {document.historyError !== undefined ? (
-        <p className="inline-note" role="status">
+        <InlineNote role="status" pill={fill}>
           History unavailable: {document.historyError}
-        </p>
+        </InlineNote>
       ) : null}
       {changesOpen && compareWith !== null && beforeText === null ? (
-        <p className="inline-note" role="status">
+        <InlineNote role="status" pill={fill}>
           Reading v{String(compareWith)} for comparison…
-        </p>
+        </InlineNote>
       ) : null}
     </>
   );
 
   const renderDocumentHeader = () => {
     if (fill) {
-      return <div className="pane-notes">{notes}</div>;
+      return <div className={styles.notes}>{notes}</div>;
     }
     if (kind === "approval_package") {
       return notes;
     }
     return (
       <>
-        <header className="document-header">
-          <h1 className="workspace-artifact-title" title={title}>
+        <header className={styles.header} data-slot="document-header">
+          <h1 className={styles.title} title={title}>
             {lifted.heading ?? title}
           </h1>
         </header>
@@ -520,7 +513,7 @@ function ReadyDocument({
   };
 
   return (
-    <div className="deliverable-body">
+    <div className={styles.body} data-slot="deliverable-body">
       {renderDocumentHeader()}
       {kind === "approval_package" ? (
         <PassageQuotes title={title} version={viewing} {...add}>
@@ -539,7 +532,7 @@ function ReadyDocument({
           />
         </PassageQuotes>
       ) : (
-        <PassageQuotes title={title} version={viewing} {...add}>
+        <PassageQuotes title={title} version={viewing} fill={fill} {...add}>
           {readingView()}
           {comparison}
         </PassageQuotes>

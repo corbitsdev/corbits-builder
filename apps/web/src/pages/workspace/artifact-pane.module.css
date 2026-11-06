@@ -1,0 +1,196 @@
+/* An underline strip on the pane's own surface: one hairline under the row,
+   and the open document marked by ink beneath its title, not a raised box. */
+.pane [data-slot="panel-header"] {
+  display: flex;
+  align-items: flex-end;
+  min-height: 0;
+  padding: 0 var(--space-4);
+  border-bottom: 1px solid color-mix(in srgb, var(--wb-border) 70%, transparent);
+  background: transparent;
+}
+
+.pane [data-slot="panel-tabs"] {
+  flex: 1;
+  min-width: 0;
+  gap: var(--space-1);
+  border: 0;
+  --tab-fade: 2rem;
+}
+
+/* A long row scrolls rather than squeezing its tabs, and fades at an end that hides more. */
+.pane [data-slot="panel-tabs"][data-more-start] {
+  mask-image: linear-gradient(to right, transparent, #000 var(--tab-fade));
+}
+
+.pane [data-slot="panel-tabs"][data-more-end] {
+  mask-image: linear-gradient(to left, transparent, #000 var(--tab-fade));
+}
+
+.pane [data-slot="panel-tabs"][data-more-start][data-more-end] {
+  mask-image: linear-gradient(
+    to right,
+    transparent,
+    #000 var(--tab-fade),
+    #000 calc(100% - var(--tab-fade)),
+    transparent
+  );
+}
+
+/* Tabs keep their size: the open or focused one shows its full name, the rest a shortened one. */
+.pane [data-slot="panel-tab"] {
+  flex: none;
+  height: 40px;
+  min-width: 0;
+  max-width: 9rem;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  color: var(--wb-muted-foreground);
+  box-shadow: inset 0 -2px 0 transparent;
+  transition:
+    color 120ms ease,
+    box-shadow 150ms ease-out;
+}
+
+.pane [data-slot="panel-tab"]:hover {
+  background: transparent;
+  color: var(--wb-foreground);
+}
+
+.pane [data-slot="panel-tab"][data-state="active"],
+.pane [data-slot="panel-tab"]:focus-within {
+  max-width: 20rem;
+}
+
+.pane [data-slot="panel-tab"][data-state="active"] {
+  border: 0;
+  background: transparent;
+  color: var(--wb-foreground);
+  box-shadow: inset 0 -2px 0 var(--wb-foreground);
+}
+
+.pane [role="tab"] {
+  gap: var(--space-2);
+  padding: 0 var(--space-2);
+  border-radius: var(--radius-md) var(--radius-md) 0 0;
+  font-size: 0.8125rem;
+  font-weight: 600;
+  letter-spacing: -0.005em;
+}
+
+.pane [role="tab"]:focus-visible {
+  outline: 2px solid var(--wb-ring);
+  outline-offset: -2px;
+}
+
+/* Where a document tab's menu opens: the pointer, or the tab's corner from the keyboard. */
+.menuAnchor {
+  position: fixed;
+  width: 0;
+  height: 0;
+  pointer-events: none;
+}
+
+/* A tab chosen by pointer shows only its underline. */
+.pane [data-pointer-tabs] [role="tab"]:focus-visible {
+  outline: none;
+}
+
+.content {
+  flex: 1;
+  min-height: 0;
+  overflow: auto;
+  overscroll-behavior: contain;
+  padding: var(--space-3) var(--space-6) var(--space-6);
+  overflow-wrap: anywhere;
+}
+
+/* Each pane is its own scroller, so the padding belongs inside it: padding on the panel sat below
+   the scroller as a band the page never reached. The foot leaves room for the last lines to scroll
+   clear of the floating bar, whose height the bar sets on its pane. */
+.content[data-slot="panel-content"] {
+  position: relative;
+  padding: 0;
+}
+
+.content > [data-slot="panel-pane"]:not(.fill) {
+  padding: var(--space-3) var(--space-6)
+    calc(var(--space-6) + var(--pane-bar-height, 0px));
+}
+
+.empty {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: var(--space-2);
+  max-width: 42ch;
+  margin: var(--space-2) 0 0;
+  color: var(--wb-muted-foreground);
+}
+
+.empty h2 {
+  margin: 0;
+  font-size: 1rem;
+  font-weight: 600;
+}
+
+.empty p {
+  margin: 0;
+  font-size: 0.8125rem;
+  line-height: 1.6;
+}
+
+.content > [data-slot="panel-pane"] > [data-slot="deliverable-body"] {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: var(--space-4);
+  min-width: 0;
+}
+
+/* A page that fills its pane edge to edge under the tabs: no padding, card border or fixed
+   height, so the app or mockup is the whole pane and the bar floats over its foot. */
+.content:has(> .fill[data-state="active"]) {
+  overflow: hidden;
+}
+
+.fill {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+.content > .fill > [data-slot="deliverable-body"] {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  align-items: stretch;
+  gap: 0;
+  min-height: 0;
+}
+
+/* A state shown in place of the page sits at the content's inset; the loading line's own
+   padding already gives part of it. */
+.fill > [data-slot="fault"],
+.fill > [data-slot="inline-note"] {
+  margin: var(--space-3) var(--space-6);
+}
+
+.fill > [data-slot="document-loading"] {
+  margin: var(--space-1) var(--space-6);
+}
+
+@media (max-width: 760px) {
+  .pane [data-slot="panel-handle"] {
+    display: none;
+  }
+
+  .content {
+    padding: var(--space-3) var(--space-4) var(--space-4);
+  }
+
+  .content > [data-slot="panel-pane"]:not(.fill) {
+    padding-inline: var(--space-4);
+  }
+}

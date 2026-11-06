@@ -1,4 +1,4 @@
-import { Button, Input, Switch } from "@corbits/react-ui";
+import { Button, Switch } from "@corbits/react-ui";
 import {
   Dialog,
   DialogBody,
@@ -46,6 +46,7 @@ import {
   triageReviewerFeedback,
 } from "../../api/artifacts.ts";
 import { sendMessage } from "../../api/conversation.ts";
+import { Fault, InlineNote, QuietState, type Tone } from "../../components.jsx";
 import { wording } from "../../config.ts";
 import { queryClient } from "../../queries/client.ts";
 import { keys } from "../../queries/keys.ts";
@@ -58,13 +59,23 @@ import {
   useWorkspaceReviewers,
 } from "../../workspace-approvals-setting.ts";
 import {
+  ApprovalField,
+  ApprovalFields,
+  FieldSaveButton,
+  LeanButton,
+  LeanInput,
+  LeanSelect,
+} from "../approval-fields.tsx";
+import {
   ApprovalPackagePreview,
   parseApprovalPackage,
   SlidesView,
 } from "./approval-package-preview.tsx";
+import styles from "./approval-rounds.module.css";
 import { humanFault, responseCode } from "./human-fault.ts";
 import { DesignTarget } from "./mockup-tweaks.tsx";
 import type { PassageQuote } from "./passage-note.tsx";
+import { SourceLink } from "./source-link.tsx";
 
 const roundText = wording.approvalRound;
 const OTHER_PERSONA_VALUE = "__other__";
@@ -75,31 +86,29 @@ const OUTCOME_OPTIONS: readonly ReviewerOutcome[] = [
   "comment",
 ];
 
-type BadgeTone = "neutral" | "accent" | "success" | "warning" | "danger";
-
-const ROUND_STATUS_TONE: Readonly<Record<ApprovalRoundStatus, BadgeTone>> = {
-  open: "neutral",
+const ROUND_STATUS_TONE: Readonly<Record<ApprovalRoundStatus, Tone>> = {
+  open: "info",
   settled: "success",
-  expired: "danger",
+  expired: "error",
 };
 
-const REVIEWER_STATE_TONE: Readonly<Record<ReviewerState, BadgeTone>> = {
-  sent: "neutral",
+const REVIEWER_STATE_TONE: Readonly<Record<ReviewerState, Tone>> = {
+  sent: "info",
   decided: "success",
-  expired: "danger",
+  expired: "error",
 };
 
-const OUTCOME_TONE: Readonly<Record<ReviewerOutcome, BadgeTone>> = {
+const OUTCOME_TONE: Readonly<Record<ReviewerOutcome, Tone>> = {
   approve: "success",
   request_changes: "warning",
-  comment: "neutral",
+  comment: "info",
 };
 
-const TRIAGE_STATUS_TONE: Readonly<Record<TriageItemStatus, BadgeTone>> = {
-  pending: "neutral",
+const TRIAGE_STATUS_TONE: Readonly<Record<TriageItemStatus, Tone>> = {
+  pending: "info",
   incorporated: "success",
-  dismissed: "neutral",
-  replied: "neutral",
+  dismissed: "info",
+  replied: "info",
 };
 
 function triggerBrowserDownload(file: File) {
@@ -126,7 +135,7 @@ function getEffectiveReviewerGoal(reviewer: ApprovalReviewer): string {
 
 function getReviewerStatusDisplay(reviewer: ApprovalReviewer): {
   label: string;
-  tone: BadgeTone;
+  tone: Tone;
 } {
   if (reviewer.decision !== undefined) {
     return {
@@ -461,14 +470,14 @@ export function SharePackageDialog({
 
   return (
     <div
-      className="approval-share-dialog"
+      className={styles.shareDialog}
       role="dialog"
       aria-label={roundText.dialogTitle}
       onKeyDown={(event) => {
         if (event.key === "Escape") onCancel();
       }}
     >
-      <div className="approval-share-reviewers">
+      <div className={styles.shareReviewers}>
         {reviewers.map((reviewer, index) => {
           const rowLabel = roundText.reviewerRowLabel(index + 1);
           const selectedWorkspaceId =
@@ -485,166 +494,117 @@ export function SharePackageDialog({
               : reviewer.customPersonaDraft;
           const showSaveToggle = reviewer.workspaceReviewerId === undefined;
           return (
-            <div
+            <ApprovalFields
               key={reviewer.key}
-              className="approval-inline-fields settings-reviewer-form"
+              variant="form"
               role="group"
               aria-label={rowLabel}
             >
               {workspaceReviewers.length === 0 ? null : (
-                <div className="approval-field-row">
-                  <span className="approval-field-label">
-                    {roundText.fieldLabels.saved}
-                  </span>
-                  <div className="approval-field-control">
-                    <select
-                      className="approval-lean-select"
-                      aria-label={`${rowLabel} ${roundText.workspaceReviewerLabel}`}
-                      value={selectedWorkspaceId}
-                      onChange={(event) =>
-                        selectWorkspaceReviewer(
-                          reviewer.key,
-                          event.target.value,
-                        )
-                      }
-                    >
-                      <option value="">
-                        {roundText.workspaceReviewerPlaceholder}
-                      </option>
-                      {workspaceReviewers.map((saved) => (
-                        <option key={saved.id} value={saved.id}>
-                          {roundText.workspaceReviewerOption(
-                            saved.name,
-                            saved.persona,
-                          )}
-                        </option>
-                      ))}
-                    </select>
-                  </div>
-                </div>
-              )}
-              <div className="approval-field-row">
-                <span className="approval-field-label">
-                  {roundText.fieldLabels.name}
-                </span>
-                <div className="approval-field-control">
-                  <Input
-                    className="approval-lean-input"
-                    aria-label={`${rowLabel} ${roundText.reviewerName}`}
-                    placeholder={roundText.reviewerNamePlaceholder}
-                    value={reviewer.name}
+                <ApprovalField label={roundText.fieldLabels.saved}>
+                  <LeanSelect
+                    aria-label={`${rowLabel} ${roundText.workspaceReviewerLabel}`}
+                    value={selectedWorkspaceId}
                     onChange={(event) =>
-                      setReviewerField(reviewer.key, "name", event.target.value)
-                    }
-                  />
-                </div>
-              </div>
-              <div className="approval-field-row">
-                <span className="approval-field-label">
-                  {roundText.fieldLabels.role}
-                </span>
-                <div className="approval-field-control">
-                  <select
-                    className="approval-lean-select"
-                    aria-label={`${rowLabel} ${roundText.reviewerPersona}`}
-                    value={selectedPersonaValue}
-                    onChange={(event) =>
-                      selectReviewerPersona(reviewer.key, event.target.value)
+                      selectWorkspaceReviewer(reviewer.key, event.target.value)
                     }
                   >
                     <option value="">
-                      {roundText.reviewerPersonaPlaceholder}
+                      {roundText.workspaceReviewerPlaceholder}
                     </option>
-                    {personaOptions.map((persona) => (
-                      <option key={persona} value={persona}>
-                        {persona}
+                    {workspaceReviewers.map((saved) => (
+                      <option key={saved.id} value={saved.id}>
+                        {roundText.workspaceReviewerOption(
+                          saved.name,
+                          saved.persona,
+                        )}
                       </option>
                     ))}
-                    <option value={OTHER_PERSONA_VALUE}>
-                      {roundText.otherPersona}
+                  </LeanSelect>
+                </ApprovalField>
+              )}
+              <ApprovalField label={roundText.fieldLabels.name}>
+                <LeanInput
+                  aria-label={`${rowLabel} ${roundText.reviewerName}`}
+                  placeholder={roundText.reviewerNamePlaceholder}
+                  value={reviewer.name}
+                  onChange={(event) =>
+                    setReviewerField(reviewer.key, "name", event.target.value)
+                  }
+                />
+              </ApprovalField>
+              <ApprovalField label={roundText.fieldLabels.role}>
+                <LeanSelect
+                  aria-label={`${rowLabel} ${roundText.reviewerPersona}`}
+                  value={selectedPersonaValue}
+                  onChange={(event) =>
+                    selectReviewerPersona(reviewer.key, event.target.value)
+                  }
+                >
+                  <option value="">
+                    {roundText.reviewerPersonaPlaceholder}
+                  </option>
+                  {personaOptions.map((persona) => (
+                    <option key={persona} value={persona}>
+                      {persona}
                     </option>
-                  </select>
-                </div>
-              </div>
+                  ))}
+                  <option value={OTHER_PERSONA_VALUE}>
+                    {roundText.otherPersona}
+                  </option>
+                </LeanSelect>
+              </ApprovalField>
               {reviewer.customPersonaOpen === true ? (
-                <div className="approval-field-row">
-                  <span className="approval-field-label">
-                    {roundText.customPersonaLabel}
-                  </span>
-                  <div className="approval-field-control approval-custom-persona-row">
-                    <Input
-                      className="approval-lean-input"
-                      aria-label={`${rowLabel} ${roundText.customPersonaLabel}`}
-                      placeholder={roundText.customPersonaPlaceholder}
-                      value={customPersonaValue}
-                      onChange={(event) =>
-                        setCustomPersonaDraft(reviewer.key, event.target.value)
+                <ApprovalField label={roundText.customPersonaLabel}>
+                  <LeanInput
+                    aria-label={`${rowLabel} ${roundText.customPersonaLabel}`}
+                    placeholder={roundText.customPersonaPlaceholder}
+                    value={customPersonaValue}
+                    onChange={(event) =>
+                      setCustomPersonaDraft(reviewer.key, event.target.value)
+                    }
+                    onKeyDown={(event) => {
+                      if (event.key === "Enter") {
+                        event.preventDefault();
+                        commitCustomPersona(reviewer.key);
                       }
-                      onKeyDown={(event) => {
-                        if (event.key === "Enter") {
-                          event.preventDefault();
-                          commitCustomPersona(reviewer.key);
-                        }
-                      }}
-                    />
-                    <Button
-                      type="button"
-                      size="sm"
-                      variant="outline"
-                      className="approval-field-save-btn"
-                      onClick={() => commitCustomPersona(reviewer.key)}
-                    >
-                      {roundText.addCustomPersona}
-                    </Button>
-                  </div>
-                </div>
-              ) : null}
-              <div className="approval-field-row">
-                <span className="approval-field-label">
-                  {roundText.fieldLabels.focus}
-                </span>
-                <div className="approval-field-control">
-                  <Input
-                    className="approval-lean-input"
-                    aria-label={`${rowLabel} ${roundText.reviewerGoal}`}
-                    placeholder={roundText.reviewerGoalPlaceholder}
-                    value={reviewer.goal === undefined ? "" : reviewer.goal}
-                    onChange={(event) =>
-                      setReviewerField(reviewer.key, "goal", event.target.value)
-                    }
+                    }}
                   />
-                </div>
-              </div>
-              <div className="approval-field-row">
-                <span className="approval-field-label">
-                  {roundText.fieldLabels.email}
-                </span>
-                <div className="approval-field-control">
-                  <Input
-                    className="approval-lean-input"
-                    type="email"
-                    aria-label={`${rowLabel} ${roundText.reviewerEmail}`}
-                    placeholder={roundText.reviewerEmailPlaceholder}
-                    value={reviewer.email === undefined ? "" : reviewer.email}
-                    onChange={(event) =>
-                      setReviewerField(
-                        reviewer.key,
-                        "email",
-                        event.target.value,
-                      )
-                    }
-                  />
-                </div>
-              </div>
-              {showSaveToggle ? (
-                <div className="approval-field-row">
-                  <span className="approval-field-label">
-                    {roundText.fieldLabels.workspace}
-                  </span>
-                  <div
-                    className="approval-field-control approval-save-workspace-toggle"
-                    title={roundText.saveToWorkspaceTooltip}
+                  <FieldSaveButton
+                    type="button"
+                    onClick={() => commitCustomPersona(reviewer.key)}
                   >
+                    {roundText.addCustomPersona}
+                  </FieldSaveButton>
+                </ApprovalField>
+              ) : null}
+              <ApprovalField label={roundText.fieldLabels.focus}>
+                <LeanInput
+                  aria-label={`${rowLabel} ${roundText.reviewerGoal}`}
+                  placeholder={roundText.reviewerGoalPlaceholder}
+                  value={reviewer.goal === undefined ? "" : reviewer.goal}
+                  onChange={(event) =>
+                    setReviewerField(reviewer.key, "goal", event.target.value)
+                  }
+                />
+              </ApprovalField>
+              <ApprovalField label={roundText.fieldLabels.email}>
+                <LeanInput
+                  type="email"
+                  aria-label={`${rowLabel} ${roundText.reviewerEmail}`}
+                  placeholder={roundText.reviewerEmailPlaceholder}
+                  value={reviewer.email === undefined ? "" : reviewer.email}
+                  onChange={(event) =>
+                    setReviewerField(reviewer.key, "email", event.target.value)
+                  }
+                />
+              </ApprovalField>
+              {showSaveToggle ? (
+                <ApprovalField
+                  label={roundText.fieldLabels.workspace}
+                  title={roundText.saveToWorkspaceTooltip}
+                >
+                  <div className={styles.saveToggle}>
                     <Switch
                       label={roundText.saveToWorkspaceLabel(
                         reviewer.name.trim(),
@@ -654,38 +614,32 @@ export function SharePackageDialog({
                         setSaveToWorkspace(reviewer.key, checked)
                       }
                     />
-                    <span className="inline-note">
+                    <InlineNote as="span">
                       {roundText.saveToWorkspaceNote}
-                    </span>
+                    </InlineNote>
                   </div>
-                </div>
+                </ApprovalField>
               ) : null}
-              <div className="approval-field-row">
-                <span className="approval-field-label">
-                  {roundText.fieldLabels.expires}
-                </span>
-                <div className="approval-field-control">
-                  <select
-                    className="approval-lean-select"
-                    aria-label={roundText.expiryLabel}
-                    value={expiry}
-                    onChange={(event) =>
-                      setExpiry(event.target.value as ExpiryPreset)
-                    }
-                  >
-                    {EXPIRY_OPTIONS.map((preset) => (
-                      <option key={preset} value={preset}>
-                        {roundText.expiry[preset]}
-                      </option>
-                    ))}
-                  </select>
-                </div>
-              </div>
-            </div>
+              <ApprovalField label={roundText.fieldLabels.expires}>
+                <LeanSelect
+                  aria-label={roundText.expiryLabel}
+                  value={expiry}
+                  onChange={(event) =>
+                    setExpiry(event.target.value as ExpiryPreset)
+                  }
+                >
+                  {EXPIRY_OPTIONS.map((preset) => (
+                    <option key={preset} value={preset}>
+                      {roundText.expiry[preset]}
+                    </option>
+                  ))}
+                </LeanSelect>
+              </ApprovalField>
+            </ApprovalFields>
           );
         })}
       </div>
-      <div className="row approval-share-actions">
+      <div className={styles.shareActions}>
         <Button type="button" size="sm" variant="ghost" onClick={onCancel}>
           {roundText.cancelShare}
         </Button>
@@ -773,25 +727,24 @@ function TriageItemRow({
   const alreadyIncorporated = item.status === "incorporated";
 
   return (
-    <li className="tweak-row approval-triage-item">
-      <div className="approval-triage-item-inline">
-        <div className="approval-triage-summary">
-          <span className="approval-triage-text">{item.text}</span>
-          <span className="approval-triage-meta">{scopeLabel}</span>
+    <li className={styles.triageItem}>
+      <div className={styles.triageInline}>
+        <div className={styles.triageSummary}>
+          <span className={styles.triageText}>{item.text}</span>
+          <span className={styles.triageMeta}>{scopeLabel}</span>
           {item.status === "pending" ? null : (
-            <span
-              className={`approval-status-text approval-status-${TRIAGE_STATUS_TONE[item.status]}`}
-            >
+            <QuietState tone={TRIAGE_STATUS_TONE[item.status]} dot={false}>
               {roundText.triageStatus[item.status]}
-            </span>
+            </QuietState>
           )}
         </div>
-        <div className="row tweak-actions approval-triage-actions">
+        <div className={styles.triageActions}>
           <Button
             type="button"
             size="sm"
             variant="ghost"
-            className="approval-triage-icon-btn approval-triage-icon-btn-check"
+            className={styles.triageIconButton}
+            data-action="incorporate"
             aria-label={roundText.incorporate}
             title={roundText.incorporate}
             disabled={busy || alreadyIncorporated}
@@ -803,7 +756,8 @@ function TriageItemRow({
             type="button"
             size="sm"
             variant="ghost"
-            className="approval-triage-icon-btn approval-triage-icon-btn-dismiss"
+            className={styles.triageIconButton}
+            data-action="dismiss"
             aria-label={roundText.dismiss}
             title={roundText.dismiss}
             disabled={
@@ -815,11 +769,7 @@ function TriageItemRow({
           </Button>
         </div>
       </div>
-      {fault === null ? null : (
-        <p className="inline-note" role="alert">
-          {fault}
-        </p>
-      )}
+      {fault === null ? null : <Fault>{fault}</Fault>}
     </li>
   );
 }
@@ -836,8 +786,8 @@ function renderReviewerDecisionSection(
     return null;
   }
   return (
-    <div className="approval-reviewer-decision">
-      <ul className="approval-triage-list" aria-label={roundText.triageHeading}>
+    <div className={styles.reviewerDecision}>
+      <ul className={styles.triageList} aria-label={roundText.triageHeading}>
         {reviewerItems.map((item) => (
           <TriageItemRow
             key={item.itemId}
@@ -865,46 +815,38 @@ function PaneSlideDeckView({
   const [slidesExpanded, setSlidesExpanded] = useState(false);
 
   return (
-    <div className="approval-pane-slides-view">
-      <div className="approval-pane-slides-bar">
-        <Button
-          type="button"
-          size="sm"
-          variant="ghost"
-          className="approval-lean-btn"
-          onClick={onBack}
-        >
+    <div className={styles.paneSlidesView} data-slot="pane-slide-deck">
+      <div className={styles.paneSlidesBar}>
+        <LeanButton type="button" onClick={onBack}>
           <ArrowLeft size={14} aria-hidden="true" />
           {wording.shell.back}
-        </Button>
-        <strong className="approval-pane-slides-title">{title}</strong>
-        <Button
+        </LeanButton>
+        <strong className={styles.paneSlidesTitle}>{title}</strong>
+        <LeanButton
           type="button"
-          size="sm"
-          variant="ghost"
-          className="approval-lean-btn"
           aria-label={wording.preview.expand}
           title={wording.preview.expand}
           onClick={() => setSlidesExpanded(true)}
         >
           <Maximize2 size={14} aria-hidden="true" />
-        </Button>
+        </LeanButton>
       </div>
       {bundle === null ? (
-        <p className="inline-note">{wording.approvalPackage.unreadable}</p>
+        <InlineNote>{wording.approvalPackage.unreadable}</InlineNote>
       ) : (
         <SlidesView deck={bundle.deck} />
       )}
       <Dialog open={slidesExpanded} onOpenChange={setSlidesExpanded}>
-        <DialogContent className="device-preview-expanded approval-slide-deck-dialog">
+        <DialogContent className={styles.slideDeckDialog}>
           <DialogHeader>
             <DialogTitle>{title}</DialogTitle>
           </DialogHeader>
-          <div className="approval-slide-deck-modal-body">
+          <div
+            className={styles.slideDeckModalBody}
+            data-slot="slide-deck-modal"
+          >
             {bundle === null ? (
-              <p className="inline-note">
-                {wording.approvalPackage.unreadable}
-              </p>
+              <InlineNote>{wording.approvalPackage.unreadable}</InlineNote>
             ) : (
               <SlidesView deck={bundle.deck} />
             )}
@@ -1193,225 +1135,176 @@ function ReviewerTableRow({
 
   return (
     <li
-      className="approval-reviewer-item approval-reviewer-row"
+      className={styles.reviewer}
       data-expanded={isExpanded ? "true" : "false"}
     >
       <button
         type="button"
-        className="approval-reviewer-row-toggle"
+        className={styles.rowToggle}
         aria-expanded={isExpanded}
         onClick={onToggleExpand}
       >
-        <span className="approval-reviewer-chevron" aria-hidden="true">
+        <span className={styles.chevron} aria-hidden="true">
           {isExpanded ? <ChevronDown size={15} /> : <ChevronRight size={15} />}
         </span>
-        <strong className="approval-reviewer-cell-name">{reviewer.name}</strong>
-        <span className="approval-reviewer-cell-role">{reviewer.persona}</span>
-        <span className="approval-reviewer-cell-goal">{effectiveGoal}</span>
-        <span className="approval-reviewer-cell-status">
-          <span
-            className={`approval-status-text approval-status-${statusDisplay.tone}`}
-          >
+        <strong className={styles.cellName}>{reviewer.name}</strong>
+        <span className={styles.cellRole}>{reviewer.persona}</span>
+        <span className={styles.cellGoal}>{effectiveGoal}</span>
+        <span className={styles.cellStatus} data-cell="status">
+          <QuietState tone={statusDisplay.tone} dot={false}>
             {statusDisplay.label}
-          </span>
+          </QuietState>
         </span>
       </button>
-      <div className="approval-reviewer-drawer" hidden={!isExpanded}>
-        {rowFault === null ? null : (
-          <p className="inline-note" role="alert">
-            {rowFault}
-          </p>
-        )}
-        <div className="approval-inline-fields">
-          <div className="approval-field-row">
-            <span className="approval-field-label">
-              {roundText.fieldLabels.name}
-            </span>
-            <div className="approval-field-control">
-              <Input
-                className="approval-lean-input"
-                aria-label={`${reviewer.name} ${roundText.reviewerName}`}
-                value={nameDraft}
-                disabled={round.status !== "open"}
-                onChange={(event) => setNameDraft(event.target.value)}
-              />
-            </div>
-            <div className="approval-field-action">
-              {round.status === "open" && nameDirty ? (
-                <Button
+      <div
+        className={styles.drawer}
+        data-slot="reviewer-drawer"
+        hidden={!isExpanded}
+      >
+        {rowFault === null ? null : <Fault>{rowFault}</Fault>}
+        <ApprovalFields>
+          <ApprovalField
+            label={roundText.fieldLabels.name}
+            action={
+              round.status === "open" && nameDirty ? (
+                <FieldSaveButton
                   type="button"
-                  size="sm"
-                  variant="outline"
-                  className="approval-field-save-btn"
                   disabled={savingDetails}
                   onClick={() => void saveReviewerDetails()}
                 >
                   {savingDetails ? roundText.savingField : roundText.saveField}
-                </Button>
-              ) : null}
-            </div>
-          </div>
-          <div className="approval-field-row">
-            <span className="approval-field-label">
-              {roundText.fieldLabels.role}
-            </span>
-            <div className="approval-field-control">
-              <Input
-                className="approval-lean-input"
-                aria-label={`${reviewer.name} ${roundText.reviewerPersona}`}
-                value={personaDraft}
-                disabled={round.status !== "open"}
-                onChange={(event) => setPersonaDraft(event.target.value)}
-              />
-            </div>
-            <div className="approval-field-action">
-              {round.status === "open" && personaDirty ? (
-                <Button
+                </FieldSaveButton>
+              ) : null
+            }
+          >
+            <LeanInput
+              aria-label={`${reviewer.name} ${roundText.reviewerName}`}
+              value={nameDraft}
+              disabled={round.status !== "open"}
+              onChange={(event) => setNameDraft(event.target.value)}
+            />
+          </ApprovalField>
+          <ApprovalField
+            label={roundText.fieldLabels.role}
+            action={
+              round.status === "open" && personaDirty ? (
+                <FieldSaveButton
                   type="button"
-                  size="sm"
-                  variant="outline"
-                  className="approval-field-save-btn"
                   disabled={savingDetails}
                   onClick={() => void saveReviewerDetails()}
                 >
                   {savingDetails ? roundText.savingField : roundText.saveField}
-                </Button>
-              ) : null}
-            </div>
-          </div>
-          <div className="approval-field-row">
-            <span className="approval-field-label">
-              {roundText.fieldLabels.focus}
-            </span>
-            <div className="approval-field-control">
-              <Input
-                className="approval-lean-input"
-                aria-label={`${reviewer.name} ${roundText.reviewerGoal}`}
-                placeholder={roundText.defaultGoal(reviewer.persona)}
-                value={goalDraft}
-                disabled={round.status !== "open"}
-                onChange={(event) => setGoalDraft(event.target.value)}
-              />
-            </div>
-            <div className="approval-field-action">
-              {round.status === "open" && goalDirty ? (
-                <Button
+                </FieldSaveButton>
+              ) : null
+            }
+          >
+            <LeanInput
+              aria-label={`${reviewer.name} ${roundText.reviewerPersona}`}
+              value={personaDraft}
+              disabled={round.status !== "open"}
+              onChange={(event) => setPersonaDraft(event.target.value)}
+            />
+          </ApprovalField>
+          <ApprovalField
+            label={roundText.fieldLabels.focus}
+            action={
+              round.status === "open" && goalDirty ? (
+                <FieldSaveButton
                   type="button"
-                  size="sm"
-                  variant="outline"
-                  className="approval-field-save-btn"
                   disabled={savingDetails}
                   onClick={() => void saveReviewerDetails()}
                 >
                   {savingDetails ? roundText.savingField : roundText.saveField}
-                </Button>
-              ) : null}
-            </div>
-          </div>
-          <div className="approval-field-row">
-            <span className="approval-field-label">
-              {roundText.fieldLabels.decision}
-            </span>
-            <div className="approval-field-control">
-              <select
-                className="approval-lean-select"
-                aria-label={`${reviewer.name} ${roundText.outcomeLabel}`}
-                value={outcomeDraft}
-                disabled={round.status !== "open"}
-                onChange={(event) =>
-                  setOutcomeDraft(event.target.value as ReviewerOutcome | "")
-                }
-              >
-                <option value="">{roundText.pendingOutcome}</option>
-                {OUTCOME_OPTIONS.map((option) => (
-                  <option key={option} value={option}>
-                    {roundText.outcome[option]}
-                  </option>
-                ))}
-              </select>
-            </div>
-            <div className="approval-field-action">
-              {round.status === "open" && outcomeDirty ? (
-                <Button
+                </FieldSaveButton>
+              ) : null
+            }
+          >
+            <LeanInput
+              aria-label={`${reviewer.name} ${roundText.reviewerGoal}`}
+              placeholder={roundText.defaultGoal(reviewer.persona)}
+              value={goalDraft}
+              disabled={round.status !== "open"}
+              onChange={(event) => setGoalDraft(event.target.value)}
+            />
+          </ApprovalField>
+          <ApprovalField
+            label={roundText.fieldLabels.decision}
+            action={
+              round.status === "open" && outcomeDirty ? (
+                <FieldSaveButton
                   type="button"
-                  size="sm"
-                  variant="outline"
-                  className="approval-field-save-btn"
                   disabled={savingDecision}
                   onClick={() => void saveInlineDecision(false)}
                 >
                   {savingDecision ? roundText.savingField : roundText.saveField}
-                </Button>
-              ) : null}
-            </div>
-          </div>
-          <div className="approval-field-row">
-            <span className="approval-field-label">
-              {roundText.fieldLabels.feedback}
-            </span>
-            <div className="approval-field-control">
-              <Input
-                className="approval-lean-input"
-                aria-label={`${reviewer.name} ${roundText.noteLabel}`}
-                placeholder={roundText.inlineFeedbackPlaceholder}
-                value={noteDraft}
-                disabled={round.status !== "open"}
-                onChange={(event) => setNoteDraft(event.target.value)}
-              />
-            </div>
-            <div className="approval-field-action">
-              {round.status === "open" && noteDirty ? (
-                <Button
+                </FieldSaveButton>
+              ) : null
+            }
+          >
+            <LeanSelect
+              aria-label={`${reviewer.name} ${roundText.outcomeLabel}`}
+              value={outcomeDraft}
+              disabled={round.status !== "open"}
+              onChange={(event) =>
+                setOutcomeDraft(event.target.value as ReviewerOutcome | "")
+              }
+            >
+              <option value="">{roundText.pendingOutcome}</option>
+              {OUTCOME_OPTIONS.map((option) => (
+                <option key={option} value={option}>
+                  {roundText.outcome[option]}
+                </option>
+              ))}
+            </LeanSelect>
+          </ApprovalField>
+          <ApprovalField
+            label={roundText.fieldLabels.feedback}
+            action={
+              round.status === "open" && noteDirty ? (
+                <FieldSaveButton
                   type="button"
-                  size="sm"
-                  variant="outline"
-                  className="approval-field-save-btn"
                   disabled={savingDecision}
                   onClick={() => void saveInlineDecision(true)}
                 >
                   {savingDecision ? roundText.savingField : roundText.saveField}
-                </Button>
-              ) : null}
-            </div>
-          </div>
-        </div>
-        <div className="row approval-reviewer-actions">
+                </FieldSaveButton>
+              ) : null
+            }
+          >
+            <LeanInput
+              aria-label={`${reviewer.name} ${roundText.noteLabel}`}
+              placeholder={roundText.inlineFeedbackPlaceholder}
+              value={noteDraft}
+              disabled={round.status !== "open"}
+              onChange={(event) => setNoteDraft(event.target.value)}
+            />
+          </ApprovalField>
+        </ApprovalFields>
+        <div className={styles.reviewerActions}>
           {hasCuratedDeck ? (
             <>
-              <Button
-                type="button"
-                size="sm"
-                variant="ghost"
-                className="approval-lean-btn"
-                onClick={onViewSlides}
-              >
+              <LeanButton type="button" onClick={onViewSlides}>
                 <Presentation size={14} aria-hidden="true" />
                 {roundText.viewSlideDeck}
-              </Button>
-              <Button
+              </LeanButton>
+              <LeanButton
                 type="button"
-                size="sm"
-                variant="ghost"
-                className="approval-lean-btn"
                 aria-label={roundText.downloadReviewerZip(reviewer.name)}
                 onClick={openDownloadDialog}
               >
                 <Download size={14} aria-hidden="true" />
                 {roundText.downloadZipShort}
-              </Button>
+              </LeanButton>
             </>
           ) : (
-            <Button
+            <LeanButton
               type="button"
-              size="sm"
-              variant="ghost"
-              className="approval-lean-btn"
               disabled={isGenerating}
               onClick={() => void askCoordinatorToTailor()}
             >
               <Presentation size={14} aria-hidden="true" />
               {generateLabel}
-            </Button>
+            </LeanButton>
           )}
         </div>
         {renderReviewerDecisionSection(
@@ -1424,7 +1317,7 @@ function ReviewerTableRow({
         )}
       </div>
       <Dialog open={downloadOpen} onOpenChange={setDownloadOpen}>
-        <DialogContent className="approval-download-dialog">
+        <DialogContent>
           <DialogHeader>
             <DialogTitle>
               {roundText.downloadDialogTitle(reviewer.name)}
@@ -1432,10 +1325,8 @@ function ReviewerTableRow({
             <DialogDescription>{reviewer.persona}</DialogDescription>
           </DialogHeader>
           <DialogBody>
-            <div className="row approval-reviewer-download-head">
-              <span className="inline-note">
-                {roundText.downloadSectionLead}
-              </span>
+            <div className={styles.downloadHead}>
+              <InlineNote as="span">{roundText.downloadSectionLead}</InlineNote>
               <Button
                 type="button"
                 size="sm"
@@ -1447,9 +1338,9 @@ function ReviewerTableRow({
                   : roundText.selectAllFiles}
               </Button>
             </div>
-            <ul className="approval-package-checklist">
+            <ul className={styles.checklist}>
               <li>
-                <label className="approval-package-check-row">
+                <label className={styles.checkRow}>
                   <input
                     type="checkbox"
                     checked={!excludedPaths.has("deck.pptx")}
@@ -1459,7 +1350,7 @@ function ReviewerTableRow({
                 </label>
               </li>
               <li>
-                <label className="approval-package-check-row">
+                <label className={styles.checkRow}>
                   <input
                     type="checkbox"
                     checked={!excludedPaths.has("deck.pdf")}
@@ -1474,7 +1365,7 @@ function ReviewerTableRow({
                   wording.documentTab[source.kind] ?? source.kind;
                 return (
                   <li key={`${source.artifactId}:${String(source.version)}`}>
-                    <div className="approval-package-check-row">
+                    <div className={styles.checkRow}>
                       <input
                         type="checkbox"
                         aria-label={roundText.packageItemSource(
@@ -1485,9 +1376,7 @@ function ReviewerTableRow({
                         checked={!excludedPaths.has(docPath)}
                         onChange={() => togglePackageEntry(docPath)}
                       />
-                      <button
-                        type="button"
-                        className="approval-package-source-link"
+                      <SourceLink
                         onClick={() =>
                           onOpenSource?.(source.kind, source.version)
                         }
@@ -1497,7 +1386,7 @@ function ReviewerTableRow({
                           source.title,
                           source.version,
                         )}
-                      </button>
+                      </SourceLink>
                     </div>
                   </li>
                 );
@@ -1624,24 +1513,18 @@ function RoundCard({
 
   return (
     <section
-      className="approval-round-card approval-round-section"
+      className={styles.round}
       aria-label={roundText.roundHeading(round.packageVersion)}
     >
       {flush ? null : (
-        <header className="approval-round-meta">
+        <header className={styles.roundMeta}>
           <strong>{roundText.roundHeading(round.packageVersion)}</strong>
-          <span
-            className={`approval-status-text approval-status-${ROUND_STATUS_TONE[round.status]}`}
-          >
+          <QuietState tone={ROUND_STATUS_TONE[round.status]} dot={false}>
             {roundText.roundStatus[round.status]}
-          </span>
+          </QuietState>
         </header>
       )}
-      {fault === null ? null : (
-        <p className="inline-note" role="alert">
-          {fault}
-        </p>
-      )}
+      {fault === null ? null : <Fault>{fault}</Fault>}
       {viewingSlides !== null ? (
         <PaneSlideDeckView
           title={roundText.slideDeckDialogTitle(
@@ -1653,15 +1536,15 @@ function RoundCard({
         />
       ) : (
         <>
-          <div className="approval-reviewer-table">
-            <div className="approval-reviewer-table-head" aria-hidden="true">
+          <div className={styles.table}>
+            <div className={styles.tableHead} aria-hidden="true">
               <span />
               <span>{roundText.tableHeaders.reviewer}</span>
               <span>{roundText.tableHeaders.role}</span>
               <span>{roundText.tableHeaders.goal}</span>
               <span>{roundText.tableHeaders.status}</span>
             </div>
-            <ul className="approval-reviewer-list">
+            <ul className={styles.list}>
               {round.reviewers.map((reviewer, reviewerIndex) => {
                 const resolved = resolveReviewerPackage({
                   reviewer,
@@ -1705,17 +1588,14 @@ function RoundCard({
             </ul>
           </div>
           {round.status === "settled" ? null : (
-            <div className="row approval-editor-actions">
-              <Button
+            <div className={styles.editorActions}>
+              <LeanButton
                 type="button"
-                size="sm"
-                variant="ghost"
-                className="approval-lean-btn"
                 disabled={!canSettle || settling}
                 onClick={() => void settle()}
               >
                 {settling ? roundText.settlingRound : roundText.settleRound}
-              </Button>
+              </LeanButton>
             </div>
           )}
         </>
@@ -1966,8 +1846,8 @@ export function ApprovalRoundsPanel({
       );
     }
     return (
-      <div className="approval-rounds-empty">
-        <p className="inline-note">{roundText.empty}</p>
+      <div className={styles.empty}>
+        <InlineNote>{roundText.empty}</InlineNote>
         {bundle === null ? null : (
           <Button
             type="button"
@@ -1985,17 +1865,13 @@ export function ApprovalRoundsPanel({
 
   const renderRoundsContent = () => {
     if (loading) {
-      return (
-        <p className="inline-note" role="status">
-          {roundText.loading}
-        </p>
-      );
+      return <InlineNote role="status">{roundText.loading}</InlineNote>;
     }
     if (rounds.length === 0) {
       return renderEmptyRoundsContent();
     }
     return (
-      <div className="approval-rounds-list">
+      <div className={styles.rounds}>
         {rounds.map((round) => (
           <RoundCard
             key={round.roundId}
@@ -2018,12 +1894,12 @@ export function ApprovalRoundsPanel({
   };
 
   return (
-    <section className="approval-rounds-panel" aria-label={roundText.heading}>
+    <section className={styles.panel} aria-label={roundText.heading}>
       {flush ? null : (
         <>
-          <header className="approval-rounds-header">
+          <header className={styles.header}>
             <h2>{roundText.heading}</h2>
-            <div className="approval-rounds-actions">
+            <div className={styles.headerActions}>
               <Button
                 type="button"
                 size="sm"
@@ -2034,14 +1910,10 @@ export function ApprovalRoundsPanel({
               </Button>
             </div>
           </header>
-          <p className="inline-note">{roundText.lead}</p>
+          <InlineNote>{roundText.lead}</InlineNote>
         </>
       )}
-      {fault === null ? null : (
-        <p className="inline-note" role="alert">
-          {fault}
-        </p>
-      )}
+      {fault === null ? null : <Fault>{fault}</Fault>}
       <Dialog open={shareOpen} onOpenChange={setShareOpen}>
         <DialogContent>
           <DialogHeader>
@@ -2096,8 +1968,8 @@ export function ContextualApprovalRounds({
     }
     return (
       <>
-        <aside className="approval-package-reminder" role="note">
-          <p className="inline-note">{wording.approvalPackage.reminder}</p>
+        <aside className={styles.packageReminder} role="note">
+          <InlineNote>{wording.approvalPackage.reminder}</InlineNote>
         </aside>
         <ApprovalPackagePreview
           content={packageContent}

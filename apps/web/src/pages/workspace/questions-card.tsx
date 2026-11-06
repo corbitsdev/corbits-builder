@@ -27,7 +27,9 @@ import {
 import { wording } from "../../config.ts";
 import type { QuestionsLayout } from "../../questions-layout-setting.ts";
 import type { CallResult } from "./live-run.ts";
-import "./questions-card.css";
+import { clsx } from "clsx";
+import { Fault } from "../../components.jsx";
+import styles from "./questions-card.module.css";
 
 const text = wording.questions;
 
@@ -107,7 +109,7 @@ type AnswerRow = { id: string; prompt: string; answer: string };
 
 function AnswerList({ answers }: { answers: readonly AnswerRow[] }) {
   return (
-    <dl className="questions-card-answers">
+    <dl className={styles.answers}>
       {answers.map(({ id, prompt, answer }) => (
         <div key={id}>
           <dt>{prompt}</dt>
@@ -124,13 +126,11 @@ function Settled({ ask, reply }: { ask: AskQuestions; reply?: string }) {
     return (
       <SettledBox
         title={text.replaced}
-        mark={<CornerDownRight className="questions-card-settled-mark" />}
+        mark={<CornerDownRight className={styles.settledMark} />}
       />
     );
   const answers = repliedAnswers(ask.questions, reply);
-  const mark = (
-    <Check className="questions-card-settled-mark questions-card-settled-ok" />
-  );
+  const mark = <Check className={clsx(styles.settledMark, styles.settledOk)} />;
   if (answers.length === 0)
     return <SettledBox title={text.answeredInChat} mark={mark} />;
   return (
@@ -150,8 +150,8 @@ function SettledBox({
   children?: ReactNode;
 }) {
   return (
-    <section className="questions-card-settled" aria-label={title}>
-      <p className="questions-card-settled-title">
+    <section className={styles.settled} aria-label={title}>
+      <p className={styles.settledTitle}>
         {mark}
         {title}
       </p>
@@ -178,7 +178,7 @@ function OtherInput({
   return (
     <Input
       autoFocus
-      className="questions-card-other-input"
+      className={styles.otherInput}
       disabled={disabled}
       aria-label={`${question.prompt} ${text.otherAnswer}`}
       placeholder={text.other}
@@ -217,7 +217,7 @@ function SingleField({
     ? [...question.options, { value: other, label: text.other }]
     : question.options;
   return (
-    <div className="questions-card-question">
+    <div className={styles.question}>
       <IntakeForm
         idPrefix={idPrefix}
         disabled={disabled}
@@ -273,12 +273,12 @@ function MultiField({
   onChange: (answer: Answer) => void;
 }) {
   return (
-    <fieldset className="questions-card-question" disabled={disabled}>
+    <fieldset className={styles.question} disabled={disabled}>
       <legend>{question.prompt}</legend>
       {question.options.map((option) => (
         <Checkbox
           key={option.value}
-          className="questions-card-option"
+          className={styles.option}
           label={option.label}
           checked={answer.chosen.includes(option.value)}
           disabled={disabled}
@@ -323,7 +323,7 @@ function MultiOther({
   if (!answer.other)
     return (
       <Checkbox
-        className="questions-card-option"
+        className={styles.option}
         label={text.other}
         checked={false}
         disabled={disabled}
@@ -331,10 +331,10 @@ function MultiOther({
       />
     );
   return (
-    <div className="questions-card-other">
+    <div className={styles.other}>
       <Checkbox
         id={id}
-        className="questions-card-option"
+        className={styles.option}
         checked
         disabled={disabled}
         onCheckedChange={untick}
@@ -471,15 +471,15 @@ function StepQuestion({
     ...(allowOther ? [text.other] : []),
   ];
   return (
-    <div className="questions-card-question">
-      <p className="questions-card-prompt" id={`${idPrefix}-${question.id}`}>
+    <div className={styles.question}>
+      <p className={styles.prompt} id={`${idPrefix}-${question.id}`}>
         {question.prompt}
       </p>
       <div
         ref={list}
         role="listbox"
         tabIndex={disabled ? -1 : 0}
-        className="questions-card-options"
+        className={styles.options}
         aria-labelledby={`${idPrefix}-${question.id}`}
         aria-multiselectable={multi}
         aria-activedescendant={optionId(active)}
@@ -493,11 +493,11 @@ function StepQuestion({
               id={optionId(index)}
               role="option"
               aria-selected
-              className="questions-card-choice"
+              className={styles.choice}
               data-active={active === index ? "" : undefined}
             >
               <Check
-                className="questions-card-choice-mark"
+                className={styles.choiceMark}
                 onClick={() => {
                   if (disabled || !multi) return;
                   onChange(pick(otherIndex));
@@ -522,7 +522,7 @@ function StepQuestion({
               id={optionId(index)}
               role="option"
               aria-selected={chosen(index)}
-              className="questions-card-choice"
+              className={styles.choice}
               data-active={active === index ? "" : undefined}
               onClick={() => {
                 if (disabled) return;
@@ -532,9 +532,9 @@ function StepQuestion({
               }}
             >
               {chosen(index) ? (
-                <Check className="questions-card-choice-mark" />
+                <Check className={styles.choiceMark} />
               ) : (
-                <span className="questions-card-choice-mark" />
+                <span className={styles.choiceMark} />
               )}
               <span>{label}</span>
             </div>
@@ -565,7 +565,6 @@ function StepReview({
 }) {
   return (
     <div
-      className="questions-card-review"
       onKeyDown={(event) => {
         if (event.key !== "ArrowLeft") return;
         event.preventDefault();
@@ -623,11 +622,7 @@ function StepsBody({
   const question = questions[step];
   return (
     <>
-      <div
-        role="tablist"
-        aria-label={text.steps}
-        className="questions-card-steps"
-      >
+      <div role="tablist" aria-label={text.steps} className={styles.steps}>
         {[...questions.map((item) => stepName(item.id)), text.submit].map(
           (name, index) => {
             const item = questions[index];
@@ -641,12 +636,12 @@ function StepsBody({
                 type="button"
                 role="tab"
                 aria-selected={index === step}
-                className="questions-card-step"
+                className={styles.step}
                 data-done={done ? "" : undefined}
                 disabled={disabled || index > furthest}
                 onClick={() => go(index)}
               >
-                {done ? <Check className="questions-card-step-mark" /> : null}
+                {done ? <Check className={styles.stepMark} /> : null}
                 {name}
               </button>
             );
@@ -678,7 +673,7 @@ function StepsBody({
           onBack={() => go(step - 1)}
         />
       )}
-      <p className="questions-card-keys">
+      <p className={styles.keys}>
         {question === undefined ? text.keys.review : text.keys[question.kind]}
       </p>
     </>
@@ -731,11 +726,7 @@ export function QuestionsCard({
     setSending(false);
     setFailed(!sent);
   };
-  const notSent = failed ? (
-    <p className="inline-note" role="alert">
-      {text.notSent}
-    </p>
-  ) : undefined;
+  const notSent = failed ? <Fault>{text.notSent}</Fault> : undefined;
   const gate = {
     kind: "form" as const,
     title: text.title(ask.questions.length),
@@ -743,7 +734,7 @@ export function QuestionsCard({
   if (layout === "steps")
     return (
       <GateBlock
-        className="questions-card"
+        className={styles.card}
         gate={gate}
         {...(notSent === undefined ? {} : { footer: notSent })}
       >
@@ -760,7 +751,7 @@ export function QuestionsCard({
     );
   return (
     <GateBlock
-      className="questions-card"
+      className={styles.card}
       gate={gate}
       footer={
         <>
@@ -776,7 +767,7 @@ export function QuestionsCard({
         </>
       }
     >
-      <div className="questions-card-fields">
+      <div className={styles.fields}>
         {ask.questions.map((question) => {
           const answer = answerOf(question);
           const onChange = (next: Answer) => setAnswer(question, next);

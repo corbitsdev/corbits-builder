@@ -17,6 +17,7 @@ import {
 import { approvalQuestion, shortDocumentName } from "./collaboration.ts";
 import { approvalToolPart } from "./conversation-parts.ts";
 import type { ApprovalOutcome, DocumentApproval } from "./transcript.tsx";
+import styles from "./document-decision.module.css";
 
 /** At most ten words of a design direction, with parenthetical notes removed. */
 function designConceptDescription(direction: string): string {
@@ -185,14 +186,14 @@ export function DocumentDecision({
   const sources = approval.sources ?? [];
   const sourceList =
     sources.length === 0 ? null : (
-      <ul className="document-decision-sources">
+      <ul className={styles.sources}>
         {sources.map((source) => (
           <li key={source.kind}>
             <UiButton
               type="button"
               variant="link"
               size="sm"
-              className="document-decision-show"
+              className={styles.show}
               title={text.source(source.title, source.version)}
               disabled={onShowDocument === undefined}
               onClick={() => onShowDocument?.(source.kind)}
@@ -211,13 +212,9 @@ export function DocumentDecision({
     );
   return (
     <ToolApproval
-      className={[
-        "document-decision",
-        "document-decision-once",
-        design ? "document-decision-design" : "",
-      ]
-        .filter((name) => name !== "")
-        .join(" ")}
+      className={styles.decision}
+      data-once=""
+      data-design={design ? "" : undefined}
       part={approvalToolPart(approval.approvalId, approval.outcome)}
       onDecide={decide}
       disabled={disabled}
@@ -236,13 +233,13 @@ export function DocumentDecision({
       }}
     >
       {approving === undefined ? null : (
-        <p className="document-decision-what">{approving}</p>
+        <p className={styles.what}>{approving}</p>
       )}
       {instruction !== undefined && INSTRUCTION_ASKS.has(tool) ? (
         <p>{instruction}</p>
       ) : null}
       {sources.length > 1 ? (
-        <details className="document-decision-details">
+        <details className={styles.details}>
           <summary>{text.covers(sources.length)}</summary>
           {sourceList}
         </details>
@@ -251,10 +248,7 @@ export function DocumentDecision({
       )}
       {approval.concepts === undefined ||
       approval.concepts.length === 0 ? null : (
-        <table
-          className="document-decision-concepts"
-          aria-label={text.concepts}
-        >
+        <table className={styles.concepts} aria-label={text.concepts}>
           <thead>
             <tr>
               <th scope="col">{text.conceptColumns.design}</th>
@@ -271,9 +265,7 @@ export function DocumentDecision({
           </tbody>
         </table>
       )}
-      {body === undefined ? null : (
-        <p className="document-decision-next">{body}</p>
-      )}
+      {body === undefined ? null : <p className={styles.next}>{body}</p>}
       {asked === undefined ||
       shown ||
       name === undefined ||
@@ -282,14 +274,14 @@ export function DocumentDecision({
           type="button"
           variant="link"
           size="sm"
-          className="document-decision-show"
+          className={styles.show}
           onClick={() => onShowDocument(asked.kind)}
         >
           {text.show(name)}
         </UiButton>
       )}
       {instruction !== undefined && FOLDED_INSTRUCTION_ASKS.has(tool) ? (
-        <details className="document-decision-details">
+        <details className={styles.details}>
           <summary>{text.details}</summary>
           <p>{instruction}</p>
         </details>
@@ -329,7 +321,7 @@ export function PackageDecision({
   };
   return (
     <ToolApproval
-      className="document-decision"
+      className={styles.decision}
       part={approvalToolPart(approvalId, outcome)}
       onDecide={decide}
       disabled={disabled}
@@ -344,7 +336,7 @@ export function PackageDecision({
         denied: text.packagesDeclined(packages.join(", ")),
       }}
     >
-      <p className="document-decision-next">{text.packagesDetail}</p>
+      <p className={styles.next}>{text.packagesDetail}</p>
       {countdown}
     </ToolApproval>
   );

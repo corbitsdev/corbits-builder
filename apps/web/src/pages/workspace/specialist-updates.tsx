@@ -20,6 +20,7 @@ import type { ConversationThread } from "../../api/conversation.ts";
 import { participantLabel, visibleChatText } from "./visible-chat.ts";
 import { type } from "arktype";
 import { readJson } from "../../json.ts";
+import styles from "./specialist-updates.module.css";
 
 export type SpecialistUpdate = {
   readonly sender: string;
@@ -137,19 +138,17 @@ function UpdateRow({
       }}
     >
       <ToolHeader
-        className="room-mail-row"
+        className={styles.row}
         label={
           <>
-            <span className="room-mail-names">
+            <span className={styles.names} data-slot="update-names">
               {wording.updates(
                 subject ?? participantLabel(group.sender),
                 group.updates.length,
               )}
             </span>
             {latest === undefined ? null : (
-              <span className="room-mail-summary">
-                {summaryLine(latest.text)}
-              </span>
+              <span className={styles.summary}>{summaryLine(latest.text)}</span>
             )}
           </>
         }
@@ -161,7 +160,7 @@ function UpdateRow({
           group.updates.map((update) => (
             <div
               key={`${String(update.at)}:${update.text}`}
-              className="room-mail-turn"
+              className={styles.turn}
             >
               <Markdown source={update.text} />
             </div>
@@ -198,7 +197,7 @@ export function FoldedUpdates({
   const count = groups.reduce((sum, group) => sum + group.updates.length, 0);
   return (
     <ConversationItem itemId={`folded:${groups[0]?.key ?? ""}`}>
-      <details className="room-mail-fold">
+      <details className={styles.fold}>
         <summary>{wording.updatesFolded(count)}</summary>
         {groups.map((group) => (
           <UpdateRow

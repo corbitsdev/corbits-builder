@@ -6,7 +6,6 @@
  */
 import { useState, type CSSProperties } from "react";
 import { Badge, Button } from "@corbits/react-ui";
-import { MenuLabel } from "@corbits/react-ui/ui/menu";
 import { Info } from "lucide-react";
 import { toast } from "sonner";
 import type { ProjectArtifact } from "@corbits-builder/client";
@@ -22,10 +21,16 @@ import {
   type DesignFiles,
 } from "./design-preview.tsx";
 import { useDesignThemes, useThemeFiles } from "./design-themes.tsx";
-import { clock, useElapsedMs } from "./elapsed.tsx";
 import { DesignTarget, mockupLook } from "./mockup-tweaks.tsx";
 import type { PreviewDevice } from "./device-preview.tsx";
-import type { PaneBarGroup } from "./pane-bar.tsx";
+import { PaneBarTip, type PaneBarGroup } from "./pane-bar.tsx";
+import {
+  Sketching,
+  SketchingClock,
+  SketchingLead,
+  SketchingNote,
+} from "./sketching.tsx";
+import styles from "./design-concepts.module.css";
 
 export const DESIGN_OPTION = "design_option";
 const CONCEPT_TAB = "concept:";
@@ -133,11 +138,7 @@ export function ConceptMockup({
               id: "direction",
               label: wording.design.conceptDirection,
               icon: <Info size={16} aria-hidden="true" />,
-              menu: (
-                <MenuLabel className="pane-bar-tip">
-                  {concept.direction}
-                </MenuLabel>
-              ),
+              menu: <PaneBarTip>{concept.direction}</PaneBarTip>,
             },
           ],
           ...trailing,
@@ -151,6 +152,7 @@ export function ConceptMockup({
           device={device}
           onDevice={onDevice}
           trailing={bar}
+          fill
         />
       </DesignTarget.Provider>
     );
@@ -168,6 +170,7 @@ export function ConceptMockup({
         onDevice={onDevice}
         leading={[draftBadge(concept.run?.working === true)]}
         trailing={bar}
+        fill
       />
     </DesignTarget.Provider>
   );
@@ -204,31 +207,6 @@ function useConceptSeed(projectId: string, concept: ConceptView) {
   };
 }
 
-/** The running clock, mounted only while the designer is mid-turn. */
-function SketchingClock({ since }: { since: string }) {
-  const seconds = Math.floor(useElapsedMs(since) / 1_000);
-  return (
-    <span className="concept-sketching-clock" role="timer" aria-live="off">
-      {wording.design.conceptSketchingElapsed(clock(seconds))}
-    </span>
-  );
-}
-
-/** An app's frame drawn as placeholder bars; it pulses unless its container is still. */
-export const AppSketch = () => (
-  <div className="concept-sketch" aria-hidden="true">
-    <span className="concept-sketch-bar" />
-    <span className="concept-sketch-title" />
-    <span className="concept-sketch-line" />
-    <span className="concept-sketch-line concept-sketch-line-short" />
-    <span className="concept-sketch-cards">
-      <span />
-      <span />
-      <span />
-    </span>
-  </div>
-);
-
 /**
  * A gentle sketch in the concept's own look until its designer drafts the person's app. It moves
  * and counts only while the designer is mid-turn; a designer parked between turns is not drafting.
@@ -255,39 +233,36 @@ function ConceptSketching({
     ...(tokens.font === undefined ? {} : { "--sketch-font": tokens.font }),
   } as CSSProperties;
   return (
-    <div
-      className="concept-sketching"
-      data-state={run?.working ? "working" : "still"}
-      style={style}
-      role="status"
-    >
-      <AppSketch />
+    <Sketching working={run?.working === true} style={style}>
       {run === undefined ? null : (
-        <p className="concept-sketching-lead">
+        <SketchingLead>
           {run.working
             ? wording.design.conceptSketching(concept.label)
             : wording.design.conceptWaiting(concept.label)}
-        </p>
+        </SketchingLead>
       )}
-      <p className="concept-sketching-note">
+      <SketchingNote>
         {wording.design.conceptSketchingNote}
         {run?.working ? (
           <>
             {" "}
-            <SketchingClock since={run.startedAt} />
+            <SketchingClock
+              since={run.startedAt}
+              label={wording.design.conceptSketchingElapsed}
+            />
           </>
         ) : null}
-      </p>
+      </SketchingNote>
       {concept.direction === undefined ? null : (
-        <p className="concept-sketching-direction">{concept.direction}</p>
+        <p className={styles.direction}>{concept.direction}</p>
       )}
-    </div>
+    </Sketching>
   );
 }
 
 /** The design the person chose in the conversation, in place of the ask it answered. */
 export const DesignChosen = ({ concept }: { concept: string }) => (
-  <p className="design-choice">
+  <p className={styles.choice}>
     <Badge tone="success">{wording.design.chosen(concept)}</Badge>
   </p>
 );
@@ -324,7 +299,7 @@ export function DesignChoice({
   const [only] = concepts;
   if (concepts.length === 1 && only !== undefined)
     return (
-      <div className="design-choice">
+      <div className={styles.choice}>
         <p>{wording.design.confirmOne}</p>
         <Button
           type="button"
@@ -337,9 +312,9 @@ export function DesignChoice({
       </div>
     );
   return (
-    <div className="design-choice">
+    <div className={styles.choice}>
       <p>{wording.design.confirmSeveral}</p>
-      <ul className="design-choice-options">
+      <ul className={styles.options}>
         {concepts.map((concept) => (
           <li key={concept.label}>
             <Button

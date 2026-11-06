@@ -1,0 +1,141 @@
+/* The Projects page: filter chips over a grid of cards. */
+
+.page {
+  display: grid;
+  gap: var(--space-4);
+  align-content: start;
+}
+
+.filters {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+}
+
+.note {
+  margin: 0;
+  color: var(--wb-muted-foreground);
+}
+
+.grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(14rem, 1fr));
+  gap: var(--space-4);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.card {
+  position: relative;
+  overflow: hidden;
+  border: 1px solid var(--wb-border);
+  border-radius: var(--radius-panel);
+  background: var(--wb-card);
+  transition: border-color 120ms ease;
+}
+
+.card:hover,
+.card:focus-within {
+  border-color: var(--wb-border-strong);
+}
+
+.cardOpen {
+  display: flex;
+  flex-direction: column;
+  width: 100%;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+.cardOpen:focus-visible {
+  outline: 2px solid var(--wb-ring);
+  outline-offset: -2px;
+}
+
+.cardBody {
+  display: grid;
+  gap: var(--space-2);
+  padding: var(--space-3) var(--space-4) var(--space-4);
+}
+
+.cardTitle {
+  overflow: hidden;
+  font-weight: 600;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.cardMeta {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-2);
+  padding-right: var(--space-6);
+  color: var(--wb-muted-foreground);
+  font-size: 0.8125rem;
+}
+
+.cardMenu {
+  position: absolute;
+  right: var(--space-2);
+  bottom: var(--space-3);
+}
+
+.view {
+  display: inline-flex;
+  gap: var(--space-1);
+}
+
+/* As a list: one line per project, a small swatch of its cover at the start,
+   the stage and last activity after the name, and the menu at the end. */
+.grid[data-view="rows"] {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+}
+
+.grid[data-view="rows"] .cardOpen {
+  flex-direction: row;
+  align-items: center;
+  gap: var(--space-3);
+  padding: var(--space-2) var(--space-12) var(--space-2) var(--space-3);
+}
+
+.grid[data-view="rows"] [data-slot="project-cover"] {
+  flex: none;
+  width: 2rem;
+  aspect-ratio: 1;
+  border-radius: var(--radius-lg);
+}
+
+.grid[data-view="rows"] .cardBody {
+  display: flex;
+  flex: 1;
+  min-width: 0;
+  align-items: center;
+  gap: var(--space-3);
+  padding: 0;
+}
+
+.grid[data-view="rows"] .cardTitle {
+  flex: 1;
+  min-width: 0;
+}
+
+.grid[data-view="rows"] .cardMeta {
+  flex-wrap: nowrap;
+  padding-right: 0;
+  white-space: nowrap;
+}
+
+.grid[data-view="rows"] .cardMenu {
+  top: 50%;
+  bottom: auto;
+  transform: translateY(-50%);
+}

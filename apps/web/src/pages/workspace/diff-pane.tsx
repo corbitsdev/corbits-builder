@@ -2,7 +2,9 @@
  * Previous retained version against the one the plan names. No earlier
  * version is an empty history, not a diff of the document against itself.
  */
+import { InlineNote } from "../../components.tsx";
 import { diffLines } from "./diff-lines.ts";
+import styles from "./diff-pane.module.css";
 
 export function DiffPane({
   before,
@@ -19,17 +21,17 @@ export function DiffPane({
   hideRange?: boolean;
 }) {
   if (before === null || beforeVersion === null || afterVersion === null) {
-    return <p className="inline-note">No earlier version.</p>;
+    return <InlineNote>No earlier version.</InlineNote>;
   }
   const lines = diffLines(before, after);
   return (
-    <article className="document-read">
+    <article className={styles.read} data-slot="diff-pane">
       {hideRange ? null : (
-        <p className="inline-note">
+        <InlineNote>
           v{String(beforeVersion)} → v{String(afterVersion)}
-        </p>
+        </InlineNote>
       )}
-      <pre className="diff-lines">
+      <pre className={styles.lines}>
         {lines.map((line, index) => (
           <div key={`${line.sign}:${String(index)}`}>
             {line.sign}

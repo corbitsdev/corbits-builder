@@ -7,6 +7,7 @@ import { MessageSquareQuote } from "lucide-react";
 import { createContext, useRef, useState, type ReactNode } from "react";
 import { createPortal } from "react-dom";
 import { wording } from "../../config.ts";
+import styles from "./passage-note.module.css";
 
 export type PassageQuote = {
   quote: string;
@@ -50,11 +51,14 @@ export function PassageQuotes({
   title,
   version,
   onAdd,
+  fill = false,
   children,
 }: {
   title: string;
   version: number;
   onAdd?: (passage: PassageQuote) => void;
+  /** Its page fills the container edge to edge, as a pane's whole page. */
+  fill?: boolean;
   children: ReactNode;
 }) {
   const rootRef = useRef<HTMLDivElement>(null);
@@ -95,7 +99,8 @@ export function PassageQuotes({
     offer === null ? null : (
       <div
         ref={offerRef}
-        className="passage-offer"
+        className={styles.offer}
+        data-slot="passage-offer"
         style={{ top: offer.top, left: offer.left }}
       >
         <Button size="sm" onClick={add}>
@@ -109,7 +114,9 @@ export function PassageQuotes({
     <QuoteOffer.Provider value={open}>
       <div
         ref={rootRef}
-        className="passage-notes"
+        className={styles.notes}
+        data-slot="passage-notes"
+        data-fill={fill ? "" : undefined}
         onMouseUp={() => {
           if (rootRef.current === null) return;
           const selection = window.getSelection();

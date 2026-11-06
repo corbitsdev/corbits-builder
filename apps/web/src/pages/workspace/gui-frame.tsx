@@ -3,6 +3,21 @@
  * run only for a designer's mockup. A running generated app is AppFrame.
  */
 import { useEffect, useRef, type Ref } from "react";
+import { InlineNote } from "../../components.tsx";
+import styles from "./gui-frame.module.css";
+
+/** How the frame is sized: a page-high frame, the whole of a flex container, or a scaled-down still. */
+type FrameSize = {
+  /** Grows to fill a flex container instead of taking a page's height. */
+  fill?: boolean | undefined;
+  /** Lays the page out at desktop width and scales it to a quarter, over a positioned container. */
+  thumbnail?: boolean | undefined;
+};
+
+const sizeAttributes = ({ fill = false, thumbnail = false }: FrameSize) => ({
+  "data-fill": fill ? "" : undefined,
+  "data-thumbnail": thumbnail ? "" : undefined,
+});
 
 const MOCKUP_HOST = "/mockup-frame.html";
 
@@ -16,9 +31,11 @@ function assignRef<T>(ref: Ref<T> | undefined, value: T | null) {
 function ScriptedFrame({
   html,
   frameRef,
+  size,
 }: {
   html: string;
   frameRef?: Ref<HTMLIFrameElement> | undefined;
+  size: FrameSize;
 }) {
   const own = useRef<HTMLIFrameElement | null>(null);
   useEffect(() => {
@@ -40,7 +57,9 @@ function ScriptedFrame({
         own.current = node;
         assignRef(frameRef, node);
       }}
-      className="gui-frame"
+      className={styles.frame}
+      data-slot="gui-frame"
+      {...sizeAttributes(size)}
       title="Design"
       sandbox="allow-scripts"
       src={MOCKUP_HOST}
@@ -52,21 +71,28 @@ export function GuiFrame({
   html,
   scripts = false,
   frameRef,
+  fill,
+  thumbnail,
 }: {
   html: string | null;
   scripts?: boolean;
   frameRef?: Ref<HTMLIFrameElement> | undefined;
-}) {
+} & FrameSize) {
+  const size = { fill, thumbnail };
   if (html === null || html.trim().length === 0) {
-    return <p className="inline-note">No design to show.</p>;
+    return <InlineNote>No design to show.</InlineNote>;
   }
   // The host takes one page, so a changed page is a fresh frame.
   if (scripts)
-    return <ScriptedFrame key={html} html={html} frameRef={frameRef} />;
+    return (
+      <ScriptedFrame key={html} html={html} frameRef={frameRef} size={size} />
+    );
   return (
     <iframe
       ref={frameRef}
-      className="gui-frame"
+      className={styles.frame}
+      data-slot="gui-frame"
+      {...sizeAttributes(size)}
       title="Design"
       sandbox=""
       srcDoc={html}
@@ -78,10 +104,20 @@ export function GuiFrame({
  * The running app at the origin the hub serves it on, which is never the workspace's own, so the
  * app keeps its own storage and requests while it cannot reach the workspace or its session.
  */
-export function AppFrame({ src, title }: { src: string; title: string }) {
+export function AppFrame({
+  src,
+  title,
+  fill,
+}: {
+  src: string;
+  title: string;
+  fill?: boolean | undefined;
+}) {
   return (
     <iframe
-      className="gui-frame"
+      className={styles.frame}
+      data-slot="gui-frame"
+      {...sizeAttributes({ fill })}
       title={title}
       sandbox="allow-scripts allow-same-origin allow-forms allow-popups allow-modals allow-downloads"
       // An iframe gets no powerful features unless its permissions policy lists them, so the app

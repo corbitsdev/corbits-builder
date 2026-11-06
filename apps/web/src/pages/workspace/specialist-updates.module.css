@@ -1,0 +1,31 @@
+.row {
+  align-items: flex-start;
+}
+
+.names {
+  display: block;
+  font-weight: 500;
+  color: var(--wb-foreground);
+}
+
+/* The row's summary uses the column's width and wraps to a second line before it cuts off. */
+.summary {
+  display: -webkit-box;
+  overflow: hidden;
+  white-space: normal;
+  color: var(--wb-muted-foreground);
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+  line-clamp: 2;
+}
+
+.fold > summary {
+  cursor: pointer;
+  padding: var(--space-1);
+  font-size: 0.875rem;
+  color: var(--wb-muted-foreground);
+}
+
+.turn + .turn {
+  margin-top: var(--space-3);
+}

@@ -16,6 +16,8 @@ import type { PreviewDevice } from "./device-preview.tsx";
 import { GuiFrame } from "./gui-frame.tsx";
 import { DesignTarget, type LookTweaks } from "./mockup-tweaks.tsx";
 import type { PaneBarGroup } from "./pane-bar.tsx";
+import { InlineNote } from "../../components.tsx";
+import styles from "./design-themes.module.css";
 
 type Theme = DesignThemeList["themes"][number];
 
@@ -61,18 +63,18 @@ function ThemeCard({
   return (
     <button
       type="button"
-      className="design-theme-card"
+      className={styles.card}
       aria-label={wording.themes.open(theme.label)}
       onClick={onOpen}
     >
       {/* A still picture of the page: inert, so it neither takes focus nor eats the click. */}
-      <span className="design-theme-thumb" aria-hidden="true" inert>
+      <span className={styles.thumb} aria-hidden="true" inert>
         {files.data === undefined ? null : (
-          <GuiFrame html={firstPage(files.data)} scripts />
+          <GuiFrame html={firstPage(files.data)} scripts thumbnail />
         )}
       </span>
-      <span className="design-theme-name">{theme.label}</span>
-      <span className="design-theme-direction" title={theme.direction}>
+      <span className={styles.name}>{theme.label}</span>
+      <span className={styles.direction} title={theme.direction}>
         {theme.direction}
       </span>
     </button>
@@ -95,16 +97,16 @@ function ThemePreview({
   const [device, setDevice] = useState<PreviewDevice>("desktop");
   const [tweaks, setTweaks] = useState<LookTweaks>({});
   const files = useThemeFiles(projectId, theme.id);
-  if (files.isError)
-    return <p className="inline-note">{wording.themes.failed}</p>;
+  if (files.isError) return <InlineNote>{wording.themes.failed}</InlineNote>;
   if (files.data === undefined)
-    return <p className="inline-note">{wording.themes.loading}</p>;
+    return <InlineNote>{wording.themes.loading}</InlineNote>;
   return (
     <MockupFrame
       files={files.data}
       device={device}
       onDevice={setDevice}
       onTweaks={setTweaks}
+      fill
       leading={[
         [
           {
@@ -144,10 +146,9 @@ export function DesignThemes({
 }) {
   const [opened, setOpened] = useState<string | null>(null);
   const themes = useDesignThemes(projectId);
-  if (themes.isError)
-    return <p className="inline-note">{wording.themes.failed}</p>;
+  if (themes.isError) return <InlineNote>{wording.themes.failed}</InlineNote>;
   if (themes.data === undefined)
-    return <p className="inline-note">{wording.themes.loading}</p>;
+    return <InlineNote>{wording.themes.loading}</InlineNote>;
   const theme = themes.data.find((item) => item.id === opened);
   if (theme !== undefined)
     return (
@@ -164,9 +165,9 @@ export function DesignThemes({
       </DesignTarget.Provider>
     );
   return (
-    <div className="design-theme-gallery">
-      <p className="design-theme-lead">{wording.themes.title}</p>
-      <ul className="design-theme-grid" aria-label={wording.themes.gallery}>
+    <div className={styles.gallery} data-slot="design-themes">
+      <p className={styles.lead}>{wording.themes.title}</p>
+      <ul className={styles.grid} aria-label={wording.themes.gallery}>
         {themes.data.map((item) => (
           <li key={item.id}>
             <ThemeCard

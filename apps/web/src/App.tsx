@@ -9,6 +9,7 @@
  * shows in the workspace.
  */
 import { wording } from "./config.ts";
+import styles from "./App.module.css";
 import { humanFault, responseCode } from "./pages/workspace/human-fault.ts";
 import { ProductApiError } from "@corbits-builder/client";
 import { queryClient } from "./queries/client.ts";
@@ -37,6 +38,7 @@ import {
 import {
   Banner,
   Button,
+  InlineNote,
   Mark,
   notify,
   type NoticeAction,
@@ -53,7 +55,7 @@ import {
   type HubUser,
 } from "./api/auth.ts";
 import { WorkspaceMenu } from "./workspace-menu.tsx";
-import { Settings, type SettingsTab } from "./pages/settings.jsx";
+import { Settings, type SettingsTab } from "./pages/settings/settings.jsx";
 import {
   Avatar,
   Badge,
@@ -78,7 +80,7 @@ import {
   DialogTitle,
 } from "@corbits/react-ui/ui/dialog";
 import { Auth } from "./pages/auth.jsx";
-import { StageWorkspace } from "./pages/workspace.jsx";
+import { StageWorkspace } from "./pages/workspace/index.tsx";
 import { firstRunScreen, type HubAuthState } from "./first-run.ts";
 import {
   ModelSetup,
@@ -202,12 +204,12 @@ function ProjectLoadFailure({
   };
 
   return (
-    <div className="project-load-failure">
-      <p className="project-load-failure-title">
+    <div className={styles.loadFailure}>
+      <p className={styles.loadFailureTitle}>
         {wording.projectLoadFailure.title}
       </p>
       <p>{wording.projectLoadFailure.lead}</p>
-      <div className="project-load-failure-actions">
+      <div className={styles.loadFailureActions}>
         <Button variant="primary" onClick={onBackToProjects}>
           {wording.projectLoadFailure.back}
         </Button>
@@ -215,7 +217,7 @@ function ProjectLoadFailure({
           {wording.action.tryAgain}
         </Button>
       </div>
-      <details className="project-load-failure-details">
+      <details className={styles.loadFailureDetails}>
         <summary>{wording.projectLoadFailure.details}</summary>
         <pre>{detail}</pre>
         <Button variant="outline" onClick={() => void copyDetail()}>
@@ -259,10 +261,10 @@ export function WhatsNewDialog({
     if (tabId === "approvals") {
       const feature = copy.features.approvals;
       return (
-        <div className="whats-new-panel">
-          <p className="whats-new-copy">{feature.description}</p>
-          <div className="whats-new-action-row">
-            <span className="inline-note">{feature.statusNote}</span>
+        <div className={styles.whatsNewPanel}>
+          <p className={styles.whatsNewCopy}>{feature.description}</p>
+          <div className={styles.whatsNewActions}>
+            <InlineNote as="span">{feature.statusNote}</InlineNote>
             <UiButton
               type="button"
               variant="outline"
@@ -277,8 +279,8 @@ export function WhatsNewDialog({
     }
     const feature = copy.features.slideDecks;
     return (
-      <div className="whats-new-panel">
-        <p className="whats-new-copy">{feature.description}</p>
+      <div className={styles.whatsNewPanel}>
+        <p className={styles.whatsNewCopy}>{feature.description}</p>
       </div>
     );
   };
@@ -294,7 +296,6 @@ export function WhatsNewDialog({
             active={activeTab}
             onChange={setActiveTab}
             label={copy.sections}
-            className="whats-new-tabs"
           >
             {renderFeatureTab}
           </Tabs>
@@ -360,7 +361,7 @@ export function AppSidebar({
     )
     .sort((a, b) => b.lastActivityAt.localeCompare(a.lastActivityAt));
   return (
-    <Sidebar id="app-sidebar" className="app-sidebar" collapsed={collapsed}>
+    <Sidebar id="app-sidebar" className={styles.sidebar} collapsed={collapsed}>
       <SidebarHeader>
         <WorkspaceMenu onOpen={onOpenWorkspace} />
         <SidebarCollapseToggle
@@ -369,11 +370,11 @@ export function AppSidebar({
         />
       </SidebarHeader>
       <SidebarContent>
-        <ul className="app-sidebar-list">
+        <ul className={styles.list}>
           <SidebarItem asChild active={view === "projects"} icon={<Plus />}>
             <button
               type="button"
-              className="app-sidebar-new"
+              className={styles.newProject}
               onClick={() => onNavigate("projects")}
             >
               {wording.shell.newProject}
@@ -399,7 +400,7 @@ export function AppSidebar({
         {listed.length > 0 ? (
           <SidebarSection
             label={wording.shell.inProgress}
-            className="app-sidebar-projects"
+            className={styles.projects}
           >
             {listed.map((item) => {
               const open = inProject && item.id === project.id;
@@ -410,7 +411,7 @@ export function AppSidebar({
                   onSelect={() => onOpenProject(item.id)}
                   leading={
                     <Avatar
-                      className="app-sidebar-initial"
+                      className={styles.initial}
                       initials={item.title.trim().charAt(0)}
                       label={item.title}
                       shape="square"
@@ -426,7 +427,7 @@ export function AppSidebar({
                         <UiButton
                           variant="ghost"
                           size="icon"
-                          className="app-sidebar-row-menu"
+                          className={styles.rowMenu}
                           aria-label={wording.shell.projectOptions(item.title)}
                         >
                           <Ellipsis aria-hidden="true" />
@@ -445,10 +446,10 @@ export function AppSidebar({
         ) : null}
       </SidebarContent>
       <SidebarFooter>
-        <ul className="app-sidebar-list">
+        <ul className={styles.list}>
           <SidebarItem asChild>
             <button type="button" onClick={onOpenWhatsNew}>
-              <span className="app-sidebar-whats-new">
+              <span className={styles.whatsNewItem}>
                 <span>{wording.shell.whatsNew}</span>
                 <Badge tone="neutral">{wording.shell.whatsNewBadge}</Badge>
               </span>
@@ -803,9 +804,44 @@ export function App() {
     );
   }
 
+  const projectView = () => {
+    if (selected === null)
+      return (
+        <div className={styles.loadFailure}>
+          <p className={styles.loadFailureTitle}>
+            {wording.shell.noProjectTitle}
+          </p>
+          <p>{wording.shell.noProjectLead}</p>
+        </div>
+      );
+    if (settledMissId === selected && openProjectSummary === null)
+      return (
+        <ProjectLoadFailure
+          detail={wording.projectLoadFailure.notListed}
+          onRetry={() => void refresh()}
+          onBackToProjects={() => navigate("projects")}
+        />
+      );
+    return (
+      <StageWorkspace
+        key={selected}
+        projectId={selected}
+        projectTitle={
+          openProjectSummary?.title ?? wording.shell.untitledProject
+        }
+        {...(openProjectSummary === null
+          ? {}
+          : { listedArchived: openProjectSummary.archivedAt !== null })}
+        onChanged={refresh}
+        onOpenSettings={openSettings}
+        {...(openingMessage !== undefined ? { openingMessage } : {})}
+      />
+    );
+  };
+
   return (
     <>
-      <div className="app">
+      <div className={styles.app}>
         <AppSidebar
           view={view}
           project={openProjectSummary}
@@ -825,11 +861,10 @@ export function App() {
           onError={reportProjectError}
         />
 
-        <main className="canvas">
+        <main className={styles.canvas}>
           <div
-            className={
-              view === "project" ? "canvas-body is-fill" : "canvas-body"
-            }
+            className={styles.canvasBody}
+            data-fill={view === "project" ? "" : undefined}
           >
             {offline ? (
               <Banner tone="error" title={wording.hub.notAnswering} />
@@ -871,40 +906,7 @@ export function App() {
               />
             ) : null}
 
-            {view === "project" ? (
-              selected !== null &&
-              settledMissId === selected &&
-              openProjectSummary === null ? (
-                <ProjectLoadFailure
-                  detail={wording.projectLoadFailure.notListed}
-                  onRetry={() => void refresh()}
-                  onBackToProjects={() => navigate("projects")}
-                />
-              ) : selected !== null ? (
-                <StageWorkspace
-                  key={selected}
-                  projectId={selected}
-                  projectTitle={
-                    openProjectSummary?.title ?? wording.shell.untitledProject
-                  }
-                  {...(openProjectSummary === null
-                    ? {}
-                    : {
-                        listedArchived: openProjectSummary.archivedAt !== null,
-                      })}
-                  onChanged={refresh}
-                  onOpenSettings={openSettings}
-                  {...(openingMessage !== undefined ? { openingMessage } : {})}
-                />
-              ) : (
-                <div className="project-load-failure">
-                  <p className="project-load-failure-title">
-                    {wording.shell.noProjectTitle}
-                  </p>
-                  <p>{wording.shell.noProjectLead}</p>
-                </div>
-              )
-            ) : null}
+            {view === "project" ? projectView() : null}
 
             {view === "settings" ? (
               <Settings
