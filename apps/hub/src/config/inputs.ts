@@ -1,7 +1,8 @@
 // A warmed designer or coder workspace holds the filed documents it works from as read-only files,
 // and its hub-built assignment opens by naming them, so it starts from them instead of fetching
 // each one (a kept trace's coder made 54 document reads in 107 turns).
-export const INPUTS_DIRECTORY = ".inputs";
+import { INPUTS_DIRECTORY } from "@corbits-builder/schemas/app-files";
+export { INPUTS_DIRECTORY };
 
 const INPUTS = {
   problem_brief: {

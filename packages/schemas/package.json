@@ -25,7 +25,8 @@
     "./audit": "./src/audit.ts",
     "./questions": "./src/questions.ts",
     "./approaches": "./src/approaches.ts",
-    "./approval-round": "./src/approval-round.ts"
+    "./approval-round": "./src/approval-round.ts",
+    "./app-files": "./src/app-files.ts"
   },
   "dependencies": {
     "arktype": "catalog:"
