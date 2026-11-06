@@ -12,7 +12,7 @@ import { wording } from "./config.ts";
 import styles from "./App.module.css";
 import { humanFault, responseCode } from "./pages/workspace/human-fault.ts";
 import { ProductApiError } from "@corbits-builder/client";
-import { queryClient } from "./queries/client.ts";
+import { forgetQueryCache, queryClient } from "./queries/client.ts";
 import { keys } from "./queries/keys.ts";
 import { hostLatency, productClient } from "./api/transport.ts";
 import { useQuery } from "@tanstack/react-query";
@@ -565,6 +565,7 @@ export function App() {
     queryKey: keys.projects,
     queryFn: readProjects,
     refetchInterval: FOLD_POLL_MS,
+    enabled: auth === "signed-in",
   });
   const projects = projectsRead.data?.projects ?? NO_PROJECTS;
   const providers = providersRead.data?.providers ?? NO_PROVIDERS;
@@ -595,6 +596,11 @@ export function App() {
   useEffect(() => {
     if (signedOutByHost) setAuth("signed-out");
   }, [signedOutByHost]);
+  // Query keys are not scoped to a person, so whatever is cached belongs to
+  // whoever was signed in, however the session ended.
+  useEffect(() => {
+    if (auth === "signed-out") void forgetQueryCache();
+  }, [auth]);
   const [setupLater, setSetupLater] = useState(modelSetupDeferred);
   const [user, setUser] = useState<HubUser | null>(null);
   useEffect(() => {
