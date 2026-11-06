@@ -1044,11 +1044,9 @@ export const wording = {
     notSent: "Your answers were not sent. Your choices are kept; try again.",
     /** The settled card's heading, over each question and its answer. */
     answered: "Answered",
+    /** The questions' answer when the person sends files without words while they are open. */
+    sentFiles: (names: readonly string[]) => `Sent ${names.join(", ")}`,
     answeredInChat: "Answered in the conversation",
-    replaced: "Replaced by the questions that followed",
-    /** One list item of the person's reply per question: "- Who signs in? — Staff, Guests". */
-    answerLine: (prompt: string, answers: readonly string[]) =>
-      `- ${prompt} — ${answers.join(", ")}`,
   },
   archivedProject: {
     title: "This project is archived",

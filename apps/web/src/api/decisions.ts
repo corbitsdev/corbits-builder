@@ -113,6 +113,19 @@ export async function openDecisions(onlyProjectId?: string): Promise<Wait[]> {
   return waits;
 }
 
+/** Responds to an ask whose result is the person's own input; the waiting call returns `result`. */
+export async function respondToApproval(input: {
+  tenantId: string;
+  approvalId: string;
+  result: string;
+}): Promise<void> {
+  await productClient().respondToNativeApproval(
+    input.tenantId,
+    input.approvalId,
+    input.result,
+  );
+}
+
 export type DecisionChoice = "approve" | "reject";
 
 /** Resolves one native approval; the hub binds nothing the person did not see in the park. */

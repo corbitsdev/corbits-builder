@@ -3,6 +3,7 @@
  * no hub record, its type says so and it carries an empty value.
  */
 import type { ProjectStage } from "@corbits-builder/schemas/project";
+import type { AskQuestions } from "@corbits-builder/schemas/questions";
 
 export type ApiErrorDetail = {
   code: string;
@@ -58,6 +59,8 @@ export type Wait = {
   packages?: readonly string[];
   /** The design concepts a design_app approval starts. */
   concepts?: readonly { readonly label: string; readonly direction: string }[];
+  /** The questions an ask_questions call waits on the person to answer. */
+  questions?: AskQuestions;
   /**
    * The coordinator's open input park: the person's move in the
    * conversation. `parkProse` on the carrying event is the question to show;

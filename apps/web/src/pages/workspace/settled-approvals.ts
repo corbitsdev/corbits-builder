@@ -11,6 +11,7 @@ import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
 import type { ProjectArtifact } from "@corbits-builder/client";
 import type { DecidedApproval } from "@corbits-builder/schemas/artifact";
+import type { QuestionsResponse } from "@corbits-builder/schemas/questions";
 import { keys } from "../../queries/keys.ts";
 import { askOf } from "../../api/ask.ts";
 import { readDecidedApprovals } from "../../api/activity.ts";
@@ -55,6 +56,8 @@ export function useSettledApprovals(
 ): {
   settled: readonly DocumentApproval[];
   settle: (approval: OpenApproval, outcome: ApprovalOutcome) => void;
+  /** Questions answered here keep their card for this visit; the hub's record lists no answers. */
+  respond: (approval: OpenApproval, response: QuestionsResponse) => void;
 } {
   const queryClient = useQueryClient();
   const queryKey = keys.decidedApprovals.of(projectId);
@@ -104,5 +107,9 @@ export function useSettledApprovals(
       );
       void queryClient.invalidateQueries({ queryKey });
     },
+    respond: ({ tenantId: _tenantId, ...card }, response) =>
+      setDecidedHere((current) =>
+        new Map(current).set(card.approvalId, { ...card, response }),
+      ),
   };
 }

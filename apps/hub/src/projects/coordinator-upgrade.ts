@@ -1,4 +1,4 @@
-import { and, desc, eq, inArray, ne } from "drizzle-orm";
+import { and, desc, eq, inArray, isNull, ne, sql } from "drizzle-orm";
 import { type } from "arktype";
 import { createApprovalStore, type DB } from "@intx/db";
 import {
@@ -183,12 +183,20 @@ export function createCoordinatorUpgrades(deps: {
     return asked !== undefined;
   }
 
-  // The coordinator's own undecided approval, which it waits on.
+  // The coordinator's own undecided approval, which it waits on. A call waiting for the person's
+  // response, such as open questions, is not one: the person may be answering it, and a successor
+  // would not know what was asked.
   async function ownApproval(runId: string) {
     const [asked] = await db
       .select({ correlationId: approval.correlationId })
       .from(approval)
-      .where(and(eq(approval.runId, runId), eq(approval.status, "pending")))
+      .where(
+        and(
+          eq(approval.runId, runId),
+          eq(approval.status, "pending"),
+          isNull(sql`${approval.toolDefinition}->>'respondable'`),
+        ),
+      )
       .limit(1);
     return asked?.correlationId;
   }

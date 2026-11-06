@@ -60,6 +60,10 @@ import { earlierDocumentRole } from "./earlier-document.ts";
 import { pastedFiles } from "./pasted-files.ts";
 import { ArtifactPane, LIVE_TAB } from "./artifact-pane.tsx";
 import { ProductApiError, type ProjectArtifact } from "@corbits-builder/client";
+import {
+  questionsResponseText,
+  type QuestionsResponse,
+} from "@corbits-builder/schemas/questions";
 import type { InFlightRun } from "@corbits-builder/schemas/artifact";
 import { toast } from "sonner";
 import { sendMessage } from "../../api/conversation.ts";
@@ -81,16 +85,12 @@ import type { ChatMessage, Wait } from "../../api/types.ts";
 import { deliveredText } from "@corbits-builder/schemas/conversation";
 import { keys } from "../../queries/keys.ts";
 import { Composer } from "../../composer.tsx";
-import { questionsOpen, RoomThread, turnItemId } from "./transcript.tsx";
+import { RoomThread, turnItemId } from "./transcript.tsx";
 import { cardDocuments } from "./collaboration.ts";
 import { useFiledVersions } from "./filed-versions.tsx";
 import { threadUpdates } from "./specialist-updates.tsx";
 import { useSettledApprovals, type OpenApproval } from "./settled-approvals.ts";
-import {
-  chooseApproachWithOpenApproval,
-  deliverWithOpenApproval,
-  useTypedYes,
-} from "./typed-yes.tsx";
+import { useTypedYes } from "./typed-yes.tsx";
 import { asksAbout, chosenApproach } from "./approach-choice.ts";
 import { selectedDeliverable } from "./reading-selection.ts";
 import {
@@ -118,7 +118,11 @@ import {
   withPendingSends,
   type SentMessage,
 } from "./pending-sends.ts";
-import { decideApproval, openDecisions } from "../../api/decisions.ts";
+import {
+  respondToApproval,
+  decideApproval,
+  openDecisions,
+} from "../../api/decisions.ts";
 import type { DeliverableState } from "./deliverable-block.tsx";
 import { formatPassageQuote, type PassageQuote } from "./passage-note.tsx";
 import { DesignTarget } from "./mockup-tweaks.tsx";
@@ -212,9 +216,32 @@ function documentApprovalsFrom(
         ...(wait.subject === undefined ? {} : { subject: wait.subject }),
         ...(wait.packages === undefined ? {} : { packages: wait.packages }),
         ...(wait.concepts === undefined ? {} : { concepts: wait.concepts }),
+        ...(wait.questions === undefined ? {} : { questions: wait.questions }),
       },
     ];
   });
+}
+
+/**
+ * What the person's next message answers: the coordinator's open questions, or else its open
+ * approval, which the message declines. A package approval is never answered by a message.
+ */
+type Answering =
+  | { kind: "questions"; approval: OpenApproval }
+  | { kind: "approval"; approval: OpenApproval };
+
+function answering(
+  approvals: readonly OpenApproval[] | undefined,
+): Answering | undefined {
+  const questions = approvals?.find(
+    (approval) => approval.questions !== undefined,
+  );
+  if (questions !== undefined)
+    return { kind: "questions", approval: questions };
+  const approval = approvals?.find(
+    (approval) => approval.packages === undefined,
+  );
+  return approval === undefined ? undefined : { kind: "approval", approval };
 }
 
 export { selectedDeliverable };
@@ -697,11 +724,11 @@ function ReadyRoom({
     [...mirror].reverse().find((turn) => turn.role === "assistant")?.text ?? "";
   const documentApprovals =
     waits === undefined ? undefined : documentApprovalsFrom(waits, artifacts);
-  const { settled: settledApprovals, settle } = useSettledApprovals(
-    projectId,
-    documentApprovals,
-    artifacts,
-  );
+  const {
+    settled: settledApprovals,
+    settle,
+    respond,
+  } = useSettledApprovals(projectId, documentApprovals, artifacts);
   // A card decided here is already its settled line; the pending read lags behind it.
   const pendingFrom = (list: readonly Wait[]): OpenApproval[] =>
     documentApprovalsFrom(list, artifacts).filter(
@@ -852,9 +879,8 @@ function ReadyRoom({
     setFiles((current) => [...current, ...fitting]);
   };
 
-  const deliverFiles = async (): Promise<boolean> => {
+  const deliverFiles = async (text = value.trim()): Promise<boolean> => {
     if (sending) return false;
-    const text = value.trim();
     const attached = files;
     setSending(true);
     setSendFailed(false);
@@ -1061,62 +1087,106 @@ function ReadyRoom({
         at: new Date().toISOString(),
       };
     };
-  const openApproval = pendingApprovals?.find(
-    (approval) => approval.packages === undefined,
-  );
-  // Choosing an approach is the person's yes to the version's open ask; the message names the pick.
+  // The person's response is the waiting questions' result, as JSON: their answers on the card,
+  // or the words they sent instead.
+  const respondWith =
+    (approval: OpenApproval, answers?: QuestionsResponse) =>
+    async (text: string): Promise<ChatMessage> => {
+      const response = answers ?? { reply: text };
+      await respondToApproval({
+        tenantId: approval.tenantId,
+        approvalId: approval.approvalId,
+        result: JSON.stringify(response),
+      });
+      respond(approval, response);
+      return {
+        id: `answered:${approval.approvalId}`,
+        author: "me",
+        body: text,
+        at: new Date().toISOString(),
+      };
+    };
+  // A message answers whatever is open: the questions take it as their result, an approval as the
+  // reason it is declined; with nothing open it is plain mail.
+  const postTo = (target: Answering | undefined) => {
+    if (target?.kind === "questions") return respondWith(target.approval);
+    if (target?.kind === "approval")
+      return declineWith(target.approval.approvalId);
+    return mail;
+  };
+  const answeringNow = answering(pendingApprovals);
+  const deliver = async (body: string, clearComposer = false) => {
+    if (body.trim().length === 0 || sending) return false;
+    const target = answering(await readPendingApprovals());
+    return deliverMail(body, clearComposer, postTo(target));
+  };
+  // Choosing an approach is the person's yes to an open approval of that version; otherwise the
+  // message naming the pick answers whatever is open.
   const chooseApproach = async (
     message: string,
     version: number,
   ): Promise<string | null> => {
-    const currentApprovals = await readPendingApprovals();
-    const currentOpen = currentApprovals?.find(
-      (approval) => approval.packages === undefined,
-    );
+    const approvals = await readPendingApprovals();
+    const target = answering(approvals);
     const kind = selected?.kind;
     const asked =
-      kind === undefined
-        ? undefined
-        : currentApprovals?.find(
+      target?.kind === "approval" && kind !== undefined
+        ? approvals?.find(
             (approval) =>
               approval.packages === undefined &&
               asksAbout(approval, kind, version),
-          );
-    return chooseApproachWithOpenApproval({
-      askedApprovalId: asked?.approvalId,
-      openApprovalId: currentOpen?.approvalId,
-      decide: onDecideApproval,
-      deliver: () => deliverMail(message),
-      decline: (approvalId) =>
-        deliverMail(message, false, declineWith(approvalId)),
-      notSent: wording.approaches.notSent,
-    });
-  };
-  const deliver = async (body: string, clearComposer = false) => {
-    if (body.trim().length === 0 || sending) return false;
-    const currentApprovals = await readPendingApprovals();
-    const currentOpen = currentApprovals?.find(
-      (approval) => approval.packages === undefined,
+          )
+        : undefined;
+    if (asked !== undefined) {
+      const fault = await onDecideApproval({
+        approvalId: asked.approvalId,
+        choice: "yes",
+      });
+      if (fault !== null) return fault;
+    }
+    const sent = await deliverMail(
+      message,
+      false,
+      asked === undefined ? postTo(target) : mail,
     );
-    return deliverWithOpenApproval({
-      openApprovalId: currentOpen?.approvalId,
-      decide: onDecideApproval,
-      deliver: () => deliverMail(body, clearComposer),
-      decline: (approvalId) =>
-        deliverMail(body, clearComposer, declineWith(approvalId)),
-    });
+    return sent ? null : wording.approaches.notSent;
   };
+  // Files answer open questions with the words sent with them, or a note naming them, and then
+  // follow on their own. An open approval is declined before they go.
   const sendFiles = async () => {
     if (sending) return false;
-    const currentApprovals = await readPendingApprovals();
-    const currentOpen = currentApprovals?.find(
-      (approval) => approval.packages === undefined,
+    const target = answering(await readPendingApprovals());
+    if (target?.kind === "questions") {
+      const text = value.trim();
+      const answer =
+        text.length > 0
+          ? text
+          : wording.questions.sentFiles(files.map((item) => item.name));
+      return (
+        (await deliverMail(answer, false, respondWith(target.approval))) &&
+        deliverFiles("")
+      );
+    }
+    if (target?.kind === "approval") {
+      const fault = await onDecideApproval({
+        approvalId: target.approval.approvalId,
+        choice: "no",
+      });
+      if (fault !== null) return false;
+    }
+    return deliverFiles();
+  };
+  const answerQuestions = (approvalId: string, response: QuestionsResponse) => {
+    const asked = pendingApprovals?.find(
+      (approval) =>
+        approval.approvalId === approvalId && approval.questions !== undefined,
     );
-    return deliverWithOpenApproval({
-      openApprovalId: currentOpen?.approvalId,
-      decide: onDecideApproval,
-      deliver: deliverFiles,
-    });
+    if (asked === undefined) return Promise.resolve(false);
+    return deliverMail(
+      questionsResponseText(response),
+      false,
+      respondWith(asked, response),
+    );
   };
   const sendNow = () => {
     setCaution(null);
@@ -1128,7 +1198,10 @@ function ReadyRoom({
     if (!(await deliver(message))) restoreToComposer(message);
   };
   const typedYes = useTypedYes({
-    pending: pendingApprovals?.map((approval) => approval.approvalId),
+    pending:
+      answeringNow?.kind === "questions"
+        ? []
+        : pendingApprovals?.map((approval) => approval.approvalId),
     onApprove: (approvalId) =>
       void onDecideApproval({ approvalId, choice: "yes" }),
     onUndo: (message) => void undoTypedYes(message),
@@ -1580,10 +1653,9 @@ function ReadyRoom({
                     providerMissing
                       ? wording.conversation.enableAiFirst
                       : composerPlaceholder({
-                          approvalOpen: openApproval !== undefined,
+                          approvalOpen: answeringNow?.kind === "approval",
                           questionsOpen:
-                            !archived &&
-                            questionsOpen(shownTurns, liveRun.results),
+                            !archived && answeringNow?.kind === "questions",
                           status: projectStatus.data,
                           chatFirst,
                         })
@@ -1719,7 +1791,7 @@ function ReadyRoom({
                         },
                       })}
                   {...(sentId === undefined ? {} : { sentId })}
-                  onAnswerQuestions={(reply) => deliver(reply)}
+                  onAnswerQuestions={answerQuestions}
                   questionsDisabled={sending || archived}
                   questionsLayout={questionsLayout}
                 >

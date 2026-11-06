@@ -32,6 +32,7 @@ import {
 } from "@corbits-builder/schemas/artifact";
 import { Preferences } from "@corbits-builder/schemas/preferences";
 import {
+  ASK_QUESTIONS,
   AskQuestions,
   askQuestionsIssue,
 } from "@corbits-builder/schemas/questions";
@@ -54,7 +55,6 @@ import {
   designConceptAssignment,
   designLookIdeas,
 } from "../config/design.ts";
-import { QUESTIONS_ASKED } from "../config/questions.ts";
 import {
   buildPackageAssignment,
   formatPersonasCatalog,
@@ -259,9 +259,9 @@ export function createDeployTools(options?: {
       inputSchema: { ...RequestApproval.toJsonSchema() },
     },
     {
-      name: "ask_questions",
+      name: ASK_QUESTIONS,
       description:
-        "Put up to five questions to the person on one card shown below your reply; your reply introduces them without repeating them. id is a short slug unique within the call. kind single takes one option and multi any number. preselected holds the option values you recommend, at most one for single. allowOther lets the person answer in their own words. Their answers arrive as their next message.",
+        "Put up to five questions to the person on one card shown below your reply; your reply introduces them without repeating them. id is a short slug unique within the call. kind single takes one option and multi any number. preselected holds the option values you recommend, at most one for single. allowOther lets the person answer in their own words. The call waits for the person, and its result is their response as JSON: answers lists each question with the labels they chose, their own words included, or reply holds their own words when they answered in the conversation instead.",
       inputSchema: { ...AskQuestions.toJsonSchema() },
     },
     {
@@ -313,7 +313,7 @@ export function createDeployTools(options?: {
     requires: ["capabilities"],
     definitions: [
       { name: "request_approval", approval: "ask" },
-      { name: "ask_questions" },
+      { name: ASK_QUESTIONS, approval: "respond" },
       { name: "deploy_writer" },
       { name: "review_artifact" },
       { name: "deploy_coder" },
@@ -323,22 +323,25 @@ export function createDeployTools(options?: {
     ],
     factory: (env) => ({
       definitions,
-      run: async (call, signal) => {
-        if (call.name === "ask_questions") {
-          try {
-            const issue = askQuestionsIssue(
-              validArguments(AskQuestions, call.arguments),
-            );
-            if (issue) throw new Refusal("invalid_questions: " + issue);
-            return { callId: call.id, content: QUESTIONS_ASKED };
-          } catch (error) {
-            return {
-              callId: call.id,
-              content: refusalText(error),
-              isError: true,
-            };
-          }
+      // Questions are checked before the call waits on the person, so a malformed set is refused at
+      // once instead of becoming a card nobody can answer.
+      check: async (call) => {
+        if (call.name !== ASK_QUESTIONS) return undefined;
+        try {
+          const issue = askQuestionsIssue(
+            validArguments(AskQuestions, call.arguments),
+          );
+          if (issue) throw new Refusal("invalid_questions: " + issue);
+          return undefined;
+        } catch (error) {
+          return {
+            callId: call.id,
+            content: refusalText(error),
+            isError: true,
+          };
         }
+      },
+      run: async (call, signal) => {
         if (!options) {
           try {
             const scope = await resolveWorkflowProjectScope(

@@ -4,7 +4,10 @@ export function buildReviewsMethods(
   deps: ClientDeps,
 ): Pick<
   ProductApiClient,
-  "nativeApprovals" | "nativeApproval" | "decideNativeApproval"
+  | "nativeApprovals"
+  | "nativeApproval"
+  | "decideNativeApproval"
+  | "respondToNativeApproval"
 > {
   const { request } = deps;
   return {
@@ -32,6 +35,15 @@ export function buildReviewsMethods(
         `${tenantPath(tenantId)}/approvals/${encodeURIComponent(approvalId)}/${decision}`,
         signal,
         message === undefined ? { scope } : { scope, message },
+      );
+    },
+    // An ask whose result is the person's own input, such as questions, is responded to rather
+    // than run: the result is what the waiting call returns.
+    respondToNativeApproval(tenantId, approvalId, result, signal) {
+      return request(
+        `${tenantPath(tenantId)}/approvals/${encodeURIComponent(approvalId)}/respond`,
+        signal,
+        { result },
       );
     },
   };
