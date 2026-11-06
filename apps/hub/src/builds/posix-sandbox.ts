@@ -425,13 +425,16 @@ export async function createPosixBuildExecutor(
       throw new BuildExecutionError("owned_build_workspace_required");
     const executable = await realpath(process.execPath);
     // Standard `#!/usr/bin/env node` launchers must resolve inside the sandbox,
-    // which has no Node; a hub-owned shim on PATH runs them with Bun instead.
+    // which has no Node, and the hub's Bun need not be named `bun` (npm installs
+    // it as bun.exe); hub-owned shims on PATH run both with the hub's Bun.
     shimDirectory = await realpath(
       await mkdtemp(join(tmpdir(), "sb-node-shim-")),
     );
-    const nodeShim = join(shimDirectory, "node");
-    await writeFile(nodeShim, `#!/bin/sh\nexec ${quote(executable)} "$@"\n`);
-    await chmod(nodeShim, 0o755);
+    for (const name of ["node", "bun"]) {
+      const shim = join(shimDirectory, name);
+      await writeFile(shim, `#!/bin/sh\nexec ${quote(executable)} "$@"\n`);
+      await chmod(shim, 0o755);
+    }
     // Resolve workspace packages before isolation: Bun's runtime lookup scans repository paths
     // the sandbox must keep hidden. The bundled runner needs no host package discovery.
     const toolChild = join(shimDirectory, "posix-child.js");
