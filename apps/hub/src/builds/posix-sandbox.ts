@@ -427,9 +427,7 @@ export async function createPosixBuildExecutor(
     // Standard `#!/usr/bin/env node` launchers must resolve inside the sandbox,
     // which has no Node, and the hub's Bun need not be named `bun` (npm installs
     // it as bun.exe); hub-owned shims on PATH run both with the hub's Bun.
-    shimDirectory = await realpath(
-      await mkdtemp(join(tmpdir(), "sb-node-shim-")),
-    );
+    shimDirectory = await realpath(await mkdtemp(join(tmpdir(), "sb-shim-")));
     for (const name of ["node", "bun"]) {
       const shim = join(shimDirectory, name);
       await writeFile(shim, `#!/bin/sh\nexec ${quote(executable)} "$@"\n`);
