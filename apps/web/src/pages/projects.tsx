@@ -163,6 +163,7 @@ export function Projects({
       if (folderInput.current) folderInput.current.value = "";
     }
   };
+  const pickFolder = async () => chooseFolder(await pickDirectory());
   const toggleExcluded = async (path: string, excluded: boolean) => {
     if (!pendingRepository) return;
     const next = new Set(pendingRepository.excluded);
@@ -292,11 +293,10 @@ export function Projects({
             variant="link"
             disabled={busy !== null}
             title={wording.importProject.folderSource}
-            onClick={() =>
-              canPickDirectory()
-                ? void pickDirectory().then(chooseFolder)
-                : folderInput.current?.click()
-            }
+            onClick={() => {
+              if (canPickDirectory()) void pickFolder();
+              else folderInput.current?.click();
+            }}
           >
             {wording.importProject.folderAction}
           </Button>

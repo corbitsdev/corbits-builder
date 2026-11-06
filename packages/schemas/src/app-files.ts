@@ -69,21 +69,20 @@ export function bundleFiles(bundle: {
   files: Readonly<Record<string, string>>;
   binary?: Readonly<Record<string, string>>;
 }): Record<string, string | Uint8Array> {
-  return {
-    ...bundle.files,
-    ...Object.fromEntries(
-      Object.entries(bundle.binary ?? {}).map(([path, data]) => [
-        path,
-        base64Decode(data),
-      ]),
-    ),
-  };
+  const files: Record<string, string | Uint8Array> = { ...bundle.files };
+  if (bundle.binary)
+    for (const [path, data] of Object.entries(bundle.binary))
+      files[path] = base64Decode(data);
+  return files;
 }
 
 // Keys in order, so the same files always make the same content and an unchanged app files nothing.
 const sorted = (record: Record<string, string>) =>
   Object.fromEntries(
-    Object.entries(record).sort(([a], [b]) => (a < b ? -1 : a > b ? 1 : 0)),
+    Object.entries(record).sort(([a], [b]) => {
+      if (a < b) return -1;
+      return a > b ? 1 : 0;
+    }),
   );
 
 // Collected files as an app bundle and its document content. An app is as large as it is: a

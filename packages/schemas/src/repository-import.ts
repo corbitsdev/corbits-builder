@@ -187,18 +187,28 @@ export const looksSecret = (path: string) => {
 };
 
 /** Why a file would likely be left out of the app, or undefined when there is no reason to. */
-export const suggestedReason = (path: string): SuggestedReason | undefined =>
-  FOREIGN_LOCKFILES.has(basename(path))
-    ? "lockfile"
-    : looksSecret(path)
-      ? "secret"
-      : undefined;
+export function suggestedReason(path: string): SuggestedReason | undefined {
+  if (FOREIGN_LOCKFILES.has(basename(path))) return "lockfile";
+  if (looksSecret(path)) return "secret";
+  return undefined;
+}
+
+// A file's text, or undefined when it is not UTF-8.
+async function decodeText(file: RepositoryFile): Promise<string | undefined> {
+  const bytes = await file.bytes();
+  try {
+    return utf8.decode(bytes);
+  } catch (error) {
+    if (error instanceof TypeError) return undefined;
+    throw error;
+  }
+}
 
 // The files by path, with each read once as text or bytes.
 class Files {
   readonly byPath = new Map<string, RepositoryFile>();
   private readonly texts = new Map<string, Promise<string | undefined>>();
-  constructor(files: readonly RepositoryFile[]) {
+  constructor(files: readonly RepositoryFile[] = []) {
     for (const file of files) this.byPath.set(file.path, file);
   }
   has(path: string) {
@@ -213,14 +223,7 @@ class Files {
     if (!file) return Promise.resolve(undefined);
     let text = this.texts.get(path);
     if (!text) {
-      text = file.bytes().then((bytes) => {
-        try {
-          return utf8.decode(bytes);
-        } catch (error) {
-          if (error instanceof TypeError) return undefined;
-          throw error;
-        }
-      });
+      text = decodeText(file);
       this.texts.set(path, text);
     }
     return text;
@@ -378,7 +381,8 @@ type AppReading = {
 };
 
 const count = (bundle: AppBundle) =>
-  Object.keys(bundle.files).length + Object.keys(bundle.binary ?? {}).length;
+  Object.keys(bundle.files).length +
+  (bundle.binary ? Object.keys(bundle.binary).length : 0);
 
 // What a Builder app has that this one lacks, for whoever makes the import to put right.
 function appWarnings(files: Readonly<Record<string, string>>): string[] {
@@ -386,7 +390,7 @@ function appWarnings(files: Readonly<Record<string, string>>): string[] {
   const manifest = parseJson(files["package.json"]) as
     | { scripts?: Record<string, string> }
     | undefined;
-  const scripts = Object.keys(manifest?.scripts ?? {});
+  const scripts = manifest?.scripts ? Object.keys(manifest.scripts) : [];
   const absent = STARTER_SCRIPTS.filter((name) => !scripts.includes(name));
   const quoted = (names: readonly string[]) =>
     names.map((name) => `"${name}"`).join(", ");
@@ -470,13 +474,12 @@ async function readTitle(
   const given = options.title?.trim();
   if (given) return given.slice(0, TITLE_MAX);
   if (projectFile) return projectFile.title;
-  const manifest = parseJson(
-    await files.text(joined(root ?? "", "package.json")),
-  );
+  const manifestPath =
+    root === undefined ? "package.json" : joined(root, "package.json");
+  const manifest = parseJson(await files.text(manifestPath));
   const name = (manifest as { name?: unknown } | undefined)?.name;
-  const source =
-    typeof name === "string" && name.trim() ? name : (options.name ?? "");
-  return humanize(source.trim() || "Project").slice(0, TITLE_MAX);
+  const source = typeof name === "string" && name.trim() ? name : options.name;
+  return humanize(source?.trim() || "Project").slice(0, TITLE_MAX);
 }
 
 /** Reads a directory's files as a Builder project file and reports what it holds and lacks. */
@@ -486,7 +489,7 @@ export async function readRepository(
 ): Promise<RepositoryImport> {
   const context: Context = {
     files: new Files(files),
-    drafts: new Files(options.drafts ?? []),
+    drafts: new Files(options.drafts),
     projectFile: undefined,
     options,
   };
@@ -495,17 +498,18 @@ export async function readRepository(
   const app = await readApp(context);
   if (app.found) documents.set("app", app.found);
   const title = await readTitle(context, app.root);
-  const approve = options.approve ?? [];
+  const approve = options.approve;
   const warnings = [...app.warnings];
-  if (approve !== "all")
+  if (approve !== undefined && approve !== "all")
     for (const kind of approve)
       if (!documents.has(kind))
         warnings.push(`${kind} was to be approved but was not found`);
+  const approved = (kind: RepositoryDocumentKind) =>
+    approve === "all" || approve?.includes(kind) === true;
   const list = REPOSITORY_DOCUMENT_KINDS.flatMap((kind) => {
     const entry = documents.get(kind);
     if (!entry) return [];
-    const approved = approve === "all" || approve.includes(kind);
-    return [{ ...entry.document, approved }];
+    return [{ ...entry.document, approved: approved(kind) }];
   });
   const file = ProjectExport.assert({
     format: "corbits-builder.project",

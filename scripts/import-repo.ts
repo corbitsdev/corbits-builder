@@ -23,7 +23,7 @@ const posix = (path: string) => path.split(sep).join("/");
 
 const fileOf = (root: string, path: string): RepositoryFile => ({
   path: posix(path),
-  size: statOf(join(root, path))?.size ?? 0,
+  size: lstatSync(join(root, path)).size,
   bytes: () => Promise.resolve(new Uint8Array(readFileSync(join(root, path)))),
 });
 
@@ -103,7 +103,11 @@ export async function importRepository(
 ) {
   const root = realpathSync(directory);
   const { files, git } = listDirectory(root);
-  const globs = (options.exclude ?? []).map((pattern) => new Bun.Glob(pattern));
+  const patterns = options.exclude;
+  const globs =
+    patterns === undefined
+      ? []
+      : patterns.map((pattern) => new Bun.Glob(pattern));
   const exclude = new Set(
     files
       .map(({ path }) => path)
