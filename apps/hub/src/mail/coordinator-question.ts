@@ -155,13 +155,12 @@ export function lastOpenAsk(
       typeof turn["timestamp"] === "number" &&
       (deadline === undefined || turn["timestamp"] <= deadline),
   );
-  const answeredAt =
-    mapMirrorConversationTurns(asked, "note").findLast(
-      (turn) => turn.role === "person",
-    )?.at ?? -Infinity;
+  const answer = mapMirrorConversationTurns(asked, "note").findLast(
+    (turn) => turn.role === "person",
+  );
   let found: OpenAsk | undefined;
   for (const turn of asked) {
-    if (turn.timestamp <= answeredAt) continue;
+    if (answer !== undefined && turn.timestamp <= answer.at) continue;
     found = acceptedAsk(turn) ?? found;
   }
   return found;
