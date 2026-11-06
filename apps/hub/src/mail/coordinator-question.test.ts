@@ -40,3 +40,10 @@ test("a workflow run's mail leaves the ask open", () => {
     lastOpenAsk([...asked, inbound(run, "The brief is filed.", 3)], undefined),
   ).toEqual(open);
 });
+
+test("an approval decision's note leaves the ask open", () => {
+  const declined = JSON.stringify({ outcome: "rejected", message: "Not yet" });
+  expect(
+    lastOpenAsk([...asked, inbound("signal@local", declined, 3)], undefined),
+  ).toEqual(open);
+});

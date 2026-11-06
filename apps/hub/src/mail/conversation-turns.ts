@@ -67,6 +67,13 @@ const runSent = (from: string): boolean => isRunAddress(extractAddrSpec(from));
 // JSON. The page already shows the decision on its approval card; a resumed coordinator has no card.
 const APPROVAL_SIGNAL_SENDER = "signal@local";
 
+export function isApprovalDecision(turn: Record<string, unknown>): boolean {
+  const raw = textFromContent(turn["content"]);
+  if (raw === undefined) return false;
+  const from = inboundEnvelope.exec(raw)?.[1];
+  return from !== undefined && extractAddrSpec(from) === APPROVAL_SIGNAL_SENDER;
+}
+
 /**
  * How the person's approval decisions read: "note" keeps only the note they sent with a
  * decision, for the page; "decision" reads each decision as a plain line, for a resumed

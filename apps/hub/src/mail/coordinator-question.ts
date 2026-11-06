@@ -12,7 +12,11 @@ import {
 
 import { errorCode, requestErrorMetadata } from "../request-error.ts";
 import { withCommittedAgentState } from "./committed-agent-state.ts";
-import { isRecord, mapMirrorConversationTurns } from "./conversation-turns.ts";
+import {
+  isApprovalDecision,
+  isRecord,
+  mapMirrorConversationTurns,
+} from "./conversation-turns.ts";
 
 const log = getLogger(["corbits-builder", "hub", "coordinator-question"]);
 
@@ -144,7 +148,10 @@ function assistantText(
   return { text, timestamp: record.timestamp };
 }
 
-/** The last ask_questions call the tool accepted after the person's last turn; that turn answers it. */
+/**
+ * The last ask_questions call the tool accepted after the person's last message; that message answers
+ * it. An approval decision answers its own card, not the questions.
+ */
 export function lastOpenAsk(
   turns: unknown[],
   deadline: number | undefined,
@@ -155,9 +162,10 @@ export function lastOpenAsk(
       typeof turn["timestamp"] === "number" &&
       (deadline === undefined || turn["timestamp"] <= deadline),
   );
-  const answer = mapMirrorConversationTurns(asked, "note").findLast(
-    (turn) => turn.role === "person",
-  );
+  const answer = mapMirrorConversationTurns(
+    asked.filter((turn) => !isApprovalDecision(turn)),
+    "note",
+  ).findLast((turn) => turn.role === "person");
   let found: OpenAsk | undefined;
   for (const turn of asked) {
     if (answer !== undefined && turn.timestamp <= answer.at) continue;
