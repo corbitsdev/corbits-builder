@@ -565,6 +565,7 @@ export function App() {
     queryKey: keys.projects,
     queryFn: readProjects,
     refetchInterval: FOLD_POLL_MS,
+    enabled: auth === "signed-in",
   });
   const projects = projectsRead.data?.projects ?? NO_PROJECTS;
   const providers = providersRead.data?.providers ?? NO_PROVIDERS;
@@ -595,6 +596,13 @@ export function App() {
   useEffect(() => {
     if (signedOutByHost) setAuth("signed-out");
   }, [signedOutByHost]);
+  // Query keys are not scoped to a person, so the cache belongs to whoever was
+  // signed in. Clearing it also saves the empty cache over the stored one.
+  useEffect(() => {
+    if (auth !== "signed-out") return;
+    queryClient.clear();
+    setSelected(null);
+  }, [auth]);
   const [setupLater, setSetupLater] = useState(modelSetupDeferred);
   const [user, setUser] = useState<HubUser | null>(null);
   useEffect(() => {
