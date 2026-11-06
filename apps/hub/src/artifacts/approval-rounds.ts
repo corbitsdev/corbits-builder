@@ -471,9 +471,12 @@ export function createPgApprovalRoundStore(
           eq(settingsRecord.scopeKey, WORKSPACE_REVIEWERS_SCOPE_KEY),
         ),
       );
-    return row === undefined
-      ? []
-      : (parseWorkspaceReviewersField(row.fields) ?? []);
+    if (row === undefined) return [];
+    const reviewers = parseWorkspaceReviewersField(row.fields);
+    // Every writer stores the shape read here, so a row that does not parse is a bug to surface, not "no reviewers".
+    if (reviewers === null)
+      throw new Error("Workspace reviewers setting is not readable");
+    return reviewers;
   }
 
   return {
