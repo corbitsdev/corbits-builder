@@ -685,17 +685,20 @@ function ReadyRoom({
     [...stepsByAt.current.values()].some((parts) =>
       toolsOf(parts).some((tool) => tool.toolCallId === ask.callId),
     );
-  if (ask !== undefined && askedAt !== null && !shown)
-    stepsByAt.current.set(askedAt, [
-      ...(stepsByAt.current.get(askedAt) ?? []),
-      {
-        kind: "tool-trace",
-        toolCallId: ask.callId,
-        name: ASK_QUESTIONS,
-        status: "output-available",
-        input: ask.arguments,
-      },
-    ]);
+  if (ask !== undefined && askedAt !== null && !shown) {
+    const card = {
+      kind: "tool-trace",
+      toolCallId: ask.callId,
+      name: ASK_QUESTIONS,
+      status: "output-available",
+      input: ask.arguments,
+    } as const;
+    const steps = stepsByAt.current.get(askedAt);
+    stepsByAt.current.set(
+      askedAt,
+      steps === undefined ? [card] : [...steps, card],
+    );
+  }
   const turns = useMemo(
     () =>
       withPendingSends(mirror, sent).map((turn) => {
