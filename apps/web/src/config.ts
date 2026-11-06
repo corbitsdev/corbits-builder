@@ -1273,7 +1273,7 @@ export const wording = {
     },
     reviewerRowLabel: (index: number) => `Reviewer ${String(index)}`,
     reviewerName: "Reviewer name",
-    reviewerNamePlaceholder: "Dana Chen",
+    reviewerNamePlaceholder: "Reviewer name",
     reviewerPersona: "Persona",
     reviewerPersonaPlaceholder: "Select role or persona…",
     reviewerPersonas: [
