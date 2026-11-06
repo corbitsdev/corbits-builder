@@ -702,15 +702,16 @@ export async function readWarmParkedApprovalSnapshot(args: {
 /**
  * Project a parked step's durable pending operations down to the minimal
  * approval records the resume classifier needs. Filters to `approval` (the only
- * control-plane kind today) and keeps only the correlationId and the optional
- * epoch-ms deadline; the runtime reconstructs the lost `SignalAwaited` from
- * those alone, and must not see the reactor's pending-operation internals.
+ * control-plane kind today), leaving out a call queued behind a sibling of its
+ * batch, which has not parked the step. Keeps only the correlationId and the
+ * optional epoch-ms deadline; the runtime reconstructs the lost `SignalAwaited`
+ * from those alone, and must not see the reactor's pending-operation internals.
  */
 export function toParkedApprovalOps(
   pendingOperations: PendingOperation[],
 ): ParkedApprovalOp[] {
   return pendingOperations
-    .filter((op) => op.kind === "approval")
+    .filter((op) => op.kind === "approval" && op.queued !== true)
     .map((op) => ({
       correlationId: op.correlationId,
       ...(op.timeoutAt !== undefined ? { timeoutAtMs: op.timeoutAt } : {}),

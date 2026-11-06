@@ -4786,10 +4786,10 @@ describe("createReactor — approval resume re-dispatch", () => {
 // ---------------------------------------------------------------------------
 
 describe("createReactor — approval resume error result", () => {
-  // A two-phase inference runner: the first inference emits the tool_call that
-  // parks on the ask gate; the re-inference after the parked call is answered
-  // with an error result emits a plain text reply that terminates the run.
-  function twoPhaseInferenceRunner() {
+  // A two-phase inference runner: the first inference emits the tool calls
+  // that park on the ask gate; the re-inference after the parked calls are
+  // answered emits a plain text reply that terminates the run.
+  function twoPhaseInferenceRunner(first = suspendToolCallTurn) {
     let call = 0;
     return async function* (
       opts: InferenceHarnessOptions,
@@ -4797,7 +4797,7 @@ describe("createReactor — approval resume error result", () => {
       call += 1;
       const turn: AssistantTurn =
         call === 1
-          ? suspendToolCallTurn
+          ? first
           : {
               role: "assistant",
               content: [{ type: "text", text: "acknowledged" }],
@@ -4811,6 +4811,19 @@ describe("createReactor — approval resume error result", () => {
       };
     };
   }
+
+  const twoGatedCalls: AssistantTurn = {
+    role: "assistant",
+    content: [
+      { type: "tool_call", id: "call-a", name: "charge_card", arguments: {} },
+      { type: "tool_call", id: "call-b", name: "refund_card", arguments: {} },
+    ],
+    model: "test-model",
+    timestamp: 1000,
+  };
+
+  const inferences = (events: readonly ReactorEmittedEvent[]) =>
+    events.filter((e) => e.type === "inference.done").length;
 
   function askExtension(approvalTimeoutMs = 60_000) {
     return createAuthzExtension({
@@ -4946,6 +4959,128 @@ describe("createReactor — approval resume error result", () => {
       .map((c) => c.text)
       .join("");
     expect(text).toBe("denied by approver: too risky");
+  });
+
+  test("every gated call of one response parks, and the model continues only once each has its result", async () => {
+    const cell: PersistedCell = {
+      turns: [],
+      pendingOperations: [],
+      tokenUsage: emptyUsage(),
+    };
+    const toolsRun: string[] = [];
+
+    const { reactor, events, waitFor } = createTestReactor({
+      contextStore: makePersistingContextStore(cell),
+      director: createDefaultDirector("test agent", []),
+      inferenceRunner: twoPhaseInferenceRunner(twoGatedCalls),
+      toolRunner: makeToolRunner(async (call) => {
+        toolsRun.push(call.name);
+        return { callId: call.id, content: "ran" };
+      }),
+      // The second call is authorized later, so announcing the first before
+      // both are persisted would show here as a single pending operation.
+      beforeToolExtensions: [
+        createAuthzExtension({
+          authorize: async (resource) => {
+            if (resource === "tool:refund_card") {
+              await new Promise((resolve) => setTimeout(resolve, 20));
+            }
+            return {
+              effect: "ask" as const,
+              matchingGrants: [],
+              resolvedBy: null,
+            };
+          },
+          approvalTimeoutMs: 60_000,
+        }),
+      ],
+    });
+
+    reactor.start();
+    reactor.deliver(makeInboundMessage());
+
+    const first = await waitFor("reactor.gate.blocked");
+    if (first.type !== "reactor.gate.blocked") throw new Error("unreachable");
+    expect(cell.pendingOperations).toHaveLength(2);
+    const second = cell.pendingOperations.find(
+      (op) => op.correlationId !== first.data.correlationId,
+    );
+    if (first.data.correlationId === undefined || second === undefined) {
+      throw new Error("expected two parked calls");
+    }
+
+    reactor.deliver(makeApprovalMessage(first.data.correlationId, "rejected"));
+    await waitForEvent(
+      events,
+      (e) =>
+        e.type === "reactor.gate.blocked" &&
+        e.data.correlationId === second.correlationId,
+    );
+    expect(inferences(events)).toBe(1);
+
+    reactor.deliver(makeApprovalMessage(second.correlationId, "approved"));
+    await waitForEvent(events, (e) => e.type === "connector.reply");
+    expect(inferences(events)).toBe(2);
+    expect(toolsRun).toHaveLength(1);
+    expect(cell.pendingOperations).toHaveLength(0);
+    expect(() => assertWellFormedToolSequence(cell.turns)).not.toThrow();
+  });
+
+  test("a queued call is announced after a restore once the call before it is answered", async () => {
+    const now = Date.now();
+    const [callA, callB] = twoGatedCalls.content.flatMap((block) =>
+      block.type === "tool_call" ? [block] : [],
+    );
+    if (callA === undefined || callB === undefined) {
+      throw new Error("unreachable");
+    }
+    // The queued call's deadline is long past its park time; it must still
+    // wait unarmed, then get its full deadline once announced.
+    const cell: PersistedCell = {
+      turns: [{ ...twoGatedCalls }],
+      pendingOperations: [
+        {
+          correlationId: "corr-a",
+          kind: "approval",
+          registeredAt: now,
+          gateId: "pending-corr-a",
+          timeoutAt: now + 60_000,
+          suspendedCall: callA,
+          batch: "batch-1",
+        },
+        {
+          correlationId: "corr-b",
+          kind: "approval",
+          registeredAt: now - 120_000,
+          gateId: "pending-corr-b",
+          timeoutAt: now - 60_000,
+          suspendedCall: callB,
+          batch: "batch-1",
+          queued: true,
+        },
+      ],
+      tokenUsage: emptyUsage(),
+    };
+
+    const { reactor, events } = createTestReactor({
+      contextStore: makePersistingContextStore(cell),
+      director: createDefaultDirector("test agent", []),
+      inferenceRunner: twoPhaseInferenceRunner(),
+    });
+
+    reactor.start();
+    reactor.deliver(makeApprovalMessage("corr-a", "rejected"));
+
+    await waitForEvent(
+      events,
+      (e) =>
+        e.type === "reactor.gate.blocked" && e.data.correlationId === "corr-b",
+    );
+    expect(inferences(events)).toBe(0);
+    const announced = cell.pendingOperations.find(
+      (op) => op.correlationId === "corr-b",
+    );
+    expect(announced?.timeoutAt).toBeGreaterThan(now);
   });
 
   test("a timed-out parked call answers with an error result and re-infers exactly once", async () => {

@@ -79,6 +79,8 @@ const PendingOperationSchema = type({
   "timeoutAt?": "number",
   "suspendedCall?": ToolCall,
   "approvalSnapshot?": ApprovalSnapshot,
+  "batch?": "string",
+  "queued?": "true",
 });
 
 // The persisted schema and the in-memory PendingOperation type are two
