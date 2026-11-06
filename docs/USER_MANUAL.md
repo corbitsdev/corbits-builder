@@ -329,6 +329,18 @@ pick the `project.json` file from an export. If the file marks documents as
 approved, you choose **Import and approve** (records your own approval of
 exactly those versions) or **Import without approvals**.
 
+To make a project from code you already have, choose **Import a folder** on
+the new-project page and pick the folder, usually a git repository. Builder
+reads it the way it reads its own exports: the code becomes the app, and any
+planning documents or design kept in the folder are filed with it. Dependencies,
+build output, environment files and whatever the folder's `.gitignore` files
+leave out are never read. A card then shows what was found, what Builder still
+has to write with you, and files you may want to leave out: those whose names
+suggest a secret, and lockfiles of package managers Builder does not use, start
+out left out, and you can keep any of them. Choose **Import**. The coordinator reads the code, asks you what you want to do and
+what the code cannot tell it, and writes the missing documents for your
+approval, one at a time, before any building starts.
+
 ## 9. Manage projects
 
 ### The projects list

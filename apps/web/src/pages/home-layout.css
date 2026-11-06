@@ -89,3 +89,20 @@
   gap: 8px;
   margin-top: 12px;
 }
+
+.home-page .import-folder-notes {
+  margin: 8px 0 0;
+  padding-inline-start: 1.25em;
+  font-size: 0.8125rem;
+  color: var(--wb-muted-foreground);
+}
+
+.home-page .import-folder-files {
+  display: grid;
+  gap: 4px;
+  margin-top: 12px;
+}
+
+.home-page .import-folder-files > p {
+  margin: 0;
+}

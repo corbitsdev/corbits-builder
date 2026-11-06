@@ -8,6 +8,7 @@
 import { wording } from "../config.ts";
 import { toast } from "sonner";
 import {
+  Checkbox,
   PromptInput,
   PromptInputSubmit,
   PromptInputTextarea,
@@ -21,6 +22,14 @@ import {
   importProject,
   readImportFile,
 } from "../api/projects.ts";
+import {
+  canPickDirectory,
+  describeBytes,
+  listedDirectory,
+  pickDirectory,
+  readDirectory,
+  type PickedDirectory,
+} from "../api/repository.ts";
 import { Banner, Button } from "../components.jsx";
 import { ConnectProvider } from "./providers.jsx";
 import { NewProjectProfile } from "./profile-select.jsx";
@@ -30,6 +39,29 @@ import { COMPOSER_BOX_CLASS } from "./workspace/pane-classes.ts";
 import { HOME_COMPOSER_PLACEHOLDER, canStartProject } from "./home-view.ts";
 import "./home-layout.css";
 import type { ProjectImport } from "@corbits-builder/schemas/project-import";
+import {
+  DOCUMENT_LABELS,
+  type RepositoryImport,
+  type SuggestedReason,
+} from "@corbits-builder/schemas/repository-import";
+
+// A folder read as a project, with the files the reading suggests leaving out, ticked from the
+// start, which the person can keep.
+type PendingRepository = {
+  picked: PickedDirectory;
+  reading: RepositoryImport;
+  choices: Map<string, SuggestedReason>;
+  excluded: Set<string>;
+};
+
+function repositoryChoices(
+  previous: PendingRepository["choices"],
+  { report }: RepositoryImport,
+): PendingRepository["choices"] {
+  const choices = new Map(previous);
+  for (const { path, reason } of report.suggested) choices.set(path, reason);
+  return choices;
+}
 
 export function Projects({
   onOpen,
@@ -82,6 +114,9 @@ export function Projects({
     name: string;
     body: ProjectImport;
   } | null>(null);
+  const folderInput = useRef<HTMLInputElement>(null);
+  const [pendingRepository, setPendingRepository] =
+    useState<PendingRepository | null>(null);
   const failImport = (name: string, cause: unknown, id?: string | number) =>
     toast.error(
       cause instanceof ApiFailure ? cause.detail.message : String(cause),
@@ -99,6 +134,54 @@ export function Projects({
       if (importInput.current) importInput.current.value = "";
     }
   };
+  // The folder is read in the browser and shown before anything is created; a file the reading
+  // suggests leaving out starts out left out, and the person can leave out more until the code fits.
+  const readFolder = async (
+    picked: PickedDirectory,
+    excluded: Set<string>,
+    choices: PendingRepository["choices"],
+  ) => {
+    const reading = await readDirectory(picked, excluded);
+    const next = repositoryChoices(choices, reading);
+    const fresh = reading.report.suggested
+      .map(({ path }) => path)
+      .filter((path) => !choices.has(path));
+    if (fresh.length > 0)
+      return readFolder(picked, new Set([...excluded, ...fresh]), next);
+    setPendingRepository({ picked, reading, choices: next, excluded });
+  };
+  const chooseFolder = async (picked: PickedDirectory | undefined) => {
+    if (!picked) return;
+    setPendingImport(null);
+    setBusy("import");
+    try {
+      await readFolder(picked, new Set(), new Map());
+    } catch (cause) {
+      failImport(picked.name, cause);
+    } finally {
+      setBusy(null);
+      if (folderInput.current) folderInput.current.value = "";
+    }
+  };
+  const toggleExcluded = async (path: string, excluded: boolean) => {
+    if (!pendingRepository) return;
+    const next = new Set(pendingRepository.excluded);
+    if (excluded) next.add(path);
+    else next.delete(path);
+    setBusy("import");
+    try {
+      await readFolder(
+        pendingRepository.picked,
+        next,
+        pendingRepository.choices,
+      );
+    } catch (cause) {
+      failImport(pendingRepository.picked.name, cause);
+    } finally {
+      setBusy(null);
+    }
+  };
+
   const importFile = async (
     name: string,
     { file, omitted }: ProjectImport,
@@ -205,6 +288,31 @@ export function Projects({
               if (file) void chooseImport(file);
             }}
           />
+          <Button
+            variant="link"
+            disabled={busy !== null}
+            title={wording.importProject.folderSource}
+            onClick={() =>
+              canPickDirectory()
+                ? void pickDirectory().then(chooseFolder)
+                : folderInput.current?.click()
+            }
+          >
+            {wording.importProject.folderAction}
+          </Button>
+          <input
+            ref={folderInput}
+            type="file"
+            // Lists a folder's files; React's input typings leave the attribute out.
+            {...{ webkitdirectory: "" }}
+            multiple
+            hidden
+            aria-label={wording.importProject.folderSource}
+            onChange={(event) => {
+              const listed = event.target.files;
+              if (listed) void chooseFolder(listedDirectory(listed));
+            }}
+          />
         </div>
         {pendingImport === null ? null : (
           <Banner
@@ -240,7 +348,92 @@ export function Projects({
             </div>
           </Banner>
         )}
+        {pendingRepository === null ? null : (
+          <RepositoryBanner
+            pending={pendingRepository}
+            busy={busy !== null}
+            onExclude={(path, excluded) => void toggleExcluded(path, excluded)}
+            onImport={() =>
+              void importFile(
+                pendingRepository.picked.name,
+                { file: pendingRepository.reading.file, omitted: [] },
+                false,
+              )
+            }
+            onCancel={() => setPendingRepository(null)}
+          />
+        )}
       </section>
     </div>
+  );
+}
+
+function RepositoryBanner({
+  pending: { picked, reading, choices, excluded },
+  busy,
+  onExclude,
+  onImport,
+  onCancel,
+}: {
+  pending: PendingRepository;
+  busy: boolean;
+  onExclude: (path: string, excluded: boolean) => void;
+  onImport: () => void;
+  onCancel: () => void;
+}) {
+  const { report, file } = reading;
+  const text = wording.importProject;
+  const labels = (kinds: readonly string[]) =>
+    kinds
+      .map((kind) => DOCUMENT_LABELS[kind as keyof typeof DOCUMENT_LABELS])
+      .join(", ");
+  const found = file.documents
+    .filter((document) => document.kind !== "app")
+    .map((document) => document.kind);
+  const toWrite = report.missing.filter((kind) => kind !== "app");
+  const nothing = file.documents.length === 0;
+  const code = report.app
+    ? text.folderCode(report.app.files, describeBytes(report.app.bytes))
+    : text.folderNoCode;
+  return (
+    <Banner
+      tone={nothing ? "warning" : "okay"}
+      title={text.folderTitle(report.title, picked.name)}
+    >
+      <p>{nothing ? text.folderNothing : code}</p>
+      {found.length > 0 ? <p>{text.folderFound(labels(found))}</p> : null}
+      {toWrite.length > 0 && !nothing ? (
+        <p>{text.folderToWrite(labels(toWrite))}</p>
+      ) : null}
+      {report.warnings.length > 0 ? (
+        <ul className="import-folder-notes">
+          {report.warnings.map((warning) => (
+            <li key={warning}>{warning}</li>
+          ))}
+        </ul>
+      ) : null}
+      {choices.size > 0 ? (
+        <div className="import-folder-files">
+          <p>{text.folderLeaveOut}</p>
+          {[...choices].map(([path, reason]) => (
+            <Checkbox
+              key={path}
+              label={`${path}, ${text.folderReasons[reason]}`}
+              checked={excluded.has(path)}
+              disabled={busy}
+              onCheckedChange={(checked) => onExclude(path, checked === true)}
+            />
+          ))}
+        </div>
+      ) : null}
+      <div className="import-confirm-actions">
+        <Button variant="primary" disabled={busy || nothing} onClick={onImport}>
+          {text.folderImport}
+        </Button>
+        <Button variant="ghost" disabled={busy} onClick={onCancel}>
+          {wording.action.cancel}
+        </Button>
+      </div>
+    </Banner>
   );
 }
