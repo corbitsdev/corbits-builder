@@ -14,6 +14,9 @@ import {
 const here = "/home/dev/corbits-builder";
 const elsewhere = "/home/dev/corbits-builder-worktree";
 const other = "/home/dev/other-app";
+// The sidecar entry points a hub starts, named as the commands a real one shows.
+const sidecarEntry = `${here}/vendor/interchange/apps/sidecar/src/index.ts`;
+const workflowChild = `${here}/vendor/interchange/apps/sidecar/bin/workflow-child`;
 const checkoutOf = (directory: string) =>
   [here, elsewhere].find(
     (root) => directory === root || directory.startsWith(`${root}/`),
@@ -52,18 +55,8 @@ const processes: ProcessInfo[] = [
     "bun --env-file=.env.hub --conditions=intx-src apps/hub/src/server.ts",
     here,
   ),
-  bun(
-    304,
-    303,
-    `bun ${here}/vendor/interchange/apps/sidecar/src/index.ts`,
-    here,
-  ),
-  bun(
-    305,
-    304,
-    `bun ${here}/vendor/interchange/apps/sidecar/bin/workflow-child`,
-    here,
-  ),
+  bun(304, 303, `bun ${sidecarEntry}`, here),
+  bun(305, 304, `bun ${workflowChild}`, here),
   bun(306, 301, "bun run dev:web", here),
   bun(
     307,
@@ -91,7 +84,7 @@ const processes: ProcessInfo[] = [
     cwd: `${here}/data/hub/live-apps/p1/workspace`,
   },
   // A sidecar orphaned by an earlier hub, and a hub from another checkout started with `bun run start`.
-  bun(400, 1, `bun ${here}/vendor/interchange/apps/sidecar/src/index.ts`, here),
+  bun(400, 1, `bun ${sidecarEntry}`, here),
   bun(
     401,
     1,

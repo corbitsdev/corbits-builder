@@ -42,8 +42,18 @@ const checkoutSubpaths = [
 ];
 
 function executableOf(command: string) {
-  return command.split(" ")[0] ?? "";
+  return command.split(" ", 1).join("");
 }
+
+// Whether a system error carries one of the given codes.
+function errnoIn(error: unknown, codes: readonly string[]) {
+  const code = (error as NodeJS.ErrnoException | undefined)?.code;
+  return code !== undefined && codes.includes(code);
+}
+// A process that is gone, or that belongs to someone else.
+const GONE = ["ESRCH", "ENOENT", "EACCES", "EPERM"];
+// A path that is gone or cannot be reached.
+const UNREACHABLE = ["ENOENT", "ENOTDIR", "EACCES", "EPERM"];
 
 /** A JavaScript runtime or a tool installed in a checkout, never an editor or a terminal that merely names the checkout. */
 function isAppExecutable(executable: string) {
@@ -135,11 +145,12 @@ export function parseDotenv(text: string): Record<string, string> {
     const match =
       /^\s*(?:export\s+)?([A-Za-z_][A-Za-z0-9_]*)\s*=\s*(.*?)\s*$/.exec(line);
     if (!match) continue;
-    const [, key, raw] = match;
-    const value = raw ?? "";
-    values[key ?? ""] = /^(["']).*\1$/.test(value)
-      ? value.slice(1, -1)
-      : (value.split(" #")[0]?.trim() ?? "");
+    const key = match[1];
+    const raw = match[2];
+    if (key === undefined || raw === undefined) continue;
+    values[key] = /^(["']).*\1$/.test(raw)
+      ? raw.slice(1, -1)
+      : raw.split(" #", 1).join("").trim();
   }
   return values;
 }
@@ -147,8 +158,10 @@ export function parseDotenv(text: string): Record<string, string> {
 function readDotenv(path: string) {
   try {
     return parseDotenv(readFileSync(path, "utf8"));
-  } catch {
-    return {};
+  } catch (error) {
+    // No dotenv file means the defaults.
+    if (errnoIn(error, UNREACHABLE)) return {};
+    throw error;
   }
 }
 
@@ -203,7 +216,8 @@ export function parseSsListeners(output: string): Listener[] {
   const listeners: Listener[] = [];
   for (const line of output.split("\n")) {
     const columns = line.trim().split(/\s+/);
-    const local = columns[3] ?? "";
+    const local = columns[3];
+    if (local === undefined) continue;
     const port = Number(local.slice(local.lastIndexOf(":") + 1));
     for (const match of line.matchAll(/pid=(\d+)/g))
       if (Number.isInteger(port))
@@ -269,11 +283,12 @@ function listProcesses(): ProcessInfo[] {
   const processes: ProcessInfo[] = [];
   for (const line of run(["ps", "-axo", "pid=,ppid=,command="]).split("\n")) {
     const match = /^\s*(\d+)\s+(\d+)\s+(.*)$/.exec(line);
-    if (match)
+    const command = match?.[3];
+    if (match && command !== undefined)
       processes.push({
         pid: Number(match[1]),
         ppid: Number(match[2]),
-        command: (match[3] ?? "").trimEnd(),
+        command: command.trimEnd(),
       });
   }
   return processes;
@@ -287,8 +302,9 @@ function workingDirectories(pids: number[]) {
     for (const pid of pids) {
       try {
         cwds.set(pid, readlinkSync(`/proc/${pid}/cwd`));
-      } catch {
+      } catch (error) {
         // The process is gone or belongs to someone else; it is not ours to stop.
+        if (!errnoIn(error, GONE)) throw error;
       }
     }
     return cwds;
@@ -318,8 +334,11 @@ function packageName(directory: string) {
     return typeof parsed === "object" && parsed !== null && "name" in parsed
       ? parsed.name
       : undefined;
-  } catch {
-    return undefined;
+  } catch (error) {
+    // No package.json here, or one that is not JSON: not a checkout root.
+    if (errnoIn(error, UNREACHABLE) || error instanceof SyntaxError)
+      return undefined;
+    throw error;
   }
 }
 
@@ -330,20 +349,19 @@ export function createCheckoutResolver(appName = APP_NAME) {
     const cached = known.get(directory);
     if (cached !== undefined || known.has(directory)) return cached;
     const parent = dirname(directory);
-    const root =
-      packageName(directory) === appName
-        ? directory
-        : parent === directory
-          ? undefined
-          : resolveRoot(parent);
+    let root: string | undefined;
+    if (packageName(directory) === appName) root = directory;
+    else if (parent !== directory) root = resolveRoot(parent);
     known.set(directory, root);
     return root;
   };
   return (directory: string) => {
     try {
       return resolveRoot(realpathSync(directory));
-    } catch {
-      return undefined;
+    } catch (error) {
+      // A working directory that is gone is in no checkout.
+      if (errnoIn(error, UNREACHABLE)) return undefined;
+      throw error;
     }
   };
 }
@@ -360,8 +378,9 @@ function isAlive(pid: number) {
 function signal(pid: number, name: NodeJS.Signals) {
   try {
     process.kill(pid, name);
-  } catch {
+  } catch (error) {
     // Already gone.
+    if (!errnoIn(error, GONE)) throw error;
   }
 }
 
