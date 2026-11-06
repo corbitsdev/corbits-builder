@@ -92,7 +92,8 @@ export async function createWorkflowServices(options: {
   ) ?? [
     {
       provider: "openai-responses",
-      specifier: import.meta.resolve("@corbits/openai-responses"),
+      specifier: new URL("../inference/openai-responses.ts", import.meta.url)
+        .href,
       export: "createOpenAIResponsesAdapter",
     },
     {
