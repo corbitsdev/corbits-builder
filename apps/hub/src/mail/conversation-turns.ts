@@ -21,6 +21,11 @@ import {
   approvalDecisionLine,
   withoutResumeContext,
 } from "../config/resume.ts";
+import {
+  ASK_QUESTIONS,
+  QuestionsResponse,
+  questionsResponseText,
+} from "@corbits-builder/schemas/questions";
 import { personTurnText } from "../config/specialist-ended.ts";
 import { declinedWords } from "../config/decline.ts";
 import { readCoordinatorMailThreads } from "./conversation-threads.ts";
@@ -79,7 +84,9 @@ function approvalText(
   decisions: ApprovalDecisionTurns,
 ): string | undefined {
   const decision = ApprovalDecision(parseJson(body));
-  if (decision instanceof type.errors) return undefined;
+  // Answers are the person's turn by the questions call's own result.
+  if (decision instanceof type.errors || decision.outcome === "responded")
+    return undefined;
   const words = declinedWords(decision.message);
   return decisions === "note"
     ? words
@@ -95,6 +102,41 @@ function personText(body: string): string | undefined {
   return clippedTurnText(personTurnText(text));
 }
 
+const blocksOf = (content: unknown): Record<string, unknown>[] =>
+  Array.isArray(content) ? content.filter(isRecord) : [];
+
+/** The questions calls an assistant turn makes, by id. */
+const questionCalls = (content: unknown): string[] =>
+  blocksOf(content).flatMap((block) =>
+    block["type"] === "tool_call" &&
+    block["name"] === ASK_QUESTIONS &&
+    typeof block["id"] === "string"
+      ? [block["id"]]
+      : [],
+  );
+
+/** The person's response a turn returns to a questions call, as their words. */
+const answersOf = (
+  content: unknown,
+  asked: ReadonlySet<string>,
+): string | undefined => {
+  const result = blocksOf(content)
+    .flatMap((block) =>
+      block["type"] === "tool_result" &&
+      block["isError"] !== true &&
+      typeof block["callId"] === "string" &&
+      asked.has(block["callId"])
+        ? [textFromContent(block["content"])]
+        : [],
+    )
+    .find((text) => text !== undefined);
+  if (result === undefined) return undefined;
+  const response = QuestionsResponse(parseJson(result));
+  return response instanceof type.errors
+    ? result
+    : questionsResponseText(response);
+};
+
 // A missing or corrupt turn list is empty; it does not throw.
 function mapMirrorConversationTurns(
   turns: unknown,
@@ -102,12 +144,21 @@ function mapMirrorConversationTurns(
 ): ConversationTextTurn[] {
   if (!Array.isArray(turns)) return [];
   const mapped: ConversationTextTurn[] = [];
+  const asked = new Set<string>();
   for (const turn of turns) {
     if (!isRecord(turn)) continue;
     const role = mirrorRole(turn["role"]);
     const at = turn["timestamp"];
     if (role === undefined || typeof at !== "number" || !Number.isFinite(at))
       continue;
+    if (role === "assistant")
+      for (const id of questionCalls(turn["content"])) asked.add(id);
+    const answers =
+      role === "inbound" ? answersOf(turn["content"], asked) : undefined;
+    if (answers !== undefined) {
+      mapped.push({ role: "person", text: clippedTurnText(answers), at });
+      continue;
+    }
     const raw = textFromContent(turn["content"]);
     if (raw === undefined) continue;
     if (role === "assistant") {

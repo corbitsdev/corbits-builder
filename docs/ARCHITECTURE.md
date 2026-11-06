@@ -98,10 +98,10 @@ it covered, and only those whose hash still matches storage.
 ### Questions
 
 `ask_questions` puts a structured card (up to five questions with options and a
-recommended answer) in front of the person and returns at once. The answers
-reach the coordinator as the person's next message. A document's open
-questions carry over into such a card. Questions are never modelled as
-approvals.
+recommended answer) in front of the person. The call parks like an approval
+until the person answers, on the card or in the composer, and their answers
+are its result: the hub resolves the parked call with them instead of running
+it. A document's open questions carry over into such a card.
 
 ### The app repository and live preview
 

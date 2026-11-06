@@ -70,7 +70,7 @@ export const resumeMessage = (context: string | undefined, message: string) =>
 export function approvalDecisionLine({
   outcome,
   message,
-}: ApprovalDecision): string {
+}: Exclude<ApprovalDecision, { outcome: "responded" }>): string {
   const decided = outcome === "approved" ? "Approved" : "Rejected";
   // A blank note is no note: the line ends at the decision, not at a dangling colon.
   const note = message?.trim();

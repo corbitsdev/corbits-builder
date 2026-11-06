@@ -300,6 +300,12 @@ export type ProductApiClient = Readonly<{
     message?: string,
     signal?: AbortSignal,
   ): Promise<NativeApproval>;
+  respondToNativeApproval(
+    tenantId: string,
+    approvalId: string,
+    result: string,
+    signal?: AbortSignal,
+  ): Promise<NativeApproval>;
   sendMessage(
     projectTenantId: string,
     coordinatorRunId: string,

@@ -75,12 +75,12 @@ import {
 import { workUnits, type WorkUnit } from "./work-unit.ts";
 import { WorkUnitView } from "./work-unit-view.tsx";
 import type { CallResult } from "./live-run.ts";
+import { QuestionsCard } from "./questions-card.tsx";
 import {
-  askedQuestions,
-  QuestionsCard,
-  type QuestionsState,
-} from "./questions-card.tsx";
-import type { AskQuestions } from "@corbits-builder/schemas/questions";
+  ASK_QUESTIONS,
+  type AskQuestions,
+  type QuestionsResponse,
+} from "@corbits-builder/schemas/questions";
 
 type TurnBody = {
   text: string;
@@ -125,6 +125,10 @@ export type DocumentApproval = {
   packages?: readonly string[];
   /** The design concepts the approval starts, by name and art direction. */
   concepts?: readonly { readonly label: string; readonly direction: string }[];
+  /** The questions an ask_questions call waits on the person to answer, on a card of their own. */
+  questions?: AskQuestions;
+  /** The person's response to those questions, once they gave it here. */
+  response?: QuestionsResponse;
   /** When the native approval was raised, in ms; its card sits there in the thread. */
   at?: number;
   /** How the native record settled it, once it is no longer pending. */
@@ -226,8 +230,7 @@ type ThreadItem =
   | { kind: "updates"; group: UpdateGroup }
   | { kind: "approval"; approval: DocumentApproval }
   | { kind: "unit"; unit: WorkUnit }
-  | { kind: "choice"; card: ReactNode }
-  | { kind: "questions"; callId: string; ask: AskQuestions };
+  | { kind: "choice"; card: ReactNode };
 
 type Placed =
   | { kind: "update"; at: number; update: SpecialistUpdate }
@@ -353,41 +356,12 @@ type Section =
       cards: Card[];
     };
 
-function toolsOf(parts: readonly ConversationPart[]): readonly PartTool[] {
-  return parts.flatMap((part) =>
-    part.kind === "tool-trace"
-      ? [part]
-      : part.kind === "tool-batch"
-        ? part.tools
-        : [],
-  );
-}
-
-/** Whether questions the coordinator asked since the person's last turn still wait on them. */
-export function questionsOpen(
-  turns: readonly TranscriptTurn[],
-  results: ReadonlyMap<string, CallResult>,
-): boolean {
-  const since = turns.findLastIndex((turn) => turn.role === "person") + 1;
-  return turns
-    .slice(since)
-    .some((turn) =>
-      toolsOf(visibleTurnParts(turn)).some(
-        (tool) =>
-          askedQuestions(tool, results.get(tool.toolCallId)) !== undefined,
-      ),
-    );
-}
-
 /**
  * The thread cut at the person's turns. Between two of them the coordinator
  * speaks once: its turns' words under one header, then every card from that
  * stretch in the order they came.
  */
-function threadSections(
-  items: readonly ThreadItem[],
-  results: ReadonlyMap<string, CallResult>,
-): Section[] {
+function threadSections(items: readonly ThreadItem[]): Section[] {
   const sections: Section[] = [];
   let open: Extract<Section, { kind: "coordinator" }> | null = null;
   for (const item of items) {
@@ -405,11 +379,6 @@ function threadSections(
       continue;
     }
     open.turns.push({ turn: item.turn, index: item.index });
-    for (const tool of toolsOf(visibleTurnParts(item.turn))) {
-      const ask = askedQuestions(tool, results.get(tool.toolCallId));
-      if (ask !== undefined)
-        open.cards.push({ kind: "questions", callId: tool.toolCallId, ask });
-    }
   }
   return sections;
 }
@@ -426,12 +395,20 @@ function liveLast(
   const isLive = (card: Card) =>
     card.kind === "unit" && live(card.unit.dispatch);
   const isChoice = (card: Card) =>
-    card.kind === "choice" || card.kind === "questions";
+    card.kind === "choice" ||
+    (card.kind === "approval" && questionsCard(card.approval));
   return [
     ...cards.filter((card) => !isLive(card) && !isChoice(card)),
     ...cards.filter(isLive),
     ...cards.filter(isChoice),
   ];
+}
+
+// Questions declined or let lapse elsewhere read as a settled ask; only open or answered ones are a card.
+function questionsCard(
+  approval: DocumentApproval,
+): approval is DocumentApproval & { questions: AskQuestions } {
+  return approval.questions !== undefined && approval.outcome === undefined;
 }
 
 const FOLD_AFTER = 3;
@@ -464,8 +441,7 @@ function readableParts(
   results: ReadonlyMap<string, CallResult>,
 ): readonly ConversationPart[] {
   const carded = (tool: PartTool) =>
-    DISPATCH_TOOLS.has(tool.name) ||
-    askedQuestions(tool, results.get(tool.toolCallId)) !== undefined;
+    DISPATCH_TOOLS.has(tool.name) || tool.name === ASK_QUESTIONS;
   return parts.flatMap((part): ConversationPart[] => {
     const readable = (tool: PartTool) =>
       readableTool(tool, results.get(tool.toolCallId));
@@ -646,8 +622,11 @@ export function RoomThread({
   approvalError?: string;
   /** A typed yes counting down on the card it will approve. */
   typedYes?: { held: TypedYes; onUndo: () => void };
-  /** Sends the person's answers to the coordinator's questions as their next message. */
-  onAnswerQuestions?: (reply: string) => Promise<boolean>;
+  /** Answers the coordinator's waiting questions; their call returns the reply. */
+  onAnswerQuestions?: (
+    approvalId: string,
+    response: QuestionsResponse,
+  ) => Promise<boolean>;
   questionsDisabled?: boolean;
   /** Whether question cards ask one question at a time or all at once. */
   questionsLayout?: QuestionsLayout;
@@ -669,12 +648,7 @@ export function RoomThread({
     </MessageFold>
   );
   // Under a coordinator header, a coordinator's approval card does not repeat the name.
-  const renderCard = (
-    card: ShownCard,
-    position: string,
-    headed: boolean,
-    questions: (callId: string) => QuestionsState,
-  ) => {
+  const renderCard = (card: ShownCard, position: string, headed: boolean) => {
     if (card.kind === "unit")
       return (
         <WorkUnitView
@@ -701,22 +675,35 @@ export function RoomThread({
       );
     if (card.kind === "updates")
       return renderUpdates(card.group, updateSubject(card.group.sender));
-    if (card.kind === "questions")
+    if (card.kind === "approval" && questionsCard(card.approval)) {
+      const { approvalId, questions, response } = card.approval;
       return (
-        <ConversationItem key={card.callId} itemId={`questions:${card.callId}`}>
+        <ConversationItem key={approvalId} itemId={`questions:${approvalId}`}>
           <Message from="agent">
             {headed ? null : (
               <MessageHeader name={wording.speaker.coordinator} />
             )}
             <QuestionsCard
-              id={card.callId}
-              ask={card.ask}
-              state={questions(card.callId)}
+              id={approvalId}
+              ask={questions}
+              state={
+                response !== undefined
+                  ? { kind: "answered", response }
+                  : {
+                      kind: "open",
+                      disabled:
+                        questionsDisabled || onAnswerQuestions === undefined,
+                      onSend: (answered) =>
+                        onAnswerQuestions?.(approvalId, answered) ??
+                        Promise.resolve(false),
+                    }
+              }
               layout={questionsLayout}
             />
           </Message>
         </ConversationItem>
       );
+    }
     if (card.kind === "choice")
       return (
         <ConversationItem key="design-choice" itemId="design-choice">
@@ -852,7 +839,6 @@ export function RoomThread({
   );
   const sections = threadSections(
     threadItems(turns, updates, approvals, runs, designChoice, results),
-    results,
   );
   const mapTurns = sections.flatMap(
     (section, position): ConversationMapTurn[] => {
@@ -893,24 +879,6 @@ export function RoomThread({
       >
         {sections.map((section, position) => {
           if (section.kind === "coordinator") {
-            // The person's next turn answers the stretch's questions; with none yet, only its last ask is open.
-            const next = sections[position + 1];
-            const reply = next?.kind === "person" ? next.turn.text : undefined;
-            const lastAsk = section.cards.findLast(
-              (card) => card.kind === "questions",
-            );
-            const questions = (callId: string): QuestionsState =>
-              reply !== undefined
-                ? { kind: "answered", reply }
-                : lastAsk?.kind === "questions" && lastAsk.callId === callId
-                  ? {
-                      kind: "open",
-                      disabled:
-                        questionsDisabled || onAnswerQuestions === undefined,
-                      onSend:
-                        onAnswerQuestions ?? (() => Promise.resolve(false)),
-                    }
-                  : { kind: "replaced" };
             const first = section.turns[0];
             const visible = section.turns.flatMap(({ turn }) =>
               readableParts(visibleTurnParts(turn), results),
@@ -936,12 +904,7 @@ export function RoomThread({
                     )
                   : null}
                 {foldUpdates(liveLast(section.cards, live)).map((card, at) =>
-                  renderCard(
-                    card,
-                    `${String(position)}:${String(at)}`,
-                    headed,
-                    questions,
-                  ),
+                  renderCard(card, `${String(position)}:${String(at)}`, headed),
                 )}
               </Fragment>
             );

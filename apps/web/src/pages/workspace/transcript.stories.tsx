@@ -1,7 +1,7 @@
 import type { Meta, StoryObj } from "@storybook/react-vite";
 import type { AskQuestions } from "@corbits-builder/schemas/questions";
 import { fn } from "storybook/test";
-import { ASK_QUESTIONS } from "./questions-card.tsx";
+import { ASK_QUESTIONS } from "@corbits-builder/schemas/questions";
 import { RoomThread, type TranscriptTurn } from "./transcript.tsx";
 
 const BRIEF = { id: "problem_brief", title: "Problem brief" };

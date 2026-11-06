@@ -1,7 +1,6 @@
 /**
- * The coordinator's ask_questions call as a card the person answers. The answers go back as the
- * person's next message, the way the composer sends one; the card holds no state of its own past
- * that message, so a later person turn is what marks it answered.
+ * The coordinator's ask_questions call as a card the person answers. The call waits on the person
+ * as a pending approval, and their answers are what it returns.
  */
 import {
   useEffect,
@@ -10,42 +9,26 @@ import {
   type KeyboardEvent,
   type ReactNode,
 } from "react";
-import { Check, CornerDownRight } from "lucide-react";
+import { Check } from "lucide-react";
 import {
   Button,
   Checkbox,
   GateBlock,
   Input,
   IntakeForm,
-  type PartTool,
 } from "@corbits/react-ui";
-import {
+import type {
   AskQuestions,
-  askQuestionsIssue,
-  type Question,
+  Question,
+  QuestionsResponse,
 } from "@corbits-builder/schemas/questions";
 import { wording } from "../../config.ts";
 import type { QuestionsLayout } from "../../questions-layout-setting.ts";
-import type { CallResult } from "./live-run.ts";
 import { clsx } from "clsx";
 import { Fault } from "../../components.jsx";
 import styles from "./questions-card.module.css";
 
 const text = wording.questions;
-
-export const ASK_QUESTIONS = "ask_questions";
-
-/** The questions a finished call asked, or undefined when it is not one the hub accepted. */
-export function askedQuestions(
-  part: PartTool,
-  result: CallResult | undefined,
-): AskQuestions | undefined {
-  if (part.name !== ASK_QUESTIONS || part.status !== "output-available")
-    return undefined;
-  if (result?.isError === true || !AskQuestions.allows(part.input))
-    return undefined;
-  return askQuestionsIssue(part.input) === undefined ? part.input : undefined;
-}
 
 type Answer = {
   readonly chosen: readonly string[];
@@ -57,10 +40,9 @@ export type QuestionsState =
   | {
       readonly kind: "open";
       readonly disabled: boolean;
-      readonly onSend: (reply: string) => Promise<boolean>;
+      readonly onSend: (response: QuestionsResponse) => Promise<boolean>;
     }
-  | { readonly kind: "answered"; readonly reply: string }
-  | { readonly kind: "replaced" };
+  | { readonly kind: "answered"; readonly response: QuestionsResponse };
 
 function answerLabels(question: Question, answer: Answer): string[] {
   const labels = question.options
@@ -84,58 +66,31 @@ export function stepName(id: string): string {
   return words.charAt(0).toUpperCase() + words.slice(1);
 }
 
-/** Each question with its answer as the person's reply carries it, by the line the card composed. */
-function repliedAnswers(
-  questions: readonly Question[],
-  reply: string,
-): AnswerRow[] {
-  const lines = reply.split("\n");
-  return questions.flatMap((question) => {
-    const lead = text.answerLine(question.prompt, []);
-    const line = lines.find((candidate) => candidate.startsWith(lead));
-    return line === undefined
-      ? []
-      : [
-          {
-            id: question.id,
-            prompt: question.prompt,
-            answer: line.slice(lead.length),
-          },
-        ];
-  });
-}
-
-type AnswerRow = { id: string; prompt: string; answer: string };
-
-function AnswerList({ answers }: { answers: readonly AnswerRow[] }) {
+function AnswerList({
+  answers,
+}: {
+  answers: Extract<QuestionsResponse, { answers: unknown }>["answers"];
+}) {
   return (
     <dl className={styles.answers}>
-      {answers.map(({ id, prompt, answer }) => (
+      {answers.map(({ id, question, answer }) => (
         <div key={id}>
-          <dt>{prompt}</dt>
-          <dd>{answer}</dd>
+          <dt>{question}</dt>
+          <dd>{answer.join(", ")}</dd>
         </div>
       ))}
     </dl>
   );
 }
 
-/** The card once done, the same in either layout: its outcome, and the answers the reply carried. */
-function Settled({ ask, reply }: { ask: AskQuestions; reply?: string }) {
-  if (reply === undefined)
-    return (
-      <SettledBox
-        title={text.replaced}
-        mark={<CornerDownRight className={styles.settledMark} />}
-      />
-    );
-  const answers = repliedAnswers(ask.questions, reply);
+/** The card once done, the same in either layout: the answers the person gave on it. */
+function Settled({ response }: { response: QuestionsResponse }) {
   const mark = <Check className={clsx(styles.settledMark, styles.settledOk)} />;
-  if (answers.length === 0)
+  if ("reply" in response)
     return <SettledBox title={text.answeredInChat} mark={mark} />;
   return (
     <SettledBox title={text.answered} mark={mark}>
-      <AnswerList answers={answers} />
+      <AnswerList answers={response.answers} />
     </SettledBox>
   );
 }
@@ -574,8 +529,8 @@ function StepReview({
       <AnswerList
         answers={questions.map((question) => ({
           id: question.id,
-          prompt: question.prompt,
-          answer: answerLabels(question, answerOf(question)).join(", "),
+          question: question.prompt,
+          answer: answerLabels(question, answerOf(question)),
         }))}
       />
       <Button
@@ -702,9 +657,7 @@ export function QuestionsCard({
   );
   const [sending, setSending] = useState(false);
   const [failed, setFailed] = useState(false);
-  if (state.kind === "answered")
-    return <Settled ask={ask} reply={state.reply} />;
-  if (state.kind === "replaced") return <Settled ask={ask} />;
+  if (state.kind === "answered") return <Settled response={state.response} />;
   const answerOf = (question: Question): Answer =>
     answers[question.id] ?? { chosen: [], other: false, otherText: "" };
   const setAnswer = (question: Question, next: Answer) =>
@@ -714,15 +667,13 @@ export function QuestionsCard({
   const send = async () => {
     setSending(true);
     setFailed(false);
-    const reply = ask.questions
-      .map((question) =>
-        text.answerLine(
-          question.prompt,
-          answerLabels(question, answerOf(question)),
-        ),
-      )
-      .join("\n");
-    const sent = await state.onSend(reply);
+    const sent = await state.onSend({
+      answers: ask.questions.map((question) => ({
+        id: question.id,
+        question: question.prompt,
+        answer: answerLabels(question, answerOf(question)),
+      })),
+    });
     setSending(false);
     setFailed(!sent);
   };

@@ -79,16 +79,22 @@ describe("questions card", () => {
   });
 
   test("an answered card settles the same whichever layout asked it", () => {
-    const reply = [
-      text.answerLine("Who is it for?", ["Small teams"]),
-      text.answerLine("What must the first version do?", ["Track tasks"]),
-    ].join("\n");
+    const response = {
+      answers: [
+        { id: "audience", question: "Who is it for?", answer: ["Small teams"] },
+        {
+          id: "first_version",
+          question: "What must the first version do?",
+          answer: ["Track tasks"],
+        },
+      ],
+    };
     const settled = (["steps", "all"] as const).map((layout) =>
       renderToStaticMarkup(
         <QuestionsCard
           id="call-1"
           ask={ask}
-          state={{ kind: "answered", reply }}
+          state={{ kind: "answered", response }}
           layout={layout}
         />,
       ),
@@ -106,7 +112,10 @@ describe("questions card", () => {
       <QuestionsCard
         id="call-1"
         ask={ask}
-        state={{ kind: "answered", reply: "Actually, let's build a game." }}
+        state={{
+          kind: "answered",
+          response: { reply: "Actually, let's build a game." },
+        }}
         layout="steps"
       />,
     );

@@ -1,5 +1,7 @@
 import { type } from "arktype";
 
+export const ASK_QUESTIONS = "ask_questions";
+
 const QuestionOption = type({
   "+": "reject",
   value: "0 < string <= 64",
@@ -22,6 +24,27 @@ export const AskQuestions = type({
   questions: Question.array().atLeastLength(1).atMostLength(5),
 });
 export type AskQuestions = typeof AskQuestions.infer;
+
+// What an ask_questions call returns, as JSON text: each question with the labels the person chose
+// and their own words, or their reply when they answered in the conversation instead.
+export const QuestionsResponse = type({
+  "+": "reject",
+  answers: type({
+    "+": "reject",
+    id: Question.get("id"),
+    question: Question.get("prompt"),
+    answer: "string[]",
+  }).array(),
+}).or({ "+": "reject", reply: "string" });
+export type QuestionsResponse = typeof QuestionsResponse.infer;
+
+/** A response as the person's words in the conversation: one line per question, or their reply. */
+export function questionsResponseText(response: QuestionsResponse): string {
+  if ("reply" in response) return response.reply;
+  return response.answers
+    .map(({ question, answer }) => `- ${question} — ${answer.join(", ")}`)
+    .join("\n");
+}
 
 export const duplicate = (values: readonly string[]) =>
   values.find((value, index) => values.indexOf(value) !== index);

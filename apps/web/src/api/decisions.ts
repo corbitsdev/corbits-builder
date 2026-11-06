@@ -17,6 +17,7 @@ import { wording } from "../config.ts";
 import { productClient } from "./transport.ts";
 import type { Wait } from "./types.ts";
 import { askOf } from "./ask.ts";
+import { ASK_QUESTIONS } from "@corbits-builder/schemas/questions";
 import { isInputPark, readConversationEvents } from "./conversation.ts";
 import { workspaceTenantId } from "./auth.ts";
 
@@ -94,8 +95,15 @@ export async function openDecisions(onlyProjectId?: string): Promise<Wait[]> {
     const pending = approvals.filter(
       (approval) => approval.status === "pending",
     );
-    const projectWaits: Omit<Wait, "projectTitle">[] = pending.map((approval) =>
-      approvalWait(approval, record.projectId, record.tenantId),
+    // Questions are answered on their card, never approved, so any the card cannot draw are left
+    // out rather than shown as an approval the hub would refuse.
+    const projectWaits: Omit<Wait, "projectTitle">[] = pending.flatMap(
+      (approval) => {
+        const wait = approvalWait(approval, record.projectId, record.tenantId);
+        return wait.toolName === ASK_QUESTIONS && wait.questions === undefined
+          ? []
+          : [wait];
+      },
     );
     // Only the latest input park is the person's move; earlier parks that a
     // later SignalReceived released are not waiting on anything.
@@ -111,6 +119,19 @@ export async function openDecisions(onlyProjectId?: string): Promise<Wait[]> {
       waits.push({ ...wait, projectTitle: record.title });
   }
   return waits;
+}
+
+/** Responds to an ask whose result is the person's own input; the waiting call returns `result`. */
+export async function respondToApproval(input: {
+  tenantId: string;
+  approvalId: string;
+  result: string;
+}): Promise<void> {
+  await productClient().respondToNativeApproval(
+    input.tenantId,
+    input.approvalId,
+    input.result,
+  );
 }
 
 export type DecisionChoice = "approve" | "reject";

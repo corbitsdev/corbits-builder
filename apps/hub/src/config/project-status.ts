@@ -20,6 +20,7 @@ const APPROVAL: Record<string, string> = {
   instruct_coder: "Approve the change for the app builder",
   design_app: "Approve the design work",
   install_packages: "Approve the packages the app builder asked for",
+  ask_questions: "Answer the coordinator's questions",
 };
 
 export const projectStatusWording = {
