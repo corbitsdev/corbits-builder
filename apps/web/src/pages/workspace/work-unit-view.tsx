@@ -109,6 +109,7 @@ function WorkLine({
       return text.steps(text.done[dispatch.role](subject), steps);
     case "finished":
     case "failed":
+      if (dispatch.refused !== undefined) return text.refused;
       return text.steps(text.ended(subject), steps);
   }
 }
