@@ -593,6 +593,11 @@ export function App() {
     (readFailure !== null &&
       !signedOutByHost &&
       (readStatus === undefined || readStatus >= 500));
+  // A failed refresh keeps its last data, so only a read that never answered
+  // hides the shell.
+  const nothingToShow =
+    (providersRead.isError && providersRead.data === undefined) ||
+    (projectsRead.isError && projectsRead.data === undefined);
   useEffect(() => {
     if (signedOutByHost) setAuth("signed-out");
   }, [signedOutByHost]);
@@ -782,16 +787,13 @@ export function App() {
   // No model credential yet: ask on its own screen, before the project list.
   // A refused read stays on the shell, which already says the hub is down.
   const modelCatalogUnsettled =
-    !setupLater &&
-    view !== "invite" &&
-    !providersRead.isSuccess &&
-    (providersRead.isPending || providersRead.isFetching);
-  if (modelCatalogUnsettled || offline) {
+    !setupLater && view !== "invite" && providersRead.isPending;
+  if (modelCatalogUnsettled || (offline && nothingToShow)) {
     return <Booting offline={offline} />;
   }
   if (
     view !== "invite" &&
-    providersRead.isSuccess &&
+    providersRead.data !== undefined &&
     needsModelSetup(providers) &&
     !setupLater
   ) {
@@ -896,7 +898,7 @@ export function App() {
                 onOpen={openProject}
                 onChanged={refresh}
                 needsProvider={
-                  providersRead.isSuccess && needsModelSetup(providers)
+                  providersRead.data !== undefined && needsModelSetup(providers)
                 }
               />
             ) : null}
@@ -904,7 +906,7 @@ export function App() {
             {view === "library" ? (
               <ProjectLibrary
                 projects={projects}
-                loaded={projectsRead.isSuccess}
+                loaded={projectsRead.data !== undefined}
                 failed={projectsRead.isError}
                 onOpen={(projectId) => openProject(projectId)}
                 onNewProject={() => navigate("projects")}
