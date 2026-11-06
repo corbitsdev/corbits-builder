@@ -503,10 +503,15 @@ export function createLocalProcessSidecarProvisioner({
       });
       return;
     }
-    manifest = stored;
+    // The data dir follows the hub's data root, not the manifest: a manifest written when the root was relative
+    // points the sidecar, which runs from vendor/interchange, at a directory under it.
+    const restored =
+      stored.dataDir === dataDir ? stored : { ...stored, dataDir };
+    if (restored !== stored) await manifests.write(restored);
+    manifest = restored;
     for (const hold of live) holds.set(hold.allocationId, hold);
     await manifests.writeHolds(live);
-    const child = await start(stored);
+    const child = await start(restored);
     log({
       level: "info",
       msg: "local_sidecar_respawned",
