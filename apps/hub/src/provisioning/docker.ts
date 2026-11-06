@@ -66,11 +66,6 @@ type CreateDockerSidecarProvisionerOpts = {
   readonly hubWebSocketUrl?: string;
 };
 
-type Fence = {
-  readonly generation: number;
-  readonly destroyedSidecarId?: string;
-};
-
 function isDestroyedBy(
   container: Container,
   request: DestroySidecarRequest,
@@ -142,7 +137,6 @@ export function createDockerSidecarProvisioner({
       throw new Error("Docker limits must be positive safe integers");
   if (!/^[a-zA-Z0-9][a-zA-Z0-9_.-]*$/.test(hubId))
     throw new Error("Docker hub identity is invalid");
-  const fences = new Map<string, Fence>();
   const queues = new Map<string, Promise<unknown>>();
   /** Containers being created, which a listing may not show yet. */
   let starting = 0;
@@ -246,7 +240,7 @@ export function createDockerSidecarProvisioner({
   }
 
   // A late ensure the hub stopped waiting for still finishes before the
-  // destroy that fences it, so the destroy removes what it created.
+  // destroy that follows it, so the destroy removes what it created.
   function serialize<T>(
     allocationId: string,
     run: () => Promise<T>,
@@ -261,10 +255,9 @@ export function createDockerSidecarProvisioner({
     request: EnsureSidecarRequest,
   ): Promise<EnsureSidecarResult> {
     request.signal?.throwIfAborted();
-    const fence = fences.get(request.allocationId);
     const containers = await list(request.allocationId, request.signal);
     const observed = Math.max(
-      fence?.generation ?? 0,
+      0,
       ...containers.map((container) => container.Labels[LABEL.generation]),
     );
     if (request.generation < observed) {
@@ -272,17 +265,6 @@ export function createDockerSidecarProvisioner({
         kind: "rejected",
         code: "stale_generation",
         message: `Generation ${String(request.generation)} is older than ${String(observed)}`,
-        retryable: false,
-      };
-    }
-    if (
-      request.generation === fence?.generation &&
-      request.sidecarId === fence.destroyedSidecarId
-    ) {
-      return {
-        kind: "rejected",
-        code: "sidecar_destroyed",
-        message: `Sidecar ${request.sidecarId} was destroyed`,
         retryable: false,
       };
     }
@@ -307,9 +289,6 @@ export function createDockerSidecarProvisioner({
     }
     starting += 1;
     try {
-      if (fence === undefined || request.generation > fence.generation) {
-        fences.set(request.allocationId, { generation: request.generation });
-      }
       return { kind: "accepted", externalRef: await create(request) };
     } finally {
       starting -= 1;
@@ -319,13 +298,6 @@ export function createDockerSidecarProvisioner({
   async function destroySidecar(
     request: DestroySidecarRequest,
   ): Promise<DestroySidecarResult> {
-    const fence = fences.get(request.allocationId);
-    if (fence === undefined || request.generation >= fence.generation) {
-      fences.set(request.allocationId, {
-        generation: request.generation,
-        destroyedSidecarId: request.sidecarId,
-      });
-    }
     for (const container of (
       await list(request.allocationId, request.signal)
     ).filter((container) => isDestroyedBy(container, request))) {

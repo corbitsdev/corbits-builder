@@ -4,7 +4,7 @@ import {
   createSidecarCredentialResolver,
 } from "@intx/hub-sessions";
 import type { AdapterManifest } from "@intx/types";
-import { and, eq, inArray, isNull, notInArray } from "drizzle-orm";
+import { and, eq, isNull } from "drizzle-orm";
 import type { LocalProcessSidecarProvisioner } from "./local-provisioner.ts";
 import type { LocalSidecarHold } from "./manifest-store.ts";
 
@@ -42,30 +42,5 @@ export async function restoreLocalSidecars(
   async function hasWork(sidecarId: string): Promise<boolean> {
     return (await credentials.resolveBindings(sidecarId)).length > 0;
   }
-  async function stillOpen(
-    allocationIds: readonly string[],
-  ): Promise<ReadonlySet<string>> {
-    if (allocationIds.length === 0) return new Set();
-    const ids = [...allocationIds];
-    const allocations = await db
-      .select({ id: schema.sidecarAllocation.id })
-      .from(schema.sidecarAllocation)
-      .where(
-        and(
-          inArray(schema.sidecarAllocation.id, ids),
-          notInArray(schema.sidecarAllocation.status, ["released", "failed"]),
-        ),
-      );
-    const probes = await db
-      .select({ id: schema.workflowProbe.id })
-      .from(schema.workflowProbe)
-      .where(
-        and(
-          inArray(schema.workflowProbe.id, ids),
-          notInArray(schema.workflowProbe.status, ["succeeded", "failed"]),
-        ),
-      );
-    return new Set([...allocations, ...probes].map((row) => row.id));
-  }
-  await local.restore({ isLive, hasWork, stillOpen, reusable });
+  await local.restore({ isLive, hasWork, reusable });
 }

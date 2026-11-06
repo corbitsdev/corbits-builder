@@ -23,26 +23,12 @@ const LocalSidecarHold = type({
 export type LocalSidecarHold = typeof LocalSidecarHold.infer;
 const LocalSidecarHolds = LocalSidecarHold.array();
 
-/** A destroyed generation of an allocation, and the identities a late ensure at it may still carry. */
-const LocalSidecarFence = type({
-  allocationId: "string > 0",
-  generation: "number.integer >= 0",
-  sidecarIds: "string[]",
-  /** The sidecar still hosted the allocation's copy when it was destroyed. */
-  "hosted?": "true",
-});
-export type LocalSidecarFence = typeof LocalSidecarFence.infer;
-const LocalSidecarFences = LocalSidecarFence.array();
-
 export interface LocalSidecarManifestStore {
   read(): Promise<LocalSidecarManifest | null>;
   write(manifest: LocalSidecarManifest): Promise<void>;
   remove(): Promise<void>;
   readHolds(): Promise<LocalSidecarHold[]>;
   writeHolds(holds: readonly LocalSidecarHold[]): Promise<void>;
-  /** The stored fences, or null when the file could not be read and was moved aside. */
-  readFences(): Promise<LocalSidecarFence[] | null>;
-  writeFences(fences: readonly LocalSidecarFence[]): Promise<void>;
   /** The pid of the sidecar process last started on this data root, or null when none is recorded. */
   readPid(): Promise<number | null>;
   writePid(pid: number): Promise<void>;
@@ -88,7 +74,6 @@ export function createLocalSidecarManifestStore({
 }: CreateLocalSidecarManifestStoreOpts): LocalSidecarManifestStore {
   const manifestFile = path.join(dataRoot, "sidecar.json");
   const holdsFile = path.join(dataRoot, "holds.json");
-  const fencesFile = path.join(dataRoot, "fences.json");
   const pidFile = path.join(dataRoot, "sidecar.pid");
 
   async function write(manifest: LocalSidecarManifest): Promise<void> {
@@ -153,32 +138,6 @@ export function createLocalSidecarManifestStore({
     await writeAtomically(holdsFile, JSON.stringify(holds));
   }
 
-  // An unreadable fences file is kept aside for the operator; null tells restore its fences are lost.
-  async function readFences(): Promise<LocalSidecarFence[] | null> {
-    const text = await readOptional(fencesFile);
-    if (text === null) return [];
-    try {
-      return LocalSidecarFences.assert(JSON.parse(text));
-    } catch (error) {
-      const aside = `${fencesFile}.corrupt-${String(Date.now())}`;
-      await fs.rename(fencesFile, aside);
-      log({
-        level: "warn",
-        msg: "local_sidecar_fences_unreadable_moved",
-        file: fencesFile,
-        aside,
-        error: errorText(error),
-      });
-      return null;
-    }
-  }
-
-  async function writeFences(
-    fences: readonly LocalSidecarFence[],
-  ): Promise<void> {
-    await writeAtomically(fencesFile, JSON.stringify(fences));
-  }
-
   async function readPid(): Promise<number | null> {
     const pid = Number((await readOptional(pidFile))?.trim());
     return Number.isSafeInteger(pid) && pid > 0 ? pid : null;
@@ -198,8 +157,6 @@ export function createLocalSidecarManifestStore({
     remove,
     readHolds,
     writeHolds,
-    readFences,
-    writeFences,
     readPid,
     writePid,
     removePid,
