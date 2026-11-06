@@ -5,6 +5,8 @@
  * instance of that resource.
  */
 export const keys = {
+  /** Who is signed in, or null when no one is. */
+  session: ["session"] as const,
   workspaces: ["workspaces"] as const,
   designDraft: {
     all: ["designDraft"] as const,

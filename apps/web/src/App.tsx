@@ -14,6 +14,11 @@ import { humanFault, responseCode } from "./pages/workspace/human-fault.ts";
 import { ProductApiError } from "@corbits-builder/client";
 import { queryClient } from "./queries/client.ts";
 import { keys } from "./queries/keys.ts";
+import {
+  sessionAuth,
+  sessionQuery,
+  sessionReadRetryable,
+} from "./queries/session.ts";
 import { hostLatency, productClient } from "./api/transport.ts";
 import { useQuery } from "@tanstack/react-query";
 import { Toaster, toast } from "sonner";
@@ -48,11 +53,9 @@ import { ProjectMenu } from "./pages/project-menu.jsx";
 import { ProjectLibrary } from "./pages/project-library.jsx";
 import {
   ensureWorkspace,
-  getHubSession,
   openWorkspace,
   signOutHub,
   workspaceTenantId,
-  type HubUser,
 } from "./api/auth.ts";
 import { WorkspaceMenu } from "./workspace-menu.tsx";
 import { Settings, type SettingsTab } from "./pages/settings/settings.jsx";
@@ -81,7 +84,7 @@ import {
 } from "@corbits/react-ui/ui/dialog";
 import { Auth } from "./pages/auth.jsx";
 import { StageWorkspace } from "./pages/workspace/index.tsx";
-import { firstRunScreen, type HubAuthState } from "./first-run.ts";
+import { firstRunScreen } from "./first-run.ts";
 import {
   ModelSetup,
   clearModelSetupDeferral,
@@ -547,8 +550,9 @@ export function App() {
   };
 
   const slowHost = useSlowHost();
-  const [auth, setAuth] = useState<HubAuthState>("unknown");
-  const [sessionReadFailed, setSessionReadFailed] = useState(false);
+  const sessionRead = useQuery(sessionQuery);
+  const auth = sessionAuth(sessionRead);
+  const user = sessionRead.data?.user ?? null;
 
   // A refused read says nothing about what there is, so each query keeps what
   // it last read.
@@ -589,7 +593,8 @@ export function App() {
   // Auth and "no coordinator yet" are not a dead hub. Only a dropped
   // connection or a 5xx is offline.
   const offline =
-    sessionReadFailed ||
+    (sessionRead.data === undefined &&
+      sessionReadRetryable(sessionRead.failureReason)) ||
     (readFailure !== null &&
       !signedOutByHost &&
       (readStatus === undefined || readStatus >= 500));
@@ -599,7 +604,7 @@ export function App() {
     (providersRead.isError && providersRead.data === undefined) ||
     (projectsRead.isError && projectsRead.data === undefined);
   useEffect(() => {
-    if (signedOutByHost) setAuth("signed-out");
+    if (signedOutByHost) queryClient.setQueryData(keys.session, null);
   }, [signedOutByHost]);
   // Query keys are not scoped to a person, so the cache belongs to whoever was
   // signed in. Clearing it also saves the empty cache over the stored one.
@@ -609,29 +614,14 @@ export function App() {
     setSelected(null);
   }, [auth]);
   const [setupLater, setSetupLater] = useState(modelSetupDeferred);
-  const [user, setUser] = useState<HubUser | null>(null);
+  // A hub that is down or unreachable is retried and is the loading screen's
+  // to show; only a session that will never read is a toast.
   useEffect(() => {
-    if (auth !== "signed-in") {
-      setUser(null);
-      return;
-    }
-    let cancelled = false;
-    const readUser = async () => {
-      try {
-        const session = await getHubSession();
-        if (!cancelled) setUser(session?.user ?? null);
-      } catch (cause) {
-        if (cancelled) return;
-        // A hub that is down or unreachable is the loading screen's to show, never a toast.
-        if (cause instanceof ApiFailure && cause.detail.retryable) return;
-        toast.error(humanFault(cause, wording.auth.accountUnreadable));
-      }
-    };
-    void readUser();
-    return () => {
-      cancelled = true;
-    };
-  }, [auth]);
+    if (sessionRead.error)
+      toast.error(
+        humanFault(sessionRead.error, wording.auth.accountUnreadable),
+      );
+  }, [sessionRead.error]);
   const signOut = async () => {
     try {
       await signOutHub();
@@ -639,8 +629,7 @@ export function App() {
       // The session is ended locally either way; the person hears the hub kept it.
       toast.error(humanFault(cause, wording.auth.signOutFailed));
     }
-    setUser(null);
-    setAuth("signed-out");
+    queryClient.setQueryData(keys.session, null);
   };
 
   // Re-reads everything the fold rests on: the first read, every write that
@@ -661,21 +650,11 @@ export function App() {
     setSetupLater(false);
     setSelected(null);
     setView("projects");
-    void queryClient.resetQueries();
+    // Who is signed in is the same in every workspace.
+    void queryClient.resetQueries({
+      predicate: ({ queryKey }) => queryKey[0] !== keys.session[0],
+    });
   };
-
-  useEffect(() => {
-    const readSession = async () => {
-      try {
-        const session = await getHubSession();
-        setAuth(session ? "signed-in" : "signed-out");
-      } catch (cause) {
-        if (!(cause instanceof ApiFailure)) throw cause;
-        setSessionReadFailed(true);
-      }
-    };
-    void readSession();
-  }, []);
 
   // The workspace tenant is created the first time this session signs in; the
   // fold reads below all scope themselves with it, so they wait for it.
@@ -778,7 +757,7 @@ export function App() {
     return (
       <Auth
         onSignedIn={() => {
-          setAuth("signed-in");
+          void queryClient.invalidateQueries({ queryKey: keys.session });
         }}
       />
     );
@@ -922,7 +901,9 @@ export function App() {
               <Settings
                 onChanged={refresh}
                 user={user}
-                onUserChanged={setUser}
+                onUserChanged={(changed) =>
+                  queryClient.setQueryData(keys.session, { user: changed })
+                }
                 onSignOut={signOut}
                 {...(settingsTab !== undefined
                   ? { requestedTab: settingsTab }
