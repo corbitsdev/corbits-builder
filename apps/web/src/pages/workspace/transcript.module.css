@@ -66,17 +66,23 @@
   overflow-wrap: anywhere;
 }
 
-/* The box of the run line that replaces it, so the hand-off doesn't move. */
+/* The run line's box, so the hand-off to it doesn't move. */
 .thinking {
   align-self: start;
-  padding: var(--space-1);
+  padding-block: var(--space-1);
   font-size: 0.875rem;
   line-height: 1.25rem;
 }
 
+/* The trigger's inline padding (px-1) hangs outside, so its words start under
+   the speaker's name. */
+.run {
+  margin-inline-start: calc(-1 * var(--space-1));
+}
+
 /* A live run's line shimmers as ShimmerText does, so it alone shows the turn
    is at work. The trigger's first span is its line; the chevron stays solid. */
-.liveRun > span:first-child {
+[data-streaming] > .run > span:first-child {
   background-image: linear-gradient(
     90deg,
     var(--muted-foreground) 40%,
@@ -90,7 +96,7 @@
 }
 
 @media (prefers-reduced-motion: reduce), (forced-colors: active) {
-  .liveRun > span:first-child {
+  [data-streaming] > .run > span:first-child {
     animation: none;
     background: none;
     color: inherit;

@@ -836,7 +836,7 @@ export function RoomThread({
                 <ActivityTrigger
                   {...(label === undefined ? {} : { label })}
                   labels={wording.activity.trigger}
-                  {...(live ? { className: styles.liveRun } : {})}
+                  className={styles.run}
                 />
                 <ActivityContent renderStep={renderStep} />
               </Activity>
