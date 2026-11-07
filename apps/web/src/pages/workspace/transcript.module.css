@@ -90,6 +90,8 @@
     var(--muted-foreground) 60%
   );
   background-size: 200% 100%;
+  /* Nothing in the build prefixes; without the clip the text stays transparent. */
+  -webkit-background-clip: text;
   background-clip: text;
   color: transparent;
   animation: global(corbits-shimmer-sweep) 1.8s linear infinite;
