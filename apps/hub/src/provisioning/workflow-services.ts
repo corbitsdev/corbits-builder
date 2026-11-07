@@ -39,6 +39,7 @@ import {
   defaultDockerLimits,
 } from "./docker.ts";
 import { positiveInteger } from "../environment.ts";
+import { errorCode, requestErrorMetadata } from "../request-error.ts";
 import { localSidecarDataRoot } from "../sidecar/data-root.ts";
 import { createHostCapacity } from "../sidecar/host-capacity.ts";
 import {
@@ -300,12 +301,16 @@ export async function createWorkflowServices(options: {
     );
     return task;
   };
-  const report = (run: () => Promise<unknown>) =>
-    track(run)
-      .then(() => undefined)
-      .catch(() => {
-        log.error("Native workflow connection reconciliation failed");
+  const report = async (run: () => Promise<unknown>) => {
+    try {
+      await track(run);
+    } catch (error) {
+      log.error("Native workflow connection reconciliation failed", {
+        ...errorCode(error),
+        ...requestErrorMetadata(error),
       });
+    }
+  };
   const unsubscribers = [
     router.events.on("sidecar.disconnect", ({ allocated }) =>
       report(async () => {

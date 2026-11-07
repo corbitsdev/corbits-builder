@@ -11,10 +11,19 @@ const repositoryRoot = fileURLToPath(new URL("../../../", import.meta.url));
 
 // A thrown error's code, such as ENOENT, EAUTH, a Postgres SQLSTATE or isomorphic-git's
 // NotFoundError, names what failed without the message's paths; anything else it carries is left out.
-export const errorCode = (error: unknown) =>
-  hasCode(error) && /^[A-Za-z0-9][A-Za-z0-9_]{0,63}$/.test(error.code)
-    ? { errorCode: error.code }
+export const errorCode = (error: unknown) => {
+  const code = codeOf(error);
+  return code !== undefined && /^[A-Za-z0-9][A-Za-z0-9_]{0,63}$/.test(code)
+    ? { errorCode: code }
     : {};
+};
+
+// A wrapper such as Drizzle's query error carries no code of its own, only the driver's as its cause.
+function codeOf(error: unknown) {
+  if (hasCode(error)) return error.code;
+  if (error instanceof Error && hasCode(error.cause)) return error.cause.code;
+  return undefined;
+}
 
 // Never emit error-supplied filenames, messages, causes, or custom names.
 export function requestErrorMetadata(error: unknown) {

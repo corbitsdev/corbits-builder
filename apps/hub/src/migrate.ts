@@ -9,6 +9,7 @@ import {
   type Environment,
 } from "./environment.ts";
 import { migrateProductDatabase } from "./db/migrate.ts";
+import { errorCode } from "./request-error.ts";
 
 const migrationsFolder = fileURLToPath(
   new URL("../migrations/", import.meta.resolve("@intx/db")),
@@ -39,8 +40,11 @@ if (import.meta.main) {
   try {
     await migrateDatabase();
     console.log(JSON.stringify({ migrationsApplied: true }));
-  } catch {
-    console.error(JSON.stringify({ migrationsApplied: false }));
+  } catch (error) {
+    // The message can carry the database URL; the code, such as a SQLSTATE, cannot.
+    console.error(
+      JSON.stringify({ migrationsApplied: false, ...errorCode(error) }),
+    );
     process.exitCode = 1;
   }
 }

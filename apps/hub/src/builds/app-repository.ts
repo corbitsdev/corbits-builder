@@ -23,7 +23,7 @@ import { HUB_CREDENTIAL_HANDLE } from "@intx/types/credential-delivery";
 import { hexDecode } from "@intx/types/hex";
 import type { RuntimeCapabilities } from "@intx/types/runtime-capabilities";
 import { INPUTS_DIRECTORY } from "../config/inputs.ts";
-import { requestErrorMetadata } from "../request-error.ts";
+import { errorCode, requestErrorMetadata } from "../request-error.ts";
 import {
   excludedFile as excludedSnapshotFile,
   linkOrGone,
@@ -572,9 +572,17 @@ export function createAppRepository(options: {
 
   async function push(signal: AbortSignal) {
     const local = await git.resolveRef({ fs, gitdir, ref: MAIN });
-    const pushed = await git
-      .resolveRef({ fs, gitdir, ref: PUSHED })
-      .catch(() => undefined);
+    let pushed: string | undefined;
+    try {
+      pushed = await git.resolveRef({ fs, gitdir, ref: PUSHED });
+    } catch (error) {
+      // Pushing again is harmless and rewrites the ref; a broken repository fails the push itself.
+      if (!(error instanceof Errors.NotFoundError))
+        log.warn("Reading the last pushed version failed", {
+          ...errorCode(error),
+          ...requestErrorMetadata(error),
+        });
+    }
     if (local === pushed) return;
     const { url, secret } = await pushAccess(signal);
     try {

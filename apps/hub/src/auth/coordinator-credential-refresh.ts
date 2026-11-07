@@ -12,6 +12,7 @@ import type { MiddlewareHandler } from "hono";
 import type { TenantEnv } from "@intx/hub-api";
 import { getLogger } from "@intx/log";
 import { projectCoordinator } from "../db/schema.ts";
+import { errorCode, requestErrorMetadata } from "../request-error.ts";
 
 const log = getLogger(["corbits-builder", "coordinator-credentials"]);
 
@@ -58,9 +59,12 @@ export function createCoordinatorCredentialRefresh(options: {
             ),
           ),
       );
-    } catch {
+    } catch (error) {
       // The credential is already stored; the sidecar picks it up when it reconnects.
-      log.warn("Project workflow credential refresh unavailable");
+      log.warn("Project workflow credential refresh unavailable", {
+        ...errorCode(error),
+        ...requestErrorMetadata(error),
+      });
     }
   };
 }
