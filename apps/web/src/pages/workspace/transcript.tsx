@@ -813,7 +813,7 @@ export function RoomThread({
     turn: TranscriptTurn,
     visible: readonly ConversationPart[],
     streaming: boolean,
-    runLive = streaming,
+    runLive: boolean,
   ) => (
     <ConversationItem key={itemId} itemId={itemId}>
       <Message
@@ -861,16 +861,20 @@ export function RoomThread({
   // The coordinator's turn shows one live line, at the bottom: its last run when its words end the
   // conversation, else the thinking line. A run above a card is not the bottom.
   const last = sections.at(-1);
-  const wordsLast =
-    last?.kind === "coordinator" && last.cards.length === 0
-      ? last.turns.flatMap(({ turn }) =>
-          readableParts(visibleTurnParts(turn), results),
-        )
-      : [];
-  const runLast =
-    last?.kind === "coordinator" &&
-    last.turns.some(({ turn }) => turn.streaming === true) &&
-    groupActivity(wordsLast).at(-1)?.kind === "activity";
+  let headedLast = false;
+  let wordsLast = false;
+  let runLast = false;
+  if (last?.kind === "coordinator") {
+    const words = last.turns.flatMap(({ turn }) =>
+      readableParts(visibleTurnParts(turn), results),
+    );
+    headedLast = words.length > 0;
+    wordsLast = headedLast && last.cards.length === 0;
+    runLast =
+      wordsLast &&
+      last.turns.some(({ turn }) => turn.streaming === true) &&
+      groupActivity(words).at(-1)?.kind === "activity";
+  }
   const mapTurns = sections.flatMap(
     (section, position): ConversationMapTurn[] => {
       if (section.kind !== "person" || section.turn.text.trim() === "")
@@ -950,7 +954,7 @@ export function RoomThread({
                       first.turn,
                       visible,
                       streaming,
-                      section === last && wordsLast.length > 0,
+                      section === last && wordsLast,
                     )
                   : null}
                 {foldUpdates(liveLast(section.cards, live)).map((card, at) =>
@@ -985,14 +989,16 @@ export function RoomThread({
               </ConversationItem>
             );
           const visible = visibleTurnParts(turn);
+          const streaming = turn.streaming === true;
           return visible.length === 0
             ? null
-            : renderMessage(itemId, turn, visible, turn.streaming === true);
+            : renderMessage(itemId, turn, visible, streaming, streaming);
         })}
         {thinking && !runLast ? (
           <ConversationItem itemId="colleague-thinking">
             <Message from="agent" status="streaming">
-              {wordsLast.length > 0 ? null : (
+              {/* Under the coordinator's words, as its cards are, the name isn't repeated. */}
+              {headedLast ? null : (
                 <MessageHeader name={wording.speaker.coordinator} />
               )}
               <span className={styles.thinking}>
