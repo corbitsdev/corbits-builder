@@ -41,7 +41,8 @@ import {
   type AppRepository,
 } from "./app-repository.ts";
 import { getLogger } from "@intx/log";
-import { requestErrorMetadata } from "../request-error.ts";
+import { hasCode } from "@intx/types/has-code";
+import { errorCode, requestErrorMetadata } from "../request-error.ts";
 import {
   PACKAGE_INSTALL_TOOL,
   WorkspacePath,
@@ -428,10 +429,20 @@ export function createSidecarCodingTools(policy: {
             typeof path === "string" &&
             typeof content === "string"
           ) {
-            const existing = await readFile(
-              resolve(workspace, path),
-              "utf8",
-            ).catch(() => undefined);
+            let existing: string | undefined;
+            try {
+              existing = await readFile(resolve(workspace, path), "utf8");
+            } catch (error) {
+              // The write still runs and reports its own failure, which the model can act on.
+              if (
+                !hasCode(error) ||
+                !["ENOENT", "EISDIR", "ENOTDIR"].includes(error.code)
+              )
+                log.warn("Reading the file a write replaces failed", {
+                  ...errorCode(error),
+                  ...requestErrorMetadata(error),
+                });
+            }
             if (existing === content)
               return {
                 callId: call.id,

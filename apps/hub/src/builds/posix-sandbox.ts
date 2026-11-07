@@ -19,7 +19,7 @@ import { type } from "arktype";
 import { getLogger } from "@intx/log";
 import { hasCode } from "@intx/types/has-code";
 import type { ToolCall, ToolResult } from "@intx/types/runtime";
-import { requestErrorMetadata } from "../request-error.ts";
+import { errorCode, requestErrorMetadata } from "../request-error.ts";
 import type { buildPackageLayout } from "./package-layout.ts";
 import { BROWSER_ARGS } from "./browser.ts";
 import { CODER_REGISTRY_HOSTS } from "../config/packages.ts";
@@ -993,6 +993,30 @@ export async function createPosixBuildExecutor(
       browserStarting ??= trackBrowser();
       return browserStarting;
     };
+    const reloadPreview = async () => {
+      const page = devApp?.page;
+      if (page?.exitCode !== null) return;
+      try {
+        page.stdin.write("reload\n");
+        await page.stdin.flush();
+      } catch (error) {
+        log.warn("Reloading the preview after a write failed", {
+          ...errorCode(error),
+          ...requestErrorMetadata(error),
+        });
+      }
+    };
+    const runAfter = async (
+      previous: Promise<unknown>,
+      call: ToolCall,
+      signal: AbortSignal,
+    ) => {
+      await previous;
+      const result = await execute(call, signal);
+      if (call.name === "write_file" || call.name === "edit_file")
+        void reloadPreview();
+      return result;
+    };
     return {
       policy,
       version: SANDBOX_RUNTIME_VERSION,
@@ -1004,17 +1028,8 @@ export async function createPosixBuildExecutor(
           throw new BuildExecutionError("host_gate_invocation_refused");
         if (trustedGate && call.id !== trustedGate.nonce)
           throw new BuildExecutionError("concurrent_build_tool_refused");
-        const turn = queue.then(() => execute(call, signal));
+        const turn = runAfter(queue, call, signal);
         queue = turn.catch(() => undefined);
-        if (call.name === "write_file" || call.name === "edit_file")
-          void turn
-            .then(() => {
-              const page = devApp?.page;
-              if (page?.exitCode !== null) return;
-              page.stdin.write("reload\n");
-              return page.stdin.flush();
-            })
-            .catch(() => undefined);
         return turn;
       },
       /**
