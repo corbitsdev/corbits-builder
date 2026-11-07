@@ -35,12 +35,13 @@ import {
   MessageParts,
   MessageSendStatus,
   Reasoning,
-  ThinkingIndicator,
+  ShimmerText,
   Tool,
   ToolGroup,
   ToolHeader,
   ToolInput,
   ToolOutput,
+  groupActivity,
   type ActivityStep,
   type ConversationMapTurn,
   type ConversationPart,
@@ -812,6 +813,7 @@ export function RoomThread({
     turn: TranscriptTurn,
     visible: readonly ConversationPart[],
     streaming: boolean,
+    runLive: boolean,
   ) => (
     <ConversationItem key={itemId} itemId={itemId}>
       <Message
@@ -827,12 +829,14 @@ export function RoomThread({
           renderText={renderTurnText}
           renderStep={renderStep}
           renderActivity={(steps, state) => {
-            const label = state.streaming ? undefined : runLabel(steps);
+            const live = state.streaming && runLive;
+            const label = live ? undefined : runLabel(steps);
             return (
-              <Activity steps={steps} streaming={state.streaming}>
+              <Activity steps={steps} streaming={live}>
                 <ActivityTrigger
                   {...(label === undefined ? {} : { label })}
                   labels={wording.activity.trigger}
+                  className={styles.run}
                 />
                 <ActivityContent renderStep={renderStep} />
               </Activity>
@@ -854,6 +858,23 @@ export function RoomThread({
     threadItems(turns, updates, approvals, runs, designChoice, results),
     results,
   );
+  // The coordinator's turn shows one live line, at the bottom: its last run when its words end the
+  // conversation, else the thinking line. A run above a card is not the bottom.
+  const last = sections.at(-1);
+  let headedLast = false;
+  let wordsLast = false;
+  let runLast = false;
+  if (last?.kind === "coordinator") {
+    const words = last.turns.flatMap(({ turn }) =>
+      readableParts(visibleTurnParts(turn), results),
+    );
+    headedLast = words.length > 0;
+    wordsLast = headedLast && last.cards.length === 0;
+    runLast =
+      wordsLast &&
+      last.turns.some(({ turn }) => turn.streaming === true) &&
+      groupActivity(words).at(-1)?.kind === "activity";
+  }
   const mapTurns = sections.flatMap(
     (section, position): ConversationMapTurn[] => {
       if (section.kind !== "person" || section.turn.text.trim() === "")
@@ -933,6 +954,7 @@ export function RoomThread({
                       first.turn,
                       visible,
                       streaming,
+                      section === last && wordsLast,
                     )
                   : null}
                 {foldUpdates(liveLast(section.cards, live)).map((card, at) =>
@@ -967,13 +989,24 @@ export function RoomThread({
               </ConversationItem>
             );
           const visible = visibleTurnParts(turn);
+          const streaming = turn.streaming === true;
           return visible.length === 0
             ? null
-            : renderMessage(itemId, turn, visible, turn.streaming === true);
+            : renderMessage(itemId, turn, visible, streaming, streaming);
         })}
-        {thinking ? (
+        {thinking && !runLast ? (
           <ConversationItem itemId="colleague-thinking">
-            <ThinkingIndicator label={wording.activity.thinkingNow} />
+            <Message from="agent" status="streaming">
+              {/* Under the coordinator's words, as its cards are, the name isn't repeated. */}
+              {headedLast ? null : (
+                <MessageHeader name={wording.speaker.coordinator} />
+              )}
+              <span className={styles.thinking}>
+                <ShimmerText role="status">
+                  {wording.activity.thinkingNow}
+                </ShimmerText>
+              </span>
+            </Message>
           </ConversationItem>
         ) : null}
         {children}

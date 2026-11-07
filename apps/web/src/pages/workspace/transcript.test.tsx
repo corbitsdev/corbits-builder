@@ -295,6 +295,46 @@ describe("conversation transcript", () => {
     expect(streaming([])).toBe(true);
   });
 
+  test("a coordinator turn shows one live line, at the bottom", () => {
+    const live = {
+      role: "assistant",
+      text: "",
+      at: -1,
+      streaming: true,
+      parts: [{ kind: "reasoning", text: "Read the idea" }],
+    } as const;
+    const thinkingLine = 'data-item-id="colleague-thinking"';
+    const liveLines = (html: string) =>
+      html.split('data-slot="activity" data-streaming="true"').length -
+      1 +
+      html.split(thinkingLine).length -
+      1;
+    const alone = renderToStaticMarkup(
+      <RoomThread
+        turns={[{ role: "person", text: "Start", at: 1 }, live]}
+        thinking
+      />,
+    );
+    expect(liveLines(alone)).toBe(1);
+    expect(alone).not.toContain(thinkingLine);
+    const report = "Saved the requirements.";
+    const afterReport = renderToStaticMarkup(
+      <RoomThread
+        turns={[
+          { role: "person", text: "Start", at: 1 },
+          { role: "assistant", text: "Being written up now.", at: 2 },
+          live,
+        ]}
+        updates={[{ sender: "writer", text: report, at: 3 }]}
+        thinking
+      />,
+    );
+    expect(liveLines(afterReport)).toBe(1);
+    expect(afterReport.indexOf(thinkingLine)).toBeGreaterThan(
+      afterReport.indexOf(report),
+    );
+  });
+
   test("a specialist's report joins its hand-off as one message and a long run of lone ones folds", () => {
     const summary =
       "Wrote the limits for your weather app, covering offline use and units.";
