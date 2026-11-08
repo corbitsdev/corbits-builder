@@ -1,8 +1,16 @@
 import { afterEach, expect, spyOn, test } from "bun:test";
-import { openMicrophone } from "./dictation.tsx";
+import {
+  createElement,
+  Fragment,
+  type ReactElement,
+  type ReactNode,
+} from "react";
+import { renderToString } from "react-dom/server";
+import { Dictated, openMicrophone } from "./dictation.tsx";
 
 const realNavigator = globalThis.navigator;
 const realAudioContext = globalThis.AudioContext;
+const realWindow = globalThis.window;
 
 afterEach(() => {
   Object.defineProperty(globalThis, "navigator", {
@@ -11,6 +19,10 @@ afterEach(() => {
   });
   Object.defineProperty(globalThis, "AudioContext", {
     value: realAudioContext,
+    configurable: true,
+  });
+  Object.defineProperty(globalThis, "window", {
+    value: realWindow,
     configurable: true,
   });
 });
@@ -35,4 +47,107 @@ test("a level meter that fails after the microphone opens stops the microphone",
   expect(await openMicrophone()).toBeNull();
   expect(stopped).toBe(1);
   warn.mockRestore();
+});
+
+test("a dictation started while another waits for its microphone closes the first microphone", async () => {
+  const microphones: Array<(stream: MediaStream) => void> = [];
+  let firstMicrophoneStops = 0;
+  let firstMicrophoneStopped!: () => void;
+  const firstMicrophoneStop = new Promise<void>((resolve) => {
+    firstMicrophoneStopped = resolve;
+  });
+  const recognitions: Array<{ started: boolean }> = [];
+  let recognitionStarted!: () => void;
+  const recognitionStart = new Promise<void>((resolve) => {
+    recognitionStarted = resolve;
+  });
+
+  class FakeRecognition {
+    started = false;
+    start() {
+      this.started = true;
+      recognitionStarted();
+    }
+    stop() {}
+    abort() {}
+    constructor() {
+      recognitions.push(this);
+    }
+  }
+  class FakeAudioContext {
+    createAnalyser() {
+      return { fftSize: 0, getFloatTimeDomainData() {} };
+    }
+    createMediaStreamSource() {
+      return { connect() {} };
+    }
+    close() {
+      return Promise.resolve();
+    }
+  }
+  Object.defineProperty(globalThis, "window", {
+    value: {
+      SpeechRecognition: FakeRecognition,
+      setInterval: () => 0,
+      clearInterval() {},
+    },
+    configurable: true,
+  });
+  Object.defineProperty(globalThis, "navigator", {
+    value: {
+      language: "en-US",
+      mediaDevices: {
+        getUserMedia: () => new Promise((resolve) => microphones.push(resolve)),
+      },
+    },
+    configurable: true,
+  });
+  Object.defineProperty(globalThis, "AudioContext", {
+    value: FakeAudioContext,
+    configurable: true,
+  });
+
+  const starts: Array<() => void> = [];
+  const box = (control: ReactNode) => {
+    starts.push(
+      (control as ReactElement<{ onToggle: () => void }>).props.onToggle,
+    );
+    return null;
+  };
+  renderToString(
+    createElement(
+      Fragment,
+      null,
+      createElement(Dictated, {
+        value: "",
+        onValueChange: () => {},
+        children: box,
+      }),
+      createElement(Dictated, {
+        value: "",
+        onValueChange: () => {},
+        children: box,
+      }),
+    ),
+  );
+
+  starts[0]!();
+  starts[1]!();
+  microphones[0]!({
+    getTracks: () => [
+      {
+        stop: () => {
+          firstMicrophoneStops += 1;
+          firstMicrophoneStopped();
+        },
+      },
+    ],
+  } as unknown as MediaStream);
+  microphones[1]!({ getTracks: () => [] } as unknown as MediaStream);
+  await Promise.all([firstMicrophoneStop, recognitionStart]);
+
+  expect(firstMicrophoneStops).toBe(1);
+  expect(
+    recognitions.filter((recognition) => recognition.started),
+  ).toHaveLength(1);
 });
