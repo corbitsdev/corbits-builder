@@ -157,6 +157,23 @@ function useDictation(value: string, onValueChange: (value: string) => void) {
       finish("Speech recognition is not available in this browser.");
       return;
     }
+    // Registered before the microphone is asked for, which can wait on a
+    // permission dialog, so a stop, a second box or leaving the screen in the
+    // meantime reaches this session.
+    let cancelled = false;
+    const acquiring: Session = {
+      stop: () => {
+        cancelled = true;
+        finish("stopped");
+      },
+      abort: () => {
+        cancelled = true;
+        finish("stopped");
+      },
+    };
+    session.current = acquiring;
+    openSession = acquiring;
+
     const recognition = new Recognizer();
     recognition.continuous = true;
     recognition.interimResults = true;
@@ -181,6 +198,11 @@ function useDictation(value: string, onValueChange: (value: string) => void) {
       meter = null;
     };
     const microphone = await openMicrophone();
+    if (cancelled) {
+      microphone?.stream.getTracks().forEach((track) => track.stop());
+      void microphone?.context.close();
+      return;
+    }
     if (microphone !== null) {
       const { stream, context, analyser } = microphone;
       const samples = new Float32Array(analyser.fftSize);
