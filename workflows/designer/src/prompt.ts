@@ -18,4 +18,7 @@ The interface requirements (IR-n) in requirements.md are the checklist: each is 
 Set the :root and .dark tokens in designs/styles.css, update the shell and navigation links in designs/index.html, and write each screen in designs/screens/<name>.html in the order the requirements list them before writing DESIGN.md.
 
 ## Filing
-check_design opens the mockup at desktop and phone widths, checks all of the above, lists what to fix, and automatically files it as your design concept's option for the person to compare when it passes (so you do not need to call file_design_option separately after a passing check_design). Mail a reply on the task's thread when the design is filed, saying what it covers.`;
+check_design opens the mockup at desktop and phone widths, checks all of the above, lists what to fix, and automatically files it as your design concept's option for the person to compare when it passes (so you do not need to call file_design_option separately after a passing check_design). Mail a reply on the task's thread when the design is filed, saying what it covers.
+
+## Lost access
+When a Builder tool answers that your access was refused, this job has ended for you and retrying will not bring it back. Stop working and reply on the task's thread in a few sentences: what is finished, what is filed, and what remains.`;

@@ -1,3 +1,4 @@
+import { type } from "arktype";
 import type { RuntimeCapabilities } from "@intx/types/runtime-capabilities";
 import type { HttpMediatedCredential } from "@intx/types";
 
@@ -23,6 +24,24 @@ export class WorkflowHttpError extends Error {
     );
   }
 }
+
+// A Builder tool whose hub call was refused because the run's token or grants are gone tags its
+// result, so the director lets the agent's reply out rather than hold it: its job has ended, and
+// holding only repeats the refusal. Hub and Interchange both answer a missing grant as forbidden;
+// any other 403, such as artifact_write_refused, is a mistake the agent can correct.
+const AccessRefused = type({ accessRefused: "true" });
+
+/** The detail an access-refused tool result carries, or nothing for any other failure. */
+export const accessRefusal = (error: unknown) =>
+  error instanceof WorkflowHttpError &&
+  (error.status === 401 ||
+    (error.status === 403 && error.refusalCode === "forbidden"))
+    ? { detail: { accessRefused: true } }
+    : {};
+
+/** Whether a tool result's detail says the hub refused the call for access. */
+export const accessRefused = (detail: unknown) =>
+  !(AccessRefused(detail) instanceof type.errors);
 
 // Resolve the native mediated handle for every call so rotation remains live.
 // Refusal bodies are never exposed to the model or copied into its audit.
