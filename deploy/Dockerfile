@@ -28,10 +28,14 @@ RUN bun run --cwd apps/web build
 # What a sidecar's coder and designer run beside Bun: bubblewrap and socat for the sandbox
 # (@anthropic-ai/sandbox-runtime on Linux), unzip for the Chrome headless shell the sidecar
 # fetches, the libraries and font that shell loads, ps for the hub's sidecar lookup, and git for
-# the hub reading each run's committed conversation.
+# the hub reading each run's committed conversation. apt, libapt-pkg7.0 and zlib1g carry Debian
+# security fixes the Bun image does not ship yet; drop them once BUN_IMAGE includes them.
 FROM ${BUN_IMAGE} AS runtime
 RUN apt-get update \
  && apt-get install -y --no-install-recommends \
+      apt=3.0.4 \
+      libapt-pkg7.0=3.0.4 \
+      zlib1g=1:1.3.dfsg+really1.3.1-1+deb13u1 \
       bubblewrap=0.12.0-1~deb13u1 \
       git=1:2.47.3-0+deb13u1 \
       socat=1.8.0.3-1+deb13u1 \
