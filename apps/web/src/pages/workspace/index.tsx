@@ -751,7 +751,8 @@ function ReadyRoom({
   )?.since;
   const working =
     coordinatorTurnSince !== undefined &&
-    Date.parse(coordinatorTurnSince) > (liveRun.endedAt ?? 0);
+    (liveRun.endedAt === null ||
+      Date.parse(coordinatorTurnSince) > liveRun.endedAt);
   // The engine treats the first id as history and every later change as a
   // send: it pins that turn and reserves space under it. A turn loaded from
   // the mirror is not a send. Passing it pins the old message and the reserve
