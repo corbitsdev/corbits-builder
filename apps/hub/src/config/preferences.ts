@@ -109,8 +109,7 @@ export const PREFERENCES: readonly PreferenceEntry[] = [
       {
         id: "one",
         label: "One",
-        guidance:
-          "Start one design concept, unless the person asks for more.",
+        guidance: "Start one design concept, unless the person asks for more.",
       },
       {
         id: "two",
