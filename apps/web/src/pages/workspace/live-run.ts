@@ -159,6 +159,19 @@ export function foldLiveRun(
   return { run: { ...run, current }, reload: reload || folded.refresh };
 }
 
+/**
+ * The coordinator is mid-turn by the hub's activity read: its run started after
+ * the last end this stream saw. The stream's own running flag is not consulted;
+ * a frame it misses while the tab is hidden would leave it set for good.
+ */
+export function coordinatorWorking(
+  run: LiveRun,
+  coordinatorSince: string | undefined,
+): boolean {
+  if (coordinatorSince === undefined) return false;
+  return run.endedAt === null || Date.parse(coordinatorSince) > run.endedAt;
+}
+
 function sameText(committed: string, live: string): boolean {
   const text = committed.trim();
   return text === live.trim() || text === clippedTurnText(live).trim();

@@ -11,6 +11,7 @@ import { DocumentDecision } from "./document-decision.tsx";
 import {
   awaitingCommit,
   awaitingReply,
+  coordinatorWorking,
   emptyLiveRun,
   foldLiveRun,
   liveTurnStreaming,
@@ -208,6 +209,18 @@ describe("conversation transcript", () => {
     expect(waitingOnPerson([coder], new Set(["appr-2"]), "run-c", true)).toBe(
       false,
     );
+  });
+
+  test("the coordinator works by the hub's read, not by a run this stream never saw end", () => {
+    const ended = { ...emptyLiveRun, running: true, endedAt: 2_000 };
+    expect(coordinatorWorking(ended, undefined)).toBe(false);
+    expect(coordinatorWorking(ended, new Date(1_000).toISOString())).toBe(
+      false,
+    );
+    expect(coordinatorWorking(ended, new Date(3_000).toISOString())).toBe(true);
+    expect(
+      coordinatorWorking(emptyLiveRun, new Date(1_000).toISOString()),
+    ).toBe(true);
   });
 
   test("a sent message waits on the coordinator until its approval card opens, and through an answered question", () => {
