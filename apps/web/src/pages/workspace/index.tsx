@@ -742,16 +742,16 @@ function ReadyRoom({
     lastShown?.role === "assistant" && !streaming && !sending
       ? suggestedReplies(lastShown.text)
       : [];
-  // Mid-turn by native state, whoever sent the message: this stream saw the message run start and
-  // not end, or the hub's activity read saw one start after the last end this stream saw.
+  // Mid-turn by the hub's activity read, whoever sent the message: a run started after the last
+  // end this stream saw. The stream's own flag is not consulted; a frame it misses while the tab
+  // is hidden would leave it set for good.
   const agents = activity.data?.agents;
   const coordinatorTurnSince = agents?.find(
     (agent) => agent.role === "coordinator",
   )?.since;
   const working =
-    liveRun.running ||
-    (coordinatorTurnSince !== undefined &&
-      Date.parse(coordinatorTurnSince) > (liveRun.endedAt ?? 0));
+    coordinatorTurnSince !== undefined &&
+    Date.parse(coordinatorTurnSince) > (liveRun.endedAt ?? 0);
   // The engine treats the first id as history and every later change as a
   // send: it pins that turn and reserves space under it. A turn loaded from
   // the mirror is not a send. Passing it pins the old message and the reserve
