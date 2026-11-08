@@ -45,7 +45,7 @@ import {
 import {
   agentDecidesApprovals,
   asksOpenQuestions,
-  designConceptCount,
+  designConceptCeiling,
   preferenceBlock,
 } from "../config/preferences.ts";
 import {
@@ -291,7 +291,7 @@ export function createDeployTools(options?: {
     {
       name: "design_app",
       description:
-        "Have the designer make or change the app's design from the filed problem brief, constraints, approaches and product requirements: a clickable, responsive mockup with a DESIGN.md of its tokens, screens, states and flows. The coder builds only from a filed design. instruction says what to design or change; a designer already working takes it in the same design. lookIdeas carries the person's own ideas for the look in their words, or that they left the look to you, and every designer works from it. The designer starts once a person approves the instruction. Each design arrives later as a message.\n\nWhen the person wants one suggested design, give one concept: the look you suggest, shaped by their ideas. When they want to explore several, give a concept for each look, up to the number of design concepts the person asked for. One designer per concept makes the design in that concept's look and files it as that concept's design_option for the person to compare; a designer already working on a concept takes the instruction in the same option. Choose concepts that differ clearly from one another, from this catalog or of your own that fit the idea better. Each catalog concept starts from a design theme (" +
+        "Have the designer make or change the app's design from the filed problem brief, constraints, approaches and product requirements: a clickable, responsive mockup with a DESIGN.md of its tokens, screens, states and flows. The coder builds only from a filed design. instruction says what to design or change; a designer already working takes it in the same design. lookIdeas carries the person's own ideas for the look in their words, or that they left the look to you, and every designer works from it. The designer starts once a person approves the instruction. Each design arrives later as a message.\n\nWhen the person wants one suggested design, give one concept: the look you suggest, shaped by their ideas. When they want to explore several, give a concept for each look: as many as the person asked for, or the number their Design concepts preference names when they said no number. What they say in the conversation wins over that preference. At most five concepts can be at work at a time, counting designers already started. One designer per concept makes the design in that concept's look and files it as that concept's design_option for the person to compare; a designer already working on a concept takes the instruction in the same option. Choose concepts that differ clearly from one another, from this catalog or of your own that fit the idea better. Each catalog concept starts from a design theme (" +
         DESIGN_THEMES.map((theme) => theme.label).join(", ") +
         ") and its direction says how its designer adjusts that theme's tokens; a concept of your own starts from the kit's neutral theme, so its direction names the colours, type and radii it wants. When the person chose a theme, design that one concept, with the changes they asked for in its direction:\n" +
         DESIGN_CONCEPTS.map(
@@ -730,8 +730,10 @@ export function createDeployTools(options?: {
             result = { runId: live.runId, role: "coder" };
           } else if (call.name === "design_app") {
             const input = validArguments(DesignApp, call.arguments);
-            const { inFlight, preferences } = await listed();
-            const limit = designConceptCount(preferences);
+            const { inFlight } = await listed();
+            // The person decides how many concepts start; the preference guides the coordinator when
+            // they named no number, so only the ceiling holds here.
+            const limit = designConceptCeiling();
             // A requested concept already at work takes the instruction rather than adding a designer.
             const concepts = new Set(
               inFlight.flatMap((run) =>
@@ -741,9 +743,9 @@ export function createDeployTools(options?: {
             for (const concept of input.concepts) concepts.add(concept.label);
             if (concepts.size > limit)
               throw new Refusal(
-                "too_many_concepts: the person asked for at most " +
+                "too_many_concepts: at most " +
                   String(limit) +
-                  " design concepts at a time",
+                  " design concepts can be at work at a time, counting those already started",
               );
             // Each concept has its own long-lived designer.
             const design = (concept: DesignConcept) =>
