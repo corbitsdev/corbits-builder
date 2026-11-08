@@ -119,7 +119,7 @@ test("the coder spawns only from the approved current build plan version", async
   }
 });
 
-test("design_app starts one designer per concept within the person's limit, each named before its assignment", async () => {
+test("design_app starts one designer per concept the person asks for, each named before its assignment", async () => {
   const events: string[] = [];
   const sha = (n: number) => String(n).repeat(64);
   const artifacts = [
@@ -136,6 +136,7 @@ test("design_app starts one designer per concept within the person's limit, each
     sha256: sha(1),
   }));
   let runs = 0;
+  let inFlight: Record<string, unknown>[] = [];
   const fetch = async (path: string, init: RequestInit) => {
     const body = init.body ? JSON.parse(String(init.body)) : undefined;
     if (path.endsWith("/workflows/deployments")) {
@@ -155,7 +156,7 @@ test("design_app starts one designer per concept within the person's limit, each
     if (path.endsWith("/artifacts") && init.method === "GET")
       return Response.json({
         artifacts,
-        inFlight: [],
+        inFlight,
         preferences: { design_concepts: "two" },
       });
     return Response.json({ code: "unexpected_route" }, { status: 404 });
@@ -188,31 +189,32 @@ test("design_app starts one designer per concept within the person's limit, each
   const instruction =
     "Design the dashboard the requirements describe, in the person's words.";
   const lookIdeas = "Calm and readable, like a paper notebook.";
-  const concepts = ["Sleek", "Pastel", "Retro"].map((label) => ({
-    label,
-    direction: label + " look",
-  }));
+  const concept = (label: string) => ({ label, direction: label + " look" });
+  const concepts = ["Sleek", "Pastel", "Retro"].map(concept);
 
+  // Only the ceiling on concepts at work holds; the person's two is guidance for the coordinator.
+  inFlight = ["Calm", "Bold", "Editorial"].map((label, index) => ({
+    runId: "live-" + String(index),
+    role: "designer",
+    status: "running",
+    concept: label,
+  }));
   expect(
     (await run("design_app", { instruction, lookIdeas, concepts })).content,
-  ).toStartWith("too_many_concepts:");
+  ).toStartWith("too_many_concepts: at most 5");
+  inFlight = [];
+  // The person asked for three looks while their preference says two: what they say wins.
   expect(
-    (
-      await run("design_app", {
-        instruction,
-        lookIdeas,
-        concepts: concepts.slice(0, 2),
-      })
-    ).isError,
+    (await run("design_app", { instruction, lookIdeas, concepts })).isError,
   ).toBe(undefined);
   // Each concept is recorded against its run before the run's assignment fires it.
-  for (const [index, label] of ["Sleek", "Pastel"].entries()) {
+  for (const [index, label] of ["Sleek", "Pastel", "Retro"].entries()) {
     const runId = "run-" + String(index + 1);
     expect(events.indexOf("concept " + runId + " " + label)).toBeLessThan(
       events.indexOf("mail " + label),
     );
   }
-  expect(events.filter((event) => event === "deploy")).toHaveLength(2);
+  expect(events.filter((event) => event === "deploy")).toHaveLength(3);
 });
 
 function writerTools(preferences: Record<string, string> = {}) {

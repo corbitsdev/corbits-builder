@@ -106,30 +106,34 @@ export const PREFERENCES: readonly PreferenceEntry[] = [
     hint: "How many different looks the designers make when you explore several.",
     topic: "Design concepts",
     options: [
-      { id: "one", label: "One", guidance: "Start one design concept." },
+      {
+        id: "one",
+        label: "One",
+        guidance: "Start one design concept, unless the person asks for more.",
+      },
       {
         id: "two",
         label: "Two",
         guidance:
-          "When the person wants to explore several looks, start two different design concepts.",
+          "When the person wants to explore several looks and names no number, start two different design concepts.",
       },
       {
         id: "three",
         label: "Three",
         guidance:
-          "When the person wants to explore several looks, start three different design concepts.",
+          "When the person wants to explore several looks and names no number, start three different design concepts.",
       },
       {
         id: "four",
         label: "Four",
         guidance:
-          "When the person wants to explore several looks, start four different design concepts.",
+          "When the person wants to explore several looks and names no number, start four different design concepts.",
       },
       {
         id: "five",
         label: "Five",
         guidance:
-          "When the person wants to explore several looks, start five different design concepts.",
+          "When the person wants to explore several looks and names no number, start five different design concepts.",
       },
     ],
     default: "three",
@@ -349,19 +353,14 @@ export function preferenceGuidance(
   );
 }
 
-/** How many design concepts the designers make at once; the options are listed in count order. */
-export function designConceptCount(choices: Preferences): number {
+/** The most design concepts at work at once: the largest count the preference offers. What the
+ * person asks for in the conversation decides how many start, up to this, so the preference is
+ * guidance for the coordinator rather than a limit here. */
+export function designConceptCeiling(): number {
   const entry = PREFERENCES.find(
     (candidate) => candidate.id === "design_concepts",
   )!;
-  const index = entry.options.findIndex(
-    (option) => option.id === choices[entry.id],
-  );
-  return (
-    (index < 0
-      ? entry.options.findIndex((option) => option.id === entry.default)
-      : index) + 1
-  );
+  return entry.options.length;
 }
 
 /** Whether the project's coder adds new packages without a person's approval. */
