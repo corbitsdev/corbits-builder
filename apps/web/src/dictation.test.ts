@@ -52,12 +52,21 @@ test("a level meter that fails after the microphone opens stops the microphone",
 test("a dictation started while another waits for its microphone closes the first microphone", async () => {
   const microphones: Array<(stream: MediaStream) => void> = [];
   let firstMicrophoneStops = 0;
+  let firstMicrophoneStopped!: () => void;
+  const firstMicrophoneStop = new Promise<void>((resolve) => {
+    firstMicrophoneStopped = resolve;
+  });
   const recognitions: Array<{ started: boolean }> = [];
+  let recognitionStarted!: () => void;
+  const recognitionStart = new Promise<void>((resolve) => {
+    recognitionStarted = resolve;
+  });
 
   class FakeRecognition {
     started = false;
     start() {
       this.started = true;
+      recognitionStarted();
     }
     stop() {}
     abort() {}
@@ -125,10 +134,17 @@ test("a dictation started while another waits for its microphone closes the firs
   starts[0]!();
   starts[1]!();
   microphones[0]!({
-    getTracks: () => [{ stop: () => (firstMicrophoneStops += 1) }],
+    getTracks: () => [
+      {
+        stop: () => {
+          firstMicrophoneStops += 1;
+          firstMicrophoneStopped();
+        },
+      },
+    ],
   } as unknown as MediaStream);
   microphones[1]!({ getTracks: () => [] } as unknown as MediaStream);
-  await new Promise((resolve) => setTimeout(resolve, 0));
+  await Promise.all([firstMicrophoneStop, recognitionStart]);
 
   expect(firstMicrophoneStops).toBe(1);
   expect(
