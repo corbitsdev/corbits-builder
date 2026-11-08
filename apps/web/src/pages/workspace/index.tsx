@@ -102,7 +102,6 @@ import {
   awaitingCommit,
   awaitingReply,
   committedSteps,
-  coordinatorWorking,
   emptyLiveRun,
   foldLiveRun,
   latestAssistantAt,
@@ -743,9 +742,17 @@ function ReadyRoom({
     lastShown?.role === "assistant" && !streaming && !sending
       ? suggestedReplies(lastShown.text)
       : [];
+  // Mid-turn by the hub's activity read, whoever sent the message: a run started after the last
+  // end this stream saw. The stream's own flag is not consulted; a frame it misses while the tab
+  // is hidden would leave it set for good.
   const agents = activity.data?.agents;
-  const coordinator = agents?.find((agent) => agent.role === "coordinator");
-  const working = coordinatorWorking(liveRun, coordinator?.since);
+  const coordinatorTurnSince = agents?.find(
+    (agent) => agent.role === "coordinator",
+  )?.since;
+  const working =
+    coordinatorTurnSince !== undefined &&
+    (liveRun.endedAt === null ||
+      Date.parse(coordinatorTurnSince) > liveRun.endedAt);
   // The engine treats the first id as history and every later change as a
   // send: it pins that turn and reserves space under it. A turn loaded from
   // the mirror is not a send. Passing it pins the old message and the reserve
@@ -1238,8 +1245,11 @@ function ReadyRoom({
   for (const dispatch of dispatches) noteDispatch(dispatchRoom, dispatch);
   // The document a writer or reviewer run works on, from the coordinator's own hand-off call as
   // the hub's activity read saw it start: the latest such call made before the run started.
-  if (coordinator !== undefined)
-    for (const tool of coordinator.tools) {
+  const coordinatorTools = agents?.find(
+    (agent) => agent.role === "coordinator",
+  )?.tools;
+  if (coordinatorTools !== undefined)
+    for (const tool of coordinatorTools) {
       const role = HANDOFF_ROLE[tool.name];
       if (role !== undefined && tool.subject !== undefined)
         handoffCalls.current.set(`${tool.at}:${tool.name}`, {
