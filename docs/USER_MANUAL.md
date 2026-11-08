@@ -248,8 +248,10 @@ the **Design concepts to compare** it will make.
 - **Start the design** lets it begin.
 - **Not yet** stops it so you can say what to change.
 
-If you asked to explore, you get as many concepts as **Design concepts to
-compare** says (three by default).
+If you asked to explore, you get as many concepts as you asked for, up to five
+at a time. If you did not say how many, you get as many as **Design concepts to
+compare** says (three by default). What you say in the conversation wins over
+that setting.
 
 ### Comparing concepts
 
