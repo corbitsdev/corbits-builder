@@ -1,6 +1,7 @@
-// When on, every project's coordinator moves to the newest coordinator the hub ships. Once a project
-// is idle (its coordinator is waiting for the person, nothing awaits an approval and no specialist is
-// working), the hub stops the old coordinator, keeps its history, and starts a new one on the same
-// project with its documents, approvals and app; the person sees the project resume. When off, a
-// coordinator keeps the version it started with until the project is archived.
+// When on, the hub moves a project's running agents onto the newest versions it ships once the
+// project is quiet. When off, an agent keeps its version until the project is archived.
 export const agentUpgrade = Object.freeze({ enabled: true });
+
+// Read by the coordinator when a specialist it still waited on was stopped.
+export const SPECIALIST_OUTDATED =
+  "specialist_outdated: Builder was updated and this idle specialist was stopped; start it again to continue its work on the current version";

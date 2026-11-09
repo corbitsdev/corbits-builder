@@ -513,7 +513,6 @@ export async function createHubRuntime(
       createConversationRoutes(handle.db, (request) => app.fetch(request), {
         repoStore: agentRepoStore.repoStore,
         mailDirectory: reportMailDirectory,
-        ...(agentUpgrade.enabled ? { upgrade: agentUpgrades.open } : {}),
       }),
     );
     app.route(
@@ -528,7 +527,6 @@ export async function createHubRuntime(
           attached: (actor, projectId) =>
             coordinatorStartup.attached(actor, projectId),
           ...(agentUpgrade.enabled ? { upgrade: agentUpgrades.open } : {}),
-          update: agentUpgrades.update,
         },
         async (actor, projectId) => {
           const bound = await coordinatorStartup.release(actor, projectId);
@@ -644,6 +642,9 @@ export async function createHubRuntime(
         intervalMs: 5_000,
       }),
     ];
+    // Polls rather than stopping once a deploy has caught up: packages can change without a hub
+    // restart, and nothing signals when a project goes quiet. Each pass costs a couple of reads per
+    // active project.
     if (agentUpgrade.enabled)
       projectSchedulers.push(
         createReconciliationScheduler({
