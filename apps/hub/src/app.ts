@@ -65,8 +65,8 @@ import {
   liveSpecialistRuns,
 } from "./projects/specialist-ended.ts";
 import { createCoordinatorResumeContext } from "./projects/coordinator-resume.ts";
-import { createCoordinatorUpgrades } from "./projects/coordinator-upgrade.ts";
-import { coordinatorUpgrade } from "./config/coordinator-upgrade.ts";
+import { createAgentUpgrades } from "./projects/upgrade-agents.ts";
+import { agentUpgrade } from "./config/agent-upgrade.ts";
 import { installForTenant } from "./workflows/install-for-tenant.ts";
 import { createHubMail, hubRequestSession } from "./mail/hub-mail.ts";
 import { join } from "node:path";
@@ -381,7 +381,7 @@ export async function createHubRuntime(
       async (request) => app.fetch(request),
       env.hubApiOrigin,
     );
-    const coordinatorUpgrades = createCoordinatorUpgrades({
+    const agentUpgrades = createAgentUpgrades({
       db: handle.db,
       runs: createWorkflowRunReader(agentRepoStore.repoStore),
       installed: (actor, projectId) =>
@@ -432,7 +432,7 @@ export async function createHubRuntime(
           actor,
           projectId,
         ),
-      handoff: coordinatorUpgrades.handoff,
+      handoff: agentUpgrades.handoff,
     });
     app.use("/api/tenants/:tenantId/*", coordinatorTokens.middleware);
     app.use("/api/workflow-project-scope", coordinatorTokens.middleware);
@@ -513,9 +513,7 @@ export async function createHubRuntime(
       createConversationRoutes(handle.db, (request) => app.fetch(request), {
         repoStore: agentRepoStore.repoStore,
         mailDirectory: reportMailDirectory,
-        ...(coordinatorUpgrade.enabled
-          ? { upgrade: coordinatorUpgrades.open }
-          : {}),
+        ...(agentUpgrade.enabled ? { upgrade: agentUpgrades.open } : {}),
       }),
     );
     app.route(
@@ -529,10 +527,8 @@ export async function createHubRuntime(
             coordinatorStartup.ensure(actor, projectId),
           attached: (actor, projectId) =>
             coordinatorStartup.attached(actor, projectId),
-          ...(coordinatorUpgrade.enabled
-            ? { upgrade: coordinatorUpgrades.open }
-            : {}),
-          update: coordinatorUpgrades.update,
+          ...(agentUpgrade.enabled ? { upgrade: agentUpgrades.open } : {}),
+          update: agentUpgrades.update,
         },
         async (actor, projectId) => {
           const bound = await coordinatorStartup.release(actor, projectId);
@@ -648,11 +644,11 @@ export async function createHubRuntime(
         intervalMs: 5_000,
       }),
     ];
-    if (coordinatorUpgrade.enabled)
+    if (agentUpgrade.enabled)
       projectSchedulers.push(
         createReconciliationScheduler({
-          name: "Coordinator upgrade",
-          reconcileNext: coordinatorUpgrades.reconcile,
+          name: "Agent upgrade",
+          reconcileNext: agentUpgrades.reconcile,
           concurrency: 1,
           intervalMs: 30_000,
         }),

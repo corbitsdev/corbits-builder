@@ -27,7 +27,7 @@ export function scopeWorkflows(
     // A bundle frozen before writers were split cannot read its scope without writer, and a
     // coordinator waiting on the person must still finish their approval. Starting a writer from it
     // would start the constraints writer for any document, so the hub hands such a coordinator off
-    // before that deploy lands (coordinator-upgrade handoff).
+    // before that deploy lands (upgrade-agents handoff).
     writer: installed["writer-constraints"],
     reviewer: installed.reviewer,
     coder: installsAnyPackage

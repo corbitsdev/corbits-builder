@@ -29,7 +29,7 @@ import { settle } from "../lib/serial-queue.ts";
 import { requestErrorMetadata } from "../request-error.ts";
 import { ProjectError } from "./errors.ts";
 
-const log = getLogger(["corbits-builder", "hub", "coordinator-upgrade"]);
+const log = getLogger(["corbits-builder", "hub", "upgrade-agents"]);
 export const COORDINATOR_UPGRADED = "coordinator_upgraded";
 // The person asked for the project's runs to move onto the current tool code.
 export const PROJECT_UPDATED = "project_updated";
@@ -78,7 +78,7 @@ export function staleRuns<T extends { role: WorkflowRole; bundle: unknown }>(
  * A project with no model choice to run on is left for the person: opening it upgrades as them, so
  * the refusal reaches them and their choice is the one the new coordinator runs on.
  */
-export function createCoordinatorUpgrades(deps: {
+export function createAgentUpgrades(deps: {
   db: DB["db"];
   runs: WorkflowRunReader;
   installed: (actor: Actor, projectId: string) => Promise<InstalledWorkflows>;
