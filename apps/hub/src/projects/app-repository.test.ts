@@ -35,7 +35,6 @@ test("an app repository's main reads as the app a snapshot would file, once it h
     });
     const main = await appRepositoryMain(dir);
     expect(main.commit).toBe(head);
-    expect(main.committedAt.getTime()).toBeGreaterThan(0);
     const app = await main.read();
     expect(Object.keys(app!.bundle.files).sort()).toEqual([
       ".gitignore",

@@ -4,7 +4,6 @@
  * first app taking shape.
  */
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { ProductApiError } from "@corbits-builder/client";
 import type { InFlightRun, LiveApp } from "@corbits-builder/schemas/artifact";
 import { readProjectRunStates } from "../../api/activity.ts";
 import {
@@ -13,6 +12,7 @@ import {
   readAcceptance,
   readLiveApp,
 } from "../../api/artifacts.ts";
+import { ApiFailure } from "../../api/types.ts";
 import { keys } from "../../queries/keys.ts";
 import { wording } from "../../config.ts";
 import { activityPhrase } from "./agent-activity.tsx";
@@ -81,8 +81,13 @@ function startingVersion(app: LiveApp): string | undefined {
 }
 
 /** How an app that is not running stands, as far as the hub has said. */
-function notRunning(app: LiveApp | undefined, unavailable: boolean): AppState {
+function notRunning(
+  app: LiveApp | undefined,
+  unavailable: boolean,
+  refused: string | undefined,
+): AppState {
   if (unavailable) return { state: "unavailable" };
+  if (refused !== undefined) return { state: "refused", reason: refused };
   if (app === undefined) return { state: "loading" };
   if (app.state === "failed")
     return { state: "failed", error: app.error, log: app.log };
@@ -122,8 +127,10 @@ export function useLiveApp({
   const coder = useProjectActivity(projectId).data?.agents.find(
     (agent) => agent.role === "coder",
   );
-  const unavailable =
-    app.error instanceof ProductApiError && app.error.response.status === 503;
+  const refusal = app.error instanceof ApiFailure ? app.error : undefined;
+  const unavailable = refusal?.detail.code === "live_app_unavailable";
+  const refused =
+    refusal === undefined || unavailable ? undefined : refusal.message;
   const url = data?.state === "running" ? data.url : undefined;
   // Whether the Builder is mid-turn comes from its committed run events, which survive a hub
   // restart; the hub's count of its writes does not, so an unknown count with an idle Builder
@@ -161,7 +168,7 @@ export function useLiveApp({
         data?.state !== "failed";
       return settingUp
         ? { state: "setting_up", url }
-        : notRunning(data, unavailable);
+        : notRunning(data, unavailable, refused);
     }
     if (unavailable || !starter) return { state: "running", url };
     if (working) return { state: "setting_up", url };

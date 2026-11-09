@@ -520,6 +520,7 @@ export async function createHubRuntime(
       createProjectRoutes(
         handle.db,
         createWorkflowRunReader(agentRepoStore.repoStore),
+        agentRepoStore.repoStore,
         coordinatorTokens.authenticateProject,
         {
           ensure: (actor, projectId) =>
@@ -548,7 +549,6 @@ export async function createHubRuntime(
         workflows.localSidecarDataDir,
         liveApps,
         workflows.services.workflowLifecycleService.requestCancellation,
-        agentRepoStore.repoStore,
       ),
     );
     app.route(

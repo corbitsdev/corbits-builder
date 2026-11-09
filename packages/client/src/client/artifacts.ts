@@ -139,11 +139,12 @@ export function buildArtifactsMethods(
         signal,
       );
     },
-    exportProjectArchive(tenantId, projectId, sections, signal) {
-      const query =
-        sections === undefined
-          ? ""
-          : `?${new URLSearchParams({ sections: sections.join(",") })}`;
+    exportProjectArchive(tenantId, projectId, sections, version, signal) {
+      const params = new URLSearchParams({
+        ...(sections === undefined ? {} : { sections: sections.join(",") }),
+        ...(version === undefined ? {} : { version: String(version) }),
+      });
+      const query = params.size === 0 ? "" : `?${params}`;
       return download(
         `${projectPath(tenantId, projectId)}/export/archive${query}`,
         "project.zip",

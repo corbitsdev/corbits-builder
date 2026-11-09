@@ -496,18 +496,22 @@ export type ProductApiClient = Readonly<{
     projectId: string,
     signal?: AbortSignal,
   ): Promise<AppVersionList>;
-  /** A filed app version (the latest when absent) as a zip named after the project. */
+  /** A filed app version (the saved app when absent) as a zip named after the project. */
   downloadApp(
     tenantId: string,
     projectId: string,
     version?: number,
     signal?: AbortSignal,
   ): Promise<{ filename: string; archive: Blob }>;
-  /** The project as a zip of the given sections (all when absent), always with project.json. */
+  /**
+   * The project as a zip of the given sections (all when absent), always with project.json; the
+   * app in both is the filed version named, else the saved app.
+   */
   exportProjectArchive(
     tenantId: string,
     projectId: string,
     sections?: readonly ExportSection[],
+    version?: number,
     signal?: AbortSignal,
   ): Promise<{ filename: string; archive: Blob }>;
   /** Sets look tokens in the design's styles.css; never an approval. */

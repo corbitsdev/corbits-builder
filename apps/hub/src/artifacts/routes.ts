@@ -47,6 +47,17 @@ const security = [
   { coordinatorBearer: [] },
 ];
 
+// The app version a download or an export names, or undefined for the saved app.
+function appVersionQuery(c: {
+  req: { query(name: string): string | undefined };
+}) {
+  const query = c.req.query("version");
+  const version = query === undefined ? undefined : Number(query);
+  if (version !== undefined && !(Number.isInteger(version) && version > 0))
+    throw new ProjectError(400, "invalid_app_version", { version: query });
+  return version;
+}
+
 // Mounted inside the authenticated project route group; the project tenant
 // middleware has already switched the request into the project's tenant.
 export function mountArtifactRoutes(
@@ -198,16 +209,17 @@ export function mountArtifactRoutes(
       tags: ["Artifacts"],
       operationId: "readPreviousDesignDraft",
       description:
-        "For the calling designer run: the newest draft an earlier designer run of this project left for the same design concept, with its DESIGN.md, so the design continues from it.",
+        "For the calling designer run: the draft the design continues from, with its DESIGN.md. The newest earlier designer run of this project for the same design concept decides: its workspace while it runs, or once it ended unless the concept's design option, or the design without a concept, was filed since; else that filed design at its latest version, with the look the person saved.",
       security,
       responses: {
         200: {
           description:
-            "The earlier designer's DESIGN.md and designs/ as it left them",
+            "The earlier designer's DESIGN.md and designs/ as it left them, or as last filed",
           content: { "application/json": { schema: resolver(DesignDraft) } },
         },
         404: {
-          description: "No earlier designer left a draft for this concept",
+          description:
+            "No earlier designer left a draft for this concept and none is filed",
         },
       },
     }),
@@ -476,14 +488,15 @@ export function mountArtifactRoutes(
       responses: {
         200: {
           description:
-            "The app's user manual, docs/USER-MANUAL.md, as the live coder keeps it, with the pictures it shows as data URLs; with no coder at work, the one filed with the latest app",
+            "The app's user manual, docs/USER-MANUAL.md, as the live coder keeps it, with the pictures it shows as data URLs; with no coder at work, the one in the saved app (the app repository's main, or the latest filed version of a project without one)",
           content: {
             "application/json": { schema: resolver(UserManual) },
           },
         },
         404: {
-          description: "Neither a coder at work nor the filed app has a manual",
+          description: "Neither a coder at work nor the saved app has a manual",
         },
+        503: { description: "The project's app repository cannot be read" },
       },
     }),
     async (c) => {
@@ -499,15 +512,16 @@ export function mountArtifactRoutes(
       responses: {
         200: {
           description:
-            "The live coder's ACCEPTANCE.md, the build plan's acceptance checklist as it ticks items off; with no coder at work, the one filed with the latest app",
+            "The live coder's ACCEPTANCE.md, the build plan's acceptance checklist as it ticks items off; with no coder at work, the one in the saved app (the app repository's main, or the latest filed version of a project without one)",
           content: {
             "application/json": { schema: resolver(AcceptanceChecklist) },
           },
         },
         404: {
           description:
-            "Neither a coder at work nor the filed app has a checklist",
+            "Neither a coder at work nor the saved app has a checklist",
         },
+        503: { description: "The project's app repository cannot be read" },
       },
     }),
     async (c) => {
@@ -522,7 +536,7 @@ export function mountArtifactRoutes(
       tags: ["Artifacts"],
       operationId: "readLiveApp",
       description:
-        "The project's app as the hub runs it while the project is open, from the project's current files: the build workspace's while a coder builds, else the latest filed version. Reading never starts it. A running app is served at url, an origin of its own on this host whose every request needs the same session and project read access as this route.",
+        "The project's app as the hub runs it while the project is open, from the project's current files: the build workspace's while a coder builds, else the saved app (the app repository's main, or the latest filed version of a project without one). Reading never starts it. A running app is served at url, an origin of its own on this host whose every request needs the same session and project read access as this route.",
       security,
       responses: {
         200: {
@@ -530,7 +544,10 @@ export function mountArtifactRoutes(
             "Whether the app is running, starting, stopped, failed or has no files yet",
           content: { "application/json": { schema: resolver(LiveApp) } },
         },
-        503: { description: "This hub does not serve apps" },
+        503: {
+          description:
+            "This hub does not serve apps, or the project's app repository cannot be read",
+        },
       },
     }),
     async (c) => {
@@ -556,7 +573,10 @@ export function mountArtifactRoutes(
           description: "The app's state after the request",
           content: { "application/json": { schema: resolver(LiveApp) } },
         },
-        503: { description: "This hub does not serve apps" },
+        503: {
+          description:
+            "This hub does not serve apps, or the project's app repository cannot be read",
+        },
       },
     }),
     async (c) => {
@@ -629,7 +649,7 @@ export function mountArtifactRoutes(
       tags: ["Artifacts"],
       operationId: "downloadApp",
       description:
-        "A filed version of the project's app (version, the latest when absent) as a zip of its files, under one directory named after the project. Installs, build output and environment files are never filed, so they are not in it.",
+        "A filed version of the project's app or, without version, the saved app (the app repository's main, or the latest filed version of a project without one), as a zip of its files under one directory named after the project. Installs, build output and environment files are never filed or saved, so they are not in it.",
       security,
       parameters: [
         {
@@ -647,21 +667,16 @@ export function mountArtifactRoutes(
         },
         404: {
           description:
-            "No app is filed for this project yet, or not that version",
+            "No app is saved for this project yet, or no version of that number is filed",
         },
+        503: { description: "The project's app repository cannot be read" },
       },
     }),
     async (c) => {
-      const query = c.req.query("version");
-      const version = query === undefined ? undefined : Number(query);
-      if (version !== undefined && !(Number.isInteger(version) && version > 0))
-        throw new ProjectError(400, "invalid_app_version", {
-          version: query,
-        });
       const { filename, archive } = await service.appArchive(
         actorOf(c),
         c.req.param("projectId"),
-        version,
+        appVersionQuery(c),
       );
       return new Response(archive, {
         headers: {
@@ -731,8 +746,15 @@ export function mountArtifactRoutes(
       tags: ["Artifacts"],
       operationId: "exportProjectArchive",
       description:
-        "The project as a zip named after it. sections (comma-separated planning, design, build; all when absent) picks planning/ (each document as <kind>.md and the person's materials), design/ (the design's files and each option's under options/<label>/) and build/ (the app's source). project.json, the file import reads, is always in it.",
+        "The project as a zip named after it. sections (comma-separated planning, design, build; all when absent) picks planning/ (each document as <kind>.md and the person's materials), design/ (the design's files and each option's under options/<label>/) and build/ (the app's source). project.json, the file import reads, is always in it. The app in build/ is the filed version named by version, else the saved app.",
       security,
+      parameters: [
+        {
+          name: "version",
+          in: "query",
+          schema: { type: "integer", minimum: 1 },
+        },
+      ],
       responses: {
         200: {
           description: "The project's zip",
@@ -744,6 +766,8 @@ export function mountArtifactRoutes(
           description:
             "sections names something other than planning, design or build",
         },
+        404: { description: "No app version of that number is filed" },
+        503: { description: "The project's app repository cannot be read" },
       },
     }),
     async (c) => {
@@ -759,6 +783,7 @@ export function mountArtifactRoutes(
         actorOf(c),
         c.req.param("projectId"),
         sections,
+        appVersionQuery(c),
       );
       return new Response(archive, {
         headers: {

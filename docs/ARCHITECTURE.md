@@ -105,14 +105,19 @@ approvals.
 
 ### The app repository and live preview
 
-Each project has one git repository for its app. A coder run gets push access
-to its main branch, scoped to that run and revoked when the run ends. A new
-coder workspace starts from main when main holds a version, else from the last
-filed app, else from the app starter.
+Each project has one git repository for its app, and its main branch is the
+saved app. A coder run gets push access to main, scoped to that run and revoked
+when the run ends; a passing check is filed as an app version once its push
+lands. A project whose main holds no app, such as an imported one, shows its
+last filed app instead. A project from before then whose last push failed shows
+main until its next build; its newer filed version stays downloadable by
+version. A new coder workspace starts from main when main holds a version, else
+from the last filed app, else from the app starter.
 
 The live preview runs the project's app in its own sandboxed process per
 project. While a coder works, it follows the coder's workspace; afterwards it
-runs the latest filed app. It installs packages when they change, restarts on
+runs the saved app, as the download, the acceptance checklist and the user
+manual read it. It installs packages when they change, restarts on
 file changes, restarts a crash once and then waits for the next change, and
 stops when no one has had the project open for a short while. Each project's
 app is served from its own origin, and a request reaches it only when the hub

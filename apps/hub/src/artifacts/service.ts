@@ -32,6 +32,7 @@ import {
 } from "@intx/hub-sessions";
 import {
   approval,
+  isLiveWorkflowRunStatus,
   principal,
   workflowRun,
   workflowRunLaunchSpec,
@@ -107,7 +108,10 @@ import {
   projectResource,
   typeIssues,
 } from "../projects/errors.ts";
-import { readAppRepository } from "../projects/app-repository.ts";
+import {
+  AppRepositoryError,
+  readAppRepository,
+} from "../projects/app-repository.ts";
 import {
   spawnedWorkflowRole,
   spawnedWorkflowStep,
@@ -319,6 +323,7 @@ export async function runFailure(
 export function createArtifactService(
   rawDB: DB["db"],
   runs: WorkflowRunReader,
+  repoStore: RepoStore,
   tracker?: AgentActivityTracker,
   sidecarDataDir?: string,
   liveApps?: LiveApps,
@@ -327,7 +332,6 @@ export function createArtifactService(
     runId: string,
     reason: string,
   ) => Promise<unknown>,
-  repoStore?: RepoStore,
 ) {
   if (!(rawDB instanceof PostgresJsDatabase))
     throw new Error("Artifacts require postgres-js");
@@ -368,8 +372,8 @@ export function createArtifactService(
     return (await authorizeProject(rawDB, actor, projectId, action)).allowed;
   }
 
-  // The role's runs, newest first, each with its warm step and the design concept it works on, if
-  // any: the live runs, or with ended, every run.
+  // The role's runs, newest first, each with its warm step, the design concept it works on, if
+  // any, whether it is live and when it ended: the live runs, or with ended, every run.
   async function roleRuns(actor: Actor, role: SpawnedRole, ended: boolean) {
     const runs = await rawDB
       .select({
@@ -377,6 +381,8 @@ export function createArtifactService(
         address: workflowRun.address,
         bundle: workflowRunLaunchSpec.frozenApprovalBundle,
         concept: designConcept.label,
+        status: workflowRun.status,
+        endedAt: workflowRun.endedAt,
       })
       .from(workflowRun)
       .innerJoin(
@@ -402,21 +408,19 @@ export function createArtifactService(
               address: run.address,
               stepId: step.stepId,
               concept: run.concept,
+              live: isLiveWorkflowRunStatus(run.status),
+              endedAt: run.endedAt,
             },
           ]
         : [];
     });
   }
 
-  // The workspaces of the role's runs that the hub deployed on its local sidecar, newest first, each
-  // with the design concept its run works on, if any: the live runs, or with ended, every run.
-  async function liveWorkspaces(
-    actor: Actor,
-    role: SpawnedRole,
-    ended = false,
-  ) {
+  // The workspaces of the role's live runs that the hub deployed on its local sidecar, newest
+  // first, each with the design concept its run works on, if any.
+  async function liveWorkspaces(actor: Actor, role: SpawnedRole) {
     if (!sidecarDataDir) return [];
-    return (await roleRuns(actor, role, ended)).flatMap(
+    return (await roleRuns(actor, role, false)).flatMap(
       ({ runId, address, stepId, concept }) =>
         address === null
           ? []
@@ -460,7 +464,8 @@ export function createArtifactService(
   }
 
   // The newest app version a passing check or an import filed. A snapshot is a person's copy of
-  // the workspace at any moment, so it never seeds the next coder or stands as the filed app.
+  // the workspace at any moment, so it never seeds the next coder or stands as the saved app of a
+  // project whose app repository holds none.
   // Versions filed before sources were recorded came only from checks and imports.
   async function mainLineVersion(artifactId: string) {
     for await (const row of everyVersion(artifactId)) {
@@ -484,7 +489,26 @@ export function createArtifactService(
     } while (cursor !== undefined);
   }
 
-  // The project's main-line app; the caller has checked the project.
+  // The work an app repository does for a project, its refusals logged with why and answered as
+  // the hub's.
+  async function inAppRepository<T>(projectId: string, work: Promise<T>) {
+    try {
+      return await work;
+    } catch (error) {
+      if (error instanceof AppRepositoryError) {
+        const { status, code, cause } = error;
+        log.error("Reading the app repository failed: {reason}", {
+          projectId,
+          reason: cause instanceof Error ? cause.message : String(cause),
+          ...requestErrorMetadata(cause),
+        });
+        throw new ProjectError(status, code, {}, { cause });
+      }
+      throw error;
+    }
+  }
+
+  // The project's main-line app version.
   async function filedApp(actor: Actor) {
     const [row] = (
       await listArtifacts(db, actor.tenantId, { kind: "app", limit: 1 })
@@ -496,66 +520,51 @@ export function createArtifactService(
     if (!stored?.contentSha256) return undefined;
     return {
       version: mainLine.version,
-      createdAt: mainLine.createdAt,
       sha256: stored.contentSha256,
       bundle: AppBundle.assert(JSON.parse(stored.content)),
     };
   }
 
-  // The app at the tip of the project's app repository's main when it was committed after
-  // filedAt, the time a filed version was written, or with no filed version at all.
-  async function newerRepositoryApp(
-    actor: Actor,
-    projectId: string,
-    filedAt: string | undefined,
-  ) {
-    if (!repoStore) return undefined;
-    const main = await readAppRepository(
-      rawDB,
-      repoStore,
-      actor.tenantId,
+  // The tip of the project's app repository's main.
+  const repositoryMain = (actor: Actor, projectId: string) =>
+    inAppRepository(
       projectId,
+      readAppRepository(rawDB, repoStore, actor.tenantId, projectId),
     );
-    if (
-      !main ||
-      (filedAt !== undefined &&
-        main.committedAt.getTime() <= Date.parse(filedAt))
-    )
-      return undefined;
-    const app = await main.read();
-    return app && { commit: main.commit, bundle: app.bundle };
+
+  // The project's saved app: the tip of its app repository's main, which every write of the app
+  // lands on, or while main holds no app, as for a project from before app repositories, its
+  // main-line version; undefined while there is none.
+  async function savedApp(actor: Actor, projectId: string) {
+    const main = await repositoryMain(actor, projectId);
+    if (!main?.app) return filedApp(actor);
+    return { commit: main.commit, bundle: main.app.bundle };
   }
 
-  // The latest filed app version or, when its main holds a later commit, the app repository's
-  // main, as a bundle and the name of the version; undefined while neither holds an app.
-  async function currentApp(actor: Actor, projectId: string) {
+  // The app a download or an export's build/ carries: the filed version named, else the saved app;
+  // its bundle and the name of its version.
+  async function appCopy(actor: Actor, projectId: string, version?: number) {
+    if (version === undefined) {
+      const saved = await savedApp(actor, projectId);
+      if (!saved) return undefined;
+      return "commit" in saved
+        ? { name: saved.commit.slice(0, 7), bundle: saved.bundle }
+        : { name: `v${saved.version}`, bundle: saved.bundle };
+    }
     const [latest] = (
       await listArtifacts(db, actor.tenantId, { kind: "app", limit: 1 })
     ).rows;
-    const filed = latest?.contentSha256 ? latest : undefined;
-    const repository = await newerRepositoryApp(
-      actor,
-      projectId,
-      filed && (await filedAt(filed.id, filed.version)),
-    );
-    if (repository)
-      return {
-        name: repository.commit.slice(0, 7),
-        bundle: repository.bundle,
-      };
-    if (!filed) return undefined;
-    const stored = await getArtifactVersion(db, filed.id, filed.version);
-    return stored
-      ? {
-          name: `v${filed.version}`,
-          bundle: AppBundle.assert(parseJson(stored.content)),
-        }
-      : undefined;
+    const stored = latest && (await getArtifactVersion(db, latest.id, version));
+    if (!latest || !stored?.contentSha256)
+      throw new ProjectError(404, "app_not_filed", { version });
+    return {
+      name: `v${version}`,
+      bundle: AppBundle.assert(parseJson(stored.content)),
+    };
   }
 
   // The project's current files: a coder's workspace while it builds, read where it lies, else
-  // the newer of the latest filed app and the app repository's main; undefined while the project
-  // has no app files at all, and the error when the repository cannot be read.
+  // the saved app; undefined while the project has no app files at all.
   async function appSource(actor: Actor, projectId: string) {
     for (const { dir } of await liveWorkspaces(actor, "coder"))
       if (await Bun.file(join(dir, "package.json")).exists()) {
@@ -569,41 +578,18 @@ export function createArtifactService(
           } as const,
         };
       }
-    const filed = await filedApp(actor);
-    let repository;
-    try {
-      repository = await newerRepositoryApp(actor, projectId, filed?.createdAt);
-    } catch (error) {
-      const reason = error instanceof Error ? error.message : String(error);
-      log.error("Reading the app repository failed: {reason}", {
-        projectId,
-        reason,
-        ...requestErrorMetadata(error),
-      });
-      return { error: reason };
-    }
-    if (repository) {
-      const login = demoLogin(repository.bundle.files);
-      return {
-        key: repository.commit,
-        source: repository.bundle,
-        shown: {
-          source: "repository",
-          commit: repository.commit,
-          ...(login ? { demoLogin: login } : {}),
-        } as const,
-      };
-    }
-    if (!filed) return undefined;
-    const login = demoLogin(filed.bundle.files);
+    const saved = await savedApp(actor, projectId);
+    if (!saved) return undefined;
+    const login = demoLogin(saved.bundle.files);
     return {
-      key: filed.sha256,
-      source: filed.bundle,
+      key: "commit" in saved ? saved.commit : saved.sha256,
+      source: saved.bundle,
       shown: {
-        source: "filed",
-        version: filed.version,
+        ...("commit" in saved
+          ? ({ source: "repository", commit: saved.commit } as const)
+          : ({ source: "filed", version: saved.version } as const)),
         ...(login ? { demoLogin: login } : {}),
-      } as const,
+      },
     };
   }
 
@@ -612,15 +598,9 @@ export function createArtifactService(
     await requireProject(actor, projectId, "read");
     if (!liveApps) throw new ProjectError(503, "live_app_unavailable");
     const current = await appSource(actor, projectId);
-    if (current && current.error === undefined) return current;
+    if (current) return current;
     liveApps.runner.stop(projectId);
-    return current
-      ? ({
-          state: "failed",
-          source: "repository",
-          error: current.error,
-        } as const)
-      : ({ state: "not_built" } as const);
+    return { state: "not_built" } as const;
   }
 
   function liveAppState(
@@ -648,6 +628,68 @@ export function createArtifactService(
         ...shown,
       };
     }
+  }
+
+  // The filed design a concept's look lives in, at its latest version, with the look the person
+  // saved: its option, titled with its label, or without a concept the design itself. Its files are
+  // read only when asked for.
+  async function filedDesign(actor: Actor, concept: string | undefined) {
+    const kind = concept === undefined ? "design" : "design_option";
+    const [filed] = (
+      await listArtifacts(db, actor.tenantId, { kind, limit: MAX_LIST_LIMIT })
+    ).rows.filter(
+      (row) =>
+        row.contentSha256 && (concept === undefined || row.title === concept),
+    );
+    if (!filed) return undefined;
+    return {
+      artifactId: filed.id,
+      version: filed.version,
+      kind,
+      title: filed.title,
+      async files() {
+        const stored = await getArtifactVersion(db, filed.id, filed.version);
+        if (!stored) throw new ProjectError(409, "invalid_design");
+        const bundle = DesignBundle(parseJson(stored.content));
+        if (bundle instanceof type.errors)
+          throw new ProjectError(409, "invalid_design", { issues: bundle });
+        return bundle.files;
+      },
+    };
+  }
+
+  // The draft the newest designer run of the concept, other than skip, left in its workspace, read
+  // with read: while the run is live, or once it ended unless the concept's design was filed since,
+  // for the person may have saved a look on it. Undefined when the filed design stands instead.
+  async function standingDesignDraft(
+    actor: Actor,
+    concept: string | undefined,
+    read: (workspace: string) => Promise<Record<string, string> | undefined>,
+    skip?: string,
+  ) {
+    const [newest] = (await roleRuns(actor, "designer", true)).filter(
+      (run) => run.runId !== skip && (run.concept ?? undefined) === concept,
+    );
+    if (!newest || !sidecarDataDir || newest.address === null) return undefined;
+    const left = await read(
+      warmStepWorkspace(sidecarDataDir, newest.address, newest.stepId),
+    );
+    if (left === undefined || newest.live) return left;
+    const filed = await filedDesign(actor, concept);
+    if (!filed) return left;
+    const { endedAt } = newest;
+    return endedAt &&
+      Date.parse(await filedAt(filed.artifactId, filed.version)) <=
+        endedAt.getTime()
+      ? left
+      : undefined;
+  }
+
+  function designDraftOf(files: Record<string, string>) {
+    const draft = DesignDraft.assert({ files });
+    if (Buffer.byteLength(JSON.stringify(draft)) > MAX_DESIGN_BYTES)
+      throw new ProjectError(409, "design_draft_too_large");
+    return draft;
   }
 
   // The concept of the designer run writing as actor: a workflow principal's ref is its run.
@@ -990,8 +1032,8 @@ export function createArtifactService(
       };
     },
 
-    // The newest draft an earlier designer run left for the calling designer run's concept, so a
-    // design dispatched again continues that draft instead of starting over.
+    // The draft a design dispatched again continues from instead of starting over: the one an
+    // earlier designer run of the calling run's concept left, else the filed design.
     async previousDesignDraft(
       actor: Actor,
       projectId: string,
@@ -1009,19 +1051,15 @@ export function createArtifactService(
         );
       if (!self) throw new ProjectError(403, "not_a_designer_run");
       const concept = await runConcept(actor);
-      for (const workspace of await liveWorkspaces(actor, "designer", true)) {
-        if (
-          workspace.runId === self.runId ||
-          (workspace.concept ?? undefined) !== concept
-        )
-          continue;
-        const files = await readDesignBundle(workspace.dir);
-        if (files === undefined) continue;
-        const draft = DesignDraft.assert({ files });
-        if (Buffer.byteLength(JSON.stringify(draft)) > MAX_DESIGN_BYTES)
-          throw new ProjectError(409, "design_draft_too_large");
-        return draft;
-      }
+      const left = await standingDesignDraft(
+        actor,
+        concept,
+        readDesignBundle,
+        self.runId,
+      );
+      if (left !== undefined) return designDraftOf(left);
+      const filed = await filedDesign(actor, concept);
+      if (filed) return designDraftOf(await filed.files());
       throw new ProjectError(404, "design_draft_not_found");
     },
 
@@ -1032,21 +1070,10 @@ export function createArtifactService(
       concept?: string,
     ): Promise<DesignDraft> {
       await requireProject(actor, projectId, "read");
-      for (const ended of [false, true])
-        for (const workspace of await liveWorkspaces(
-          actor,
-          "designer",
-          ended,
-        )) {
-          if ((workspace.concept ?? undefined) !== concept) continue;
-          const files = await readDesignDraft(workspace.dir);
-          if (files === undefined) continue;
-          const draft = DesignDraft.assert({ files });
-          if (Buffer.byteLength(JSON.stringify(draft)) > MAX_DESIGN_BYTES)
-            throw new ProjectError(409, "design_draft_too_large");
-          return draft;
-        }
-      throw new ProjectError(404, "design_draft_not_found");
+      const files = await standingDesignDraft(actor, concept, readDesignDraft);
+      if (files === undefined)
+        throw new ProjectError(404, "design_draft_not_found");
+      return designDraftOf(files);
     },
 
     // The person's saved look tokens, written deterministically wherever the design lives: the
@@ -1077,41 +1104,24 @@ export function createArtifactService(
         break;
       }
       let artifact: ArtifactRef | undefined;
-      // A concept's option is titled with its label; without a concept, the design itself.
-      const kind = input.concept === undefined ? "design" : "design_option";
-      const [filed] = (
-        await listArtifacts(db, actor.tenantId, { kind, limit: MAX_LIST_LIMIT })
-      ).rows.filter(
-        (row) =>
-          row.contentSha256 &&
-          (input.concept === undefined || row.title === input.concept),
-      );
+      const filed = await filedDesign(actor, input.concept);
       if (!filed && designerRunId === undefined)
         throw new ProjectError(404, "design_not_found");
       if (filed) {
-        const stored = await getArtifactVersion(db, filed.id, filed.version);
-        if (!stored) throw new ProjectError(409, "invalid_design");
-        const bundle = DesignBundle(parseJson(stored.content));
-        if (bundle instanceof type.errors)
-          throw new ProjectError(409, "invalid_design", {
-            issues: bundle,
-          });
+        const bundle = await filed.files();
         const files = {
-          ...bundle.files,
-          [DESIGN_STYLES]: setThemeTokens(
-            bundle.files[DESIGN_STYLES] ?? "",
-            tokens,
-          ),
+          ...bundle,
+          [DESIGN_STYLES]: setThemeTokens(bundle[DESIGN_STYLES] ?? "", tokens),
         };
         const written = await writeArtifactVersion(db, {
           scope: actor,
-          artifactId: filed.id,
+          artifactId: filed.artifactId,
           title: filed.title,
           content: JSON.stringify({ files }),
         });
         artifact = {
           artifactId: written.artifactId,
-          kind,
+          kind: filed.kind,
           version: written.version,
           sha256: written.contentSha256!,
         };
@@ -1322,28 +1332,28 @@ export function createArtifactService(
         const markdown = await readAcceptance(dir);
         if (markdown !== undefined) return { markdown };
       }
-      // Once the coder ends, the checklist is the one it filed with the app.
-      const filed = await filedApp(actor);
-      const markdown = filed?.bundle.files["ACCEPTANCE.md"];
+      // Once the coder ends, the checklist is the one saved with the app.
+      const saved = await savedApp(actor, projectId);
+      const markdown = saved?.bundle.files["ACCEPTANCE.md"];
       if (markdown !== undefined) return { markdown };
       throw new ProjectError(404, "acceptance_not_found");
     },
 
     // The user manual as the coder keeps it, with the pictures check-app saved; once the coder
-    // ends, the one filed with the app, whose pictures the bundle carries as binaries.
+    // ends, the one saved with the app, whose pictures the bundle carries as binaries.
     async manual(actor: Actor, projectId: string): Promise<UserManual> {
       await requireProject(actor, projectId, "read");
       for (const { dir } of await liveWorkspaces(actor, "coder")) {
         const manual = await readUserManual(dir);
         if (manual !== undefined) return manual;
       }
-      const filed = await filedApp(actor);
-      const markdown = filed?.bundle.files["docs/USER-MANUAL.md"];
-      if (filed !== undefined && markdown !== undefined)
+      const saved = await savedApp(actor, projectId);
+      const markdown = saved?.bundle.files["docs/USER-MANUAL.md"];
+      if (saved !== undefined && markdown !== undefined)
         return {
           markdown,
           pictures: manualPictures(markdown, (ref) => {
-            const data = filed.bundle.binary?.[`docs/${ref}`];
+            const data = saved.bundle.binary?.[`docs/${ref}`];
             return data === undefined ? undefined : Buffer.from(data, "base64");
           }),
         };
@@ -1801,23 +1811,7 @@ export function createArtifactService(
     // builds and environment files are never filed or versioned.
     async appArchive(actor: Actor, projectId: string, version?: number) {
       await requireProject(actor, projectId, "read");
-      let app;
-      if (version === undefined) app = await currentApp(actor, projectId);
-      else {
-        const [latest] = (
-          await listArtifacts(db, actor.tenantId, { kind: "app", limit: 1 })
-        ).rows;
-        const read =
-          latest &&
-          (await this.read(actor, projectId, {
-            artifactId: latest.id,
-            version,
-          }));
-        app = read && {
-          name: `v${read.version}`,
-          bundle: AppBundle.assert(JSON.parse(read.content)),
-        };
-      }
+      const app = await appCopy(actor, projectId, version);
       if (!app) throw new ProjectError(404, "app_not_filed");
       const name = await archiveName(projectId);
       const zip = new JSZip();
@@ -1832,11 +1826,13 @@ export function createArtifactService(
       };
     },
 
-    // The project as a zip of the chosen sections, always with project.json, the file import reads.
+    // The project as a zip of the chosen sections, always with project.json, the file import reads;
+    // build/ is the filed app version named, else the saved app.
     async exportArchive(
       actor: Actor,
       projectId: string,
       sections: readonly ExportSection[],
+      appVersion?: number,
     ) {
       const file = await this.export(actor, projectId);
       const name = await archiveName(projectId);
@@ -1881,7 +1877,7 @@ export function createArtifactService(
         }
       }
       if (sections.includes(exportSection("app"))) {
-        const app = await currentApp(actor, projectId);
+        const app = await appCopy(actor, projectId, appVersion);
         if (app) add("build", Object.entries(bundleFiles(app.bundle)));
       }
       return {
