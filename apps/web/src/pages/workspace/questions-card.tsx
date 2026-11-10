@@ -374,12 +374,18 @@ function OpenCard({
   const { answers, step, failed, focusFollows } = draft;
   const [earlierShown, setEarlierShown] = useState(false);
   const [sending, setSending] = useState(false);
+  const card = useRef<HTMLDivElement>(null);
   const choices = useRef<HTMLDivElement>(null);
-  const nextButton = useRef<HTMLButtonElement>(null);
 
   const question = questions[step];
   useEffect(() => {
-    if (!focusFollows || choices.current === null) return;
+    if (!focusFollows || card.current === null || choices.current === null)
+      return;
+    // Focus comes from inside the card, or from nowhere once a send settled it and failed; never
+    // from wherever the person has moved on to meanwhile.
+    const active = document.activeElement;
+    const free = active === null || active === document.body;
+    if (!free && !card.current.contains(active)) return;
     const inputs = [...choices.current.querySelectorAll("input")];
     const target = inputs.find((input) => input.checked) ?? inputs[0];
     target?.focus();
@@ -406,8 +412,6 @@ function OpenCard({
       focusFollows: true,
     }));
   const send = async () => {
-    // The options lock while sending; holding focus on Send lets Enter retry if it fails.
-    nextButton.current?.focus();
     setSending(true);
     onDraft((current) => ({ ...current, failed: false, focusFollows: true }));
     const reply = questions
@@ -489,7 +493,7 @@ function OpenCard({
       gate={{ kind: "form", title: text.title(questions.length) }}
     >
       {/* Keys act anywhere in the card, from the options to the buttons, and nowhere else. */}
-      <div onKeyDown={onKeyDown}>
+      <div ref={card} onKeyDown={onKeyDown}>
         {questions.length > 1 ? (
           <p className={styles.position} aria-live="polite">
             {text.position(step + 1, questions.length)}
@@ -562,7 +566,6 @@ function OpenCard({
           {failed ? <Fault>{text.notSent}</Fault> : null}
           <Tooltip label={last ? text.sendKeys : text.nextKeys}>
             <Button
-              ref={nextButton}
               type="button"
               size="sm"
               className={styles.next}
