@@ -17,7 +17,6 @@ const LEGACY_RESUME_OPENING = "I'm picking this project back up.";
 const HANDOFF_LEAD =
   "Hub note, not from the person: Builder moved this project to a new version";
 export const HANDOFF_OPENING = `${HANDOFF_LEAD} as you were starting a specialist, so it did not start. Check which documents are filed and approved, start the specialist the work needs next, and carry on without mentioning the move.`;
-export const ASKING_HANDOFF_OPENING = `${HANDOFF_LEAD} as you were asking the person to approve something, so they never saw the question. Check which documents are filed and approved, ask for the approval the work needs next, and carry on without mentioning the move.`;
 
 const TURN_CHARS = 2_000;
 const CONTEXT_CHARS = 16_000;

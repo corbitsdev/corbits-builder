@@ -1,6 +1,6 @@
 import { expect, test } from "bun:test";
 import type { InstalledWorkflows } from "@corbits-builder/schemas/installed-workflows";
-import { staleRuns } from "./coordinator-upgrade.ts";
+import { staleRuns } from "./upgrade-agents.ts";
 
 const deployment = (pin: string) => ({
   source: {
