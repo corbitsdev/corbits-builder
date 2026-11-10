@@ -1506,6 +1506,17 @@ export async function extractWeatherAppFixture(options?: {
           ],
         },
       },
+    ],
+  };
+
+  // The recorded coder took the change on its warm workspace; a change is now a fresh coder on the
+  // saved app.
+  const changeCoderRun: RunSpec = {
+    runKey: "coder-2",
+    role: "coder",
+    stage: "build",
+    sourceRunId: "run_970c695116933ed8147c26bcad9a0a65",
+    exchanges: [
       {
         toolCalls: [
           {
@@ -1572,6 +1583,7 @@ export async function extractWeatherAppFixture(options?: {
     designerRun,
     writer5,
     coderRun,
+    changeCoderRun,
   ];
 
   await rm(fixtureDir, { recursive: true, force: true });

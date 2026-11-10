@@ -63,7 +63,14 @@
       "role": "coder",
       "stage": "build",
       "sourceRunId": "run_970c695116933ed8147c26bcad9a0a65",
-      "exchangeCount": 6
+      "exchangeCount": 3
+    },
+    {
+      "runKey": "coder-2",
+      "role": "coder",
+      "stage": "build",
+      "sourceRunId": "run_970c695116933ed8147c26bcad9a0a65",
+      "exchangeCount": 3
     }
   ]
 }

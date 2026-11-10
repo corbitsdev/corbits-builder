@@ -7,6 +7,7 @@ import {
 } from "@corbits/artifacts";
 import { readHubEnvironment } from "@corbits-builder/hub/environment";
 import { migrateDatabase } from "@corbits-builder/hub/migrate";
+import { appBuilt } from "@corbits-builder/hub/artifacts/service";
 import type { ApproachesMeta } from "@corbits-builder/schemas/approaches";
 import {
   ApprovalRound,
@@ -959,6 +960,7 @@ export function createDatabaseSeedDeps(
         inFlight: [],
         failed: [],
         awaitingApproval,
+        appBuilt: await appBuilt(artifactDb, actor.tenantId),
         preferences: {},
         preferenceGuidance: [],
       };

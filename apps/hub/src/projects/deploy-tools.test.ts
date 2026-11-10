@@ -31,8 +31,9 @@ const workflows = {
 
 type Filed = { version: number; approvedVersion?: number } | undefined;
 
-function coderSpawn(changed: Record<string, Filed>) {
+function coderSpawn(changed: Record<string, Filed>, built = false) {
   const deployed: string[] = [];
+  const approvals: unknown[] = [];
   const artifacts = [
     "problem_brief",
     "constraints",
@@ -67,7 +68,16 @@ function coderSpawn(changed: Record<string, Filed>) {
       });
     }
     if (path.endsWith("/artifacts") && init.method === "GET")
-      return Response.json({ artifacts, inFlight: [], preferences: {} });
+      return Response.json({
+        artifacts,
+        inFlight: [],
+        appBuilt: built,
+        preferences: {},
+      });
+    if (path.endsWith("/artifact-approvals")) {
+      approvals.push(JSON.parse(String(init.body)));
+      return Response.json({ approvalId: "approval", artifacts: [] });
+    }
     return Response.json({ code: "unexpected_route" }, { status: 404 });
   };
   const capabilities = {
@@ -85,13 +95,36 @@ function coderSpawn(changed: Record<string, Filed>) {
   });
   return {
     deployed,
-    run: () =>
+    approvals,
+    run: (name = "deploy_coder", args: Record<string, unknown> = {}) =>
       tools({ capabilities } as never).run(
-        { id: "call", name: "deploy_coder", arguments: {} },
+        { id: "call", name, arguments: args },
         new AbortController().signal,
       ),
   };
 }
+
+test("the first build is deploy_coder's until a checked version is filed, even with an app filed, and every change after is instruct_coder's", async () => {
+  const filedApp = { app: { version: 1 } };
+  const change = {
+    instruction: "Make the forecast cards larger and easier to read.",
+  };
+  // A coder that handed back before any passing check leaves the first build to do, and an
+  // approved change is no approval of its documents.
+  const unbuilt = coderSpawn(filedApp);
+  expect((await unbuilt.run("instruct_coder", change)).content).toStartWith(
+    "app_not_built:",
+  );
+  expect(unbuilt.approvals).toEqual([]);
+  expect((await unbuilt.run()).isError).toBeUndefined();
+  expect(unbuilt.deployed).toHaveLength(1);
+
+  const built = coderSpawn(filedApp, true);
+  expect((await built.run()).content).toStartWith("app_already_built:");
+  expect((await built.run("instruct_coder", change)).isError).toBeUndefined();
+  expect(built.approvals).toHaveLength(1);
+  expect(built.deployed).toHaveLength(1);
+});
 
 test("the coder spawns only from the approved current design version", async () => {
   for (const design of [{ version: 2 }, { version: 2, approvedVersion: 1 }]) {
@@ -157,6 +190,7 @@ test("design_app starts one designer per concept the person asks for, each named
       return Response.json({
         artifacts,
         inFlight,
+        appBuilt: false,
         preferences: { design_concepts: "two" },
       });
     return Response.json({ code: "unexpected_route" }, { status: 404 });
@@ -197,6 +231,7 @@ test("design_app starts one designer per concept the person asks for, each named
     runId: "live-" + String(index),
     role: "designer",
     status: "running",
+    state: "working",
     concept: label,
   }));
   expect(
@@ -215,6 +250,77 @@ test("design_app starts one designer per concept the person asks for, each named
     );
   }
   expect(events.filter((event) => event === "deploy")).toHaveLength(3);
+});
+
+test("a later design pass on a concept never starts while a designer still works on it", async () => {
+  const artifacts = [
+    "problem_brief",
+    "constraints",
+    "approaches",
+    "product_requirements",
+  ].map((kind) => ({
+    kind,
+    artifactId: kind,
+    title: kind,
+    version: 1,
+    sha256: "a".repeat(64),
+  }));
+  const inFlight = [
+    {
+      runId: "run-1",
+      role: "designer",
+      status: "running",
+      state: "working",
+      concept: "Sleek",
+    },
+  ];
+  const deployed: string[] = [];
+  const mailed: string[] = [];
+  const fetch = async (path: string, init: RequestInit) => {
+    if (path.endsWith("/workflows/deployments")) {
+      deployed.push(path);
+      return Response.json({ code: "unexpected_deploy" }, { status: 500 });
+    }
+    if (path.endsWith("/artifacts") && init.method === "GET")
+      return Response.json({
+        artifacts,
+        inFlight,
+        appBuilt: false,
+        preferences: {},
+      });
+    return Response.json({ code: "unexpected_route" }, { status: 404 });
+  };
+  const capabilities = {
+    resolve: (name: string) =>
+      name === "credentials"
+        ? { resolve: async () => ({ kind: "http", fetch }) }
+        : {
+            send: async (message: { content: string }) => {
+              mailed.push(message.content);
+            },
+          },
+  } as unknown as RuntimeCapabilities;
+  const result = await createDeployTools({
+    tenantId: "tenant",
+    projectId: "project",
+    domain: "example.invalid",
+    workflows,
+    maxResultBytes: 16384,
+  })({ capabilities } as never).run(
+    {
+      id: "call",
+      name: "design_app",
+      arguments: {
+        instruction: "Make the forecast cards larger and easier to read.",
+        lookIdeas: "Calm and readable.",
+        concepts: [{ label: "Sleek", direction: "Sleek look" }],
+      },
+    },
+    new AbortController().signal,
+  );
+  const [refused] = JSON.parse(String(result.content)) as { error?: string }[];
+  expect(refused?.error).toStartWith("designer_running:");
+  expect({ deployed, mailed }).toEqual({ deployed: [], mailed: [] });
 });
 
 function writerTools(preferences: Record<string, string> = {}) {
@@ -238,7 +344,12 @@ function writerTools(preferences: Record<string, string> = {}) {
       });
     }
     if (path.endsWith("/artifacts") && init.method === "GET")
-      return Response.json({ artifacts: documents, inFlight, preferences });
+      return Response.json({
+        artifacts: documents,
+        inFlight,
+        appBuilt: false,
+        preferences,
+      });
     if (path.includes("/artifacts/") && init.method === "GET") {
       const source = documents.find((item) =>
         path.includes("/artifacts/" + item["artifactId"]),
@@ -308,7 +419,12 @@ test("an approval reports the steps whose gates it opened, unless one is under w
 
   // The filed constraints are not approved yet, so approving the brief opens nothing.
   expect(await canStart(["problem_brief"])).toEqual([[], undefined]);
-  inFlight.push({ runId: "w", role: "writer", status: "running" });
+  inFlight.push({
+    runId: "w",
+    role: "writer",
+    status: "running",
+    state: "working",
+  });
   expect(await canStart(["constraints"])).toEqual([[], undefined]);
   inFlight.pop();
   expect(await canStart(["constraints"])).toEqual([
@@ -328,7 +444,12 @@ test("an approval reports the steps whose gates it opened, unless one is under w
     ["design"],
     { canStart: ["design"] },
   ]);
-  inFlight.push({ runId: "d", role: "designer", status: "running" });
+  inFlight.push({
+    runId: "d",
+    role: "designer",
+    status: "running",
+    state: "working",
+  });
   expect(await canStart(["product_requirements"])).toEqual([[], undefined]);
   inFlight.pop();
   documents.push({

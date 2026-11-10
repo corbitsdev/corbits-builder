@@ -127,23 +127,24 @@ export const themeOf = (label: string) => {
   return concept && DESIGN_THEMES.find((theme) => theme.id === concept.theme);
 };
 
-// A theme taken as it is starts with its look in place; any other concept names the token changes
-// it makes to the theme it starts from.
-const startingPoint = (concept: { label: string; direction: string }) => {
+// A theme taken as it is is the concept's look; any other concept names the token changes it makes
+// to the theme it starts from. It names the look, not what the workspace starts from, since a later
+// pass continues the draft an earlier one left.
+const lookOf = (concept: { label: string; direction: string }) => {
   const theme = themeOf(concept.label);
   if (
     theme?.label === concept.label &&
     theme.direction === concept.direction.trim()
   )
-    return `Your .builder starts from the ${theme.label} theme, which is this concept's look.`;
-  return `Your .builder starts from the ${theme?.label ?? "kit's neutral"} theme, and this concept changes its tokens: ${concept.direction}`;
+    return `Its look is the ${theme.label} theme as it is.`;
+  return `Its look starts from the ${theme?.label ?? "kit's neutral"} theme and changes its tokens: ${concept.direction}`;
 };
 
 export const designConceptAssignment = (concept: {
   label: string;
   direction: string;
 }) =>
-  `Design concept: ${concept.label}. ${startingPoint(concept)}\nThe person compares this concept with any others before they pick the one to build. file_design_option files it as this concept's option.\n\n`;
+  `Design concept: ${concept.label}. ${lookOf(concept)}\nThe person compares this concept with any others before they pick the one to build. file_design_option files it as this concept's option.\n\n`;
 
 // The person's own ideas for the look, carried to each designer in their words.
 export const designLookIdeas = (ideas: string) =>

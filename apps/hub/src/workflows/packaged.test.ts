@@ -51,9 +51,9 @@ test("production entries expose concrete native workflows without callback crede
   for (const writer of writers)
     expect(writer.steps.write).toMatchObject({ triggers: 1 });
   expect(reviewer.steps.review).toMatchObject({ triggers: 1 });
-  expect(coder.steps.build).toMatchObject({ triggers: "unbounded" });
-  expect(coderAnyPackage.steps.build).toMatchObject({ triggers: "unbounded" });
-  expect(designer.steps.design).toMatchObject({ triggers: "unbounded" });
+  expect(coder.steps.build).toMatchObject({ triggers: 1 });
+  expect(coderAnyPackage.steps.build).toMatchObject({ triggers: 1 });
+  expect(designer.steps.design).toMatchObject({ triggers: 1 });
   expect(presenter.steps.present).toMatchObject({ triggers: 1 });
   // Secure by default: only the coder a person opted into declares install_packages without an ask.
   const installTool = (workflow: typeof coder) => {

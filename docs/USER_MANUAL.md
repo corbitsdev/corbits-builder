@@ -302,8 +302,9 @@ The conversation shows who is working and what they are doing. You do not need
 to do anything except answer what is asked of you:
 
 - **Packages**: a card may ask "Install … into your app?" Choose **Yes, go
-  ahead**, **Always allow** (for the rest of this build) or **Decline**. Turn
-  on **Install any package without asking** in Settings to skip these cards.
+  ahead**, **Always allow** (for the rest of this build or change; the next
+  change asks again) or **Decline**. Turn on **Install any package without
+  asking** in Settings to skip these cards.
 - **Questions**: the app builder never asks you directly. The coordinator passes
   its questions on when they need you.
 
@@ -311,7 +312,9 @@ to do anything except answer what is asked of you:
 
 Try the app, then describe any change in the conversation. The coordinator sends
 it to the app builder, after a card asks **Send this change to the app builder?** with
-the change written out. Choose **Yes, go ahead** or **Not yet**.
+the change written out. Choose **Yes, go ahead** or **Not yet**. Each change is
+made by a fresh app builder starting from the saved app, once the one before it
+has finished.
 
 ## 8. Download your work
 

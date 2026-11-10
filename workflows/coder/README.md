@@ -1,8 +1,8 @@
 # Coder
 
 The coder: builds the whole app from the project's approved documents and
-design, in a sandboxed workspace that starts as a working starter app, and
-keeps taking change requests on the same app.
+design, in a sandboxed workspace that starts as a working starter app. A
+later change is a new run on the saved app.
 
 ## Where it fits
 
@@ -11,8 +11,8 @@ This package only declares data. It imports `@intx/agent/authoring` and
 [coder package][package] imports it, supplies the model, director and tools,
 and builds two workflows from it: `coder`, which asks the person before
 installing a package, and `coder-any-package`, which does not. The
-[coordinator][coordinator] starts one with `deploy_coder` and steers it with
-`instruct_coder`. Its tools are file edits and `run_shell` in the app
+[coordinator][coordinator] starts the first build with `deploy_coder` and
+each later change with `instruct_coder`. Its tools are file edits and `run_shell` in the app
 workspace, `install_packages`, `app_status`, a headless browser, Exa search,
 `read_artifact`, `read_skill` and `mail`.
 
@@ -21,9 +21,9 @@ workspace, `install_packages`, `app_status`, a headless browser, Exa search,
 - `src/prompt.ts`: the system prompt.
 - `src/agent.ts`: `createCoderAgent`, which requires an explicit provider
   and model and appends the hub's design standard to the prompt.
-- `src/workflow.ts`: `createCoderWorkflow`, a long-lived mail-triggered step
-  on a posix sidecar; each message is another assignment on the same warm
-  workspace.
+- `src/workflow.ts`: `createCoderWorkflow`, a mail-triggered step on a posix
+  sidecar that takes one assignment and ends. A later change is a new run
+  that clones the saved app.
 - `src/contract.ts`: `coderTaskMessage`, the assignment text.
 - `starter/`: the starter app (Bun workspace with `client/`, `server/` and
   `packages/shared/`). Its `AGENTS.md` is the coder's guide to the app, and

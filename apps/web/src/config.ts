@@ -428,8 +428,6 @@ export const wording = {
     },
     /** Before the run's first tool call: the hub has seen nothing from it yet. */
     starting: "getting started",
-    /** A run still open with nothing seen for a while: done with its task, waiting for the next. */
-    idle: "waiting for its next task",
     /** How files and commands read in a status line: plain names, never paths or ids. */
     files: {
       earlierOutput: "earlier results",
@@ -500,7 +498,7 @@ export const wording = {
       design_app: () => "Started the designer",
       deploy_coder: () => "Started the app builder",
       deploy_presenter: () => "Started the presenter",
-      instruct_coder: () => "Sent the app builder a change",
+      instruct_coder: () => "Started the app builder on a change",
       review_artifact: (document?: string) =>
         document ? `Asked for a review · ${document}` : "Asked for a review",
     } as Record<string, (subject?: string) => string>,
@@ -513,7 +511,7 @@ export const wording = {
       design_app: () => "Could not start the designer",
       deploy_coder: () => "Could not start the app builder",
       deploy_presenter: () => "Could not start the presenter",
-      instruct_coder: () => "Could not send the app builder a change",
+      instruct_coder: () => "Could not start the app builder on a change",
       review_artifact: (document?: string) =>
         document
           ? `Could not ask for a review · ${document}`
@@ -591,7 +589,7 @@ export const wording = {
       "Its mockup shows here once the designer has drafted your app.",
     conceptSketchingElapsed: (clock: string) => `${clock} elapsed`,
     conceptWaiting: (label: string) =>
-      `The designer of your ${label} concept is waiting for its next instruction.`,
+      `The designer of your ${label} concept is between steps.`,
     /** The pane bar's control that shows what a design concept is going for. */
     conceptDirection: "What this design mockup is going for",
     /** The conversation's ask to confirm the one filed design concept. */
@@ -920,7 +918,7 @@ export const wording = {
     packages: (list: string) => `Install ${list} into your app?`,
     packagesDetail: "The app builder needs these to build your app.",
     packagesAllowed: (list: string) => `Allowed · ${list}`,
-    /** Allows every later install in this build without asking. */
+    /** Allows every later install in this build or change without asking; the next one asks again. */
     packagesAlways: "Always allow",
     packagesDeclined: (list: string) => `Declined · ${list}`,
     /** A decided card's line when the decision stands for the rest of the run. */

@@ -202,8 +202,10 @@ export async function createWorkflowServices(options: {
   const defaultLifecyclePolicy: ResolvedWorkflowLifecyclePolicy = {
     maxLifetime: duration("WORKFLOW_DEFAULT_MAX_LIFETIME", "7d"),
     maxDisconnected: duration("WORKFLOW_DEFAULT_MAX_DISCONNECTED", "15m"),
+    // A designer whose design check did not pass leaves its drawing only in its run's folder, which
+    // is deleted when the slot is freed, so a completed run keeps it long enough for the next pass.
     capacityRetention: {
-      completed: duration("WORKFLOW_DEFAULT_RETENTION_COMPLETED", "30m"),
+      completed: duration("WORKFLOW_DEFAULT_RETENTION_COMPLETED", "15m"),
       failed: duration("WORKFLOW_DEFAULT_RETENTION_FAILED", "24h"),
       cancelled: duration("WORKFLOW_DEFAULT_RETENTION_CANCELLED", "1h"),
     },
