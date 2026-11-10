@@ -38,10 +38,8 @@
     {
       "files": [
         "apps/hub/src/auth/agent-token-bridge.ts",
-        "apps/web/src/App.tsx",
         "apps/web/src/pages/workspace/deliverable-block.tsx",
-        "apps/web/src/pages/workspace/index.tsx",
-        "apps/web/src/pages/workspace/live-app.tsx"
+        "apps/web/src/pages/workspace/room.model.ts"
       ],
       "rules": {
         "eslint/complexity": "off"
@@ -54,6 +52,58 @@
       ],
       "rules": {
         "eslint/max-params": "off"
+      }
+    },
+    {
+      "files": ["apps/web/src/**/*.view.tsx", "apps/web/src/**/*.stories.tsx"],
+      "rules": {
+        "eslint/no-restricted-imports": [
+          "error",
+          {
+            "paths": [
+              {
+                "name": "@tanstack/react-query",
+                "message": "A view or a story never reads the hub. The page's model does."
+              },
+              {
+                "name": "@corbits-builder/client",
+                "allowTypeImports": true,
+                "message": "A view or a story never calls the hub. The page's model does."
+              }
+            ],
+            "patterns": [
+              {
+                "group": ["**/api/*", "**/queries/*"],
+                "message": "A view or a story never reaches the hub. Take what it shows as props; the page's model reads it."
+              },
+              {
+                "group": ["**/*.model", "**/*.model.ts", "**/*.model.js"],
+                "message": "A view owns its props and a story draws the view; neither runs the page's model."
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "files": ["apps/web/src/**/*.model.ts"],
+      "rules": {
+        "eslint/no-restricted-imports": [
+          "error",
+          {
+            "patterns": [
+              {
+                "group": ["**/*.module.css"],
+                "message": "A model holds no look. Styles belong to the view."
+              },
+              {
+                "group": ["**/*.view", "**/*.view.tsx", "**/*.view.jsx"],
+                "allowTypeImports": true,
+                "message": "A model returns the view's props; it never renders the view."
+              }
+            ]
+          }
+        ]
       }
     }
   ]

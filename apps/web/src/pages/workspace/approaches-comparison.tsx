@@ -19,7 +19,6 @@ import type {
 import { useState } from "react";
 import { wording } from "../../config.ts";
 import { Fault } from "../../components.jsx";
-import { humanFault } from "./human-fault.ts";
 import styles from "./approaches-comparison.module.css";
 
 const text = wording.approaches;
@@ -57,8 +56,6 @@ export function ApproachesComparison({
     setFault(null);
     try {
       setFault(await onChoose(text.message(approach.name)));
-    } catch (cause) {
-      setFault(humanFault(cause, text.notSent));
     } finally {
       setChoosing(null);
     }

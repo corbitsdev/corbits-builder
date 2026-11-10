@@ -59,21 +59,27 @@ import { TypedYesCountdown, type TypedYes } from "./typed-yes.tsx";
 import { turnLabel, visibleTurnParts } from "./visible-chat.ts";
 import {
   distinctUpdates,
-  FoldedUpdates,
   groupUpdates,
   specialistUpdate,
-  SpecialistUpdates,
+  updatesRow,
   updateSubject,
   type SpecialistUpdate,
   type UpdateGroup,
-} from "./specialist-updates.tsx";
+} from "./specialist-updates.ts";
+import {
+  FoldedUpdatesView,
+  SpecialistUpdatesView,
+} from "./specialist-updates.view.tsx";
 import {
   DISPATCH_TOOLS,
   partsDispatches,
   type Dispatch,
 } from "./dispatch-card.tsx";
 import { workUnits, type WorkUnit } from "./work-unit.ts";
-import { WorkUnitView } from "./work-unit-view.tsx";
+import {
+  WorkUnitMessageView,
+  type WorkUnitStanding,
+} from "./work-unit-message.view.tsx";
 import type { CallResult } from "./live-run.ts";
 import {
   askedQuestions,
@@ -591,28 +597,8 @@ function SpecialistEnded({ text }: { text: string }) {
   );
 }
 
-export function RoomThread({
-  turns,
-  updates = [],
-  sentId,
-  thinking = false,
-  documents = [],
-  onOpenDocument,
-  shownDocument = null,
-  approvals = [],
-  results = new Map(),
-  runs = [],
-  designChoice,
-  live = () => false,
-  onDecide,
-  onRequestChanges,
-  approvalDisabled = false,
-  approvalError,
-  typedYes,
-  onAnswerQuestions,
-  questionsDisabled = false,
-  children,
-}: {
+/** What the thread shows and what the person can do in it. */
+export type RoomThreadContent = {
   turns: readonly TranscriptTurn[];
   /** Specialist mail from their own threads, folded in between the turns. */
   updates?: readonly SpecialistUpdate[];
@@ -632,9 +618,10 @@ export function RoomThread({
   results?: ReadonlyMap<string, CallResult>;
   /** Runs at work with no hand-off in view, placed at their start. */
   runs?: readonly PlacedDispatch[];
-  designChoice?: PlacedChoice;
   /** The hand-off's run is still starting or at work. */
   live?: (dispatch: Dispatch) => boolean;
+  /** A piece of work as its message shows it, by where its hand-off stands. */
+  standing: (unit: WorkUnit) => WorkUnitStanding;
   onDecide?: (decision: {
     approvalId: string;
     choice: "yes" | "always" | "no";
@@ -648,9 +635,37 @@ export function RoomThread({
   /** Sends the person's answers to the coordinator's questions as their next message. */
   onAnswerQuestions?: (reply: string) => Promise<boolean>;
   questionsDisabled?: boolean;
+};
+
+export type RoomThreadProps = RoomThreadContent & {
+  designChoice?: PlacedChoice;
   /** Agent output rendered in the same log, after the turns. */
   children?: ReactNode;
-}) {
+};
+
+export function RoomThread({
+  turns,
+  updates = [],
+  sentId,
+  thinking = false,
+  documents = [],
+  onOpenDocument,
+  shownDocument = null,
+  approvals = [],
+  results = new Map(),
+  runs = [],
+  designChoice,
+  live = () => false,
+  standing,
+  onDecide,
+  onRequestChanges,
+  approvalDisabled = false,
+  approvalError,
+  typedYes,
+  onAnswerQuestions,
+  questionsDisabled = false,
+  children,
+}: RoomThreadProps) {
   const renderTurnText = (part: PartText) => (
     <MessageFold length={part.text.length}>
       <MessageContent
@@ -674,26 +689,20 @@ export function RoomThread({
   ) => {
     if (card.kind === "unit")
       return (
-        <WorkUnitView
+        <WorkUnitMessageView
           key={`unit:${card.unit.key}`}
-          unit={card.unit}
-          renderStep={renderStep}
-          renderDecision={decisionCard}
+          {...standing(card.unit)}
+          handoff={renderStep}
+          decision={decisionCard}
         />
       );
     if (card.kind === "folded")
       return (
-        <FoldedUpdates
+        <FoldedUpdatesView
           key={`folded:${card.groups[0]?.key ?? position}`}
-          groups={card.groups}
-          subjects={
-            new Map(
-              card.groups.flatMap((group) => {
-                const subject = updateSubject(group.sender);
-                return subject === undefined ? [] : [[group.key, subject]];
-              }),
-            )
-          }
+          rows={card.groups.map((group) =>
+            updatesRow(group, updateSubject(group.sender)),
+          )}
         />
       );
     if (card.kind === "updates")
@@ -727,11 +736,7 @@ export function RoomThread({
     return renderApproval(card.approval, position, headed);
   };
   const renderUpdates = (group: UpdateGroup, subject: string | undefined) => (
-    <SpecialistUpdates
-      key={group.key}
-      group={group}
-      {...(subject === undefined ? {} : { subject })}
-    />
+    <SpecialistUpdatesView key={group.key} row={updatesRow(group, subject)} />
   );
   /** The decision card; `decide` lets the message it sits in look after focus as it settles. */
   const decisionCard = (

@@ -1,6 +1,5 @@
 import { type ComponentProps, type ReactNode } from "react";
 import { Loader2 } from "lucide-react";
-import { toast } from "sonner";
 import {
   Badge,
   Button as UiButton,
@@ -279,19 +278,6 @@ export function Mark({ size = 26 }: { size?: number }) {
       style={{ display: "block", flex: "none" }}
     />
   );
-}
-
-export type NoticeAction = { label: string; onClick: () => void };
-
-/** A finished action's result; one that did only part of its work is not shown as a success. */
-export function notify(
-  message: string,
-  complete = true,
-  action?: NoticeAction,
-): void {
-  const options = action ? { action } : undefined;
-  if (complete) toast.success(message, options);
-  else toast(message, options);
 }
 
 /** The one look for a select or a small action among words: borderless text that underlines on hover. */

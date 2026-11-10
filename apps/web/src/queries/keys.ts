@@ -14,7 +14,7 @@ export const keys = {
   designThemes: {
     all: ["designThemes"] as const,
     of: (projectId: string) => ["designThemes", projectId] as const,
-    theme: (projectId: string, themeId: string) =>
+    theme: (projectId: string, themeId: string | undefined) =>
       ["designThemes", projectId, themeId] as const,
   },
   acceptedMaterials: {

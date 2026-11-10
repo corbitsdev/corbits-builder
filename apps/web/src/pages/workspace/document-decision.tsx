@@ -14,8 +14,11 @@ import {
   ToolApproval,
   type ToolApprovalDecision,
 } from "@corbits/react-ui";
-import { approvalQuestion, shortDocumentName } from "./collaboration.ts";
-import { approvalToolPart } from "./conversation-parts.ts";
+import {
+  approvalQuestion,
+  approvalToolPart,
+  shortDocumentName,
+} from "./collaboration.ts";
 import type { ApprovalOutcome, DocumentApproval } from "./transcript.tsx";
 import styles from "./document-decision.module.css";
 

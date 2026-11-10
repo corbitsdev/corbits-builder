@@ -19,6 +19,8 @@ import {
   waitingOnPerson,
 } from "./live-run.ts";
 import { RoomThread } from "./transcript.tsx";
+import { workUnitStanding } from "./work-unit-message.model.ts";
+import type { WorkUnit } from "./work-unit.ts";
 
 function findElement(
   node: ReactNode,
@@ -39,10 +41,22 @@ function findElement(
 
 const briefId = "problem_brief";
 
+// A room with nothing filed and no run at work, so each hand-off stands where its own call puts it.
+const standing = (unit: WorkUnit) =>
+  workUnitStanding(unit, {
+    artifacts: [],
+    inFlight: [],
+    failed: [],
+    seen: new Map(),
+    approvals: [],
+    activity: undefined,
+  });
+
 describe("conversation transcript", () => {
   test("turns render through MessageParts and keep the conversation log name", () => {
     const html = renderToStaticMarkup(
       <RoomThread
+        standing={standing}
         turns={[
           { role: "person", text: "What is the weather?", at: 1 },
           {
@@ -79,6 +93,7 @@ describe("conversation transcript", () => {
   test("a document name is a control that can open it, without its id", () => {
     const html = renderToStaticMarkup(
       <RoomThread
+        standing={standing}
         turns={[
           {
             role: "assistant",
@@ -103,6 +118,7 @@ describe("conversation transcript", () => {
     const documents = [{ id: "approaches", title: "Ways to build your list" }];
     const html = renderToStaticMarkup(
       <RoomThread
+        standing={standing}
         turns={[{ role: "assistant", text: source, at: 2 }]}
         documents={documents}
         onOpenDocument={() => {}}
@@ -137,6 +153,7 @@ describe("conversation transcript", () => {
   test("an approval asks about the document in words", () => {
     const html = renderToStaticMarkup(
       <RoomThread
+        standing={standing}
         turns={[]}
         approvals={[
           {
@@ -178,6 +195,7 @@ describe("conversation transcript", () => {
   test("Not yet denies the approval and then takes the person to the composer", () => {
     const calls: string[] = [];
     const thread = RoomThread({
+      standing,
       turns: [],
       approvals: [
         {
@@ -311,6 +329,7 @@ describe("conversation transcript", () => {
       1;
     const alone = renderToStaticMarkup(
       <RoomThread
+        standing={standing}
         turns={[{ role: "person", text: "Start", at: 1 }, live]}
         thinking
       />,
@@ -320,6 +339,7 @@ describe("conversation transcript", () => {
     const report = "Saved the requirements.";
     const afterReport = renderToStaticMarkup(
       <RoomThread
+        standing={standing}
         turns={[
           { role: "person", text: "Start", at: 1 },
           { role: "assistant", text: "Being written up now.", at: 2 },
@@ -340,6 +360,7 @@ describe("conversation transcript", () => {
       "Wrote the limits for your weather app, covering offline use and units.";
     const html = renderToStaticMarkup(
       <RoomThread
+        standing={standing}
         turns={[
           { role: "person", text: "Start", at: 1 },
           {
@@ -399,6 +420,7 @@ describe("conversation transcript", () => {
   test("a coordinator stretch has one header, its words first and its cards last", () => {
     const html = renderToStaticMarkup(
       <RoomThread
+        standing={standing}
         turns={[
           { role: "person", text: "Start", at: 1 },
           { role: "assistant", text: "First words.", at: 2 },
@@ -447,7 +469,10 @@ describe("conversation transcript", () => {
       '{"status":"deployed","revision":"4","eventCount":2,"assignmentReady":false,"runId":"run_01HSPECIALIST"}',
     ].join("\n");
     const html = renderToStaticMarkup(
-      <RoomThread turns={[{ role: "assistant", text: dump, at: 2 }]} />,
+      <RoomThread
+        standing={standing}
+        turns={[{ role: "assistant", text: dump, at: 2 }]}
+      />,
     );
     expect(html).toContain(
       "The constraints document is ready for you to review.",

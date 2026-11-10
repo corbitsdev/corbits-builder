@@ -1,7 +1,9 @@
 /**
- * The collaboration surface: a document the person can open, and the
- * question asked before a recorded approval. Titles only — never ids.
+ * The collaboration surface: a document the person can open, the question
+ * asked before a recorded approval, and that approval as the part its card
+ * draws. What the person reads is titles only — never ids.
  */
+import type { PartTool, ToolApprovalStatus } from "@corbits/react-ui";
 import { wording } from "../../config.ts";
 
 export type NamedDocument = {
@@ -155,4 +157,38 @@ export function documentPhrase(documentTitle: string): string {
     ? name
     : name.charAt(0).toLowerCase() + name.slice(1);
   return lower.startsWith("the ") ? lower.slice(4) : lower;
+}
+
+function partStatus(status: ToolApprovalStatus): PartTool["status"] {
+  if (status === "pending") return "approval-requested";
+  if (status === "approved") return "output-available";
+  return "output-denied";
+}
+
+/**
+ * A native approval as a tool part, pending or as its record settled it. Its
+ * name stays empty: the card is titled by the document it approves, never by
+ * the tool that asked.
+ */
+export function approvalToolPart(
+  approvalId: string,
+  outcome?: {
+    readonly status: ToolApprovalStatus;
+    readonly scope?: "once" | "always";
+  },
+): PartTool {
+  const status = outcome?.status ?? "pending";
+  const decided = status === "approved" || status === "rejected";
+  return {
+    kind: "tool-trace",
+    toolCallId: approvalId,
+    name: "",
+    status: partStatus(status),
+    approval: {
+      id: approvalId,
+      status,
+      scope: decided ? (outcome?.scope ?? "once") : null,
+      timeoutAt: null,
+    },
+  };
 }

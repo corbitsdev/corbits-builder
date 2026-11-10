@@ -1,29 +1,31 @@
-import { beforeAll, describe, expect, test } from "bun:test";
+import { describe, expect, test } from "bun:test";
 import { renderToStaticMarkup } from "react-dom/server";
-import { prerender } from "react-dom/static";
-import type { ProjectArtifact } from "@corbits-builder/client";
+import { wording } from "../../config.ts";
 import {
   ArtifactPane,
-  LIVE_TAB,
   availableTab,
   defaultTab,
   resolveSelection,
+  type ArtifactPaneSlots,
+  type PaneDocument,
 } from "./artifact-pane.tsx";
+import { APPROVAL_PACKAGE_MEDIA_TYPE } from "./approval-package.ts";
+import { ApprovalRoundsPanel } from "./approval-rounds.tsx";
 import {
-  APPROVAL_PACKAGE_MEDIA_TYPE,
-  SlidesView,
-} from "./approval-package-preview.tsx";
-import type { DeliverableState } from "./deliverable-block.tsx";
-import { writeWorkspaceApprovalsEnabled } from "../../workspace-approvals-setting.ts";
+  DeliverableBody,
+  type DeliverableState,
+} from "./deliverable-block.tsx";
+import { TweakPanel } from "./mockup-tweaks.tsx";
+import { LIVE_TAB } from "./tab-follow.ts";
 
-type Deliverable = ProjectArtifact;
-const ready: Deliverable = {
-  artifactId: "brief",
-  kind: "problem_brief",
-  title: "Problem brief",
-  version: 2,
-  sha256: "a".repeat(64),
-};
+const filed = (id: string, title: string, version: number): PaneDocument => ({
+  id,
+  title,
+  status: wording.documentStatus.drafted(version),
+  unread: true,
+  removable: false,
+});
+const ready = filed("problem_brief", "Problem brief", 2);
 const document: DeliverableState = {
   status: "ready",
   document: {
@@ -41,30 +43,31 @@ const document: DeliverableState = {
     versions: [],
   },
 };
-function render(
-  selected: Deliverable | null,
-  state?: DeliverableState,
-  changesOpen = false,
-) {
+const parts: ArtifactPaneSlots = {
+  conceptMockup: () => null,
+  approvalRounds: (rounds) => (
+    <ApprovalRoundsPanel projectId="project" flush {...rounds} />
+  ),
+  tweakPanel: (panel) => (
+    <TweakPanel {...panel} design={{ projectId: "project" }} />
+  ),
+};
+function render(selected: PaneDocument | null, state?: DeliverableState) {
   return renderToStaticMarkup(
     <ArtifactPane
       projectTitle="Project"
-      deliverables={selected ? [selected] : []}
-      selected={selected}
+      concepts={[]}
+      documents={selected === null ? [] : [selected]}
+      selectedId={selected === null ? null : selected.id}
       state={state}
-      changesOpen={changesOpen}
       onSelect={() => {}}
-      onToggleChanges={() => {}}
+      onSeen={() => {}}
+      {...parts}
     />,
   );
 }
 
 describe("persistent artifact pane", () => {
-  // Loads the lazily split slides once, as a browser would, so synchronous renders draw them.
-  beforeAll(async () => {
-    await prerender(<SlidesView deck={{}} />);
-  });
-
   test("exists before artifacts without modal or Expand controls", () => {
     const html = render(null);
     expect(html).toContain('aria-label="Artifacts"');
@@ -77,15 +80,28 @@ describe("persistent artifact pane", () => {
     expect(html).not.toContain("Expand");
   });
   test("renders real content immediately with selection and available changes", () => {
-    const html = render(ready, document, true);
+    const html = render(ready, document);
     expect(html).toContain("Real output");
     expect(html).toContain("Updated content");
-    expect(html).toContain("Comparing v1 → v2");
-    expect(html).toContain("Previous content");
-    expect(html).toContain("v1 → v2");
     expect(html).toContain('role="tab"');
     expect(html).toContain('aria-selected="true"');
     expect(html).not.toContain("<select");
+    // The pane opens a comparison itself, so the open one is drawn through the document's body.
+    const comparing = renderToStaticMarkup(
+      <DeliverableBody
+        state={document}
+        fileName={{ project: "Project", document: "Problem brief" }}
+        changesOpen
+        onToggleChanges={() => {}}
+        {...parts}
+      />,
+    );
+    expect(comparing).toContain("Real output");
+    expect(comparing).toContain("Updated content");
+    expect(comparing).toContain("Comparing v1 → v2");
+    expect(comparing).toContain("Previous content");
+    expect(comparing).toContain("v1 → v2");
+    expect(comparing).not.toContain("<select");
   });
   test("shows the document title once and hides a single retained version", () => {
     if (document.status !== "ready") throw new Error("invalid fixture");
@@ -172,16 +188,13 @@ describe("persistent artifact pane", () => {
       }),
     ).toContain("Retained content unavailable");
   });
-  test("renders approval_package deliverable with Approval tab, reminder note, and slides view, and hides it when approvals are disabled", () => {
+  test("renders approval_package deliverable with Approval tab", () => {
     if (document.status !== "ready") throw new Error("invalid fixture");
-    writeWorkspaceApprovalsEnabled("on");
-    const pkgDeliverable: Deliverable = {
-      artifactId: "pkg-1",
-      kind: "approval_package",
-      title: "Executive Sign-off Package",
-      version: 1,
-      sha256: "b".repeat(64),
-    };
+    const pkgDeliverable = filed(
+      "approval_package",
+      "Executive Sign-off Package",
+      1,
+    );
     const bundleContent = JSON.stringify({
       manifest: {
         audience: "Board",
@@ -235,35 +248,11 @@ describe("persistent artifact pane", () => {
     expect(html).not.toContain(">Approval package<");
     expect(html).not.toContain(">Executive Sign-off Package</h1>");
     expect(html).toContain("Add new reviewer");
-    expect(html).not.toContain("Add reviewers &amp; download .zip");
-    expect(html).toContain("Launch Readiness");
-    expect(html).toContain("Summary of approved scope");
-
-    writeWorkspaceApprovalsEnabled("off");
-    const bypassedHtml = renderToStaticMarkup(
-      <ArtifactPane
-        projectTitle="Project"
-        deliverables={[ready, pkgDeliverable]}
-        selected={ready}
-        state={document}
-        changesOpen={false}
-        onSelect={() => {}}
-        onToggleChanges={() => {}}
-      />,
-    );
-    expect(bypassedHtml).not.toContain(">Approval<");
-    writeWorkspaceApprovalsEnabled("on");
   });
 });
 
 describe("default tab", () => {
-  const plan: Deliverable = {
-    artifactId: "plan",
-    kind: "build_plan",
-    title: "Build plan",
-    version: 1,
-    sha256: "b".repeat(64),
-  };
+  const plan = filed("build_plan", "Build plan", 1);
   test("nothing chosen shows the live app once the build has started", () => {
     expect(defaultTab(true, [ready, plan])).toBe(LIVE_TAB);
   });
@@ -274,20 +263,14 @@ describe("default tab", () => {
 });
 
 describe("remembered tab", () => {
-  const plan: Deliverable = {
-    artifactId: "plan",
-    kind: "build_plan",
-    title: "Build plan",
-    version: 1,
-    sha256: "b".repeat(64),
-  };
+  const plan = filed("build_plan", "Build plan", 1);
   const have = {
     liveApp: false,
     manual: false,
     themes: false,
     draft: false,
     concepts: [] as string[],
-    deliverables: [ready, plan],
+    documents: [ready, plan],
   };
   test("a remembered tab counts only while the pane can show it", () => {
     expect(availableTab("build_plan", have)).toBe("build_plan");
@@ -300,9 +283,9 @@ describe("remembered tab", () => {
     expect(availableTab(null, have)).toBeNull();
   });
   test("with nothing chosen yet, the remembered document opens instead of the default", () => {
-    expect(resolveSelection(null, true, [ready, plan], ready.kind)).toEqual({
+    expect(resolveSelection(null, true, [ready, plan], ready.id)).toEqual({
       selectedId: null,
-      documentToOpen: ready.kind,
+      documentToOpen: ready.id,
     });
     // A remembered side tab is the pane's own to restore; the default stands meanwhile.
     expect(resolveSelection(null, true, [ready, plan], LIVE_TAB)).toEqual({
@@ -316,7 +299,7 @@ describe("remembered tab", () => {
     });
     // The person's own choice always wins.
     expect(
-      resolveSelection("build_plan", true, [ready, plan], ready.kind),
+      resolveSelection("build_plan", true, [ready, plan], ready.id),
     ).toEqual({ selectedId: "build_plan", documentToOpen: null });
   });
 });
