@@ -30,7 +30,6 @@ import {
   projectRunTurns,
   unsavedPersonTurns,
 } from "./conversation-turns.ts";
-import type { Actor } from "../lib/actor.ts";
 
 const log = getLogger(["corbits-builder", "hub", "conversation"]);
 
@@ -43,12 +42,8 @@ export function createConversationRoutes(
     repoStore?: CoordinatorRepoDirSource;
     /** The retained native mail store the hub archives workflow mail into. */
     mailDirectory?: string;
-    /** Replaces an outdated coordinator, which may be waiting on an approval the person is reading. */
-    upgrade?: (actor: Actor, projectId: string) => Promise<unknown>;
   },
 ) {
-  // The approval park each coordinator was last checked at, so a person reading it checks it once.
-  const checked = new Map<string, unknown>();
   const app = new Hono<TenantEnv>();
   app.get(
     "/:projectId/conversation/events",
@@ -215,32 +210,10 @@ export function createConversationRoutes(
           const { address } = current;
           const events = (payload as { events?: unknown })["events"];
           if (Array.isArray(events)) {
-            const asking = latestPendingPark(events, "approval");
-            const upgrade = options?.upgrade;
-            if (
-              asking !== undefined &&
-              upgrade !== undefined &&
-              checked.get(current.runId) !== asking["signalName"]
-            ) {
-              checked.set(current.runId, asking["signalName"]);
-              // The pass would leave the question up to its interval; replacing the coordinator
-              // now withdraws it before the person decides it.
-              const withdraw = async () => {
-                try {
-                  await upgrade({ tenantId, principalId: actor.id }, projectId);
-                } catch (error) {
-                  log.warn(
-                    "Coordinator upgrade on approval failed",
-                    requestErrorMetadata(error),
-                  );
-                }
-              };
-              void withdraw();
-            }
             const readProse = createCoordinatorQuestionProseReader({
               repoStore,
             });
-            const park = latestPendingPark(events, "input");
+            const park = latestPendingPark(events);
             if (park !== undefined) {
               const question = await readProse({ address, park });
               if (question !== undefined) park["question"] = question;
@@ -288,7 +261,6 @@ export function createConversationRoutes(
  */
 function latestPendingPark(
   events: unknown[],
-  kind: "input" | "approval",
 ): Record<string, unknown> | undefined {
   for (let index = events.length - 1; index >= 0; index -= 1) {
     const event = events[index];
@@ -297,7 +269,7 @@ function latestPendingPark(
     if (type !== "SignalAwaited" || typeof body !== "object" || body === null)
       continue;
     const park = body as Record<string, unknown>;
-    if (park["parkKind"] !== kind) continue;
+    if (park["parkKind"] !== "input") continue;
     const released = events
       .slice(index + 1)
       .some(

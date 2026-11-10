@@ -223,8 +223,14 @@ the conversation; documents carry the work.
 - **A coordinator that ended** is replaced with a fresh run when the project is
   next opened; the earlier runs and filed documents are carried to it as
   context with the person's next message.
-- **Coordinator upgrades** wait for a safe point (parked on input, nothing
-  pending, no specialist at work) before replacing the run.
+- **Upgrades** move running agents onto a new deploy on their own, once a
+  project is quiet: every agent waiting for input or not yet started, nothing
+  on its way to it and no approval pending. An outdated coordinator is replaced at once and
+  its specialists stop with it; an outdated specialist alone stops, and
+  starts again when the coordinator next needs it. An outdated coordinator
+  that starts a specialist before then, with its other specialists idle, is
+  replaced first, and its successor starts the specialist. A coder saves a version after each change, so an
+  upgrade loses only edits whose save failed.
 - **Runaway model output** that repeats one passage is cut off, and long
   histories are compacted to fit the model's context.
 - **Unavailable is a state.** A project with no usable model provider says

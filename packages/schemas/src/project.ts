@@ -87,18 +87,6 @@ export const ProjectLifecycleReceipt = type({
   status: ProjectLifecycleStatus,
 });
 export type ProjectLifecycleReceipt = typeof ProjectLifecycleReceipt.infer;
-/**
- * What Update did to a project's runs: replaced the ones behind the installed tool code, or nothing,
- * and why not: every run is current, there is no live coordinator, the coordinator is mid-turn or
- * has an unsettled delivery, an approval is pending, or a specialist is mid-turn.
- */
-export const ProjectUpdateReceipt = type({
-  "+": "reject",
-  updated: "boolean",
-  "reason?":
-    "'current' | 'no_coordinator' | 'coordinator_busy' | 'approval_pending' | 'specialist_working'",
-});
-export type ProjectUpdateReceipt = typeof ProjectUpdateReceipt.infer;
 export const ProjectShipReceipt = type({
   "+": "reject",
   ok: "true",

@@ -1,7 +1,7 @@
 /**
  * A project's options menu, the same wherever a project is named: the
  * rail row and the title in the top bar. Info (and rename),
- * export, the shipped mark, update, archive, and a two-step delete, matching
+ * export, the shipped mark, archive, and a two-step delete, matching
  * the project operations the hub offers. The dialogs it opens live here too,
  * so the menu is complete on its own.
  */
@@ -10,7 +10,6 @@ import { Checkbox, Input } from "@corbits/react-ui";
 import {
   EXPORT_SECTIONS,
   type ExportSection,
-  type ProjectUpdateReceipt,
 } from "@corbits-builder/schemas/project";
 import {
   Dialog,
@@ -35,7 +34,6 @@ import {
   renameProject,
   restoreProject,
   shipProject,
-  updateProject,
 } from "../api/projects.ts";
 import {
   Button,
@@ -108,8 +106,6 @@ export function ProjectMenu({
   const [confirming, setConfirming] = useState(false);
   // Export asks which parts to put in the zip.
   const [exporting, setExporting] = useState(false);
-  // Update says what it gives up before it replaces anything.
-  const [updating, setUpdating] = useState(false);
 
   const act = async (work: () => Promise<unknown>) => {
     try {
@@ -117,18 +113,6 @@ export function ProjectMenu({
       onChanged();
     } catch (cause) {
       onError(cause);
-    }
-  };
-
-  // The dialog closes either way; what the hub answered, or why it failed, is the notice.
-  const runUpdate = async () => {
-    try {
-      await act(async () => {
-        const receipt = await updateProject(project.id);
-        onNotice?.(...updateOutcome(receipt));
-      });
-    } finally {
-      setUpdating(false);
     }
   };
 
@@ -170,11 +154,6 @@ export function ProjectMenu({
               {project.shippedAt
                 ? wording.action.reopen
                 : wording.action.markShipped}
-            </MenuItem>
-          )}
-          {project.archivedAt ? null : (
-            <MenuItem onSelect={() => setUpdating(true)}>
-              {wording.updateProject.menu}
             </MenuItem>
           )}
           <MenuSeparator />
@@ -233,19 +212,6 @@ export function ProjectMenu({
           />
         </div>
       ) : null}
-      {updating ? (
-        <div
-          onClick={(event) => event.stopPropagation()}
-          onPointerDown={(event) => event.stopPropagation()}
-          onContextMenu={(event) => event.stopPropagation()}
-          onKeyDown={(event) => event.stopPropagation()}
-        >
-          <UpdateDialog
-            onClose={() => setUpdating(false)}
-            onUpdate={() => void runUpdate()}
-          />
-        </div>
-      ) : null}
       {exporting ? (
         <div
           onClick={(event) => event.stopPropagation()}
@@ -261,47 +227,6 @@ export function ProjectMenu({
         </div>
       ) : null}
     </>
-  );
-}
-
-/** What the person reads once Update answered: done, or why it waits, which is not a success. */
-export function updateOutcome(
-  receipt: ProjectUpdateReceipt,
-): [message: string, complete: boolean] {
-  const text = wording.updateProject;
-  if (receipt.updated) return [text.done, true];
-  const reason =
-    receipt.reason === undefined ? undefined : text.reason[receipt.reason];
-  return [reason === undefined ? text.unexplained : reason, false];
-}
-
-/** Says what an update gives up, then does it on the person's word. */
-function UpdateDialog({
-  onClose,
-  onUpdate,
-}: {
-  onClose: () => void;
-  onUpdate: () => void;
-}) {
-  const text = wording.updateProject;
-  return (
-    <Dialog open onOpenChange={(open) => (open ? undefined : onClose())}>
-      <DialogContent>
-        <DialogHeader>
-          <DialogTitle>{text.title}</DialogTitle>
-        </DialogHeader>
-        <DialogBody>
-          <p>{text.lead}</p>
-          <p>{text.after}</p>
-        </DialogBody>
-        <DialogFooter>
-          <Button onClick={onClose}>{wording.action.cancel}</Button>
-          <Button variant="primary" onClick={onUpdate}>
-            {text.action}
-          </Button>
-        </DialogFooter>
-      </DialogContent>
-    </Dialog>
   );
 }
 

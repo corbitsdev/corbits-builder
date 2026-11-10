@@ -950,7 +950,7 @@ export function createArtifactService(
         .where(
           and(
             eq(approval.tenantId, actor.tenantId),
-            // An expired ask is one a coordinator upgrade withdrew; its successor asks again.
+            // Older hubs expired an ask when an upgrade withdrew it; the next coordinator asked again.
             notInArray(approval.status, ["pending", "expired"]),
           ),
         )

@@ -23,7 +23,6 @@ import {
   ProjectMutation,
   ProjectMutationReceipt,
   ProjectShipReceipt,
-  ProjectUpdateReceipt,
   ProjectView,
   ProjectSummaryList,
 } from "@corbits-builder/schemas/project";
@@ -56,8 +55,6 @@ type CoordinatorStart = {
   ensure: (actor: Actor, projectId: string) => Promise<boolean>;
   attached: (actor: Actor, projectId: string) => Promise<boolean>;
   upgrade?: (actor: Actor, projectId: string) => Promise<void>;
-  /** Moves the project's runs onto the current tool code when the person asks. */
-  update?: (actor: Actor, projectId: string) => Promise<ProjectUpdateReceipt>;
 };
 
 // The coordinator takes a turn only when mail arrives, so a new project's first mail is the
@@ -622,24 +619,6 @@ export function createProjectRoutes(
       // Restore starts a fresh coordinator run.
       await resumeCoordinator(actor, id);
       return receipt;
-    },
-  );
-  projectAction(
-    "/:projectId/update",
-    "updateProject",
-    {
-      description:
-        "Whether the project's runs behind the installed tool code were replaced, and when not, why: every run is current, no coordinator is live, the coordinator or a specialist is mid-turn, or an approval is pending",
-      schema: ProjectUpdateReceipt,
-    },
-    "Project is archived",
-    async (actor, id) => {
-      const row = await service.manage(actor, id);
-      if (row.status !== "active")
-        throw new ProjectError(409, "project_archived");
-      if (!startCoordinator?.update)
-        throw new ProjectError(503, "project_update_unavailable");
-      return startCoordinator.update(actor, id);
     },
   );
   const ship = {
