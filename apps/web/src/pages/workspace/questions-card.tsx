@@ -61,6 +61,12 @@ export type QuestionsState =
 /** The options picked, plus the person's own words; typing those is the "Something else" answer. */
 type Answer = { readonly chosen: readonly string[]; readonly own: string };
 
+/** The coordinator's recommended answer picked to start with; a question it recommends nothing for starts blank. */
+function startingAnswer(question: Question): Answer {
+  if (question.preselected === undefined) return { chosen: [], own: "" };
+  return { chosen: question.preselected, own: "" };
+}
+
 function answered(answer: Answer): boolean {
   return answer.chosen.length > 0 || answer.own.trim() !== "";
 }
@@ -330,6 +336,12 @@ function Choices({
   );
 }
 
+/** Continue moves on; on the last question it sends instead. */
+function nextLabel(last: boolean, sending: boolean): string {
+  if (!last) return text.next;
+  return sending ? text.sending : text.send;
+}
+
 /** Where the person is: their answers, the open question, and whether the last send failed. */
 type Draft = {
   readonly answers: readonly Answer[];
@@ -367,10 +379,9 @@ function OpenCard({
 
   const question = questions[step];
   useEffect(() => {
-    if (!focusFollows) return;
-    const inputs = choices.current?.querySelectorAll("input");
-    const target =
-      [...(inputs ?? [])].find((input) => input.checked) ?? inputs?.[0];
+    if (!focusFollows || choices.current === null) return;
+    const inputs = [...choices.current.querySelectorAll("input")];
+    const target = inputs.find((input) => input.checked) ?? inputs[0];
     target?.focus();
   }, [step, focusFollows]);
   if (question === undefined) return null;
@@ -429,7 +440,8 @@ function OpenCard({
     event.preventDefault();
     // A held key acts once, so it cannot run through the questions and send; ↑↓ may repeat.
     if (event.repeat && intent.kind !== "move") return;
-    const inputs = [...(choices.current?.querySelectorAll("input") ?? [])];
+    if (choices.current === null) return;
+    const inputs = [...choices.current.querySelectorAll("input")];
     const at = inputs.findIndex((input) => input === event.target);
     switch (intent.kind) {
       case "next":
@@ -559,7 +571,7 @@ function OpenCard({
               aria-keyshortcuts={last ? "Enter" : "Enter ArrowRight"}
               onClick={next}
             >
-              {last ? (sending ? text.sending : text.send) : text.next}
+              {nextLabel(last, sending)}
               <CornerDownLeft aria-hidden />
             </Button>
           </Tooltip>
@@ -581,10 +593,7 @@ export function QuestionsCard({
 }) {
   // Held above the open card: sending settles it at once, and a failed send reopens it as it was.
   const [draft, setDraft] = useState<Draft>(() => ({
-    answers: ask.questions.map((question) => ({
-      chosen: question.preselected ?? [],
-      own: "",
-    })),
+    answers: ask.questions.map(startingAnswer),
     step: 0,
     failed: false,
     focusFollows: false,
