@@ -14,8 +14,7 @@ import type {
 import { PACKAGE_INSTALL_TOOL } from "@corbits-builder/schemas/package-install";
 import { wording } from "../../config.ts";
 import { toolPhrase } from "./agent-activity.tsx";
-import { APPROVES_KINDS } from "./collaboration.ts";
-import { approvalToolPart } from "./conversation-parts.ts";
+import { APPROVES_KINDS, approvalToolPart } from "./collaboration.ts";
 import {
   DISPATCH_TOOLS,
   subjectOf,
@@ -23,7 +22,7 @@ import {
   type Dispatch,
   type DispatchStatus,
 } from "./dispatch-card.tsx";
-import { summaryLine, type SpecialistUpdate } from "./specialist-updates.tsx";
+import { summaryLine, type SpecialistUpdate } from "./specialist-updates.ts";
 import type { DocumentApproval, PlacedDispatch } from "./transcript.tsx";
 
 export type WorkUnit = {

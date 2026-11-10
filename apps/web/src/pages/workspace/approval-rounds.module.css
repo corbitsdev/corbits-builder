@@ -81,15 +81,6 @@
   cursor: pointer;
 }
 
-.packageReminder {
-  margin: 0 var(--space-6) var(--space-3);
-  padding: var(--space-2) 0;
-  border: none;
-  border-bottom: 1px solid var(--wb-border);
-  background: transparent;
-  color: var(--wb-muted-foreground);
-}
-
 .shareActions {
   display: flex;
   flex-wrap: wrap;

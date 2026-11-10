@@ -3,15 +3,9 @@
  *
  * Durable turns from the hub are person and assistant text only. A live
  * inference frame can also carry thinking text and tool calls, which become
- * reasoning and tool parts for MessageParts. A pending native approval is a
- * tool part with its approval record; the decision itself stays on the
- * existing decide path.
+ * reasoning and tool parts for MessageParts.
  */
-import type {
-  ConversationPart,
-  PartTool,
-  ToolApprovalStatus,
-} from "@corbits/react-ui";
+import type { ConversationPart, PartTool } from "@corbits/react-ui";
 import {
   applyRunStreamEvent,
   partialOf,
@@ -173,37 +167,4 @@ export function foldLiveTurn(
   else parts.push(...tools);
   if (folded.live.length > 0) parts.push({ kind: "text", text: folded.live });
   return { turn: { text: folded.live, parts }, refresh: folded.refresh };
-}
-
-/**
- * A native approval as a tool part, pending or as its record settled it. Its
- * name stays empty: the card is titled by the document it approves, never by
- * the tool that asked.
- */
-export function approvalToolPart(
-  approvalId: string,
-  outcome?: {
-    readonly status: ToolApprovalStatus;
-    readonly scope?: "once" | "always";
-  },
-): PartTool {
-  const status = outcome?.status ?? "pending";
-  const decided = status === "approved" || status === "rejected";
-  return {
-    kind: "tool-trace",
-    toolCallId: approvalId,
-    name: "",
-    status:
-      status === "pending"
-        ? "approval-requested"
-        : status === "approved"
-          ? "output-available"
-          : "output-denied",
-    approval: {
-      id: approvalId,
-      status,
-      scope: decided ? (outcome?.scope ?? "once") : null,
-      timeoutAt: null,
-    },
-  };
 }

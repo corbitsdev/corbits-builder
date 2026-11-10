@@ -1,6 +1,7 @@
 /**
  * The compact reviewer fields shared by the approval rounds and the workspace approvals setting:
- * a stack of label-and-control rows, their borderless controls and their quiet buttons.
+ * a stack of label-and-control rows, their borderless controls and their quiet buttons, and the
+ * role a reviewer being entered is given.
  */
 import { Button, Input } from "@corbits/react-ui";
 import {
@@ -9,7 +10,13 @@ import {
   type ComponentProps,
   type ReactNode,
 } from "react";
+import { wording } from "../config.ts";
 import styles from "./approval-fields.module.css";
+
+const roundText = wording.approvalRound;
+
+// The list's choice that opens the field for a persona of the person's own; no persona is called this.
+const OTHER_PERSONA = "__other__";
 
 type FieldsVariant = "inline" | "form";
 
@@ -126,5 +133,100 @@ export function LeanButton(
       variant="ghost"
       className={styles.leanButton}
     />
+  );
+}
+
+/** A reviewer being entered. */
+export type ReviewerDraft = {
+  name: string;
+  /** The persona picked from the list; "" while none is. */
+  persona: string;
+  /** A persona typed instead of picked; null while one from the list is picked. */
+  customPersona: string | null;
+  goal: string;
+  email: string;
+};
+
+/**
+ * The role of a reviewer being entered: a persona picked from the list, or "Other…" and one typed
+ * into the field that opens under it. It sits in an `ApprovalFields` among the reviewer's other
+ * fields.
+ */
+export function PersonaFields({
+  reviewer,
+  onChange,
+  personas,
+  label,
+  placeholder,
+  onKeepCustomPersona,
+}: {
+  reviewer: ReviewerDraft;
+  onChange: (reviewer: ReviewerDraft) => void;
+  /** The personas the list offers. */
+  personas: readonly string[];
+  /** Tells this reviewer's fields from another's in their accessible names, such as "Reviewer 2". */
+  label?: string;
+  /** The list's empty first choice, where a reviewer starts with no persona picked. */
+  placeholder?: string;
+  /** Keeps the typed persona in the list for next time, from an Add button beside it or Enter. */
+  onKeepCustomPersona?: () => void;
+}) {
+  const named = (text: string) =>
+    label === undefined ? text : `${label} ${text}`;
+  return (
+    <>
+      <ApprovalField label={roundText.fieldLabels.role}>
+        <LeanSelect
+          aria-label={named(roundText.reviewerPersona)}
+          value={
+            reviewer.customPersona === null ? reviewer.persona : OTHER_PERSONA
+          }
+          onChange={(event) =>
+            onChange(
+              event.target.value === OTHER_PERSONA
+                ? { ...reviewer, customPersona: "" }
+                : {
+                    ...reviewer,
+                    persona: event.target.value,
+                    customPersona: null,
+                  },
+            )
+          }
+        >
+          {placeholder === undefined ? null : (
+            <option value="">{placeholder}</option>
+          )}
+          {personas.map((persona) => (
+            <option key={persona} value={persona}>
+              {persona}
+            </option>
+          ))}
+          <option value={OTHER_PERSONA}>{roundText.otherPersona}</option>
+        </LeanSelect>
+      </ApprovalField>
+      {reviewer.customPersona === null ? null : (
+        <ApprovalField label={roundText.customPersonaLabel}>
+          <LeanInput
+            aria-label={named(roundText.customPersonaLabel)}
+            placeholder={roundText.customPersonaPlaceholder}
+            value={reviewer.customPersona}
+            onChange={(event) =>
+              onChange({ ...reviewer, customPersona: event.target.value })
+            }
+            onKeyDown={(event) => {
+              if (event.key !== "Enter" || onKeepCustomPersona === undefined)
+                return;
+              event.preventDefault();
+              onKeepCustomPersona();
+            }}
+          />
+          {onKeepCustomPersona === undefined ? null : (
+            <FieldSaveButton type="button" onClick={onKeepCustomPersona}>
+              {roundText.addCustomPersona}
+            </FieldSaveButton>
+          )}
+        </ApprovalField>
+      )}
+    </>
   );
 }

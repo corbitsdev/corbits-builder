@@ -6,6 +6,9 @@
  * until a newer version is filed; focus moving never releases it.
  */
 
+/** The live app's tab, which the pane shows itself and the room opens by name. */
+export const LIVE_TAB = "live-app";
+
 export type FollowDocument = {
   readonly id: string;
   readonly title: string;

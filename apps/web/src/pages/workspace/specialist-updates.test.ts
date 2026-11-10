@@ -1,5 +1,5 @@
 import { expect, test } from "bun:test";
-import { specialistUpdate } from "./specialist-updates.tsx";
+import { specialistUpdate } from "./specialist-updates.ts";
 
 test("mail is read for its summary, and JSON that is not an envelope reads as text", () => {
   const summary = JSON.stringify({ result: { summary: "Brief drafted." } });

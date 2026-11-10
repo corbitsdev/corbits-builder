@@ -3,9 +3,10 @@ import { renderToStaticMarkup } from "react-dom/server";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { wording } from "../../config.ts";
 import { keys } from "../../queries/keys.ts";
-import { useRolesAtWork } from "./agent-activity.tsx";
+import { useRolesAtWork } from "./project-activity.ts";
 import { StageWorkspace } from "./index.tsx";
 import type { RoomSnapshot } from "./load-room.ts";
+import { tabbedArtifacts } from "./room.model.ts";
 
 const projectId = "project-1";
 
@@ -52,6 +53,21 @@ describe("project room", () => {
     const read = room(loaded);
     expect(read).not.toContain(wording.message.projectLoading);
     expect(read).toContain(wording.archivedProject.conversationTitle);
+  });
+
+  test("an approval package is a document only while stakeholder approvals are on", () => {
+    const filed = (kind: string) => ({
+      artifactId: kind,
+      kind,
+      title: kind,
+      version: 1,
+      sha256: "a".repeat(64),
+    });
+    const artifacts = [filed("problem_brief"), filed("approval_package")];
+    const kinds = (approvals: "on" | "off") =>
+      tabbedArtifacts(artifacts, approvals).map((item) => item.kind);
+    expect(kinds("on")).toEqual(["problem_brief", "approval_package"]);
+    expect(kinds("off")).toEqual(["problem_brief"]);
   });
 
   test("a failed activity read is not nobody at work", async () => {
