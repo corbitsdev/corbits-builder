@@ -82,9 +82,11 @@
   transition: border-color 150ms;
 }
 
+/* The box is the page's one action, so its border takes the action colour
+   while it has focus. */
 .composer [data-slot="prompt-input"]:focus-within {
   outline: none;
-  border-color: var(--wb-border-strong);
+  border-color: var(--wb-primary);
 }
 
 .composer [data-slot="prompt-input"] [data-slot="prompt-input-field"] {
