@@ -1,6 +1,6 @@
 import { expect, test } from "bun:test";
 import { dispatchesOf } from "./dispatch-card.tsx";
-import { specialistUpdate } from "./specialist-updates.tsx";
+import { specialistUpdate } from "./specialist-updates.ts";
 import { workUnitMessage, workUnits } from "./work-unit.ts";
 
 test("a hand-off, its reports and its document's approval join as one piece of work", () => {

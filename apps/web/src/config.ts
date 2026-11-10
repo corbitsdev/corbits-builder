@@ -635,8 +635,6 @@ export const wording = {
   approvalPackage: {
     label: "Approval package",
     viewLabel: "Approval package view",
-    reminder:
-      "Builder packages your approved documents into a presentation deck and PDF handout so you can download a .zip per reviewer, record their sign-off or feedback, and send requested revisions back to the coordinator.",
     tabs: {
       slides: "Slides",
       pdf: "PDF",

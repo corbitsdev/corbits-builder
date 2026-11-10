@@ -43,6 +43,41 @@ like what is already there, and extends it rather than standing beside it.
   global keyframe in `global(...)`: `animation: global(fade-in) 200ms`.
 - Code and tests find elements by `data-*` attributes, never by a class name.
 
+## Pages
+
+A page is three files, so its look can be drawn and changed in Storybook
+without a hub: `projects.tsx`, `projects.model.ts` and `projects.view.tsx`.
+A section, panel or dialog that reads the hub for itself is split the same way.
+
+- **View** (`*.view.tsx`): how the page looks. It declares its own props,
+  named for what the page shows and what the person can do (`activity`,
+  `needsProvider`, `onLeaveOut`), not for what the hub returned. A hub shape
+  passes through only where it already reads that way. State that only changes
+  the look, such as an open menu, stays in the view.
+- **Model** (`*.model.ts`): what the page does. Its hook reads the hub, holds
+  the state the hub cares about, and returns the view's props, turning hub
+  shapes into them. It also returns the props of any part the page places
+  itself, such as a dialog. A part with its own lifetime, such as a dialog
+  whose form starts over each time it opens, gets its own hook in the same
+  file.
+- **Page** (`*.tsx`): passes the model's result to the view. Its name and
+  props are what the rest of the app uses, so splitting it changes neither.
+- **Regions:** a view never renders a part that reads the hub. Such a part
+  that is always on the page is split too, and the page's model returns its
+  props for the view to pass to its view. One that comes and goes inside the
+  layout, such as a tab's content, is a slot: a `ReactNode` prop named for its
+  place (`profiles`, `liveApp`), or a function when the view must hand the
+  part something (`projectMenu(projectId, trigger)`). The page fills a slot
+  with the part and a story fills it with the part's view. A dialog the page
+  opens over itself has no place in the layout, so the page renders it beside
+  the view.
+- **Stories** (`*.stories.tsx`) draw the view, one story per state worth
+  looking at, with plain args and no query cache or fake hub.
+- The linter keeps a view and a story from importing `api/`, `queries/`, the
+  query library, the hub client or a model, and a model from importing a view
+  or a style. `page-views.test.ts` keeps a view from rendering anything that
+  imports the hub.
+
 ## Every artifact kind is a first-class document
 
 A new kind (a sheet, a deck, a diagram) is integrated everywhere a document

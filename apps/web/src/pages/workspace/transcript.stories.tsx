@@ -3,6 +3,7 @@ import type { AskQuestions } from "@corbits-builder/schemas/questions";
 import { fn } from "storybook/test";
 import { ASK_QUESTIONS } from "./questions-card.tsx";
 import { RoomThread, type TranscriptTurn } from "./transcript.tsx";
+import workUnit from "./work-unit-message.stories.tsx";
 
 const BRIEF = { id: "problem_brief", title: "Problem brief" };
 
@@ -48,6 +49,7 @@ const meta = {
     onDecide: fn(),
     onRequestChanges: fn(),
     onAnswerQuestions: fn(() => Promise.resolve(true)),
+    standing: () => workUnit.args,
   },
   parameters: { layout: "fullscreen" },
   decorators: [

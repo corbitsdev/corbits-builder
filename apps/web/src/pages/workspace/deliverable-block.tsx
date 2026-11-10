@@ -5,25 +5,18 @@
  * for HTML and JSON.
  */
 import { wording } from "../../config.ts";
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState, type ReactNode } from "react";
 import { CsvTable, ShimmerText } from "@corbits/react-ui";
 import { Markdown } from "../../markdown.jsx";
-import {
-  APPROVAL_PACKAGE_MEDIA_TYPE,
-  ApprovalPackagePreview,
-} from "./approval-package-preview.tsx";
-import {
-  DESIGN_MEDIA_TYPE,
-  DesignPreview,
-  parseBundle,
-  type DesignPart,
-} from "./design-preview.tsx";
+import { APPROVAL_PACKAGE_MEDIA_TYPE } from "./approval-package.ts";
+import { ApprovalPackagePreview } from "./approval-package-preview.tsx";
+import { DESIGN_MEDIA_TYPE, parseBundle } from "./design-bundle.ts";
+import { DesignPreviewView, type DesignPart } from "./design-preview.view.tsx";
 import { ComparisonView } from "./comparison-view.tsx";
 import { DevicePreview, type PreviewDevice } from "./device-preview.tsx";
 import { predecessorOf, type RetainedVersion } from "./document-versions.ts";
 import { PassageQuotes, type PassageQuote } from "./passage-note.tsx";
 import { versionGroup } from "./version-menu.tsx";
-import { useTipsGroup } from "./document-tips.tsx";
 import { PaneBar } from "./pane-bar.tsx";
 import {
   csvFile,
@@ -38,7 +31,7 @@ import { splitLeadingHeading } from "./reading-selection.ts";
 import type { ApproachesMeta } from "@corbits-builder/schemas/approaches";
 import { ApproachesComparison } from "./approaches-comparison.tsx";
 import type { ApproachChoice } from "./approach-choice.ts";
-import { ContextualApprovalRounds } from "./approval-rounds.tsx";
+import type { TweakPanelProps } from "./mockup-tweaks.view.tsx";
 import { Fault, InlineNote } from "../../components.jsx";
 import styles from "./deliverable-block.module.css";
 
@@ -95,6 +88,29 @@ export const fillsPane = (state: DeliverableState | undefined) =>
   state?.status === "ready" &&
   mediaKind(state.document.mediaType, state.document.title) === "sheet";
 
+/** What an approval package's tab hands the approval rounds drawn in it. */
+export type PackageRounds = {
+  /** The package version being read. */
+  packageVersion: number;
+  packageContent: string;
+  packageVersions: readonly number[];
+  onReadPackageVersion: (version: number) => Promise<string>;
+  /** The bar's Add new reviewer is on. */
+  shareOpen: boolean;
+  onShareOpenChange: (open: boolean) => void;
+  onOpenSource?: ((kind: string, version: number) => void) | undefined;
+  onAddToPrompt?: ((passage: PassageQuote) => void) | undefined;
+  onDeliverMessage?: ((message: string) => Promise<boolean | void>) | undefined;
+};
+
+/** The parts of a document that read the hub for themselves, which whoever draws it fills. */
+export type DeliverableSlots = {
+  /** An approval package's rounds: who was asked to sign off and what each decided. */
+  approvalRounds: (rounds: PackageRounds) => ReactNode;
+  /** The look panel a design mockup's bar opens over it. */
+  tweakPanel: (panel: TweakPanelProps) => ReactNode;
+};
+
 export function DeliverableBody({
   state,
   designPart = "mockup",
@@ -109,7 +125,9 @@ export function DeliverableBody({
   approachChoice,
   requestedVersion,
   onOpenSource,
-}: {
+  approvalRounds,
+  tweakPanel,
+}: DeliverableSlots & {
   state: DeliverableState | undefined;
   designPart?: DesignPart;
   /** The project and the tab's name, which name the file the pane downloads and shares. */
@@ -158,6 +176,8 @@ export function DeliverableBody({
       {...(approachChoice === undefined ? {} : { approachChoice })}
       {...(requestedVersion === undefined ? {} : { requestedVersion })}
       {...(onOpenSource === undefined ? {} : { onOpenSource })}
+      approvalRounds={approvalRounds}
+      tweakPanel={tweakPanel}
     />
   );
 }
@@ -191,7 +211,9 @@ function ReadyDocument({
   approachChoice,
   requestedVersion,
   onOpenSource,
-}: {
+  approvalRounds,
+  tweakPanel,
+}: DeliverableSlots & {
   document: LoadedDeliverable;
   designPart: DesignPart;
   fileName: { project: string; document: string };
@@ -212,7 +234,6 @@ function ReadyDocument({
   const [readError, setReadError] = useState<string | null>(null);
   const [device, setDevice] = useState<PreviewDevice>("desktop");
   const [shareOpen, setShareOpen] = useState(false);
-  const tipsGroup = useTipsGroup();
   const readRef = useRef(onReadVersion);
   readRef.current = onReadVersion;
 
@@ -391,7 +412,6 @@ function ReadyDocument({
       onComparePrevious: comparePrevious,
     }),
     files,
-    tipsGroup,
   ];
   // A mockup or spreadsheet fills the pane edge to edge: its tab names it, and its notes float over the page.
   const fill =
@@ -410,13 +430,14 @@ function ReadyDocument({
       );
     if (kind === "design")
       return (
-        <DesignPreview
-          content={body}
+        <DesignPreviewView
+          files={parseBundle(body)}
           part={designPart}
           device={device}
           onDevice={setDevice}
           trailing={barGroups}
           fill={fill}
+          tweakPanel={tweakPanel}
         />
       );
     if (kind === "approval_package")
@@ -517,19 +538,17 @@ function ReadyDocument({
       {renderDocumentHeader()}
       {kind === "approval_package" ? (
         <PassageQuotes title={title} version={viewing} {...add}>
-          <ContextualApprovalRounds
-            packageVersion={viewing}
-            packageContent={body}
-            packageVersions={document.versions.map((item) => item.version)}
-            onReadPackageVersion={fetchVersion}
-            shareOpen={shareOpen}
-            onShareOpenChange={setShareOpen}
-            isAddReviewerOpen={shareOpen}
-            onCloseAddReviewer={() => setShareOpen(false)}
-            {...(onOpenSource === undefined ? {} : { onOpenSource })}
-            {...(onAddToPrompt === undefined ? {} : { onAddToPrompt })}
-            {...(onDeliverMessage === undefined ? {} : { onDeliverMessage })}
-          />
+          {approvalRounds({
+            packageVersion: viewing,
+            packageContent: body,
+            packageVersions: document.versions.map((item) => item.version),
+            onReadPackageVersion: fetchVersion,
+            shareOpen,
+            onShareOpenChange: setShareOpen,
+            onOpenSource,
+            onAddToPrompt,
+            onDeliverMessage,
+          })}
         </PassageQuotes>
       ) : (
         <PassageQuotes title={title} version={viewing} fill={fill} {...add}>

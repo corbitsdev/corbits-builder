@@ -1,24 +1,59 @@
 import type { Meta, StoryObj } from "@storybook/react-vite";
-import type { ProjectArtifact } from "@corbits-builder/client";
 import { useState } from "react";
 import { fn } from "storybook/test";
-import { ArtifactPane } from "./artifact-pane.tsx";
+import { wording } from "../../config.ts";
+import { APPROVAL_PACKAGE_MEDIA_TYPE } from "./approval-package.ts";
+import approvalRounds, {
+  InDocumentTab as roundsInTab,
+} from "./approval-rounds.stories.tsx";
+import { ApprovalRoundsView } from "./approval-rounds.view.tsx";
+import {
+  ArtifactPane,
+  type ArtifactPaneProps,
+  type PaneDocument,
+} from "./artifact-pane.tsx";
 import type { DeliverableState } from "./deliverable-block.tsx";
+import designConcept from "./design-concepts.stories.tsx";
+import { ConceptMockupView } from "./design-concepts.view.tsx";
+import designThemes from "./design-themes.stories.tsx";
+import { DesignThemesView } from "./design-themes.view.tsx";
+import liveApp from "./live-app.stories.tsx";
+import { LiveAppView } from "./live-app.view.tsx";
+import { TweakPanelView } from "./mockup-tweaks.view.tsx";
+import { sampleDesign, sampleDraft } from "./sample-design.ts";
+import { WithPictures as manual } from "./user-manual.stories.tsx";
 
-const brief: ProjectArtifact = {
-  artifactId: "brief",
-  kind: "problem_brief",
+const brief: PaneDocument = {
+  id: "problem_brief",
   title: "Problem brief",
-  version: 2,
-  sha256: "a".repeat(64),
+  status: wording.documentStatus.approved(2),
+  unread: false,
+  removable: false,
 };
 
-const requirements: ProjectArtifact = {
-  artifactId: "requirements",
-  kind: "product_requirements",
+// Filed since the person last looked, so its tab is marked.
+const requirements: PaneDocument = {
+  id: "product_requirements",
   title: "Product requirements",
-  version: 1,
-  sha256: "b".repeat(64),
+  status: wording.documentStatus.drafted(1),
+  unread: true,
+  removable: false,
+};
+
+const plan: PaneDocument = {
+  id: "build_plan",
+  title: "Build plan",
+  status: wording.documentStatus.drafted(1),
+  unread: false,
+  removable: false,
+};
+
+const approvalPackage: PaneDocument = {
+  id: "approval_package",
+  title: "Approval package",
+  status: wording.documentStatus.drafted(1),
+  unread: false,
+  removable: false,
 };
 
 const BRIEF_V1 = `# Problem brief
@@ -60,51 +95,65 @@ const briefDocument = {
 
 const ready: DeliverableState = { status: "ready", document: briefDocument };
 
-type PaneArgs = {
-  deliverables: readonly ProjectArtifact[];
-  state: DeliverableState | undefined;
-  onAddToPrompt: () => void;
-};
-
-// Holds the tab and comparison the pane asks its host to keep.
-function Pane({ deliverables, state, onAddToPrompt }: PaneArgs) {
-  const [selectedId, setSelectedId] = useState(deliverables[0]?.artifactId);
-  const [changesOpen, setChangesOpen] = useState(false);
-  const selected =
-    deliverables.find((item) => item.artifactId === selectedId) ?? null;
+// Holds the document the pane reads, which it asks its host to keep; the story names the first.
+function Pane(args: ArtifactPaneProps) {
+  const [selectedId, setSelectedId] = useState(args.selectedId);
   return (
     <div style={{ height: "100vh", display: "flex" }}>
       <ArtifactPane
-        projectTitle="Bakery orders"
-        deliverables={deliverables}
-        selected={selected}
-        state={selected === null ? undefined : state}
+        {...args}
+        selectedId={selectedId}
+        state={selectedId === null ? undefined : args.state}
         onSelect={setSelectedId}
-        changesOpen={changesOpen}
-        onToggleChanges={() => setChangesOpen((open) => !open)}
-        onRetry={fn()}
-        onAddToPrompt={onAddToPrompt}
       />
     </div>
   );
 }
 
+const onSave = fn();
+
 const meta = {
   title: "Screens/Workspace/DocumentPane",
+  component: ArtifactPane,
   parameters: { layout: "fullscreen" },
   args: {
-    deliverables: [brief, requirements],
+    projectTitle: "Bakery orders",
+    concepts: [],
+    documents: [brief, requirements],
+    selectedId: brief.id,
     state: ready,
+    onSelect: fn(),
+    onSeen: fn(),
+    onRetry: fn(),
     onAddToPrompt: fn(),
+    conceptMockup: (concept, frame) => (
+      <ConceptMockupView
+        {...designConcept.args}
+        label={concept.label}
+        {...frame}
+      />
+    ),
+    // The bar's Add new reviewer opens the rounds' own form.
+    approvalRounds: ({ shareOpen, onShareOpenChange }) => (
+      <ApprovalRoundsView
+        {...approvalRounds.args}
+        {...roundsInTab.args}
+        addingReviewer={shareOpen}
+        onAddingReviewerChange={onShareOpenChange}
+      />
+    ),
+    tweakPanel: (panel) => (
+      <TweakPanelView {...panel} onSave={onSave} saving={false} />
+    ),
   },
   render: (args) => <Pane {...args} />,
-} satisfies Meta<PaneArgs>;
+} satisfies Meta<typeof ArtifactPane>;
 
 export default meta;
 type Story = StoryObj<typeof meta>;
 
 /** Before the first document, the pane says where documents will appear. */
-export const Empty: Story = { args: { deliverables: [] } };
+export const Empty: Story = { args: { documents: [], selectedId: null } };
 
 export const Document: Story = {};
 
@@ -130,6 +179,55 @@ export const HtmlDesign: Story = {
         mediaType: "text/html",
         content:
           "<h1 style='font-family:system-ui'>Today's orders</h1><p style='font-family:system-ui'>66 orders, 9 for pickup before noon.</p>",
+        versions: [],
+      },
+    },
+  },
+};
+
+/** The live designer's unfiled mockup has a tab of its own until a design is filed. */
+export const DesignDraft: Story = {
+  args: { documents: [], selectedId: null, draft: sampleDraft },
+};
+
+/** Before a design exists, the themes join the documents. */
+export const Themes: Story = {
+  args: { themes: <DesignThemesView {...designThemes.args} /> },
+};
+
+/** Each design concept the person compares is a tab of its own. */
+export const Concepts: Story = {
+  args: {
+    concepts: ["Paper", "Quiet"].map((label) => ({
+      label,
+      content: JSON.stringify(sampleDesign),
+    })),
+  },
+};
+
+/** Once a build plan is filed, the app it builds and its manual sit beside the plan. */
+export const AppAndManual: Story = {
+  args: {
+    ...manual.args,
+    documents: [brief, plan],
+    liveApp: <LiveAppView {...liveApp.args} />,
+  },
+};
+
+/** An approval package's tab is its rounds: who was asked to sign off and what each decided. */
+export const ApprovalPackage: Story = {
+  args: {
+    documents: [brief, approvalPackage],
+    selectedId: approvalPackage.id,
+    state: {
+      status: "ready",
+      document: {
+        ...briefDocument,
+        title: approvalPackage.title,
+        mediaType: APPROVAL_PACKAGE_MEDIA_TYPE,
+        content: "{}",
+        version: 1,
+        before: null,
         versions: [],
       },
     },

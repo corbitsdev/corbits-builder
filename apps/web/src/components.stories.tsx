@@ -5,11 +5,11 @@ import {
   BannerAction,
   Button,
   Mark,
-  notify,
   QuietSelect,
   QuietState,
   StateLabel,
 } from "./components.tsx";
+import { notify } from "./notice.ts";
 
 const TONES = [
   "success",

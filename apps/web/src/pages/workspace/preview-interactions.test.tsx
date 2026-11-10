@@ -1,6 +1,7 @@
 import { describe, expect, test } from "bun:test";
 import { renderToStaticMarkup } from "react-dom/server";
-import { designDraftFiled, firstPage } from "./design-preview.tsx";
+import { firstPage } from "./design-bundle.ts";
+import { designDraftFiled } from "./design-preview.model.ts";
 import { predecessorOf } from "./document-versions.ts";
 import { DevicePreview } from "./device-preview.tsx";
 import { GuiFrame } from "./gui-frame.tsx";

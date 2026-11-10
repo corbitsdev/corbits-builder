@@ -5,11 +5,13 @@ import { prerender } from "react-dom/static";
 import type { ApprovalPackageBundle } from "@corbits-builder/schemas/artifact";
 import { wording } from "../../config.ts";
 import {
-  APPROVAL_PACKAGE_MEDIA_TYPE,
   ApprovalPackagePreview,
   approvalPackagePdfFile,
-  parseApprovalPackage,
 } from "./approval-package-preview.tsx";
+import {
+  APPROVAL_PACKAGE_MEDIA_TYPE,
+  parseApprovalPackage,
+} from "./approval-package.ts";
 
 // Waits for the lazily loaded slides, as a browser would.
 async function render(node: ReactNode) {

@@ -1,16 +1,17 @@
 /**
  * The document pane's one floating control bar. Each view passes its own groups of actions; the
  * bar draws them as quiet buttons with a rule between groups, so every view's controls sit in
- * the same place and look the same.
+ * the same place and look the same. Every bar ends with the tips, while the person keeps them on.
  */
 import { Button } from "@corbits/react-ui";
 import {
   Menu,
   MenuContent,
+  MenuItem,
   MenuLabel,
   MenuTrigger,
 } from "@corbits/react-ui/ui/menu";
-import { ChevronDown, ChevronUp } from "lucide-react";
+import { ChevronDown, ChevronUp, Lightbulb } from "lucide-react";
 import {
   Fragment,
   useEffect,
@@ -21,9 +22,15 @@ import {
 } from "react";
 import { wording } from "../../config.ts";
 import {
+  useDocumentTips,
+  writeDocumentTips,
+} from "../../document-tips-setting.ts";
+import { useReducedMotion } from "../../reduced-motion.ts";
+import {
   useStoredPreference,
   writeStoredPreference,
 } from "../../stored-preference.ts";
+import { useElapsedMs } from "./elapsed.tsx";
 import styles from "./pane-bar.module.css";
 
 export type PaneBarAction = {
@@ -136,6 +143,37 @@ export function PaneBarTip({ children }: { children: ReactNode }) {
   );
 }
 
+const TIP_MS = 8_000;
+
+// Ticks only while the menu is open, so the pane does not re-render every second.
+function RotatingTip() {
+  const still = useReducedMotion();
+  const elapsed = useElapsedMs();
+  const tips = wording.tips.items;
+  const index = still ? 0 : Math.floor(elapsed / TIP_MS) % tips.length;
+  return <PaneBarTip key={index}>{tips[index]}</PaneBarTip>;
+}
+
+/** The tips as the bar's last group: an icon that opens one short tip at a time. */
+function useTipsGroup(): PaneBarGroup {
+  if (useDocumentTips() === "off") return [];
+  return [
+    {
+      id: "tips",
+      label: wording.tips.label,
+      icon: <Lightbulb size={16} aria-hidden="true" />,
+      menu: (
+        <>
+          <RotatingTip />
+          <MenuItem onSelect={() => writeDocumentTips("off")}>
+            {wording.tips.turnOff}
+          </MenuItem>
+        </>
+      ),
+    },
+  ];
+}
+
 // One choice for every floating bar, kept per viewer: hidden to see the whole page under it.
 const FLOATING_KEY = "builder-pane-bar";
 const parseFloating = (raw: string) =>
@@ -177,7 +215,8 @@ export function PaneBar({
       pane.style.removeProperty("--pane-bar-height");
     };
   }, [floatingBar]);
-  const shown = groups.filter((group) => group.length > 0);
+  const tips = useTipsGroup();
+  const shown = [...groups, tips].filter((group) => group.length > 0);
   if (shown.length === 0) return null;
   const bar =
     floating && folded ? (

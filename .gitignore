@@ -35,3 +35,8 @@ test-results/
 
 # Generated from each CSS module by `bun run --cwd apps/web css-types`
 *.module.css.d.ts
+
+# Common IDE
+.vscode/
+.idea/
+.zed/
