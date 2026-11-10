@@ -34,7 +34,6 @@ import type {
   ProjectSummaryList,
   ProjectLifecycleReceipt,
   ProjectShipReceipt,
-  ProjectUpdateReceipt,
   ProjectView,
 } from "@corbits-builder/schemas/project";
 import type { InstalledWorkflows } from "@corbits-builder/schemas/installed-workflows";
@@ -348,12 +347,6 @@ export type ProductApiClient = Readonly<{
     projectId: string,
     signal?: AbortSignal,
   ): Promise<typeof ProjectLifecycleReceipt.infer>;
-  /** Moves the project's runs onto the current tool code, or says why not. */
-  updateProject(
-    tenantId: string,
-    projectId: string,
-    signal?: AbortSignal,
-  ): Promise<ProjectUpdateReceipt>;
   /** Marks the project shipped, or clears the mark; either way it stays active and usable. */
   shipProject(
     tenantId: string,

@@ -31,7 +31,6 @@ export function buildProjectsMethods(
   | "archiveProject"
   | "restoreProject"
   | "shipProject"
-  | "updateProject"
   | "startProjectCoordinator"
   | "projectNextStep"
   | "projectRunStates"
@@ -64,9 +63,6 @@ export function buildProjectsMethods(
     },
     restoreProject(tenantId, projectId, signal) {
       return request(`${projectPath(tenantId, projectId)}/restore`, signal, {});
-    },
-    updateProject(tenantId, projectId, signal) {
-      return request(`${projectPath(tenantId, projectId)}/update`, signal, {});
     },
     shipProject(tenantId, projectId, shipped, signal) {
       return request(

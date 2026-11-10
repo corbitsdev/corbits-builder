@@ -134,6 +134,9 @@ change follows, whether a person or a coding agent writes it.
   their code; cross-module checks go in `test/integration`, real service
   tests in `test/e2e`.
 - **Model-agnostic.** Every role runs on any supported provider and model.
+- **Hub routes stay compatible with the previous deploy.** A running agent
+  keeps the tools it started with until it is idle and replaced, so a route
+  those tools call must still accept them.
 - **No secrets.** The `.env.*.example` files are the only tracked env files.
 - **`vendor/interchange` is upstream code**, pinned at
   [vendor/VENDORED_REVISION](https://github.com/corbitsdev/corbits-builder/blob/main/vendor/VENDORED_REVISION). Propose changes at
