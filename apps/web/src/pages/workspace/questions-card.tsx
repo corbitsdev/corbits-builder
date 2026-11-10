@@ -92,6 +92,20 @@ function pick(question: Question, answer: Answer, index: number): Answer {
   };
 }
 
+/**
+ * The answer Enter carries on with. ↑↓ only move focus, so on a pick-one question Enter takes the
+ * option focus is on: what the person sees highlighted is what goes forward, not the recommendation.
+ */
+export function enterAnswer(
+  question: Question,
+  answer: Answer,
+  focused: number,
+): Answer {
+  if (question.kind !== "single" || question.options[focused] === undefined)
+    return answer;
+  return pick(question, answer, focused);
+}
+
 /** What a key does on the open card, by where focus is. */
 export type KeyIntent =
   | { kind: "next" }
@@ -104,7 +118,8 @@ export type KeyIntent =
 export type KeyTarget = "option" | "own" | "button" | "other";
 
 /**
- * Enter continues (or sends, on the last question); → moves on without ever sending; ← goes back;
+ * Enter continues (or sends, on the last question), with the focused option on a pick-one
+ * question; → moves on without ever sending; ← goes back;
  * ↑↓ move between the options; Space and 1–9 pick. ← → and digits are left to the own-words field
  * for typing, and Enter to a focused button so Back and the answered rows still click.
  */
@@ -411,21 +426,26 @@ function OpenCard({
       step: Math.max(0, Math.min(to, questions.length - 1)),
       focusFollows: true,
     }));
-  const send = async () => {
+  const send = async (current: Answer) => {
     setSending(true);
-    onDraft((current) => ({ ...current, failed: false, focusFollows: true }));
+    onDraft((draft) => ({ ...draft, failed: false, focusFollows: true }));
     const reply = questions
       .map((item, index) =>
-        text.answerLine(item.prompt, answerLabels(item, answerOf(index))),
+        text.answerLine(
+          item.prompt,
+          answerLabels(item, index === step ? current : answerOf(index)),
+        ),
       )
       .join("\n");
     const sent = await onSend(reply);
     setSending(false);
-    onDraft((current) => ({ ...current, failed: !sent }));
+    onDraft((draft) => ({ ...draft, failed: !sent }));
   };
-  const next = () => {
-    if (disabled || !ready) return;
-    if (last) void send();
+  /** On to the next question with `current` as this one's answer, or send on the last. */
+  const next = (current: Answer) => {
+    if (disabled || !answered(current)) return;
+    if (current !== answer) setAnswer(current);
+    if (last) void send(current);
     else go(step + 1);
   };
   // A pick-one question moves on once picked, except the last: only the person sends.
@@ -449,7 +469,7 @@ function OpenCard({
     const at = inputs.findIndex((input) => input === event.target);
     switch (intent.kind) {
       case "next":
-        return next();
+        return next(enterAnswer(question, answer, at));
       case "forward":
         return ready && !last ? go(step + 1) : undefined;
       case "back":
@@ -572,7 +592,7 @@ function OpenCard({
               aria-disabled={disabled || !ready}
               aria-describedby={ruleId}
               aria-keyshortcuts={last ? "Enter" : "Enter ArrowRight"}
-              onClick={next}
+              onClick={() => next(answer)}
             >
               {nextLabel(last, sending)}
               <CornerDownLeft aria-hidden />

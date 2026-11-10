@@ -138,7 +138,8 @@ last question it becomes **Send answers**. **Back**, or clicking an earlier
 answer, takes you back to change it.
 
 From the keyboard, once you click or Tab into the card: ↑ and ↓ move between
-options, Space or the option's number picks it, Enter continues, → goes to the
+options, Space or the option's number picks it, and Enter continues. On a
+pick-one question Enter continues with the option you are on. → goes to the
 next question and ← goes back.
 
 After you send, the card shows "Answers sent" with **Show** to list them. If you

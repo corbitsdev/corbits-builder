@@ -4,6 +4,7 @@ import type { AskQuestions } from "@corbits-builder/schemas/questions";
 import { wording } from "../../config.ts";
 import {
   QuestionsCard,
+  enterAnswer,
   keyIntent,
   type QuestionsState,
 } from "./questions-card.tsx";
@@ -146,5 +147,20 @@ describe("question keys", () => {
     expect(keyIntent("3", "option")).toEqual({ kind: "pick", index: 2 });
     expect(keyIntent("3", "own")).toBeUndefined();
     expect(keyIntent("0", "option")).toBeUndefined();
+  });
+
+  test("Enter on a pick-one question goes on with the focused option, not the recommendation", () => {
+    const [single, multi] = ask.questions;
+    const recommended = { chosen: ["teams"], own: "" };
+    expect(enterAnswer(single!, recommended, 1)).toEqual({
+      chosen: ["solo"],
+      own: "",
+    });
+    // Focus on the own-words field or a button keeps the answer as it is.
+    expect(enterAnswer(single!, recommended, 2)).toBe(recommended);
+    expect(enterAnswer(single!, recommended, -1)).toBe(recommended);
+    // On a pick-any question Space ticks; Enter only continues.
+    const ticked = { chosen: [], own: "Export" };
+    expect(enterAnswer(multi!, ticked, 0)).toBe(ticked);
   });
 });
