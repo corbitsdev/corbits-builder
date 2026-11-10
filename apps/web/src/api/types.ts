@@ -93,23 +93,3 @@ export type ConversationEvent = {
   type: string;
   body: Record<string, unknown>;
 };
-
-/** A connected-provider row: what the catalog records, with the other fields
- *  empty. */
-export type Provider = {
-  id: string;
-  providerId: string;
-  label: string;
-  kind: string;
-  baseUrl: string | null;
-  status: string;
-  statusDetail: string | null;
-  models: string[];
-  active: boolean;
-  priority: number;
-  hasCredential: boolean;
-  validatedAt: string | null;
-  selectedModel: string | null;
-  enabledModels: string[];
-  selectedOfferingId: string | null;
-};
