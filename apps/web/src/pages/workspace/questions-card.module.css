@@ -206,7 +206,9 @@
   background: color-mix(in oklab, var(--primary) 10%, var(--background));
 }
 
-.choice:has(input:focus-visible) {
+/* The hidden radio and the borderless own-words field show focus on their row; the library's
+   checkbox draws its own ring. */
+.choice:has(input:not([type="checkbox"]):focus-visible) {
   outline: 2px solid var(--wb-ring);
   outline-offset: 1px;
 }
@@ -216,8 +218,13 @@
   cursor: default;
 }
 
-/* The native control stays for keyboards and screen readers; the box beside it shows its state. */
-.choice input:not(.own) {
+/* The library's checkbox sits on its label's first line; here the row centres it. */
+.choice > .check {
+  margin-top: 0;
+}
+
+/* The native radio stays for keyboards and screen readers; the box beside it shows its state. */
+.choice input[type="radio"] {
   position: absolute;
   width: 1px;
   height: 1px;

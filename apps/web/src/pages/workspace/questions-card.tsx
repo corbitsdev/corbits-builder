@@ -21,7 +21,7 @@ import {
   Pencil,
   Plus,
 } from "lucide-react";
-import { Button, GateBlock, type PartTool } from "@corbits/react-ui";
+import { Button, Checkbox, GateBlock, type PartTool } from "@corbits/react-ui";
 import { Tooltip } from "@corbits/react-ui/ui/tooltip";
 import {
   AskQuestions,
@@ -302,6 +302,25 @@ function Choices({
       <div className={styles.choices} data-kind={question.kind}>
         {question.options.map((option, index) => {
           const checked = answer.chosen.includes(option.value);
+          if (multi)
+            return (
+              <label
+                key={option.value}
+                className={styles.choice}
+                data-checked={checked ? "" : undefined}
+                // Safari leaves focus where it was on a click; the card's keys need it here.
+                onClick={(event) =>
+                  event.currentTarget.querySelector("input")?.focus()
+                }
+              >
+                <Checkbox
+                  checked={checked}
+                  onCheckedChange={() => onPick(index)}
+                  className={styles.check}
+                />
+                {option.label}
+              </label>
+            );
           return (
             <label
               key={option.value}
@@ -309,7 +328,7 @@ function Choices({
               data-checked={checked ? "" : undefined}
             >
               <input
-                type={multi ? "checkbox" : "radio"}
+                type="radio"
                 name={name}
                 checked={checked}
                 aria-keyshortcuts={String(index + 1)}
@@ -318,7 +337,7 @@ function Choices({
                   // Safari leaves focus where it was on a click; the card's keys need it here.
                   event.currentTarget.focus();
                   // A checked radio fires no change, so a click on the recommended answer moves on here.
-                  if (checked && !multi) onPick(index);
+                  if (checked) onPick(index);
                 }}
               />
               <span className={styles.box} aria-hidden>
