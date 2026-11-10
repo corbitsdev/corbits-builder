@@ -1,6 +1,5 @@
 import { expect, test } from "bun:test";
 import {
-  ASKING_HANDOFF_OPENING,
   HANDOFF_OPENING,
   resumeContext,
   resumeMessage,
@@ -16,7 +15,6 @@ test("the hub's handoff note never shows as the person's message", () => {
     withApp: false,
   });
   expect(withoutResumeContext(HANDOFF_OPENING)).toBeUndefined();
-  expect(withoutResumeContext(ASKING_HANDOFF_OPENING)).toBeUndefined();
   expect(
     withoutResumeContext(resumeMessage(context, HANDOFF_OPENING)),
   ).toBeUndefined();
