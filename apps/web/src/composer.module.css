@@ -69,7 +69,7 @@
 /* The library's prompt input: the rounded box around the words and controls. */
 .composer [data-slot="prompt-input"] {
   display: flex;
-  flex-flow: row nowrap;
+  flex-flow: row wrap;
   align-items: flex-end;
   gap: var(--space-1);
   min-width: 0;
@@ -82,9 +82,11 @@
   transition: border-color 150ms;
 }
 
+/* The box is the page's one action, so its border takes the action colour
+   while it has focus. */
 .composer [data-slot="prompt-input"]:focus-within {
   outline: none;
-  border-color: var(--wb-border-strong);
+  border-color: var(--wb-primary);
 }
 
 .composer [data-slot="prompt-input"] [data-slot="prompt-input-field"] {
@@ -103,13 +105,12 @@
   align-self: stretch;
 }
 
-/* The library's input row is `flex: 1 1 0%` beside a full-basis toolbar that wraps below it, and
-   with a content-sized textarea the row resolved to 0 px wide: one character per line, and the
-   box grew to fill the page. A full basis gives it the whole first line. */
-.composer[data-variant="page"]
-  [data-slot="prompt-input"]
-  > div:has(> textarea) {
-  flex: 1 1 100%;
+/* The words share a line with the controls only while they fit on it. The
+   textarea is content-sized, so an `auto` basis is the width of its longest
+   line: once that no longer fits beside the controls they wrap beneath, and
+   the words take the box's whole width instead of a column beside them. */
+.composer [data-slot="prompt-input"] > div:has(> textarea) {
+  flex: 1 1 auto;
 }
 
 .composer [data-slot="prompt-input"] textarea {
@@ -133,6 +134,10 @@
 
 .composer [data-slot="prompt-input"] [data-slot="prompt-input-toolbar"] {
   flex: none;
+  /* At the end of its line, whether or not the words share it, and never
+     wider than the box: a profile's name may be longer than the box is wide. */
+  margin-left: auto;
+  max-width: 100%;
   gap: var(--space-1);
   padding: 0;
 }
