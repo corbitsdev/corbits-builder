@@ -12,6 +12,8 @@ export const RoleInference = type({
   "+": "reject",
   source: { "+": "reject", provider: "string > 0", model: "string > 0" },
   contextWindow: "number.integer > 0",
+  // Not per-call parameters: Interchange's step selector rejects them, so the director sets them.
+  timeouts: { "+": "reject", "totalTimeoutMs?": "number.integer > 0" },
   parameters: {
     "+": "reject",
     "effort?": Effort,
@@ -30,7 +32,8 @@ export function resolveRoleInference(
   role: WorkflowRole,
   bound: RoleBinding,
 ): RoleInference {
-  const plugin = modelProvider(directory, bound.provider)?.plugin;
+  const provider = modelProvider(directory, bound.provider);
+  const plugin = provider?.plugin;
   if (!plugin) throw new Error(`model_provider_unknown:${bound.provider}`);
   const limits = bindingLimits(directory, bound.provider, bound.model);
   if (!limits)
@@ -39,6 +42,10 @@ export function resolveRoleInference(
   return {
     source: { provider: plugin, model: bound.model },
     contextWindow: limits.contextWindow,
+    timeouts:
+      provider.totalTimeoutMs !== undefined
+        ? { totalTimeoutMs: provider.totalTimeoutMs }
+        : {},
     parameters: {
       ...(limits.efforts.includes(bound.effort)
         ? { effort: bound.effort }

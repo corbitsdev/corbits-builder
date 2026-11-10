@@ -26,9 +26,12 @@ import { REPETITION_ABORT } from "../inference/repetition.ts";
 import { trimHistory } from "./compaction.ts";
 import { compactingDirector } from "./director.ts";
 
-const director = (replyOnFailure: boolean) =>
+const director = (
+  replyOnFailure: boolean,
+  timeouts: { totalTimeoutMs?: number } = {},
+) =>
   compactingDirector("@corbits-builder/test").factory(
-    { contextWindow: 200_000, compactAt: 0.8, replyOnFailure },
+    { contextWindow: 200_000, compactAt: 0.8, replyOnFailure, timeouts },
     {} as never,
     { systemPrompt: "", toolDefinitions: [], compactorNames: [] },
   ) as ReactorDirector;
@@ -62,6 +65,30 @@ const retryPolicy = (actions: ReactorAction[]): RetryPolicy => {
   if (!policy) throw new Error("infer_without_retry_policy");
   return policy;
 };
+
+test("every inference carries the source's total timeout, and none without one", async () => {
+  const events: ReactorInboundEvent[] = [
+    {
+      type: "message.received",
+      message: { role: "user", content: [{ type: "text", text: "hi" }] },
+    } as never,
+    failed({ category: "protocol_mismatch", message: `${REPETITION_ABORT} x` }),
+  ];
+  for (const event of events) {
+    const timed = (
+      await decide(director(false, { totalTimeoutMs: 900_000 }), event)
+    ).filter((action) => action.type === "infer");
+    const untimed = (await decide(director(false), event)).filter(
+      (action) => action.type === "infer",
+    );
+    expect(timed.length).toBeGreaterThan(0);
+    expect(untimed.length).toBeGreaterThan(0);
+    for (const action of timed)
+      expect(action.options?.totalTimeoutMs).toBe(900_000);
+    for (const action of untimed)
+      expect(action.options).not.toHaveProperty("totalTimeoutMs");
+  }
+});
 
 const overloaded: InferenceError = {
   category: "retryable",

@@ -25,6 +25,8 @@ type CommonEntry = {
   label: string;
   hint: string;
   baseURL: string;
+  // Override Interchange's per-call cap when a provider needs longer reasoning steps.
+  totalTimeoutMs?: number;
   // The adapter quirks every offering of this provider carries.
   quirks?: Readonly<Record<string, unknown>>;
   // The catalog capabilities every offering of this provider declares, for what its models take as input.
@@ -118,6 +120,7 @@ export const MODEL_PROVIDERS: readonly ShippedEntry[] = [
   },
   {
     id: "xai-api",
+    totalTimeoutMs: 15 * 60_000,
     plugin: "openai-responses",
     kind: "api_key",
     quirks: { reasoning: { maxEffort: "xhigh" } },
@@ -162,6 +165,7 @@ export const MODEL_PROVIDERS: readonly ShippedEntry[] = [
   },
   {
     id: "xai",
+    totalTimeoutMs: 15 * 60_000,
     plugin: "xai",
     kind: "login",
     label: "xAI",

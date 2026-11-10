@@ -13,10 +13,12 @@ import { nativePackageName } from "../package-name.ts";
 
 const compacting = compactingDirector(nativePackageName("designer"));
 
-const { source, contextWindow, parameters } = roleInference("designer");
+const { source, contextWindow, timeouts, parameters } =
+  roleInference("designer");
 const agent = createDesignerAgent<CodingSidecarEnv & MailToolEnv>({
   director: compacting.build({
     contextWindow,
+    timeouts,
     compactAt: 0.6,
     checkBeforeDone: true,
     fileBeforeDone: true,

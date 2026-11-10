@@ -9,10 +9,12 @@ import { nativePackageName } from "../package-name.ts";
 
 const compacting = compactingDirector(nativePackageName("reviewer"));
 
-const { source, contextWindow, parameters } = roleInference("reviewer");
+const { source, contextWindow, timeouts, parameters } =
+  roleInference("reviewer");
 const agent = createReviewerAgent({
   director: compacting.build({
     contextWindow,
+    timeouts,
     compactAt: 0.6,
   }),
   id: "reviewer",

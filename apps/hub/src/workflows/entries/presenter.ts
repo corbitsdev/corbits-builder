@@ -14,10 +14,12 @@ import { nativePackageName } from "../package-name.ts";
 
 const compacting = compactingDirector(nativePackageName("presenter"));
 
-const { source, contextWindow, parameters } = roleInference("presenter");
+const { source, contextWindow, timeouts, parameters } =
+  roleInference("presenter");
 const agent = createPresenterAgent<PackageToolEnv & MailToolEnv>({
   director: compacting.build({
     contextWindow,
+    timeouts,
     compactAt: 0.6,
     fileBeforeDone: true,
   }),
