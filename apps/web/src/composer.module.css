@@ -137,13 +137,6 @@
   padding: 0;
 }
 
-/* The toolbar never shrinks, so the library's own truncation of the name never
-   engaged: a long profile name, which may run to 200 characters, pushed the mic
-   and send out of the box. */
-.composer [data-slot="prompt-input"] [data-slot="prompt-input-model-select"] {
-  max-width: min(14rem, 30vw);
-}
-
 .composer [data-slot="prompt-input"] [data-slot="prompt-input-submit"] {
   width: 32px;
   height: 32px;
