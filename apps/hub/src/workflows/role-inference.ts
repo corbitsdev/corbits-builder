@@ -17,6 +17,7 @@ export const RoleInference = type({
     "effort?": Effort,
     maxTokens: "number.integer > 0",
     "temperature?": "number >= 0",
+    "totalTimeoutMs?": "number.integer > 0",
   },
 });
 export type RoleInference = typeof RoleInference.infer;
@@ -30,7 +31,8 @@ export function resolveRoleInference(
   role: WorkflowRole,
   bound: RoleBinding,
 ): RoleInference {
-  const plugin = modelProvider(directory, bound.provider)?.plugin;
+  const provider = modelProvider(directory, bound.provider);
+  const plugin = provider?.plugin;
   if (!plugin) throw new Error(`model_provider_unknown:${bound.provider}`);
   const limits = bindingLimits(directory, bound.provider, bound.model);
   if (!limits)
@@ -40,6 +42,9 @@ export function resolveRoleInference(
     source: { provider: plugin, model: bound.model },
     contextWindow: limits.contextWindow,
     parameters: {
+      ...(provider.totalTimeoutMs !== undefined
+        ? { totalTimeoutMs: provider.totalTimeoutMs }
+        : {}),
       ...(limits.efforts.includes(bound.effort)
         ? { effort: bound.effort }
         : {}),
