@@ -12,7 +12,7 @@ export function Composer({
   notes,
   children,
 }: {
-  /** In a pane it keeps its own inset; on a page the page gives it a gutter and its words the whole first line. */
+  /** In a pane it keeps its own inset; on a page the page gives it a gutter. */
   variant?: "pane" | "page";
   working?: boolean;
   /** Faults and notices about the message, above the box; they give way before the box does. */

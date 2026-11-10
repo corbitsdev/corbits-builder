@@ -132,7 +132,6 @@ export function ProjectsView({
               >
                 <PromptInputTextarea placeholder={HOME_COMPOSER_PLACEHOLDER} />
                 <PromptInputToolbar>
-                  {mic}
                   {profile === undefined ? null : (
                     <PromptInputModelSelect
                       label={wording.profiles.pick}
@@ -141,6 +140,7 @@ export function ProjectsView({
                       onValueChange={onProfileChange}
                     />
                   )}
+                  {mic}
                   <PromptInputSubmit className="ms-auto" />
                 </PromptInputToolbar>
               </PromptInput>
