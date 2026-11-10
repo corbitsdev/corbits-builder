@@ -26,7 +26,8 @@ export async function coderPackage(
   packageApproval: "ask" | "allow",
 ) {
   const compacting = compactingDirector(nativePackageName(name));
-  const { source, contextWindow, parameters } = roleInference("coder");
+  const { source, contextWindow, timeouts, parameters } =
+    roleInference("coder");
   // Discovered at load so the frozen definition carries the remote tool names.
   const web = await mcpTools(CODER_MCP);
   // The deployment starts its own browser on first use, so its tools are listed when the bundle is built.
@@ -34,6 +35,7 @@ export async function coderPackage(
   const agent = createCoderAgent<CodingSidecarEnv & MailToolEnv>({
     director: compacting.build({
       contextWindow,
+      timeouts,
       compactAt: 0.6,
       checkBeforeDone: true,
     }),

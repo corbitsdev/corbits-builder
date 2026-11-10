@@ -509,6 +509,7 @@ test("designer agent writes per-screen files, is held by checkBeforeDone until c
       contextWindow: 200_000,
       compactAt: 0.6,
       checkBeforeDone: true,
+      timeouts: {},
     }),
     standards: [],
     inference: { provider: "anthropic", model: "claude-sonnet-4-6" },

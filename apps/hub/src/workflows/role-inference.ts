@@ -12,12 +12,13 @@ export const RoleInference = type({
   "+": "reject",
   source: { "+": "reject", provider: "string > 0", model: "string > 0" },
   contextWindow: "number.integer > 0",
+  // Not per-call parameters: Interchange's step selector rejects them, so the director sets them.
+  timeouts: { "+": "reject", "totalTimeoutMs?": "number.integer > 0" },
   parameters: {
     "+": "reject",
     "effort?": Effort,
     maxTokens: "number.integer > 0",
     "temperature?": "number >= 0",
-    "totalTimeoutMs?": "number.integer > 0",
   },
 });
 export type RoleInference = typeof RoleInference.infer;
@@ -41,10 +42,11 @@ export function resolveRoleInference(
   return {
     source: { provider: plugin, model: bound.model },
     contextWindow: limits.contextWindow,
-    parameters: {
-      ...(provider.totalTimeoutMs !== undefined
+    timeouts:
+      provider.totalTimeoutMs !== undefined
         ? { totalTimeoutMs: provider.totalTimeoutMs }
-        : {}),
+        : {},
+    parameters: {
       ...(limits.efforts.includes(bound.effort)
         ? { effort: bound.effort }
         : {}),

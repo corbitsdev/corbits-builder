@@ -11,10 +11,12 @@ import { nativePackageName } from "../package-name.ts";
 
 const compacting = compactingDirector(nativePackageName("coordinator"));
 
-const { source, contextWindow, parameters } = roleInference("coordinator");
+const { source, contextWindow, timeouts, parameters } =
+  roleInference("coordinator");
 const agent = createCoordinatorAgent({
   director: compacting.build({
     contextWindow,
+    timeouts,
     compactAt: 0.6,
     startAfterApproval: true,
     // The coordinator's run is the project's; nothing starts a failed one again.

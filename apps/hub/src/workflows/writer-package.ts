@@ -14,10 +14,12 @@ import { nativePackageName } from "./package-name.ts";
 export function writerPackage(kind: WriterDocumentKind) {
   const name = WRITER_PACKAGES[kind];
   const compacting = compactingDirector(nativePackageName(name));
-  const { source, contextWindow, parameters } = roleInference("writer");
+  const { source, contextWindow, timeouts, parameters } =
+    roleInference("writer");
   const agent = createWriterAgent({
     director: compacting.build({
       contextWindow,
+      timeouts,
       compactAt: 0.6,
       fileBeforeDone: true,
     }),

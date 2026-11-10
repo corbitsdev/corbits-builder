@@ -100,18 +100,30 @@ const backoffRetryPolicy: RetryPolicy = ({ error, attempt, elapsedMs }) => {
   if (retryAfterMs === undefined) return { kind: "retry", delayMs };
   return { kind: "retry", delayMs: Math.max(delayMs, retryAfterMs) };
 };
-const withBackoff = (action: ReactorAction): ReactorAction =>
-  action.type === "infer"
-    ? {
-        ...action,
-        options: { ...action.options, retryPolicy: backoffRetryPolicy },
-      }
-    : action;
+type Timeouts = { totalTimeoutMs?: number };
 
-/** Every inference retries on backoffRetryPolicy; once it gives up, with failRun the run fails. */
+const withBackoff =
+  (timeouts: Timeouts) =>
+  (action: ReactorAction): ReactorAction =>
+    action.type === "infer"
+      ? {
+          ...action,
+          options: {
+            ...action.options,
+            retryPolicy: backoffRetryPolicy,
+            ...timeouts,
+          },
+        }
+      : action;
+
+/**
+ * Every inference retries on backoffRetryPolicy, under the source's timeouts; once it gives up,
+ * with failRun the run fails.
+ */
 const withRetryPolicy = (
   director: ReactorDirector,
   failRun: boolean,
+  timeouts: Timeouts,
 ): ReactorDirector => ({
   decide: async (event, state, caps) => {
     if (
@@ -123,9 +135,8 @@ const withRetryPolicy = (
         `model_unavailable: ${event.error.category}: ${event.error.message}`,
       );
     const actions = await director.decide(event, state, caps);
-    return Array.isArray(actions)
-      ? actions.map(withBackoff)
-      : withBackoff(actions);
+    const stamp = withBackoff(timeouts);
+    return Array.isArray(actions) ? actions.map(stamp) : stamp(actions);
   },
 });
 
@@ -289,6 +300,8 @@ export const compactingDirector = (packageName: string) =>
     startAfterApproval?: boolean;
     // Whether a runaway or a model failure is the reply rather than a failed run.
     replyOnFailure?: boolean;
+    // Timeouts every inference carries, where the source overrides Interchange's defaults.
+    timeouts: Timeouts;
   }>({
     id: `${packageName}/compacting`,
     configSchema: type({
@@ -298,6 +311,7 @@ export const compactingDirector = (packageName: string) =>
       "fileBeforeDone?": "boolean",
       "startAfterApproval?": "boolean",
       "replyOnFailure?": "boolean",
+      timeouts: { "+": "reject", "totalTimeoutMs?": "number.integer > 0" },
     }),
     factory: (config, env, agent) => {
       const inner = defaultDirectorFactory({}, env, agent) as ReactorDirector;
@@ -423,6 +437,6 @@ export const compactingDirector = (packageName: string) =>
           return actions;
         },
       };
-      return withRetryPolicy(director, !config.replyOnFailure);
+      return withRetryPolicy(director, !config.replyOnFailure, config.timeouts);
     },
   });
