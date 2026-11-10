@@ -1,3 +1,4 @@
+import { useState } from "react";
 import type { Meta, StoryObj } from "@storybook/react-vite";
 import type { AskQuestions } from "@corbits-builder/schemas/questions";
 import { fn } from "storybook/test";
@@ -27,6 +28,15 @@ const ask: AskQuestions = {
       ],
       allowOther: true,
     },
+    {
+      id: "devices",
+      prompt: "Where will people order from?",
+      kind: "multi",
+      options: [
+        { value: "phone", label: "Phone" },
+        { value: "desktop", label: "Desktop browser" },
+      ],
+    },
   ],
 };
 
@@ -36,14 +46,12 @@ const meta = {
   args: {
     id: "call-1",
     ask,
-    layout: "steps",
     state: {
       kind: "open",
       disabled: false,
       onSend: fn(() => Promise.resolve(true)),
     },
   },
-  argTypes: { layout: { control: "inline-radio", options: ["steps", "all"] } },
   decorators: [
     (Story) => (
       <div style={{ maxWidth: 640 }}>
@@ -56,10 +64,39 @@ const meta = {
 export default meta;
 type Story = StoryObj<typeof meta>;
 
-/** One question at a time under step tabs ending in Submit. */
-export const OneAtATime: Story = {};
+/** One question at a time, the answered ones above it and the next below. */
+export const Open: Story = {};
 
-export const AllAtOnce: Story = { args: { layout: "all" } };
+/** One question: no position, and the button sends. */
+export const OneQuestion: Story = {
+  args: { ask: { questions: [ask.questions[1]!] } },
+};
+
+/**
+ * The send failed. As in the workspace, the reply shows as sent at once, which settles the card,
+ * then comes back off; the card reopens on the last question with the answers kept.
+ */
+export const NotSent: Story = {
+  render: function NotSentCard(args) {
+    const [reply, setReply] = useState<string>();
+    const onSend = async (sent: string) => {
+      setReply(sent);
+      await new Promise((resolve) => setTimeout(resolve, 600));
+      setReply(undefined);
+      return false;
+    };
+    return (
+      <QuestionsCard
+        {...args}
+        state={
+          reply === undefined
+            ? { kind: "open", disabled: false, onSend }
+            : { kind: "answered", reply }
+        }
+      />
+    );
+  },
+};
 
 export const Disabled: Story = {
   args: {

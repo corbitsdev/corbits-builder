@@ -147,7 +147,6 @@ import {
   DESIGN_OPTION,
 } from "./design-concepts.tsx";
 import { useLiveAppPresence } from "./live-app.tsx";
-import { useQuestionsLayout } from "../../questions-layout-setting.ts";
 import {
   NextStepLine,
   projectNextStepQuery,
@@ -471,7 +470,6 @@ function ReadyRoom({
     .map(paneArtifact);
   const documents = snapshot.documents;
   const [liveRun, setLiveRun] = useState<LiveRun>(emptyLiveRun);
-  const questionsLayout = useQuestionsLayout();
   const [approvalBusy, setApprovalBusy] = useState(false);
   const [approvalError, setApprovalError] = useState<string | null>(null);
   const [changesFor, setChangesFor] = useState<string | null>(null);
@@ -1716,7 +1714,6 @@ function ReadyRoom({
                   {...(sentId === undefined ? {} : { sentId })}
                   onAnswerQuestions={(reply) => deliver(reply)}
                   questionsDisabled={sending || archived}
-                  questionsLayout={questionsLayout}
                 >
                   {archived ? (
                     <ConversationEmptyState

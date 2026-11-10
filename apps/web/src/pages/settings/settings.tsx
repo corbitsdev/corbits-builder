@@ -28,10 +28,6 @@ import {
   writeDocumentTips,
 } from "../../document-tips-setting.ts";
 import {
-  useQuestionsLayout,
-  writeQuestionsLayout,
-} from "../../questions-layout-setting.ts";
-import {
   useWorkspaceApprovalsEnabled,
   writeWorkspaceApprovalsEnabled,
   type OnOff,
@@ -206,11 +202,10 @@ export function Settings({
   );
 }
 
-/** The theme, and the document tips and questions layout choices kept in this browser. */
+/** The theme, and the document tips choice kept in this browser. */
 function Appearance() {
   const { mode, setMode } = useTheme();
   const tips = useDocumentTips();
-  const questionsLayout = useQuestionsLayout();
   const copy = wording.settings.appearance;
   return (
     <Section title={copy.section} description={copy.lead}>
@@ -236,16 +231,6 @@ function Appearance() {
             label={wording.tips.setting}
             checked={tips === "on"}
             onCheckedChange={(on) => writeDocumentTips(on ? "on" : "off")}
-          />
-        </SettingsRow>
-        <SettingsRow
-          label={wording.questions.layoutSetting}
-          hint={wording.questions.layoutHint}
-        >
-          <Switch
-            label={wording.questions.layoutSetting}
-            checked={questionsLayout === "steps"}
-            onCheckedChange={(on) => writeQuestionsLayout(on ? "steps" : "all")}
           />
         </SettingsRow>
       </SettingsSectionBody>
