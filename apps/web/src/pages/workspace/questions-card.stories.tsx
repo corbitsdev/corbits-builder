@@ -72,28 +72,41 @@ export const OneQuestion: Story = {
   args: { ask: { questions: [ask.questions[1]!] } },
 };
 
+type PendingSend = { readonly reply: string; readonly fail: () => void };
+
 /**
- * The send failed. As in the workspace, the reply shows as sent at once, which settles the card,
- * then comes back off; the card reopens on the last question with the answers kept.
+ * The send fails. As in the workspace, the reply shows as sent at once, which settles the card;
+ * "Fail the send" takes it back off, and the card reopens on the last question with the answers kept.
  */
 export const NotSent: Story = {
   render: function NotSentCard(args) {
-    const [reply, setReply] = useState<string>();
-    const onSend = async (sent: string) => {
-      setReply(sent);
-      await new Promise((resolve) => setTimeout(resolve, 600));
-      setReply(undefined);
-      return false;
-    };
+    const [pending, setPending] = useState<PendingSend>();
+    const onSend = (reply: string) =>
+      new Promise<boolean>((resolve) => {
+        setPending({
+          reply,
+          fail: () => {
+            setPending(undefined);
+            resolve(false);
+          },
+        });
+      });
     return (
-      <QuestionsCard
-        {...args}
-        state={
-          reply === undefined
-            ? { kind: "open", disabled: false, onSend }
-            : { kind: "answered", reply }
-        }
-      />
+      <>
+        <QuestionsCard
+          {...args}
+          state={
+            pending === undefined
+              ? { kind: "open", disabled: false, onSend }
+              : { kind: "answered", reply: pending.reply }
+          }
+        />
+        {pending !== undefined && (
+          <button type="button" onClick={pending.fail}>
+            Fail the send
+          </button>
+        )}
+      </>
     );
   },
 };
