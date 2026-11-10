@@ -71,9 +71,21 @@ function answered(answer: Answer): boolean {
   return answer.chosen.length > 0 || answer.own.trim() !== "";
 }
 
-function answerLabels(question: Question, answer: Answer): string[] {
+/**
+ * The options that count. On a pick-one question the person's own words, while there are any,
+ * stand in for the option picked; the pick is kept, so clearing the words brings it back.
+ */
+function chosenOf(question: Question, answer: Answer): readonly string[] {
+  return question.kind === "single" && answer.own.trim() !== ""
+    ? []
+    : answer.chosen;
+}
+
+/** The answer as the reply carries it: the options that count, then the person's own words. */
+export function answerLabels(question: Question, answer: Answer): string[] {
+  const chosen = chosenOf(question, answer);
   const labels = question.options
-    .filter((option) => answer.chosen.includes(option.value))
+    .filter((option) => chosen.includes(option.value))
     .map((option) => option.label);
   const own = answer.own.trim();
   return own === "" ? labels : [...labels, own];
@@ -95,13 +107,19 @@ function pick(question: Question, answer: Answer, index: number): Answer {
 /**
  * The answer Enter carries on with. ↑↓ only move focus, so on a pick-one question Enter takes the
  * option focus is on: what the person sees highlighted is what goes forward, not the recommendation.
+ * Words the person typed are never swapped for an option focus merely passes over; picking one
+ * takes a click, Space or its number.
  */
 export function enterAnswer(
   question: Question,
   answer: Answer,
   focused: number,
 ): Answer {
-  if (question.kind !== "single" || question.options[focused] === undefined)
+  if (
+    question.kind !== "single" ||
+    answer.own.trim() !== "" ||
+    question.options[focused] === undefined
+  )
     return answer;
   return pick(question, answer, focused);
 }
@@ -283,7 +301,8 @@ function Choices({
   onOwn: (own: string) => void;
 }) {
   const multi = question.kind === "multi";
-  const picked = answer.chosen.length;
+  const chosen = chosenOf(question, answer);
+  const picked = chosen.length;
   return (
     <fieldset
       className={styles.question}
@@ -301,7 +320,7 @@ function Choices({
       </p>
       <div className={styles.choices} data-kind={question.kind}>
         {question.options.map((option, index) => {
-          const checked = answer.chosen.includes(option.value);
+          const checked = chosen.includes(option.value);
           if (multi)
             return (
               <label
@@ -420,8 +439,14 @@ function OpenCard({
     const active = document.activeElement;
     const free = active === null || active === document.body;
     if (!free && !card.current.contains(active)) return;
+    // Onto the answer as it stands: the option picked, else the person's own words, else the first.
     const inputs = [...choices.current.querySelectorAll("input")];
-    const target = inputs.find((input) => input.checked) ?? inputs[0];
+    const target =
+      inputs.find((input) => input.checked) ??
+      inputs.find(
+        (input) => input.type === "text" && input.value.trim() !== "",
+      ) ??
+      inputs[0];
     target?.focus();
   }, [step, focusFollows]);
   if (question === undefined) return null;
@@ -566,13 +591,7 @@ function OpenCard({
                 ruleId={ruleId}
                 disabled={disabled}
                 onPick={choose}
-                onOwn={(own) =>
-                  // On a pick-one question the person's own words replace the option picked.
-                  setAnswer({
-                    chosen: question.kind === "single" ? [] : answer.chosen,
-                    own,
-                  })
-                }
+                onOwn={(own) => setAnswer({ ...answer, own })}
               />
             </div>
           </li>

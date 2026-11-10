@@ -4,6 +4,7 @@ import type { AskQuestions } from "@corbits-builder/schemas/questions";
 import { wording } from "../../config.ts";
 import {
   QuestionsCard,
+  answerLabels,
   enterAnswer,
   keyIntent,
   type QuestionsState,
@@ -162,5 +163,29 @@ describe("question keys", () => {
     // On a pick-any question Space ticks; Enter only continues.
     const ticked = { chosen: [], own: "Export" };
     expect(enterAnswer(multi!, ticked, 0)).toBe(ticked);
+  });
+
+  test("Enter never swaps typed words for an option focus passes over", () => {
+    const [single] = ask.questions;
+    // Esc or ↑ from the field, or a failed send, leaves focus on an option.
+    const typed = { chosen: ["teams"], own: "A bakery" };
+    expect(enterAnswer(single!, typed, 0)).toBe(typed);
+    expect(enterAnswer(single!, typed, 1)).toBe(typed);
+  });
+
+  test("on a pick-one question typed words stand in for the pick until cleared", () => {
+    const [single, multi] = ask.questions;
+    expect(
+      answerLabels(single!, { chosen: ["teams"], own: "A bakery" }),
+    ).toEqual(["A bakery"]);
+    // Typing and deleting a letter keeps the recommended answer.
+    expect(answerLabels(single!, { chosen: ["teams"], own: " " })).toEqual([
+      "Small teams",
+    ]);
+    // On a pick-any question the words come after the options ticked.
+    expect(answerLabels(multi!, { chosen: ["track"], own: "Export" })).toEqual([
+      "Track tasks",
+      "Export",
+    ]);
   });
 });
