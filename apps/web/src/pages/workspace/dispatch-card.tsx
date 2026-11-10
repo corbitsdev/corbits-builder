@@ -5,7 +5,6 @@
  * comes from the project's run list (at work, parked, failed) and its filed
  * documents.
  */
-import { createContext } from "react";
 import type { ConversationPart, PartTool } from "@corbits/react-ui";
 import type { AgentActivity, ProjectArtifact } from "@corbits-builder/client";
 import type { FailedRun, InFlightRun } from "@corbits-builder/schemas/artifact";
@@ -175,8 +174,6 @@ export type DispatchRoom = {
   readonly activity: readonly AgentActivity[] | undefined;
   readonly onOpenDocument?: (kind: string) => void;
 };
-
-export const DispatchRoomContext = createContext<DispatchRoom | null>(null);
 
 /** The artifact a hand-off files, by kind. */
 export function targetKind(dispatch: Dispatch): string | undefined {

@@ -1,18 +1,15 @@
 import { Button } from "@corbits/react-ui";
-import {
+import type {
   ApprovalPackageBundle,
-  type ApprovalPackageSource,
+  ApprovalPackageSource,
 } from "@corbits-builder/schemas/artifact";
-import { type } from "arktype";
 import { Suspense, lazy, useEffect, useMemo, useState } from "react";
 import { InlineNote } from "../../components.tsx";
 import { wording } from "../../config.ts";
 import { Markdown } from "../../markdown.jsx";
+import { parseApprovalPackage } from "./approval-package.ts";
 import styles from "./approval-package-preview.module.css";
 import { SourceLink } from "./source-link.tsx";
-
-export const APPROVAL_PACKAGE_MEDIA_TYPE =
-  "application/vnd.corbits-builder.approval-package+json";
 
 const text = wording.approvalPackage;
 
@@ -42,20 +39,6 @@ const DeckPages = lazy(async () => ({
 }));
 
 const loadingSlides = <InlineNote>{text.loadingSlides}</InlineNote>;
-
-export function parseApprovalPackage(
-  content: string,
-): ApprovalPackageBundle | null {
-  try {
-    const parsed: unknown = JSON.parse(content);
-    const result = ApprovalPackageBundle(parsed);
-    if (result instanceof type.errors) return null;
-    return result;
-  } catch (error) {
-    if (!(error instanceof SyntaxError)) throw error;
-    return null;
-  }
-}
 
 /** The package's PDF as a file, or null when its base64 does not decode. */
 export function approvalPackagePdfFile(

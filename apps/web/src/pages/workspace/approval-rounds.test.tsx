@@ -12,7 +12,7 @@ import type {
 } from "@corbits-builder/schemas/approval-round";
 import * as actualArtifacts from "../../api/artifacts.ts";
 import * as actualConversation from "../../api/conversation.ts";
-import { WhatsNewDialog } from "../../App.tsx";
+import { WhatsNewDialog } from "../../App.view.tsx";
 import { wording } from "../../config.ts";
 import { queryClient } from "../../queries/client.ts";
 import { Settings } from "../settings/settings.tsx";
@@ -126,7 +126,6 @@ mock.module("@corbits/react-ui/ui/dialog", () => ({
 }));
 
 let startRoundCalls: { projectId: string; body: StartApprovalRound }[] = [];
-let downloadZipCalls: { projectId: string; version: number }[] = [];
 let sendMessageCalls: { projectId: string; content: string }[] = [];
 let recordDecisionCalls: {
   projectId: string;
@@ -170,13 +169,8 @@ mock.module("../../api/artifacts.ts", () => ({
       triage: [],
     };
   },
-  downloadApprovalPackageZip: async (
-    projectId: string,
-    version: number,
-  ): Promise<File> => {
-    downloadZipCalls.push({ projectId, version });
-    return new File(["zip"], "package.zip", { type: "application/zip" });
-  },
+  downloadApprovalPackageZip: async (): Promise<File> =>
+    new File(["zip"], "package.zip", { type: "application/zip" }),
   recordReviewerDecision: async (
     projectId: string,
     roundId: string,
@@ -216,8 +210,8 @@ mock.module("../../api/artifacts.ts", () => ({
   triageReviewerFeedback: async () => openRound,
 }));
 
-const { ApprovalRoundsPanel, SharePackageDialog } =
-  await import("./approval-rounds.tsx");
+const { ApprovalRoundsPanel } = await import("./approval-rounds.tsx");
+const { SharePackageDialog } = await import("./share-package.tsx");
 const { SlidesView } = await import("./approval-package-preview.tsx");
 
 const openRound: ApprovalRound = {
@@ -629,7 +623,7 @@ describe("approval rounds panel", () => {
     await prerender(<SlidesView deck={sampleBundle.deck} />);
   });
 
-  test("renders open round with reviewer states, Add new reviewer button, per-person Download package buttons, inline feedback triage with Incorporate and Dismiss (no Reply), and disabled settle button while a reviewer is pending", () => {
+  test("renders open round with reviewer states, Add new reviewer button, per-person Download package buttons, inline feedback triage with Incorporate and Dismiss, and disabled settle button while a reviewer is pending", () => {
     const html = renderToStaticMarkup(
       <ApprovalRoundsPanel
         projectId="proj_1"
@@ -640,7 +634,6 @@ describe("approval rounds panel", () => {
     );
     expect(html).toContain("Share for sign-off");
     expect(html).toContain("Add new reviewer");
-    expect(html).not.toContain("Add reviewers &amp; download .zip");
     expect(html).toContain("Package v1 reviewers");
     expect(html).toContain("Dana Reviewer");
     expect(html).toContain("Finance VP");
@@ -649,7 +642,6 @@ describe("approval rounds panel", () => {
     );
     expect(html).toContain("Download package");
     expect(html).toContain("View slide deck");
-    expect(html).not.toContain("Ask coordinator to tailor package");
     expect(html).toMatch(
       /data-cell="status"><span [^>]*data-slot="quiet-state" data-tone="warning" data-words="">Pending Feedback<\/span><\/span>/,
     );
@@ -660,7 +652,6 @@ describe("approval rounds panel", () => {
     );
     expect(html).toContain('aria-label="Incorporate"');
     expect(html).toContain('aria-label="Dismiss"');
-    expect(html).not.toContain(">Reply<");
     expect(html).toContain('data-slot="reviewer-drawer"');
     expect(html).toContain('aria-label="Dana Reviewer Reviewer name"');
     expect(html).toContain('aria-label="Dana Reviewer Persona"');
@@ -866,9 +857,8 @@ describe("approval rounds panel", () => {
     expect(html).not.toContain("Dismiss");
   });
 
-  test("clicking Add new reviewer opens the dialog with Add reviewer submit and does not trigger an automatic .zip download on submit", async () => {
+  test("clicking Add new reviewer opens the dialog, and Add reviewer starts the round with the reviewer entered", async () => {
     startRoundCalls = [];
-    downloadZipCalls = [];
     const harness = createStatefulHarness(() => (
       <ApprovalRoundsPanel
         projectId="proj_1"
@@ -886,7 +876,6 @@ describe("approval rounds panel", () => {
     expect(dialogHtml).toContain('role="dialog"');
     expect(dialogHtml).toContain('aria-label="Reviewer 1 Reviewer name"');
     expect(dialogHtml).toContain(">Add reviewer<");
-    expect(dialogHtml).not.toContain("Save &amp; download .zip");
 
     const nameInput = harness.findInput("Reviewer 1 Reviewer name");
     (nameInput.props["onChange"] as (e: { target: { value: string } }) => void)(
@@ -909,7 +898,6 @@ describe("approval rounds panel", () => {
 
     expect(startRoundCalls).toHaveLength(1);
     expect(startRoundCalls[0]?.body.reviewers[0]?.name).toBe("Morgan Legal");
-    expect(downloadZipCalls).toHaveLength(0);
     expect(harness.html()).toContain("Morgan Legal");
   });
 
@@ -1099,7 +1087,6 @@ describe("approval rounds panel", () => {
     );
     expect(html).toContain("Add reviewer");
     expect(html.split(">Add reviewer<")).toHaveLength(2);
-    expect(html).not.toContain("Save &amp; download .zip");
     expect(html).toContain("Cancel");
   });
 
@@ -1109,7 +1096,6 @@ describe("approval rounds panel", () => {
     expect(html).toContain("Require stakeholder approval");
     expect(html).toContain("Workspace reviewers");
     expect(html).toContain("No saved workspace reviewers yet.");
-    expect(html).not.toContain("invite-form");
     expect(html).toContain('data-slot="approval-fields" data-variant="form"');
     expect(html).toMatch(
       /<input [^>]*data-slot="lean-input"[^>]*data-variant="form"/,

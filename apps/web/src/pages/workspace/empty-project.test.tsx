@@ -1,16 +1,33 @@
 import { describe, expect, test } from "bun:test";
 import { renderToStaticMarkup } from "react-dom/server";
 import { ProductApiError } from "@corbits-builder/client";
-import type { ProjectArtifact } from "@corbits-builder/client";
-import { ArtifactPane } from "./artifact-pane.tsx";
+import { wording } from "../../config.ts";
+import {
+  ArtifactPane,
+  type ArtifactPaneSlots,
+  type PaneDocument,
+} from "./artifact-pane.tsx";
 import { documentReadFailure, documentsForPane } from "./document-read.ts";
 import type { DeliverableState } from "./deliverable-block.tsx";
 
 const sha = "ab".repeat(32);
 
-function filed(kind: string, title: string): ProjectArtifact {
-  return { artifactId: kind, kind, title, version: 1, sha256: sha };
+function filed(id: string, title: string): PaneDocument {
+  return {
+    id,
+    title,
+    status: wording.documentStatus.drafted(1),
+    unread: true,
+    removable: false,
+  };
 }
+
+// A written document draws none of the parts that read the hub.
+const parts: ArtifactPaneSlots = {
+  conceptMockup: () => null,
+  approvalRounds: () => null,
+  tweakPanel: () => null,
+};
 
 const brief = filed("problem_brief", "Weather App Problem Brief");
 const design = filed("build_plan", "Weather design");
@@ -51,29 +68,30 @@ describe("empty project room", () => {
 
     const states = new Map<string, DeliverableState>([
       [
-        brief.kind,
+        brief.id,
         {
           status: "error",
           message: rejected.message,
           retryable: rejected.retryable,
         },
       ],
-      [design.kind, ready("Weather design", "# Weather design\n\nThe page.")],
+      [design.id, ready("Weather design", "# Weather design\n\nThe page.")],
     ]);
     const visible = documentsForPane([brief, design], (item) =>
-      states.get(item.kind),
+      states.get(item.id),
     );
-    expect(visible.map((item) => item.kind)).toEqual(["build_plan"]);
+    expect(visible.map((item) => item.id)).toEqual(["build_plan"]);
 
     const html = renderToStaticMarkup(
       <ArtifactPane
         projectTitle="Project"
-        deliverables={visible}
-        selected={visible[0] ?? null}
+        concepts={[]}
+        documents={visible}
+        selectedId="build_plan"
         state={states.get("build_plan")}
-        changesOpen={false}
         onSelect={() => {}}
-        onToggleChanges={() => {}}
+        onSeen={() => {}}
+        {...parts}
       />,
     );
     expect(html).toContain('role="tab"');
@@ -94,13 +112,14 @@ describe("empty project room", () => {
     const html = renderToStaticMarkup(
       <ArtifactPane
         projectTitle="Project"
-        deliverables={visible}
-        selected={design}
+        concepts={[]}
+        documents={visible}
+        selectedId={design.id}
         state={state}
-        changesOpen={false}
         onSelect={() => {}}
-        onToggleChanges={() => {}}
+        onSeen={() => {}}
         onRetry={() => {}}
+        {...parts}
       />,
     );
     expect(html).toContain("Weather design");
