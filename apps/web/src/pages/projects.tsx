@@ -253,8 +253,6 @@ export function Projects({
               >
                 <PromptInputTextarea placeholder={HOME_COMPOSER_PLACEHOLDER} />
                 <PromptInputToolbar>
-                  {/* First, so that mounting late and following the
-                      profile's name never move the mic or send. */}
                   <NewProjectProfile
                     value={profile}
                     onValueChange={setProfile}
