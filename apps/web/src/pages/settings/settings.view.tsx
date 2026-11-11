@@ -61,7 +61,7 @@ export type SettingsViewProps = SettingsSlots & {
   /** The open tab. */
   tab: SettingsTab;
   onTabChange: (tab: SettingsTab) => void;
-  /** The theme, and the document tips and questions layout choices kept in this browser. */
+  /** The theme, and the document tips choice kept in this browser. */
   appearance: AppearanceProps;
   /** Who is signed in; null when nobody is, and the Account section is left out. */
   account: AccountProps | null;

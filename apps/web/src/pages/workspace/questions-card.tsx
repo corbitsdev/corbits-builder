@@ -105,8 +105,9 @@ function pick(question: Question, answer: Answer, index: number): Answer {
 }
 
 /**
- * The answer Enter carries on with. ↑↓ only move focus, so on a pick-one question Enter takes the
- * option focus is on: what the person sees highlighted is what goes forward, not the recommendation.
+ * The answer Enter carries on with from an option the person moved to. ↑↓ only move focus, so on a
+ * pick-one question Enter takes that option: what the person sees ringed goes forward, not the
+ * recommendation.
  * Words the person typed are never swapped for an option focus merely passes over; picking one
  * takes a click, Space or its number.
  */
@@ -429,10 +430,18 @@ function OpenCard({
   const [sending, setSending] = useState(false);
   const card = useRef<HTMLDivElement>(null);
   const choices = useRef<HTMLDivElement>(null);
+  /** The option the person last moved to with ↑↓, which Enter may carry forward. */
+  const aimed = useRef<HTMLInputElement>(null);
 
   const question = questions[step];
   useEffect(() => {
-    if (!focusFollows || card.current === null || choices.current === null)
+    // While blocked the options are disabled and take no focus; this runs again once they open.
+    if (
+      !focusFollows ||
+      blocked ||
+      card.current === null ||
+      choices.current === null
+    )
       return;
     // Focus comes from inside the card, or from nowhere once a send settled it and failed; never
     // from wherever the person has moved on to meanwhile.
@@ -448,7 +457,7 @@ function OpenCard({
       ) ??
       inputs[0];
     target?.focus();
-  }, [step, focusFollows]);
+  }, [step, focusFollows, blocked]);
   if (question === undefined) return null;
 
   const answerOf = (index: number): Answer =>
@@ -513,7 +522,13 @@ function OpenCard({
     const at = inputs.findIndex((input) => input === event.target);
     switch (intent.kind) {
       case "next":
-        return next(enterAnswer(question, answer, at));
+        // Only an option the person moved to with ↑↓ goes forward. Where the card put focus itself,
+        // such as the first option after a click, nothing marks it, so Enter keeps the answer as is.
+        return next(
+          event.target === aimed.current
+            ? enterAnswer(question, answer, at)
+            : answer,
+        );
       case "forward":
         return ready && !last ? go(step + 1) : undefined;
       case "back":
@@ -526,9 +541,11 @@ function OpenCard({
       case "move": {
         // From the buttons, ↓ enters the options at the first and ↑ at the last.
         const from = at === -1 && intent.by < 0 ? inputs.length : at;
-        return inputs[
-          Math.max(0, Math.min(from + intent.by, inputs.length - 1))
-        ]?.focus();
+        const target =
+          inputs[Math.max(0, Math.min(from + intent.by, inputs.length - 1))];
+        if (target === undefined) return;
+        aimed.current = target;
+        return target.focus();
       }
     }
   };
