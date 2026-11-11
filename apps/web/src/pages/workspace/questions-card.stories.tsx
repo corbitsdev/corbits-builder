@@ -1,31 +1,41 @@
 import type { Meta, StoryObj } from "@storybook/react-vite";
-import type { AskQuestions } from "@corbits-builder/schemas/questions";
+import type { AskedQuestion } from "@intx/types/runtime-core";
 import { fn } from "storybook/test";
-import { wording } from "../../config.ts";
 import { QuestionsCard } from "./questions-card.tsx";
 
-const ask: AskQuestions = {
+const asked: AskedQuestion = {
   questions: [
     {
-      id: "audience",
-      prompt: "Who is it for?",
-      kind: "single",
+      id: "c2a9a3f4-1d7e-4c55-9a51-2f0a0b6c1e01",
+      header: "Audience",
+      question: "Who is it for?",
       options: [
-        { value: "owners", label: "Bakery owners" },
-        { value: "staff", label: "Counter staff" },
+        {
+          label: "Bakery owners (Recommended)",
+          description: "They take the orders and plan the day's baking.",
+        },
+        {
+          label: "Counter staff",
+          description: "They serve customers at the counter.",
+        },
       ],
-      preselected: ["owners"],
+      multiple: false,
+      custom: true,
     },
     {
-      id: "first_version",
-      prompt: "What must the first version do?",
-      kind: "multi",
+      id: "7b1e9d20-5f3c-4a8e-b6d2-93c4e5f6a702",
+      header: "First version",
+      question: "What must the first version do?",
       options: [
-        { value: "take", label: "Take orders" },
-        { value: "list", label: "List the day's orders" },
-        { value: "remind", label: "Remind customers" },
+        {
+          label: "Take orders",
+          description: "Customers order online instead of by phone.",
+        },
+        { label: "List the day's orders", description: "" },
+        { label: "Remind customers", description: "" },
       ],
-      allowOther: true,
+      multiple: true,
+      custom: true,
     },
   ],
 };
@@ -34,8 +44,8 @@ const meta = {
   title: "Screens/Workspace/QuestionsCard",
   component: QuestionsCard,
   args: {
-    id: "call-1",
-    ask,
+    id: "signal-1",
+    asked,
     layout: "steps",
     state: {
       kind: "open",
@@ -61,6 +71,29 @@ export const OneAtATime: Story = {};
 
 export const AllAtOnce: Story = { args: { layout: "all" } };
 
+/** A pick on each question: the first moves the steps on, so the second shows a ticked row. */
+export const OneAtATimeChosen: Story = {
+  play: async ({ canvas, userEvent }) => {
+    await userEvent.click(
+      canvas.getByRole("option", { name: "Bakery owners (Recommended)" }),
+    );
+    await userEvent.click(canvas.getByRole("option", { name: "Take orders" }));
+  },
+};
+
+export const AllAtOnceChosen: Story = {
+  args: { layout: "all" },
+  play: async ({ canvas, userEvent }) => {
+    await userEvent.click(
+      canvas.getByRole("option", { name: "Counter staff" }),
+    );
+    // The kit's checkbox label holds its description too, so its name starts with the label.
+    await userEvent.click(
+      canvas.getByRole("checkbox", { name: /^Take orders/ }),
+    );
+  },
+};
+
 export const Disabled: Story = {
   args: {
     state: { kind: "open", disabled: true, onSend: fn() },
@@ -71,22 +104,27 @@ export const Answered: Story = {
   args: {
     state: {
       kind: "answered",
-      reply: [
-        wording.questions.answerLine("Who is it for?", ["Bakery owners"]),
-        wording.questions.answerLine("What must the first version do?", [
-          "Take orders",
-          "List the day's orders",
-        ]),
-      ].join("\n"),
+      answer: {
+        answers: {
+          "c2a9a3f4-1d7e-4c55-9a51-2f0a0b6c1e01": [
+            "Bakery owners (Recommended)",
+          ],
+          "7b1e9d20-5f3c-4a8e-b6d2-93c4e5f6a702": [
+            "Take orders",
+            "List the day's orders",
+          ],
+        },
+      },
     },
   },
 };
 
-/** Answered in the person's own words, so the card shows no answers. */
-export const AnsweredInChat: Story = {
+/** The person wrote back instead of choosing; the card keeps what they wrote. */
+export const AnsweredInOwnWords: Story = {
   args: {
-    state: { kind: "answered", reply: "Actually, let's build a game." },
+    state: {
+      kind: "answered",
+      answer: { reply: "Actually, let's build a game." },
+    },
   },
 };
-
-export const Replaced: Story = { args: { state: { kind: "replaced" } } };

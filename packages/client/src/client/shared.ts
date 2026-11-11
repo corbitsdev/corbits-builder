@@ -6,6 +6,7 @@ import type {
   TenantRoleView,
 } from "./roles";
 import type { DiscoveredModels } from "@corbits-builder/schemas/catalog";
+import type { QuestionAnswer } from "@intx/types/signals";
 import type { SettingsProviders } from "@corbits-builder/schemas/settings";
 import type { PreferenceRegistry } from "@corbits-builder/schemas/preferences";
 import type {
@@ -310,6 +311,14 @@ export type ProductApiClient = Readonly<{
     projectId: string,
     signal?: AbortSignal,
   ): Promise<ConversationEvents>;
+  /** Answers the coordinator's open question, by the ids the run gave its prompts. */
+  answerQuestion(
+    projectTenantId: string,
+    coordinatorRunId: string,
+    signalName: string,
+    answer: QuestionAnswer,
+    signal?: AbortSignal,
+  ): Promise<void>;
   hello(tenantId: string, signal?: AbortSignal): Promise<HelloResponse>;
   me(signal?: AbortSignal): Promise<MeProfile>;
   createTenant(

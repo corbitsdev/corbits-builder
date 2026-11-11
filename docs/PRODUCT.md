@@ -53,7 +53,7 @@ says; there is no fixed sequence of screens. A typical project goes:
 2. **Questions.** The coordinator interviews them, matching depth to what they
    brought: a bare idea gets brainstorming, a detailed request gets its limits
    confirmed. Several decisions at once arrive as a question card with options
-   and a recommended answer preselected.
+   and the recommended answer first.
 3. **Documents.** Each builds on the ones before it:
    - the **problem brief**: who it is for, what it must do and what done looks
      like, written by the coordinator;

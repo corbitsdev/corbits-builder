@@ -4,6 +4,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { type } from "arktype";
 import type { NativeApproval, ProjectArtifact } from "@corbits-builder/client";
+import { AskedQuestion } from "@intx/types/runtime-core";
 import { startTestHub, type TestHubHandle } from "./support/hub.ts";
 import {
   formatOpenAISseResponse,
@@ -112,6 +113,15 @@ function createEventSignal(recordedModel: RecordedModelServer): {
       waiters.clear();
     },
   };
+}
+
+function isQuestionPark(event: {
+  type: string;
+  body: Record<string, unknown>;
+}): boolean {
+  return (
+    event.type === "SignalAwaited" && event.body["parkKind"] === "question"
+  );
 }
 
 function findPendingToolApproval(
@@ -1127,6 +1137,156 @@ describe("Builder E2E pipeline replay", () => {
                 fakeCredentialSecret,
                 1,
               );
+            });
+          },
+        );
+      } finally {
+        await rm(fixtureDir, { recursive: true, force: true });
+      }
+    },
+    STAGE_DEADLINE_MS,
+  );
+
+  test(
+    "pauses the coordinator on its question until the person answers by id, then continues with the answers",
+    async () => {
+      const fixtureDir = await mkdtemp(
+        join(tmpdir(), "builder-e2e-question-fixture-"),
+      );
+      const coordinatorTools = ["question", "read_artifact", "write_artifact"];
+      try {
+        await writeScenarioFixture(
+          fixtureDir,
+          { scenario: "bakery-orders-question", recordedFromCommit: "8eecc04" },
+          [
+            {
+              runKey: "coordinator-1",
+              role: "coordinator",
+              stage: "documents",
+              sourceRunId: "run_coord_question_1",
+              exchanges: withRequiredTools(coordinatorTools, [
+                {
+                  sse: formatOpenAISseResponse({
+                    toolCalls: [
+                      {
+                        id: "coord_question",
+                        name: "question",
+                        arguments: {
+                          questions: [
+                            {
+                              header: "Audience",
+                              question: "Who takes the orders?",
+                              options: [
+                                {
+                                  label: "The owner (Recommended)",
+                                  description: "One person runs the list.",
+                                },
+                                {
+                                  label: "Counter staff",
+                                  description: "Whoever is on shift.",
+                                },
+                              ],
+                            },
+                          ],
+                        },
+                      },
+                    ],
+                  }),
+                  expect: {
+                    lastMessageRole: "user",
+                    userTextContains: "Bakery Orders",
+                    toolResults: [],
+                  },
+                },
+                {
+                  sse: formatOpenAISseResponse({
+                    text: "Counter staff it is; I will write the brief for them.",
+                  }),
+                  expect: {
+                    lastMessageRole: "tool",
+                    toolResults: [
+                      {
+                        callId: "coord_question",
+                        toolName: "question",
+                        isError: false,
+                        keys: ["answers"],
+                        contains: "Counter staff",
+                      },
+                    ],
+                  },
+                },
+              ]),
+            },
+          ],
+        );
+
+        await withPipelineScenario(
+          {
+            fixtureDir,
+            projectId: "bakery-orders",
+            title: "Bakery Orders",
+            problemStatement: "Build Bakery Orders for our shop.",
+          },
+          async (driver) => {
+            const { hub, projectTenantId, projectId, coordinatorRunId } =
+              driver;
+            const { client } = hub;
+
+            await driver.runStage("question", async () => {
+              const parked = await driver.waitFor(
+                "question",
+                "the coordinator's open question in its run log",
+                async () => {
+                  const { events } = await client.conversationEvents(
+                    projectTenantId,
+                    projectId,
+                  );
+                  return events.find(isQuestionPark);
+                },
+              );
+              const signalName = type("string > 0").assert(
+                parked.body["signalName"],
+              );
+              const [asked] = AskedQuestion.assert(
+                parked.body["question"],
+              ).questions;
+              if (asked === undefined)
+                throw new Error("the parked question carries no prompt");
+              expect(asked.header).toBe("Audience");
+
+              // Only the open question's own ids answer it.
+              await expect(
+                client.answerQuestion(
+                  projectTenantId,
+                  coordinatorRunId,
+                  signalName,
+                  { answers: { "not-a-question": ["Counter staff"] } },
+                ),
+              ).rejects.toThrow();
+
+              await client.answerQuestion(
+                projectTenantId,
+                coordinatorRunId,
+                signalName,
+                { answers: { [asked.id]: ["Counter staff"] } },
+              );
+              await driver.waitForAssistantTurn(
+                "question",
+                "Counter staff it is",
+              );
+
+              const { events } = await client.conversationEvents(
+                projectTenantId,
+                projectId,
+              );
+              const received = events.find(
+                (event) =>
+                  event.type === "SignalReceived" &&
+                  event.body["signalName"] === signalName,
+              );
+              expect(received?.body["payload"]).toEqual({
+                answers: { [asked.id]: ["Counter staff"] },
+              });
             });
           },
         );

@@ -9,6 +9,8 @@
  * and its releasing signal) from the events.
  */
 import type { ConversationEvents } from "@corbits-builder/schemas/conversation";
+import { AskedQuestion } from "@intx/types/runtime-core";
+import { QuestionAnswer } from "@intx/types/signals";
 import { wording } from "../config.ts";
 import { productClient } from "./transport.ts";
 import {
@@ -46,6 +48,26 @@ export async function readConversationEvents(
 
 export type SendReceipt = { runId: string; address: string; messageId: string };
 
+async function coordinatorRun(projectId: string) {
+  const client = productClient();
+  const project = await client.project(await workspaceTenantId(), projectId);
+  if (project.coordinatorRunId === null)
+    throw new ApiFailure(
+      {
+        code: "coordinator_unavailable",
+        message: wording.conversation.noCoordinator,
+        correlationId: "-",
+        retryable: false,
+      },
+      409,
+    );
+  return {
+    client,
+    tenantId: project.tenantId,
+    runId: project.coordinatorRunId,
+  };
+}
+
 /**
  * Sends one person message as native mail to the project's coordinator run
  * and composes the 202 receipt into the `ChatMessage` the thread renders:
@@ -60,23 +82,8 @@ export async function sendMessage(
   receipt: SendReceipt;
   message: ChatMessage;
 }> {
-  const client = productClient();
-  const project = await client.project(await workspaceTenantId(), projectId);
-  if (project.coordinatorRunId === null)
-    throw new ApiFailure(
-      {
-        code: "coordinator_unavailable",
-        message: wording.conversation.noCoordinator,
-        correlationId: "-",
-        retryable: false,
-      },
-      409,
-    );
-  const receipt = await client.sendMessage(
-    project.tenantId,
-    project.coordinatorRunId,
-    { content },
-  );
+  const { client, tenantId, runId } = await coordinatorRun(projectId);
+  const receipt = await client.sendMessage(tenantId, runId, { content });
   return {
     receipt,
     message: {
@@ -170,4 +177,47 @@ export function latestQuestion(
     answeredByYou,
     ...(correlationId === undefined ? {} : { correlationId }),
   };
+}
+
+// --- The coordinator's questions ----------------------------------------------
+
+/** A question the coordinator paused on, from its wait in the run log, with the answer once one arrived. */
+export type ParkedQuestion = {
+  at: number;
+  signalName: string;
+  asked: AskedQuestion;
+  answer?: QuestionAnswer;
+};
+
+/** Every question the coordinator asked in this run, oldest first. */
+export function parkedQuestions(
+  events: readonly ConversationEvent[],
+): ParkedQuestion[] {
+  const questions: ParkedQuestion[] = [];
+  for (const { type: kind, body } of events) {
+    const signalName = body["signalName"];
+    if (typeof signalName !== "string") continue;
+    if (kind === "SignalAwaited" && body["parkKind"] === "question") {
+      questions.push({
+        at: Date.parse(String(body["at"])),
+        signalName,
+        asked: AskedQuestion.assert(body["question"]),
+      });
+    }
+    if (kind !== "SignalReceived") continue;
+    const parked = questions.find((item) => item.signalName === signalName);
+    if (parked !== undefined)
+      parked.answer = QuestionAnswer.assert(body["payload"]);
+  }
+  return questions;
+}
+
+/** Answers the coordinator's open question; the run takes it as the question call's result. */
+export async function answerQuestion(
+  projectId: string,
+  signalName: string,
+  answer: QuestionAnswer,
+): Promise<void> {
+  const { client, tenantId, runId } = await coordinatorRun(projectId);
+  await client.answerQuestion(tenantId, runId, signalName, answer);
 }

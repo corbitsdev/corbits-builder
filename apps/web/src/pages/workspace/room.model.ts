@@ -43,7 +43,12 @@ import { earlierDocumentRole } from "./earlier-document.ts";
 import { ProductApiError, type ProjectArtifact } from "@corbits-builder/client";
 import type { InFlightRun } from "@corbits-builder/schemas/artifact";
 import { toast } from "sonner";
-import { sendMessage } from "../../api/conversation.ts";
+import {
+  answerQuestion,
+  parkedQuestions,
+  sendMessage,
+} from "../../api/conversation.ts";
+import type { QuestionAnswer } from "@intx/types/signals";
 import { subscribeWorkflowRun } from "../../api/run-stream.ts";
 import { refusalBody } from "../../api/transport.ts";
 import {
@@ -61,7 +66,7 @@ import {
 import type { ChatMessage, Wait } from "../../api/types.ts";
 import { deliveredText } from "@corbits-builder/schemas/conversation";
 import { keys } from "../../queries/keys.ts";
-import { questionsOpen, turnItemId } from "./transcript.tsx";
+import { turnItemId } from "./transcript.tsx";
 import { cardDocuments } from "./collaboration.ts";
 import { useFiledVersions } from "./filed-versions.tsx";
 import { threadUpdates } from "./specialist-updates.ts";
@@ -502,6 +507,16 @@ export function useRoom({
   const events = snapshot.conversation.events;
   const mirror = snapshot.conversation.turns;
   const runId = archived ? null : snapshot.conversation.runId;
+  const questions = events === null || archived ? [] : parkedQuestions(events);
+  // An answer the hub accepted closes its question before the next poll shows it, so later typing
+  // goes to the conversation rather than to a question that is already closed.
+  const [sentAnswers, setSentAnswers] = useState<ReadonlySet<string>>(
+    () => new Set(),
+  );
+  const openQuestion = questions.find(
+    ({ signalName, answer }) =>
+      answer === undefined && !sentAnswers.has(signalName),
+  );
   // The coder's filed app source is the resume point for a later coder, not a document to read.
   const artifacts = snapshot.artifacts
     .filter((item) => item.kind !== "app")
@@ -755,9 +770,11 @@ export function useRoom({
   const openApprovalIds = new Set(
     pendingApprovals?.map((approval) => approval.approvalId),
   );
-  // Until the open decisions are read, no approval is known to hold the coordinator.
+  // Until the open decisions are read, no approval is known to hold the coordinator. An open
+  // question holds it too, though its message run stays open while it waits.
   const parked =
-    waits !== undefined && parkedOnApproval(waits, openApprovalIds, runId);
+    openQuestion !== undefined ||
+    (waits !== undefined && parkedOnApproval(waits, openApprovalIds, runId));
   const liveTurn = pendingLiveTurn(liveRun, mirror);
   const streaming = liveTurnStreaming(liveRun, mirror, parked);
   const shownTurns =
@@ -820,6 +837,18 @@ export function useRoom({
   const notSent = "That message was not sent.";
   const mail = async (text: string) =>
     (await sendMessage(projectId, text)).message;
+  // An answer lands in the run log, not the conversation, so it never shows as a sent message.
+  const deliverAnswer = async (signalName: string, answer: QuestionAnswer) => {
+    setSending(true);
+    try {
+      await answerQuestion(projectId, signalName, answer);
+      setSentAnswers((sent) => new Set(sent).add(signalName));
+      reloadRef.current();
+      onChanged();
+    } finally {
+      setSending(false);
+    }
+  };
   const deliverMail = async (
     body: string,
     clearComposer = false,
@@ -1126,6 +1155,17 @@ export function useRoom({
   };
   const deliver = async (body: string, clearComposer = false) => {
     if (body.trim().length === 0 || sending) return false;
+    // While the coordinator waits on its question, whatever the person types is their answer.
+    if (openQuestion !== undefined) {
+      try {
+        await deliverAnswer(openQuestion.signalName, { reply: body.trim() });
+      } catch (cause) {
+        toast.error(await humanFaultWithCode(cause, notSent));
+        return false;
+      }
+      if (clearComposer) setValue("");
+      return true;
+    }
     const currentApprovals = await readPendingApprovals();
     const currentOpen = currentApprovals?.find(
       (approval) => approval.packages === undefined,
@@ -1229,8 +1269,9 @@ export function useRoom({
     }
   };
   const held =
-    waits !== undefined &&
-    waitingOnPerson(waits, openApprovalIds, runId, liveRun.running);
+    openQuestion !== undefined ||
+    (waits !== undefined &&
+      waitingOnPerson(waits, openApprovalIds, runId, liveRun.running));
   const awaiting =
     awaitingReply(awaitingSince, turns.at(-1)?.role, liveRun.endedAt, parked) &&
     !archived &&
@@ -1458,7 +1499,7 @@ export function useRoom({
       onSend: send,
       placeholder: composerPlaceholder({
         approvalOpen: openApproval !== undefined,
-        questionsOpen: !archived && questionsOpen(shownTurns, liveRun.results),
+        questionsOpen: openQuestion !== undefined,
         status: projectStatus.data,
         chatFirst,
       }),
@@ -1533,7 +1574,17 @@ export function useRoom({
                 },
               }),
           ...(sentId === undefined ? {} : { sentId }),
-          onAnswerQuestions: (reply) => deliver(reply),
+          questions,
+          onAnswerQuestion: async (signalName, answer) => {
+            try {
+              await deliverAnswer(signalName, answer);
+              return true;
+            } catch (cause) {
+              // The card tells the person and keeps their picks to try again.
+              console.warn("The answers were not sent.", cause);
+              return false;
+            }
+          },
           questionsDisabled: sending || archived,
           questionsLayout,
         },

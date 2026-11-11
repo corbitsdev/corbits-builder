@@ -75,6 +75,27 @@
   background: color-mix(in oklab, var(--primary-emphasis) 12%, transparent);
 }
 
+.choiceText {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+
+.choiceDescription {
+  font-size: 0.8125rem;
+  color: var(--muted-foreground);
+}
+
+/* A row with a description keeps its mark on the label's line, not between the two. */
+.choice:has(.choiceDescription) {
+  align-items: flex-start;
+}
+
+.choice:has(.choiceDescription) .choiceMark {
+  margin-top: calc((1lh - 1rem) / 2);
+}
+
 .choiceMark {
   flex: none;
   width: 1rem;
@@ -177,6 +198,13 @@
 
 .settledOk {
   color: var(--ok);
+}
+
+.reply {
+  margin: var(--space-3) 0 0;
+  font-size: 0.875rem;
+  overflow-wrap: anywhere;
+  white-space: pre-wrap;
 }
 
 .settled .answers {

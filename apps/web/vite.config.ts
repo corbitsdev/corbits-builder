@@ -1,5 +1,5 @@
 import react from "@vitejs/plugin-react";
-import { defineConfig } from "vite";
+import { defaultClientConditions, defineConfig } from "vite";
 import { productName } from "./src/config.ts";
 
 // The hub's real sign-in needs its own origin on the request; the dev proxy
@@ -15,6 +15,8 @@ export default defineConfig({
         html.replace("%PRODUCT_NAME%", productName),
     },
   ],
+  // Interchange ships its packages as source; the hub and tests read them the same way.
+  resolve: { conditions: ["intx-src", ...defaultClientConditions] },
   // main.tsx awaits the persisted query cache before the first render.
   build: { target: "es2022" },
   server: {

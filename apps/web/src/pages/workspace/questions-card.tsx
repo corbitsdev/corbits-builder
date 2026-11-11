@@ -1,7 +1,6 @@
 /**
- * The coordinator's ask_questions call as a card the person answers. The answers go back as the
- * person's next message, the way the composer sends one; the card holds no state of its own past
- * that message, so a later person turn is what marks it answered.
+ * The coordinator's open question as a card the person answers. The run log holds the question and,
+ * once sent, the answer, so the card reads the same after a reload and settles when the answer lands.
  */
 import {
   useEffect,
@@ -17,35 +16,20 @@ import {
   GateBlock,
   Input,
   IntakeForm,
-  type PartTool,
 } from "@corbits/react-ui";
-import {
-  AskQuestions,
-  askQuestionsIssue,
-  type Question,
-} from "@corbits-builder/schemas/questions";
+import type { AskedQuestion } from "@intx/types/runtime-core";
+import type { QuestionAnswer } from "@intx/types/signals";
 import { wording } from "../../config.ts";
 import type { QuestionsLayout } from "../../questions-layout-setting.ts";
-import type { CallResult } from "./live-run.ts";
 import { clsx } from "clsx";
+import { type } from "arktype";
 import { Fault } from "../../components.jsx";
+import { readJson } from "../../json.ts";
 import styles from "./questions-card.module.css";
 
 const text = wording.questions;
 
-export const ASK_QUESTIONS = "ask_questions";
-
-/** The questions a finished call asked, or undefined when it is not one the hub accepted. */
-export function askedQuestions(
-  part: PartTool,
-  result: CallResult | undefined,
-): AskQuestions | undefined {
-  if (part.name !== ASK_QUESTIONS || part.status !== "output-available")
-    return undefined;
-  if (result?.isError === true || !AskQuestions.allows(part.input))
-    return undefined;
-  return askQuestionsIssue(part.input) === undefined ? part.input : undefined;
-}
+type Question = AskedQuestion["questions"][number];
 
 type Answer = {
   readonly chosen: readonly string[];
@@ -53,18 +37,49 @@ type Answer = {
   readonly otherText: string;
 };
 
+// Picks made before sending survive a reload of this tab, and are dropped once the answer is sent.
+const Draft = type({
+  "[string]": { chosen: "string[]", other: "boolean", otherText: "string" },
+});
+const draftKey = (id: string) => `question-draft:${id}`;
+
+function readDraft(id: string): Record<string, Answer> {
+  try {
+    const raw = sessionStorage.getItem(draftKey(id));
+    return (raw === null ? null : readJson(raw, Draft)) ?? {};
+  } catch (error) {
+    console.warn(
+      "Browser storage is unavailable; picks last until a reload.",
+      error,
+    );
+    return {};
+  }
+}
+
+function writeDraft(id: string, answers: Record<string, Answer> | null): void {
+  try {
+    if (answers === null) sessionStorage.removeItem(draftKey(id));
+    else sessionStorage.setItem(draftKey(id), JSON.stringify(answers));
+  } catch (error) {
+    console.warn(
+      "Browser storage is unavailable; picks last until a reload.",
+      error,
+    );
+  }
+}
+
 export type QuestionsState =
   | {
       readonly kind: "open";
       readonly disabled: boolean;
-      readonly onSend: (reply: string) => Promise<boolean>;
+      /** Sends each question's answer under its id. */
+      readonly onSend: (answers: Record<string, string[]>) => Promise<boolean>;
     }
-  | { readonly kind: "answered"; readonly reply: string }
-  | { readonly kind: "replaced" };
+  | { readonly kind: "answered"; readonly answer: QuestionAnswer };
 
 function answerLabels(question: Question, answer: Answer): string[] {
   const labels = question.options
-    .filter((option) => answer.chosen.includes(option.value))
+    .filter((option) => answer.chosen.includes(option.label))
     .map((option) => option.label);
   const own = answer.otherText.trim();
   return answer.other && own !== "" ? [...labels, own] : labels;
@@ -73,36 +88,6 @@ function answerLabels(question: Question, answer: Answer): string[] {
 function complete(answer: Answer): boolean {
   if (answer.other) return answer.otherText.trim() !== "";
   return answer.chosen.length > 0;
-}
-
-/** A step tab's name: the question id with its separators as spaces, "first_version" as "First version". */
-export function stepName(id: string): string {
-  const words = id
-    .split(/[-_\s]+/)
-    .filter(Boolean)
-    .join(" ");
-  return words.charAt(0).toUpperCase() + words.slice(1);
-}
-
-/** Each question with its answer as the person's reply carries it, by the line the card composed. */
-function repliedAnswers(
-  questions: readonly Question[],
-  reply: string,
-): AnswerRow[] {
-  const lines = reply.split("\n");
-  return questions.flatMap((question) => {
-    const lead = text.answerLine(question.prompt, []);
-    const line = lines.find((candidate) => candidate.startsWith(lead));
-    return line === undefined
-      ? []
-      : [
-          {
-            id: question.id,
-            prompt: question.prompt,
-            answer: line.slice(lead.length),
-          },
-        ];
-  });
 }
 
 type AnswerRow = { id: string; prompt: string; answer: string };
@@ -120,22 +105,33 @@ function AnswerList({ answers }: { answers: readonly AnswerRow[] }) {
   );
 }
 
-/** The card once done, the same in either layout: its outcome, and the answers the reply carried. */
-function Settled({ ask, reply }: { ask: AskQuestions; reply?: string }) {
-  if (reply === undefined)
+/** The card once answered, the same in either layout: each question with its answer. */
+function Settled({
+  asked,
+  answer,
+}: {
+  asked: AskedQuestion;
+  answer: QuestionAnswer;
+}) {
+  const mark = <Check className={clsx(styles.settledMark, styles.settledOk)} />;
+  if ("reply" in answer)
     return (
       <SettledBox
-        title={text.replaced}
+        title={text.answeredInWords}
         mark={<CornerDownRight className={styles.settledMark} />}
-      />
+      >
+        <p className={styles.reply}>{answer.reply}</p>
+      </SettledBox>
     );
-  const answers = repliedAnswers(ask.questions, reply);
-  const mark = <Check className={clsx(styles.settledMark, styles.settledOk)} />;
-  if (answers.length === 0)
-    return <SettledBox title={text.answeredInChat} mark={mark} />;
   return (
     <SettledBox title={text.answered} mark={mark}>
-      <AnswerList answers={answers} />
+      <AnswerList
+        answers={asked.questions.map((question) => ({
+          id: question.id,
+          prompt: question.question,
+          answer: (answer.answers[question.id] ?? []).join(", "),
+        }))}
+      />
     </SettledBox>
   );
 }
@@ -180,7 +176,7 @@ function OtherInput({
       autoFocus
       className={styles.otherInput}
       disabled={disabled}
-      aria-label={`${question.prompt} ${text.otherAnswer}`}
+      aria-label={`${question.question} ${text.otherAnswer}`}
       placeholder={text.other}
       value={value}
       onChange={(event) => onChange(event.target.value)}
@@ -193,7 +189,7 @@ function OtherInput({
 /** A value for the Other choice that none of the question's own options use. */
 function otherValue(question: Question): string {
   let value = "other";
-  while (question.options.some((option) => option.value === value))
+  while (question.options.some((option) => option.label === value))
     value += "_";
   return value;
 }
@@ -212,10 +208,11 @@ function SingleField({
   onChange: (answer: Answer) => void;
 }) {
   const other = otherValue(question);
-  const allowOther = question.allowOther === true;
-  const options = allowOther
-    ? [...question.options, { value: other, label: text.other }]
-    : question.options;
+  const allowOther = question.custom;
+  const options = [
+    ...question.options.map(({ label }) => ({ value: label, label })),
+    ...(allowOther ? [{ value: other, label: text.other }] : []),
+  ];
   return (
     <div className={styles.question}>
       <IntakeForm
@@ -224,7 +221,7 @@ function SingleField({
         fields={[
           {
             name: question.id,
-            label: question.prompt,
+            label: question.question,
             type: "select",
             required: true,
             options,
@@ -274,25 +271,28 @@ function MultiField({
 }) {
   return (
     <fieldset className={styles.question} disabled={disabled}>
-      <legend>{question.prompt}</legend>
+      <legend>{question.question}</legend>
       {question.options.map((option) => (
         <Checkbox
-          key={option.value}
+          key={option.label}
           className={styles.option}
           label={option.label}
-          checked={answer.chosen.includes(option.value)}
+          {...(option.description === ""
+            ? {}
+            : { description: option.description })}
+          checked={answer.chosen.includes(option.label)}
           disabled={disabled}
           onCheckedChange={(checked) =>
             onChange({
               ...answer,
               chosen: checked
-                ? [...answer.chosen, option.value]
-                : answer.chosen.filter((item) => item !== option.value),
+                ? [...answer.chosen, option.label]
+                : answer.chosen.filter((item) => item !== option.label),
             })
           }
         />
       ))}
-      {question.allowOther === true ? (
+      {question.custom ? (
         <MultiOther
           id={`${idPrefix}-${question.id}-other`}
           question={question}
@@ -374,14 +374,14 @@ function StepQuestion({
   onDone: (answer: Answer) => void;
   onBack: () => void;
 }) {
-  const multi = question.kind === "multi";
-  const allowOther = question.allowOther === true;
+  const multi = question.multiple;
+  const allowOther = question.custom;
   const count = question.options.length + (allowOther ? 1 : 0);
   const otherIndex = allowOther ? question.options.length : -1;
   const [active, setActive] = useState(() => {
     if (answer.other) return otherIndex;
     const chosen = question.options.findIndex((option) =>
-      answer.chosen.includes(option.value),
+      answer.chosen.includes(option.label),
     );
     return Math.max(chosen, 0);
   });
@@ -399,7 +399,7 @@ function StepQuestion({
     if (index === otherIndex && answer.other)
       return { ...answer, other: false, otherText: "" };
     if (index === otherIndex) return { ...answer, other: true };
-    const value = question.options[index]?.value;
+    const value = question.options[index]?.label;
     if (value === undefined) return answer;
     if (!multi) return { chosen: [value], other: false, otherText: "" };
     return {
@@ -464,16 +464,16 @@ function StepQuestion({
   const chosen = (index: number) => {
     if (index === otherIndex) return answer.other;
     const option = question.options[index];
-    return option !== undefined && answer.chosen.includes(option.value);
+    return option !== undefined && answer.chosen.includes(option.label);
   };
-  const labels = [
-    ...question.options.map((option) => option.label),
-    ...(allowOther ? [text.other] : []),
+  const rows = [
+    ...question.options,
+    ...(allowOther ? [{ label: text.other, description: "" }] : []),
   ];
   return (
     <div className={styles.question}>
       <p className={styles.prompt} id={`${idPrefix}-${question.id}`}>
-        {question.prompt}
+        {question.question}
       </p>
       <div
         ref={list}
@@ -486,7 +486,7 @@ function StepQuestion({
         aria-disabled={disabled}
         onKeyDown={onListKey}
       >
-        {labels.map((label, index) =>
+        {rows.map(({ label, description }, index) =>
           index === otherIndex && answer.other ? (
             <div
               key={optionId(index)}
@@ -522,6 +522,12 @@ function StepQuestion({
               id={optionId(index)}
               role="option"
               aria-selected={chosen(index)}
+              aria-labelledby={`${optionId(index)}-label`}
+              aria-describedby={
+                description === ""
+                  ? undefined
+                  : `${optionId(index)}-description`
+              }
               className={styles.choice}
               data-active={active === index ? "" : undefined}
               onClick={() => {
@@ -536,7 +542,17 @@ function StepQuestion({
               ) : (
                 <span className={styles.choiceMark} />
               )}
-              <span>{label}</span>
+              <span className={styles.choiceText}>
+                <span id={`${optionId(index)}-label`}>{label}</span>
+                {description !== "" && (
+                  <span
+                    id={`${optionId(index)}-description`}
+                    className={styles.choiceDescription}
+                  >
+                    {description}
+                  </span>
+                )}
+              </span>
             </div>
           ),
         )}
@@ -574,7 +590,7 @@ function StepReview({
       <AnswerList
         answers={questions.map((question) => ({
           id: question.id,
-          prompt: question.prompt,
+          prompt: question.question,
           answer: answerLabels(question, answerOf(question)).join(", "),
         }))}
       />
@@ -608,10 +624,15 @@ function StepsBody({
   sending: boolean;
   onSend: () => void;
 }) {
-  const [step, setStep] = useState(0);
+  // A draft kept through a reload resumes at its first unanswered question, or at Submit.
+  const [start] = useState(() => {
+    const unanswered = questions.findIndex((item) => !complete(answerOf(item)));
+    return unanswered < 0 ? questions.length : unanswered;
+  });
+  const [step, setStep] = useState(start);
   const [moved, setMoved] = useState(false);
-  // The furthest step reached: every question is seen in turn, even one with a preselected answer.
-  const [furthest, setFurthest] = useState(0);
+  // The furthest step reached: every question is seen in turn before Submit.
+  const [furthest, setFurthest] = useState(start);
   const go = (next: number) => {
     const to = Math.max(0, Math.min(next, questions.length));
     setMoved(true);
@@ -623,7 +644,7 @@ function StepsBody({
   return (
     <>
       <div role="tablist" aria-label={text.steps} className={styles.steps}>
-        {[...questions.map((item) => stepName(item.id)), text.submit].map(
+        {[...questions.map((item) => item.header), text.submit].map(
           (name, index) => {
             const item = questions[index];
             const done =
@@ -674,7 +695,9 @@ function StepsBody({
         />
       )}
       <p className={styles.keys}>
-        {question === undefined ? text.keys.review : text.keys[question.kind]}
+        {question === undefined
+          ? text.keys.review
+          : text.keys[question.multiple ? "multi" : "single"]}
       </p>
     </>
   );
@@ -682,54 +705,53 @@ function StepsBody({
 
 export function QuestionsCard({
   id,
-  ask,
+  asked,
   state,
   layout,
 }: {
-  /** The call's id, so each card's field ids are its own. */
+  /** The question's signal, so each card's field ids are its own. */
   id: string;
-  ask: AskQuestions;
+  asked: AskedQuestion;
   state: QuestionsState;
   layout: QuestionsLayout;
 }) {
-  const [answers, setAnswers] = useState<Record<string, Answer>>(() =>
-    Object.fromEntries(
-      ask.questions.map((question) => [
-        question.id,
-        { chosen: question.preselected ?? [], other: false, otherText: "" },
-      ]),
-    ),
-  );
+  const [answers, setAnswers] = useState(() => readDraft(id));
   const [sending, setSending] = useState(false);
   const [failed, setFailed] = useState(false);
-  if (state.kind === "answered")
-    return <Settled ask={ask} reply={state.reply} />;
-  if (state.kind === "replaced") return <Settled ask={ask} />;
+  const settled = state.kind === "answered";
+  useEffect(() => {
+    if (settled) writeDraft(id, null);
+    else if (Object.keys(answers).length > 0) writeDraft(id, answers);
+  }, [id, answers, settled]);
+  if (settled) return <Settled asked={asked} answer={state.answer} />;
   const answerOf = (question: Question): Answer =>
     answers[question.id] ?? { chosen: [], other: false, otherText: "" };
   const setAnswer = (question: Question, next: Answer) =>
     setAnswers((current) => ({ ...current, [question.id]: next }));
-  const ready = ask.questions.every((question) => complete(answerOf(question)));
+  const ready = asked.questions.every((question) =>
+    complete(answerOf(question)),
+  );
   const disabled = state.disabled || sending;
   const send = async () => {
     setSending(true);
     setFailed(false);
-    const reply = ask.questions
-      .map((question) =>
-        text.answerLine(
-          question.prompt,
+    const sent = await state.onSend(
+      Object.fromEntries(
+        asked.questions.map((question) => [
+          question.id,
           answerLabels(question, answerOf(question)),
-        ),
-      )
-      .join("\n");
-    const sent = await state.onSend(reply);
+        ]),
+      ),
+    );
+    // Once sent, the card stays sending until the run log shows the answer and it settles.
+    if (sent) return;
     setSending(false);
-    setFailed(!sent);
+    setFailed(true);
   };
   const notSent = failed ? <Fault>{text.notSent}</Fault> : undefined;
   const gate = {
     kind: "form" as const,
-    title: text.title(ask.questions.length),
+    title: text.title(asked.questions.length),
   };
   if (layout === "steps")
     return (
@@ -740,7 +762,7 @@ export function QuestionsCard({
       >
         <StepsBody
           idPrefix={id}
-          questions={ask.questions}
+          questions={asked.questions}
           answerOf={answerOf}
           setAnswer={setAnswer}
           disabled={disabled}
@@ -768,20 +790,38 @@ export function QuestionsCard({
       }
     >
       <div className={styles.fields}>
-        {ask.questions.map((question) => {
+        {asked.questions.map((question) => {
           const answer = answerOf(question);
           const onChange = (next: Answer) => setAnswer(question, next);
-          return question.kind === "single" ? (
+          if (question.multiple)
+            return (
+              <MultiField
+                key={question.id}
+                question={question}
+                idPrefix={id}
+                answer={answer}
+                disabled={disabled}
+                onChange={onChange}
+              />
+            );
+          // A select hides each option's description until one is picked, so options that explain
+          // themselves are listed instead.
+          if (question.options.some((option) => option.description !== ""))
+            return (
+              <StepQuestion
+                key={question.id}
+                question={question}
+                idPrefix={id}
+                answer={answer}
+                disabled={disabled}
+                focus={false}
+                onChange={onChange}
+                onDone={onChange}
+                onBack={() => undefined}
+              />
+            );
+          return (
             <SingleField
-              key={question.id}
-              question={question}
-              idPrefix={id}
-              answer={answer}
-              disabled={disabled}
-              onChange={onChange}
-            />
-          ) : (
-            <MultiField
               key={question.id}
               question={question}
               idPrefix={id}
