@@ -6,6 +6,8 @@ import {
   type PreferenceRow,
   type WorkingPreferencesViewProps,
 } from "./working-preferences.view.tsx";
+import { WorkspaceApprovalsView } from "./workspace-approvals.view.tsx";
+import workspaceApprovals from "./workspace-approvals.stories.tsx";
 
 // Holds what the section asks its host to keep: each preference's choice.
 function Section(args: WorkingPreferencesViewProps) {
@@ -14,19 +16,10 @@ function Section(args: WorkingPreferencesViewProps) {
     <WorkingPreferencesView
       {...args}
       preferences={preferences}
-      onSwitch={(id, on) =>
-        setPreferences(
-          preferences.map((preference) =>
-            preference.id === id && preference.kind === "switch"
-              ? { ...preference, on, save: "saved" }
-              : preference,
-          ),
-        )
-      }
       onChoose={(id, choice) =>
         setPreferences(
           preferences.map((preference) =>
-            preference.id === id && preference.kind === "list"
+            preference.id === id
               ? { ...preference, choice, save: "saved" }
               : preference,
           ),
@@ -36,51 +29,126 @@ function Section(args: WorkingPreferencesViewProps) {
   );
 }
 
-const approvals: PreferenceRow = {
-  id: "experimental_approvals",
-  label: "Approvals (Experimental)",
-  hint: "On, share tailored approval packages with stakeholders.",
-  kind: "switch",
-  on: false,
+const row = {
+  browserOnly: false,
+  ends: null,
   save: null,
   disabled: false,
-};
+} as const;
 
 const questions: PreferenceRow = {
+  ...row,
   id: "questions",
-  label: "Questions before work starts",
-  hint: "How much Builder asks before it writes.",
-  kind: "list",
+  label: "Questions",
+  group: "conversation",
+  hint: "How much Builder asks before deciding for you.",
   options: [
-    { id: "few", label: "Only what it must" },
-    { id: "some", label: "A few" },
-    { id: "many", label: "Everything it wonders" },
+    { id: "every_decision", label: "Every decision" },
+    { id: "essentials", label: "Only essentials" },
+    { id: "decide_for_me", label: "Decide for me" },
   ],
-  choice: "some",
-  save: null,
-  disabled: false,
+  choice: "essentials",
+  ends: { start: "Asks more", end: "Asks less" },
 };
 
-const plainLanguage: PreferenceRow = {
-  id: "plain_language",
-  label: "Plain language",
-  hint: undefined,
-  kind: "switch",
-  on: true,
-  save: null,
-  disabled: false,
+const replies: PreferenceRow = {
+  ...row,
+  id: "replies",
+  label: "Replies",
+  group: "conversation",
+  hint: "How much detail goes into what you read.",
+  options: [
+    { id: "concise", label: "Concise" },
+    { id: "detailed", label: "Detailed" },
+  ],
+  choice: "concise",
+};
+
+const questionsLayout: PreferenceRow = {
+  ...row,
+  id: "questions_layout",
+  label: "Questions appear",
+  group: "conversation",
+  hint: "How Builder's questions are laid out when it asks several.",
+  browserOnly: true,
+  options: [
+    { id: "all", label: "All at once" },
+    { id: "steps", label: "One at a time" },
+  ],
+  choice: "all",
+};
+
+const documents: PreferenceRow = {
+  ...row,
+  id: "agent_decides_approvals",
+  label: "Documents",
+  group: "reviews",
+  hint: "Whether each document waits for your approval before the next.",
+  options: [
+    { id: "no", label: "You approve each" },
+    { id: "yes", label: "Builder goes ahead" },
+  ],
+  choice: "no",
+};
+
+const designConcepts: PreferenceRow = {
+  ...row,
+  id: "design_concepts",
+  label: "Design concepts",
+  group: "reviews",
+  hint: "How many different looks the designers make when you explore.",
+  options: ["one", "two", "three", "four", "five"].map((id, index) => ({
+    id,
+    label: String(index + 1),
+  })),
+  choice: "three",
+  ends: { start: "One look", end: "Five looks" },
+};
+
+const internet: PreferenceRow = {
+  ...row,
+  id: "internet_while_building",
+  label: "Internet",
+  group: "building",
+  hint: "What the app builder can reach while it works.",
+  options: [
+    { id: "no", label: "npm registry only" },
+    { id: "yes", label: "Any website" },
+  ],
+  choice: "yes",
+};
+
+const approvals: PreferenceRow = {
+  ...row,
+  id: "experimental_approvals",
+  label: "Approval packages",
+  group: "approvals",
+  hint: "Whether projects share approval packages with reviewers.",
+  options: [
+    { id: "no", label: "Not used" },
+    { id: "yes", label: "Share with reviewers" },
+  ],
+  choice: "no",
 };
 
 const meta = {
   title: "Screens/Settings/WorkingPreferences",
   component: WorkingPreferencesView,
   args: {
-    preferences: [questions, plainLanguage, approvals],
-    onSwitch: fn(),
+    preferences: [
+      questions,
+      replies,
+      questionsLayout,
+      documents,
+      designConcepts,
+      internet,
+      approvals,
+    ],
     onChoose: fn(),
     fault: null,
     focusPreference: null,
     focusSeq: 0,
+    reviewers: <WorkspaceApprovalsView {...workspaceApprovals.args} />,
   },
   render: (args) => <Section {...args} />,
 } satisfies Meta<typeof WorkingPreferencesView>;
@@ -92,20 +160,23 @@ export const Loaded: Story = {};
 
 /** Until the hub answers, only the preference this browser keeps is listed. */
 export const Loading: Story = {
-  args: { preferences: [approvals] },
+  args: { preferences: [questionsLayout] },
 };
 
 export const Unreadable: Story = {
-  args: { preferences: [approvals], fault: "The hub could not be reached." },
+  args: {
+    preferences: [questionsLayout],
+    fault: "The hub could not be reached.",
+  },
 };
 
-/** Each change saves as it is made, and says how that went beside its control. */
+/** Each change shows at once and saves as it is made; how that went is noted beside its name. */
 export const Saving: Story = {
   args: {
     preferences: [
-      { ...questions, save: "saving", disabled: true },
-      { ...plainLanguage, save: "failed" },
-      { ...approvals, on: true, save: "saved" },
+      { ...questions, save: "saving" },
+      { ...replies, save: "failed" },
+      { ...approvals, choice: "yes", save: "saved" },
     ],
   },
 };

@@ -11,14 +11,22 @@ export const Preferences = type({ "[string]": name }).narrow(
 );
 export type Preferences = typeof Preferences.infer;
 
+export const PreferenceGroup = type(
+  "'conversation' | 'reviews' | 'building' | 'approvals'",
+);
+export type PreferenceGroup = typeof PreferenceGroup.infer;
+
 const PreferenceDefinition = type({
   "+": "reject",
   id: name,
   label: "string > 0",
   "hint?": "string > 0",
+  group: PreferenceGroup,
   options: type({ "+": "reject", id: name, label: "string > 0" })
     .array()
     .atLeastLength(2),
+  // Present when the options are ordered: they are shown as a scale between these two words.
+  "ends?": type({ "+": "reject", start: "string > 0", end: "string > 0" }),
   default: name,
 });
 

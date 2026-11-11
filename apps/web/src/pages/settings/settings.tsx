@@ -19,8 +19,12 @@ export function Settings(props: SettingsProps) {
       providers={<ProvidersSection onChanged={props.onChanged} />}
       profiles={<Profiles />}
       collaborators={<Collaborators user={props.user ?? null} />}
-      workingPreferences={<WorkingPreferences {...workingPreferences} />}
-      workspaceApprovals={<WorkspaceApprovals />}
+      workingPreferences={
+        <WorkingPreferences
+          {...workingPreferences}
+          reviewers={<WorkspaceApprovals />}
+        />
+      }
     />
   );
 }

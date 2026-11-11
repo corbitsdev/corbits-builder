@@ -5,15 +5,25 @@
  * Collaborators (roles and invitations), and About (with its open source
  * notices). Only what has a real backing shows.
  *
- * They are grouped into tabs. Each section is the library's `Section`; its
- * rows are `SettingsRow`s. The sections that read the hub arrive as slots.
+ * They are grouped into tabs. Preferences is a `SettingsGroup` per heading, the
+ * other tabs' sections are the library's `Section`; their rows are
+ * `SettingsRow`s. The sections that read the hub arrive as slots.
  */
 import { wording } from "../../config.ts";
-import { Section, Switch, Tabs, type ThemeMode } from "@corbits/react-ui";
+import { Section, Tabs, type ThemeMode } from "@corbits/react-ui";
 import type { ReactNode } from "react";
 import { SettingsRow, SettingsRowValue } from "./settings-row.tsx";
-import { SettingsSectionBody, SettingsSubhead } from "./settings-section.tsx";
-import { Button, QuietSelect } from "../../components.jsx";
+import {
+  SettingsGroup,
+  SettingsSectionBody,
+  SettingsSubhead,
+} from "./settings-section.tsx";
+import {
+  ChoiceSegments,
+  PictureChoice,
+  ThemePicture,
+} from "./preference-choice.tsx";
+import { Button } from "../../components.jsx";
 import { openSourceNotices } from "../../open-source.ts";
 import { Credit } from "../../flourish.tsx";
 import styles from "./settings.module.css";
@@ -28,17 +38,24 @@ const SETTINGS_TABS: readonly { id: SettingsTab; label: string }[] = [
   { id: "about", label: wording.settings.tab.about },
 ];
 
-const THEME_MODES: readonly ThemeMode[] = ["light", "system", "dark"];
+const THEME_OPTIONS = (["light", "system", "dark"] as const).map((mode) => ({
+  id: mode,
+  label: wording.settings.appearance.themes[mode],
+  picture: <ThemePicture mode={mode} />,
+}));
+
+const TIPS_OPTIONS = (["on", "off"] as const).map((shown) => ({
+  id: shown,
+  label: wording.settings.appearance.tipsChoices[shown],
+}));
 
 /** The sections that read the hub for themselves, each drawn only while its tab is open. */
 export type SettingsSlots = {
   providers: ReactNode;
   profiles: ReactNode;
   collaborators: ReactNode;
-  /** The first section of the Preferences tab. */
+  /** The Preferences tab's groups above Appearance and Account. */
   workingPreferences: ReactNode;
-  /** The second, above Appearance and Account. */
-  workspaceApprovals: ReactNode;
 };
 
 type AppearanceProps = {
@@ -47,9 +64,6 @@ type AppearanceProps = {
   /** Documents show their tips. */
   documentTips: boolean;
   onDocumentTipsChange: (shown: boolean) => void;
-  /** Questions are asked a step at a time rather than all at once. */
-  questionsInSteps: boolean;
-  onQuestionsInStepsChange: (inSteps: boolean) => void;
 };
 
 type AccountProps = {
@@ -64,7 +78,7 @@ export type SettingsViewProps = SettingsSlots & {
   /** The open tab. */
   tab: SettingsTab;
   onTabChange: (tab: SettingsTab) => void;
-  /** The theme, and the document tips and questions layout choices kept in this browser. */
+  /** The theme and the document tips choice kept in this browser. */
   appearance: AppearanceProps;
   /** Who is signed in; null when nobody is, and the Account section is left out. */
   account: AccountProps | null;
@@ -77,7 +91,6 @@ export function SettingsView({
   profiles,
   collaborators,
   workingPreferences,
-  workspaceApprovals,
   appearance,
   account,
 }: SettingsViewProps) {
@@ -96,8 +109,8 @@ export function SettingsView({
     }
     return (
       <>
+        <p className={styles.lead}>{wording.settings.preferences.lead}</p>
         {workingPreferences}
-        {workspaceApprovals}
         <Appearance {...appearance} />
         {account ? <Account {...account} /> : null}
       </>
@@ -124,73 +137,55 @@ function Appearance({
   onThemeChange,
   documentTips,
   onDocumentTipsChange,
-  questionsInSteps,
-  onQuestionsInStepsChange,
 }: AppearanceProps) {
   const copy = wording.settings.appearance;
   return (
-    <Section title={copy.section} description={copy.lead}>
-      <SettingsSectionBody>
-        <SettingsRow label={copy.theme} htmlFor="settings-theme">
-          <QuietSelect
-            id="settings-theme"
-            value={theme}
-            onChange={(event) => onThemeChange(event.target.value as ThemeMode)}
-          >
-            {THEME_MODES.map((option) => (
-              <option key={option} value={option}>
-                {copy.themes[option]}
-              </option>
-            ))}
-          </QuietSelect>
-        </SettingsRow>
-        <SettingsRow
-          label={wording.tips.setting}
-          hint={wording.tips.settingHint}
-        >
-          <Switch
-            label={wording.tips.setting}
-            checked={documentTips}
-            onCheckedChange={onDocumentTipsChange}
-          />
-        </SettingsRow>
-        <SettingsRow
-          label={wording.questions.layoutSetting}
-          hint={wording.questions.layoutHint}
-        >
-          <Switch
-            label={wording.questions.layoutSetting}
-            checked={questionsInSteps}
-            onCheckedChange={onQuestionsInStepsChange}
-          />
-        </SettingsRow>
-      </SettingsSectionBody>
-    </Section>
+    <SettingsGroup title={copy.section} lead={copy.lead}>
+      <SettingsRow
+        layout="columns"
+        label={copy.theme}
+        hint={copy.themeHint}
+        htmlFor="settings-theme"
+      >
+        <PictureChoice
+          id="settings-theme"
+          label={copy.theme}
+          options={THEME_OPTIONS}
+          choice={theme}
+          onChoose={(mode) => onThemeChange(mode as ThemeMode)}
+        />
+      </SettingsRow>
+      <SettingsRow
+        layout="columns"
+        label={copy.tips}
+        hint={copy.tipsHint}
+        htmlFor="settings-tips"
+      >
+        <ChoiceSegments
+          id="settings-tips"
+          label={copy.tips}
+          options={TIPS_OPTIONS}
+          choice={documentTips ? "on" : "off"}
+          onChoose={(shown) => onDocumentTipsChange(shown === "on")}
+        />
+      </SettingsRow>
+    </SettingsGroup>
   );
 }
 
 /** Who is signed in, and a way out. The hub has no rename or
  * password-change endpoints, so there are no controls for them. */
 function Account({ name, email, signingOut, onSignOut }: AccountProps) {
-  const copy = wording.settings.account;
   return (
-    <Section title={copy.section} description={copy.lead}>
-      <SettingsSectionBody>
-        <SettingsRow label={copy.name}>
-          <SettingsRowValue>{name}</SettingsRowValue>
-        </SettingsRow>
-        <SettingsRow label={copy.email}>
-          <SettingsRowValue>{email}</SettingsRowValue>
-        </SettingsRow>
+    <SettingsGroup title={wording.settings.account.section}>
+      <SettingsRow label={name} hint={email}>
         {onSignOut ? (
-          <SettingsRow>
-            <Button variant="outline" loading={signingOut} onClick={onSignOut}>
-              {wording.action.signOut}
-            </Button>
-          </SettingsRow>
+          <Button variant="outline" loading={signingOut} onClick={onSignOut}>
+            {wording.action.signOut}
+          </Button>
         ) : null}
-      </SettingsSectionBody>
-    </Section>
+      </SettingsRow>
+    </SettingsGroup>
   );
 }
 

@@ -4,6 +4,11 @@
  * its only route for it is tenant-scoped, and the sign-in screens and the page
  * title render before any authenticated request.
  */
+import type {
+  PreferenceGroup,
+  PreferenceRegistry,
+} from "@corbits-builder/schemas/preferences";
+
 export const productName = "Builder";
 
 /**
@@ -112,8 +117,6 @@ export const wording = {
   documentRetryFailed: "The project could not be read. Try again.",
   tips: {
     label: "Tips",
-    setting: "Show tips",
-    settingHint: "A tips button sits in the bar at the foot of each document.",
     turnOff: "Turn off tips",
     items: [
       "Select any text to quote it in your message",
@@ -1008,10 +1011,6 @@ export const wording = {
       review: "Enter send · ← back",
     },
     composerPlaceholder: "Type here to respond to the above question",
-    /** The Settings switch between one question at a time and all at once. */
-    layoutSetting: "Ask questions one at a time",
-    layoutHint:
-      "On, each question is its own step you answer from the keyboard. Off, every question shows at once.",
     send: "Send answers",
     sending: "Sending…",
     notSent: "Your answers were not sent. Your choices are kept; try again.",
@@ -1200,51 +1199,101 @@ export const wording = {
       unconfirmed: "License: see upstream",
     },
     preferences: {
-      section: `How ${productName} works with you`,
-      lead: "What you say in a project wins.",
+      lead: "New projects start with these. What you say in a project wins.",
+      /** Beside a preference this browser keeps rather than the hub. */
+      thisBrowser: "This browser",
       saving: "Saving…",
       saved: "Saved",
       failed: "Not saved",
-      experimental: [
+      groups: {
+        conversation: {
+          title: "Conversation",
+          lead: `How ${productName} talks with you`,
+        },
+        reviews: {
+          title: "Reviews and approvals",
+          lead: `When ${productName} waits for you`,
+        },
+        building: {
+          title: "Building the app",
+          lead: "Applies from the next build",
+        },
+        approvals: {
+          title: "Stakeholder approvals",
+          tag: "Experimental",
+          lead: "Saved in this browser",
+        },
+      } satisfies Record<
+        PreferenceGroup,
+        { title: string; lead: string; tag?: string }
+      >,
+      /** Kept in this browser alone. */
+      local: [
+        {
+          id: "questions_layout",
+          label: "Questions appear",
+          hint: `How ${productName}'s questions are laid out when it asks several.`,
+          group: "conversation",
+          options: [
+            {
+              id: "all",
+              label: "All at once",
+            },
+            {
+              id: "steps",
+              label: "One at a time",
+            },
+          ],
+          default: "steps",
+        },
+      ] satisfies PreferenceRegistry["preferences"],
+      /** The hub's own, offered before its registry is read, so they can be set without it. */
+      fallback: [
         {
           id: "experimental_approvals",
-          label: "Approvals (Experimental)",
-          hint: "On, share tailored approval packages with stakeholders, track reviewer status (Pending Feedback, Approve), and incorporate feedback directly into your prompt.",
+          label: "Approval packages",
+          hint: "Whether projects share approval packages with reviewers.",
+          group: "approvals",
           options: [
-            { id: "no", label: "Off" },
-            { id: "yes", label: "On" },
+            {
+              id: "no",
+              label: "Not used",
+            },
+            {
+              id: "yes",
+              label: "Share with reviewers",
+            },
           ],
           default: "no",
         },
-      ],
+      ] satisfies PreferenceRegistry["preferences"],
     },
     approvals: {
-      section: "Workspace approvals",
-      lead: "Control whether projects use stakeholder approval packages and manage saved reviewers across this workspace.",
-      requireLabel: "Require stakeholder approval",
-      requireHint:
-        "When off, stakeholder approval packages are bypassed and the Approval tab is hidden in projects.",
-      reviewersSubhead: "Workspace reviewers",
-      reviewersLead:
-        "Saved reviewers can be selected with one click when sharing an approval package in any project.",
+      reviewers: "Saved reviewers",
+      reviewersHint: "Pick them in one click when you share.",
+      emptyReviewers: "None yet. Pick them in one click when you share.",
+      dialogTitle: "Add reviewer",
+      dialogDescription:
+        "Saved reviewers can be picked in one click when you share an approval package in any project.",
       reviewerName: "Reviewer name",
       reviewerPersona: "Persona",
       reviewerEmail: "Email (optional)",
       reviewerGoal: "Goal or decision focus (optional)",
       addReviewer: "Add reviewer",
       removeReviewer: "Remove",
-      emptyReviewers: "No saved workspace reviewers yet.",
     },
     appearance: {
       section: "Appearance",
-      lead: "Follows the system until you say otherwise.",
+      lead: "Saved in this browser",
       theme: "Theme",
+      themeHint: `How ${productName} looks in this browser.`,
       themes: { light: "Light", system: "System", dark: "Dark" },
+      tips: "Document tips",
+      tipsHint: "A tips button at the foot of each document.",
+      tipsChoices: { on: "Shown", off: "Hidden" },
     },
     account: {
       section: "Account",
-      lead: "Who you are on this server.",
-      name: "Name",
       email: "Email",
     },
     collaborators: {

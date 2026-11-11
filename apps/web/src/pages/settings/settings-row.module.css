@@ -9,6 +9,20 @@
   transition: background-color 300ms ease;
 }
 
+.row[data-layout="columns"] {
+  justify-content: flex-start;
+  gap: var(--space-6);
+}
+
+.row[data-layout="columns"] > .key {
+  flex: 0 0 300px;
+}
+
+/* Beside pictures, the name reads from the top rather than floating mid-picture. */
+.row[data-layout="columns"]:has(> [data-slot="picture-choice"]) {
+  align-items: flex-start;
+}
+
 .row[data-highlighted] {
   margin: 0 calc(var(--space-2) * -1);
   padding-left: var(--space-2);
@@ -20,7 +34,7 @@
 .key {
   display: flex;
   flex-direction: column;
-  gap: 1px;
+  gap: 2px;
   min-width: 0;
 }
 
@@ -29,13 +43,32 @@
   align-items: center;
   gap: var(--space-2);
   font-weight: 600;
-  font-size: 13.5px;
+  font-size: 14px;
+  line-height: 20px;
+}
+
+/* The name line holds its notes, such as where it is kept and how its last
+   change saved, so they appear without moving the control beside it. */
+.name {
+  display: inline-flex;
+  align-items: baseline;
+  gap: var(--space-2);
+  white-space: nowrap;
+}
+
+.aside {
+  display: inline-flex;
+  align-items: baseline;
+  gap: var(--space-2);
+  font-size: 12px;
+  line-height: 16px;
+  color: var(--muted-foreground);
 }
 
 .hint {
-  font-size: 12px;
+  font-size: 13px;
+  line-height: 1.4;
   color: var(--muted-foreground);
-  font-family: var(--font-mono);
 }
 
 .value {
@@ -84,6 +117,14 @@
 @media (max-width: 560px) {
   .row {
     flex-wrap: wrap;
+  }
+
+  .row[data-layout="columns"] {
+    gap: var(--space-2);
+  }
+
+  .row[data-layout="columns"] > .key {
+    flex-basis: 100%;
   }
 
   .value {

@@ -1090,21 +1090,12 @@ describe("approval rounds panel", () => {
     expect(html).toContain("Cancel");
   });
 
-  test("renders WorkspaceApprovals settings section with require stakeholder approval toggle and no workspace reviewers until some are saved", () => {
+  test("renders the saved reviewers in Settings with an Add reviewer button and none until some are saved", () => {
     const html = renderToStaticMarkup(<WorkspaceApprovals />);
-    expect(html).toContain("Workspace approvals");
-    expect(html).toContain("Require stakeholder approval");
-    expect(html).toContain("Workspace reviewers");
-    expect(html).toContain("No saved workspace reviewers yet.");
-    expect(html).toContain('data-slot="approval-fields" data-variant="form"');
-    expect(html).toMatch(
-      /<input [^>]*data-slot="lean-input"[^>]*data-variant="form"/,
-    );
-    expect(html).toMatch(
-      /<select [^>]*data-slot="lean-select"[^>]*data-variant="form"/,
-    );
-    expect(html).toContain("Add reviewer");
-    expect(html).toContain("Other…");
+    expect(html).toContain("Saved reviewers");
+    expect(html).toContain("None yet. Pick them in one click when you share.");
+    expect(html).toContain(">Add reviewer<");
+    expect(html).not.toContain("Require stakeholder approval");
   });
 
   test("lists saved workspace reviewers in Settings and the share dialog picker", () => {
@@ -1165,7 +1156,7 @@ describe("approval rounds panel", () => {
     expect(approvalsHtml).toContain("Enable in Settings");
   });
 
-  test("opens Settings directly to the Preferences tab and renders Approvals (Experimental) off by default", () => {
+  test("opens Settings directly to the Preferences tab and renders Approval packages off by default", () => {
     const html = renderToStaticMarkup(
       <ThemeProvider>
         <QueryClientProvider client={queryClient}>
@@ -1177,10 +1168,12 @@ describe("approval rounds panel", () => {
         </QueryClientProvider>
       </ThemeProvider>,
     );
-    expect(html).toContain("How Builder works with you");
+    expect(html).toContain("Stakeholder approvals");
     expect(html).not.toContain("Slide Decks");
-    expect(html).toContain("Approvals (Experimental)");
-    expect(html).toContain('id="preference-experimental_approvals"');
+    expect(html).toContain("Approval packages");
+    expect(html).toMatch(
+      /id="preference-experimental_approvals"[^>]*aria-checked="true"[^>]*><span[^>]*>Not used</,
+    );
     expect(html).not.toContain('id="preference-experimental_slide_decks"');
     expect(html).toContain('data-highlighted=""');
   });
