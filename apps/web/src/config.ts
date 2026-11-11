@@ -59,13 +59,7 @@ export const wording = {
     accountUnreadable: "Your account could not be read.",
   },
   hub: {
-    timedOut: "The hub did not answer in time. Try again.",
-    unreachable: "That request did not reach the hub. Try again.",
     notAnswering: "The hub is not answering",
-    slowTitle: (averageMs: number) =>
-      `${productName} is responding slowly: about ${(averageMs / 1000).toFixed(1)} seconds per action`,
-    slowLead:
-      "Everything on this page waits on it. If it stays slow, restart the app; the hub's log says which requests were slow.",
   },
   boot: {
     starting: "Starting…",
