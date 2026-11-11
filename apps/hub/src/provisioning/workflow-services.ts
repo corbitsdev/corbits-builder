@@ -32,6 +32,7 @@ import {
   type CredentialCipher,
   type ResolvedWorkflowLifecyclePolicy,
 } from "@intx/types";
+import { DEFAULT_SIDECAR_ACTIVE_DEPLOYMENTS } from "@intx/types/sidecar";
 import { getLogger } from "@intx/log";
 import {
   connectDocker,
@@ -120,7 +121,7 @@ export async function createWorkflowServices(options: {
   const maxActiveDeployments = positiveInteger(
     environment,
     "SIDECAR_LOCAL_MAX_ACTIVE",
-    16,
+    DEFAULT_SIDECAR_ACTIVE_DEPLOYMENTS,
   );
   const dataRoot = localSidecarDataRoot(
     environment["HUB_DATA_DIR"] ?? "data/hub",
