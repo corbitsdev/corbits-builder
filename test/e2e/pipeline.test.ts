@@ -8,6 +8,7 @@ import { AskedQuestion } from "@intx/types/runtime-core";
 import { startTestHub, type TestHubHandle } from "./support/hub.ts";
 import {
   formatOpenAISseResponse,
+  loadScenarioBundle,
   startRecordedModelServer,
   writeScenarioFixture,
   type ExchangeExpectation,
@@ -22,6 +23,10 @@ const RequestApprovalArgs = type({
 });
 
 const NonEmptyString = type("string > 0");
+
+const RecordedRole = type(
+  "'coordinator' | 'designer' | 'coder' | 'presenter' | 'writer' | 'reviewer'",
+);
 
 type ArtifactMilestone = Readonly<{
   kind: string;
@@ -121,6 +126,20 @@ function isQuestionPark(event: {
 }): boolean {
   return (
     event.type === "SignalAwaited" && event.body["parkKind"] === "question"
+  );
+}
+
+function openQuestionPark<
+  Event extends { type: string; body: Record<string, unknown> },
+>(events: readonly Event[]): Event | undefined {
+  return events.find(
+    (event) =>
+      isQuestionPark(event) &&
+      !events.some(
+        (later) =>
+          later.type === "SignalReceived" &&
+          later.body["signalName"] === event.body["signalName"],
+      ),
   );
 }
 
@@ -489,6 +508,94 @@ function withRequiredTools(
   }));
 }
 
+type PipelineDriver = Parameters<Parameters<typeof withPipelineScenario>[1]>[0];
+
+// The recorded weather project from the idea to its app's second version, after one change.
+async function buildWeatherApp(driver: PipelineDriver): Promise<void> {
+  await driver.runStage("documents", async () => {
+    await driver.waitForAssistantTurn(
+      "documents",
+      "weather app is a great one",
+    );
+    await driver.sendMessage([
+      "1. It's for people who want a weather app where the whole interface animates to match the live weather (rain, snow, sun, storm, wind, fog, day/night).",
+      "2. Current conditions, 24-hour forecast, 7-day forecast, multi-city search & saved locations, side-by-side city comparison, and custom weather scene animations.",
+      "3. Free public weather API (Open-Meteo, no API key required), responsive web app, smooth 60fps canvas/CSS animations.",
+    ]);
+
+    const documentSteps: readonly ArtifactApprovalStep[] = [
+      {
+        stage: "documents",
+        kind: "problem_brief",
+        version: 1,
+        decision: "approve",
+      },
+      {
+        stage: "documents",
+        kind: "constraints",
+        version: 1,
+        afterApproved: { kind: "problem_brief", version: 1 },
+        decision: "approve",
+      },
+      {
+        stage: "documents",
+        kind: "approaches",
+        version: 1,
+        afterApproved: { kind: "constraints", version: 1 },
+        decision: "reject",
+        feedback: "I think Approach B is the best",
+      },
+      {
+        stage: "documents",
+        kind: "approaches",
+        version: 2,
+        decision: "approve",
+      },
+      {
+        stage: "documents",
+        kind: "product_requirements",
+        version: 1,
+        afterApproved: { kind: "approaches", version: 2 },
+        decision: "approve",
+      },
+    ];
+
+    for (const step of documentSteps) {
+      await driver.decideArtifactApproval(step);
+    }
+  });
+
+  await driver.runStage("design", async () => {
+    await driver.decideToolApproval({
+      stage: "design",
+      toolName: "design_app",
+      afterApproved: { kind: "product_requirements", version: 1 },
+    });
+    await driver.chooseFiledDesignOption("design", 1, "The design is filed");
+  });
+
+  await driver.runStage("build", async () => {
+    await driver.decideArtifactApproval({
+      stage: "build",
+      kind: "build_plan",
+      version: 1,
+      afterApproved: { kind: "design", version: 1 },
+      decision: "approve",
+    });
+    await driver.decideToolApproval({
+      stage: "build",
+      toolName: "instruct_coder",
+      afterApproved: { kind: "build_plan", version: 1 },
+      afterFiled: { kind: "app", version: 1 },
+    });
+    await driver.waitForArtifactAndTurn(
+      "build",
+      { kind: "app", version: 2 },
+      "filed as version 2",
+    );
+  });
+}
+
 describe("Builder E2E pipeline replay", () => {
   test(
     "drives Animated Weather App from idea through documents, review, design and build to a shipped app",
@@ -504,92 +611,9 @@ describe("Builder E2E pipeline replay", () => {
           const { hub, projectTenantId, projectId } = driver;
           const { client, workspaceTenantId, fakeCredentialSecret } = hub;
 
-          await driver.runStage("documents", async () => {
-            await driver.waitForAssistantTurn(
-              "documents",
-              "weather app is a great one",
-            );
-            await driver.sendMessage([
-              "1. It's for people who want a weather app where the whole interface animates to match the live weather (rain, snow, sun, storm, wind, fog, day/night).",
-              "2. Current conditions, 24-hour forecast, 7-day forecast, multi-city search & saved locations, side-by-side city comparison, and custom weather scene animations.",
-              "3. Free public weather API (Open-Meteo, no API key required), responsive web app, smooth 60fps canvas/CSS animations.",
-            ]);
-
-            const documentSteps: readonly ArtifactApprovalStep[] = [
-              {
-                stage: "documents",
-                kind: "problem_brief",
-                version: 1,
-                decision: "approve",
-              },
-              {
-                stage: "documents",
-                kind: "constraints",
-                version: 1,
-                afterApproved: { kind: "problem_brief", version: 1 },
-                decision: "approve",
-              },
-              {
-                stage: "documents",
-                kind: "approaches",
-                version: 1,
-                afterApproved: { kind: "constraints", version: 1 },
-                decision: "reject",
-                feedback: "I think Approach B is the best",
-              },
-              {
-                stage: "documents",
-                kind: "approaches",
-                version: 2,
-                decision: "approve",
-              },
-              {
-                stage: "documents",
-                kind: "product_requirements",
-                version: 1,
-                afterApproved: { kind: "approaches", version: 2 },
-                decision: "approve",
-              },
-            ];
-
-            for (const step of documentSteps) {
-              await driver.decideArtifactApproval(step);
-            }
-          });
-
-          await driver.runStage("design", async () => {
-            await driver.decideToolApproval({
-              stage: "design",
-              toolName: "design_app",
-              afterApproved: { kind: "product_requirements", version: 1 },
-            });
-            await driver.chooseFiledDesignOption(
-              "design",
-              1,
-              "The design is filed",
-            );
-          });
+          await buildWeatherApp(driver);
 
           await driver.runStage("build", async () => {
-            await driver.decideArtifactApproval({
-              stage: "build",
-              kind: "build_plan",
-              version: 1,
-              afterApproved: { kind: "design", version: 1 },
-              decision: "approve",
-            });
-            await driver.decideToolApproval({
-              stage: "build",
-              toolName: "instruct_coder",
-              afterApproved: { kind: "build_plan", version: 1 },
-              afterFiled: { kind: "app", version: 1 },
-            });
-            await driver.waitForArtifactAndTurn(
-              "build",
-              { kind: "app", version: 2 },
-              "filed as version 2",
-            );
-
             const appVersions = await client.appVersions(
               projectTenantId,
               projectId,
@@ -636,6 +660,387 @@ describe("Builder E2E pipeline replay", () => {
           });
         },
       );
+    },
+    STAGE_DEADLINE_MS * 3,
+  );
+
+  test(
+    "changes a built app's fonts to the person's pick-fonts choice through instruct_coder, and the coder's report reaches the coordinator",
+    async () => {
+      const fixtureDir = await mkdtemp(
+        join(tmpdir(), "builder-e2e-font-change-fixture-"),
+      );
+      const coordinatorTools = ["question", "instruct_coder"];
+      const coderTools = ["edit_file", "run_shell", "mail_reply"];
+      // The filed design's secondary font, which the hub reads for the screen.
+      const inUse = { proposed: { secondary: "Space Mono" } };
+      const input = { proposed: { primary: "Arial" } };
+      const fontKeys = ["look.font-primary", "look.font-secondary"];
+      const chosen = {
+        "look.font-primary": "Arial",
+        "look.font-secondary": "Bitter",
+      };
+      // Entries of plugins/pick-fonts/data/fonts.json.
+      const output = {
+        primary: { name: "Arial", lists: ["sans"], license: "free" },
+        secondary: { name: "Bitter", lists: ["serif"], license: "free" },
+      };
+      const themeImport = '@import "@corbits/react-ui/theme.css";\n';
+      const report =
+        "Body text is now Arial and headings are Bitter; check-app passed.";
+      const fontTurns = withRequiredTools(coordinatorTools, [
+        {
+          sse: formatOpenAISseResponse({
+            toolCalls: [
+              {
+                id: "coord_fonts_in_use",
+                name: "question",
+                arguments: { plugin: "pick-fonts", input: inUse },
+              },
+            ],
+          }),
+          expect: {
+            lastMessageRole: "user",
+            userTextContains: "the font is ugly",
+            toolResults: [],
+          },
+        },
+        {
+          sse: formatOpenAISseResponse({
+            toolCalls: [
+              {
+                id: "coord_fonts",
+                name: "question",
+                arguments: { plugin: "pick-fonts", input },
+              },
+            ],
+          }),
+          expect: {
+            lastMessageRole: "tool",
+            toolResults: [
+              {
+                callId: "coord_fonts_in_use",
+                toolName: "question",
+                isError: true,
+                contains: [
+                  "pick-fonts was not shown. One field is wrong.",
+                  "",
+                  'proposed: "Space Mono" is already the font in use.',
+                  "",
+                  'Your other fields were fine: list "all".',
+                  "Call again proposing a different font, or with no proposal to let the person choose.",
+                ].join("\n"),
+              },
+            ],
+          },
+        },
+        {
+          sse: formatOpenAISseResponse({
+            toolCalls: [
+              {
+                id: "coord_font_change",
+                name: "instruct_coder",
+                arguments: {
+                  instruction:
+                    "Set the app's body text in Arial and its headings in Bitter, the fonts the person picked. Change nothing else.",
+                },
+              },
+            ],
+          }),
+          expect: {
+            lastMessageRole: "tool",
+            toolResults: [
+              {
+                callId: "coord_fonts",
+                toolName: "question",
+                isError: false,
+                keys: ["output"],
+                contains: JSON.stringify({ output }),
+              },
+            ],
+          },
+        },
+        {
+          sse: formatOpenAISseResponse({
+            text: "The coder is switching the fonts to Arial and Bitter.",
+          }),
+          expect: {
+            lastMessageRole: "tool",
+            toolResults: [
+              {
+                callId: "coord_font_change",
+                toolName: "instruct_coder",
+                isError: false,
+                keys: ["runId", "role"],
+              },
+            ],
+          },
+        },
+        {
+          sse: formatOpenAISseResponse({
+            text: "Your saved fonts are in the design.",
+          }),
+          expect: {
+            lastMessageRole: "user",
+            userTextContains:
+              'The person saved look tweaks to the design in a new version of the filed design\'s styles.css: --font-sans: "Arial",',
+            toolResults: [],
+          },
+        },
+        {
+          sse: formatOpenAISseResponse({
+            text: "Your app now uses Arial and Bitter.",
+          }),
+          expect: {
+            lastMessageRole: "user",
+            userTextContains: report,
+            toolResults: [],
+          },
+        },
+      ]);
+      const coderTurns = withRequiredTools(coderTools, [
+        {
+          sse: formatOpenAISseResponse({
+            toolCalls: [
+              {
+                id: "coder_fonts",
+                name: "edit_file",
+                arguments: {
+                  path: "client/src/styles.css",
+                  old_string: themeImport,
+                  new_string:
+                    themeImport +
+                    '\nbody {\n  font-family: "Arial", sans-serif;\n}\n\nh1,\nh2,\nh3 {\n  font-family: "Bitter", serif;\n}\n',
+                },
+              },
+            ],
+          }),
+          expect: {
+            lastMessageRole: "user",
+            userTextContains: "Arial and its headings in Bitter",
+            toolResults: [],
+          },
+        },
+        {
+          sse: formatOpenAISseResponse({
+            toolCalls: [
+              {
+                id: "coder_fonts_check",
+                name: "run_shell",
+                arguments: { command: "check-app" },
+              },
+            ],
+          }),
+          expect: {
+            lastMessageRole: "tool",
+            toolResults: [
+              {
+                callId: "coder_fonts",
+                toolName: "edit_file",
+                isError: false,
+              },
+            ],
+          },
+        },
+        {
+          sse: formatOpenAISseResponse({ text: report }),
+          expect: {
+            lastMessageRole: "tool",
+            toolResults: [
+              {
+                callId: "coder_fonts_check",
+                toolName: "run_shell",
+                isError: false,
+                contains: "The app is filed as version 3.",
+              },
+            ],
+          },
+        },
+      ]);
+      const { manifest, runs } = await loadScenarioBundle(FIXTURE_DIR);
+      try {
+        await writeScenarioFixture(fixtureDir, manifest, [
+          ...runs.map((run) => ({
+            runKey: run.runKey,
+            role: RecordedRole.assert(run.role),
+            stage: run.stage,
+            sourceRunId: run.sourceRunId,
+            exchanges: [
+              ...run.exchanges.map((exchange) => ({
+                sse: exchange.responseSse,
+                expect: exchange.expect,
+              })),
+              ...(run.runKey === "coordinator-1" ? fontTurns : []),
+            ],
+          })),
+          {
+            runKey: "coder-3",
+            role: "coder",
+            stage: "build",
+            sourceRunId: "run_coder_font_change",
+            exchanges: coderTurns,
+          },
+        ]);
+
+        await withPipelineScenario(
+          {
+            fixtureDir,
+            projectId: "animated-weather-app",
+            title: "Animated Weather App",
+            problemStatement: "C: Weather App",
+          },
+          async (driver) => {
+            const { hub, projectTenantId, projectId, coordinatorRunId } =
+              driver;
+            const { client } = hub;
+
+            await buildWeatherApp(driver);
+
+            await driver.runStage("font-change", async () => {
+              const built = await client.decidedApprovals(
+                projectTenantId,
+                projectId,
+              );
+              const { artifacts } = await client.projectArtifacts(
+                projectTenantId,
+                projectId,
+              );
+              const design = await client.artifact(
+                projectTenantId,
+                projectId,
+                NonEmptyString.assert(
+                  findArtifact(artifacts, "design")?.artifactId,
+                ),
+              );
+              const styles = type({
+                files: { "designs/styles.css": "string" },
+              }).assert(JSON.parse(design.content)).files["designs/styles.css"];
+              expect(styles).toContain("--font-sans: system-ui,");
+              expect(styles).toContain('--font-mono: "Space Mono",');
+              expect(
+                await client.projectValues(
+                  projectTenantId,
+                  projectId,
+                  fontKeys,
+                ),
+              ).toEqual({
+                values: {
+                  "look.font-primary": "system-ui",
+                  "look.font-secondary": "Space Mono",
+                },
+              });
+
+              await driver.sendMessage(["the font is ugly"]);
+              const shown = await driver.waitFor(
+                "font-change",
+                "the coordinator's pick-fonts question in its run log",
+                async () => {
+                  const { events } = await client.conversationEvents(
+                    projectTenantId,
+                    projectId,
+                  );
+                  return openQuestionPark(events);
+                },
+              );
+              // The refused call never parked: the only question the run asked is the valid one.
+              const { events } = await client.conversationEvents(
+                projectTenantId,
+                projectId,
+              );
+              expect(events.filter(isQuestionPark)).toEqual([shown]);
+              expect(shown.body["question"]).toEqual({
+                plugin: "pick-fonts",
+                input,
+              });
+
+              // What the web app does when the person confirms: the fonts are saved as design
+              // tweaks before the screen's output is returned.
+              expect(
+                await client.saveProjectValues(
+                  projectTenantId,
+                  projectId,
+                  chosen,
+                ),
+              ).toEqual({ values: chosen });
+              expect(
+                await client.projectValues(
+                  projectTenantId,
+                  projectId,
+                  fontKeys,
+                ),
+              ).toEqual({ values: chosen });
+              await driver.assertArtifactStates([
+                { kind: "problem_brief", version: 1, approvedVersion: 1 },
+                { kind: "constraints", version: 1, approvedVersion: 1 },
+                { kind: "approaches", version: 2, approvedVersion: 2 },
+                {
+                  kind: "product_requirements",
+                  version: 1,
+                  approvedVersion: 1,
+                },
+                { kind: "design", version: 2, approvedVersion: 1 },
+                { kind: "build_plan", version: 1, approvedVersion: 1 },
+                { kind: "app", version: 2 },
+              ]);
+
+              await client.answerQuestion(
+                projectTenantId,
+                coordinatorRunId,
+                NonEmptyString.assert(shown.body["signalName"]),
+                { output },
+              );
+              await driver.decideToolApproval({
+                stage: "font-change",
+                toolName: "instruct_coder",
+              });
+              await driver.waitForArtifactAndTurn(
+                "font-change",
+                { kind: "app", version: 3 },
+                "Your app now uses Arial and Bitter.",
+              );
+
+              const appVersions = await client.appVersions(
+                projectTenantId,
+                projectId,
+              );
+              expect(appVersions.versions.map((v) => v.version)).toEqual([
+                3, 2, 1,
+              ]);
+              expect(appVersions.versions[0]?.source).toBe("check");
+              // Only the saved fonts wrote the design again, and nothing was sent for approval:
+              // the change's only approval is the instruction itself, which covers the design
+              // with the saved fonts.
+              await driver.assertArtifactStates([
+                { kind: "problem_brief", version: 1, approvedVersion: 1 },
+                { kind: "constraints", version: 1, approvedVersion: 1 },
+                { kind: "approaches", version: 2, approvedVersion: 2 },
+                {
+                  kind: "product_requirements",
+                  version: 1,
+                  approvedVersion: 1,
+                },
+                { kind: "design", version: 2, approvedVersion: 2 },
+                { kind: "build_plan", version: 1, approvedVersion: 1 },
+                { kind: "app", version: 3 },
+              ]);
+              const decided = await client.decidedApprovals(
+                projectTenantId,
+                projectId,
+              );
+              const earlier = new Set(
+                built.approvals.map((approval) => approval.approvalId),
+              );
+              expect(
+                decided.approvals
+                  .filter((approval) => !earlier.has(approval.approvalId))
+                  .map((approval) => [approval.toolName, approval.status]),
+              ).toEqual([["instruct_coder", "approved"]]);
+            });
+          },
+        );
+      } finally {
+        await rm(fixtureDir, { recursive: true, force: true });
+      }
     },
     STAGE_DEADLINE_MS * 3,
   );
@@ -1247,9 +1652,10 @@ describe("Builder E2E pipeline replay", () => {
               const signalName = type("string > 0").assert(
                 parked.body["signalName"],
               );
-              const [asked] = AskedQuestion.assert(
-                parked.body["question"],
-              ).questions;
+              const question = AskedQuestion.assert(parked.body["question"]);
+              if ("plugin" in question)
+                throw new Error("the parked question shows a screen");
+              const [asked] = question.questions;
               if (asked === undefined)
                 throw new Error("the parked question carries no prompt");
               expect(asked.header).toBe("Audience");
@@ -1287,6 +1693,232 @@ describe("Builder E2E pipeline replay", () => {
               expect(received?.body["payload"]).toEqual({
                 answers: { [asked.id]: ["Counter staff"] },
               });
+            });
+          },
+        );
+      } finally {
+        await rm(fixtureDir, { recursive: true, force: true });
+      }
+    },
+    STAGE_DEADLINE_MS,
+  );
+
+  test(
+    "refuses a pick-fonts input it cannot draw without asking the person, then shows a valid one and returns its output or the person's reply",
+    async () => {
+      const fixtureDir = await mkdtemp(
+        join(tmpdir(), "builder-e2e-screen-question-fixture-"),
+      );
+      const coordinatorTools = ["question", "read_artifact", "write_artifact"];
+      // Nothing proposed: the person chooses from every font.
+      const input = {};
+      // Entries of plugins/pick-fonts/data/fonts.json.
+      const output = {
+        primary: { name: "Arial", lists: ["sans"], license: "free" },
+        secondary: { name: "Bitter", lists: ["serif"], license: "free" },
+      };
+      const reply = "Leave the fonts as they are.";
+      try {
+        await writeScenarioFixture(
+          fixtureDir,
+          { scenario: "font-change-question", recordedFromCommit: "36d36e8" },
+          [
+            {
+              runKey: "coordinator-1",
+              role: "coordinator",
+              stage: "documents",
+              sourceRunId: "run_coord_screen_1",
+              exchanges: withRequiredTools(coordinatorTools, [
+                {
+                  sse: formatOpenAISseResponse({
+                    toolCalls: [
+                      {
+                        id: "coord_bad_list",
+                        name: "question",
+                        arguments: {
+                          plugin: "pick-fonts",
+                          input: { list: "fancy" },
+                        },
+                      },
+                    ],
+                  }),
+                  expect: {
+                    lastMessageRole: "user",
+                    userTextContains: "the font is ugly",
+                    toolResults: [],
+                  },
+                },
+                {
+                  sse: formatOpenAISseResponse({
+                    toolCalls: [
+                      {
+                        id: "coord_fonts",
+                        name: "question",
+                        arguments: { plugin: "pick-fonts", input },
+                      },
+                    ],
+                  }),
+                  expect: {
+                    lastMessageRole: "tool",
+                    toolResults: [
+                      {
+                        callId: "coord_bad_list",
+                        toolName: "question",
+                        isError: true,
+                        contains: [
+                          "pick-fonts was not shown. One field is wrong.",
+                          "",
+                          'list: "fancy" is not a list.',
+                          "  Use one of:",
+                          "    all      Every font. Use when the person has no preference.",
+                          "    sans     Clean and modern. Good for apps and dashboards.",
+                          "    serif    Classic and bookish. Good for long reading and editorial pages.",
+                          "    display  Loud and characterful. Good for headings and logos, not body text.",
+                          "    mono     Every letter the same width. Good for code and figures.",
+                          "  Or pass up to 20 font names.",
+                          "",
+                          "Call again with the same input and list corrected, or leave list out to offer every font.",
+                        ].join("\n"),
+                      },
+                    ],
+                  },
+                },
+                {
+                  sse: formatOpenAISseResponse({
+                    toolCalls: [
+                      {
+                        id: "coord_fonts_again",
+                        name: "question",
+                        arguments: { plugin: "pick-fonts", input },
+                      },
+                    ],
+                  }),
+                  expect: {
+                    lastMessageRole: "tool",
+                    toolResults: [
+                      {
+                        callId: "coord_fonts",
+                        toolName: "question",
+                        isError: false,
+                        keys: ["output"],
+                        contains: JSON.stringify({ output }),
+                      },
+                    ],
+                  },
+                },
+                {
+                  sse: formatOpenAISseResponse({
+                    text: "Keeping the fonts you have.",
+                  }),
+                  expect: {
+                    lastMessageRole: "tool",
+                    toolResults: [
+                      {
+                        callId: "coord_fonts_again",
+                        toolName: "question",
+                        isError: false,
+                        keys: ["reply"],
+                        contains: JSON.stringify({ reply }),
+                      },
+                    ],
+                  },
+                },
+              ]),
+            },
+          ],
+        );
+
+        await withPipelineScenario(
+          {
+            fixtureDir,
+            projectId: "font-change",
+            title: "Font Change",
+            problemStatement: "the font is ugly",
+          },
+          async (driver) => {
+            const { hub, projectTenantId, projectId, coordinatorRunId } =
+              driver;
+            const { client } = hub;
+            const openQuestion = async () => {
+              const { events } = await client.conversationEvents(
+                projectTenantId,
+                projectId,
+              );
+              return openQuestionPark(events);
+            };
+
+            await driver.runStage("screen-question", async () => {
+              const shown = await driver.waitFor(
+                "screen-question",
+                "the coordinator's pick-fonts question in its run log",
+                openQuestion,
+              );
+              // The refused call never parked: the only question the run asked is the valid one.
+              const { events } = await client.conversationEvents(
+                projectTenantId,
+                projectId,
+              );
+              expect(events.filter(isQuestionPark)).toEqual([shown]);
+              expect(shown.body["question"]).toEqual({
+                plugin: "pick-fonts",
+                input,
+              });
+              const shownSignal = NonEmptyString.assert(
+                shown.body["signalName"],
+              );
+
+              await client.answerQuestion(
+                projectTenantId,
+                coordinatorRunId,
+                shownSignal,
+                { output },
+              );
+              const asked = await driver.waitFor(
+                "screen-question",
+                "the coordinator's next question after the screen's output",
+                async () => {
+                  const park = await openQuestion();
+                  return park?.body["signalName"] === shownSignal
+                    ? undefined
+                    : park;
+                },
+              );
+              const answered = await client.conversationEvents(
+                projectTenantId,
+                projectId,
+              );
+              expect(
+                answered.events.find(
+                  (event) =>
+                    event.type === "SignalReceived" &&
+                    event.body["signalName"] === shownSignal,
+                )?.body["payload"],
+              ).toEqual({ output });
+              const askedSignal = NonEmptyString.assert(
+                asked.body["signalName"],
+              );
+
+              // A screen is answered by its output or a reply, never by prompt ids.
+              await expect(
+                client.answerQuestion(
+                  projectTenantId,
+                  coordinatorRunId,
+                  askedSignal,
+                  { answers: { primary: ["Arial"] } },
+                ),
+              ).rejects.toThrow("Bad Request");
+
+              await client.answerQuestion(
+                projectTenantId,
+                coordinatorRunId,
+                askedSignal,
+                { reply },
+              );
+              await driver.waitForAssistantTurn(
+                "screen-question",
+                "Keeping the fonts you have.",
+              );
+              expect(await openQuestion()).toBeUndefined();
             });
           },
         );

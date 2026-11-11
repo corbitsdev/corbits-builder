@@ -9,8 +9,8 @@ end-to-end tests:
   `bun run test` with no database.
 - **`test/e2e/`:** end-to-end tests against an isolated Postgres, the real hub
   and real sidecars (`custom-provider.test.ts`, `oauth-model-login.test.ts`,
-  `specialist-end-notices.test.ts`, `saved-app.test.ts`, `design-draft.test.ts`
-  and `pipeline.test.ts`).
+  `specialist-end-notices.test.ts`, `saved-app.test.ts`, `design-draft.test.ts`,
+  `project-values.test.ts` and `pipeline.test.ts`).
 - **`test/e2e/support/`:** shared harness (`hub.ts`, and `in-process-hub.ts`
   for a hub that is never served or started, with projects and runs seeded
   straight into its database), the recorded
@@ -48,6 +48,6 @@ With the `builder-e2e` database running ([docs/DEV.md](../docs/DEV.md#tests)):
 ```sh
 bun run test:e2e
 bun --conditions=intx-src test test/e2e/support/recorded-model.test.ts
-bun --env-file=.env.hub --conditions=intx-src test test/e2e/custom-provider.test.ts test/e2e/oauth-model-login.test.ts test/e2e/specialist-end-notices.test.ts test/e2e/saved-app.test.ts test/e2e/design-draft.test.ts
+bun --env-file=.env.hub --conditions=intx-src test test/e2e/custom-provider.test.ts test/e2e/oauth-model-login.test.ts test/e2e/specialist-end-notices.test.ts test/e2e/saved-app.test.ts test/e2e/design-draft.test.ts test/e2e/project-values.test.ts
 bun --env-file=.env.hub --conditions=intx-src test test/e2e/pipeline.test.ts
 ```

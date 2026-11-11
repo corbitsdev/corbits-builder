@@ -122,7 +122,7 @@ export async function startInProcessHub() {
     // workspace.
     async seedRun(
       person: { tenantId: string; principalId: string },
-      role: "designer" | "coder",
+      role: "coordinator" | "designer" | "coder",
       running = false,
     ) {
       const id = randomUUID();
