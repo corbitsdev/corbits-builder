@@ -710,10 +710,11 @@ export function toParkedApprovalOps(
   pendingOperations: PendingOperation[],
 ): ParkedApprovalOp[] {
   return pendingOperations
-    .filter((op) => op.kind === "approval")
+    .filter((op) => op.kind === "approval" || op.kind === "question")
     .map((op) => ({
       correlationId: op.correlationId,
       ...(op.timeoutAt !== undefined ? { timeoutAtMs: op.timeoutAt } : {}),
+      ...(op.question !== undefined ? { question: op.question } : {}),
     }));
 }
 
@@ -1009,11 +1010,13 @@ export function createSidecarStepBuildEnv(
     // construction: its correlationId names the runtime-minted re-arm channel
     // awaiting the step's next trigger, not a reactor gate, so no pending
     // operation ever exists for it and the delivered decision is sent as a
-    // plain next turn (no correlation to rehydrate).
+    // plain next turn (no correlation to rehydrate). A question resume finds
+    // its gate the same way, on a `suspendedCall`-bearing op, so it is checked
+    // too.
     if (
       deps.durableConversation === undefined &&
       req.resume !== undefined &&
-      req.resume.kind === "approval"
+      (req.resume.kind === "approval" || req.resume.kind === "question")
     ) {
       const resumeCorrelationId = req.resume.correlationId;
       const loaded = await storage.load();

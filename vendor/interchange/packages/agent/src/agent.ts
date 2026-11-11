@@ -54,6 +54,7 @@ import { createInboundMessage } from "@intx/mime";
 import type { ErrorRecord } from "@intx/types/audit";
 import type {
   ApprovalSnapshot,
+  AskedQuestion,
   AssistantTurn,
   BlobReader,
   ContextCommit,
@@ -154,6 +155,8 @@ export type SendResult =
        * snapshot (an authz extension wired with no tool definitions).
        */
       approvalSnapshot?: ApprovalSnapshot;
+      /** The prompts of a parked `question` call, for the person to answer. */
+      question?: AskedQuestion;
     };
 
 /**
@@ -632,7 +635,7 @@ export async function createAgent<EnvReq extends BaseEnv>(
           // resume against the correlationId. A gate parked without a
           // correlationId is unresumable -- surface it rather than hand
           // back an outcome with no handle.
-          const { correlationId, approvalSnapshot } = event.data;
+          const { correlationId, approvalSnapshot, question } = event.data;
           activeCycle = null;
           if (correlationId === undefined) {
             sendQueue.rejectActive(
@@ -643,6 +646,7 @@ export async function createAgent<EnvReq extends BaseEnv>(
               type: "suspended",
               correlationId,
               ...(approvalSnapshot !== undefined ? { approvalSnapshot } : {}),
+              ...(question !== undefined ? { question } : {}),
             });
           }
         } else if (event.type === "reactor.error" && event.data.fatal) {

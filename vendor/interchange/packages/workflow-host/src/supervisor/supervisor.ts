@@ -1878,6 +1878,8 @@ export function createWorkflowSupervisor(
               ? { snapshot: payload.data.snapshot }
               : {}),
           });
+        } else if (payload.data.parkKind === "question") {
+          // A question is held in the run log alone; the hub registers nothing.
         } else {
           // A `signal-relay` park is relayed down into the body child by the
           // section runtime and is never hub-registered, so it does not ride

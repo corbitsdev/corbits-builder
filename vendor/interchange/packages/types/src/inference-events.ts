@@ -15,6 +15,7 @@ import {
   ToolResult,
   GateType,
   ApprovalSnapshot,
+  AskedQuestion,
   ForkMode,
   type InboundMessage,
 } from "./runtime-core";
@@ -277,6 +278,7 @@ export const InferenceEvent = type.or(
       gateId: "string",
       "correlationId?": "string",
       "approvalSnapshot?": ApprovalSnapshot,
+      "question?": AskedQuestion,
     },
   },
   {
@@ -545,6 +547,7 @@ export type InferenceEvent =
         gateId: string;
         correlationId?: string;
         approvalSnapshot?: ApprovalSnapshot;
+        question?: AskedQuestion;
       };
     }
   | {
@@ -603,6 +606,19 @@ const _tsGateBlockedApprovalSnapshot = (
   data: Extract<InferenceEvent, { type: "reactor.gate.blocked" }>["data"],
 ): ApprovalSnapshot | undefined => data.approvalSnapshot;
 void _tsGateBlockedApprovalSnapshot;
+
+const _arkGateBlockedQuestion = (
+  data: Extract<
+    typeof InferenceEvent.infer,
+    { type: "reactor.gate.blocked" }
+  >["data"],
+): typeof AskedQuestion.t | undefined => data.question;
+void _arkGateBlockedQuestion;
+
+const _tsGateBlockedQuestion = (
+  data: Extract<InferenceEvent, { type: "reactor.gate.blocked" }>["data"],
+): AskedQuestion | undefined => data.question;
+void _tsGateBlockedQuestion;
 
 /**
  * Validate unknown data as an InferenceEvent. ArkType's regex-based validator

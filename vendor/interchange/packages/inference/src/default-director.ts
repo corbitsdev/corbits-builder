@@ -11,7 +11,7 @@
 //   abort                     → done
 //   reactor.gate.cleared      → checkpoint + infer (resume after gate)
 //   resume.execute_tools      → execute_tools (re-run a parked approved call)
-//   resume.tool_result        → checkpoint + infer (parked call denied/timed out)
+//   resume.tool_result        → checkpoint + infer (parked call answered unrun)
 //
 // The inference.done branch additionally runs the optional afterInferenceDone
 // policy hook, whose continue/abort/halt decisions route independently of the
@@ -314,8 +314,8 @@ export class DefaultDirector implements ReactorDirector {
 
       case "resume.tool_result": {
         // A parked approval ended without running its tool (rejected or timed
-        // out). The reactor appends the synthetic error result that answers the
-        // parked call, then this re-infers once so the model sees the failure
+        // out), or a question was answered. The reactor appends the result that
+        // answers the call, then this re-infers once so the model sees it
         // and continues. No tool ran, so pendingToolResults is untouched — the
         // counter only gates batches of real executions.
         return [

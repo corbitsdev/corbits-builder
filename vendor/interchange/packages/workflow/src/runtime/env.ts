@@ -14,6 +14,7 @@ import type {
 } from "@intx/types";
 import type {
   ApprovalSnapshot,
+  AskedQuestion,
   ControlParkKind,
   PerCallInferenceOptions,
 } from "@intx/types/runtime";
@@ -207,7 +208,7 @@ export interface StepInvokeRequest {
  * as mandatory), so a snapshot-less approval is unrepresentable here rather
  * than resting on the runtime guard alone.
  *
- * An invoker can ONLY suspend as an approval. The `"input"` control-plane
+ * An invoker can ONLY suspend as an approval or a question. The `"input"` control-plane
  * park (a long-lived step awaiting its next trigger) is minted exclusively by
  * the RUNTIME's trigger-budget re-arm -- never by an invoker -- which is what
  * keeps the finite-budget respawn seed sound: every input `SignalAwaited` in
@@ -218,11 +219,17 @@ export interface StepInvokeRequest {
 export type StepInvokeResult =
   | { output: unknown }
   | {
-      suspend: {
-        correlationId: string;
-        kind: "approval";
-        approvalSnapshot: ApprovalSnapshot;
-      };
+      suspend:
+        | {
+            correlationId: string;
+            kind: "approval";
+            approvalSnapshot: ApprovalSnapshot;
+          }
+        | {
+            correlationId: string;
+            kind: "question";
+            question: AskedQuestion;
+          };
     };
 
 /**
@@ -624,7 +631,8 @@ export type WorkflowSignalPark = {
  * `SignalAwaited`. Deliberately narrow: the runtime reconstructs the missing
  * `SignalAwaited` from the correlationId (and optional timeout) alone and must
  * not learn the reactor's pending-operation internals (`gateId`,
- * `suspendedCall`, the snapshot), which stay the host's concern.
+ * `suspendedCall`, the snapshot), which stay the host's concern. A question
+ * parks through the same store, and its record also carries the question.
  */
 export type ParkedApprovalOp = {
   correlationId: string;
@@ -634,6 +642,8 @@ export type ParkedApprovalOp = {
    * The runtime converts it to the ISO string a `SignalAwaited` carries.
    */
   timeoutAtMs?: number;
+  /** Set when the parked call is a question, so the rebuilt wait still shows it. */
+  question?: AskedQuestion;
 };
 
 /**

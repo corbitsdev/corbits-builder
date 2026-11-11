@@ -45,6 +45,16 @@ export const ApprovalDecision = type({
 export type ApprovalDecision = typeof ApprovalDecision.infer;
 
 /**
+ * What a person sends back to a parked question: an answer per question id,
+ * or a reply they typed instead. It becomes the `question` call's result.
+ */
+export const QuestionAnswer = type({
+  "+": "reject",
+  answers: "Record<string, (string > 0)[]>",
+}).or({ "+": "reject", reply: "string > 0" });
+export type QuestionAnswer = typeof QuestionAnswer.infer;
+
+/**
  * Map a signal kind to the reactor gate type it clears. The default arm
  * calls `assertNever` so a newly added SignalKind that is not classified
  * here fails to type-check — a bare switch without a default does not.
