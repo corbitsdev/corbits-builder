@@ -15,6 +15,7 @@ import {
   ToolResult,
   GateType,
   ApprovalSnapshot,
+  AskedQuestion,
   ForkMode,
   type InboundMessage,
 } from "./runtime-core";
@@ -277,6 +278,7 @@ export const InferenceEvent = type.or(
       gateId: "string",
       "correlationId?": "string",
       "approvalSnapshot?": ApprovalSnapshot,
+      "question?": AskedQuestion,
     },
   },
   {
@@ -545,6 +547,7 @@ export type InferenceEvent =
         gateId: string;
         correlationId?: string;
         approvalSnapshot?: ApprovalSnapshot;
+        question?: AskedQuestion;
       };
     }
   | {

@@ -300,6 +300,65 @@ describe("env.onPark at a control-plane suspension", () => {
     expect(sink.parks).toHaveLength(1);
   });
 
+  test("a question suspend reports its park so the host consumes the mail that started the turn", async () => {
+    const oneStep = defineWorkflow({
+      id: "park-question",
+      trigger: { type: "manual" },
+      steps: { s: step({ agent }) },
+    });
+    const channel = createInMemorySignalChannel();
+    const sink = createParkSink();
+    const question = {
+      questions: [
+        {
+          id: "q-1",
+          question: "Who is it for?",
+          header: "Audience",
+          options: [],
+          multiple: false,
+          custom: true,
+        },
+      ],
+    };
+    const invokeStep: StepInvoker = async (req) => {
+      if (req.resume === undefined) {
+        return {
+          suspend: {
+            correlationId: "corr-question",
+            kind: "question",
+            question,
+          },
+        };
+      }
+      return { output: { reply: "done", turn: replyTurn } };
+    };
+    const env = buildEnv(oneStep, {
+      invokeStep,
+      signalChannel: channel,
+      onPark: sink.onPark,
+    });
+
+    const handle = runtimeRun(oneStep, env, { runId: "run-question" });
+    await sink.first();
+
+    expect(sink.parks).toEqual([
+      {
+        runId: "run-question",
+        correlationId: "corr-question",
+        parkKind: "question",
+      },
+    ]);
+
+    await channel.deliver(
+      signalName("corr-question"),
+      { answers: { "q-1": ["Small teams"] } },
+      "sig-1",
+    );
+    const result = await handle.complete;
+    expect(result.terminalStatus).toBe("completed");
+    expect(sink.parks).toHaveLength(1);
+  });
+
   test("a fresh control-plane park notifies the host only after the suspension is durable", async () => {
     // The durable-before-transmit invariant: parkOnSignal flushes the
     // SignalAwaited to durable storage BEFORE calling env.onPark, so the

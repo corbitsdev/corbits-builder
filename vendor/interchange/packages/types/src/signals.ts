@@ -1,7 +1,5 @@
 import { type } from "arktype";
 
-import type { GateType } from "./runtime";
-
 /**
  * The kinds of external control signal an agent can suspend on and later
  * resume from. Exposed as both an arktype validator (so members are
@@ -45,22 +43,13 @@ export const ApprovalDecision = type({
 export type ApprovalDecision = typeof ApprovalDecision.infer;
 
 /**
- * Map a signal kind to the reactor gate type it clears. The default arm
- * calls `assertNever` so a newly added SignalKind that is not classified
- * here fails to type-check — a bare switch without a default does not.
+ * What a person sends back to a parked question: an answer per question id,
+ * or a reply they typed instead. It becomes the `question` call's result.
  */
-export function signalKindToGateType(kind: SignalKind): GateType {
-  switch (kind) {
-    case "approval":
-      return "approval";
-    default:
-      return assertNever(kind);
-  }
-}
-
-function assertNever(x: never): never {
-  throw new Error(`Unclassified signal kind: ${JSON.stringify(x)}`);
-}
+export const QuestionAnswer = type({
+  answers: "Record<string, string[]>",
+}).or({ reply: "string > 0" });
+export type QuestionAnswer = typeof QuestionAnswer.infer;
 
 /**
  * The reserved prefix that marks a signal name as an internal

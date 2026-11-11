@@ -1,23 +1,11 @@
 import { describe, test, expect } from "bun:test";
 import { type } from "arktype";
 
-import { GateType } from "./runtime";
 import {
   ControlSignal,
   correlationIdFromSignalName,
-  signalKinds,
-  signalKindToGateType,
   signalName,
 } from "./signals";
-
-describe("signalKindToGateType exhaustiveness", () => {
-  for (const kind of signalKinds) {
-    test(`maps signal kind ${kind} to a valid GateType`, () => {
-      const gate = signalKindToGateType(kind);
-      expect(GateType(gate) instanceof type.errors).toBe(false);
-    });
-  }
-});
 
 describe("ControlSignal", () => {
   test("accepts a well-formed approval envelope", () => {

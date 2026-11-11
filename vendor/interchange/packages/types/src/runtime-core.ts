@@ -9,7 +9,6 @@
 import { type } from "arktype";
 import type { AuditRecord, ErrorRecord } from "./audit";
 import { WireGrantRule } from "./grant-wire";
-import type { SignalKind } from "./signals";
 
 // ---------------------------------------------------------------------------
 // Cryptographic Identity (ARCHITECTURE.md § Cryptographic Identity,
@@ -724,6 +723,37 @@ export const ApprovalSnapshot = type({
 export type ApprovalSnapshot = typeof ApprovalSnapshot.infer;
 
 /**
+ * One prompt for a person. `options` may be empty for a free-text prompt;
+ * `multiple` allows several picks; `custom` lets the person type their own
+ * answer.
+ */
+const QuestionPrompt = type({
+  question: "string > 0",
+  header: "string > 0",
+  options: type({ label: "string > 0", description: "string" }).array(),
+  multiple: "boolean = false",
+  custom: "boolean = true",
+});
+
+/** The name of the tool an agent calls to ask a person questions. */
+export const QUESTION_TOOL_NAME = "question";
+
+/** The arguments of a `question` call, as the model writes them. */
+export const QuestionArguments = type({
+  questions: QuestionPrompt.array().atLeastLength(1),
+});
+export type QuestionArguments = typeof QuestionArguments.infer;
+
+/**
+ * A paused `question` call as people see it: each prompt carries the id the
+ * runtime gave it, and the person's answer names those ids.
+ */
+export const AskedQuestion = type({
+  questions: QuestionPrompt.and({ id: "string > 0" }).array().atLeastLength(1),
+});
+export type AskedQuestion = typeof AskedQuestion.infer;
+
+/**
  * The kind of a control-plane park: a step suspended awaiting an external
  * event. `"approval"` and `"input"` park on a reserved
  * `signalName(correlationId)` channel; `"signal-relay"` parks on an
@@ -736,9 +766,12 @@ export type ApprovalSnapshot = typeof ApprovalSnapshot.infer;
  *   agent run awaiting the next mail so it can take another turn). It carries
  *   NO snapshot and does NOT notify the host: the run's owner delivers the
  *   input on the same channel and the step re-arms. It is a runtime-local
- *   concept -- deliberately NOT a {@link SignalKind}, so it never touches the
+ *   concept -- deliberately NOT a signal kind, so it never touches the
  *   approval-routing machinery (IPC register frames, the hub co-write, the
  *   approval columns).
+ * - `"question"` -- the step parked on a `question` tool call. The question
+ *   rides in the run log's `SignalAwaited` and the answer arrives on the same
+ *   channel; nothing is registered with the hub and nothing times out.
  * - `"signal-relay"` -- an onTrigger section container parked on an
  *   author-named signal so a body child's `awaitSignal` on that name is
  *   serviced through the deployment run: the external signal is delivered to
@@ -756,6 +789,7 @@ export type ApprovalSnapshot = typeof ApprovalSnapshot.infer;
 export const ControlParkKind = type.enumerated(
   "approval",
   "input",
+  "question",
   "signal-relay",
 );
 export type ControlParkKind = typeof ControlParkKind.infer;
@@ -1314,6 +1348,7 @@ export type InferenceError = typeof InferenceError.infer;
  */
 export const GateType = type.enumerated(
   "approval",
+  "question",
   "payment",
   "credential",
   "budget",
@@ -1340,7 +1375,8 @@ export type ForkMode = typeof ForkMode.infer;
  */
 export type PendingOperation = {
   correlationId: string;
-  kind: SignalKind;
+  /** The gate the call is parked on, set by whatever paused it. */
+  kind: "approval" | "question";
   registeredAt: number;
   gateId: string;
   /**
@@ -1366,6 +1402,8 @@ export type PendingOperation = {
    * markers. Threaded through the suspend hops to the hub co-write.
    */
   approvalSnapshot?: ApprovalSnapshot;
+  /** The prompts of a `kind: "question"` operation, for the person who answers. */
+  question?: AskedQuestion;
 };
 
 /**
@@ -1392,7 +1430,11 @@ export type ReactorState = {
   turns: ConversationTurn[];
   activeForks: { forkId: string; mode: ForkMode }[];
   pendingOperations: PendingOperation[];
-  activeGates: { gateId: string; type: GateType; timeoutAt: number }[];
+  activeGates: {
+    gateId: string;
+    type: GateType;
+    timeoutAt: number | undefined;
+  }[];
   tokenUsage: TokenUsage;
   lastCycleUsage: TokenUsage | null;
   lastCycleSource: LastCycleSource | null;
@@ -1543,7 +1585,8 @@ export interface ReactorDirector {
  * - `suspend` — the call is parked awaiting an external decision. The reactor
  *   registers `gate`, persists `pendingOp`, and does not answer the call: it
  *   is neither run nor error-completed. `gate.timeoutAt` is the absolute
- *   deadline (epoch ms) so the reactor can compute the remaining time; the
+ *   deadline (epoch ms) so the reactor can compute the remaining time, and
+ *   absent when the call waits until it is resolved; the
  *   `correlationId` on both `gate` and `pendingOp` ties an inbound resolution
  *   back to the suspension.
  */
@@ -1556,7 +1599,7 @@ export type BeforeToolDecision =
         type: GateType;
         gateId: string;
         correlationId: string;
-        timeoutAt: number;
+        timeoutAt?: number;
       };
       pendingOp: PendingOperation;
     };

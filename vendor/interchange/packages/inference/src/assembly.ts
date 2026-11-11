@@ -31,6 +31,7 @@ import {
   type AuthzExtensionOptions,
 } from "./authz-extension";
 import type { CorrelationValidator } from "./correlation";
+import { createQuestionExtension } from "./question";
 import type { Dependencies } from "./harness";
 import {
   createReactor,
@@ -177,8 +178,7 @@ export function createReactorAssembly(
       : onEvent;
 
   // Authz is composed in front of any caller-supplied before-tool extensions
-  // so policy enforcement runs first. Without authz, the caller's list (if
-  // any) is passed through unchanged.
+  // so policy enforcement runs first.
   const authzExtension =
     authorize !== undefined
       ? createAuthzExtension({
@@ -190,10 +190,15 @@ export function createReactorAssembly(
         })
       : undefined;
 
-  const composedBeforeToolExtensions: BeforeToolExtension[] | undefined =
-    authzExtension !== undefined
-      ? [authzExtension, ...(callerBeforeToolExtensions ?? [])]
-      : callerBeforeToolExtensions;
+  // A question asks the person rather than acting, so it pauses ahead of authz
+  // and needs no grant.
+  const composedBeforeToolExtensions: BeforeToolExtension[] = [
+    createQuestionExtension(),
+  ];
+  if (authzExtension !== undefined) {
+    composedBeforeToolExtensions.push(authzExtension);
+  }
+  composedBeforeToolExtensions.push(...(callerBeforeToolExtensions ?? []));
 
   // The size-cap transform is always prepended so oversized payloads spill
   // before any caller transform sees them. Caller transforms run after and
@@ -255,9 +260,7 @@ export function createReactorAssembly(
     onEvent: composedOnEvent,
     deps,
     toolResultTransforms: composedToolResultTransforms,
-    ...(composedBeforeToolExtensions !== undefined
-      ? { beforeToolExtensions: composedBeforeToolExtensions }
-      : {}),
+    beforeToolExtensions: composedBeforeToolExtensions,
     ...(contextTransforms !== undefined ? { contextTransforms } : {}),
     ...(compactors !== undefined ? { compactors } : {}),
     ...(composedAfterCheckpoint !== undefined
