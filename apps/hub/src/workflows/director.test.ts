@@ -552,6 +552,103 @@ test("coder director takes a check-app verdict from the result's detail after tr
   expect(failed.some((action) => action.type === "compact")).toBe(true);
 });
 
+test("coder director never holds a reply that follows a refused access", async () => {
+  const subject = () =>
+    compactingDirector("@corbits-builder/coder-test").factory(
+      {
+        contextWindow: 200_000,
+        compactAt: 0.8,
+        checkBeforeDone: true,
+      },
+      {} as never,
+      { systemPrompt: "", toolDefinitions: [], compactorNames: [] },
+    ) as ReactorDirector;
+  const replyTurn = {
+    role: "assistant" as const,
+    model: "gpt-5",
+    content: [{ type: "text" as const, text: "Done." }],
+    timestamp: 5,
+  };
+  const call = (id: string, name: string, args: Record<string, unknown>) => ({
+    role: "assistant" as const,
+    content: [{ type: "tool_call" as const, id, name, arguments: args }],
+    timestamp: 1,
+  });
+  const result = (callId: string, detail?: unknown) => ({
+    role: "user" as const,
+    content: [
+      {
+        type: "tool_result" as const,
+        callId,
+        content: [{ type: "text" as const, text: "ok" }],
+        ...(detail === undefined ? {} : { detail }),
+      },
+    ],
+    timestamp: 2,
+  });
+  const decideOn = async (
+    director: ReactorDirector,
+    turns: ConversationTurn[],
+    event: ReactorInboundEvent,
+  ) => {
+    const actions = await director.decide(
+      event,
+      { ...state, turns: [...turns, replyTurn] },
+      createCapabilities(),
+    );
+    return (Array.isArray(actions) ? actions : [actions]) as ReactorAction[];
+  };
+  const replied: ReactorInboundEvent = {
+    type: "inference.done",
+    turn: replyTurn,
+    usage: state.tokenUsage,
+    source: { sourceId: "openai", provider: "openai", model: "gpt-5" },
+  };
+  // A held reply's reason, from the prompt it is sampled again with, or undefined once it goes out.
+  const heldFor = async (
+    director: ReactorDirector,
+    turns: ConversationTurn[],
+  ) => {
+    const actions = await decideOn(director, turns, replied);
+    if (actions.some((action) => action.type === "reply")) return undefined;
+    const retried = await decideOn(director, turns, {
+      type: "compaction.done",
+      compactor: "@corbits-builder/drop-degenerate-turn",
+      reason: "reply before done",
+    });
+    const infer = retried.find((action) => action.type === "infer");
+    return infer?.type === "infer" ? infer.options?.systemPrompt : "";
+  };
+
+  const editedAfter: ConversationTurn[] = [
+    {
+      role: "user",
+      content: [{ type: "text", text: "Build the app." }],
+      timestamp: 0,
+    },
+    call("check", "run_shell", { command: "check-app" }),
+    result("check", { checkPassed: true }),
+    call("write", "write_file", { path: "src/App.tsx", content: "" }),
+    result("write"),
+  ];
+  // A refused access ends the job, so its reply goes out whatever would hold it.
+  const refused = [
+    ...editedAfter,
+    call("read", "read_artifact", {}),
+    result("read", { accessRefused: true }),
+  ];
+  expect(await heldFor(subject(), refused)).toBeUndefined();
+  // One the agent already wrote past releases nothing later.
+  const wrotePast = [
+    ...refused,
+    call("write2", "write_file", { path: "src/App.tsx", content: "" }),
+    result("write2"),
+  ];
+  expect(await heldFor(subject(), wrotePast)).toContain(
+    "Files changed after the last passing check-app",
+  );
+});
+
 test("check_design validates DESIGN.md and .dark in styles.css and auto-files the design option on pass", async () => {
   const starter = designStarterFiles();
   const modernSleek = designThemes()["modern-sleek"]!;

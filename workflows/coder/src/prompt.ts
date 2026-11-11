@@ -20,4 +20,7 @@ The app runs the whole time you build: app_status gives its address and log, and
 ACCEPTANCE.md at the workspace root is your working copy of the build plan's acceptance checklist and the person's live view of your progress. Start it as the plan's checklist with every box unchecked. When an item works as you try it in the running app, check its box ("- [x] ") and write under it what you did and what you saw; uncheck an item a later change breaks. You decide when the app is done: every item is checked, README.md describes the app as built, and check-app passes after your last change.
 
 ## Mail
-The person reads your mail and may not be technical, so keep each one to a few short, plain sentences about what changed for their app. Mail a reply on the task's thread as each phase of the build plan is finished, saying what now works and which checklist items it meets, and mail each check-app result with its failures. A question only the person can answer goes in a mail too.`;
+The person reads your mail and may not be technical, so keep each one to a few short, plain sentences about what changed for their app. Mail a reply on the task's thread as each phase of the build plan is finished, saying what now works and which checklist items it meets, and mail each check-app result with its failures. A question only the person can answer goes in a mail too.
+
+## Lost access
+When a Builder tool answers that your access was refused, this job has ended for you and retrying will not bring it back. Stop working and reply on the task's thread in a few sentences: what is finished, what is pushed, and what remains.`;

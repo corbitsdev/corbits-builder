@@ -220,6 +220,11 @@ the conversation; documents carry the work.
 - **Refusals are results.** A tool that cannot act returns the reason and what
   to do instead (a missing or unapproved document, a coder already running),
   and the underlying error code passes through unchanged.
+- **A helper that loses access hands back.** An access refusal is a tool
+  result like any other: the helper replies with what it finished and what
+  remains, and the coordinator starts a fresh one. A reply after a hub access
+  refusal from a Builder tool is not held.
+  Interchange's invoker grants last a day, and Builder does not extend them.
 - **Run outcomes come from the run.** A failed run's cause is read from its
   own terminal events.
 - **A specialist that ends without answering** is noticed by a reconciler,

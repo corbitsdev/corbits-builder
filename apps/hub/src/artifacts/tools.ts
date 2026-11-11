@@ -23,7 +23,11 @@ import {
   projectScopeFailure,
   resolveWorkflowProjectScope,
 } from "../workflows/project-scope.ts";
-import { workflowHttpJson, WorkflowHttpError } from "../workflows/http-json.ts";
+import {
+  accessRefusal,
+  workflowHttpJson,
+  WorkflowHttpError,
+} from "../workflows/http-json.ts";
 
 interface ArtifactToolEnv extends BaseEnv {
   capabilities: RuntimeCapabilities;
@@ -93,6 +97,7 @@ export function failure(callId: string, error: unknown) {
         ...(error.hint ? { hint: error.hint } : {}),
       }),
       isError: true,
+      ...accessRefusal(error),
     };
   return projectScopeFailure(callId, error);
 }

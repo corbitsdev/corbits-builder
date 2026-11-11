@@ -7,7 +7,11 @@ import {
 } from "@corbits-builder/schemas/installed-workflows";
 import { getLogger } from "@intx/log";
 import { requestErrorMetadata } from "../request-error.ts";
-import { WorkflowHttpError, workflowHttpJson } from "./http-json.ts";
+import {
+  accessRefusal,
+  WorkflowHttpError,
+  workflowHttpJson,
+} from "./http-json.ts";
 
 const log = getLogger(["corbits-builder", "hub", "workflow-project-scope"]);
 const SAFE_CODE = /^[a-z0-9_:]+$/;
@@ -50,7 +54,7 @@ export function projectScopeFailure(callId: string, error: unknown) {
       : error instanceof Error && SAFE_CODE.test(error.message)
         ? error.message
         : "workflow_project_scope_unavailable";
-  return { callId, content: code, isError: true };
+  return { callId, content: code, isError: true, ...accessRefusal(error) };
 }
 
 export async function resolveWorkflowProjectScope(

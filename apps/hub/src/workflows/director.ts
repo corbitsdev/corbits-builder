@@ -10,6 +10,7 @@ import type {
 } from "@intx/types/runtime";
 import { REPETITION_ABORT } from "../inference/repetition.ts";
 import { readCheckDetail, type CheckDetail } from "../builds/check-detail.ts";
+import { accessRefused } from "./http-json.ts";
 import { COMPACTOR, DROP_DEGENERATE, textOf } from "./compaction.ts";
 
 // About 1 coder turn in 100 skipped reasoning and repeated one sentence ("Ok to write. Let me
@@ -186,6 +187,23 @@ function taskCalls(turns: readonly ConversationTurn[]) {
 
 type TaskCall = ReturnType<typeof taskCalls>[number];
 
+// Whether one of the tool results the reply answers, those since the agent's last turn, was a
+// refused access. Work the agent did after a refusal is held like any other. The newest turn is
+// the reply itself.
+function refusedBeforeReply(turns: readonly ConversationTurn[]): boolean {
+  for (let index = turns.length - 2; index >= 0; index--) {
+    const { role, content } = turns[index]!;
+    if (role === "assistant") return false;
+    if (
+      content.some(
+        (block) => block.type === "tool_result" && accessRefused(block.detail),
+      )
+    )
+      return true;
+  }
+  return false;
+}
+
 const ranShell = (call: TaskCall, pattern: RegExp) =>
   call.name === "run_shell" &&
   typeof call.command === "string" &&
@@ -260,6 +278,9 @@ function holdReply(
   turns: readonly ConversationTurn[],
   held: number,
 ): string | undefined {
+  // A refused access ends the agent's job: the reply it led to says what it finished, so nothing
+  // holds it.
+  if (refusedBeforeReply(turns)) return undefined;
   if (config.checkBeforeDone && unchecked(turns))
     return "Files changed after the last passing check-app, so the work is not done yet.";
   if (config.fileBeforeDone && unfiled(turns)) {
@@ -283,10 +304,11 @@ function holdReply(
  * cut for repeating one passage. The third such turn in one task fails the run, or with
  * replyOnFailure is the reply. With checkBeforeDone, a final reply waits for a passing check-app
  * after the last file change; with fileBeforeDone, it waits for a filed document; with
- * startAfterApproval, a reply after an approval that starts and asks nothing is held once. Every
- * inference retries an overloaded, slow or rate-limited model a few times; once that gives up, the
- * run fails, or with replyOnFailure the error is the reply. The model-specific numbers come from
- * the agent definition's director config.
+ * startAfterApproval, a reply after an approval that starts and asks nothing is held once. A reply
+ * after a Builder tool refused the agent's access is never held. Every inference retries an
+ * overloaded, slow or rate-limited model a few times; once that gives up, the run fails, or with
+ * replyOnFailure the error is the reply. The model-specific numbers come from the agent
+ * definition's director config.
  */
 export const compactingDirector = (packageName: string) =>
   defineDirector<{
