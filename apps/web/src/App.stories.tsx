@@ -126,10 +126,6 @@ export const HubNotAnswering: Story = {
   args: { hub: { state: "notAnswering" } },
 };
 
-export const HubSlow: Story = {
-  args: { hub: { state: "slow", averageMs: 2400 } },
-};
-
 export const SetupFailed: Story = {
   args: { setupFault: "The hub did not answer in time. Try again." },
 };
