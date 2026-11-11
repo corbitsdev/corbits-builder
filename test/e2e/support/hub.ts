@@ -14,6 +14,7 @@ export type TestHubHandle = Readonly<{
   baseUrl: string;
   workspaceTenantId: string;
   client: ProductApiClient;
+  sessionCookie: string;
   fakeCredentialSecret: string;
   subscribeRunStream: (
     projectTenantId: string,
@@ -334,6 +335,7 @@ export async function startTestHub(
       baseUrl,
       workspaceTenantId,
       client,
+      sessionCookie: cookie,
       fakeCredentialSecret,
       subscribeRunStream,
       close: async () => {

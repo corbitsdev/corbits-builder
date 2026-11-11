@@ -9,6 +9,7 @@
     ".": "./src/index.ts"
   },
   "dependencies": {
-    "@corbits-builder/schemas": "workspace:*"
+    "@corbits-builder/schemas": "workspace:*",
+    "@intx/types": "workspace:*"
   }
 }

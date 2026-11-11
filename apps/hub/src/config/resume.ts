@@ -1,4 +1,7 @@
-import type { ConversationTextTurn } from "@corbits-builder/schemas/conversation";
+import type {
+  ConversationTextTurn,
+  ParkedQuestion,
+} from "@corbits-builder/schemas/conversation";
 import type { ApprovalDecision } from "@intx/types/signals";
 import { IMPORTED_PROJECT_LEAD } from "./import.ts";
 import { SPECIALIST_ENDED_LEAD } from "./specialist-ended.ts";
@@ -32,16 +35,47 @@ const turnLine = ({ role, text }: ConversationTextTurn): string => {
   return "Person: " + clip(text);
 };
 
+// The coordinator's text replies never hold its questions: they and the person's answers live only
+// in the run log, so they are stated here or a resumed coordinator re-decides what was settled.
+function questionLine({ asked, answer }: ParkedQuestion): string {
+  const prompts = asked.questions.map(({ question }) => question).join(" / ");
+  if (answer === undefined)
+    return clip(
+      `You asked: ${prompts} / Still open: ask it again rather than assume an answer.`,
+    );
+  if ("reply" in answer)
+    return clip(
+      `You asked: ${prompts} / Person replied instead: ${answer.reply}`,
+    );
+  const { answers } = answer;
+  return clip(
+    asked.questions
+      .map(
+        ({ id, question }) =>
+          `You asked: ${question} / Person answered: ${answers[id]?.join(", ") || "nothing"}`,
+      )
+      .join("\n"),
+  );
+}
+
 /** The held context for a resumed coordinator, or undefined when there is nothing to carry. */
 export function resumeContext(state: {
   turns: readonly ConversationTextTurn[];
+  questions: readonly ParkedQuestion[];
   awaiting: readonly string[];
   withApp: boolean;
 }): string | undefined {
+  const said = [
+    ...state.turns.map((turn) => ({ at: turn.at, line: turnLine(turn) })),
+    ...state.questions.map((question) => ({
+      at: question.at,
+      line: questionLine(question),
+    })),
+  ].sort((left, right) => left.at - right.at);
   const lines: string[] = [];
   let size = 0;
-  for (let index = state.turns.length - 1; index >= 0; index -= 1) {
-    const line = turnLine(state.turns[index]!);
+  for (let index = said.length - 1; index >= 0; index -= 1) {
+    const { line } = said[index]!;
     size += line.length;
     if (size > CONTEXT_CHARS) break;
     lines.unshift(line);

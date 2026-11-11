@@ -5,6 +5,11 @@ import { type } from "arktype";
 import { type DB } from "@intx/db";
 import { workflowRun } from "@intx/db/schema";
 import {
+  WORKFLOW_RUN_REF,
+  workflowRunRepoIdForAddress,
+  type WorkflowRunReader,
+} from "@intx/hub-sessions";
+import {
   createResolveTenant,
   requireAuth,
   type TenantEnv,
@@ -14,6 +19,7 @@ import { ProjectId } from "@corbits-builder/schemas/project";
 import {
   ConversationEvents,
   maxConversationTurns,
+  parkedQuestions,
 } from "@corbits-builder/schemas/conversation";
 import { project, projectCoordinator } from "../db/schema.ts";
 import { reportAuthorization } from "../projects/authorization.ts";
@@ -38,6 +44,7 @@ const log = getLogger(["corbits-builder", "hub", "conversation"]);
 export function createConversationRoutes(
   db: DB["db"],
   dispatch: (request: Request) => Response | Promise<Response>,
+  runs: WorkflowRunReader,
   options?: {
     repoStore?: CoordinatorRepoDirSource;
     /** The retained native mail store the hub archives workflow mail into. */
@@ -58,7 +65,7 @@ export function createConversationRoutes(
       operationId: "readProjectConversationEvents",
       tags: ["Conversation"],
       description:
-        "Read the current registered coordinator's committed native runtime events. While no coordinator is registered (one is starting or replacing another), runId is null, events is empty and turns still carry the conversation of the project's earlier coordinator runs. These events are not a rendered conversation transcript by themselves. When present, turns are the person's thread across every coordinator run of the project, in timestamp order: person and coordinator text from the committed durable conversation mirror, plus participant mail from other workflow runs on a retained mail thread that includes a person. threads are the retained native mail threads among workflow runs only, keyed by References root. A still-open input park also carries the coordinator's asking prose when the run's committed durable conversation mirror provides it (body.question, sourced from the coordinator's turn); parks without real prose stay verbatim. Native workflow read authority is required in addition to project read.",
+        "Read the current registered coordinator's committed native runtime events. While no coordinator is registered (one is starting or replacing another), runId is null, events is empty and turns still carry the conversation of the project's earlier coordinator runs. These events are not a rendered conversation transcript by themselves. When present, turns are the person's thread across every coordinator run of the project, in timestamp order: person and coordinator text from the committed durable conversation mirror, plus participant mail from other workflow runs on a retained mail thread that includes a person. threads are the retained native mail threads among workflow runs only, keyed by References root. A still-open input park also carries the coordinator's asking prose when the run's committed durable conversation mirror provides it (body.question, sourced from the coordinator's turn); parks without real prose stay verbatim. earlierQuestions are the questions of the project's earlier coordinator runs, answered or left open, from their own committed events, since events hold only the live run's. Native workflow read authority is required in addition to project read.",
       security: [{ sessionCookie: [] }, { deviceBearer: [] }],
       parameters: ["tenantId", "projectId"].map((name) => ({
         name,
@@ -153,6 +160,34 @@ export function createConversationRoutes(
           (
             await Promise.all(selected.prior.map((run) => read(store, run)))
           ).flatMap((prior) => prior.turns);
+        // The earlier runs' questions stay in the person's thread, answered or not: one left open
+        // has no run to answer it, and the new coordinator asks it again. An earlier run that
+        // cannot be read costs only its own questions.
+        const earlierQuestions = async () =>
+          (
+            await Promise.all(
+              selected.prior.map(async ({ runId, address }) => {
+                try {
+                  return parkedQuestions(
+                    await runs.readRunEvents(
+                      workflowRunRepoIdForAddress(address),
+                      WORKFLOW_RUN_REF,
+                      runId,
+                    ),
+                  );
+                } catch (error) {
+                  const { errorType, errorLocations } =
+                    requestErrorMetadata(error);
+                  log.error("Earlier coordinator run unreadable", {
+                    runId,
+                    errorType,
+                    errorLocations,
+                  });
+                  return [];
+                }
+              }),
+            )
+          ).flat();
         // Between one coordinator and the next (an upgrade hands off, a reopened project starts
         // one) the person still reads what was said; only the live run's events wait for a bind.
         if (selected.run === undefined) {
@@ -160,10 +195,12 @@ export function createConversationRoutes(
           if (repoStore === undefined)
             return c.json({ runId: null, events: [] });
           let turns;
+          let questions;
           try {
             turns = (await priorTurns(repoStore)).sort(
               (left, right) => left.at - right.at,
             );
+            questions = await earlierQuestions();
           } catch (error) {
             log.error(
               "Conversation projection failed",
@@ -180,6 +217,7 @@ export function createConversationRoutes(
             runId: null,
             events: [],
             turns: turns.slice(-maxConversationTurns),
+            earlierQuestions: questions,
           });
         }
         const current = selected.run;
@@ -229,6 +267,7 @@ export function createConversationRoutes(
             turns.sort((left, right) => left.at - right.at);
             if (live.threads !== undefined) payload["threads"] = live.threads;
             payload["turns"] = turns.slice(-maxConversationTurns);
+            payload["earlierQuestions"] = await earlierQuestions();
           }
           return passThrough(JSON.stringify(payload));
         } catch (error) {

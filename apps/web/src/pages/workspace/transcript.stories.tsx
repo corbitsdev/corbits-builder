@@ -1,7 +1,6 @@
 import type { Meta, StoryObj } from "@storybook/react-vite";
-import type { AskQuestions } from "@corbits-builder/schemas/questions";
+import type { AskedQuestion } from "@intx/types/runtime-core";
 import { fn } from "storybook/test";
-import { ASK_QUESTIONS } from "./questions-card.tsx";
 import { RoomThread, type TranscriptTurn } from "./transcript.tsx";
 import workUnit from "./work-unit-message.stories.tsx";
 
@@ -25,16 +24,18 @@ const opening: readonly TranscriptTurn[] = [
   },
 ];
 
-const ask: AskQuestions = {
+const asked: AskedQuestion = {
   questions: [
     {
-      id: "audience",
-      prompt: "Who uses it first?",
-      kind: "single",
+      id: "5d0c1b8e-2a47-4f3e-8b19-6e7d2c4a9f10",
+      header: "Audience",
+      question: "Who uses it first?",
       options: [
-        { value: "owner", label: "The owner" },
-        { value: "staff", label: "Counter staff" },
+        { label: "The owner (Recommended)", description: "" },
+        { label: "Counter staff", description: "" },
       ],
+      multiple: false,
+      custom: true,
     },
   ],
 };
@@ -48,7 +49,7 @@ const meta = {
     onOpenDocument: fn(),
     onDecide: fn(),
     onRequestChanges: fn(),
-    onAnswerQuestions: fn(() => Promise.resolve(true)),
+    onAnswerQuestion: fn(() => Promise.resolve(true)),
     standing: () => workUnit.args,
   },
   parameters: { layout: "fullscreen" },
@@ -109,23 +110,33 @@ export const AskingForApproval: Story = {
 
 export const AskingQuestions: Story = {
   args: {
-    turns: [
-      ...opening,
+    questions: [{ at: 4, signalName: "signal:question-1", asked }],
+    openQuestion: "signal:question-1",
+  },
+};
+
+/** The person's answers stay in place, under the coordinator that asked. */
+export const QuestionAnswered: Story = {
+  args: {
+    questions: [
       {
-        role: "assistant",
-        text: "",
         at: 4,
-        parts: [
-          {
-            kind: "tool-trace",
-            toolCallId: "call-questions",
-            name: ASK_QUESTIONS,
-            status: "output-available",
-            input: ask,
+        signalName: "signal:question-1",
+        asked,
+        answer: {
+          answers: {
+            "5d0c1b8e-2a47-4f3e-8b19-6e7d2c4a9f10": ["The owner (Recommended)"],
           },
-        ],
+        },
       },
     ],
+  },
+};
+
+/** The coordinator stopped before the person answered, so its question is closed in place. */
+export const QuestionNoLongerOpen: Story = {
+  args: {
+    questions: [{ at: 4, signalName: "signal:question-1", asked }],
   },
 };
 

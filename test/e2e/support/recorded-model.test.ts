@@ -15,19 +15,15 @@ async function writeBundle(
   root: string,
   exchanges: { sse: string; expect: ExchangeExpectation }[],
 ): Promise<void> {
-  await writeScenarioFixture(
-    root,
-    { scenario: "unit-bundle", recordedFromCommit: "d6c6b46" },
-    [
-      {
-        runKey: "writer-1",
-        role: "writer",
-        stage: "documents",
-        sourceRunId: "run_test",
-        exchanges,
-      },
-    ],
-  );
+  await writeScenarioFixture(root, { scenario: "unit-bundle" }, [
+    {
+      runKey: "writer-1",
+      role: "writer",
+      stage: "documents",
+      sourceRunId: "run_test",
+      exchanges,
+    },
+  ]);
 }
 
 describe("recorded-model server", () => {

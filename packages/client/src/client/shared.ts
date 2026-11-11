@@ -1,4 +1,5 @@
 import type { TenantRolePage } from "./roles";
+import type { QuestionAnswer } from "@intx/types/signals";
 import type { PreferenceRegistry } from "@corbits-builder/schemas/preferences";
 import type {
   CustomProviderCreate,
@@ -238,6 +239,14 @@ export type ProductApiClient = Readonly<{
     projectId: string,
     signal?: AbortSignal,
   ): Promise<ConversationEvents>;
+  /** Answers the coordinator's open question, by the ids the run gave its prompts. */
+  answerQuestion(
+    projectTenantId: string,
+    coordinatorRunId: string,
+    signalName: string,
+    answer: QuestionAnswer,
+    signal?: AbortSignal,
+  ): Promise<void>;
   mePrincipals(
     query?: { cursor?: string; limit?: number },
     signal?: AbortSignal,

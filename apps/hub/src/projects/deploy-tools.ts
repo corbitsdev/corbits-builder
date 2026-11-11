@@ -7,6 +7,7 @@ import {
   type BaseEnv,
   type AnnotatedToolFactory,
 } from "@intx/agent/authoring";
+import { questionTool } from "@intx/inference";
 import { WorkflowDeploymentResponse } from "@intx/types";
 import { HUB_CREDENTIAL_HANDLE } from "@intx/types/credential-delivery";
 import type { RuntimeCapabilities } from "@intx/types/runtime-capabilities";
@@ -32,10 +33,6 @@ import {
   type ArtifactRef,
 } from "@corbits-builder/schemas/artifact";
 import { Preferences } from "@corbits-builder/schemas/preferences";
-import {
-  AskQuestions,
-  askQuestionsIssue,
-} from "@corbits-builder/schemas/questions";
 import { DEFAULT_STACK } from "../config/packages.ts";
 import {
   APP_CHANGE_NOTE,
@@ -56,7 +53,6 @@ import {
   designConceptAssignment,
   designLookIdeas,
 } from "../config/design.ts";
-import { QUESTIONS_ASKED } from "../config/questions.ts";
 import {
   buildPackageAssignment,
   formatPersonasCatalog,
@@ -262,15 +258,10 @@ export function createDeployTools(options?: {
     {
       name: "request_approval",
       description:
-        "Ask the person to approve the filed documents of the given kinds, each at its current version; for material, every attached or imported material. One ask covers every document ready for the person, so list them all together, an earlier document with the ones that follow it. Ask for approval once the documents have no open questions left; open questions the person must decide go to them with ask_questions first. Their approval is what lets the writer of the next document start from them, and a changed document is approved again.",
+        "Ask the person to approve the filed documents of the given kinds, each at its current version; for material, every attached or imported material. One ask covers every document ready for the person, so list them all together, an earlier document with the ones that follow it. Ask for approval once the documents have no open questions left; open questions the person must decide go to them with the question tool first. Their approval is what lets the writer of the next document start from them, and a changed document is approved again.",
       inputSchema: { ...RequestApproval.toJsonSchema() },
     },
-    {
-      name: "ask_questions",
-      description:
-        "Put up to five questions to the person on one card shown below your reply; your reply introduces them without repeating them. id is a short slug unique within the call. kind single takes one option and multi any number. preselected holds the option values you recommend, at most one for single. allowOther lets the person answer in their own words. Their answers arrive as their next message.",
-      inputSchema: { ...AskQuestions.toJsonSchema() },
-    },
+    questionTool,
     {
       name: "deploy_writer",
       description:
@@ -309,7 +300,7 @@ export function createDeployTools(options?: {
     {
       name: "deploy_presenter",
       description:
-        "Have a presenter build a slide deck (.pptx and .pdf) and file an approval package for a specific audience from the selected approved documents and the project's filed design tokens. Interview the person first with ask_questions on the audience persona, decision needed, documents to include, and tone and length. Each selected document must be filed and approved at its current version. When a design is filed, its tokens are included and pinned automatically.\n\nStarting audience personas:\n" +
+        "Have a presenter build a slide deck (.pptx and .pdf) and file an approval package for a specific audience from the selected approved documents and the project's filed design tokens. Interview the person first with the question tool on the audience persona, decision needed, documents to include, and tone and length. Each selected document must be filed and approved at its current version. When a design is filed, its tokens are included and pinned automatically.\n\nStarting audience personas:\n" +
         formatPersonasCatalog(),
       inputSchema: { ...DeployPresenter.toJsonSchema() },
     },
@@ -320,7 +311,6 @@ export function createDeployTools(options?: {
     requires: ["capabilities"],
     definitions: [
       { name: "request_approval", approval: "ask" },
-      { name: "ask_questions" },
       { name: "deploy_writer" },
       { name: "review_artifact" },
       { name: "deploy_coder" },
@@ -331,21 +321,6 @@ export function createDeployTools(options?: {
     factory: (env) => ({
       definitions,
       run: async (call, signal) => {
-        if (call.name === "ask_questions") {
-          try {
-            const issue = askQuestionsIssue(
-              validArguments(AskQuestions, call.arguments),
-            );
-            if (issue) throw new Refusal("invalid_questions: " + issue);
-            return { callId: call.id, content: QUESTIONS_ASKED };
-          } catch (error) {
-            return {
-              callId: call.id,
-              content: refusalText(error),
-              isError: true,
-            };
-          }
-        }
         if (!options) {
           try {
             const scope = await resolveWorkflowProjectScope(
@@ -634,7 +609,7 @@ export function createDeployTools(options?: {
               throw new Refusal(
                 "open_questions: " +
                   open.join(", ") +
-                  "; read_artifact shows each one's openQuestions to put to the person with ask_questions, and the document revised with their answers can then be approved",
+                  "; read_artifact shows each one's openQuestions to put to the person with the question tool, and the document revised with their answers can then be approved",
               );
             const documents = [...new Set(kinds)].flatMap((kind) => {
               if (kind !== MATERIAL_KIND)

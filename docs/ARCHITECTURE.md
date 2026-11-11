@@ -100,11 +100,20 @@ it covered, and only those whose hash still matches storage.
 
 ### Questions
 
-`ask_questions` puts a structured card (up to five questions with options and a
-recommended answer) in front of the person and returns at once. The answers
-reach the coordinator as the person's next message. A document's open
-questions carry over into such a card. Questions are never modelled as
-approvals.
+The coordinator asks with Interchange's `question` tool. The call pauses until
+the person answers, with no time limit, and the question waits in the run log,
+so the card survives a reload and a restart. The chat reads the card from the
+run's events and answers through Interchange's signal route, by the id the run
+gave each question; the answers come back to the coordinator as the call's
+result. Anything the person types while a question is open is their answer. A
+document's open questions carry over into such a card. Questions are never
+modelled as approvals.
+
+A replaced coordinator (an upgrade, a restart after a failure) takes its run log
+with it, so the hub reads the earlier runs' questions from their own logs: the
+conversation route returns them as `earlierQuestions`, and the new coordinator's
+briefing lists each one with the person's answer, or as still open. A question
+whose run ended before it was answered stays in the chat, closed to answers.
 
 ### The app repository and live preview
 

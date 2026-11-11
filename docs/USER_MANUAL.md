@@ -121,7 +121,7 @@ file is filed with the project for the coordinator to read.
 
 ## 3. Answer questions
 
-When the coordinator needs decisions from you, it shows a card with up to five
+When the coordinator needs decisions from you, it shows a card with its
 questions, titled for how many it asks: **A question for you**, **A couple of
 questions for you** or **A few questions for you**.
 
@@ -132,11 +132,13 @@ the next question below.
   the last question it waits for **Send answers**.
 - **Pick any that apply**: tick every option that applies, then **Continue**.
 - **Something else…**: when offered, type your own answer in that row.
+- A question with no options to pick from has a field for your answer.
 
-The coordinator's recommended answers are already selected. Change any you
-disagree with. **Continue** turns on once the question has an answer; on the
-last question it becomes **Send answers**. **Back**, or clicking an earlier
-answer, takes you back to change it.
+When the coordinator recommends an answer, it marks that option
+**(Recommended)**, and the card picks it for you to start with, wherever it
+sits in the list. **Continue** turns on once
+the question has an answer; on the last question it becomes **Send answers**.
+**Back**, or clicking an earlier answer, takes you back to change it.
 
 From the keyboard, once you click or Tab into the card: ↑ and ↓ move between
 options, Space picks the one you are on, and Enter continues. On a pick-one
@@ -144,10 +146,16 @@ question, Enter continues with the option you moved to, and a number key picks
 the option in that place and moves on, except on the last question. → goes to
 the next question and ← goes back.
 
-After you send, the card shows "Answers sent" with **Show** to list them. If you
-reply in the conversation instead, the card says "Answered in the
-conversation." If the coordinator asks newer questions first, the old card says
-"Replaced by the questions that followed."
+The card stays open until you answer, even if you reload the page or the hub
+restarts, and the choices you made so far are kept when you reload the tab.
+After you send, the card shows "Your answers" with each question and your
+answer. Anything you type in the message box while the card is open is your
+answer: the card then says "Answered in your own words" and shows what you
+wrote. If the coordinator stops before you answer, the card stays where it is
+and says "This question is no longer open". It takes no answer, and a message
+you type does not reach the stopped coordinator. To carry on, choose **Start
+the coordinator** or open the project again; the new coordinator is told the
+question is still open.
 
 ## 4. Documents and approvals
 

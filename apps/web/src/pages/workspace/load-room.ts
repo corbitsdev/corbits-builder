@@ -9,6 +9,7 @@ import { wording } from "../../config.ts";
 import type { QueryClient } from "@tanstack/react-query";
 import type { ProjectArtifact } from "@corbits-builder/client";
 import type { FailedRun, InFlightRun } from "@corbits-builder/schemas/artifact";
+import type { ParkedQuestion } from "@corbits-builder/schemas/conversation";
 import { listProjectArtifacts, readArtifact } from "../../api/artifacts.ts";
 import {
   readConversationEvents,
@@ -32,6 +33,8 @@ export type RoomSnapshot = {
     turns: ConversationTurn[];
     threads: ConversationThread[];
     runId: string | null;
+    /** The earlier coordinators' questions, which stay in the thread after a move. */
+    earlierQuestions: ParkedQuestion[];
   };
   artifacts: ProjectArtifact[];
   /** The specialist runs at work, which name the design concept a designer works on. */
@@ -249,6 +252,7 @@ export async function loadProjectRoom(
         turns: conversation?.turns ?? [],
         threads: conversation?.threads ?? [],
         runId: conversation?.runId ?? null,
+        earlierQuestions: conversation?.earlierQuestions ?? [],
       },
       artifacts,
       inFlight,
