@@ -121,8 +121,9 @@ file is filed with the project for the coordinator to read.
 
 ## 3. Answer questions
 
-When the coordinator needs several decisions at once, it shows a card titled
-**A few questions for you**, with up to five questions.
+When the coordinator needs decisions from you, it shows a card with up to five
+questions, titled for how many it asks: **A question for you**, **A couple of
+questions for you** or **A few questions for you**.
 
 The card shows one question at a time, with your earlier answers above it and
 the next question below.
