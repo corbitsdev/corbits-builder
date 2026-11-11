@@ -1985,6 +1985,84 @@ describe("POST /workflows/:anchorRunId/signals", () => {
     expect(signalCalls).toHaveLength(0);
   });
 
+  describe("an answer to an open question", () => {
+    const prompts = {
+      questions: [
+        {
+          id: "q-1",
+          question: "Which font?",
+          header: "Font",
+          options: [],
+          multiple: false,
+          custom: true,
+        },
+      ],
+    };
+    const screen = { plugin: "font-picker", input: { current: "Inter" } };
+
+    async function answer(question: unknown, payload: unknown) {
+      const signalCalls: SignalCall[] = [];
+      const repoDirById = await buildRunRepo(WORKFLOW_RUN_REPO_ID, {
+        [`runs/${RUN_ID}/events/0.json`]: JSON.stringify({
+          type: "SignalAwaited",
+          signalName: signalName("corr-q"),
+          question,
+        }),
+      });
+      const app = createTestApp({
+        grants: [manageGrant()],
+        signalCalls,
+        repoDirById,
+        db: { deploymentRow },
+      });
+      const res = await app.fetch(
+        authedPost(`${base()}/${DEPLOYMENT_ID}/signals`, {
+          runId: RUN_ID,
+          signalName: signalName("corr-q"),
+          signalId: "sig-answer",
+          payload,
+        }),
+      );
+      return { res, signalCalls };
+    }
+
+    test("delivers a screen's output to a plugin question", async () => {
+      const { res, signalCalls } = await answer(screen, {
+        output: { font: "Lora" },
+      });
+
+      expect(res.status).toBe(202);
+      expect(signalCalls[0]?.payload).toEqual({ output: { font: "Lora" } });
+    });
+
+    test("delivers a reply to a plugin question", async () => {
+      const { res, signalCalls } = await answer(screen, { reply: "keep it" });
+
+      expect(res.status).toBe(202);
+      expect(signalCalls).toHaveLength(1);
+    });
+
+    test("refuses answers by prompt id to a plugin question", async () => {
+      const { res, signalCalls } = await answer(screen, {
+        answers: { "q-1": ["Lora"] },
+      });
+
+      expect(res.status).toBe(400);
+      expect(await errorCode(res)).toBe("invalid_request");
+      expect(signalCalls).toHaveLength(0);
+    });
+
+    test("refuses a screen output to a prompts question", async () => {
+      const { res, signalCalls } = await answer(prompts, {
+        output: { font: "Lora" },
+      });
+
+      expect(res.status).toBe(400);
+      expect(await errorCode(res)).toBe("invalid_request");
+      expect(signalCalls).toHaveLength(0);
+    });
+  });
+
   test("rejects a runId that is not the deployment's addressable run with 400", async () => {
     const signalCalls: SignalCall[] = [];
     const app = createTestApp({

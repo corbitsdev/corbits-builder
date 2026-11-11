@@ -1,21 +1,23 @@
 // Audit collector: accumulates tool invocation records for persistence.
 //
-// The collector correlates three data sources into complete AuditRecord
+// The collector correlates four data sources into complete AuditRecord
 // objects:
 //   1. tool.start events — tool name and arguments (allowed calls only)
 //   2. AuthzDecision via onDecision — governance decision
-//   3. tool.done events — result and completion metadata
+//   3. onBlocked — tool name and arguments of a call blocked before authz ran
+//   4. tool.done events — result and completion metadata
 //
 // Correlation is by callId. For blocked calls, no tool.start is emitted;
-// the collector creates the record from the buffered decision and the
-// tool.done event alone.
+// the collector creates the record from the buffered decision, or from the
+// call reported through onBlocked (with no authz), and the tool.done event.
 //
 // Wiring: the caller must connect onDecision to the authz extension's
-// onDecision callback, and onEvent to the reactor's event stream. The
-// types alone do not enforce this — it is a composition-layer concern.
+// onDecision callback, onBlocked to any extension that can block ahead of
+// authz, and onEvent to the reactor's event stream. The types alone do not
+// enforce this — it is a composition-layer concern.
 
 import type { AuditRecord, AuditAuthz } from "@intx/types/audit";
-import type { InferenceEvent } from "@intx/types/runtime";
+import type { InferenceEvent, ToolCall } from "@intx/types/runtime";
 import { getLogger } from "@intx/log";
 import type { AuthzDecision } from "./authz-extension";
 
@@ -31,6 +33,7 @@ type PendingRecord = {
 export type AuditCollector = {
   onEvent(event: InferenceEvent): void;
   onDecision(decision: AuthzDecision): void;
+  onBlocked(call: ToolCall): void;
   flush(): AuditRecord[];
   pending(): number;
 };
@@ -74,6 +77,15 @@ export function createAuditCollector(sessionId: string): AuditCollector {
 
   function onDecision(decision: AuthzDecision): void {
     decisions.set(decision.callId, decision);
+  }
+
+  function onBlocked(call: ToolCall): void {
+    pendingRecords.set(call.id, {
+      callId: call.id,
+      tool: call.name,
+      arguments: call.arguments,
+      authz: null,
+    });
   }
 
   function onEvent(event: InferenceEvent): void {
@@ -166,6 +178,7 @@ export function createAuditCollector(sessionId: string): AuditCollector {
   return {
     onEvent,
     onDecision,
+    onBlocked,
     flush,
     pending: pendingCount,
   };

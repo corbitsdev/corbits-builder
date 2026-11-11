@@ -44,6 +44,7 @@
 import {
   createReactorAssembly,
   type Dependencies,
+  type QuestionCheck,
   type ReactorEmittedEvent,
 } from "@intx/inference";
 import { createDefaultDependencies } from "@intx/inference/providers";
@@ -52,6 +53,7 @@ import { createUnconfiguredCredentialResolver } from "./credential-resolver";
 import { getLogger } from "@intx/log";
 import { createInboundMessage } from "@intx/mime";
 import type { ErrorRecord } from "@intx/types/audit";
+import { QUESTION_TOOL_NAME } from "@intx/types/runtime";
 import type {
   ApprovalSnapshot,
   AskedQuestion,
@@ -251,6 +253,8 @@ interface ResolvedTools {
   readonly runner: ToolRunner & {
     readonly definitions: readonly ToolDefinition[];
   };
+  /** The plugin-question check of the bundle that defines `question`. */
+  readonly checkQuestion: QuestionCheck | undefined;
   /**
    * The bundles `resolveTools` constructed in order. Returned so the
    * surrounding `createAgent` can dispose them on construction
@@ -360,7 +364,12 @@ function resolveTools<EnvReq extends BaseEnv>(
     },
   };
 
-  return { definitions, runner, bundles: constructed };
+  return {
+    definitions,
+    runner,
+    checkQuestion: byName.get(QUESTION_TOOL_NAME)?.checkQuestion,
+    bundles: constructed,
+  };
 }
 
 function resolveDirector<EnvReq extends BaseEnv>(
@@ -715,6 +724,7 @@ export async function createAgent<EnvReq extends BaseEnv>(
       auditStore,
       authorize,
       toolDefinitions: resolvedTools.definitions,
+      checkQuestion: resolvedTools.checkQuestion,
       onShutdown: async () => {
         try {
           await flushErrors();

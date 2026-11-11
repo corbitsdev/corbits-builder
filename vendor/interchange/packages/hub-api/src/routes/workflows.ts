@@ -597,7 +597,21 @@ export function createWorkflowRoutes({
             `Not an answer to the question: ${answer.summary}`,
           );
         }
-        if (
+        if ("plugin" in asked) {
+          if ("answers" in answer) {
+            return errorResponse(
+              c,
+              "invalid_request",
+              "The question shows a screen; answer it with the screen's output or a reply",
+            );
+          }
+        } else if ("output" in answer) {
+          return errorResponse(
+            c,
+            "invalid_request",
+            "The question asks prompts; answer them by id or with a reply",
+          );
+        } else if (
           "answers" in answer &&
           asked.questions.some(({ id }) => answer.answers[id] === undefined)
         ) {

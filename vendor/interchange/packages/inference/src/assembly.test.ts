@@ -421,6 +421,42 @@ describe("createReactorAssembly", () => {
     expect(record.authz.effect).toBe("deny");
   });
 
+  test("a question blocked ahead of authz is audited with its tool and arguments and no authz", async () => {
+    const contextStore = makeContextStore();
+    const events = collectEvents();
+    const auditStore = makeRecordingAuditStore();
+    const args = { questions: [], plugin: "picker" };
+
+    const { reactor } = createReactorAssembly({
+      deps: defaultDeps,
+      sessionId: "s4q",
+      director: makeToolExecDirector("question", args, { callId: "c4q" }),
+      source: source(),
+      toolRunner: makeToolRunner("never runs"),
+      contextStore,
+      onEvent: events.onEvent,
+      authorize: () => allowAuthorize(),
+      auditStore,
+      shutdownTimeoutMs: 100,
+    });
+
+    reactor.start();
+    reactor.deliver(makeInboundMessage());
+    await waitForDone(events.events);
+
+    const records = auditStore.getCommitted().flat();
+    expect(records.length).toBe(1);
+    const record = records[0];
+    if (record === undefined) throw new Error("expected record");
+    expect(record.tool).toBe("question");
+    expect(record.arguments).toEqual(args);
+    expect(record.authz).toBeNull();
+    expect(record.result).toEqual({
+      content: "Invalid question: pass questions or a plugin, not both",
+      isError: true,
+    });
+  });
+
   test("with authorize + caller's beforeToolExtensions, authz runs first; caller's extensions follow in order", async () => {
     // The authz extension allows; the recording extension records that it
     // saw the call. If authz had been ordered after the recording extension,

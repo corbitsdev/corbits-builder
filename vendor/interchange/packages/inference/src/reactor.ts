@@ -635,6 +635,26 @@ export function createReactor(config: ReactorConfig): Reactor {
             `Question ${op.correlationId} was answered but its prompts were not kept`,
           );
         }
+        if ("plugin" in op.question) {
+          if (!("output" in answer)) {
+            throw new Error(
+              `Question ${op.correlationId} shows plugin ${op.question.plugin} but was answered without its output`,
+            );
+          }
+          return {
+            mode: "tool_result",
+            result: {
+              callId: suspendedCall.id,
+              content: answer,
+              isError: false,
+            },
+          };
+        }
+        if ("output" in answer) {
+          throw new Error(
+            `Question ${op.correlationId} asks prompts but was answered with a screen output`,
+          );
+        }
         // The person answered by the ids the runtime gave each prompt; the
         // model never saw those, so it reads the answers against its own words.
         const answers = op.question.questions.map((prompt) => {

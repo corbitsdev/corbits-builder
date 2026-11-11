@@ -34,6 +34,7 @@
 
 import { type } from "arktype";
 
+import type { QuestionCheck } from "@intx/inference";
 import type { GrantEffect } from "@intx/types";
 import {
   ToolCredentialDeclarationArray,
@@ -133,6 +134,11 @@ export interface ToolBundle {
   readonly definitions: readonly ToolDefinition[];
   run(call: ToolCall, signal: AbortSignal): Promise<ToolResult>;
   dispose?(): Promise<void>;
+  /**
+   * The bundle that defines the `question` tool may check a plugin question
+   * before it is parked, refusing an input its screen cannot draw.
+   */
+  checkQuestion?: QuestionCheck;
 }
 
 /**

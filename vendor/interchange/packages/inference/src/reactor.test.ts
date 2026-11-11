@@ -7,10 +7,14 @@ import { createCorrelationRegistry } from "./correlation";
 import { createReactor, mergeInferenceOptions } from "./reactor";
 import { createDefaultDependencies } from "./providers";
 import { createDefaultDirector } from "./default-director";
+import { createQuestionExtension, type QuestionCheck } from "./question";
 import { assertWellFormedToolSequence } from "./turns";
 import { createInboundMessage } from "@intx/mime";
 import { waitUntil } from "@intx/types/testing";
-import { PerCallInferenceOptions } from "@intx/types/runtime";
+import {
+  PerCallInferenceOptions,
+  QUESTION_TOOL_NAME,
+} from "@intx/types/runtime";
 
 import type {
   ReactorDirector,
@@ -5048,6 +5052,209 @@ describe("createReactor — approval resume error result", () => {
     expect(gateCleared.data.reason).toBe("timeout");
     await waitFor("reactor.done");
     expect(cleared).toBe(true);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// A `question` call that shows a screen parks with its plugin and input, and
+// the screen's output becomes the call's result
+// ---------------------------------------------------------------------------
+
+describe("createReactor — question screen", () => {
+  const screen = { plugin: "font-picker", input: { current: "Inter" } };
+
+  function questionRunner(args: Record<string, unknown>) {
+    let call = 0;
+    return async function* (
+      opts: InferenceHarnessOptions,
+    ): AsyncGenerator<InferenceEvent> {
+      call += 1;
+      const turn: AssistantTurn =
+        call === 1
+          ? {
+              role: "assistant",
+              content: [
+                {
+                  type: "tool_call",
+                  id: "call-question",
+                  name: QUESTION_TOOL_NAME,
+                  arguments: args,
+                },
+              ],
+              model: "test-model",
+              timestamp: 1000,
+            }
+          : {
+              role: "assistant",
+              content: [{ type: "text", text: "acknowledged" }],
+              model: "test-model",
+              timestamp: 2000,
+            };
+      yield {
+        type: "inference.done",
+        seq: opts.nextSeq(),
+        data: { turn, usage: emptyUsage(), source: TEST_SOURCE },
+      };
+    };
+  }
+
+  function startQuestion(
+    args: Record<string, unknown>,
+    checkQuestion?: QuestionCheck,
+  ) {
+    const cell: PersistedCell = {
+      turns: [],
+      pendingOperations: [],
+      tokenUsage: emptyUsage(),
+    };
+    const handle = createTestReactor({
+      contextStore: makePersistingContextStore(cell),
+      director: createDefaultDirector("test agent", []),
+      inferenceRunner: questionRunner(args),
+      beforeToolExtensions: [createQuestionExtension(checkQuestion)],
+    });
+    handle.reactor.start();
+    handle.reactor.deliver(makeInboundMessage());
+    return { ...handle, cell };
+  }
+
+  async function parked(waitFor: TestReactorHandle["waitFor"]) {
+    const blocked = await waitFor("reactor.gate.blocked");
+    if (blocked.type !== "reactor.gate.blocked") throw new Error("unreachable");
+    const correlationId = blocked.data.correlationId;
+    if (correlationId === undefined) throw new Error("expected correlationId");
+    return correlationId;
+  }
+
+  function answer(correlationId: string, body: unknown): InboundMessage {
+    return createInboundMessage({
+      from: "signal@local",
+      to: "agent@example.com",
+      content: JSON.stringify(body),
+      correlationId,
+    });
+  }
+
+  function questionResult(cell: PersistedCell): unknown {
+    const block = cell.turns
+      .flatMap((t) => t.content)
+      .find((b) => b.type === "tool_result" && b.callId === "call-question");
+    if (block === undefined || block.type !== "tool_result") {
+      throw new Error("expected a tool_result for the question call");
+    }
+    expect(block.isError).toBe(false);
+    return JSON.parse(
+      block.content
+        .filter((c) => c.type === "text")
+        .map((c) => c.text)
+        .join(""),
+    );
+  }
+
+  test("a plugin question parks with its plugin and input untouched", async () => {
+    const { cell, waitFor } = startQuestion(screen);
+    await parked(waitFor);
+
+    expect(cell.pendingOperations).toHaveLength(1);
+    expect(cell.pendingOperations[0]?.question).toEqual(screen);
+  });
+
+  test("the screen's output becomes the call's result", async () => {
+    const { reactor, cell, events, waitFor } = startQuestion(screen);
+    const correlationId = await parked(waitFor);
+
+    reactor.deliver(answer(correlationId, { output: { font: "Lora" } }));
+    await waitForEvent(events, (e) => e.type === "connector.reply");
+
+    expect(questionResult(cell)).toEqual({ output: { font: "Lora" } });
+    expect(cell.pendingOperations).toHaveLength(0);
+  });
+
+  test("a reply answers a plugin question", async () => {
+    const { reactor, cell, events, waitFor } = startQuestion(screen);
+    const correlationId = await parked(waitFor);
+
+    reactor.deliver(answer(correlationId, { reply: "use the old font" }));
+    await waitForEvent(events, (e) => e.type === "connector.reply");
+
+    expect(questionResult(cell)).toEqual({ reply: "use the old font" });
+  });
+
+  test("a call with both questions and a plugin is blocked", async () => {
+    const { events, waitFor } = startQuestion({
+      ...screen,
+      questions: [{ question: "Which font?", header: "Font", options: [] }],
+    });
+    await waitFor("tool.done");
+
+    expect(events.some((e) => e.type === "reactor.gate.blocked")).toBe(false);
+    const done = getEvent(events, "tool.done");
+    expect(done.data.result.isError).toBe(true);
+    expect(done.data.result.content).toBe(
+      "Invalid question: pass questions or a plugin, not both",
+    );
+  });
+
+  test("a plugin question its check refuses is blocked with the refusal", async () => {
+    const { cell, events, waitFor } = startQuestion(
+      screen,
+      () => "Unknown font list",
+    );
+    await waitFor("tool.done");
+
+    expect(events.some((e) => e.type === "reactor.gate.blocked")).toBe(false);
+    expect(cell.pendingOperations).toHaveLength(0);
+    const done = getEvent(events, "tool.done");
+    expect(done.data.result.isError).toBe(true);
+    expect(done.data.result.content).toBe("Unknown font list");
+  });
+
+  test("a plugin question its check allows parks", async () => {
+    const checked: unknown[] = [];
+    const { cell, waitFor } = startQuestion(screen, async (question) => {
+      checked.push(question);
+      return undefined;
+    });
+    await parked(waitFor);
+
+    expect(checked).toEqual([screen]);
+    expect(cell.pendingOperations[0]?.question).toEqual(screen);
+  });
+
+  test("a prompts question is not checked", async () => {
+    const { waitFor } = startQuestion(
+      { questions: [{ question: "Which font?", header: "Font", options: [] }] },
+      () => {
+        throw new Error("a prompts question was checked");
+      },
+    );
+    await parked(waitFor);
+  });
+
+  test("answers by prompt id to a plugin question halt the run", async () => {
+    const { reactor, waitFor } = startQuestion(screen);
+    const correlationId = await parked(waitFor);
+
+    reactor.deliver(answer(correlationId, { answers: { a: ["Lora"] } }));
+
+    const error = await waitFor("reactor.error");
+    if (error.type !== "reactor.error") throw new Error("unreachable");
+    expect(error.data.fatal).toBe(true);
+    expect(error.data.error).toContain("answered without its output");
+  });
+
+  test("a screen output to a prompts question halts the run", async () => {
+    const { reactor, waitFor } = startQuestion({
+      questions: [{ question: "Which font?", header: "Font", options: [] }],
+    });
+    const correlationId = await parked(waitFor);
+
+    reactor.deliver(answer(correlationId, { output: { font: "Lora" } }));
+
+    const error = await waitFor("reactor.error");
+    if (error.type !== "reactor.error") throw new Error("unreachable");
+    expect(error.data.fatal).toBe(true);
+    expect(error.data.error).toContain("answered with a screen output");
   });
 });
 

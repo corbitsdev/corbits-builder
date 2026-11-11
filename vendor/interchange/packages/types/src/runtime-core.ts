@@ -735,22 +735,45 @@ const QuestionPrompt = type({
   custom: "boolean = true",
 });
 
+/**
+ * A screen the person's interface draws instead of prompts: a plugin name and
+ * its input. The runtime carries the input without reading it. `questions`
+ * is ruled out so the union with prompts, whose defaults are morphs, can tell
+ * the two apart.
+ */
+const QuestionScreen = type({
+  plugin: "string > 0",
+  input: "Record<string, unknown>",
+  "questions?": "never",
+});
+
 /** The name of the tool an agent calls to ask a person questions. */
 export const QUESTION_TOOL_NAME = "question";
 
 /** The arguments of a `question` call, as the model writes them. */
 export const QuestionArguments = type({
   questions: QuestionPrompt.array().atLeastLength(1),
-});
+}).or(QuestionScreen);
 export type QuestionArguments = typeof QuestionArguments.infer;
 
 /**
+ * The `question` arguments as one object, for the model's tool schema:
+ * providers reject a schema that is a union at the top level.
+ */
+export const QuestionToolInput = type({
+  "questions?": QuestionPrompt.array().atLeastLength(1),
+  "plugin?": "string > 0",
+  "input?": "Record<string, unknown>",
+});
+
+/**
  * A paused `question` call as people see it: each prompt carries the id the
- * runtime gave it, and the person's answer names those ids.
+ * runtime gave it, and the person's answer names those ids. A screen is kept
+ * as it was asked.
  */
 export const AskedQuestion = type({
   questions: QuestionPrompt.and({ id: "string > 0" }).array().atLeastLength(1),
-});
+}).or(QuestionScreen);
 export type AskedQuestion = typeof AskedQuestion.infer;
 
 /**
