@@ -1,38 +1,92 @@
-// Closure materialization and per-instance store layout for the tool-package
-// loader: fetching + SRI-verifying + extracting each platform-matching entry
-// into the content-addressable cache, resolving dependency ranges, and
-// copying the closure into a per-instance store the loader then imports
-// author code from. Extracted from `loader.ts` so this eval-free
-// materialization concern is isolated from author-code loading. `loader.ts`
-// re-exports `materializeClosure` and `storeEntryDir` for existing consumers.
+// Closure materialization and per-instance store layout: fetching +
+// SRI-verifying + extracting each platform-matching entry into the
+// content-addressable cache, resolving dependency ranges, and copying the
+// closure into a per-instance store. Nothing here imports author code.
 
 import { constants as fsConstants, promises as fs } from "node:fs";
 import path from "node:path";
 import semver from "semver";
 
 import { getLogger } from "@intx/log";
-import type { ToolPackageManifestEntry } from "@intx/types/tool-packages";
-
-import { TarballIntegrityMismatchError } from "./cache";
-import { materializeGitEntry } from "./git-materialize";
 import type {
-  HostPlatform,
-  MaterializeClosureArgs,
-  MaterializeClosureResult,
-} from "./loader";
+  ToolPackageManifest,
+  ToolPackageManifestEntry,
+} from "@intx/types/tool-packages";
+
+import { TarballIntegrityMismatchError, type TarballCache } from "./cache";
+import { materializeGitEntry } from "./git-materialize";
 import {
-  ToolLoaderError,
+  ClosureMaterializationError,
   describeError,
   isEEXIST,
   isENOENT,
   platformListMatches,
-} from "./loader-internal";
+} from "./materialization-internal";
+import type { RegistryConfig } from "./resolver";
+import type { TarballFetcher } from "./tarball-fetcher";
 
 const logger = getLogger(["sidecar", "tool-packaging", "store-layout"]);
 
+export interface HostPlatform {
+  readonly os: string;
+  readonly cpu: string;
+}
+
+/**
+ * Arguments for `materializeClosure`. Everything it needs is passed
+ * explicitly: the closure's `cache`, `registries`, `host`, and resolved
+ * `fetchTarball` are threaded in directly.
+ */
+export interface MaterializeClosureArgs {
+  readonly manifest: ToolPackageManifest;
+  readonly instanceScratchDir: string;
+  /**
+   * Filesystem root that `assetMounts` paths are joined against. Mount
+   * paths are workspace-relative; the fetcher resolves them against
+   * `assetRoot` to get the absolute tarball location for `kind: "asset"`
+   * entries.
+   */
+  readonly assetRoot: string;
+  /**
+   * Maps a `source.assetId` from a manifest entry to a
+   * workspace-relative mount path. Empty map is valid when no entry
+   * sources from an asset.
+   */
+  readonly assetMounts: ReadonlyMap<string, string>;
+  /**
+   * Maps a source-format asset entry's `source.assetId` to an absolute
+   * indexed git directory whose object database holds the pinned commit and
+   * its trees. Empty map is valid when no entry sources from a git subtree.
+   */
+  readonly gitDirs: ReadonlyMap<string, string>;
+  readonly host: HostPlatform;
+  readonly cache: TarballCache;
+  /**
+   * Registry identifier → registry config. The key is the `registry`
+   * identifier manifest entries point at. Used both to gate
+   * `kind: "registry"` entries against the sidecar config and as the
+   * `registries` context handed to `fetchTarball`.
+   */
+  readonly registries: ReadonlyMap<string, RegistryConfig>;
+  /**
+   * Resolved tarball fetcher, normally from `createTarballFetcher`.
+   * `materializeClosure` does not construct one of its own.
+   */
+  readonly fetchTarball: TarballFetcher;
+}
+
+/**
+ * Result of `materializeClosure`: the per-instance store directory the
+ * closure was laid out under (`<instanceScratchDir>/store`). A caller computes
+ * a specific package's directory with `storeEntryDir`.
+ */
+export interface MaterializeClosureResult {
+  readonly storeDir: string;
+}
+
 /**
  * Lay out a resolved manifest closure into the per-instance store
- * WITHOUT importing any author code. This is phases 1-2 of the loader:
+ * WITHOUT importing any author code:
  *
  *   1. Fetch + SRI-verify + extract each platform-matching entry into
  *      the content-addressable cache.
@@ -41,16 +95,14 @@ const logger = getLogger(["sidecar", "tool-packaging", "store-layout"]);
  *      and symlink each direct dep into that entry's `node_modules/` so
  *      Node's ancestor walk resolves bare-specifier imports.
  *
- * Returns the `storeDir` the closure was laid out under. The first real
- * `import()` of author code is NOT here — it belongs to `loadManifest`'s
- * phase-3 loop — so a caller (e.g. an install-time probe) can stage the
- * frozen closure into a package directory the loader consumes without
- * executing author code on its host.
+ * Returns the `storeDir` the closure was laid out under, so a caller (e.g.
+ * an install-time probe) can stage the frozen closure into a package
+ * directory without executing author code on its host.
  *
  * Only entries whose `os`/`cpu` match `host` are materialized; the rest
  * are skipped with a `platform.mismatch.skipped` debug log. Errors
- * surface as `ToolLoaderError` with a `category` matching the
- * corresponding `DeployApplyErrorCategory`.
+ * surface as `ClosureMaterializationError` with a `category` matching the
+ * corresponding `ClosureMaterializationErrorCategory`.
  */
 export async function materializeClosure(
   args: MaterializeClosureArgs,
@@ -71,20 +123,18 @@ export async function materializeClosure(
     let integrity: string;
     if (source.kind === "registry") {
       if (!args.registries.has(source.registry)) {
-        throw new ToolLoaderError({
+        throw new ClosureMaterializationError({
           category: "registry.unknown",
-          message: `manifest references registry "${source.registry}" which is not in the sidecar config`,
-          package: { name: entry.name, version: entry.version },
+          message: `manifest entry ${entry.name}@${entry.version} references registry "${source.registry}" which is not in the sidecar config`,
         });
       }
       integrity = source.integrity;
     } else if (source.package.format === "source") {
       const gitDir = args.gitDirs.get(source.assetId);
       if (gitDir === undefined) {
-        throw new ToolLoaderError({
+        throw new ClosureMaterializationError({
           category: "git.materialization.failed",
-          message: `manifest entry references git assetId "${source.assetId}" which is not in the deploy pack's git-dirs map`,
-          package: { name: entry.name, version: entry.version },
+          message: `manifest entry ${entry.name}@${entry.version} references git assetId "${source.assetId}" which is not in the git-dirs map`,
         });
       }
       return materializeGitEntry({
@@ -96,10 +146,9 @@ export async function materializeClosure(
       });
     } else {
       if (!args.assetMounts.has(source.assetId)) {
-        throw new ToolLoaderError({
+        throw new ClosureMaterializationError({
           category: "asset.mount.missing",
-          message: `manifest entry references assetId "${source.assetId}" which is not in the deploy pack's asset-mounts map`,
-          package: { name: entry.name, version: entry.version },
+          message: `manifest entry ${entry.name}@${entry.version} references assetId "${source.assetId}" which is not in the asset-mounts map`,
         });
       }
       integrity = source.package.integrity;
@@ -136,10 +185,9 @@ export async function materializeClosure(
         await args.cache.put(integrity, bytes);
       } catch (err) {
         if (err instanceof TarballIntegrityMismatchError) {
-          throw new ToolLoaderError({
+          throw new ClosureMaterializationError({
             category: "integrity.mismatch",
             message: `bytes for ${entry.name}@${entry.version} did not match pinned integrity`,
-            package: { name: entry.name, version: entry.version },
           });
         }
         throw err;
@@ -161,10 +209,9 @@ export async function materializeClosure(
       if (err instanceof TarballIntegrityMismatchError) {
         await args.cache.evict(integrity);
       }
-      throw new ToolLoaderError({
+      throw new ClosureMaterializationError({
         category: "tarball.extract.failed",
         message: `tar extraction failed for ${entry.name}@${entry.version}: ${describeError(err)}`,
-        package: { name: entry.name, version: entry.version },
       });
     }
   }
@@ -182,9 +229,8 @@ export async function materializeClosure(
   //    pass below has finished walking every dir to copy files out.
   //    Releases are aggregated and drained in a `finally` so an error
   //    mid-layout still hands the cache its references back. They are
-  //    drained once the layout is built: the phase-3 import loop reads
-  //    from the copied store, not from these extraction trees, so
-  //    the extraction handles are a phase-1-2 concern only.
+  //    drained once the layout is built: nothing reads these extraction
+  //    trees after that.
   const extractionByEntry = new Map<string, string>();
   const entriesByNameVersion = new Map<string, ToolPackageManifestEntry>();
   const releases: (() => void)[] = [];
@@ -222,16 +268,12 @@ export async function materializeClosure(
     }
   }
 
-  return { storeDir, entries: filtered };
+  return { storeDir };
 }
 
 /**
  * True when `entry` may run on `host`: its `os`/`cpu` platform lists (if
- * present) accept the host per npm's allow/block-list semantics. Pure —
- * the single source of truth for the host-match decision, shared by the
- * logging filter `passesPlatformFilter` and `loadManifest`'s phase-3
- * re-selection (which must not re-emit the mismatch debug logs
- * `materializeClosure` already wrote).
+ * present) accept the host per npm's allow/block-list semantics.
  */
 function entryMatchesHost(
   entry: ToolPackageManifestEntry,
@@ -273,10 +315,9 @@ export function storeEntryDir(
   name: string,
   version: string,
 ): string {
-  // `@scope/name` carries a slash that, taken naively, would push the
-  // package's contents one directory deeper than `loadTopLevel`
-  // expects. Mirror npm's on-disk shape: `node_modules/@scope/name/`,
-  // so a scoped entry's dir is `<store>/@scope/name/<version>/`.
+  // `@scope/name` carries a slash, so a scoped entry's dir sits one level
+  // deeper, mirroring npm's on-disk shape `node_modules/@scope/name/`:
+  // `<store>/@scope/name/<version>/`.
   return path.join(storeDir, name, version);
 }
 
@@ -309,7 +350,7 @@ async function buildStoreLayout(args: BuildStoreLayoutArgs): Promise<void> {
     }
     const layoutDir = storeEntryDir(args.storeDir, entry.name, entry.version);
     await fs.mkdir(path.dirname(layoutDir), { recursive: true });
-    await copyTree(extraction, layoutDir);
+    await copyTree(extraction, layoutDir, key);
   }
 
   for (const entry of args.filtered) {
@@ -334,10 +375,9 @@ async function buildStoreLayout(args: BuildStoreLayoutArgs): Promise<void> {
           logger.debug`optional.dropped.skipped: ${entry.name}@${entry.version} optional dep ${dep.name}@${dep.range} has no satisfying version in the closure (likely platform-filtered out)`;
           continue;
         }
-        throw new ToolLoaderError({
+        throw new ClosureMaterializationError({
           category: "package.entry.invalid",
           message: `${entry.name}@${entry.version} depends on ${dep.name}@${dep.range} but the manifest closure has no satisfying version; the resolver was expected to include it`,
-          package: { name: entry.name, version: entry.version },
         });
       }
       const target = storeEntryDir(args.storeDir, dep.name, pickedVersion);
@@ -352,14 +392,10 @@ async function buildStoreLayout(args: BuildStoreLayoutArgs): Promise<void> {
         if (!isEEXIST(err)) throw err;
         const existing = await fs.readlink(symlinkPath);
         if (existing !== relativeTarget) {
-          // A symlink collision inside the loader's per-package
-          // layout pass is a loader-layer invariant violation, not an
-          // unknown error shape — route it through the same structured
-          // envelope every other loader failure uses so atomic-apply
-          // surfaces it as `package.entry.invalid` instead of falling
-          // back to the unknown-shape catch-all (`factory.construct.
-          // failed`).
-          throw new ToolLoaderError({
+          // A symlink collision inside the per-package layout pass is a
+          // layout invariant violation, not an unknown error shape, so it
+          // carries the same structured envelope as every other failure here.
+          throw new ClosureMaterializationError({
             category: "package.entry.invalid",
             message: `symlink collision at ${symlinkPath}: existing target ${existing} differs from ${relativeTarget}`,
           });
@@ -391,7 +427,7 @@ interface RangeResolution {
  * `semver.maxSatisfying` against the current closure shape.
  *
  * Mirrors the resolver's first-arrival-per-`(name, range)` semantics
- * on the loader side. Without this, two requirers with overlapping
+ * on the sidecar side. Without this, two requirers with overlapping
  * ranges of the same dep could each pick a different version of that
  * dep — `maxSatisfying` is deterministic given its candidate set, but
  * the candidate set is the full closure for the name and a transitive
@@ -467,7 +503,7 @@ async function resolveRangesByFirstArrival(
       // `recorded.get(key)` returning `null` is the "we picked this
       // range against the closure and got nothing" cached answer.
       // Caching the null is safe only because the closure is static
-      // across this loader pass — `entriesByNameVersion` does not
+      // across this layout pass — `entriesByNameVersion` does not
       // grow underneath us. If a future change starts adding entries
       // mid-walk (e.g. lazy fetches during BFS), the cached null
       // would shadow the new candidates and produce a phantom miss;
@@ -510,6 +546,7 @@ async function resolveRangesByFirstArrival(
 async function copyTree(
   srcDir: string,
   destDir: string,
+  packageLabel: string,
   extractionRoot: string = srcDir,
 ): Promise<void> {
   await fs.mkdir(destDir, { recursive: true });
@@ -518,7 +555,7 @@ async function copyTree(
     const src = path.join(srcDir, entry.name);
     const dest = path.join(destDir, entry.name);
     if (entry.isDirectory()) {
-      await copyTree(src, dest, extractionRoot);
+      await copyTree(src, dest, packageLabel, extractionRoot);
     } else if (entry.isFile()) {
       try {
         await fs.copyFile(src, dest, fsConstants.COPYFILE_EXCL);
@@ -571,9 +608,9 @@ async function copyTree(
       try {
         realExtractionRoot = await fs.realpath(extractionRoot);
       } catch (err) {
-        throw new ToolLoaderError({
+        throw new ClosureMaterializationError({
           category: "package.entry.invalid",
-          message: `tarball symlink ${src} → ${target}: extraction-root realpath failed: ${describeError(err)}`,
+          message: `tarball for ${packageLabel}: symlink ${src} → ${target}: extraction-root realpath failed: ${describeError(err)}`,
         });
       }
       // `path.resolve` produces the absolute path the symlink would
@@ -600,18 +637,18 @@ async function copyTree(
         targetAbs = await fs.realpath(path.resolve(path.dirname(src), target));
       } catch (err) {
         if (!isENOENT(err)) {
-          throw new ToolLoaderError({
+          throw new ClosureMaterializationError({
             category: "package.entry.invalid",
-            message: `tarball contains symlink ${src} → ${target} whose target could not be resolved: ${describeError(err)}`,
+            message: `tarball for ${packageLabel} contains symlink ${src} → ${target} whose target could not be resolved: ${describeError(err)}`,
           });
         }
         let srcDirReal: string;
         try {
           srcDirReal = await fs.realpath(path.dirname(src));
         } catch (dirErr) {
-          throw new ToolLoaderError({
+          throw new ClosureMaterializationError({
             category: "package.entry.invalid",
-            message: `tarball symlink ${src} → ${target}: dirname realpath failed during dangling-link fallback: ${describeError(dirErr)}`,
+            message: `tarball for ${packageLabel}: symlink ${src} → ${target}: dirname realpath failed during dangling-link fallback: ${describeError(dirErr)}`,
           });
         }
         targetAbs = path.resolve(srcDirReal, target);
@@ -623,9 +660,9 @@ async function copyTree(
         targetAbs !== realExtractionRoot &&
         !targetAbs.startsWith(realContainmentRoot)
       ) {
-        throw new ToolLoaderError({
+        throw new ClosureMaterializationError({
           category: "package.entry.invalid",
-          message: `tarball contains symlink ${src} → ${target} that escapes the package extraction directory`,
+          message: `tarball for ${packageLabel} contains symlink ${src} → ${target} that escapes the package extraction directory`,
         });
       }
       try {
@@ -666,10 +703,9 @@ async function readDirectDependencies(
   try {
     pkg = JSON.parse(pkgJsonRaw);
   } catch (err) {
-    throw new ToolLoaderError({
+    throw new ClosureMaterializationError({
       category: "package.entry.invalid",
       message: `malformed package.json in ${entry.name}@${entry.version}: ${describeError(err)}`,
-      package: { name: entry.name, version: entry.version },
     });
   }
   const byName = new Map<string, DirectDep>();
@@ -694,10 +730,9 @@ async function readDirectDependencies(
     if (optionalDeps !== null && typeof optionalDeps === "object") {
       for (const [name, range] of Object.entries(optionalDeps)) {
         if (typeof range !== "string") {
-          throw new ToolLoaderError({
+          throw new ClosureMaterializationError({
             category: "package.entry.invalid",
             message: `package.json field optionalDependencies["${name}"] in ${entry.name}@${entry.version} is ${typeof range}, expected a string range`,
-            package: { name: entry.name, version: entry.version },
           });
         }
         byName.set(name, {
@@ -714,10 +749,9 @@ async function readDirectDependencies(
     if (deps !== null && typeof deps === "object") {
       for (const [name, range] of Object.entries(deps)) {
         if (typeof range !== "string") {
-          throw new ToolLoaderError({
+          throw new ClosureMaterializationError({
             category: "package.entry.invalid",
             message: `package.json field dependencies["${name}"] in ${entry.name}@${entry.version} is ${typeof range}, expected a string range`,
-            package: { name: entry.name, version: entry.version },
           });
         }
         byName.set(name, {
@@ -768,10 +802,9 @@ function assertDepMapShape(
   entry: { readonly name: string; readonly version: string },
 ): void {
   if (Array.isArray(value)) {
-    throw new ToolLoaderError({
+    throw new ClosureMaterializationError({
       category: "package.entry.invalid",
       message: `package.json#${field} for ${entry.name}@${entry.version} must be an object map of name→range, not an array`,
-      package: { name: entry.name, version: entry.version },
     });
   }
 }

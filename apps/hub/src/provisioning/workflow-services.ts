@@ -222,6 +222,7 @@ export async function createWorkflowServices(options: {
     deploymentPlugins: plugins,
     probePlugins: plugins,
     preparedDeployer: options.sessionService,
+    workflowRunRepoStore: repos.repoStore,
     credentialCipher: options.cipher,
     allocationRouter: router,
     hubWebSocketUrl,
@@ -327,10 +328,12 @@ export async function createWorkflowServices(options: {
     router.events.on("deployment.stopped", (target) =>
       report(() => reconciliation.handleConnected(target)),
     ),
-    router.events.on("mail.inbound.acknowledged", ({ messageId, allocated }) =>
-      allocated === undefined
-        ? undefined
-        : report(() => dispatch.acknowledge({ ...allocated, messageId })),
+    router.events.on(
+      "mail.inbound.acknowledged",
+      ({ deliveryKey, allocated }) =>
+        allocated === undefined
+          ? undefined
+          : report(() => dispatch.acknowledge({ ...allocated, deliveryKey })),
     ),
   ];
   const poll = (

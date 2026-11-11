@@ -12,6 +12,7 @@ export {
 } from "./pg-error";
 export type { DBConfig } from "./config";
 export { runMigrations, dropSchema } from "./migrate";
+export { credentialSecretColumns } from "./credential-secret";
 export {
   rekeyCredentialSecrets,
   type RekeyReport,
@@ -20,7 +21,7 @@ export {
   backfillPrincipalKeys,
   type BackfillPrincipalKeysReport,
 } from "./backfill-principal-keys";
-export { createGrantStore } from "./grant-store";
+export { createGrantStore, type GrantStoreFactory } from "./grant-store";
 export {
   loadTenantLifecyclePolicies,
   canExecuteWorkflowRun,
@@ -32,18 +33,33 @@ export {
   resolveDeploymentLifecyclePolicy,
   validateLifecyclePolicyEdit,
 } from "./workflow-lifecycle-policy";
-export { createPrincipalStore, type PrincipalStore } from "./principal-store";
+export {
+  createPrincipalStore,
+  deactivateRunPrincipals,
+  insertRunPrincipal,
+  type PrincipalStore,
+} from "./principal-store";
 export {
   createPrincipalKeyStore,
+  recordPublicKey,
+  retireActiveKey,
   type CreatePrincipalKeyStoreDeps,
   type PrincipalKeyStore,
 } from "./principal-key-store";
+export {
+  loadRunPrincipalActiveKey,
+  recordRunPrincipalKey,
+  retireRunPrincipalKey,
+  runPrincipalActiveKeySql,
+  runPrincipalHasActiveKey,
+} from "./run-principal-key";
 export {
   createRunTokenStore,
   deleteRunTokensForPrincipals,
   type RunTokenStore,
 } from "./run-token-store";
 export { lookupLocalPrincipalSigner } from "./signer-identity";
+export { resolveLocalMailParty, type LocalMailParty } from "./local-mail-party";
 export {
   resolveSenderKey,
   resolveFrameSenderKey,
@@ -85,6 +101,7 @@ export {
   type EnqueueWorkflowRunDispatchResult,
   type EnqueueWorkflowSignalDispatchArgs,
   type RetryWorkflowRunDispatchArgs,
+  type WorkflowRunDispatchAcknowledgement,
   type WorkflowRunDispatchStore,
 } from "./workflow-run-dispatch-store";
 export {
@@ -165,7 +182,10 @@ export {
   resolveTenantOwnedCredentialById,
   resolveInferenceMaterials,
   reresolveCurrentMaterials,
+  findRemovedCredentialIds,
+  findRotatedCredentialIds,
   AmbiguousCredentialError,
+  CredentialInactiveError,
   CredentialUnauthorizedError,
   buildCredentialDelivery,
 } from "./credential-resolution";
@@ -194,8 +214,6 @@ export {
 } from "./catalog-resolution";
 export {
   resolveModelSources,
-  resolveInferencePreferences,
-  resolveInstanceModelSources,
   resolveSourcesByOfferingIds,
   type CatalogSourceResolution,
   type OfferingSourceResolution,

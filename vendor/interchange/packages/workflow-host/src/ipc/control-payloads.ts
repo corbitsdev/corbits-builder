@@ -8,6 +8,7 @@ import {
   SignatureStatus,
 } from "@intx/types/runtime-core";
 import { CredentialDelivery } from "@intx/types/credential-delivery";
+import { AttachmentError } from "@intx/types/sessions";
 
 /**
  * Wire-shape of one per-step credentials entry the supervisor pushes
@@ -21,7 +22,6 @@ import { CredentialDelivery } from "@intx/types/credential-delivery";
  */
 export const CredentialsSnapshotStepPayload = type({
   stepId: "string",
-  address: "string",
   grants: "unknown[]",
   contentHash: "string",
 });
@@ -80,6 +80,17 @@ export const OutboundAttachmentPayload = type({
   contentType: "string",
   dataBase64: "string",
 });
+
+/**
+ * An attachment on a `mail.compose.request`. The name is optional, as on
+ * the hub's REST mail route: the supervisor validates it with the same
+ * rules, which name an unnamed attachment by its position.
+ */
+export const ComposeAttachmentPayload = OutboundAttachmentPayload.omit(
+  "name",
+).merge({ "name?": "string" });
+
+export type ComposeAttachmentPayload = typeof ComposeAttachmentPayload.infer;
 
 /**
  * Wire projection of `@intx/types/runtime`'s `OutboundMessage`. Mirrors
@@ -526,7 +537,15 @@ const controlPayloadFactories = defineControlPayloadFactories({
       type: "'trigger.fire'",
       data: {
         runId: "string",
-        messageId: "string",
+        // The claim-check identity of the mail: the delivery key of a
+        // sender-scoped entry, or the bare Message-ID of a legacy entry.
+        // Each branch rejects other keys, so exactly one is present. The
+        // Message-ID of a sender-scoped entry rides in the payload's
+        // headers, not here.
+        mailIdentity: type({ deliveryKey: "string > 0", "+": "reject" }).or({
+          messageId: "string > 0",
+          "+": "reject",
+        }),
         receivedAt: "number",
         // The run's inbound-mail input, resolved by the supervisor (the sole
         // mail owner) before the frame: a decoded `Mail` (headers plus part
@@ -657,9 +676,14 @@ const controlPayloadFactories = defineControlPayloadFactories({
         delivery: CredentialDelivery.or("null"),
       },
     }),
-  ready: () =>
+  definition: () =>
     type({
-      type: "'ready'",
+      // The child's first upstream frame, sent once it has evaluated its
+      // closure: the inert projection of the definition it verified against
+      // `DEFINITION_HASH`, or why it could not load or verify it. The
+      // supervisor checks the projection against the same approved hash
+      // before it uses it, since the child runs author code and could lie.
+      type: "'definition'",
       data: {
         childPid: "number",
         /**
@@ -669,7 +693,22 @@ const controlPayloadFactories = defineControlPayloadFactories({
          * child's private key never leaves the child's address space.
          */
         childPublicKey: "string",
+        // The supervisor validates the projection when it checks the hash,
+        // so the IPC module stays free of the workflow wire schema.
+        result: type({
+          ok: "true",
+          projection: "unknown",
+        }).or({
+          ok: "false",
+          error: "string",
+        }),
       },
+    }),
+  ready: () =>
+    type({
+      // The child has applied its authority and resumed its in-flight runs,
+      // so the supervisor may start dispatching to it.
+      type: "'ready'",
     }),
   "recycle.request": () =>
     type({
@@ -756,6 +795,63 @@ const controlPayloadFactories = defineControlPayloadFactories({
         ),
       },
     }),
+  "substrate.write-delta.request": () =>
+    type({
+      // Child-initiated `writeTreeDelta` request, the delta-shaped
+      // sibling of `substrate.write.request`. The supervisor runs its own
+      // `writeTreeDelta` and asks the child for the delta with
+      // `substrate.delta.request`. `changedPathPrefixes` is the write's
+      // validation scope; null validates the whole tree. The supervisor
+      // resolves the child's awaiter with `substrate.write.response`.
+      type: "'substrate.write-delta.request'",
+      data: {
+        requestId: "string > 0",
+        repoId: {
+          kind: "string",
+          id: "string > 0",
+        },
+        ref: "string > 0",
+        changedPathPrefixes: type("string > 0").array().or("null"),
+        message: "string > 0",
+      },
+    }),
+  "substrate.delta.request": () =>
+    type({
+      // Supervisor-initiated request for the child's delta, fired from
+      // inside the supervisor's `writeTreeDelta` while the per-repo lock
+      // holds the ref at `parentCommitSha` (null when the ref does not
+      // exist yet). The child reads that commit from its own read-only
+      // store, so the frame carries no tree content.
+      type: "'substrate.delta.request'",
+      data: {
+        requestId: "string > 0",
+        parentCommitSha: "string > 0 | null",
+      },
+    }),
+  "substrate.delta.response": () =>
+    type({
+      // Child's delta: the files to write and the paths to delete. The
+      // substrate carries every other entry forward by its object id.
+      type: "'substrate.delta.response'",
+      data: {
+        requestId: "string > 0",
+        result: type(
+          {
+            ok: "true",
+            puts: type({
+              path: "string > 0",
+              contentBase64: "string",
+            }).array(),
+            deletes: type("string > 0").array(),
+          },
+          "|",
+          {
+            ok: "false",
+            reason: "string > 0",
+          },
+        ),
+      },
+    }),
   "substrate.write.response": () =>
     type({
       // Supervisor's terminal reply to a child's `substrate.write.request`.
@@ -802,18 +898,11 @@ const controlPayloadFactories = defineControlPayloadFactories({
       // failure). The message is carried as a JSON-projected
       // `OutboundMessage`; attachment bytes ride base64-encoded so the
       // NDJSON wire stays text-safe.
-      //
-      // `completeReferences` is set only by a connector reply. The
-      // supervisor then fills References from the committed mailbox when
-      // `inReplyTo` is set and `references` is absent. A send without the
-      // flag is left alone: `mail_send` is the same shape, and completing
-      // it would replace its one-parent chain with the full ancestry.
       type: "'outbound.message'",
       data: {
         requestId: "string > 0",
         senderAddress: "string > 0",
         "mailbox?": "string",
-        "completeReferences?": "boolean",
         message: OutboundMessagePayload,
       },
     }),
@@ -839,6 +928,50 @@ const controlPayloadFactories = defineControlPayloadFactories({
           {
             ok: "false",
             reason: "string > 0",
+          },
+        ),
+      },
+    }),
+  "mail.compose.request": () =>
+    type({
+      // Child-initiated request for a conversation message signed with the
+      // deployment key but not sent. Run code posts the bytes to the hub
+      // REST API itself, and the hub verifies them against the run
+      // principal's key. The request names no sender: the supervisor signs
+      // only as its deployment's mail address. It carries only what the
+      // hub's run mail route accepts, so the type is fixed to
+      // `conversation.message` and there is one recipient.
+      type: "'mail.compose.request'",
+      data: {
+        requestId: "string > 0",
+        message: {
+          to: "string > 0",
+          content: "string",
+          "attachments?": ComposeAttachmentPayload.array(),
+        },
+      },
+    }),
+  "mail.compose.response": () =>
+    type({
+      // Supervisor's reply to `mail.compose.request`. A success carries the
+      // signed RFC 2822 message base64-encoded and the Message-ID stamped
+      // into it. A refused attachment carries the structured
+      // `attachmentError` the hub's REST mail route reports for the same
+      // input, so the caller can act on its `code`.
+      type: "'mail.compose.response'",
+      data: {
+        requestId: "string > 0",
+        result: type(
+          {
+            ok: "true",
+            messageId: "string > 0",
+            rawMessageBase64: "string > 0",
+          },
+          "|",
+          {
+            ok: "false",
+            reason: "string > 0",
+            "attachmentError?": AttachmentError,
           },
         ),
       },

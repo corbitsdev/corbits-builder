@@ -16,7 +16,6 @@ import { WireGrantRule } from "./grant-wire";
 import {
   BoundedApprovalSnapshot,
   ConnectorThreadState,
-  HarnessConfig,
   InferenceEvent,
   InferenceSource,
 } from "./runtime";
@@ -262,15 +261,16 @@ export type HelloFrame = typeof HelloFrame.infer;
 
 /**
  * Acknowledges a successful agent deployment. Includes the agent's Ed25519
- * public key (hex-encoded) for published identity and content provenance.
- * Echoes the request id and incarnation of the `agent.deploy` it answers.
+ * public key, 32 bytes as lowercase hex, for published identity and content
+ * provenance. Echoes the request id and incarnation of the `agent.deploy` it
+ * answers.
  */
 export const AgentDeployAckFrame = type({
   type: "'agent.deploy.ack'",
   requestId: "string",
   agentAddress: "string",
   generation: Generation,
-  publicKey: "string",
+  publicKey: /^[0-9a-f]{64}$/,
 });
 export type AgentDeployAckFrame = typeof AgentDeployAckFrame.infer;
 
@@ -468,8 +468,9 @@ export type SignalCorrelationRegisterAckFrame =
  * can acknowledge durable receipt (`mail.inbound.ack`) keyed on the SAME id
  * the hub tracks -- no per-side re-derivation. It is the id the hub minted at
  * ingress (also the message's `Message-ID` header), so a redelivery replays
- * identical bytes and the downstream `RunStarted` dedup (consumedMessageIds)
- * makes at-least-once effectively-once. Present only on hub-originated mail
+ * identical bytes and the downstream `RunStarted` dedup (consumedIdentities,
+ * keyed by the delivery key of this sender and id) makes at-least-once
+ * effectively-once. Present only on hub-originated mail
  * that participates in the ack/retry handshake (workflow trigger mail, session
  * conversation mail); agent-to-agent relayed mail omits it.
  *
@@ -489,7 +490,9 @@ export const MailInboundFrame = type({
   agentAddress: "string",
   generation: Generation,
   rawMessage: "string",
-  authenticatedSender: "string",
+  // Non-empty with no NUL, as `deriveDeliveryKey` requires of a sender: this
+  // is the sender the hub keys the delivery by.
+  authenticatedSender: /^[^\0]+$/,
   "messageId?": "string",
 });
 export type MailInboundFrame = typeof MailInboundFrame.infer;
@@ -499,16 +502,20 @@ export type MailInboundFrame = typeof MailInboundFrame.infer;
  * the agent's on-disk inbox. The hub holds each delivered mail in a pending
  * map and retries until this ack lands (or reconnect-redelivers it), so a
  * message dropped in the connected/reconnecting window is not silently lost.
- * Keyed on the hub-minted `messageId` the `mail.inbound` carried, so the ack
- * clears exactly the pending entry it resolves; the ack is only sent AFTER the
- * durable inbox write resolves (a non-ack IS the retry signal). At-least-once
- * delivery is made effectively-once by the `RunStarted`/signal dedup guards.
+ * Names the `messageId` the `mail.inbound` carried and echoes its
+ * `authenticatedSender`, so the hub derives the delivery key and clears exactly
+ * the pending entry the ack resolves; the pending mail of another sender with
+ * the same `messageId` stays pending. The ack is only sent AFTER the durable
+ * inbox write resolves (a non-ack IS the retry signal). At-least-once delivery
+ * is made effectively-once by the `RunStarted`/signal dedup guards.
  */
 export const MailInboundAckFrame = type({
   type: "'mail.inbound.ack'",
   agentAddress: "string",
   generation: Generation,
   messageId: "string",
+  // Non-empty with no NUL: the hub derives the delivery key from it.
+  authenticatedSender: /^[^\0]+$/,
 });
 export type MailInboundAckFrame = typeof MailInboundAckFrame.infer;
 
@@ -562,10 +569,7 @@ export type SenderIdentity = typeof SenderIdentity.infer;
  * inside the deployment's `workflow-run` repo -- sibling to the run's
  * `runs/<runId>/events/` subtree.
  *
- * `stepGrants` carries the same `WireGrantRule` shape the `agent.deploy`
- * frame's `config.grants` ships, so the run's grants ride the same
- * validated grant encoding as the deploy-time step grants rather than a
- * new one.
+ * `stepGrants` carries the run's grants as validated `WireGrantRule`s.
  *
  * `senderIdentities` carries the resolved public keys of the run's
  * authorized senders, co-delivered on the same `run.grants` barrier as the
@@ -732,7 +736,7 @@ export type FrozenApprovalBundle = typeof FrozenApprovalBundle.infer;
  * materialize a closure entry whose bytes live in that asset. `pack` is the
  * base64-encoded git packfile the hub produced for the asset (`createPack`
  * output); the sidecar checks out `commitSha` from it as plain files under
- * `mountPath`, then the loader resolves each `kind:"asset"` closure entry
+ * `mountPath`, then materialization resolves each `kind:"asset"` closure entry
  * against that mount. `assetId` matches the `source.assetId` the closure
  * entries name.
  */
@@ -756,9 +760,8 @@ export type WorkflowSourceAssetMount = typeof WorkflowSourceAssetMount.infer;
  * (`validateWorkflowProjection`), since the frame holds no definition to cover.
  *
  * This is deliberately NOT built on `WorkflowProjectionWithSources`: that shape
- * (definition + sources + approved hash) is the approval/probe projection and
- * stays intact for the probe surface and for each `referencedDefinitions` body,
- * which still carry their own inert definition.
+ * (definition + sources) is a `referencedDefinitions` body, which still carries
+ * its own inert definition.
  */
 export const AgentDeployWorkflow = type({
   // Per-step inference-source failover chains, one per step in the closure's
@@ -773,8 +776,8 @@ export const AgentDeployWorkflow = type({
   // closed if it is absent.
   "approvedWireHash?": "string > 0",
   // Extracted trigger bodies -- onTrigger sections and childWorkflow children,
-  // lifted transitively. Each entry carries the body's inert definition, its own
-  // per-step inference-source pins, and its approved wire hash. The sidecar seals
+  // lifted transitively. Each entry carries the body's inert definition and its
+  // own per-step inference-source pins. The sidecar seals
   // each body's sources into the per-run record and delivers the plaintext to the
   // run child through the spawn env, so a body child -- in-process, its env lost
   // across a restart -- resolves inference durably without holding the cipher
@@ -806,17 +809,8 @@ export type AgentDeployWorkflow = typeof AgentDeployWorkflow.infer;
  * Deploy an agent to this sidecar. The sidecar spawns a supervised
  * workflow-process child to host the deployment.
  *
- * The deploy router discriminates two shapes by field presence without
- * consulting `config`:
- *   - `workflow` set: a workflow deployment (single-step head or multi-step)
- *     that spawns the supervised workflow-process child.
- *   - `provisionStep` true: a no-spawn per-step provision of a multi-step
- *     deploy -- the sidecar initializes the step's agent-state repo and
- *     records the hub key so the follow-up deploy pack applies and verifies,
- *     but spawns nothing. The deployment-level `workflow` frame (sent once
- *     after every step is provisioned) spawns the child.
- * A frame carrying neither is rejected -- there is no in-process
- * fall-through. `workflow` and `provisionStep` are mutually exclusive.
+ * A frame with no `workflow` is rejected -- there is no in-process
+ * fall-through.
  *
  * The sidecar answers with `agent.deploy.ack` or `agent.deploy.error`
  * carrying the same `requestId`. A deploy of an address the sidecar already
@@ -827,11 +821,8 @@ export const AgentDeployFrame = type({
   requestId: "string",
   agentAddress: "string",
   generation: Generation,
-  agentId: "string",
-  config: HarnessConfig,
-  hubPublicKey: "string",
-  "workflow?": AgentDeployWorkflow,
-  "provisionStep?": "boolean",
+  config: { sessionId: "string" },
+  workflow: AgentDeployWorkflow,
 });
 export type AgentDeployFrame = typeof AgentDeployFrame.infer;
 
@@ -995,27 +986,17 @@ export type CredentialsUpdateFrame = typeof CredentialsUpdateFrame.infer;
 //
 // Each pack frame carries two complementary addressing fields:
 //
-//   - `agentAddress` identifies the destination agent on the receiving
-//     sidecar. The sidecar manages per-agent state and uses this field to
-//     route the pack to the correct workspace. For agent-state packs the
-//     sidecar applies the pack onto the agent's deploy/state tree.
+//   - `agentAddress` identifies the deployment on the receiving sidecar.
 //
-//   - `repoId` identifies the source repo at the hub. The hub maps `repoId`
-//     to the originating entry in its kind-keyed RepoStore. For
-//     `repoId.kind === "agent-state"`, `repoId.id` is the run address
-//     (the deploy/state repo and the destination agent are the same), so
-//     the two fields carry the same value. Future kinds (e.g. assets) use
-//     `repoId` to name a non-agent source while `agentAddress` continues
-//     to address the destination agent.
+//   - `repoId` identifies the workflow-run repo the pack belongs to.
 //
 // `repo.pack.push` and `repo.pack.done` also carry the generation of the
 // incarnation the transfer belongs to. The ack and reject answer one transfer
 // on the connection that carried it, and transfer ids are never reused, so
 // they need no generation.
 //
-// Flow control: deferred. Agent deploy trees are small enough that the sender
-// can push all chunks without windowing. If this becomes a problem, a credit-
-// based mechanism can be added later.
+// Flow control: deferred. A sender pushes all chunks without windowing. If this
+// becomes a problem, a credit-based mechanism can be added later.
 
 /**
  * A chunk of git pack data. The sender splits the packfile into chunks of at
@@ -1039,11 +1020,6 @@ export type PackPushFrame = typeof PackPushFrame.infer;
  * Signals the end of a pack transfer. The receiver applies the pack and
  * updates `ref` to point at `commitSha`. If the post-apply HEAD does not
  * match `commitSha`, the receiver must reject with reason "sha_mismatch".
- *
- * When `mountPath` is set, the receiver materializes the pack at
- * `workspace/<mountPath>/` instead of the hardcoded agent deploy tree.
- * Absent for agent-state deploy/state flows and workflow-run restoration.
- * The receiver distinguishes those paths by `repoId.kind`.
  */
 export const PackDoneFrame = type({
   type: "'repo.pack.done'",
@@ -1053,7 +1029,6 @@ export const PackDoneFrame = type({
   transferId: "string",
   ref: "string",
   commitSha: "string",
-  "mountPath?": "string",
 });
 export type PackDoneFrame = typeof PackDoneFrame.infer;
 
@@ -1069,12 +1044,11 @@ export const PackAckFrame = type({
 export type PackAckFrame = typeof PackAckFrame.infer;
 
 export const PackRejectReason = type.enumerated(
-  "signature_invalid",
   "path_violation",
   "conflict",
   "corrupt",
   "sha_mismatch",
-  "timeout",
+  "missing_objects",
 );
 export type PackRejectReason = typeof PackRejectReason.infer;
 
@@ -1101,115 +1075,6 @@ export const PackRejectFrame = type({
   "detail?": "string",
 });
 export type PackRejectFrame = typeof PackRejectFrame.infer;
-
-/**
- * Categories of deploy-apply failure surfaced by the sidecar's
- * tool-package loader. Each value maps one-to-one to a distinct point in
- * the apply pipeline; a single category fires per failed attempt.
- *
- *   tarball.missing          — a manifest entry's asset-sourced tarball
- *                              is not present at the recorded path.
- *   asset.mount.missing      — a `kind: "asset"` manifest entry names
- *                              an `assetId` that the deploy pack's
- *                              `deploy/asset-mounts.json` does not
- *                              cover. Indicates a mismatch between the
- *                              resolver's view of attached assets and
- *                              the materialization fan-out, not a
- *                              missing file on disk.
- *   integrity.mismatch       — fetched tarball bytes do not match the
- *                              manifest's pinned SRI integrity.
- *   registry.fetch.failed    — the configured registry refused or
- *                              dropped the request for a tarball.
- *   registry.unknown         — the manifest entry references a registry
- *                              name not present in the sidecar's
- *                              registry config.
- *   registry.auth.failed     — the registry rejected the sidecar's
- *                              credentials.
- *   tarball.extract.failed   — tar extraction failed or the extracted
- *                              tree was malformed.
- *   git.materialization.failed
- *                            — a git-sourced entry could not be
- *                              materialized from its checked-out
- *                              subtree, or reached a loader that does
- *                              not materialize git sources.
- *   manifest.invalid         — the manifest itself did not validate
- *                              at the loader boundary (JSON.parse
- *                              failure or arktype schema failure).
- *                              Peer-dependency violations are caught
- *                              earlier by the hub's resolver and
- *                              surface as a launch failure rather
- *                              than this frame.
- *   package.entry.missing    — a top-level package's package.json had
- *                              no `interchange.tools` field.
- *   package.entry.invalid    — the resolved `interchange.tools` module
- *                              exported nothing that looked like an
- *                              AnnotatedToolFactory.
- *   factory.construct.failed — a factory invocation threw, or required
- *                              a capability key the env did not provide.
- *   tool.name.duplicate      — a tool name is registered more than
- *                              once in the apply's loaded set. The
- *                              cross-bundle case (two pinned packages
- *                              share a bundle id, producing colliding
- *                              prefixed tool names) is rejected at
- *                              apply time, before the caller commits.
- *                              The intra-bundle case (one package
- *                              exports two definitions sharing a raw
- *                              name) surfaces at first agent
- *                              construction with the same category
- *                              instead of apply rejection: the loader
- *                              cannot see `bundle.definitions` without
- *                              invoking the factory, and the `BaseEnv`
- *                              the factory needs is constructed by the
- *                              workflow child's step build env AFTER
- *                              the commit. Both paths carry the same
- *                              category so the operator-facing failure
- *                              shape is uniform regardless of which
- *                              check fired; only the channel
- *                              (apply.error frame vs runtime construct
- *                              failure) differs.
- *   apply.swap.failed        — DEPRECATED, no longer emitted. The apply
- *                              protocol stages each deploy into a stable
- *                              per-deploy-id directory and commits via a
- *                              single `active-deploy-id` file write, so
- *                              there is no filesystem rename that can
- *                              fail. The value is retained in the enum
- *                              for wire compatibility: during a rolling
- *                              upgrade an older sidecar can still emit
- *                              it, and dropping the member would make a
- *                              newer hub's frame validator reject that
- *                              frame.
- *   apply.previous-rotation.failed
- *                            — every loaded factory validated and the
- *                              new deploy was staged, but persisting the
- *                              instance's `active-deploy-id` file (the
- *                              commit) degraded: the id was written
- *                              through the no-fsync / dirty-marker
- *                              fallback ladder rather than durably
- *                              flushed. The new deploy is logically
- *                              live, so `previousDeployId` on this
- *                              failure carries the NEW deploy id rather
- *                              than the pre-apply one. The next boot
- *                              reconciles the recorded id from the dirty
- *                              marker.
- */
-export const DeployApplyErrorCategory = type.enumerated(
-  "tarball.missing",
-  "asset.mount.missing",
-  "integrity.mismatch",
-  "registry.fetch.failed",
-  "registry.unknown",
-  "registry.auth.failed",
-  "tarball.extract.failed",
-  "git.materialization.failed",
-  "manifest.invalid",
-  "package.entry.missing",
-  "package.entry.invalid",
-  "factory.construct.failed",
-  "tool.name.duplicate",
-  "apply.swap.failed",
-  "apply.previous-rotation.failed",
-);
-export type DeployApplyErrorCategory = typeof DeployApplyErrorCategory.infer;
 
 // ---------------------------------------------------------------------------
 // Workflow probe (bidirectional)

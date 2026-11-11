@@ -2,12 +2,14 @@ import type { Handler, MiddlewareHandler } from "hono";
 import { Hono } from "hono";
 import { openAPIRouteHandler } from "hono-openapi";
 
+import { HUB_CONDITION_REGISTRY, type MailSendAuthorizer } from "@intx/authz";
 import { honoLogger, type HonoContext } from "@intx/log/hono";
 import { createNoopCredentialCipher } from "@intx/crypto";
 import { getLogger } from "@intx/log";
 import type { CredentialCipher } from "@intx/types";
 import {
   type DB,
+  type GrantStoreFactory,
   type ApprovalStore,
   type PrincipalKeyStore,
   type SignalCorrelationStore,
@@ -20,7 +22,6 @@ import {
 import type { ConditionRegistry, GrantStore } from "@intx/types/authz";
 
 import type { AppEnv } from "./context";
-import { HUB_CONDITION_REGISTRY } from "./condition-registry";
 import { createSessionMiddleware } from "./middleware/session";
 import {
   createAuthorizeGrant,
@@ -47,6 +48,7 @@ import { createPrincipalRoutes, createInviteRoutes } from "./routes/principals";
 import { createRoleRoutes, createRoleAssignRoutes } from "./routes/roles";
 import { createGrantRoutes, createEvaluateRoutes } from "./routes/grants";
 import { createRunRoutes } from "./routes/runs";
+import { createMailSendAuthorizer } from "./mail-send-authorization";
 import { createWorkflowRoutes } from "./routes/workflows";
 import { createWorkflowDefinitionRoutes } from "./routes/workflow-definitions";
 import {
@@ -74,12 +76,8 @@ import {
 import {
   ASSET_OPENAPI_EXCLUDE_GLOBS,
   createAssetRoutes,
+  SMART_HTTP_REPO_SEGMENT,
 } from "./routes/assets";
-import {
-  AGENT_STATE_OPENAPI_EXCLUDE_GLOBS,
-  createAgentStateRunGitRoutes,
-  createAgentStateReceivePackDeny,
-} from "./routes/agent-state-git";
 import { createGitTokenAuth } from "./middleware/git-token-auth";
 import { createRunTokenAuth } from "./middleware/run-token-auth";
 
@@ -159,8 +157,26 @@ export type MountHubRoutesDeps = {
    * `PRINCIPAL_KEY_ENCRYPTION_KEY`; tests may omit it.
    */
   principalKeyStore?: PrincipalKeyStore;
+  /**
+   * Serves the routes' authorization checks. Optional: when omitted, a
+   * database-backed store is used.
+   */
   grantStore?: GrantStore;
+  /**
+   * Builds the grant store for the executor of a route's transaction, so a
+   * delegator read inside that transaction sees its own writes. Optional:
+   * when omitted, `createGrantStore` is used. A database-free test supplies
+   * one that returns its in-memory store.
+   */
+  grantStoreFor?: GrantStoreFactory;
   conditionRegistry?: ConditionRegistry;
+  /**
+   * Decides whether the caller may send the mail that starts a run. Optional:
+   * when omitted, the database-backed authorizer over `grantStoreFor` is
+   * used. It evaluates conditions with its own narrower registry, not
+   * `conditionRegistry`. A database-free test supplies its own.
+   */
+  authorizeMailSend?: MailSendAuthorizer;
   approvalStore?: ApprovalStore;
   signalCorrelationStore?: SignalCorrelationStore;
   readRunLifecycles?: ReadRunLifecycles;
@@ -188,9 +204,9 @@ export type MountHubRoutesDeps = {
  * having mounted the request logger and the context middleware first,
  * and for wiring their own auth handler at the path of their choice.
  *
- * `grantStore` and `conditionRegistry` default to the hub's standard
- * choices (a database-backed grant store and the time-window condition
- * evaluator) when not supplied.
+ * `grantStore`, `grantStoreFor` and `conditionRegistry` default to the
+ * hub's standard choices (a database-backed grant store, a store per
+ * executor, and the time-window condition evaluator) when not supplied.
  */
 export function mountHubRoutes(
   app: Hono<AppEnv>,
@@ -220,7 +236,11 @@ export function mountHubRoutes(
       "mountHubRoutes: assetService and repoStore must be provided together or both omitted",
     );
   }
+  // `grantStore` serves the authorization checks only. A delegator read
+  // inside a route's transaction goes through `grantStoreFor`, so it sees
+  // the transaction's own writes whatever store the checks use.
   const grantStore = opts.grantStore ?? createGrantStore(db);
+  const grantStoreFor = opts.grantStoreFor ?? createGrantStore;
   const conditionRegistry: ConditionRegistry =
     opts.conditionRegistry ?? HUB_CONDITION_REGISTRY;
   const authorizeGrant = createAuthorizeGrant({
@@ -231,6 +251,12 @@ export function mountHubRoutes(
     grantStore,
     conditionRegistry,
   });
+  const authorizeMailSend =
+    opts.authorizeMailSend ??
+    createMailSendAuthorizer({
+      db,
+      grantStoreFor,
+    });
   const approvalStore = opts.approvalStore ?? createApprovalStore(db);
   const signalCorrelationStore =
     opts.signalCorrelationStore ?? createSignalCorrelationStore(db);
@@ -266,30 +292,14 @@ export function mountHubRoutes(
     // middleware does not capture the REST tarball routes that share
     // the `/api/tenants/:tenantId/assets/...` prefix.
     app.use(
-      "/api/tenants/:tenantId/assets/:kind/:nameDotGit{[^/]+\\.git}/*",
-      createGitTokenAuth({ db }),
-    );
-  }
-
-  // Agent-state smart-HTTP read routes also use bearer auth. The
-  // receive-pack denial middleware mounts BEFORE bearer auth so an
-  // unauthenticated `git push -v` parses the pkt-line ERR record
-  // rather than a generic 401. The bearer middleware then gates the
-  // upload-pack half (advertise + POST) on a valid token.
-  if (repoStore !== null) {
-    app.use(
-      "/api/tenants/:tenantId/workflows/runs/:runId/state.git/*",
-      createAgentStateReceivePackDeny(),
-    );
-    app.use(
-      "/api/tenants/:tenantId/workflows/runs/:runId/state.git/*",
+      `/api/tenants/:tenantId/assets/:kind/${SMART_HTTP_REPO_SEGMENT}/*`,
       createGitTokenAuth({ db }),
     );
   }
 
   // A workflow run token authenticates as its run principal. It mounts ahead
-  // of resolveTenant, which then skips the session lookup, and it refuses
-  // every route outside its allow-list. Any other request passes through.
+  // of resolveTenant, which then skips the session lookup. Any other request
+  // passes through.
   app.use(
     "/api/tenants/:tenantId/*",
     createRunTokenAuth({
@@ -320,7 +330,7 @@ export function mountHubRoutes(
   // Tenant-scoped routes
   app.route(
     "/api/tenants/:tenantId/principals",
-    createPrincipalRoutes({ db, requireGrant }),
+    createPrincipalRoutes({ db, requireGrant, grantStoreFor, sidecarRouter }),
   );
   app.route(
     "/api/tenants/:tenantId/members/invite",
@@ -328,19 +338,25 @@ export function mountHubRoutes(
   );
   app.route(
     "/api/tenants/:tenantId/roles",
-    createRoleRoutes({ db, requireGrant }),
+    createRoleRoutes({ db, requireGrant, grantStoreFor, sidecarRouter }),
   );
   app.route(
     "/api/tenants/:tenantId/principals/:principalId/roles",
-    createRoleAssignRoutes({ db, requireGrant }),
+    createRoleAssignRoutes({ db, requireGrant, grantStoreFor, sidecarRouter }),
   );
   app.route(
     "/api/tenants/:tenantId/grants",
-    createGrantRoutes({ db, requireGrant }),
+    createGrantRoutes({
+      db,
+      requireGrant,
+      grantStoreFor,
+      sidecarRouter,
+      conditionRegistry,
+    }),
   );
   app.route(
     "/api/tenants/:tenantId/principals/:principalId/evaluate",
-    createEvaluateRoutes({ db, grantStore, conditionRegistry }),
+    createEvaluateRoutes({ db, requireGrant, grantStore, conditionRegistry }),
   );
   // The run management surface -- list, observe, stop, mail a single run.
   // Mounted as `/workflows/runs` (tenant-wide runs) before the `/workflows`
@@ -364,6 +380,8 @@ export function mountHubRoutes(
         ? { workflowLifecycleService }
         : {}),
       grantStore,
+      grantStoreFor,
+      authorizeMailSend,
       conditionRegistry,
       requireGrant,
       approvalStore,
@@ -404,7 +422,8 @@ export function mountHubRoutes(
           : {}),
         sidecarRouter,
         repoStore,
-        grantStore,
+        grantStoreFor,
+        authorizeMailSend,
         authorizeGrant,
         requireGrant,
       }),
@@ -440,7 +459,9 @@ export function mountHubRoutes(
               },
             }
           : {}),
+      requireGrant,
       grantStore,
+      grantStoreFor,
       conditionRegistry,
       approvalStore,
       signalCorrelationStore,
@@ -452,7 +473,7 @@ export function mountHubRoutes(
   );
   app.route(
     "/api/tenants/:tenantId/providers",
-    createProviderRoutes({ db, requireGrant }),
+    createProviderRoutes({ db, sidecarRouter, requireGrant }),
   );
   app.route(
     "/api/tenants/:tenantId/oauth-clients",
@@ -473,30 +494,15 @@ export function mountHubRoutes(
   );
   app.route(
     "/api/tenants/:tenantId/catalog/models",
-    createModelCatalogRoutes({
-      db,
-      sidecarRouter,
-      requireGrant,
-      credentialCipher,
-    }),
+    createModelCatalogRoutes({ db, requireGrant }),
   );
   app.route(
     "/api/tenants/:tenantId/catalog/providers",
-    createModelProviderRoutes({
-      db,
-      sidecarRouter,
-      requireGrant,
-      credentialCipher,
-    }),
+    createModelProviderRoutes({ db, requireGrant }),
   );
   app.route(
     "/api/tenants/:tenantId/catalog/offerings",
-    createModelOfferingRoutes({
-      db,
-      sidecarRouter,
-      requireGrant,
-      credentialCipher,
-    }),
+    createModelOfferingRoutes({ db, requireGrant }),
   );
   app.route(
     "/api/tenants/:tenantId/models",
@@ -548,22 +554,6 @@ export function mountHubRoutes(
     );
   }
 
-  if (repoStore !== null) {
-    // The folded run's agent-state clone surface. Mounts at `/workflows/runs`
-    // alongside the run-management routes; the git sub-paths (`:runId/state.git`)
-    // are disjoint from the run routes, and the literal `runs` segment
-    // out-ranks the `/workflows/:runId` deploy router.
-    app.route(
-      "/api/tenants/:tenantId/workflows/runs",
-      createAgentStateRunGitRoutes({
-        db,
-        repoStore,
-        grantStore,
-        conditionRegistry,
-      }),
-    );
-  }
-
   if (sidecarWsHandler) {
     app.get("/api/sidecars/ws", sidecarWsHandler);
   }
@@ -594,6 +584,9 @@ export type CreateAppOpts = {
    */
   principalKeyStore?: PrincipalKeyStore;
   grantStore?: GrantStore;
+  grantStoreFor?: GrantStoreFactory;
+  /** See `authorizeMailSend` on the route mount options. */
+  authorizeMailSend?: MailSendAuthorizer;
   approvalStore?: ApprovalStore;
   signalCorrelationStore?: SignalCorrelationStore;
   readRunLifecycles?: ReadRunLifecycles;
@@ -621,6 +614,8 @@ export function createApp({
   credentialCipher,
   principalKeyStore,
   grantStore,
+  grantStoreFor,
+  authorizeMailSend,
   approvalStore,
   signalCorrelationStore,
   readRunLifecycles,
@@ -662,6 +657,8 @@ export function createApp({
     repoStore,
     maxTarballBytes,
     ...(grantStore ? { grantStore } : {}),
+    ...(grantStoreFor ? { grantStoreFor } : {}),
+    ...(authorizeMailSend ? { authorizeMailSend } : {}),
     ...(approvalStore ? { approvalStore } : {}),
     ...(signalCorrelationStore ? { signalCorrelationStore } : {}),
     ...(readRunLifecycles ? { readRunLifecycles } : {}),
@@ -682,7 +679,6 @@ export function createApp({
         "/status",
         "/api/auth/**",
         ...ASSET_OPENAPI_EXCLUDE_GLOBS,
-        ...AGENT_STATE_OPENAPI_EXCLUDE_GLOBS,
       ],
     }),
   );

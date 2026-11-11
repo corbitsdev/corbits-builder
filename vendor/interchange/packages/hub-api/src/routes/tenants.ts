@@ -4,6 +4,7 @@ import { Hono, type Context, type MiddlewareHandler } from "hono";
 import { describeRoute, validator } from "hono-openapi";
 import { getLogger } from "@intx/log";
 
+import { MAIL_SEND_ACTION, mailSendResource } from "@intx/authz";
 import { tenant, role, principalRole, grant } from "@intx/db/schema";
 import {
   createPrincipalStore,
@@ -24,7 +25,7 @@ import {
 import { unauthorizedResponse, type AppEnv, type TenantEnv } from "../context";
 import { errorResponse, tenantConfigErrorResponse } from "../error-response";
 import {
-  idResource,
+  requestTenantResource,
   type AuthorizeGrant,
   type RequireGrant,
 } from "../middleware/grant";
@@ -222,18 +223,36 @@ export function createTenantRoutes({
           createdAt: now,
         });
 
-        // Grant owner role full access
-        await tx.insert(grant).values({
+        // Owner and admin may send mail to any recipient in the tenant.
+        const tenantSendGrant = (roleId: string) => ({
           id: generateId("grant"),
           tenantId,
-          roleId: ownerRoleId,
-          resource: "*",
-          action: "*",
-          effect: "allow",
-          origin: "system",
+          roleId,
+          resource: mailSendResource("tenant", tenantId),
+          action: MAIL_SEND_ACTION,
+          effect: "allow" as const,
+          origin: "system" as const,
           createdAt: now,
           updatedAt: now,
         });
+
+        // Grant owner role every action on every resource. The `*` grant does
+        // not reach the `mail.send` namespace, so the owner also needs the
+        // send row.
+        await tx.insert(grant).values([
+          {
+            id: generateId("grant"),
+            tenantId,
+            roleId: ownerRoleId,
+            resource: "*",
+            action: "*",
+            effect: "allow",
+            origin: "system",
+            createdAt: now,
+            updatedAt: now,
+          },
+          tenantSendGrant(ownerRoleId),
+        ]);
 
         // Grant admin role broad management access
         const adminRoleId = roleIds["admin"];
@@ -272,6 +291,7 @@ export function createTenantRoutes({
               createdAt: now,
               updatedAt: now,
             },
+            tenantSendGrant(adminRoleId),
           ]);
         }
 
@@ -303,14 +323,19 @@ export function createTenantRoutes({
     describeRoute({
       tags: ["Tenants"],
       summary: "Get tenant details",
+      description: "Requires read on the tenant (`tenant:<id>` / `read`).",
       responses: {
         200: jsonResponse("Tenant details", TenantResponse),
-        403: jsonResponse("Not an active member of this tenant", ErrorResponse),
+        403: jsonResponse(
+          "Not an active member of this tenant, or insufficient grants",
+          ErrorResponse,
+        ),
         404: jsonResponse("Tenant not found", ErrorResponse),
         409: jsonResponse("Stored tenant config is invalid", ErrorResponse),
       },
     }),
     resolveTenant,
+    requireGrant(requestTenantResource, "read"),
     async (c) => {
       const tenantRow = c.get("tenant");
       try {
@@ -344,7 +369,7 @@ export function createTenantRoutes({
       },
     }),
     resolveTenant,
-    requireGrant(idResource("tenant", "tenantId"), "manage"),
+    requireGrant(requestTenantResource, "manage"),
     validator("json", UpdateTenant),
     async (c) => {
       const tenantId = c.get("tenant").id;

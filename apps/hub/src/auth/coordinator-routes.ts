@@ -1,9 +1,9 @@
 import { resolveProjectTenant } from "../projects/authorization.ts";
 import { mountAgentTokens, mountRunScopedTokens } from "@corbits/agent-token";
+import { HUB_CONDITION_REGISTRY } from "@intx/authz";
 import { createGrantStore, type createDB } from "@intx/db";
 import {
   createRequireGrant,
-  HUB_CONDITION_REGISTRY,
   requireAuth,
   createResolveTenant,
   type TenantEnv,

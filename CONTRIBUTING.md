@@ -141,9 +141,10 @@ change follows, whether a person or a coding agent writes it.
 - **`vendor/interchange` is the upstream code Builder runs**, pinned at
   [vendor/VENDORED_REVISION](https://github.com/corbitsdev/corbits-builder/blob/main/vendor/VENDORED_REVISION). Propose changes at
   [faremeter/interchange](https://github.com/faremeter/interchange). A
-  deliberate local change is its own commit that also updates
+  deliberate local patch is its own commit that also updates
   `vendor/interchange.manifest.json`; `bun run vendor:verify` fails on
-  anything unrecorded. A bump vendors only what
+  anything unrecorded. A bump to a new upstream revision carries the Builder
+  changes it needs to build in the same commit, and vendors only what
   [the vendor policy](https://github.com/corbitsdev/corbits-builder/blob/main/docs/IMPLEMENTATION.md#vendor-policy)
   lists.
 

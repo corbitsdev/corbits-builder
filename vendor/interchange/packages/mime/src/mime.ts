@@ -132,6 +132,18 @@ export function generateMessageId(address?: string): string {
   return `<${uuid}@${domain}>`;
 }
 
+// RFC 5322 atext: the characters of one atom.
+const ATOM_RE = /^[A-Za-z0-9!#$%&'*+\-/=?^_`{|}~]+$/;
+
+/**
+ * Whether `value` is RFC 5322 dot-atom-text: atoms of atext joined by single
+ * dots. The id-left of a message identifier takes this form; it excludes
+ * control characters, spaces, and non-ASCII text.
+ */
+export function isDotAtomText(value: string): boolean {
+  return value.split(".").every((atom) => ATOM_RE.test(atom));
+}
+
 // ---------------------------------------------------------------------------
 // Address normalization
 // ---------------------------------------------------------------------------
@@ -2021,6 +2033,18 @@ export function buildMessageHeaders(
   if (tracestate !== undefined) result.tracestate = tracestate;
 
   return result;
+}
+
+/**
+ * Every value of every top-level header field, keyed by lowercase name, in
+ * the order the message carries them. A check that must see a repeated field
+ * reads this: `parseHeaderSection` keeps only the first value of each.
+ *
+ * Throws where `parseHeaderSection` throws.
+ */
+export function parseHeaderFields(raw: Uint8Array): Record<string, string[]> {
+  const { headerEnd } = parseHeaderSection(raw);
+  return parseRawHeaders(raw, headerEnd);
 }
 
 /**

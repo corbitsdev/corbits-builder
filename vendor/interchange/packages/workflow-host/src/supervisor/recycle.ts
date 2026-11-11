@@ -2,15 +2,15 @@
 // RECYCLE -- workflow-process supervisor library code
 // =============================================================
 //
-// Recycle is the supervisor's "same deploy tree, fresh process" path.
+// Recycle is the supervisor's "same definition, fresh process" path.
 // It tears the existing workflow-process child down and stands a new
-// one up against the SAME deploy tree (same materialized source
-// closure, same per-step credential repos). A deployment keeps its
-// deploy tree for its life; a different tree means a new deployment.
+// one up against the SAME definition (same materialized source
+// closure). A deployment keeps its definition for its life; a different
+// definition means a new deployment.
 //
-// Recycle does not refetch the deploy tree, does not consult an
+// Recycle does not refetch the source closure, does not consult an
 // updated workflow definition, does not re-resolve agents. The recycle
-// module must never grow a "maybe also refetch the deploy tree" mode --
+// module must never grow a "maybe also refetch the definition" mode --
 // that would let a recycle silently change what a deployment runs.
 //
 // Six-step sequence (locked):
@@ -36,8 +36,7 @@
 //      here; the recycle path does not reach into Node primitives.
 //   3. `respawn` -- mint a new 16-byte hex channelId (the same shape
 //      the initial spawn uses, per `generateChannelId`), generate a
-//      fresh 32-byte HMAC key, re-read per-step credentials via the
-//      injected `RepoStore`, and spawn a new Bun child via the same
+//      fresh 32-byte HMAC key, and spawn a new Bun child via the same
 //      subprocess-spawner binding. The new IPC anchors flow through
 //      spawn-time env exactly as the initial spawn's anchors did.
 //   4. `self-discover` -- the new child runs its existing self-
@@ -63,7 +62,7 @@
 // `ctx.replayProcessingToInbox()` so any in-flight `processing/`
 // entries that the dying cohort's dispatch loop did not reach
 // `markConsumed` for get moved back to `inbox/` under their original
-// `<receivedAt>-<messageId>` keys. Without this step the dying child
+// `<receivedAt>-<identity>` keys. Without this step the dying child
 // would leave an orphaned processing entry that no live dispatch
 // loop owns.
 //
@@ -97,10 +96,7 @@ import { receiveControlChannel } from "../ipc/control-receiver";
 import { receiveEventChannel, type EventPayload } from "../ipc/event-channel";
 import type { AuthoritySetData, ControlPayload } from "../ipc/control-payloads";
 
-import {
-  assembleCredentialsSnapshot,
-  type CredentialsSnapshot,
-} from "./credentials";
+import { waitForDefinition, waitForReady } from "./child-handshake";
 import type { SubprocessHandle, WorkflowSupervisorBindings } from "./types";
 import { buildChildSpawnEnv } from "./spawn-env";
 import {
@@ -172,23 +168,13 @@ export interface ChildWiring {
  * not re-register).
  */
 export interface RecycleContext {
-  /** The supervisor's full bindings, reused on respawn for credentials and spawn. */
+  /** The supervisor's full bindings, reused on respawn. */
   readonly bindings: WorkflowSupervisorBindings;
   /**
-   * Every step id in this deployment's flat step-id namespace -- the
-   * definition's own `stepOrder` plus the step ids of every `loop` body it
-   * carries -- for credentials re-assembly.
+   * Hub-approved definition hash, carried on the respawn env and checked
+   * against the new child's reported definition (unchanged across recycle).
    */
-  readonly stepOrder: readonly string[];
-  /** Definition hash carried on respawn env (unchanged across recycle). */
   readonly definitionHash: string;
-  /**
-   * Warm-keep flag carried on the respawn env (design §3b). Unchanged
-   * across recycle: the respawned child rebuilds its empty warm-agent
-   * cache lazily on the next message, so the deterministic warm-keep
-   * decision must survive the respawn rather than be re-derived.
-   */
-  readonly warmKeep: boolean;
   /** Forward target for InferenceEvents the new child publishes. */
   readonly onInferenceEvent: (event: EventPayload) => void;
   /** Live child wiring on entry; replaced before return. */
@@ -214,23 +200,21 @@ export interface RecycleContext {
    */
   readonly abortPriorCohort: () => void;
   /**
-   * The new child's `authority.set` frame data: the run's grants snapshot
-   * (`fallback` when the supervisor has no per-run grants source) and the
-   * supervisor's credential mirror, with the authority revision it was read
+   * The new child's `authority.set` frame data: the run's grants snapshot and
+   * the supervisor's credential mirror, with the authority revision it was read
    * at. Read from the supervisor at the call, never copied when the context is
    * built, so the frame carries the state at respawn time.
    */
-  readonly buildAuthority: (
-    fallback: CredentialsSnapshot,
-  ) => Promise<{ data: AuthoritySetData; revision: number }>;
+  readonly buildAuthority: () => Promise<{
+    data: AuthoritySetData;
+    revision: number;
+  }>;
   /**
    * Onward sink the supervisor uses to install the new child wiring
-   * once the freshly-spawned child has emitted `ready` and the
-   * credentialsSnapshot has been re-assembled.
+   * once the freshly-spawned child has emitted `ready`.
    */
   readonly installNewChild: (next: {
     wiring: ChildWiring;
-    credentialsSnapshot: CredentialsSnapshot;
     /**
      * The authority revision of the `authority.set` frame the new child got.
      * The supervisor sends the frame again when its revision moved on while
@@ -258,11 +242,11 @@ export interface RecycleContext {
    */
   readonly killTimeoutMs?: number;
   /**
-   * Deadline (ms) for the respawned child's `ready` handshake, matching
-   * the bound the spawn path applies. The supervisor resolves the
-   * effective value at its edge (`bindings.readyTimeoutMs ??
-   * DEFAULT_READY_TIMEOUT_MS`) and passes it through; the `??` fallback
-   * here only fires for a direct test caller.
+   * Deadline (ms) for each frame of the respawned child's handshake, its
+   * definition report and then `ready`, matching the bound the spawn path
+   * applies. The supervisor resolves the effective value at its edge
+   * (`bindings.readyTimeoutMs ?? DEFAULT_READY_TIMEOUT_MS`) and passes it
+   * through; the `??` fallback here only fires for a direct test caller.
    */
   readonly readyTimeoutMs?: number;
   /**
@@ -347,8 +331,8 @@ export async function triggerRecycle(
   // Step 3: respawn. Fresh channelId, fresh HMAC key, fresh Ed25519
   // IPC keypair. The new child gets the run's current grants and
   // credential material in its first frame, before it resumes any run.
-  // The deploy tree (the materialized source closure, the
-  // workflow-asset repo, the agent-state repos) is UNCHANGED.
+  // The materialized source closure and the workflow-asset repo are
+  // UNCHANGED.
   const channelId = generateChannelId();
   const hmacKey = generateHmacKey();
   const ipcKeypair = await (
@@ -362,9 +346,7 @@ export async function triggerRecycle(
     hostPublicKey: ipcKeypair.publicKey,
     anchorRunId: ctx.bindings.anchorRunId,
     deploymentMailAddress: ctx.bindings.deploymentMailAddress,
-    stepCount: ctx.bindings.stepCount,
     definitionHash: ctx.definitionHash,
-    warmKeep: ctx.warmKeep,
   });
 
   const handle = ctx.bindings.subprocessSpawner({
@@ -379,21 +361,28 @@ export async function triggerRecycle(
   });
 
   const controlIncoming = receiveControlChannel({
-    publicKey: { bootstrapFromReady: true },
+    publicKey: { bootstrapFromDefinition: true },
     channelId,
     reader: handle.controlReader,
     onCrash: ctx.onCrash,
   });
 
-  const readyPromise = waitForReady(controlIncoming);
+  // The new child reports its definition, then readies. The layout is
+  // already known, so the supervisor does not wait for the report before it
+  // reads the run's authority: it only checks the report against the
+  // approved hash.
+  const definitionPromise = waitForDefinition(
+    controlIncoming,
+    ctx.definitionHash,
+  );
   // Attach a benign handler at creation, before the fold below consumes
-  // the rejection: `readyPromise` is created here but not raced until
-  // after `assembleCredentialsSnapshot` awaits. A child that exits during
-  // that window rejects `readyPromise` with no handler yet attached -- an
-  // unhandled rejection across the await boundary. Mirrors the spawn
+  // the rejection: `definitionPromise` is created here but not raced until
+  // after the authority read awaits. A child that exits during
+  // that window rejects `definitionPromise` with no handler yet attached --
+  // an unhandled rejection across the await boundary. Mirrors the spawn
   // path's identical guard. Attaching `.catch` here and `.then` at the
   // race is fine; both observe the same settled value.
-  void readyPromise.catch(() => undefined);
+  void definitionPromise.catch(() => undefined);
 
   const eventIter = receiveEventChannel({
     hmacKey,
@@ -404,81 +393,44 @@ export async function triggerRecycle(
   const eventPump = pumpEvents(eventIter, ctx.onInferenceEvent);
 
   // The child handshake below is deadline-bounded and needs these timer
-  // bindings; the pre-handshake credentials-read reap needs them too, so
-  // derive them before that read.
+  // bindings.
   const setTimer = ctx.setTimer ?? defaultSetTimer;
   const clearTimer = ctx.clearTimer ?? defaultClearTimer;
 
-  // Re-read the spawn-time per-step credentials from the `agent-state`
-  // repos, and read the run's authority for the new child's first frame.
-  //
-  // The credentials read can reject; the authority read cannot, because a
-  // failed grants read gives the child a null snapshot. The new child is
-  // already spawned and wired but not yet installed on `state`, so the
-  // supervisor's recycle-failure teardown (which reaps the PRIOR cohort)
-  // cannot see it; reap it here on failure or it leaks. The spawn path
-  // kills its child on the same failure. The try wraps only the awaited
-  // reads: the handle and pumps it reaps are all constructed above, so
-  // the reap always has live handles.
-  let credentialsSnapshot: CredentialsSnapshot;
-  let authority: { data: AuthoritySetData; revision: number };
-  try {
-    credentialsSnapshot = await assembleCredentialsSnapshot({
-      repoStore: ctx.bindings.repoStore,
-      principal: ctx.bindings.readPrincipal,
-      stepOrder: ctx.stepOrder,
-      anchorRunId: ctx.bindings.anchorRunId,
-      deriveStepAddress: ctx.bindings.deriveStepAddress,
-      ...(ctx.bindings.deriveStepRepoId !== undefined
-        ? { deriveStepRepoId: ctx.bindings.deriveStepRepoId }
-        : {}),
-    });
-    authority = await ctx.buildAuthority(credentialsSnapshot);
-  } catch (cause) {
-    await reapUnreadyChild(handle, eventPump, controlIncoming, {
-      killTimeoutMs,
-      setTimer,
-      clearTimer,
-      phase: "credentials read failure",
-    });
-    throw cause;
-  }
-
-  // The first frame the new child receives: nothing else sends to this
-  // sender before `installNewChild`. The child applies it before it
-  // resumes any run. A large frame can wait on the child reading its
-  // stdin, so the send is folded into the bounded handshake below; a
-  // failed send fails the handshake and reaps the child.
-  const authoritySent = controlSender.send({
-    type: "authority.set",
-    data: authority.data,
-  });
-  void authoritySent.catch(() => undefined);
+  // Read the run's authority for the new child's first frame. The read cannot
+  // reject: a failed grants read gives the child a null snapshot.
+  const authority = await ctx.buildAuthority();
 
   // Steps 4 + 5: self-discover + resume. These run inside the child
   // before it emits `ready`; the supervisor waits, but bounded -- a child
   // that neither readies nor exits must not park the recycle (and thus
-  // the supervisor) in `recycling` forever. Bound the handshake exactly
-  // as the spawn path bounds its own: fold ready/failed into values, race
-  // a resolve-only deadline, clear the timer on every path.
+  // the supervisor) in `recycling` forever. Bound each frame of the
+  // handshake exactly as the spawn path bounds its own, so a recycled
+  // child gets the same time to load its closure and to resume its runs as
+  // its first spawn did: fold the outcome into a value, race a
+  // resolve-only deadline, clear the timer on every path.
   //
-  // NOTE: the credentials and authority reads above are substrate reads
-  // that sit OUTSIDE this deadline; a wedged substrate is a supervisor-side
-  // fault bounded at its own layer, not by overloading this handshake
-  // timer. The respawn is deadline-bounded on the child handshake, not on
-  // that read.
+  // NOTE: the authority read above is a substrate read that sits OUTSIDE
+  // these deadlines; a wedged substrate is a
+  // supervisor-side fault bounded at its own layer, not by overloading the
+  // handshake timer. The respawn is deadline-bounded on the child
+  // handshake, not on that read.
   const readyTimeoutMs = ctx.readyTimeoutMs ?? DEFAULT_READY_TIMEOUT_MS;
-  const readyOutcome = Promise.all([readyPromise, authoritySent]).then(
-    ([info]) => ({ kind: "ready" as const, info }),
-    (err: unknown) => ({ kind: "failed" as const, err }),
-  );
-  const readyDeadline = waitDeadline(setTimer, readyTimeoutMs);
-  const readyRace = await Promise.race([
-    readyOutcome,
-    readyDeadline.promise.then(() => ({ kind: "timeout" as const })),
-  ]);
-  clearTimer(readyDeadline.handle);
-  if (readyRace.kind !== "ready") {
+  async function boundHandshakeFrame<T>(
+    frame: string,
+    outcome: Promise<T>,
+  ): Promise<T> {
+    const folded = outcome.then(
+      (value) => ({ kind: "settled" as const, value }),
+      (err: unknown) => ({ kind: "failed" as const, err }),
+    );
+    const deadline = waitDeadline(setTimer, readyTimeoutMs);
+    const race = await Promise.race([
+      folded,
+      deadline.promise.then(() => ({ kind: "timeout" as const })),
+    ]);
+    clearTimer(deadline.handle);
+    if (race.kind === "settled") return race.value;
     // The new child was never installed on `state`, so the supervisor's
     // recycle-failure teardown (which reaps the PRIOR cohort) would leak
     // it. Reap it here. `killChildHandle` on an already-dead handle is a
@@ -491,14 +443,32 @@ export async function triggerRecycle(
       clearTimer,
       phase: "handshake failure",
     });
-    if (readyRace.kind === "timeout") {
+    if (race.kind === "timeout") {
       throw new Error(
-        `workflow-host supervisor recycle: child did not emit ready within ${String(readyTimeoutMs)}ms; killed`,
+        `workflow-host supervisor recycle: child did not ${frame} within ${String(readyTimeoutMs)}ms; killed`,
       );
     }
-    throw readyRace.err;
+    throw race.err;
   }
-  const readyInfo = readyRace.info;
+  const readyInfo = await boundHandshakeFrame(
+    "report its definition",
+    definitionPromise,
+  );
+  // The first frame the new child receives, sent only once its definition
+  // checks out, as on first spawn: nothing else sends to this sender before
+  // `installNewChild`. The child applies it before it resumes any run. A
+  // large frame can wait on the child reading its stdin, so the send is
+  // folded into the bounded ready handshake; a failed send fails the
+  // handshake and reaps the child.
+  const authoritySent = controlSender.send({
+    type: "authority.set",
+    data: authority.data,
+  });
+  void authoritySent.catch(() => undefined);
+  await boundHandshakeFrame(
+    "emit ready",
+    Promise.all([waitForReady(controlIncoming), authoritySent]),
+  );
   logger.info`recycle ${opts.origin}: child ready (pid=${String(readyInfo.childPid)}, newChannelId=${channelId})`;
 
   const newWiring: ChildWiring = {
@@ -509,7 +479,6 @@ export async function triggerRecycle(
   };
   ctx.installNewChild({
     wiring: newWiring,
-    credentialsSnapshot,
     controlIncoming,
     authorityRevision: authority.revision,
   });
@@ -567,38 +536,6 @@ async function reapUnreadyChild(
     const message = cause instanceof Error ? cause.message : String(cause);
     logger.warn`recycle: reaped child controlIncoming.return failed after ${deps.phase}: ${message}`;
   });
-}
-
-/**
- * Iterate the new child's control-receive iterator until the `ready`
- * frame lands. Identical shape to the supervisor's spawn-time helper;
- * factored here so the recycle path does not depend on the
- * supervisor's private function.
- */
-async function waitForReady(
-  iter: AsyncGenerator<ControlPayload, void, void>,
-): Promise<{ childPid: number }> {
-  // Explicit `next()` instead of `for await ... return` so the
-  // generator is not finalized when ready lands. The supervisor's
-  // upstream-control pump continues iterating the same generator
-  // after the recycle path returns; finalizing it here would silently
-  // drop any subsequent child-initiated upstream frames.
-  while (true) {
-    const next = await iter.next();
-    if (next.done === true) {
-      throw new Error(
-        "workflow-host supervisor recycle: control channel ended before child emitted ready",
-      );
-    }
-    const payload = next.value;
-    if (payload.type === "ready") {
-      return { childPid: payload.data.childPid };
-    }
-    // Other upstream control payloads encountered before `ready` are
-    // dropped silently; the receiver iterator already verified them
-    // and any later upstream traffic flows through the supervisor's
-    // pump once recycle returns.
-  }
 }
 
 async function pumpEvents(

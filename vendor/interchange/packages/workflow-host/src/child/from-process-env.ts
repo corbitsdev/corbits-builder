@@ -20,6 +20,9 @@ import fs from "node:fs";
 import { type } from "arktype";
 
 import { generateKeyPair } from "@intx/crypto";
+import { hexEncode } from "@intx/types/hex";
+import type { MailSigner } from "@intx/types/mail-signer";
+import type { WorkflowDefinition } from "@intx/workflow";
 
 import { parseSpawnTimeEnv, type SpawnTimeEnv } from "./env-bootstrap";
 import {
@@ -43,13 +46,19 @@ import {
   createChildMailboxCallBridge,
   type ChildMailboxCallBridge,
 } from "./mailbox-call-bridge";
+import { createChildMailComposeBridge } from "./mail-compose-bridge";
 import {
   createControlChannelSender,
   holdControlChannelSender,
   type NdjsonReader,
   type NdjsonWriter,
 } from "../ipc/control-sender";
+import type { ControlPayload } from "../ipc/control-payloads";
 import type { FrameWriter } from "../ipc/event-sender";
+import {
+  loadVerifiedWorkflowDefinitionFromClosure,
+  type VerifiedWorkflowDefinition,
+} from "./verified-definition-loader";
 
 /**
  * File descriptor the supervisor's `Bun.spawn` wires the
@@ -79,6 +88,11 @@ export interface SubstrateFactoryEnv {
   /** Parsed spawn-time env (IPC trust anchors + deployment ids). */
   readonly spawn: SpawnTimeEnv;
   /**
+   * The deployment's live workflow definition, evaluated from the closure at
+   * `spawn.closurePackageDir` and verified against `spawn.definitionHash`.
+   */
+  readonly definition: WorkflowDefinition;
+  /**
    * Substrate-config keys the host placed in
    * `WorkflowSupervisorBindings.substrateEnv`. The factory narrows
    * its own required-key shape against this record at the boundary.
@@ -88,16 +102,16 @@ export interface SubstrateFactoryEnv {
    * Child-side IPC bridge over the upstream control channel for the
    * workflow-run substrate-write surface. The substrate factory uses
    * this to construct its proxy `RepoStore`, whose
-   * `writeTreePreservingPrefix` forwards over IPC into the
-   * supervisor's substrate. The bridge's `submit` sends a
-   * `substrate.write.request` upstream control frame; the supervisor
-   * runs its own underlying `writeTreePreservingPrefix` (which fires
+   * `writeTreePreservingPrefix` and `writeTreeDelta` forward over IPC
+   * into the supervisor's substrate. The bridge's `submit` sends a
+   * `substrate.write.request` (and `submitDelta` a
+   * `substrate.write-delta.request`) upstream control frame; the
+   * supervisor runs the same write on its own substrate (which fires
    * the boot-edge pack-push wrap on success) and replies with a
    * matching `substrate.write.response` the bridge resolves the
-   * awaiter against. The supervisor's merge callback runs as a
-   * `substrate.merge.request` / `substrate.merge.response` pair so
-   * the child's per-write merge closure stays in the child's address
-   * space.
+   * awaiter against. The supervisor's merge or delta callback runs as a
+   * request / response pair so the child's per-write closure stays in
+   * the child's address space.
    */
   readonly substrateWriteBridge: ChildSubstrateWriteBridge;
   /**
@@ -112,6 +126,12 @@ export interface SubstrateFactoryEnv {
    * agent's signature without the child ever holding the agent's key.
    */
   readonly outboundMailBridge: ChildOutboundMailBridge;
+  /**
+   * Composes mail signed with the deployment key over the
+   * `mail.compose.request` IPC. Action handlers get it on their
+   * `perform` scope and tools get it as the `mail.signer` capability.
+   */
+  readonly mailSigner: MailSigner;
   /**
    * Child-side IPC bridge over the upstream control channel for the
    * INBOUND half of mailbox ownership (§3b). The substrate factory uses
@@ -186,6 +206,9 @@ export interface RunWorkflowChildFromProcessEnvOpts {
  * Failures surface loudly:
  *   - missing or malformed spawn-time env throws via
  *     `parseSpawnTimeEnv`;
+ *   - a closure that fails to evaluate, or whose definition does not
+ *     project to the approved hash, is reported to the supervisor in the
+ *     `definition` frame and throws before the factory runs;
  *   - a substrate-config key listed in `substrateConfigKeys` whose
  *     value is missing or empty throws;
  *   - factory rejection propagates;
@@ -213,7 +236,8 @@ export async function runWorkflowChildFromProcessEnv(
   // construct the upstream sender before invoking the substrate
   // factory: the factory consumes the sender via the pack-push bridge
   // to build its `ChildHubPackSink`, and the same sender carries the
-  // `ready` frame `runWorkflowChild` emits.
+  // `definition` frame below and the `ready` frame `runWorkflowChild`
+  // emits.
   const childKeyPair = await generateKeyPair();
   // Held until `runWorkflowChild` sends its startup frames: the factory
   // starts the timer scheduler, and a due timer writes through the bridges
@@ -225,6 +249,36 @@ export async function runWorkflowChildFromProcessEnv(
       writer: controlWriter,
     }),
   );
+  // The one evaluation of the workflow code in this process. The factory
+  // and the runtime body both run this verified definition. The supervisor
+  // derives the deployment's step ids from the reported projection, and
+  // learns from the report why a closure that does not load failed.
+  const reportDefinition = (result: DefinitionResult) =>
+    upstreamSender.sendNow({
+      type: "definition",
+      data: {
+        childPid: process.pid,
+        childPublicKey: hexEncode(childKeyPair.publicKey),
+        result,
+      },
+    });
+  let verified: VerifiedWorkflowDefinition;
+  try {
+    verified = await loadVerifiedWorkflowDefinitionFromClosure({
+      packageDir: spawn.closurePackageDir,
+      approvedHash: spawn.definitionHash,
+    });
+  } catch (cause) {
+    // The load failure is the error that matters; a report that cannot be
+    // sent leaves the supervisor seeing the channel end instead.
+    await reportDefinition({
+      ok: false,
+      error: describeLoadFailure(cause),
+    }).catch(() => undefined);
+    throw cause;
+  }
+  await reportDefinition({ ok: true, projection: verified.projection });
+  const definition = verified.definition;
   const substrateWriteBridge = createChildSubstrateWriteBridge({
     upstreamSender,
   });
@@ -237,33 +291,70 @@ export async function runWorkflowChildFromProcessEnv(
   const mailboxCallBridge = createChildMailboxCallBridge({
     upstreamSender,
   });
+  const mailComposeBridge = createChildMailComposeBridge({
+    upstreamSender,
+  });
   const bindings = await factory({
     spawn,
+    definition,
     substrateConfig,
     substrateWriteBridge,
     outboundMailBridge,
+    mailSigner: mailComposeBridge,
     mailboxMutationBridge,
     mailboxCallBridge,
   });
   return runWorkflowChild({
     env: spawn,
+    definition,
     controlReader,
     controlWriter,
     eventWriter,
-    bindings: {
-      ...bindings,
-      // The child key pair is minted at this layer so the upstream
-      // sender and the `ready` frame's `childPublicKey` come from one
-      // keypair. Override the factory's path so `runWorkflowChild`
-      // does not re-mint a different key and break verification.
-      ipcChildKeyPairFactory: () => Promise.resolve(childKeyPair),
-    },
+    bindings,
     upstreamSender,
     substrateWriteBridge,
     outboundMailBridge,
     mailboxMutationBridge,
     mailboxCallBridge,
+    mailComposeBridge,
   });
+}
+
+type DefinitionResult = Extract<
+  ControlPayload,
+  { type: "definition" }
+>["data"]["result"];
+
+const MAX_LOAD_FAILURE_CAUSES = 16;
+
+// The supervisor relays this to the Hub as the deploy's error, so it keeps
+// the cause chain: the loader names the entry, its causes say what failed.
+// The causes are author values, so the walk stops on a cycle, a `cause`
+// getter that mints a fresh error on every read, or a value that throws when
+// read or converted to a string.
+function describeLoadFailure(cause: unknown): string {
+  const messages: string[] = [];
+  const seen = new Set<unknown>();
+  let current: unknown = cause;
+  while (current !== undefined && !seen.has(current)) {
+    if (messages.length === MAX_LOAD_FAILURE_CAUSES) {
+      messages.push("(further causes omitted)");
+      break;
+    }
+    seen.add(current);
+    try {
+      if (!(current instanceof Error)) {
+        messages.push(String(current));
+        break;
+      }
+      messages.push(String(current.message));
+      current = current.cause;
+    } catch {
+      messages.push("(unprintable error)");
+      break;
+    }
+  }
+  return messages.join(": ");
 }
 
 const SubstrateConfigValue = type("string > 0");

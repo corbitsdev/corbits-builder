@@ -1,8 +1,13 @@
-import { readdir } from "node:fs/promises";
-import { join } from "node:path";
-
 import type { DB } from "@intx/db";
-import { reconstructDurableConversation } from "@intx/workflow-host";
+import {
+  createCommittedStepStateReader,
+  reconstructStepState,
+  WORKFLOW_RUN_REF,
+  WORKFLOW_RUN_RUNS_PREFIX,
+  workflowRunStepStatePrefix,
+  type ReconstructedStepState,
+  type RepoStore,
+} from "@intx/hub-sessions";
 import { deriveWorkflowRunRepoId } from "@intx/workflow-deploy";
 import { extractAddrSpec } from "@intx/mime";
 import { isRunAddress } from "@intx/types/agent-address";
@@ -24,13 +29,54 @@ import {
 import { personTurnText } from "../config/specialist-ended.ts";
 import { declinedWords } from "../config/decline.ts";
 import { readCoordinatorMailThreads } from "./conversation-threads.ts";
-import { withCommittedAgentState } from "./committed-agent-state.ts";
-import type { CoordinatorRepoDirSource } from "./coordinator-question.ts";
 import { getLogger } from "@intx/log";
 import { errorCode, requestErrorMetadata } from "../request-error.ts";
 import { parseJson } from "../lib/json.ts";
 
 const log = getLogger(["corbits-builder", "hub", "conversation-turns"]);
+
+export type ConversationRepoStore = Pick<RepoStore, "openCommittedReads">;
+
+/**
+ * Every agent step's committed state in a run's workflow-run repo, at
+ * `runs/<runId>/steps/<stepId>/state/`. Each step is read on its own so one
+ * damaged step leaves the others readable.
+ */
+export async function committedStepStates(
+  repoStore: ConversationRepoStore,
+  address: string,
+): Promise<
+  { stepId: string; read: () => Promise<ReconstructedStepState | null> }[]
+> {
+  const reads = await repoStore.openCommittedReads(
+    { kind: "hub" },
+    { kind: "workflow-run", id: deriveWorkflowRunRepoId(address) },
+    WORKFLOW_RUN_REF,
+  );
+  if (reads === null) return [];
+  const steps = [];
+  for (const run of await reads.listDir(WORKFLOW_RUN_RUNS_PREFIX)) {
+    if (run.type !== "tree") continue;
+    // Interchange exports the layout's state prefix but not its steps folder.
+    const stepsDir = `${WORKFLOW_RUN_RUNS_PREFIX}/${run.name}/steps`;
+    for (const step of await reads.listDir(stepsDir)) {
+      if (step.type !== "tree") continue;
+      const stepId = decodeURIComponent(step.name);
+      steps.push({
+        stepId,
+        read: () =>
+          reconstructStepState(
+            createCommittedStepStateReader(
+              reads,
+              workflowRunStepStatePrefix(run.name, stepId),
+            ),
+            `${address} run ${run.name} step ${stepId}`,
+          ),
+      });
+    }
+  }
+  return steps;
+}
 
 // The mirror stores every inbound message under the inference role `user`,
 // whether a person or a workflow run sent it; the envelope's sender tells them apart.
@@ -174,48 +220,33 @@ export function unsavedPersonTurns(
 }
 
 /**
- * Person and assistant text from every agent-state directory in the run repo.
+ * Person and assistant text from every agent step's state in the run repo.
  * A missing or corrupt mirror is an empty list so the events read can still
  * return the committed native projection.
  */
 export async function readDurableConversationTurns(input: {
-  repoStore: CoordinatorRepoDirSource;
+  repoStore: ConversationRepoStore;
   address: string;
   approvalDecisions: ApprovalDecisionTurns;
 }): Promise<ConversationTextTurn[]> {
   try {
-    const repoDir = input.repoStore.getRepoDir({
-      kind: "workflow-run",
-      id: deriveWorkflowRunRepoId(input.address),
-    });
-    const turns = await withCommittedAgentState(
-      repoDir,
-      async (agentStateRoot) => {
-        const entries = await readdir(agentStateRoot, { withFileTypes: true });
-        const keys = entries
-          .filter((entry) => entry.isDirectory())
-          .map((entry) => entry.name);
-        const collected: unknown[] = [];
-        for (const agentKey of keys) {
-          try {
-            const snapshot = await reconstructDurableConversation(
-              join(agentStateRoot, agentKey),
-              agentKey,
-            );
-            if (snapshot === null) continue;
-            for (const turn of snapshot.turns) collected.push(turn);
-          } catch (error) {
-            // One damaged agent mirror must not drop the other agents' turns.
-            log.error("Agent conversation mirror unreadable", {
-              ...errorCode(error),
-              ...requestErrorMetadata(error),
-            });
-          }
-        }
-        return collected;
-      },
-    );
-    if (turns === undefined) return [];
+    const turns: unknown[] = [];
+    for (const step of await committedStepStates(
+      input.repoStore,
+      input.address,
+    )) {
+      try {
+        const state = await step.read();
+        if (state === null) continue;
+        for (const turn of state.turns) turns.push(turn);
+      } catch (error) {
+        // One damaged agent mirror must not drop the other agents' turns.
+        log.error("Agent conversation mirror unreadable", {
+          ...errorCode(error),
+          ...requestErrorMetadata(error),
+        });
+      }
+    }
     return mapMirrorConversationTurns(turns, input.approvalDecisions);
   } catch (error) {
     log.warn("Durable conversation unreadable", {
@@ -234,7 +265,7 @@ export async function readDurableConversationTurns(input: {
 export async function projectRunTurns(input: {
   db: DB["db"];
   tenantId: string;
-  repoStore: CoordinatorRepoDirSource;
+  repoStore: ConversationRepoStore;
   mailDirectory: string | undefined;
   runId: string;
   address: string;

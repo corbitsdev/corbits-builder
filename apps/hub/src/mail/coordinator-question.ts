@@ -1,24 +1,18 @@
-import { readdir } from "node:fs/promises";
-import { join } from "node:path";
-
 import { getLogger } from "@intx/log";
-import { reconstructDurableConversation } from "@intx/workflow-host";
-import { deriveWorkflowRunRepoId } from "@intx/workflow-deploy";
 
 import { errorCode, requestErrorMetadata } from "../request-error.ts";
-import { withCommittedAgentState } from "./committed-agent-state.ts";
+import {
+  committedStepStates,
+  type ConversationRepoStore,
+} from "./conversation-turns.ts";
 
 const log = getLogger(["corbits-builder", "hub", "coordinator-question"]);
 
 // The input park (`SignalAwaited` with `parkKind: "input"`) carries no wording:
 // the coordinator's turn reply is what reaches the person as mail, and its
-// durable copy is the warm agent's conversation mirror under
-// `agent-state/<agentKey>/` in the same workflow-run repo the event log lives
-// in (checkpoint.json + WAL, written by the sidecar's boundary mirror).
-
-export type CoordinatorRepoDirSource = {
-  getRepoDir(repoId: { kind: "workflow-run"; id: string }): string;
-};
+// durable copy is the agent step's state under
+// `runs/<runId>/steps/<stepId>/state/` in the same workflow-run repo the event
+// log lives in (checkpoint.json + WAL, written by the sidecar's boundary mirror).
 
 type CoordinatorQuestionProse = Readonly<{
   prose: string;
@@ -26,16 +20,12 @@ type CoordinatorQuestionProse = Readonly<{
 }>;
 
 export function createCoordinatorQuestionProseReader(options: {
-  repoStore: CoordinatorRepoDirSource;
+  repoStore: ConversationRepoStore;
 }) {
   return async function readQuestionProse(input: {
     address: string;
     park: Record<string, unknown>;
   }): Promise<CoordinatorQuestionProse | undefined> {
-    const repoDir = options.repoStore.getRepoDir({
-      kind: "workflow-run",
-      id: deriveWorkflowRunRepoId(input.address),
-    });
     // The asking turn completed before the runtime committed the re-arm park,
     // so the park's own commit time bounds which turns may have asked it.
     const parkedAt = input.park["at"];
@@ -47,50 +37,41 @@ export function createCoordinatorQuestionProseReader(options: {
       | { prose: string; agentKey: string; timestamp: number }
       | undefined;
     try {
-      best = await withCommittedAgentState(repoDir, async (agentStateRoot) => {
-        const entries = await readdir(agentStateRoot, { withFileTypes: true });
-        const keys = entries
-          .filter((entry) => entry.isDirectory())
-          .map((entry) => entry.name);
-        let found:
-          | { prose: string; agentKey: string; timestamp: number }
-          | undefined;
-        for (const agentKey of keys) {
-          let turns: unknown[];
-          try {
-            const snapshot = await reconstructDurableConversation(
-              join(agentStateRoot, agentKey),
-              agentKey,
-            );
-            if (snapshot === null) continue;
-            turns = snapshot.turns;
-          } catch (error) {
-            // A corrupt mirror leaves the rest of the conversation projection
-            // intact; the card falls back to the verbatim park rather than
-            // guessing at wording. The reader still throws on the restore path,
-            // where a lost conversation is a correctness failure.
-            log.warn("Agent conversation mirror unreadable", {
-              agentKey,
-              ...errorCode(error),
-              ...requestErrorMetadata(error),
-            });
-            continue;
-          }
-          for (const turn of turns) {
-            const candidate = assistantText(turn);
-            if (candidate === undefined) continue;
-            if (deadline !== undefined && candidate.timestamp > deadline)
-              continue;
-            if (found === undefined || candidate.timestamp >= found.timestamp)
-              found = {
-                prose: candidate.text,
-                agentKey,
-                timestamp: candidate.timestamp,
-              };
-          }
+      for (const step of await committedStepStates(
+        options.repoStore,
+        input.address,
+      )) {
+        const agentKey = step.stepId;
+        let turns: unknown[];
+        try {
+          const state = await step.read();
+          if (state === null) continue;
+          turns = state.turns;
+        } catch (error) {
+          // A corrupt mirror leaves the rest of the conversation projection
+          // intact; the card falls back to the verbatim park rather than
+          // guessing at wording. The reader still throws on the restore path,
+          // where a lost conversation is a correctness failure.
+          log.warn("Agent conversation mirror unreadable", {
+            agentKey,
+            ...errorCode(error),
+            ...requestErrorMetadata(error),
+          });
+          continue;
         }
-        return found;
-      });
+        for (const turn of turns) {
+          const candidate = assistantText(turn);
+          if (candidate === undefined) continue;
+          if (deadline !== undefined && candidate.timestamp > deadline)
+            continue;
+          if (best === undefined || candidate.timestamp >= best.timestamp)
+            best = {
+              prose: candidate.text,
+              agentKey,
+              timestamp: candidate.timestamp,
+            };
+        }
+      }
     } catch (error) {
       log.warn("Coordinator question prose unreadable", {
         ...errorCode(error),

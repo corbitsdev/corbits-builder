@@ -64,17 +64,39 @@ evaluation is fail-closed.
   `ConditionRegistry` evaluates each condition, and `"pessimistic"`
   applies a conditioned `deny` or `ask` as if it held and skips a
   conditioned `allow`, for a check that has no request.
+- `createConditionEvaluator` — build a `ConditionEvaluator` from a
+  condition name, an arktype schema for the condition body, and an
+  evaluation callback. The evaluator's `validate` reports what the
+  schema rejects, and its `evaluate` parses with the same schema and
+  throws on the same input, so a boundary check and evaluation share
+  one set of shape rules.
 - `timeWindowEvaluator` — a `ConditionEvaluator` for time-of-day
   windows. Register it under the `time_window` key in a
   `ConditionRegistry` to gate grants on `{ after, before, timezone }`;
   cross-midnight windows are supported.
+- `toolConsumerEvaluator` — a `ConditionEvaluator` for credential
+  consumers. Register it under the `tool` key to narrow a grant to one
+  consumer identity.
+- `HUB_CONDITION_REGISTRY` — the hub's standard `ConditionRegistry`,
+  registering `time_window` and `tool`.
+- `RUN_CHILD_CONDITION_REGISTRY` — the `ConditionRegistry` a workflow
+  run's child process evaluates step grants with: `time_window` only,
+  a subset of the hub registry.
 - `evaluateConditions` — run a grant's `conditions` object against a
   `ConditionRegistry`.
+- `validateConditions` — check a grant's `conditions` object against a
+  `ConditionRegistry` without evaluating it, returning one problem per
+  unregistered key or rejected body. A boundary that stores conditions
+  calls it to refuse what `evaluateConditions` would later throw on.
+- `validateGrantConditions` — check a grant's conditions against every
+  registry that will evaluate it: the hub registry, and for a row on a
+  workflow run's principal also the run child registry and the
+  credential-use registry, where the row's patterns reach them.
 - `createInMemoryGrantStore` — a `GrantStore` backed by an in-memory
   grant list for tests and single-process deployments.
 - `matchPattern`, `patternSpecificity`, `grantSpecificity` — the
   colon-segmented wildcard matcher and the specificity scoring used to
   pick the winning grant.
 - Types: `AuthzResult`, `ConditionContext`, `ConditionEvaluator`,
-  `ConditionMode`, `ConditionRegistry`, `Effect`, `GrantRule`, `GrantStore`,
-  `MatchedGrant`.
+  `ConditionMode`, `ConditionRegistry`, `Effect`, `GrantConditionTarget`,
+  `GrantRule`, `GrantStore`, `MatchedGrant`.

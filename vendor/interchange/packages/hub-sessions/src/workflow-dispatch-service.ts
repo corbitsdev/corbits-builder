@@ -5,6 +5,7 @@ import type {
   EnqueueWorkflowSignalDispatchArgs,
   SidecarAllocation,
   SidecarAllocationStore,
+  WorkflowRunDispatchAcknowledgement,
   WorkflowRunDispatchStore,
 } from "@intx/db";
 import { getLogger } from "@intx/log";
@@ -15,6 +16,7 @@ import type {
   AllocatedSidecarTarget,
   SidecarAllocationRouter,
 } from "./ws/sidecar-handler";
+import type { SidecarEventEmitter } from "./ws/sidecar-events";
 import {
   runSidecarOperation,
   SidecarOperationTimeoutError,
@@ -44,12 +46,8 @@ type ClaimedDispatch = NonNullable<
   Awaited<ReturnType<WorkflowRunDispatchStore["claimNextPending"]>>
 >;
 
-export type WorkflowDispatchAcknowledgement = {
-  readonly allocationId: string;
-  readonly anchorRunId: string;
-  readonly generation: number;
-  readonly messageId: string;
-};
+export type WorkflowDispatchAcknowledgement =
+  WorkflowRunDispatchAcknowledgement;
 
 export type WorkflowDispatchService = {
   enqueue(
@@ -61,7 +59,7 @@ export type WorkflowDispatchService = {
     tx?: DBExecutor,
   ): Promise<EnqueueWorkflowRunDispatchResult>;
   acknowledge(args: WorkflowDispatchAcknowledgement): Promise<void>;
-  settle(anchorRunId: string, messageId: string): Promise<void>;
+  settle(anchorRunId: string, deliveryKey: string): Promise<void>;
   requeueForReadyAllocation(anchorRunId: string): Promise<number>;
   reconcileNext(): Promise<boolean>;
   reconcileUntilIdle(maxIterations?: number): Promise<number>;
@@ -352,8 +350,8 @@ export function createWorkflowDispatchService({
       });
     },
 
-    async settle(anchorRunId, messageId) {
-      await dispatchStore.settle(anchorRunId, messageId, now());
+    async settle(anchorRunId, deliveryKey) {
+      await dispatchStore.settle(anchorRunId, deliveryKey, now());
     },
 
     async requeueForReadyAllocation(anchorRunId) {
@@ -366,4 +364,24 @@ export function createWorkflowDispatchService({
     reconcileUntilIdle,
     wake,
   };
+}
+
+export type AttachWorkflowDispatchAcknowledgementsDeps = {
+  readonly events: Pick<SidecarEventEmitter, "on">;
+  readonly dispatchService: Pick<WorkflowDispatchService, "acknowledge">;
+};
+
+/**
+ * Records each provisioned sidecar's durable-inbox acknowledgement against
+ * the dispatch row of the exact delivery it names. An acknowledgement with
+ * no allocation comes from a sidecar that has no dispatch rows.
+ */
+export function attachWorkflowDispatchAcknowledgements({
+  events,
+  dispatchService,
+}: AttachWorkflowDispatchAcknowledgementsDeps): void {
+  events.on("mail.inbound.acknowledged", ({ deliveryKey, allocated }) => {
+    if (allocated === undefined) return;
+    return dispatchService.acknowledge({ ...allocated, deliveryKey });
+  });
 }

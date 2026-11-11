@@ -17,13 +17,12 @@ import type {
   SidecarCapabilityPolicy,
 } from "@intx/types";
 import type { InboundMailPolicy } from "@intx/types/inbound-mail-policy";
-import {
-  isMailAcceptNamespaceResource,
-  MailAccept,
-} from "@intx/types/mail-accept";
+import { MailAccept } from "@intx/types/mail-accept";
+import { reservedGrantNamespace } from "@intx/types/reserved-namespaces";
 
 import { normalizeSingularShorthand } from "./shorthand";
 import {
+  onFailureOf,
   type AwaitSignalPrimitive,
   type Primitive,
   type SleepPrimitive,
@@ -59,7 +58,7 @@ export interface WorkflowDefinition {
   grantRequirements?: readonly GrantRequirement[];
   /**
    * The credential bindings a launch resolves against tenant-owned
-   * credentials. Each maps a tool package's or an action handler's
+   * credentials. Each maps a tool factory's or an action handler's
    * declared handle to a provider. Ownership authorizes the use, and the
    * launch stamps a consumer-scoped `credential:{id}` / `use` grant with
    * `origin = 'system'`.
@@ -134,21 +133,17 @@ export function defineWorkflow<EnvReq extends BaseEnv>(
 
 /**
  * `stepId` must be a non-empty sequence of ASCII letters, digits,
- * underscores, and hyphens. The constraint exists so the workflow-deploy
- * orchestrator can derive per-step mail addresses by string concat
- * without escaping. Exported for downstream consumers (notably the
- * orchestrator's per-step address derivation) that need to assert the
- * same shape.
+ * underscores, and hyphens, so it is safe as a path segment in a step's
+ * durable storage. Exported for downstream consumers that need to assert
+ * the same shape.
  */
 export const STEP_ID_PATTERN = /^[a-zA-Z0-9_-]+$/;
 
 /**
  * A run id must be a non-empty sequence of ASCII letters, digits, underscores,
  * and hyphens -- the same shape as a step id. A run id is used verbatim as a
- * durable-store path segment (`runs/<runId>/...`) and as the local part of a
- * derived per-step mail address (`<runId>-<stepId>@<domain>`), so an
- * unconstrained caller-supplied id is a path-escape and an unroutable-address
- * hazard. `newId("run")` and the internally-derived child run ids (loop body,
+ * durable-store path segment (`runs/<runId>/...`), so an unconstrained
+ * caller-supplied id is a path-escape hazard. `newId("run")` and the internally-derived child run ids (loop body,
  * onTrigger section) already satisfy this shape; the pattern is enforced at
  * the `runtimeRun` boundary where a run id enters the system.
  */
@@ -238,17 +233,17 @@ function normalize(config: WorkflowConfig): WorkflowDefinition {
     }
   }
 
-  // `mailAccept` is the only source of accept-rules: its relations are what the
-  // operator approves at deploy. A grant requirement inside the `mail.accept`
-  // namespace would materialize an accept-grant outside that surface (a creator
-  // holding `*` satisfies `mail.accept:*`, which admits every sender), so reject
-  // it here rather than let it widen admission.
+  // A reserved namespace gets rows only from fixed sources (for `mail.accept`,
+  // the `mailAccept` relations the operator approves at deploy). A grant
+  // requirement inside it would materialize a grant outside those sources (a
+  // creator holding `*` satisfies `mail.accept:*`, which admits every sender),
+  // so reject it here rather than let it widen authority.
   for (const requirement of config.grantRequirements ?? []) {
-    if (isMailAcceptNamespaceResource(requirement.resource)) {
+    const reserved = reservedGrantNamespace(requirement.resource);
+    if (reserved !== null) {
       throw new Error(
         `defineWorkflow ${config.id} declares a grant requirement on ` +
-          `${JSON.stringify(requirement.resource)}; accept-rules are declared ` +
-          `only through mailAccept`,
+          `${JSON.stringify(requirement.resource)}; ${reserved.source}`,
       );
     }
   }
@@ -454,8 +449,7 @@ function validateSteps(
 function validateStepIds(steps: Record<string, Primitive>): void {
   for (const [stepId, primitive] of Object.entries(steps)) {
     // The record key is the id every id-derived table is built on -- the
-    // credentials snapshot, the deploy-time grants write, and the staged body
-    // ref -- while the runtime authorizes under the primitive's own `id`. At
+    // credentials snapshot and a body's pinned sources -- while the runtime authorizes under the primitive's own `id`. At
     // the root those cannot disagree, because `normalize` assigns the key over
     // the embedded id before this pass runs. A nested body never passes
     // through that assignment, so a hand-assembled one can key a step under
@@ -470,13 +464,9 @@ function validateStepIds(steps: Record<string, Primitive>): void {
     if (stepId === "") {
       throw new Error("step ids cannot be empty");
     }
-    // The workflow-deploy orchestrator derives per-step mail addresses
-    // of the form `<runId>-<stepId>@<deploymentDomain>` for
-    // multi-step deployments. Constraining `stepId` to
-    // `[a-zA-Z0-9_-]+` at definition time means the derived local-part
-    // never needs escaping and the address parser at the substrate
-    // boundary never sees a step-id-shaped local-part it cannot
-    // round-trip.
+    // A step id becomes a path segment in the step's durable storage.
+    // Constraining it to `[a-zA-Z0-9_-]+` at definition time keeps it from
+    // escaping that path.
     if (!STEP_ID_PATTERN.test(stepId)) {
       throw new Error(
         `step id ${JSON.stringify(stepId)} must match ${STEP_ID_PATTERN.source}`,
@@ -569,14 +559,8 @@ function straddlerOutputSelector(p: Primitive): Selector | undefined {
  */
 function validateOnFailureStraddlers(steps: Record<string, Primitive>): void {
   for (const [unitId, primitive] of Object.entries(steps)) {
-    const onFailure =
-      primitive.kind === "step" ||
-      primitive.kind === "action" ||
-      primitive.kind === "childWorkflow"
-        ? primitive.onFailure
-        : undefined;
-    if (onFailure === undefined) continue;
-    const handlerId = onFailure;
+    const handlerId = onFailureOf(primitive);
+    if (handlerId === undefined) continue;
 
     const unitDownstream = downstreamClosure(steps, [unitId]);
     for (const dep of steps[handlerId]?.after ?? []) {

@@ -2,8 +2,9 @@ import { and, desc, eq, isNotNull } from "drizzle-orm";
 import { alias } from "drizzle-orm/pg-core";
 import { Hono } from "hono";
 import { bodyLimit } from "hono/body-limit";
+import { createMiddleware } from "hono/factory";
 import { describeRoute, validator } from "hono-openapi";
-import { type } from "arktype";
+import { ArkError, type } from "arktype";
 
 import {
   asset,
@@ -16,16 +17,20 @@ import {
   TenantConfigInvalidError,
   WorkflowRunDispatchPayloadConflictError,
   type DB,
+  type GrantStoreFactory,
   type PrincipalKeyStore,
   type RunTokenStore,
 } from "@intx/db";
-import type { GrantStore } from "@intx/types/authz";
+import type { MailSendAuthorizer } from "@intx/authz";
 import {
   correlationIdFromSignalName,
+  DELIVERY_KEY_PREFIX,
   ErrorResponse,
   deriveWorkflowRunId,
+  findUnstorableStepState,
   isSidecarAllocationDispatchable,
-  SendMessage,
+  SendMailRequest,
+  StepStateImport,
   WorkflowDeploymentResponse,
   type SidecarAllocationStatus,
   type WorkflowDeploymentStatus,
@@ -79,6 +84,7 @@ import { jsonResponse } from "../openapi";
 // from which the Hub resolves the inference chain. `pin` selects the definition
 // package for the `registry` and asset-`tarball` variants (asset-`source`
 // selects by `packageName`). The `source` union is validated at this boundary.
+// `stepState` starts agent steps from exported state, keyed by step id.
 const SourceOfferingIds = type("string > 0")
   .array()
   .atLeastLength(1)
@@ -94,7 +100,30 @@ const DeployWorkflow = type({
   sourceOfferingIds: SourceOfferingIds,
   defaultSourceOfferingId: "string > 0",
   "pin?": "string > 0",
+  "stepState?": StepStateImport,
 });
+
+// A rejected deploy names at most this many issues, each by a path of at most
+// this many characters. A body at the size limit can hold issues by the
+// million, each repeating its step's key in its path.
+const MAX_REPORTED_ISSUES = 10;
+const MAX_REPORTED_PATH_LENGTH = 200;
+
+function reportedPath(path: readonly PropertyKey[]): string {
+  let out = "";
+  for (const key of path) {
+    // Each key is cut before it is joined, so a long one is never copied whole.
+    const segment =
+      typeof key === "number"
+        ? `[${String(key)}]`
+        : `${out === "" ? "" : "."}${String(key).slice(0, MAX_REPORTED_PATH_LENGTH)}`;
+    if (out.length + segment.length > MAX_REPORTED_PATH_LENGTH) {
+      return `${(out + segment).slice(0, MAX_REPORTED_PATH_LENGTH)}…`;
+    }
+    out += segment;
+  }
+  return out;
+}
 
 // Request body for signal delivery. `signalId` is caller-supplied and
 // stable: the workflow-run state machine dedups on `observedSignalIds`,
@@ -206,7 +235,11 @@ export type CreateWorkflowRoutesDeps = {
   workflowDispatchService?: WorkflowDispatchService;
   sidecarRouter: SidecarRouter;
   repoStore: RepoStore;
-  grantStore: GrantStore;
+  // Builds a grant store that reads through the given executor; the trigger
+  // reads delegator grants with it.
+  grantStoreFor: GrantStoreFactory;
+  // Decides whether the caller may send the mail that starts a run.
+  authorizeMailSend: MailSendAuthorizer;
   authorizeGrant: AuthorizeGrant;
   requireGrant: RequireGrant;
 };
@@ -219,7 +252,8 @@ export function createWorkflowRoutes({
   workflowDispatchService,
   sidecarRouter,
   repoStore,
-  grantStore,
+  grantStoreFor,
+  authorizeMailSend,
   authorizeGrant,
   requireGrant,
 }: CreateWorkflowRoutesDeps): Hono<TenantEnv> {
@@ -229,7 +263,8 @@ export function createWorkflowRoutes({
     db,
     principalKeyStore,
     runTokenStore,
-    grantStore,
+    grantStoreFor,
+    authorizeMailSend,
     sidecarRouter,
     ...(workflowDispatchService !== undefined
       ? { workflowDispatchService }
@@ -256,11 +291,15 @@ export function createWorkflowRoutes({
       tags: ["Workflows"],
       summary: "Deploy a workflow",
       description:
-        "Installs, gates, and freezes a code-sourced workflow definition from its `source`/`entry`, reusing a validated probe for an unchanged source revision under the current internal probe cache version, then creates a pending provisioned deployment. Provisioning continues asynchronously; the response returns the deployment record.",
+        "Installs, gates, and freezes a code-sourced workflow definition from its `source`/`entry`, reusing a validated probe for an unchanged source revision under the current internal probe cache version, then creates a pending provisioned deployment. Provisioning continues asynchronously; the response returns the deployment record. An optional `stepState` map starts agent steps from state exported off any earlier run, keyed by the ids of the workflow's top-level agent steps, each at most 255 characters; each step starts from its snapshot until it has state of its own, including when a retried attempt starts over. A snapshot continues only on the model that produced it: the Hub refuses one with an assistant turn from any model other than the one the step is pinned to, or with one that records no model, since it does not convert a conversation between models. It closes tool calls left without a result, turns safety-rating blocks into text, and drops assistant turns with no content. It refuses a snapshot whose tool results do not follow their calls, or that repeats a tool call or a tool result, and one that carries a reply thread: an imported step starts without one, so it replies only to senders that mailed its own deployment. It also refuses a snapshot with a system turn, since an imported step keeps the system prompt its deployment approved, and one with a key the snapshot format does not declare. The body is limited to 44 MiB.",
       responses: {
         201: jsonResponse(
           "Workflow deployment accepted for provisioning",
           WorkflowDeploymentResponse,
+        ),
+        400: jsonResponse(
+          "Request body invalid, including step state that carries a number JSON cannot represent, nests deeper than 64 levels, or has a mailboxUidNext above 2147483648",
+          ErrorResponse,
         ),
         403: jsonResponse(
           "Caller lacks the read grant on the definition asset",
@@ -268,17 +307,72 @@ export function createWorkflowRoutes({
         ),
         404: jsonResponse("Definition asset not found", ErrorResponse),
         409: jsonResponse(
-          "Asset kind does not match the source's package format, workflow definition, source offering chain, or stored tenant config invalid, workflow provisioning unavailable, or provisioner selection failed",
+          "Asset kind does not match the source's package format, workflow definition, source offering chain, or stored tenant config invalid, step state names a step that is not a top-level agent step of the workflow or cannot seed the step it names, workflow provisioning unavailable, or provisioner selection failed",
           ErrorResponse,
         ),
+        413: jsonResponse("Request body too large", ErrorResponse),
         500: jsonResponse(
-          "Deployment projection row missing after preparation",
+          "Deployment projection row missing after preparation, or imported step state could not be stored",
           ErrorResponse,
         ),
         502: jsonResponse("Sidecar unavailable", ErrorResponse),
       },
     }),
-    validator("json", DeployWorkflow),
+    // Imported step state makes the body client-sized, so it takes the bound
+    // the routes that carry mail bodies do.
+    bodyLimit({
+      maxSize: MAX_MAIL_BODY_BYTES,
+      onError: (c) =>
+        errorResponse(
+          c,
+          "payload_too_large",
+          "Request body exceeds the maximum allowed size",
+        ),
+    }),
+    // ArkType prints the values it rejects, even while it validates a
+    // union, and printing recurses once per level of nesting. Step state
+    // nested past its limit is rejected by that limit before the validator
+    // sees it. A body that does not parse is the validator's to report.
+    createMiddleware(async (c, next) => {
+      let body: unknown;
+      try {
+        body = await c.req.json();
+      } catch {
+        return next();
+      }
+      const unstorable = findUnstorableStepState(
+        typeof body === "object" && body !== null && "stepState" in body
+          ? body.stepState
+          : undefined,
+      );
+      if (unstorable !== null) {
+        return errorResponse(
+          c,
+          "invalid_request",
+          `stepState must be ${unstorable.expected} (was ${unstorable.actual})`,
+        );
+      }
+      return next();
+    }),
+    // The default rejection echoes the body, and each issue's own message
+    // ends with the value it rejects; either can be as large as the body
+    // limit allows. The rejection names the first issues' fields and what
+    // each must be, bounded by MAX_REPORTED_ISSUES and
+    // MAX_REPORTED_PATH_LENGTH.
+    validator("json", DeployWorkflow, (result, c) => {
+      if (!result.success) {
+        const reported = result.error
+          .slice(0, MAX_REPORTED_ISSUES)
+          .map((issue) =>
+            issue instanceof ArkError
+              ? `${issue.path.length === 0 ? "" : `${reportedPath(issue.path)} `}must be ${issue.expected}`
+              : "request body is invalid",
+          );
+        const unreported = result.error.length - reported.length;
+        if (unreported > 0) reported.push(`and ${String(unreported)} more`);
+        return errorResponse(c, "invalid_request", reported.join("; "));
+      }
+    }),
     async (c) => {
       const tenant = c.get("tenant");
       const body = c.req.valid("json");
@@ -351,7 +445,9 @@ export function createWorkflowRoutes({
             sourceAuthorityPrincipalId: c.get("principal").id,
             sourceOfferingIds: body.sourceOfferingIds,
             defaultSourceOfferingId: body.defaultSourceOfferingId,
-            deployContent: { systemPrompt: "" },
+            ...(body.stepState !== undefined
+              ? { stepState: body.stepState }
+              : {}),
           });
         deployedId = prepared.anchorRunId;
         deploymentStatus = prepared.status;
@@ -365,6 +461,11 @@ export function createWorkflowRoutes({
           return tenantConfigErrorResponse(c, err);
         }
         if (err instanceof WorkflowProvisioningError) {
+          // Imported state the Hub could not store is its own failure; every
+          // other provisioning error is a conflict with this deployment.
+          if (err.code === "step_state_unwritable") {
+            return errorResponse(c, err.code, err.message);
+          }
           return c.json(
             { error: { code: err.code, message: err.message } },
             409,
@@ -470,19 +571,18 @@ export function createWorkflowRoutes({
     describeRoute({
       tags: ["Workflows"],
       summary: "Deliver a signal to a workflow run",
-      description:
-        "Delivers a caller-supplied, stable signal to the named run of a workflow deployment. The signalId must be supplied by the caller; the run state machine dedups on it. An onTrigger body await is addressed by correlationId from that relay's SignalAwaited together with the author signalName. Omit correlationId to address a name-FIFO await, such as a loop or a top-level gate.",
+      description: `Delivers a caller-supplied, stable signal to the named run of a workflow deployment. The signalId must be supplied by the caller; the run state machine dedups on it. A signalId may not start with "${DELIVERY_KEY_PREFIX}", which is reserved for mail delivery keys. An onTrigger body await is addressed by correlationId from that relay's SignalAwaited together with the author signalName. Omit correlationId to address a name-FIFO await, such as a loop or a top-level gate.`,
       responses: {
         202: {
           description: "Signal accepted for delivery",
         },
         400: jsonResponse(
-          "Reserved signal name or a runId that is not the deployment's addressable run",
+          `Reserved signal name, a signalId with the reserved ${DELIVERY_KEY_PREFIX} prefix, or a runId that is not the deployment's addressable run`,
           ErrorResponse,
         ),
         404: jsonResponse("Workflow deployment not found", ErrorResponse),
         409: jsonResponse(
-          "Workflow run has not started, is terminal, its deployment allocation is no longer active, or the signalId conflicts with a previously accepted payload",
+          "Workflow run has not started, is terminal, its deployment allocation is no longer active, or the signalId conflicts with a previously accepted payload or with the Message-ID of mail queued for the run",
           ErrorResponse,
         ),
         502: jsonResponse("Sidecar unavailable", ErrorResponse),
@@ -545,6 +645,16 @@ export function createWorkflowRoutes({
           c,
           "reserved_signal_name",
           "signalName names a reserved control-plane channel; deliver author-named signals only",
+        );
+      }
+
+      // The prefix is reserved for mail delivery keys (`deriveDeliveryKey`),
+      // so a caller's signalId never equals one.
+      if (body.signalId.startsWith(DELIVERY_KEY_PREFIX)) {
+        return errorResponse(
+          c,
+          "reserved_signal_id",
+          `signalId may not start with "${DELIVERY_KEY_PREFIX}"; that prefix is reserved for mail delivery keys`,
         );
       }
 
@@ -632,7 +742,6 @@ export function createWorkflowRoutes({
             }
             await workflowDispatchService.enqueueSignal(
               {
-                id: `dispatch:${anchorRunId}:${body.signalId}`,
                 anchorRunId,
                 signal: {
                   agentAddress,
@@ -674,7 +783,7 @@ export function createWorkflowRoutes({
             return errorResponse(
               c,
               "signal_id_conflict",
-              "signalId has already been used with a different signal payload",
+              "signalId has already been used with a different signal payload, or a mail queued for the run has it as its Message-ID",
             );
           }
           throw error;
@@ -713,19 +822,23 @@ export function createWorkflowRoutes({
       tags: ["Workflows"],
       summary: "Trigger a workflow run",
       description:
-        "Delivers a fresh signed conversation message to the deployment's stable top-level run. The first accepted message fires that run; while it remains live, later messages may resume its onTrigger input. A terminal deployment run cannot be fired again. The returned messageId identifies this trigger occurrence.",
+        "Delivers a fresh signed conversation message to the deployment's stable top-level run. The first accepted message fires that run; while it remains live, later messages may resume its onTrigger input. A terminal deployment run cannot be fired again. The returned messageId identifies this trigger occurrence. The body is either a message for the hub to sign with the caller's hub-held key (`content`, `attachments`), or a complete message the caller signed with its own key (`rawMessage`, base64). For `rawMessage`, the hub checks its routing headers (From, To, Cc, Bcc, Message-ID, Interchange-Type and Interchange-Tenant-ID) and its signature against the caller's recorded key, then relays the bytes it verified. A workflow run calls this route with its run token and posts a `rawMessage` it signed; it gets 400 `signed_mail_required` for a `content` body.",
       responses: {
         202: jsonResponse(
           "Trigger accepted for delivery",
           WorkflowRunTriggerResponse,
         ),
         400: jsonResponse(
-          "Attachment validation error. Each variant carries a structured code (too_many_attachments, oversize_attachment, disallowed_mime_type, invalid_attachment_name, malformed_base64, oversize_total) with the offending index and limits. A malformed request body that fails SendMessage validation returns the generic error shape instead.",
+          "Attachment validation error. Each variant carries a structured code (too_many_attachments, oversize_attachment, disallowed_mime_type, invalid_attachment_name, malformed_base64, oversize_total) with the offending index and limits. A caller-signed message is refused with `malformed_raw_message`, `mail_header_invalid` (From, To, Cc, Bcc, Message-ID, Interchange-Type or Interchange-Tenant-ID) or `mail_signature_invalid`; a structured body from a caller whose key the hub does not hold is refused with `signed_mail_required`. A malformed request body that fails SendMailRequest validation returns the generic error shape instead.",
+          ErrorResponse,
+        ),
+        403: jsonResponse(
+          "The caller lacks `manage` on the deployment, (`insufficient_grants`) a delegator lacks a grant the definition requires, or (`mail_send_denied`) no `mail.send` grant of the caller allows mail to the deployment",
           ErrorResponse,
         ),
         404: jsonResponse("Workflow deployment not found", ErrorResponse),
         409: jsonResponse(
-          "Deployment address is not routable, its allocation is no longer active, its top-level run is stopping or terminal, or (`deployer_unavailable`) the definition has invoker-sourced grant requirements and the deployer is not recorded or no longer active",
+          "Deployment address is not routable, its allocation is no longer active, its top-level run is stopping or terminal, (`deployer_unavailable`) the definition has invoker-sourced grant requirements and the deployer is not recorded or no longer active, (`workflow_run_principal_inactive`) the first trigger finds the run principal suspended or deactivated, or (`message_id_conflict`) the caller already queued a caller-signed message with that Message-ID for the run with a different payload, or a signal for the run has it as its id",
           ErrorResponse,
         ),
         413: jsonResponse(
@@ -733,7 +846,7 @@ export function createWorkflowRoutes({
           ErrorResponse,
         ),
         503: jsonResponse(
-          "Durable workflow dispatch unavailable",
+          "Durable workflow dispatch unavailable, or (`sender_key_unavailable`, with `Retry-After`) no signing key is recorded for the caller of a caller-signed message, as while a run's sidecar is replaced",
           ErrorResponse,
         ),
       },
@@ -747,7 +860,7 @@ export function createWorkflowRoutes({
           "Request body exceeds the maximum allowed size",
         ),
     }),
-    validator("json", SendMessage),
+    validator("json", SendMailRequest),
     async (c) => {
       const result = await triggerWorkflowRun({
         tenant: c.get("tenant"),
@@ -756,7 +869,11 @@ export function createWorkflowRoutes({
         anchorRunId: c.req.param("runId"),
         message: c.req.valid("json"),
       });
-      return c.json(result.body, result.status);
+      return c.json(
+        result.body,
+        result.status,
+        result.ok ? {} : result.headers,
+      );
     },
   );
 

@@ -4,6 +4,8 @@ export {
   extractAddrSpec,
   formatRFC2822Date,
   generateMessageId,
+  isDotAtomText,
+  parseHeaderFields,
   parseHeaderSection,
   parseMimePart,
   parseMultipart,
@@ -36,6 +38,7 @@ export type {
 } from "./mime";
 
 export { createDetachedSignatureFromProvider } from "./pgp-sign";
+export { verifyMimeSignature } from "./verify-signature";
 
 export {
   createInboundMessage,

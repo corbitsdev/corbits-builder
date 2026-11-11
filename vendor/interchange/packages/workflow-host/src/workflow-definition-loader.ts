@@ -11,16 +11,14 @@
 // validated at this boundary before being returned.
 //
 // Materialization is deliberately NOT done here. `@intx/workflow-host`
-// stays free of a `@intx/tool-packaging` dependency (that layer lives
-// in `packages/tool-packaging/src/tool-materialization.ts`), so the
-// caller runs the closure machinery and hands the resulting package
-// directory in. This module only performs the import + evaluate +
-// validate step, which is the part that must run inside the child's
-// address space because it evaluates author code. The loader resolves
-// whatever the materializer laid out: the closure lays direct deps
-// (workspace members or pinned registry deps) into the workflow
-// package's `node_modules/`, and a published tarball that bundles its
-// own `node_modules` can also place them there.
+// stays free of a `@intx/tool-packaging` dependency, so the caller runs
+// the closure machinery and hands the resulting package directory in. This
+// module only performs the import + evaluate + validate step, which is the
+// part that must run inside the child's address space because it evaluates
+// author code. The loader resolves whatever the materializer laid out: the
+// closure lays direct deps (workspace members or pinned registry deps) into
+// the workflow package's `node_modules/`, and a published tarball that bundles
+// its own `node_modules` can also place them there.
 
 import { promises as fs } from "node:fs";
 import path from "node:path";
@@ -67,18 +65,6 @@ export interface LoadWorkflowDefinitionFromClosureArgs {
    */
   readonly packageDir: string;
   /**
-   * Optional token mixed into the import URL's query string to bust
-   * Node's ESM module cache. Node keys the ESM cache by resolved
-   * URL/path, not by content: a process that imports the same package
-   * directory twice with different bytes underneath (a rare re-apply in
-   * a reused child) would otherwise resolve to the first-imported module
-   * instance. Passing a per-materialization token (the closure's
-   * integrity SRI is the natural choice) makes each materialization a
-   * distinct ESM cache entry. Omit it when the process imports a given
-   * package directory at most once.
-   */
-  readonly importCacheKey?: string;
-  /**
    * Test seam for dynamic import. Production omits this and the loader
    * uses the native dynamic-import expression. The argument is the
    * `file://` URL the loader resolves for the `interchange.workflow`
@@ -120,10 +106,7 @@ export async function loadWorkflowDefinitionFromClosure(
     "interchange.workflow",
   );
 
-  const importUrl =
-    args.importCacheKey === undefined
-      ? pathToFileURL(entryAbs).href
-      : `${pathToFileURL(entryAbs).href}?importCacheKey=${encodeURIComponent(args.importCacheKey)}`;
+  const importUrl = pathToFileURL(entryAbs).href;
 
   let mod: unknown;
   try {
@@ -160,8 +143,6 @@ export interface LoadWorkflowDirectorRegistryFromClosureArgs {
    * the deploy.
    */
   readonly definition: WorkflowDefinition;
-  /** See `LoadWorkflowDefinitionFromClosureArgs.importCacheKey`. */
-  readonly importCacheKey?: string;
   /** Test seam for dynamic import; see the definition loader's variant. */
   readonly importModule?: (importUrl: string) => Promise<unknown>;
 }
@@ -220,9 +201,6 @@ export async function loadWorkflowDirectorRegistryFromClosure(
     const shipped = await loadDirectorFactoriesFromPackage({
       packageDir,
       importModule,
-      ...(args.importCacheKey !== undefined
-        ? { importCacheKey: args.importCacheKey }
-        : {}),
     });
     loaded.push(...shipped.factories);
     Object.assign(compactors, shipped.compactors);
@@ -409,7 +387,6 @@ function errnoCode(err: unknown): unknown {
  */
 async function loadDirectorFactoriesFromPackage(args: {
   packageDir: string;
-  importCacheKey?: string;
   importModule: (importUrl: string) => Promise<unknown>;
 }): Promise<{
   factories: AnnotatedDirectorFactory<unknown, BaseEnv>[];
@@ -427,10 +404,7 @@ async function loadDirectorFactoriesFromPackage(args: {
     "interchange.directors",
   );
 
-  const importUrl =
-    args.importCacheKey === undefined
-      ? pathToFileURL(entryAbs).href
-      : `${pathToFileURL(entryAbs).href}?importCacheKey=${encodeURIComponent(args.importCacheKey)}`;
+  const importUrl = pathToFileURL(entryAbs).href;
 
   let mod: unknown;
   try {
@@ -475,8 +449,6 @@ export interface LoadWorkflowLoopFnsFromClosureArgs {
    * the same directory `loadWorkflowDefinitionFromClosure` reads.
    */
   readonly packageDir: string;
-  /** See `LoadWorkflowDefinitionFromClosureArgs.importCacheKey`. */
-  readonly importCacheKey?: string;
   /** Test seam for dynamic import; see the definition loader's variant. */
   readonly importModule?: (importUrl: string) => Promise<unknown>;
 }
@@ -522,10 +494,7 @@ export async function loadWorkflowLoopFnsFromClosure(
     "interchange.loops",
   );
 
-  const importUrl =
-    args.importCacheKey === undefined
-      ? pathToFileURL(entryAbs).href
-      : `${pathToFileURL(entryAbs).href}?importCacheKey=${encodeURIComponent(args.importCacheKey)}`;
+  const importUrl = pathToFileURL(entryAbs).href;
 
   let mod: unknown;
   try {
@@ -559,8 +528,6 @@ export async function loadWorkflowLoopFnsFromClosure(
 export interface LoadWorkflowActionHandlersFromClosureArgs {
   /** Directory of the materialized workflow package within the closure. */
   readonly packageDir: string;
-  /** See `LoadWorkflowDefinitionFromClosureArgs.importCacheKey`. */
-  readonly importCacheKey?: string;
   /** Test seam for dynamic import; see the definition loader's variant. */
   readonly importModule?: (importUrl: string) => Promise<unknown>;
 }
@@ -604,10 +571,7 @@ export async function loadWorkflowActionHandlersFromClosure(
     "interchange.actions",
   );
 
-  const importUrl =
-    args.importCacheKey === undefined
-      ? pathToFileURL(entryAbs).href
-      : `${pathToFileURL(entryAbs).href}?importCacheKey=${encodeURIComponent(args.importCacheKey)}`;
+  const importUrl = pathToFileURL(entryAbs).href;
 
   let mod: unknown;
   try {
@@ -654,8 +618,6 @@ export interface LoadWorkflowPluginsFromClosureArgs {
    * workflow package's `node_modules/`. Empty is valid (no plugins).
    */
   readonly plugins: readonly string[];
-  /** See `LoadWorkflowDefinitionFromClosureArgs.importCacheKey`. */
-  readonly importCacheKey?: string;
   /** Test seam for dynamic import; see the definition loader's variant. */
   readonly importModule?: (importUrl: string) => Promise<unknown>;
 }
@@ -663,8 +625,7 @@ export interface LoadWorkflowPluginsFromClosureArgs {
 /**
  * Import each declared plugin package's `interchange.tools` module from the
  * materialized workflow closure and collect the `AnnotatedPluginFactory`
- * values it exports. This is the run-child counterpart to the tool-package
- * loader's plugin channel: a source-ref workflow contributes no plugin factory
+ * values it exports. A source-ref workflow contributes no plugin factory
  * through its agent definition (a plugin has no agent slot), so the child
  * materializes the declared plugins straight from the already-laid-out closure
  * -- no re-download, no manifest -- and feeds them into the existing per-step
@@ -687,9 +648,6 @@ export async function loadWorkflowPluginFactoriesFromClosure(
       workflowPackageDir: args.packageDir,
       pluginName,
       importModule,
-      ...(args.importCacheKey !== undefined
-        ? { importCacheKey: args.importCacheKey }
-        : {}),
     });
     out.push(...factories);
   }
@@ -722,9 +680,6 @@ export async function loadWorkflowPluginToolDefinitionsFromClosure(
       workflowPackageDir: args.packageDir,
       pluginName,
       importModule,
-      ...(args.importCacheKey !== undefined
-        ? { importCacheKey: args.importCacheKey }
-        : {}),
     });
     const definitions: ToolDeclaration[] = [];
     for (const factory of factories) {
@@ -760,7 +715,6 @@ export async function projectWorkflowDefinitionFromClosure(args: {
 async function loadPluginPackageFactories(args: {
   workflowPackageDir: string;
   pluginName: string;
-  importCacheKey?: string;
   importModule: (importUrl: string) => Promise<unknown>;
 }): Promise<AnnotatedPluginFactory[]> {
   // Resolve the plugin package from the workflow package's laid-out
@@ -798,10 +752,7 @@ async function loadPluginPackageFactories(args: {
     "interchange.tools",
   );
 
-  const importUrl =
-    args.importCacheKey === undefined
-      ? pathToFileURL(entryAbs).href
-      : `${pathToFileURL(entryAbs).href}?importCacheKey=${encodeURIComponent(args.importCacheKey)}`;
+  const importUrl = pathToFileURL(entryAbs).href;
 
   let mod: unknown;
   try {

@@ -80,6 +80,16 @@
       "types": "./dist/mail-accept.d.ts",
       "default": "./dist/mail-accept.js"
     },
+    "./reserved-namespaces": {
+      "intx-src": "./src/reserved-namespaces.ts",
+      "types": "./dist/reserved-namespaces.d.ts",
+      "default": "./dist/reserved-namespaces.js"
+    },
+    "./mail-send": {
+      "intx-src": "./src/mail-send.ts",
+      "types": "./dist/mail-send.d.ts",
+      "default": "./dist/mail-send.js"
+    },
     "./workflow-definition": {
       "intx-src": "./src/workflow-definition.ts",
       "types": "./dist/workflow-definition.d.ts",
@@ -130,6 +140,21 @@
       "types": "./dist/attachments.d.ts",
       "default": "./dist/attachments.js"
     },
+    "./attachment-validation": {
+      "intx-src": "./src/attachment-validation.ts",
+      "types": "./dist/attachment-validation.d.ts",
+      "default": "./dist/attachment-validation.js"
+    },
+    "./mail-signer": {
+      "intx-src": "./src/mail-signer.ts",
+      "types": "./dist/mail-signer.d.ts",
+      "default": "./dist/mail-signer.js"
+    },
+    "./sessions": {
+      "intx-src": "./src/sessions.ts",
+      "types": "./dist/sessions.d.ts",
+      "default": "./dist/sessions.js"
+    },
     "./base64": {
       "intx-src": "./src/base64.ts",
       "types": "./dist/base64.d.ts",
@@ -165,6 +190,11 @@
       "types": "./dist/workflow-run-id.d.ts",
       "default": "./dist/workflow-run-id.js"
     },
+    "./step-state-snapshot": {
+      "intx-src": "./src/step-state-snapshot.ts",
+      "types": "./dist/step-state-snapshot.d.ts",
+      "default": "./dist/step-state-snapshot.js"
+    },
     "./message-id": {
       "intx-src": "./src/message-id.ts",
       "types": "./dist/message-id.d.ts",
@@ -187,11 +217,7 @@
     }
   },
   "dependencies": {
-    "arktype": "catalog:",
-    "semver": "catalog:"
-  },
-  "devDependencies": {
-    "@types/semver": "catalog:"
+    "arktype": "catalog:"
   },
   "files": [
     "dist",

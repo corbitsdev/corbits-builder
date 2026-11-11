@@ -49,11 +49,6 @@ const log = getLogger(["interchange", "hub-agent", "orchestrator"]);
 
 export type SidecarCryptoOps = {
   generateKeyPair(): Promise<KeyPair>;
-  verifySSHSig(
-    payload: string,
-    signature: string,
-    publicKey: Uint8Array,
-  ): Promise<boolean>;
 };
 
 /**
@@ -152,11 +147,11 @@ export type SidecarOrchestratorConfig = {
    */
   createDeployRouter: CreateDeployRouter;
   /**
-   * Optional pre-fallback mail dispatcher the link consults on every
+   * Optional mail dispatcher the link consults on every
    * inbound `mail.inbound` frame. Production wires this against the
    * sidecar's multi-step deployment mail handler registry so a
    * deployment-address inbound flows into the supervisor's mail-bus
-   * subscription instead of the legacy session path. The orchestrator
+   * subscription. The orchestrator
    * forwards the binding unchanged to `createHubLink`.
    */
   mailInboundRouter?: MailInboundRouter;
@@ -299,7 +294,6 @@ export function createSidecarOrchestrator(
   const keyStore = createAgentKeyStore({
     dataDir,
     generateKeyPair: cryptoOps.generateKeyPair,
-    verifySSHSig: cryptoOps.verifySSHSig,
   });
 
   // Sink the multi-step deploy path routes a spawned child's verified
@@ -383,7 +377,6 @@ export function createSidecarOrchestrator(
     token,
     transport,
     sessions,
-    keyStore,
     resolveSenderCrypto,
     lookupInboundMailPolicy,
     cacheSenderKey,

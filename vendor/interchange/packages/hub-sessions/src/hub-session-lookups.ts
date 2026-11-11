@@ -10,6 +10,7 @@ import { eq, and, asc, inArray, isNotNull, isNull } from "drizzle-orm";
 import type { DB } from "@intx/db";
 import {
   createApprovalStore,
+  runPrincipalActiveKeySql,
   createSignalCorrelationStore,
   createWorkflowPendingProjectionStore,
   createWorkflowRunStore,
@@ -25,7 +26,6 @@ import {
 import { getLogger } from "@intx/log";
 import type { PackRejectReason } from "@intx/types/sidecar";
 import { signalName } from "@intx/types/signals";
-import { deriveWorkflowRunId } from "@intx/types/workflow-run-id";
 import { deriveWorkflowRunRepoId } from "@intx/workflow-deploy";
 
 import type { AgentRepoStore } from "./agent-repo";
@@ -78,7 +78,13 @@ function packFailureReason(
     logger.warn`Workflow-run pack rejected for ${workflowRunRepoId}: ${msg}`;
     return "path_violation";
   }
-  // Mirror the agent-state branch's catch-all: any other failure
+  // The pack is well formed but assumed the Hub holds an object it does
+  // not, so the sidecar answers with the full history.
+  if (msg.startsWith("missing_objects")) {
+    logger.error`Workflow-run pack rejected for ${workflowRunRepoId}: ${msg}`;
+    return "missing_objects";
+  }
+  // Any other failure
   // (transaction failures, filesystem races, a staged pack whose bytes do
   // not match its tip, kind-handler diagnostics surfaced as Error messages,
   // etc.) becomes a structured `corrupt` rejection so the sender can
@@ -101,8 +107,10 @@ export function createHubSessionLookups(
     SidecarLookups,
     | "materializeMailTriggeredRunGrants"
     | "mintCorrespondentGrant"
+    | "authorizeMailSend"
     | "resyncCredentials"
     | "loadRunCredentials"
+    | "loadRunGrants"
     | "resolveSenderKey"
     | "resolveSenderKeyStrict"
     | "resolveSenderPrincipal"
@@ -120,13 +128,6 @@ export function createHubSessionLookups(
   });
 
   return {
-    async lookupDeployRef() {
-      // A workflow run is a supervised workflow-process pinned forever like a
-      // native deployment: it keeps its deploy-time definition and never
-      // reconciles, so no address enrolls in the reconnect deploy-ref catch-up.
-      return null;
-    },
-
     readWorkflowRunRefTips(agentAddress) {
       return readWorkflowRunRefTips(agentRepoStore.repoStore, agentAddress);
     },
@@ -332,7 +333,7 @@ export function createHubSessionLookups(
 
         // Lazily anchor the run before its correlation and approval reference
         // it. A workflow-spawned internal run never crosses the external
-        // trigger route that mints a run principal, so its run row would
+        // trigger route that links a run principal, so its run row would
         // otherwise not exist; ensure it here so the co-written rows have a
         // referent. The principal is null: an internal run inherits its
         // deployment's grants and has no principal of its own. The insert is
@@ -386,44 +387,6 @@ export function createHubSessionLookups(
           tx,
         );
       });
-    },
-
-    async receiveAgentStatePack(repoId, pack, ref, commitSha) {
-      if (repoId.kind !== "agent-state") {
-        throw new Error(
-          `hub-session lookups receiveAgentStatePack received unsupported repo kind ${JSON.stringify(repoId.kind)}`,
-        );
-      }
-      const agentAddress = repoId.id;
-      const agentId = deriveWorkflowRunId(agentAddress);
-      try {
-        await agentRepoStore.receiveAgentStatePack(
-          { kind: "agent-state", id: agentId },
-          pack,
-          ref,
-          commitSha,
-        );
-      } catch (err) {
-        const msg = err instanceof Error ? err.message : String(err);
-        if (msg.startsWith("path_violation")) {
-          logger.warn`State pack rejected for ${agentAddress}: ${msg}`;
-          return { accepted: false, reason: "path_violation" as const };
-        }
-        // Any other failure from the repo subsystem reaches the
-        // WebSocket handler as an unhandled rejection unless we catch
-        // it here. Transient failures during receivePack (the agent
-        // directory being torn down concurrently with an in-flight
-        // pack write, filesystem errors mid-rename, etc.) are
-        // recoverable from the sender's perspective — the sender can
-        // re-push. Surface every such failure as a structured pack
-        // rejection (`corrupt` is the closest existing reason — from
-        // the sender's perspective the pack failed to index) and log
-        // the underlying error so the cause stays traceable on the
-        // hub side.
-        logger.error`State pack receive failed for ${agentAddress}: ${msg}`;
-        return { accepted: false, reason: "corrupt" as const };
-      }
-      return { accepted: true };
     },
 
     async receiveWorkflowRunPack(repoId, pack, ref, commitSha, source) {
@@ -646,11 +609,12 @@ export function createHubSessionLookups(
         }
       }
 
-      // Another receive moved the ref to or past this tip while this one
-      // validated, so Git did not change here. That receive runs the dispatch
-      // projection after its own ref write, and the periodic dispatch
-      // projection pass retries any anchor that still has unsettled
-      // dispatches.
+      // The ref already held this tip, or another receive moved it to or past
+      // this tip while this one validated, so the ref did not move here; this
+      // receive at most restored objects the store had lost. The receive that
+      // moved the ref runs the dispatch projection after its own ref write,
+      // and the periodic dispatch projection pass retries any anchor that
+      // still has unsettled dispatches.
       if (!applied) return { accepted: true };
 
       // Git acceptance survives projection failures. The terminal recovery pass
@@ -674,7 +638,6 @@ export interface RoutableEndpoint {
   readonly id: string;
   readonly tenantId: string;
   readonly address: string;
-  readonly publicKey: string | null;
   /**
    * The endpoint's raw run status. Resolution is `endedAt`-filtered, so a
    * resolved endpoint is not necessarily live: a leaked run is deliberately
@@ -706,7 +669,6 @@ export async function resolveRoutableAddress(
     .select({
       id: workflowRun.id,
       tenantId: workflowRun.tenantId,
-      publicKey: workflowRun.publicKey,
       status: workflowRun.status,
       principalId: workflowRun.principalId,
     })
@@ -723,7 +685,6 @@ export async function resolveRoutableAddress(
     id: runRow.id,
     tenantId: runRow.tenantId,
     address,
-    publicKey: runRow.publicKey,
     status: runRow.status,
     sessionId: await resolveRunSessionId(db, runRow.principalId),
   };
@@ -780,8 +741,8 @@ export async function resolveRunIdForSession(
   tenantId: string,
 ): Promise<string | null> {
   // No `endedAt` filter: a stopped run's mail must stay fetchable, so the
-  // session resolves whether or not it has ended. The run principal is minted
-  // per launch and shared 1:1 by the run and its session, so at most one row
+  // session resolves whether or not it has ended. The run principal is created
+  // per deployment and shared 1:1 by the run and its session, so at most one row
   // matches; order deterministically anyway so a hypothetical second row cannot
   // make the pick flap, mirroring `resolveRunSessionId`.
   const row = await db
@@ -833,17 +794,16 @@ export interface RoutableRecord {
 }
 
 /**
- * Shape a run row and its already-resolved routing address into the run
- * record. Callers decide whether the run resolves at all -- only a top-level
- * run (`isTopLevelRun`) does -- and pass the address they have narrowed; this
- * only maps the columns, including the run's `endedAt ?? createdAt` stand-in
- * for the absent `updatedAt`.
+ * Shape a run row, its already-resolved routing address, and the active key
+ * of its run principal into the run record. Callers decide whether the run
+ * resolves at all -- only a top-level run (`isTopLevelRun`) does -- and pass
+ * the address they have narrowed; this only maps the columns, including the
+ * run's `endedAt ?? createdAt` stand-in for the absent `updatedAt`.
  */
 export function runRowToRoutableRecord(
   run: {
     id: string;
     tenantId: string;
-    publicKey: string | null;
     status: string;
     createdAt: Date;
     endedAt: Date | null;
@@ -856,6 +816,7 @@ export function runRowToRoutableRecord(
     infrastructureFailedAt: Date | null;
   },
   address: string,
+  publicKey: string | null,
 ): RoutableRecord {
   // A failure the Hub decided waits on history still being reconciled, and is
   // dropped if that history ends the run first, so only a failed run whose
@@ -866,7 +827,7 @@ export function runRowToRoutableRecord(
     id: run.id,
     tenantId: run.tenantId,
     address,
-    publicKey: run.publicKey,
+    publicKey,
     status: run.status,
     createdAt: run.createdAt,
     updatedAt: run.endedAt ?? run.createdAt,
@@ -911,7 +872,7 @@ export async function findRoutableById(
       tenantId: workflowRun.tenantId,
       address: workflowRun.address,
       anchorRunId: workflowRun.anchorRunId,
-      publicKey: workflowRun.publicKey,
+      publicKey: runPrincipalActiveKeySql(workflowRun.tenantId, workflowRun.id),
       status: workflowRun.status,
       createdAt: workflowRun.createdAt,
       endedAt: workflowRun.endedAt,
@@ -943,5 +904,6 @@ export async function findRoutableById(
   return runRowToRoutableRecord(
     { ...runRow, definitionId: runRow.definitionId },
     runRow.address,
+    runRow.publicKey,
   );
 }

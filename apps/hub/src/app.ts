@@ -14,13 +14,15 @@ import {
   withExecutableWorkflowRun,
 } from "@intx/db";
 import { createEnvKeyCredentialCipher } from "@intx/crypto";
+import { HUB_CONDITION_REGISTRY } from "@intx/authz";
 import {
-  HUB_CONDITION_REGISTRY,
   createHubContextMiddleware,
   createCorrespondentGrantMinter,
+  createMailSendAuthorizer,
   createMailTriggeredRunGrantsMaterializer,
   createRequireGrant,
   createResolveTenant,
+  createRunGrantsLoader,
   mountHubRoutes,
   type AppEnv,
   type GetSession,
@@ -203,7 +205,6 @@ export async function createHubRuntime(
     const assetService = createAssetService({
       db: handle.db,
       repoStore: agentRepoStore.repoStore,
-      reservedPackageRegistryNames: new Set(httpRegistries.keys()),
     });
     const nativeGrants = createGrantStore(handle.db);
     const runTokenStore = createRunTokenStore({
@@ -223,15 +224,18 @@ export async function createHubRuntime(
     });
     const mailTriggeredRunGrants = createMailTriggeredRunGrantsMaterializer({
       db: handle.db,
-      principalKeyStore,
       runTokenStore,
-      grantStore: nativeGrants,
+      grantStoreFor: createGrantStore,
       registry: HUB_CONDITION_REGISTRY,
     });
-    const lookups: SidecarLookups = {
+    // The relay refuses every recipient without a send authorizer, so the
+    // type requires one here.
+    const lookups: SidecarLookups &
+      Required<Pick<SidecarLookups, "authorizeMailSend">> = {
       ...nativeLookups,
       persistMail: createWorkflowMailPersistence({
         db: handle.db,
+        principalKeyStore,
         directory: reportMailDirectory,
       }),
       materializeMailTriggeredRunGrants: async (args) => {
@@ -242,6 +246,7 @@ export async function createHubRuntime(
         return mailTriggeredRunGrants(args);
       },
       loadRunCredentials,
+      loadRunGrants: createRunGrantsLoader({ db: handle.db }),
       resolveSenderKey: (address) =>
         resolveFrameSenderKey(handle.db, principalKeyStore, address),
       resolveSenderKeyStrict: async (address) =>
@@ -249,16 +254,16 @@ export async function createHubRuntime(
           ?.publicKey ?? null,
       resolveSenderPrincipal: (address) =>
         resolveSenderPrincipal(handle.db, principalKeyStore, address),
-      mintCorrespondentGrant: createCorrespondentGrantMinter({
+      mintCorrespondentGrant: createCorrespondentGrantMinter({ db: handle.db }),
+      authorizeMailSend: createMailSendAuthorizer({
         db: handle.db,
-        principalKeyStore,
+        grantStoreFor: createGrantStore,
       }),
     };
     const sidecarCredentials = createSidecarCredentialResolver({
       db: handle.db,
     });
     const sidecarRouter = createSidecarRouter({
-      hubPublicKey: hexEncode(key.publicKey),
       authenticateSidecar: async ({ token }) =>
         sidecarCredentials.resolve(token),
       validateSidecarIdentity: sidecarCredentials.isCurrent,
@@ -280,7 +285,6 @@ export async function createHubRuntime(
       sidecarRouter,
       sidecarAllocationRouter: sidecarRouter,
       agentRepoStore,
-      assetService,
       db: handle.db,
       toolPackageRegistries: { httpRegistries, defaultRegistry: "npmjs" },
       loadRunCredentials,
@@ -306,7 +310,6 @@ export async function createHubRuntime(
     const sessions = createHubSessionOrchestrator({
       events: sidecarRouter.events,
       router: sidecarRouter,
-      db: handle.db,
       eventCollectors,
     });
     const workflows = await createWorkflowServices({
@@ -344,7 +347,6 @@ export async function createHubRuntime(
             sourceAuthorityPrincipalId: args.principalId,
             sourceOfferingIds: args.deployment.sourceOfferingIds,
             defaultSourceOfferingId: args.deployment.defaultSourceOfferingId,
-            deployContent: { systemPrompt: "" },
           });
           return { runId: prepared.anchorRunId };
         } catch (error) {

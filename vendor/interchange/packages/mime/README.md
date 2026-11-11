@@ -5,8 +5,7 @@ messages with PGP detached signatures, parses inbound wire bytes
 back into structured parts, and owns the JMAP-shaped envelope the
 rest of the mail pipeline depends on.
 
-Consumed by `@intx/mail-memory` (in-process transport),
-`@intx/storage-isogit` (mail audit log), and `@intx/harness`
+Consumed by `@intx/mail-memory` (in-process transport) and `@intx/harness`
 (sidecar mail-tool plumbing).
 
 ```ts
@@ -29,4 +28,5 @@ For outbound mail the builder layer is the entry point:
 `assembleSignedContent` canonicalises the signed body, and
 `assembleMessage` joins the signed content with a detached
 signature from `createDetachedSignatureFromProvider` into wire
-bytes.
+bytes. `verifyMimeSignature` checks a received multipart/signed message
+against the sender's public key.

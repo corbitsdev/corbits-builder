@@ -10,13 +10,14 @@
 //
 // This entry exposes only the substrate layer, so any consumer that needs
 // repo/substrate access without the control-plane services -- for example a
-// process that reads and writes the agent-state and workflow-run repos but
+// process that reads and writes the workflow-run repos but
 // runs nowhere near a database -- can import it without dragging `@intx/db`
 // into its boot graph. Every symbol re-exported here is defined in a db-free
 // module. The barrel still re-exports all of these for hub-side consumers.
 
 export {
   classifyTerminalEvent,
+  claimCheckIdentity,
   DEFAULT_CONSUMED_RETENTION_MS,
   dequeueToProcessing,
   enqueueInbox,
@@ -29,14 +30,16 @@ export {
   replayProcessingToInbox,
   requireEventSeq,
   StaleInboxEnqueueError,
-  WORKFLOW_RUN_AGENT_STATE_PREFIX,
   WORKFLOW_RUN_GITIGNORE_PATH,
   WORKFLOW_RUN_PARTS_DIR,
   WORKFLOW_RUN_EVENTS_DIR,
   WORKFLOW_RUN_RUNS_PREFIX,
   MAX_MAIL_PART_PATH_COMPONENT_BYTES,
+  workflowRunStepSeedPath,
+  workflowRunStepStatePrefix,
 } from "./workflow-run-kind";
 export type {
+  ClaimCheckEnvelope,
   WorkflowRunSupervisorPrincipal,
   WorkflowRunWorkflowProcessPrincipal,
   DequeueToProcessingResult,
@@ -57,6 +60,29 @@ export {
   WORKFLOW_RUN_EVENTS_FILE,
 } from "./workflow-run-event-log";
 
+export {
+  buildStepStateCheckpoint,
+  createCommittedStepStateReader,
+  reconstructStepState,
+  serializeStepStateWalEntry,
+  stepStateWalBucket,
+  stepStateWalBucketPrefix,
+  stepStateWalEntryPath,
+} from "./step-state";
+export type {
+  ReconstructedStepState,
+  StepStateContent,
+  StepStateMetadata,
+  StepStateReader,
+} from "./step-state";
+export { readCommittedStepStateSeed } from "./step-state-snapshot";
+
+export {
+  MAILBOX_INDEX_VERSION,
+  MailboxIndex,
+  parseMailboxIndex,
+} from "./mailbox-index";
+
 export { subscribeKind } from "./repo-store/subscribe-kind";
 export type { SubscribeKindEntry } from "./repo-store/subscribe-kind";
 
@@ -72,5 +98,6 @@ export type {
   InitRepoOpts,
   NewlyTerminalRun,
 } from "./repo-store/types";
+export { isPlainPathSegment } from "./repo-store/types";
 
 export { WORKFLOW_RUN_RESTORE_REFS } from "./workflow-run-restore";

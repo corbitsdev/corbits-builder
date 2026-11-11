@@ -72,8 +72,6 @@ Public surface (the package barrel re-exports these):
   adapter.
 - `createWorkflowSupervisor` — the per-deployment supervisor
   factory. See "Supervisor" below for the bindings shape.
-- `assembleCredentialsSnapshot` — per-step grant assembly the
-  supervisor uses at spawn time and on every recycle.
 - `commitCancelRequested` — low-level Q3 `CancelRequested` commit
   primitive the supervisor invokes for every cancellation origin.
 
@@ -88,14 +86,15 @@ Plus the relevant options and callback types (`StepEnvBase`,
 with `runLocal` and the real step invoker, with no hub and no sidecar:
 
 - `createWorkflowStepInvoker`, `createToolBearingAgentFactory`,
-  `attachStepTools`, `attachStepCredentialWiring` and
-  `deriveToolMarkFloorGrants` — the step invoker and the step tool builders
+  `attachStepTools` and `attachStepCredentialWiring` — the step invoker and the step tool builders
   the deployed host uses.
-- `createCredentialsBackedAuthorize` and `createGrantEvaluator` — the
-  authorize closure and grant evaluator a run child authorizes with.
-- `createLocalCredentialsSnapshot` and `snapshotStepGrants` — the grants a
-  deployed source-ref run holds, derived from the definition, and their
-  per-step reader for Gate 2.
+- `createCredentialsBackedAuthorize`, `createGrantEvaluator` and
+  `createSnapshotGrantsResolver` (with its `StepGrantsResolver` type) — the
+  authorize closure a run child authorizes with, its grant evaluator, and
+  the per-step grants resolver over a credentials snapshot reference, which
+  also gives Gate 2 a step's grants.
+- `createLocalCredentialsSnapshot` — the grants a deployed source-ref run
+  holds, derived from the definition.
 
 Nothing this entry imports is a Node or Bun module, so it bundles for a
 browser; `tests/workflow/local-runtime-browser-bundle.test.ts` checks that.
@@ -138,11 +137,16 @@ The constructor argument shape:
   spawner invokes (resolved by the host via
   `require.resolve` / `import.meta.resolve` against the host's own
   package, `@intx/<host>`).
+- `layoutSteps` — derives the deployment's step ids
+  from the definition the first child reported,
+  once the supervisor has checked it against the approved hash. The
+  supervisor keeps those ids for every later respawn.
+- `onRunStart` — reads a run's credentials snapshot, which the
+  supervisor sends in each `authority.set`.
 - `substrateEnv`, `workflowRunRepoId`, `workflowRunRef`,
-  `anchorRunId`, `deploymentMailAddress`, `readPrincipal`,
-  `deriveStepAddress`, `deriveStepRepoId?`, `ipcKeyPairFactory?` —
-  per-deployment configuration the supervisor needs in its closure
-  state.
+  `anchorRunId`, `deploymentMailAddress`,
+  `ipcKeyPairFactory?` — per-deployment configuration the supervisor
+  needs in its closure state.
 
 ### Deploy routing
 
@@ -150,32 +154,23 @@ The sidecar's deploy router is the single ingress for inbound
 `agent.deploy` frames; its production wiring lives at
 `src/deploy/workflow-host-wiring.ts` in
 `createSidecarDeployRouter`. Every deploy stages through the
-workflow-run substrate, and the router decides between two frame
-shapes:
+workflow-run substrate. The router constructs a fresh per-deployment
+supervisor and drives its `spawn(opts)` lifecycle: key minting, child spawn via
+`subprocessSpawner`, mail-bus registration, and IPC handshake.
 
-- **Provision-step frame (`provisionStep: true`).** The router
-  primes the frame's per-step `agent-state` repo and records the
-  hub key, without constructing a supervisor or spawning a child.
-  The follow-up full-closure deploy pack then applies into the
-  primed repo and verifies against the recorded key.
-- **Workflow frame (carries a `WorkflowDefinition`).** The router
-  constructs a fresh per-deployment supervisor and drives its
-  `spawn(opts)` lifecycle: per-step `agent-state` repo
-  provisioning, key minting, child spawn via `subprocessSpawner`,
-  mail-bus registration, IPC handshake, and `credentialsSnapshot`
-  assembly.
-
-A frame carrying neither shape is rejected -- there is no
-in-process deploy path.
+A frame without a workflow is rejected -- there is no in-process
+deploy path.
 
 ### Lifecycle
 
 `spawn(opts)` performs the IPC handshake (mint channelId, mint HMAC
 key, mint IPC Ed25519 keypair, build spawn-time env, invoke the
-spawner, wait for the child's `ready` frame), assembles the
-`credentialsSnapshot` from each step's `agent-state` repo,
-registers the deployment's mail address, and begins forwarding
-inbound mail as `trigger.fire` control frames. The IPC private key
+spawner, wait for the child's `definition` frame and check its
+projection against the approved hash), derives the step ids from
+that projection through the host's `layoutSteps`, sends
+`authority.set` with the snapshot `onRunStart` returns, registers the deployment's mail address, waits for
+the child's `ready` frame, and begins forwarding inbound mail as
+`trigger.fire` control frames. The IPC private key
 never leaves the supervisor's closure — only the public key (as
 `HOST_PUBKEY`) ships in spawn-time env.
 
@@ -206,9 +201,9 @@ runs to drain per each step's `drainBehavior`; on the drain-timeout it
 escalates to a signed `CancelRequested{origin: "supervisor-drain"}`.
 
 `recycle(opts)` tears the current child down and stands a fresh one up
-against the SAME deploy tree (same materialized source closure, same
-per-step credential repos). A deployment keeps its deploy tree for its
-life; a different tree means a new deployment. Operator,
+against the SAME definition (same materialized source closure). A
+deployment keeps its definition for its life; a different definition
+means a new deployment. Operator,
 supervisor-policy (max-uptime / max-rss / grants-staleness), and
 workflow-process-self-initiated origins all funnel through the same path.
 
@@ -227,11 +222,11 @@ On an unexpected exit the supervisor, with no external intervention:
 
 1. Replays any mail stranded mid-flight — entries the dead child's
    in-flight dispatch left in the per-address `processing/` subtree —
-   back into `inbox/` under their original `<receivedAt>-<messageId>`
+   back into `inbox/` under their original `<receivedAt>-<identity>`
    keys. Those keys sort ahead of any mail that arrived during the
    kill/respawn gap, so the stranded entry is re-dispatched first and
    FIFO ordering holds across the respawn boundary.
-2. Spawns a fresh workflow-process child against the same deploy tree
+2. Spawns a fresh workflow-process child against the same definition
    (reusing the recycle path's respawn machinery) and resumes dispatch.
 
 The respawn is bounded so a persistently-broken child cannot saturate
@@ -299,21 +294,23 @@ forking a process.
 
 ### Lifecycle
 
-1. Open the control channel and event channel via the IPC primitives.
-2. Construct a `WorkflowRuntimeEnv` from the production adapters
+1. (`runWorkflowChildFromProcessEnv`) Evaluate and verify the
+   closure once, and report the result in a `definition` frame: the
+   inert projection it verified, or why it could not load it.
+2. Open the control channel and event channel via the IPC primitives.
+3. Construct a `WorkflowRuntimeEnv` from the production adapters
    (`createWorkflowRunRepoStore`, `createWorkflowRunBlobSubstrate`)
    and substrate-shaped seams (`createWorkflowHostSignalChannel`,
    plus the host-process scheduler singleton carried on
    `bindings.scheduler`).
-3. Read the first control frame, which must be `authority.set`, and
+4. Read the first control frame, which must be `authority.set`, and
    apply its grants snapshot and credential material.
-4. Self-discover in-flight runs by enumerating `runs/<runId>/` and
+5. Self-discover in-flight runs by enumerating `runs/<runId>/` and
    resuming any whose log lacks a terminal event.
-5. Emit `ready` and then `resumed.runs` on the control channel.
+6. Emit `ready` and then `resumed.runs` on the control channel.
    Every other upstream control frame waits until both are out.
-6. Loop on `trigger.fire`, `authority.set`, `grants-updated`,
-   `credentials-updated`, `drain`, `recycle`, `shutdown`, and
-   `signal.deliver` frames.
+7. Loop on `trigger.fire`, `authority.set`, `grants-updated`,
+   `credentials-updated`, `drain`, `shutdown`, and `signal.deliver` frames.
 
 ### Authorize Closure
 
@@ -323,6 +320,21 @@ and a `grants-updated` control frame swaps the snapshot in place, so subsequent 
 without reconstructing the env. The closure looks up the
 originating step's grants by `stepId` and delegates to a
 host-supplied `GrantEvaluator`.
+
+A spawned child run applies its cap to its parent's current grants,
+which it inherits with the credential material (`ChildInheritance`):
+the top-level run's live snapshot for a child of the top-level run,
+and the parent rung's capped grants for a deeper child. The child
+holds what a new spawn of the same body would hold, so a grant the
+top-level run loses, regains, or changes reaches a live child on its
+next tool call or step, once the top-level run's grants update
+arrives (ahead of a signal delivery or a trigger, or in
+`authority.set` on a restart).
+A decision on a call that matched a wildcard `tool:*` `ask` changes
+nothing, because the hub changes only an exact `tool:<name>` grant.
+Two grant sends for one run can arrive out of order, and then the run
+holds the older grants until the next send. The child's grants file is
+not rewritten.
 
 ## Hosting the workflow-process child
 
@@ -399,8 +411,8 @@ await runWorkflowChildFromProcessEnv(createSubstrate, {
 
 The reference in-tree binary imports `createSubstrate` from
 `apps/sidecar/src/workflow-child-bindings.ts`, which closes this
-package's `createSidecarSubstrateFactory` over the app's tool
-materializer and the grant cap from `@intx/workflow-deploy`. The child
+package's `createSidecarSubstrateFactory` over the grant cap from
+`@intx/workflow-deploy`. The child
 binary path is resolved in
 `apps/sidecar/src/workflow-child-spawner.ts`. An alternative host
 follows the same pattern: write a substrate factory against its own

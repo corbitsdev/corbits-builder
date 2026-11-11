@@ -1,16 +1,16 @@
 import git from "isomorphic-git";
 import {
-  ApprovalSnapshot,
-  ContentBlock,
+  ConversationTurn,
+  ParkedReplyTargets,
+  PersistedPendingOperation,
   TokenUsage,
-  ToolCall,
   TransformRecord,
+  emptyTokenUsage,
   type AssistantTurn,
   type TransformRecord as TransformRecordType,
   type ContextStore,
   type AuditStore,
   type ContextCommit,
-  type ConversationTurn,
   type ConnectorThreadState,
   type PendingOperation,
 } from "@intx/types/runtime-core";
@@ -29,7 +29,6 @@ import {
   restoreIndexAfterFailedCommit,
 } from "./commit-helpers";
 import { withRepoDirLock } from "./repo-lock";
-import { maybeGCUnderLock, type GCPolicy } from "./gc";
 import {
   decodeUTF8,
   flushRuntime,
@@ -37,6 +36,7 @@ import {
   type StorageRuntime,
 } from "./runtime";
 import { hasCode } from "@intx/types/has-code";
+import { hexEncode } from "@intx/types/hex";
 
 const TURNS_FILE = "turns.jsonl";
 const PROMPT_FILE = "prompt.jsonl";
@@ -59,66 +59,27 @@ function blobExtensionFor(contentType: string | undefined): string {
 const ConnectorThreadStateSchema = type({
   "threadRoot?": "string",
   "lastMessageId?": "string",
+  "lastReferences?": "string[]",
   replyTo: "string",
   cc: "string[]",
+  "addressed?": "string[]",
   "subject?": "string",
 });
 
-const ConversationTurnSchema = type({
-  role: "'user' | 'assistant' | 'system'",
-  content: ContentBlock.array(),
-  "model?": "string",
-  timestamp: "number",
-});
-
-const PendingOperationSchema = type({
-  correlationId: "string",
-  kind: "'approval'",
-  registeredAt: "number",
-  gateId: "string",
-  "timeoutAt?": "number",
-  "suspendedCall?": ToolCall,
-  "approvalSnapshot?": ApprovalSnapshot,
-});
-
-// The persisted schema and the in-memory PendingOperation type are two
-// separate declarations kept in lockstep. arktype passes undeclared keys
-// through at runtime, so dropping `suspendedCall?` from the schema would not
-// surface as a runtime failure. Projecting the field off the schema's
-// inferred type makes the declaration load-bearing: the indexed access
-// errors under `tsc` if the schema stops carrying the field, and the return
-// annotation pins its persisted type to `ToolCall`.
-const _persistedSuspendedCall = (
-  op: typeof PendingOperationSchema.infer,
-): ToolCall | undefined => op.suspendedCall;
-void _persistedSuspendedCall;
-
-// Same lockstep guard for the approval snapshot: the persisted schema must
-// keep carrying `approvalSnapshot` so a rehydrated pending operation still
-// exposes it. The projection errors under `tsc` if the schema drops the field.
-const _persistedApprovalSnapshot = (
-  op: typeof PendingOperationSchema.infer,
-): ApprovalSnapshot | undefined => op.approvalSnapshot;
-void _persistedApprovalSnapshot;
-
+// A file written before parked reply targets existed omits the field, and
+// reads as holding none.
 const MetadataSchema = type({
-  pendingOperations: PendingOperationSchema.array(),
+  pendingOperations: PersistedPendingOperation.array(),
   tokenUsage: TokenUsage,
   connectorState: type("null").or(ConnectorThreadStateSchema),
+  "parkedReplyTargets?": ParkedReplyTargets,
 });
 
 type MetadataData = {
   pendingOperations: PendingOperation[];
   tokenUsage: TokenUsage;
   connectorState: ConnectorThreadState | null;
-};
-
-const EMPTY_USAGE: TokenUsage = {
-  input: 0,
-  output: 0,
-  cacheRead: 0,
-  cacheWrite: 0,
-  thinking: 0,
+  parkedReplyTargets: ParkedReplyTargets;
 };
 
 function parseMetadata(raw: unknown): MetadataData {
@@ -132,22 +93,16 @@ function parseMetadata(raw: unknown): MetadataData {
     pendingOperations: result.pendingOperations,
     tokenUsage: result.tokenUsage,
     connectorState: result.connectorState,
+    parkedReplyTargets: result.parkedReplyTargets ?? {},
   };
 }
 
 /**
  * Walk the first-parent commit chain from HEAD, newest-first, stopping at
- * `limit` entries or at the first parent that is not present on disk.
- *
- * `git.log` throws `NotFoundError` the moment it reaches a missing commit,
- * which is the steady state under `tip-only` GC: the collector prunes
- * ancestry, leaving the tip's older parents absent. The durable conversation
- * lives in the working-tree files at the tip, not in this history, so the
- * commit log is a best-effort time-travel surface — degrade to the surviving
- * slice rather than throwing into a caller (e.g. the agent's `checkpoints`
- * tool). Any non-absence read error still surfaces.
+ * `limit` entries. A repo with no HEAD yet has no history. Nothing prunes these
+ * repos, so a missing parent is lost data, and the read throws.
  */
-async function tolerantLog(
+async function readCommitChain(
   runtime: StorageRuntime,
   dir: string,
   limit: number,
@@ -160,14 +115,7 @@ async function tolerantLog(
     return out;
   }
   while (oid !== undefined && out.length < limit) {
-    let entry: Awaited<ReturnType<typeof git.readCommit>>;
-    try {
-      entry = await git.readCommit({ fs: runtime.fs.git, dir, oid });
-    } catch (err) {
-      if (err instanceof Error && "code" in err && err.code === "NotFoundError")
-        break;
-      throw err;
-    }
+    const entry = await git.readCommit({ fs: runtime.fs.git, dir, oid });
     out.push(entry);
     oid = entry.commit.parent[0];
   }
@@ -179,7 +127,7 @@ async function readCommitLog(
   dir: string,
   limit: number,
 ): Promise<ContextCommit[]> {
-  const entries = await tolerantLog(runtime, dir, limit);
+  const entries = await readCommitChain(runtime, dir, limit);
   return entries.map((e) => {
     const base = {
       hash: e.oid,
@@ -304,7 +252,7 @@ function parseTurns(text: string): ConversationTurn[] {
   const lines = decodeJsonlLines(text);
   const turns: ConversationTurn[] = [];
   for (const raw of lines) {
-    const result = ConversationTurnSchema(raw);
+    const result = ConversationTurn(raw);
     if (result instanceof type.errors) {
       throw new Error(
         `turns.jsonl has unexpected structure: ${result.summary}`,
@@ -320,8 +268,8 @@ function parseTurns(text: string): ConversationTurn[] {
  *
  * Conversation state lives in `turns.jsonl`; per-cycle prompt/response/manifest
  * data lives in `prompt.jsonl`, `response.jsonl`, and `manifest.jsonl`. Pending
- * operations, token usage, and connector state are serialized into
- * `metadata.json`. Audit records are written as individual JSON files under
+ * operations, token usage, connector state, and parked reply targets are
+ * serialized into `metadata.json`. Audit records are written as individual JSON files under
  * `state/audit/{sessionId}/`. All files are tracked by the git repository at
  * `dir`. The caller is responsible for calling `initAgentRepo(dir)` before
  * constructing.
@@ -342,47 +290,62 @@ export interface DurableMirrorReads {
   peekTurns(): ConversationTurn[];
   /**
    * Read only `metadata.json` (pending operations, token usage, connector
-   * state), skipping the O(N) turns parse `load` pays. The mirror gets
-   * its turns from `peekTurns`.
+   * state, parked reply targets), skipping the O(N) turns parse `load`
+   * pays. The mirror gets its turns from `peekTurns`.
    */
   loadMetadata(): Promise<{
     pendingOperations: PendingOperation[];
     tokenUsage: TokenUsage;
     connectorState: ConnectorThreadState | null;
+    parkedReplyTargets: ParkedReplyTargets;
   }>;
+  /**
+   * Whether the last checkpoint failed, so the files may not hold the state
+   * it was saving. A checkpoint runs from `writeTurns` through `commit`; a
+   * write it skipped after an earlier failure counts. The next checkpoint
+   * that completes clears it.
+   */
+  hasFailedCheckpoint(): boolean;
+}
+
+/**
+ * The parked reply targets of a durable agent conversation, kept off the
+ * shared `ContextStore` interface because only the durable conversation
+ * store parks them.
+ */
+export interface ParkedReplyTargetBuffer {
+  /**
+   * Buffer the parked reply targets for the next `writeMetadata`, the same
+   * way `setConnectorState` buffers the connector state.
+   */
+  setParkedReplyTargets(targets: ParkedReplyTargets): void;
 }
 
 export class IsogitStore
-  implements ContextStore, AuditStore, DurableMirrorReads
+  implements
+    ContextStore,
+    AuditStore,
+    DurableMirrorReads,
+    ParkedReplyTargetBuffer
 {
   private readonly runtime: StorageRuntime;
   private readonly dir: string;
   private readonly signer: CommitSigner | undefined;
-  private readonly gcPolicy: GCPolicy | undefined;
   private pendingConnectorState: ConnectorThreadState | null = null;
+  private pendingParkedReplyTargets: ParkedReplyTargets = {};
   private lastTurns: ConversationTurn[] = [];
+  // `retrying` is a checkpoint opened after a failed one: until it completes,
+  // the files can still hold the failed checkpoint's partial state.
+  private checkpoint: "open" | "retrying" | "complete" | "failed" = "complete";
 
-  constructor(
-    runtime: StorageRuntime,
-    dir: string,
-    signer?: CommitSigner,
-    gcPolicy?: GCPolicy,
-  ) {
+  constructor(runtime: StorageRuntime, dir: string, signer?: CommitSigner) {
     this.runtime = runtime;
     this.dir = dir;
     this.signer = signer;
-    this.gcPolicy = gcPolicy;
   }
 
   private signingArgs() {
     return buildSigningArgs(this.signer);
-  }
-
-  // Reclaim after a write while the per-directory lock is still held, per
-  // the configured policy. A no-op when no policy was supplied.
-  private async maybeGC(): Promise<void> {
-    if (this.gcPolicy === undefined) return;
-    await maybeGCUnderLock(this.runtime, this.dir, this.gcPolicy);
   }
 
   /** Persist append-only record files with retry-safe publication semantics. */
@@ -474,12 +437,15 @@ export class IsogitStore
       }
       throw cause;
     }
-    await this.maybeGC();
     await flushRuntime(this.runtime);
   }
 
   setConnectorState(state: ConnectorThreadState | null): void {
     this.pendingConnectorState = state;
+  }
+
+  setParkedReplyTargets(targets: ParkedReplyTargets): void {
+    this.pendingParkedReplyTargets = targets;
   }
 
   async load(_signal?: AbortSignal): Promise<{
@@ -504,13 +470,15 @@ export class IsogitStore
     pendingOperations: PendingOperation[];
     tokenUsage: TokenUsage;
     connectorState: ConnectorThreadState | null;
+    parkedReplyTargets: ParkedReplyTargets;
   }> {
     const metadataPath = this.runtime.path.join(this.dir, METADATA_FILE);
     if (!(await pathExists(this.runtime, metadataPath))) {
       return {
         pendingOperations: [],
-        tokenUsage: { ...EMPTY_USAGE },
+        tokenUsage: emptyTokenUsage(),
         connectorState: null,
+        parkedReplyTargets: {},
       };
     }
     const text = await this.runtime.fs.readTextFile(metadataPath);
@@ -520,6 +488,7 @@ export class IsogitStore
       pendingOperations: data.pendingOperations,
       tokenUsage: data.tokenUsage,
       connectorState: data.connectorState,
+      parkedReplyTargets: data.parkedReplyTargets,
     };
   }
 
@@ -527,7 +496,7 @@ export class IsogitStore
     options: { message: string },
     _signal?: AbortSignal,
   ): Promise<ContextCommit> {
-    return withRepoDirLock(this.runtime, this.dir, async () => {
+    const committed = withRepoDirLock(this.runtime, this.dir, async () => {
       const tracked = [
         TURNS_FILE,
         PROMPT_FILE,
@@ -582,9 +551,13 @@ export class IsogitStore
       }
 
       const described = await this.describeHead(oid, options.message);
-      await this.maybeGC();
       return described;
     });
+    const commit = await this.checkpointStep(committed);
+    if (this.checkpoint === "open" || this.checkpoint === "retrying") {
+      this.checkpoint = "complete";
+    }
+    return commit;
   }
 
   private async describeHead(
@@ -700,9 +673,11 @@ export class IsogitStore
     records: TransformRecordType[],
     _signal?: AbortSignal,
   ): Promise<void> {
-    await this.runtime.fs.writeFile(
-      this.runtime.path.join(this.dir, MANIFEST_FILE),
-      encodeJsonlLines(records),
+    await this.checkpointStep(
+      this.runtime.fs.writeFile(
+        this.runtime.path.join(this.dir, MANIFEST_FILE),
+        encodeJsonlLines(records),
+      ),
     );
   }
 
@@ -710,9 +685,12 @@ export class IsogitStore
     turns: ConversationTurn[],
     _signal?: AbortSignal,
   ): Promise<void> {
-    await this.runtime.fs.writeFile(
-      this.runtime.path.join(this.dir, TURNS_FILE),
-      encodeJsonlLines(turns),
+    this.checkpoint =
+      this.checkpoint === "failed" || this.checkpoint === "retrying"
+        ? "retrying"
+        : "open";
+    await this.checkpointStep(
+      this.writeFileAtomically(TURNS_FILE, encodeJsonlLines(turns)),
     );
     // Advance the in-memory marker only after the durable write succeeds.
     // peekTurns must never surface an array that failed to persist -- a
@@ -724,11 +702,30 @@ export class IsogitStore
     return this.lastTurns;
   }
 
+  hasFailedCheckpoint(): boolean {
+    return this.checkpoint === "failed" || this.checkpoint === "retrying";
+  }
+
+  // A failed step leaves the checkpoint failed even when the writer stops
+  // there, so the files it skipped count too.
+  private async checkpointStep<T>(step: Promise<T>): Promise<T> {
+    try {
+      return await step;
+    } catch (cause) {
+      this.checkpoint = "failed";
+      throw cause;
+    }
+  }
+
   /**
    * Write `metadata.json` containing pending operations, token usage, and the
-   * currently-buffered connector state. The reactor calls this once per cycle
+   * currently-buffered connector state and parked reply targets. The reactor
+   * calls this once per cycle
    * before issuing the working-tree commit so the file is staged atomically
    * with the per-cycle conversation data.
+   *
+   * The reactor and a durable-conversation mirror can write and read this
+   * file concurrently, so it is written atomically.
    */
   async writeMetadata(
     metadata: {
@@ -741,11 +738,35 @@ export class IsogitStore
       pendingOperations: metadata.pendingOperations,
       tokenUsage: metadata.tokenUsage,
       connectorState: this.pendingConnectorState,
+      parkedReplyTargets: this.pendingParkedReplyTargets,
     };
-    await this.runtime.fs.writeFile(
-      this.runtime.path.join(this.dir, METADATA_FILE),
-      JSON.stringify(payload, null, 2),
+    await this.checkpointStep(
+      this.writeFileAtomically(METADATA_FILE, JSON.stringify(payload, null, 2)),
     );
+  }
+
+  /**
+   * Replace a working-tree file through a per-write staging file renamed over
+   * it, so a concurrent reader or a second writer sees either the prior
+   * complete file or the new one, and a process that dies mid-write leaves the
+   * prior file rather than a partial one. Nothing is fsynced, so this does not
+   * hold across an OS crash or power loss.
+   */
+  private async writeFileAtomically(
+    filepath: string,
+    contents: string,
+  ): Promise<void> {
+    const target = this.runtime.path.join(this.dir, filepath);
+    const staged = `${target}.${hexEncode(crypto.getRandomValues(new Uint8Array(8)))}.tmp`;
+    try {
+      await this.runtime.fs.writeFile(staged, contents);
+      await this.runtime.fs.rename(staged, target);
+    } catch (cause) {
+      await this.runtime.fs
+        .remove(staged, { force: true })
+        .catch(() => undefined);
+      throw cause;
+    }
   }
 
   async readManifestHistory(
@@ -753,7 +774,7 @@ export class IsogitStore
     _signal?: AbortSignal,
   ): Promise<TransformRecordType[]> {
     if (limit <= 0) return [];
-    const entries = await tolerantLog(this.runtime, this.dir, limit);
+    const entries = await readCommitChain(this.runtime, this.dir, limit);
     const collected: TransformRecordType[] = [];
     for (const entry of entries) {
       let blob: Uint8Array;

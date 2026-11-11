@@ -7,21 +7,22 @@ import {
   switchBranch,
 } from "./history";
 import { initAgentRepo, initRepo } from "./init";
-import { applyPack, removeStagedPacks, stagePack } from "./pack-receive";
+import {
+  removeOrphanPackIndexes,
+  removeStagedPacks,
+  stagePack,
+} from "./pack-receive";
 import { createDeployPack, createNegotiatedPack } from "./pack-send";
 import { collectReachableObjects } from "./object-walk";
+import { createObjectPresence } from "./object-presence";
 import { writeTreeToDisk } from "./write-tree";
 import { indexPackIntoGitDir } from "./index-pack";
 import {
-  countLooseObjects,
-  countPackFiles,
-  gitBytes,
-  listRepoRefs,
-  repoDiskUsage,
-} from "./repo-disk";
-import { IsogitStore, type DurableMirrorReads } from "./store";
+  IsogitStore,
+  type DurableMirrorReads,
+  type ParkedReplyTargetBuffer,
+} from "./store";
 import type { CommitSigner } from "./signer";
-import { maybeGC, runGC, type GCPolicy } from "./gc";
 import { createMailAuditStore, listMail } from "./mail-store";
 import {
   normalizeRuntime,
@@ -30,12 +31,11 @@ import {
 } from "./runtime";
 
 export type { ContextStore, AuditStore, CommitSigner };
-export type { CommitVerifier, StagedPack } from "./pack-receive";
+export type { StagedPack } from "./pack-receive";
 export type { IncludeShaPredicate } from "./pack-send";
-export type { DurableMirrorReads };
+export type { ObjectPresence } from "./object-presence";
+export type { DurableMirrorReads, ParkedReplyTargetBuffer };
 export type { InitRepoOpts } from "./init";
-export type { RetentionPolicy, GCResult, GCPolicy } from "./gc";
-export type { RepoDiskUsage } from "./repo-disk";
 export type {
   MailAuditStore,
   MailCommitOptions,
@@ -46,7 +46,7 @@ export type {
 export type { IsogitPath, IsogitRuntime } from "./runtime";
 export { writeTreeToDisk } from "./write-tree";
 export { indexPackIntoGitDir } from "./index-pack";
-export { HUB_REF_NAMESPACE } from "./repo-disk";
+export { HUB_REF_NAMESPACE } from "./hub-refs";
 export {
   DEFAULT_PACK_MATERIALIZATION_LIMITS,
   type PackMaterializationLimits,
@@ -68,11 +68,12 @@ export function createIsogitStorage(runtime: IsogitRuntime) {
     createIsogitStore: async (
       dir: string,
       signer?: CommitSigner,
-      gcPolicy?: GCPolicy,
-    ): Promise<ContextStore & AuditStore & DurableMirrorReads> => {
+    ): Promise<
+      ContextStore & AuditStore & DurableMirrorReads & ParkedReplyTargetBuffer
+    > => {
       const resolvedDir = storageRuntime.path.resolve(dir);
       await initAgentRepo(storageRuntime, resolvedDir);
-      return new IsogitStore(storageRuntime, resolvedDir, signer, gcPolicy);
+      return new IsogitStore(storageRuntime, resolvedDir, signer);
     },
     initRepo: bindRepoDir(storageRuntime, initRepo),
     initAgentRepo: bindRepoDir(storageRuntime, initAgentRepo),
@@ -81,22 +82,19 @@ export function createIsogitStorage(runtime: IsogitRuntime) {
     currentBranch: bindRepoDir(storageRuntime, currentBranch),
     listBranches: bindRepoDir(storageRuntime, listBranches),
     logHistory: bindRepoDir(storageRuntime, logHistory),
-    applyPack: bindRepoDir(storageRuntime, applyPack),
     stagePack: bindRepoDir(storageRuntime, stagePack),
     removeStagedPacks: bindRepoDir(storageRuntime, removeStagedPacks),
+    removeOrphanPackIndexes: bindRepoDir(
+      storageRuntime,
+      removeOrphanPackIndexes,
+    ),
     createDeployPack: bindRepoDir(storageRuntime, createDeployPack),
     createNegotiatedPack: bindRepoDir(storageRuntime, createNegotiatedPack),
     collectReachableObjects: bindRepoDir(
       storageRuntime,
       collectReachableObjects,
     ),
-    repoDiskUsage: bindRepoDir(storageRuntime, repoDiskUsage),
-    countLooseObjects: bindRepoDir(storageRuntime, countLooseObjects),
-    countPackFiles: bindRepoDir(storageRuntime, countPackFiles),
-    gitBytes: bindRepoDir(storageRuntime, gitBytes),
-    listRepoRefs: bindRepoDir(storageRuntime, listRepoRefs),
-    runGC: bindRepoDir(storageRuntime, runGC),
-    maybeGC: bindRepoDir(storageRuntime, maybeGC),
+    createObjectPresence: bindRepoDir(storageRuntime, createObjectPresence),
     createMailAuditStore: bindRepoDir(storageRuntime, createMailAuditStore),
     listMail: bindRepoDir(storageRuntime, listMail),
     writeTreeToDisk: bindRepoDir(storageRuntime, writeTreeToDisk),

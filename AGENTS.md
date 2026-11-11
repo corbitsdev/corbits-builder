@@ -27,8 +27,10 @@ These are the ones no check catches:
   follows [apps/web/AGENTS.md](apps/web/AGENTS.md); end-to-end and integration
   tests follow [test/AGENTS.md](test/AGENTS.md).
 - The interface talks to the hub through `@corbits-builder/client`.
-- A change to `vendor/interchange` is its own `(vendor)` commit that also
-  updates `vendor/interchange.manifest.json`.
+- A local patch to `vendor/interchange` is its own `(vendor)` commit that
+  also updates `vendor/interchange.manifest.json`. A bump to a new upstream
+  revision carries the Builder changes it needs to build in the same commit,
+  since every commit must pass the pre-commit checks.
 - User-visible wording lives in configuration: `apps/hub/src/config/` for the
   hub and agents, `apps/web/src/config.ts` for the interface.
 - Secrets stay out of responses, logs, documents and prompts; the interface

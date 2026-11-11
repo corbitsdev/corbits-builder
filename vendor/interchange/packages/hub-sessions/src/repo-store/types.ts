@@ -49,6 +49,23 @@ export type UserPrincipal = typeof UserPrincipal.infer;
 export const SAFE_REPO_ID = /^[a-zA-Z0-9_-]+$/;
 
 /**
+ * Whether one segment of a write path is a plain name. An empty, `.` or `..`
+ * segment lands somewhere else on disk than in the commit, `.git` in any case
+ * reaches repository metadata, a NUL cannot be stored, and isomorphic-git
+ * refuses to read back a tree with a backslash in an entry name.
+ */
+export function isPlainPathSegment(segment: string): boolean {
+  return (
+    segment !== "" &&
+    segment !== "." &&
+    segment !== ".." &&
+    segment.toLowerCase() !== ".git" &&
+    !segment.includes("\\") &&
+    !segment.includes("\0")
+  );
+}
+
+/**
  * Principal is a discriminated-union extension point. The substrate
  * requires only the `kind` discriminant; concrete principal shapes live
  * in kind-handler packages and are narrowed via `principal.kind === "..."`
@@ -141,19 +158,12 @@ export type RefEntry = {
 
 export type TreeContent = {
   /**
-   * Map of repo-relative path to file contents. Each entry is written
-   * to the working tree and staged before commit.
+   * Map of repo-relative path to file contents. The write is purely
+   * additive: every other path in the parent tree carries forward. A path
+   * with a segment that fails `isPlainPathSegment`, which includes a
+   * leading `/`, rejects the write.
    */
   files: Record<string, string | Uint8Array>;
-  /**
-   * Optional directory-subtree prefix to clear before staging. When
-   * set, every tracked path beginning with this prefix is removed
-   * from the git index and the corresponding directory on disk is
-   * deleted before `files` is written. Must end with `/` and must
-   * not contain `..` or absolute path components. When unset,
-   * writeTree is purely additive.
-   */
-  clearPrefix?: string;
   /** Commit message for the resulting commit. */
   message: string;
 };
@@ -171,7 +181,7 @@ export type WriteTreePreservingPrefixArgs = {
   /**
    * Directory-subtree prefix whose existing blobs are surfaced to
    * `merge` and then replaced wholesale by its return value. Must end
-   * with `/` and must not contain `..` or absolute path components.
+   * with `/`, and every segment must pass `isPlainPathSegment`.
    */
   preservePrefix: string;
   /**
@@ -179,10 +189,12 @@ export type WriteTreePreservingPrefixArgs = {
    * directly under `preservePrefix` (keyed by repo-root-relative
    * path, including the prefix). Returns the full set of files the
    * substrate should write at the prefix; the prefix subtree is
-   * cleared and replaced with this set in a single commit. Paths
-   * outside the prefix are passed through unchanged. The callback may
-   * throw to abort the write; the substrate releases the lock and
-   * propagates the error.
+   * cleared and replaced with this set in a single commit. Every
+   * returned path must be a file path under the prefix whose every
+   * segment passes `isPlainPathSegment`, or the substrate rejects the
+   * write; paths outside the prefix are carried forward unchanged.
+   * The callback may throw to abort the write; the substrate releases
+   * the lock and propagates the error.
    */
   merge: (
     existing: ReadonlyMap<string, Uint8Array>,
@@ -203,8 +215,9 @@ export type WriteTreePreservingPrefixArgs = {
  *
  * `changedPathPrefixes` is the validation scoping hint for the touched
  * region (e.g. `addresses/<seg>/`), supplied by the caller because a
- * delta has no single clear-prefix to derive it from; `undefined` means
- * validate the whole tree.
+ * delta has no single prefix to derive it from; `undefined` means
+ * validate the whole tree. Each prefix names a directory and ends in
+ * `/`; a write with any other scope is rejected.
  *
  * The `prior` argument exposes cache-backed reads of that pinned parent
  * tree -- `listDirOids` for a directory's `{name, oid}` children and
@@ -233,7 +246,7 @@ export interface KindHandler {
   kind: RepoKind;
   /**
    * On-disk directory under `dataDir` for repos of this kind. Allows
-   * each kind to declare its own layout (e.g. "agents") so the
+   * each kind to declare its own layout (e.g. "assets/skill") so the
    * substrate does not hard-code a `<kind>/<id>` path.
    */
   directoryPrefix: string;
@@ -253,7 +266,14 @@ export interface KindHandler {
    * enumerates the names directly under a tree-root-relative POSIX
    * directory path (no trailing slash, no leading slash); pass the
    * empty string to list the root. Handlers that only need path-level
-   * checks can ignore `readBlob` and `listDir`.
+   * checks can ignore `readBlob` and `listDir`. `readBlob` throws
+   * `NoBlobAtPathError` when the prospective tree holds no blob at the
+   * path.
+   *
+   * Any other error from a read is a fault of the store, not of the
+   * content. A handler that lets it propagate lets the substrate reject
+   * a missing object as `missing_objects`, which makes a workflow-run
+   * sender resend the full history; a returned rejection hides it.
    *
    * `priorReadBlob` and `priorListDir` mirror `readBlob` / `listDir`
    * against the parent commit's tree — the ref's tip at the moment
@@ -273,14 +293,15 @@ export interface KindHandler {
    *
    * `changedPathPrefixes` is the set of repo-root-relative POSIX path
    * prefixes (each ending in `/`) under which this commit could have
-   * mutated tree entries -- the cleared prefix for a `writeTree`
-   * carrying a `clearPrefix`, or the subtrees whose object differs from
-   * the parent commit for a received pack. Every path the commit can
-   * have changed relative to its parent is under one of these prefixes;
-   * any path outside them is carried forward byte-identical by the
-   * substrate. It is `undefined` when the substrate cannot bound the
-   * change set (no parent to diff against and no `clearPrefix`), in
-   * which case the handler must validate the whole prospective tree. A
+   * mutated tree entries -- for a `writeTreePreservingPrefix`, the
+   * replaced prefix; for a `writeTreeDelta`, the scope its caller
+   * declared; for a received pack, the entries whose mode or object
+   * differs from the parent commit. Every path the commit can have changed
+   * relative to its parent is under one of these prefixes; any path
+   * outside them is carried forward byte-identical by the substrate. It
+   * is `undefined` when the substrate cannot bound the change set (a
+   * plain `writeTree`, a delta declaring no scope, or a pack with no
+   * parent to diff against), in which case the handler must validate the whole prospective tree. A
    * handler with per-subtree invariants that cannot be affected by a
    * commit outside that subtree (workflow-run's per-run append-only
    * log) uses this to skip re-validating subtrees the commit provably
@@ -414,8 +435,8 @@ export interface RepoStore {
    * commit's tip — there is no read-outside-the-lock window where one
    * caller could base its write on a stale view of the prefix.
    *
-   * The substrate handles `clearPrefix` and the commit internally;
-   * paths outside the prefix are untouched.
+   * The substrate clears the prefix and commits internally; paths
+   * outside the prefix are untouched.
    */
   writeTreePreservingPrefix(
     principal: Principal,
@@ -491,6 +512,14 @@ export interface RepoStore {
    * kinds whose packs are not incremental.
    */
   commitPackedTip(repoId: RepoId, ref: string, commitSha: string): void;
+  /**
+   * Drop the "last shipped tip" of an incremental (`workflow-run`) pack
+   * ref, so the next `createPack` ships the ref's full history. The
+   * caller invokes this when the receiver reports that it lacks objects
+   * the cursor says it holds. A no-op for kinds whose packs are not
+   * incremental.
+   */
+  forgetPackedTip(repoId: RepoId, ref: string): void;
   resolveRef(
     principal: Principal,
     repoId: RepoId,
@@ -564,10 +593,9 @@ export interface RepoStore {
    * Gated under the same `resolveRef` action as `openCommittedReads`.
    * `commitSha` is validated at the boundary: a malformed SHA throws
    * `commit_sha_invalid`. Returns `null` when the repo does not yet exist
-   * or when `commitSha` names no commit in the object store (a commit a
-   * concurrent GC pruned between the caller learning of it and reading
-   * it), so a caller diffing a possibly-vanished commit gets an empty
-   * view rather than a mid-walk throw.
+   * or when `commitSha` names no commit in the object store, so a caller
+   * diffing a commit the repo does not hold gets an empty view rather than
+   * a mid-walk throw.
    */
   openCommittedReadsAtCommit(
     principal: Principal,
@@ -580,8 +608,7 @@ export interface RepoStore {
    * zero-indexed at the ref's root commit and counts ancestors
    * walking forward to HEAD, so the same commit always carries the
    * same `seq` across restarts. A history with a missing parent (a
-   * pack that carries only its tip, or history GC removed) replays no
-   * entries. Its live `seq` advances by the readable commits each
+   * pack that carries only its tip) replays no entries. Its live `seq` advances by the readable commits each
    * update adds while the ref has a subscriber, and starts again from
    * 0 at the oldest readable commit after a restart or after an update
    * with no subscriber. The emitted `event` is
@@ -639,7 +666,8 @@ export type RepoStoreSubscribeEvent = {
 
 /**
  * The outcome of a prepared receive's `commit()`. `already_applied`
- * means the ref already held the pack's tip, so nothing changed.
+ * means the ref already held the pack's tip, so the ref did not move.
+ * The pack is still published when it brings objects the store lacks.
  */
 export type PackCommitResult =
   | { readonly kind: "already_applied" }
@@ -652,7 +680,8 @@ export type PackCommitResult =
  * A pack that `prepareReceivePack` staged and validated. `commit()`
  * publishes it and moves the ref; `discard()` removes it.
  * `already_applied` means the ref already held the pack's tip when the
- * receive began, so nothing was staged.
+ * receive began, the store held every object of that tip, and the pack
+ * brought no object the store lacked, so nothing is published.
  */
 export type PreparedReceivePack =
   | { readonly kind: "already_applied" }
@@ -661,6 +690,14 @@ export type PreparedReceivePack =
       commit(): Promise<PackCommitResult>;
       discard(): Promise<void>;
     };
+
+/** A `validatePush` read found no blob at its path in the prospective tree. */
+export class NoBlobAtPathError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = "NoBlobAtPathError";
+  }
+}
 
 /**
  * A prepared receive found that its repository was removed after the

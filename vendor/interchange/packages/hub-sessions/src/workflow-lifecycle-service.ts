@@ -16,12 +16,13 @@ import {
 import type { AnyPgColumn } from "drizzle-orm/pg-core";
 
 import {
-  deleteRunTokensForPrincipals,
+  deactivateRunPrincipals,
   createSidecarAllocationStore,
   createWorkflowPendingProjectionStore,
   createWorkflowRunStore,
   createWorkflowRunDispatchStore,
   parseWorkflowRunRow,
+  runPrincipalHasActiveKey,
   workflowCapacityReleaseAt,
   SIDECAR_CLEANUP_RETRY_EXHAUSTED_FAILURE_CODE,
   SIDECAR_CLEANUP_DISCONNECT_TIMEOUT_FAILURE_CODE,
@@ -33,7 +34,6 @@ import {
 import {
   liveWorkflowRunStatuses,
   isLiveWorkflowRunStatus,
-  principal,
   sidecarAllocation,
   workflowPendingProjection,
   workflowRun,
@@ -617,17 +617,13 @@ export function createWorkflowLifecycleService({
           inArray(workflowRun.status, [...liveWorkflowRunStatuses]),
         ),
       )
-      .returning({ principalId: workflowRun.principalId });
-    const principalIds = stopped.flatMap((row) =>
-      row.principalId === null ? [] : [row.principalId],
+      .returning({ id: workflowRun.id });
+    await deactivateRunPrincipals(
+      tx,
+      run.tenantId,
+      stopped.map((row) => row.id),
+      endedAt,
     );
-    if (principalIds.length > 0) {
-      await tx
-        .update(principal)
-        .set({ status: "deactivated", updatedAt: endedAt })
-        .where(inArray(principal.id, principalIds));
-      await deleteRunTokensForPrincipals(tx, principalIds);
-    }
     await dispatches.abandonUnsettled(
       run.id,
       "workflow_cancelled",
@@ -749,7 +745,7 @@ export function createWorkflowLifecycleService({
           eq(workflowRun.id, runId),
           eq(workflowRun.tenantId, tenantId),
           notInArray(workflowRun.status, [...liveWorkflowRunStatuses]),
-          isNotNull(workflowRun.publicKey),
+          runPrincipalHasActiveKey(workflowRun.tenantId, workflowRun.id),
           eq(sidecarAllocation.status, "allocated"),
           eq(
             sidecarAllocation.ensureAcceptedGeneration,
@@ -1146,7 +1142,7 @@ export function createLifecycleSweepQueries(
           sidecarAllocation.anchorRunId,
           and(
             notInArray(workflowRun.status, [...liveWorkflowRunStatuses]),
-            isNotNull(workflowRun.publicKey),
+            runPrincipalHasActiveKey(workflowRun.tenantId, workflowRun.id),
             // Undated policies go through releaseDue, which derives the deadline.
             or(
               gt(

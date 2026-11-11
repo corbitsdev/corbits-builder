@@ -12,11 +12,11 @@ to provision it on the connected sidecar, and event collectors
 feed agent events back to the HTTP layer for observability.
 
 `createSessionService` takes a `SessionServiceDeps` of
-`sidecarRouter`, `agentRepoStore`, and an optional
-`assetService` paired with a `db` handle for the asset manifest
-inserts. `createHubSessionOrchestrator` takes a
-`HubSessionOrchestratorDeps` of `events`, `router`, `db`,
-`eventCollectors`, and `agentRepoStore`. See the
+`sidecarRouter`, `agentRepoStore`, `loadRunCredentials`, and optional
+`sidecarAllocationRouter`, `db`, and `toolPackageRegistries`.
+`createHubSessionOrchestrator` takes a
+`HubSessionOrchestratorDeps` of `events`, `router`, `db`, and
+`eventCollectors`. See the
 exported types in `src/session-service.ts` and
 `src/hub-session-orchestrator.ts` for the authoritative shapes;
 `@intx/hub-api` is the in-tree consumer that wires these
@@ -65,8 +65,8 @@ for the authoritative type shapes.
 
 ### Agent repository store
 
-- `createAgentRepoStore` / `AgentRepoStore`, `DeployContent` — the
-  agent-specific repository store.
+- `createAgentRepoStore` / `AgentRepoStore` — the agent-specific
+  repository store.
 - `createRepoStore`, `UserPrincipal`, and the supporting types
   `AuthorizeFn`, `CreateRepoStoreConfig`, `InitRepoOpts`,
   `KindHandler`, `Principal`, `RefEntry`, `RepoAction`, `RepoId`,
@@ -82,8 +82,7 @@ for the authoritative type shapes.
 - Package registry: `packageRegistryKindHandler`,
   `packageRegistryAuthorize`, `asTarballEntry`,
   `validateTarballPackageJSON`, and the constants `TARBALLS_PREFIX`,
-  `TARBALL_FILENAME_PATTERN`, `REGISTRY_INDEX_PATH`,
-  `WORKSPACE_BUILTINS_REGISTRY`.
+  `TARBALL_FILENAME_PATTERN`, `REGISTRY_INDEX_PATH`.
 
 ### Workflow-run substrate
 
@@ -99,9 +98,12 @@ for the authoritative type shapes.
   `CreateAssetParams`, `PopulateAssetParams`, `AssetServiceErrorReason`,
   `ReadAssetBlobParams`, `ListAssetBlobsParams`.
 
-### Skills stanza and credential push
+### Credential push
 
-- `buildAvailableSkillsStanza` / `AvailableSkillEntry` — renders the
-  available-skills stanza injected into agent context.
-- `pushSourceUpdates` — pushes credential-source updates to the
-  sidecar.
+- `pushCredentialRotation` — after a secret rotation, pushes the new secret
+  to every live deployment that holds the credential, in the tenant and its
+  descendants.
+- `revokeRemovedCredentials` — revokes, on one deployment, the delivered
+  credentials that were deleted or revoked since they were read.
+- `recheckDeliveredCredentials` — after a deploy commits, revokes the
+  removed credentials it delivered and re-sends the rotated ones.

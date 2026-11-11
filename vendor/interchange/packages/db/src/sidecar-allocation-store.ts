@@ -20,7 +20,13 @@ import {
 } from "@intx/types";
 
 import type { DB, DBExecutor } from "./client";
-import { deleteRunTokensForPrincipals } from "./run-token-store";
+import { deactivateRunPrincipals } from "./principal-store";
+import {
+  loadRunPrincipalActiveKey,
+  recordRunPrincipalKey,
+  retireRunPrincipalKey,
+  runPrincipalHasActiveKey,
+} from "./run-principal-key";
 import { createWorkflowPendingProjectionStore } from "./workflow-pending-projection-store";
 import {
   assertSidecarHasRoom,
@@ -38,7 +44,6 @@ import { canExecuteWorkflowRun } from "./workflow-lifecycle-policy";
 import {
   isLiveWorkflowRunStatus,
   liveWorkflowRunStatuses,
-  principal,
   sidecar,
   sidecarAllocation,
   workflowRun,
@@ -440,7 +445,7 @@ function reconnectDeadline(
   args: MarkSidecarConnectionLostArgs,
   beforeFirstDeploy: SQL,
 ) {
-  return sql`case when exists (select 1 from ${sidecar} where ${sidecar.id} = ${sidecarAllocation.sidecarId} and ${sidecar.reconnectWindowEndedAt} is not null) then ${deadlineTimestamp(args.now)} when exists (select 1 from ${workflowRun} where ${workflowRun.id} = ${sidecarAllocation.anchorRunId} and ${workflowRun.publicKey} is not null) then ${disconnectDeadline(args.now)} else ${beforeFirstDeploy} end`;
+  return sql`case when exists (select 1 from ${sidecar} where ${sidecar.id} = ${sidecarAllocation.sidecarId} and ${sidecar.reconnectWindowEndedAt} is not null) then ${deadlineTimestamp(args.now)} when ${runPrincipalHasActiveKey(sidecarAllocation.tenantId, sidecarAllocation.anchorRunId)} then ${disconnectDeadline(args.now)} else ${beforeFirstDeploy} end`;
 }
 
 function firstConnectDeadline(args: MarkSidecarConnectionLostArgs) {
@@ -564,24 +569,19 @@ function buildSidecarAllocationStore(
       args.signal.throwIfAborted();
       if (allocation === undefined) return false;
       if (completion !== undefined) {
-        const [anchor] = await tx
-          .update(workflowRun)
-          .set({
-            publicKey: completion.publicKey,
-            ...(completion.credentialRefs !== undefined
-              ? { credentialRefs: completion.credentialRefs }
-              : {}),
-          })
-          .where(
-            and(
-              eq(workflowRun.id, args.anchorRunId),
-              eq(workflowRun.anchorRunId, args.anchorRunId),
-              eq(workflowRun.tenantId, args.tenantId),
-            ),
-          )
-          .returning({ id: workflowRun.id });
-        if (anchor === undefined)
-          throw new Error("Initialization anchor is missing");
+        const recorded = await recordRunPrincipalKey(
+          tx,
+          args.tenantId,
+          args.anchorRunId,
+          completion.publicKey,
+        );
+        if (!recorded) throw new Error("Initialization anchor is missing");
+        if (completion.credentialRefs !== undefined) {
+          await tx
+            .update(workflowRun)
+            .set({ credentialRefs: completion.credentialRefs })
+            .where(eq(workflowRun.id, args.anchorRunId));
+        }
       }
       // Check the lease again: ownership can expire while the transaction holds
       // the allocation lock, such as while a completion waits on the anchor
@@ -609,6 +609,7 @@ function buildSidecarAllocationStore(
   ): Promise<boolean> {
     const [allocation] = await tx
       .select({
+        tenantId: sidecarAllocation.tenantId,
         anchorRunId: sidecarAllocation.anchorRunId,
         initializationLeaseId: sidecarAllocation.initializationLeaseId,
       })
@@ -625,11 +626,13 @@ function buildSidecarAllocationStore(
       return false;
     // Read the key after acquiring the allocation lock, so a completion that
     // committed while we waited is visible even if its response was lost.
-    const [anchor] = await tx
-      .select({ publicKey: workflowRun.publicKey })
-      .from(workflowRun)
-      .where(eq(workflowRun.id, allocation.anchorRunId));
-    return anchor !== undefined && anchor.publicKey !== null;
+    return (
+      (await loadRunPrincipalActiveKey(
+        tx,
+        allocation.tenantId,
+        allocation.anchorRunId,
+      )) !== null
+    );
   }
 
   async function insertSidecarIdentity(
@@ -793,16 +796,15 @@ function buildSidecarAllocationStore(
           inArray(workflowRun.status, [...liveWorkflowRunStatuses]),
         ),
       )
-      .returning({ id: workflowRun.id, principalId: workflowRun.principalId });
-    const principalIds = failedRuns.flatMap(({ principalId }) =>
-      principalId === null ? [] : [principalId],
-    );
-    if (principalIds.length > 0) {
-      await tx
-        .update(principal)
-        .set({ status: "deactivated", updatedAt: now })
-        .where(inArray(principal.id, principalIds));
-      await deleteRunTokensForPrincipals(tx, principalIds);
+      .returning({ id: workflowRun.id, tenantId: workflowRun.tenantId });
+    const [failedRun] = failedRuns;
+    if (failedRun !== undefined) {
+      await deactivateRunPrincipals(
+        tx,
+        failedRun.tenantId,
+        failedRuns.map(({ id }) => id),
+        now,
+      );
     }
     return failedRuns.map(({ id }) => id);
   }
@@ -828,9 +830,9 @@ function buildSidecarAllocationStore(
         reconciliationLeaseId: null,
         reconciliationLeaseExpiresAt: null,
         // Preserve the disconnect window for an initialized deployment or
-        // replacement cleanup, which has already cleared the anchor's key.
+        // replacement cleanup, which has already retired the run's key.
         // A first-connect deadline does not bound subsequent cleanup waiting.
-        connectDeadline: sql`case when ${sidecarAllocation.status} = 'replacing' or exists (select 1 from ${workflowRun} where ${workflowRun.id} = ${sidecarAllocation.anchorRunId} and ${workflowRun.publicKey} is not null) then ${sidecarAllocation.connectDeadline} else null end`,
+        connectDeadline: sql`case when ${sidecarAllocation.status} = 'replacing' or ${runPrincipalHasActiveKey(sidecarAllocation.tenantId, sidecarAllocation.anchorRunId)} then ${sidecarAllocation.connectDeadline} else null end`,
         // Placement and initialization retry diagnostics are not release causes.
         // Preserve a recorded workflow failure, or the reason supplied by release.
         failureCode:
@@ -1526,16 +1528,20 @@ function buildSidecarAllocationStore(
           .returning();
         if (updated === undefined) return null;
 
-        // The anchor public key is durable proof that this allocation
-        // generation completed restore and deployment. Clear the key and
-        // the credential refs with the generation advance so a replacement
-        // cannot mistake stale local sidecar state for a restored
-        // workflow. Leftover refs are the previous attempt, and a first
-        // grant commit would freeze them.
+        // The run principal's active key is durable proof that this
+        // allocation generation completed restore and deployment. Retire
+        // the key and clear the credential refs with the generation advance
+        // so a replacement cannot mistake stale local sidecar state for a
+        // restored workflow. Leftover refs are the previous attempt, and a
+        // first grant commit would freeze them. The replacement records the
+        // key its sidecar reports, which is the retired key again when it
+        // reuses the replaced sidecar's disk. The refs update holds the
+        // anchor row lock that retiring the key requires.
         await tx
           .update(workflowRun)
-          .set({ publicKey: null, credentialRefs: null })
+          .set({ credentialRefs: null })
           .where(eq(workflowRun.id, updated.anchorRunId));
+        await retireRunPrincipalKey(tx, updated.tenantId, updated.anchorRunId);
 
         return parseSidecarAllocationRow(updated);
       });
@@ -2261,7 +2267,7 @@ function buildSidecarAllocationStore(
           // completes; repeated hellos must not extend initialization forever.
           ...(connected
             ? {
-                connectDeadline: sql`case when ${sidecarAllocation.status} in ('releasing', 'replacing') or exists (select 1 from ${workflowRun} where ${workflowRun.id} = ${sidecarAllocation.anchorRunId} and ${workflowRun.publicKey} is not null) then null else ${sidecarAllocation.connectDeadline} end`,
+                connectDeadline: sql`case when ${sidecarAllocation.status} in ('releasing', 'replacing') or ${runPrincipalHasActiveKey(sidecarAllocation.tenantId, sidecarAllocation.anchorRunId)} then null else ${sidecarAllocation.connectDeadline} end`,
               }
             : {}),
         })

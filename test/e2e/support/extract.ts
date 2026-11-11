@@ -7,9 +7,17 @@ import {
   writeFile,
 } from "node:fs/promises";
 import { tmpdir } from "node:os";
-import { join, resolve } from "node:path";
+import { dirname, join, resolve } from "node:path";
 import { type } from "arktype";
-import { reconstructDurableConversation } from "@intx/workflow-host";
+import { generateKeyPair } from "@intx/crypto";
+import {
+  createAgentRepoStore,
+  createCommittedStepStateReader,
+  reconstructStepState,
+  WORKFLOW_RUN_REF,
+  WORKFLOW_RUN_RUNS_PREFIX,
+  workflowRunStepStatePrefix,
+} from "@intx/hub-sessions";
 import type { ConversationTurn } from "@intx/types/runtime";
 import {
   formatOpenAISseResponse,
@@ -98,32 +106,28 @@ async function loadStoredTurns(
       `Refusing to read non-weather-app run directory: ${runDir}`,
     );
   }
-  const dest = await mkdtemp(join(tmpdir(), "builder-extract-"));
-  try {
-    const proc = Bun.spawn(
-      [
-        "sh",
-        "-c",
-        `git -C "${join(runsRoot, runDir)}" archive --format=tar refs/heads/main agent-state | tar -x -C "${dest}"`,
-      ],
-      { stdout: "ignore", stderr: "pipe" },
+  // The hub keeps workflow-run repos in its data folder's workflow-runs folder.
+  const { repoStore } = createAgentRepoStore({
+    dataDir: dirname(runsRoot),
+    signingKey: await generateKeyPair(),
+  });
+  const reads = await repoStore.openCommittedReads(
+    { kind: "hub" },
+    { kind: "workflow-run", id: runDir },
+    WORKFLOW_RUN_REF,
+  );
+  if (reads === null) throw new Error(`No run repo found at ${runDir}`);
+  for (const run of await reads.listDir(WORKFLOW_RUN_RUNS_PREFIX)) {
+    const state = await reconstructStepState(
+      createCommittedStepStateReader(
+        reads,
+        workflowRunStepStatePrefix(run.name, step),
+      ),
+      `${runDir} run ${run.name} step ${step}`,
     );
-    if ((await proc.exited) !== 0) {
-      throw new Error(
-        `Failed to unpack ${runDir}: ${await new Response(proc.stderr).text()}`,
-      );
-    }
-    const conv = await reconstructDurableConversation(
-      join(dest, "agent-state", step),
-      step,
-    );
-    if (!conv) {
-      throw new Error(`No durable conversation found in ${runDir} (${step})`);
-    }
-    return conv.turns;
-  } finally {
-    await rm(dest, { recursive: true, force: true });
+    if (state) return state.turns;
   }
+  throw new Error(`No durable conversation found in ${runDir} (${step})`);
 }
 
 function extractTurnText(turn: ConversationTurn | undefined): string {

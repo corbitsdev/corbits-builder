@@ -1,19 +1,17 @@
 // Schema for the subset of `package.json` fields the asset substrate
-// and tool-package builders read.
+// and closure tooling read, plus the credential declaration `defineTool`
+// takes, which is not a `package.json` field.
 //
 // Promoted here so the package-registry kind handler (in
-// `@intx/hub-sessions`) and the workspace builtin-packing script
-// (`bin/build-builtins.ts`) share one definition: the asset
-// substrate's validation of an uploaded tarball must match the field
-// set the build path emits, otherwise a freshly-packed builtin would
-// be rejected for shape reasons the build did not anticipate.
+// `@intx/hub-sessions`), closure materialization and the workflow child
+// share one definition of what a package's manifest must hold.
 
 import { type } from "arktype";
 
 import { normalize } from "./posix-path";
 
 /**
- * A tool package's static declaration of one provider-backed credential it
+ * A tool factory's static declaration of one provider-backed credential it
  * needs: an abstract handle plus optional scopes. Advisory only -- a request
  * the workflow definition later binds to a concrete credential and the launch-time
  * grant gate authorizes; a declaration consents to nothing on its own. The
@@ -35,10 +33,10 @@ export type ReadonlyToolCredentialDeclaration = {
 };
 
 /**
- * The credential declarations for one package, with the unique-handle
+ * The credential declarations for one tool factory, with the unique-handle
  * invariant enforced at parse time: a handle is the binding/delivery key, so a
- * duplicate within a single package is a defect the upload boundary must
- * reject rather than let collapse silently downstream.
+ * duplicate is a defect `defineTool` and the inert projector must reject rather
+ * than let collapse silently downstream.
  */
 export const ToolCredentialDeclarationArray =
   ToolCredentialDeclaration.array().narrow((decls, ctx) => {
@@ -58,11 +56,10 @@ export type ToolCredentialDeclarationArray =
 
 /**
  * Required fields plus the `interchange` extensions used to identify
- * interchange packages: `tools` names the sidecar-bundle entry, `credentials`
- * statically declares the provider-backed credentials the package's tools may
- * need, `workflow` names the module whose evaluation produces a workflow
- * package's `WorkflowDefinition`, `directors` names the module whose exports
- * are the package's custom `defineDirector` factories, `loops` names the module
+ * interchange packages: `tools` names the module plugin factories are imported
+ * from, `workflow` names the module whose evaluation produces a workflow
+ * package's `WorkflowDefinition`, `directors` names the module whose exports are
+ * the package's custom `defineDirector` factories, `loops` names the module
  * whose exports are the package's `loop` `while`/`carry` functions, and
  * `actions` names the module whose exports are the package's `action` handlers.
  * `loops` and `actions` refs are resolved by export name at establish.
@@ -74,7 +71,6 @@ export const PackageJSON = type({
   version: "string",
   "interchange?": type({
     "tools?": "string",
-    "credentials?": ToolCredentialDeclarationArray,
     "workflow?": "string",
     "directors?": "string",
     "loops?": "string",
@@ -88,8 +84,8 @@ export type PackageJSON = typeof PackageJSON.infer;
  * module path relative to its package -- stays inside the package directory.
  * An absolute path or a `..` traversal escapes and returns false.
  *
- * This is the string-level half of the loader's containment rule. The
- * load-time loader (`resolveContainedEntry`) pairs it with a realpath-based
+ * This is the string-level half of the containment rule. The workflow
+ * definition loader (`resolveContainedEntry`) pairs it with a realpath-based
  * symlink-escape check that only a materialized directory can run; the
  * push-time asset validator, which has no filesystem, relies on this string
  * half alone. Both boundaries call this one predicate so they cannot diverge

@@ -16,8 +16,10 @@
 import { type } from "arktype";
 
 import { getLogger } from "@intx/log";
+import { PackRejectedError } from "@intx/pack-transport";
 import { SourcesUpdatedData } from "../ipc/control-payloads";
 import type { InferenceSource } from "@intx/types/runtime";
+import type { InboundDelivery } from "@intx/types/message-id";
 import { CredentialDelivery } from "@intx/types/credential-delivery";
 import type { WorkflowRunRefTips } from "@intx/types/sidecar";
 import {
@@ -40,7 +42,9 @@ export type WorkflowRunPackClient = {
    * `repo.pack.reject`, on a disconnect that cancels the in-flight
    * transfer, or on a substrate-side `createPack` failure. The push
    * failure shape is intentionally loud per the project's
-   * defensive-coding rule.
+   * defensive-coding rule. A `missing_objects` reject means the hub no
+   * longer holds what it acked, so the push forgets the acked tip and
+   * ships the full history once before it gives up.
    */
   push(opts: {
     agentAddress: string;
@@ -142,19 +146,38 @@ export function createWorkflowRunPackClient(
       if (tip !== null && tip === lastAckedSha.get(ackKey(repoId, ref))) {
         return;
       }
-      const { pack, commitSha } = await substrate.createPack(
-        principal,
-        repoId,
-        ref,
-      );
-      await hubLink.pushWorkflowRunPack({
-        agentAddress,
-        generation,
-        repoId,
-        pack,
-        ref,
-        commitSha,
-      });
+      const ship = async () => {
+        const { pack, commitSha } = await substrate.createPack(
+          principal,
+          repoId,
+          ref,
+        );
+        await hubLink.pushWorkflowRunPack({
+          agentAddress,
+          generation,
+          repoId,
+          pack,
+          ref,
+          commitSha,
+        });
+        return commitSha;
+      };
+      let commitSha: string;
+      try {
+        commitSha = await ship();
+      } catch (err) {
+        if (
+          !(err instanceof PackRejectedError) ||
+          err.reason !== "missing_objects" ||
+          pushTokens.get(repoId.id) !== token
+        ) {
+          throw err;
+        }
+        logger.error`The hub lacks objects of ${repoId.id} ${ref} that it acked; sending the full history`;
+        substrate.forgetPackedTip(repoId, ref);
+        lastAckedSha.delete(ackKey(repoId, ref));
+        commitSha = await ship();
+      }
       // `pushWorkflowRunPack` resolves only on the hub's
       // `repo.pack.ack` and rejects on a reject or a reconnect that
       // cancels the transfer. Advancing the substrate's shipped-tip
@@ -206,11 +229,12 @@ export function createDeploymentAddressRegistry(): DeploymentAddressRegistry {
 /**
  * Handler the multi-step deploy router installs on the
  * `MultistepMailRouter` after a supervisor's `spawn` succeeds. The
- * handler hands a delivered inbound mail off to the per-deployment
- * supervisor's `routeInbound`, which dispatches into the workflow-host
- * mail-bus the multi-step child's `awaitSignal` subscribes against.
+ * handler hands a delivered inbound mail and its authenticated sender off
+ * to the per-deployment supervisor's `routeInbound`, which dispatches into
+ * the workflow-host mail-bus the multi-step child's `awaitSignal`
+ * subscribes against.
  */
-export type MultistepMailHandler = (message: Uint8Array) => Promise<void>;
+export type MultistepMailHandler = (delivery: InboundDelivery) => Promise<void>;
 
 /**
  * Per-deployment-address mail handler registry the sidecar hub-link
@@ -231,13 +255,13 @@ export type MultistepMailRouter = {
   register(address: string, handler: MultistepMailHandler): void;
   unregister(address: string): void;
   /**
-   * Dispatch `message` to the handler registered for `address`. Returns
+   * Dispatch `delivery` to the handler registered for `address`. Returns
    * `null` when no handler is registered (the caller logs and drops, and
    * sends no ack). Otherwise returns the handler's durable settlement: a
    * promise that resolves once the message is durably accepted and rejects
    * when it was not, so the caller acks only on resolution.
    */
-  tryRoute(address: string, message: Uint8Array): Promise<void> | null;
+  tryRoute(address: string, delivery: InboundDelivery): Promise<void> | null;
 };
 
 export function createMultistepMailRouter(): MultistepMailRouter {
@@ -249,10 +273,10 @@ export function createMultistepMailRouter(): MultistepMailRouter {
     unregister(address) {
       handlers.delete(address);
     },
-    tryRoute(address, message) {
+    tryRoute(address, delivery) {
       const handler = handlers.get(address);
       if (handler === undefined) return null;
-      return handler(message);
+      return handler(delivery);
     },
   };
 }
@@ -612,8 +636,7 @@ export function createMultistepCredentialsRouter(): MultistepCredentialsRouter {
  * every method to the underlying store; intercepts the
  * `writeTreePreservingPrefix` return path so a successful write
  * against a `workflow-run` repo schedules a workflow-run pack push.
- * Writes against any other `repoId.kind` (today, only `agent-state`
- * via the deploy-applier path) flow through unchanged.
+ * Writes against any other `repoId.kind` flow through unchanged.
  *
  * Pack-push coalescing: the facade returns from
  * `writeTreePreservingPrefix` as soon as the LOCAL commit lands and
@@ -951,6 +974,7 @@ export function createWorkflowRunPackPushingRepoStore(
     receivePack: underlying.receivePack.bind(underlying),
     createPack: underlying.createPack.bind(underlying),
     commitPackedTip: underlying.commitPackedTip.bind(underlying),
+    forgetPackedTip: underlying.forgetPackedTip.bind(underlying),
     resolveRef: underlying.resolveRef.bind(underlying),
     listRefs: underlying.listRefs.bind(underlying),
     resolveHead: underlying.resolveHead.bind(underlying),

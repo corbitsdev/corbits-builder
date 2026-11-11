@@ -1,23 +1,10 @@
 // Typed event emitter for the sidecar router.
 //
 // The router emits events at the points where wire-layer frame handling
-// completes and a host-side decision or side effect is required. Two
-// emission shapes are exposed:
-//
-// - `emit(type, payload)` — notification semantics. Each listener runs
-//   inside its own try/catch; a thrown error is logged and does not
-//   affect other listeners or the wire layer. Used for events whose
-//   outcome does not feed back into protocol behavior.
-//
-// - `emitAndAwait(type, payload)` — sequential await semantics.
-//   Listeners run in registration order; the first rejection propagates
-//   to the caller and stops the chain. Used for events whose outcome
-//   affects subsequent wire-layer state (e.g. reconnect rollback).
-//
-// The TSDoc on each entry in `SidecarEventMap` records which semantic
-// applies. Mixing the two on a single event is intentional: today's
-// wire layer already has both behaviors, and pretending otherwise
-// would silently change failure handling.
+// completes and a host-side decision or side effect is required.
+// `emit(type, payload)` has notification semantics: each listener runs
+// inside its own try/catch, and a thrown error is logged and does not
+// affect other listeners or the wire layer.
 
 import type {
   PackRejectReason,
@@ -31,6 +18,7 @@ import type {
   ConnectorThreadState,
 } from "@intx/types/runtime";
 import type { SignalKind } from "@intx/types";
+import type { MailSendAuthorizer } from "@intx/authz";
 import type { MailAcceptCoordinate, ResolvedSenderPrincipal } from "@intx/db";
 import { getLogger } from "@intx/log";
 
@@ -95,8 +83,7 @@ export type SidecarEventMap = {
 
   /** Notification. Emitted when a sidecar's connection closes, and when
    * one allocation leaves a connection that stays open for others,
-   * carrying every workflow address that lost its route: deployment
-   * addresses and the step addresses staged for them. */
+   * carrying every workflow address that lost its route. */
   "sidecar.disconnect": {
     ownedAddresses: string[];
     /** Allocation generations whose current connection this was. */
@@ -145,18 +132,8 @@ export type SidecarEventMap = {
   "mail.inbound.acknowledged": {
     agentAddress: string;
     messageId: string;
-    allocated?: {
-      allocationId: string;
-      anchorRunId: string;
-      generation: number;
-    };
-  };
-
-  /** Awaited. Emitted when an agent.deploy.ack frame arrives. Rejection
-   * fails the pending deploy with the listener's error. */
-  "agent.deploy.ack": {
-    agentAddress: string;
-    publicKey: string;
+    /** The delivery key of the mail's authenticated sender and `messageId`. */
+    deliveryKey: string;
     allocated?: {
       allocationId: string;
       anchorRunId: string;
@@ -188,14 +165,6 @@ export type SidecarEventEmitter = {
     listener: SidecarEventListener<T>,
   ): () => void;
   emit<T extends SidecarEventType>(type: T, payload: SidecarEventMap[T]): void;
-  emitAndAwait<T extends SidecarEventType>(
-    type: T,
-    payload: SidecarEventMap[T],
-  ): Promise<void>;
-  /** Number of listeners registered for `type`. Wire-layer callers use
-   * this to skip an `await` when nothing is listening, preserving the
-   * synchronous scheduling of unconfigured-handler paths. */
-  listenerCount(type: SidecarEventType): number;
 };
 
 export function createSidecarEmitter(): SidecarEventEmitter {
@@ -207,7 +176,6 @@ export function createSidecarEmitter(): SidecarEventEmitter {
     "mail.outbound.undelivered": new Set(),
     "mail.persisted": new Set(),
     "mail.inbound.acknowledged": new Set(),
-    "agent.deploy.ack": new Set(),
     "connector.state.changed": new Set(),
   };
 
@@ -245,31 +213,10 @@ export function createSidecarEmitter(): SidecarEventEmitter {
     }
   }
 
-  async function emitAndAwait<T extends SidecarEventType>(
-    type: T,
-    payload: SidecarEventMap[T],
-  ): Promise<void> {
-    const set = listeners[type];
-    if (set.size === 0) return;
-    for (const listener of [...set]) {
-      await listener(payload);
-    }
-  }
-
-  function listenerCount(type: SidecarEventType): number {
-    return listeners[type].size;
-  }
-
-  return { on, emit, emitAndAwait, listenerCount };
+  return { on, emit };
 }
 
 export type SidecarLookups = {
-  /** Returns the hub's current deploy ref for the address, or `null` if
-   * no deploy state is tracked. The wire layer compares this against
-   * the sidecar's reported ref during reconnect and emits
-   * `deploy.ref.stale` only on mismatch. */
-  lookupDeployRef?: (agentAddress: string) => Promise<string | null>;
-
   /** Re-resolves a reconnecting deployment's current credential delivery and
    * reconciles the child, so a credential revoked, deleted, or rotated while
    * the sidecar was disconnected is applied on reconnect (closing the offline
@@ -286,6 +233,21 @@ export type SidecarLookups = {
    * It may throw; the wire layer logs a fault and sends the barrier without
    * them, so a load failure never drops the mail it precedes. */
   loadRunCredentials?: (runId: string) => Promise<CredentialDelivery | null>;
+
+  /** Loads a deployment run's committed grants by run id, or null when the run
+   * has no run principal. The wire layer loads them when it sends:
+   *  - in a `run.grants` frame right before each `signal.deliver`, so a signal
+   *    that resumes a parked run reaches the sidecar after the grants a
+   *    decision committed; null sends no frame;
+   *  - in the `run.grants` frame ahead of a dispatched or redelivered trigger
+   *    mail, in place of the grants the trigger was enqueued with; null sends
+   *    no grants, so the run fails closed.
+   * Absent, or on a throw (logged): a signal goes out with no grants frame,
+   * and a trigger keeps the grants it already holds. A load failure never
+   * drops the signal or the mail. */
+  loadRunGrants?: (
+    runId: string,
+  ) => Promise<RunGrantsFrame["stepGrants"] | null>;
 
   /** Persists a delivered outbound mail frame. Returns one row per
    * persisted record; the wire layer attaches `raw` to each row and
@@ -337,8 +299,8 @@ export type SidecarLookups = {
    * degrade-to-null path.
    *
    * Returns `null` when the sender does not resolve to a concrete principal --
-   * an address matching no principal, or a run whose deploy is acked but whose
-   * principal is not yet minted (a principal-less signer). THROWS on a genuine
+   * an address matching no principal, or an initialized run whose first
+   * trigger has not yet linked its run principal. THROWS on a genuine
    * fault (an ambiguous address, a data-integrity break). Both a `null` and a
    * throw leave the sender with no admission coordinates at the seam, so the
    * gate never admits it. Wraps the strict `resolveSenderKey` in `@intx/db`
@@ -411,20 +373,13 @@ export type SidecarLookups = {
     recipientAddresses: string[];
   }) => Promise<void>;
 
-  /** Ingests a received agent-state pack and returns whether the wire
-   * layer should ack or reject the pack to the sidecar. `repoId.kind`
-   * is `"agent-state"` and `repoId.id` is the run address. The wire
-   * layer dispatches on `repoId.kind` against the receive lookups
-   * before calling either; this lookup must reject any pack whose
-   * `repoId.kind` is not `"agent-state"`. */
-  receiveAgentStatePack?: (
-    repoId: RepoId,
-    pack: Uint8Array,
-    ref: string,
-    commitSha: string,
-  ) => Promise<
-    { accepted: true } | { accepted: false; reason: PackRejectReason }
-  >;
+  /**
+   * Decides which recipients of a relayed mail its sender may send to, from
+   * the sender's `mail.send` grants. The relay routes, parks, relays and
+   * mints correspondent grants only for the recipients it allows. Without it
+   * the relay refuses every recipient.
+   */
+  authorizeMailSend?: MailSendAuthorizer;
 
   /** Ingests a received workflow-run pack and returns whether the wire
    * layer should ack or reject the pack to the sidecar. `source` is derived

@@ -11,26 +11,20 @@
 // Two surface areas:
 //
 //   - Hub-side (deploy assembly):
-//       createClosureResolver({ registries, scopeRouting? })
+//       createClosureResolver({ source })
 //         → resolveClosure(pins) → ToolPackageManifest
 //
 //   - Sidecar-side (deploy apply):
 //       createTarballCache({ rootDir, maxBytes }) — content-addressable
 //       store keyed by SRI integrity.
-//       createToolLoader({ cache, registries, host, … }) — fetches,
-//       extracts, and dynamic-imports each pinned package.
-//       applyAtomic({ manifest, loader, … }) — per-deploy-id apply
-//       protocol that stages each deploy into its own never-renamed
-//       directory and maps every loader failure category onto an
-//       `ApplyAtomicFailure` the caller surfaces as a rejected apply.
-//       materializeToolPackages({ …, registries, host, assetRoot }) —
-//       validates a step manifest, applies it, and persists the active
-//       deploy id. parseToolRegistries(raw) and hostPlatform(os, cpu)
-//       are the registry-map and host-platform boundary that apply
-//       consumes.
-//       applyFrozenWorkflowClosure({ …, host, loadDefinition }) — lays
-//       out a frozen workflow closure and loads the definition through
-//       the caller-supplied loader.
+//       materializeClosure({ manifest, cache, fetchTarball, … }) — fetches,
+//       extracts, and lays out a closure without importing any of it.
+//       createTarballFetcher({ … }) — the production fetcher it takes.
+//       parseToolRegistries(raw) and hostPlatform(os, cpu) are the
+//       registry-map and host-platform boundary that apply consumes.
+//       applyFrozenWorkflowClosure({ …, host }) — lays out a frozen
+//       workflow closure for the workflow child to evaluate, importing
+//       none of it.
 //       createWorkflowClosureMaterializer({ …, host, materializeAssets })
 //       — lays out a probe frame's frozen closure without importing
 //       author code. Asset delivery is the caller-supplied callback.
@@ -45,7 +39,6 @@ export {
   type PeerDependencyViolation,
   type RegistryConfig,
   type RegistrySource,
-  type ScopeRoute,
   AssetRegistrySource,
   HttpRegistrySource,
   ManifestInvalidError,
@@ -62,28 +55,22 @@ export {
 
 export {
   type HostPlatform,
-  type LoadManifestArgs,
-  type LoadedDirectorFactory,
-  type LoadedToolFactory,
-  type LoadedToolPackage,
-  type LoaderConfig,
   type MaterializeClosureArgs,
   type MaterializeClosureResult,
-  type TarballFetcher,
-  type ToolLoader,
-  ToolLoaderError,
-  createToolLoader,
   materializeClosure,
   storeEntryDir,
-} from "./loader";
+} from "./store-layout";
 
 export {
-  type ApplyAtomicArgs,
-  type ApplyAtomicFailure,
-  type ApplyAtomicResult,
-  type ApplyAtomicSuccess,
-  applyAtomic,
-} from "./atomic-apply";
+  type TarballFetcher,
+  type TarballFetcherConfig,
+  createTarballFetcher,
+} from "./tarball-fetcher";
+
+export {
+  type ClosureMaterializationErrorCategory,
+  ClosureMaterializationError,
+} from "./materialization-internal";
 
 export {
   type ExtractPackageJSONOutcome,
@@ -91,11 +78,6 @@ export {
 } from "./package-json-extract";
 
 export { hostPlatform, parseToolRegistries } from "./materialization-config";
-
-export {
-  type StepToolFactory,
-  materializeToolPackages,
-} from "./tool-materialization";
 
 export {
   type ApplyFrozenWorkflowClosureArgs,

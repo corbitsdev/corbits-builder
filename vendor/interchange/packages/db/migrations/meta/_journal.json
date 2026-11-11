@@ -806,6 +806,76 @@
       "when": 1792885969627,
       "tag": "0115_workflow_run_operator_cancellation",
       "breakpoints": true
+    },
+    {
+      "idx": 116,
+      "version": "7",
+      "when": 1793295703136,
+      "tag": "0116_credential_secret_version",
+      "breakpoints": true
+    },
+    {
+      "idx": 117,
+      "version": "7",
+      "when": 1793571455962,
+      "tag": "0117_grant_invoker_allow_principal_index",
+      "breakpoints": true
+    },
+    {
+      "idx": 118,
+      "version": "7",
+      "when": 1793729632421,
+      "tag": "0118_drop_launch_spec_deploy_content",
+      "breakpoints": true
+    },
+    {
+      "idx": 119,
+      "version": "7",
+      "when": 1793841949636,
+      "tag": "0119_principal_key_public_only",
+      "breakpoints": true
+    },
+    {
+      "idx": 120,
+      "version": "7",
+      "when": 1793841983485,
+      "tag": "0120_create_run_principals",
+      "breakpoints": true
+    },
+    {
+      "idx": 121,
+      "version": "7",
+      "when": 1793842006891,
+      "tag": "0121_run_principal_sidecar_keys",
+      "breakpoints": true
+    },
+    {
+      "idx": 122,
+      "version": "7",
+      "when": 1793842023286,
+      "tag": "0122_drop_workflow_run_public_key",
+      "breakpoints": true
+    },
+    {
+      "idx": 123,
+      "version": "7",
+      "when": 1793915609889,
+      "tag": "0123_drop_launch_spec_tool_package_pins",
+      "breakpoints": true
+    },
+    {
+      "idx": 124,
+      "version": "7",
+      "when": 1793960501284,
+      "tag": "0124_mail_send_backfill",
+      "breakpoints": true
+    },
+    {
+      "idx": 125,
+      "version": "7",
+      "when": 1794315935064,
+      "tag": "0125_workflow_run_dispatch_delivery_key",
+      "breakpoints": true
     }
   ]
 }

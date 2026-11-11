@@ -1,43 +1,34 @@
-import { type } from "arktype";
-import { and, eq, isNull } from "drizzle-orm";
+import { and, eq, not } from "drizzle-orm";
 
 import { getLogger } from "@intx/log";
 import {
   buildCredentialDelivery,
   createSidecarAllocationStore,
   createWorkflowDefinitionArtifactStore,
-  listAssetsForTenant,
+  deactivateRunPrincipals,
+  insertRunPrincipal,
+  loadRunPrincipalActiveKey,
+  recordRunPrincipalKey,
+  runPrincipalHasActiveKey,
   resolveInferenceMaterials,
   type DB,
   type SidecarAllocation,
 } from "@intx/db";
+import { deriveRunPrincipalId } from "@intx/hub-common";
 import {
+  principal as principalTable,
   workflowDefinition as workflowDefinitionTable,
   workflowRun as workflowRunTable,
   type WorkflowRunCredentialRefs,
 } from "@intx/db/schema";
-import { hexEncode } from "@intx/types";
 import type {
   CredentialDelivery,
   CredentialMaterialEntry,
 } from "@intx/types/credential-delivery";
 import { DeploymentRejectedError } from "@intx/types/sidecar";
 import type { CredentialCipher } from "@intx/types";
-import { sessionAsset as sessionAssetTable } from "@intx/db/schema";
 import type { HarnessConfig, InferenceSource } from "@intx/types/runtime";
-import {
-  type RegistryConfig,
-  type RegistrySource,
-  type ScopeRoute,
-  AssetRegistrySource,
-  HttpRegistrySource,
-  ManifestInvalidError,
-  createClosureResolver,
-} from "@intx/tool-packaging";
-import {
-  ToolPackageManifest,
-  type ToolPackagePin,
-} from "@intx/types/tool-packages";
+import { type RegistryConfig } from "@intx/tool-packaging";
 import type {
   SourceRefPin,
   WorkflowProjectionWithSources,
@@ -54,15 +45,11 @@ import {
   collectHubConsumers,
   deriveRunAddress,
   WorkflowDefinitionInvalidError,
-  type DeployContent as OrchestratorDeployContent,
 } from "@intx/workflow-deploy";
 
-import type { AgentRepoStore, DeployContent } from "./agent-repo";
-import {
-  DEFAULT_ASSET_REF,
-  type Asset,
-  type AssetService,
-} from "./asset-service";
+import type { AgentRepoStore } from "./agent-repo";
+import { recheckDeliveredCredentials } from "./credential-push";
+import { DEFAULT_ASSET_REF } from "./asset-service";
 import type {
   AllocatedSidecarTarget,
   SendProbeArgs,
@@ -71,7 +58,7 @@ import type {
   WorkflowProbeResult,
 } from "./ws/sidecar-handler";
 import { isDeployFrameFailure } from "./ws/sidecar-handler";
-import type { Principal, RepoId, RepoKind } from "./repo-store";
+import type { Principal, RepoKind } from "./repo-store";
 import {
   buildSourceAssetMounts,
   type ResolveAssetAttachmentFn,
@@ -96,41 +83,19 @@ import type { SidecarReconciliationContext } from "./sidecar-allocation/operatio
 const logger = getLogger(["interchange", "hub", "session-service"]);
 
 export class SessionLaunchError extends Error {
-  /** Which phase failed: "write", "provision", "pack", or "start". */
-  readonly phase: string;
   /** True if the sidecar has a provisioned agent that could not be cleaned up. */
   readonly leakedAgent: boolean;
 
-  constructor(phase: string, cause: unknown, leakedAgent: boolean) {
+  constructor(cause: unknown, leakedAgent: boolean) {
     const msg =
       cause instanceof Error ? cause.message : "Session launch failed";
     super(msg, { cause });
     this.name = "SessionLaunchError";
-    this.phase = phase;
     this.leakedAgent = leakedAgent;
   }
 }
 
 export type SessionService = {
-  /**
-   * Stage one step of a multi-step workflow deploy: bind a transient route
-   * for the step address, fire a no-spawn provision frame (init the step's
-   * agent-state repo and record the hub key), deliver the deploy + asset
-   * packs, and unbind the route -- no warm harness. The multi-step branch
-   * stages every step this way before firing the deployment-level workflow
-   * frame that spawns the supervised child; the child reads each staged step
-   * tree from disk and runs the step itself.
-   */
-  stageWorkflowStep(params: {
-    agentAddress: string;
-    agentId: string;
-    runId: string;
-    config: HarnessConfig;
-    deployContent: DeployContent;
-    toolPackagePins?: readonly ToolPackagePin[];
-    allocationTarget: AllocatedSidecarTarget;
-  }): Promise<void>;
-
   /**
    * Undeploy an agent and wait for the sidecar to acknowledge.
    */
@@ -234,50 +199,22 @@ export type SessionServiceDeps = {
   /** Present when this Hub can route deploy phases to provisioned allocations. */
   sidecarAllocationRouter?: SidecarAllocationRouter;
   agentRepoStore: AgentRepoStore;
-  /**
-   * Optional asset attachment integration. When set, the deploy flow
-   * fans out per-attachment packs after the deploy pack lands and
-   * inserts a `session_asset` row per attachment. When unset, only
-   * the deploy pack is sent — the single-pack path is preserved
-   * bit-for-bit.
-   */
-  assetService?: AssetService;
-  /** DB handle used for `session_asset` manifest inserts. Required
-   * iff `assetService` is set. */
+  /** DB handle a workflow deploy reads and updates its run records with. */
   db?: DB["db"];
   /**
-   * Tool-package registry configuration. Required iff any agent the
-   * service launches has non-empty `toolPackagePins`. When set, the
-   * service builds a per-agent `ClosureResolver` at launch time: the
-   * registry map combines (a) every `package-registry` asset visible
-   * to the agent's tenant via the INTR-178 walker — keyed by
-   * `asset.name` — and (b) the statically-configured HTTP registries
-   * in `httpRegistries`.
-   *
-   * **Name-collision policy.** When an asset and an HTTP registry
-   * both claim the same registry name, the asset wins. This mirrors
-   * the inner-shadows-outer rule the tenancy walker already applies
-   * to asset resolution and gives operators a single mental model:
-   * closer-scope shadows wider-scope. The rule is a contract this
-   * service guarantees, not an iteration-order accident — consumers
-   * may rely on it to override a wider-scope HTTP registry by
-   * publishing an asset at a closer tenancy.
-   *
-   * `defaultRegistry` names the entry the resolver consults for any
-   * package whose scope does not match `scopeRouting`. The name must
-   * resolve in the combined map for the given agent — if no asset and
-   * no HTTP entry carries that name, launch fails at the
-   * registry-resolution step.
+   * The registries a source deploy resolves through. Required for a source
+   * deploy. `httpRegistries` maps each registry name to its config. A registry
+   * source names its registry, and a source-format asset's external
+   * dependencies use `defaultRegistry`.
    */
   toolPackageRegistries?: {
     /**
      * Registry identifier → registry config. The key is the
-     * identifier `scopeRouting` entries and manifest `registry`
-     * references point at; the value carries url plus optional auth.
+     * identifier manifest `registry` references point at; the value
+     * carries url plus optional auth.
      */
     readonly httpRegistries: ReadonlyMap<string, RegistryConfig>;
     readonly defaultRegistry: string;
-    readonly scopeRouting?: readonly ScopeRoute[];
   };
   /**
    * Load a run's Hub tokens. A prepared deploy of an anchor that already has
@@ -287,85 +224,11 @@ export type SessionServiceDeps = {
 };
 
 // Hub-side principal for reading asset repos. Assets are signed by the
-// hub itself, and the launch fan-out reads them on the hub to assemble
-// packs for delivery to a sidecar -- so the hub principal is correct.
+// hub itself, and a source deploy reads them on the hub to assemble the
+// packs it delivers to a sidecar -- so the hub principal is correct.
 const HUB_PRINCIPAL: Principal = { kind: "hub" };
 
-type ResolvedAttachment = {
-  mountPath: string;
-  sourceCommitSha: string;
-  repoId: RepoId;
-  pack: Uint8Array;
-  ref: string;
-};
-
-type SessionAssetRecord = {
-  runId: string;
-  mountPath: string;
-  assetPackSha: string;
-  sourceCommitSha: string;
-};
-
-async function createPackSha(pack: Uint8Array): Promise<string> {
-  const digest = await crypto.subtle.digest(
-    "SHA-256",
-    // eslint-disable-next-line @typescript-eslint/no-unsafe-type-assertion -- ArrayBuffer-backed at the call site; Web Crypto's BufferSource type rejects Uint8Array<ArrayBufferLike> under TS 5.9 (microsoft/TypeScript#62240)
-    pack as Uint8Array<ArrayBuffer>,
-  );
-  return hexEncode(new Uint8Array(digest));
-}
-
-/**
- * Walk a resolved tool-package manifest and return every distinct
- * `assetId` referenced by a `kind: "asset"` entry. Order is the
- * resolver's BFS order so the fan-out below is deterministic for
- * tests; a `Set` would be wrong here because tests assert specific
- * orderings.
- */
-function collectDistinctAssetIds(manifest: ToolPackageManifest): string[] {
-  const seen = new Set<string>();
-  const out: string[] = [];
-  for (const entry of manifest.entries) {
-    if (entry.source.kind !== "asset") continue;
-    if (seen.has(entry.source.assetId)) continue;
-    seen.add(entry.source.assetId);
-    out.push(entry.source.assetId);
-  }
-  return out;
-}
-
-/**
- * Translate the orchestrator's structural `DeployContent` (which types
- * `toolPackageManifest` as `unknown`) back into the hub-sessions
- * `DeployContent` shape. The orchestrator round-trips whatever the
- * caller supplied, but the surface type widens `toolPackageManifest` to
- * `unknown`; the validator narrows it back to the canonical shape
- * `agentRepoStore.writeDeployTree` consumes.
- *
- * Exported so a test fixture that forwards orchestrator-shaped deploy
- * content into `launchSession` narrows it the same validated way the
- * production multi-step callback does, rather than casting `unknown`.
- */
-export function bridgeOrchestratorDeployContent(
-  content: OrchestratorDeployContent,
-): DeployContent {
-  const bridged: DeployContent = { systemPrompt: content.systemPrompt };
-  if (content.toolPackageManifest !== undefined) {
-    const validated = ToolPackageManifest(content.toolPackageManifest);
-    if (validated instanceof type.errors) {
-      throw new Error(
-        `orchestrator deploy content carries an invalid toolPackageManifest: ${validated.summary}`,
-      );
-    }
-    bridged.toolPackageManifest = validated;
-  }
-  if (content.assetMounts !== undefined) {
-    bridged.assetMounts = content.assetMounts;
-  }
-  return bridged;
-}
-
-/** Fields the deploy frame carries onto `sendAgentDeploy`. */
+/** Fields the deploy frame carries onto `sendAgentDeployToAllocation`. */
 type DeployFrameCommonArgs = {
   sidecarAllocationRouter: SidecarAllocationRouter;
   allocationTarget: AllocatedSidecarTarget;
@@ -429,11 +292,9 @@ export type SourceRefDeployFrameArgs = DeployFrameCommonArgs & {
 export type SendMultiStepDeployFrameArgs = SourceRefDeployFrameArgs;
 
 /**
- * Emit the source-ref deploy frame onto `SidecarRouter.sendAgentDeploy`. The
- * router accepts an optional `workflow` projection on the deploy frame; the
- * sidecar's deploy router uses field presence to route the frame to the
- * workflow deploy path, and returns the supervisor public key on the
- * `agent.deploy.ack`.
+ * Emit the source-ref deploy frame through
+ * `SidecarAllocationRouter.sendAgentDeployToAllocation`. The sidecar's deploy
+ * router returns the supervisor public key on the `agent.deploy.ack`.
  *
  * The gate/freeze layer already hashed the inert projection, so the frozen hash
  * and the inert projection ride the frame verbatim -- this never recomputes the
@@ -441,8 +302,8 @@ export type SendMultiStepDeployFrameArgs = SourceRefDeployFrameArgs;
  * inert projection the child re-verifies against.
  *
  * Exported so the co-located caller-site test can assert that the constructed
- * closure reaches the wire surface via `sendAgentDeploy` with a `workflow`
- * field structurally matching the `AgentDeployFrame.workflow` schema.
+ * closure reaches the wire surface with a `workflow` field structurally
+ * matching the `AgentDeployFrame.workflow` schema.
  */
 export async function sendMultiStepDeployFrame(
   args: SendMultiStepDeployFrameArgs,
@@ -561,9 +422,7 @@ function isAssetDeployArgs(
  * tenant-ownership-scoped), never a shared authz check.
  * Credential GRANT enforcement is a SEPARATE layer: the `credential:{id}` /
  * `use` grant the runtime gate checks is minted per-run by run-grant
- * materialization into `runs/<runId>/grants.json`, not carried on this frame --
- * the deploy-time `config.grants` spawn-time snapshot is suppressed once the
- * sidecar wires per-run grant pushes, so it is not the enforcement transport.
+ * materialization into `runs/<runId>/grants.json`, not carried on this frame.
  *
  * A gate outcome that did not approve cannot deploy: an unapproved `approval`
  * fails closed here rather than shipping an unfrozen definition.
@@ -675,13 +534,11 @@ async function prepareSourceRefDeploy(
   // These entries ride the `referencedDefinitions` wire field. Each entry's
   // `definition` is the approved inert body def straight from the frozen,
   // hash-covered projection (id set to the ref); the sidecar reads that id to
-  // key the per-body approved hash and to stage the body's `sources.json`, which
-  // the body child reads to pin its steps. The body child resolves the body
-  // DEFINITION itself in-memory from the re-verified closure and hard-fails
-  // rather than reading it off disk, so no body workflow.json is staged (see the
-  // staging loop in workflow-host-wiring.ts and the anti-fallback guard in
-  // workflow-host run-child.ts).
-  const referencedDefinitions = await buildReferencedWorkflowSourcePins({
+  // key the body's sources in the run record, which the body child reads to pin
+  // its steps. The body child resolves the body DEFINITION itself in-memory from
+  // the re-verified closure and hard-fails rather than reading it off disk (see
+  // the anti-fallback guard in workflow-host run-child.ts).
+  const referencedDefinitions = buildReferencedWorkflowSourcePins({
     projection,
     config: args.config,
     operatorApprovals: approval.approvedSurface,
@@ -809,10 +666,11 @@ async function prepareSourceRefDeploy(
 /**
  * Prepare then emit the source-ref deploy frame, for the prepared provisioned
  * path whose anchor `workflow_run` row already exists (inserted at prepare
- * time). It emits the frame but does NOT touch the anchor row: the caller
- * (`deployPreparedCodeSourcedWorkflow`) stamps the acked key under the
- * allocation-ownership lock. A tagged `DeployFrameFailure` is converted to the
- * `SessionLaunchError` disposition the allocation reconciler consumes, while
+ * time). It emits the frame but does NOT record the deployment: the caller
+ * (`deployPreparedCodeSourcedWorkflow`) records the acked key on the run
+ * principal under the allocation-ownership lock. A tagged `DeployFrameFailure`
+ * is converted to the `SessionLaunchError` disposition the allocation
+ * reconciler consumes, while
  * untagged preparation errors remain safe same-generation retries. The ordinary
  * path does NOT use this wrapper -- it must interleave the anchor INSERT between
  * prepare and emit, so it drives `prepareSourceRefDeploy` and
@@ -854,11 +712,46 @@ async function emitSourceRefDeployFrame(
   publicKey: string;
   definitionId: string;
   credentialRefs?: WorkflowRunCredentialRefs;
+  // The id and version of each credential-row material the frame carried,
+  // and the cipher to re-resolve them, for the post-completion re-check.
+  // Absent when the frame carried none. Hub tokens are not credential rows
+  // and are left out.
+  deliveredCredentials?: {
+    versions: Pick<CredentialMaterialEntry, "credentialId" | "secretVersion">[];
+    credentialCipher: CredentialCipher;
+  };
 }> {
   const { signal, leaseId } = reconciliation;
   signal.throwIfAborted();
   const { definitionId, sendArgs, hubConsumers } =
     await prepareSourceRefDeploy(args);
+  // Prepare resolves material only with a cipher. The check runs here, before
+  // the frame, because the re-check runs after the deploy commits, where a
+  // failure would report a running deployment as failed.
+  const deliveredMaterials = sendArgs.credentials?.materials ?? [];
+  let deliveredCredentials:
+    | {
+        versions: Pick<
+          CredentialMaterialEntry,
+          "credentialId" | "secretVersion"
+        >[];
+        credentialCipher: CredentialCipher;
+      }
+    | undefined;
+  if (deliveredMaterials.length > 0) {
+    if (args.credentialCipher === undefined) {
+      throw new Error(
+        "emitSourceRefDeployFrame: prepared credential material without a credentialCipher",
+      );
+    }
+    deliveredCredentials = {
+      versions: deliveredMaterials.map(({ credentialId, secretVersion }) => ({
+        credentialId,
+        ...(secretVersion !== undefined ? { secretVersion } : {}),
+      })),
+      credentialCipher: args.credentialCipher,
+    };
+  }
   // A run that resumes in flight on a replacement sidecar can call the Hub
   // before any new `run.grants` barrier brings its tokens, so the frame carries
   // the tokens the anchor already holds. A first deploy has none yet. They stay
@@ -906,6 +799,7 @@ async function emitSourceRefDeployFrame(
       publicKey: result.publicKey,
       definitionId,
       ...credentialRefsField(sendArgs.credentials, hubConsumers),
+      ...(deliveredCredentials !== undefined ? { deliveredCredentials } : {}),
     };
   } catch (cause) {
     if (cause instanceof DeploymentRejectedError && reserved) {
@@ -943,7 +837,7 @@ async function emitSourceRefDeployFrame(
         logger.warn`Could not clear unsent initialization for ${initialization.allocationId}: ${error instanceof Error ? error.message : String(error)}`;
       }
     }
-    throw new SessionLaunchError("start", cause, cause.frameSent);
+    throw new SessionLaunchError(cause, cause.frameSent);
   }
 }
 
@@ -951,10 +845,11 @@ async function emitSourceRefDeployFrame(
  * A direct allocation-bound composition entrypoint for tests and low-level
  * callers: prepare, INSERT the deployment's anchor `workflow_run` row, THEN emit
  * the source-ref frame. The anchor row is the deployment's first-class record
- * that owns its routing address and public key. Run-grant materialization keys
- * off this row (address + live status), so WITHOUT it no per-run grants (tool,
- * capability, OR credential) ever materialize for a source-ref deployment. Born
- * "deployed" (live but pre-trigger) with a null public key: the first trigger's
+ * that owns its routing address; its run principal holds its public key.
+ * Run-grant materialization keys off this row (address + live status), so
+ * WITHOUT it no per-run grants (tool, capability, OR credential) ever
+ * materialize for a source-ref deployment. Born
+ * "deployed" (live but pre-trigger) with no key yet: the first trigger's
  * materialization flips it to "running" via `anchorWithPrincipal`'s guarded
  * update, which a row born "running" would skip. Its `anchorRunId` equals its
  * own id, so the anchor references itself. The deployer read grant is deferred
@@ -990,24 +885,43 @@ export async function deployCodeSourcedWorkflow(
   const { definitionId, sendArgs, hubConsumers } =
     await prepareSourceRefDeploy(args);
 
-  // INSERT the anchor before the frame. A collision or DB error here spawned
-  // nothing (no frame went out), so it is a clean, non-leaking failure.
+  // INSERT the anchor and its run principal before the frame. A collision or
+  // DB error here spawned nothing (no frame went out), so it is a clean,
+  // non-leaking failure.
   try {
-    await args.db.insert(workflowRunTable).values({
-      id: args.anchorRunId,
-      tenantId: args.tenantId,
-      anchorRunId: args.anchorRunId,
-      definitionId,
-      address: args.agentAddress,
-      publicKey: null,
-      status: "deployed",
-      createdAt: new Date(),
-      // Persist the non-secret shape of the delivery so the reconnect resync
-      // can re-resolve current materials for these ids. Secrets never land here.
-      ...credentialRefsField(sendArgs.credentials, hubConsumers),
+    const runPrincipalId = await deriveRunPrincipalId(
+      args.tenantId,
+      args.anchorRunId,
+    );
+    await args.db.transaction(async (tx) => {
+      const createdAt = new Date();
+      await tx.insert(workflowRunTable).values({
+        id: args.anchorRunId,
+        tenantId: args.tenantId,
+        anchorRunId: args.anchorRunId,
+        definitionId,
+        address: args.agentAddress,
+        status: "deployed",
+        createdAt,
+        // Persist the non-secret shape of the delivery so the reconnect resync
+        // can re-resolve current materials for these ids. Secrets never land
+        // here.
+        ...credentialRefsField(sendArgs.credentials, hubConsumers),
+      });
+      const runPrincipalCreated = await insertRunPrincipal(tx, {
+        id: runPrincipalId,
+        tenantId: args.tenantId,
+        runId: args.anchorRunId,
+        createdAt,
+      });
+      if (!runPrincipalCreated) {
+        throw new Error(
+          `Deployment ${args.anchorRunId} already has a run principal`,
+        );
+      }
     });
   } catch (cause) {
-    throw new SessionLaunchError("start", cause, false);
+    throw new SessionLaunchError(cause, false);
   }
 
   let publicKey: string;
@@ -1017,46 +931,81 @@ export async function deployCodeSourcedWorkflow(
   } catch (cause) {
     if (isDeployFrameFailure(cause) && cause.frameSent === false) {
       // Positive proof the frame never reached the wire: nothing spawned, so
-      // fully roll the anchor back. The guard (`deployed`, null key) is a
+      // fully roll the anchor back. The guard (`deployed`, no key) is a
       // tripwire on the `frameSent: false` contract -- a 0-row delete means the
       // row advanced or vanished, so the contract lied and a child may be live;
-      // surface that loudly and refuse to claim it is safe to roll back.
-      const deleted = await args.db
-        .delete(workflowRunTable)
+      // surface that loudly and refuse to claim it is safe to roll back. The
+      // run principal goes with the anchor.
+      const deleted = await args.db.transaction(async (tx) => {
+        const rows = await tx
+          .delete(workflowRunTable)
+          .where(
+            and(
+              eq(workflowRunTable.id, args.anchorRunId),
+              eq(workflowRunTable.anchorRunId, args.anchorRunId),
+              eq(workflowRunTable.tenantId, args.tenantId),
+              eq(workflowRunTable.status, "deployed"),
+              not(
+                runPrincipalHasActiveKey(
+                  workflowRunTable.tenantId,
+                  workflowRunTable.id,
+                ),
+              ),
+            ),
+          )
+          .returning({ id: workflowRunTable.id });
+        if (rows.length > 0) {
+          await tx
+            .delete(principalTable)
+            .where(
+              and(
+                eq(principalTable.tenantId, args.tenantId),
+                eq(principalTable.kind, "workflow"),
+                eq(principalTable.refId, args.anchorRunId),
+              ),
+            );
+        }
+        return rows;
+      });
+      if (deleted.length === 0) {
+        logger.error`anchor-before-frame rollback found no deployed row without a key for ${args.anchorRunId} after a frameSent:false failure; the never-sent contract was violated and a child may be live`;
+        throw new SessionLaunchError(cause, true);
+      }
+      throw new SessionLaunchError(cause, false);
+    }
+    // Preserve a rejected deployment's anchor as a recorded failure. Otherwise
+    // a sent-but-unacked frame or unexpected error leaves it possibly live. Fence the
+    // anchor `deployed` -> `failed` (guarded so a self-flip to "running" by a
+    // trigger that already landed is left alone). Do NOT delete: a live child
+    // needs the anchor to bootstrap. The failed run's principal is deactivated
+    // with it.
+    const flipped = await args.db.transaction(async (tx) => {
+      const rows = await tx
+        .update(workflowRunTable)
+        .set({ status: "failed" })
         .where(
           and(
             eq(workflowRunTable.id, args.anchorRunId),
             eq(workflowRunTable.anchorRunId, args.anchorRunId),
             eq(workflowRunTable.tenantId, args.tenantId),
             eq(workflowRunTable.status, "deployed"),
-            isNull(workflowRunTable.publicKey),
+            not(
+              runPrincipalHasActiveKey(
+                workflowRunTable.tenantId,
+                workflowRunTable.id,
+              ),
+            ),
           ),
         )
         .returning({ id: workflowRunTable.id });
-      if (deleted.length === 0) {
-        logger.error`anchor-before-frame rollback found no deployed/null-key row for ${args.anchorRunId} after a frameSent:false failure; the never-sent contract was violated and a child may be live`;
-        throw new SessionLaunchError("start", cause, true);
-      }
-      throw new SessionLaunchError("start", cause, false);
-    }
-    // Preserve a rejected deployment's anchor as a recorded failure. Otherwise
-    // a sent-but-unacked frame or unexpected error leaves it possibly live. Fence the
-    // anchor `deployed` -> `failed` (guarded so a self-flip to "running" by a
-    // trigger that already landed is left alone). Do NOT delete: a live child
-    // needs the anchor to bootstrap.
-    const flipped = await args.db
-      .update(workflowRunTable)
-      .set({ status: "failed" })
-      .where(
-        and(
-          eq(workflowRunTable.id, args.anchorRunId),
-          eq(workflowRunTable.anchorRunId, args.anchorRunId),
-          eq(workflowRunTable.tenantId, args.tenantId),
-          eq(workflowRunTable.status, "deployed"),
-          isNull(workflowRunTable.publicKey),
-        ),
-      )
-      .returning({ id: workflowRunTable.id });
+      await deactivateRunPrincipals(
+        tx,
+        args.tenantId,
+        rows.map((row) => row.id),
+        new Date(),
+      );
+      return rows;
+    });
     if (flipped.length === 0) {
       // The anchor already advanced past deployed -- a trigger flipped it to
       // "running", so the deploy actually succeeded and the run is progressing
@@ -1069,27 +1018,26 @@ export async function deployCodeSourcedWorkflow(
     } else {
       logger.warn`anchor-before-frame: fenced anchor ${args.anchorRunId} deployed->failed on an unacked/failed emit; the agent may be leaked but the run is dead`;
     }
-    throw new SessionLaunchError("start", cause, true);
+    throw new SessionLaunchError(cause, true);
   }
 
-  // Emit succeeded: stamp the acked key. No status guard -- the key is a fact
-  // regardless of whether the pack-ack race already flipped the row to
-  // "running", and skipping the stamp there would strand a live run with a null
-  // key. A 0-row update is an anomaly (nothing should remove a deployed anchor
-  // on the success path), but the deploy succeeded, so log it rather than
-  // failing a live run.
-  const stamped = await args.db
-    .update(workflowRunTable)
-    .set({ publicKey })
-    .where(
-      and(
-        eq(workflowRunTable.id, args.anchorRunId),
-        eq(workflowRunTable.anchorRunId, args.anchorRunId),
-        eq(workflowRunTable.tenantId, args.tenantId),
-      ),
-    )
-    .returning({ id: workflowRunTable.id });
-  if (stamped.length === 0) {
+  // Emit succeeded: record the acked key on the run principal. No status guard
+  // -- the key is a fact regardless of whether the pack-ack race already
+  // flipped the row to "running", and skipping it there would strand a live
+  // run with no key. A missing anchor is an anomaly (nothing should remove a
+  // deployed anchor on the success path), but the deploy succeeded, so log it
+  // rather than failing a live run. Any other failure to record the key leaves
+  // a live agent whose key the hub does not hold, so it fails as a launch that
+  // may have leaked its agent.
+  let stamped: boolean;
+  try {
+    stamped = await args.db.transaction((tx) =>
+      recordRunPrincipalKey(tx, args.tenantId, args.anchorRunId, publicKey),
+    );
+  } catch (err) {
+    throw new SessionLaunchError(err, true);
+  }
+  if (!stamped) {
     logger.error`anchor-before-frame: anchor ${args.anchorRunId} vanished before its public key could be stamped on a successful deploy`;
   }
 
@@ -1113,15 +1061,16 @@ export async function recoverSenderDeploy(args: {
   // Claiming the lease prevents the previous attempt from publishing. Its
   // marker and key now distinguish a committed initialization from failure,
   // even before the worker reconnects or the old response arrives.
-  const anchor = await args.db.query.workflowRun.findFirst({
-    where: eq(workflowRunTable.id, allocation.anchorRunId),
-    columns: { publicKey: true },
-  });
+  const publicKey = await loadRunPrincipalActiveKey(
+    args.db,
+    allocation.tenantId,
+    allocation.anchorRunId,
+  );
   reconciliation.signal.throwIfAborted();
   args.sidecarRouter.noteSenderDeploySettled(
     { allocationId: allocation.id, generation: allocation.generation },
-    anchor !== undefined && anchor.publicKey !== null
-      ? { recorded: anchor.publicKey }
+    publicKey !== null
+      ? { recorded: publicKey }
       : { failed: "Previous deployment initialization did not complete" },
   );
 }
@@ -1133,285 +1082,15 @@ export function createSessionService(
     sidecarRouter,
     sidecarAllocationRouter,
     agentRepoStore,
-    assetService,
     db,
     toolPackageRegistries,
   } = deps;
-
-  if (assetService !== undefined && db === undefined) {
-    throw new Error(
-      "createSessionService: db is required when assetService is set",
-    );
-  }
-  if (toolPackageRegistries !== undefined && db === undefined) {
-    throw new Error(
-      "createSessionService: db is required when toolPackageRegistries is set",
-    );
-  }
 
   function requireAllocationRouter(): SidecarAllocationRouter {
     if (sidecarAllocationRouter === undefined) {
       throw new Error("Provisioned deployment routing is not configured");
     }
     return sidecarAllocationRouter;
-  }
-
-  /**
-   * Stage one per-step deploy on the sidecar: resolve assets and tool
-   * packages, write the deploy tree, provision the step, and deliver the
-   * deploy + asset packs (Phases 0-2b). Phase 1 binds a transient route for
-   * the step address, fires a no-spawn provision frame (init repo + record
-   * hub key), and unbinds the route once the packs land -- no warm harness and
-   * no child. The deployment-level workflow frame, sent once after every step
-   * is staged, spawns the child. A call without `stageOnly` is rejected -- the
-   * legacy warm-harness and single-step-head paths are gone.
-   */
-  async function executeLaunchPhases(params: {
-    agentAddress: string;
-    agentId: string;
-    runId: string;
-    config: HarnessConfig;
-    deployContent: DeployContent;
-    toolPackagePins?: readonly ToolPackagePin[];
-    /**
-     * Per-step stage. When true, Phase 1 binds a transient route for the step
-     * address, fires a no-spawn provision frame (the sidecar inits the step's
-     * agent-state repo and records the hub key), delivers the deploy + asset
-     * packs, and unbinds the route -- no warm harness and no child. The
-     * deployment-level workflow frame, sent once after every step is staged,
-     * spawns the child.
-     */
-    stageOnly?: boolean;
-    allocationTarget: AllocatedSidecarTarget;
-  }): Promise<void> {
-    const { agentAddress, agentId, runId, config, deployContent } = params;
-    const toolPackagePins = params.toolPackagePins ?? [];
-    const stageOnly = params.stageOnly ?? false;
-
-    let effectiveDeployContent: DeployContent = deployContent;
-
-    // Phase 0a-bis: Resolve the agent's tool-package pins into a full
-    // closure manifest. Empty pins skip the resolver entirely. A
-    // ManifestInvalidError (e.g. unsatisfied peer dependency) is a
-    // launch-time failure — the deploy never ships and the sidecar
-    // is not touched.
-    //
-    // The resolver runs once per launch with no cross-launch caching;
-    // the packument cache scopes only within a single closure walk.
-    // Acceptable at the current N (handful of agents, small pin sets
-    // per agent) — a tenant-scoped packument cache or a per-pin set
-    // resolved-manifest cache would be the obvious scaling lever
-    // when launch latency becomes the bottleneck.
-    const manifestAssetAttachments: ResolvedAttachment[] = [];
-    if (toolPackagePins.length > 0) {
-      if (toolPackageRegistries === undefined) {
-        throw new SessionLaunchError(
-          "write",
-          new Error(
-            `agent ${agentId} has ${String(toolPackagePins.length)} pinned tool package(s) but the session service has no toolPackageRegistries configured`,
-          ),
-          false,
-        );
-      }
-      if (assetService === undefined) {
-        throw new SessionLaunchError(
-          "write",
-          new Error(
-            `agent ${agentId} has pinned tool packages but the session service has no assetService configured for asset-backed registries`,
-          ),
-          false,
-        );
-      }
-      let manifest: ToolPackageManifest;
-      let assetIndex: Map<string, Asset>;
-      try {
-        const built = await buildAndResolve({
-          agentId,
-          tenantId: config.tenantId,
-          pins: toolPackagePins,
-          registries: toolPackageRegistries,
-          assetService,
-        });
-        manifest = built.manifest;
-        assetIndex = built.assetIndex;
-      } catch (err) {
-        if (err instanceof ManifestInvalidError) {
-          logger.warn`tool-package manifest validation failed for agent ${agentId}: ${err.message}`;
-        }
-        throw new SessionLaunchError("write", err, false);
-      }
-
-      const assetMounts = new Map<string, string>();
-      try {
-        for (const assetId of collectDistinctAssetIds(manifest)) {
-          const asset = assetIndex.get(assetId);
-          if (asset === undefined) {
-            // The asset id appears in the manifest but is not in the
-            // tenant-visible asset set. This can only happen if the
-            // resolver's registry map and the asset index disagree —
-            // the same scan populated both, so reaching this branch
-            // would indicate an upstream invariant violation.
-            throw new Error(
-              `resolved tool-package manifest references asset ${assetId} which is not visible to tenant ${config.tenantId}`,
-            );
-          }
-          const mountPath = `package-registries/${asset.name}/`;
-          assetMounts.set(assetId, mountPath);
-          manifestAssetAttachments.push(
-            await resolveAssetAttachment({
-              asset,
-              mountPath,
-            }),
-          );
-        }
-      } catch (err) {
-        throw new SessionLaunchError("write", err, false);
-      }
-
-      effectiveDeployContent = {
-        ...effectiveDeployContent,
-        toolPackageManifest: manifest,
-        ...(assetMounts.size > 0 ? { assetMounts } : {}),
-      };
-    }
-
-    // Phase 0b: Write deploy tree and produce packfile (hub-local, no
-    // sidecar state to clean up if this fails).
-    let pack: Uint8Array;
-    let commitSha: string;
-    let ref: string;
-    try {
-      await agentRepoStore.writeDeployTree(agentId, effectiveDeployContent);
-      ({ pack, commitSha, ref } =
-        await agentRepoStore.createDeployPack(agentId));
-    } catch (err) {
-      throw new SessionLaunchError("write", err, false);
-    }
-
-    // A stage-only per-step deploy binds a transient route for the step
-    // address so the packs below route to the deployment's sidecar; the
-    // route is held only for the pack window and dropped in the `finally`.
-    if (stageOnly) {
-      try {
-        await requireAllocationRouter().bindAllocatedStepRoute(
-          params.allocationTarget,
-          agentAddress,
-        );
-      } catch (err) {
-        throw new SessionLaunchError("provision", err, false);
-      }
-    }
-    try {
-      // Phase 1: Provision on sidecar. A stage-only per-step deploy sends a
-      // no-spawn provision frame: the sidecar inits the step's agent-state
-      // repo and records the hub key, but spawns nothing. Firing the frame
-      // before the Phase 2 pack is the ordering barrier -- the repo must
-      // exist before the pack applies.
-      try {
-        if (stageOnly) {
-          await requireAllocationRouter().sendProvisionStepToAllocation(
-            params.allocationTarget,
-            agentAddress,
-            config,
-          );
-        } else {
-          // Every caller supplies `stageOnly`. A deploy without it has no
-          // provisioning shape -- the legacy warm-harness and single-step-head
-          // paths are gone -- so fail loud rather than ship a deploy pack the
-          // sidecar never provisioned a repo for.
-          throw new Error("executeLaunchPhases: a deploy requires stageOnly");
-        }
-      } catch (err) {
-        throw new SessionLaunchError("provision", err, false);
-      }
-
-      // Phase 2: Pack delivery. A stage-only step has no supervisor to
-      // undeploy, so on failure it only drops its transient route (in the
-      // `finally`). The step's inited agent-state repo is left on the sidecar:
-      // the deploy aborts before the deployment frame is sent, so there is
-      // nothing to undeploy, and a redeploy of the same deployment overwrites
-      // the orphaned repo. This is an acceptable minor leak on the exceptional
-      // staging-failure path, not a live-path cost.
-      try {
-        await requireAllocationRouter().sendPackToAllocation(
-          params.allocationTarget,
-          agentAddress,
-          pack,
-          ref,
-          commitSha,
-        );
-      } catch (err) {
-        throw new SessionLaunchError("pack", err, !stageOnly);
-      }
-
-      // Phase 2b: Asset-pack fan-out. For each attached asset, build a
-      // pack, reserve the manifest row, then send the pack. The manifest
-      // reservation MUST happen before the pack send: if the sidecar acks
-      // but the row is missing, the session has materialization without
-      // a recorded manifest. A retried first deploy may reuse the exact row an
-      // earlier attempt recorded. If reservation fails, no pack is sent.
-      //
-      // The fan-out materializes the package-registry assets the
-      // tool-package resolver picked. They live behind tenant
-      // inheritance rather than a per-agent attachment row, so the
-      // session service synthesizes the attachment view in
-      // `manifestAssetAttachments`.
-      const fanOut: ResolvedAttachment[] = manifestAssetAttachments;
-      if (assetService !== undefined && fanOut.length > 0) {
-        for (const att of fanOut) {
-          try {
-            await sendAttachmentPack(
-              runId,
-              agentAddress,
-              att,
-              params.allocationTarget,
-            );
-          } catch (err) {
-            throw new SessionLaunchError("pack", err, !stageOnly);
-          }
-        }
-      }
-    } finally {
-      if (stageOnly) {
-        requireAllocationRouter().unbindAllocatedStepRoute(
-          params.allocationTarget,
-          agentAddress,
-        );
-      }
-    }
-  }
-
-  /**
-   * Stage one step of a multi-step workflow deploy: bind a transient route
-   * for the step address, fire a no-spawn provision frame (the sidecar inits
-   * the step's agent-state repo and records the hub key), deliver the deploy
-   * and asset packs, and unbind the route -- no warm harness. The multi-step
-   * branch stages every step this way, then fires ONE deployment-level
-   * workflow frame that writes the step grants and spawns the supervised
-   * workflow-process child; the child reads each step's staged deploy tree
-   * from disk and runs the step itself.
-   */
-  async function stageWorkflowStep(params: {
-    agentAddress: string;
-    agentId: string;
-    runId: string;
-    config: HarnessConfig;
-    deployContent: DeployContent;
-    toolPackagePins?: readonly ToolPackagePin[];
-    allocationTarget: AllocatedSidecarTarget;
-  }): Promise<void> {
-    await executeLaunchPhases({
-      agentAddress: params.agentAddress,
-      agentId: params.agentId,
-      runId: params.runId,
-      config: params.config,
-      deployContent: params.deployContent,
-      stageOnly: true,
-      ...(params.toolPackagePins !== undefined
-        ? { toolPackagePins: params.toolPackagePins }
-        : {}),
-      allocationTarget: params.allocationTarget,
-    });
   }
 
   // Resolve the npm registry config a code-sourced install resolves external
@@ -1646,16 +1325,17 @@ export function createSessionService(
   }
 
   /**
-   * Update a prepared anchor run's `publicKey` under the allocation-ownership
-   * lock. The anchor row was inserted at prepare time; this stamps the
-   * supervisor key returned by the deploy ack, but only while the allocation
+   * Record a prepared deployment's key on its run principal under the
+   * allocation-ownership lock. The anchor row and run principal were inserted
+   * at prepare time; this records the supervisor key returned by the deploy
+   * ack, but only while the allocation
    * still names this exact accepted generation and unexpired reconciliation
    * lease for this anchor. Lost ownership or cancellation fails closed as a
    * leaked-agent `SessionLaunchError` -- the deploy already reached the sidecar,
    * so the caller must treat the sidecar agent as possibly live. Used by the
    * `deployPreparedCodeSourcedWorkflow` prepared path.
    */
-  async function updateAnchorPublicKeyUnderAllocationLock(args: {
+  async function recordRunKeyUnderAllocationLock(args: {
     tenantId: string;
     anchorRunId: string;
     allocationTarget: AllocatedSidecarTarget;
@@ -1664,9 +1344,7 @@ export function createSessionService(
     credentialRefs?: WorkflowRunCredentialRefs;
   }): Promise<void> {
     if (db === undefined) {
-      throw new Error(
-        "updateAnchorPublicKeyUnderAllocationLock requires a db handle",
-      );
+      throw new Error("recordRunKeyUnderAllocationLock requires a db handle");
     }
     const dbHandle = db;
     try {
@@ -1690,7 +1368,7 @@ export function createSessionService(
         );
       }
     } catch (error) {
-      throw new SessionLaunchError("start", error, true);
+      throw new SessionLaunchError(error, true);
     }
   }
 
@@ -1770,11 +1448,7 @@ export function createSessionService(
     // Branch on the source discriminant so the emit args match the asset/registry
     // arms: an asset arm carries the rebuilt attachment resolver (asserted
     // non-null to satisfy the union), a registry arm carries none.
-    let result: {
-      publicKey: string;
-      definitionId: string;
-      credentialRefs?: WorkflowRunCredentialRefs;
-    };
+    let result: Awaited<ReturnType<typeof emitSourceRefDeployFrame>>;
     const senderAttempt = {
       ...params.allocationTarget,
       leaseId: params.reconciliation.leaseId,
@@ -1784,7 +1458,7 @@ export function createSessionService(
     try {
       // Bracket the allocated pre-ack window: mark the sender's key-record as
       // mid-flight before the deploy emit so a run that sends mail before its
-      // anchor key is committed parks rather than delivering keyless. The settle
+      // key is committed parks rather than delivering keyless. The settle
       // follows durable completion; cancellation leaves the outcome to recovery.
       if (source.kind === "asset") {
         if (resolveAttachment === null) {
@@ -1803,7 +1477,7 @@ export function createSessionService(
         );
       }
 
-      await updateAnchorPublicKeyUnderAllocationLock({
+      await recordRunKeyUnderAllocationLock({
         tenantId: params.tenantId,
         anchorRunId: params.anchorRunId,
         allocationTarget: params.allocationTarget,
@@ -1814,7 +1488,7 @@ export function createSessionService(
           : {}),
       });
 
-      // The anchor's public key is now durable. Wake any mail the run parked
+      // The run principal's key is now durable. Wake any mail the run parked
       // while pre-ack so it delivers with the sender key co-delivered, closing
       // the window where a run sends before its key is recorded. The write above
       // happens-before this settle, so a re-drive resolves the recorded key.
@@ -1824,6 +1498,24 @@ export function createSessionService(
       sidecarRouter.noteSenderDeploySettled(senderAttempt, {
         recorded: result.publicKey,
       });
+
+      // The deploy frame carried material read during prepare. A credential
+      // removed or rotated after that read and before the completion above
+      // commits `credentialRefs` is invisible to its revoke or rotation push,
+      // and a sidecar that reconnects before that commit finds no refs to
+      // reconcile. So re-check now, after the commit. It is awaited so the
+      // deploy settles with its changes sent; it never rejects, and only a
+      // change paired with an unresponsive sidecar holds the deploy, for one
+      // request timeout per frame.
+      if (result.deliveredCredentials !== undefined) {
+        await recheckDeliveredCredentials(
+          dbHandle,
+          sidecarRouter,
+          params.agentAddress,
+          result.deliveredCredentials.versions,
+          result.deliveredCredentials.credentialCipher,
+        );
+      }
 
       return {
         anchorRunId: params.anchorRunId,
@@ -1847,209 +1539,6 @@ export function createSessionService(
     }
   }
 
-  async function sendAttachmentPack(
-    runId: string,
-    agentAddress: string,
-    attachment: ResolvedAttachment,
-    allocationTarget: AllocatedSidecarTarget,
-  ): Promise<void> {
-    if (db === undefined) {
-      // Guarded at construction; reassert defensively so the
-      // narrowing is visible to readers and a future refactor cannot
-      // accidentally invoke this without a db.
-      throw new Error("sendAttachmentPack invoked without a db handle");
-    }
-
-    const { mountPath, sourceCommitSha, repoId, pack, ref } = attachment;
-
-    const assetPackSha = await createPackSha(pack);
-    const record: SessionAssetRecord = {
-      runId,
-      mountPath,
-      assetPackSha,
-      sourceCommitSha,
-    };
-
-    // Reserve durable recovery intent before the pack send. A retried first
-    // deploy may reuse the exact row an earlier attempt recorded.
-    const inserted = await db
-      .insert(sessionAssetTable)
-      .values({ ...record, materializedAt: new Date() })
-      .onConflictDoNothing({
-        target: [sessionAssetTable.runId, sessionAssetTable.mountPath],
-      })
-      .returning({ runId: sessionAssetTable.runId });
-    if (inserted.length === 0) {
-      const existing = await db.query.sessionAsset.findFirst({
-        where: and(
-          eq(sessionAssetTable.runId, runId),
-          eq(sessionAssetTable.mountPath, mountPath),
-        ),
-        columns: {
-          assetPackSha: true,
-          sourceCommitSha: true,
-        },
-      });
-      if (existing === undefined) {
-        throw new Error(
-          `session_asset ${runId}/${mountPath} disappeared after its insert conflicted`,
-        );
-      }
-      if (
-        existing.assetPackSha !== assetPackSha ||
-        existing.sourceCommitSha !== sourceCommitSha
-      ) {
-        throw new Error(
-          `session_asset ${runId}/${mountPath} conflicts with the allocated workflow's restored asset`,
-        );
-      }
-    }
-
-    await requireAllocationRouter().sendPackToAllocation(
-      allocationTarget,
-      agentAddress,
-      pack,
-      ref,
-      sourceCommitSha,
-      { mountPath, repoId },
-    );
-  }
-
-  /**
-   * Build a per-agent `ClosureResolver` from the tenant's visible
-   * package-registry assets plus the statically-configured HTTP
-   * registries, then run the closure resolution against `pins`.
-   *
-   * Returns the resolved manifest and an asset-id-keyed index of the
-   * package-registry assets the resolver knew about, so the caller can
-   * derive mount paths from the asset name without a second DB hit.
-   */
-  async function buildAndResolve(args: {
-    agentId: string;
-    tenantId: string;
-    pins: readonly ToolPackagePin[];
-    registries: NonNullable<SessionServiceDeps["toolPackageRegistries"]>;
-    assetService: AssetService;
-  }): Promise<{
-    manifest: ToolPackageManifest;
-    assetIndex: Map<string, Asset>;
-  }> {
-    if (db === undefined) {
-      // Guarded at construction; restate for the narrowing.
-      throw new Error("buildAndResolve invoked without a db handle");
-    }
-    const visibleAssets = await listAssetsForTenant(
-      db,
-      args.tenantId,
-      "package-registry",
-    );
-    const registryMap = new Map<string, RegistrySource>();
-    // `assetIndex` carries only the assets the resolver might have
-    // read from — i.e. one row per registry name, the one that won
-    // its `(kind, name)` slot. Shadowed assets that lost the
-    // collision are deliberately excluded: the resolver can never
-    // reach them, so the fan-out path must never see them in the
-    // index either. The walker walks leaf-to-root inside
-    // `listAssetsForTenant`, so the first occurrence of any
-    // `(kind, name)` wins — we replay the same shadowing here.
-    // Shadowed assets — those that lose the `(kind, name)` collision
-    // contest at a lower tenancy level — are dropped entirely from
-    // the per-launch registry map. They never appear in `assetIndex`
-    // either, so the fan-out that translates `kind: "asset"` manifest
-    // entries back to asset rows cannot reach them. This matches the
-    // resolver's view: a closure built from this map sees exactly
-    // the assets the resolver would have read from, and shadowed
-    // tarballs are invisible to both layers.
-    const assetIndex = new Map<string, Asset>();
-    for (const row of visibleAssets) {
-      if (registryMap.has(row.name)) continue;
-      const asset: Asset = {
-        id: row.id,
-        tenantId: row.tenantId,
-        kind: "package-registry",
-        name: row.name,
-        displayName: row.displayName,
-        creatorPrincipalId: row.creatorPrincipalId,
-        createdAt: row.createdAt,
-        updatedAt: row.updatedAt,
-      };
-      assetIndex.set(asset.id, asset);
-      registryMap.set(
-        asset.name,
-        new AssetRegistrySource({
-          name: asset.name,
-          assetId: asset.id,
-          readBlob: (path) =>
-            args.assetService.readAssetBlob({
-              assetId: asset.id,
-              path,
-            }),
-          listBlobs: (dir) =>
-            args.assetService.listAssetBlobs({
-              assetId: asset.id,
-              dir,
-            }),
-        }),
-      );
-    }
-    for (const [name, cfg] of args.registries.httpRegistries) {
-      // Asset wins on collision with an HTTP registry of the same
-      // name; symmetric with the inner-shadows-outer rule that
-      // governs the tenant walker.
-      if (registryMap.has(name)) continue;
-      registryMap.set(name, new HttpRegistrySource({ name, config: cfg }));
-    }
-    if (!registryMap.has(args.registries.defaultRegistry)) {
-      throw new Error(
-        `agent ${args.agentId}: defaultRegistry "${args.registries.defaultRegistry}" is neither a tenant-visible package-registry asset nor a configured HTTP registry`,
-      );
-    }
-    const resolver = createClosureResolver({
-      registries: registryMap,
-      defaultRegistry: args.registries.defaultRegistry,
-      ...(args.registries.scopeRouting !== undefined
-        ? { scopeRouting: args.registries.scopeRouting }
-        : {}),
-    });
-    const manifest = await resolver.resolveClosure(args.pins);
-    return { manifest, assetIndex };
-  }
-
-  /**
-   * Build a `ResolvedAttachment` for an asset the tool-package resolver
-   * picked from. The pack is read from the asset's main ref (the same
-   * ref the resolver consumed tarballs from).
-   */
-  async function resolveAssetAttachment(args: {
-    asset: Asset;
-    mountPath: string;
-  }): Promise<ResolvedAttachment> {
-    const repoId: RepoId = { kind: args.asset.kind, id: args.asset.id };
-    const sourceCommitSha = await agentRepoStore.repoStore.resolveRef(
-      HUB_PRINCIPAL,
-      repoId,
-      DEFAULT_ASSET_REF,
-    );
-    if (sourceCommitSha === null) {
-      throw new Error(
-        `tool-package asset ${args.asset.kind}/${args.asset.id} has no commit on ${DEFAULT_ASSET_REF}`,
-      );
-    }
-    const { pack, ref: returnedRef } =
-      await agentRepoStore.repoStore.createPack(
-        HUB_PRINCIPAL,
-        repoId,
-        DEFAULT_ASSET_REF,
-      );
-    return {
-      mountPath: args.mountPath,
-      sourceCommitSha,
-      repoId,
-      pack,
-      ref: returnedRef,
-    };
-  }
-
   async function endSession(
     agentAddress: string,
     reason: string,
@@ -2058,7 +1547,6 @@ export function createSessionService(
   }
 
   return {
-    stageWorkflowStep,
     installAndApproveWorkflowSource,
     deployPreparedCodeSourcedWorkflow,
     endSession,

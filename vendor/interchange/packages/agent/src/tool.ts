@@ -164,12 +164,7 @@ export interface ToolDeclaration {
  * `allow`.
  *
  * This is the single canonical derivation of a tool's authorization floor
- * from its declaration. Both the deploy-time capability walk (hub-side)
- * and the per-step tool authorization (sidecar-side) route through here so
- * a pinned tool loaded in the child derives the SAME floor the walk would
- * have derived from an inline declaration. A divergence between the two
- * sites would let a pinned `ask` tool authorize as `allow` (or vice
- * versa), so the mapping lives in exactly one place.
+ * from its declaration, used by the deploy-time capability walk.
  */
 export function toolApprovalEffect(
   declaration: Pick<ToolDeclaration, "approval">,
@@ -262,7 +257,7 @@ export type AnnotatedToolFactory<EnvReq extends BaseEnv = BaseEnv> =
  *     contributes so callers (e.g. the deploy-time capability walk) can
  *     enumerate them without instantiating the factory.
  *   - `credentials` declares the credential handles the factory's tools
- *     resolve. Handles follow the package-manifest grammar and are unique;
+ *     resolve. Handles follow the `ToolCredentialHandle` grammar and are unique;
  *     an invalid list throws. Deploy refuses a declared handle that no
  *     binding names for this factory, except the reserved hub handle
  *     `interchange.hub`, which deploy binds itself.
@@ -395,8 +390,7 @@ export function isToolPluginInstance(
  * own shape.
  *
  * `id` must be package-namespaced — same rule as `defineTool` — so
- * audit provenance threads through plugins as cleanly as through
- * tools.
+ * independently authored plugins cannot collide on an id.
  */
 export function definePlugin<
   Result extends object,

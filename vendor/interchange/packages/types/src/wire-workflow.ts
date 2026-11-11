@@ -53,10 +53,9 @@ export type WorkflowStep = typeof WorkflowStep.infer;
  * against the closed `WorkflowStep` union. The runtime constraint runs
  * through a `.narrow` over a `Record<string, unknown>` rather than a typed
  * `{ "[string]": WorkflowStep }` on purpose: the inferred type stays
- * `Record<string, unknown>` so the existing live-deploy producer
- * (`toWireWorkflowDefinition`, which hands a `Record<string, unknown>`
- * steps map to `sendAgentDeploy`) still typechecks, while the runtime
- * validation is fully closed over the primitive-kind set.
+ * `Record<string, unknown>` so a producer holding a plain steps map still
+ * typechecks, while the runtime validation is fully closed over the
+ * primitive-kind set.
  */
 const WorkflowSteps = type({ "[string]": "unknown" }).narrow((steps, ctx) => {
   for (const [stepId, step] of Object.entries(steps)) {
@@ -72,10 +71,8 @@ const WorkflowSteps = type({ "[string]": "unknown" }).narrow((steps, ctx) => {
 });
 
 /**
- * Workflow projection carried on an `agent.deploy` frame. Its presence
- * at the deploy router routes the frame to the workflow deploy path --
- * single- or multi-step, both of which spawn the workflow-process child
- * -- as opposed to a per-step provision frame.
+ * Workflow projection carried on an `agent.deploy` frame. The deploy router
+ * spawns the workflow-process child from it.
  *
  * `definition` is the wire projection of `WorkflowDefinition` from
  * `@intx/workflow`. The arktype validator enforces the structural
@@ -153,27 +150,14 @@ export type WorkflowProjectionDefinition =
   typeof WorkflowProjectionDefinition.infer;
 
 /**
- * A workflow projection paired with its per-step inference-source pins and the
- * hub-approved wire hash, with the invariant that every `stepOrder` entry has a
- * `sources` failover chain. This is the shared base for BOTH the top-level
- * deploy frame (`AgentDeployWorkflow`, which intersects its extras onto this)
- * AND each extracted trigger body (onTrigger section or childWorkflow child)
- * under `referencedDefinitions` -- so the field set and the coverage narrow are
- * defined once and a body's sources cover the body's stepOrder just as the
- * top-level's cover the top-level's.
+ * A workflow projection paired with its per-step inference-source pins, with
+ * the invariant that every `stepOrder` entry has a `sources` failover chain.
+ * This is the shape of each extracted trigger body (onTrigger section or
+ * childWorkflow child) under `referencedDefinitions`.
  */
 export const WorkflowProjectionWithSources = type({
   definition: WorkflowProjectionDefinition,
   sources: { "[string]": InferenceSource.array().atLeastLength(1) },
-  // The hub-approved wire hash of `definition`'s projection -- the freeze anchor
-  // the hub gate wrote (`computeWireDefinitionHash`). The sidecar feeds it to
-  // the child as the `DEFINITION_HASH` it re-verifies its own recompute
-  // against, rather than trusting a sidecar-computed hash. At the top level it
-  // pins the deployment's content handle; per body it pins the body's
-  // projection, which is re-verified in-memory as part of the parent's
-  // already-re-verified closure. Optional on the wire because the frame schema
-  // does not force it; the production hub builder always stamps it.
-  "approvedWireHash?": "string > 0",
 }).narrow((value, ctx) => {
   for (const stepId of value.definition.stepOrder) {
     if (!Object.prototype.hasOwnProperty.call(value.sources, stepId)) {

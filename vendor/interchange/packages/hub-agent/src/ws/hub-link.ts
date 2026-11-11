@@ -2,9 +2,7 @@
 //
 // Connects to the hub, sends the hello frame, forwards outbound
 // mail and inference events, and handles inbound agent lifecycle
-// commands. Per-agent key material lives on AgentKeyStore; the link calls into
-// the store for deploy-commit verification and hub-key bookkeeping. The wire layer itself never
-// touches raw key bytes.
+// commands. The wire layer itself never touches raw key bytes.
 
 import { getLogger } from "@intx/log";
 import type { HubTransport } from "@intx/mail-memory";
@@ -64,6 +62,7 @@ import {
   type ResolvedInboundMailPolicy,
 } from "./inbound-signature";
 import { base64Decode, base64Encode } from "@intx/types/base64";
+import type { InboundDelivery } from "@intx/types/message-id";
 import { isRunAddress } from "@intx/types/agent-address";
 import type {
   ApprovalSnapshot,
@@ -71,7 +70,6 @@ import type {
   InferenceEvent,
 } from "@intx/types/runtime";
 
-import type { AgentKeyStore } from "../agent-key-store";
 import { isSenderPublicKeyHex } from "../sender-key-cache";
 import type { SessionManager } from "../session-manager";
 
@@ -169,28 +167,13 @@ const PACK_REJECT_REQUEST_TYPES: ReadonlySet<string> = new Set([
  * and drops, because there is nothing to answer.
  */
 /**
- * Classify an `applyAssetPack` failure message into a `repo.pack.reject` reason.
- * A structural rejection -- a symlink or submodule the checkout cannot reproduce
- * faithfully, or a mountPath that escapes -- is a `path_violation`, distinct from
- * `corrupt` (bad or incomplete bytes), and a workflow-run seed that would move
- * history the sidecar already has is a `conflict`. The match is on the messages
- * `writeTreeToDisk`, the mountPath guard and the seed guard raise; a wording
- * drift only reverts the reason to `corrupt`, never misclassifies bytes as a
- * path issue. The raw message rides on the frame's `detail` regardless, so the
- * operator always sees the specific cause.
+ * Classify a pack apply failure message into a `repo.pack.reject` reason. The
+ * raw message rides on the frame's `detail` regardless, so the operator always
+ * sees the specific cause.
  */
-export function classifyAssetPackRejectReason(msg: string): PackRejectReason {
+export function classifyPackRejectReason(msg: string): PackRejectReason {
   if (msg.startsWith("sha_mismatch")) return "sha_mismatch";
   if (msg.startsWith("workflow_run_restore_conflict")) return "conflict";
-  if (
-    msg.startsWith("signature_invalid") ||
-    msg.startsWith("signature_unsigned")
-  ) {
-    return "signature_invalid";
-  }
-  if (/symlink at |submodule reference at |mountPath|escaping path/.test(msg)) {
-    return "path_violation";
-  }
   return "corrupt";
 }
 
@@ -382,14 +365,14 @@ export type WorkflowControlOutcome = {
  * Per-address mail handler registry the link consults on every
  * `mail.inbound` frame. Production wires this against the sidecar's
  * `createMultistepMailRouter` so a supervised deployment's supervisor
- * receives the bytes through its mail-bus subscription. Mail for an
+ * receives the delivery through its mail-bus subscription. Mail for an
  * address with no registered handler has no receiver and is dropped.
  * The shape lives on hub-agent so the link does not import the sidecar
  * host's wiring module, and so tests can substitute a stub.
  */
 export interface MailInboundRouter {
   /**
-   * Attempt to dispatch `message` to a handler registered against
+   * Attempt to dispatch `delivery` to a handler registered against
    * `agentAddress`. Returns `null` if no handler is registered, in which
    * case the link logs and drops the mail (and sends no ack). Otherwise
    * returns the handler's durable settlement: a promise that resolves once
@@ -399,7 +382,10 @@ export interface MailInboundRouter {
    * `mail.inbound.ack` only on resolution, so resolve is the ack signal and
    * reject is the withhold signal.
    */
-  tryRoute(agentAddress: string, message: Uint8Array): Promise<void> | null;
+  tryRoute(
+    agentAddress: string,
+    delivery: InboundDelivery,
+  ): Promise<void> | null;
 }
 
 /**
@@ -588,12 +574,6 @@ export type HubLinkConfig = {
   transport: HubTransport;
   sessions: SessionManager;
   /**
-   * Key custody and per-frame crypto. HubLink calls into the store for
-   * deploy-commit verification, hub-key recording, and per-agent forgetting;
-   * it does not maintain its own copy of those tables.
-   */
-  keyStore: AgentKeyStore;
-  /**
    * Resolves a sender address to the crypto whose public key verifies that
    * sender's inbound mail, or `undefined` when no key is known. The inbound
    * signature verify uses it to check each frame's signature against the key a
@@ -635,11 +615,9 @@ export type HubLinkConfig = {
    */
   evictSenderKey: (address: string) => Promise<void>;
   /**
-   * Routes every inbound `agent.deploy` frame. Production wiring
+   * Handles every inbound `agent.deploy` frame. Production wiring
    * supplies a router that stages each deploy through the workflow-run
-   * substrate: a provision-step frame primes a per-step repo, and a
-   * workflow frame spawns the supervised workflow-process child. The
-   * router owns the routing decision; the link does not re-decide.
+   * substrate and spawns the supervised workflow-process child.
    */
   deployRouter: DeployRouter;
   /**
@@ -860,7 +838,6 @@ export function createHubLink(config: HubLinkConfig): HubLink {
     token,
     transport,
     sessions,
-    keyStore,
     resolveSenderCrypto,
     lookupInboundMailPolicy,
     cacheSenderKey,
@@ -1197,7 +1174,6 @@ export function createHubLink(config: HubLinkConfig): HubLink {
       }
     }
 
-    keyStore.forgetAgent(frame.agentAddress);
     forgetIncarnation(frame.agentAddress, frame.generation);
 
     if (failures.length > 0) {
@@ -1316,9 +1292,9 @@ export function createHubLink(config: HubLinkConfig): HubLink {
       return;
     }
 
-    // A Hub pack stages a step or seeds a deployment's history before the
-    // deployment is deployed. Applying one over a held incarnation would
-    // rewrite what that deployment is running on.
+    // A Hub pack seeds a deployment's history before the deployment is
+    // deployed. Applying one over a held incarnation would rewrite what that
+    // deployment is running on.
     const held = incarnationOf(frame.agentAddress);
     if (held !== undefined) {
       reply({
@@ -1333,49 +1309,23 @@ export function createHubLink(config: HubLinkConfig): HubLink {
     }
 
     try {
-      if (frame.repoId.kind === "workflow-run") {
-        if (frame.mountPath !== undefined) {
-          throw new Error(
-            "workflow_run_restore_invalid: workflow-run packs cannot carry mountPath",
-          );
-        }
-        if (applyWorkflowRunPack === undefined) {
-          throw new Error(
-            "workflow_run_restore_unconfigured: no workflow-run pack applier is configured",
-          );
-        }
-        await applyWorkflowRunPack({
-          agentAddress: frame.agentAddress,
-          repoId: frame.repoId,
-          pack: result.pack,
-          ref: result.ref,
-          commitSha: result.commitSha,
-        });
-      } else if (frame.mountPath !== undefined) {
-        // Asset pack: route to the workspace materializer. Use
-        // frame.agentAddress for destination routing — frame.repoId.id
-        // names the source asset at the hub, which is a different
-        // entity than the destination agent.
-        await sessions.applyAssetPack(
-          frame.agentAddress,
-          frame.mountPath,
-          result.pack,
-          result.ref,
-          result.commitSha,
-        );
-      } else {
-        const verifyCommit = (payload: string, signature: string) =>
-          keyStore.verifyDeployCommit(frame.agentAddress, payload, signature);
-
-        await sessions.applyDeployPack(
-          frame.agentAddress,
-          result.pack,
-          result.ref,
-          result.commitSha,
-          frame.transferId,
-          verifyCommit,
+      if (frame.repoId.kind !== "workflow-run") {
+        throw new Error(
+          `workflow_run_restore_invalid: a Hub pack must restore a workflow-run repo, not ${frame.repoId.kind}`,
         );
       }
+      if (applyWorkflowRunPack === undefined) {
+        throw new Error(
+          "workflow_run_restore_unconfigured: no workflow-run pack applier is configured",
+        );
+      }
+      await applyWorkflowRunPack({
+        agentAddress: frame.agentAddress,
+        repoId: frame.repoId,
+        pack: result.pack,
+        ref: result.ref,
+        commitSha: result.commitSha,
+      });
       reply({
         type: "repo.pack.ack",
         agentAddress: frame.agentAddress,
@@ -1384,7 +1334,7 @@ export function createHubLink(config: HubLinkConfig): HubLink {
       });
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err);
-      const reason = classifyAssetPackRejectReason(msg);
+      const reason = classifyPackRejectReason(msg);
       logger.warn`Pack apply failed for ${frame.agentAddress}: ${msg}`;
       reply({
         type: "repo.pack.reject",
@@ -1526,7 +1476,8 @@ export function createHubLink(config: HubLinkConfig): HubLink {
     //
     // Supervised deployments register the deployment-level mail
     // address on `mailInboundRouter` once their supervisor spawns;
-    // that handler delivers the bytes to the supervisor's mail-bus
+    // that handler delivers the message bytes and the frame's
+    // hub-authenticated sender, verbatim, to the supervisor's mail-bus
     // subscription, which is what the workflow-host's `awaitSignal`
     // listens on. Mail for an address with no registered handler has
     // no receiver -- the in-process session runtime that once backed
@@ -1538,7 +1489,10 @@ export function createHubLink(config: HubLinkConfig): HubLink {
     let durable: Promise<void> | null = null;
     if (mailInboundRouter !== undefined) {
       try {
-        durable = mailInboundRouter.tryRoute(frame.agentAddress, rawBytes);
+        durable = mailInboundRouter.tryRoute(frame.agentAddress, {
+          rawMessage: rawBytes,
+          authenticatedSender: frame.authenticatedSender,
+        });
       } catch (err) {
         const msg = err instanceof Error ? err.message : String(err);
         logger.warn`mail.inbound router threw for ${frame.agentAddress}: ${msg}`;
@@ -1555,7 +1509,9 @@ export function createHubLink(config: HubLinkConfig): HubLink {
     // frames; on rejection (transient failure, stale refusal, or a
     // tearing-down phase) no ack is sent, so the hub redelivers. The ack
     // names the incarnation the mail was delivered to, so the Hub credits
-    // it to no other.
+    // it to no other. It also names the frame's sender, because the inbox
+    // keys the mail by that sender and the Message-ID, so the Hub resolves
+    // only that sender's mail.
     const ackMessageId = frame.messageId;
     if (ackMessageId !== undefined) {
       void durable
@@ -1565,6 +1521,7 @@ export function createHubLink(config: HubLinkConfig): HubLink {
             agentAddress: frame.agentAddress,
             generation: frame.generation,
             messageId: ackMessageId,
+            authenticatedSender: frame.authenticatedSender,
           });
         })
         .catch((err: unknown) => {

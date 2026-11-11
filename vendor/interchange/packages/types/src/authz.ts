@@ -41,9 +41,30 @@ export type ConditionContext = {
   consumer: string;
 };
 
-export type ConditionEvaluator = (
-  value: unknown,
-  ctx: ConditionContext,
-) => boolean | Promise<boolean>;
+/**
+ * A condition's shape check and its evaluation. Both read the same rules, so
+ * a boundary that accepts a condition body through `validate` stores only
+ * bodies that `evaluate` can parse.
+ */
+export type ConditionEvaluator = {
+  /** Returns null for a valid condition body, otherwise the problem. */
+  validate(value: unknown): string | null;
+  /** Throws when `validate` would reject the value. */
+  evaluate(value: unknown, ctx: ConditionContext): boolean | Promise<boolean>;
+};
 
 export type ConditionRegistry = Record<string, ConditionEvaluator>;
+
+/**
+ * Whether a grant resource lies inside `namespace`: the bare namespace or any
+ * `<namespace>:<...>` resource. A broader grant such as `*` or `mail.*`
+ * matches a resource in the namespace under pattern matching but is not in
+ * the namespace itself, so a gate that evaluates only this set never lets
+ * such a grant decide.
+ */
+export function isNamespaceResource(
+  namespace: string,
+  resource: string,
+): boolean {
+  return resource === namespace || resource.startsWith(`${namespace}:`);
+}

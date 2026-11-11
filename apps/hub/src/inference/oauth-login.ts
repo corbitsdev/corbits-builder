@@ -25,7 +25,7 @@ import {
   type RequireGrant,
   type TenantEnv,
 } from "@intx/hub-api";
-import { pushSourceUpdates, type SidecarRouter } from "@intx/hub-sessions";
+import { pushCredentialRotation, type SidecarRouter } from "@intx/hub-sessions";
 import { getLogger } from "@intx/log";
 import type { CredentialCipher } from "@intx/types";
 import { Hono } from "hono";
@@ -109,13 +109,14 @@ export function mountModelLogins(
     db: options.db,
     cipher: options.cipher,
     providers,
-    // A running sidecar holds the token it launched with; the stock rotation push re-resolves
-    // the tenant's sources so it gets the refreshed one.
-    onRefreshed: ({ tenantId }) =>
-      pushSourceUpdates(
+    // A running sidecar holds the token it launched with; the stock rotation push delivers the
+    // refreshed one to every live deployment that holds the credential.
+    onRefreshed: ({ tenantId, credentialId }) =>
+      pushCredentialRotation(
         options.db,
         options.sidecarRouter,
         tenantId,
+        credentialId,
         options.cipher,
       ),
     onError: (error, context) =>

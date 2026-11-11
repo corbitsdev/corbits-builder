@@ -6,7 +6,6 @@ import {
   createEd25519Crypto,
   createEnvKeyCredentialCipher,
   generateKeyPair,
-  verifySSHSignature,
 } from "@intx/crypto";
 import {
   createSenderKeyCache,
@@ -102,9 +101,8 @@ const credentialCipher = createEnvKeyCredentialCipher(
   readCredentialEncryptionKey(),
 );
 
-// Resolve cache configuration at the boot edge so the workflow-child's
-// per-apply loader receives a concrete path and cap through its spawn
-// env rather than re-reading env at non-boundary call sites.
+// Resolve cache configuration at the boot edge so nothing re-reads env at
+// a non-boundary call site.
 const sidecarCacheDir = process.env["SIDECAR_CACHE_DIR"];
 const cacheRoot =
   sidecarCacheDir !== undefined && sidecarCacheDir.trim() !== ""
@@ -126,8 +124,8 @@ const registryMaxTarballBytes = readRegistryMaxTarballBytes();
 // cannot receive this object across the fork, so the validated
 // manifest is serialized into the child's spawn env (see
 // `multistepSubstrateEnv`) and the child rebuilds an equivalent
-// registry from it. Specifiers are operator-config-only — the agent
-// deploy tree never contributes one.
+// registry from it. Specifiers are operator-config-only — a deploy
+// frame never contributes one.
 const adapterManifest = readAdapterManifest();
 const adapters = await loadAdapterRegistry(adapterManifest);
 
@@ -406,8 +404,7 @@ const restoreWorkflowRunPack = createWorkflowRunPackRestorer({
 
 // Wrap the substrate's RepoStore with the boot-edge facade so a
 // successful supervisor write against a workflow-run repo fires the
-// pack push hook before its Promise resolves. Non-workflow-run writes
-// (today, the agent-state deploy-applier path) flow through
+// pack push hook before its Promise resolves. Other writes flow through
 // unchanged.
 const wrappedRepoStore = createWorkflowRunPackPushingRepoStore({
   isConnectionLost,
@@ -443,12 +440,6 @@ const multistepSubstrateEnv: Record<string, string> = {
   SIDECAR_SIGNING_PUBLIC_KEY: hexEncode(sidecarSigningKey.publicKey),
   SIDECAR_SIGNING_PRIVATE_KEY: hexEncode(sidecarSigningKey.privateKey),
   PATH: requireEnv("PATH"),
-  // Tool-loader caps the child's per-step tool materialization uses.
-  // Resolved once at the boot edge and threaded into the child through
-  // the substrate config so the child does not re-read env at a
-  // non-boundary site.
-  SIDECAR_CACHE_MAX_BYTES: String(cacheMaxBytes),
-  SIDECAR_REGISTRY_MAX_TARBALL_BYTES: String(registryMaxTarballBytes),
   // Serialize the parent's ALREADY-VALIDATED manifest (the object
   // `readAdapterManifest` returned), not the raw env string, so the
   // child rebuilds the same custom-adapter set. Always present (defaults
@@ -480,8 +471,8 @@ const buildHarness = createDefaultHarnessBuilder({ adapters });
 // lays out a probe frame's frozen closure under a per-probe scratch dir
 // (rooted here so it shares the sidecar data dir's lifecycle); the executor
 // spawns the one-shot child that evaluates the workflow entry against it.
-// The cache/registry caps are the same boot-edge-resolved values the tool
-// loader uses.
+// The cache/registry caps are the same boot-edge-resolved values the deploy
+// path's closure apply uses.
 // The probe delivers source assets inline in one frame (see
 // `WorkflowProbeRequestFrame`). A git-sourced asset that grows past the shared
 // inline-payload cap is the signal to move the probe's asset delivery to the
@@ -514,7 +505,6 @@ const orchestrator = createSidecarOrchestrator({
   transport,
   cryptoOps: {
     generateKeyPair,
-    verifySSHSig: verifySSHSignature,
   },
   resolveSenderCrypto,
   lookupInboundMailPolicy,
@@ -557,9 +547,9 @@ const orchestrator = createSidecarOrchestrator({
   // Report the sidecar's cached rotatable senders on every (re)connect so the
   // hub re-resolves each current key and re-pushes it, catching a rotation that
   // landed while the sidecar was disconnected. The cache owns the "only user
-  // senders rotate" filter (a run sender's key is the immutable
-  // workflow_run.public_key); the link stays source-opaque and reports whatever
-  // this returns.
+  // senders rotate" filter (a run sender's key reaches the cache with that
+  // run's mail, on its grants barrier); the link stays source-opaque and
+  // reports whatever this returns.
   getCachedSenderAddresses: () => senderKeyCache.rotatableAddresses(),
   // When the Hub's `welcome` routes a held incarnation again, re-drive any
   // workflow-run pack the disconnect cancelled. The Hub has routed the
@@ -645,8 +635,6 @@ const orchestrator = createSidecarOrchestrator({
           { kind: "workflow-run", id: runId },
           { last: WORKFLOW_RUN_RECORD_FILENAME },
         ),
-      removeAgentStateRepository: (id) =>
-        agentRepoStore.repoStore.removeRepo({ kind: "agent-state", id }),
       multistepMailRouter,
       inboundMailPolicyRegistry,
       multistepSignalRouter,
@@ -659,6 +647,8 @@ const orchestrator = createSidecarOrchestrator({
       multistepBinaryPath: SIDECAR_WORKFLOW_CHILD_BINARY,
       createWorkflowCache: createTarballCache,
       applyFrozenWorkflowClosure,
+      closureCacheMaxBytes: cacheMaxBytes,
+      registryMaxTarballBytes,
       readRegistries,
       resolveHostPlatform,
       resolveInboundMailPolicy,

@@ -8,7 +8,6 @@
 
 import { type } from "arktype";
 import type { AuditRecord, ErrorRecord } from "./audit";
-import { WireGrantRule } from "./grant-wire";
 import type { SignalKind } from "./signals";
 
 // ---------------------------------------------------------------------------
@@ -331,6 +330,12 @@ export type Mail = {
   /** Every header, lowercased name to its ordered values; nothing dropped. */
   rawHeaders: Record<string, string[]>;
   parts: MailPart[];
+  /**
+   * The hub-verified sender address the mail arrived under, never taken
+   * from its `From`. Absent for mail the hub recorded without one, so a
+   * replayed trigger payload from such mail still validates.
+   */
+  authenticatedSender?: string;
 };
 
 const MailShape = type({
@@ -354,6 +359,7 @@ const MailShape = type({
   })
     .onUndeclaredKey("reject")
     .array(),
+  "authenticatedSender?": "string",
 }).onUndeclaredKey("reject");
 
 /**
@@ -403,6 +409,12 @@ export type InboundMessage = {
 
   attachments?: MessageAttachment[];
   signatureStatus: SignatureStatus;
+
+  /**
+   * The hub-verified sender address, never taken from the message's own
+   * `From`. Absent when the receiver has none for the message.
+   */
+  authenticatedSender?: string;
 };
 
 /**
@@ -674,10 +686,9 @@ export class MessageTransportError extends Error {
 }
 
 /**
- * `instanceof` is not usable for this: a tool package is published as a bundle
- * whose workspace imports are inlined (`bin/build-builtins.ts`), so a consumer
- * loaded from a bundle holds its own copy of the class above and answers false
- * against an error the host's copy constructed.
+ * `instanceof` is not usable for this: a workflow bundle inlines its workspace
+ * imports, so a consumer loaded from one holds its own copy of the class above
+ * and answers false against an error the host's copy constructed.
  */
 export function isMessageTransportError(
   value: unknown,
@@ -872,6 +883,11 @@ export const TokenUsage = type({
   thinking: "number",
 });
 export type TokenUsage = typeof TokenUsage.infer;
+
+/** Zero usage, as a new object per call so no two holders share one. */
+export function emptyTokenUsage(): TokenUsage {
+  return { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, thinking: 0 };
+}
 
 /**
  * Slim source descriptor stamped onto `inference.usage` / `inference.done`
@@ -1256,12 +1272,13 @@ export type ContentBlock = typeof ContentBlock.infer;
  *
  * (INFERENCE.md § Message Format)
  */
-export type ConversationTurn = {
-  role: "user" | "assistant" | "system";
-  content: ContentBlock[];
-  model?: string;
-  timestamp: number;
-};
+export const ConversationTurn = type({
+  role: "'user' | 'assistant' | 'system'",
+  content: ContentBlock.array(),
+  "model?": "string",
+  timestamp: "number",
+});
+export type ConversationTurn = typeof ConversationTurn.infer;
 
 /**
  * A completed assistant turn returned in `inference.done`. Narrower type
@@ -1367,6 +1384,40 @@ export type PendingOperation = {
    */
   approvalSnapshot?: ApprovalSnapshot;
 };
+
+/**
+ * Validator for a {@link PendingOperation} read back from an agent's durable
+ * state, by the agent's own store and by the Hub's copy of it.
+ */
+export const PersistedPendingOperation = type({
+  correlationId: "string",
+  kind: "'approval'",
+  registeredAt: "number",
+  gateId: "string",
+  "timeoutAt?": "number",
+  "suspendedCall?": ToolCall,
+  "approvalSnapshot?": ApprovalSnapshot,
+});
+
+// The persisted schema and the in-memory PendingOperation type are two
+// separate declarations kept in lockstep. arktype passes undeclared keys
+// through at runtime, so dropping `suspendedCall?` from the schema would not
+// surface as a runtime failure. Projecting the field off the schema's
+// inferred type makes the declaration load-bearing: the indexed access
+// errors under `tsc` if the schema stops carrying the field, and the return
+// annotation pins its persisted type to `ToolCall`.
+const _persistedSuspendedCall = (
+  op: typeof PersistedPendingOperation.infer,
+): ToolCall | undefined => op.suspendedCall;
+void _persistedSuspendedCall;
+
+// Same lockstep guard for the approval snapshot: the persisted schema must
+// keep carrying `approvalSnapshot` so a rehydrated pending operation still
+// exposes it. The projection errors under `tsc` if the schema drops the field.
+const _persistedApprovalSnapshot = (
+  op: typeof PersistedPendingOperation.infer,
+): ApprovalSnapshot | undefined => op.approvalSnapshot;
+void _persistedApprovalSnapshot;
 
 /**
  * Complete reactor state visible to the director decision function.
@@ -2156,7 +2207,18 @@ export type ContextCommit = {
  * on the next outbound reply. `cc` is every other participant who has
  * spoken on the thread, deduplicated, in arrival order — they ride as
  * `cc` on the next outbound reply so everyone stays in the loop.
+ * `addressed` is every recipient that a message which started or continued
+ * the thread named in `To` or `Cc`, other than the agent, deduplicated.
+ * An addressed recipient can join the thread by speaking on it, but it is
+ * not on outbound mail until it does. It is absent when empty, and in
+ * state persisted before the field existed.
  * `subject` is set when the thread starts and preserved for its life.
+ * The parent of the next thread reply is the most recent message on the
+ * thread in either direction. `lastMessageId` is its Message-ID, absent
+ * when it named none. `lastReferences` is its References chain, so the
+ * reply's References is `lastReferences` followed by `lastMessageId`, when
+ * present (RFC 5322 3.6.4). It is absent when that chain is empty, and in
+ * state persisted before the field existed.
  *
  * Defined as an arktype so the wire layer (sidecar↔hub frames) and
  * other parsing boundaries can validate snapshots without
@@ -2165,11 +2227,49 @@ export type ContextCommit = {
 export const ConnectorThreadState = type({
   "threadRoot?": "string",
   "lastMessageId?": "string",
+  "lastReferences?": "string[]",
   replyTo: "string",
   cc: "string[]",
+  "addressed?": "string[]",
   "subject?": "string",
 });
 export type ConnectorThreadState = typeof ConnectorThreadState.infer;
+
+/**
+ * The threading headers for a connector reply. The caller composes the
+ * full outbound message by adding its own `content` and `type` fields.
+ *
+ * `inReplyTo` is the Message-ID of the parent, the message the reply
+ * answers. It is absent when the parent named no id. `references` is the
+ * full References chain for the reply: the parent's References followed by
+ * `inReplyTo`, when present (RFC 5322 3.6.4). It is absent when that chain
+ * is empty.
+ */
+export const ConnectorReplyParts = type({
+  to: "string",
+  cc: "string[]",
+  "inReplyTo?": "string",
+  "references?": "string[]",
+  "subject?": "string",
+});
+export type ConnectorReplyParts = typeof ConnectorReplyParts.infer;
+
+/**
+ * The reply target of an agent turn that parked on an approval gate,
+ * kept until the approval resumes the turn. `parts` is `null` when the
+ * parked turn answered a passthrough message with no sender address: the
+ * resumed turn then sends no reply, and does not reply on the thread.
+ */
+export const ParkedReplyTarget = type({
+  parts: ConnectorReplyParts.or("null"),
+});
+export type ParkedReplyTarget = typeof ParkedReplyTarget.infer;
+
+/** Parked reply targets, keyed by the correlation id of the parked gate. */
+export const ParkedReplyTargets = type({
+  "[string]": ParkedReplyTarget,
+});
+export type ParkedReplyTargets = typeof ParkedReplyTargets.infer;
 
 /**
  * The context store interface. Implementations back the store with git
@@ -2355,30 +2455,13 @@ export const ToolDefinition = type({
 export type ToolDefinition = typeof ToolDefinition.infer;
 
 /**
- * Agent harness configuration. Assembled from the agent definition package
- * and capability grants during harness initialization.
- *
- * `principalId` is the agent's principal in the hub's authorization model.
- * The sidecar needs it to reconstruct the in-memory grant store on restart
- * (the store's `collectGrants` filters by principal).
- *
- * `grants` uses `WireGrantRule` because this type arrives over JSON where
- * `GrantRule.expiresAt` is serialized as a string. The wire validator
- * coerces strings back to Date instances.
- *
- * (ARCHITECTURE.md § Agent Harness)
+ * What the Hub assembles for a deploy. Of this, only the session id reaches
+ * the sidecar, on the `agent.deploy` frame.
  */
 export const HarnessConfig = type({
   sessionId: "string",
-  agentId: "string",
-  tenantId: "string",
-  principalId: "string",
   agentAddress: "string",
-  systemPrompt: "string",
-  tools: ToolDefinition.array(),
-  grants: WireGrantRule.array(),
   sources: InferenceSource.array(),
   defaultSource: "string",
-  "sessionChannelEnabled?": "boolean",
 });
 export type HarnessConfig = typeof HarnessConfig.infer;

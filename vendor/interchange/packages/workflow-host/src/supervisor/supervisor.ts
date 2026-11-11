@@ -52,6 +52,7 @@ import {
 
 import { generateKeyPair } from "@intx/crypto";
 import {
+  claimCheckIdentity,
   enqueueInbox as defaultEnqueueInbox,
   dequeueToProcessing as defaultDequeueToProcessing,
   markConsumed as defaultMarkConsumed,
@@ -60,12 +61,15 @@ import {
   replayProcessingToInbox as defaultReplayProcessingToInbox,
   StaleInboxEnqueueError,
   DEFAULT_CONSUMED_RETENTION_MS,
+  type ClaimCheckEnvelope,
   type Principal,
   type WorkflowRunSupervisorPrincipal,
   type WorkflowRunWorkflowProcessPrincipal,
 } from "@intx/hub-sessions/substrate";
+import { validateAttachments } from "@intx/types/attachment-validation";
+import { MAX_MAIL_OUTBOUND_BODY_BYTES } from "@intx/types/sidecar";
 import { base64Decode, base64Encode } from "@intx/types/base64";
-import { deriveMessageId } from "@intx/types/message-id";
+import { deriveMessageId, type InboundDelivery } from "@intx/types/message-id";
 import { deriveWorkflowRunId } from "@intx/types/workflow-run-id";
 import { signalName } from "@intx/types/signals";
 import { RepoId } from "@intx/types/repo";
@@ -92,7 +96,7 @@ import {
   type OutboundMessage,
   type SearchQuery,
 } from "@intx/types/runtime";
-import type { CancelOrigin } from "@intx/workflow";
+import type { CancelOrigin, ConsumedMailIdentity } from "@intx/workflow";
 
 import {
   createControlChannelSender,
@@ -108,10 +112,14 @@ import type {
 } from "../ipc/control-payloads";
 
 import {
-  assembleCredentialsSnapshot,
   type CredentialsSnapshot,
   toCredentialsSnapshotPayload,
 } from "./credentials";
+import {
+  type ChildDefinitionReport,
+  waitForDefinition,
+  waitForReady,
+} from "./child-handshake";
 import { commitCancelRequested } from "./cancel-signing";
 import { commitRunFailed } from "./terminal-commit";
 import { buildChildSpawnEnv } from "./spawn-env";
@@ -144,11 +152,9 @@ import {
   type RecyclePolicy,
 } from "./recycle";
 import type {
-  DeriveMailAuditRef,
   DispatchStructuralCounters,
   DispatchSubstrateLeg,
   InboxPrimitives,
-  MailAuditRef,
   SubprocessHandle,
   TerminalEventSource,
   TerminalRunEvent,
@@ -182,6 +188,14 @@ const MAILBOX_FLAG_PROCESSED = "$Processed";
  * sweeps every entry carrying it out of the live INBOX.
  */
 const MAILBOX_FLAG_DELETED = "\\Deleted";
+
+/**
+ * The longest composed message, in base64 characters, that run code can post.
+ * The hub caps a mail request body at the outbound mail limit, and the body
+ * carries the base64 message inside a small JSON object; the margin is room
+ * for that object.
+ */
+const MAX_COMPOSED_MAIL_BASE64_LENGTH = MAX_MAIL_OUTBOUND_BODY_BYTES - 1024;
 
 /**
  * Default crash-loop bound: the supervisor stops respawning and latches
@@ -250,7 +264,7 @@ export const TERMINAL_OR_PARK_BACKSTOP_MS = 1_800_000;
 export interface WorkflowSupervisor {
   /**
    * Spawn the workflow-process child, complete the IPC handshake,
-   * assemble the credentialsSnapshot, register the deployment's mail
+   * read the run's authority, register the deployment's mail
    * address, and begin forwarding inbound mail. Resolves once the
    * child's `ready` frame has been received and credentials have
    * been pushed.
@@ -350,12 +364,6 @@ export interface WorkflowSupervisor {
    */
   reEmitParkedCorrelations(): Promise<void>;
   /**
-   * Current snapshot of the credentials pushed to the child. Surfaced
-   * so the host can audit the per-step contentHash without
-   * round-tripping the substrate. Returns `null` before spawn.
-   */
-  getCredentialsSnapshot(): CredentialsSnapshot | null;
-  /**
    * The supervisor's merged mirror of every credential delivery: the deploy
    * delivery plus each `deliverCredentials` update, revokes applied. It is
    * what the next child's `authority.set` carries, so the host seals it into
@@ -366,23 +374,11 @@ export interface WorkflowSupervisor {
 
 export type SpawnOpts = {
   /**
-   * Every step id in this deployment's flat step-id namespace -- the
-   * definition's own `stepOrder` plus the step ids of every `loop` body it
-   * carries -- for credentials assembly.
+   * The hub-approved wire hash of the deployment's workflow definition. The
+   * child verifies its closure against it, and the supervisor checks every
+   * child's reported definition against it too.
    */
-  stepOrder: readonly string[];
-  /** Content hash of the deployment's workflow definition. */
   definitionHash: string;
-  /**
-   * Whether the spawned child warm-keeps its agent across messages
-   * (design §3b). The host sets this true only for the single-step
-   * long-lived deployment the deploy projection marked a warm candidate;
-   * the supervisor threads it into the child's spawn env as `WARM_KEEP`
-   * so the child's run-loop builds a warm-agent cache. Carried
-   * explicitly so the warm-keep decision is deterministic and survives
-   * recycle (the recycle path re-spawns with the same env).
-   */
-  warmKeep: boolean;
   /**
    * Callback the supervisor invokes for each verified InferenceEvent
    * the child publishes. Mirrors the existing `agent.event` event
@@ -396,8 +392,6 @@ export type SpawnResult = {
   pid: number;
   /** IPC channelId minted for this spawn. */
   channelId: string;
-  /** Initial credentials snapshot pushed to the child. */
-  credentialsSnapshot: CredentialsSnapshot;
 };
 
 export type CancelRequestOpts = {
@@ -745,10 +739,13 @@ type ReadAuthority = {
 /**
  * A spawn that has not yet published `state`. A shutdown in that window
  * marks it cancelled and waits for `done`; the spawn then stops instead of
- * publishing, and kills its child if it already started one.
+ * publishing, and kills its child if it already started one. `cancel`
+ * resolves with the mark, so a wait on the child ends at the shutdown rather
+ * than at its own deadline.
  */
 type PendingSpawn = {
   cancelled: boolean;
+  cancel: PromiseWithResolvers<undefined>;
   done: PromiseWithResolvers<undefined>;
 };
 
@@ -838,10 +835,10 @@ export function createWorkflowSupervisor(
   // `reply-produced`. The dispatch loop is strictly serial (one message
   // in flight at a time -- the sustained interactive case the bench
   // drives), so a child-proxied `substrate.write.request` is unambiguously
-  // attributable to this message. Both the WAL leg (whose `agent-state/...`
-  // prefix names no run) and the run-event leg (whose `runs/<runId>/events/`
-  // prefix names only the stable per-deployment run id, not the message)
-  // take their per-message key from here.
+  // attributable to this message. Both the WAL leg (whose
+  // `runs/<runId>/steps/...` prefix names a step, not the message) and the
+  // run-event leg (whose `runs/<runId>/events/` prefix names only the stable
+  // per-deployment run id) take their per-message key from here.
   let currentDispatchMessageId: string | null = null;
   /**
    * Per-run drainTimeout accumulators armed by `drain()`. Held so
@@ -982,27 +979,30 @@ export function createWorkflowSupervisor(
   }
 
   /**
-   * Classify a child-proxied `substrate.write.request` into the D2 leg it
-   * represents, plus the messageId the per-message OLS fit groups on.
-   * `runs/<runId>/events/` is the run-event bracket commit and `agent-state/...`
-   * is the D1 conversation WAL append; neither prefix carries the message
-   * identity (the run-event prefix names only the stable per-deployment run
-   * id), so both are attributed to the dispatch loop's current serial
-   * message. Any other prefix is an unmarked proxied write. Returns `null`
-   * when no observer is wired (so the supervisor samples nothing), when the
-   * prefix is not an attributed leg, or when no message is in flight to
-   * attribute it to.
+   * Classify a child-proxied write into the D2 leg it represents, by the
+   * prefixes it changes, plus the messageId the per-message OLS fit groups
+   * on.
+   * `runs/<runId>/events/` is the run-event bracket commit and
+   * `runs/<runId>/steps/...` is the D1 conversation WAL append; neither
+   * prefix carries the message identity (the run-event prefix names only the
+   * stable per-deployment run id), so both are attributed to the dispatch
+   * loop's current serial message. Any other prefix is an unmarked proxied
+   * write. Returns `null` when no observer is wired (so the supervisor
+   * samples nothing), when the prefix is not an attributed leg, or when no
+   * message is in flight to attribute it to.
    */
   function classifyProxiedWriteLeg(
-    preservePrefix: string,
+    changedPrefixes: readonly string[],
   ): { leg: DispatchSubstrateLeg; messageId: string } | null {
     if (bindings.onDispatchTiming === undefined) return null;
     if (currentDispatchMessageId === null) return null;
-    if (/^runs\/[^/]+\/events\/$/.test(preservePrefix)) {
-      return { leg: "runevent", messageId: currentDispatchMessageId };
-    }
-    if (preservePrefix.startsWith("agent-state/")) {
-      return { leg: "wal", messageId: currentDispatchMessageId };
+    for (const prefix of changedPrefixes) {
+      if (/^runs\/[^/]+\/events\/$/.test(prefix)) {
+        return { leg: "runevent", messageId: currentDispatchMessageId };
+      }
+      if (/^runs\/[^/]+\/steps\//.test(prefix)) {
+        return { leg: "wal", messageId: currentDispatchMessageId };
+      }
     }
     return null;
   }
@@ -1022,8 +1022,6 @@ export function createWorkflowSupervisor(
     markConsumed: defaultMarkConsumed,
     replayProcessingToInbox: defaultReplayProcessingToInbox,
   };
-  const deriveMailAuditRef: DeriveMailAuditRef =
-    bindings.deriveMailAuditRef ?? defaultInProcessMailAuditRef;
   const defaultInboxWritePrincipal: WorkflowRunSupervisorPrincipal = {
     kind: "supervisor",
     anchorRunId: bindings.anchorRunId,
@@ -1086,13 +1084,27 @@ export function createWorkflowSupervisor(
   }
   /**
    * Cached per-spawn context the recycle path needs to respawn the
-   * child against the same deploy tree. Populated on `spawn(opts)`;
+   * child against the same definition. Populated on `spawn(opts)`;
    * cleared on `shutdown`. The recycle path never mutates the
-   * `stepOrder` or `definitionHash`: a deployment keeps them for its
-   * life, and a different deploy tree means a new deployment with its
-   * own supervisor.
+   * `definitionHash`: a deployment keeps it for its life, and a
+   * different definition means a new deployment with its own supervisor.
    */
   let spawnContext: SpawnContext | null = null;
+  /**
+   * The step ids the host derived from the first child's verified
+   * definition. Set once, while `spawn` is still starting that child, and
+   * kept for the deployment's life: every later child reports a definition
+   * with the same approved hash.
+   */
+  let stepIds: readonly string[] | null = null;
+  function requireStepIds(): readonly string[] {
+    if (stepIds === null) {
+      throw new Error(
+        "workflow-host supervisor: no step ids before the first child reported its definition",
+      );
+    }
+    return stepIds;
+  }
   let recyclePolicy: RecyclePolicy | null = null;
   // Mutual-exclusion latch shared by every respawn path (operator/policy/
   // self recycle and crash-respawn). `runRespawn` owns the set/clear; each
@@ -1440,14 +1452,14 @@ export function createWorkflowSupervisor(
     anchorRunId: bindings.anchorRunId,
   };
   let mailboxStore: SubstrateMailboxStore | null = null;
-  // Claim-check messageId -> assigned mailbox uid, so a message dispatched as a
+  // Claim-check identity -> assigned mailbox uid, so a message dispatched as a
   // turn can be flagged \Seen/$Processed by uid. In-memory only: a missing entry
   // (a restart, an arrival whose eager commit failed, or an already-processed
   // message whose entry was pruned) skips the flag mark, which is a cosmetic
   // IMAP flag, never a delivery guarantee. `markMailboxProcessed` prunes an
   // entry once its mark completes, so the map holds only messages awaiting the
   // flag mark rather than growing for the deployment's life.
-  const mailboxUidByMessageId = new Map<string, number>();
+  const mailboxUidByIdentity = new Map<string, number>();
   // Serializes every mailbox mutation (lazy construction, the arrival
   // append+flush, the dispatch flag mark) so concurrent arrivals and a fire-and-
   // forget flag mark never interleave against the shared in-memory mirror.
@@ -1474,7 +1486,7 @@ export function createWorkflowSupervisor(
 
   // The long-lived mirror drops a message's raw bytes on flush and cannot
   // read them back: its committed-read snapshot was pinned when the mirror
-  // opened. A fetch, a search, or a reply's References lookup opens a fresh
+  // opened. A fetch or a search opens a fresh
   // snapshot, which resolves the committed `<uid>.eml`. Pending mirror writes
   // are flushed first so that snapshot includes them.
   async function openCommittedMailbox(): Promise<SubstrateMailboxStore> {
@@ -1527,6 +1539,7 @@ export function createWorkflowSupervisor(
    * sent only AFTER the append is flushed, so the child reads committed state.
    */
   async function commitInboundToMailbox(
+    identity: string,
     messageId: string,
     rawMessage: Uint8Array,
   ): Promise<void> {
@@ -1534,8 +1547,8 @@ export function createWorkflowSupervisor(
       await runMailboxExclusive(async () => {
         // The caller gates on a fresh `enqueued` outcome, so a redelivery never
         // reaches here; this guard is belt-and-suspenders against a double
-        // append of the same messageId.
-        if (mailboxUidByMessageId.has(messageId)) return;
+        // append of the same message.
+        if (mailboxUidByIdentity.has(identity)) return;
         let decoded: ReturnType<typeof decodeMail>;
         try {
           decoded = decodeMail(rawMessage);
@@ -1551,7 +1564,7 @@ export function createWorkflowSupervisor(
           storedEnvelopeFromHeaders(decoded.headers, messageId),
           [],
         );
-        mailboxUidByMessageId.set(messageId, uid);
+        mailboxUidByIdentity.set(identity, uid);
         await store.flush();
         const commit = await bindings.repoStore.resolveRef(
           mailboxWritePrincipal,
@@ -1589,8 +1602,8 @@ export function createWorkflowSupervisor(
    * missing uid (no eager mailbox entry) or a substrate fault is logged and
    * dropped, never failing the turn.
    */
-  function markMailboxProcessed(messageId: string): void {
-    const uid = mailboxUidByMessageId.get(messageId);
+  function markMailboxProcessed(identity: string): void {
+    const uid = mailboxUidByIdentity.get(identity);
     if (uid === undefined) return;
     void runMailboxExclusive(async () => {
       try {
@@ -1604,12 +1617,12 @@ export function createWorkflowSupervisor(
         // so drop it to bound the map over a long-lived conversational mailbox.
         // Redelivery dedup is owned by the durable inbox index, not this map.
         // The delete runs inside the exclusive section so it never interleaves
-        // with the arrival path's `has(messageId)` check.
-        mailboxUidByMessageId.delete(messageId);
+        // with the arrival path's `has(identity)` check.
+        mailboxUidByIdentity.delete(identity);
       }
     }).catch((cause) => {
       const message = cause instanceof Error ? cause.message : String(cause);
-      logger.warn`mailbox flag mark failed for ${messageId} (uid ${String(uid)}): ${message}`;
+      logger.warn`mailbox flag mark failed for ${identity} (uid ${String(uid)}): ${message}`;
     });
   }
 
@@ -1619,7 +1632,7 @@ export function createWorkflowSupervisor(
   // failure, or a stale refusal). The host propagates that settlement to the
   // wire, so resolution is the durable-receipt ACK signal and rejection is the
   // WITHHOLD signal -- a withheld message is redelivered by the hub.
-  async function onMailMessage(rawMessage: Uint8Array): Promise<void> {
+  async function onMailMessage(delivery: InboundDelivery): Promise<void> {
     // Every inbound mail flows through the FIFO inbox claim-check
     // queue, regardless of the supervisor's current phase. The
     // dispatch loop (started by `spawn()` and restarted by the
@@ -1646,7 +1659,7 @@ export function createWorkflowSupervisor(
       );
     }
     try {
-      await enqueueInboundMail(rawMessage);
+      await enqueueInboundMail(delivery);
     } catch (cause) {
       // Both branches WITHHOLD (rethrow); the split only sets log severity so
       // a stale refusal surfaces as its own loud signal rather than blending
@@ -1662,20 +1675,16 @@ export function createWorkflowSupervisor(
     }
   }
 
-  async function enqueueInboundMail(rawMessage: Uint8Array): Promise<void> {
-    const messageId = await deriveMessageId(rawMessage);
-    const mailAuditRef: MailAuditRef = deriveMailAuditRef(
-      messageId,
-      rawMessage,
-    );
+  async function enqueueInboundMail(delivery: InboundDelivery): Promise<void> {
+    const messageId = await deriveMessageId(delivery.rawMessage);
     const receivedAt = Date.now();
     // Inline the raw mail bytes on the claim-check envelope so the
-    // workflow-process child can recover its step input by messageId at
+    // workflow-process child can recover its step input at
     // `trigger.fired` time. The supervisor is the sole mail owner (§3a)
     // and has no separate durable byte store the child reads; the bytes
     // survive the inbox->processing transition verbatim and are dropped
     // when `markConsumed` writes the dedup index.
-    const rawMessageBase64 = base64Encode(rawMessage);
+    const rawMessageBase64 = base64Encode(delivery.rawMessage);
     // D2 leg: `enqueueInbox` runs in `onMailMessage` BEFORE dispatch, so
     // it is paid OUTSIDE the dispatch-start..reply-produced window -- its
     // growth is invisible to the 4.7 bracket. This leg mark is keyed by the
@@ -1689,8 +1698,8 @@ export function createWorkflowSupervisor(
       {
         address: bindings.deploymentMailAddress,
         messageId,
+        authenticatedSender: delivery.authenticatedSender,
         receivedAt,
-        mailAuditRef,
         rawMessage: rawMessageBase64,
       },
     );
@@ -1698,14 +1707,18 @@ export function createWorkflowSupervisor(
     // Only a fresh enqueue added a new inbox entry; wake the dispatch loop for
     // it alone. An `already-present` outcome landed nothing new -- returning
     // (which acks) without waking is correct, since the earlier delivery of
-    // the same messageId already drives dispatch. This resolves for both
+    // the same message already drives dispatch. This resolves for both
     // outcomes: both mean the bytes are durably accounted for, so both ack.
     if (outcome.outcome === "enqueued") {
       // Eager-commit the fresh message into the per-run mailbox and notify the
       // child BEFORE waking dispatch, so the warm agent's mail_wait can observe
       // it committed. Non-fatal by contract: the enqueue above already secured
       // the durable delivery, so this never withholds the ack.
-      await commitInboundToMailbox(messageId, rawMessage);
+      await commitInboundToMailbox(
+        claimCheckIdentity(outcome.envelope),
+        messageId,
+        delivery.rawMessage,
+      );
       wakeDispatch();
     } else {
       // A redelivery of a message already durably present: the ack still
@@ -1760,7 +1773,10 @@ export function createWorkflowSupervisor(
         // merge response could not be consumed and the write would
         // deadlock).
         ownDetachedWrite(
-          handleSubstrateWriteRequest(payload.data).catch((cause) => {
+          handleSubstrateWriteRequest({
+            kind: "prefix",
+            data: payload.data,
+          }).catch((cause) => {
             const message =
               cause instanceof Error ? cause.message : String(cause);
             logger.error`substrate.write.request handler crashed: ${message}`;
@@ -1768,11 +1784,29 @@ export function createWorkflowSupervisor(
         );
         continue;
       }
-      if (payload.type === "substrate.merge.response") {
-        // Resume the pending merge round-trip with the child's
-        // response. The handler resolves a per-write awaiter inside
-        // the substrate write handler's merge callback.
-        resolveMergeResponse(payload.data);
+      if (payload.type === "substrate.write-delta.request") {
+        // Off the iterator's loop for the same reason as
+        // `substrate.write.request`: the delta response must still drain.
+        ownDetachedWrite(
+          handleSubstrateWriteRequest({
+            kind: "delta",
+            data: payload.data,
+          }).catch((cause) => {
+            const message =
+              cause instanceof Error ? cause.message : String(cause);
+            logger.error`substrate.write-delta.request handler crashed: ${message}`;
+          }),
+        );
+        continue;
+      }
+      if (
+        payload.type === "substrate.merge.response" ||
+        payload.type === "substrate.delta.response"
+      ) {
+        // Resume the pending round-trip with the child's response. The
+        // handler resolves a per-write awaiter inside the substrate write
+        // handler's merge or delta callback.
+        resolveChildWriteResponse(payload);
         continue;
       }
       if (payload.type === "outbound.message") {
@@ -1787,6 +1821,17 @@ export function createWorkflowSupervisor(
           const message =
             cause instanceof Error ? cause.message : String(cause);
           logger.error`outbound.message handler crashed: ${message}`;
+        });
+        continue;
+      }
+      if (payload.type === "mail.compose.request") {
+        // Run code asked for a signed message to post to the hub itself.
+        // Run it off the iterator's loop like a send; the handler owns the
+        // `mail.compose.response` reply.
+        void handleMailCompose(payload.data).catch((cause) => {
+          const message =
+            cause instanceof Error ? cause.message : String(cause);
+          logger.error`mail.compose.request handler crashed: ${message}`;
         });
         continue;
       }
@@ -1923,18 +1968,22 @@ export function createWorkflowSupervisor(
     }
   }
 
-  // Pending merge round-trips keyed by the child's `requestId`. The
-  // substrate-write handler installs an entry under each `requestId`
-  // before emitting `substrate.merge.request` upstream; the matching
-  // `substrate.merge.response` resolves the awaiter so the supervisor's
-  // merge callback continues. The entry stays alive only across one
-  // merge round-trip; the substrate may invoke the callback multiple
-  // times per write (per-repo lock retry semantics), so a fresh
+  // Pending merge and delta round-trips keyed by the child's `requestId`.
+  // The substrate-write handler installs an entry under each `requestId`
+  // before emitting `substrate.merge.request` or `substrate.delta.request`
+  // upstream; the matching response resolves the awaiter so the
+  // supervisor's merge or delta callback continues. The entry stays alive
+  // only across one round-trip; the substrate may invoke the callback
+  // multiple times per write (per-repo lock retry semantics), so a fresh
   // requestId-scoped allocator-per-merge-call is used.
+  type ChildWriteContent = {
+    files: Record<string, string | Uint8Array>;
+    deletes: readonly string[];
+  };
   type PendingMerge = {
     resolve: (
       result:
-        | { ok: true; files: Record<string, string | Uint8Array> }
+        | ({ ok: true } & ChildWriteContent)
         | { ok: false; reason: string },
     ) => void;
   };
@@ -1998,40 +2047,47 @@ export function createWorkflowSupervisor(
     }
   }
 
-  function resolveMergeResponse(
-    data: Extract<ControlPayload, { type: "substrate.merge.response" }>["data"],
+  function resolveChildWriteResponse(
+    payload: Extract<
+      ControlPayload,
+      { type: "substrate.merge.response" | "substrate.delta.response" }
+    >,
   ): void {
+    const { data } = payload;
     const entry = pendingMerges.get(data.requestId);
     if (entry === undefined) {
-      logger.warn`substrate.merge.response landed with no pending entry; requestId=${data.requestId} dropped`;
+      logger.warn`${payload.type} landed with no pending entry; requestId=${data.requestId} dropped`;
       return;
     }
     pendingMerges.delete(data.requestId);
-    if (data.result.ok) {
-      const files: Record<string, string | Uint8Array> = {};
-      try {
-        for (const file of data.result.files) {
-          files[file.path] = base64ToBytes(file.contentBase64);
-        }
-      } catch (cause) {
-        // `base64ToBytes` throws loudly on malformed child-supplied
-        // content. This runs synchronously from `pumpUpstreamControl`'s
-        // `for await`, so an escaping throw would tear the pump down and
-        // stop draining every other upstream control frame for the
-        // cohort. Mirror the child-side `decodeMergeRequest` hardening:
-        // resolve the pending merge as a failure so the write handler
-        // surfaces it as a structured substrate.write.response.
-        const reason = cause instanceof Error ? cause.message : String(cause);
-        entry.resolve({
-          ok: false,
-          reason: `supervisor substrate.merge.response: decode failed: ${reason}`,
-        });
-        return;
-      }
-      entry.resolve({ ok: true, files });
+    if (!data.result.ok) {
+      entry.resolve({ ok: false, reason: data.result.reason });
       return;
     }
-    entry.resolve({ ok: false, reason: data.result.reason });
+    const wireFiles =
+      "files" in data.result ? data.result.files : data.result.puts;
+    const deletes = "deletes" in data.result ? data.result.deletes : [];
+    const files: Record<string, string | Uint8Array> = {};
+    try {
+      for (const file of wireFiles) {
+        files[file.path] = base64ToBytes(file.contentBase64);
+      }
+    } catch (cause) {
+      // `base64ToBytes` throws loudly on malformed child-supplied
+      // content. This runs synchronously from `pumpUpstreamControl`'s
+      // `for await`, so an escaping throw would tear the pump down and
+      // stop draining every other upstream control frame for the
+      // cohort. Mirror the child-side `decodeMergeRequest` hardening:
+      // resolve the pending round-trip as a failure so the write handler
+      // surfaces it as a structured substrate.write.response.
+      const reason = cause instanceof Error ? cause.message : String(cause);
+      entry.resolve({
+        ok: false,
+        reason: `supervisor ${payload.type}: decode failed: ${reason}`,
+      });
+      return;
+    }
+    entry.resolve({ ok: true, files, deletes });
   }
 
   // Stamp the deployment identity the supervisor owns onto a child-supplied
@@ -2222,33 +2278,6 @@ export function createWorkflowSupervisor(
         );
       }
       const message = outboundMessageFromPayload(data.message);
-      // A connector reply arrives with `inReplyTo` and no References, and
-      // it is the only send that sets `completeReferences`. `mail_send`
-      // is that same shape without the flag; completing it would grow its
-      // one-parent chain into the full ancestry when the parent happens
-      // to be in this mailbox. An already-present `references`, including
-      // an empty array, is the caller's chain. A parent that is not in
-      // the mailbox leaves `references` unset, and the transport still
-      // derives `[inReplyTo]`. The lookup releases the mailbox lock
-      // before the send.
-      if (
-        data.completeReferences === true &&
-        message.inReplyTo !== undefined &&
-        message.references === undefined
-      ) {
-        const inReplyTo = message.inReplyTo;
-        const references = await runMailboxExclusive(async () => {
-          const store = await openCommittedMailbox();
-          const parent = store.messages.find(
-            (m) => m.envelope.messageId === inReplyTo,
-          );
-          if (parent === undefined) return undefined;
-          return [...parent.envelope.references, parent.envelope.messageId];
-        });
-        if (references !== undefined && references.length > 0) {
-          message.references = references;
-        }
-      }
       const receipt = await bindings.mailBus.sendOutbound(
         data.senderAddress,
         message,
@@ -2273,6 +2302,115 @@ export function createWorkflowSupervisor(
           result: { ok: false, reason },
         },
       });
+    }
+  }
+
+  // A compose holds the attachments and the signed message in memory, each
+  // up to the mail size limit. One at a time per child bounds that. The child
+  // bridge queues its own requests, so only a child that ignores the protocol
+  // sees the refusal. The guard is keyed by the child's control sender, so a
+  // child spawned while its predecessor's compose finishes is not refused.
+  const composingChildren = new Set<ControlChannelSender>();
+
+  /**
+   * Sign a conversation message for the child without sending it. The
+   * signer is always the deployment's mail address, and the attachments
+   * pass the same checks as the hub's REST mail route. The message must also
+   * fit a REST mail request, which carries it base64-encoded: a larger one is
+   * refused here rather than by the hub after it is signed.
+   */
+  async function handleMailCompose(
+    data: Extract<ControlPayload, { type: "mail.compose.request" }>["data"],
+  ): Promise<void> {
+    const controlSender = activeControlSender();
+    if (controlSender === null) {
+      logger.warn`mail.compose.request received outside running phase; requestId=${data.requestId} dropped (child awaiter will fail on pipe close)`;
+      return;
+    }
+    if (composingChildren.has(controlSender)) {
+      await controlSender.send({
+        type: "mail.compose.response",
+        data: {
+          requestId: data.requestId,
+          result: {
+            ok: false,
+            reason: "another mail compose is in flight for this child",
+          },
+        },
+      });
+      return;
+    }
+    composingChildren.add(controlSender);
+    try {
+      const attachments = validateAttachments(
+        (data.message.attachments ?? []).map((a) => ({
+          mimeType: a.contentType,
+          data: a.dataBase64,
+          ...(a.name !== undefined ? { name: a.name } : {}),
+        })),
+      );
+      if (!attachments.ok) {
+        await controlSender.send({
+          type: "mail.compose.response",
+          data: {
+            requestId: data.requestId,
+            result: {
+              ok: false,
+              reason: attachments.error.message,
+              attachmentError: attachments.error,
+            },
+          },
+        });
+        return;
+      }
+      const message: OutboundMessage = {
+        to: data.message.to,
+        type: "conversation.message",
+        content: data.message.content,
+      };
+      if (attachments.attachments.length > 0) {
+        message.attachments = attachments.attachments;
+      }
+      const composed = await bindings.mailBus.composeSigned(
+        bindings.deploymentMailAddress,
+        message,
+      );
+      const rawMessageBase64 = bytesToBase64(composed.rawBytes);
+      if (rawMessageBase64.length > MAX_COMPOSED_MAIL_BASE64_LENGTH) {
+        await controlSender.send({
+          type: "mail.compose.response",
+          data: {
+            requestId: data.requestId,
+            result: {
+              ok: false,
+              reason: `the composed message is ${String(rawMessageBase64.length)} characters of base64, over the ${String(MAX_COMPOSED_MAIL_BASE64_LENGTH)}-character limit of a mail request`,
+            },
+          },
+        });
+        return;
+      }
+      await controlSender.send({
+        type: "mail.compose.response",
+        data: {
+          requestId: data.requestId,
+          result: {
+            ok: true,
+            messageId: composed.messageId,
+            rawMessageBase64,
+          },
+        },
+      });
+    } catch (cause) {
+      const reason = cause instanceof Error ? cause.message : String(cause);
+      await controlSender.send({
+        type: "mail.compose.response",
+        data: {
+          requestId: data.requestId,
+          result: { ok: false, reason },
+        },
+      });
+    } finally {
+      composingChildren.delete(controlSender);
     }
   }
 
@@ -2339,8 +2477,8 @@ export function createWorkflowSupervisor(
             // Bound the id->uid map: drop any entry now pointing at a removed
             // uid. Not load-bearing -- `markMailboxProcessed` guards with
             // `find` -- but keeps the map from retaining dead uids.
-            for (const [messageId, mappedUid] of mailboxUidByMessageId) {
-              if (mappedUid === uid) mailboxUidByMessageId.delete(messageId);
+            for (const [identity, mappedUid] of mailboxUidByIdentity) {
+              if (mappedUid === uid) mailboxUidByIdentity.delete(identity);
             }
           }
           await store.flush();
@@ -2615,9 +2753,63 @@ export function createWorkflowSupervisor(
     }
   }
 
+  type ProxiedWriteRequest =
+    | {
+        kind: "prefix";
+        data: Extract<
+          ControlPayload,
+          { type: "substrate.write.request" }
+        >["data"];
+      }
+    | {
+        kind: "delta";
+        data: Extract<
+          ControlPayload,
+          { type: "substrate.write-delta.request" }
+        >["data"];
+      };
+
+  // One round-trip to the child inside a proxied write: send `frame` and
+  // wait for the child's matching merge or delta response.
+  async function childRoundTrip(
+    requestId: string,
+    frame: ControlPayload,
+  ): Promise<ChildWriteContent> {
+    const sender = activeControlSender();
+    if (sender === null) {
+      throw new Error(
+        `supervisor ${frame.type}: control channel unavailable for the round-trip`,
+      );
+    }
+    const result = await new Promise<
+      ({ ok: true } & ChildWriteContent) | { ok: false; reason: string }
+    >((resolve) => {
+      pendingMerges.set(requestId, { resolve });
+      void sender.send(frame).catch((cause) => {
+        pendingMerges.delete(requestId);
+        const reason = cause instanceof Error ? cause.message : String(cause);
+        resolve({
+          ok: false,
+          reason: `supervisor ${frame.type} send failed: ${reason}`,
+        });
+      });
+    });
+    if (!result.ok) {
+      throw new Error(
+        `supervisor ${frame.type}: child failed: ${result.reason}`,
+      );
+    }
+    return { files: result.files, deletes: result.deletes };
+  }
+
   async function handleSubstrateWriteRequest(
-    data: Extract<ControlPayload, { type: "substrate.write.request" }>["data"],
+    request: ProxiedWriteRequest,
   ): Promise<void> {
+    const { data } = request;
+    const frameType =
+      request.kind === "prefix"
+        ? "substrate.write.request"
+        : "substrate.write-delta.request";
     const controlSender = activeControlSender();
     if (controlSender === null) {
       // The request arrived after `activeControlSender()` was
@@ -2631,13 +2823,13 @@ export function createWorkflowSupervisor(
       // to whatever next-cohort sender exists would deliver it to
       // the wrong child. Logged loudly so persistent occurrences
       // surface in operator logs.
-      logger.warn`substrate.write.request received outside running phase; requestId=${data.requestId} dropped (child waiter will fail on pipe close)`;
+      logger.warn`${frameType} received outside running phase; requestId=${data.requestId} dropped (child waiter will fail on pipe close)`;
       return;
     }
     const validatedRepoId = RepoId(data.repoId);
     if (validatedRepoId instanceof type.errors) {
       onChildCrash(
-        `substrate.write.request repoId failed validation: ${validatedRepoId.summary}`,
+        `${frameType} repoId failed validation: ${validatedRepoId.summary}`,
       );
       return;
     }
@@ -2651,7 +2843,7 @@ export function createWorkflowSupervisor(
           requestId: data.requestId,
           result: {
             ok: false,
-            reason: `supervisor substrate.write.request: repoId.kind must be "workflow-run", got ${JSON.stringify(validatedRepoId.kind)}`,
+            reason: `supervisor ${frameType}: repoId.kind must be "workflow-run", got ${JSON.stringify(validatedRepoId.kind)}`,
           },
         },
       });
@@ -2685,79 +2877,76 @@ export function createWorkflowSupervisor(
     // boundary).
     // D2 leg classification (measurement-only). The child proxies two
     // distinct substrate commits through this one handler, discriminated
-    // by the write's `preservePrefix`:
+    // by the prefix the write changes:
     //   - `runs/<runId>/events/`   -> the run-event bracket commit
     //     (RunStarted/StepStarted/StepCompleted/RunCompleted; one message
     //     may produce several, each a separate write -- the D2
     //     post-processing sums and counts them per message).
-    //   - `agent-state/<key>/...`  -> the D1 conversation WAL append /
-    //     checkpoint (the control leg). No runId in the prefix; attributed
-    //     to the dispatch loop's current serial runId.
+    //   - `runs/<runId>/steps/...` -> the D1 conversation WAL append /
+    //     checkpoint (the control leg). Attributed to the dispatch loop's
+    //     current serial message.
     // Any other prefix is a non-attributed proxied write (cancel/drain
     // audit) and is left unmarked. The runId join key matches the leg the
     // benchmark's per-message OLS fit groups on.
-    const legClassification = classifyProxiedWriteLeg(data.preservePrefix);
+    const legClassification = classifyProxiedWriteLeg(
+      request.kind === "prefix"
+        ? [request.data.preservePrefix]
+        : (request.data.changedPathPrefixes ?? []),
+    );
     if (legClassification !== null) {
       legMarkStart(legClassification.messageId, legClassification.leg);
     }
     try {
       const { commitSha, newlyTerminalRuns } =
-        await bindings.repoStore.writeTreePreservingPrefix(
-          writePrincipal,
-          validatedRepoId,
-          data.ref,
-          {
-            preservePrefix: data.preservePrefix,
-            message: data.message,
-            merge: async (existing) => {
-              const sender = activeControlSender();
-              if (sender === null) {
-                throw new Error(
-                  "supervisor substrate.write.request: control channel unavailable for merge round-trip",
-                );
-              }
-              const result = await new Promise<
-                | { ok: true; files: Record<string, string | Uint8Array> }
-                | { ok: false; reason: string }
-              >((resolve) => {
-                pendingMerges.set(data.requestId, { resolve });
-                const wireExisting: {
-                  path: string;
-                  contentBase64: string;
-                }[] = [];
-                for (const [path, bytes] of existing) {
-                  wireExisting.push({
-                    path,
-                    contentBase64: bytesToBase64(bytes),
-                  });
-                }
-                void sender
-                  .send({
-                    type: "substrate.merge.request",
-                    data: {
-                      requestId: data.requestId,
-                      existing: wireExisting,
-                    },
-                  })
-                  .catch((cause) => {
-                    pendingMerges.delete(data.requestId);
-                    const reason =
-                      cause instanceof Error ? cause.message : String(cause);
-                    resolve({
-                      ok: false,
-                      reason: `supervisor substrate.merge.request send failed: ${reason}`,
+        request.kind === "prefix"
+          ? await bindings.repoStore.writeTreePreservingPrefix(
+              writePrincipal,
+              validatedRepoId,
+              request.data.ref,
+              {
+                preservePrefix: request.data.preservePrefix,
+                message: request.data.message,
+                merge: async (existing) => {
+                  const wireExisting: {
+                    path: string;
+                    contentBase64: string;
+                  }[] = [];
+                  for (const [path, bytes] of existing) {
+                    wireExisting.push({
+                      path,
+                      contentBase64: bytesToBase64(bytes),
                     });
+                  }
+                  const { files } = await childRoundTrip(data.requestId, {
+                    type: "substrate.merge.request",
+                    data: { requestId: data.requestId, existing: wireExisting },
                   });
-              });
-              if (!result.ok) {
-                throw new Error(
-                  `supervisor substrate.write.request: child merge failed: ${result.reason}`,
-                );
-              }
-              return result.files;
-            },
-          },
-        );
+                  return files;
+                },
+              },
+            )
+          : await bindings.repoStore.writeTreeDelta(
+              writePrincipal,
+              validatedRepoId,
+              request.data.ref,
+              {
+                changedPathPrefixes:
+                  request.data.changedPathPrefixes === null
+                    ? undefined
+                    : new Set(request.data.changedPathPrefixes),
+                message: request.data.message,
+                computeDelta: async (parentCommitSha) => {
+                  const { files, deletes } = await childRoundTrip(
+                    data.requestId,
+                    {
+                      type: "substrate.delta.request",
+                      data: { requestId: data.requestId, parentCommitSha },
+                    },
+                  );
+                  return { puts: files, deletes };
+                },
+              },
+            );
       // D2 leg end: the substrate commit (hash objects, write tree,
       // advance ref under the per-repo lock) just resolved. Stamped here,
       // before the response, so the run-event/wal leg measures only its own
@@ -2797,12 +2986,12 @@ export function createWorkflowSupervisor(
         );
       }
     } catch (cause) {
-      // Clean up any merge awaiter that the substrate may not have
-      // reached (e.g. the write threw before invoking the merge
+      // Clean up any round-trip awaiter that the substrate may not have
+      // reached (e.g. the write threw before invoking the merge or delta
       // callback at all, leaving the map empty -- safe), and the
-      // common case where the write reached merge but then threw
-      // downstream (the awaiter is already resolved by the merge
-      // reply path, so the delete here is a no-op).
+      // common case where the write reached the callback but then threw
+      // downstream (the awaiter is already resolved by the reply path,
+      // so the delete here is a no-op).
       pendingMerges.delete(data.requestId);
       const reason = cause instanceof Error ? cause.message : String(cause);
       await controlSender.send({
@@ -2831,10 +3020,12 @@ export function createWorkflowSupervisor(
     hmacKey: Uint8Array;
     ipcKeypair: { privateKey: Uint8Array; publicKey: Uint8Array };
     handle: SubprocessHandle;
+    definitionHash: string;
     onInferenceEvent: (event: EventPayload) => void;
   }): Promise<{
     wiring: ChildWiring;
-    readyPromise: Promise<{ childPid: number }>;
+    definitionPromise: Promise<ChildDefinitionReport>;
+    readyPromise: Promise<void>;
     controlIncoming: AsyncGenerator<ControlPayload, void, void>;
   }> {
     const controlSender = createControlChannelSender({
@@ -2844,13 +3035,19 @@ export function createWorkflowSupervisor(
     });
 
     const controlIncoming = receiveControlChannel({
-      publicKey: { bootstrapFromReady: true },
+      publicKey: { bootstrapFromDefinition: true },
       channelId: args.channelId,
       reader: args.handle.controlReader,
       onCrash: onChildCrash,
     });
 
-    const readyPromise = waitForReady(controlIncoming);
+    const definitionPromise = waitForDefinition(
+      controlIncoming,
+      args.definitionHash,
+    );
+    const readyPromise = definitionPromise.then(() =>
+      waitForReady(controlIncoming),
+    );
 
     const eventIter = receiveEventChannel({
       hmacKey: args.hmacKey,
@@ -2871,6 +3068,7 @@ export function createWorkflowSupervisor(
         channelId: args.channelId,
         eventPump,
       },
+      definitionPromise,
       readyPromise,
       controlIncoming,
     };
@@ -2888,6 +3086,7 @@ export function createWorkflowSupervisor(
     // publishes, and settles the record on every exit before the publish.
     const pending: PendingSpawn = {
       cancelled: false,
+      cancel: Promise.withResolvers<undefined>(),
       done: Promise.withResolvers<undefined>(),
     };
     pendingSpawn = pending;
@@ -2920,9 +3119,7 @@ export function createWorkflowSupervisor(
         hostPublicKey: ipcKeypair.publicKey,
         anchorRunId: bindings.anchorRunId,
         deploymentMailAddress: bindings.deploymentMailAddress,
-        stepCount: bindings.stepCount,
         definitionHash: opts.definitionHash,
-        warmKeep: opts.warmKeep,
       });
 
       // The spawner throws synchronously when it cannot start the child.
@@ -2942,6 +3139,7 @@ export function createWorkflowSupervisor(
         hmacKey,
         ipcKeypair,
         handle,
+        definitionHash: opts.definitionHash,
         onInferenceEvent: opts.onInferenceEvent,
       });
     } catch (cause) {
@@ -2959,44 +3157,67 @@ export function createWorkflowSupervisor(
       throw cause;
     }
 
-    // The ready handshake below folds `wired.readyPromise` into an
-    // outcome value, handling its rejection. But a startup teardown that
-    // fires BEFORE the handshake -- a throw during credentials assembly
-    // or mail registration -- kills the child, and that kill rejects
-    // `readyPromise` (the control channel ends). Attach a benign handler
-    // now so the rejection is never unhandled on that path; the
-    // handshake's own fold still observes the outcome when it runs.
+    // The handshakes below fold `wired.definitionPromise` and
+    // `wired.readyPromise` into outcome values, handling their rejections.
+    // But a startup teardown that fires BEFORE a handshake -- a throw during
+    // credentials assembly or mail registration -- kills the child, and that
+    // kill rejects both (the control channel ends). Attach benign handlers
+    // now so the rejections are never unhandled on that path; the
+    // handshakes' own folds still observe the outcomes when they run.
+    void wired.definitionPromise.catch(() => {
+      /* handled by the definition-handshake fold below */
+    });
     void wired.readyPromise.catch(() => {
       /* handled by the ready-handshake fold when the handshake runs */
     });
 
-    // Read the run's authority before the new child becomes the live target.
-    // The `authority.set` frame below must be the first frame the child
-    // receives, and once `state` names this child, `deliverGrants` and
-    // `deliverCredentials` send to it. The child has no state record yet, so a
-    // failed read kills it here, as the wireChild failure above does. The
-    // cancel check below runs with no await before the publish.
+    // Learn the child's definition, then read the run's authority before the
+    // new child becomes the live target. The `authority.set` frame below must
+    // be the first frame the child receives, and once `state` names this
+    // child, `deliverGrants` and `deliverCredentials` send to it. The child
+    // has no state record yet, so a failure here kills it, as the wireChild
+    // failure above does. The cancel check below runs with no await before
+    // the publish.
     const killUnpublishedChild = () =>
       killChildHandle(handle, DEFAULT_KILL_TIMEOUT_MS, {
         setTimer: readySetTimer,
         clearTimer: readyClearTimer,
         logger,
       });
-    let credentialsSnapshot: CredentialsSnapshot;
+    let childPid: number;
     let authority: ReadAuthority;
     try {
       try {
-        credentialsSnapshot = await assembleCredentialsSnapshot({
-          repoStore: bindings.repoStore,
-          principal: bindings.readPrincipal,
-          stepOrder: opts.stepOrder,
-          anchorRunId: bindings.anchorRunId,
-          deriveStepAddress: bindings.deriveStepAddress,
-          ...(bindings.deriveStepRepoId !== undefined
-            ? { deriveStepRepoId: bindings.deriveStepRepoId }
-            : {}),
-        });
-        authority = await readAuthority(credentialsSnapshot);
+        // Bound the definition handshake like the ready handshake below:
+        // evaluating the closure is the slow part of a child's startup, and a
+        // child that neither reports nor exits must not park the spawn, nor a
+        // shutdown waiting on it. The deadline is resolve-only and cleared on
+        // every path.
+        const definitionOutcome = wired.definitionPromise.then(
+          (report) => ({ kind: "reported" as const, report }),
+          (err: unknown) => ({ kind: "failed" as const, err }),
+        );
+        const definitionDeadline = waitDeadline(readySetTimer, readyTimeoutMs);
+        const definitionRace = await Promise.race([
+          definitionOutcome,
+          definitionDeadline.promise.then(() => ({ kind: "timeout" as const })),
+          pending.cancel.promise.then(() => ({ kind: "cancelled" as const })),
+        ]);
+        readyClearTimer(definitionDeadline.handle);
+        if (definitionRace.kind === "timeout") {
+          throw new Error(
+            `workflow-host supervisor: child did not report its definition within ${readyTimeoutMs}ms; killed`,
+          );
+        }
+        if (definitionRace.kind === "cancelled") {
+          throw new Error(
+            "workflow-host supervisor: shut down while the spawn waited for the child's definition; killed the new child",
+          );
+        }
+        if (definitionRace.kind === "failed") throw definitionRace.err;
+        childPid = definitionRace.report.childPid;
+        stepIds = await bindings.layoutSteps(definitionRace.report.projection);
+        authority = await readAuthority();
       } catch (cause) {
         await killUnpublishedChild();
         throw cause;
@@ -3028,7 +3249,6 @@ export function createWorkflowSupervisor(
       eventPump: wired.wiring.eventPump,
       onInferenceEvent: opts.onInferenceEvent,
       mailUnsubscribe: null,
-      credentialsSnapshot,
       terminalCohortAbort: new AbortController(),
       terminalBroadcaster: createTerminalBroadcaster(),
       dispatchLoop: null,
@@ -3083,13 +3303,13 @@ export function createWorkflowSupervisor(
         bindings.workflowRunRepoId,
       );
       const replayDone = scanDone
-        .then(({ ownedMessageIds }) =>
+        .then(({ ownedIdentities }) =>
           inboxPrimitives.replayProcessingToInbox(
             bindings.repoStore,
             inboxWritePrincipal,
             bindings.workflowRunRepoId,
             bindings.deploymentMailAddress,
-            { ownedMessageIds },
+            { ownedIdentities },
           ),
         )
         .then(() => {
@@ -3175,7 +3395,7 @@ export function createWorkflowSupervisor(
         wired.readyPromise,
         authoritySent,
       ]).then(
-        ([info]) => ({ kind: "ready" as const, info }),
+        () => ({ kind: "ready" as const }),
         (err: unknown) => ({ kind: "failed" as const, err }),
       );
       const readyDeadline = waitDeadline(readySetTimer, readyTimeoutMs);
@@ -3204,7 +3424,6 @@ export function createWorkflowSupervisor(
         // the subscription and registration via shutdownInternal.
         throw readyRace.err;
       }
-      const readyInfo = readyRace.info;
 
       // Transition to running. The dispatch loop (started below)
       // picks up any pre-ready buffered mail through the FIFO inbox
@@ -3241,7 +3460,6 @@ export function createWorkflowSupervisor(
         eventPump: wired.wiring.eventPump,
         onInferenceEvent: opts.onInferenceEvent,
         mailUnsubscribe,
-        credentialsSnapshot,
         terminalCohortAbort: startingPhaseCohortAbort,
         terminalBroadcaster: startingPhaseBroadcaster,
         dispatchLoop,
@@ -3260,14 +3478,12 @@ export function createWorkflowSupervisor(
       wakeDispatch();
 
       // Cache the spawn context for the recycle path. The recycle path
-      // reuses the same stepOrder/definitionHash/onInferenceEvent on
+      // reuses the same definitionHash/onInferenceEvent on
       // every respawn -- a deployment keeps them for its life, and the
       // supervisor never mutates them.
       const now = bindings.recyclePolicyNow ?? defaultNow;
       spawnContext = {
-        stepOrder: opts.stepOrder,
         definitionHash: opts.definitionHash,
-        warmKeep: opts.warmKeep,
         onInferenceEvent: opts.onInferenceEvent,
         spawnedAt: now(),
       };
@@ -3327,9 +3543,8 @@ export function createWorkflowSupervisor(
       }
 
       return {
-        pid: readyInfo.childPid,
+        pid: childPid,
         channelId,
-        credentialsSnapshot,
       };
     } catch (cause) {
       const message = cause instanceof Error ? cause.message : String(cause);
@@ -3431,13 +3646,14 @@ export function createWorkflowSupervisor(
    * and record its runId as in-flight. The runId is the local part of the
    * deployment's mail address (see `deriveWorkflowRunId`), identifying its one
    * top-level run. The resolved `Mail` (headers plus committed part references)
-   * rides in the frame as the run's trigger payload; the `messageId`
-   * accompanies it for correlation and audit. The runId is the same value the
+   * rides in the frame as the run's trigger payload; the entry's claim-check
+   * identity accompanies it, and the run records that identity on its
+   * `RunStarted`. The runId is the same value the
    * dispatch loop waits on via `terminalEventSource`.
    */
   async function forwardDispatchedEntry(
     sender: ControlChannelSender,
-    messageId: string,
+    mailIdentity: ConsumedMailIdentity,
     receivedAt: number,
     runId: string,
     payload: Mail,
@@ -3446,7 +3662,7 @@ export function createWorkflowSupervisor(
       type: "trigger.fire",
       data: {
         runId,
-        messageId,
+        mailIdentity,
         receivedAt,
         payload,
       },
@@ -3465,14 +3681,14 @@ export function createWorkflowSupervisor(
    *
    * The two failure modes are deliberately distinct:
    *   - A DETERMINISTIC input rejection -- missing bytes, unparseable MIME, or
-   *     a messageId that cannot form a path segment -- returns `{ ok: false }`
+   *     an identity that cannot form a path segment -- returns `{ ok: false }`
    *     so the caller drops the mail. Replaying it would fail identically.
    *   - A TRANSIENT substrate write failure propagates (thrown), so the caller
    *     treats it as a dispatch fault and leaves the mail reclaimable rather
    *     than silently discarding it on an infrastructure hiccup.
    */
   async function prepareMail(
-    envelope: { messageId: string; rawMessage?: string },
+    envelope: ClaimCheckEnvelope,
     runId: string,
   ): Promise<
     | { ok: true; mail: Mail }
@@ -3513,10 +3729,20 @@ export function createWorkflowSupervisor(
           runId,
           ref: bindings.workflowRunRef,
         },
-        envelope.messageId,
+        claimCheckIdentity(envelope),
         decoded,
       );
-      return { ok: true, mail };
+      // A legacy envelope carries no authenticated sender, so its mail
+      // carries none either.
+      return {
+        ok: true,
+        mail: {
+          ...mail,
+          ...(envelope.authenticatedSender !== undefined
+            ? { authenticatedSender: envelope.authenticatedSender }
+            : {}),
+        },
+      };
     } catch (cause) {
       if (cause instanceof InvalidMailError) {
         return {
@@ -3532,8 +3758,7 @@ export function createWorkflowSupervisor(
    * Push the run's grants snapshot to the child ahead of its
    * `trigger.fire`. Returns `true` if the barrier FAILED (the caller must
    * skip the fire; the run has already been settled as `RunFailed`) and
-   * `false` if the barrier passed or is not armed (`onRunStart` unwired,
-   * where `spawn` supplied the snapshot instead).
+   * `false` if the barrier passed.
    *
    * The sink is a request/response contract: the supervisor awaits the
    * returned snapshot and awaits the `grants-updated` send so both land on
@@ -3548,11 +3773,11 @@ export function createWorkflowSupervisor(
     runId: string,
     broadcaster: TerminalBroadcaster,
   ): Promise<boolean> {
-    if (bindings.onRunStart === undefined) return false;
     try {
       const snapshot = await bindings.onRunStart({
         runId,
         anchorRunId: bindings.anchorRunId,
+        stepIds: requireStepIds(),
       });
       if (snapshot === null) {
         throw new Error(
@@ -3682,7 +3907,7 @@ export function createWorkflowSupervisor(
       // Subscribe to the terminal broadcaster BEFORE the grants barrier so
       // a synthetic `RunFailed` from a barrier failure can be captured.
       const preIter = broadcaster.source(runId)[Symbol.asyncIterator]();
-      // Per-run grants barrier. When `onRunStart` is wired, push this run's
+      // Per-run grants barrier. Push this run's
       // grants snapshot BEFORE the trigger/signal so the child's authorize
       // closure binds to it rather than throwing on a null snapshot. The push
       // and the fire share the child's control channel, so a `grants-updated`
@@ -3760,7 +3985,7 @@ export function createWorkflowSupervisor(
                 data: {
                   runId,
                   signalName: signalName(inputChannel.correlationId),
-                  signalId: envelope.messageId,
+                  signalId: claimCheckIdentity(envelope),
                   payload: prepared.mail,
                 },
               });
@@ -3774,7 +3999,7 @@ export function createWorkflowSupervisor(
               runInputChannels.delete(runId);
               // The message was dispatched as a turn: mark its eager mailbox
               // entry \Seen/$Processed. Fire-and-forget off the dispatch path.
-              markMailboxProcessed(envelope.messageId);
+              markMailboxProcessed(claimCheckIdentity(envelope));
               // Durable-consume contract, mirroring the trigger.fire path: hold
               // markConsumed until the child has durably taken up the signal --
               // the resumed run re-parks or reaches a terminal event. That gate
@@ -3835,14 +4060,16 @@ export function createWorkflowSupervisor(
             try {
               await forwardDispatchedEntry(
                 sender,
-                envelope.messageId,
+                envelope.deliveryKey !== undefined
+                  ? { deliveryKey: envelope.deliveryKey }
+                  : { messageId: envelope.messageId },
                 envelope.receivedAt,
                 runId,
                 prepared.mail,
               );
               // The message was dispatched as a turn: mark its eager mailbox
               // entry \Seen/$Processed. Fire-and-forget off the dispatch path.
-              markMailboxProcessed(envelope.messageId);
+              markMailboxProcessed(claimCheckIdentity(envelope));
 
               // Wait for the child to durably take up this trigger (RunStarted
               // committed, then the run parks or terminates) before allowing
@@ -3908,7 +4135,7 @@ export function createWorkflowSupervisor(
         bindings.workflowRunRepoId,
         {
           address: bindings.deploymentMailAddress,
-          messageId: envelope.messageId,
+          identity: claimCheckIdentity(envelope),
           runId,
           consumedAt: Date.now(),
           retentionHorizonMs: consumedRetentionMs,
@@ -4231,6 +4458,7 @@ export function createWorkflowSupervisor(
     if (shutdownPromise !== null) return shutdownPromise;
     if (state.phase === "idle" && pendingSpawn !== null) {
       pendingSpawn.cancelled = true;
+      pendingSpawn.cancel.resolve(undefined);
       return pendingSpawn.done.promise;
     }
     if (
@@ -4669,7 +4897,6 @@ export function createWorkflowSupervisor(
       eventPump: prior.eventPump,
       onInferenceEvent: prior.onInferenceEvent,
       mailUnsubscribe: prior.mailUnsubscribe,
-      credentialsSnapshot: prior.credentialsSnapshot,
       terminalCohortAbort: prior.terminalCohortAbort,
       terminalBroadcaster: prior.terminalBroadcaster,
       dispatchLoop: null,
@@ -4696,9 +4923,7 @@ export function createWorkflowSupervisor(
               return handle;
             },
           },
-          stepOrder: priorContext.stepOrder,
           definitionHash: priorContext.definitionHash,
-          warmKeep: priorContext.warmKeep,
           onInferenceEvent: priorContext.onInferenceEvent,
           current: {
             handle: prior.handle,
@@ -4729,8 +4954,8 @@ export function createWorkflowSupervisor(
           // A standalone helper would take all of it as parameters for zero
           // reuse -- the crash-respawn path reaches this callback transitively
           // through `runRespawn`, so it needs no separate extraction.
-          buildAuthority: async (fallback) => {
-            const read = await readAuthority(fallback);
+          buildAuthority: async () => {
+            const read = await readAuthority();
             return {
               data: authorityData(read.snapshot),
               revision: read.revision,
@@ -4738,7 +4963,6 @@ export function createWorkflowSupervisor(
           },
           installNewChild: ({
             wiring,
-            credentialsSnapshot,
             controlIncoming,
             authorityRevision: sentRevision,
           }) => {
@@ -4811,7 +5035,6 @@ export function createWorkflowSupervisor(
               eventPump: wiring.eventPump,
               onInferenceEvent: priorContext.onInferenceEvent,
               mailUnsubscribe: prior.mailUnsubscribe,
-              credentialsSnapshot,
               terminalCohortAbort: newCohortAbort,
               terminalBroadcaster: newBroadcaster,
               dispatchLoop: newDispatchLoop,
@@ -4829,9 +5052,7 @@ export function createWorkflowSupervisor(
             // so the policy timer's uptime check resets on recycle.
             const now = bindings.recyclePolicyNow ?? defaultNow;
             spawnContext = {
-              stepOrder: priorContext.stepOrder,
               definitionHash: priorContext.definitionHash,
-              warmKeep: priorContext.warmKeep,
               onInferenceEvent: priorContext.onInferenceEvent,
               spawnedAt: now(),
             };
@@ -5062,23 +5283,17 @@ export function createWorkflowSupervisor(
     }
   }
 
-  // The grants snapshot for a child's `authority.set`. With `onRunStart` wired
-  // it is the run's own grants file: none before the run's first trigger, and
-  // none when the read fails, so a new child's step that needs grants fails
-  // closed. Without it (the supervisor's own tests) it is the spawn-time
-  // snapshot. The revision is read before the grants, so an update during the
-  // read counts as newer.
-  async function readAuthority(
-    fallback: CredentialsSnapshot | null,
-  ): Promise<ReadAuthority> {
+  // The grants snapshot for a child's `authority.set`: the run's own grants
+  // file, which is none before the run's first trigger, and none when the read
+  // fails, so a new child's step that needs grants fails closed. The revision
+  // is read before the grants, so an update during the read counts as newer.
+  async function readAuthority(): Promise<ReadAuthority> {
     const revision = authorityRevision;
-    if (bindings.onRunStart === undefined) {
-      return { snapshot: fallback, revision, failed: false };
-    }
     try {
       const snapshot = await bindings.onRunStart({
         runId: deriveWorkflowRunId(bindings.deploymentMailAddress),
         anchorRunId: bindings.anchorRunId,
+        stepIds: requireStepIds(),
       });
       return { snapshot, revision, failed: false };
     } catch (cause) {
@@ -5118,9 +5333,7 @@ export function createWorkflowSupervisor(
   async function resendAuthority(): Promise<void> {
     for (;;) {
       if (state.phase !== "starting" && state.phase !== "running") return;
-      const { snapshot, revision, failed } = await readAuthority(
-        state.credentialsSnapshot,
-      );
+      const { snapshot, revision, failed } = await readAuthority();
       if (revision !== authorityRevision) continue;
       if (state.phase !== "starting" && state.phase !== "running") return;
       await sendAuthority(state.controlSender, failed ? "keep" : snapshot);
@@ -5148,7 +5361,6 @@ export function createWorkflowSupervisor(
    *   floor, never inject one a deploy did not approve.
    */
   async function deliverGrants(runId: string): Promise<"pushed" | "skipped"> {
-    if (bindings.onRunStart === undefined) return "skipped";
     authorityRevision += 1;
     if (state.phase !== "running" && state.phase !== "starting") {
       return "skipped";
@@ -5157,6 +5369,7 @@ export function createWorkflowSupervisor(
       const snapshot = await bindings.onRunStart({
         runId,
         anchorRunId: bindings.anchorRunId,
+        stepIds: requireStepIds(),
       });
       if (snapshot === null) {
         logger.warn`deliverGrants: run ${runId} has no grants file; nothing to refresh`;
@@ -5174,13 +5387,6 @@ export function createWorkflowSupervisor(
     }
   }
 
-  function getCredentialsSnapshot(): CredentialsSnapshot | null {
-    if (state.phase === "starting" || state.phase === "running") {
-      return state.credentialsSnapshot;
-    }
-    return null;
-  }
-
   return {
     spawn,
     requestCancel,
@@ -5192,7 +5398,6 @@ export function createWorkflowSupervisor(
     deliverCredentials,
     deliverGrants,
     reEmitParkedCorrelations,
-    getCredentialsSnapshot,
     credentialDelivery: () => currentCredentialDelivery,
   };
 }
@@ -5218,7 +5423,6 @@ type ActiveState = {
   eventPump: Promise<void>;
   onInferenceEvent: (event: EventPayload) => void;
   mailUnsubscribe: (() => void) | null;
-  credentialsSnapshot: CredentialsSnapshot | null;
   /**
    * Per-spawn cohort abort controller for terminal-event watchers
    * and the dispatch loop. Each watcher the supervisor mints inside
@@ -5285,48 +5489,10 @@ type ActiveState = {
 };
 
 type SpawnContext = {
-  stepOrder: readonly string[];
   definitionHash: string;
-  /** Warm-keep flag carried on respawn env (unchanged across recycle). */
-  warmKeep: boolean;
   onInferenceEvent: (event: EventPayload) => void;
   spawnedAt: number;
 };
-
-/**
- * Iterate the control-channel receive iterator until the child's
- * `ready` frame arrives. Upstream payloads other than `ready` (e.g.
- * `recycle.request`) appear after `ready`; the supervisor's
- * `pumpUpstreamControl` consumes them off the same iterator after
- * spawn returns.
- */
-async function waitForReady(
-  iter: AsyncGenerator<ControlPayload, void, void>,
-): Promise<{ childPid: number }> {
-  // Use explicit `next()` rather than `for await ... return` so the
-  // generator is NOT finalized via `iter.return()` when ready lands.
-  // The supervisor's upstream-control pump continues iterating the
-  // same generator after `ready`, and a finalized generator would
-  // immediately yield `{done: true}` to the pump and silently drop
-  // the child's subsequent upstream frames (e.g. `recycle.request`).
-  while (true) {
-    const next = await iter.next();
-    if (next.done === true) {
-      throw new Error(
-        "workflow-host supervisor: control channel ended before child emitted ready",
-      );
-    }
-    const payload = next.value;
-    if (payload.type === "ready") {
-      return { childPid: payload.data.childPid };
-    }
-    // Drop other variants encountered before `ready`; the child is
-    // not supposed to send anything else first, but the receiver
-    // validated the envelope and signature, so a stray frame here is
-    // a programming bug worth surfacing in the warning channel
-    // rather than crashing the iterator.
-  }
-}
 
 function defaultNow(): number {
   return Date.now();
@@ -5345,20 +5511,6 @@ async function pumpEvents(
   for await (const event of iter) {
     onInferenceEvent(event);
   }
-}
-
-/**
- * Default `deriveMailAuditRef` derivation used when no host binding
- * is configured. The reference points at an "in-process" store with
- * the messageId as the path, which keeps the supervisor's library
- * tests independent of any audit-store wiring. Production hosts
- * supply a derivation coherent with their own mail-audit surface.
- */
-function defaultInProcessMailAuditRef(
-  messageId: string,
-  _rawMessage: Uint8Array,
-): MailAuditRef {
-  return { store: "in-process", path: messageId };
 }
 
 /**

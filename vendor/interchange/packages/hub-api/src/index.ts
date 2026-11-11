@@ -21,19 +21,33 @@ export {
 } from "./middleware/tenant";
 export type { AppEnv, TenantEnv, TenantRow, PrincipalRow } from "./context";
 export type { GetSession, SessionInfo, SessionUser } from "./session";
+export { admitCallerSignedMail } from "./caller-signed-mail";
 export {
   resolveWorkflowPrincipalNames,
   resolveWorkflowPrincipalLabels,
 } from "./routes/workflow-principal-name";
-export { HUB_CONDITION_REGISTRY } from "./condition-registry";
 export {
   collectDeployerInvokerGrants,
   createMailTriggeredRunGrantsMaterializer,
   createCorrespondentGrantMinter,
+  createRunGrantsLoader,
+  deriveRunMailSendGrantRow,
+  lockTenantRunDelegatedGrants,
   setRunToolGrantEffect,
   type MailTriggeredRunGrantsDeps,
   type CorrespondentGrantMinterDeps,
 } from "./run-grant-materialization";
+export {
+  createMailSendAuthorizer,
+  type MailSendAuthorizerDeps,
+} from "./mail-send-authorization";
+export {
+  findDelegatedAnchorRunIds,
+  rederiveRunDelegatedGrants,
+  sweepLapsedDeployerGrants,
+  type RederiveRunDelegatedGrantsArgs,
+  type RederivedRun,
+} from "./run-delegated-grants";
 export {
   resolveDefinitionSources,
   type DefinitionSourceResolution,
@@ -43,7 +57,7 @@ export {
   type ResolveApprovalRequest,
   type ResolveApprovalOutcome,
   type CreateApprovalRoutesDeps,
+  type ResolveApprovalDeps,
   type ReadRunLifecycles,
 } from "./routes/approvals";
-export { RUN_TOKEN_ROUTES } from "./middleware/run-token-auth";
 export { mintGitToken } from "./routes/git-tokens";

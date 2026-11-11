@@ -165,7 +165,6 @@ export async function startInProcessHub() {
         },
         sourceOfferingIds: [],
         defaultSourceOfferingId: "offering",
-        deployContent: {},
       });
       return {
         id,

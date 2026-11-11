@@ -18,20 +18,36 @@
 //     string; the blob value is opaque bytes. Blobs are append-only
 //     and immutable: any blob present in the prior tree must carry
 //     byte-identical contents in the prospective tree.
-//   - `addresses/<urlEncoded(address)>/inbox/<receivedAt>-<messageId>.json`
+//   - `runs/<runId>/steps/<urlEncoded(stepId)>/state/` — an agent step's
+//     durable state (turns, pending operations, token usage, reply-thread
+//     state) as a checkpoint plus write-ahead log in the step-state format.
+//     Mutable, unlike the rest of the run directory; validated for shape
+//     and envelope only (see `WORKFLOW_RUN_STEPS_DIR`).
+//   - `runs/<runId>/steps/<urlEncoded(stepId)>/seed.json` — a snapshot the
+//     Hub wrote for the step to start from until it has state of its own.
+//     Immutable once written (see `WORKFLOW_RUN_STEP_SEED_FILE`).
+//   - Every claim-check entry is filed under an identity (see
+//     `claimCheckIdentity`). A sender-scoped entry carries the
+//     hub-authenticated sender and the delivery key derived from it and the
+//     Message-ID, and its identity is that key. A legacy entry carries
+//     neither and its identity is its bare Message-ID. The validator accepts
+//     both forms for as long as a tree can hold a legacy entry, which is
+//     indefinitely: an address that gets no more mail never prunes its
+//     legacy `consumed/` entries.
+//   - `addresses/<urlEncoded(address)>/inbox/<receivedAt>-<identity>.json`
 //     — pending inbound mail for the address, FIFO-ordered by the
 //     filename's parsed numeric `receivedAt` prefix (with a
-//     lexicographic messageId tiebreak). The filename keeps the
+//     lexicographic identity tiebreak). The filename keeps the
 //     decimal `<receivedAt>` form unpadded; the substrate sorts by
 //     parsed integer rather than string so the FIFO invariant holds
 //     for non-uniform digit widths (e.g. `99-…` precedes `100-…`).
-//   - `addresses/<urlEncoded(address)>/processing/<receivedAt>-<messageId>.json`
+//   - `addresses/<urlEncoded(address)>/processing/<receivedAt>-<identity>.json`
 //     — messages currently being handled. Same filename shape and
 //     JSON envelope as the inbox entry; a `dequeueToProcessing`
 //     commit atomically removes the inbox entry and adds the
 //     processing entry preserving the filename key.
-//   - `addresses/<urlEncoded(address)>/consumed/<messageId>.json` —
-//     dedup index keyed by messageId. A `markConsumed` commit
+//   - `addresses/<urlEncoded(address)>/consumed/<identity>.json` —
+//     dedup index keyed by identity. A `markConsumed` commit
 //     atomically removes the matching processing entry and writes
 //     this dedup entry. The dedup index is bounded by a per-address
 //     retention watermark (see `watermark.json`): a `markConsumed`
@@ -99,23 +115,26 @@
 //     `consumed`, plus the single `watermark.json` file. Other names
 //     under an address fail the push.
 //   - Inbox and processing filenames must match
-//     `<receivedAt>-<messageId>.json` where `receivedAt` is a decimal
+//     `<receivedAt>-<identity>.json` where `receivedAt` is a decimal
 //     epoch-ms integer. The body's `receivedAt` matches the filename
-//     `receivedAt` and the body's `messageId` matches the filename
-//     `messageId`. The body's `address` field must decode to the
+//     `receivedAt` and the body's identity matches the filename
+//     identity. The body's `address` field must decode to the
 //     URL-encoded segment.
-//   - Consumed filenames must match `<messageId>.json`. The body's
-//     `messageId` matches the filename `messageId`. The body carries
-//     a `consumedBy` run id and the `receivedAt` of the original
-//     consume for audit.
-//   - Atomicity: a given `<messageId>` appears in at most one
-//     filename across `inbox`, `processing`, and `consumed` combined,
-//     per address per prospective commit. Two inbox entries with the
-//     same `<messageId>` but different `<receivedAt>` are rejected as
-//     a same-state collision; the cross-state check fires when the
-//     same messageId appears in inbox+processing, inbox+consumed, or
+//   - Consumed filenames must match `<identity>.json`. The body's
+//     identity matches the filename identity. The body carries the
+//     `runId` that consumed the message and the `receivedAt` of the
+//     original enqueue for audit.
+//   - A body carries both `authenticatedSender` and `deliveryKey` or
+//     neither, and a `deliveryKey` must be the key derived from the
+//     body's sender and `messageId`, which binds the filename to both.
+//   - Atomicity: a given identity appears in at most one filename
+//     across `inbox`, `processing`, and `consumed` combined, per
+//     address per prospective commit. Two inbox entries with the same
+//     identity but different `<receivedAt>` are rejected as a
+//     same-state collision; the cross-state check fires when the same
+//     identity appears in inbox+processing, inbox+consumed, or
 //     processing+consumed.
-//   - `consumed/<messageId>.json` bytes are immutable: a prospective
+//   - `consumed/<identity>.json` bytes are immutable: a prospective
 //     commit that mutates the bytes of a consumed entry RETAINED from
 //     the prior tree is rejected by the same blob OID comparison with
 //     the prior tree used for run events. A retained consumed entry
@@ -139,15 +158,18 @@
 //   - Inbox→processing transition: a processing entry that is newly
 //     added (not present in the prior tree) must be backed by a
 //     matching inbox entry in the prior tree at the same
-//     `<receivedAt>-<messageId>.json` key. If the prior tree does
-//     not show that inbox entry the transition is rejected so a
-//     direct write into `processing/` cannot bypass the inbox.
+//     `<receivedAt>-<identity>.json` key whose body names the same
+//     message (`messageId`, `authenticatedSender` and `deliveryKey`).
+//     If the prior tree does not show that inbox entry the transition
+//     is rejected so a direct write into `processing/` cannot bypass
+//     the inbox.
 //   - Processing→consumed transition: a consumed entry that is
 //     newly added (not present in the prior tree) must be backed by
 //     a processing entry in the prior tree at the same address with
-//     the same messageId. The receivedAt and messageId carried in
-//     the prior processing envelope must equal the values carried in
-//     the new consumed envelope so the audit trail is unambiguous.
+//     the same identity. The receivedAt, `messageId`,
+//     `authenticatedSender` and `deliveryKey` carried in the prior
+//     processing envelope must equal the values carried in the new
+//     consumed envelope so the audit trail is unambiguous.
 //
 // Authz:
 //   - `hub` principal: full access.
@@ -166,9 +188,13 @@
 import fs from "node:fs";
 import { type } from "arktype";
 import { getLogger } from "@intx/log";
+import { deriveDeliveryKey } from "@intx/types/message-id";
+import { StepStateSnapshot } from "@intx/types/step-state-snapshot";
 import { deriveWorkflowRunRepoId } from "@intx/workflow-deploy/addresses";
+import { parseMailboxIndex, type MailboxIndex } from "./mailbox-index";
 import {
   authorizeUserPrincipal,
+  NoBlobAtPathError,
   type AuthorizeFn,
   type CommittedReads,
   type CommittedTreeEntry,
@@ -185,6 +211,15 @@ import {
   splitCombinedEventLog,
   encodeCombinedEventLog,
 } from "./workflow-run-event-log";
+import {
+  STEP_STATE_CHECKPOINT_FILE,
+  STEP_STATE_CHECKPOINT_META_FILE,
+  STEP_STATE_WAL_DIR,
+  StepStateCheckpoint,
+  StepStateCheckpointMeta,
+  StepStateWalEntry,
+  stepStateWalBucket,
+} from "./step-state";
 
 const logger = getLogger(["hub-sessions", "workflow-run-kind"]);
 
@@ -239,15 +274,58 @@ export const WORKFLOW_RUN_CONSUMED_DIR = "consumed";
  * (image/audio/video/document mail parts) is committed here as real
  * files rather than inlined into the JSON event log, whose serialization
  * boundary would corrupt binary bytes. The layout is
- * `runs/<runId>/parts/<urlEncoded(messageId)>/<index>-<name>`: one
- * directory per inbound message (so a long-lived run's successive turns
- * never collide), and one file per mail part carrying its verbatim
- * bytes. The workflow-host ingest writes the bytes and records a
- * lightweight `{ name, contentType, ref }` reference into the run's
- * trigger / signal payload; the step invoker reads the bytes back at
- * `agent.send` time. Files are immutable once written, like `blobs/`.
+ * `runs/<runId>/parts/<urlEncoded(identity)>/<index>-<name>`, where the
+ * identity is the inbound message's claim-check identity (see
+ * `claimCheckIdentity`): one directory per inbound message (so a
+ * long-lived run's successive turns never collide), and one file per
+ * mail part carrying its verbatim bytes. The workflow-host ingest writes
+ * the bytes and records a lightweight `{ name, contentType, ref }`
+ * reference into the run's trigger / signal payload; the step invoker
+ * reads the bytes back at `agent.send` time. Files are immutable once
+ * written, like `blobs/`.
  */
 export const WORKFLOW_RUN_PARTS_DIR = "parts";
+
+/**
+ * Per-run step subtree. Each agent step of the run keeps its durable state
+ * (conversation turns, pending operations, token usage, reply-thread state)
+ * at `runs/<runId>/steps/<urlEncoded(stepId)>/state/` in the step-state
+ * format (`step-state.ts`), so the Hub's copy of the repo carries everything
+ * a replacement host needs to continue the step. Unlike the rest of the run
+ * directory the state is MUTABLE: each mirror boundary appends a WAL entry,
+ * and compaction rewrites the checkpoint and truncates the WAL. It is therefore
+ * exempt from the append-only and immutability walks; its push-time
+ * constraints are shape and envelope checks (`validateRunStepsSubtree`).
+ */
+export const WORKFLOW_RUN_STEPS_DIR = "steps";
+export const WORKFLOW_RUN_STEP_STATE_DIR = "state";
+
+/**
+ * A step's seed: a `StepStateSnapshot` the Hub commits beside the step's
+ * `state/` for the step to start from. The step starts from it whenever it
+ * has no state of its own, which covers its first turn and a retried attempt
+ * that starts over. It sits outside `state/` so a checkpoint rewrite never
+ * clears it. Only a `hub` principal adds one, and it is immutable once
+ * written: a push may neither change nor remove it.
+ */
+export const WORKFLOW_RUN_STEP_SEED_FILE = "seed.json";
+
+/**
+ * The repo-relative state directory of one step of one run, with a trailing
+ * slash. The step id is URL-encoded so a scoped `map` iteration id
+ * (`<base>[<index>]`) stays a single path segment.
+ */
+export function workflowRunStepStatePrefix(
+  runId: string,
+  stepId: string,
+): string {
+  return `${WORKFLOW_RUN_RUNS_PREFIX}/${runId}/${WORKFLOW_RUN_STEPS_DIR}/${encodeURIComponent(stepId)}/${WORKFLOW_RUN_STEP_STATE_DIR}/`;
+}
+
+/** The repo-relative path of one step's seed (`WORKFLOW_RUN_STEP_SEED_FILE`). */
+export function workflowRunStepSeedPath(runId: string, stepId: string): string {
+  return `${WORKFLOW_RUN_RUNS_PREFIX}/${runId}/${WORKFLOW_RUN_STEPS_DIR}/${encodeURIComponent(stepId)}/${WORKFLOW_RUN_STEP_SEED_FILE}`;
+}
 
 /**
  * Filename of the per-address retention watermark blob, a direct child
@@ -293,22 +371,6 @@ export const WORKFLOW_RUN_WATERMARK_FILE = "watermark.json";
 export const DEFAULT_CONSUMED_RETENTION_MS = 24 * 60 * 60 * 1000;
 
 /**
- * Per-agent durable conversation-state subtree (design §3c). A
- * long-lived single-step agent's multi-turn conversation context is
- * committed under `agent-state/<agentKey>/...` so it survives child
- * respawn: on respawn the rebuilt warm agent reads its prior
- * conversation back from here before the resumed run replays.
- *
- * Unlike `runs/` (append-only events, immutable blobs) this subtree is
- * MUTABLE: each run boundary overwrites the agent's conversation
- * snapshot with the latest turns. It is therefore exempt from the
- * append-only / deletion-direction walks `runs/` is subject to; the
- * only push-time constraint is segment shape (a single round-trip-safe
- * `<agentKey>` directory layer below the prefix).
- */
-export const WORKFLOW_RUN_AGENT_STATE_PREFIX = "agent-state";
-
-/**
  * Conversational-mailbox subtree for the warm single-step agent. The
  * substrate mailbox backing commits the agent's durable inbox under
  * `mailbox/INBOX/` so the full message history replicates to the hub
@@ -326,11 +388,10 @@ export const WORKFLOW_RUN_AGENT_STATE_PREFIX = "agent-state";
  *     like `runs/<runId>/blobs/`. A prior `<uid>.eml` may be ABSENT from
  *     the prospective tree — that is the warm agent expunging a message.
  *     The raw bytes are not lost: they stay reachable through the parent
- *     commit, and a `workflow-run` repo's objects are never GC'd (its
- *     kind is off the GC allow-list), so an expunged message survives in
- *     history for the life of the run repo. The audit trail rests on
- *     "these objects are never pruned", not on the live tree being
- *     monotonic.
+ *     commit, and a `workflow-run` repo's objects are never GC'd, so an
+ *     expunged message survives in history for the life of the run repo. The
+ *     audit trail rests on "these objects are never pruned", not on the live
+ *     tree being monotonic.
  *
  * The only entries permitted under `mailbox/` are the `INBOX/`
  * directory; the only entries permitted under `mailbox/INBOX/` are
@@ -348,7 +409,6 @@ export const WORKFLOW_RUN_MAILBOX_INDEX_FILE = "index.json";
 const ALLOWED_TOP_LEVEL = new Set<string>([
   WORKFLOW_RUN_RUNS_PREFIX,
   WORKFLOW_RUN_ADDRESSES_PREFIX,
-  WORKFLOW_RUN_AGENT_STATE_PREFIX,
   WORKFLOW_RUN_MAILBOX_PREFIX,
   WORKFLOW_RUN_GITIGNORE_PATH,
 ]);
@@ -418,7 +478,7 @@ const BLOB_FILENAME_RE = /^[0-9a-f]{64}$/;
 
 /**
  * Per-mail-part filename shape for the
- * `runs/<runId>/parts/<urlEncoded(messageId)>/` subtree:
+ * `runs/<runId>/parts/<urlEncoded(identity)>/` subtree:
  * `<index>-<name>`, where `index` is the decimal position of the
  * mail part within its inbound message and `name` is a non-empty
  * (possibly sanitized) filename. The workflow-host ingest owns the exact
@@ -432,10 +492,11 @@ const PART_FILENAME_RE = /^(0|[1-9][0-9]*)-(.+)$/;
 /**
  * Maximum byte length of a single mail part path component (the
  * URL-encoded message segment, and each `<index>-<name>` filename).
- * messageIds and mail part names arrive from untrusted inbound mail;
- * an over-long RFC 5322 message-id URL-encodes past the filesystem's
- * 255-byte component limit and would otherwise fail at disk-write time,
- * downstream of validation. Reject it at the boundary instead.
+ * A legacy identity (a bare Message-ID) and mail part names arrive from
+ * untrusted inbound mail; an over-long RFC 5322 message-id URL-encodes
+ * past the filesystem's 255-byte component limit and would otherwise fail
+ * at disk-write time, downstream of validation. Reject it at the boundary
+ * instead.
  */
 export const MAX_MAIL_PART_PATH_COMPONENT_BYTES = 255;
 
@@ -466,68 +527,69 @@ const RUN_DIR_ALLOWED_CHILDREN = new Set<string>([
   // held immutable by the same blob OID comparison with the prior tree
   // as blobs.
   WORKFLOW_RUN_PARTS_DIR,
+  // Mutable per-step durable state. See WORKFLOW_RUN_STEPS_DIR; validated
+  // by validateRunStepsSubtree.
+  WORKFLOW_RUN_STEPS_DIR,
 ]);
 
 /**
  * Filename shape for inbox and processing entries:
- * `<receivedAt>-<messageId>.json`. `receivedAt` is a decimal integer
- * (epoch ms); `messageId` is captured as the rest of the basename and
- * is validated separately against the body's `messageId`.
+ * `<receivedAt>-<identity>.json`. `receivedAt` is a decimal integer
+ * (epoch ms); the identity is captured as the rest of the basename and
+ * is validated separately against the body (see `claimCheckIdentity`).
+ * The first group holds only digits, so the first `-` ends it and the
+ * parse is unambiguous whatever the identity holds.
  */
 const QUEUE_FILENAME_RE = /^(0|[1-9][0-9]*)-(.+)\.json$/;
 
-/** Filename shape for consumed entries: `<messageId>.json`. */
+/** Filename shape for consumed entries: `<identity>.json`. */
 const CONSUMED_FILENAME_RE = /^(.+)\.json$/;
 
 /**
  * JSON envelope carried by inbox and processing entries. Keys:
- *   - `messageId`: dedup key for the inbound message.
+ *   - `messageId`: the inbound message's Message-ID.
+ *   - `authenticatedSender` / `deliveryKey`: the hub-authenticated sender
+ *     and the delivery key derived from it and the Message-ID. Both are
+ *     present on a sender-scoped entry and both are absent on a legacy
+ *     entry; see `claimCheckIdentity`.
  *   - `receivedAt`: epoch-ms timestamp the reactor accepted the
  *     message; sortable FIFO key prefix.
  *   - `address`: decoded canonical address (not URL-encoded).
- *   - `mailAuditRef`: pointer to the raw mail bytes in the mail-audit
- *     store. For the in-process single-agent path a separate
- *     `MailAuditStore` holds the authoritative bytes and this ref joins
- *     onto it.
  *   - `rawMessage`: base64 of the inbound mail's raw MIME bytes,
- *     inlined so the workflow-process child can read its step input by
- *     messageId at `trigger.fired` time. The supervisor is the sole
+ *     inlined so the workflow-process child can read its step input at
+ *     `trigger.fired` time. The supervisor is the sole
  *     mail owner under the unified-execution host (§3a); it has no
  *     separate durable byte store the child can read, so the bytes ride
  *     the claim-check envelope itself. Present whenever the supervisor
- *     enqueued the entry; omitted by callers that only stamp the audit
- *     ref. The bytes survive the inbox→processing transition verbatim
+ *     enqueued the entry. The bytes survive the inbox→processing transition verbatim
  *     (the dequeue copies the entry bytes), so a `trigger.fired` for a
  *     processing entry can always recover the input.
  */
 const ClaimCheckEnvelope = type({
   messageId: "string > 0",
+  "authenticatedSender?": "string > 0",
+  "deliveryKey?": "string > 0",
   receivedAt: "number >= 0",
   address: "string > 0",
-  mailAuditRef: {
-    store: "string > 0",
-    path: "string > 0",
-  },
   "rawMessage?": "string > 0",
   "+": "ignore",
 });
 
 /**
  * JSON envelope carried by consumed entries. The consumed entry is the
- * canonical dedup index keyed by messageId; the envelope preserves
- * the originating receivedAt for audit and carries the runId that
- * consumed the message.
+ * canonical dedup index keyed by identity (see `claimCheckIdentity`); the
+ * envelope carries the processing entry's `messageId`,
+ * `authenticatedSender` and `deliveryKey`, preserves the originating
+ * receivedAt for audit, and carries the runId that consumed the message.
  */
 const ConsumedEnvelope = type({
   messageId: "string > 0",
+  "authenticatedSender?": "string > 0",
+  "deliveryKey?": "string > 0",
   receivedAt: "number >= 0",
   address: "string > 0",
   runId: "string > 0",
   consumedAt: "number >= 0",
-  mailAuditRef: {
-    store: "string > 0",
-    path: "string > 0",
-  },
   "rejection?": {
     code: "string > 0",
     message: "string > 0",
@@ -550,6 +612,89 @@ const WatermarkEnvelope = type({
 export type ClaimCheckEnvelope = typeof ClaimCheckEnvelope.infer;
 export type ConsumedEnvelope = typeof ConsumedEnvelope.infer;
 export type WatermarkEnvelope = typeof WatermarkEnvelope.infer;
+
+type MessageIdentityFields = {
+  messageId: string;
+  authenticatedSender?: string;
+  deliveryKey?: string;
+};
+
+/**
+ * The identity a claim-check entry is filed and de-duplicated under: its
+ * delivery key when it carries one, else its bare Message-ID. The envelope
+ * states which form it is; the identity string's shape never decides it,
+ * because a Message-ID can look like a delivery key.
+ */
+export function claimCheckIdentity(envelope: MessageIdentityFields): string {
+  return envelope.deliveryKey ?? envelope.messageId;
+}
+
+/**
+ * Check that an envelope's identity fields agree: a sender-scoped entry
+ * carries both `authenticatedSender` and `deliveryKey`, and the key is the
+ * one derived from the sender and the Message-ID, which binds the filename
+ * to both. A legacy entry carries neither. Returns a rejection reason, or
+ * `null` when the fields agree.
+ */
+async function checkEnvelopeIdentity(
+  envelope: MessageIdentityFields,
+): Promise<string | null> {
+  const { authenticatedSender, deliveryKey, messageId } = envelope;
+  if (authenticatedSender === undefined && deliveryKey === undefined) {
+    return null;
+  }
+  if (authenticatedSender === undefined || deliveryKey === undefined) {
+    return "carries only one of authenticatedSender and deliveryKey";
+  }
+  if (authenticatedSender.includes("\0")) {
+    return "authenticatedSender contains NUL";
+  }
+  if (
+    deliveryKey !== (await deriveDeliveryKey(authenticatedSender, messageId))
+  ) {
+    return `deliveryKey ${JSON.stringify(deliveryKey)} is not the key of its authenticatedSender and messageId`;
+  }
+  return null;
+}
+
+/**
+ * Whether two envelopes name the same message: equal Message-ID, sender and
+ * delivery key, each by presence and by value. Equal identities alone are not
+ * enough, because a legacy identity and a delivery key can be one string.
+ */
+function sameMessage(
+  a: MessageIdentityFields,
+  b: MessageIdentityFields,
+): boolean {
+  return (
+    a.messageId === b.messageId &&
+    a.authenticatedSender === b.authenticatedSender &&
+    a.deliveryKey === b.deliveryKey
+  );
+}
+
+/**
+ * Parse an inbox or processing filename into its receivedAt and identity,
+ * or `null` when the name does not have the queue shape.
+ */
+function parseQueueFilename(
+  name: string,
+): { receivedAt: number; identity: string } | null {
+  const match = QUEUE_FILENAME_RE.exec(name);
+  if (match?.[1] === undefined || match[2] === undefined) return null;
+  return { receivedAt: Number.parseInt(match[1], 10), identity: match[2] };
+}
+
+/**
+ * The queue entry filed under exactly `identity`. A suffix match would also
+ * take `<receivedAt>-x-<identity>.json`, whose identity is `x-<identity>`.
+ */
+function findQueueEntry<T extends { name: string }>(
+  entries: readonly T[],
+  identity: string,
+): T | undefined {
+  return entries.find((e) => parseQueueFilename(e.name)?.identity === identity);
+}
 
 /**
  * Terminal event discriminators mapped to the `workflow_run.status` value
@@ -696,26 +841,91 @@ type RunEventBlob = {
  * never touches `runs/` -- e.g. a claim-check write under `addresses/`
  * -- contributes no run ids; an empty result set means the commit
  * touched no run, so the per-run walks legitimately validate nothing.
+ * A prefix inside a run's `steps/` subtree contributes no run id either:
+ * it cannot reach the run's events, blobs, or mail parts, which the steps
+ * walk leaves to these per-run walks.
  */
 function runScopeFromChangedPrefixes(
   changedPathPrefixes: ReadonlySet<string> | undefined,
 ): Set<string> | undefined {
   if (changedPathPrefixes === undefined) return undefined;
-  const runsPrefix = `${WORKFLOW_RUN_RUNS_PREFIX}/`;
   const runIds = new Set<string>();
   for (const prefix of changedPathPrefixes) {
-    if (prefix === WORKFLOW_RUN_RUNS_PREFIX || prefix === runsPrefix) {
-      // The `runs/` subtree changed but the substrate could not name
-      // which run; fall back to validating every run.
-      return undefined;
-    }
-    if (!prefix.startsWith(runsPrefix)) continue;
-    const rest = prefix.slice(runsPrefix.length);
-    const slash = rest.indexOf("/");
-    if (slash <= 0) return undefined;
-    runIds.add(rest.slice(0, slash));
+    const parsed = parseRunChangePrefix(prefix);
+    if (parsed === "unbounded") return undefined;
+    if (parsed === null || parsed.withinSteps) continue;
+    runIds.add(parsed.runId);
   }
   return runIds;
+}
+
+/**
+ * The steps a commit could have touched, per run: a run id maps to the set
+ * of URL-encoded step segments changed under its `steps/` subtree, or to
+ * `"all"` when the change covers the run's whole `steps/` subtree. Returns
+ * `undefined` (validate every run's steps) under the same conditions as
+ * `runScopeFromChangedPrefixes`.
+ */
+function stepScopeFromChangedPrefixes(
+  changedPathPrefixes: ReadonlySet<string> | undefined,
+): Map<string, Set<string> | "all"> | undefined {
+  if (changedPathPrefixes === undefined) return undefined;
+  const scope = new Map<string, Set<string> | "all">();
+  for (const prefix of changedPathPrefixes) {
+    const parsed = parseRunChangePrefix(prefix);
+    if (parsed === "unbounded") return undefined;
+    if (parsed === null) continue;
+    const current = scope.get(parsed.runId);
+    if (current === "all") continue;
+    if (!parsed.withinSteps || parsed.stepSegment === null) {
+      scope.set(parsed.runId, "all");
+      continue;
+    }
+    const segments = current ?? new Set<string>();
+    segments.add(parsed.stepSegment);
+    scope.set(parsed.runId, segments);
+  }
+  return scope;
+}
+
+/**
+ * Classify one changed-path prefix against the `runs/` layout: `null` when
+ * it lies outside `runs/`, `"unbounded"` when it reaches into `runs/`
+ * without naming a run, and otherwise the run it names plus whether it lies
+ * within that run's `steps/` subtree (and which step segment, when it names
+ * one). A component only counts as named once the prefix carries its
+ * trailing slash: `runs/abc` is also a string prefix of `runs/abcd/`, so it
+ * names no single run.
+ */
+function parseRunChangePrefix(prefix: string):
+  | null
+  | "unbounded"
+  | {
+      runId: string;
+      withinSteps: boolean;
+      stepSegment: string | null;
+    } {
+  const runsPrefix = `${WORKFLOW_RUN_RUNS_PREFIX}/`;
+  if (prefix === WORKFLOW_RUN_RUNS_PREFIX || prefix === runsPrefix) {
+    return "unbounded";
+  }
+  if (!prefix.startsWith(runsPrefix)) return null;
+  const rest = prefix.slice(runsPrefix.length);
+  const runSlash = rest.indexOf("/");
+  if (runSlash <= 0) return "unbounded";
+  const runId = rest.slice(0, runSlash);
+  const inRun = rest.slice(runSlash + 1);
+  const stepsDir = `${WORKFLOW_RUN_STEPS_DIR}/`;
+  if (!inRun.startsWith(stepsDir)) {
+    return { runId, withinSteps: false, stepSegment: null };
+  }
+  const inSteps = inRun.slice(stepsDir.length);
+  const stepSlash = inSteps.indexOf("/");
+  return {
+    runId,
+    withinSteps: true,
+    stepSegment: stepSlash <= 0 ? null : inSteps.slice(0, stepSlash),
+  };
 }
 
 /**
@@ -763,7 +973,7 @@ async function enumerateEventBlobs(
     if (offender !== undefined) {
       return {
         ok: false,
-        reason: `run directory ${runDirPath} contains unexpected entry ${JSON.stringify(offender)}; only "${WORKFLOW_RUN_EVENTS_DIR}", "${WORKFLOW_RUN_BLOBS_DIR}", "${WORKFLOW_RUN_EVENTS_FILE}", "${WORKFLOW_RUN_GRANTS_FILE}", and "${WORKFLOW_RUN_PARTS_DIR}" are allowed`,
+        reason: `run directory ${runDirPath} contains unexpected entry ${JSON.stringify(offender)}; only "${WORKFLOW_RUN_EVENTS_DIR}", "${WORKFLOW_RUN_BLOBS_DIR}", "${WORKFLOW_RUN_EVENTS_FILE}", "${WORKFLOW_RUN_GRANTS_FILE}", "${WORKFLOW_RUN_PARTS_DIR}", and "${WORKFLOW_RUN_STEPS_DIR}" are allowed`,
       };
     }
     const hasCombined = runChildren.includes(WORKFLOW_RUN_EVENTS_FILE);
@@ -779,15 +989,19 @@ async function enumerateEventBlobs(
     if (hasCombined) continue;
     if (!hasPerEvent) {
       // The pre-first-event window: `grants.json` (the hub's `run.grants`
-      // frame writes grants ahead of the trigger) and `parts/` (the
+      // frame writes grants ahead of the trigger), `parts/` (the
       // supervisor commits inbound-mail mail part bytes before firing the
-      // trigger) may both land before the child emits its first event. Carry
-      // such a run forward untouched -- there is no event log to enumerate
-      // yet, and the mail parts subtree is validated by its own walk. Any
-      // other events-less shape (e.g. a bare `blobs/` with no events) remains
-      // rejected below.
+      // trigger), and `steps/` (step state is independent of the event log)
+      // may all land before the child emits its first event. Carry such a
+      // run forward untouched -- there is no event log to enumerate yet, and
+      // the mail parts and steps subtrees are validated by their own walks.
+      // Any other events-less shape (e.g. a bare `blobs/` with no events)
+      // remains rejected below.
       const nonPreEvent = runChildren.filter(
-        (c) => c !== WORKFLOW_RUN_GRANTS_FILE && c !== WORKFLOW_RUN_PARTS_DIR,
+        (c) =>
+          c !== WORKFLOW_RUN_GRANTS_FILE &&
+          c !== WORKFLOW_RUN_PARTS_DIR &&
+          c !== WORKFLOW_RUN_STEPS_DIR,
       );
       if (nonPreEvent.length === 0) {
         continue;
@@ -1097,10 +1311,11 @@ type RunPartEntry = {
 
 /**
  * Walk every `runs/<runId>/parts/<messageSegment>/` directory and
- * validate each entry: the `<messageSegment>` is a URL-encoded messageId
- * that must round-trip cleanly (the same canonical-encoding discipline the
- * claim-check `addresses/` subtree enforces) and stay within the path-
- * component byte cap, must be a directory rather than a dangling blob, and
+ * validate each entry: the `<messageSegment>` is a URL-encoded claim-check
+ * identity (see `claimCheckIdentity`) that must round-trip cleanly (the
+ * same canonical-encoding discipline the claim-check `addresses/` subtree
+ * enforces) and stay within the path-component byte cap, must be a
+ * directory rather than a dangling blob, and
  * each filename matches the `<index>-<name>` shape within the same cap. The
  * `parts/` subdirectory is optional: a run that never received a
  * non-text inbound message never produces one. Returns the flat entry list
@@ -1149,9 +1364,8 @@ async function enumerateRunParts(
       // A message segment must be a directory carrying at least one
       // mail part file. An empty listing means either a dangling blob
       // committed directly at `parts/<segment>` (the substrate lists a
-      // blob path as empty, exactly as the agent-state walk detects) or an
-      // empty directory; both are rejected so untrusted inbound content has
-      // no silent-accept path.
+      // blob path as empty) or an empty directory; both are rejected so
+      // untrusted inbound content has no silent-accept path.
       if (filenames.length === 0) {
         return {
           ok: false,
@@ -1264,6 +1478,363 @@ async function validateRunPartsSubtree(args: {
   return { ok: true };
 }
 
+/** A WAL bucket directory name: a decimal integer. */
+const STEP_STATE_WAL_BUCKET_RE = /^(0|[1-9][0-9]*)$/;
+
+/** A WAL entry filename: `<seq>.json` with a decimal seq. */
+const STEP_STATE_WAL_ENTRY_RE = /^(0|[1-9][0-9]*)\.json$/;
+
+type StepsWalkArgs = {
+  listDir: (path: string) => Promise<string[]>;
+  readBlob: (path: string) => Promise<Uint8Array>;
+  priorListDir: (path: string) => Promise<string[]>;
+  prospectiveListing: TreeListing;
+  priorListing: TreeListing;
+};
+
+/**
+ * Validate the per-run `steps/` subtree (see `WORKFLOW_RUN_STEPS_DIR`) for
+ * the steps `scope` names, or every run's steps when it is `undefined`.
+ * Each `steps/<segment>` must round-trip URL-encoding and hold a `state/`
+ * directory, a seed (`WORKFLOW_RUN_STEP_SEED_FILE`), or both. The state
+ * directory follows the step-state layout: the checkpoint pair, present
+ * together or not at all, and `wal/<bucket>/<seq>.json` entries whose
+ * bucket matches their seq and whose seqs run contiguously from the
+ * checkpoint's. State blobs this commit added or changed must carry the
+ * step-state JSON envelope, a WAL entry's `seq` must match its filename,
+ * and a changed checkpoint pair must agree on its turn count. The state is
+ * mutable, so for it the prior tree only decides which blobs changed. A
+ * seed is not: only the Hub adds one (`principal` of kind `hub`, which also
+ * carries a replayed history onto a sidecar), it must be a valid
+ * `StepStateSnapshot`, and one in the prior tree must survive byte for byte.
+ */
+async function validateRunStepsSubtree(
+  args: StepsWalkArgs & {
+    scope: ReadonlyMap<string, ReadonlySet<string> | "all"> | undefined;
+    principal: Principal;
+  },
+): Promise<ValidatePushResult> {
+  const changed = createStepStateChangeCheck(args);
+  // Unscoped, the prior tree's runs are walked too, so that dropping a whole
+  // run directory cannot take a seed with it unchecked.
+  const runIds =
+    args.scope === undefined
+      ? new Set([
+          ...(await args.listDir(WORKFLOW_RUN_RUNS_PREFIX)),
+          ...(await args.priorListDir(WORKFLOW_RUN_RUNS_PREFIX)),
+        ])
+      : args.scope.keys();
+  for (const runId of runIds) {
+    const runDirPath = `${WORKFLOW_RUN_RUNS_PREFIX}/${runId}`;
+    const stepsDirPath = `${runDirPath}/${WORKFLOW_RUN_STEPS_DIR}`;
+    if (await isStepsSubtreeUnchanged(args, stepsDirPath)) {
+      continue;
+    }
+    const scoped = args.scope?.get(runId);
+    const inScope = (segment: string) =>
+      scoped === undefined || scoped === "all" || scoped.has(segment);
+    const retained = await checkStepSeedsRetained(args, stepsDirPath, inScope);
+    if (!retained.ok) return retained;
+    if (!(await args.listDir(runDirPath)).includes(WORKFLOW_RUN_STEPS_DIR)) {
+      continue;
+    }
+    const present = await args.listDir(stepsDirPath);
+    if (present.length === 0) {
+      return {
+        ok: false,
+        reason: `${stepsDirPath} is not a directory of step state`,
+      };
+    }
+    for (const segment of present.filter(inScope)) {
+      const result = await validateStepStateDir(
+        args,
+        changed,
+        stepsDirPath,
+        segment,
+        args.principal,
+      );
+      if (!result.ok) return result;
+    }
+  }
+  return { ok: true };
+}
+
+/**
+ * Whether a run's `steps/` subtree is the same tree object as in the prior
+ * tree. Git is content-addressed, so every step directory and seed under it
+ * is then exactly what the prior tree held, validated when it was written,
+ * and a commit that only appends events need not walk it again. Both sides
+ * must also list it as a directory, since an entry whose mode changed keeps
+ * its object id.
+ */
+async function isStepsSubtreeUnchanged(
+  args: StepsWalkArgs,
+  stepsDirPath: string,
+): Promise<boolean> {
+  const [next, prior] = await Promise.all([
+    entryAt(args.prospectiveListing, stepsDirPath),
+    entryAt(args.priorListing, stepsDirPath),
+  ]);
+  if (next === undefined || next.oid !== prior?.oid) return false;
+  const [nextSteps, priorSteps] = await Promise.all([
+    args.listDir(stepsDirPath),
+    args.priorListDir(stepsDirPath),
+  ]);
+  return nextSteps.length > 0 && priorSteps.length > 0;
+}
+
+/**
+ * Reject a push that drops a seed the prior tree carries, whether it removes
+ * the seed alone or the step or run directory holding it. That a surviving
+ * seed kept its bytes is checked where the step directory is validated.
+ */
+async function checkStepSeedsRetained(
+  args: StepsWalkArgs,
+  stepsDirPath: string,
+  inScope: (segment: string) => boolean,
+): Promise<ValidatePushResult> {
+  for (const segment of await args.priorListDir(stepsDirPath)) {
+    if (!inScope(segment)) continue;
+    const stepPath = `${stepsDirPath}/${segment}`;
+    if (
+      !(await args.priorListDir(stepPath)).includes(WORKFLOW_RUN_STEP_SEED_FILE)
+    ) {
+      continue;
+    }
+    if (!(await args.listDir(stepPath)).includes(WORKFLOW_RUN_STEP_SEED_FILE)) {
+      return {
+        ok: false,
+        reason: `step seed ${stepPath}/${WORKFLOW_RUN_STEP_SEED_FILE} present in the prior tree is missing from the prospective tree; a step's seed is immutable once written`,
+      };
+    }
+  }
+  return { ok: true };
+}
+
+async function validateStepStateDir(
+  args: StepsWalkArgs,
+  changed: (blobPath: string) => Promise<boolean>,
+  stepsDirPath: string,
+  segment: string,
+  principal: Principal,
+): Promise<ValidatePushResult> {
+  const roundTrip = checkUrlSegmentRoundTrip(segment);
+  if (!roundTrip.ok) {
+    return {
+      ok: false,
+      reason: `step ${roundTrip.reason} under ${stepsDirPath}`,
+    };
+  }
+  const stepPath = `${stepsDirPath}/${segment}`;
+  const stepChildren = await args.listDir(stepPath);
+  if (stepChildren.length === 0) {
+    return {
+      ok: false,
+      reason: `${stepPath} is not a directory of step state`,
+    };
+  }
+  const unexpected = stepChildren.find(
+    (child) =>
+      child !== WORKFLOW_RUN_STEP_STATE_DIR &&
+      child !== WORKFLOW_RUN_STEP_SEED_FILE,
+  );
+  if (unexpected !== undefined) {
+    return {
+      ok: false,
+      reason: `step directory ${stepPath} contains unexpected entry ${JSON.stringify(unexpected)}; only "${WORKFLOW_RUN_STEP_STATE_DIR}" and "${WORKFLOW_RUN_STEP_SEED_FILE}" are allowed`,
+    };
+  }
+  if (stepChildren.includes(WORKFLOW_RUN_STEP_SEED_FILE)) {
+    const seedPath = `${stepPath}/${WORKFLOW_RUN_STEP_SEED_FILE}`;
+    if (await changed(seedPath)) {
+      if (
+        (await args.priorListDir(stepPath)).includes(
+          WORKFLOW_RUN_STEP_SEED_FILE,
+        )
+      ) {
+        return {
+          ok: false,
+          reason: `step seed ${seedPath} diverges from the prior tree; a step's seed is immutable once written`,
+        };
+      }
+      if (principal.kind !== "hub") {
+        return {
+          ok: false,
+          reason: `step seed ${seedPath} was added by a ${JSON.stringify(principal.kind)} principal; only the Hub writes a step's seed`,
+        };
+      }
+      const seed = await parseStepStateBlob(args, seedPath, StepStateSnapshot);
+      if (!seed.ok) return seed;
+    }
+  }
+  if (!stepChildren.includes(WORKFLOW_RUN_STEP_STATE_DIR)) {
+    return { ok: true };
+  }
+  const statePath = `${stepPath}/${WORKFLOW_RUN_STEP_STATE_DIR}`;
+  const stateChildren = await args.listDir(statePath);
+  if (stateChildren.length === 0) {
+    return {
+      ok: false,
+      reason: `${statePath} is not a directory of step state`,
+    };
+  }
+  const allowed = [
+    STEP_STATE_CHECKPOINT_FILE,
+    STEP_STATE_CHECKPOINT_META_FILE,
+    STEP_STATE_WAL_DIR,
+  ];
+  const offender = stateChildren.find((child) => !allowed.includes(child));
+  if (offender !== undefined) {
+    return {
+      ok: false,
+      reason: `step state ${statePath} contains unexpected entry ${JSON.stringify(offender)}; only "${STEP_STATE_CHECKPOINT_FILE}", "${STEP_STATE_CHECKPOINT_META_FILE}", and "${STEP_STATE_WAL_DIR}" are allowed`,
+    };
+  }
+  const checkpointPath = `${statePath}/${STEP_STATE_CHECKPOINT_FILE}`;
+  const metaPath = `${statePath}/${STEP_STATE_CHECKPOINT_META_FILE}`;
+  const hasCheckpoint = stateChildren.includes(STEP_STATE_CHECKPOINT_FILE);
+  if (
+    hasCheckpoint !== stateChildren.includes(STEP_STATE_CHECKPOINT_META_FILE)
+  ) {
+    return {
+      ok: false,
+      reason: `step state ${statePath} carries only one of "${STEP_STATE_CHECKPOINT_FILE}" and "${STEP_STATE_CHECKPOINT_META_FILE}"; the checkpoint pair is written together`,
+    };
+  }
+
+  const walEntries: { seq: number; path: string }[] = [];
+  if (stateChildren.includes(STEP_STATE_WAL_DIR)) {
+    const walPath = `${statePath}/${STEP_STATE_WAL_DIR}`;
+    const buckets = await args.listDir(walPath);
+    if (buckets.length === 0) {
+      return { ok: false, reason: `${walPath} is not a directory` };
+    }
+    for (const bucket of buckets) {
+      if (!STEP_STATE_WAL_BUCKET_RE.test(bucket)) {
+        return {
+          ok: false,
+          reason: `step state WAL bucket ${walPath}/${bucket} is not a decimal bucket number`,
+        };
+      }
+      const bucketPath = `${walPath}/${bucket}`;
+      const files = await args.listDir(bucketPath);
+      if (files.length === 0) {
+        return { ok: false, reason: `${bucketPath} is not a directory` };
+      }
+      for (const file of files) {
+        const match = STEP_STATE_WAL_ENTRY_RE.exec(file);
+        const seqStr = match?.[1];
+        if (seqStr === undefined) {
+          return {
+            ok: false,
+            reason: `step state WAL entry ${bucketPath}/${file} does not match <seq>.json`,
+          };
+        }
+        const seq = Number.parseInt(seqStr, 10);
+        if (String(stepStateWalBucket(seq)) !== bucket) {
+          return {
+            ok: false,
+            reason: `step state WAL entry ${bucketPath}/${file} belongs in bucket ${String(stepStateWalBucket(seq))}`,
+          };
+        }
+        walEntries.push({ seq, path: `${bucketPath}/${file}` });
+      }
+    }
+  }
+
+  let checkpointSeq = 0;
+  if (hasCheckpoint) {
+    const meta = await parseStepStateBlob(
+      args,
+      metaPath,
+      StepStateCheckpointMeta,
+    );
+    if (!meta.ok) return meta;
+    checkpointSeq = meta.value.checkpointSeq;
+    if ((await changed(metaPath)) || (await changed(checkpointPath))) {
+      const checkpoint = await parseStepStateBlob(
+        args,
+        checkpointPath,
+        StepStateCheckpoint,
+      );
+      if (!checkpoint.ok) return checkpoint;
+      if (checkpoint.value.turns.length !== meta.value.turnCount) {
+        return {
+          ok: false,
+          reason: `step state ${checkpointPath} carries ${String(checkpoint.value.turns.length)} turns but ${metaPath} reports turnCount ${String(meta.value.turnCount)}`,
+        };
+      }
+    }
+  }
+
+  walEntries.sort((a, b) => a.seq - b.seq);
+  for (const [index, entry] of walEntries.entries()) {
+    const expected = checkpointSeq + index;
+    if (entry.seq !== expected) {
+      return {
+        ok: false,
+        reason: `step state WAL under ${statePath} is not contiguous from checkpoint seq ${String(checkpointSeq)}: expected seq ${String(expected)}, found ${String(entry.seq)}`,
+      };
+    }
+    if (!(await changed(entry.path))) continue;
+    const parsed = await parseStepStateBlob(
+      args,
+      entry.path,
+      StepStateWalEntry,
+    );
+    if (!parsed.ok) return parsed;
+    if (parsed.value.seq !== entry.seq) {
+      return {
+        ok: false,
+        reason: `step state WAL entry ${entry.path} carries seq ${String(parsed.value.seq)}`,
+      };
+    }
+  }
+  return { ok: true };
+}
+
+/**
+ * True when the blob at `blobPath` is new in this commit or its bytes differ
+ * from the prior tree's, compared by git blob OID. A blob the commit carried
+ * forward unchanged was validated when it was written.
+ */
+function createStepStateChangeCheck(
+  args: StepsWalkArgs,
+): (blobPath: string) => Promise<boolean> {
+  return async (blobPath) => {
+    const before = await blobOidAt(args.priorListing, blobPath);
+    if (before === null) return true;
+    return (await blobOidAt(args.prospectiveListing, blobPath)) !== before;
+  };
+}
+
+async function parseStepStateBlob<T>(
+  args: StepsWalkArgs,
+  blobPath: string,
+  schema: (data: unknown) => T | type.errors,
+): Promise<{ ok: true; value: T } | { ok: false; reason: string }> {
+  if ((await args.listDir(blobPath)).length > 0) {
+    return { ok: false, reason: `step state ${blobPath} is a directory` };
+  }
+  let body: unknown;
+  try {
+    body = JSON.parse(new TextDecoder().decode(await args.readBlob(blobPath)));
+  } catch (cause) {
+    return {
+      ok: false,
+      reason: `step state ${blobPath} is not valid JSON: ${cause instanceof Error ? cause.message : String(cause)}`,
+    };
+  }
+  const validated = schema(body);
+  if (validated instanceof type.errors) {
+    return {
+      ok: false,
+      reason: `step state ${blobPath} failed validation: ${validated.summary}`,
+    };
+  }
+  return { ok: true, value: validated };
+}
+
 /**
  * Hold a blob retained from the prior tree unchanged. Git trees are
  * content addressed, so the blob OIDs that the two listings carry prove
@@ -1307,6 +1878,7 @@ async function parseEventBlob(
   try {
     raw = await readBlob(entry.blobPath);
   } catch (cause) {
+    if (!(cause instanceof NoBlobAtPathError)) throw cause;
     return {
       ok: false,
       reason: `event ${entry.blobPath} could not be read from the tree: ${
@@ -1391,8 +1963,8 @@ async function parseEventBlobCached(
  * value, which would leave consumers guessing which encoding to use
  * when reading the subtree. Surface as a concrete rejection at push
  * time. Shared by every subtree that keys a directory by an
- * `encodeURIComponent`-encoded identity (`addresses/`, `agent-state/`,
- * and the per-run `parts/` message segment); callers prepend
+ * `encodeURIComponent`-encoded identity (`addresses/` and the per-run
+ * `parts/` message segment); callers prepend
  * their own subtree context to the returned reason.
  */
 function checkUrlSegmentRoundTrip(segment: string):
@@ -1432,15 +2004,15 @@ type ClaimCheckBlob = {
   filename: string;
   /**
    * Filename-extracted receivedAt for inbox / processing. Absent on
-   * consumed (which is keyed by messageId only).
+   * consumed (which is keyed by identity only).
    */
   receivedAtFromFilename: number | null;
   /**
-   * Filename-extracted messageId. For inbox / processing this is the
-   * post-dash tail of the basename; for consumed it is the bare
-   * basename.
+   * Filename-extracted identity (see `claimCheckIdentity`). For inbox /
+   * processing this is the post-dash tail of the basename; for consumed
+   * it is the bare basename.
    */
-  messageIdFromFilename: string;
+  identityFromFilename: string;
   blobPath: string;
   /**
    * Git blob object id of the entry, resolved for `consumed` entries
@@ -1457,7 +2029,7 @@ type ClaimCheckBlob = {
 /**
  * FIFO comparator for inbox/processing entries. Sorts by the parsed
  * numeric `receivedAt` (filename prefix); ties break on the
- * messageId tail. The numeric compare is the load-bearing piece —
+ * identity tail. The numeric compare is the load-bearing piece —
  * lexicographic compare on `<receivedAt>-…` filenames with
  * non-uniform digit widths disagrees with chronological order
  * (e.g. `"100-…"` < `"99-…"` because `'1' < '9'`).
@@ -1471,8 +2043,8 @@ function compareQueueEntries(a: ClaimCheckBlob, b: ClaimCheckBlob): number {
     );
   }
   if (aReceivedAt !== bReceivedAt) return aReceivedAt - bReceivedAt;
-  const aId = a.messageIdFromFilename;
-  const bId = b.messageIdFromFilename;
+  const aId = a.identityFromFilename;
+  const bId = b.identityFromFilename;
   if (aId < bId) return -1;
   if (aId > bId) return 1;
   return 0;
@@ -1535,19 +2107,11 @@ async function enumerateClaimCheckBlobs(
           subdir === WORKFLOW_RUN_INBOX_DIR ||
           subdir === WORKFLOW_RUN_PROCESSING_DIR
         ) {
-          const match = QUEUE_FILENAME_RE.exec(filename);
-          if (match === null) {
+          const parsed = parseQueueFilename(filename);
+          if (parsed === null) {
             return {
               ok: false,
-              reason: `${subdir} filename ${dirPath}/${filename} does not match <receivedAt>-<messageId>.json`,
-            };
-          }
-          const receivedAtStr = match[1];
-          const messageId = match[2];
-          if (receivedAtStr === undefined || messageId === undefined) {
-            return {
-              ok: false,
-              reason: `${subdir} filename ${dirPath}/${filename} produced no captures`,
+              reason: `${subdir} filename ${dirPath}/${filename} does not match <receivedAt>-<identity>.json`,
             };
           }
           const entry: ClaimCheckBlob = {
@@ -1555,8 +2119,8 @@ async function enumerateClaimCheckBlobs(
             addressSegment: segment,
             decodedAddress: roundTrip.decoded,
             filename,
-            receivedAtFromFilename: Number.parseInt(receivedAtStr, 10),
-            messageIdFromFilename: messageId,
+            receivedAtFromFilename: parsed.receivedAt,
+            identityFromFilename: parsed.identity,
             blobPath: `${dirPath}/${filename}`,
           };
           if (subdir === WORKFLOW_RUN_INBOX_DIR) bucket.inbox.push(entry);
@@ -1566,14 +2130,14 @@ async function enumerateClaimCheckBlobs(
           if (match === null) {
             return {
               ok: false,
-              reason: `${WORKFLOW_RUN_CONSUMED_DIR} filename ${dirPath}/${filename} does not match <messageId>.json`,
+              reason: `${WORKFLOW_RUN_CONSUMED_DIR} filename ${dirPath}/${filename} does not match <identity>.json`,
             };
           }
-          const messageId = match[1];
-          if (messageId === undefined) {
+          const identity = match[1];
+          if (identity === undefined) {
             return {
               ok: false,
-              reason: `${WORKFLOW_RUN_CONSUMED_DIR} filename ${dirPath}/${filename} produced no message-id capture`,
+              reason: `${WORKFLOW_RUN_CONSUMED_DIR} filename ${dirPath}/${filename} produced no identity capture`,
             };
           }
           const consumedBlobPath = `${dirPath}/${filename}`;
@@ -1583,7 +2147,7 @@ async function enumerateClaimCheckBlobs(
             decodedAddress: roundTrip.decoded,
             filename,
             receivedAtFromFilename: null,
-            messageIdFromFilename: messageId,
+            identityFromFilename: identity,
             blobPath: consumedBlobPath,
           };
           if (resolveConsumedOid !== undefined) {
@@ -1594,7 +2158,7 @@ async function enumerateClaimCheckBlobs(
       }
     }
     // FIFO ordering: sort by the parsed numeric receivedAt prefix
-    // with a lexicographic messageId tiebreak. String-sorting the
+    // with a lexicographic identity tiebreak. String-sorting the
     // raw filename would put "99-…" after "100-…" because '9' > '1',
     // breaking the FIFO invariant for non-uniform digit widths.
     bucket.inbox.sort(compareQueueEntries);
@@ -1623,6 +2187,7 @@ async function readWatermark(
   try {
     raw = await readBlob(watermarkPath);
   } catch (cause) {
+    if (!(cause instanceof NoBlobAtPathError)) throw cause;
     return {
       ok: false,
       reason: `watermark ${watermarkPath} could not be read from the tree: ${
@@ -1677,6 +2242,7 @@ async function parseConsumedBlobFrom(
   try {
     raw = await readBlob(entry.blobPath);
   } catch (cause) {
+    if (!(cause instanceof NoBlobAtPathError)) throw cause;
     return {
       ok: false,
       reason: `consumed ${entry.blobPath} could not be read from the tree: ${
@@ -1708,10 +2274,17 @@ async function parseConsumedBlobFrom(
       reason: `consumed ${entry.blobPath} envelope invalid: ${validated.summary}`,
     };
   }
-  if (validated.messageId !== entry.messageIdFromFilename) {
+  const consumedIdentityProblem = await checkEnvelopeIdentity(validated);
+  if (consumedIdentityProblem !== null) {
     return {
       ok: false,
-      reason: `consumed ${entry.blobPath} body.messageId ${JSON.stringify(validated.messageId)} does not match filename messageId ${JSON.stringify(entry.messageIdFromFilename)}`,
+      reason: `consumed ${entry.blobPath} ${consumedIdentityProblem}`,
+    };
+  }
+  if (claimCheckIdentity(validated) !== entry.identityFromFilename) {
+    return {
+      ok: false,
+      reason: `consumed ${entry.blobPath} body identity ${JSON.stringify(claimCheckIdentity(validated))} does not match filename identity ${JSON.stringify(entry.identityFromFilename)}`,
     };
   }
   if (validated.address !== entry.decodedAddress) {
@@ -1725,19 +2298,26 @@ async function parseConsumedBlobFrom(
 
 async function parseQueueBlob(
   entry: ClaimCheckBlob,
-  readBlob: (path: string) => Promise<Uint8Array>,
+  readBlob: (path: string) => Promise<Uint8Array | null>,
 ): Promise<
   { ok: true; body: ClaimCheckEnvelope } | { ok: false; reason: string }
 > {
-  let raw: Uint8Array;
+  let raw: Uint8Array | null;
   try {
     raw = await readBlob(entry.blobPath);
   } catch (cause) {
+    if (!(cause instanceof NoBlobAtPathError)) throw cause;
     return {
       ok: false,
       reason: `${entry.kind} ${entry.blobPath} could not be read from the tree: ${
         cause instanceof Error ? cause.message : String(cause)
       }`,
+    };
+  }
+  if (raw === null) {
+    return {
+      ok: false,
+      reason: `${entry.kind} ${entry.blobPath} was enumerated in the tree but its bytes could not be read`,
     };
   }
   let bodyJson: unknown;
@@ -1758,10 +2338,17 @@ async function parseQueueBlob(
       reason: `${entry.kind} ${entry.blobPath} envelope invalid: ${validated.summary}`,
     };
   }
-  if (validated.messageId !== entry.messageIdFromFilename) {
+  const queueIdentityProblem = await checkEnvelopeIdentity(validated);
+  if (queueIdentityProblem !== null) {
     return {
       ok: false,
-      reason: `${entry.kind} ${entry.blobPath} body.messageId ${JSON.stringify(validated.messageId)} does not match filename messageId ${JSON.stringify(entry.messageIdFromFilename)}`,
+      reason: `${entry.kind} ${entry.blobPath} ${queueIdentityProblem}`,
+    };
+  }
+  if (claimCheckIdentity(validated) !== entry.identityFromFilename) {
+    return {
+      ok: false,
+      reason: `${entry.kind} ${entry.blobPath} body identity ${JSON.stringify(claimCheckIdentity(validated))} does not match filename identity ${JSON.stringify(entry.identityFromFilename)}`,
     };
   }
   if (validated.receivedAt !== entry.receivedAtFromFilename) {
@@ -1859,17 +2446,21 @@ function makeListingOidResolver(
 /**
  * Parsed results that one validation scope shares across its
  * validatePush calls (see `validationScope` on the KindHandler). A pack
- * receive validates each commit against the whole run, so without the
- * cache each commit parses every event of the run again. Keys come from
+ * receive validates its commits in order, so the event one commit adds
+ * is the parent's last event that the next commit parses, and an entry a
+ * queue or mailbox carries is checked by every commit. Keys come from
  * `parseCacheKey`.
  *
  * `events` holds the summary of each valid event blob. `queueEntries`
  * holds the inbox and processing entries whose envelope is valid; the
- * checks read nothing from a valid envelope.
+ * checks read nothing from a valid envelope. `mailboxIndexes` holds each
+ * valid mailbox index by its blob OID alone, since the index has one
+ * path, so a changed index's prior version is not read again.
  */
 type ParseCache = {
   events: Map<string, EventSummary>;
   queueEntries: Set<string>;
+  mailboxIndexes: Map<string, MailboxIndex>;
 };
 
 const parseCaches = new WeakMap<object, ParseCache>();
@@ -1877,7 +2468,11 @@ const parseCaches = new WeakMap<object, ParseCache>();
 function parseCacheFor(validationScope: object): ParseCache {
   let cache = parseCaches.get(validationScope);
   if (cache === undefined) {
-    cache = { events: new Map(), queueEntries: new Set() };
+    cache = {
+      events: new Map(),
+      queueEntries: new Set(),
+      mailboxIndexes: new Map(),
+    };
     parseCaches.set(validationScope, cache);
   }
   return cache;
@@ -1892,7 +2487,7 @@ function parseCacheKey(oid: string, blobPath: string): string {
 /**
  * Validate the `addresses/<urlEncoded>/{inbox,processing,consumed}`
  * subtree as a whole. The walk enforces filename shape, JSON envelope
- * structure, address round-trip, per-messageId atomicity across the
+ * structure, address round-trip, per-identity atomicity across the
  * three queue states, consumed-blob immutability, and the
  * inbox→processing / processing→consumed transition invariants against
  * the prior tree.
@@ -1968,14 +2563,14 @@ async function validateClaimCheckSubtree(
       );
     }
     const bucket = prospectiveBucketForSegment ?? emptyBucket(decodedAddress);
-    // Per-messageId atomicity: each messageId may appear at most
+    // Per-identity atomicity: each identity may appear at most
     // once across inbox/processing/consumed combined. The check
-    // keys on (messageId, kind, filename) so two inbox entries with
-    // the same messageId at different `receivedAt` values surface
+    // keys on (identity, kind, filename) so two inbox entries with
+    // the same identity at different `receivedAt` values surface
     // as a same-state collision (the Set-of-kinds shape would
     // collapse both into a single "inbox" member and miss the
     // case).
-    const messageIdToLocations = new Map<
+    const identityToLocations = new Map<
       string,
       { kind: "inbox" | "processing" | "consumed"; filename: string }[]
     >();
@@ -1991,22 +2586,22 @@ async function validateClaimCheckSubtree(
         if (!parsed.ok) return parsed;
         if (key !== null) cache.queueEntries.add(key);
       }
-      const list = messageIdToLocations.get(entry.messageIdFromFilename) ?? [];
+      const list = identityToLocations.get(entry.identityFromFilename) ?? [];
       list.push({ kind: entry.kind, filename: entry.filename });
-      messageIdToLocations.set(entry.messageIdFromFilename, list);
+      identityToLocations.set(entry.identityFromFilename, list);
     }
     for (const entry of bucket.consumed) {
-      // Cross-state atomicity needs each consumed messageId in the map;
-      // the messageId is the filename stem, so this needs no blob read.
+      // Cross-state atomicity needs each consumed identity in the map;
+      // the identity is the filename stem, so this needs no blob read.
       // Retained consumed entries are not re-parsed (their envelope was
       // validated when first written and their bytes are proven
       // immutable by the OID compare below); added consumed entries are
       // parsed and validated by the transition check further down.
-      const list = messageIdToLocations.get(entry.messageIdFromFilename) ?? [];
+      const list = identityToLocations.get(entry.identityFromFilename) ?? [];
       list.push({ kind: entry.kind, filename: entry.filename });
-      messageIdToLocations.set(entry.messageIdFromFilename, list);
+      identityToLocations.set(entry.identityFromFilename, list);
     }
-    for (const [messageId, locations] of messageIdToLocations) {
+    for (const [identity, locations] of identityToLocations) {
       if (locations.length > 1) {
         const sorted = [...locations].sort((a, b) => {
           if (a.kind !== b.kind) return a.kind < b.kind ? -1 : 1;
@@ -2018,14 +2613,14 @@ async function validateClaimCheckSubtree(
         if (kinds.size > 1) {
           return {
             ok: false,
-            reason: `address ${JSON.stringify(bucket.decodedAddress)} message ${JSON.stringify(messageId)} appears in multiple queue states ${JSON.stringify(Array.from(kinds).sort())}; at most one of inbox/processing/consumed is permitted`,
+            reason: `address ${JSON.stringify(bucket.decodedAddress)} message ${JSON.stringify(identity)} appears in multiple queue states ${JSON.stringify(Array.from(kinds).sort())}; at most one of inbox/processing/consumed is permitted`,
           };
         }
         const kind = sorted[0]?.kind;
         if (kind === undefined) throw new Error("unreachable");
         return {
           ok: false,
-          reason: `address ${JSON.stringify(bucket.decodedAddress)} message ${JSON.stringify(messageId)} appears at multiple ${kind} positions ${JSON.stringify(sorted.map((l) => l.filename))}; at most one entry per messageId is permitted`,
+          reason: `address ${JSON.stringify(bucket.decodedAddress)} message ${JSON.stringify(identity)} appears at multiple ${kind} positions ${JSON.stringify(sorted.map((l) => l.filename))}; at most one entry per identity is permitted`,
         };
       }
     }
@@ -2079,9 +2674,9 @@ async function validateClaimCheckSubtree(
     const prospectiveProcessingByFilename = new Map<string, ClaimCheckBlob>();
     for (const e of bucket.processing)
       prospectiveProcessingByFilename.set(e.filename, e);
-    const prospectiveConsumedByMessageId = new Map<string, ClaimCheckBlob>();
+    const prospectiveConsumedByIdentity = new Map<string, ClaimCheckBlob>();
     for (const e of bucket.consumed)
-      prospectiveConsumedByMessageId.set(e.messageIdFromFilename, e);
+      prospectiveConsumedByIdentity.set(e.identityFromFilename, e);
 
     // Deletion-direction guards: walk every entry the prior tree
     // carried under `consumed/`, `processing/`, and `inbox/` and reject
@@ -2156,12 +2751,12 @@ async function validateClaimCheckSubtree(
         if (prospectiveProcessingPaths.has(e.blobPath)) continue;
         // A processing entry may legitimately disappear in two
         // shapes: (1) markConsumed wrote a matching consumed entry
-        // keyed by the same messageId, or (2) replayProcessingToInbox
+        // keyed by the same identity, or (2) replayProcessingToInbox
         // moved the entry back to inbox preserving the
-        // `<receivedAt>-<messageId>.json` filename. Anything else is
+        // `<receivedAt>-<identity>.json` filename. Anything else is
         // an in-flight loss.
-        const consumedMatch = prospectiveConsumedByMessageId.get(
-          e.messageIdFromFilename,
+        const consumedMatch = prospectiveConsumedByIdentity.get(
+          e.identityFromFilename,
         );
         const inboxMatch = prospectiveInboxByFilename.get(e.filename);
         if (consumedMatch !== undefined || inboxMatch !== undefined) continue;
@@ -2173,13 +2768,13 @@ async function validateClaimCheckSubtree(
       for (const e of priorBucket.inbox) {
         if (prospectiveInboxPaths.has(e.blobPath)) continue;
         // A prior inbox entry may legitimately disappear when it
-        // transitions to processing (same `<receivedAt>-<messageId>`
-        // filename) or directly to consumed (matching messageId).
+        // transitions to processing (same `<receivedAt>-<identity>`
+        // filename) or directly to consumed (matching identity).
         // Anything else is an inbound-mail loss — the FIFO claim-check
         // contract requires the entry to reappear somewhere.
         const processingMatch = prospectiveProcessingByFilename.get(e.filename);
-        const consumedMatch = prospectiveConsumedByMessageId.get(
-          e.messageIdFromFilename,
+        const consumedMatch = prospectiveConsumedByIdentity.get(
+          e.identityFromFilename,
         );
         if (processingMatch !== undefined || consumedMatch !== undefined)
           continue;
@@ -2191,12 +2786,12 @@ async function validateClaimCheckSubtree(
     }
 
     const priorInboxByFilename = new Map<string, ClaimCheckBlob>();
-    const priorProcessingByMessageId = new Map<string, ClaimCheckBlob>();
+    const priorProcessingByIdentity = new Map<string, ClaimCheckBlob>();
     if (priorBucket !== undefined) {
       for (const e of priorBucket.inbox)
         priorInboxByFilename.set(e.filename, e);
       for (const e of priorBucket.processing)
-        priorProcessingByMessageId.set(e.messageIdFromFilename, e);
+        priorProcessingByIdentity.set(e.identityFromFilename, e);
     }
     const priorProcessingPaths = new Set<string>(
       (priorBucket?.processing ?? []).map((e) => e.blobPath),
@@ -2206,7 +2801,7 @@ async function validateClaimCheckSubtree(
     );
 
     // Newly-added processing entries must match an inbox entry that
-    // existed in the prior tree at the same `<receivedAt>-<messageId>`
+    // existed in the prior tree at the same `<receivedAt>-<identity>`
     // filename. This makes inbox→processing the only legal way to
     // grow processing/.
     for (const entry of bucket.processing) {
@@ -2218,21 +2813,35 @@ async function validateClaimCheckSubtree(
           reason: `processing ${entry.blobPath} is newly added but the prior tree has no matching inbox entry ${JSON.stringify(`${WORKFLOW_RUN_ADDRESSES_PREFIX}/${segment}/${WORKFLOW_RUN_INBOX_DIR}/${entry.filename}`)}; processing entries must originate from a prior-tree inbox entry`,
         };
       }
+      // The filenames match, so the identities match; the envelopes must
+      // also name the same message, since a legacy identity and a delivery
+      // key can be one string.
+      const processingParsed = await parseQueueBlob(entry, readBlob);
+      if (!processingParsed.ok) return processingParsed;
+      const priorInboxParsed = await parseQueueBlob(priorInbox, priorReadBlob);
+      if (!priorInboxParsed.ok) return priorInboxParsed;
+      if (!sameMessage(processingParsed.body, priorInboxParsed.body)) {
+        return {
+          ok: false,
+          reason: `processing ${entry.blobPath} does not name the same message as the prior inbox entry it moved from; messageId, authenticatedSender and deliveryKey must all carry over`,
+        };
+      }
     }
 
     // Newly-added consumed entries must match a processing entry that
-    // existed in the prior tree at the same address+messageId, and
-    // the receivedAt carried in the consumed envelope must equal the
-    // receivedAt the processing entry's filename carried.
+    // existed in the prior tree at the same address and identity, must
+    // name the same message, and the receivedAt carried in the consumed
+    // envelope must equal the receivedAt the processing entry's filename
+    // carried.
     for (const entry of bucket.consumed) {
       if (priorConsumedPaths.has(entry.blobPath)) continue;
-      const priorProcessing = priorProcessingByMessageId.get(
-        entry.messageIdFromFilename,
+      const priorProcessing = priorProcessingByIdentity.get(
+        entry.identityFromFilename,
       );
       if (priorProcessing === undefined) {
         return {
           ok: false,
-          reason: `consumed ${entry.blobPath} is newly added but the prior tree has no matching processing entry for messageId ${JSON.stringify(entry.messageIdFromFilename)}; consumed entries must originate from a prior-tree processing entry`,
+          reason: `consumed ${entry.blobPath} is newly added but the prior tree has no matching processing entry for identity ${JSON.stringify(entry.identityFromFilename)}; consumed entries must originate from a prior-tree processing entry`,
         };
       }
       const parsed = await parseConsumedBlob(entry, readBlob);
@@ -2241,7 +2850,18 @@ async function validateClaimCheckSubtree(
       if (consumedBody.receivedAt !== priorProcessing.receivedAtFromFilename) {
         return {
           ok: false,
-          reason: `consumed ${entry.blobPath} body.receivedAt ${String(consumedBody.receivedAt)} does not match the prior processing entry's receivedAt ${String(priorProcessing.receivedAtFromFilename)} for messageId ${JSON.stringify(entry.messageIdFromFilename)}`,
+          reason: `consumed ${entry.blobPath} body.receivedAt ${String(consumedBody.receivedAt)} does not match the prior processing entry's receivedAt ${String(priorProcessing.receivedAtFromFilename)} for identity ${JSON.stringify(entry.identityFromFilename)}`,
+        };
+      }
+      const priorProcessingParsed = await parseQueueBlob(
+        priorProcessing,
+        priorReadBlob,
+      );
+      if (!priorProcessingParsed.ok) return priorProcessingParsed;
+      if (!sameMessage(consumedBody, priorProcessingParsed.body)) {
+        return {
+          ok: false,
+          reason: `consumed ${entry.blobPath} does not name the same message as the prior processing entry it consumes; messageId, authenticatedSender and deliveryKey must all carry over`,
         };
       }
     }
@@ -2334,61 +2954,13 @@ async function enforceWorkflowProcessPathScope(
 }
 
 /**
- * Validate the `agent-state/` subtree shape (design §3c). The subtree
- * holds one MUTABLE per-agent conversation snapshot directory per agent
- * below the prefix; each entry directly under `agent-state/` must be a
- * `<agentKey>/` DIRECTORY (not a dangling blob), and each `<agentKey>`
- * segment must round-trip URL-encoding so a reader can recover the
- * agent's identity from the path. The conversation blobs inside a
- * `<agentKey>/` directory are opaque to the substrate (the warm agent's
- * ContextStore owns their shape), so no file-level shape is enforced
- * here.
- *
- * A blob written DIRECTLY at `agent-state/<name>` (with no `<agentKey>/`
- * layer) is rejected: it would not be keyed by an agent and would not be
- * recoverable by any reader walking the per-agent layout.
- */
-async function validateAgentStateSubtree(
-  topLevelTreePaths: readonly string[],
-  listDir: (path: string) => Promise<string[]>,
-): Promise<ValidatePushResult> {
-  if (!topLevelTreePaths.includes(WORKFLOW_RUN_AGENT_STATE_PREFIX)) {
-    return { ok: true };
-  }
-  const segments = await listDir(WORKFLOW_RUN_AGENT_STATE_PREFIX);
-  for (const segment of segments) {
-    const roundTrip = checkUrlSegmentRoundTrip(segment);
-    if (!roundTrip.ok) {
-      return {
-        ok: false,
-        reason: `agent-state ${roundTrip.reason}`,
-      };
-    }
-    // Reject a blob dangling directly at `agent-state/<segment>`: every
-    // entry under the prefix must be a `<agentKey>/` directory carrying
-    // the agent's snapshot files. A directory has children under
-    // `agent-state/<segment>/`; a direct blob has none.
-    const children = await listDir(
-      `${WORKFLOW_RUN_AGENT_STATE_PREFIX}/${segment}`,
-    );
-    if (children.length === 0) {
-      return {
-        ok: false,
-        reason: `agent-state entry ${JSON.stringify(segment)} is a blob directly under ${WORKFLOW_RUN_AGENT_STATE_PREFIX}/; entries must be a <agentKey>/ directory carrying the agent's snapshot files`,
-      };
-    }
-  }
-  return { ok: true };
-}
-
-/**
  * Walk the `mailbox/INBOX/` subtree and validate its shape. The only
  * entry permitted directly under `mailbox/` is the `INBOX/` directory;
  * the only entries permitted under `mailbox/INBOX/` are the mutable
  * `index.json` file and `<uid>.eml` message files. Each entry must be a
  * leaf blob rather than a nested directory (a blob lists as empty, a
- * directory lists its children -- the same discrimination the agent-state
- * and mail-parts walks use). Returns the flat set of `<uid>.eml` blob
+ * directory lists its children -- the same discrimination the mail-parts
+ * walk uses). Returns the flat set of `<uid>.eml` blob
  * paths so the caller can hold retained messages immutable against the
  * prior tree, plus `indexPresent` -- whether `index.json` exists under
  * the INBOX -- so the caller can enforce index continuity. An absent
@@ -2460,8 +3032,7 @@ async function enumerateMailboxInbox(
  * by its blob OID. A prior `<uid>.eml` absent from the prospective tree is
  * a legal expunge: the warm agent physically removes a message from the
  * live INBOX. The raw bytes are not lost -- they stay reachable through the parent commit, and
- * a `workflow-run` repo's objects are never GC'd (its kind is excluded
- * from the GC allow-list; see `DEFAULT_GC_KINDS` in `agent-repo`), so the
+ * a `workflow-run` repo's objects are never GC'd, so the
  * expunged message survives in history for the life of the run repo. The
  * audit trail therefore rests on "these objects are never pruned", not on
  * the live tree being monotonic.
@@ -2476,9 +3047,12 @@ async function enumerateMailboxInbox(
  */
 async function validateMailboxSubtree(
   listDir: (path: string) => Promise<string[]>,
+  readBlob: (path: string) => Promise<Uint8Array>,
   priorListDir: (path: string) => Promise<string[]>,
+  priorReadBlob: (path: string) => Promise<Uint8Array | null>,
   prospectiveListing: TreeListing,
   priorListing: TreeListing,
+  cache: ParseCache,
 ): Promise<ValidatePushResult> {
   const prospective = await enumerateMailboxInbox(listDir);
   if (!prospective.ok) return prospective;
@@ -2506,7 +3080,119 @@ async function validateMailboxSubtree(
       reason: `mailbox ${WORKFLOW_RUN_MAILBOX_PREFIX}/${WORKFLOW_RUN_MAILBOX_INBOX_DIR}/${WORKFLOW_RUN_MAILBOX_INDEX_FILE} present in the prior tree is missing from the prospective tree; the mailbox index must persist so uidValidity/uidNext continuity holds across reopens`,
     };
   }
+  if (prospective.indexPresent) {
+    return checkMailboxIndexContinuity(
+      readBlob,
+      prior.indexPresent ? priorReadBlob : null,
+      prospectiveListing,
+      priorListing,
+      cache,
+    );
+  }
   return { ok: true };
+}
+
+/**
+ * Hold a changed `index.json` to its format, to the prior index's
+ * `uidValidity` and at least its `uidNext`, and to numbering each message it
+ * adds from that `uidNext`: a replacement host reopens the mailbox from it,
+ * so a malformed index breaks the mailbox, and a uid it reissues would name a
+ * different message than the one the uid named before.
+ */
+async function checkMailboxIndexContinuity(
+  readBlob: (path: string) => Promise<Uint8Array>,
+  priorReadBlob: ((path: string) => Promise<Uint8Array | null>) | null,
+  prospectiveListing: TreeListing,
+  priorListing: TreeListing,
+  cache: ParseCache,
+): Promise<ValidatePushResult> {
+  const indexPath = `${WORKFLOW_RUN_MAILBOX_PREFIX}/${WORKFLOW_RUN_MAILBOX_INBOX_DIR}/${WORKFLOW_RUN_MAILBOX_INDEX_FILE}`;
+  const oid = await blobOidAt(prospectiveListing, indexPath);
+  const priorOid =
+    priorReadBlob === null ? null : await blobOidAt(priorListing, indexPath);
+  if (oid !== null && oid === priorOid) return { ok: true };
+  const parsed = await parseMailboxIndexCached(
+    oid,
+    () => readBlob(indexPath),
+    `mailbox index ${indexPath}`,
+    cache,
+  );
+  if (!parsed.ok) return parsed;
+  const index = parsed.index;
+  if (priorReadBlob === null || priorOid === null) return { ok: true };
+  const priorParsed = await parseMailboxIndexCached(
+    priorOid,
+    async () => {
+      const bytes = await priorReadBlob(indexPath);
+      if (bytes === null) {
+        throw new Error(
+          `prior mailbox index ${indexPath} was listed but its bytes could not be read`,
+        );
+      }
+      return bytes;
+    },
+    `prior mailbox index ${indexPath}`,
+    cache,
+  );
+  if (!priorParsed.ok) {
+    return {
+      ok: false,
+      reason: `prior tree's mailbox subtree is structurally invalid: ${priorParsed.reason}`,
+    };
+  }
+  const prior = priorParsed.index;
+  if (index.uidValidity !== prior.uidValidity) {
+    return {
+      ok: false,
+      reason: `mailbox index ${indexPath} changes uidValidity from ${String(prior.uidValidity)} to ${String(index.uidValidity)}; a mailbox keeps the uidValidity its uids were issued under`,
+    };
+  }
+  if (index.uidNext < prior.uidNext) {
+    return {
+      ok: false,
+      reason: `mailbox index ${indexPath} lowers uidNext from ${String(prior.uidNext)} to ${String(index.uidNext)}; a mailbox never reissues a uid`,
+    };
+  }
+  const priorUids = new Set(prior.messages.map((message) => message.uid));
+  const reissued = index.messages.find(
+    (message) => !priorUids.has(message.uid) && message.uid < prior.uidNext,
+  );
+  if (reissued !== undefined) {
+    return {
+      ok: false,
+      reason: `mailbox index ${indexPath} adds uid ${String(reissued.uid)} below the prior uidNext ${String(prior.uidNext)}; a mailbox never reissues a uid`,
+    };
+  }
+  return { ok: true };
+}
+
+/**
+ * Parse a mailbox index through the scope's cache. A pack receive checks
+ * each changed index against its prior version, which an earlier commit
+ * of the receive carried, so the cache reads and parses each version
+ * once. An index that is not a blob has no OID to key on, and its read
+ * fails. A failed parse is not cached: it rejects the push.
+ */
+async function parseMailboxIndexCached(
+  oid: string | null,
+  read: () => Promise<Uint8Array>,
+  label: string,
+  cache: ParseCache,
+): Promise<{ ok: true; index: MailboxIndex } | { ok: false; reason: string }> {
+  const hit = oid === null ? undefined : cache.mailboxIndexes.get(oid);
+  if (hit !== undefined) return { ok: true, index: hit };
+  const text = new TextDecoder().decode(await read());
+  let index: MailboxIndex;
+  try {
+    index = parseMailboxIndex(text, label);
+  } catch (cause) {
+    return {
+      ok: false,
+      reason: cause instanceof Error ? cause.message : String(cause),
+    };
+  }
+  if (oid !== null) cache.mailboxIndexes.set(oid, index);
+  return { ok: true, index };
 }
 
 export const workflowRunKindHandler: KindHandler = {
@@ -2556,7 +3242,7 @@ export const workflowRunKindHandler: KindHandler = {
       if (!ALLOWED_TOP_LEVEL.has(entry)) {
         return {
           ok: false,
-          reason: `unexpected top-level entry ${JSON.stringify(entry)}; allowed: "${WORKFLOW_RUN_RUNS_PREFIX}", "${WORKFLOW_RUN_ADDRESSES_PREFIX}", "${WORKFLOW_RUN_AGENT_STATE_PREFIX}", "${WORKFLOW_RUN_MAILBOX_PREFIX}", "${WORKFLOW_RUN_GITIGNORE_PATH}"`,
+          reason: `unexpected top-level entry ${JSON.stringify(entry)}; allowed: "${WORKFLOW_RUN_RUNS_PREFIX}", "${WORKFLOW_RUN_ADDRESSES_PREFIX}", "${WORKFLOW_RUN_MAILBOX_PREFIX}", "${WORKFLOW_RUN_GITIGNORE_PATH}"`,
         };
       }
     }
@@ -2569,15 +3255,6 @@ export const workflowRunKindHandler: KindHandler = {
     if (!scopingCheck.ok) {
       logger.debug`workflow-run validatePush rejected ${repoId.kind}/${repoId.id} on ${ref}: ${scopingCheck.reason}`;
       return scopingCheck;
-    }
-
-    const agentStateCheck = await validateAgentStateSubtree(
-      topLevelTreePaths,
-      listDir,
-    );
-    if (!agentStateCheck.ok) {
-      logger.debug`workflow-run validatePush rejected ${repoId.kind}/${repoId.id} on ${ref}: ${agentStateCheck.reason}`;
-      return agentStateCheck;
     }
 
     const priorTopLevels = await priorListDir("");
@@ -2617,9 +3294,12 @@ export const workflowRunKindHandler: KindHandler = {
       // mailbox is not).
       const mailboxCheck = await validateMailboxSubtree(
         listDir,
+        readBlob,
         priorListDir,
+        priorReadBlob,
         prospectiveListing,
         priorListing,
+        cache,
       );
       if (!mailboxCheck.ok) {
         logger.debug`workflow-run validatePush rejected ${repoId.kind}/${repoId.id} on ${ref}: ${mailboxCheck.reason}`;
@@ -2674,8 +3354,7 @@ export const workflowRunKindHandler: KindHandler = {
           };
         }
       }
-      let terminalSeq: number | null = null;
-      let terminalType: string | null = null;
+      const retained: boolean[] = [];
       for (const entry of entries) {
         const priorCheck = await checkRetainedBlobUnchanged(
           entry.blobPath,
@@ -2687,6 +3366,23 @@ export const workflowRunKindHandler: KindHandler = {
         if (!priorCheck.ok) {
           logger.debug`workflow-run validatePush rejected ${repoId.kind}/${repoId.id} on ${ref}: ${priorCheck.reason}`;
           return priorCheck;
+        }
+        retained.push(!(await blobIsNewlyAdded(entry.blobPath, priorListing)));
+      }
+      let terminalSeq: number | null = null;
+      let terminalType: string | null = null;
+      const afterTerminal = (entry: RunEventBlob): ValidatePushResult => ({
+        ok: false,
+        reason: `run ${runId} has event at seq ${String(entry.filenameSeq)} after terminal ${String(terminalType)} at seq ${String(terminalSeq)}`,
+      });
+      for (const [i, entry] of entries.entries()) {
+        const newlyAdded = retained[i] !== true;
+        // The parent passed these checks, and the blob OID fixes the
+        // bytes, so an event the parent holds needs no parse unless it is
+        // the parent's last event, whose type the terminal lock reads.
+        if (!newlyAdded && retained[i + 1] === true) {
+          if (terminalSeq !== null) return afterTerminal(entry);
+          continue;
         }
         const parsed = await parseEventBlobCached(
           entry,
@@ -2711,16 +3407,16 @@ export const workflowRunKindHandler: KindHandler = {
           // authorization: it belongs to the commit that authors the event. A
           // later commit that merely carries the event forward -- e.g. the
           // run's own workflow-process cascade write of CancelPropagated /
-          // RunCancelled, which re-lists the whole events prefix -- must not be
-          // rejected because the carried-forward cancel was authored under a
-          // different (supervisor) signer. Re-checking it protects nothing: the
-          // blob OID check above already proves a carried-forward blob is
-          // unchanged, and the deletion-direction check proves it cannot be
-          // dropped. A tampered (byte-diverged) blob never reaches here --
+          // RunCancelled -- must not be rejected because the carried-forward
+          // cancel was authored under a different (supervisor) signer.
+          // Re-checking it protects nothing: the blob OID check above already
+          // proves a carried-forward blob is unchanged, and the
+          // deletion-direction check proves it cannot be dropped. A tampered
+          // (byte-diverged) blob never reaches here --
           // checkRetainedBlobUnchanged rejects it first. Mirrors the
           // newly-terminal gate below, which likewise acts only on a blob
           // absent from the prior tree.
-          if (await blobIsNewlyAdded(entry.blobPath, priorListing)) {
+          if (newlyAdded) {
             const principalCheck = checkCancelOriginPrincipal(
               entry.blobPath,
               origin,
@@ -2732,12 +3428,7 @@ export const workflowRunKindHandler: KindHandler = {
             }
           }
         }
-        if (terminalSeq !== null) {
-          return {
-            ok: false,
-            reason: `run ${runId} has event at seq ${String(entry.filenameSeq)} after terminal ${terminalType} at seq ${String(terminalSeq)}`,
-          };
-        }
+        if (terminalSeq !== null) return afterTerminal(entry);
         const classified = classifyTerminalEvent(parsed.event.type);
         if (classified.terminal) {
           terminalSeq = entry.filenameSeq;
@@ -2750,7 +3441,7 @@ export const workflowRunKindHandler: KindHandler = {
           // terminal blob already present in the prior tree and emits no
           // signal, so a downstream consumer keyed on the signal does
           // not double-fire.
-          if (await blobIsNewlyAdded(entry.blobPath, priorListing)) {
+          if (newlyAdded) {
             const terminalBytes = await readBlob(entry.blobPath);
             newlyTerminalRuns.push({
               runId,
@@ -2860,6 +3551,20 @@ export const workflowRunKindHandler: KindHandler = {
     if (!partsCheck.ok) {
       logger.debug`workflow-run validatePush rejected ${repoId.kind}/${repoId.id} on ${ref}: ${partsCheck.reason}`;
       return partsCheck;
+    }
+
+    const stepsCheck = await validateRunStepsSubtree({
+      listDir,
+      readBlob,
+      priorListDir,
+      prospectiveListing,
+      priorListing,
+      scope: stepScopeFromChangedPrefixes(changedPathPrefixes),
+      principal,
+    });
+    if (!stepsCheck.ok) {
+      logger.debug`workflow-run validatePush rejected ${repoId.kind}/${repoId.id} on ${ref}: ${stepsCheck.reason}`;
+      return stepsCheck;
     }
 
     return { ok: true, newlyTerminalRuns };
@@ -3011,11 +3716,11 @@ export const workflowRunAuthorize: AuthorizeFn = (
 //                           processing.
 //   markConsumed          — atomically remove the processing entry
 //                           and write the canonical
-//                           consumed/<messageId>.json dedup index
+//                           consumed/<identity>.json dedup index
 //                           entry.
 //   replayProcessingToInbox — recovery path that moves every
 //                           processing entry back to inbox preserving
-//                           its `<receivedAt>-<messageId>` filename
+//                           its `<receivedAt>-<identity>` filename
 //                           key so FIFO ordering survives a crash.
 //
 // All four route through `writeTreeDelta`, scoped to the per-address
@@ -3032,9 +3737,9 @@ export const workflowRunAuthorize: AuthorizeFn = (
 // guarantee these operations require.
 
 function claimCheckCommitRef(): string {
-  // Every claim-check operation targets the same canonical ref used by
-  // the workflow-run kind handler's event log so subscribers see a
-  // single coherent commit stream.
+  // Every claim-check operation targets this one ref so subscribers see
+  // a single coherent claim-check commit stream. The run event log lives
+  // on `WORKFLOW_RUN_REF`, a different ref.
   return "refs/heads/events";
 }
 
@@ -3057,16 +3762,16 @@ function processingPath(addressSegment: string, key: string): string {
   return `${WORKFLOW_RUN_ADDRESSES_PREFIX}/${addressSegment}/${WORKFLOW_RUN_PROCESSING_DIR}/${key}.json`;
 }
 
-function consumedPath(addressSegment: string, messageId: string): string {
-  return `${WORKFLOW_RUN_ADDRESSES_PREFIX}/${addressSegment}/${WORKFLOW_RUN_CONSUMED_DIR}/${messageId}.json`;
+function consumedPath(addressSegment: string, identity: string): string {
+  return `${WORKFLOW_RUN_ADDRESSES_PREFIX}/${addressSegment}/${WORKFLOW_RUN_CONSUMED_DIR}/${identity}.json`;
 }
 
 function watermarkPath(addressSegment: string): string {
   return `${WORKFLOW_RUN_ADDRESSES_PREFIX}/${addressSegment}/${WORKFLOW_RUN_WATERMARK_FILE}`;
 }
 
-function filenameKey(receivedAt: number, messageId: string): string {
-  return `${String(receivedAt)}-${messageId}`;
+function filenameKey(receivedAt: number, identity: string): string {
+  return `${String(receivedAt)}-${identity}`;
 }
 
 type ClaimCheckEntry = { name: string; oid: string };
@@ -3147,10 +3852,10 @@ function decodeQueueEnvelopeOrThrow(
   return validated;
 }
 
-function decodeConsumedReceivedAtOrThrow(
+function decodeConsumedEnvelopeOrThrow(
   bytes: Uint8Array,
   blobPath: string,
-): number {
+): ConsumedEnvelope {
   let parsed: unknown;
   try {
     parsed = JSON.parse(new TextDecoder().decode(bytes));
@@ -3163,7 +3868,7 @@ function decodeConsumedReceivedAtOrThrow(
       `claim_check_consumed_invalid: ${blobPath}: ${validated.summary}`,
     );
   }
-  return validated.receivedAt;
+  return validated;
 }
 
 /**
@@ -3189,15 +3894,21 @@ function parseWatermark(bytes: Uint8Array, watermarkFull: string): number {
 
 export type EnqueueInboxArgs = {
   address: string;
+  /** The inbound mail's Message-ID. */
   messageId: string;
+  /**
+   * The sender the hub authenticated for the mail. The entry is filed under
+   * the delivery key derived from this sender and `messageId` (see
+   * `deriveDeliveryKey`), so it must be non-empty and hold no NUL.
+   */
+  authenticatedSender: string;
   receivedAt: number;
-  mailAuditRef: { store: string; path: string };
   /**
    * Base64 of the inbound mail's raw MIME bytes. Inlined on the
    * claim-check envelope so the workflow-process child can recover its
-   * step input by messageId at `trigger.fired` time (§3a -- the
+   * step input at `trigger.fired` time (§3a -- the
    * supervisor is the sole mail owner and has no separate durable byte
-   * store the child reads). Omit to stamp only the audit ref.
+   * store the child reads).
    */
   rawMessage?: string;
 };
@@ -3209,7 +3920,7 @@ export type EnqueueInboxResult = {
 };
 
 /**
- * Which already-present state an `enqueueInbox` call found the messageId
+ * Which already-present state an `enqueueInbox` call found the message
  * in. Every value is POSITIVE evidence the message's bytes are durably on
  * disk (inbox/processing) or were already consumed -- so a caller gating a
  * receipt on the enqueue may safely acknowledge on any of them.
@@ -3235,7 +3946,7 @@ export type EnqueueInboxOutcome =
 
 /**
  * Internal signal thrown from the `enqueueInbox` merge callback when the
- * messageId is already present in a queue state. Caught at the `enqueueInbox`
+ * message is already present in a queue state. Caught at the `enqueueInbox`
  * boundary and turned into an `already-present` outcome; never escapes. It
  * carries the specific `reason` so the boundary maps it without re-deriving.
  */
@@ -3280,17 +3991,29 @@ export class StaleInboxEnqueueError extends Error {
 }
 
 /**
- * Append a new inbox entry for `address`. The merge callback reads
- * the address subtree under the per-repo lock, augments the inbox
- * with the new entry, and returns the full set of address files. The
- * substrate replaces the address subtree wholesale.
+ * Append a new sender-scoped inbox entry for `address`, filed under the
+ * delivery key derived from `authenticatedSender` and `messageId`. The merge
+ * callback reads the address listing under the per-repo lock and returns a
+ * delta that adds the one entry.
  *
- * Rejects if a same-messageId entry already exists in any queue
- * state at the address — including a prior inbox entry at a
- * different `receivedAt`. The caller is expected to consult the
- * dedup index (consumed/) before calling, but enforcing the
- * invariant here also catches the concurrent-enqueue race that the
- * per-repo lock alone cannot surface.
+ * Returns `already-present` when the message is already in a queue state at
+ * the address, including an inbox entry at a different `receivedAt`. The
+ * check runs inside the merge callback, so it also catches the
+ * concurrent-enqueue race that the per-repo lock alone cannot surface. Two
+ * lookups decide it:
+ *
+ *   - The delivery key: an entry filed under the key counts only when its
+ *     envelope carries that key.
+ *   - The bare Message-ID: an entry filed under it counts only when its
+ *     envelope carries no key. Such a legacy entry de-duplicates by
+ *     Message-ID alone, whatever the sender, so a mail consumed in the
+ *     legacy form does not run again when it is redelivered. This lookup
+ *     stays for as long as legacy entries can exist, which is indefinitely:
+ *     an address that gets no more mail never prunes its legacy `consumed/`
+ *     entries.
+ *
+ * A filename alone never decides a hit, because a Message-ID can be the same
+ * string as a delivery key.
  */
 export async function enqueueInbox(
   store: RepoStore,
@@ -3300,18 +4023,38 @@ export async function enqueueInbox(
 ): Promise<EnqueueInboxOutcome> {
   const addressSegment = addressSegmentFor(args.address);
   const ref = claimCheckCommitRef();
-  const inboxKey = filenameKey(args.receivedAt, args.messageId);
+  const deliveryKey = await deriveDeliveryKey(
+    args.authenticatedSender,
+    args.messageId,
+  );
+  const inboxKey = filenameKey(args.receivedAt, deliveryKey);
   const envelope: ClaimCheckEnvelope = {
     messageId: args.messageId,
+    authenticatedSender: args.authenticatedSender,
+    deliveryKey,
     receivedAt: args.receivedAt,
     address: args.address,
-    mailAuditRef: args.mailAuditRef,
     ...(args.rawMessage !== undefined ? { rawMessage: args.rawMessage } : {}),
   };
   const newInboxPath = inboxPath(addressSegment, inboxKey);
   const inboxFname = `${inboxKey}.json`;
-  const consumedFname = `${args.messageId}.json`;
-  const messageIdSuffix = `-${args.messageId}.json`;
+  const label = `address ${args.address} message ${args.messageId} (delivery key ${deliveryKey})`;
+  // The two forms an existing entry for this message can take: the
+  // sender-scoped form under the delivery key, and the legacy form under the
+  // bare Message-ID.
+  const forms: {
+    identity: string;
+    matches: (fields: MessageIdentityFields) => boolean;
+  }[] = [
+    {
+      identity: deliveryKey,
+      matches: (fields) => fields.deliveryKey === deliveryKey,
+    },
+    {
+      identity: args.messageId,
+      matches: (fields) => fields.deliveryKey === undefined,
+    },
+  ];
   // The already-present cases throw `InboxEntryAlreadyPresent` from the merge
   // callback and are caught here into an `already-present` outcome; the
   // stale-refusal throws `StaleInboxEnqueueError`, and a substrate/I/O failure
@@ -3324,7 +4067,7 @@ export async function enqueueInbox(
   try {
     ({ commitSha } = await store.writeTreeDelta(principal, repoId, ref, {
       changedPathPrefixes: new Set([addressPrefix(addressSegment)]),
-      message: `enqueue inbox ${args.address} ${args.messageId}`,
+      message: `enqueue inbox ${args.address} ${deliveryKey}`,
       computeDelta: async (_parentCommitSha, prior) => {
         const listing = await readAddressListing(prior, addressSegment);
         // Refuse a definitively-stale enqueue: a message whose receivedAt
@@ -3335,41 +4078,85 @@ export async function enqueueInbox(
         // watermark the consumed/ index is authoritative; below it, refuse.
         if (args.receivedAt < listing.watermark) {
           throw new StaleInboxEnqueueError(
-            `claim_check_stale_enqueue: address ${args.address} message ${args.messageId} receivedAt ${String(args.receivedAt)} is below the retention watermark ${String(listing.watermark)}; its dedup entry may have been pruned, so it is refused as definitively-stale`,
+            `claim_check_stale_enqueue: ${label} receivedAt ${String(args.receivedAt)} is below the retention watermark ${String(listing.watermark)}; its dedup entry may have been pruned, so it is refused as definitively-stale`,
           );
         }
-        if (listing.inbox.some((e) => e.name === inboxFname)) {
-          throw new InboxEntryAlreadyPresent(
-            "duplicate",
-            `claim_check_duplicate_inbox: ${newInboxPath} already exists`,
+        const readQueueEntry = async (dir: string, entry: ClaimCheckEntry) =>
+          decodeQueueEnvelopeOrThrow(
+            await prior.readBlobByOid(entry.oid),
+            `${addressPrefix(addressSegment)}${dir}/${entry.name}`,
+          );
+        const exact = listing.inbox.find((e) => e.name === inboxFname);
+        if (exact !== undefined) {
+          const exactEnvelope = await readQueueEntry(
+            WORKFLOW_RUN_INBOX_DIR,
+            exact,
+          );
+          if (exactEnvelope.deliveryKey === deliveryKey) {
+            throw new InboxEntryAlreadyPresent(
+              "duplicate",
+              `claim_check_duplicate_inbox: ${newInboxPath} already exists`,
+            );
+          }
+          // A legacy entry whose Message-ID is this delivery key holds the
+          // path. A write over it would drop that mail, so refuse. The
+          // refusal withholds the ack, so the mail is not lost. A
+          // redelivery at a new receivedAt does not recover it: while a
+          // legacy entry holds this identity in inbox, processing or
+          // consumed, the validator refuses a second position for it, so
+          // the mail stays withheld.
+          throw new Error(
+            `claim_check_inbox_path_taken: ${newInboxPath} holds a different message`,
           );
         }
-        // consumed/ is keyed by messageId alone, so this is an exact
-        // filename lookup against the dedup index.
-        if (listing.consumed.some((e) => e.name === consumedFname)) {
-          throw new InboxEntryAlreadyPresent(
-            "consumed",
-            `claim_check_already_consumed: address ${args.address} message ${args.messageId} is already in the consumed dedup index`,
+        for (const form of forms) {
+          const consumed = listing.consumed.find(
+            (e) => e.name === `${form.identity}.json`,
           );
+          if (consumed === undefined) continue;
+          const consumedEnvelope = decodeConsumedEnvelopeOrThrow(
+            await prior.readBlobByOid(consumed.oid),
+            consumedPath(addressSegment, form.identity),
+          );
+          if (form.matches(consumedEnvelope)) {
+            throw new InboxEntryAlreadyPresent(
+              "consumed",
+              `claim_check_already_consumed: ${label} is already in the consumed dedup index as ${form.identity}`,
+            );
+          }
         }
-        if (listing.processing.some((e) => e.name.endsWith(messageIdSuffix))) {
-          throw new InboxEntryAlreadyPresent(
-            "processing",
-            `claim_check_already_processing: address ${args.address} message ${args.messageId} is currently in processing`,
+        for (const form of forms) {
+          const processing = findQueueEntry(listing.processing, form.identity);
+          if (processing === undefined) continue;
+          const processingEnvelope = await readQueueEntry(
+            WORKFLOW_RUN_PROCESSING_DIR,
+            processing,
           );
+          if (form.matches(processingEnvelope)) {
+            throw new InboxEntryAlreadyPresent(
+              "processing",
+              `claim_check_already_processing: ${label} is currently in processing as ${form.identity}`,
+            );
+          }
         }
-        // Reject a second inbox entry for the same messageId at a
-        // different receivedAt. The validatePush atomicity check also
-        // catches this on the commit path, but surfacing it here gives the
-        // caller a precise error and keeps the bad tree off the substrate.
-        const inboxDup = listing.inbox.find((e) =>
-          e.name.endsWith(messageIdSuffix),
-        );
-        if (inboxDup !== undefined) {
-          throw new InboxEntryAlreadyPresent(
-            "already_inbox",
-            `claim_check_already_inbox: address ${args.address} message ${args.messageId} is already in the inbox at ${inboxPath(addressSegment, inboxDup.name.slice(0, -".json".length))}`,
+        // Reject a second inbox entry for the same message at a different
+        // receivedAt. The validatePush atomicity check also catches a
+        // second entry under one identity on the commit path, but surfacing
+        // it here gives the caller a precise outcome and keeps the bad tree
+        // off the substrate.
+        for (const form of forms) {
+          const inboxDup = findQueueEntry(listing.inbox, form.identity);
+          if (inboxDup === undefined) continue;
+          const inboxEnvelope = await readQueueEntry(
+            WORKFLOW_RUN_INBOX_DIR,
+            inboxDup,
           );
+          if (form.matches(inboxEnvelope)) {
+            throw new InboxEntryAlreadyPresent(
+              "already_inbox",
+              `claim_check_already_inbox: ${label} is already in the inbox at ${inboxPath(addressSegment, inboxDup.name.slice(0, -".json".length))}`,
+            );
+          }
         }
         return {
           puts: { [newInboxPath]: utf8(JSON.stringify(envelope)) },
@@ -3398,7 +4185,7 @@ export type DequeueToProcessingResult = {
  * distinguish "nothing to do" from "operation failed".
  *
  * FIFO is keyed on the parsed numeric `receivedAt` prefix of the
- * inbox filename, with a lexicographic messageId tiebreak. The
+ * inbox filename, with a lexicographic identity tiebreak. The
  * substrate does NOT rely on uniform digit widths — sorting raw
  * filenames would put `"100-…"` ahead of `"99-…"` since `'1' < '9'`,
  * which violates the FIFO invariant.
@@ -3418,32 +4205,28 @@ export async function dequeueToProcessing(
     computeDelta: async (_parentCommitSha, prior) => {
       const listing = await readAddressListing(prior, addressSegment);
       const inboxDir = `${addressPrefix(addressSegment)}${WORKFLOW_RUN_INBOX_DIR}/`;
-      // Sort by numeric receivedAt with a messageId tiebreak. A raw
+      // Sort by numeric receivedAt with an identity tiebreak. A raw
       // string sort would not agree with chronological order when
       // receivedAt values have non-uniform digit widths.
       type InboxCandidate = {
         entry: ClaimCheckEntry;
         receivedAt: number;
-        messageId: string;
+        identity: string;
       };
       const candidates: InboxCandidate[] = [];
       for (const entry of listing.inbox) {
-        const m = QUEUE_FILENAME_RE.exec(entry.name);
-        if (m === null || m[1] === undefined || m[2] === undefined) {
+        const parsed = parseQueueFilename(entry.name);
+        if (parsed === null) {
           throw new Error(
             `claim_check_invalid_inbox_filename: ${inboxDir}${entry.name}`,
           );
         }
-        candidates.push({
-          entry,
-          receivedAt: Number.parseInt(m[1], 10),
-          messageId: m[2],
-        });
+        candidates.push({ entry, ...parsed });
       }
       candidates.sort((a, b) => {
         if (a.receivedAt !== b.receivedAt) return a.receivedAt - b.receivedAt;
-        if (a.messageId < b.messageId) return -1;
-        if (a.messageId > b.messageId) return 1;
+        if (a.identity < b.identity) return -1;
+        if (a.identity > b.identity) return 1;
         return 0;
       });
       const first = candidates[0];
@@ -3474,11 +4257,11 @@ export type ReadProcessingEntryResult = {
 } | null;
 
 /**
- * Read the processing-queue entry for `messageId` at `address` without
- * mutating the tree. Returns the decoded claim-check envelope (carrying
- * `mailAuditRef` and, when the enqueuer inlined them, the base64
- * `rawMessage` bytes) or `null` when no processing entry exists for the
- * messageId.
+ * Read the processing-queue entry filed under `identity` (see
+ * `claimCheckIdentity`) at `address` without mutating the tree. Returns the
+ * decoded claim-check envelope (carrying, when the enqueuer inlined them, the
+ * base64 `rawMessage` bytes) or `null` when no processing entry exists for
+ * the identity.
  *
  * This is the read half of mailbox ownership (§3a): the supervisor's
  * dispatch loop moves an inbox entry to processing and forwards a
@@ -3503,12 +4286,11 @@ export async function readProcessingEntry(
   _principal: Principal,
   repoId: RepoId,
   address: string,
-  messageId: string,
+  identity: string,
 ): Promise<ReadProcessingEntryResult> {
   const addressSegment = addressSegmentFor(address);
   const repoDir = store.getRepoDir(repoId);
   const processingDir = `${repoDir}/${WORKFLOW_RUN_ADDRESSES_PREFIX}/${addressSegment}/${WORKFLOW_RUN_PROCESSING_DIR}`;
-  const suffix = `-${messageId}.json`;
   let filenames: string[];
   try {
     filenames = await fs.promises.readdir(processingDir);
@@ -3524,7 +4306,7 @@ export async function readProcessingEntry(
     throw cause;
   }
   for (const filename of filenames) {
-    if (!filename.endsWith(suffix)) continue;
+    if (parseQueueFilename(filename)?.identity !== identity) continue;
     const blobPath = `${processingDir}/${filename}`;
     const bytes = await fs.promises.readFile(blobPath);
     const envelope = decodeQueueEnvelopeOrThrow(
@@ -3538,7 +4320,8 @@ export async function readProcessingEntry(
 
 export type MarkConsumedArgs = {
   address: string;
-  messageId: string;
+  /** The processing entry's identity (see `claimCheckIdentity`). */
+  identity: string;
   runId: string;
   consumedAt: number;
   /**
@@ -3568,21 +4351,21 @@ export type MarkConsumedResult = {
   envelope: ConsumedEnvelope;
   /** Watermark the commit advanced to (epoch-ms `receivedAt` horizon). */
   watermark: number;
-  /** messageIds whose consumed entries this commit pruned. */
-  prunedMessageIds: string[];
+  /** Identities whose consumed entries this commit pruned. */
+  prunedIdentities: string[];
 };
 
 /**
- * Atomically remove the processing entry for `messageId` at `address`,
- * write the canonical `consumed/<messageId>.json` dedup index entry,
+ * Atomically remove the processing entry for `identity` at `address`,
+ * write the canonical `consumed/<identity>.json` dedup index entry,
  * advance the per-address retention watermark, and prune consumed
  * entries the watermark has passed. The caller is expected to have
- * called `dequeueToProcessing` for this messageId; calling
+ * called `dequeueToProcessing` for this identity; calling
  * `markConsumed` without a matching processing entry throws.
  *
- * The consumed envelope preserves the original `receivedAt` and
- * `mailAuditRef` from the processing entry so the dedup index doubles
- * as an audit record.
+ * The consumed envelope carries the processing entry's `messageId`,
+ * `authenticatedSender` and `deliveryKey`, and preserves its original
+ * `receivedAt`, so the dedup index doubles as an audit record.
  *
  * Retention (the bounded-`consumed/` contract): the watermark advances
  * to `max(priorWatermark, min(consumedAt - retentionHorizonMs,
@@ -3605,26 +4388,24 @@ export async function markConsumed(
     args.retentionHorizonMs ?? DEFAULT_CONSUMED_RETENTION_MS;
   let consumedEnvelope: ConsumedEnvelope | null = null;
   let advancedWatermark = 0;
-  const prunedMessageIds: string[] = [];
+  const prunedIdentities: string[] = [];
   const { commitSha } = await store.writeTreeDelta(principal, repoId, ref, {
     changedPathPrefixes: new Set([addressPrefix(addressSegment)]),
-    message: `consume ${args.address} ${args.messageId}`,
+    message: `consume ${args.address} ${args.identity}`,
     computeDelta: async (_parentCommitSha, prior) => {
       const listing = await readAddressListing(prior, addressSegment);
-      const consumedFull = consumedPath(addressSegment, args.messageId);
-      const consumedFname = `${args.messageId}.json`;
+      const consumedFull = consumedPath(addressSegment, args.identity);
+      const consumedFname = `${args.identity}.json`;
       if (listing.consumed.some((e) => e.name === consumedFname)) {
         throw new Error(
           `claim_check_already_consumed: ${consumedFull} already in the dedup index`,
         );
       }
       const processingDir = `${addressPrefix(addressSegment)}${WORKFLOW_RUN_PROCESSING_DIR}/`;
-      const processingEntry = listing.processing.find((e) =>
-        e.name.endsWith(`-${args.messageId}.json`),
-      );
+      const processingEntry = findQueueEntry(listing.processing, args.identity);
       if (processingEntry === undefined) {
         throw new Error(
-          `claim_check_processing_not_found: address ${args.address} message ${args.messageId} has no processing entry`,
+          `claim_check_processing_not_found: address ${args.address} message ${args.identity} has no processing entry`,
         );
       }
       const processingFull = `${processingDir}${processingEntry.name}`;
@@ -3634,12 +4415,17 @@ export async function markConsumed(
         processingFull,
       );
       const envelope: ConsumedEnvelope = {
-        messageId: args.messageId,
+        messageId: processingEnvelope.messageId,
+        ...(processingEnvelope.authenticatedSender !== undefined
+          ? { authenticatedSender: processingEnvelope.authenticatedSender }
+          : {}),
+        ...(processingEnvelope.deliveryKey !== undefined
+          ? { deliveryKey: processingEnvelope.deliveryKey }
+          : {}),
         receivedAt: processingEnvelope.receivedAt,
         address: args.address,
         runId: args.runId,
         consumedAt: args.consumedAt,
-        mailAuditRef: processingEnvelope.mailAuditRef,
         ...(args.rejection !== undefined ? { rejection: args.rejection } : {}),
       };
       consumedEnvelope = envelope;
@@ -3659,7 +4445,7 @@ export async function markConsumed(
       // Prune the oldest consumed tail: read each retained consumed
       // entry's receivedAt and drop any that has fallen strictly below
       // the new watermark. This is the one leg that must scan the
-      // consumed index — its filenames carry only the messageId, so the
+      // consumed index — its filenames carry only the identity, so the
       // receivedAt lives in the bytes — and is the residual the
       // consumed-shard lever removes. The new entry (added via puts) is
       // never below the watermark by construction.
@@ -3668,12 +4454,12 @@ export async function markConsumed(
       for (const entry of listing.consumed) {
         const blobPath = `${consumedDir}${entry.name}`;
         const bytes = await prior.readBlobByOid(entry.oid);
-        const consumedReceivedAt = decodeConsumedReceivedAtOrThrow(
+        const consumedReceivedAt = decodeConsumedEnvelopeOrThrow(
           bytes,
           blobPath,
-        );
+        ).receivedAt;
         if (consumedReceivedAt < newWatermark) {
-          prunedMessageIds.push(entry.name.slice(0, -".json".length));
+          prunedIdentities.push(entry.name.slice(0, -".json".length));
           deletes.push(blobPath);
         }
       }
@@ -3694,7 +4480,7 @@ export async function markConsumed(
     commitSha,
     envelope: captured,
     watermark: advancedWatermark,
-    prunedMessageIds,
+    prunedIdentities,
   };
 }
 
@@ -3704,7 +4490,7 @@ export type ReplayProcessingToInboxResult = {
 };
 
 export type ScanRunsForBootResult = {
-  ownedMessageIds: Set<string>;
+  ownedIdentities: Set<string>;
   pendingSealRunIds: string[];
 };
 
@@ -3712,13 +4498,17 @@ export type ScanRunsForBootResult = {
  * Walk `runs/` once and return the two boot-recovery inputs the supervisor's
  * spawn needs, from a single traversal of the working tree via `getRepoDir`:
  *
- * - `ownedMessageIds`: the `consumedMessageId`s of NON-terminal runs -- the
- *   messages a live run still owns. Spawn feeds this into
- *   `replayProcessingToInbox`'s `ownedMessageIds` so a parked run's message is
- *   not re-admitted to inbox and dispatched a second time while the run is
- *   recovered by re-driving its durable log. Without this, the re-drive AND the
- *   re-triggered fresh run both re-park the same awaitSignal gate on the same
- *   runId, and the two concurrent runtime bodies race to a corrupt terminal.
+ * - `ownedIdentities`: the claim-check identities that NON-terminal runs
+ *   consumed -- the messages a live run still owns. A run's `RunStarted`
+ *   records the identity as `consumedDeliveryKey` for a sender-scoped entry
+ *   or as `consumedMessageId` for a legacy entry, and never both. Spawn feeds
+ *   this into `replayProcessingToInbox`'s `ownedIdentities`, which compares
+ *   it with each entry's claim-check identity. A parked
+ *   run's message is then not re-admitted to inbox and dispatched a second
+ *   time while the run is recovered by re-driving its durable log. Without
+ *   this, the re-drive AND the re-triggered fresh run both re-park the same
+ *   awaitSignal gate on the same runId, and the two concurrent runtime bodies
+ *   race to a corrupt terminal.
  * - `pendingSealRunIds`: runs that are terminal but still in per-event form --
  *   an interrupted fold left them unsealed. Spawn hands these to the recovery
  *   sweep, which re-runs the idempotent fold. A terminal event is a *proposal*:
@@ -3746,7 +4536,7 @@ export async function scanRunsForBoot(
     runIds = await fs.readdir(runsDir);
   } catch (cause) {
     if (cause instanceof Error && "code" in cause && cause.code === "ENOENT") {
-      return { ownedMessageIds: new Set(), pendingSealRunIds: [] };
+      return { ownedIdentities: new Set(), pendingSealRunIds: [] };
     }
     throw cause;
   }
@@ -3784,7 +4574,7 @@ export async function scanRunsForBoot(
       // ENOENT means the run has neither a sealed log nor a per-event
       // directory (grants may be staged before the first event); skip it.
       // A non-ENOENT error drops the run from BOTH result sets, and a live
-      // run dropped from ownedMessageIds gets its message re-admitted and
+      // run dropped from ownedIdentities gets its message re-admitted and
       // dispatched a second time on the same runId -- the double-driver
       // corruption this scan exists to prevent. Surface it, but still skip:
       // aborting the whole boot scan over one run is worse.
@@ -3798,7 +4588,7 @@ export async function scanRunsForBoot(
       continue;
     }
     let terminal = false;
-    let consumedMessageId: string | undefined;
+    let consumedIdentity: string | undefined;
     for (const file of files) {
       if (!file.endsWith(".json")) continue;
       let parsed: unknown;
@@ -3834,18 +4624,24 @@ export async function scanRunsForBoot(
         terminal = true;
         break;
       }
-      if (type === "RunStarted" && "consumedMessageId" in parsed) {
-        const mid = parsed.consumedMessageId;
-        if (typeof mid === "string") consumedMessageId = mid;
+      if (type === "RunStarted") {
+        const key =
+          "consumedDeliveryKey" in parsed
+            ? parsed.consumedDeliveryKey
+            : undefined;
+        const mid =
+          "consumedMessageId" in parsed ? parsed.consumedMessageId : undefined;
+        if (typeof key === "string") consumedIdentity = key;
+        else if (typeof mid === "string") consumedIdentity = mid;
       }
     }
     if (terminal) {
       pendingSealRunIds.push(runId);
       continue;
     }
-    if (consumedMessageId !== undefined) owned.add(consumedMessageId);
+    if (consumedIdentity !== undefined) owned.add(consumedIdentity);
   }
-  return { ownedMessageIds: owned, pendingSealRunIds };
+  return { ownedIdentities: owned, pendingSealRunIds };
 }
 
 export type WorkflowRunLifecycle = "absent" | "live" | "terminal";
@@ -4002,23 +4798,24 @@ export async function readWorkflowRunLifecycle(
 
 export type ReplayProcessingToInboxOpts = {
   /**
-   * MessageIds whose run is still LIVE (non-terminal) and therefore owns
-   * its inbound message: recovery re-drives that run against the durable
-   * log, so re-admitting the message to `inbox/` would dispatch a SECOND
-   * run for it, colliding with the re-drive on the shared runId. Entries
-   * in this set are left in `processing/` untouched; the run's eventual
-   * `markConsumed` clears them. The caller computes this by reading the
-   * run event logs, which live on a DIFFERENT ref (`refs/heads/main`)
-   * than the claim-check subtree this operation commits to
-   * (`refs/heads/events`). Empty/absent means replay every processing
-   * entry (the pre-existing behaviour: recover all orphans).
+   * Claim-check identities (see `claimCheckIdentity`) whose run is still
+   * LIVE (non-terminal) and therefore owns its inbound message: recovery
+   * re-drives that run against the durable log, so re-admitting the
+   * message to `inbox/` would dispatch a SECOND run for it, colliding
+   * with the re-drive on the shared runId. Entries in this set are left
+   * in `processing/` untouched; the run's eventual `markConsumed` clears
+   * them. The caller computes this by reading the run event logs, which
+   * live on a DIFFERENT ref (`refs/heads/main`) than the claim-check
+   * subtree this operation commits to (`refs/heads/events`).
+   * Empty/absent means replay every processing entry (the pre-existing
+   * behaviour: recover all orphans).
    */
-  ownedMessageIds?: ReadonlySet<string>;
+  ownedIdentities?: ReadonlySet<string>;
 };
 
 /**
  * Recovery path: move every processing entry at `address` back to
- * inbox preserving the original `<receivedAt>-<messageId>` filename
+ * inbox preserving the original `<receivedAt>-<identity>` filename
  * key so FIFO ordering survives a workflow-process crash. Returns
  * the set of keys that were moved; when nothing was in processing
  * the returned `replayedKeys` is empty (and the commit is a no-op
@@ -4048,7 +4845,7 @@ export async function replayProcessingToInbox(
 ): Promise<ReplayProcessingToInboxResult> {
   const addressSegment = addressSegmentFor(address);
   const ref = claimCheckCommitRef();
-  const ownedMessageIds = opts.ownedMessageIds ?? new Set<string>();
+  const ownedIdentities = opts.ownedIdentities ?? new Set<string>();
   const replayedKeys: string[] = [];
   const { commitSha } = await store.writeTreeDelta(principal, repoId, ref, {
     changedPathPrefixes: new Set([addressPrefix(addressSegment)]),
@@ -4074,7 +4871,7 @@ export async function replayProcessingToInbox(
           bytes,
           `${processingDir}${entry.name}`,
         );
-        if (ownedMessageIds.has(envelope.messageId)) {
+        if (ownedIdentities.has(claimCheckIdentity(envelope))) {
           continue;
         }
         const inboxFull = `${inboxDir}${entry.name}`;

@@ -17,7 +17,11 @@ export {
   type ReapableSupervisor,
   type SupervisorReaper,
 } from "./supervisor-reaper";
-export { createMockMailBus, type MockMailBus } from "./mail-bus";
+export {
+  createMockMailBus,
+  inboundDelivery,
+  type MockMailBus,
+} from "./mail-bus";
 export { createSpawnObserver, type SpawnObserver } from "./spawn-observer";
 export {
   parseTriggerFireRunIds,
@@ -35,3 +39,8 @@ export {
 } from "./log-capture";
 export { createStubRepoStore, type StubRepoStoreOpts } from "./stub-repo-store";
 export { sendAuthoritySet } from "./authority";
+export {
+  sendDefinition,
+  TEST_DEFINITION,
+  TEST_DEFINITION_HASH,
+} from "./child-handshake";

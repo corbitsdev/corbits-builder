@@ -14,6 +14,11 @@
 // declared capability set is the shape it is narrowed to -- the same "a run's
 // authority is bounded by its declared capabilities" model the top level
 // enforces through its own walk.
+//
+// The cap is applied at the child's birth and again on each read of a live
+// child: a live child applies it to its parent's current grants, so a grant
+// the top-level run loses, regains, or changes reaches the child the same way
+// it would reach a new spawn.
 
 import type { DirectorRegistry } from "@intx/agent";
 import { matchPattern } from "@intx/authz";

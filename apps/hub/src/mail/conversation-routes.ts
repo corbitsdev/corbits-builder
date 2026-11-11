@@ -21,14 +21,12 @@ import { ProjectError, projectResource } from "../projects/errors.ts";
 import { getLogger } from "@intx/log";
 import { requestErrorMetadata } from "../request-error.ts";
 import { parseJson } from "../lib/json.ts";
-import {
-  createCoordinatorQuestionProseReader,
-  type CoordinatorRepoDirSource,
-} from "./coordinator-question.ts";
+import { createCoordinatorQuestionProseReader } from "./coordinator-question.ts";
 import {
   isRecord,
   projectRunTurns,
   unsavedPersonTurns,
+  type ConversationRepoStore,
 } from "./conversation-turns.ts";
 
 const log = getLogger(["corbits-builder", "hub", "conversation"]);
@@ -39,7 +37,7 @@ export function createConversationRoutes(
   db: DB["db"],
   dispatch: (request: Request) => Response | Promise<Response>,
   options?: {
-    repoStore?: CoordinatorRepoDirSource;
+    repoStore?: ConversationRepoStore;
     /** The retained native mail store the hub archives workflow mail into. */
     mailDirectory?: string;
   },
@@ -139,7 +137,7 @@ export function createConversationRoutes(
         const repoStore = options?.repoStore;
         const mailDirectory = options?.mailDirectory;
         const read = (
-          store: CoordinatorRepoDirSource,
+          store: ConversationRepoStore,
           run: { runId: string; address: string },
         ) =>
           projectRunTurns({
@@ -149,7 +147,7 @@ export function createConversationRoutes(
             mailDirectory,
             ...run,
           });
-        const priorTurns = async (store: CoordinatorRepoDirSource) =>
+        const priorTurns = async (store: ConversationRepoStore) =>
           (
             await Promise.all(selected.prior.map((run) => read(store, run)))
           ).flatMap((prior) => prior.turns);

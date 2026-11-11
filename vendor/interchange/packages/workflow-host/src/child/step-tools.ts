@@ -1,16 +1,12 @@
 // Per-step tool attachment and agent construction for the workflow child.
 //
-// The process that boots the child materializes pinned tool packages and
-// passes the result in. This module attaches that result to the step env,
-// derives the tool-mark floor from each factory's static declarations, and
-// builds the agent whose `close()` tears the plugin chain and tool bundles
-// down. It does not read a deploy tree or load a tool package.
+// This module attaches a step's tool factories to the step env and builds the
+// agent whose `close()` tears the plugin chain and tool bundles down.
 
 import {
   createAgent,
   defineAgent,
   defineTool,
-  toolApprovalEffect,
   toolFactoryMeta,
   type Agent,
   type AgentDefinition,
@@ -18,9 +14,7 @@ import {
   type AnnotatedToolFactory,
   type BaseEnv,
   type ToolBundle,
-  type ToolDeclaration,
 } from "@intx/agent";
-import type { GrantRule } from "@intx/authz";
 import {
   buildCredentialCapabilities,
   type StepCredentialWiring,
@@ -36,27 +30,15 @@ import {
 const logger = getLogger(["sidecar", "workflow-child", "step-tools"]);
 
 /**
- * Cache and registry caps the per-step tool loader needs. Resolved at
- * the sidecar boot edge from the existing `SIDECAR_CACHE_*` /
- * `SIDECAR_REGISTRY_*` config keys and threaded into the child through
- * the substrate config, so the child's per-step materialization is
- * bounded by those boot-edge-resolved caps.
- */
-export interface StepToolCacheConfig {
-  readonly cacheMaxBytes: number;
-  readonly registryMaxTarballBytes: number;
-}
-
-/**
- * Materialized tool runtime for one step's agent. Carried from
+ * Tool runtime for one step's agent. Carried from
  * `buildEnv` (which knows the step's identity) to the `agentFactory`
  * (which knows the agent definition + env) via a symbol-keyed slot on
  * the per-step env so the two callbacks of `createWorkflowStepInvoker`
  * can cooperate without widening the portable adapter's surface.
  */
-export interface StepToolMaterialization {
+export interface StepToolRuntime {
   readonly factories: readonly {
-    readonly packageName: string;
+    readonly factoryId: string;
     readonly declaredCredentials: readonly ToolCredentialDeclaration[];
     readonly factory: AnnotatedToolFactory<BaseEnv>;
   }[];
@@ -72,9 +54,9 @@ export interface StepToolMaterialization {
  */
 export function sourceStepToolFactories(
   toolFactories: readonly AnnotatedToolFactory<BaseEnv>[],
-): StepToolMaterialization["factories"] {
+): StepToolRuntime["factories"] {
   return toolFactories.map((factory) => ({
-    packageName: factory.id,
+    factoryId: factory.id,
     declaredCredentials: (factory.credentials ?? []).map((declaration) => ({
       handle: declaration.handle,
       ...(declaration.scopes !== undefined
@@ -83,57 +65,6 @@ export function sourceStepToolFactories(
     })),
     factory,
   }));
-}
-
-/**
- * Derive the per-step tool-mark floor grants from a step's materialized
- * tool factories. Each loaded factory carries its static
- * `definitions` (name + optional `approval` mark) verbatim from the tool
- * package; every declared tool contributes a `tool:<name>` / `invoke`
- * grant whose effect is the tool's floor (`ask` for an approval-gated
- * tool, `allow` otherwise), computed through the same
- * `toolApprovalEffect` mapping the deploy-time capability walk uses so a
- * pinned tool floors identically hub-side and sidecar-side.
- *
- * The hub's capability walk reads only INLINE `agent.toolFactories`, so a
- * tool that ships as a pinned package loads in the child and never
- * produces a `tool:<name>` grant on the run principal. These derived rows
- * supply that missing floor: they join the per-step grants the authz path
- * evaluates as ADDITIONAL rows, so `evaluateGrants` precedence still
- * resolves an explicit `deny` (priority 2) over the derived `ask`/`allow`
- * -- the floor only raises the minimum authority to the tool's mark, it
- * never overrides a declared denial.
- *
- * The grant `id` is deterministic (`floor:tool:<name>`) rather than
- * random: `evaluateGrants` never dedupes or joins on `id` (it ranks by
- * specificity then effect), so a stable id keeps the rows reproducible
- * without a generator, and a floor row that coincides with a
- * hub-supplied `tool:<name>` row resolves by effect precedence regardless
- * of the ids.
- */
-export function deriveToolMarkFloorGrants(
-  factories: readonly {
-    readonly packageName: string;
-    readonly definitions: readonly ToolDeclaration[];
-  }[],
-): GrantRule[] {
-  const rows: GrantRule[] = [];
-  for (const factory of factories) {
-    for (const definition of factory.definitions) {
-      rows.push({
-        id: `floor:tool:${definition.name}`,
-        resource: `tool:${definition.name}`,
-        action: "invoke",
-        effect: toolApprovalEffect(definition),
-        origin: "creator",
-        conditions: null,
-        expiresAt: null,
-        roleId: null,
-        principalId: null,
-      });
-    }
-  }
-  return rows;
 }
 
 /**
@@ -150,27 +81,22 @@ const STEP_TOOLS = Symbol("intx.sidecar.step-tools");
 // through `Reflect.get`/`Reflect.set` so neither site needs a type
 // assertion: `BaseEnv` is an interface without a symbol index
 // signature, so a structural cast would otherwise be required.
-function setStepToolSlot(
-  env: object,
-  materialization: StepToolMaterialization,
-): void {
-  Reflect.set(env, STEP_TOOLS, materialization);
+function setStepToolSlot(env: object, stepTools: StepToolRuntime): void {
+  Reflect.set(env, STEP_TOOLS, stepTools);
 }
 
-function getStepToolSlot(env: object): StepToolMaterialization | undefined {
+function getStepToolSlot(env: object): StepToolRuntime | undefined {
   const value: unknown = Reflect.get(env, STEP_TOOLS);
   if (value === undefined) return undefined;
-  if (!isStepToolMaterialization(value)) {
+  if (!isStepToolRuntime(value)) {
     throw new Error(
-      "sidecar workflow-child step tools: the per-step env's tool slot is not a StepToolMaterialization; the slot is private to this module and must only be set by attachStepTools",
+      "sidecar workflow-child step tools: the per-step env's tool slot is not a StepToolRuntime; the slot is private to this module and must only be set by attachStepTools",
     );
   }
   return value;
 }
 
-function isStepToolMaterialization(
-  value: unknown,
-): value is StepToolMaterialization {
+function isStepToolRuntime(value: unknown): value is StepToolRuntime {
   return (
     typeof value === "object" &&
     value !== null &&
@@ -262,9 +188,9 @@ function requireCapabilitiesBag(env: BaseEnv): RuntimeCapabilities {
 }
 
 /**
- * Attach a step's materialized tool runtime to the per-step env so the
+ * Attach a step's tool runtime to the per-step env so the
  * tool-bearing `agentFactory` can consume it. Called by `buildEnv`
- * after `materializeStepTools` resolves.
+ * once it has assembled the step's factories.
  *
  * The parameter is `Omit<BaseEnv, "authorize">` because `buildEnv`
  * yields exactly that shape (the step-invoker adapter adds `authorize`
@@ -273,23 +199,23 @@ function requireCapabilitiesBag(env: BaseEnv): RuntimeCapabilities {
  */
 export function attachStepTools(
   env: Omit<BaseEnv, "authorize">,
-  materialization: StepToolMaterialization,
+  stepTools: StepToolRuntime,
 ): void {
-  setStepToolSlot(env, materialization);
+  setStepToolSlot(env, stepTools);
 }
 
 /**
- * Re-wrap a loaded tool factory so its bundle's `dispose` (when present)
- * is captured via `onDispose`, forwarding the loader's `id`, `requires`,
- * and `definitions` so the result is a real `AnnotatedToolFactory`, not a
+ * Re-wrap a tool factory so its bundle's `dispose` (when present) is
+ * captured via `onDispose`, forwarding its `id`, `requires`, `definitions`,
+ * and `credentials` so the result is a real `AnnotatedToolFactory`, not a
  * hand-shaped lookalike. The static `definitions` declaration is
  * forwarded verbatim: this wrapper does not rename tools, so the names
  * the deploy-time walk enumerates must survive the re-wrap unchanged.
  *
  * When `credentials` is supplied, the bundle's factory sees a per-bundle
- * capabilities bag: the step's base bag layered with THIS package's
+ * capabilities bag: the step's base bag layered with THIS factory's
  * consumer-scoped `credentials` capability, so the bundle resolves only the
- * handles its own package is authorized for. When it is absent (the package
+ * handles its own factory is authorized for. When it is absent (the factory
  * declares and binds no credential), the base bag is passed through unchanged.
  *
  * Exported so the definitions-preservation contract is testable in
@@ -342,16 +268,16 @@ function layerCredentialsOntoEnv(
 
 /**
  * Build the `agentFactory` the workflow step-invoker uses. The returned
- * factory reads the materialized tool runtime off the env (set by
+ * factory reads the tool runtime off the env (set by
  * `buildEnv` via `attachStepTools`), augments the step's
- * `AgentDefinition` with the loaded tool factories (wrapped to capture
+ * `AgentDefinition` with the tool factories (wrapped to capture
  * each bundle's disposer), constructs the plugin chain on `env.plugins`,
  * builds the agent, and wraps
  * `agent.close()` so every plugin instance and tool bundle is disposed
  * when the step's agent closes.
  *
- * When the env carries no materialized tools (the `buildEnv` did not
- * run materialization, e.g. a unit test using the bare factory), the
+ * When the env carries no tools (the `buildEnv` attached none, e.g. a
+ * unit test using the bare factory), the
  * factory falls back to `createAgent(def, env)` unchanged.
  */
 export function createToolBearingAgentFactory(): <EnvReq extends BaseEnv>(
@@ -362,15 +288,15 @@ export function createToolBearingAgentFactory(): <EnvReq extends BaseEnv>(
     def: AgentDefinition<EnvReq>,
     env: EnvReq,
   ): Promise<Agent> => {
-    const materialization = getStepToolSlot(env);
-    if (materialization === undefined) {
+    const stepTools = getStepToolSlot(env);
+    if (stepTools === undefined) {
       return createAgent(def, env);
     }
 
-    // Assemble each package's consumer-scoped `credentials` capability once,
+    // Assemble each factory's consumer-scoped `credentials` capability once,
     // when the step carries credential wiring (a bare test build carries none,
-    // yielding an empty map). Every factory in a package shares the one
-    // capability; a package that declares a handle no binding resolves fails
+    // yielding an empty map). A factory that declares a handle no binding
+    // resolves fails
     // the launch here, loudly, rather than at the tool's first resolve. This
     // can throw (reconcile fail-closed, malformed delivery) before any handle
     // is shaped, so nothing is orphaned on that path.
@@ -378,27 +304,24 @@ export function createToolBearingAgentFactory(): <EnvReq extends BaseEnv>(
     const credentialCapabilities =
       credentialWiring === undefined
         ? new Map<string, HostCredentialCapability>()
-        : buildCredentialCapabilities(
-            materialization.factories,
-            credentialWiring,
-          );
+        : buildCredentialCapabilities(stepTools.factories, credentialWiring);
 
-    // Wrap each loaded tool factory so its bundle's `dispose` (when
+    // Wrap each tool factory so its bundle's `dispose` (when
     // present) is captured. Dedupe by closure identity: a factory whose
     // bundle returns the same `dispose` on every invocation must not be
-    // torn down once per push. Each package's credentials capability joins
+    // torn down once per push. Each factory's credentials capability joins
     // the same teardown set so its shaped handles are released with the agent.
     const capturedDisposers = new Set<() => unknown>();
     for (const capability of credentialCapabilities.values()) {
       capturedDisposers.add(() => capability.dispose());
     }
-    const factoriesWithCapture = materialization.factories.map((stf) =>
+    const factoriesWithCapture = stepTools.factories.map((stf) =>
       rewrapStepToolFactory(
         stf.factory,
         (dispose) => {
           capturedDisposers.add(dispose);
         },
-        credentialCapabilities.get(stf.packageName),
+        credentialCapabilities.get(stf.factoryId),
       ),
     );
 
@@ -423,12 +346,9 @@ export function createToolBearingAgentFactory(): <EnvReq extends BaseEnv>(
       return failures;
     };
 
-    // Rebuild the def with the materialized tool factories. The
-    // serialized `def.toolFactories` carry only `{ id, requires }`
-    // metadata (the workflow projection strips closures on the wire),
-    // so the runnable factories come from materialization, not the
-    // incoming def. `defineAgent` owns the contravariance escape for
-    // the `BaseEnv`-typed loader factories (see its `EnvRequiredByAll`
+    // Rebuild the def with the wrapped factories, which capture disposers
+    // and layer credentials. `defineAgent` owns the contravariance escape
+    // for the `BaseEnv`-typed factories (see its `EnvRequiredByAll`
     // machinery).
     const toolDef = defineAgent({
       id: def.id,
@@ -456,7 +376,7 @@ export function createToolBearingAgentFactory(): <EnvReq extends BaseEnv>(
     const pluginInstances: unknown[] = [];
     let chainEnv: BaseEnv = env;
     try {
-      for (const factory of materialization.pluginFactories) {
+      for (const factory of stepTools.pluginFactories) {
         const instance = factory(chainEnv);
         pluginInstances.push(instance);
         chainEnv = {

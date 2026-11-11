@@ -130,7 +130,6 @@ test("an undeliverable notice does not hold back a later notice", async () => {
         frozenApprovalBundle: bundle,
         sourceOfferingIds: [],
         defaultSourceOfferingId: "offering",
-        deployContent: {},
       });
       return id;
     };
