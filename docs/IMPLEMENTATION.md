@@ -33,9 +33,9 @@ workflow services from `@intx/hub-sessions`, and the native routes from
 `@intx/hub-api` (`mountHubRoutes`), alongside the hub's own routes on one Hono
 app.
 
-Some `@intx/*` packages resolve to `vendor/interchange` through `workspace:*`
-and some to published npm versions. Scripts run with `--conditions=intx-src`
-so the vendored packages load from source.
+Every `@intx/*` package resolves to `vendor/interchange`, including those
+pinned to a version number. Scripts run with `--conditions=intx-src` so the
+vendored packages load from source.
 
 ### Sidecars
 
@@ -173,8 +173,13 @@ tells the coder where each kind of code goes.
 `vendor/interchange` is upstream
 [Interchange](https://github.com/faremeter/interchange) at the commit in
 [vendor/VENDORED_REVISION](https://github.com/corbitsdev/corbits-builder/blob/main/vendor/VENDORED_REVISION),
-plus deliberate changes. Each change is its own `(vendor)` commit that also
-updates
+plus deliberate changes. Only what Builder runs is vendored: the packages
+Builder depends on, directly or through other vendored packages, and
+`apps/sidecar`, without their tests or the database migration snapshots,
+plus the root `package.json`, `tsconfig.json`, `tsconfig.base.json`,
+`bunfig.toml` and `LICENSE`; `bun run vendor:verify` rejects anything
+else. Each change is its own `(vendor)` commit that
+also updates
 [vendor/interchange.manifest.json](https://github.com/corbitsdev/corbits-builder/blob/main/vendor/interchange.manifest.json).
 `bun run vendor:verify` fails on any unrecorded change.
 
@@ -186,9 +191,9 @@ writing anything of its kind.
 - **Interchange** (`@intx/*`) owns running agents: workflows, triggers and
   gates, the agent loop, tools and tool packages, directors and compaction,
   inference providers, mail, approvals, grants and credentials, sidecars and
-  isolation, lifetimes and cancellation. Its docs are under
-  [vendor/interchange/docs/](https://github.com/corbitsdev/corbits-builder/blob/main/vendor/interchange/docs),
-  and each package documents itself in `vendor/interchange/packages/<name>/`.
+  isolation, lifetimes and cancellation. Its docs are in
+  [Interchange's](https://github.com/faremeter/interchange) `docs/` folder at
+  the commit in `vendor/VENDORED_REVISION`, and each package documents itself in `vendor/interchange/packages/<name>/`.
   A vendor design marked as not yet built is not a capability; confirm the
   code exists before relying on it.
 - **Corbits packages** (`@corbits/*`) are shared across Corbits products:
