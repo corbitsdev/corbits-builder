@@ -156,6 +156,7 @@ test("deploy_presenter requires approved documents and pins source refs and file
       return Response.json({
         artifacts: documents,
         inFlight: [],
+        appBuilt: false,
         preferences: {},
       });
     if (path.includes("/artifacts/") && init.method === "GET") {

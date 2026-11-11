@@ -12,6 +12,7 @@ import {
 import type {
   AcceptanceChecklist,
   AppSnapshotReceipt,
+  ArtifactList,
   LiveApp,
 } from "@corbits-builder/schemas/artifact";
 import { ensureAppAsset } from "@corbits-builder/hub/projects/app-repository";
@@ -54,8 +55,11 @@ async function seedProject() {
     path,
     coder,
     // The next version of the project's app, as the coder's sidecar files it once check-app
-    // passes, or as a person's Save files it.
-    async file(checklist: string, source: "check" | "snapshot" = "check") {
+    // passes, or as a person's Save or import files it.
+    async file(
+      checklist: string,
+      source: "check" | "snapshot" | "import" = "check",
+    ) {
       const content = JSON.stringify({ files: appFiles(checklist) });
       const version = {
         scope: person,
@@ -167,4 +171,15 @@ test("an export after a Save carries the version it filed in build/", async () =
   expect(await archive.file("build/ACCEPTANCE.md")?.async("string")).toBe(
     "# Workspace\n",
   );
+});
+
+test("an imported app counts as built only once a coder's passing check files a version", async () => {
+  const project = await seedProject();
+  const built = async () =>
+    (await hub.json<ArtifactList>(hub.call("GET", `${project.path}/artifacts`)))
+      .appBuilt;
+  await project.file("# Imported\n", "import");
+  expect(await built()).toBe(false);
+  await project.file("# Checked\n");
+  expect(await built()).toBe(true);
 });

@@ -10,7 +10,7 @@ This package only declares data. It imports `@intx/agent/authoring` and
 `@intx/workflow/definition`, nothing else from Interchange. The
 [hub's designer entry][entry] imports it, supplies the model, director and
 tools, and builds it into the workflow the [coordinator][coordinator] starts
-with `design_app`, one designer per design concept. Its tools are file
+with `design_app`, one designer per design concept and pass. Its tools are file
 reads and writes in its workspace, `check_design`, `file_design_option` and
 `mail`; it has no shell. The hub also reads this package's starter, themes
 and skills through its macros.
@@ -20,9 +20,9 @@ and skills through its macros.
 - `src/prompt.ts`: the system prompt.
 - `src/agent.ts`: `createDesignerAgent`, which requires an explicit provider
   and model.
-- `src/workflow.ts`: `createDesignerWorkflow`, a long-lived mail-triggered
-  step on a posix sidecar; each message is another request on the same warm
-  workspace.
+- `src/workflow.ts`: `createDesignerWorkflow`, a mail-triggered step on a
+  posix sidecar that takes one design pass and ends. A later pass on the
+  concept is a new run that starts from the draft this one left.
 - `starter/`: the workspace every design begins from: `.builder/DESIGN.md`,
   `.builder/designs/index.html`, `.builder/designs/screens/home.html` and
   `styles.css`, and a `README.md` for the designer that is not filed with the

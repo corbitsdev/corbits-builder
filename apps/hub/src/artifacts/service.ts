@@ -317,6 +317,35 @@ export async function runFailure(
   };
 }
 
+// Every version of the artifact, newest first, read a page at a time.
+async function* everyVersion(db: ArtifactDb, artifactId: string) {
+  let cursor: number | undefined;
+  do {
+    const page = await listArtifactVersions(db, artifactId, {
+      limit: MAX_LIST_LIMIT,
+      ...(cursor === undefined ? {} : { cursor }),
+    });
+    yield* page.versions;
+    cursor = page.nextCursor === null ? undefined : Number(page.nextCursor);
+  } while (cursor !== undefined);
+}
+
+/**
+ * Whether the project's app has had its first build: a version filed after a coder's passing
+ * check, where an import is recorded as one.
+ */
+export async function appBuilt(db: ArtifactDb, tenantId: string) {
+  const [app] = (await listArtifacts(db, tenantId, { kind: "app", limit: 1 }))
+    .rows;
+  if (!app) return false;
+  for await (const row of everyVersion(db, app.id)) {
+    const recorded = AppVersionMetadata(row.metadata);
+    if (!(recorded instanceof type.errors) && recorded.source === "check")
+      return true;
+  }
+  return false;
+}
+
 // A project is its own tenant, so the library's tenant scope is the project
 // scope. The hub adds project grants and the exact versions each resolved
 // native deploy approval covered.
@@ -468,25 +497,12 @@ export function createArtifactService(
   // project whose app repository holds none.
   // Versions filed before sources were recorded came only from checks and imports.
   async function mainLineVersion(artifactId: string) {
-    for await (const row of everyVersion(artifactId)) {
+    for await (const row of everyVersion(db, artifactId)) {
       const recorded = AppVersionMetadata(row.metadata);
       if (recorded instanceof type.errors || recorded.source !== "snapshot")
         return row;
     }
     return undefined;
-  }
-
-  // Every version of the artifact, newest first, read a page at a time.
-  async function* everyVersion(artifactId: string) {
-    let cursor: number | undefined;
-    do {
-      const page = await listArtifactVersions(db, artifactId, {
-        limit: MAX_LIST_LIMIT,
-        ...(cursor === undefined ? {} : { cursor }),
-      });
-      yield* page.versions;
-      cursor = page.nextCursor === null ? undefined : Number(page.nextCursor);
-    } while (cursor !== undefined);
   }
 
   // The work an app repository does for a project, its refusals logged with why and answered as
@@ -880,6 +896,7 @@ export function createArtifactService(
         awaitingApproval: awaitingApproval(artifacts, preferences).map(
           (item) => item.kind,
         ),
+        appBuilt: await appBuilt(db, actor.tenantId),
         preferences,
         preferenceGuidance: preferenceGuidance(preferences, "coordinator"),
       };
@@ -952,7 +969,7 @@ export function createArtifactService(
         const role = spawnedWorkflowRole(run.bundle);
         if (!role) continue;
         const shown = tracker?.of(run.runId);
-        // A finished specialist stays parked for follow-up mail; only a turn in progress is work,
+        // A specialist between turns is not at work; only a turn in progress is work,
         // timed from that turn's start rather than the run's deploy.
         if (!shown?.working || !shown.since) continue;
         const command = await commandProgress(run.address, run.bundle);
@@ -1788,7 +1805,7 @@ export function createArtifactService(
       ).rows;
       if (!app) return { versions: [], snapshot };
       const versions: AppVersion[] = [];
-      for await (const row of everyVersion(app.id)) {
+      for await (const row of everyVersion(db, app.id)) {
         const recorded = AppVersionMetadata(row.metadata);
         // A version filed before its source and size were recorded lists neither.
         versions.push({

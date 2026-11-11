@@ -223,6 +223,7 @@ function createInMemorySeedDeps(): SeedDeps {
         inFlight: [],
         failed: [],
         awaitingApproval,
+        appBuilt: false,
         preferences: {},
         preferenceGuidance: [],
       };

@@ -63,3 +63,7 @@ export function startHere(
     );
   return `Start here, read-only in your workspace:\n${lines.join("\n")}\n\n`;
 }
+
+// A later change starts a fresh coder on the saved app, so its assignment says so after the documents.
+export const APP_CHANGE_NOTE =
+  "The app is already built: your workspace holds it as last saved. This is a change to it, not a new build.\n\n";

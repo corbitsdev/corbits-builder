@@ -52,17 +52,20 @@ capabilities, model tier) and a workflow definition (trigger, steps, lifetime).
 - **Writer**: one bounded write of one document of a named kind.
 - **Reviewer**: one bounded review of one document; its findings are advice
   mailed to the coordinator.
-- **Designer**: long-lived, one per design concept. Builds a clickable HTML
-  and CSS mockup in its workspace.
-- **Coder**: long-lived, one per project. Builds the whole app in its
-  workspace and takes later changes there.
+- **Designer**: one design pass on one design concept. Builds a clickable
+  HTML and CSS mockup in its workspace.
+- **Coder**: one build of the app, or one later change to it.
 
-All roles are triggered by mail. The writer and reviewer take exactly one
-message and end. The coordinator, designers and coder keep their warm agent
-and workspace and take each later message as another turn on the same state.
+All roles are triggered by mail. Every specialist takes exactly one message
+and ends; only the coordinator keeps its agent and takes each later message as
+another turn. A later design pass or app change is a fresh run: it starts from
+the draft or the saved app the earlier run left. A specialist at work takes no
+message; a change asked for meanwhile is refused until it ends. What lives with
+a run lives only as long as it: a person's "always allow" for package installs
+covers one build or one change, and the next asks again.
 
 Only the coordinator talks to the person. Specialists put questions in their
-mail to it, and it decides whether to ask the person.
+reply to it, and it decides whether to ask the person.
 
 ### Documents and versions
 
@@ -175,12 +178,15 @@ that other clients can make too.
    back, shown as the conversation.
 3. The coordinator files the brief itself, then hands work off with hub tools:
    `deploy_writer` and `review_artifact` for documents, `design_app` for design
-   concepts, `deploy_coder` once for the app and `instruct_coder` for later
-   changes.
+   concepts, `deploy_coder` for the first build, and `instruct_coder` for each
+   later change. The first build is done once a version of the app is filed
+   after a passing check, not by an import; from then `deploy_coder` is
+   refused, and before then `instruct_coder` is.
 4. The hub builds each assignment from its own templates: the task, the
    documents it builds on in full and pinned by version and hash, and the kind
    to write. The tool checks prerequisites first: earlier documents exist and
-   are approved, and no coder is already running.
+   are approved, and no coder, or designer on the same concept, is already
+   running.
 5. The specialist works, files its result as a document version and mails a
    short summary back on the assignment's thread.
 6. The coordinator reads the filed document, judges it and either has it

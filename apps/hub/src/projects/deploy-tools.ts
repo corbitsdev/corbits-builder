@@ -11,6 +11,7 @@ import { WorkflowDeploymentResponse } from "@intx/types";
 import { HUB_CREDENTIAL_HANDLE } from "@intx/types/credential-delivery";
 import type { RuntimeCapabilities } from "@intx/types/runtime-capabilities";
 import { deriveRunAddress } from "@intx/workflow-deploy";
+import { setTimeout as sleep } from "node:timers/promises";
 import { type, TraversalError } from "arktype";
 import {
   NativeDocumentKind,
@@ -37,6 +38,7 @@ import {
 } from "@corbits-builder/schemas/questions";
 import { DEFAULT_STACK } from "../config/packages.ts";
 import {
+  APP_CHANGE_NOTE,
   CODER_INPUTS,
   DESIGNER_INPUTS,
   startHere,
@@ -152,8 +154,10 @@ const ArtifactList = type({
     runId: "string > 0",
     role: "string > 0",
     status: "'deployed' | 'running'",
+    state: "'working' | 'waiting' | 'approval'",
     "concept?": "string > 0",
   }).array(),
+  appBuilt: "boolean",
   preferences: Preferences,
 });
 type Ref = typeof SourceRef.infer;
@@ -180,9 +184,12 @@ const notApproved = (kind: string, version: number) =>
 // under its own native deadline: sidecar ensure and connection 120s each, the probe 60s. A shorter
 // client deadline abandons a deploy the hub still completes.
 const DEPLOY_TIMEOUT_MS = 300_000;
+// How long a start waits for a replied run of the same work to end; see ended below.
+const TEARDOWN_WAIT_MS = 30_000;
+const TEARDOWN_POLL_MS = 1_000;
 
-// A turn's tool calls run concurrently (INFERENCE.md "Parallel execution"), so two starts of one
-// unbounded role in the same turn would both find it missing from inFlight.
+// A turn's tool calls run concurrently (INFERENCE.md "Parallel execution"), so two starts of the
+// coder, or of one concept's designer, in the same turn would both find it missing from inFlight.
 const starting = new Set<string>();
 async function startOnce<T>(
   key: string,
@@ -279,19 +286,19 @@ export function createDeployTools(options?: {
     {
       name: "deploy_coder",
       description:
-        "Have the coder build the whole app from the filed problem brief, constraints, approaches, product requirements, build plan and design. The documents are the assignment; an optional instruction adds a note to it. It starts once a person approved the current version of each document: the design by confirming a design option in the conversation, the others through request_approval.",
+        "Have the coder build the whole app from the filed problem brief, constraints, approaches, product requirements, build plan and design. The documents are the assignment; an optional instruction adds a note to it. It starts once a person approved the current version of each document: the design by confirming a design option in the conversation, the others through request_approval. This is the first build only; once a version is filed after a passing check, changes go through instruct_coder.",
       inputSchema: { ...DeployCoder.toJsonSchema() },
     },
     {
       name: "instruct_coder",
       description:
-        "Send a change to the coder that is already building: a fix, an addition or a correction. It continues in the same workspace. A person approves every instruction.",
+        "Have a fresh coder make one change to the built app: a fix, an addition or a correction. It starts from the app as last saved, once the coder before it has replied. A person approves every instruction.",
       inputSchema: { ...InstructCoder.toJsonSchema() },
     },
     {
       name: "design_app",
       description:
-        "Have the designer make or change the app's design from the filed problem brief, constraints, approaches and product requirements: a clickable, responsive mockup with a DESIGN.md of its tokens, screens, states and flows. The coder builds only from a filed design. instruction says what to design or change; a designer already working takes it in the same design. lookIdeas carries the person's own ideas for the look in their words, or that they left the look to you, and every designer works from it. The designer starts once a person approves the instruction. Each design arrives later as a message.\n\nWhen the person wants one suggested design, give one concept: the look you suggest, shaped by their ideas. When they want to explore several, give a concept for each look: as many as the person asked for, or the number their Design concepts preference names when they said no number. What they say in the conversation wins over that preference. At most five concepts can be at work at a time, counting designers already started. One designer per concept makes the design in that concept's look and files it as that concept's design_option for the person to compare; a designer already working on a concept takes the instruction in the same option. Choose concepts that differ clearly from one another, from this catalog or of your own that fit the idea better. Each catalog concept starts from a design theme (" +
+        "Have the designer make or change the app's design from the filed problem brief, constraints, approaches and product requirements: a clickable, responsive mockup with a DESIGN.md of its tokens, screens, states and flows. The coder builds only from a filed design. instruction says what to design or change. lookIdeas carries the person's own ideas for the look in their words, or that they left the look to you, and every designer works from it. The designer starts once a person approves the instruction. Each design arrives later as a message.\n\nWhen the person wants one suggested design, give one concept: the look you suggest, shaped by their ideas. When they want to explore several, give a concept for each look: as many as the person asked for, or the number their Design concepts preference names when they said no number. What they say in the conversation wins over that preference. At most five concepts can be at work at a time, counting designers already started. One designer per concept makes the design in that concept's look and files it as that concept's design_option for the person to compare. A concept designed before gets a fresh designer that changes its latest draft, once the designer before it has replied. Choose concepts that differ clearly from one another, from this catalog or of your own that fit the idea better. Each catalog concept starts from a design theme (" +
         DESIGN_THEMES.map((theme) => theme.label).join(", ") +
         ") and its direction says how its designer adjusts that theme's tokens; a concept of your own starts from the kit's neutral theme, so its direction names the colours, type and radii it wants. When the person chose a theme, design that one concept, with the changes they asked for in its direction:\n" +
         DESIGN_CONCEPTS.map(
@@ -403,6 +410,7 @@ export function createDeployTools(options?: {
             openQuestions,
             designOptions,
             inFlight: list.inFlight,
+            appBuilt: list.appBuilt,
             preferences: list.preferences,
           };
         };
@@ -443,6 +451,12 @@ export function createDeployTools(options?: {
               (kind === "design"
                 ? "have the designer make it with design_app first"
                 : "write and file the " + kind + " first"),
+          );
+        const coderRunning = (runId: string) =>
+          new Refusal(
+            "coder_running: the coder is still working in run " +
+              runId +
+              "; its reply arrives as a message, and the next change can start after",
           );
         const required = (byKind: Map<string, Ref>, kind: string) => {
           const ref = byKind.get(kind);
@@ -509,21 +523,21 @@ export function createDeployTools(options?: {
         const startable = (state: Listed) => {
           const busy = new Set(state.inFlight.map((run) => run.role));
           const open = (
-            step: string,
+            made: boolean,
             role: string,
             gate: Refusal | undefined,
-          ) => !state.byKind.has(step) && !busy.has(role) && gate === undefined;
+          ) => !made && !busy.has(role) && gate === undefined;
           return [
             ...DOCUMENT_ORDER.filter(
               (kind) =>
                 kind in WRITER_PACKAGES &&
-                open(kind, "writer", writerGate(state, kind)),
+                open(state.byKind.has(kind), "writer", writerGate(state, kind)),
             ),
             ...(!state.designOptions &&
-            open("design", "designer", designGate(state))
+            open(state.byKind.has("design"), "designer", designGate(state))
               ? ["design"]
               : []),
-            ...(open("app", "coder", coderGate(state)) ? ["app"] : []),
+            ...(open(state.appBuilt, "coder", coderGate(state)) ? ["app"] : []),
           ];
         };
         // A fresh deployment warms its workspace with the current versions, the ones named here.
@@ -535,25 +549,9 @@ export function createDeployTools(options?: {
             kind,
             version: required(byKind, kind).version,
           }));
-        // Every assignment carries the person's preferences that apply to the receiving role.
-        const assign = (
-          runId: string,
-          role: "writer" | "reviewer" | "coder" | "designer" | "presenter",
-          preferences: Preferences,
-          correlationId: string,
-          content: string,
-        ) =>
-          env.capabilities.resolve("mail.transport").send(
-            {
-              to: [deriveRunAddress({ runId, domain: options.domain })],
-              type: "conversation.message",
-              correlationId,
-              content: content + preferenceBlock(preferences, role),
-            },
-            signal,
-          );
-        // Mail to a fresh deployment lands in its durable inbox and fires the
-        // run, so the deploy response is enough to send the assignment.
+        // Mail to a fresh deployment lands in its durable inbox and fires the run, so the deploy
+        // response is enough to send the assignment, which carries the person's preferences that
+        // apply to the receiving role.
         const deploy = async (
           role: "writer" | "reviewer" | "coder" | "designer" | "presenter",
           workflowSpec: NativeSpecialistDeployment | undefined,
@@ -576,14 +574,47 @@ export function createDeployTools(options?: {
             ),
           );
           await beforeAssign?.(deployment.id);
-          await assign(
-            deployment.id,
-            role,
-            preferences,
-            correlationId + "-" + deployment.id,
-            content,
+          await env.capabilities.resolve("mail.transport").send(
+            {
+              to: [
+                deriveRunAddress({
+                  runId: deployment.id,
+                  domain: options.domain,
+                }),
+              ],
+              type: "conversation.message",
+              correlationId: correlationId + "-" + deployment.id,
+              content: content + preferenceBlock(preferences, role),
+            },
+            signal,
           );
           return { runId: deployment.id, role, status: deployment.status };
+        };
+        const coderPreamble = (byKind: Map<string, Ref>, note = "") =>
+          startHere(
+            inputs(CODER_INPUTS, byKind),
+            required(byKind, "design").version,
+          ) + note;
+        // A run that replied is between turns while teardown versions its last files and gives up its
+        // access, VERSION_CLOSE_MS in the sidecar's tools, before it ends. A start for the same
+        // work waits that out, with room for the run to settle, rather than refuse a change the person
+        // just approved. Any other live run is still at work.
+        const ended = async (
+          isRun: (run: Listed["inFlight"][number]) => boolean,
+        ) => {
+          const deadline = Date.now() + TEARDOWN_WAIT_MS;
+          for (;;) {
+            const state = await listed();
+            const live = state.inFlight.find(isRun);
+            if (
+              !live ||
+              live.status !== "running" ||
+              live.state !== "waiting" ||
+              Date.now() >= deadline
+            )
+              return { state, live };
+            await sleep(TEARDOWN_POLL_MS, undefined, { signal });
+          }
         };
         try {
           signal.throwIfAborted();
@@ -687,54 +718,63 @@ export function createDeployTools(options?: {
               options.projectId + ":coder",
               "coder",
               async () => {
-                const state = await listed();
-                const { byKind, inFlight, preferences } = state;
-                const live = inFlight.find((run) => run.role === "coder");
-                if (live)
-                  throw new Refusal(
-                    "coder_already_running: the coder is building in run " +
-                      live.runId +
-                      "; send it changes with instruct_coder",
-                  );
+                const { state, live } = await ended(
+                  (run) => run.role === "coder",
+                );
+                if (live) throw coderRunning(live.runId);
+                const { byKind, preferences } = state;
                 const refusal = coderGate(state);
                 if (refusal) throw refusal;
-                const design = required(byKind, "design");
+                if (state.appBuilt)
+                  throw new Refusal(
+                    "app_already_built: the app's first build is done; send changes with instruct_coder",
+                  );
                 return deploy(
                   "coder",
                   options.workflows.coder,
                   preferences,
                   "coder",
-                  startHere(inputs(CODER_INPUTS, byKind), design.version) +
-                    coderTaskMessage(input.instruction),
+                  coderPreamble(byKind) + coderTaskMessage(input.instruction),
                 );
               },
             );
           } else if (call.name === "instruct_coder") {
             const input = validArguments(InstructCoder, call.arguments);
-            const { byKind, inFlight, preferences } = await listed();
-            for (const kind of CODER_DOCUMENTS) required(byKind, kind);
-            // The coder is unbounded: the live run takes the change on its warm workspace.
-            const live = inFlight.find((run) => run.role === "coder");
-            if (!live)
-              throw new Refusal(
-                "coder_not_running: no coder is building; start it with deploy_coder",
-              );
-            await recordApproval("instruct_coder", refsOf(byKind));
-            await assign(
-              live.runId,
+            result = await startOnce(
+              options.projectId + ":coder",
               "coder",
-              preferences,
-              "coder-" + live.runId + "-" + call.id,
-              coderTaskMessage(input.instruction),
+              async () => {
+                // One coder works on the app at a time; the change starts once the last one ended.
+                const { state, live } = await ended(
+                  (run) => run.role === "coder",
+                );
+                if (live) throw coderRunning(live.runId);
+                const { byKind, preferences } = state;
+                for (const kind of CODER_DOCUMENTS) required(byKind, kind);
+                // The first build's documents need their own approvals, which deploy_coder checks; an
+                // approved change is no approval of them.
+                if (!state.appBuilt)
+                  throw new Refusal(
+                    "app_not_built: the app's first build is not done, so start or continue it with deploy_coder, which needs no approval",
+                  );
+                await recordApproval("instruct_coder", refsOf(byKind));
+                return deploy(
+                  "coder",
+                  options.workflows.coder,
+                  preferences,
+                  "coder-" + call.id,
+                  coderPreamble(byKind, APP_CHANGE_NOTE) +
+                    coderTaskMessage(input.instruction),
+                );
+              },
             );
-            result = { runId: live.runId, role: "coder" };
           } else if (call.name === "design_app") {
             const input = validArguments(DesignApp, call.arguments);
             const { inFlight } = await listed();
             // The person decides how many concepts start; the preference guides the coordinator when
             // they named no number, so only the ceiling holds here.
             const limit = designConceptCeiling();
-            // A requested concept already at work takes the instruction rather than adding a designer.
+            // A requested concept already at work is refused below but still counts toward the limit.
             const concepts = new Set(
               inFlight.flatMap((run) =>
                 run.role === "designer" && run.concept ? [run.concept] : [],
@@ -747,40 +787,31 @@ export function createDeployTools(options?: {
                   String(limit) +
                   " design concepts can be at work at a time, counting those already started",
               );
-            // Each concept has its own long-lived designer.
+            // Each pass on a concept is its own designer, one at a time.
             const design = (concept: DesignConcept) =>
               startOnce(
                 options.projectId + ":designer:" + concept.label,
                 "designer",
                 async () => {
-                  const state = await listed();
-                  const { byKind, inFlight, preferences } = state;
-                  const refusal = designGate(state);
-                  if (refusal) throw refusal;
-                  const message =
-                    designLookIdeas(input.lookIdeas) +
-                    coderTaskMessage(input.instruction);
-                  // A designer still "deployed" never received its first assignment, so it is not reused.
-                  const live = inFlight.find(
+                  // A designer still "deployed" never received its assignment, so it does not hold
+                  // the concept.
+                  const { state, live } = await ended(
                     (run) =>
                       run.role === "designer" &&
                       run.status === "running" &&
                       run.concept === concept.label,
                   );
-                  if (live) {
-                    await assign(
-                      live.runId,
-                      "designer",
-                      preferences,
-                      "designer-" + live.runId + "-" + call.id,
-                      message,
+                  const { byKind, preferences } = state;
+                  const refusal = designGate(state);
+                  if (refusal) throw refusal;
+                  if (live)
+                    throw new Refusal(
+                      "designer_running: the " +
+                        concept.label +
+                        " designer is still working in run " +
+                        live.runId +
+                        "; its design arrives as a message, and the next pass on it can start after",
                     );
-                    return {
-                      runId: live.runId,
-                      role: "designer",
-                      concept: concept.label,
-                    };
-                  }
                   const started = await deploy(
                     "designer",
                     options.workflows.designer,
@@ -788,7 +819,8 @@ export function createDeployTools(options?: {
                     "designer",
                     startHere(inputs(DESIGNER_INPUTS, byKind)) +
                       designConceptAssignment(concept) +
-                      message,
+                      designLookIdeas(input.lookIdeas) +
+                      coderTaskMessage(input.instruction),
                     (runId) =>
                       hub(projectPath + "/design-concepts", {
                         runId,

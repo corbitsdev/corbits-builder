@@ -391,6 +391,8 @@ export const ArtifactList = type({
   failed: FailedRun.array(),
   // The kinds of filed documents whose current version waits on the person's approval.
   awaitingApproval: type("string > 0").array(),
+  // Whether the app's first build is done: a version filed after a coder's passing check.
+  appBuilt: "boolean",
   // How the person wants to work: every choice, and the guidance for the reading role.
   preferences: Preferences,
   preferenceGuidance: type("string > 0").array(),

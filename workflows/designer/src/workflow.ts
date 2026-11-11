@@ -1,7 +1,8 @@
 import type { AgentDefinition, BaseEnv } from "@intx/agent/authoring";
 import { defineWorkflow, step, type Selector } from "@intx/workflow/definition";
 
-// A long-lived designer: each mail is another design request on the same warm agent and workspace.
+// One design pass. The concept, its documents and the task arrive in the first message; a later
+// pass on the concept is a new deployment that starts from the draft this one leaves.
 export function createDesignerWorkflow<Env extends BaseEnv>(options: {
   readonly id: string;
   readonly address: string;
@@ -27,7 +28,7 @@ export function createDesignerWorkflow<Env extends BaseEnv>(options: {
         input: { from: "trigger.payload" },
         inference: options.inference,
         drainBehavior: "wait",
-        triggers: "unbounded",
+        triggers: 1,
       }),
     },
   });

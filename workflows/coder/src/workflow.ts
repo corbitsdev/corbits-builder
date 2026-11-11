@@ -1,7 +1,8 @@
 import type { AgentDefinition, BaseEnv } from "@intx/agent/authoring";
 import { defineWorkflow, step, type Selector } from "@intx/workflow/definition";
 
-// A long-lived coder: each mail is another assignment on the same warm agent and workspace.
+// One build or one change. The documents and the task arrive in the first message; a later change
+// is a new deployment that starts from the app this one saves.
 export function createCoderWorkflow<Env extends BaseEnv>(options: {
   readonly id: string;
   readonly address: string;
@@ -33,7 +34,7 @@ export function createCoderWorkflow<Env extends BaseEnv>(options: {
         input: { from: "trigger.payload" },
         inference: options.inference,
         drainBehavior: "wait",
-        triggers: "unbounded",
+        triggers: 1,
       }),
     },
   });

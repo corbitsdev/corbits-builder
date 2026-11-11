@@ -54,7 +54,8 @@ Agents run on sidecars, which the hub provisions
 Placement uses the local sidecar until it is full, then the first matching
 sandbox
 ([apps/hub/src/sidecar/placement.ts](https://github.com/corbitsdev/corbits-builder/blob/main/apps/hub/src/sidecar/placement.ts)).
-Default lifetimes and retention come from `WORKFLOW_DEFAULT_*`.
+Default lifetimes and retention come from `WORKFLOW_DEFAULT_*`; a completed
+run's files are kept fifteen minutes after it ends, a failed one's for a day.
 
 ### Role packages
 
