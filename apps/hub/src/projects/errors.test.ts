@@ -41,6 +41,7 @@ test("a rejected write_artifact call reaches the agent with {path, message} issu
   const service = createArtifactService(
     Object.create(PostgresJsDatabase.prototype),
     {} as never,
+    {} as never,
   );
   const app = new Hono<TenantEnv>();
   app.onError((error, c) => {

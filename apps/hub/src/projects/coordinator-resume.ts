@@ -2,12 +2,11 @@ import { and, asc, eq, ne } from "drizzle-orm";
 import type { MiddlewareHandler } from "hono";
 import type { DB } from "@intx/db";
 import { workflowRun, workflowRunDispatch } from "@intx/db/schema";
-import type { WorkflowRunReader } from "@intx/hub-sessions";
+import type { RepoStore, WorkflowRunReader } from "@intx/hub-sessions";
 import { createArtifactService } from "../artifacts/service.ts";
 import { resumeContext, resumeMessage } from "../config/resume.ts";
 import { projectCoordinator } from "../db/schema.ts";
 import { readDurableConversationTurns } from "../mail/conversation-turns.ts";
-import type { CoordinatorRepoDirSource } from "../mail/coordinator-question.ts";
 import { awaitingApproval } from "./deploy-tools.ts";
 import { getLogger } from "@intx/log";
 import { requestErrorMetadata } from "../request-error.ts";
@@ -26,10 +25,10 @@ const isRecord = (value: unknown): value is Record<string, unknown> =>
 export function createCoordinatorResumeContext(deps: {
   db: DB["db"];
   runs: WorkflowRunReader;
-  repoStore: CoordinatorRepoDirSource;
+  repoStore: RepoStore;
 }): MiddlewareHandler {
   const { db } = deps;
-  const artifacts = createArtifactService(db, deps.runs);
+  const artifacts = createArtifactService(db, deps.runs, deps.repoStore);
 
   async function heldContext(tenantId: string, runId: string) {
     const [bound] = await db

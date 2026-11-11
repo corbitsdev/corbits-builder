@@ -216,21 +216,19 @@ export const wording = {
   },
   appVersion: {
     current: (version: number) => `Downloaded version ${String(version)}.`,
-    saved: (version: number, source: string | undefined, why: string) =>
-      `Version ${String(version)}, the latest saved${source === undefined ? "" : ` (${source === "check" ? "after a passing check" : source === "snapshot" ? "a snapshot" : "imported"})`}. ${why}`,
-    none: (why: string) => `No version of the app is saved yet. ${why}`,
-    savedWork: "Downloaded the app builder's latest saved work.",
-    why: {
-      forbidden:
-        "You can view this project but not save a new version of its code.",
-      coder_run_not_found: "The app builder has not started on the code yet.",
-      app_workspace_unavailable:
-        "The app builder's working copy cannot be read from here, so its current code is not in it.",
-      failed: (status: number, code: string) =>
-        `Saving the current code failed (HTTP ${String(status)}, ${code}), so it is not in it.`,
-    },
+    saved: "Downloaded the app's saved code.",
+    forbidden:
+      "Downloaded the app's saved code. You can view this project but not save a new version of its code.",
+    elsewhere:
+      "Downloaded the app's saved code. The app builder's working copy cannot be read from here, so its current code is not in it.",
+    failed: (status: number, code: string) =>
+      `Saving the app builder's current code failed (HTTP ${String(status)}, ${code}), so this is the app's saved code without it.`,
     refused: (status: number, code: string) =>
       `The hub refused the request: HTTP ${String(status)}, ${code}.`,
+    // Refusals a person reads in plain words instead of by status and code.
+    refusals: {
+      app_repository_unreadable: `${productName} cannot read this project's saved app right now.`,
+    } as Record<string, string | undefined>,
     unreadable:
       "The hub's answer could not be read; it may be an older hub that has not been restarted.",
   },

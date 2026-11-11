@@ -44,21 +44,84 @@ function readTestDbServerConfig(): {
   return { host, port, user, password, adminDatabase };
 }
 
-async function signUpSessionCookie(
+/**
+ * An empty database for one test hub, created on the e2e Postgres server: its DB_* environment,
+ * its connection settings, and a drop that removes it.
+ */
+export async function createTestDatabase() {
+  const server = readTestDbServerConfig();
+  const name = `builder_e2e_${crypto.randomUUID().replaceAll("-", "").slice(0, 16)}`;
+  const admin = () =>
+    postgres({
+      host: server.host,
+      port: server.port,
+      user: server.user,
+      password: server.password,
+      database: server.adminDatabase,
+      max: 1,
+      onnotice: () => undefined,
+    });
+  const createSql = admin();
+  try {
+    await createSql.unsafe(`CREATE DATABASE "${name}"`);
+  } finally {
+    await createSql.end();
+  }
+  return {
+    env: {
+      DB_HOST: server.host,
+      DB_PORT: String(server.port),
+      DB_USER: server.user,
+      DB_PASSWORD: server.password,
+      DB_NAME: name,
+      DB_SSL: "false",
+    },
+    connection: {
+      host: server.host,
+      port: server.port,
+      user: server.user,
+      password: server.password,
+      database: name,
+      ssl: false,
+    },
+    async drop() {
+      const dropSql = admin();
+      try {
+        await dropSql.unsafe(`DROP DATABASE IF EXISTS "${name}" WITH (FORCE)`);
+      } finally {
+        await dropSql.end();
+      }
+    },
+  };
+}
+
+let signUps = 0;
+
+/**
+ * A new account's session cookie, signed up through send: global fetch for a served hub, or a hub
+ * runtime's app.fetch in process. The auth library limits sign-ups per client address across every
+ * hub in one test process, so each sign-up comes from an address of its own.
+ */
+export async function signUpSessionCookie(
+  send: (request: Request) => Response | Promise<Response>,
   baseUrl: string,
   email: string,
   password: string,
   name: string,
 ): Promise<string> {
-  const response = await fetch(new URL("/api/auth/sign-up/email", baseUrl), {
-    method: "POST",
-    redirect: "error",
-    headers: {
-      "Content-Type": "application/json",
-      Origin: baseUrl,
-    },
-    body: JSON.stringify({ email, password, name }),
-  });
+  signUps += 1;
+  const response = await send(
+    new Request(new URL("/api/auth/sign-up/email", baseUrl).href, {
+      method: "POST",
+      redirect: "error",
+      headers: {
+        "Content-Type": "application/json",
+        Origin: baseUrl,
+        "X-Forwarded-For": `198.18.${String(signUps >> 8)}.${String(signUps & 255)}`,
+      },
+      body: JSON.stringify({ email, password, name }),
+    }),
+  );
   if (!response.ok) {
     const body = await response.text();
     throw new Error(`E2E sign-up failed (${response.status}): ${body}`);
@@ -77,24 +140,7 @@ async function signUpSessionCookie(
 export async function startTestHub(
   recordedModel: RecordedModelServer,
 ): Promise<TestHubHandle> {
-  const dbServer = readTestDbServerConfig();
-  const dbName = `builder_e2e_${crypto.randomUUID().replaceAll("-", "").slice(0, 16)}`;
-
-  const adminSql = postgres({
-    host: dbServer.host,
-    port: dbServer.port,
-    user: dbServer.user,
-    password: dbServer.password,
-    database: dbServer.adminDatabase,
-    max: 1,
-    onnotice: () => undefined,
-  });
-
-  try {
-    await adminSql.unsafe(`CREATE DATABASE "${dbName}"`);
-  } finally {
-    await adminSql.end();
-  }
+  const database = await createTestDatabase();
 
   const dataDir = await mkdtemp(join(tmpdir(), "builder-e2e-hub-"));
   const fakeCredentialSecret = `sk-fake-e2e-secret-${crypto.randomUUID()}`;
@@ -117,12 +163,7 @@ export async function startTestHub(
     HOME: process.env["HOME"] ?? tmpdir(),
     USER: process.env["USER"] ?? "e2e",
     TMPDIR: process.env["TMPDIR"] ?? tmpdir(),
-    DB_HOST: dbServer.host,
-    DB_PORT: String(dbServer.port),
-    DB_USER: dbServer.user,
-    DB_PASSWORD: dbServer.password,
-    DB_NAME: dbName,
-    DB_SSL: "false",
+    ...database.env,
     HOST: "127.0.0.1",
     PORT: String(port),
     BETTER_AUTH_BASE_URL: baseUrl,
@@ -144,23 +185,6 @@ export async function startTestHub(
   let server: ReturnType<typeof Bun.serve> | undefined;
   const activeStreams = new Set<AbortController>();
 
-  async function dropDatabase(): Promise<void> {
-    const dropSql = postgres({
-      host: dbServer.host,
-      port: dbServer.port,
-      user: dbServer.user,
-      password: dbServer.password,
-      database: dbServer.adminDatabase,
-      max: 1,
-      onnotice: () => undefined,
-    });
-    try {
-      await dropSql.unsafe(`DROP DATABASE IF EXISTS "${dbName}" WITH (FORCE)`);
-    } finally {
-      await dropSql.end();
-    }
-  }
-
   try {
     await migrateDatabase(hubEnv);
     runtime = await createHubRuntime(hubEnv);
@@ -173,6 +197,7 @@ export async function startTestHub(
     runtime.start();
 
     const cookie = await signUpSessionCookie(
+      fetch,
       baseUrl,
       "e2e@corbits.dev",
       "e2e-password-123456",
@@ -319,7 +344,7 @@ export async function startTestHub(
         if (server) await server.stop(true);
         if (runtime) await runtime.close();
         await rm(dataDir, { recursive: true, force: true });
-        await dropDatabase();
+        await database.drop();
       },
     };
   } catch (error) {
@@ -330,7 +355,7 @@ export async function startTestHub(
     if (server) await server.stop(true);
     if (runtime) await runtime.close();
     await rm(dataDir, { recursive: true, force: true });
-    await dropDatabase();
+    await database.drop();
     throw error;
   }
 }

@@ -215,6 +215,7 @@ export async function exportProject(
         tenantId,
         projectId,
         sections,
+        app?.version,
       )),
       ...(app ? { note: app.note } : {}),
     };

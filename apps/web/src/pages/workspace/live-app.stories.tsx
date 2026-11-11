@@ -155,6 +155,17 @@ export const Unavailable: Story = {
   args: { app: { state: "unavailable" }, files: [] },
 };
 
+/** The hub could not read the project's saved app. */
+export const Refused: Story = {
+  args: {
+    app: {
+      state: "refused",
+      reason: "Builder cannot read this project's saved app right now.",
+    },
+    files: [],
+  },
+};
+
 /** The app builder is writing the project's first app. */
 export const SettingUp: Story = {
   args: { app: { state: "setting_up", url: undefined } },

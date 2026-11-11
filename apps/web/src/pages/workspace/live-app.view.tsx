@@ -54,6 +54,8 @@ export type AppState =
   | { state: "running"; url: string }
   /** This Builder cannot run apps. */
   | { state: "unavailable" }
+  /** The hub refused to read the app; `reason` says why, in words a person reads. */
+  | { state: "refused"; reason: string }
   | {
       state: "failed";
       /** Why the app could not start, in the hub's words. */
@@ -193,6 +195,14 @@ function StandIn({
         icon={<AppWindow />}
         title={text.unavailableTitle}
         description={text.unavailable}
+      />
+    );
+  if (app.state === "refused")
+    return (
+      <EmptyState
+        className={STATE}
+        icon={<TriangleAlert />}
+        title={app.reason}
       />
     );
   if (app.state === "failed")

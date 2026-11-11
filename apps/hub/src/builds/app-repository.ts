@@ -59,7 +59,7 @@ const PERMANENT =
   /^(app_workspace_stale|app_main_diverged|sidecar_signing_key_missing):/;
 // The label of a version requested after check-app passed, and the one it falls back to when the
 // files changed since the check.
-export const CHECK_PASSED = "Check passed";
+const CHECK_PASSED = "Check passed";
 export const EDIT = "Edit";
 // A pkt-line holds at most 65520 bytes: its 4-byte length, the band byte and the data.
 const SIDE_BAND_DATA = 65515;
@@ -689,8 +689,14 @@ export function createAppRepository(options: {
   const versionSignal = () =>
     AbortSignal.any([AbortSignal.timeout(VERSION_MS), teardown.signal]);
   let running: Promise<void> | undefined;
+  // The next version to make, and what waits on it: a request that arrives while one is queued
+  // joins it.
   let queued:
-    | { reason: string; checked: Promise<string> | undefined }
+    | {
+        reason: string;
+        checked: Promise<string> | undefined;
+        made: PromiseWithResolvers<void>;
+      }
     | undefined;
   let failure: string | undefined;
   let stopped = false;
@@ -710,7 +716,7 @@ export function createAppRepository(options: {
     if (running) return;
     running = (async () => {
       while (queued && !stopped) {
-        const { reason, checked } = queued;
+        const { reason, checked, made } = queued;
         queued = undefined;
         try {
           const outcome = await version(reason, checked, versionSignal());
@@ -719,22 +725,31 @@ export function createAppRepository(options: {
           failure = undefined;
         } catch (error) {
           failed(error);
+        } finally {
+          made.resolve();
         }
       }
     })().finally(() => {
       running = undefined;
       if (queued && !stopped) drain();
+      else {
+        queued?.made.resolve();
+        queued = undefined;
+      }
     });
   };
 
-  const schedule = (reason: string) => {
-    if (stopped || draining) return;
+  // Settles once the requested version was made or failed, or at once when nothing is versioned.
+  const schedule = (reason: string): Promise<void> => {
+    if (stopped || draining) return Promise.resolve();
+    const made = queued?.made ?? Promise.withResolvers<void>();
     // The files the check passed on, as of the request it makes right after passing.
     const checked =
       reason === CHECK_PASSED ? fingerprint(versionSignal()) : undefined;
     checked?.catch(() => undefined);
-    queued = { reason, checked };
+    queued = { reason, checked, made };
     drain();
+    return made.promise;
   };
 
   const idle = async () => {
@@ -781,7 +796,26 @@ export function createAppRepository(options: {
      * carries every commit the hub lacks, and an oversized workspace once its files change; a
      * permanent one ends versioning for this run.
      */
-    schedule,
+    schedule: (reason: string) => void schedule(reason),
+
+    /**
+     * Versions the files a check passed on and waits for that version alone: behind the one
+     * running, if any, but never for one requested after it. The failure, if it did not reach the
+     * hub, is told here rather than with the next tool result; it is told at once when versioning
+     * has stopped for this run or its repository is closing, since nothing more reaches the hub.
+     */
+    async versionChecked(signal: AbortSignal) {
+      if (draining)
+        return {
+          failure:
+            "app_repository_closing: this run's app repository is closing",
+          stopped: true,
+        };
+      await abortable(schedule(CHECK_PASSED), signal);
+      if (!failure) return undefined;
+      heard = true;
+      return { failure, stopped };
+    },
 
     status: () => ({
       state: running ? "versioning" : failure ? "failed" : "current",

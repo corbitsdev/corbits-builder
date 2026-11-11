@@ -9,6 +9,8 @@
     "./app": "./src/app.ts",
     "./environment": "./src/environment.ts",
     "./migrate": "./src/migrate.ts",
+    "./projects/app-repository": "./src/projects/app-repository.ts",
+    "./signing-key": "./src/signing-key.ts",
     "./workflows/install-for-tenant": "./src/workflows/install-for-tenant.ts",
     "./config/models": "./src/config/models.ts",
     "./settings/policy": "./src/settings/policy.ts"

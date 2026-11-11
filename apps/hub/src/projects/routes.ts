@@ -176,6 +176,7 @@ async function startNewProject(
 export function createProjectRoutes(
   db: DB["db"],
   runs: WorkflowRunReader,
+  repoStore: RepoStore,
   authenticate: MiddlewareHandler<AppEnv> = requireAuth,
   startCoordinator?: CoordinatorStart,
   stopCoordinator?: (actor: Actor, projectId: string) => Promise<void>,
@@ -188,18 +189,17 @@ export function createProjectRoutes(
     runId: string,
     reason: string,
   ) => Promise<unknown>,
-  repoStore?: RepoStore,
 ) {
   const app = new Hono<TenantEnv>();
   const service = createProjectService(db);
   const artifacts = createArtifactService(
     db,
     runs,
+    repoStore,
     activity,
     sidecarDataDir,
     liveApps,
     cancelRun,
-    repoStore,
   );
   // A project's coordinator can end (lifetime expiry, failure, archive) while its documents stay.
   // A fresh one takes no turn until mail arrives; the person's next message carries the held

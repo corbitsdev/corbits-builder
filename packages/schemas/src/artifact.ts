@@ -212,9 +212,10 @@ export type UserManual = typeof UserManual.infer;
 
 // The project's app as the person can open it, served by the hub at url, the app's own origin.
 // The hub runs it while the project is open from the project's current files: the build
-// workspace's (source builder) while a coder builds, else the newer of the latest filed version
-// (source filed) and the latest commit of the app repository's main (source repository).
-// Starting names its phase; a failed app carries its error and the last lines of its log.
+// workspace's (source builder) while a coder builds, else the saved app: the latest commit of the
+// app repository's main (source repository) or, for a project from before app repositories, its
+// latest filed version (source filed). Starting names its phase; a failed app carries its error
+// and the last lines of its log.
 export const LiveApp = type({
   "+": "reject",
   state: "'not_built' | 'stopped' | 'starting' | 'running' | 'failed'",

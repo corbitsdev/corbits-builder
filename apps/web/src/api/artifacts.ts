@@ -64,7 +64,11 @@ export async function readUserManual(
 /** The project's app as the person can open it: running at its own origin, starting, or why not. */
 export async function readLiveApp(projectId: string, signal?: AbortSignal) {
   const tenantId = await workspaceTenantId();
-  return productClient().liveApp(tenantId, projectId, signal);
+  try {
+    return await productClient().liveApp(tenantId, projectId, signal);
+  } catch (cause) {
+    throw await readableFailure(cause);
+  }
 }
 
 /** Tells the hub the project is open, so it runs the project's app; returns the app's state. */
@@ -93,7 +97,9 @@ export async function readableFailure(cause: unknown): Promise<unknown> {
     return new ApiFailure(
       {
         code: failure.code,
-        message: versionText.refused(failure.status, failure.code),
+        message:
+          versionText.refusals[failure.code] ??
+          versionText.refused(failure.status, failure.code),
         correlationId: "-",
         retryable: false,
       },
@@ -116,41 +122,40 @@ export async function listAppVersions(projectId: string, signal?: AbortSignal) {
 }
 
 /**
- * The app version a download or export carries, with a note saying which it is and why. A viewer
- * who can manage the project files the newest coder workspace first, so it carries the current code
- * whether or not a check passed; anyone else, or a snapshot that cannot be made, gets the latest
- * saved version, labelled as such, and current says which. No version at all leaves only the note.
+ * The app version a download or export carries, with a note saying which it is and whether it is
+ * current. While the newest coder run's workspace is on disk, a viewer who can manage the project
+ * files it first, so it carries the code whether or not a check passed. With no coder run, or no
+ * app in its workspace on disk, there is nothing to file and the hub serves the saved app, which is
+ * current. A viewer who cannot manage the project, a workspace on another machine, or a snapshot
+ * that fails leaves the saved app, labelled as not current.
  */
 export async function currentAppVersion(
   projectId: string,
 ): Promise<{ version?: number; note: string; current: boolean }> {
+  const { snapshot } = await listAppVersions(projectId);
+  if (!snapshot.ready) {
+    if (snapshot.code === "forbidden")
+      return { note: versionText.forbidden, current: false };
+    if (snapshot.reason === "not_on_local_sidecar")
+      return { note: versionText.elsewhere, current: false };
+    return { note: versionText.saved, current: true };
+  }
   const tenantId = await workspaceTenantId();
-  const { versions, snapshot } = await listAppVersions(projectId);
-  let why: string;
-  if (snapshot.ready) {
-    try {
-      const { artifact } = await productClient().snapshotApp(
-        tenantId,
-        projectId,
-      );
-      return {
-        version: artifact.version,
-        note: versionText.current(artifact.version),
-        current: true,
-      };
-    } catch (cause) {
-      const failure = await refusal(cause);
-      if (!failure) throw cause;
-      why = versionText.why.failed(failure.status, failure.code);
-    }
-  } else why = versionText.why[snapshot.code];
-  const latest = versions[0];
-  if (!latest) return { note: versionText.none(why), current: false };
-  return {
-    version: latest.version,
-    note: versionText.saved(latest.version, latest.source, why),
-    current: false,
-  };
+  try {
+    const { artifact } = await productClient().snapshotApp(tenantId, projectId);
+    return {
+      version: artifact.version,
+      note: versionText.current(artifact.version),
+      current: true,
+    };
+  } catch (cause) {
+    const failure = await refusal(cause);
+    if (!failure) throw cause;
+    return {
+      note: versionText.failed(failure.status, failure.code),
+      current: false,
+    };
+  }
 }
 
 /** The app version currentAppVersion names, as a zip, with its note and whether it is current. */
@@ -158,13 +163,6 @@ export async function downloadApp(projectId: string) {
   try {
     const { version, note, current } = await currentAppVersion(projectId);
     const tenantId = await workspaceTenantId();
-    // With nothing filed, the hub serves the app repository's latest saved work, or refuses.
-    if (version === undefined)
-      return {
-        ...(await productClient().downloadApp(tenantId, projectId, undefined)),
-        note: versionText.savedWork,
-        current: true,
-      };
     return {
       ...(await productClient().downloadApp(tenantId, projectId, version)),
       note,

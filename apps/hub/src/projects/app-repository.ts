@@ -59,12 +59,13 @@ const grantId = (principalId: string, resource: string, action: string) =>
     .digest("hex")
     .slice(0, 40);
 
-class AppRepositoryError extends Error {
+export class AppRepositoryError extends Error {
   constructor(
-    readonly status: 403 | 409,
+    readonly status: 403 | 409 | 503,
     readonly code: string,
+    options?: ErrorOptions,
   ) {
-    super(code);
+    super(code, options);
   }
 }
 
@@ -232,15 +233,14 @@ export async function revokeAppPushAccess(
 }
 
 /**
- * The tip of an app repository's main: its commit, when it was committed, and its files read from
- * the commit's tree, never the working tree. The files are what a snapshot files: the excluded
- * directories and files are left out, as are links and submodules, and they are held to the app
- * limit. They are undefined while main holds no app, as at the repository's genesis.
+ * The tip of an app repository's main: its commit and its files read from the commit's tree, never
+ * the working tree. The files are what a snapshot files: the excluded directories and files are
+ * left out, as are links and submodules, and they are held to the app limit. They are undefined
+ * while main holds no app, as at the repository's genesis.
  */
 export async function appRepositoryMain(dir: string) {
   const commit = await git.resolveRef({ fs, dir, ref: DEFAULT_ASSET_REF });
-  const { tree, committer } = (await git.readCommit({ fs, dir, oid: commit }))
-    .commit;
+  const { tree } = (await git.readCommit({ fs, dir, oid: commit })).commit;
   const read = async () => {
     const collected: Required<AppBundle> = { files: {}, binary: {} };
     const walk = async (oid: string, prefix: string) => {
@@ -263,24 +263,32 @@ export async function appRepositoryMain(dir: string) {
       ? bundleContent(collected)
       : undefined;
   };
-  return {
-    commit,
-    committedAt: new Date(committer.timestamp * 1000),
-    read,
-  };
+  return { commit, read };
 }
 
-/** The tip of the project's app repository's main, or undefined while the project has none. */
+/**
+ * The tip of the project's app repository's main with the app it holds, or undefined while the
+ * project has no repository. A repository the project has but that cannot be read is the
+ * app_repository_unreadable error, caused by the failure.
+ */
 export async function readAppRepository(
   db: DB["db"],
   repoStore: RepoStore,
   tenantId: string,
   projectId: string,
 ) {
-  const app = await findAppAsset(db, tenantId, projectId);
-  return app
-    ? appRepositoryMain(repoStore.getRepoDir({ kind: "app", id: app.id }))
-    : undefined;
+  const asset = await findAppAsset(db, tenantId, projectId);
+  if (!asset) return undefined;
+  try {
+    const main = await appRepositoryMain(
+      repoStore.getRepoDir({ kind: "app", id: asset.id }),
+    );
+    return { commit: main.commit, app: await main.read() };
+  } catch (error) {
+    throw new AppRepositoryError(503, "app_repository_unreadable", {
+      cause: error,
+    });
+  }
 }
 
 // Only a live coder run of the project reaches these routes; its run token is authenticated by the

@@ -1,5 +1,5 @@
 import { expect, test } from "bun:test";
-import { appCheckDetail } from "./sidecar-tools.ts";
+import { appCheckDetail, fileCheckedApp } from "./sidecar-tools.ts";
 
 const PASSED =
   "check passed: built, started, and opened / at 1280 and 390 px with no errors";
@@ -69,4 +69,21 @@ test("a command that only names check-app records no verdict", () => {
       output(PASSED),
     ),
   ).toBeUndefined();
+});
+
+test("a passing check whose push did not reach the app repository is not filed, and the coder is told so", async () => {
+  let filed = false;
+  const told = await fileCheckedApp(
+    { versionChecked: async () => ({ failure: "refused", stopped: false }) },
+    async () => {
+      filed = true;
+      return 1;
+    },
+    new AbortController().signal,
+  );
+
+  expect({ told, filed }).toEqual({
+    told: "The app was not filed: it did not reach the project's app repository (refused). The next passing check files it.",
+    filed: false,
+  });
 });

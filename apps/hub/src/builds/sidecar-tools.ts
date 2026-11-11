@@ -32,7 +32,6 @@ import {
 } from "./app-snapshot.ts";
 import { INPUTS_DIRECTORY } from "../config/inputs.ts";
 import {
-  CHECK_PASSED,
   createAppRepository,
   EDIT,
   requestAppPushAccess,
@@ -117,6 +116,32 @@ function filingFailure(error: unknown) {
     ? `${error.name}: ${error.message}`
     : String(error);
 }
+
+/**
+ * What the coder learns of whether its passing app reached the person; a failure leaves the build
+ * going but is never silent. The app is filed only once its push reached the project's app
+ * repository, so the saved app is never behind a filed version.
+ */
+export async function fileCheckedApp(
+  repository: Pick<AppRepository, "versionChecked"> | undefined,
+  file: () => Promise<number>,
+  signal: AbortSignal,
+) {
+  const unsaved = await repository?.versionChecked(signal);
+  if (unsaved)
+    return `The app was not filed: it did not reach the project's app repository (${unsaved.failure}). ${unsaved.stopped ? "Versioning has stopped for this run, so later checks are not filed either." : "The next passing check files it."}`;
+  try {
+    return `The app is filed as version ${await file()}.`;
+  } catch (error) {
+    const reason = filingFailure(error);
+    log.error("Filing the app failed: {reason}", {
+      reason,
+      ...requestErrorMetadata(error),
+    });
+    return `The app was not filed: ${reason}.`;
+  }
+}
+
 // The designer writes HTML and CSS only, and check_design runs check-app for it; given a shell, a
 // designer generates its mockup with scripts instead.
 const DESIGNER_TOOLS = new Set([
@@ -215,34 +240,17 @@ export function createSidecarCodingTools(policy: {
     factory: (env) => {
       let sandbox: ReturnType<typeof createPosixBuildExecutor> | undefined;
       const savedResults = savedResultTools(env);
-      // The coder learns whether its passing app reached the person; a failure leaves the build
-      // going but is never silent.
-      const fileCheckedApp = async (workspace: string, signal: AbortSignal) => {
-        try {
-          const scope = await resolveWorkflowProjectScope(
-            env.capabilities,
-            "coder",
-            signal,
-          );
-          const version = await fileApp(
-            env.capabilities,
-            scope,
-            workspace,
-            signal,
-          );
-          return `The app is filed as version ${version}.`;
-        } catch (error) {
-          const reason = filingFailure(error);
-          log.error("Filing the app failed: {reason}", {
-            reason,
-            ...requestErrorMetadata(error),
-          });
-          return `The app was not filed: ${reason}.`;
-        }
-      };
+      const fileWorkspace = async (workspace: string, signal: AbortSignal) =>
+        fileApp(
+          env.capabilities,
+          await resolveWorkflowProjectScope(env.capabilities, "coder", signal),
+          workspace,
+          signal,
+        );
       let designCheck: DesignCheck | undefined;
       // The project's app repository, once the workspace is prepared. Every call that can change
-      // files versions the workspace in the background; the builder never waits on a push.
+      // files versions the workspace in the background; the builder waits on a push only for a
+      // passing check, which is filed once it is saved.
       let repository: AppRepository | undefined;
       // The same repository from the start of setup, so teardown during setup still closes it.
       let opened: AppRepository | undefined;
@@ -454,7 +462,7 @@ export function createSidecarCodingTools(policy: {
             policy.workspace === "app" && passedAppCheck(call, ran)
               ? {
                   ...ran,
-                  content: `${ran.content}\n${await fileCheckedApp(workspace, signal)}`,
+                  content: `${ran.content}\n${await fileCheckedApp(repository, () => fileWorkspace(workspace, signal), signal)}`,
                 }
               : ran;
           // Results name files relative to the workspace, the form a model should send back.
@@ -584,10 +592,13 @@ export function createSidecarCodingTools(policy: {
           const ran = await native.run(call, signal);
           const detail = appCheckDetail(call, ran);
           const result = detail ? { ...ran, detail } : ran;
-          if (repository && VERSIONED.has(call.name))
-            repository.schedule(
-              passedAppCheck(call, result) ? CHECK_PASSED : EDIT,
-            );
+          // A passing check was versioned before it was filed.
+          if (
+            repository &&
+            VERSIONED.has(call.name) &&
+            !passedAppCheck(call, result)
+          )
+            repository.schedule(EDIT);
           const versioning =
             typeof result.content === "string"
               ? repository?.unheard()
