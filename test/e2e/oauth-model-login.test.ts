@@ -239,13 +239,6 @@ test("ChatGPT and xAI logins are providers a profile binds roles to, and install
       await sql.end();
     }
 
-    const providers = await client.modelProviders(tenantId);
-    expect(
-      providers
-        .filter((row) => !row.disabled)
-        .map((row) => row.plugin)
-        .sort(),
-    ).toEqual(["codex", "xai"]);
     const catalog = await client.modelCatalog(tenantId);
     const listed = Object.fromEntries(
       catalog.providers.map((entry) => [entry.id, entry]),

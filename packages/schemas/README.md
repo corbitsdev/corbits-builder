@@ -26,7 +26,7 @@ others:
 - `project.ts`, `project-status.ts`, `project-import.ts`: project listing,
   live run state and imported project files.
 - `conversation.ts`, `activity.ts`: chat mail and tool activity on the wire.
-- `models.ts`, `catalog.ts`, `settings.ts`, `preferences.ts`: providers,
+- `models.ts`, `settings.ts`, `preferences.ts`: providers,
   profiles and per-person settings.
 
 Modules not listed in `package.json` exports, such as `roles.ts`, are

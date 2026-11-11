@@ -9,7 +9,6 @@
     ".": "./src/index.ts"
   },
   "dependencies": {
-    "@corbits-builder/schemas": "workspace:*",
-    "arktype": "catalog:"
+    "@corbits-builder/schemas": "workspace:*"
   }
 }
