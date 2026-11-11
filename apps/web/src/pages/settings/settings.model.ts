@@ -9,10 +9,6 @@ import {
   useDocumentTips,
   writeDocumentTips,
 } from "../../document-tips-setting.ts";
-import {
-  useQuestionsLayout,
-  writeQuestionsLayout,
-} from "../../questions-layout-setting.ts";
 import type { HubUser } from "../../api/auth.ts";
 import type {
   SettingsSlots,
@@ -125,7 +121,6 @@ export function useSettings({
   );
   const { mode, setMode } = useTheme();
   const tips = useDocumentTips();
-  const questionsLayout = useQuestionsLayout();
   const [signingOut, setSigningOut] = useState(false);
   const signOut = async (leave: () => Promise<void>) => {
     setSigningOut(true);
@@ -144,9 +139,6 @@ export function useSettings({
         onThemeChange: setMode,
         documentTips: tips === "on",
         onDocumentTipsChange: (on) => writeDocumentTips(on ? "on" : "off"),
-        questionsInSteps: questionsLayout === "steps",
-        onQuestionsInStepsChange: (on) =>
-          writeQuestionsLayout(on ? "steps" : "all"),
       },
       account: user && {
         name: user.name,

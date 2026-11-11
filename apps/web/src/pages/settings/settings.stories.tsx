@@ -27,8 +27,6 @@ function Page(args: SettingsViewProps) {
         onThemeChange: (theme) => setAppearance({ ...appearance, theme }),
         onDocumentTipsChange: (documentTips) =>
           setAppearance({ ...appearance, documentTips }),
-        onQuestionsInStepsChange: (questionsInSteps) =>
-          setAppearance({ ...appearance, questionsInSteps }),
       }}
     />
   );
@@ -58,8 +56,6 @@ const meta = {
       onThemeChange: fn(),
       documentTips: true,
       onDocumentTipsChange: fn(),
-      questionsInSteps: false,
-      onQuestionsInStepsChange: fn(),
     },
     account,
   },
