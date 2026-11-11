@@ -187,6 +187,7 @@ export const DesignTweaks = type({
     "background?": color,
     "radius?": length,
     "font-sans?": fontList,
+    "font-mono?": fontList,
   }).narrow(
     (tokens, ctx) =>
       Object.keys(tokens).length > 0 || ctx.mustBe("at least one token"),
@@ -316,6 +317,23 @@ export const DesignTweaksReceipt = type({
   notified: "('coordinator' | 'designer')[]",
 });
 export type DesignTweaksReceipt = typeof DesignTweaksReceipt.infer;
+
+// The project values asked for by name, each as stored or null when the project has none yet.
+export const ProjectValues = type({
+  "+": "reject",
+  values: { "[string]": "string | null" },
+});
+export type ProjectValues = typeof ProjectValues.infer;
+
+// Project values to save by name; the hub checks each against its registered schema.
+export const ProjectValuesWrite = type({
+  "+": "reject",
+  values: type({ "[string]": "string" }).narrow(
+    (values, ctx) =>
+      Object.keys(values).length > 0 || ctx.mustBe("at least one value"),
+  ),
+});
+export type ProjectValuesWrite = typeof ProjectValuesWrite.infer;
 
 // The person's choice of a filed design option at the version they saw; the hub files it as the
 // design and records the person's approval of exactly that design version.

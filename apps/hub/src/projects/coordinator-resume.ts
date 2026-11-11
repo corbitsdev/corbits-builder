@@ -7,6 +7,9 @@ import { createArtifactService } from "../artifacts/service.ts";
 import { resumeContext, resumeMessage } from "../config/resume.ts";
 import { projectCoordinator } from "../db/schema.ts";
 import { readDurableConversationTurns } from "../mail/conversation-turns.ts";
+import { hubRequestSession } from "../mail/hub-mail.ts";
+import type { PluginHint } from "../environment.ts";
+import { withPluginHint } from "../plugins/tools.ts";
 import { awaitingApproval } from "./deploy-tools.ts";
 import { getLogger } from "@intx/log";
 import { requestErrorMetadata } from "../request-error.ts";
@@ -20,12 +23,14 @@ const isRecord = (value: unknown): value is Record<string, unknown> =>
 /**
  * Every mail to an unbounded run is a dispatched turn, so the hub mails nothing when it starts a
  * resumed project's coordinator. Until that run's first mail, the project's earlier coordinator
- * runs and its filed documents are the held context, delivered inside that first mail.
+ * runs and its filed documents are the held context, delivered inside that first mail. A plugin
+ * hint, when switched on, follows the person's own words in every mail they send.
  */
 export function createCoordinatorResumeContext(deps: {
   db: DB["db"];
   runs: WorkflowRunReader;
   repoStore: RepoStore;
+  pluginHint: PluginHint;
 }): MiddlewareHandler {
   const { db } = deps;
   const artifacts = createArtifactService(db, deps.runs, deps.repoStore);
@@ -108,9 +113,17 @@ export function createCoordinatorResumeContext(deps: {
         ...requestErrorMetadata(error),
       });
     }
-    if (context === undefined) return next();
+    // The hub's own openings are not the person's words. Answers to open questions arrive as signals.
+    const hinting =
+      deps.pluginHint !== "off" &&
+      hubRequestSession(c.req.raw.headers) === null;
+    if (context === undefined && !hinting) return next();
     const body = await readJson(c.req.raw.clone());
     if (!isRecord(body) || typeof body["content"] !== "string") return next();
+    const message = hinting
+      ? withPluginHint(deps.pluginHint, body["content"])
+      : body["content"];
+    if (context === undefined && message === body["content"]) return next();
     const headers = new Headers(c.req.raw.headers);
     headers.delete("content-length");
     c.req.raw = new Request(c.req.raw, {
@@ -118,7 +131,7 @@ export function createCoordinatorResumeContext(deps: {
       headers,
       body: JSON.stringify({
         ...body,
-        content: resumeMessage(context, body["content"]),
+        content: resumeMessage(context, message),
       }),
     });
     return next();

@@ -56,6 +56,8 @@ import {
   attachMaterials,
   removeMaterial,
   readArtifact,
+  readProjectValues,
+  saveProjectValues,
 } from "../../api/artifacts.ts";
 import { documentsForPane } from "./document-read.ts";
 import {
@@ -524,6 +526,16 @@ export function useRoom({
   const documents = snapshot.documents;
   const [liveRun, setLiveRun] = useState<LiveRun>(emptyLiveRun);
   const questionsLayout = useQuestionsLayout();
+  // Kept stable, so an open screen reads the project's values once rather than on every render.
+  const projectValues = useMemo(
+    () => ({
+      read: (keys: readonly string[], signal: AbortSignal) =>
+        readProjectValues(projectId, keys, signal),
+      save: (values: Record<string, string>) =>
+        saveProjectValues(projectId, values),
+    }),
+    [projectId],
+  );
   const stakeholderApprovals = useWorkspaceApprovalsEnabled();
   const seen = useSeenVersions();
   const [approvalBusy, setApprovalBusy] = useState(false);
@@ -1587,6 +1599,7 @@ export function useRoom({
           },
           questionsDisabled: sending || archived,
           questionsLayout,
+          projectValues,
         },
         empty: emptyConversation(),
         designChosen: archived ? null : designChosen,

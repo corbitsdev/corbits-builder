@@ -19,6 +19,8 @@ the hub's:
 - `request_approval`, `question`: approval and question cards for the
   person; `question` is Interchange's and waits for the answer.
 - `read_skill`: the problem-brief skill from the writer package.
+- `discover`: finds an installed plugin, such as the font picker, from the
+  person's wording; a screen plugin is then shown with `question`.
 
 ## Layout
 

@@ -560,3 +560,103 @@ test("the build plan starts only from the design the person chose", async () => 
   ).toBeUndefined();
   expect(deployed).toHaveLength(1);
 });
+
+// The coordinator's question check, reading project values from a hub that answers with response.
+function questionCheck(response: () => Response) {
+  const asked: string[] = [];
+  const fetch = async (path: string) => {
+    asked.push(path);
+    return response();
+  };
+  const capabilities = {
+    resolve: () => ({ resolve: async () => ({ kind: "http", fetch }) }),
+  } as unknown as RuntimeCapabilities;
+  const { checkQuestion } = createDeployTools({
+    tenantId: "tenant",
+    projectId: "project",
+    domain: "example.invalid",
+    workflows,
+    maxResultBytes: 16384,
+  })({ capabilities } as never);
+  if (!checkQuestion) throw new Error("the deploy tools check no questions");
+  return {
+    asked,
+    check: (plugin: string, input: Record<string, unknown>) =>
+      checkQuestion({ plugin, input }),
+  };
+}
+
+const fontsInUse = () =>
+  Response.json({
+    values: { "look.font-primary": "Inter", "look.font-secondary": null },
+  });
+
+test("a pick-fonts question the screen can draw is let through, checked against the project's fonts", async () => {
+  const { asked, check } = questionCheck(fontsInUse);
+  expect(
+    await check("pick-fonts", { proposed: { primary: "Fraunces" } }),
+  ).toBeUndefined();
+  expect(asked).toEqual([
+    "/api/tenants/tenant/projects/project/values?keys=look.font-primary%2Clook.font-secondary",
+  ]);
+  expect(await check("pick-fonts", { proposed: { primary: "Inter" } })).toBe(
+    [
+      "pick-fonts was not shown. One field is wrong.",
+      "",
+      'proposed: "Inter" is already the font in use.',
+      "",
+      'Your other fields were fine: list "all".',
+      "Call again proposing a different font, or with no proposal to let the person choose.",
+    ].join("\n"),
+  );
+});
+
+test("a pick-fonts question is not let through when the project's fonts cannot be read", async () => {
+  const { check } = questionCheck(() =>
+    Response.json({ code: "forbidden" }, { status: 403 }),
+  );
+  await expect(check("pick-fonts", {})).rejects.toThrow(
+    "workflow_http_unavailable:http_403",
+  );
+});
+
+test("a pick-fonts question with an unknown list is refused with every list and how to fix it", async () => {
+  const { check } = questionCheck(fontsInUse);
+  expect(
+    await check("pick-fonts", {
+      proposed: { primary: "Fraunces" },
+      list: "handwriting",
+    }),
+  ).toBe(
+    [
+      "pick-fonts was not shown. One field is wrong.",
+      "",
+      'list: "handwriting" is not a list.',
+      "  Use one of:",
+      "    all      Every font. Use when the person has no preference.",
+      "    sans     Clean and modern. Good for apps and dashboards.",
+      "    serif    Classic and bookish. Good for long reading and editorial pages.",
+      "    display  Loud and characterful. Good for headings and logos, not body text.",
+      "    mono     Every letter the same width. Good for code and figures.",
+      "  Or pass up to 20 font names.",
+      "",
+      'Your other fields were fine: proposed {"primary":"Fraunces"}.',
+      "Call again with the same input and list corrected, or leave list out to offer every font.",
+    ].join("\n"),
+  );
+});
+
+test("a question for a screen the hub does not have is refused with the installed screens", async () => {
+  const { check } = questionCheck(fontsInUse);
+  expect(await check("pick-colors", {})).toBe(
+    [
+      '"pick-colors" is not an installed screen plugin, so nothing was shown.',
+      "",
+      "Installed screen plugins:",
+      "  pick-fonts: Shows the person the fonts in use and fonts to choose a primary and a secondary font from.",
+      "  pick-colours: Shows the person the primary (brand) and background colours in use and lets them choose new ones.",
+      "",
+      "Call again with plugin set to one of them, or ask a plain question with questions instead.",
+    ].join("\n"),
+  );
+});

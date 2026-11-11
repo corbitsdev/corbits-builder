@@ -441,7 +441,7 @@ export function createAgentTokenBridge(
     const projectRoute =
       suffix !== null &&
       ((c.req.method === "GET" &&
-        /^(|\/audit|\/artifacts(?:\/[^/]+)?)$/.test(suffix)) ||
+        /^(|\/audit|\/artifacts(?:\/[^/]+)?|\/values)$/.test(suffix)) ||
         (c.req.method === "POST" &&
           /^(\/mutations|\/artifacts|\/artifact-approvals|\/design-concepts|\/presenter-assignments)$/.test(
             suffix,

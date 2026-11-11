@@ -1,0 +1,222 @@
+.card {
+  max-width: 100%;
+  min-width: 0;
+}
+
+/* GateBlock's "Needs you · form" label: the heading says what the card is. */
+.card > p:first-child {
+  display: none;
+}
+
+.card > h3 {
+  margin-top: 0;
+}
+
+.picker {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  min-width: 0;
+}
+
+.sides {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 2px;
+  padding: 2px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+}
+
+.side {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  min-width: 0;
+  padding: var(--space-1) var(--space-2);
+  border-radius: var(--radius-sm);
+  color: var(--muted-foreground);
+  text-align: left;
+  cursor: pointer;
+}
+
+.side:hover {
+  color: var(--foreground);
+}
+
+.side[aria-pressed="true"] {
+  background: var(--muted);
+  color: var(--foreground);
+}
+
+.sideLabel {
+  font-size: 0.75rem;
+}
+
+.sideFont {
+  max-width: 100%;
+  overflow: hidden;
+  font-size: 0.875rem;
+  font-weight: 500;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.search {
+  position: relative;
+}
+
+.search > [data-slot="input"] {
+  padding-right: 2.25rem;
+}
+
+.search > button {
+  position: absolute;
+  top: 0;
+  right: 0;
+}
+
+.list {
+  position: relative;
+  max-height: 10rem;
+  overflow-y: auto;
+  padding: var(--space-1);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--background);
+}
+
+/* Reads as a question's prompt in the questions card, quieter: it labels a section, not a choice. */
+.group {
+  position: sticky;
+  top: calc(-1 * var(--space-1));
+  z-index: 1;
+  margin: 0;
+  padding: var(--space-2) var(--space-2) var(--space-1);
+  background: var(--background);
+  font-size: 0.8125rem;
+  font-weight: 500;
+  color: var(--muted-foreground);
+}
+
+.option {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  min-height: 2rem;
+  padding: var(--space-1) var(--space-2);
+  border-radius: var(--radius-sm);
+  font-size: 0.875rem;
+  cursor: pointer;
+  /* Clears the sticky group label when a row scrolls into view. */
+  scroll-margin-top: 2rem;
+}
+
+.option[data-active],
+.option:hover {
+  background: var(--muted);
+}
+
+.option[aria-selected="true"] {
+  background: color-mix(in oklab, var(--primary-emphasis) 14%, transparent);
+  font-weight: 500;
+}
+
+.option[aria-selected="true"][data-active] {
+  outline: 1px solid var(--primary-emphasis);
+  outline-offset: -1px;
+}
+
+.name {
+  flex: 1 1 auto;
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.inUse {
+  font-size: 0.75rem;
+  font-weight: 400;
+  color: var(--muted-foreground);
+}
+
+.mark {
+  flex: none;
+  width: 1rem;
+  height: 1rem;
+  color: var(--primary-emphasis);
+}
+
+.empty {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-1) var(--space-2);
+  padding: var(--space-2);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  font-size: 0.875rem;
+  color: var(--muted-foreground);
+}
+
+.empty p {
+  margin: 0;
+  overflow-wrap: anywhere;
+}
+
+.note,
+.hint {
+  margin: 0;
+  font-size: 0.8125rem;
+  color: var(--muted-foreground);
+}
+
+.footer {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: flex-end;
+  gap: var(--space-2) var(--space-3);
+}
+
+.hidden {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
+}
+
+/* Settled the way an answered question card is: quiet frame, one line. */
+.settled {
+  max-width: 100%;
+  min-width: 0;
+  padding: 0.75rem 0.875rem;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg, 0.5rem);
+}
+
+.settledLine {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  margin: 0;
+  font-size: 0.875rem;
+  font-weight: 500;
+  color: var(--muted-foreground);
+}
+
+.settledMark {
+  flex: none;
+  width: 1rem;
+  height: 1rem;
+  color: var(--ok);
+}
+
+/* A proposed side: its label, the font in use and the proposed font, side by side. */
+.compare {
+  display: grid;
+  grid-template-columns: 6rem 1fr 1fr;
+  gap: var(--space-2);
+  font-size: 0.875rem;
+}

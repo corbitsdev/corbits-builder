@@ -1,6 +1,7 @@
 import type { ConversationTextTurn } from "@corbits-builder/schemas/conversation";
 import type { ApprovalDecision } from "@intx/types/signals";
 import { IMPORTED_PROJECT_LEAD } from "./import.ts";
+import { PLUGIN_HINT_END, PLUGIN_HINT_LEAD } from "./screen-plugins.ts";
 import { SPECIALIST_ENDED_LEAD } from "./specialist-ended.ts";
 
 // A resumed project's new coordinator starts with no history. The hub holds what it needs and
@@ -77,7 +78,7 @@ export function approvalDecisionLine({
   return `${decided} a request: ${note}`;
 }
 
-/** A person-sent turn without the held resume context, or undefined for a hub-written opening. */
+/** A person-sent turn without the held resume context or plugin hint, or undefined for a hub-written opening. */
 export function withoutResumeContext(text: string): string | undefined {
   if (text.startsWith(LEGACY_RESUME_OPENING)) return undefined;
   let message = text;
@@ -88,5 +89,8 @@ export function withoutResumeContext(text: string): string | undefined {
       return text.endsWith(RESUME_CONTEXT_END.trimEnd()) ? "" : text;
     message = text.slice(end + RESUME_CONTEXT_END.length);
   }
+  const hint = message.lastIndexOf(PLUGIN_HINT_LEAD);
+  if (hint !== -1 && message.endsWith(PLUGIN_HINT_END))
+    message = message.slice(0, hint);
   return message.startsWith(HANDOFF_LEAD) ? undefined : message;
 }

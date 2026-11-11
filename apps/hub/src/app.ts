@@ -47,6 +47,7 @@ import { createProductConfig } from "./config/index.ts";
 import {
   readCoordinatorStartTimeoutMs,
   readHubEnvironment,
+  readPluginHint,
   readGoogleEmulateBaseUrl,
   required,
 } from "./environment.ts";
@@ -116,6 +117,7 @@ export async function createHubRuntime(
   const env = readHubEnvironment(rawEnvironment);
   const coordinatorStartTimeoutMs =
     readCoordinatorStartTimeoutMs(rawEnvironment);
+  const pluginHint = readPluginHint(rawEnvironment);
   const handle = createDB(env.database);
   let authEmail: ReturnType<typeof createAuthEmail>;
   try {
@@ -476,6 +478,7 @@ export async function createHubRuntime(
         db: handle.db,
         runs: createWorkflowRunReader(agentRepoStore.repoStore),
         repoStore: agentRepoStore.repoStore,
+        pluginHint,
       }),
     );
     // Only a signed-in member of the tenant reaches the note; Interchange's route reuses the

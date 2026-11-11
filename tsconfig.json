@@ -17,10 +17,18 @@
     "skipLibCheck": true,
     "allowImportingTsExtensions": true
   },
-  "include": ["apps/hub", "scripts", "packages", "workflows", "test"],
+  "include": [
+    "apps/hub",
+    "scripts",
+    "packages",
+    "plugins",
+    "workflows",
+    "test"
+  ],
   "exclude": [
     "node_modules",
     "vendor",
+    "plugins/*/src/**/*.tsx",
     "workflows/coder/starter",
     "test/seed/**/app",
     "packages/client"

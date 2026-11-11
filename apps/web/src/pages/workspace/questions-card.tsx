@@ -29,7 +29,10 @@ import styles from "./questions-card.module.css";
 
 const text = wording.questions;
 
-type Question = AskedQuestion["questions"][number];
+/** A question asked as prompts, as opposed to a plugin's screen. */
+export type PromptsQuestion = Exclude<AskedQuestion, { plugin: string }>;
+
+type Question = PromptsQuestion["questions"][number];
 
 type Answer = {
   readonly chosen: readonly string[];
@@ -110,18 +113,14 @@ function Settled({
   asked,
   answer,
 }: {
-  asked: AskedQuestion;
+  asked: PromptsQuestion;
   answer: QuestionAnswer;
 }) {
   const mark = <Check className={clsx(styles.settledMark, styles.settledOk)} />;
-  if ("reply" in answer)
-    return (
-      <SettledBox
-        title={text.answeredInWords}
-        mark={<CornerDownRight className={styles.settledMark} />}
-      >
-        <p className={styles.reply}>{answer.reply}</p>
-      </SettledBox>
+  if ("reply" in answer) return <SettledReply reply={answer.reply} />;
+  if (!("answers" in answer))
+    throw new Error(
+      "A question asked as prompts was answered with a screen's output.",
     );
   return (
     <SettledBox title={text.answered} mark={mark}>
@@ -132,6 +131,18 @@ function Settled({
           answer: (answer.answers[question.id] ?? []).join(", "),
         }))}
       />
+    </SettledBox>
+  );
+}
+
+/** Any open question once the person wrote back instead of answering it: what they wrote. */
+export function SettledReply({ reply }: { reply: string }) {
+  return (
+    <SettledBox
+      title={text.answeredInWords}
+      mark={<CornerDownRight className={styles.settledMark} />}
+    >
+      <p className={styles.reply}>{reply}</p>
     </SettledBox>
   );
 }
@@ -711,7 +722,7 @@ export function QuestionsCard({
 }: {
   /** The question's signal, so each card's field ids are its own. */
   id: string;
-  asked: AskedQuestion;
+  asked: PromptsQuestion;
   state: QuestionsState;
   layout: QuestionsLayout;
 }) {

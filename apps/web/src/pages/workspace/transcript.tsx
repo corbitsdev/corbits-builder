@@ -83,6 +83,8 @@ import {
 } from "./work-unit-message.view.tsx";
 import type { CallResult } from "./live-run.ts";
 import { QuestionsCard, type QuestionsState } from "./questions-card.tsx";
+import { ScreenQuestion, type ProjectValuesStore } from "./screen-question.tsx";
+import { screens } from "./screens.ts";
 import type { ParkedQuestion } from "../../api/conversation.ts";
 import { QUESTION_TOOL_NAME } from "@intx/types/runtime-core";
 import type { QuestionAnswer } from "@intx/types/signals";
@@ -619,6 +621,8 @@ export type RoomThreadContent = {
     answer: QuestionAnswer,
   ) => Promise<boolean>;
   questionsDisabled?: boolean;
+  /** The project's values a plugin's screen reads and saves. */
+  projectValues?: ProjectValuesStore;
   /** Whether question cards ask one question at a time or all at once. */
   questionsLayout?: QuestionsLayout;
 };
@@ -651,6 +655,7 @@ export function RoomThread({
   questions = [],
   onAnswerQuestion,
   questionsDisabled = false,
+  projectValues,
   questionsLayout = "steps",
   children,
 }: RoomThreadProps) {
@@ -692,6 +697,28 @@ export function RoomThread({
       return renderUpdates(card.group, updateSubject(card.group.sender));
     if (card.kind === "questions") {
       const { signalName, asked, answer } = card.question;
+      if ("plugin" in asked)
+        return (
+          <ConversationItem key={signalName} itemId={`questions:${signalName}`}>
+            <Message from="agent">
+              {headed ? null : (
+                <MessageHeader name={wording.speaker.coordinator} />
+              )}
+              <ScreenQuestion
+                host={screens[asked.plugin]}
+                input={asked.input}
+                projectValues={projectValues}
+                answer={answer}
+                disabled={questionsDisabled || onAnswerQuestion === undefined}
+                onAnswer={(screenAnswer) =>
+                  onAnswerQuestion === undefined
+                    ? Promise.resolve(false)
+                    : onAnswerQuestion(signalName, screenAnswer)
+                }
+              />
+            </Message>
+          </ConversationItem>
+        );
       const state: QuestionsState =
         answer === undefined
           ? {

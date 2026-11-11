@@ -27,6 +27,8 @@ import {
   LiveApp,
   MaterialReceipt,
   MaterialRemovedReceipt,
+  ProjectValues,
+  ProjectValuesWrite,
 } from "@corbits-builder/schemas/artifact";
 import { ProjectActivity } from "@corbits-builder/schemas/activity";
 import {
@@ -40,6 +42,11 @@ import { readJson } from "../lib/json.ts";
 import { mailRunAsCaller } from "../mail/caller-mail.ts";
 import { mountApprovalRoundRoutes } from "./approval-rounds.ts";
 import type { createArtifactService } from "./service.ts";
+import {
+  projectValueTokens,
+  readProjectValues,
+  unregisteredValue,
+} from "./project-values.ts";
 
 const security = [
   { sessionCookie: [] },
@@ -227,6 +234,89 @@ export function mountArtifactRoutes(
       return c.json(
         await service.previousDesignDraft(actorOf(c), c.req.param("projectId")),
       );
+    },
+  );
+  app.get(
+    "/:projectId/values",
+    describeRoute({
+      tags: ["Artifacts"],
+      operationId: "readProjectValues",
+      description:
+        "The project values named in keys, comma separated, each read from where the project stores it, such as the fonts in the filed design's styles.css. A value the project has none of yet is null. Values are saved through the route that owns them, such as design-tweaks.",
+      security,
+      responses: {
+        200: {
+          description: "Each named value, or null",
+          content: { "application/json": { schema: resolver(ProjectValues) } },
+        },
+        400: { description: "A key that is not a registered project value" },
+      },
+    }),
+    async (c) => {
+      const names = (c.req.query("keys") ?? "").split(",");
+      const unknown = unregisteredValue(names);
+      if (unknown !== undefined)
+        throw new ProjectError(400, "unknown_project_value", { key: unknown });
+      const state = await service.projectState(
+        actorOf(c),
+        c.req.param("projectId"),
+      );
+      return c.json({ values: readProjectValues(names, state) });
+    },
+  );
+  app.post(
+    "/:projectId/values",
+    describeRoute({
+      tags: ["Artifacts"],
+      operationId: "saveProjectValues",
+      description:
+        "Saves project values by name, each written where the project stores it: the fonts become design tweaks with the stored fallbacks kept, saved as design-tweaks saves them. Returns the saved values read back.",
+      security,
+      requestBody: {
+        required: true,
+        content: {
+          "application/json": { schema: resolver(ProjectValuesWrite) },
+        },
+      },
+      responses: {
+        200: {
+          description: "Each saved value as now stored",
+          content: { "application/json": { schema: resolver(ProjectValues) } },
+        },
+        400: {
+          description:
+            "A name that is not registered or a value its schema refuses",
+        },
+        404: {
+          description: "Neither a live designer nor a filed design to update",
+        },
+      },
+    }),
+    async (c) => {
+      const current = actorOf(c);
+      const projectId = c.req.param("projectId");
+      const input = ProjectValuesWrite(await body(c));
+      if (input instanceof type.errors)
+        throw new ProjectError(400, "invalid_project_values", {
+          issues: input,
+        });
+      const names = Object.keys(input.values);
+      const unknown = unregisteredValue(names);
+      if (unknown !== undefined)
+        throw new ProjectError(400, "unknown_project_value", { key: unknown });
+      const tokens = projectValueTokens(
+        input.values,
+        await service.projectState(current, projectId),
+      );
+      await service.saveDesignTweaks(
+        current,
+        projectId,
+        { tokens },
+        (runId, content) =>
+          mailRunAsCaller(c, nativeFetch, current.tenantId, runId, content),
+      );
+      const state = await service.projectState(current, projectId);
+      return c.json({ values: readProjectValues(names, state) });
     },
   );
   app.post(

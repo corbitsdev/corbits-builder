@@ -187,6 +187,30 @@ export async function saveDesignTweaks(projectId: string, input: DesignTweaks) {
   return productClient().saveDesignTweaks(tenantId, projectId, input);
 }
 
+/** The named project values as stored, null where the project has none yet. */
+export async function readProjectValues(
+  projectId: string,
+  keys: readonly string[],
+  signal: AbortSignal,
+) {
+  const tenantId = await workspaceTenantId();
+  const read = await productClient().projectValues(
+    tenantId,
+    projectId,
+    keys,
+    signal,
+  );
+  return read.values;
+}
+
+export async function saveProjectValues(
+  projectId: string,
+  values: Record<string, string>,
+) {
+  const tenantId = await workspaceTenantId();
+  return productClient().saveProjectValues(tenantId, projectId, values);
+}
+
 export async function chooseDesign(projectId: string, input: DesignChoice) {
   const tenantId = await workspaceTenantId();
   return productClient().chooseDesign(tenantId, projectId, input);

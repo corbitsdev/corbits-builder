@@ -3,6 +3,7 @@ import { createCoordinatorWorkflow } from "@corbits-builder/coordinator";
 import { createArtifactTools } from "../../artifacts/tools.ts";
 import { createDeployTools } from "../../projects/deploy-tools.ts";
 import { createSkillTools } from "../../skills/tools.ts";
+import { createPluginTools } from "../../plugins/tools.ts";
 import { roleInference } from "../role-inference.ts";
 import { compactingDirector } from "../director.ts";
 import { dropDegenerateTurn, trimHistory } from "../compaction.ts";
@@ -29,6 +30,7 @@ const agent = createCoordinatorAgent({
     createArtifactTools("coordinator"),
     createDeployTools(),
     createSkillTools(["problem-brief"]),
+    createPluginTools(),
     savedResultTools,
   ],
 });

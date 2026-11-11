@@ -67,6 +67,9 @@
         "@corbits-builder/coder": "workspace:*",
         "@corbits-builder/coordinator": "workspace:*",
         "@corbits-builder/designer": "workspace:*",
+        "@corbits-builder/pick-colours": "workspace:*",
+        "@corbits-builder/pick-fonts": "workspace:*",
+        "@corbits-builder/plugin": "workspace:*",
         "@corbits-builder/presenter": "workspace:*",
         "@corbits-builder/reviewer": "workspace:*",
         "@corbits-builder/schemas": "workspace:*",
@@ -122,6 +125,9 @@
       "version": "0.1.0-rc.3",
       "dependencies": {
         "@corbits-builder/client": "workspace:*",
+        "@corbits-builder/pick-colours": "workspace:*",
+        "@corbits-builder/pick-fonts": "workspace:*",
+        "@corbits-builder/plugin": "workspace:*",
         "@corbits-builder/schemas": "workspace:*",
         "@corbits/react-ui": "0.5.1",
         "@corbits/slidedeck": "workspace:*",
@@ -167,6 +173,13 @@
       "name": "@corbits/pdf",
       "version": "0.1.0-rc.2",
     },
+    "packages/plugin": {
+      "name": "@corbits-builder/plugin",
+      "version": "0.1.0-rc.3",
+      "dependencies": {
+        "arktype": "catalog:",
+      },
+    },
     "packages/schemas": {
       "name": "@corbits-builder/schemas",
       "version": "0.1.0-rc.3",
@@ -187,6 +200,34 @@
     "packages/zip": {
       "name": "@corbits/zip",
       "version": "0.1.0-rc.2",
+    },
+    "plugins/pick-colours": {
+      "name": "@corbits-builder/pick-colours",
+      "version": "0.1.0-rc.3",
+      "dependencies": {
+        "@corbits-builder/plugin": "workspace:*",
+        "@corbits/react-ui": "0.5.1",
+        "arktype": "catalog:",
+        "lucide-react": "0.545.0",
+        "react": "19.3.0",
+      },
+      "devDependencies": {
+        "@types/react": "19.3.0",
+      },
+    },
+    "plugins/pick-fonts": {
+      "name": "@corbits-builder/pick-fonts",
+      "version": "0.1.0-rc.3",
+      "dependencies": {
+        "@corbits-builder/plugin": "workspace:*",
+        "@corbits/react-ui": "0.5.1",
+        "arktype": "catalog:",
+        "lucide-react": "0.545.0",
+        "react": "19.3.0",
+      },
+      "devDependencies": {
+        "@types/react": "19.3.0",
+      },
     },
     "vendor/interchange/apps/sidecar": {
       "name": "@intx/sidecar-app",
@@ -769,6 +810,12 @@
     "@corbits-builder/designer": ["@corbits-builder/designer@workspace:workflows/designer"],
 
     "@corbits-builder/hub": ["@corbits-builder/hub@workspace:apps/hub"],
+
+    "@corbits-builder/pick-colours": ["@corbits-builder/pick-colours@workspace:plugins/pick-colours"],
+
+    "@corbits-builder/pick-fonts": ["@corbits-builder/pick-fonts@workspace:plugins/pick-fonts"],
+
+    "@corbits-builder/plugin": ["@corbits-builder/plugin@workspace:packages/plugin"],
 
     "@corbits-builder/presenter": ["@corbits-builder/presenter@workspace:workflows/presenter"],
 

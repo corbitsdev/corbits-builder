@@ -1,4 +1,5 @@
 import type { DBConfig } from "@intx/db";
+import { type } from "arktype";
 
 export type Environment = Record<string, string | undefined>;
 
@@ -140,6 +141,17 @@ export function readCoordinatorStartTimeoutMs(env: Environment): number {
   if (value >= 300_000)
     throw new Error("COORDINATOR_START_TIMEOUT_MS must be under 300000");
   return value;
+}
+
+const PluginHint = type("'off' | 'triggers' | 'fields'");
+export type PluginHint = typeof PluginHint.infer;
+
+// Whether, and by which search, the hub notes likely plugins under the person's message to the coordinator.
+export function readPluginHint(env: Environment): PluginHint {
+  const hint = PluginHint(env["PLUGIN_HINT"] ?? "off");
+  if (hint instanceof type.errors)
+    throw new Error("PLUGIN_HINT must be off, triggers or fields");
+  return hint;
 }
 
 export function positiveInteger(

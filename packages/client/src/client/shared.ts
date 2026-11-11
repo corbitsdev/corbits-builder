@@ -62,6 +62,8 @@ import type {
   LiveApp,
   MaterialReceipt,
   MaterialRemovedReceipt,
+  ProjectValues,
+  ProjectValuesWrite,
 } from "@corbits-builder/schemas/artifact";
 import type {
   ApprovalRound,
@@ -530,6 +532,20 @@ export type ProductApiClient = Readonly<{
     input: DesignTweaks,
     signal?: AbortSignal,
   ): Promise<DesignTweaksReceipt>;
+  /** The named project values as stored, null where the project has none yet. */
+  projectValues(
+    tenantId: string,
+    projectId: string,
+    keys: readonly string[],
+    signal?: AbortSignal,
+  ): Promise<ProjectValues>;
+  /** Saves project values by name where the project stores them; returns them read back. */
+  saveProjectValues(
+    tenantId: string,
+    projectId: string,
+    values: ProjectValuesWrite["values"],
+    signal?: AbortSignal,
+  ): Promise<ProjectValues>;
   /** The person chooses a filed design option at its version; it becomes the approved design. */
   chooseDesign(
     tenantId: string,

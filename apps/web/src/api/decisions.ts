@@ -123,9 +123,12 @@ export async function openDecisions(onlyProjectId?: string): Promise<Wait[]> {
         runId: conversation.runId,
         stage: null,
         title: wording.wait.question,
-        consequence: question.asked.questions
-          .map((prompt) => prompt.question)
-          .join(" "),
+        consequence:
+          "plugin" in question.asked
+            ? wording.wait.askedInConversation
+            : question.asked.questions
+                .map((prompt) => prompt.question)
+                .join(" "),
       });
     for (const wait of projectWaits)
       waits.push({ ...wait, projectTitle: record.title });

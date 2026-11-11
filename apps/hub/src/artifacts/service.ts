@@ -131,6 +131,7 @@ import type { LiveApps } from "../live-app/runner.ts";
 import { appContent, bundleFiles } from "../builds/app-snapshot.ts";
 import { MAX_DESIGN_BYTES } from "./design-tools.ts";
 import { DESIGN_STYLES, setThemeTokens } from "./design-tweaks.ts";
+import type { ProjectState } from "./project-values.ts";
 import {
   coordinatorTweaksNote,
   designerTweaksNote,
@@ -1091,6 +1092,14 @@ export function createArtifactService(
       if (files === undefined)
         throw new ProjectError(404, "design_draft_not_found");
       return designDraftOf(files);
+    },
+
+    // What project values are read from: the filed design at its latest version, with the look
+    // the person saved.
+    async projectState(actor: Actor, projectId: string): Promise<ProjectState> {
+      await requireProject(actor, projectId, "read");
+      const filed = await filedDesign(actor, undefined);
+      return { styles: filed && (await filed.files())[DESIGN_STYLES] };
     },
 
     // The person's saved look tokens, written deterministically wherever the design lives: the

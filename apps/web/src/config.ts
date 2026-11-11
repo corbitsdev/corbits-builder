@@ -1019,6 +1019,11 @@ export const wording = {
     answered: "Answered",
     /** The settled card when the person wrote back instead of choosing, over what they wrote. */
     answeredInWords: "Answered in your own words",
+    /** In place of a plugin's screen the interface has no view for, or whose input it refuses. */
+    screenUnavailable:
+      "This question can't be shown here. Answer it in your own words below.",
+    screenLoading: "Loading…",
+    screenNotSaved: "Your choice was not saved. It is kept; try again.",
   },
   archivedProject: {
     title: "This project is archived",

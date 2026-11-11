@@ -7,13 +7,14 @@ import {
   type BaseEnv,
   type AnnotatedToolFactory,
 } from "@intx/agent/authoring";
-import { questionTool } from "@intx/inference";
+import { questionTool, type QuestionCheck } from "@intx/inference";
 import { WorkflowDeploymentResponse } from "@intx/types";
 import { HUB_CREDENTIAL_HANDLE } from "@intx/types/credential-delivery";
 import type { RuntimeCapabilities } from "@intx/types/runtime-capabilities";
 import { deriveRunAddress } from "@intx/workflow-deploy";
 import { setTimeout as sleep } from "node:timers/promises";
 import { type, TraversalError } from "arktype";
+import { PLUGINS } from "../plugins/catalog.ts";
 import {
   NativeDocumentKind,
   NativeSpecialistAssignment,
@@ -29,6 +30,7 @@ import {
   DesignBundle,
   DesignConcept,
   MATERIAL_KIND,
+  ProjectValues,
   WriterDocumentKind,
   type ArtifactRef,
 } from "@corbits-builder/schemas/artifact";
@@ -59,6 +61,7 @@ import {
   presenterAssignmentMessage,
   type PresenterDesignTokens,
 } from "../config/personas.ts";
+import { unknownScreenPlugin } from "../config/screen-plugins.ts";
 import { DESIGN_STYLES } from "../artifacts/design-tweaks.ts";
 import { workflowHttpJson, WorkflowHttpError } from "../workflows/http-json.ts";
 import { assignmentToWriterMessage } from "../workflows/writer-task.ts";
@@ -239,6 +242,59 @@ const refusalText = (error: unknown) =>
         ? error.name + ": " + error.message
         : String(error);
 
+// The screens a question can show.
+const SCREEN_PLUGINS = PLUGINS.filter((installed) => installed.refusal);
+
+// The project values a screen reads, from the hub as the run, each undefined where the project
+// has none yet.
+async function readProjectValues(
+  capabilities: RuntimeCapabilities,
+  project: { tenantId: string; projectId: string } | undefined,
+  names: readonly string[],
+) {
+  const signal = new AbortController().signal;
+  const { tenantId, projectId } =
+    project ??
+    (await resolveWorkflowProjectScope(capabilities, "coordinator", signal));
+  const { values } = ProjectValues.assert(
+    await workflowHttpJson({
+      capabilities,
+      handle: HUB_CREDENTIAL_HANDLE,
+      path:
+        "/api/tenants/" +
+        encodeURIComponent(tenantId) +
+        "/projects/" +
+        encodeURIComponent(projectId) +
+        "/values?" +
+        new URLSearchParams({ keys: names.join(",") }).toString(),
+      maxResponseBytes: 64 * 1024,
+      signal,
+    }),
+  );
+  return Object.fromEntries(
+    Object.entries(values).map(([name, value]) => [name, value ?? undefined]),
+  );
+}
+
+// Refuses a screen's input before the question parks, so the person never sees a screen that
+// cannot draw. A screen is checked against the project as it is, so a failed read is thrown.
+async function checkPluginQuestion(
+  { plugin, input }: Parameters<QuestionCheck>[0],
+  capabilities: RuntimeCapabilities,
+  project: { tenantId: string; projectId: string } | undefined,
+) {
+  const installed = SCREEN_PLUGINS.find(
+    (screen) => screen.builder.handle === plugin,
+  );
+  if (!installed?.refusal) return unknownScreenPlugin(plugin, SCREEN_PLUGINS);
+  const reads = installed.builder.reads ?? [];
+  const values =
+    reads.length > 0
+      ? await readProjectValues(capabilities, project, reads)
+      : {};
+  return installed.refusal(input, values);
+}
+
 export function createDeployTools(options?: {
   tenantId: string;
   projectId: string;
@@ -320,6 +376,8 @@ export function createDeployTools(options?: {
     ],
     factory: (env) => ({
       definitions,
+      checkQuestion: (question) =>
+        checkPluginQuestion(question, env.capabilities, options),
       run: async (call, signal) => {
         if (!options) {
           try {

@@ -10,13 +10,16 @@
     "dev": "bun run --parallel css-types:watch serve",
     "serve": "vite",
     "build": "vite build",
-    "css-types": "tcm -s -p \"src/**/*.module.css\"",
+    "css-types": "tcm -s -p \"src/**/*.module.css\" && tcm -s -p \"../../plugins/*/src/**/*.module.css\"",
     "css-types:watch": "tcm -s -w -p \"src/**/*.module.css\"",
     "storybook": "storybook dev -p 6006",
     "build-storybook": "storybook build -o storybook-static"
   },
   "dependencies": {
     "@corbits-builder/client": "workspace:*",
+    "@corbits-builder/pick-colours": "workspace:*",
+    "@corbits-builder/pick-fonts": "workspace:*",
+    "@corbits-builder/plugin": "workspace:*",
     "@corbits-builder/schemas": "workspace:*",
     "@corbits/react-ui": "0.5.1",
     "@corbits/slidedeck": "workspace:*",
