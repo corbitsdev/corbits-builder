@@ -1,11 +1,6 @@
 import { tenantPath, type ClientDeps, type ProductApiClient } from "./shared";
 
-/**
- * Views of the native Interchange role and grant surfaces
- * (`/api/tenants/:tenantId/roles` and `/grants`). These are plain reads and
- * compositions over the hub's own authorization material; the client never
- * interprets them beyond what the hub returned.
- */
+/** A role from the native Interchange role listing, as the hub returned it. */
 export type TenantRoleView = Readonly<{
   id: string;
   tenantId: string;
@@ -16,32 +11,8 @@ export type TenantRoleView = Readonly<{
   updatedAt: string;
 }>;
 
-export type TenantGrantView = Readonly<{
-  id: string;
-  resource: string;
-  action: string;
-  effect: "allow" | "deny" | "ask";
-  origin: "system" | "role" | "creator" | "invoker";
-  roleId: string | null;
-  principalId: string | null;
-  conditions: Record<string, unknown> | null;
-  expiresAt: string | null;
-}>;
-
-export type TenantGrantInput = Readonly<{
-  roleId: string;
-  resource: string;
-  action: string;
-  effect: "allow" | "deny" | "ask";
-  origin: "system" | "role" | "creator" | "invoker";
-}>;
-
 export type TenantRolePage = Readonly<{
   data: TenantRoleView[];
-  nextCursor: string | null;
-}>;
-export type TenantGrantPage = Readonly<{
-  data: TenantGrantView[];
   nextCursor: string | null;
 }>;
 
@@ -74,10 +45,7 @@ async function allPages<T>(
 
 export function buildRoleMethods(
   deps: ClientDeps,
-): Pick<
-  ProductApiClient,
-  "tenantRoles" | "createTenantRole" | "tenantGrants" | "createTenantGrant"
-> {
+): Pick<ProductApiClient, "tenantRoles"> {
   const { request } = deps;
   return {
     async tenantRoles(tenantId, signal) {
@@ -87,26 +55,6 @@ export function buildRoleMethods(
         signal,
       );
       return { data, nextCursor: null };
-    },
-    createTenantRole(tenantId, input, signal) {
-      return request(`${tenantPath(tenantId)}/roles`, signal, input);
-    },
-    async tenantGrants(tenantId, query = {}, signal) {
-      const path = `${tenantPath(tenantId)}/grants`;
-      const filters = new URLSearchParams();
-      if (query.roleId !== undefined) filters.set("roleId", query.roleId);
-      if (query.principalId !== undefined)
-        filters.set("principalId", query.principalId);
-      const suffix = filters.toString();
-      const data = await allPages<TenantGrantView>(
-        request,
-        suffix === "" ? path : `${path}?${suffix}`,
-        signal,
-      );
-      return { data, nextCursor: null };
-    },
-    createTenantGrant(tenantId, input, signal) {
-      return request(`${tenantPath(tenantId)}/grants`, signal, input);
     },
   };
 }

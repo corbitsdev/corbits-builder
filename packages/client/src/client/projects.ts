@@ -1,26 +1,13 @@
-import { type } from "arktype";
-import {
-  InstalledWorkflows,
-  INSTALLED_WORKFLOWS_KEY,
-} from "@corbits-builder/schemas/installed-workflows";
-import { NativeSpecialistDeployment } from "@corbits-builder/schemas/native-specialist";
 import {
   ProjectExport,
   ProjectImportReceipt,
 } from "@corbits-builder/schemas/project";
-import {
-  BindCoordinator,
-  CoordinatorBindingReceipt,
-} from "@corbits-builder/schemas/coordinator";
 import {
   projectPath,
   tenantPath,
   type ClientDeps,
   type ProductApiClient,
 } from "./shared";
-
-const Deployment = type({ id: "string > 0", status: "string > 0" });
-const TenantConfig = type({ config: { "[string]": "unknown" } });
 
 export function buildProjectsMethods(
   deps: ClientDeps,
@@ -34,15 +21,10 @@ export function buildProjectsMethods(
   | "startProjectCoordinator"
   | "projectNextStep"
   | "projectRunStates"
-  | "projectAudit"
   | "mutateProject"
   | "versionProject"
   | "exportProject"
   | "importProject"
-  | "installedWorkflows"
-  | "deployNativeWorkflow"
-  | "nativeDeployments"
-  | "bindProjectCoordinator"
 > {
   const { request } = deps;
   return {
@@ -84,18 +66,6 @@ export function buildProjectsMethods(
     projectRunStates(tenantId, projectId, signal) {
       return request(`${projectPath(tenantId, projectId)}/run-states`, signal);
     },
-    projectAudit(tenantId, projectId, query = {}, signal) {
-      const params = new URLSearchParams();
-      if (query.limit !== undefined) params.set("limit", String(query.limit));
-      if (query.before) {
-        params.set("beforeTime", query.before.occurredAt);
-        params.set("beforeId", query.before.id);
-      }
-      return request(
-        `${projectPath(tenantId, projectId)}/audit?${params}`,
-        signal,
-      );
-    },
     mutateProject(tenantId, projectId, mutation, signal) {
       return request(
         `${projectPath(tenantId, projectId)}/mutations`,
@@ -126,35 +96,6 @@ export function buildProjectsMethods(
           `${tenantPath(tenantId)}/projects/import`,
           signal,
           ProjectExport.assert(file),
-        ),
-      );
-    },
-    async installedWorkflows(tenantId, signal) {
-      const tenant = TenantConfig.assert(
-        await request(tenantPath(tenantId), signal),
-      );
-      return InstalledWorkflows.assert(tenant.config[INSTALLED_WORKFLOWS_KEY]);
-    },
-    async deployNativeWorkflow(tenantId, input, signal) {
-      return Deployment.assert(
-        await request(
-          `${tenantPath(tenantId)}/workflows/deployments`,
-          signal,
-          NativeSpecialistDeployment.assert(input),
-        ),
-      );
-    },
-    async nativeDeployments(tenantId, signal) {
-      return Deployment.array().assert(
-        await request(`${tenantPath(tenantId)}/workflows/deployments`, signal),
-      );
-    },
-    async bindProjectCoordinator(tenantId, projectId, input, signal) {
-      return CoordinatorBindingReceipt.assert(
-        await request(
-          `${projectPath(tenantId, projectId)}/coordinator`,
-          signal,
-          BindCoordinator.assert(input),
         ),
       );
     },

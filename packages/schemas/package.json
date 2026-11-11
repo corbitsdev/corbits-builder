@@ -21,7 +21,6 @@
     "./settings": "./src/settings.ts",
     "./preferences": "./src/preferences.ts",
     "./models": "./src/models.ts",
-    "./catalog": "./src/catalog.ts",
     "./audit": "./src/audit.ts",
     "./questions": "./src/questions.ts",
     "./approaches": "./src/approaches.ts",

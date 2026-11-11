@@ -1,12 +1,4 @@
-import type {
-  TenantGrantInput,
-  TenantGrantPage,
-  TenantGrantView,
-  TenantRolePage,
-  TenantRoleView,
-} from "./roles";
-import type { DiscoveredModels } from "@corbits-builder/schemas/catalog";
-import type { SettingsProviders } from "@corbits-builder/schemas/settings";
+import type { TenantRolePage } from "./roles";
 import type { PreferenceRegistry } from "@corbits-builder/schemas/preferences";
 import type {
   CustomProviderCreate,
@@ -16,10 +8,6 @@ import type {
   ProviderTest,
   ProviderTestResult,
 } from "@corbits-builder/schemas/models";
-import type {
-  AuditQuery,
-  ProjectAuditPage,
-} from "@corbits-builder/schemas/audit";
 import type {
   SettingsSave,
   SettingsRecord,
@@ -36,12 +24,6 @@ import type {
   ProjectShipReceipt,
   ProjectView,
 } from "@corbits-builder/schemas/project";
-import type { InstalledWorkflows } from "@corbits-builder/schemas/installed-workflows";
-import type { NativeSpecialistDeployment } from "@corbits-builder/schemas/native-specialist";
-import type {
-  BindCoordinator,
-  CoordinatorBindingReceipt,
-} from "@corbits-builder/schemas/coordinator";
 import type {
   AcceptanceChecklist,
   AcceptedMaterials,
@@ -85,21 +67,13 @@ import type {
   InvitationCreation,
   InvitationList,
 } from "@corbits-builder/schemas/invitation";
-import type {
-  MePrincipalsPage,
-  MeProfile,
-  Tenant,
-  HelloResponse,
-  Workspace,
-} from "./auth";
-import type { CatalogModelView, CatalogOfferingView } from "./catalog";
+import type { MePrincipalsPage, Workspace } from "./auth";
 import type {
   ModelCredentialInput,
   ModelCredentialReceipt,
   ModelLogin,
   ModelLoginPlugin,
   ModelLoginState,
-  ModelProviderView,
 } from "./credentials";
 
 export type ProductApiClientOptions = Readonly<{
@@ -140,15 +114,6 @@ export type ProjectArtifact = {
 };
 
 export type ProductApiClient = Readonly<{
-  models(tenantId: string, signal?: AbortSignal): Promise<DiscoveredModels>;
-  settingsProviders(
-    tenantId: string,
-    signal?: AbortSignal,
-  ): Promise<SettingsProviders>;
-  modelProviders(
-    tenantId: string,
-    signal?: AbortSignal,
-  ): Promise<ModelProviderView[]>;
   addModelCredential(
     tenantId: string,
     input: ModelCredentialInput,
@@ -173,12 +138,6 @@ export type ProductApiClient = Readonly<{
     name: string,
     signal?: AbortSignal,
   ): Promise<{ id: string }>;
-  projectAudit(
-    tenantId: string,
-    projectId: string,
-    query?: AuditQuery,
-    signal?: AbortSignal,
-  ): Promise<ProjectAuditPage>;
 
   projectArtifacts(
     tenantId: string,
@@ -200,17 +159,6 @@ export type ProductApiClient = Readonly<{
     signal?: AbortSignal,
   ): Promise<DecidedApprovalList>;
 
-  settings(
-    tenantId: string,
-    projectId?: string,
-    signal?: AbortSignal,
-  ): Promise<SettingsRecord>;
-  saveSettings(
-    tenantId: string,
-    projectId: string | undefined,
-    input: SettingsSave,
-    signal?: AbortSignal,
-  ): Promise<SettingsReceipt>;
   preferenceRegistry(
     tenantId: string,
     signal?: AbortSignal,
@@ -250,21 +198,6 @@ export type ProductApiClient = Readonly<{
   ): Promise<SettingsReceipt>;
 
   tenantRoles(tenantId: string, signal?: AbortSignal): Promise<TenantRolePage>;
-  createTenantRole(
-    tenantId: string,
-    input: { name: string; description?: string },
-    signal?: AbortSignal,
-  ): Promise<TenantRoleView>;
-  tenantGrants(
-    tenantId: string,
-    query?: { roleId?: string; principalId?: string },
-    signal?: AbortSignal,
-  ): Promise<TenantGrantPage>;
-  createTenantGrant(
-    tenantId: string,
-    input: TenantGrantInput,
-    signal?: AbortSignal,
-  ): Promise<TenantGrantView>;
 
   createInvitation(
     tenantId: string,
@@ -286,11 +219,6 @@ export type ProductApiClient = Readonly<{
     tenantId: string,
     signal?: AbortSignal,
   ): Promise<{ data: NativeApproval[] }>;
-  nativeApproval(
-    tenantId: string,
-    approvalId: string,
-    signal?: AbortSignal,
-  ): Promise<NativeApproval>;
   decideNativeApproval(
     tenantId: string,
     approvalId: string,
@@ -310,12 +238,6 @@ export type ProductApiClient = Readonly<{
     projectId: string,
     signal?: AbortSignal,
   ): Promise<ConversationEvents>;
-  hello(tenantId: string, signal?: AbortSignal): Promise<HelloResponse>;
-  me(signal?: AbortSignal): Promise<MeProfile>;
-  createTenant(
-    input: { name: string; slug: string },
-    signal?: AbortSignal,
-  ): Promise<Tenant>;
   mePrincipals(
     query?: { cursor?: string; limit?: number },
     signal?: AbortSignal,
@@ -392,51 +314,6 @@ export type ProductApiClient = Readonly<{
     file: ProjectExport,
     signal?: AbortSignal,
   ): Promise<ProjectImportReceipt>;
-  installedWorkflows(
-    tenantId: string,
-    signal?: AbortSignal,
-  ): Promise<InstalledWorkflows>;
-  deployNativeWorkflow(
-    tenantId: string,
-    input: NativeSpecialistDeployment,
-    signal?: AbortSignal,
-  ): Promise<{ id: string; status: string }>;
-  nativeDeployments(
-    tenantId: string,
-    signal?: AbortSignal,
-  ): Promise<{ id: string; status: string }[]>;
-  bindProjectCoordinator(
-    tenantId: string,
-    projectId: string,
-    input: typeof BindCoordinator.infer,
-    signal?: AbortSignal,
-  ): Promise<typeof CoordinatorBindingReceipt.infer>;
-  createTenantProvider(
-    tenantId: string,
-    input: { name: string; plugin: string; apiBaseUrl: string },
-    signal?: AbortSignal,
-  ): Promise<{ id: string }>;
-  createTenantCredential(
-    tenantId: string,
-    input: {
-      providerId: string;
-      name: string;
-      type: string;
-      secret: string;
-      description?: string;
-    },
-    signal?: AbortSignal,
-  ): Promise<{ id: string }>;
-  createCatalogModel(
-    tenantId: string,
-    input: { canonicalName: string },
-    signal?: AbortSignal,
-  ): Promise<CatalogModelView>;
-  createCatalogOffering(
-    tenantId: string,
-    input: { modelId: string; providerId: string },
-    signal?: AbortSignal,
-  ): Promise<CatalogOfferingView>;
   artifact(
     tenantId: string,
     projectId: string,
@@ -611,7 +488,6 @@ export type ClientDeps = {
     mutation?: unknown,
     method?: "POST" | "PATCH" | "DELETE",
   ) => Promise<T>;
-  catalogResponse: (path: string, signal?: AbortSignal) => Promise<unknown>;
   baseUrl: URL;
   headers: Headers;
   fetchRequest: (request: Request) => Promise<Response>;

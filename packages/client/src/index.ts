@@ -5,7 +5,6 @@ export type {
 
 import { buildArtifactsMethods } from "./client/artifacts";
 import { buildAuthMethods } from "./client/auth";
-import { buildCatalogMethods } from "./client/catalog";
 import { buildCredentialsMethods } from "./client/credentials";
 import { buildConversationMethods } from "./client/conversations";
 import { buildInvitationMethods } from "./client/invitations";
@@ -20,14 +19,7 @@ import {
   type ProductApiClientOptions,
 } from "./client/shared";
 
-export type {
-  HelloResponse,
-  MePrincipalsPage,
-  MePrincipal,
-  MeProfile,
-  Tenant,
-  Workspace,
-} from "./client/auth";
+export type { MePrincipalsPage, MePrincipal, Workspace } from "./client/auth";
 export type {
   ApprovalScope,
   NativeApproval,
@@ -42,7 +34,6 @@ export type {
   ModelLogin,
   ModelLoginPlugin,
   ModelLoginState,
-  ModelProviderView,
 } from "./client/credentials";
 export type {
   ActivityTool,
@@ -101,30 +92,14 @@ export function createProductApiClient(
     return (await response.json()) as T;
   }
 
-  async function catalogResponse(
-    path: string,
-    signal?: AbortSignal,
-  ): Promise<unknown> {
-    try {
-      return await request(path, signal);
-    } catch (error) {
-      signal?.throwIfAborted();
-      if (error instanceof ProductApiError) throw error;
-      // JSON parser diagnostics may include server-provided text. Never echo it.
-      throw new Error("native_catalog_response_unavailable");
-    }
-  }
-
   const deps: ClientDeps = {
     request,
-    catalogResponse,
     baseUrl,
     headers,
     fetchRequest,
     options,
   };
   return Object.freeze({
-    ...buildCatalogMethods(deps),
     ...buildCredentialsMethods(deps),
     ...buildArtifactsMethods(deps),
     ...buildSettingsMethods(deps),
