@@ -345,18 +345,6 @@ test("browser choices persist without sending personal-settings saves", async ()
       if (request.url().endsWith("/settings/me/save"))
         saves.push(request.url());
     });
-    for (const name of ["All at once", "One at a time"]) {
-      await page
-        .getByRole("radiogroup", { name: "Questions appear", exact: true })
-        .getByRole("radio", { name, exact: true })
-        .click();
-      await page.reload();
-      await browserExpect(
-        page
-          .getByRole("radiogroup", { name: "Questions appear", exact: true })
-          .getByRole("radio", { name, exact: true }),
-      ).toBeChecked();
-    }
     for (const name of ["Hidden", "Shown"]) {
       await page
         .getByRole("radiogroup", { name: "Document tips", exact: true })
@@ -492,14 +480,12 @@ test("a registry read failure leaves browser settings usable", async () => {
     );
     await page.goto(`${server.url}?view=settings&tab=preferences`);
     const local = page.getByRole("radiogroup", {
-      name: "Questions appear",
+      name: "Document tips",
       exact: true,
     });
-    await local
-      .getByRole("radio", { name: "All at once", exact: true })
-      .click();
+    await local.getByRole("radio", { name: "Hidden", exact: true }).click();
     await browserExpect(
-      local.getByRole("radio", { name: "All at once", exact: true }),
+      local.getByRole("radio", { name: "Hidden", exact: true }),
     ).toBeChecked();
     await browserExpect(
       page.getByRole("button", { name: "Add reviewer", exact: true }),
@@ -507,7 +493,7 @@ test("a registry read failure leaves browser settings usable", async () => {
     await page.unroute("**/settings/preferences");
     await page.reload();
     await browserExpect(
-      local.getByRole("radio", { name: "All at once", exact: true }),
+      local.getByRole("radio", { name: "Hidden", exact: true }),
     ).toBeChecked();
     await browserExpect(
       page.locator("#preference-row-replies").getByRole("radio").first(),

@@ -30,7 +30,6 @@ function Section(args: WorkingPreferencesViewProps) {
 }
 
 const row = {
-  browserOnly: false,
   ends: null,
   save: null,
   disabled: false,
@@ -62,20 +61,6 @@ const replies: PreferenceRow = {
     { id: "detailed", label: "Detailed" },
   ],
   choice: "concise",
-};
-
-const questionsLayout: PreferenceRow = {
-  ...row,
-  id: "questions_layout",
-  label: "Questions appear",
-  group: "conversation",
-  hint: "How Builder's questions are laid out when it asks several.",
-  browserOnly: true,
-  options: [
-    { id: "all", label: "All at once" },
-    { id: "steps", label: "One at a time" },
-  ],
-  choice: "all",
 };
 
 const documents: PreferenceRow = {
@@ -138,7 +123,6 @@ const meta = {
     preferences: [
       questions,
       replies,
-      questionsLayout,
       documents,
       designConcepts,
       internet,
@@ -158,14 +142,14 @@ type Story = StoryObj<typeof meta>;
 
 export const Loaded: Story = {};
 
-/** Until the hub answers, only the preference this browser keeps is listed. */
+/** Until the hub answers, only the preferences it offers in advance are listed. */
 export const Loading: Story = {
-  args: { preferences: [questionsLayout] },
+  args: { preferences: [approvals] },
 };
 
 export const Unreadable: Story = {
   args: {
-    preferences: [questionsLayout],
+    preferences: [approvals],
     fault: "The hub could not be reached.",
   },
 };

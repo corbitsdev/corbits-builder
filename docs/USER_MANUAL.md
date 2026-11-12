@@ -121,17 +121,30 @@ file is filed with the project for the coordinator to read.
 
 ## 3. Answer questions
 
-When the coordinator needs several decisions at once, it shows a card titled
-**A few questions before going on**, with up to five questions.
+When the coordinator needs decisions from you, it shows a card with up to five
+questions, titled for how many it asks: **A question for you**, **A couple of
+questions for you** or **A few questions for you**.
 
-- **Single choice**: pick one option from the list.
-- **Multiple choice**: tick every option that applies.
-- **Other**: when offered, choose it and type in **Your own answer**.
+The card shows one question at a time, with your earlier answers above it and
+the next question below.
+
+- **Pick one**: click an option, and the card moves to the next question. On
+  the last question it waits for **Send answers**.
+- **Pick any that apply**: tick every option that applies, then **Continue**.
+- **Something else…**: when offered, type your own answer in that row.
 
 The coordinator's recommended answers are already selected. Change any you
-disagree with. **Send answers** turns on once every question has an answer.
+disagree with. **Continue** turns on once the question has an answer; on the
+last question it becomes **Send answers**. **Back**, or clicking an earlier
+answer, takes you back to change it.
 
-After you send, the card shows "Answered:" followed by your answers. If you
+From the keyboard, once you click or Tab into the card: ↑ and ↓ move between
+options, Space picks the one you are on, and Enter continues. On a pick-one
+question, Enter continues with the option you moved to, and a number key picks
+the option in that place and moves on, except on the last question. → goes to
+the next question and ← goes back.
+
+After you send, the card shows "Answers sent" with **Show** to list them. If you
 reply in the conversation instead, the card says "Answered in the
 conversation." If the coordinator asks newer questions first, the old card says
 "Replaced by the questions that followed."

@@ -7,16 +7,16 @@ running with Docker Compose is in
 
 ## Architecture in brief
 
-| Path                 | What it is                                                                                                                                                                                                                                                          |
-| -------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `vendor/interchange` | [Interchange](https://github.com/faremeter/interchange) at the commit in `vendor/VENDORED_REVISION`, plus local patches recorded in `vendor/interchange.manifest.json`. It owns the agent loop, mail, spawning, approvals, credentials, sidecars and run lifecycle. |
-| `apps/hub`           | The server: a Postgres control plane, tenancy and sign-in, documents (versioned artifacts with content hashes), approvals and the glue that starts each role. It runs Interchange in-process.                                                                       |
-| `packages/client`    | A typed client for the hub's API (`@corbits-builder/client`). It never touches the database or Interchange internals.                                                                                                                                               |
-| `apps/web`           | The UI: Vite and React over that client, with its own small router in `src/routes.ts`.                                                                                                                                                                              |
-| `workflows/*`        | One package per role: its agent, prompt and workflow definition; the hub supplies its tools.                                                                                                                                                                        |
-| `packages/schemas`   | Types and schemas shared by the hub, the client and the workflows.                                                                                                                                                                                                  |
-| `scripts/`           | Dev and verification scripts: pin and vendor checks, the commit check, the Google sign-in emulator, React UI API generation and the repository import (`bun run import:repo`, which writes a directory as a project file the import reads).                         |
-| `deploy/`            | The Dockerfile and Compose files ([SELF_HOST.md](https://github.com/corbitsdev/corbits-builder/blob/main/docs/SELF_HOST.md)).                                                                                                                                       |
+| Path                 | What it is                                                                                                                                                                                                                                                                                     |
+| -------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `vendor/interchange` | The parts of [Interchange](https://github.com/faremeter/interchange) Builder runs, at the commit in `vendor/VENDORED_REVISION`, plus local patches recorded in `vendor/interchange.manifest.json`. It owns the agent loop, mail, spawning, approvals, credentials, sidecars and run lifecycle. |
+| `apps/hub`           | The server: a Postgres control plane, tenancy and sign-in, documents (versioned artifacts with content hashes), approvals and the glue that starts each role. It runs Interchange in-process.                                                                                                  |
+| `packages/client`    | A typed client for the hub's API (`@corbits-builder/client`). It never touches the database or Interchange internals.                                                                                                                                                                          |
+| `apps/web`           | The UI: Vite and React over that client, with its own small router in `src/routes.ts`.                                                                                                                                                                                                         |
+| `workflows/*`        | One package per role: its agent, prompt and workflow definition; the hub supplies its tools.                                                                                                                                                                                                   |
+| `packages/schemas`   | Types and schemas shared by the hub, the client and the workflows.                                                                                                                                                                                                                             |
+| `scripts/`           | Dev and verification scripts: pin and vendor checks, the commit check, the Google sign-in emulator, React UI API generation and the repository import (`bun run import:repo`, which writes a directory as a project file the import reads).                                                    |
+| `deploy/`            | The Dockerfile and Compose files ([SELF_HOST.md](https://github.com/corbitsdev/corbits-builder/blob/main/docs/SELF_HOST.md)).                                                                                                                                                                  |
 
 The roles:
 
@@ -152,4 +152,4 @@ bun run dev:seed -- --stage=ready_to_build --tenant=<workspaceTenantId>
   `apps/hub/src/sidecar/`.
 - Each role's prompt: `workflows/<role>/src/`. Its `defineTool` tools:
   `apps/hub/src/` (`artifacts/`, `projects/`, `builds/`, `skills/`).
-- Interchange docs: `vendor/interchange/docs/`.
+- Interchange docs: [Interchange's](https://github.com/faremeter/interchange) `docs/` folder at the commit in `vendor/VENDORED_REVISION`.

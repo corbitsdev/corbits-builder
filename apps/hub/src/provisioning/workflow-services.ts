@@ -120,7 +120,7 @@ export async function createWorkflowServices(options: {
   const maxActiveDeployments = positiveInteger(
     environment,
     "SIDECAR_LOCAL_MAX_ACTIVE",
-    16,
+    32,
   );
   const dataRoot = localSidecarDataRoot(
     environment["HUB_DATA_DIR"] ?? "data/hub",

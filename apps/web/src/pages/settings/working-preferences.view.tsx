@@ -16,8 +16,6 @@ export type PreferenceRow = {
   group: PreferenceGroup;
   /** What the preference decides. */
   hint: string;
-  /** This browser keeps it, not the hub. */
-  browserOnly: boolean;
   options: readonly { readonly id: string; readonly label: string }[];
   /** The id of the option chosen. */
   choice: string;
@@ -132,7 +130,7 @@ export function WorkingPreferencesView({
         const members = preferences.filter(
           (preference) => preference.group === group,
         );
-        // Until the hub answers, a group with nothing of this browser's stays out of the way.
+        // Until the hub answers, a group with none of its preferences stays out of the way.
         if (members.length === 0) return null;
         const heading: GroupHeading = copy.groups[group];
         return (
@@ -158,7 +156,7 @@ export function WorkingPreferencesView({
                   layout="columns"
                   highlighted={highlightedId === preference.id}
                   label={preference.label}
-                  aside={<RowNotes preference={preference} />}
+                  aside={<SaveNote save={preference.save} />}
                   hint={preference.hint}
                   htmlFor={control.id}
                 >
@@ -178,17 +176,11 @@ export function WorkingPreferencesView({
   );
 }
 
-/** Where a preference is kept when that is this browser, and how its last change saved. */
-function RowNotes({ preference }: { preference: PreferenceRow }) {
-  const copy = wording.settings.preferences;
-  return (
-    <>
-      {preference.browserOnly ? copy.thisBrowser : null}
-      {preference.save ? (
-        <QuietState tone={SAVE_TONES[preference.save]}>
-          {copy[preference.save]}
-        </QuietState>
-      ) : null}
-    </>
-  );
+/** How a preference's last change saved. */
+function SaveNote({ save }: { save: PreferenceRow["save"] }) {
+  return save ? (
+    <QuietState tone={SAVE_TONES[save]}>
+      {wording.settings.preferences[save]}
+    </QuietState>
+  ) : null;
 }

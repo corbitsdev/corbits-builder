@@ -64,13 +64,7 @@ export const wording = {
     accountUnreadable: "Your account could not be read.",
   },
   hub: {
-    timedOut: "The hub did not answer in time. Try again.",
-    unreachable: "That request did not reach the hub. Try again.",
     notAnswering: "The hub is not answering",
-    slowTitle: (averageMs: number) =>
-      `${productName} is responding slowly: about ${(averageMs / 1000).toFixed(1)} seconds per action`,
-    slowLead:
-      "Everything on this page waits on it. If it stays slow, restart the app; the hub's log says which requests were slow.",
   },
   boot: {
     starting: "Starting…",
@@ -999,23 +993,39 @@ export const wording = {
       ({ 1: "A question for you", 2: "A couple of questions for you" })[
         count
       ] ?? "A few questions for you",
-    other: "Other",
+    /** Where the open question sits among them, beside the heading. */
+    position: (at: number, count: number) =>
+      `${String(at)} of ${String(count)}`,
+    /** The list of questions, answered ones above the open one. */
+    thread: "Questions",
+    pickOne: "Pick one",
+    pickAny: "Pick any that apply",
+    selected: (picked: number, count: number) =>
+      `${String(picked)} of ${String(count)} selected`,
+    /** The row where the person types their own answer instead. */
+    other: "Something else…",
     otherAnswer: "Your own answer",
-    /** The last step tab, where every answer is shown before it is sent. */
-    submit: "Submit",
-    steps: "Questions",
-    /** The keyboard hint under each step, by the kind of step. */
-    keys: {
-      single: "↑↓ move · Enter choose · ← back · → next",
-      multi: "↑↓ move · Space tick · Enter next · ← back · → next",
-      review: "Enter send · ← back",
-    },
-    composerPlaceholder: "Type here to respond to the above question",
+    changeAnswer: (prompt: string, answer: string) =>
+      `Change your answer to "${prompt}": ${answer}`,
+    earlier: (count: number) =>
+      count === 1 ? "1 earlier answer" : `${String(count)} earlier answers`,
+    /** After the next question, how many more follow it. */
+    more: (count: number) => `+${String(count)} more`,
+    back: "Back",
+    next: "Continue",
+    backKeys: "Previous question (←)",
+    nextKeys: "Next question (Enter or →)",
+    sendKeys: "Send your answers (Enter)",
+    composerPlaceholder: "Or reply in your own words…",
     send: "Send answers",
     sending: "Sending…",
     notSent: "Your answers were not sent. Your choices are kept; try again.",
-    /** The settled card's heading, over each question and its answer. */
-    answered: "Answered",
+    /** The settled card's one line; its answers fold under Show. */
+    answered: "Answers sent",
+    answerCount: (count: number) =>
+      count === 1 ? "1 answer" : `${String(count)} answers`,
+    show: "Show",
+    hide: "Hide",
     answeredInChat: "Answered in the conversation",
     replaced: "Replaced by the questions that followed",
     /** One list item of the person's reply per question: "- Who signs in? — Staff, Guests". */
@@ -1200,8 +1210,6 @@ export const wording = {
     },
     preferences: {
       lead: "New projects start with these. What you say in a project wins.",
-      /** Beside a preference this browser keeps rather than the hub. */
-      thisBrowser: "This browser",
       saving: "Saving…",
       saved: "Saved",
       failed: "Not saved",
@@ -1227,26 +1235,6 @@ export const wording = {
         PreferenceGroup,
         { title: string; lead: string; tag?: string }
       >,
-      /** Kept in this browser alone. */
-      local: [
-        {
-          id: "questions_layout",
-          label: "Questions appear",
-          hint: `How ${productName}'s questions are laid out when it asks several.`,
-          group: "conversation",
-          options: [
-            {
-              id: "all",
-              label: "All at once",
-            },
-            {
-              id: "steps",
-              label: "One at a time",
-            },
-          ],
-          default: "steps",
-        },
-      ] satisfies PreferenceRegistry["preferences"],
       /** The hub's own, offered before its registry is read, so they can be set without it. */
       fallback: [
         {

@@ -1,7 +1,7 @@
 /**
  * What the working preferences section does: reads the person's working preferences from the
- * hub's registry, where the hub keeps them and delivers them to every role they apply to, adds the
- * ones this browser keeps, and saves each change as it is made.
+ * hub's registry, where the hub keeps them and delivers them to every role they apply to, and saves
+ * each change as it is made.
  */
 import { wording } from "../../config.ts";
 import { useEffect, useRef, useState } from "react";
@@ -12,10 +12,6 @@ import {
   useWorkspaceApprovalsEnabled,
   writeWorkspaceApprovalsEnabled,
 } from "../../workspace-approvals-setting.ts";
-import {
-  useQuestionsLayout,
-  writeQuestionsLayout,
-} from "../../questions-layout-setting.ts";
 import { productClient } from "../../api/transport.ts";
 import { workspaceTenantId } from "../../api/auth.ts";
 import type {
@@ -34,14 +30,14 @@ type Registry = PreferenceRegistry["preferences"];
 type SavedPreferences = { value: Preferences | null; version: number };
 type PickedChoice = { choice: string };
 
-const { fallback, local } = wording.settings.preferences;
+const { fallback } = wording.settings.preferences;
 
-/** The hub's preferences, the ones it offers before they are read, and this browser's own. */
+/** The hub's preferences, and the ones it offers before they are read. */
 function listPreferences(hub: Registry): Registry {
   const fromFallback = fallback.filter(
     (item) => !hub.some((entry) => entry.id === item.id),
   );
-  return [...hub, ...fromFallback, ...local];
+  return [...hub, ...fromFallback];
 }
 
 const writeApprovals = (choice: string) =>
@@ -50,17 +46,11 @@ const writeApprovals = (choice: string) =>
 /** Writes a choice this browser keeps; the hub may keep the same one as well. */
 const writeInBrowser: Readonly<Record<string, (choice: string) => void>> = {
   experimental_approvals: writeApprovals,
-  questions_layout: (choice) =>
-    writeQuestionsLayout(choice === "all" ? "all" : "steps"),
 };
 
 function useBrowserChoices(): Readonly<Record<string, string>> {
   const approvals = useWorkspaceApprovalsEnabled();
-  const questionsLayout = useQuestionsLayout();
-  return {
-    experimental_approvals: approvals === "on" ? "yes" : "no",
-    questions_layout: questionsLayout,
-  };
+  return { experimental_approvals: approvals === "on" ? "yes" : "no" };
 }
 
 function message(cause: unknown): string {
@@ -190,7 +180,6 @@ export function useWorkingPreferences({
       label: preference.label,
       group: preference.group,
       hint: preference.hint ?? "",
-      browserOnly: local.some((entry) => entry.id === preference.id),
       options: preference.options,
       choice:
         inBrowser[preference.id] ??

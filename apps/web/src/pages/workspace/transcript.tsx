@@ -11,7 +11,6 @@ import {
   SPECIALIST_ENDED_LEAD,
   wording,
 } from "../../config.ts";
-import type { QuestionsLayout } from "../../questions-layout-setting.ts";
 import { Fragment, useState, type ReactNode } from "react";
 import { Check, Copy } from "lucide-react";
 import {
@@ -636,8 +635,6 @@ export type RoomThreadContent = {
   /** Sends the person's answers to the coordinator's questions as their next message. */
   onAnswerQuestions?: (reply: string) => Promise<boolean>;
   questionsDisabled?: boolean;
-  /** Whether question cards ask one question at a time or all at once. */
-  questionsLayout?: QuestionsLayout;
 };
 
 export type RoomThreadProps = RoomThreadContent & {
@@ -667,7 +664,6 @@ export function RoomThread({
   typedYes,
   onAnswerQuestions,
   questionsDisabled = false,
-  questionsLayout = "steps",
   children,
 }: RoomThreadProps) {
   const renderTurnText = (part: PartText) => (
@@ -722,7 +718,6 @@ export function RoomThread({
               id={card.callId}
               ask={card.ask}
               state={questions(card.callId)}
-              layout={questionsLayout}
             />
           </Message>
         </ConversationItem>

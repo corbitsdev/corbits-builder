@@ -29,7 +29,7 @@ import {
   type HubUser,
 } from "./api/auth.ts";
 import { listProjects } from "./api/projects.ts";
-import { hostLatency, productClient } from "./api/transport.ts";
+import { productClient } from "./api/transport.ts";
 import { ApiFailure, type ProjectSummary } from "./api/types.ts";
 import { queryClient } from "./queries/client.ts";
 import { keys } from "./queries/keys.ts";
@@ -57,7 +57,6 @@ import { singleFlight } from "./single-flight.ts";
 import type {
   AppViewProps,
   BootViewProps,
-  HubHealth,
   ProjectLoadFailureProps,
 } from "./App.view.tsx";
 
@@ -86,9 +85,6 @@ export type AppScreen =
       /** Null when the address names no page. */
       page: ShellPage | null;
     };
-
-/** Above this average, the window says the host is slow. */
-const SLOW_HOST_MS = 1_500;
 
 /** How often the home fold is re-read when nothing nudges it. */
 const FOLD_POLL_MS = 30_000;
@@ -160,31 +156,6 @@ function httpStatusOf(failure: Error | null): number | undefined {
   return undefined;
 }
 
-function hubHealth(offline: boolean, slowHost: number | null): HubHealth {
-  if (offline) return { state: "notAnswering" };
-  if (slowHost !== null) return { state: "slow", averageMs: slowHost };
-  return { state: "answering" };
-}
-
-/** The host's recent average request time when it is slow, else null; re-read every few seconds. */
-function useSlowHost(): number | null {
-  const [slow, setSlow] = useState<number | null>(null);
-  useEffect(() => {
-    const tick = () => {
-      const latency = hostLatency();
-      setSlow(
-        latency.samples >= 3 && latency.averageMs >= SLOW_HOST_MS
-          ? Math.round(latency.averageMs)
-          : null,
-      );
-    };
-    tick();
-    const timer = setInterval(tick, 5_000);
-    return () => clearInterval(timer);
-  }, []);
-  return slow;
-}
-
 /** How the boot screen's wait is going; after a while it admits to taking long. */
 export function useBoot(offline: boolean): BootViewProps {
   const [slow, setSlow] = useState(false);
@@ -250,7 +221,6 @@ export function useApp(): AppScreen {
   };
 
   const collapsed = useSidebar() === "collapsed";
-  const slowHost = useSlowHost();
   const [auth, setAuth] = useState<HubAuthState>("unknown");
   const [sessionReadFailed, setSessionReadFailed] = useState(false);
 
@@ -608,7 +578,7 @@ export function useApp(): AppScreen {
         })),
         onOpenProject: (projectId) => openProject(projectId),
       },
-      hub: hubHealth(offline, slowHost),
+      hub: { state: offline ? "notAnswering" : "answering" },
       setupFault: error,
       onOpenPreferences: (preferenceId) =>
         openSettings(

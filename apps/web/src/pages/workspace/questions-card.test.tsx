@@ -4,7 +4,9 @@ import type { AskQuestions } from "@corbits-builder/schemas/questions";
 import { wording } from "../../config.ts";
 import {
   QuestionsCard,
-  stepName,
+  answerLabels,
+  enterAnswer,
+  keyIntent,
   type QuestionsState,
 } from "./questions-card.tsx";
 
@@ -29,6 +31,12 @@ const ask: AskQuestions = {
       options: [{ value: "track", label: "Track tasks" }],
       allowOther: true,
     },
+    {
+      id: "devices",
+      prompt: "Where will people open it?",
+      kind: "multi",
+      options: [{ value: "desktop", label: "Desktop browser" }],
+    },
   ],
 };
 
@@ -38,67 +46,65 @@ const open: QuestionsState = {
   onSend: () => Promise.resolve(true),
 };
 
-describe("questions card", () => {
-  test("a step is named from its question id", () => {
-    expect(stepName("audience")).toBe("Audience");
-    expect(stepName("first_version")).toBe("First version");
-    expect(stepName("who-signs in")).toBe("Who signs in");
-  });
+const reply = [
+  text.answerLine("Who is it for?", ["Small teams"]),
+  text.answerLine("What must the first version do?", ["Track tasks"]),
+].join("\n");
 
+describe("questions card", () => {
   test("the heading counts the questions", () => {
     expect(text.title(1)).toBe("A question for you");
     expect(text.title(2)).toBe("A couple of questions for you");
     expect(text.title(5)).toBe("A few questions for you");
   });
 
-  test("one at a time, the first question shows under step tabs ending in Submit", () => {
+  test("the first question opens as native radios, with the next one waiting below", () => {
     const html = renderToStaticMarkup(
-      <QuestionsCard id="call-1" ask={ask} state={open} layout="steps" />,
+      <QuestionsCard id="call-1" ask={ask} state={open} />,
     );
-    expect(html).toContain(text.title(2));
-    expect(html).toContain('role="tablist"');
-    expect(html).toContain(">Audience<");
-    expect(html).toContain(">First version<");
-    expect(html).toContain(`>${text.submit}<`);
-    expect(html).toContain('role="listbox"');
-    expect(html).toContain("Small teams");
-    expect(html).not.toContain("What must the first version do?");
-    expect(html).toContain(text.keys.single);
-    expect(html).not.toContain("data-done");
-  });
-
-  test("all at once, every question shows and Other is an option until chosen", () => {
-    const html = renderToStaticMarkup(
-      <QuestionsCard id="call-1" ask={ask} state={open} layout="all" />,
+    expect(html).toContain(text.position(1, 3));
+    expect(html).toContain("<legend");
+    expect(html).toContain('type="radio"');
+    expect(html).toContain('aria-current="step"');
+    expect(html).toContain(text.pickOne);
+    // The recommended answer is picked, so Continue is ready.
+    expect(html).toMatch(
+      /checked=""\/><span aria-hidden="true"><svg[^]*?<\/span>Small teams/,
     );
-    expect(html).toContain("Who is it for?");
+    expect(html).toContain('aria-disabled="false"');
     expect(html).toContain("What must the first version do?");
-    expect(html).toContain(`>${text.other}<`);
-    expect(html).not.toContain(`placeholder="${text.other}"`);
-    expect(html).not.toContain('role="tablist"');
+    expect(html).toContain(text.more(1));
+    expect(html).toContain(`>${text.next}<`);
   });
 
-  test("an answered card settles the same whichever layout asked it", () => {
-    const reply = [
-      text.answerLine("Who is it for?", ["Small teams"]),
-      text.answerLine("What must the first version do?", ["Track tasks"]),
-    ].join("\n");
-    const settled = (["steps", "all"] as const).map((layout) =>
-      renderToStaticMarkup(
-        <QuestionsCard
-          id="call-1"
-          ask={ask}
-          state={{ kind: "answered", reply }}
-          layout={layout}
-        />,
-      ),
+  test("a single question shows no position and its button sends", () => {
+    const html = renderToStaticMarkup(
+      <QuestionsCard
+        id="call-1"
+        ask={{ questions: [ask.questions[1]!] }}
+        state={open}
+      />,
     );
-    expect(settled[0]).toBe(settled[1]!);
-    expect(settled[0]).toContain(`aria-label="${text.answered}"`);
-    expect(settled[0]).toContain("<dt>Who is it for?</dt><dd>Small teams</dd>");
-    expect(settled[0]).toContain(
-      "<dt>What must the first version do?</dt><dd>Track tasks</dd>",
+    expect(html).not.toContain(text.position(1, 1));
+    expect(html).toContain('type="checkbox"');
+    expect(html).toContain(`placeholder="${text.other}"`);
+    // Nothing is picked yet, so the button says why it waits.
+    expect(html).toContain('aria-disabled="true"');
+    expect(html).toContain(`>${text.send}<`);
+  });
+
+  test("an answered card is one line, its answers folded", () => {
+    const html = renderToStaticMarkup(
+      <QuestionsCard
+        id="call-1"
+        ask={ask}
+        state={{ kind: "answered", reply }}
+      />,
     );
+    expect(html).toContain(`aria-label="${text.answered}"`);
+    expect(html).toContain(text.answerCount(2));
+    expect(html).toContain('aria-expanded="false"');
+    expect(html).not.toContain("<dl");
   });
 
   test("a card answered in the person's own words shows no answers", () => {
@@ -107,10 +113,79 @@ describe("questions card", () => {
         id="call-1"
         ask={ask}
         state={{ kind: "answered", reply: "Actually, let's build a game." }}
-        layout="steps"
       />,
     );
     expect(html).toContain(text.answeredInChat);
-    expect(html).not.toContain("<dl");
+    expect(html).not.toContain(text.show);
+  });
+});
+
+describe("question keys", () => {
+  test("Enter continues anywhere but on a button, which clicks itself", () => {
+    expect(keyIntent("Enter", "option")).toEqual({ kind: "next" });
+    expect(keyIntent("Enter", "own")).toEqual({ kind: "next" });
+    expect(keyIntent("Enter", "button")).toBeUndefined();
+  });
+
+  test("← → step through the questions, but move the caret while typing", () => {
+    expect(keyIntent("ArrowRight", "option")).toEqual({ kind: "forward" });
+    expect(keyIntent("ArrowLeft", "button")).toEqual({ kind: "back" });
+    expect(keyIntent("ArrowRight", "own")).toBeUndefined();
+    expect(keyIntent("ArrowLeft", "own")).toBeUndefined();
+  });
+
+  test("↑↓ move between options; Escape leaves the own-words field", () => {
+    expect(keyIntent("ArrowDown", "option")).toEqual({ kind: "move", by: 1 });
+    expect(keyIntent("ArrowUp", "own")).toEqual({ kind: "move", by: -1 });
+    expect(keyIntent("Escape", "own")).toEqual({ kind: "move", by: -1 });
+    expect(keyIntent("Escape", "option")).toBeUndefined();
+  });
+
+  test("Space and digits pick, except while typing", () => {
+    expect(keyIntent(" ", "option")).toEqual({ kind: "pickFocused" });
+    expect(keyIntent(" ", "own")).toBeUndefined();
+    expect(keyIntent(" ", "button")).toBeUndefined();
+    expect(keyIntent("3", "option")).toEqual({ kind: "pick", index: 2 });
+    expect(keyIntent("3", "own")).toBeUndefined();
+    expect(keyIntent("0", "option")).toBeUndefined();
+  });
+
+  test("Enter on a pick-one question goes on with the focused option, not the recommendation", () => {
+    const [single, multi] = ask.questions;
+    const recommended = { chosen: ["teams"], own: "" };
+    expect(enterAnswer(single!, recommended, 1)).toEqual({
+      chosen: ["solo"],
+      own: "",
+    });
+    // Focus on the own-words field or a button keeps the answer as it is.
+    expect(enterAnswer(single!, recommended, 2)).toBe(recommended);
+    expect(enterAnswer(single!, recommended, -1)).toBe(recommended);
+    // On a pick-any question Space ticks; Enter only continues.
+    const ticked = { chosen: [], own: "Export" };
+    expect(enterAnswer(multi!, ticked, 0)).toBe(ticked);
+  });
+
+  test("Enter never swaps typed words for an option focus passes over", () => {
+    const [single] = ask.questions;
+    // Esc or ↑ from the field, or a failed send, leaves focus on an option.
+    const typed = { chosen: ["teams"], own: "A bakery" };
+    expect(enterAnswer(single!, typed, 0)).toBe(typed);
+    expect(enterAnswer(single!, typed, 1)).toBe(typed);
+  });
+
+  test("on a pick-one question typed words stand in for the pick until cleared", () => {
+    const [single, multi] = ask.questions;
+    expect(
+      answerLabels(single!, { chosen: ["teams"], own: "A bakery" }),
+    ).toEqual(["A bakery"]);
+    // Typing and deleting a letter keeps the recommended answer.
+    expect(answerLabels(single!, { chosen: ["teams"], own: " " })).toEqual([
+      "Small teams",
+    ]);
+    // On a pick-any question the words come after the options ticked.
+    expect(answerLabels(multi!, { chosen: ["track"], own: "Export" })).toEqual([
+      "Track tasks",
+      "Export",
+    ]);
   });
 });

@@ -122,7 +122,6 @@ import {
   type DesignChoiceProps,
 } from "./design-concepts.model.ts";
 import { useLiveAppPresence } from "./live-app.model.ts";
-import { useQuestionsLayout } from "../../questions-layout-setting.ts";
 import {
   useWorkspaceApprovalsEnabled,
   type OnOff,
@@ -508,7 +507,6 @@ export function useRoom({
     .map(paneArtifact);
   const documents = snapshot.documents;
   const [liveRun, setLiveRun] = useState<LiveRun>(emptyLiveRun);
-  const questionsLayout = useQuestionsLayout();
   const stakeholderApprovals = useWorkspaceApprovalsEnabled();
   const seen = useSeenVersions();
   const [approvalBusy, setApprovalBusy] = useState(false);
@@ -1535,7 +1533,6 @@ export function useRoom({
           ...(sentId === undefined ? {} : { sentId }),
           onAnswerQuestions: (reply) => deliver(reply),
           questionsDisabled: sending || archived,
-          questionsLayout,
         },
         empty: emptyConversation(),
         designChosen: archived ? null : designChosen,

@@ -1,3 +1,4 @@
+import { useState } from "react";
 import type { Meta, StoryObj } from "@storybook/react-vite";
 import type { AskQuestions } from "@corbits-builder/schemas/questions";
 import { fn } from "storybook/test";
@@ -27,6 +28,15 @@ const ask: AskQuestions = {
       ],
       allowOther: true,
     },
+    {
+      id: "devices",
+      prompt: "Where will people order from?",
+      kind: "multi",
+      options: [
+        { value: "phone", label: "Phone" },
+        { value: "desktop", label: "Desktop browser" },
+      ],
+    },
   ],
 };
 
@@ -36,14 +46,12 @@ const meta = {
   args: {
     id: "call-1",
     ask,
-    layout: "steps",
     state: {
       kind: "open",
       disabled: false,
       onSend: fn(() => Promise.resolve(true)),
     },
   },
-  argTypes: { layout: { control: "inline-radio", options: ["steps", "all"] } },
   decorators: [
     (Story) => (
       <div style={{ maxWidth: 640 }}>
@@ -56,10 +64,52 @@ const meta = {
 export default meta;
 type Story = StoryObj<typeof meta>;
 
-/** One question at a time under step tabs ending in Submit. */
-export const OneAtATime: Story = {};
+/** One question at a time, the answered ones above it and the next below. */
+export const Open: Story = {};
 
-export const AllAtOnce: Story = { args: { layout: "all" } };
+/** One question: no position, and the button sends. */
+export const OneQuestion: Story = {
+  args: { ask: { questions: [ask.questions[1]!] } },
+};
+
+type PendingSend = { readonly reply: string; readonly fail: () => void };
+
+/**
+ * The send fails. As in the workspace, the reply shows as sent at once, which settles the card;
+ * "Fail the send" takes it back off, and the card reopens on the last question with the answers kept.
+ */
+export const NotSent: Story = {
+  render: function NotSentCard(args) {
+    const [pending, setPending] = useState<PendingSend>();
+    const onSend = (reply: string) =>
+      new Promise<boolean>((resolve) => {
+        setPending({
+          reply,
+          fail: () => {
+            setPending(undefined);
+            resolve(false);
+          },
+        });
+      });
+    return (
+      <>
+        <QuestionsCard
+          {...args}
+          state={
+            pending === undefined
+              ? { kind: "open", disabled: false, onSend }
+              : { kind: "answered", reply: pending.reply }
+          }
+        />
+        {pending !== undefined && (
+          <button type="button" onClick={pending.fail}>
+            Fail the send
+          </button>
+        )}
+      </>
+    );
+  },
+};
 
 export const Disabled: Story = {
   args: {

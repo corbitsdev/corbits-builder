@@ -48,11 +48,8 @@ export type RailProject = {
   open: boolean;
 };
 
-/** How the hub is answering; slow carries its recent average time per request. */
-export type HubHealth =
-  | { state: "answering" }
-  | { state: "notAnswering" }
-  | { state: "slow"; averageMs: number };
+/** Whether the hub is answering. */
+export type HubHealth = { state: "answering" | "notAnswering" };
 
 export type AppViewProps = {
   /**
@@ -142,15 +139,6 @@ export function AppView({
 function HubNotice({ hub }: { hub: HubHealth }) {
   if (hub.state === "notAnswering")
     return <Banner tone="error" title={wording.hub.notAnswering} />;
-  if (hub.state === "slow")
-    return (
-      // Said rather than left to be wondered about: every request on this
-      // page waits on the hub, and the hub's own log names which requests
-      // are slow.
-      <Banner tone="warning" title={wording.hub.slowTitle(hub.averageMs)}>
-        {wording.hub.slowLead}
-      </Banner>
-    );
   return null;
 }
 
