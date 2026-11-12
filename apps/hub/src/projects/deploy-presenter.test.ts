@@ -196,7 +196,7 @@ test("deploy_presenter requires approved documents and pins source refs and file
             },
           },
   } as unknown as RuntimeCapabilities;
-  const tools = createDeployTools({
+  const tools = createDeployTools("classic", {
     tenantId: "tenant",
     projectId: "project",
     domain: "example.invalid",

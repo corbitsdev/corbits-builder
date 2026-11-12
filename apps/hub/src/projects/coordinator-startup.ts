@@ -20,7 +20,7 @@ import {
 import { projectCoordinator } from "../db/schema.ts";
 import { ProjectError } from "./errors.ts";
 import type { Actor } from "../lib/actor.ts";
-import type { CoordinatorPrompt } from "../environment.ts";
+import type { CoordinatorMode } from "../environment.ts";
 
 const START_FAILED = "coordinator_start_failed";
 const START_TIMEOUT = "coordinator_start_timeout";
@@ -258,7 +258,7 @@ export function createInstalledCoordinatorStartup(
     AssetService,
     "createAsset" | "populateAsset" | "readAssetBlob" | "listAssetBlobs"
   >,
-  coordinatorPrompt: CoordinatorPrompt,
+  coordinatorMode: CoordinatorMode,
   allocate: (args: {
     tenantId: string;
     principalId: string;
@@ -272,7 +272,7 @@ export function createInstalledCoordinatorStartup(
   return createProjectCoordinatorStartup({
     installed(actor, projectId) {
       return installForTenant(
-        { db, assets, coordinatorPrompt },
+        { db, assets, coordinatorMode },
         actor,
         projectId,
       );

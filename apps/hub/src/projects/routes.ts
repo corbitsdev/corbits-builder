@@ -48,6 +48,7 @@ import { MODEL_CHOICE_REFUSALS } from "../config/models.ts";
 import { mailRunAsCaller } from "../mail/caller-mail.ts";
 import { readJson } from "../lib/json.ts";
 import { errorCode, requestErrorMetadata } from "../request-error.ts";
+import type { CoordinatorMode } from "../environment.ts";
 
 const log = getLogger(["corbits-builder", "hub", "projects"]);
 
@@ -177,6 +178,7 @@ export function createProjectRoutes(
   db: DB["db"],
   runs: WorkflowRunReader,
   repoStore: RepoStore,
+  coordinatorMode: CoordinatorMode,
   authenticate: MiddlewareHandler<AppEnv> = requireAuth,
   startCoordinator?: CoordinatorStart,
   stopCoordinator?: (actor: Actor, projectId: string) => Promise<void>,
@@ -320,6 +322,7 @@ export function createProjectRoutes(
             nativeFetch,
             await service.read(created.actor, projectId),
             importedProjectMessage(
+              coordinatorMode,
               materials.map(({ title }) => title),
               kinds.includes("app"),
               PLANNED_DOCUMENT_KINDS.filter((kind) => !kinds.includes(kind)),

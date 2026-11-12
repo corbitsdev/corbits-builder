@@ -8,7 +8,7 @@ import {
 import {
   composeCoordinatorPrompt,
   type CoordinatorCalibration,
-  type CoordinatorPrompt,
+  type CoordinatorMode,
 } from "./prompt.ts";
 import { version } from "../package.json";
 
@@ -18,7 +18,7 @@ export function createCoordinatorAgent<Env extends BaseEnv>(options: {
   readonly tools: readonly AnnotatedToolFactory<Env>[];
   readonly director?: DirectorRef;
   readonly capabilities: readonly string[];
-  readonly prompt: CoordinatorPrompt;
+  readonly mode: CoordinatorMode;
   readonly calibration?: CoordinatorCalibration;
 }) {
   if (!options.inference.provider.trim() || !options.inference.model.trim()) {
@@ -26,7 +26,7 @@ export function createCoordinatorAgent<Env extends BaseEnv>(options: {
   }
   return defineAgent({
     id: options.id,
-    systemPrompt: composeCoordinatorPrompt(options.prompt, options.calibration),
+    systemPrompt: composeCoordinatorPrompt(options.mode, options.calibration),
     tools: options.tools,
     ...(options.director ? { director: options.director } : {}),
     capabilities: options.capabilities,

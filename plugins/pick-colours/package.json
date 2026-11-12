@@ -27,8 +27,8 @@
       "look",
       "colour"
     ],
-    "when": "The person is unhappy with the colours, wants a different shade, or names a colour they want for the brand or the background.",
-    "unless": "They want another font, bigger or smaller text, or a whole new look.",
+    "when": "The person is unhappy with the colours or unsure which colours would suit the brand or the background.",
+    "unless": "They already said exactly which colour they want, or they want another font, bigger or smaller text, or a whole new look.",
     "screen": "./src/screen.ts",
     "returns": {
       "fact": "colours_chosen"
@@ -45,9 +45,9 @@
     "examples": [
       "the colours clash",
       "can we make it less orange",
-      "use our brand blue #1d4ed8",
-      "the background is too bright, make it a soft grey",
-      "I want the buttons green"
+      "I don't know which colour would suit us",
+      "the background is too bright",
+      "the buttons don't look right"
     ],
     "triggers": [
       "colour",

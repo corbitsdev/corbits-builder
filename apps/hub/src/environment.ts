@@ -154,15 +154,15 @@ export function readPluginHint(env: Environment): PluginHint {
   return hint;
 }
 
-const CoordinatorPrompt = type("'classic' | 'dynamic'");
-export type CoordinatorPrompt = typeof CoordinatorPrompt.infer;
+const CoordinatorMode = type("'classic' | 'dynamic'");
+export type CoordinatorMode = typeof CoordinatorMode.infer;
 
-// Which system prompt the coordinator's package is built with.
-export function readCoordinatorPrompt(env: Environment): CoordinatorPrompt {
-  const prompt = CoordinatorPrompt(env["COORDINATOR_PROMPT"] ?? "classic");
-  if (prompt instanceof type.errors)
-    throw new Error("COORDINATOR_PROMPT must be classic or dynamic");
-  return prompt;
+// How the coordinator works: its system prompt and which of its tools wait for the person.
+export function readCoordinatorMode(env: Environment): CoordinatorMode {
+  const mode = CoordinatorMode(env["COORDINATOR_MODE"] ?? "classic");
+  if (mode instanceof type.errors)
+    throw new Error("COORDINATOR_MODE must be classic or dynamic");
+  return mode;
 }
 
 export function positiveInteger(

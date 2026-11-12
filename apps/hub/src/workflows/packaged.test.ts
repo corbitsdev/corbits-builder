@@ -148,18 +148,18 @@ test("built npm tarballs contain importable production workflow metadata and def
   // Building starts the coder's browser, whose first start downloads Chrome for Testing.
 }, 180_000);
 
-test("the built coordinator runs the prompt COORDINATOR_PROMPT names, and the hub refuses any other", async () => {
+test("the built coordinator runs the prompt and tool marks COORDINATOR_MODE names, and the hub refuses any other", async () => {
   const { mkdtemp, rm } = await import("node:fs/promises");
   const { tmpdir } = await import("node:os");
   const { join } = await import("node:path");
   const { pathToFileURL } = await import("node:url");
   const { buildWorkflowPackages } = await import("./build-packages.ts");
   const { nativePackageName } = await import("./package-name.ts");
-  const { readCoordinatorPrompt } = await import("../environment.ts");
+  const { readCoordinatorMode } = await import("../environment.ts");
   const { composeCoordinatorPrompt } =
     await import("@corbits-builder/coordinator/prompt");
-  expect(() => readCoordinatorPrompt({ COORDINATOR_PROMPT: "lean" })).toThrow(
-    "COORDINATOR_PROMPT must be classic or dynamic",
+  expect(() => readCoordinatorMode({ COORDINATOR_MODE: "lean" })).toThrow(
+    "COORDINATOR_MODE must be classic or dynamic",
   );
   const built = async (setting: string | undefined) => {
     const directory = await mkdtemp(join(tmpdir(), "sb-coordinator-prompt-"));
@@ -168,7 +168,7 @@ test("the built coordinator runs the prompt COORDINATOR_PROMPT names, and the hu
         directory,
         "1.0.0",
         inference,
-        readCoordinatorPrompt({ COORDINATOR_PROMPT: setting }),
+        readCoordinatorMode({ COORDINATOR_MODE: setting }),
       );
       const coordinator = manifest.find(
         (item) => item.packageName === nativePackageName("coordinator"),
@@ -182,7 +182,13 @@ test("the built coordinator runs the prompt COORDINATOR_PROMPT names, and the hu
       const entry = await import(
         pathToFileURL(join(directory, "package", coordinator.entry)).href
       );
-      return entry.default.steps.coordinate.agent.systemPrompt;
+      const { systemPrompt, toolFactories } =
+        entry.default.steps.coordinate.agent;
+      const marks = toolFactories.flatMap(
+        (tool: { definitions: { name: string; approval?: string }[] }) =>
+          tool.definitions.filter((definition) => definition.approval),
+      );
+      return { systemPrompt, marks };
     } finally {
       await rm(directory, { recursive: true, force: true });
     }
@@ -190,7 +196,16 @@ test("the built coordinator runs the prompt COORDINATOR_PROMPT names, and the hu
   const classic = composeCoordinatorPrompt("classic");
   const dynamic = composeCoordinatorPrompt("dynamic");
   expect(classic).not.toBe(dynamic);
-  expect(await built(undefined)).toBe(classic);
-  expect(await built("classic")).toBe(classic);
-  expect(await built("dynamic")).toBe(dynamic);
+  const ask = (...names: string[]) =>
+    names.map((name) => ({ name, approval: "ask" }));
+  const classicBuild = {
+    systemPrompt: classic,
+    marks: ask("request_approval", "instruct_coder", "design_app"),
+  };
+  expect(await built(undefined)).toEqual(classicBuild);
+  expect(await built("classic")).toEqual(classicBuild);
+  expect(await built("dynamic")).toEqual({
+    systemPrompt: dynamic,
+    marks: ask("request_approval", "design_app"),
+  });
 }, 180_000);

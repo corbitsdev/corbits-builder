@@ -1,5 +1,6 @@
 import { expect, test } from "bun:test";
 import type { RuntimeCapabilities } from "@intx/types/runtime-capabilities";
+import type { CoordinatorMode } from "../environment.ts";
 import { createDeployTools } from "./deploy-tools.ts";
 
 const deployment = {
@@ -31,16 +32,24 @@ const workflows = {
 
 type Filed = { version: number; approvedVersion?: number } | undefined;
 
-function coderSpawn(changed: Record<string, Filed>, built = false) {
+function coderSpawn(
+  changed: Record<string, Filed>,
+  built = false,
+  mode: CoordinatorMode = "classic",
+) {
   const deployed: string[] = [];
   const approvals: unknown[] = [];
+  const mailed: string[] = [];
   const artifacts = [
-    "problem_brief",
-    "constraints",
-    "approaches",
-    "product_requirements",
-    "design",
-    "build_plan",
+    ...new Set([
+      "problem_brief",
+      "constraints",
+      "approaches",
+      "product_requirements",
+      "design",
+      "build_plan",
+      ...Object.keys(changed),
+    ]),
   ].flatMap((kind) => {
     const filed: Filed =
       kind in changed ? changed[kind] : { version: 1, approvedVersion: 1 };
@@ -84,9 +93,13 @@ function coderSpawn(changed: Record<string, Filed>, built = false) {
     resolve: (name: string) =>
       name === "credentials"
         ? { resolve: async () => ({ kind: "http", fetch }) }
-        : { send: async () => undefined },
+        : {
+            send: async (message: { content: string }) => {
+              mailed.push(message.content);
+            },
+          },
   } as unknown as RuntimeCapabilities;
-  const tools = createDeployTools({
+  const tools = createDeployTools(mode, {
     tenantId: "tenant",
     projectId: "project",
     domain: "example.invalid",
@@ -96,6 +109,7 @@ function coderSpawn(changed: Record<string, Filed>, built = false) {
   return {
     deployed,
     approvals,
+    mailed,
     run: (name = "deploy_coder", args: Record<string, unknown> = {}) =>
       tools({ capabilities } as never).run(
         { id: "call", name, arguments: args },
@@ -150,6 +164,73 @@ test("the coder spawns only from the approved current build plan version", async
     expect(result.content).toStartWith(refusal);
     expect(spawn.deployed).toEqual([]);
   }
+});
+
+const definitionsIn = (mode: CoordinatorMode) =>
+  createDeployTools(mode).definitions.filter(
+    (definition) => definition.name !== "question",
+  );
+
+test("in dynamic mode only instruct_coder stops waiting for the person; every other mark is classic's", () => {
+  expect(definitionsIn("dynamic")).toEqual(
+    definitionsIn("classic").map((definition) =>
+      definition.name === "instruct_coder"
+        ? { name: "instruct_coder" }
+        : definition,
+    ),
+  );
+  expect(definitionsIn("classic")).toContainEqual({
+    name: "instruct_coder",
+    approval: "ask",
+  });
+});
+
+const NO_DOCUMENTS = {
+  problem_brief: undefined,
+  constraints: undefined,
+  approaches: undefined,
+  product_requirements: undefined,
+  design: undefined,
+  build_plan: undefined,
+};
+
+test("in dynamic mode instruct_coder changes an imported app with no documents at once, and refuses a project with no app", async () => {
+  const change = { instruction: "Change the app's font to Inter everywhere." };
+  const imported = coderSpawn(
+    { ...NO_DOCUMENTS, app: { version: 1 } },
+    false,
+    "dynamic",
+  );
+  expect(
+    (await imported.run("instruct_coder", change)).isError,
+  ).toBeUndefined();
+  expect(imported.deployed).toHaveLength(1);
+  expect(imported.approvals).toEqual([]);
+  expect(imported.mailed[0]).toContain(change.instruction);
+
+  const empty = coderSpawn(NO_DOCUMENTS, false, "dynamic");
+  const refused = await empty.run("instruct_coder", change);
+  expect(refused.isError).toBe(true);
+  expect(refused.content).toStartWith("app_missing:");
+  expect(empty.deployed).toEqual([]);
+});
+
+test("in dynamic mode the first build keeps classic's gate", async () => {
+  const spawn = coderSpawn(
+    { design: { version: 2, approvedVersion: 1 } },
+    false,
+    "dynamic",
+  );
+  expect((await spawn.run()).content).toStartWith("design_not_approved:");
+  const unapproved = coderSpawn(
+    { constraints: { version: 1 } },
+    false,
+    "dynamic",
+  );
+  expect((await unapproved.run()).content).toStartWith(
+    "constraints_not_approved:",
+  );
+  expect([...spawn.deployed, ...unapproved.deployed]).toEqual([]);
 });
 
 test("design_app starts one designer per concept the person asks for, each named before its assignment", async () => {
@@ -208,7 +289,7 @@ test("design_app starts one designer per concept the person asks for, each named
             },
           },
   } as unknown as RuntimeCapabilities;
-  const tools = createDeployTools({
+  const tools = createDeployTools("classic", {
     tenantId: "tenant",
     projectId: "project",
     domain: "example.invalid",
@@ -300,7 +381,7 @@ test("a later design pass on a concept never starts while a designer still works
             },
           },
   } as unknown as RuntimeCapabilities;
-  const result = await createDeployTools({
+  const result = await createDeployTools("classic", {
     tenantId: "tenant",
     projectId: "project",
     domain: "example.invalid",
@@ -389,7 +470,7 @@ function writerTools(preferences: Record<string, string> = {}) {
         ? { resolve: async () => ({ kind: "http", fetch }) }
         : { send: async () => undefined },
   } as unknown as RuntimeCapabilities;
-  const tools = createDeployTools({
+  const tools = createDeployTools("classic", {
     tenantId: "tenant",
     projectId: "project",
     domain: "example.invalid",
@@ -571,7 +652,7 @@ function questionCheck(response: () => Response) {
   const capabilities = {
     resolve: () => ({ resolve: async () => ({ kind: "http", fetch }) }),
   } as unknown as RuntimeCapabilities;
-  const { checkQuestion } = createDeployTools({
+  const { checkQuestion } = createDeployTools("classic", {
     tenantId: "tenant",
     projectId: "project",
     domain: "example.invalid",

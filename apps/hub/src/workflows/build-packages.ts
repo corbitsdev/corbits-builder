@@ -4,7 +4,7 @@ import { join, resolve } from "node:path";
 import { tmpdir } from "node:os";
 import { nativePackageName } from "./package-name.ts";
 import type { RoleInference } from "./role-inference.ts";
-import type { CoordinatorPrompt } from "../environment.ts";
+import type { CoordinatorMode } from "../environment.ts";
 import {
   WORKFLOW_PACKAGES,
   type WorkflowRole,
@@ -26,7 +26,7 @@ export async function buildWorkflowPackages(
   destination: string,
   base: string,
   inference: Record<WorkflowRole, RoleInference>,
-  coordinatorPrompt: CoordinatorPrompt,
+  coordinatorMode: CoordinatorMode,
 ) {
   if (!/^\d+\.\d+\.\d+$/.test(base)) throw new Error("invalid_package_version");
   const output = resolve(destination);
@@ -38,8 +38,7 @@ export async function buildWorkflowPackages(
         "process.env.BUILDER_ROLE_INFERENCE": JSON.stringify(
           JSON.stringify(inference[role]),
         ),
-        "process.env.BUILDER_COORDINATOR_PROMPT":
-          JSON.stringify(coordinatorPrompt),
+        "process.env.BUILDER_COORDINATOR_MODE": JSON.stringify(coordinatorMode),
       },
       entrypoints: [join(import.meta.dir, "entries", name + ".ts")],
       target: "bun",

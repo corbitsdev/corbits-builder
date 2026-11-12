@@ -62,6 +62,7 @@ import {
   type PresenterDesignTokens,
 } from "../config/personas.ts";
 import { unknownScreenPlugin } from "../config/screen-plugins.ts";
+import type { CoordinatorMode } from "../environment.ts";
 import { DESIGN_STYLES } from "../artifacts/design-tweaks.ts";
 import { workflowHttpJson, WorkflowHttpError } from "../workflows/http-json.ts";
 import { assignmentToWriterMessage } from "../workflows/writer-task.ts";
@@ -295,13 +296,19 @@ async function checkPluginQuestion(
   return installed.refusal(input, values);
 }
 
-export function createDeployTools(options?: {
-  tenantId: string;
-  projectId: string;
-  domain: string;
-  workflows: WorkflowProjectScope["workflows"];
-  maxResultBytes: number;
-}): AnnotatedToolFactory<DeployEnv> {
+export function createDeployTools(
+  mode: CoordinatorMode,
+  options?: {
+    tenantId: string;
+    projectId: string;
+    domain: string;
+    workflows: WorkflowProjectScope["workflows"];
+    maxResultBytes: number;
+  },
+): AnnotatedToolFactory<DeployEnv> {
+  // In dynamic mode a change to an app that exists is the person's own instruction, so it starts at
+  // once and needs no documents; the first build keeps its gates.
+  const directedChanges = mode === "dynamic";
   if (options) {
     for (const deployment of Object.values(options.workflows)) {
       if (!deployment) continue;
@@ -338,8 +345,9 @@ export function createDeployTools(options?: {
     },
     {
       name: "instruct_coder",
-      description:
-        "Have a fresh coder make one change to the built app: a fix, an addition or a correction. It starts from the app as last saved, once the coder before it has replied. A person approves every instruction.",
+      description: directedChanges
+        ? "Have a fresh coder make a change the person asked for to the app that exists, built here or imported: a fix, an addition or a correction. It starts at once, from the app as last saved, once the coder before it has replied; no document or design needs to be filed or approved. The coder knows nothing of the conversation, so the instruction carries everything it needs: what to change, where, and anything the person said that bears on it."
+        : "Have a fresh coder make one change to the built app: a fix, an addition or a correction. It starts from the app as last saved, once the coder before it has replied. A person approves every instruction.",
       inputSchema: { ...InstructCoder.toJsonSchema() },
     },
     {
@@ -370,7 +378,9 @@ export function createDeployTools(options?: {
       { name: "deploy_writer" },
       { name: "review_artifact" },
       { name: "deploy_coder" },
-      { name: "instruct_coder", approval: "ask" },
+      directedChanges
+        ? { name: "instruct_coder" }
+        : { name: "instruct_coder", approval: "ask" },
       { name: "design_app", approval: "ask" },
       { name: "deploy_presenter" },
     ],
@@ -386,7 +396,7 @@ export function createDeployTools(options?: {
               "coordinator",
               signal,
             );
-            return createDeployTools({
+            return createDeployTools(mode, {
               tenantId: scope.tenantId,
               projectId: scope.projectId,
               domain: scope.domain,
@@ -783,6 +793,28 @@ export function createDeployTools(options?: {
                 );
                 if (live) throw coderRunning(live.runId);
                 const { byKind, preferences } = state;
+                if (directedChanges) {
+                  // An imported app counts: appBuilt waits for a coder's passing check.
+                  if (!byKind.has("app"))
+                    throw new Refusal(
+                      "app_missing: the project has no app to change yet; its first build starts with deploy_coder",
+                    );
+                  return deploy(
+                    "coder",
+                    options.workflows.coder,
+                    preferences,
+                    "coder-" + call.id,
+                    startHere(
+                      inputs(
+                        CODER_INPUTS.filter((kind) => byKind.has(kind)),
+                        byKind,
+                      ),
+                      byKind.get("design")?.version,
+                    ) +
+                      APP_CHANGE_NOTE +
+                      coderTaskMessage(input.instruction),
+                  );
+                }
                 for (const kind of CODER_DOCUMENTS) required(byKind, kind);
                 // The first build's documents need their own approvals, which deploy_coder checks; an
                 // approved change is no approval of them.

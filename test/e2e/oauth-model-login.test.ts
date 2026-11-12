@@ -349,7 +349,7 @@ test("ChatGPT and xAI logins are providers a profile binds roles to, and install
       const installed = await installForTenant(
         {
           db: handle.db,
-          coordinatorPrompt: "classic",
+          coordinatorMode: "classic",
           assets: createAssetService({
             db: handle.db,
             repoStore: repoStore.repoStore,

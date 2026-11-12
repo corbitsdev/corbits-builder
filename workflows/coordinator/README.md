@@ -28,7 +28,9 @@ the hub's:
   calibration appended to it. There are two: `classic`, which walks a project
   through its documents, design and build in order, and `dynamic`, which
   reads the project and acts on what the person asks, letting each tool's
-  refusals order the work. The hub's `COORDINATOR_PROMPT` picks one.
+  refusals order the work. The hub's `COORDINATOR_MODE` picks one; in
+  `dynamic` it also starts a change to an app that exists, built or imported,
+  without asking the person first.
 - `src/agent.ts`: `createCoordinatorAgent`, which requires an explicit
   provider and model and tags the agent with this package's version.
 - `src/workflow.ts`: `createCoordinatorWorkflow`, one durable mail-triggered

@@ -5,7 +5,7 @@ import { dirname, join } from "node:path";
 import { and, eq, inArray } from "drizzle-orm";
 import { workflowRun } from "@intx/db/schema";
 import type { ProjectExport } from "@corbits-builder/schemas/project";
-import { readCoordinatorPrompt } from "@corbits-builder/hub/environment";
+import { readCoordinatorMode } from "@corbits-builder/hub/environment";
 import { startTestHub, type TestHubHandle } from "../e2e/support/hub.ts";
 import {
   buildWeatherApp,
@@ -43,10 +43,10 @@ const RESULTS =
 const CASE_DEADLINE_MS = Number(
   process.env["BASELINE_CASE_DEADLINE_MS"] ?? STAGE_DEADLINE_MS,
 );
-// The case hubs' coordinator prompt; the weather app is always built on the classic one, which its
+// The case hubs' coordinator mode; the weather app is always built in classic mode, which its
 // recorded fixture follows.
-const PROMPT = readCoordinatorPrompt({
-  COORDINATOR_PROMPT: process.env["BASELINE_PROMPT"],
+const MODE = readCoordinatorMode({
+  COORDINATOR_MODE: process.env["BASELINE_MODE"],
 });
 const POLL_MS = 1_000;
 const SCRIPTED = "scripted";
@@ -388,7 +388,7 @@ async function runCase(
       remark: kase.remark,
       model: kase.model,
       hint: kase.hint,
-      prompt: PROMPT,
+      mode: MODE,
       repeat: kase.repeat,
       projectId,
       runId,
@@ -494,7 +494,7 @@ test("records the coordinator's first moves after a person's remark about a buil
       }
       hub = await startTestHub(recordedModel, {
         pluginHint: hint,
-        coordinatorPrompt: PROMPT,
+        coordinatorMode: MODE,
         providerKeys,
       });
 
