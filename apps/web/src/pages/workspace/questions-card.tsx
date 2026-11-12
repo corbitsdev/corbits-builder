@@ -77,6 +77,8 @@ export type QuestionsState =
       readonly disabled: boolean;
       /** Sends each question's answer under its id. */
       readonly onSend: (answers: Record<string, string[]>) => Promise<boolean>;
+      /** Closes the question without choosing, as a typed reply would. */
+      readonly onCancel: () => Promise<boolean>;
     }
   | { readonly kind: "answered"; readonly answer: QuestionAnswer };
 
@@ -743,22 +745,35 @@ export function QuestionsCard({
     complete(answerOf(question)),
   );
   const disabled = state.disabled || sending;
-  const send = async () => {
+  const send = async (cancel = false) => {
     setSending(true);
     setFailed(false);
-    const sent = await state.onSend(
-      Object.fromEntries(
-        asked.questions.map((question) => [
-          question.id,
-          answerLabels(question, answerOf(question)),
-        ]),
-      ),
-    );
+    const sent = cancel
+      ? await state.onCancel()
+      : await state.onSend(
+          Object.fromEntries(
+            asked.questions.map((question) => [
+              question.id,
+              answerLabels(question, answerOf(question)),
+            ]),
+          ),
+        );
     // Once sent, the card stays sending until the run log shows the answer and it settles.
     if (sent) return;
     setSending(false);
     setFailed(true);
   };
+  const cancel = (
+    <Button
+      type="button"
+      size="sm"
+      variant="outline"
+      disabled={disabled}
+      onClick={() => void send(true)}
+    >
+      {text.cancel}
+    </Button>
+  );
   const notSent = failed ? <Fault>{text.notSent}</Fault> : undefined;
   const gate = {
     kind: "form" as const,
@@ -769,7 +784,12 @@ export function QuestionsCard({
       <GateBlock
         className={styles.card}
         gate={gate}
-        {...(notSent === undefined ? {} : { footer: notSent })}
+        footer={
+          <>
+            {cancel}
+            {notSent}
+          </>
+        }
       >
         <StepsBody
           idPrefix={id}
@@ -796,6 +816,7 @@ export function QuestionsCard({
           >
             {sending ? text.sending : text.send}
           </Button>
+          {cancel}
           {notSent}
         </>
       }

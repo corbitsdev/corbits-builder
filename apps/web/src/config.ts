@@ -971,6 +971,9 @@ export const wording = {
       "On, each question is its own step you answer from the keyboard. Off, every question shows at once.",
     send: "Send answers",
     sending: "Sending…",
+    /** Closes an open question without choosing; the reply is what the settled card then shows. */
+    cancel: "Cancel",
+    cancelReply: "Cancelled without choosing.",
     notSent: "Your answers were not sent. Your choices are kept; try again.",
     /** The settled card's heading, over each question and its answer. */
     answered: "Answered",

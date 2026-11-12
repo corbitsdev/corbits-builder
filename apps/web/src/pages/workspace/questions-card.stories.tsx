@@ -51,6 +51,7 @@ const meta = {
       kind: "open",
       disabled: false,
       onSend: fn(() => Promise.resolve(true)),
+      onCancel: fn(() => Promise.resolve(true)),
     },
   },
   argTypes: { layout: { control: "inline-radio", options: ["steps", "all"] } },
@@ -96,7 +97,7 @@ export const AllAtOnceChosen: Story = {
 
 export const Disabled: Story = {
   args: {
-    state: { kind: "open", disabled: true, onSend: fn() },
+    state: { kind: "open", disabled: true, onSend: fn(), onCancel: fn() },
   },
 };
 

@@ -34,6 +34,7 @@ const open: QuestionsState = {
   kind: "open",
   disabled: false,
   onSend: () => Promise.resolve(true),
+  onCancel: () => Promise.resolve(true),
 };
 
 describe("questions card", () => {

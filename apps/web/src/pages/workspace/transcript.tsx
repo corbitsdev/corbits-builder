@@ -708,6 +708,12 @@ export function RoomThread({
                 onAnswerQuestion === undefined
                   ? Promise.resolve(false)
                   : onAnswerQuestion(signalName, { answers }),
+              onCancel: () =>
+                onAnswerQuestion === undefined
+                  ? Promise.resolve(false)
+                  : onAnswerQuestion(signalName, {
+                      reply: wording.questions.cancelReply,
+                    }),
             }
           : { kind: "answered", answer };
       return (

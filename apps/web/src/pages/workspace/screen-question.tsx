@@ -170,17 +170,19 @@ export function screenHost<In, Out, Data, Prepared>(
       return <InlineNote>{text.screenUnavailable}</InlineNote>;
 
     // Whether the answer reached the hub; a fault is the screen's to show.
-    const answerWith = async (chosen: Type<Out>["infer"]) => {
-      const result = checkOutput(handle, screen, chosen);
-      if (!result.ok) throw new Error(result.text);
+    const send = async (answer: QuestionAnswer) => {
       setSubmitting(true);
       setFault(undefined);
       // Once sent, the screen stays submitting until the run log shows the answer and it settles.
-      if (await onAnswer(QuestionAnswer.assert({ output: result.output })))
-        return true;
+      if (await onAnswer(answer)) return true;
       setSubmitting(false);
       setFault(text.notSent);
       return false;
+    };
+    const answerWith = (chosen: Type<Out>["infer"]) => {
+      const result = checkOutput(handle, screen, chosen);
+      if (!result.ok) throw new Error(result.text);
+      return send(QuestionAnswer.assert({ output: result.output }));
     };
     const submit = async (chosen: Type<Out>["infer"]) => {
       await answerWith(chosen);
@@ -215,6 +217,17 @@ export function screenHost<In, Out, Data, Prepared>(
                 }
           }
         />
+        {settled ? null : (
+          <Button
+            type="button"
+            size="sm"
+            variant="outline"
+            disabled={submitting || disabled}
+            onClick={() => void send({ reply: text.cancelReply })}
+          >
+            {text.cancel}
+          </Button>
+        )}
         {fault === undefined ? null : <Fault>{fault}</Fault>}
       </>
     );
