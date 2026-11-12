@@ -5,7 +5,11 @@ import {
   clippedTurnText,
   maxTurnText,
 } from "@corbits-builder/schemas/conversation";
-import { wording } from "../../config.ts";
+import {
+  IMPORTED_PROJECT_LEAD,
+  SPECIALIST_ENDED_LEAD,
+  wording,
+} from "../../config.ts";
 import { Markdown } from "../../markdown.tsx";
 import { DocumentDecision } from "./document-decision.tsx";
 import {
@@ -40,6 +44,15 @@ function findElement(
 }
 
 const briefId = "problem_brief";
+
+/** The labels the conversation map's ticks carry, in order. */
+function mapLabels(html: string): string[] {
+  return [
+    ...html.matchAll(
+      /data-slot="conversation-map-tick"[^>]*aria-label="([^"]*)"/g,
+    ),
+  ].map((match) => match[1] ?? "");
+}
 
 // A room with nothing filed and no run at work, so each hand-off stands where its own call puts it.
 const standing = (unit: WorkUnit) =>
@@ -560,5 +573,47 @@ describe("conversation transcript", () => {
     expect(several).toContain(">Night Dock<");
     expect(several).not.toContain("--radius");
     expect(several).not.toContain(">Start Clear Skies<");
+  });
+
+  test("the map marks the person's messages and not the hub's notices", () => {
+    const html = renderToStaticMarkup(
+      <RoomThread
+        standing={standing}
+        turns={[
+          { role: "person", text: "What is the weather?", at: 1 },
+          {
+            role: "person",
+            text: `${SPECIALIST_ENDED_LEAD}The writer stopped before finishing.`,
+            at: 2,
+          },
+          { role: "assistant", text: "I'll pick it up.", at: 3 },
+          { role: "person", text: "Thanks.", at: 4 },
+        ]}
+      />,
+    );
+    expect(mapLabels(html)).toEqual(["What is the weather?", "Thanks."]);
+  });
+
+  test("an imported project's opening is a divider, not a turn in the map", () => {
+    const html = renderToStaticMarkup(
+      <RoomThread
+        standing={standing}
+        turns={[
+          {
+            role: "person",
+            text: `${IMPORTED_PROJECT_LEAD} Then tell me what happens next.`,
+            at: 1,
+          },
+          { role: "person", text: "What should we do first?", at: 2 },
+          { role: "assistant", text: "The brief needs your approval.", at: 3 },
+          { role: "person", text: "Go ahead and draft it.", at: 4 },
+        ]}
+      />,
+    );
+    expect(html).toContain(wording.projectImported);
+    expect(mapLabels(html)).toEqual([
+      "What should we do first?",
+      "Go ahead and draft it.",
+    ]);
   });
 });
