@@ -138,6 +138,8 @@ export type ProjectArtifact = {
   title: string;
   version: number;
   sha256: string;
+  /** When the current version was filed. */
+  filedAt: string;
   approvedVersion?: number;
 };
 

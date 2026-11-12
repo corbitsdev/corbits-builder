@@ -7,7 +7,7 @@
  * not invent a coordinator turn, and it does not decide an approval on its own.
  */
 import {
-  HUB_NOTES,
+  HUB_NOTE_LEAD,
   IMPORTED_PROJECT_LEAD,
   SPECIALIST_ENDED_LEAD,
   wording,
@@ -221,7 +221,7 @@ function settledParts(
   return [...parts.filter((part) => part.kind !== "text"), ...words];
 }
 
-/** A run at work with no hand-off in this session's view, placed at its start. */
+/** A run or filed thing with no hand-off in this session's view, placed at its start or filing. */
 export type PlacedDispatch = {
   readonly at: number;
   readonly dispatch: Dispatch;
@@ -537,11 +537,8 @@ function runLabel(steps: readonly ActivityStep[]): string | undefined {
 
 /** The quiet line for a note the hub mailed as the person, or undefined for the person's own words. */
 function hubNoteLine(text: string): string | undefined {
-  for (const note of HUB_NOTES) {
-    const match = note.pattern.exec(text);
-    if (match !== null) return note.line(match);
-  }
-  return undefined;
+  if (!text.startsWith(HUB_NOTE_LEAD)) return undefined;
+  return text.slice(HUB_NOTE_LEAD.length).split("\n\n", 1)[0];
 }
 
 // The hub's notice: the person's line, then a coordinator-only paragraph quoting the native reason.

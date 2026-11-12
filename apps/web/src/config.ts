@@ -23,26 +23,11 @@ export const IMPORTED_PROJECT_LEAD =
 export const SPECIALIST_ENDED_LEAD = "Status update: ";
 
 /**
- * The hub's notes to the coordinator that it mails as the person, each with the quiet line the
- * thread shows in its place. The hub marks none of them, so each is matched on the fixed wording of
- * coordinatorTweaksNote in apps/hub/src/config/design-tweaks.ts and designChosenNote in
- * apps/hub/src/config/design.ts, which a person does not write.
+ * The lead of every note the hub mails the coordinator as the person. It mirrors HUB_NOTE_LEAD in
+ * apps/hub/src/config/resume.ts; the thread shows the note's first paragraph as a quiet line and
+ * keeps the rest, which is for the coordinator.
  */
-export const HUB_NOTES: readonly {
-  readonly pattern: RegExp;
-  readonly line: (match: RegExpExecArray) => string;
-}[] = [
-  {
-    pattern:
-      /^The person saved look tweaks to the design in (?:the live designer's|a new version of the filed design's) styles\.css/,
-    line: () => "Look saved to the design.",
-  },
-  {
-    pattern:
-      /^The person chose the ([\s\S]+) design concept\. It is filed as the design at version \d+, approved by them\./,
-    line: (match) => `Design chosen: ${match[1] ?? ""}.`,
-  },
-];
+export const HUB_NOTE_LEAD = "Hub note, not from the person: ";
 
 const megabytes = (bytes: number) =>
   `${String(Math.floor(bytes / 1_048_576))} MB`;

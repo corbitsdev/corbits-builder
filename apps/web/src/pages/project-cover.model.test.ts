@@ -7,6 +7,7 @@ const item = (kind: string, artifactId: string) => ({
   title: kind,
   version: 1,
   sha256: "a".repeat(64),
+  filedAt: "2026-10-30T12:00:00.000Z",
 });
 
 test("the chosen design is the cover, else the first concept filed, else none", () => {

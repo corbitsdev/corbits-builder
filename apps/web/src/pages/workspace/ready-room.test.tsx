@@ -62,6 +62,7 @@ describe("project room", () => {
       title: kind,
       version: 1,
       sha256: "a".repeat(64),
+      filedAt: "2026-10-30T12:00:00.000Z",
     });
     const artifacts = [filed("problem_brief"), filed("approval_package")];
     const kinds = (approvals: "on" | "off") =>

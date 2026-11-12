@@ -16,10 +16,14 @@ const RESUME_CONTEXT_END = "\n\nThe person's new message:\n\n";
 // Hubs before the held resume context mailed this opening on the person's behalf.
 const LEGACY_RESUME_OPENING = "I'm picking this project back up.";
 
+// Every note the hub mails a run on the person's behalf starts with this, so neither the coordinator
+// nor the conversation takes it for words the person wrote. A note the person sees has its plain
+// line first and the coordinator's detail after a blank line, as the conversation shows only the line.
+export const HUB_NOTE_LEAD = "Hub note, not from the person: ";
+
 // Sent by the hub, never shown to the person, when a coordinator on an outdated version was replaced
 // as it started a writer: its writer did not start, and the person is not waiting to be asked.
-const HANDOFF_LEAD =
-  "Hub note, not from the person: Builder moved this project to a new version";
+const HANDOFF_LEAD = `${HUB_NOTE_LEAD}Builder moved this project to a new version`;
 export const HANDOFF_OPENING = `${HANDOFF_LEAD} as you were starting a specialist, so it did not start. Check which documents are filed and approved, start the specialist the work needs next, and carry on without mentioning the move.`;
 
 const TURN_CHARS = 2_000;
@@ -32,7 +36,8 @@ const turnLine = ({ role, text }: ConversationTextTurn): string => {
   if (role === "assistant") return "You: " + clip(text);
   if (text.startsWith(IMPORTED_PROJECT_LEAD))
     return "The project was imported from a file.";
-  if (text.startsWith(SPECIALIST_ENDED_LEAD)) return clip(text);
+  if (text.startsWith(SPECIALIST_ENDED_LEAD) || text.startsWith(HUB_NOTE_LEAD))
+    return clip(text);
   return "Person: " + clip(text);
 };
 

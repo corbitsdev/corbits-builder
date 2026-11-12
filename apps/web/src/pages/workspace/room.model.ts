@@ -34,6 +34,7 @@ import {
 } from "./project-activity.ts";
 import {
   dispatchLive,
+  filedDispatches,
   noteDispatch,
   partsDispatches,
   runDispatch,
@@ -1399,6 +1400,13 @@ export function useRoom({
       at: Date.parse(run.startedAt),
       dispatch: runDispatch(run, handoffKind(run)),
     }));
+  const cards = [
+    ...unseenRuns,
+    ...filedDispatches(snapshot.artifacts, [
+      ...dispatches,
+      ...unseenRuns.map(({ dispatch }) => dispatch),
+    ]),
+  ];
   const design = artifacts.find((item) => item.kind === "design");
   // The design a review screen shows: the live draft while a designer works, else the newest design
   // option, else the filed design. Only an option is approved there: the hub records the choice
@@ -1689,7 +1697,7 @@ export function useRoom({
           onOpenDocument: openDocument,
           approvals: shownApprovals,
           results: liveRun.results,
-          runs: unseenRuns,
+          runs: cards,
           live: (dispatch) => dispatchLive(dispatch, dispatchRoom),
           standing: (unit) => workUnitStanding(unit, dispatchRoom),
           onDecide: onDecideApproval,

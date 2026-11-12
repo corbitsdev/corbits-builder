@@ -7,11 +7,19 @@
  */
 import type { ConversationPart, PartTool } from "@corbits/react-ui";
 import type { AgentActivity, ProjectArtifact } from "@corbits-builder/client";
-import type { FailedRun, InFlightRun } from "@corbits-builder/schemas/artifact";
+import {
+  isDocumentKind,
+  type FailedRun,
+  type InFlightRun,
+} from "@corbits-builder/schemas/artifact";
 import { coordinatorUpgrading } from "@corbits-builder/schemas/conversation";
 import { wording } from "../../config.ts";
 import type { CallResult } from "./live-run.ts";
-import type { ApprovalOutcome, DocumentApproval } from "./transcript.tsx";
+import type {
+  ApprovalOutcome,
+  DocumentApproval,
+  PlacedDispatch,
+} from "./transcript.tsx";
 
 const text = wording.dispatch;
 
@@ -69,6 +77,8 @@ export type Dispatch = {
   readonly refused?: string;
   /** The call is still being made. */
   readonly pending: boolean;
+  /** Stands for a filed thing whose hand-off is not in view, such as one from an earlier session. */
+  readonly filed?: boolean;
 };
 
 function record(value: unknown): Record<string, unknown> | undefined {
@@ -346,6 +356,10 @@ export function dispatchStatus(
 ): DispatchStatus {
   if (dispatch.refused !== undefined)
     return { state: "failed", reason: dispatch.refused };
+  if (dispatch.filed === true) {
+    const filed = target(dispatch, room.artifacts);
+    if (filed !== undefined) return readyOf(filed);
+  }
   // A declined or lapsed approval answers the call in the run's own history, never as a result frame.
   const approval = approvalOf(dispatch, room);
   if (approval !== undefined && approval.outcome === undefined)
@@ -424,6 +438,46 @@ const RUN_TOOL: Record<Role, string> = {
   designer: "design_app",
   presenter: "deploy_presenter",
 };
+
+// Who files each thing that is not a document; the coordinator files the brief, so it has no card.
+const FILED_BY: Record<string, Role> = {
+  design: "designer",
+  design_option: "designer",
+  app: "coder",
+  approval_package: "presenter",
+};
+
+/**
+ * Each filed thing no hand-off or run card in view made, such as one filed in an earlier session,
+ * as a finished hand-off placed when its current version was filed.
+ */
+export function filedDispatches(
+  artifacts: readonly ProjectArtifact[],
+  carded: readonly Dispatch[],
+): PlacedDispatch[] {
+  const made = new Set(carded.map((dispatch) => target(dispatch, artifacts)));
+  return artifacts.flatMap((item) => {
+    const writes = isDocumentKind(item.kind) && item.kind !== "problem_brief";
+    const role = writes ? "writer" : FILED_BY[item.kind];
+    if (role === undefined || made.has(item)) return [];
+    const key = `filed:${item.artifactId}`;
+    return [
+      {
+        at: Date.parse(item.filedAt),
+        dispatch: {
+          key,
+          call: key,
+          tool: "write_artifact",
+          role,
+          pending: false,
+          filed: true,
+          ...(writes ? { kind: item.kind } : {}),
+          ...(item.kind === "design_option" ? { concept: item.title } : {}),
+        },
+      },
+    ];
+  });
+}
 
 /** A run at work the conversation has no hand-off for, such as one started before a reload. */
 export function runDispatch(

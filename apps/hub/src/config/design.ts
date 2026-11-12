@@ -1,4 +1,5 @@
 import { designThemeIds } from "@corbits-builder/designer/skills" with { type: "macro" };
+import { HUB_NOTE_LEAD } from "./resume.ts";
 
 // The product standard every generated app is held to. It is product wording, so it lives in
 // config beside the other user-visible text; the components and the stack's docs are skills.
@@ -152,4 +153,4 @@ export const designLookIdeas = (ideas: string) =>
 
 // The hub's note to the coordinator once the person chose a design option in the conversation.
 export const designChosenNote = (concept: string, version: number) =>
-  `The person chose the ${concept} design concept. It is filed as the design at version ${String(version)}, approved by them. The build plan is written from it next.`;
+  `${HUB_NOTE_LEAD}Design chosen: ${concept}.\n\nThe person chose the ${concept} design concept. It is filed as the design at version ${String(version)}, approved by them. The build plan is written from it next.`;

@@ -58,8 +58,9 @@ export function workUnits(
   approvals: DocumentApproval[];
 } {
   const placed = [...handoffs].sort((left, right) => left.at - right.at);
+  // A filed thing's card stands for no run, so no report or approval is joined to it by time.
   const started = placed.filter(
-    ({ dispatch }) => dispatch.refused === undefined,
+    ({ dispatch }) => dispatch.refused === undefined && dispatch.filed !== true,
   );
   const latest = (
     at: number,
