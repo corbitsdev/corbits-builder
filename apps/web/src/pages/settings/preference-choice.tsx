@@ -81,6 +81,7 @@ function RadioGroup<Option extends Choice>({
           id={index === chosen ? id : undefined}
           type="button"
           role="radio"
+          aria-label={option.label}
           aria-checked={index === chosen}
           tabIndex={index === chosen ? 0 : -1}
           disabled={disabled}

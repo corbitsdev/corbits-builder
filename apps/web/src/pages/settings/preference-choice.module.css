@@ -1,6 +1,8 @@
 /* Segments: the chosen one is filled, the rest are quiet text in the same frame. */
 .segments {
   display: inline-flex;
+  flex-wrap: wrap;
+  max-width: 100%;
   flex-shrink: 0;
   gap: 2px;
   padding: 3px;
@@ -42,6 +44,8 @@
 
 .boldWidth {
   display: inline-grid;
+  min-width: 0;
+  max-width: 100%;
 }
 
 /* An invisible bold copy sets the width; it has no height and nothing to read. */
@@ -85,6 +89,7 @@
 }
 
 .stops {
+  white-space: normal;
   font-size: 14px;
   line-height: 20px;
   color: var(--muted-foreground);

@@ -32,6 +32,7 @@ export type WorkingPreferencesProps = {
 type Registry = PreferenceRegistry["preferences"];
 
 type SavedPreferences = { value: Preferences | null; version: number };
+type PickedChoice = { choice: string };
 
 const { fallback, local } = wording.settings.preferences;
 
@@ -78,6 +79,10 @@ export function useWorkingPreferences({
     id: string;
     state: "saving" | "saved" | "failed";
   } | null>(null);
+  const [picked, setPicked] = useState<Readonly<Record<string, PickedChoice>>>(
+    {},
+  );
+  const pickedRef = useRef<Record<string, PickedChoice>>({});
 
   // The hub's record. Saves read the ref, so each builds on the version the one before it left.
   const [saved, setSaved] = useState<SavedPreferences | null>(null);
@@ -85,16 +90,23 @@ export function useWorkingPreferences({
   const keepSaved = (next: SavedPreferences) => {
     savedRef.current = next;
     setSaved(next);
+    const approvals = next.value?.["experimental_approvals"];
+    if (
+      approvals !== undefined &&
+      pickedRef.current["experimental_approvals"] === undefined
+    )
+      writeApprovals(approvals);
   };
 
-  // Picks shown at once while they save, and dropped if the save fails. A save reads the ref to
-  // see whether a later pick of the same preference has replaced it.
-  const [picked, setPicked] = useState<Readonly<Record<string, string>>>({});
-  const pickedRef = useRef<Record<string, string>>({});
-  const dropPick = (id: string, choice: string) => {
-    if (pickedRef.current[id] !== choice) return;
+  // Compare picks by identity: choosing A, then B, then A is still three separate picks.
+  const dropPick = (id: string, pick: PickedChoice) => {
+    if (pickedRef.current[id] !== pick) return;
     delete pickedRef.current[id];
     setPicked({ ...pickedRef.current });
+    const settled =
+      savedRef.current?.value?.[id] ??
+      registry?.find((entry) => entry.id === id)?.default;
+    if (settled !== undefined) writeInBrowser[id]?.(settled);
   };
 
   const queue = useRef<Promise<void>>(Promise.resolve());
@@ -112,9 +124,6 @@ export function useWorkingPreferences({
         setRegistry(read.preferences);
         const loaded = record.fields.preferences ?? { value: null, version: 0 };
         keepSaved(loaded);
-        // The hub's approvals choice wins over the one this browser remembered.
-        const approvals = loaded.value?.["experimental_approvals"];
-        if (approvals !== undefined) writeApprovals(approvals);
       } catch (cause) {
         if (cancelled) return;
         setRegistry((current) => current ?? []);
@@ -127,9 +136,9 @@ export function useWorkingPreferences({
     };
   }, []);
 
-  const saveToHub = async (id: string, choice: string) => {
+  const saveToHub = async (id: string, pick: PickedChoice) => {
     const base = savedRef.current;
-    if (pickedRef.current[id] !== choice || !base) return;
+    if (pickedRef.current[id] !== pick || !base) return;
     setSave({ id, state: "saving" });
     try {
       const receipt = await productClient().savePersonalSettings(
@@ -139,23 +148,23 @@ export function useWorkingPreferences({
           idempotencyKey: crypto.randomUUID(),
           fields: {
             preferences: {
-              value: { ...base.value, [id]: choice },
+              value: { ...base.value, [id]: pick.choice },
               baseVersion: base.version,
             },
           },
         },
       );
       keepSaved(receipt.record.fields.preferences ?? base);
+      dropPick(id, pick);
       void queryClient.invalidateQueries({ queryKey: keys.preferences });
       if (receipt.conflicts.length > 0) {
-        dropPick(id, choice);
         setSave({ id, state: "failed" });
         toast.error(wording.message.stepFailed);
       } else {
         setSave({ id, state: "saved" });
       }
     } catch (cause) {
-      dropPick(id, choice);
+      dropPick(id, pick);
       setSave({ id, state: "failed" });
       toast.error(message(cause));
     }
@@ -169,9 +178,10 @@ export function useWorkingPreferences({
       if (write) setSave({ id, state: "saved" });
       return;
     }
-    pickedRef.current[id] = choice;
+    const pick = { choice };
+    pickedRef.current[id] = pick;
     setPicked({ ...pickedRef.current });
-    queue.current = queue.current.then(() => saveToHub(id, choice));
+    queue.current = queue.current.then(() => saveToHub(id, pick));
   };
 
   return {
@@ -184,7 +194,7 @@ export function useWorkingPreferences({
       options: preference.options,
       choice:
         inBrowser[preference.id] ??
-        picked[preference.id] ??
+        picked[preference.id]?.choice ??
         saved?.value?.[preference.id] ??
         preference.default,
       ends: preference.ends ?? null,

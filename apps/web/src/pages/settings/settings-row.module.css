@@ -51,9 +51,9 @@
    change saved, so they appear without moving the control beside it. */
 .name {
   display: inline-flex;
+  flex-wrap: wrap;
   align-items: baseline;
   gap: var(--space-2);
-  white-space: nowrap;
 }
 
 .aside {
@@ -66,6 +66,7 @@
 }
 
 .hint {
+  overflow-wrap: anywhere;
   font-size: 13px;
   line-height: 1.4;
   color: var(--muted-foreground);
@@ -112,19 +113,21 @@
   width: 104px;
 }
 
-/* At phone width a row's controls drop under its label instead of squeezing
-   it to one word per line. */
-@media (max-width: 560px) {
-  .row {
-    flex-wrap: wrap;
-  }
-
+/* Stack columns when the settings pane, including beside a sidebar, is too narrow for both. */
+@container (max-width: 640px) {
   .row[data-layout="columns"] {
+    flex-wrap: wrap;
     gap: var(--space-2);
   }
 
   .row[data-layout="columns"] > .key {
     flex-basis: 100%;
+  }
+}
+
+@media (max-width: 560px) {
+  .row {
+    flex-wrap: wrap;
   }
 
   .value {
