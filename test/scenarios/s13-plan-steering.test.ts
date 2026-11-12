@@ -1,4 +1,5 @@
 import {
+  call,
   execute,
   ok,
   refused,
@@ -25,18 +26,18 @@ scenario({
   coordinator: [
     turn(
       user("dog walks"),
-      execute("c_follow", "build-web-app", undefined, {}),
+      call("c_follow", "plan", { operation: "add", plan: "build-web-app" }),
     ),
     turn(
-      results(ok("c_follow", "execute", "write-requirements")),
+      results(ok("c_follow", "plan", "write-requirements")),
       execute("c_build_on_plan", "coder", "build", build),
     ),
     turn(
       results(refused("c_build_on_plan", "execute")),
-      execute("c_leave", "build-web-app", undefined, { leave: true }),
+      call("c_leave", "plan", { operation: "set", steps: [] }),
     ),
     turn(
-      results(ok("c_leave", "execute")),
+      results(ok("c_leave", "plan")),
       execute("c_build_off_plan", "coder", "build", build),
     ),
     // Off the plan a first build still needs its documents filed.

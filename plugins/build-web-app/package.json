@@ -14,8 +14,8 @@
       "build",
       "plan"
     ],
-    "when": "The person brings an idea for a web app and wants it planned, designed and built.",
-    "unless": "The project already has an app, the person wants only one piece of the work, such as a mockup, or what they want is not a web app, such as a command-line tool, a library, a script or a document; then put together a plan of your own from the plugins that fit.",
+    "when": "The person brings an idea for a site or app that people open in a browser, and wants it planned, designed and built.",
+    "unless": "The project already has an app, or the person wants only one piece of the work, such as a mockup.",
     "guidance": "./SKILL.md",
     "steps": [
       {

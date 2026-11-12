@@ -26,6 +26,8 @@ export type PlanStep = {
 export type PlanGroup = {
   id: string;
   title: string;
+  // The ready-made plan the group was added as, by its handle.
+  plan?: string;
   steps: readonly PlanStep[];
 };
 
@@ -58,6 +60,7 @@ export type PlanStepView = PlanStep & {
 export type PlanGroupView = {
   id: string;
   title: string;
+  plan?: string;
   state: StepState;
   needs?: string[];
   steps: PlanStepView[];
@@ -212,6 +215,7 @@ export function planState(
       state: "not_started",
       steps: children,
     };
+    if (step.plan) view.plan = step.plan;
     const any = (state: StepState) =>
       children.some((child) => child.state === state);
     const next = children.find((child) => !settled(child));

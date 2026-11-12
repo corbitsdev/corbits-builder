@@ -30,7 +30,7 @@ function project(
   following: string[] = [],
   preferences: Record<string, string> = {},
 ) {
-  const state = { artifacts, following };
+  const state = { artifacts, following, plan: [] as PlanStep[] };
   const deployed: string[] = [];
   const mailed: string[] = [];
   const approvals: unknown[] = [];
@@ -78,8 +78,10 @@ function project(
       });
     }
     if (path.endsWith("/checks")) return Response.json({ checks: [] });
-    if (path.endsWith("/plan"))
-      return Response.json({ steps: [], updatedAt: null });
+    if (path.endsWith("/plan")) {
+      if (body) state.plan = body.steps.map(stored);
+      return Response.json({ steps: state.plan, updatedAt: null });
+    }
     if (path.endsWith("/run-records")) return Response.json(body);
     if (path.endsWith("/artifact-approvals")) {
       approvals.push(body);
@@ -118,7 +120,24 @@ function project(
     definitions: tools.definitions.map(({ name }) => name),
     execute: (asked: Record<string, unknown>) => call("execute", asked),
     discover: (args: Record<string, unknown>) => call("discover", args),
+    plan: (args: Record<string, unknown>) => call("plan", args),
   };
+}
+
+// A plan step as the hub stores it with an id, shown as not started.
+type PlanStep = {
+  id?: string;
+  state?: string;
+  kind?: string;
+  steps?: PlanStep[];
+};
+let lastId = 0;
+function stored(step: PlanStep): PlanStep {
+  step.id ??= `s${++lastId}`;
+  step.state = "not_started";
+  if (step.steps) step.steps.forEach(stored);
+  else step.kind = "workflow";
+  return step;
 }
 
 const change = {
@@ -127,6 +146,7 @@ const change = {
 const build = {
   instruction:
     "Build the whole app as the requirements describe it, phone first.",
+  starter: "web-app",
 };
 const coderBuild = { plugin: "coder", action: "build", input: build };
 const designerMockup = {
@@ -259,7 +279,7 @@ test("on build-web-app, coder build waits for the person's go-ahead while they d
       "  - the person chose a design from the design options (designer review or designer choose makes this true)",
       "",
       "Start what makes these true first, or ask the person, then call execute again.",
-      'If the person directs the work elsewhere, stop following the build-web-app plan with execute({ plugin: "build-web-app", input: { leave: true } }).',
+      "If the person directs the work elsewhere, take the build-web-app plan's group out of the project's plan with plan({ operation: \"remove\", stepIds }); the project then stops following it.",
     ].join("\n"),
   );
   expect(following.deployed).toEqual([]);
@@ -302,15 +322,25 @@ test("designer mockup starts a designer with nothing filed, unless the project f
   expect(following.deployed).toHaveLength(1);
 });
 
-test("execute on build-web-app puts the project on it and returns its guidance and where each step stands", async () => {
+test("execute on build-web-app is turned to plan add, which puts the plan's steps on the project's plan and has it followed", async () => {
   const idea = project([filed("product_requirements", true)]);
-  const followed = await idea.execute({ plugin: "build-web-app" });
+  const refused = await idea.execute({ plugin: "build-web-app" });
+  expect(refused.isError).toBe(true);
+  expect(refused.content).toBe(
+    'build-web-app is a ready-made plan, not an action, so it is neither started nor held as one step. Take it up with plan({ operation: "add", plan: "build-web-app" }), which puts its steps on the project\'s plan as a group and has the project follow it.',
+  );
+  expect(idea.state.following).toEqual([]);
+
+  const added = await idea.plan({ operation: "add", plan: "build-web-app" });
+  expect(added.isError).toBeUndefined();
   expect(idea.state.following).toEqual(["build-web-app"]);
-  expect(followed.content).toStartWith(
+  expect(idea.state.plan).toHaveLength(1);
+  expect(idea.state.plan[0]?.steps).toHaveLength(5);
+  expect(added.content).toContain(
     "The project is now following the build-web-app plan.",
   );
-  expect(followed.content).toContain("# Build a web app from an idea");
-  expect(followed.content).toEndWith(
+  expect(added.content).toContain("# Build a web app from an idea");
+  expect(added.content).toEndWith(
     [
       "Where each step stands now:",
       "  writer write-requirements: can start now",
@@ -337,18 +367,12 @@ test("execute on build-web-app puts the project on it and returns its guidance a
   );
 });
 
-test("leave stops the project following the plan, and so does the app existing", async () => {
-  const following = project([], ["build-web-app"]);
-  expect(
-    (
-      await following.execute({
-        plugin: "build-web-app",
-        input: { leave: true },
-      })
-    ).content,
-  ).toBe(
-    "The project is no longer following the build-web-app plan, so nothing of it applies to its steps any more.",
-  );
+test("taking the plan's group out stops the project following it, and so does the app existing", async () => {
+  const following = project([]);
+  await following.plan({ operation: "add", plan: "build-web-app" });
+  const group = following.state.plan[0]?.id;
+  await following.plan({ operation: "remove", stepIds: [group] });
+  expect(following.state.plan).toEqual([]);
   expect(following.state.following).toEqual([]);
 
   const built = project([filed("app")], ["build-web-app"]);

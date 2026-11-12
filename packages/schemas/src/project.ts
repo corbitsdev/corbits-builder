@@ -109,22 +109,29 @@ const PlanStepBody = type({
   askFirst: "boolean",
   "goAhead?": PlanMark,
   "cancelled?": PlanMark,
-  // From the ready-made plan the step came from: whether the person may decline it, and when it
-  // waits for their go-ahead, as that plan's step says; without approval it asks for none.
+  // Whether the person may decline the step, as the ready-made plan it came from or the
+  // coordinator that wrote it says.
   "optional?": "boolean",
+  // From the ready-made plan the step came from: when it waits for the person's go-ahead, as that
+  // plan's step says; without approval it asks for none.
   "approval?": "'required' | 'optional'",
   // The person said no to an optional step; it stays declined until they restore it.
   "declined?": PlanMark,
 });
 const StoredPlanChild = PlanStepBody.merge({ "+": "reject", id: PlanStepId });
 export type StoredPlanChild = typeof StoredPlanChild.infer;
+// The handle of the ready-made plan a group was added as; the project follows that plan while the
+// group is on the plan.
+const readyPlan = "string > 0";
 // A group names no action and starts nothing; where it stands is worked out from its steps.
 const StoredPlanGroup = type({
   "+": "reject",
   id: PlanStepId,
   title: text,
+  "plan?": readyPlan,
   steps: StoredPlanChild.array(),
 });
+export type StoredPlanGroup = typeof StoredPlanGroup.infer;
 export const StoredPlanStep = StoredPlanChild.or(StoredPlanGroup);
 export type StoredPlanStep = typeof StoredPlanStep.infer;
 export const StoredPlan = type({
@@ -158,6 +165,7 @@ const PlanViewGroup = type({
   "+": "reject",
   id: PlanStepId,
   title: text,
+  "plan?": readyPlan,
   state: PlanStepStateName,
   "needs?": "string[]",
   steps: PlanViewChild.array(),
@@ -178,6 +186,7 @@ export const PlanStepWrite = PlanChildWrite.or({
   "+": "reject",
   "id?": PlanStepId,
   title: text,
+  "plan?": readyPlan,
   steps: PlanChildWrite.array(),
 });
 export type PlanStepWrite = typeof PlanStepWrite.infer;

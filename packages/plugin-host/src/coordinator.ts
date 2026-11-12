@@ -29,6 +29,7 @@ import {
   choiceText,
   DISCOVER_ACTION_NEEDS_PLUGIN,
   DISCOVER_MORE,
+  DISCOVER_OWN_PLAN,
   DISCOVER_NEEDS_ONE,
   foundPlugins,
   checkStandingText,
@@ -41,9 +42,7 @@ import {
   readyPlanAdvice,
   readyPlanDone,
   readyPlanFollowed,
-  readyPlanInputRefused,
-  readyPlanLeft,
-  readyPlanTakesNoAction,
+  readyPlanIsAdded,
   planLine,
   screenNotExecuted,
   PLAN_STEP_REMINDER,
@@ -156,17 +155,29 @@ type SavedPlanChild = {
   declined?: { by: string; at: string };
   state: string;
 };
-/** A step of the plan: an action step, or a group that only holds action steps. */
+/**
+ * A step of the plan: an action step, or a group that only holds action steps, with the handle of
+ * the ready-made plan it was added as when it was.
+ */
 export type SavedPlanStep =
   | SavedPlanChild
-  | { id: string; title: string; steps: readonly SavedPlanChild[] };
+  | {
+      id: string;
+      title: string;
+      plan?: string;
+      steps: readonly SavedPlanChild[];
+    };
 /** A step of the plan as saved: one with no id is new, and the host gives it one. */
 type PlanChildWrite = Omit<SavedPlanChild, "id" | "declined" | "state"> & {
   id?: string;
 };
-export type PlanStepWrite =
-  | PlanChildWrite
-  | { id?: string; title: string; steps: PlanChildWrite[] };
+type PlanGroupWrite = {
+  id?: string;
+  title: string;
+  plan?: string;
+  steps: PlanChildWrite[];
+};
+export type PlanStepWrite = PlanChildWrite | PlanGroupWrite;
 
 // The plan's action steps, those its groups hold among them.
 const actionSteps = (steps: readonly SavedPlanStep[]) =>
@@ -275,7 +286,6 @@ export const Runs = type({
   "runIds?": type("string > 0").array().atLeastLength(1),
   "seconds?": "1 <= number.integer <= 120",
 });
-const ReadyPlanInput = type({ "+": "reject", "leave?": "true" });
 
 const WAIT_SECONDS = 60;
 const WAIT_POLL_MS = 2_000;
@@ -518,7 +528,7 @@ function status(
     return [
       state.following.includes(plugin)
         ? "This project is following it."
-        : "Start it with execute; the project then follows it, besides any ready-made plan it is following already.",
+        : `Take it up with plan({ operation: "add", plan: "${plugin.builder.handle}" }): its steps go on the project's plan as a group, and the project follows it besides any ready-made plan it is following already.`,
       "Steps:",
       ...stepsOf(catalog, plugin, state).map(
         ({ name, readiness: line }) => `  ${name}: ${line}`,
@@ -591,6 +601,7 @@ export async function discoverFor(
     ...choices,
     projectValuesText(catalog.values, values),
     planLine(actionSteps(steps)),
+    DISCOVER_OWN_PLAN,
     DISCOVER_MORE,
   ].join("\n\n");
 }
@@ -645,7 +656,7 @@ export function planStepRefusal(
       step.plugin,
       catalog.actions.map(({ name }) => name),
     );
-  if (isReadyPlan(plugin)) return readyPlanTakesNoAction(plugin.builder.handle);
+  if (isReadyPlan(plugin)) return readyPlanIsAdded(plugin.builder.handle);
   const action = installedAction(catalog, plugin.builder.handle, step.action);
   if (!action)
     return unknownAction(plugin.builder.handle, step.action, plugin.actions);
@@ -698,41 +709,6 @@ export function planRefusal(
 
 export type Outcome = { content: string; isError?: true };
 
-async function followReadyPlan(
-  catalog: Catalog,
-  project: Project,
-  readyPlan: ReadyPlanPlugin,
-  raw: unknown,
-  state: ProjectState,
-): Promise<Outcome> {
-  const { handle, ends } = readyPlan.builder;
-  const input = ReadyPlanInput(raw);
-  if (input instanceof type.errors)
-    return {
-      content: readyPlanInputRefused(handle, input.summary),
-      isError: true,
-    };
-  const following = state.following.includes(readyPlan);
-  const others = state.following
-    .filter((other) => other !== readyPlan)
-    .map(({ builder }) => builder.handle);
-  if (input.leave) {
-    if (following) await project.setFollowing(others);
-    return { content: readyPlanLeft(handle, following) };
-  }
-  if (ends !== undefined && state.facts.has(ends))
-    return { content: readyPlanDone(handle, ends, catalog.factText) };
-  if (!following) await project.setFollowing([...others, handle]);
-  return {
-    content: readyPlanFollowed(
-      handle,
-      others,
-      readyPlan.guidance,
-      stepsOf(catalog, readyPlan, state),
-    ),
-  };
-}
-
 // The plan step the person holds back that this start would do, by `held`: the same action, making
 // the same facts for its input, as writer write declined for a user manual is not declined for a
 // report.
@@ -756,21 +732,19 @@ function heldStep(
 // What execute takes, with every plugin it can start.
 const executeFields = (catalog: Catalog): Record<string, Field> => ({
   plugin: {
-    about: "The handle of the plugin to start.",
+    about: "The handle of the specialist to start.",
     choices: Object.fromEntries(
-      catalog.plugins.map(({ builder, description }) => [
-        builder.handle,
-        description,
-      ]),
+      catalog.plugins
+        .filter(isSpecialist)
+        .map(({ builder, description }) => [builder.handle, description]),
     ),
   },
   action: {
     about:
-      "The name of the specialist's action to start, as discover lists it; a ready-made plan takes none.",
+      "The name of the specialist's action to start, as discover lists it.",
   },
   input: {
-    about:
-      "The input that action's guidance describes; for a ready-made plan, none to follow it or { leave: true } to stop following it.",
+    about: "The input that action's guidance describes.",
   },
   step: {
     about:
@@ -809,8 +783,8 @@ type Result = {
 };
 
 /**
- * Starts a specialist's workflow action, or follows or leaves a ready-made plan, once its input, what it
- * cannot work without and the person's go-ahead hold.
+ * Starts a specialist's workflow action once its input, what it cannot work without and the
+ * person's go-ahead hold. A ready-made plan is taken up with plan add, never here.
  */
 export async function execute(
   catalog: Catalog,
@@ -831,25 +805,16 @@ export async function execute(
   const plugin = catalog.installed(asked.plugin);
   if (!plugin)
     return {
-      content: unknownPlugin(asked.plugin, [
-        ...catalog.actions
+      content: unknownPlugin(
+        asked.plugin,
+        catalog.actions
           .filter((action) => !isScreenAction(action))
           .map(({ name }) => name),
-        ...catalog.plugins
-          .filter(isReadyPlan)
-          .map(({ builder }) => builder.handle),
-      ]),
+      ),
       isError: true,
     };
-  if (isReadyPlan(plugin)) {
-    if (asked.action !== undefined)
-      return {
-        content: readyPlanTakesNoAction(plugin.builder.handle),
-        isError: true,
-      };
-    const state = await projectState(catalog, project);
-    return followReadyPlan(catalog, project, plugin, asked.input ?? {}, state);
-  }
+  if (isReadyPlan(plugin))
+    return { content: readyPlanIsAdded(plugin.builder.handle), isError: true };
   const action = installedAction(catalog, plugin.builder.handle, asked.action);
   if (!action)
     return {
@@ -1027,6 +992,7 @@ const PlanChildInput = type({
   action: "string > 0",
   input: "Record<string, unknown>",
   "askFirst?": "boolean",
+  "optional?": "boolean",
 });
 type PlanChildInput = typeof PlanChildInput.infer;
 export const Plan = type({
@@ -1039,6 +1005,7 @@ export const Plan = type({
   }).array(),
   "plan?": "string > 0",
   "after?": "string > 0",
+  "before?": "string > 0",
   "stepIds?": type("string > 0").array().atLeastLength(1),
 });
 type PlanCall = typeof Plan.infer;
@@ -1048,7 +1015,7 @@ type Problem = { field: string; problem: string };
 const PLAN_TAKES: Record<PlanCall["operation"], readonly string[]> = {
   show: [],
   set: ["steps"],
-  add: ["steps", "plan", "after"],
+  add: ["steps", "plan", "after", "before"],
   remove: ["stepIds"],
 };
 
@@ -1057,18 +1024,19 @@ const planFields = (catalog: Catalog): Record<string, Field> => ({
     about: "What to do; each answers with the plan as it now stands.",
     choices: {
       show: "The plan.",
-      set: "Replace the plan with steps; [] empties it.",
-      add: "Add steps, or one ready-made plan, at the end or after the step after names.",
-      remove: "Take out each step stepIds names, with the steps it holds.",
+      set: "Replace the plan with steps, a plan of your own; [] empties it. The project then follows no ready-made plan.",
+      add: "Add steps, or one ready-made plan, at the end, after the step after names or before the step before names.",
+      remove:
+        "Take out each step stepIds names, with the steps it holds; taking out a ready-made plan's group stops the project following that plan.",
     },
   },
   steps: {
     about:
-      "For set and add: each step either an action step { title, plugin, action, input, askFirst? }: a plugin action as discover lists it, the input its guidance describes, askFirst true when the person wants to be asked before it starts; or a group { title, steps } that names no plugin, action or input, starts nothing and holds action steps. A step with both steps and an action is refused.",
+      "For set and add: each step either an action step { title, plugin, action, input, askFirst?, optional? }: a plugin action as discover lists it, the input its guidance describes, askFirst true to wait until the person gives the go on the plan, optional true to let the person decline it; or a group { title, steps } that names no plugin, action or input, starts nothing and holds action steps. A step with both steps and an action is refused.",
   },
   plan: {
     about:
-      "For add, in place of steps: a ready-made plan, by its handle, added as one group holding its steps, each saying whether the person may decline it and how its approval is asked for. The project then follows that plan, as execute on it does.",
+      "For add, in place of steps: a ready-made plan, by its handle, added as one group holding its steps, each saying whether the person may decline it and how its approval is asked for. The project follows that plan while its group is on the plan.",
     choices: Object.fromEntries(
       catalog.plugins
         .filter(isReadyPlan)
@@ -1077,7 +1045,11 @@ const planFields = (catalog: Catalog): Record<string, Field> => ({
   },
   after: {
     about:
-      "For add: the id of the step the new steps go after; at the end without it.",
+      "For add: the id of the step the new steps go after; at the end without it or before.",
+  },
+  before: {
+    about:
+      "For add, in place of after: the id of the step the new steps go before.",
   },
   stepIds: { about: "For remove: the ids of the steps to take out." },
 });
@@ -1123,6 +1095,11 @@ function planCallProblems(catalog: Catalog, asked: PlanCall) {
       field: "steps",
       problem: "add needs either steps or plan, and not both",
     });
+  if (asked.after !== undefined && asked.before !== undefined)
+    wrong.push({
+      field: "before",
+      problem: "add takes either after or before, and not both",
+    });
   const named =
     asked.plan === undefined ? undefined : catalog.installed(asked.plan);
   if (asked.plan !== undefined && (!named || !isReadyPlan(named)))
@@ -1153,25 +1130,25 @@ function planIdProblems(
       field: "stepIds",
       problem: `${unknown.join(", ")} not in the plan; ${listed}`,
     });
-  const { after } = asked;
-  if (after !== undefined && !ids.includes(after))
-    wrong.push({
-      field: "after",
-      problem: `${after} is not in the plan; ${listed}`,
-    });
-  if (
-    children.some(({ id }) => id === after) &&
-    adding.some((step) => "steps" in step)
-  )
-    wrong.push({
-      field: "after",
-      problem: `${after} is held by another step, so what goes after it cannot hold steps; name the step that holds it`,
-    });
+  for (const field of ["after", "before"] as const) {
+    const named = asked[field];
+    if (named === undefined) continue;
+    if (!ids.includes(named))
+      wrong.push({ field, problem: `${named} is not in the plan; ${listed}` });
+    else if (
+      children.some(({ id }) => id === named) &&
+      adding.some((step) => "steps" in step)
+    )
+      wrong.push({
+        field,
+        problem: `${named} is held by another step, so what goes ${field} it cannot hold steps; name the step that holds it`,
+      });
+  }
   return wrong;
 }
 
 // A saved step as it is saved again, under its id so the person's marks on it stay, and with what
-// its ready-made plan said of it.
+// its ready-made plan or the coordinator said of it.
 function childWrite({
   id,
   title,
@@ -1196,23 +1173,28 @@ function childWrite({
 }
 function stepWrite(step: SavedPlanStep): PlanStepWrite {
   if (!("steps" in step)) return childWrite(step);
-  return { id: step.id, title: step.title, steps: step.steps.map(childWrite) };
+  const group: PlanGroupWrite = {
+    id: step.id,
+    title: step.title,
+    steps: step.steps.map(childWrite),
+  };
+  if (step.plan) group.plan = step.plan;
+  return group;
 }
 
 // A step the call names, new to the plan.
-const childOf = ({
+function childOf({
   title,
   plugin,
   action,
   input,
   askFirst = false,
-}: PlanChildInput): PlanChildWrite => ({
-  title,
-  plugin,
-  action,
-  input,
-  askFirst,
-});
+  optional,
+}: PlanChildInput): PlanChildWrite {
+  const child: PlanChildWrite = { title, plugin, action, input, askFirst };
+  if (optional) child.optional = optional;
+  return child;
+}
 function newStep(
   step: PlanChildInput | { title: string; steps: PlanChildInput[] },
 ): PlanStepWrite {
@@ -1221,7 +1203,7 @@ function newStep(
 }
 
 // A ready-made plan as one group holding its steps, each with whether the person may decline it and
-// when it waits for their go-ahead.
+// when it waits for their go-ahead, marked with the plan's handle so the project follows it.
 function readyPlanStep({
   builder,
   description,
@@ -1232,29 +1214,32 @@ function readyPlanStep({
       plugin: step.plugin,
       action: step.action,
       input: step.input ?? {},
+      optional: step.optional ?? false,
     });
-    child.optional = step.optional ?? false;
     if (step.approval) child.approval = step.approval.when;
     return child;
   });
-  return { title: description, steps: children };
+  return { title: description, plan: builder.handle, steps: children };
 }
 
-// The plan with steps added at its end, or after the step after names, at whichever level it is;
-// a group holds no groups, which planIdProblems refuses before this.
+// The plan with steps added at its end, or after the step after names or before the step before
+// names, at whichever level it is; a group holds no groups, which planIdProblems refuses before this.
 function added(
   plan: PlanStepWrite[],
   adding: readonly PlanStepWrite[],
-  after: string | undefined,
+  { after, before }: Pick<PlanCall, "after" | "before">,
 ) {
-  if (after === undefined) return [...plan, ...adding];
-  const at = plan.findIndex(({ id }) => id === after);
-  if (at >= 0) return plan.toSpliced(at + 1, 0, ...adding);
+  const next = after ?? before;
+  if (next === undefined) return [...plan, ...adding];
+  const offset = after === undefined ? 0 : 1;
+  const at = plan.findIndex(({ id }) => id === next);
+  if (at >= 0) return plan.toSpliced(at + offset, 0, ...adding);
   const held = adding.flatMap((each) => ("steps" in each ? [] : [each]));
   for (const step of plan) {
     if (!("steps" in step)) continue;
-    const under = step.steps.findIndex(({ id }) => id === after);
-    if (under >= 0) step.steps = step.steps.toSpliced(under + 1, 0, ...held);
+    const under = step.steps.findIndex(({ id }) => id === next);
+    if (under >= 0)
+      step.steps = step.steps.toSpliced(under + offset, 0, ...held);
   }
   return plan;
 }
@@ -1270,7 +1255,8 @@ function removed(plan: PlanStepWrite[], ids: readonly string[]) {
 /**
  * The project's plan: shown, replaced, added to or taken from. A change is saved whole, each saved
  * step under its id, and answers with the plan as it then stands; a plan the catalog refuses is not
- * saved, and the refusal names the step.
+ * saved, and the refusal names the step. The project follows the ready-made plans whose groups the
+ * saved plan holds, and no others.
  */
 export async function managePlan(
   catalog: Catalog,
@@ -1289,6 +1275,15 @@ export async function managePlan(
   const named =
     asked.plan === undefined ? undefined : catalog.installed(asked.plan);
   const readyPlan = named && isReadyPlan(named) ? named : undefined;
+  const ends = readyPlan?.builder.ends;
+  if (
+    readyPlan &&
+    ends !== undefined &&
+    (await project.state()).facts.has(ends)
+  )
+    return {
+      content: readyPlanDone(readyPlan.builder.handle, ends, catalog.factText),
+    };
   let steps = (asked.steps ?? []).map(newStep);
   if (asked.operation !== "set") {
     const { steps: saved } = await project.plan();
@@ -1298,22 +1293,31 @@ export async function managePlan(
     const current = saved.map(stepWrite);
     steps =
       asked.operation === "add"
-        ? added(current, adding, asked.after)
+        ? added(current, adding, asked)
         : removed(current, asked.stepIds ?? []);
   }
   const refused = planRefusal(catalog, steps);
   if (refused) return { content: refused.text, isError: true };
   await project.savePlan(steps);
-  const plan = `${JSON.stringify(await project.plan())}\n\n${PLAN_STEP_REMINDER}`;
-  if (!readyPlan) return { content: plan };
-  // The project follows the ready-made plan it added, and the coordinator reads its guidance, as
-  // execute on that plan gives it.
-  const followed = await followReadyPlan(
-    catalog,
-    project,
-    readyPlan,
-    {},
-    await projectState(catalog, project),
+  const saved = await project.plan();
+  await project.setFollowing(
+    saved.steps.flatMap((step) =>
+      "steps" in step && step.plan !== undefined ? [step.plan] : [],
+    ),
   );
-  return { content: `${plan}\n\n${followed.content}` };
+  const plan = `${JSON.stringify(saved)}\n\n${PLAN_STEP_REMINDER}`;
+  if (!readyPlan) return { content: plan };
+  // The coordinator reads the guidance of the ready-made plan it added and where each step stands.
+  const state = await projectState(catalog, project);
+  const others = state.following
+    .filter((other) => other !== readyPlan)
+    .map(({ builder }) => builder.handle);
+  return {
+    content: `${plan}\n\n${readyPlanFollowed(
+      readyPlan.builder.handle,
+      others,
+      readyPlan.guidance,
+      stepsOf(catalog, readyPlan, state),
+    )}`,
+  };
 }

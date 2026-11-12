@@ -15,13 +15,13 @@ type FactText = (fact: Fact) => string;
 // What the coordinator reads about execute, the facts an action requires, and why nothing started.
 
 export const EXECUTE_DESCRIPTION =
-  "Start a specialist plugin's action by the plugin's handle and the action's name, with the input that action's guidance from discover describes, such as { plugin: \"coder\", action: \"change\", input }. A workflow action starts its specialist and returns at once with { started, plugin, action, runs: [{ runId }], presents, advice }; each run's report arrives later as a message that begins with its run id. Independent pieces of work can start in the same turn, each with its own execute. When the start does a step of the plan, pass that step's id as step so the plan shows this run on it. Nothing starts when the action lacks what it cannot work without, the person's go-ahead that a ready-made plan the project is following asks for, or when the person declined that step on the plan; the refusal names what is missing and which plugin action makes it true. Anything else a ready-made plan suggests doing first comes back as advice with the started run. A ready-made plan takes no action: the project starts following it, and you get its guidance; input { leave: true } stops the project following it. A screen action is opened with question({ plugin, action, input }).";
+  "Start a specialist plugin's action by the plugin's handle and the action's name, with the input that action's guidance from discover describes, such as { plugin: \"coder\", action: \"change\", input }. A workflow action starts its specialist and returns at once with { started, plugin, action, runs: [{ runId }], presents, advice }; each run's report arrives later as a message that begins with its run id. Independent pieces of work can start in the same turn, each with its own execute. When the start does a step of the plan, pass that step's id as step so the plan shows this run on it. Nothing starts when the action lacks what it cannot work without, the person's go-ahead that a ready-made plan the project is following asks for, or when the person declined that step on the plan; the refusal names what is missing and which plugin action makes it true. Anything else a ready-made plan suggests doing first comes back as advice with the started run. A ready-made plan is not started with execute: take it up with plan({ operation: \"add\", plan: handle }). A screen action is opened with question({ plugin, action, input }).";
 
 export const RUNS_DESCRIPTION =
   'See and steer the runs you started with execute. operation "list" lists each run you started in this project that is at work or ended lately: its plugin and action, status, state while it runs, when it started, its last activity, and why a failed run stopped. "wait" waits up to seconds (60 unless given, at most 120) for the first of runIds to end and says which ended; a run\'s report still reaches you as a message after your turn. "stop" stops each of runIds; what a stopped run filed or pushed is kept.';
 
 export const PLAN_DESCRIPTION =
-  'Keep the project\'s plan, which shows the person where work of several steps or gates stands. Each step is either a plugin action, as discover lists it, with its input, or a group with a title that names no action and holds such steps. operation "show" returns the plan; "set" replaces it with steps; "add" appends steps, or inserts them after the step whose id is after, or with plan adds a ready-made plan by its handle as one group holding its steps, each marked optional when the person may decline it and with when it waits for their approval, and has the project follow that plan; "remove" takes out the steps whose ids are stepIds. Each answers with the plan as it now stands; pass a step\'s id as execute\'s step when you start it.';
+  'Keep the project\'s plan, which shows the person where work of several steps or gates stands; it is the only way a plan is set. Each step is either a plugin action, as discover lists it, with its input, or a group with a title that names no action and holds such steps. operation "show" returns the plan; "set" replaces it with steps, which is how you write a plan of your own from the actions that fit; "add" appends steps, or inserts them after the step whose id is after or before the step whose id is before, or with plan takes up a ready-made plan by its handle: its steps go on as one group, each marked optional when the person may decline it and with when it waits for their approval, and the project follows that plan while its group is on the plan; "remove" takes out the steps whose ids are stepIds, and taking out a ready-made plan\'s group stops the project following it. Once added, a ready-made plan can be adjusted like any steps: add your own before, after or between its steps, inside its group or next to it, and remove those that do not fit. On an action step you write, askFirst true makes it wait until the person gives the go on the plan, and optional true lets the person decline it, after which it is not started. Each answers with the plan as it now stands; pass a step\'s id as execute\'s step when you start it.';
 
 // What runs offers for a run that holds back the next one, named as runIds lists it.
 export const waitOrStop = (runIds: string) =>
@@ -60,7 +60,7 @@ export const writesText = (values: Values, writes: readonly string[]) =>
   ].join("\n");
 
 export const DISCOVER_DYNAMIC_DESCRIPTION =
-  "Find what you can do for the person: every piece of work you can start is a plugin. Pass query with what they asked for, in their words, or group to list every plugin in that group: each comes in a line, with a line for each action saying what it is for and whether it can start or open now, or what it needs first, and then the project's values. Pass plugin, and action, for that action's full guidance and the input it takes; read it before you first start or open an action. Specialist actions and ready-made plans are started with execute; a screen action is shown to the person with question({ plugin, action, input }).";
+  'Find what you can do for the person: every piece of work you can start is a plugin. Pass query with what they asked for, in their words, or group to list every plugin in that group: each comes in a line, with a line for each action saying what it is for and whether it can start or open now, or what it needs first, and then the project\'s values. Pass plugin, and action, for that action\'s full guidance and the input it takes; read it before you first start or open an action. Specialist actions are started with execute. A ready-made plan is taken up with plan({ operation: "add", plan: handle }), which puts its steps on the project\'s plan; when none fits, write the plan yourself with plan({ operation: "set", steps }) from the actions that do. A screen action is shown to the person with question({ plugin, action, input }).';
 
 /** Missing facts that together make one alternative, with the installed actions that make them true. */
 const missingText = (
@@ -235,7 +235,7 @@ export function unmetRequirement(
   );
   for (const { plan } of holding)
     lines.push(
-      `If the person directs the work elsewhere, stop following the ${plan} plan with execute({ plugin: "${plan}", input: { leave: true } }).`,
+      `If the person directs the work elsewhere, take the ${plan} plan's group out of the project's plan with plan({ operation: "remove", stepIds }); the project then stops following it.`,
     );
   return lines.join("\n");
 }
@@ -331,8 +331,9 @@ export function planLine(
   return `Plan: ${steps.length} steps; ${said}.`;
 }
 
-export const readyPlanTakesNoAction = (handle: string) =>
-  `${handle} is a ready-made plan and takes no action, so nothing was started. Call again with no action to follow it, or name the specialist whose action you meant.`;
+/** Why a ready-made plan is neither started with execute nor held as one plan step. */
+export const readyPlanIsAdded = (handle: string) =>
+  `${handle} is a ready-made plan, not an action, so it is neither started nor held as one step. Take it up with plan({ operation: "add", plan: "${handle}" }), which puts its steps on the project's plan as a group and has the project follow it.`;
 
 const questionCall = (plugin: string, action: string) =>
   `question({ plugin: "${plugin}", action: "${action}", input })`;
@@ -428,16 +429,8 @@ export const presentsText = (
     ),
   ].join("\n");
 
-export const readyPlanInputRefused = (handle: string, problem: string) =>
-  `${handle} was not changed. Its input takes only leave: true, to stop the project following the plan; ${problem}. Call again with no input to follow it, or with { leave: true }.`;
-
-export const readyPlanLeft = (handle: string, wasOn: boolean) =>
-  wasOn
-    ? `The project is no longer following the ${handle} plan, so nothing of it applies to its steps any more.`
-    : `The project was not following the ${handle} plan, so nothing changed.`;
-
 export const readyPlanDone = (handle: string, ends: Fact, factText: FactText) =>
-  `${handle} was not followed: what ends it already holds (${factText(ends)}). Start the action the person's request needs directly.`;
+  `${handle} was not added, so the plan was not changed: what ends it already holds (${factText(ends)}). Start the action the person's request needs directly.`;
 
 /** A ready-made plan's guidance, how it combines with the others the project is following, and where each step stands. */
 export const readyPlanFollowed = (
@@ -447,7 +440,7 @@ export const readyPlanFollowed = (
   steps: readonly { name: string; readiness: string }[],
 ) =>
   [
-    `The project is now following the ${handle} plan. It keeps following it until what ends it holds or you leave it.`,
+    `The project is now following the ${handle} plan. It keeps following it until what ends it holds or its group is taken out of the plan.`,
     ...(others.length > 0
       ? [
           `It is also following ${others.join(", ")}. Where these plans share a step, the person's go-ahead any of them asks for holds the step while they decide approvals, and each plan's other advice comes with the started run.`,
@@ -487,6 +480,10 @@ export const DISCOVER_NEEDS_ONE =
 
 export const DISCOVER_ACTION_NEEDS_PLUGIN =
   "Pass action with the plugin whose action it is.";
+
+/** What discover's listing says of a plan the coordinator writes itself. */
+export const DISCOVER_OWN_PLAN =
+  'When no ready-made plan fits the work, write the project\'s plan yourself with plan({ operation: "set", steps }) from the actions that do.';
 
 /** What discover's listing ends with: how to read an action in full. */
 export const DISCOVER_MORE =
@@ -534,7 +531,7 @@ export const readyPlanListing = (
   steps: readonly { name: string; readiness: string }[],
 ) =>
   [
-    `${handle} (ready-made plan): ${description} ${following ? "This project is following it." : `execute({ plugin: "${handle}" }) has the project follow it.`}`,
+    `${handle} (ready-made plan): ${description} ${following ? "This project is following it." : `Take it up with plan({ operation: "add", plan: "${handle}" }), which puts its steps on the project's plan and has the project follow it.`}`,
     ...steps.map(({ name, readiness }) => `  step ${name}: ${readiness}.`),
   ].join("\n");
 

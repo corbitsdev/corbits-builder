@@ -91,6 +91,7 @@ import {
   ProjectExportMaterial,
   type StoredPlan,
   type StoredPlanChild,
+  type StoredPlanGroup,
   type StoredPlanStep,
 } from "@corbits-builder/schemas/project";
 import JSZip from "jszip";
@@ -1349,11 +1350,13 @@ export function createArtifactService(
         caller?.kind === "user" ? step : before.get(id);
       const saved = steps.map((step): StoredPlanStep => {
         if (!("steps" in step)) return savedPlanStep(step, marksOf);
-        return {
+        const group: StoredPlanGroup = {
           id: step.id ?? newPlanStepId(),
           title: step.title,
           steps: step.steps.map((child) => savedPlanStep(child, marksOf)),
         };
+        if (step.plan) group.plan = step.plan;
+        return group;
       });
       const ids = saved.flatMap((step) => [
         step.id,

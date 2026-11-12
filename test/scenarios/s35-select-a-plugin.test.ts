@@ -60,12 +60,12 @@ scenario({
           `build-web-app: using ${EXPRESS_LABEL} (${EXPRESS})`,
         ),
       ),
-      execute("c_follow", "build-web-app", undefined, {}),
+      call("c_follow", "plan", { operation: "add", plan: "build-web-app" }),
     ),
     // The default build-web-app holds the mockup for the person's approval of the requirements,
     // which are not even written; the express one asks for no go-ahead, so it starts.
     turn(
-      results(ok("c_follow", "execute", "write-requirements")),
+      results(ok("c_follow", "plan", "write-requirements")),
       execute("c_mockup", "designer", "mockup", WEATHER_MOCKUP),
     ),
     turn(

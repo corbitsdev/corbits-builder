@@ -1,6 +1,7 @@
 import { expect } from "bun:test";
 import { DESIGNER_REPORT, WEATHER_MOCKUP } from "./concept.ts";
 import {
+  call,
   execute,
   ok,
   question,
@@ -38,10 +39,10 @@ scenario({
     ),
     turn(
       results(ok("c_hand_over", "question", '"builder"')),
-      execute("c_follow", "build-web-app", undefined, {}),
+      call("c_follow", "plan", { operation: "add", plan: "build-web-app" }),
     ),
     turn(
-      results(ok("c_follow", "execute", "write-requirements")),
+      results(ok("c_follow", "plan", "write-requirements")),
       execute("c_requirements", "writer", "write-requirements", {
         instruction:
           "An animated weather web app: current conditions, 24-hour and 7-day forecasts, saved cities and a compare view, using Open-Meteo.",

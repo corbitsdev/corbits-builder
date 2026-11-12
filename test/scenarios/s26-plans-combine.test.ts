@@ -1,5 +1,6 @@
 import { expect } from "bun:test";
 import {
+  call,
   execute,
   ok,
   recorded,
@@ -24,10 +25,10 @@ scenario({
   coordinator: [
     turn(
       user("Plan the build"),
-      execute("c_follow", "build-web-app", undefined, {}),
+      call("c_follow", "plan", { operation: "add", plan: "build-web-app" }),
     ),
     turn(
-      results(ok("c_follow", "execute")),
+      results(ok("c_follow", "plan")),
       execute("c_plan_held", "writer", "write-build-plan", plan),
     ),
     turn(
@@ -42,12 +43,9 @@ scenario({
       results(ok("c_plan_advised", "execute", '"advice"')),
       say("A writer is planning; the plan suggested a design first."),
     ),
+    turn(user(), call("c_leave", "plan", { operation: "set", steps: [] })),
     turn(
-      user(),
-      execute("c_leave", "build-web-app", undefined, { leave: true }),
-    ),
-    turn(
-      results(ok("c_leave", "execute")),
+      results(ok("c_leave", "plan")),
       execute("c_plan_plain", "writer", "write-build-plan", plan),
     ),
     turn(
