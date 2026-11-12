@@ -19,6 +19,7 @@ import {
   approvalToolPart,
   shortDocumentName,
 } from "./collaboration.ts";
+import { conceptTab } from "./design-concept.ts";
 import type { ApprovalOutcome, DocumentApproval } from "./transcript.tsx";
 import styles from "./document-decision.module.css";
 
@@ -141,6 +142,14 @@ function settledLine(approval: DocumentApproval): string {
         .map(({ title, version }) => `${title} v${String(version)}`)
         .join(", "),
     );
+  if (approval.toolName === "choose_design")
+    return approval.filed === true
+      ? text.approved(
+          approval.subject === undefined
+            ? "the design"
+            : `the ${approval.subject} design`,
+        )
+      : text.choiceNotFiled(approval.subject);
   if (approval.toolName === undefined)
     return text.approved(text.settledUnnamed);
   const settled = text.settled[approval.toolName];
@@ -152,6 +161,7 @@ function settledLine(approval: DocumentApproval): string {
 export function DocumentDecision({
   approval,
   shownDocument,
+  conceptTabs = [],
   onShowDocument,
   disabled = false,
   error,
@@ -162,7 +172,9 @@ export function DocumentDecision({
   approval: DocumentApproval;
   /** The document the reading pane shows, by kind. */
   shownDocument?: string | null;
-  /** Takes the reading pane to that document. */
+  /** The design concepts the reading pane has a tab for, by label. */
+  conceptTabs?: readonly string[];
+  /** Takes the reading pane to that document or design concept. */
   onShowDocument?: (kind: string) => void;
   disabled?: boolean;
   error?: string;
@@ -182,6 +194,14 @@ export function DocumentDecision({
   const instruction = approval.instruction;
   const tool = approval.toolName ?? "";
   const design = tool === "design_app";
+  // A pending design choice names its concept; the card opens that concept's mockup while it has a tab.
+  const concept =
+    tool === "choose_design" &&
+    approval.outcome === undefined &&
+    approval.subject !== undefined &&
+    conceptTabs.includes(approval.subject)
+      ? approval.subject
+      : undefined;
   const decide = (decision: ToolApprovalDecision) => {
     if (decision.outcome === "rejected") onNo();
     else onYes();
@@ -281,6 +301,17 @@ export function DocumentDecision({
           onClick={() => onShowDocument(asked.kind)}
         >
           {text.show(name)}
+        </UiButton>
+      )}
+      {concept === undefined || onShowDocument === undefined ? null : (
+        <UiButton
+          type="button"
+          variant="link"
+          size="sm"
+          className={styles.show}
+          onClick={() => onShowDocument(conceptTab(concept))}
+        >
+          {text.show(wording.design.conceptTitle(concept))}
         </UiButton>
       )}
       {instruction !== undefined && FOLDED_INSTRUCTION_ASKS.has(tool) ? (

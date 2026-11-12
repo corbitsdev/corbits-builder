@@ -3,12 +3,7 @@
  * composer, or a banner saying why there is none), and the reading pane beside it once there is
  * something to read.
  */
-import {
-  useRef,
-  type ReactElement,
-  type ReactNode,
-  type RefObject,
-} from "react";
+import { useRef, type ReactNode, type RefObject } from "react";
 import { Paperclip, Sparkles } from "lucide-react";
 import {
   Attachment,
@@ -37,22 +32,15 @@ import {
   type ArtifactPaneContent,
   type ArtifactPaneSlots,
 } from "./artifact-pane.tsx";
-import { DesignChosenView } from "./design-concepts.view.tsx";
 import { pastedFiles } from "./pasted-files.ts";
 import { StageView } from "./stage-view.tsx";
-import {
-  RoomThread,
-  type PlacedChoice,
-  type RoomThreadContent,
-} from "./transcript.tsx";
+import { RoomThread, type RoomThreadContent } from "./transcript.tsx";
 import styles from "./index.module.css";
 
 /** The parts of the room that read the hub for themselves, which the page fills. */
 export type RoomSlots = {
   /** The line above the conversation saying where the project stands and the person's next step. */
   nextStep: ReactNode;
-  /** The ask to choose a design, asked last in the conversation; null while there is none to ask. */
-  designChoice: ReactElement | null;
   /** The reading pane's own such parts. */
   paneParts: ArtifactPaneSlots;
 };
@@ -136,8 +124,6 @@ export type RoomContent = {
     thread: RoomThreadContent;
     /** What stands in the thread's place: an archived project's note, or a new project's welcome. */
     empty: "archived" | "new" | null;
-    /** The design the person chose here and when, which keeps its place in the conversation. */
-    designChosen: { concept: string; at: number } | null;
   };
   dock: RoomDock;
   documentPane: ArtifactPaneContent;
@@ -155,21 +141,10 @@ export function RoomView({
   documentPane,
   paneRef,
   nextStep,
-  designChoice,
   paneParts,
 }: RoomViewProps) {
   const { chatFirst, narrowPane, onNarrowPaneChange } = layout;
-  const { designChosen } = conversation;
   const shell = useShellReply(paneRef);
-  const placedChoice = (): PlacedChoice | null => {
-    if (designChosen !== null)
-      return {
-        at: designChosen.at,
-        card: <DesignChosenView concept={designChosen.concept} />,
-      };
-    return designChoice === null ? null : { card: designChoice };
-  };
-  const choice = placedChoice();
   return (
     <StageView aria-label={`Conversation for ${title}`}>
       <div
@@ -204,10 +179,7 @@ export function RoomView({
           >
             <div className={styles.conversation}>
               {nextStep}
-              <RoomThread
-                {...conversation.thread}
-                {...(choice === null ? {} : { designChoice: choice })}
-              >
+              <RoomThread {...conversation.thread}>
                 <EmptyConversation empty={conversation.empty} />
               </RoomThread>
               <Dock dock={dock} answersShell={shell.answers} />

@@ -9,7 +9,8 @@
     "review_artifact",
     "design_app",
     "deploy_coder",
-    "instruct_coder"
+    "instruct_coder",
+    "choose_design"
   ],
   "toolResults": []
 }

@@ -135,6 +135,8 @@ export type DocumentApproval = {
   at?: number;
   /** How the native record settled it, once it is no longer pending. */
   outcome?: ApprovalOutcome;
+  /** For a choose_design ask, whether the hub has recorded the design it filed. */
+  filed?: boolean;
 };
 
 export type ApprovalOutcome = {
@@ -224,22 +226,17 @@ export type PlacedDispatch = {
   readonly dispatch: Dispatch;
 };
 
-/** The coordinator's ask to choose a design, placed when it was answered, else last. */
-export type PlacedChoice = { readonly at?: number; readonly card: ReactNode };
-
 type ThreadItem =
   | { kind: "turn"; turn: TranscriptTurn; index: number }
   | { kind: "updates"; group: UpdateGroup }
   | { kind: "approval"; approval: DocumentApproval }
   | { kind: "unit"; unit: WorkUnit }
-  | { kind: "choice"; card: ReactNode }
   | { kind: "questions"; callId: string; ask: AskQuestions };
 
 type Placed =
   | { kind: "update"; at: number; update: SpecialistUpdate }
   | { kind: "approval"; at: number; approval: DocumentApproval }
-  | { kind: "unit"; at: number; unit: WorkUnit }
-  | { kind: "choice"; at: number; card: ReactNode };
+  | { kind: "unit"; at: number; unit: WorkUnit };
 
 /**
  * The person's and the coordinator's turns in order, with each hand-off and
@@ -253,7 +250,6 @@ function threadItems(
   threadUpdates: readonly SpecialistUpdate[],
   approvals: readonly DocumentApproval[],
   runs: readonly PlacedDispatch[],
-  choice: PlacedChoice | undefined,
   results: ReadonlyMap<string, CallResult>,
 ): ThreadItem[] {
   const handoffs = [
@@ -297,15 +293,6 @@ function threadItems(
       at: unit.at,
       unit,
     })),
-    ...(choice === undefined
-      ? []
-      : [
-          {
-            kind: "choice",
-            at: choice.at ?? Number.POSITIVE_INFINITY,
-            card: choice.card,
-          } satisfies Placed,
-        ]),
   ].sort((left, right) => left.at - right.at);
   const items: ThreadItem[] = [];
   let next = 0;
@@ -333,7 +320,7 @@ function threadItems(
     items.push({ kind: "turn", turn, index });
   });
   flushBefore(Number.POSITIVE_INFINITY);
-  // An approval or choice with no known time still shows, after everything else.
+  // An approval with no known time still shows, after everything else.
   for (; next < placed.length; next += 1) {
     const entry = placed[next];
     if (entry !== undefined && entry.kind !== "update")
@@ -345,8 +332,7 @@ function threadItems(
 function placedItem(entry: Exclude<Placed, { kind: "update" }>): Card {
   if (entry.kind === "approval")
     return { kind: "approval", approval: entry.approval };
-  if (entry.kind === "unit") return { kind: "unit", unit: entry.unit };
-  return { kind: "choice", card: entry.card };
+  return { kind: "unit", unit: entry.unit };
 }
 
 type Card = Exclude<ThreadItem, { kind: "turn" }>;
@@ -422,8 +408,8 @@ function threadSections(
 
 /**
  * A piece of work still at work is current, so it sits after the reports and decisions that came
- * while it ran rather than at the call that started it. The design choice waits on the person, so it
- * stays after those.
+ * while it ran rather than at the call that started it. Questions wait on the person, so they stay
+ * after those.
  */
 function liveLast(
   cards: readonly Card[],
@@ -431,12 +417,11 @@ function liveLast(
 ): Card[] {
   const isLive = (card: Card) =>
     card.kind === "unit" && live(card.unit.dispatch);
-  const isChoice = (card: Card) =>
-    card.kind === "choice" || card.kind === "questions";
+  const isQuestions = (card: Card) => card.kind === "questions";
   return [
-    ...cards.filter((card) => !isLive(card) && !isChoice(card)),
+    ...cards.filter((card) => !isLive(card) && !isQuestions(card)),
     ...cards.filter(isLive),
-    ...cards.filter(isChoice),
+    ...cards.filter(isQuestions),
   ];
 }
 
@@ -612,6 +597,8 @@ export type RoomThreadContent = {
   onOpenDocument?: (id: string) => void;
   /** The document the reading pane shows, by kind, so a card can say where it is. */
   shownDocument?: string | null;
+  /** The design concepts the reading pane has a tab for, by label. */
+  conceptTabs?: readonly string[];
   /** Pending document decisions. Not decided here. */
   approvals?: readonly DocumentApproval[];
   /** Native results of the coordinator's calls this session saw, by call id. */
@@ -638,7 +625,6 @@ export type RoomThreadContent = {
 };
 
 export type RoomThreadProps = RoomThreadContent & {
-  designChoice?: PlacedChoice;
   /** Agent output rendered in the same log, after the turns. */
   children?: ReactNode;
 };
@@ -651,10 +637,10 @@ export function RoomThread({
   documents = [],
   onOpenDocument,
   shownDocument = null,
+  conceptTabs = [],
   approvals = [],
   results = new Map(),
   runs = [],
-  designChoice,
   live = () => false,
   standing,
   onDecide,
@@ -722,17 +708,6 @@ export function RoomThread({
           </Message>
         </ConversationItem>
       );
-    if (card.kind === "choice")
-      return (
-        <ConversationItem key="design-choice" itemId="design-choice">
-          <Message from="agent">
-            {headed ? null : (
-              <MessageHeader name={wording.speaker.coordinator} />
-            )}
-            {card.card}
-          </Message>
-        </ConversationItem>
-      );
     return renderApproval(card.approval, position, headed);
   };
   const renderUpdates = (group: UpdateGroup, subject: string | undefined) => (
@@ -774,6 +749,7 @@ export function RoomThread({
       <DocumentDecision
         approval={approval}
         shownDocument={shownDocument}
+        conceptTabs={conceptTabs}
         {...(onOpenDocument === undefined
           ? {}
           : { onShowDocument: onOpenDocument })}
@@ -855,7 +831,7 @@ export function RoomThread({
     </ConversationItem>
   );
   const sections = threadSections(
-    threadItems(turns, updates, approvals, runs, designChoice, results),
+    threadItems(turns, updates, approvals, runs, results),
     results,
   );
   // The coordinator's turn shows one live line, at the bottom: its last run when its words end the

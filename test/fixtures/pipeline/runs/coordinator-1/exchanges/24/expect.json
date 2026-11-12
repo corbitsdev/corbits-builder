@@ -1,6 +1,5 @@
 {
-  "lastMessageRole": "user",
-  "userTextContains": "Adaptive weather-driven",
+  "lastMessageRole": "tool",
   "requiredTools": [
     "read_artifact",
     "write_artifact",
@@ -9,7 +8,16 @@
     "review_artifact",
     "design_app",
     "deploy_coder",
-    "instruct_coder"
+    "instruct_coder",
+    "choose_design"
   ],
-  "toolResults": []
+  "toolResults": [
+    {
+      "callId": "coord_choose_design",
+      "toolName": "choose_design",
+      "isError": false,
+      "keys": ["design", "concept"],
+      "contains": "Adaptive weather-driven"
+    }
+  ]
 }

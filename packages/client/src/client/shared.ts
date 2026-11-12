@@ -34,8 +34,6 @@ import type {
   DecidedApprovalList,
   DesignDraft,
   DesignThemeList,
-  DesignChoice,
-  DesignChoiceReceipt,
   DesignTweaks,
   DesignTweaksReceipt,
   FailedRun,
@@ -398,13 +396,6 @@ export type ProductApiClient = Readonly<{
     input: DesignTweaks,
     signal?: AbortSignal,
   ): Promise<DesignTweaksReceipt>;
-  /** The person chooses a filed design option at its version; it becomes the approved design. */
-  chooseDesign(
-    tenantId: string,
-    projectId: string,
-    input: DesignChoice,
-    signal?: AbortSignal,
-  ): Promise<DesignChoiceReceipt>;
   /** The file types the coordinator's model reads; an empty list accepts none. */
   acceptedMaterials(
     tenantId: string,

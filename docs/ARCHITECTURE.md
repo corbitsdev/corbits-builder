@@ -77,7 +77,8 @@ plan, design options, the design and the app.
 
 - Text documents are written whole by the coordinator or a writer.
 - A design option is filed from a designer's workspace once the design check
-  passes; the design is filed when the person chooses an option.
+  passes; the design is filed when the person chooses a concept on its
+  approval card.
 - The app is filed from the coder's workspace each time the app check passes.
 
 The hub assigns each version's id, number and hash. Writing a version is never
@@ -87,15 +88,20 @@ assignment and has no read tool, so it works only from what it was given.
 ### Approvals
 
 Approvals are the runtime's own human approvals. A tool that needs a person's
-go-ahead (`request_approval`, `design_app`, `instruct_coder`, adding a package)
-is declared as asking, so the runtime parks the call until a person resolves
-it. After it resolves, the hub records the exact document versions and hashes
-it covered, and only those whose hash still matches storage.
+go-ahead (`request_approval`, `design_app`, `choose_design`, `instruct_coder`,
+adding a package) is declared as asking, so the runtime parks the call until a
+person resolves it. After it resolves, the hub records the exact document
+versions and hashes it covered, and only those whose hash still matches
+storage.
 
 - Versions and hashes come from the hub, never from model input, so an
   approval cannot be pointed at a version the person did not see.
-- Choosing a design option and importing a project as approved are the
-  person's own acts; the hub records that person as the approver.
+- Choosing a design option is a `choose_design` approval. It covers the
+  concept, so the option's newest version, with any look tweaks the person
+  saved while deciding, is filed. Each approval files one design; a retry of
+  an approval that already filed returns that same design.
+- Importing a project as approved is the person's own act; the hub records
+  that person as the approver.
 - Hand-off tools check approvals before they start the next writer.
 
 ### Questions

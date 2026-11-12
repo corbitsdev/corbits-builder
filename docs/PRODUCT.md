@@ -72,7 +72,8 @@ says; there is no fixed sequence of screens. A typical project goes:
    themes can be clicked through before any design exists. Each concept is a
    clickable mockup of every screen, with light and dark modes, desktop and
    phone views, and simple tweaks (colour, background, corners, font). The
-   person confirms one concept, and that choice is the design approval.
+   person chooses one concept on an approval card, and that choice is the
+   design approval.
 7. **Build plan.** Written from the chosen approach and design: the stack, the
    order of work and the acceptance checklist.
 8. **Live build.** One coder builds the whole app. The workspace shows the

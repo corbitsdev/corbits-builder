@@ -29,7 +29,11 @@ function settledCard(
     status: record.status,
     ...(record.scope === null ? {} : { scope: record.scope }),
   };
-  if (decidedHere !== undefined) return { ...decidedHere, outcome };
+  const filed =
+    record.toolName === "choose_design"
+      ? { filed: record.documents.some((ref) => ref.kind === "design") }
+      : {};
+  if (decidedHere !== undefined) return { ...decidedHere, outcome, ...filed };
   const recorded = artifacts.flatMap((item) => {
     const approved = record.documents.find((ref) => ref.kind === item.kind);
     return approved === undefined
@@ -44,6 +48,7 @@ function settledCard(
     ...cardDocuments(ask, record.status === "approved" ? recorded : artifacts),
     ...ask,
     outcome,
+    ...filed,
   };
 }
 
@@ -76,6 +81,15 @@ export function useSettledApprovals(
     if (openKey === undefined) return;
     void queryClient.invalidateQueries({ queryKey });
   }, [projectId, openKey]);
+
+  // A design choice is recorded when its design is filed, after the ask left the pending list.
+  const designVersion = artifacts.find(
+    (item) => item.kind === "design",
+  )?.version;
+  useEffect(() => {
+    if (designVersion === undefined) return;
+    void queryClient.invalidateQueries({ queryKey });
+  }, [projectId, designVersion]);
 
   useEffect(() => {
     if (decided.error !== null)

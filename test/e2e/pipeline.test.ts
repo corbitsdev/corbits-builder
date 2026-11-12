@@ -180,11 +180,6 @@ async function withPipelineScenario(
     sendMessage: (lines: readonly string[]) => Promise<void>;
     decideArtifactApproval: (step: ArtifactApprovalStep) => Promise<void>;
     decideToolApproval: (step: ToolApprovalStep) => Promise<void>;
-    chooseFiledDesignOption: (
-      stage: string,
-      version: number,
-      presentationSubstring: string,
-    ) => Promise<void>;
     assertArtifactStates: (
       expected: readonly ExpectedArtifactState[],
     ) => Promise<readonly ProjectArtifact[]>;
@@ -373,40 +368,6 @@ async function withPipelineScenario(
             step.feedback,
           );
         },
-        chooseFiledDesignOption: async (
-          stage,
-          version,
-          presentationSubstring,
-        ) => {
-          const designOption = await waitFor(
-            stage,
-            `design_option v${version} and coordinator presentation`,
-            async () => {
-              const [{ artifacts }, conv] = await Promise.all([
-                client.projectArtifacts(projectTenantId, options.projectId),
-                client.conversationEvents(projectTenantId, options.projectId),
-              ]);
-              const option = findArtifact(artifacts, "design_option", version);
-              if (!option) return undefined;
-              const presented = conv.turns?.some(
-                (turn) =>
-                  turn.role === "assistant" &&
-                  turn.text.includes(presentationSubstring),
-              );
-              return presented ? option : undefined;
-            },
-          );
-          const designReceipt = await client.chooseDesign(
-            projectTenantId,
-            options.projectId,
-            {
-              artifactId: designOption.artifactId,
-              version: designOption.version,
-            },
-          );
-          expect(designReceipt.design.kind).toBe("design");
-          expect(designReceipt.design.version).toBe(version);
-        },
         assertArtifactStates: async (expected) => {
           const { artifacts, failed } = await client.projectArtifacts(
             projectTenantId,
@@ -553,11 +514,11 @@ describe("Builder E2E pipeline replay", () => {
               toolName: "design_app",
               afterApproved: { kind: "product_requirements", version: 1 },
             });
-            await driver.chooseFiledDesignOption(
-              "design",
-              1,
-              "The design is filed",
-            );
+            await driver.decideToolApproval({
+              stage: "design",
+              toolName: "choose_design",
+              afterFiled: { kind: "design_option", version: 1 },
+            });
           });
 
           await driver.runStage("build", async () => {

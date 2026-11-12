@@ -135,7 +135,6 @@ import {
   coordinatorTweaksNote,
   designerTweaksNote,
 } from "../config/design-tweaks.ts";
-import { designChosenNote } from "../config/design.ts";
 import { loadSettings } from "../settings/policy.ts";
 import {
   agentDecidesApprovals,
@@ -2181,13 +2180,15 @@ export function createArtifactService(
       });
     },
 
-    // The person's own choice among the filed design options, never the coordinator's: the option
-    // at the version they saw is filed as the design, and they approve exactly that design version.
+    // Called by choose_design after the person approved its native ask. The approval covers the
+    // concept, so its newest option, look tweaks saved while the card was open included, is filed
+    // as the design, and the approval is recorded against the option and the design together.
+    // A retry of an approval that already filed returns the same design, so a lost response never
+    // reads as "nothing was filed" and asks the person again.
     async chooseDesign(
       actor: Actor,
       projectId: string,
       raw: unknown,
-      mailRun: (runId: string, content: string) => Promise<void>,
     ): Promise<DesignChoiceReceipt> {
       const input = DesignChoice(raw);
       if (input instanceof type.errors)
@@ -2195,60 +2196,120 @@ export function createArtifactService(
           issues: input,
         });
       await requireProject(actor, projectId, "manage");
-      const [chooser] = await rawDB
-        .select({ kind: principal.kind })
+      const [caller] = await rawDB
+        .select({ kind: principal.kind, refId: principal.refId })
         .from(principal)
         .where(eq(principal.id, actor.principalId));
-      if (chooser?.kind !== "user")
-        throw new ProjectError(403, "design_choice_person_only");
-      const option = await getArtifact(db, input.artifactId);
+      // Only the project's own coordinator asks, so only one of its runs may consume the
+      // approval. A person may also choose, for an imported project and tests.
+      const coordinators = await rawDB
+        .select({ runId: projectCoordinator.runId })
+        .from(projectCoordinator)
+        .where(eq(projectCoordinator.projectId, projectId));
+      const runIds = coordinators.map(({ runId }) => runId);
       if (
-        !option ||
-        option.tenantId !== actor.tenantId ||
-        option.kind !== "design_option"
+        caller?.kind === "workflow" &&
+        (caller.refId === null || !runIds.includes(caller.refId))
       )
-        throw new ProjectError(404, "design_option_not_found", {
-          artifactId: input.artifactId,
+        throw new ProjectError(403, "design_choice_coordinator_only");
+      if (runIds.length === 0)
+        throw new ProjectError(409, "approval_not_resolved", {
+          tool: "choose_design",
         });
-      const [newest] = (await listArtifactVersions(db, option.id, { limit: 1 }))
-        .versions;
-      const stored = await getArtifactVersion(db, option.id, input.version);
-      if (!stored || newest?.version !== input.version)
-        throw new ProjectError(409, "artifact_ref_stale", {
-          artifactId: input.artifactId,
-          version: input.version,
-        });
-      const [existing] = (
-        await listArtifacts(db, actor.tenantId, { kind: "design", limit: 1 })
-      ).rows;
-      const written = existing
-        ? await writeArtifactVersion(db, {
-            scope: actor,
-            artifactId: existing.id,
-            title: stored.title,
-            content: stored.content,
+      const { design, title } = await db.transaction(async (tx) => {
+        const [granted] = await tx
+          .select({ id: approval.id })
+          .from(approval)
+          .where(
+            and(
+              eq(approval.tenantId, actor.tenantId),
+              eq(approval.status, "approved"),
+              eq(sql`${approval.toolDefinition}->>'name'`, "choose_design"),
+              eq(sql`${approval.toolArguments}->>'concept'`, input.concept),
+              inArray(approval.runId, runIds),
+            ),
+          )
+          .orderBy(desc(approval.resolvedAt))
+          .limit(1)
+          .for("update");
+        if (!granted)
+          throw new ProjectError(409, "approval_not_resolved", {
+            tool: "choose_design",
+          });
+        const recorded = await tx
+          .select({
+            artifactId: artifactApproval.artifactId,
+            kind: artifactApproval.kind,
+            version: artifactApproval.version,
+            sha256: artifactApproval.sha256,
           })
-        : await db.transaction((tx) =>
-            createArtifact(tx, {
+          .from(artifactApproval)
+          .where(eq(artifactApproval.approvalId, granted.id));
+        const filed = recorded.find(({ kind }) => kind === "design");
+        if (filed)
+          return {
+            design: { ...filed, kind: "design" } as ArtifactRef,
+            title: input.concept,
+          };
+        // A concept keeps one design_option artifact, titled by its label, across design passes.
+        const option = (
+          await listArtifacts(tx, actor.tenantId, {
+            kind: "design_option",
+            limit: MAX_LIST_LIMIT,
+          })
+        ).rows
+          .filter((row) => row.title === input.concept && row.contentSha256)
+          .sort((left, right) => right.version - left.version)[0];
+        const stored = option
+          ? await getArtifactVersion(tx, option.id, option.version)
+          : undefined;
+        if (!option || !stored?.contentSha256)
+          throw new ProjectError(404, "design_option_not_found", {
+            concept: input.concept,
+          });
+        const [existing] = (
+          await listArtifacts(tx, actor.tenantId, {
+            kind: "design",
+            limit: 1,
+          })
+        ).rows;
+        const written = existing
+          ? await writeArtifactVersion(tx, {
+              scope: actor,
+              artifactId: existing.id,
+              title: stored.title,
+              content: stored.content,
+            })
+          : await createArtifact(tx, {
               scope: actor,
               ownerPrincipalId: actor.principalId,
               kind: "design",
               title: stored.title,
               content: stored.content,
               source: { origin: "manual" },
-            }),
-          );
-      const design: ArtifactRef = {
-        artifactId: "artifactId" in written ? written.artifactId : written.id,
-        kind: "design",
-        version: written.version,
-        sha256: written.contentSha256!,
-      };
-      await rawDB.insert(artifactImportApproval).values({
-        ...design,
-        tenantId: actor.tenantId,
-        projectId,
-        principalId: actor.principalId,
+            });
+        const design: ArtifactRef = {
+          artifactId: "artifactId" in written ? written.artifactId : written.id,
+          kind: "design",
+          version: written.version,
+          sha256: written.contentSha256!,
+        };
+        const optionRef: ArtifactRef = {
+          artifactId: option.id,
+          kind: "design_option",
+          version: stored.version,
+          sha256: stored.contentSha256,
+        };
+        await tx.insert(artifactApproval).values(
+          [optionRef, design].map((ref) => ({
+            approvalId: granted.id,
+            tenantId: actor.tenantId,
+            projectId,
+            tool: "choose_design",
+            ...ref,
+          })),
+        );
+        return { design, title: stored.title };
       });
       // The other concepts' designers would file options nobody compares and hold their slots.
       const others = await rawDB
@@ -2259,7 +2320,7 @@ export function createArtifactService(
           and(
             eq(designConcept.tenantId, actor.tenantId),
             eq(designConcept.projectId, projectId),
-            ne(designConcept.label, stored.title),
+            ne(designConcept.label, title),
             inArray(workflowRun.status, ["deployed", "running"]),
           ),
         );
@@ -2268,13 +2329,7 @@ export function createArtifactService(
           cancelRun?.(actor.tenantId, runId, "design_concept_not_picked"),
         ),
       );
-      const coordinator = await activeCoordinator(projectId);
-      if (coordinator)
-        await mailRun(
-          coordinator.runId,
-          designChosenNote(stored.title, design.version),
-        );
-      return { design, concept: stored.title };
+      return { design, concept: title };
     },
 
     approvalRounds: createApprovalRoundService(

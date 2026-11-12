@@ -4,19 +4,11 @@
  * concept named after a design theme starts from that theme's sample app, so its draft shows only
  * once the designer has changed a page of it.
  */
-import { useState } from "react";
-import { toast } from "sonner";
 import type { ProjectArtifact } from "@corbits-builder/client";
 import type { InFlightRun } from "@corbits-builder/schemas/artifact";
-import { wording } from "../../config.ts";
-import { chooseDesign } from "../../api/artifacts.ts";
-import { conceptTab, type DesignConcept } from "./design-concept.ts";
-import { humanFault } from "./human-fault.ts";
+import type { DesignConcept } from "./design-concept.ts";
 import { parseBundle, type DesignFiles } from "./design-bundle.ts";
-import type {
-  ConceptMockupViewProps,
-  DesignChoiceViewProps,
-} from "./design-concepts.view.tsx";
+import type { ConceptMockupViewProps } from "./design-concepts.view.tsx";
 import { useDesignDraft } from "./design-preview.model.ts";
 import { useDesignThemes, useThemeFiles } from "./design-themes.model.ts";
 import type { PreviewDevice } from "./device-preview.tsx";
@@ -33,7 +25,6 @@ export function designConcepts(
   inFlight: readonly InFlightRun[],
   asked: readonly { readonly label: string; readonly direction: string }[],
   content: (option: ProjectArtifact) => string | undefined,
-  chosen?: string,
 ): DesignConcept[] {
   const labels = new Set([
     ...asked.map((concept) => concept.label),
@@ -66,16 +57,7 @@ export function designConcepts(
                 working: run.state === "working",
               },
             }),
-        ...(body === undefined || option === undefined
-          ? {}
-          : {
-              content: body,
-              option: {
-                artifactId: option.artifactId,
-                version: option.version,
-              },
-            }),
-        ...(label === chosen ? { chosen: true } : {}),
+        ...(body === undefined ? {} : { content: body }),
       };
     });
 }
@@ -156,45 +138,5 @@ export function useConceptMockup({
     mockup: mockup(),
     device,
     onDevice,
-  };
-}
-
-export type DesignChoiceProps = {
-  projectId: string;
-  /** The concepts with a filed option, each confirmable. */
-  concepts: readonly DesignConcept[];
-  onShowConcept: (tab: string) => void;
-  onChosen: (concept: string) => void;
-};
-
-/**
- * The person's choice of a filed concept, asked in the conversation; the hub files it as the
- * approved design and tells the coordinator.
- */
-export function useDesignChoice({
-  projectId,
-  concepts,
-  onShowConcept,
-  onChosen,
-}: DesignChoiceProps): DesignChoiceViewProps {
-  const [choosing, setChoosing] = useState(false);
-  const choose = async (label: string) => {
-    const option = concepts.find((concept) => concept.label === label)?.option;
-    if (option === undefined) return;
-    setChoosing(true);
-    try {
-      const receipt = await chooseDesign(projectId, option);
-      onChosen(receipt.concept);
-    } catch (cause) {
-      toast.error(humanFault(cause, wording.design.chooseFailed));
-    } finally {
-      setChoosing(false);
-    }
-  };
-  return {
-    concepts: concepts.map(({ label, direction }) => ({ label, direction })),
-    choosing,
-    onShow: (label) => onShowConcept(conceptTab(label)),
-    onChoose: (label) => void choose(label),
   };
 }

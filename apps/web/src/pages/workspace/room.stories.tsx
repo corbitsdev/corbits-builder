@@ -9,7 +9,6 @@ import documentPane, {
   Loading as loadingDocument,
   ReadError as failedDocument,
 } from "./artifact-pane.stories.tsx";
-import { DesignChoiceView } from "./design-concepts.view.tsx";
 import designThemes from "./design-themes.stories.tsx";
 import { DesignThemesView } from "./design-themes.view.tsx";
 import nextStep, { YourTurn as yourTurn } from "./next-step.stories.tsx";
@@ -121,13 +120,11 @@ const meta = {
     conversation: {
       thread: thread.args,
       empty: null,
-      designChosen: null,
     },
     dock: composer,
     ...paneOf(),
     paneRef: createRef(),
     nextStep: <NextStepLineView {...nextStep.args} />,
-    designChoice: null,
   },
   render: (args) => <Room {...args} />,
 } satisfies Meta<typeof RoomView>;
@@ -351,21 +348,24 @@ export const AppBuilt: Story = {
   },
 };
 
-/** The designers' concepts are filed, a tab each, and the conversation asks which one to build. */
+/** The designers' concepts are filed, a tab each, and the approval card asks which one to build. */
 export const ChoosingADesign: Story = {
   args: {
     ...withDocuments,
     ...paneOf(conceptTabs.args),
-    designChoice: (
-      <DesignChoiceView
-        concepts={[
-          { label: "Paper", direction: undefined },
-          { label: "Quiet", direction: undefined },
-        ]}
-        choosing={false}
-        onShow={fn()}
-        onChoose={fn()}
-      />
-    ),
+    conversation: {
+      ...conversation,
+      thread: {
+        ...thread.args,
+        conceptTabs: ["Paper", "Quiet"],
+        approvals: [
+          {
+            approvalId: "approval-choice",
+            toolName: "choose_design",
+            subject: "Paper",
+          },
+        ],
+      },
+    },
   },
 };

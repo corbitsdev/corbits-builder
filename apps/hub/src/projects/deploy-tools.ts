@@ -118,6 +118,7 @@ const ReviewArtifact = type({
   instruction: Instruction,
 });
 const DeployCoder = type({ "+": "reject", "instruction?": Instruction });
+const ChooseDesign = type({ "+": "reject", concept: "string > 0" });
 const InstructCoder = type({ "+": "reject", instruction: Instruction });
 const DesignApp = type({
   "+": "reject",
@@ -176,7 +177,7 @@ const notApproved = (kind: string, version: number) =>
       " version " +
       String(version) +
       (kind === "design"
-        ? "; they approve a design by confirming a design option in the conversation"
+        ? "; ask them to choose the design with choose_design"
         : "; ask them with request_approval"),
   );
 
@@ -286,7 +287,7 @@ export function createDeployTools(options?: {
     {
       name: "deploy_coder",
       description:
-        "Have the coder build the whole app from the filed problem brief, constraints, approaches, product requirements, build plan and design. The documents are the assignment; an optional instruction adds a note to it. It starts once a person approved the current version of each document: the design by confirming a design option in the conversation, the others through request_approval. This is the first build only; once a version is filed after a passing check, changes go through instruct_coder.",
+        "Have the coder build the whole app from the filed problem brief, constraints, approaches, product requirements, build plan and design. The documents are the assignment; an optional instruction adds a note to it. It starts once a person approved the current version of each document: the design through choose_design, the others through request_approval. This is the first build only; once a version is filed after a passing check, changes go through instruct_coder.",
       inputSchema: { ...DeployCoder.toJsonSchema() },
     },
     {
@@ -305,6 +306,12 @@ export function createDeployTools(options?: {
           ({ label, direction }) => "- " + label + ": " + direction,
         ).join("\n"),
       inputSchema: { ...DesignApp.toJsonSchema() },
+    },
+    {
+      name: "choose_design",
+      description:
+        "File the project's design from one filed design concept. Use after every concept has been filed and no designer is still working, once the person has picked a concept or asked you to recommend one; pass that concept's exact label as concept. On approval the hub files the concept's newest design_option version, including look tweaks saved while the card was open, as the design, records the approval against it, stops the other concepts' designers, and returns the filed design and concept. A refused call means no design was filed; ask the person again with choose_design. The build plan and deploy_coder need this approval.",
+      inputSchema: { ...ChooseDesign.toJsonSchema() },
     },
     {
       name: "deploy_presenter",
@@ -326,6 +333,7 @@ export function createDeployTools(options?: {
       { name: "deploy_coder" },
       { name: "instruct_coder", approval: "ask" },
       { name: "design_app", approval: "ask" },
+      { name: "choose_design", approval: "ask" },
       { name: "deploy_presenter" },
     ],
     factory: (env) => ({
@@ -840,6 +848,20 @@ export function createDeployTools(options?: {
                       error: refusalText(outcome.reason),
                     },
             );
+          } else if (call.name === "choose_design") {
+            // This handler runs only after the native approval resolved; the hub binds the
+            // choice to that approval.
+            try {
+              result = await hub(
+                projectPath + "/design-choice",
+                validArguments(ChooseDesign, call.arguments),
+              );
+            } catch (error) {
+              throw new Refusal(
+                refusalText(error) +
+                  "; no design was filed, so ask the person again with choose_design",
+              );
+            }
           } else if (call.name === "deploy_presenter") {
             const input = validArguments(DeployPresenter, call.arguments);
             const { byKind, approved, preferences } = await listed();

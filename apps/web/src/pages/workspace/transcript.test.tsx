@@ -18,7 +18,7 @@ import {
   pendingLiveTurn,
   waitingOnPerson,
 } from "./live-run.ts";
-import { RoomThread } from "./transcript.tsx";
+import { RoomThread, type DocumentApproval } from "./transcript.tsx";
 import { workUnitStanding } from "./work-unit-message.model.ts";
 import type { WorkUnit } from "./work-unit.ts";
 
@@ -560,5 +560,35 @@ describe("conversation transcript", () => {
     expect(several).toContain(">Night Dock<");
     expect(several).not.toContain("--radius");
     expect(several).not.toContain(">Start Clear Skies<");
+  });
+
+  test("a design choice links its concept while pending and says approved only once filed", () => {
+    const card = (approval: DocumentApproval, conceptTabs: string[] = []) =>
+      renderToStaticMarkup(
+        <DocumentDecision
+          approval={approval}
+          conceptTabs={conceptTabs}
+          onShowDocument={() => {}}
+          onYes={() => {}}
+          onAlways={() => {}}
+          onNo={() => {}}
+        />,
+      );
+    const ask = {
+      approvalId: "appr-choice",
+      toolName: "choose_design",
+      subject: "Harbour",
+    };
+    const link = wording.approval.show(wording.design.conceptTitle("Harbour"));
+    expect(card(ask, ["Harbour"])).toContain(link);
+    expect(card(ask)).not.toContain(link);
+    const approved = { ...ask, outcome: { status: "approved" as const } };
+    const unfiled = card(approved, ["Harbour"]);
+    expect(unfiled).not.toContain(link);
+    expect(unfiled).not.toContain("Approved");
+    expect(unfiled).toContain(wording.approval.choiceNotFiled("Harbour"));
+    expect(card({ ...approved, filed: true })).toContain(
+      wording.approval.approved("the Harbour design"),
+    );
   });
 });

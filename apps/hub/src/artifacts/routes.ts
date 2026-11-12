@@ -272,7 +272,7 @@ export function mountArtifactRoutes(
       tags: ["Artifacts"],
       operationId: "chooseDesign",
       description:
-        "The person chooses a filed design_option at the version they saw. The hub files it as the project's design, records the person's approval of exactly that design version and hash, stops the other concepts' designers, and tells the coordinator which design the person chose. Only a person may choose; the coordinator never does.",
+        "Called by the coordinator's choose_design tool once the person approved its native ask. The approval covers the concept, so the hub files its newest design_option version, look tweaks the person saved while deciding included, as the project's design, records that approval against exactly that option and design version and hash in the same transaction, and stops the other concepts' designers. Each approval files once; a retry of one that already filed returns the same design.",
       security,
       requestBody: {
         required: true,
@@ -287,26 +287,24 @@ export function mountArtifactRoutes(
           },
         },
         403: {
-          description: "The caller is not a person who manages the project",
+          description:
+            "The caller does not manage the project, or is not one of its coordinator runs",
         },
-        404: { description: "No filed design option with that id" },
+        404: { description: "No filed design option for that concept" },
         409: {
-          description: "The option has a newer version than the one chosen",
+          description:
+            "No approved choose_design for that concept (approval_not_resolved)",
         },
       },
     }),
-    async (c) => {
-      const current = actorOf(c);
-      return c.json(
+    async (c) =>
+      c.json(
         await service.chooseDesign(
-          current,
+          actorOf(c),
           c.req.param("projectId"),
           await body(c),
-          (runId, content) =>
-            mailRunAsCaller(c, nativeFetch, current.tenantId, runId, content),
         ),
-      );
-    },
+      ),
   );
   app.get(
     "/:projectId/materials/accepted",

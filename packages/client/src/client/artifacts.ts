@@ -26,7 +26,6 @@ export function buildArtifactsMethods(
   | "downloadApp"
   | "exportProjectArchive"
   | "saveDesignTweaks"
-  | "chooseDesign"
   | "acceptedMaterials"
   | "attachMaterials"
   | "removeMaterial"
@@ -154,13 +153,6 @@ export function buildArtifactsMethods(
     saveDesignTweaks(tenantId, projectId, input, signal) {
       return request(
         `${projectPath(tenantId, projectId)}/design-tweaks`,
-        signal,
-        input,
-      );
-    },
-    chooseDesign(tenantId, projectId, input, signal) {
-      return request(
-        `${projectPath(tenantId, projectId)}/design-choice`,
         signal,
         input,
       );

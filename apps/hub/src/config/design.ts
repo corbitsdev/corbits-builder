@@ -149,7 +149,3 @@ export const designConceptAssignment = (concept: {
 // The person's own ideas for the look, carried to each designer in their words.
 export const designLookIdeas = (ideas: string) =>
   `The person's ideas for the look, in their words: ${ideas.trim()}\n\n`;
-
-// The hub's note to the coordinator once the person chose a design option in the conversation.
-export const designChosenNote = (concept: string, version: number) =>
-  `The person chose the ${concept} design concept. It is filed as the design at version ${String(version)}, approved by them. The build plan is written from it next.`;

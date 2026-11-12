@@ -52,6 +52,40 @@ export const Approved: Story = {
   },
 };
 
+export const ChoosingADesign: Story = {
+  args: {
+    approval: {
+      approvalId: "approval-5",
+      toolName: "choose_design",
+      subject: "Paper",
+    },
+    conceptTabs: ["Paper", "Quiet"],
+  },
+};
+
+export const ChosenNotFiled: Story = {
+  args: {
+    approval: {
+      approvalId: "approval-6",
+      toolName: "choose_design",
+      subject: "Paper",
+      outcome: { status: "approved", scope: "once" },
+    },
+  },
+};
+
+export const ChosenFiled: Story = {
+  args: {
+    approval: {
+      approvalId: "approval-7",
+      toolName: "choose_design",
+      subject: "Paper",
+      outcome: { status: "approved", scope: "once" },
+      filed: true,
+    },
+  },
+};
+
 export const Failed: Story = {
   args: { error: "The decision didn't reach the hub. Try again." },
 };

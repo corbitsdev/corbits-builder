@@ -139,8 +139,9 @@ export const artifactApproval = pgTable(
   ],
 );
 
-// Importing a project file and choosing a design option are the person's own
-// decisions, so no native approval exists to reference; the row names that person instead.
+// Importing a project file as approved is the person's own decision, so no
+// native approval exists to reference; the row names that person instead. A
+// chosen design goes through choose_design and is recorded in artifactApproval.
 export const artifactImportApproval = pgTable(
   "sb_artifact_import_approval",
   {

@@ -4,10 +4,6 @@ export type DesignConcept = {
   readonly direction?: string;
   /** The filed option's design bundle, once its designer filed one. */
   readonly content?: string;
-  /** The filed option at the version the person sees, which they choose by. */
-  readonly option?: { readonly artifactId: string; readonly version: number };
-  /** The person chose this concept, and its option is the approved design. */
-  readonly chosen?: boolean;
   /** When the concept's designer started, and whether it is mid-turn or parked waiting for mail. */
   readonly run?: { readonly startedAt: string; readonly working: boolean };
 };
