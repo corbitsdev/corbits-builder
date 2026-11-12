@@ -1714,7 +1714,7 @@ export function useRoom({
                 },
               }),
           ...(sentId === undefined ? {} : { sentId }),
-          questions,
+          questions: [...snapshot.conversation.earlierQuestions, ...questions],
           onAnswerQuestion: answerCard,
           questionsDisabled: sending || archived,
           questionsLayout,

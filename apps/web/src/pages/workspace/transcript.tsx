@@ -65,12 +65,7 @@ import {
   FoldedUpdatesView,
   SpecialistUpdatesView,
 } from "./specialist-updates.view.tsx";
-import {
-  dispatchesOf,
-  isHandoff,
-  partsDispatches,
-  type Dispatch,
-} from "./dispatch-card.tsx";
+import { partsDispatches, type Dispatch } from "./dispatch-card.tsx";
 import { workUnits, type WorkUnit } from "./work-unit.ts";
 import {
   STEP_STATUS,
@@ -405,9 +400,10 @@ function foldUpdates(cards: readonly Card[]): ShownCard[] {
 
 /**
  * A turn's parts in words, with its questions taken out to their own cards. A hand-off stays as the
- * step its specialist shows in, and one the hub refused, which started nothing, shows nowhere. A
- * call that returned an error is the agent's to correct, not a step the person reads, so it shows
- * nowhere either.
+ * step its specialist shows in. A step already shown never leaves the list, since that moves the
+ * page: a call that returned an error, or a hand-off the hub refused, settles as a plain finished
+ * step, with no error details, because the agent corrects it and to the person it is a step that
+ * happened.
  */
 function readableParts(
   parts: readonly ConversationPart[],
@@ -415,10 +411,9 @@ function readableParts(
 ): readonly ConversationPart[] {
   return parts.flatMap((part): ConversationPart[] => {
     if (part.kind !== "tool-trace") return [part];
+    if (part.name === QUESTION_TOOL_NAME) return [];
     const result = results.get(part.toolCallId);
-    if (part.name === QUESTION_TOOL_NAME || result?.isError === true) return [];
-    if (isHandoff(part) && dispatchesOf(part, result).length === 0) return [];
-    return [readableTool(part, result)];
+    return [readableTool(part, result?.isError === true ? undefined : result)];
   });
 }
 

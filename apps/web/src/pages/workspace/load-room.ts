@@ -10,6 +10,7 @@ import type { QueryClient } from "@tanstack/react-query";
 import type { ProjectArtifact } from "@corbits-builder/client";
 import type { FailedRun, InFlightRun } from "@corbits-builder/schemas/artifact";
 import type { PlanView } from "@corbits-builder/schemas/project";
+import type { ParkedQuestion } from "@corbits-builder/schemas/conversation";
 import {
   listProjectArtifacts,
   readArtifact,
@@ -37,6 +38,8 @@ export type RoomSnapshot = {
     turns: ConversationTurn[];
     threads: ConversationThread[];
     runId: string | null;
+    /** The earlier coordinators' answered questions, which stay in the thread after a move. */
+    earlierQuestions: ParkedQuestion[];
   };
   artifacts: ProjectArtifact[];
   /** The project's plan steps, none while it has no plan. */
@@ -259,6 +262,7 @@ export async function loadProjectRoom(
         turns: conversation?.turns ?? [],
         threads: conversation?.threads ?? [],
         runId: conversation?.runId ?? null,
+        earlierQuestions: conversation?.earlierQuestions ?? [],
       },
       artifacts,
       plan: plan.steps,

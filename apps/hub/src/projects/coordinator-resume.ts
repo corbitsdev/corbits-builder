@@ -2,7 +2,13 @@ import { and, asc, eq, ne } from "drizzle-orm";
 import type { MiddlewareHandler } from "hono";
 import type { DB } from "@intx/db";
 import { workflowRun, workflowRunDispatch } from "@intx/db/schema";
-import type { RepoStore, WorkflowRunReader } from "@intx/hub-sessions";
+import {
+  WORKFLOW_RUN_REF,
+  workflowRunRepoIdForAddress,
+  type RepoStore,
+  type WorkflowRunReader,
+} from "@intx/hub-sessions";
+import { parkedQuestions } from "@corbits-builder/schemas/conversation";
 import { createArtifactService } from "../artifacts/service.ts";
 import { resumeContext, resumeMessage } from "../config/resume.ts";
 import { awaitingApproval } from "../config/preferences.ts";
@@ -63,7 +69,7 @@ export function createCoordinatorResumeContext(deps: {
       .limit(1);
     if (mailed) return undefined;
     const prior = await db
-      .select({ address: workflowRun.address })
+      .select({ runId: workflowRun.id, address: workflowRun.address })
       .from(projectCoordinator)
       .innerJoin(workflowRun, eq(workflowRun.id, projectCoordinator.runId))
       .where(
@@ -75,8 +81,9 @@ export function createCoordinatorResumeContext(deps: {
       .orderBy(asc(projectCoordinator.createdAt));
     if (prior.length === 0) return undefined;
     const turns = [];
-    for (const { address } of prior)
-      if (address)
+    const questions = [];
+    for (const { runId: priorRunId, address } of prior)
+      if (address) {
         turns.push(
           ...(await readDurableConversationTurns({
             repoStore: deps.repoStore,
@@ -84,6 +91,16 @@ export function createCoordinatorResumeContext(deps: {
             approvalDecisions: "decision",
           })),
         );
+        questions.push(
+          ...parkedQuestions(
+            await deps.runs.readRunEvents(
+              workflowRunRepoIdForAddress(address),
+              WORKFLOW_RUN_REF,
+              priorRunId,
+            ),
+          ),
+        );
+      }
     turns.sort((left, right) => left.at - right.at);
     const actor = { tenantId, principalId: bound.principalId };
     const { artifacts: filed, preferences } = await artifacts.list(
@@ -92,6 +109,7 @@ export function createCoordinatorResumeContext(deps: {
     );
     return resumeContext({
       turns,
+      questions,
       awaiting: awaitingApproval(filed, preferences).map(
         (artifact) => artifact.title,
       ),

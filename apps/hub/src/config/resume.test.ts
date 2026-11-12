@@ -12,6 +12,7 @@ import { withPluginHint } from "../plugins/tools.ts";
 test("the hub's handoff note never shows as the person's message", () => {
   const context = resumeContext({
     turns: [{ role: "person", text: "Build a weather app", at: 1 }],
+    questions: [],
     awaiting: [],
     withApp: false,
   });
@@ -27,6 +28,7 @@ test("the hub's handoff note never shows as the person's message", () => {
 test("a resumed message with a plugin hint shows only the person's words", () => {
   const context = resumeContext({
     turns: [{ role: "person", text: "Build a weather app", at: 1 }],
+    questions: [],
     awaiting: [],
     withApp: false,
   });

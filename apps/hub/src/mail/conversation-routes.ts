@@ -14,6 +14,7 @@ import { ProjectId } from "@corbits-builder/schemas/project";
 import {
   ConversationEvents,
   maxConversationTurns,
+  parkedQuestions,
 } from "@corbits-builder/schemas/conversation";
 import { project, projectCoordinator } from "../db/schema.ts";
 import { reportAuthorization } from "../projects/authorization.ts";
@@ -58,7 +59,7 @@ export function createConversationRoutes(
       operationId: "readProjectConversationEvents",
       tags: ["Conversation"],
       description:
-        "Read the current registered coordinator's committed native runtime events. While no coordinator is registered (one is starting or replacing another), runId is null, events is empty and turns still carry the conversation of the project's earlier coordinator runs. These events are not a rendered conversation transcript by themselves. When present, turns are the person's thread across every coordinator run of the project, in timestamp order: person and coordinator text from the committed durable conversation mirror, plus participant mail from other workflow runs on a retained mail thread that includes a person. threads are the retained native mail threads among workflow runs only, keyed by References root. A still-open input park also carries the coordinator's asking prose when the run's committed durable conversation mirror provides it (body.question, sourced from the coordinator's turn); parks without real prose stay verbatim. Native workflow read authority is required in addition to project read.",
+        "Read the current registered coordinator's committed native runtime events. While no coordinator is registered (one is starting or replacing another), runId is null, events is empty and turns still carry the conversation of the project's earlier coordinator runs. These events are not a rendered conversation transcript by themselves. When present, turns are the person's thread across every coordinator run of the project, in timestamp order: person and coordinator text from the committed durable conversation mirror, plus participant mail from other workflow runs on a retained mail thread that includes a person. threads are the retained native mail threads among workflow runs only, keyed by References root. A still-open input park also carries the coordinator's asking prose when the run's committed durable conversation mirror provides it (body.question, sourced from the coordinator's turn); parks without real prose stay verbatim. earlierQuestions are the answered questions of the project's earlier coordinator runs, from their own committed events, since events hold only the live run's. Native workflow read authority is required in addition to project read.",
       security: [{ sessionCookie: [] }, { deviceBearer: [] }],
       parameters: ["tenantId", "projectId"].map((name) => ({
         name,
@@ -153,6 +154,37 @@ export function createConversationRoutes(
           (
             await Promise.all(selected.prior.map((run) => read(store, run)))
           ).flatMap((prior) => prior.turns);
+        const runEvents = (runId: string) => {
+          const target = new URL(c.req.url);
+          target.pathname =
+            "/api/tenants/" +
+            encodeURIComponent(tenantId) +
+            "/workflows/runs/" +
+            encodeURIComponent(runId) +
+            "/events";
+          // Product query parameters must not steer the native target.
+          target.search = "";
+          return dispatch(new Request(target.href, c.req.raw));
+        };
+        // The earlier runs' questions stay in the person's thread as they were answered. One left
+        // open has no run to answer it, and the new coordinator asks it again.
+        const earlierQuestions = async () => {
+          const questions = [];
+          for (const { runId } of selected.prior) {
+            const response = await runEvents(runId);
+            if (!response.ok)
+              throw new Error(
+                `Earlier run events unreadable: ${String(response.status)}`,
+              );
+            const { events } = ConversationEvents.assert(await response.json());
+            questions.push(
+              ...parkedQuestions(events).filter(
+                ({ answer }) => answer !== undefined,
+              ),
+            );
+          }
+          return questions;
+        };
         // Between one coordinator and the next (an upgrade hands off, a reopened project starts
         // one) the person still reads what was said; only the live run's events wait for a bind.
         if (selected.run === undefined) {
@@ -160,10 +192,12 @@ export function createConversationRoutes(
           if (repoStore === undefined)
             return c.json({ runId: null, events: [] });
           let turns;
+          let questions;
           try {
             turns = (await priorTurns(repoStore)).sort(
               (left, right) => left.at - right.at,
             );
+            questions = await earlierQuestions();
           } catch (error) {
             log.error(
               "Conversation projection failed",
@@ -180,19 +214,11 @@ export function createConversationRoutes(
             runId: null,
             events: [],
             turns: turns.slice(-maxConversationTurns),
+            earlierQuestions: questions,
           });
         }
         const current = selected.run;
-        const target = new URL(c.req.url);
-        target.pathname =
-          "/api/tenants/" +
-          encodeURIComponent(tenantId) +
-          "/workflows/runs/" +
-          encodeURIComponent(current.runId) +
-          "/events";
-        // Product query parameters must not steer the native target.
-        target.search = "";
-        const response = await dispatch(new Request(target.href, c.req.raw));
+        const response = await runEvents(current.runId);
         response.headers.set("cache-control", "no-store");
         if (!response.ok || repoStore === undefined) return response;
         // The input park carries no wording; when the durable conversation
@@ -229,6 +255,7 @@ export function createConversationRoutes(
             turns.sort((left, right) => left.at - right.at);
             if (live.threads !== undefined) payload["threads"] = live.threads;
             payload["turns"] = turns.slice(-maxConversationTurns);
+            payload["earlierQuestions"] = await earlierQuestions();
           }
           return passThrough(JSON.stringify(payload));
         } catch (error) {

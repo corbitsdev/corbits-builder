@@ -13,7 +13,6 @@ import {
   type RunStreamEvent,
 } from "../../api/run-stream.ts";
 import { finishedCallOf } from "./conversation-parts.ts";
-import { resultOf } from "./live-run.ts";
 
 export type RunPreview =
   | { readonly kind: "writing"; readonly text: string }
@@ -134,18 +133,12 @@ function nextSnapshot(
 /**
  * A run's calls after one frame: a finished call joins once, as running, and the next model call
  * starts only once every call before it returned, so those are done. A call that returned an error
- * leaves the list: the specialist sees it and corrects it, the person does not.
+ * settles the same way: the specialist corrects it, and a shown step never leaves the list.
  */
 function nextSteps(
   steps: readonly PartTool[],
   event: RunStreamEvent,
 ): readonly PartTool[] {
-  if (event.type === "tool.done") {
-    const result = resultOf(event);
-    return result?.isError === true
-      ? steps.filter((step) => step.toolCallId !== result.callId)
-      : steps;
-  }
   if (event.type === "inference.start")
     return steps.map((step) =>
       step.status === "running"

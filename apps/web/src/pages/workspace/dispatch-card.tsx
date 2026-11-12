@@ -103,12 +103,6 @@ function handoffOf(part: PartTool) {
   };
 }
 
-/**
- * Whether a coordinator tool call is a hand-off, which is never one of its steps: a started one is
- * its own card, and a refused one goes back to the coordinator as its result, so the room skips it.
- */
-export const isHandoff = (part: PartTool) => handoffOf(part) !== undefined;
-
 /** The hand-offs one coordinator tool call made, or none when it is not a hand-off. */
 export function dispatchesOf(
   part: PartTool,

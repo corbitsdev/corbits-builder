@@ -70,6 +70,14 @@ const conversationThread = type({
   participants: type("string > 0").array(),
   turns: turnList,
 });
+/** A question the coordinator paused on, from its wait in the run log, with the answer once one arrived. */
+const parkedQuestion = type({
+  at: "number",
+  signalName: "string",
+  asked: AskedQuestion,
+  "answer?": QuestionAnswer,
+});
+export type ParkedQuestion = typeof parkedQuestion.infer;
 export const ConversationEvents = type({
   runId: "string | null",
   events: type({
@@ -79,18 +87,12 @@ export const ConversationEvents = type({
   }).array(),
   "turns?": turnList,
   "threads?": conversationThread.array(),
+  // The project's earlier coordinator runs' answered questions; `events` holds only the live run's.
+  "earlierQuestions?": parkedQuestion.array(),
 });
 export type ConversationEvents = typeof ConversationEvents.infer;
 export type ConversationTextTurn = typeof conversationTextTurn.infer;
 export type ConversationThread = typeof conversationThread.infer;
-
-/** A question the coordinator paused on, from its wait in the run log, with the answer once one arrived. */
-export type ParkedQuestion = {
-  at: number;
-  signalName: string;
-  asked: AskedQuestion;
-  answer?: QuestionAnswer;
-};
 
 /** Every question the coordinator asked in a run, oldest first, from its committed events. */
 export function parkedQuestions(
