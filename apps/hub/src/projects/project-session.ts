@@ -82,13 +82,10 @@ const TEARDOWN_POLL_MS = 1_000;
 const starting = new Set<string>();
 export async function startOnce<T>(
   key: string,
-  role: string,
+  busy: () => Error,
   start: () => Promise<T>,
 ): Promise<T> {
-  if (starting.has(key))
-    throw new Refusal(
-      role + "_starting: a " + role + " is already starting for this project",
-    );
+  if (starting.has(key)) throw busy();
   starting.add(key);
   try {
     return await start();
@@ -260,11 +257,14 @@ export function projectSession(
           ? "have the designer make it with design_app first"
           : "write and file the " + kind + " first"),
     );
-  const coderRunning = (runId: string) =>
+  // Why the coder tools refuse a coder while another is starting, or still working in live.
+  const coderBusy = (live?: { runId: string }) =>
     new Refusal(
-      "coder_running: the coder is still working in run " +
-        runId +
-        "; its reply arrives as a message, and the next change can start after",
+      live === undefined
+        ? "coder_starting: a coder is already starting for this project"
+        : "coder_running: the coder is still working in run " +
+            live.runId +
+            "; its reply arrives as a message, and the next change can start after",
     );
   const required = (byKind: Map<string, Ref>, kind: string) => {
     const ref = byKind.get(kind);
@@ -341,14 +341,16 @@ export function projectSession(
     }
   };
   // One coder works on the app at a time; a start waits for the last one to end. task builds the
-  // assignment from the project as it then stands, or refuses.
+  // assignment from the project as it then stands, or refuses; busy says why no coder started,
+  // with the live coder when one is still working and none while another is starting.
   const startCoder = (
     correlationId: string,
     task: (state: Listed) => string | Promise<string>,
+    busy: (live?: { runId: string; state: string }) => Error,
   ) =>
-    startOnce(options.projectId + ":coder", "coder", async () => {
+    startOnce(options.projectId + ":coder", busy, async () => {
       const { state, live } = await ended((run) => run.role === "coder");
-      if (live) throw coderRunning(live.runId);
+      if (live) throw busy(live);
       return deploy(
         "coder",
         options.workflows.coder,
@@ -387,7 +389,10 @@ export function projectSession(
     const design = (concept: DesignConcept) =>
       startOnce(
         options.projectId + ":designer:" + concept.label,
-        "designer",
+        () =>
+          new Refusal(
+            "designer_starting: a designer is already starting for this project",
+          ),
         async () => {
           // A designer still "deployed" never received its assignment, so it does not hold
           // the concept.
@@ -469,7 +474,7 @@ export function projectSession(
     readSource,
     recordApproval,
     notFiled,
-    coderRunning,
+    coderBusy,
     required,
     inputs,
     deploy,

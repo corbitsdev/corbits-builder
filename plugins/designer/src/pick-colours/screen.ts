@@ -2,6 +2,7 @@ import {
   defineScreen,
   refuse,
   type ProjectValues,
+  type WrongField,
 } from "@corbits-builder/plugin";
 import manifest from "../../package.json";
 import { Color, Input, Output } from "./schema.ts";
@@ -34,13 +35,15 @@ function inUse(project: ProjectValues, slot: Slot) {
   return typeof value === "string" ? value : undefined;
 }
 
-function proposedColor(slot: Slot, value: string | undefined) {
-  if (value === undefined || Color.allows(value)) return value;
-  return refuse({
-    field: "proposed",
-    problem: `${slot} ${JSON.stringify(value)} is not a colour in the accepted format, ${FORMAT}.`,
-    next: `Call again with the same input and proposed.${slot} written as ${FORMAT}, or left out.`,
-  });
+function wrongColor(slot: Slot, value: string | undefined): WrongField[] {
+  if (value === undefined || Color.allows(value)) return [];
+  return [
+    {
+      field: "proposed",
+      problem: `${slot} ${JSON.stringify(value)} is not a colour in the accepted format, ${FORMAT}.`,
+      otherwise: `Write proposed.${slot} as ${FORMAT}, or leave it out.`,
+    },
+  ];
 }
 
 const same = (a: string | undefined, b: string | undefined) =>
@@ -50,13 +53,17 @@ export default defineScreen({
   input: Input,
   output: Output,
   prepare: (input, _data, project) => {
+    const wrong = SLOTS.flatMap((slot) =>
+      wrongColor(slot, input.proposed?.[slot]),
+    );
+    if (wrong.length > 0) refuse({ wrong });
     const current = {
       primary: inUse(project, "primary"),
       background: inUse(project, "background"),
     };
     const proposed = {
-      primary: proposedColor("primary", input.proposed?.primary),
-      background: proposedColor("background", input.proposed?.background),
+      primary: input.proposed?.primary,
+      background: input.proposed?.background,
     };
     const suggested = SLOTS.flatMap((slot) => proposed[slot] ?? []);
     if (
@@ -67,8 +74,12 @@ export default defineScreen({
       )
     )
       refuse({
-        field: "proposed",
-        problem: `${suggested.join(", ")} ${suggested.length === 1 ? "is already the colour" : "are already the colours"} in use.`,
+        wrong: [
+          {
+            field: "proposed",
+            problem: `${suggested.join(", ")} ${suggested.length === 1 ? "is already the colour" : "are already the colours"} in use.`,
+          },
+        ],
         next: "Call again proposing a different colour, or with no proposal to let the person choose.",
       });
     return { current, proposed };

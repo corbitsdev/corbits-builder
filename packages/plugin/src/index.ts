@@ -124,18 +124,28 @@ export const SkillsBuilder = type({
 });
 export type SkillsBuilder = typeof SkillsBuilder.infer;
 
-export type Refusal = {
+// One field of an input or answer that is wrong: its problem, then what it takes, as its choices or,
+// for a field with none, the rule its about states.
+export type WrongField = {
   field: string;
   problem: string;
+  about?: string;
   choices?: Record<string, string>;
   // The sentence after the choices, for a field that also takes something besides them.
   otherwise?: string;
-  next: string;
 };
+
+// Every wrong field at once, so an agent fixing one is never refused again for the next. next
+// replaces the plain "call again with these corrected" where a refusal needs other advice.
+export type Refusal = { wrong: readonly WrongField[]; next?: string };
 
 export class RefusalError extends Error {
   constructor(readonly refusal: Refusal) {
-    super(`${refusal.field}: ${refusal.problem}`);
+    super(
+      refusal.wrong
+        .map(({ field, problem }) => `${field}: ${problem}`)
+        .join("; "),
+    );
   }
 }
 
@@ -260,23 +270,37 @@ export const isScreen = (
 ): value is Screen<unknown, unknown, unknown, unknown> =>
   isRecord(value) && typeof value["output"] === "function" && isWorkflow(value);
 
+/** Each field a schema's errors name, with the first problem each has. */
+export function wrongFields(errors: ArkErrors) {
+  const wrong = new Map<string, string>();
+  for (const error of errors) {
+    const [head = "input", ...inside] = error.path;
+    const field = String(head);
+    if (!wrong.has(field))
+      wrong.set(
+        field,
+        inside.length > 0
+          ? `${inside.join(".")} ${error.problem}`
+          : error.problem,
+      );
+  }
+  return [...wrong].map(([field, problem]) => ({ field, problem }));
+}
+
 function schemaRefusal(
   fields: Record<string, Field | undefined>,
   errors: ArkErrors,
 ): Refusal {
-  const [first] = errors;
-  const [head = "input", ...inside] = first?.path ?? [];
-  const field = String(head);
-  const problem = first?.problem ?? errors.summary;
-  const refusal: Refusal = {
-    field,
-    problem: inside.length > 0 ? `${inside.join(".")} ${problem}` : problem,
-    next: `Call again with the same input and ${field} corrected.`,
+  return {
+    wrong: wrongFields(errors).map(({ field, problem }) => {
+      const wrong: WrongField = { field, problem };
+      const described = fields[field];
+      if (described?.choices) wrong.choices = described.choices;
+      else if (described) wrong.about = described.about;
+      if (described?.otherwise) wrong.otherwise = described.otherwise;
+      return wrong;
+    }),
   };
-  const described = fields[field];
-  if (described?.choices) refusal.choices = described.choices;
-  if (described?.otherwise) refusal.otherwise = described.otherwise;
-  return refusal;
 }
 
 // Only fields with no error of their own count as fine, so the agent is never told a wrong one was.
@@ -388,6 +412,27 @@ export function inputText(fields: Record<string, Field>) {
   return lines.join("\n");
 }
 
+const wrongNames = ({ wrong }: Refusal) => [
+  ...new Set(wrong.map(({ field }) => field)),
+];
+
+/** How many fields are wrong, as a sentence: "One field is wrong." */
+export function wrongCount(refusal: Refusal) {
+  const { length } = wrongNames(refusal);
+  return length === 1 ? "One field is wrong." : `${length} fields are wrong.`;
+}
+
+/** Each wrong field with its problem and what it takes, a line or more each. */
+export function wrongText({ wrong }: Refusal) {
+  return wrong.flatMap(({ field, problem, about, choices, otherwise }) => {
+    const lines = [`${field}: ${problem}`];
+    if (choices) lines.push("  Use one of:", ...columns(choices, "    "));
+    if (about) lines.push(`  It takes: ${about}`);
+    if (otherwise) lines.push(`  ${otherwise}`);
+    return lines;
+  });
+}
+
 export function refusalText(
   handle: string,
   outcome: string,
@@ -395,19 +440,20 @@ export function refusalText(
   input: unknown,
 ) {
   const lines = [
-    `${handle} ${outcome}. One field is wrong.`,
+    `${handle} ${outcome}. ${wrongCount(refusal)}`,
     "",
-    `${refusal.field}: ${refusal.problem}`,
+    ...wrongText(refusal),
+    "",
   ];
-  if (refusal.choices)
-    lines.push("  Use one of:", ...columns(refusal.choices, "    "));
-  if (refusal.otherwise) lines.push(`  ${refusal.otherwise}`);
-  lines.push("");
+  const names = wrongNames(refusal);
   const fine = Object.entries(isRecord(input) ? input : {})
-    .filter(([name]) => name !== refusal.field)
+    .filter(([name]) => !names.includes(name))
     .map(([name, value]) => `${name} ${JSON.stringify(value)}`);
   if (fine.length > 0)
     lines.push(`Your other fields were fine: ${fine.join(", ")}.`);
-  lines.push(refusal.next);
+  lines.push(
+    refusal.next ??
+      `Call again with the same input and ${names.join(" and ")} corrected.`,
+  );
   return lines.join("\n");
 }

@@ -41,8 +41,8 @@ describe("pick-fonts input", () => {
       proposed: { primary: "Inter", secondary: "Space Mono" },
     });
     if (result.ok) throw new Error("the fonts in use were proposed");
-    expect(result.refusal.field).toBe("proposed");
-    expect(result.refusal.problem).toBe(
+    expect(result.refusal.wrong[0]?.field).toBe("proposed");
+    expect(result.refusal.wrong[0]?.problem).toBe(
       '"Inter", "Space Mono" are already the fonts in use.',
     );
   });
@@ -76,10 +76,10 @@ describe("pick-fonts input", () => {
         "    serif    Classic and bookish. Good for long reading and editorial pages.",
         "    display  Loud and characterful. Good for headings and logos, not body text.",
         "    mono     Every letter the same width. Good for code and figures.",
-        "  Or pass up to 20 font names.",
+        "  Or pass up to 20 font names. Or leave list out to offer every font.",
         "",
         'Your other fields were fine: proposed {"primary":"Fraunces"}.',
-        "Call again with the same input and list corrected, or leave list out to offer every font.",
+        "Call again with the same input and list corrected.",
       ].join("\n"),
     );
   });
@@ -87,8 +87,10 @@ describe("pick-fonts input", () => {
   test("a proposed font that does not exist is refused with the closest real ones", () => {
     const result = check({ proposed: { secondary: "Robotto" } });
     if (result.ok) throw new Error("Robotto was accepted");
-    expect(result.refusal.field).toBe("proposed");
-    expect(Object.keys(result.refusal.choices ?? {})[0]).toBe("Roboto");
+    expect(result.refusal.wrong[0]?.field).toBe("proposed");
+    expect(Object.keys(result.refusal.wrong[0]?.choices ?? {})[0]).toBe(
+      "Roboto",
+    );
     expect(result.text).toContain("    Roboto");
   });
 });
@@ -107,7 +109,7 @@ describe("pick-fonts guidance and output", () => {
       secondary: inter,
     });
     if (result.ok) throw new Error("the output was accepted");
-    expect(result.refusal.field).toBe("primary");
-    expect(result.refusal.problem).toContain("license");
+    expect(result.refusal.wrong[0]?.field).toBe("primary");
+    expect(result.refusal.wrong[0]?.problem).toContain("license");
   });
 });

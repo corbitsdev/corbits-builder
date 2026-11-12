@@ -1,16 +1,15 @@
 import { expect } from "bun:test";
 import { WEATHER_CONCEPT, WEATHER_MOCKUP } from "./concept.ts";
+import { designerFor } from "./specialists.ts";
 import {
   execute,
   ok,
   question,
-  recorded,
   results,
   say,
   scenario,
   turn,
   user,
-  type Turn,
 } from "./runner.ts";
 
 const paper = {
@@ -25,14 +24,6 @@ const night = {
 };
 const concepts = [WEATHER_CONCEPT, paper, night];
 const COMMENT = "The serif headings are lovely; keep them in mind.";
-const designer = await recorded("designer-1");
-
-// The recorded designer, given one concept of its own.
-function designerFor(label: string): Turn[] {
-  const [first, ...rest] = designer;
-  if (first === undefined) throw new Error("The recorded designer is empty");
-  return [turn(user(label), first.reply, first.requiredTools), ...rest];
-}
 
 scenario({
   name: "s06-design-choice-browser",

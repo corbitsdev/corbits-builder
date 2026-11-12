@@ -523,6 +523,7 @@ test("designer agent writes per-screen files, is held by checkBeforeDone until c
     "#/overview",
   );
   const systemPrompts: string[] = [];
+  const conversations: string[] = [];
   const scriptedTurns = [
     [
       {
@@ -609,7 +610,9 @@ test("designer agent writes per-screen files, is held by checkBeforeDone until c
       fetch: async (_input, init) => {
         const body = JSON.parse(String(init?.body)) as {
           system?: string | { text?: string }[];
+          messages?: unknown;
         };
+        conversations.push(JSON.stringify(body.messages));
         const system = body.system;
         let systemText: string | undefined;
         if (Array.isArray(system)) {
@@ -644,7 +647,11 @@ test("designer agent writes per-screen files, is held by checkBeforeDone until c
     });
     expect(turnIndex).toBe(4);
     expect(systemPrompts[0]).toContain("designs/screens/<name>.html");
-    expect(systemPrompts[2]).toContain(
+    // The held reply stays in the conversation, answered by the director's note.
+    expect(conversations[2]).toContain(
+      "Premature reply before checking or filing.",
+    );
+    expect(conversations[2]).toContain(
       "Files changed after the last passing check-app, so the work is not done yet.",
     );
 

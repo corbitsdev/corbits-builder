@@ -24,7 +24,7 @@ describe("review output", () => {
   test("asking for changes with no comment and no message is refused", () => {
     const result = check({ decision: "changes", version: 2, comments: [] });
     if (result.ok) throw new Error("an empty request for changes was taken");
-    expect(result.refusal.field).toBe("comments");
+    expect(result.refusal.wrong[0]?.field).toBe("comments");
     expect(result.text).toContain("at least one comment, or a message");
   });
 

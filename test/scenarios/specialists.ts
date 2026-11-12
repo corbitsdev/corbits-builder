@@ -2,6 +2,7 @@
 import {
   call,
   ok,
+  recorded,
   results,
   say,
   turn,
@@ -130,6 +131,97 @@ export function coderChecksStarter(options: {
         say(options.report),
         CODER_TOOLS,
       ),
+    ),
+  ];
+}
+
+/**
+ * A coder whose assignment contains the text and that keeps working for a while, running a shell
+ * command that only sleeps, then reports without changing a file.
+ */
+export function coderWorks(options: {
+  assignedWith: string;
+  seconds: number;
+  report: string;
+}): Turn[] {
+  return [
+    turn(
+      user(options.assignedWith),
+      call("coder_work", "run_shell", {
+        command: `sleep ${String(options.seconds)}`,
+        timeout: (options.seconds + 60) * 1_000,
+      }),
+      CODER_TOOLS,
+    ),
+    turn(
+      results(ok("coder_work", "run_shell")),
+      say(options.report),
+      CODER_TOOLS,
+    ),
+  ];
+}
+
+/** A coder whose assignment contains the text and that reports at once without changing a file. */
+export const coderReports = (options: {
+  assignedWith: string;
+  report: string;
+}): Turn[] => [
+  turn(user(options.assignedWith), say(options.report), CODER_TOOLS),
+];
+
+const designer = await recorded("designer-1");
+
+/** The recorded weather designer, given one concept of its own by its label. */
+export function designerFor(label: string): Turn[] {
+  const [first, ...rest] = designer;
+  if (first === undefined) throw new Error("The recorded designer is empty");
+  return [turn(user(label), first.reply, first.requiredTools), ...rest];
+}
+
+/**
+ * A second weather designer that acts on the person's comment: it writes the recorded designer's
+ * files again, restyles the tagged element as a button, checks and files the design, and reports.
+ */
+export function redesigner(options: {
+  assignedWith: string;
+  testid: string;
+  report: string;
+}): Turn[] {
+  const [writes] = designer;
+  const css = writes?.reply.toolCalls?.[0]?.arguments["content"];
+  if (writes === undefined || typeof css !== "string")
+    throw new Error("The recorded designer wrote no stylesheet first");
+  const firstLine = css.split("\n")[0] ?? "";
+  const tools = writes.requiredTools;
+  return [
+    turn(user(options.assignedWith), writes.reply, tools),
+    turn(
+      results(
+        ...["des_write_css", "des_write_html", "des_write_doc"].map((id) =>
+          ok(id, "write_file"),
+        ),
+      ),
+      call("des2_edit", "edit_file", {
+        path: ".builder/designs/styles.css",
+        old_string: firstLine,
+        new_string: `${firstLine}\n[data-testid="${options.testid}"] { display: inline-block; padding: 0.5rem 1rem; border-radius: 999px; background: var(--primary); color: var(--primary-foreground); }`,
+      }),
+      tools,
+    ),
+    turn(
+      results(ok("des2_edit", "edit_file")),
+      call("des2_check", "check_design", {}),
+      tools,
+    ),
+    turn(
+      results(ok("des2_check", "check_design", "check passed")),
+      call("des2_file", "file_design_option", {}),
+      tools,
+    ),
+    turn(
+      results(ok("des2_file", "file_design_option")),
+      say(options.report),
+      tools,
     ),
   ];
 }

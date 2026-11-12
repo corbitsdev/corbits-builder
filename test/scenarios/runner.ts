@@ -59,6 +59,8 @@ export type Turn = Readonly<{
   when: When;
   reply: Reply;
   requiredTools?: string[];
+  // A failing HTTP status the model answers with instead, its error message the reply's text.
+  status?: number;
 }>;
 
 /** The turn answers a message from the person or the host, containing the text when given. */
@@ -83,6 +85,19 @@ function result(
   if (contains !== undefined) expected.contains = contains;
   return expected;
 }
+
+/**
+ * The result, with the values at JSON paths in it kept by name; a later turn sends one as
+ * bound(name), such as a run id execute returned.
+ */
+export function keep(
+  expected: ToolResultExpectation,
+  bind: Record<string, string>,
+): ToolResultExpectation {
+  expected.bind = bind;
+  return expected;
+}
+export const bound = (name: string) => `{{bind:${name}}}`;
 
 export const ok = (callId: string, toolName: string, contains?: string) =>
   result(callId, toolName, false, contains);
@@ -116,10 +131,27 @@ export const question = (
   input: Record<string, unknown>,
 ) => call(id, "question", { plugin, action, input });
 
+/** The first run an execute result says it started. */
+export function startedRun(result: string): string {
+  const [first] = type({ runs: type({ runId: "string" }).array() }).assert(
+    JSON.parse(result),
+  ).runs;
+  if (first === undefined) throw new Error(`No run was started: ${result}`);
+  return first.runId;
+}
+
 export const turn = (when: When, reply: Reply, requiredTools?: string[]) =>
   requiredTools === undefined
     ? { when, reply }
     : { when, reply, requiredTools };
+
+/** A turn the model answers with a failing HTTP status and an error carrying the message. */
+export const failsWith = (
+  when: When,
+  status: number,
+  message: string,
+  requiredTools: string[],
+): Turn => ({ when, reply: say(message), requiredTools, status });
 
 /** The recorded weather project's turns of one run, by its key in test/fixtures/pipeline. */
 export async function recorded(runKey: string): Promise<Turn[]> {
@@ -315,6 +347,14 @@ function modelStep(exchange: ModelExchange): Step {
       sent: exchange.received,
       got: exchange.failure,
     };
+  if (exchange.status !== undefined && exchange.status !== 200)
+    return {
+      at: exchange.at,
+      who,
+      what: `the scripted model answered HTTP ${String(exchange.status)}`,
+      sent: exchange.received,
+      got: exchange.responseSse,
+    };
   return {
     at: exchange.at,
     who,
@@ -443,11 +483,17 @@ export type Person = Readonly<{
   heard: (text: string) => Promise<void>;
   /** Waits until every scripted turn has been asked for. */
   scriptDone: () => Promise<void>;
+  /** How many turns of a scripted run have been asked for so far. */
+  asked: (runKey: string) => number;
   until: <T>(what: string, check: () => Promise<T | undefined>) => Promise<T>;
   /** What a scripted tool call returned, as the model was sent it. */
   resultOf: (callId: string) => Readonly<{ isError: boolean; text: string }>;
   /** The first message a scripted run was sent: a specialist's assignment. */
   assignment: (runKey: string) => string;
+  /** Every message a scripted run was sent, such as the reports the coordinator received. */
+  messages: (runKey: string) => string[];
+  /** Saves the project's working preferences, keeping the choices it does not name. */
+  prefer: (choices: Record<string, string>) => Promise<void>;
   /** A run's stored conversation, by its workflow step. */
   conversation: (
     runId: string,
@@ -513,7 +559,7 @@ function fixtureRuns(scenario: Scenario) {
     role,
     stage: scenario.name,
     sourceRunId: `${scenario.name}-${runKey}`,
-    exchanges: turns.map(({ when, reply, requiredTools }) => {
+    exchanges: turns.map(({ when, reply, requiredTools, status }) => {
       const expect: ExchangeExpectation = {
         lastMessageRole: when.lastMessageRole,
         requiredTools: requiredTools ?? REQUIRED_TOOLS[role],
@@ -521,7 +567,15 @@ function fixtureRuns(scenario: Scenario) {
       };
       if (when.userTextContains !== undefined)
         expect.userTextContains = when.userTextContains;
-      return { sse: formatOpenAISseResponse(reply), expect };
+      if (status === undefined)
+        return { sse: formatOpenAISseResponse(reply), expect };
+      return {
+        sse: JSON.stringify({
+          error: { message: reply.text, type: "server_error" },
+        }),
+        expect,
+        status,
+      };
     }),
   }));
 }
@@ -713,6 +767,9 @@ async function runScenario(scenario: Scenario) {
           return left.length === 0 || undefined;
         });
       },
+      asked: (runKey) =>
+        scripted.exchanges().filter((exchange) => exchange.runKey === runKey)
+          .length,
       until,
       resultOf: (callId) => {
         for (const exchange of scripted.exchanges()) {
@@ -729,6 +786,35 @@ async function runScenario(scenario: Scenario) {
           .find((exchange) => exchange.runKey === runKey);
         const message = type({ user: "string" }).assert(first?.received);
         return message.user;
+      },
+      messages: (runKey) =>
+        scripted
+          .exchanges()
+          .filter((exchange) => exchange.runKey === runKey)
+          .flatMap((exchange) => {
+            const message = type({ user: "string" })(exchange.received);
+            return message instanceof type.errors ? [] : [message.user];
+          }),
+      prefer: async (choices) => {
+        const { fields } = await client.settings(tenantId, projectId);
+        if (fields.preferences === undefined)
+          throw new Error("The project has no working preferences to change");
+        const receipt = await client.saveSettings(tenantId, projectId, {
+          command: "save_settings",
+          idempotencyKey: crypto.randomUUID(),
+          fields: {
+            preferences: {
+              value: Object.assign({}, fields.preferences.value, choices),
+              baseVersion: fields.preferences.version,
+            },
+          },
+        });
+        log(
+          "person",
+          "saved the project's working preferences",
+          choices,
+          receipt,
+        );
       },
       conversation: (runId, step) => readRunConversation(opened, runId, step),
       note: (what, detail) => log("note", what, undefined, detail),

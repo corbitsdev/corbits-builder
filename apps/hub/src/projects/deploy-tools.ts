@@ -214,6 +214,7 @@ export function createDeployTools(
           readSource,
           recordApproval,
           notFiled,
+          coderBusy,
           required,
           inputs,
           deploy,
@@ -378,35 +379,43 @@ export function createDeployTools(
             );
           } else if (call.name === "deploy_coder") {
             const input = validArguments(DeployCoder, call.arguments);
-            result = await startCoder("coder", (state) => {
-              const refusal = coderGate(state);
-              if (refusal) throw refusal;
-              if (state.appBuilt)
-                throw new Refusal(
-                  "app_already_built: the app's first build is done; send changes with instruct_coder",
+            result = await startCoder(
+              "coder",
+              (state) => {
+                const refusal = coderGate(state);
+                if (refusal) throw refusal;
+                if (state.appBuilt)
+                  throw new Refusal(
+                    "app_already_built: the app's first build is done; send changes with instruct_coder",
+                  );
+                return (
+                  coderPreamble(state.byKind) +
+                  coderTaskMessage(input.instruction)
                 );
-              return (
-                coderPreamble(state.byKind) +
-                coderTaskMessage(input.instruction)
-              );
-            });
+              },
+              coderBusy,
+            );
           } else if (call.name === "instruct_coder") {
             const input = validArguments(InstructCoder, call.arguments);
-            result = await startCoder("coder-" + call.id, async (state) => {
-              const { byKind } = state;
-              for (const kind of CODER_DOCUMENTS) required(byKind, kind);
-              // The first build's documents need their own approvals, which deploy_coder checks; an
-              // approved change is no approval of them.
-              if (!state.appBuilt)
-                throw new Refusal(
-                  "app_not_built: the app's first build is not done, so start or continue it with deploy_coder, which needs no approval",
+            result = await startCoder(
+              "coder-" + call.id,
+              async (state) => {
+                const { byKind } = state;
+                for (const kind of CODER_DOCUMENTS) required(byKind, kind);
+                // The first build's documents need their own approvals, which deploy_coder checks; an
+                // approved change is no approval of them.
+                if (!state.appBuilt)
+                  throw new Refusal(
+                    "app_not_built: the app's first build is not done, so start or continue it with deploy_coder, which needs no approval",
+                  );
+                await recordApproval("instruct_coder", refsOf(byKind));
+                return (
+                  coderPreamble(byKind, APP_CHANGE_NOTE) +
+                  coderTaskMessage(input.instruction)
                 );
-              await recordApproval("instruct_coder", refsOf(byKind));
-              return (
-                coderPreamble(byKind, APP_CHANGE_NOTE) +
-                coderTaskMessage(input.instruction)
-              );
-            });
+              },
+              coderBusy,
+            );
           } else if (call.name === "design_app") {
             const input = validArguments(DesignApp, call.arguments);
             result = await startDesigners(input, (state) => {

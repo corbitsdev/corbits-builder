@@ -46,6 +46,7 @@ import {
   answerQuestionAsCaller,
   mailRunAsCaller,
 } from "../mail/caller-mail.ts";
+import { answerRefusedText } from "../config/answers.ts";
 import { openQuestion, screenOf } from "../plugins/question.ts";
 import { mountApprovalRoundRoutes } from "./approval-rounds.ts";
 import {
@@ -99,7 +100,8 @@ export function mountArtifactRoutes(
     return json;
   };
   // The one way project values are saved, from the values route or a screen's answer: each name
-  // one the catalog declares, the look values written as design tweaks, the rest stored.
+  // one the catalog declares, the look values written as design tweaks once a design is filed, the
+  // rest stored.
   const saveValues = async (
     c: Context<TenantEnv>,
     projectId: string,
@@ -114,7 +116,7 @@ export function mountArtifactRoutes(
       await service.projectState(current, projectId),
       CATALOG.values,
     );
-    // The tokens first: a project with no design to take them refuses before anything is saved.
+    // The tokens first, so a design that cannot take them refuses before anything is stored.
     if (Object.keys(tokens).length > 0)
       await service.saveDesignTweaks(
         current,
@@ -496,7 +498,7 @@ export function mountArtifactRoutes(
       tags: ["Artifacts"],
       operationId: "readProjectValues",
       description:
-        "The project values named in keys, comma separated, each read from its home: the look values from the filed design's styles.css, every other declared value from the project's own store. A value the project has none of yet is null.",
+        "The project values named in keys, comma separated, each read from its home: the look values from the filed design's styles.css once a design is filed, and before that, like every other declared value, from the project's own store. A value the project has none of yet is null.",
       security,
       responses: {
         200: {
@@ -524,7 +526,7 @@ export function mountArtifactRoutes(
       tags: ["Artifacts"],
       operationId: "saveProjectValues",
       description:
-        "Saves project values by name, each checked against its declared type and written to its home: the look values become design tweaks with the stored fallbacks kept, saved as design-tweaks saves them, and every other value goes to the project's own store. Returns the saved values read back.",
+        "Saves project values by name, each checked against its declared type and written to its home: once a design is filed, the look values become design tweaks with the stored fallbacks kept, saved as design-tweaks saves them; before that, and for every other value, they go to the project's own store. Returns the saved values read back.",
       security,
       requestBody: {
         required: true,
@@ -540,10 +542,6 @@ export function mountArtifactRoutes(
         400: {
           description:
             "A name that no plugin declares or a value its type refuses",
-        },
-        404: {
-          description:
-            "A look value with neither a live designer nor a filed design to update",
         },
       },
     }),
@@ -578,7 +576,7 @@ export function mountArtifactRoutes(
         200: { description: "The answer was recorded and delivered" },
         400: {
           description:
-            "The output does not fit the screen; text is the refusal in full",
+            "The output does not fit the screen; text says, for the person, each part that is wrong and that the question is still open",
         },
         403: { description: "The caller is not a person on the project" },
         404: { description: "No open question by that signal name" },
@@ -605,7 +603,7 @@ export function mountArtifactRoutes(
         const answered = screen.answer(input.answer.output);
         if (!answered.ok)
           throw new ProjectError(400, "answer_refused", {
-            text: answered.text,
+            text: answerRefusedText(screen.name, answered.refusal),
           });
         const names = Object.keys(answered.values);
         const held =

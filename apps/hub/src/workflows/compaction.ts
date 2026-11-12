@@ -161,24 +161,51 @@ export function trimHistory(inputTokens: number): Compactor {
 
 export const DROP_DEGENERATE = "@corbits-builder/drop-degenerate-turn";
 
+// How the director's note on a held reply opens. The compactor finds the note in the compaction's
+// reason by it, and the director reads a turn that opens with it as part of the same task.
+export const HELD_REPLY =
+  "Builder held your reply, so no one has read it yet: ";
+
+const heldNote = (trigger: string) => {
+  const at = trigger.indexOf(HELD_REPLY);
+  return at === -1 ? undefined : trigger.slice(at);
+};
+
 // Anthropic refuses to continue from an assistant turn ("does not support assistant message
 // prefill", run_58cf9e8d on 2026-10-30), so a turn the director will not accept is dropped first.
-/** Removes a final assistant turn without a tool call, so the next inference samples it again. */
+// A held reply stays instead, answered by the director's note, so the agent continues the same
+// conversation knowing why and is not handed its assignment again as if new.
+/**
+ * Removes a final assistant turn without a tool call, so the next inference samples it again; for a
+ * held reply, adds the director's note after it.
+ */
 export const dropDegenerateTurn: Compactor = {
   name: DROP_DEGENERATE,
-  version: "4",
-  apply: async (turns: ConversationTurn[]) => {
+  version: "5",
+  apply: async (turns: ConversationTurn[], { trigger }) => {
     const last = turns.at(-1);
+    const note = heldNote(trigger);
     const drop =
+      note === undefined &&
       last?.role === "assistant" &&
       !last.content.some((block) => block.type === "tool_call");
+    let output = drop ? turns.slice(0, -1) : turns;
+    if (note !== undefined)
+      output = [
+        ...turns,
+        {
+          role: "user",
+          content: [{ type: "text", text: note }],
+          timestamp: Date.now(),
+        },
+      ];
     return {
-      output: drop ? turns.slice(0, -1) : turns,
+      output,
       record: {
         strategy: DROP_DEGENERATE,
-        version: "4",
+        version: "5",
         parameters: {},
-        reason: "unaccepted turn",
+        reason: note === undefined ? "unaccepted turn" : "held reply",
         decisions: {
           droppedChars: drop ? JSON.stringify(last.content).length : 0,
         },

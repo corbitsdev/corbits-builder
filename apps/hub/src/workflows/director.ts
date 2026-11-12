@@ -11,7 +11,12 @@ import type {
 import { REPETITION_ABORT } from "../inference/repetition.ts";
 import { readCheckDetail, type CheckDetail } from "../builds/check-detail.ts";
 import { accessRefused } from "./http-json.ts";
-import { COMPACTOR, DROP_DEGENERATE, textOf } from "./compaction.ts";
+import {
+  COMPACTOR,
+  DROP_DEGENERATE,
+  HELD_REPLY,
+  textOf,
+} from "./compaction.ts";
 
 // About 1 coder turn in 100 skipped reasoning and repeated one sentence ("Ok to write. Let me
 // write.") for 220000 to 280000 characters until the output cap. The default director mailed it to
@@ -72,8 +77,16 @@ const isCutOff = (turn: ConversationTurn) =>
 // left the designer parked, so the turn is dropped and sampled again, a few times.
 const MAX_EMPTY_TURNS = 3;
 
-// After this many held replies the reply goes out as it is, so a model that cannot pass is not held forever.
+// After this many held replies the run fails as not finished, so a model that cannot do the work is
+// not held forever, and its reply never reaches the coordinator as a finished report.
 const MAX_UNCHECKED_REPLIES = 3;
+
+// What a specialist's held reply is told besides what is missing; a coordinator is reminded once.
+const FINISH_OR_SAY_WHY = ` Do that, then reply. If it cannot be done, reply saying why; after ${MAX_UNCHECKED_REPLIES} held replies the run ends as not finished, with your last reply as the reason.`;
+
+// Why a run whose replies were held every time failed: what it did not do, and its last words.
+const notFinished = (reason: string, lastWords: string) =>
+  `not_finished: ${MAX_UNCHECKED_REPLIES + 1} replies in a row came before the work was done. ${reason} Its last reply: ${JSON.stringify(lastWords)}`;
 
 const TRANSIENT_ERRORS: ReadonlySet<InferenceError["category"]> = new Set([
   "retryable",
@@ -147,6 +160,13 @@ const SHELL_WRITE =
   /(?<![0-9&])>>?\s*(?!&|\/dev\/null)\S|\b(tee|sed\s+-i|mv|cp|rm|touch)\b/;
 
 const WRITE_TOOLS = new Set(["write_file", "edit_file"]);
+// A user turn that hands the agent a new task: mail, rather than a tool result or a held reply's note.
+const isTask = (turn: ConversationTurn) =>
+  turn.role === "user" &&
+  turn.content.some(
+    (block) => block.type === "text" && !block.text.startsWith(HELD_REPLY),
+  );
+
 // The current task's calls, newest first: everything after the last mail the agent was handed.
 function taskCalls(turns: readonly ConversationTurn[]) {
   const results = new Map<string, { detail: unknown; isError: boolean }>();
@@ -159,11 +179,7 @@ function taskCalls(turns: readonly ConversationTurn[]) {
   }[] = [];
   for (let index = turns.length - 1; index >= 0; index--) {
     const turn = turns[index]!;
-    if (
-      turn.role === "user" &&
-      turn.content.some((block) => block.type === "text")
-    )
-      break;
+    if (isTask(turn)) break;
     for (const block of [...turn.content].reverse()) {
       if (block.type === "tool_result")
         results.set(block.callId, {
@@ -303,9 +319,11 @@ function holdReply(
  * turn that only repeats one sentence is dropped and sampled again, as is a stream the source adapter
  * cut for repeating one passage. The third such turn in one task fails the run, or with
  * replyOnFailure is the reply. With checkBeforeDone, a final reply waits for a passing check-app
- * after the last file change; with fileBeforeDone, it waits for a filed document; with
- * startAfterApproval, a reply after an approval that starts and asks nothing is held once. A reply
- * after a Builder tool refused the agent's access is never held. With presents, a reply after
+ * after the last file change; with fileBeforeDone, it waits for a filed document; each held reply
+ * is answered in the same conversation with what is missing, and a fourth fails the run as not
+ * finished. With startAfterApproval, a reply after an approval that starts and asks nothing is held
+ * once. A reply after a Builder tool refused the agent's access is never held. With presents, a
+ * reply after
  * filed work ends with it, so the coordinator reads which screen shows the work. Every inference retries an
  * overloaded, slow or rate-limited model a few times; once that gives up, the run fails, or with
  * replyOnFailure the error is the reply. The model-specific numbers come from the agent
@@ -346,7 +364,6 @@ export const compactingDirector = (packageName: string) =>
       let emptyTurns = 0;
       let degenerateTurns = 0;
       let uncheckedReplies = 0;
-      let notDoneReason: string | undefined;
       // A thrown error is the reactor's fatal path (INFERENCE.md "Director Decision Function"): it
       // emits reactor.error and ends the run failed, which reaches the coordinator as a specialist
       // ended notice instead of a reply that reads as the specialist's result.
@@ -378,17 +395,6 @@ export const compactingDirector = (packageName: string) =>
                 }),
               ];
             return runaways(caps);
-          }
-          if (event.type === "compaction.done" && notDoneReason) {
-            const reason = notDoneReason;
-            notDoneReason = undefined;
-            return [
-              caps.checkpoint("reply-before-done"),
-              caps.infer({
-                systemPrompt: `${agent.systemPrompt}\n\n${reason}`,
-                tools: [...agent.toolDefinitions],
-              }),
-            ];
           }
           if (event.type === "inference.done") {
             compactedSinceInference = false;
@@ -423,13 +429,21 @@ export const compactingDirector = (packageName: string) =>
               : undefined;
             if (notDone) {
               uncheckedReplies += 1;
-              if (uncheckedReplies <= MAX_UNCHECKED_REPLIES) {
-                notDoneReason = notDone;
-                return [
-                  caps.checkpoint("reply-before-done"),
-                  caps.compact(DROP_DEGENERATE, "reply before done"),
-                ];
-              }
+              if (uncheckedReplies > MAX_UNCHECKED_REPLIES)
+                throw new Error(
+                  notFinished(notDone, textOf(event.turn.content)),
+                );
+              return [
+                caps.checkpoint("reply-before-done"),
+                caps.compact(
+                  DROP_DEGENERATE,
+                  HELD_REPLY +
+                    notDone +
+                    (config.checkBeforeDone || config.fileBeforeDone
+                      ? FINISH_OR_SAY_WHY
+                      : ""),
+                ),
+              ];
             }
             if (replying) uncheckedReplies = 0;
           }

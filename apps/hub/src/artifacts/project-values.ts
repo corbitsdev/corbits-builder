@@ -61,7 +61,9 @@ function colorValue(
   };
 }
 
-// The values whose home is the design's tokens; every other value lives in the plain store.
+// The look values, whose home is the filed design's tokens once a design is filed. Before that
+// they live in the plain store, as every other value does, and the designer's first mockup is
+// handed them.
 export const TOKEN_VALUES = [
   fontValue(
     "look.font-primary",
@@ -106,7 +108,7 @@ const invalid = (key: string, issues: type.errors) =>
   });
 
 /**
- * Each named value split by its home: design tokens written over the project's current state, and
+ * Each named value split by its home: design tokens written over the project's filed design, and
  * the plain store. Every name must be one the catalog declares.
  */
 export function projectValueWrites(
@@ -121,7 +123,8 @@ export function projectValueWrites(
     if (token) {
       const checked = token.schema(value);
       if (checked instanceof type.errors) throw invalid(name, checked);
-      tokens[token.token] = token.write(checked, state);
+      if (state.styles === undefined) stored[name] = checked;
+      else tokens[token.token] = token.write(checked, state);
       continue;
     }
     const declaration = declared.get(name);
@@ -141,7 +144,7 @@ export function readProjectValues(
 ): Record<string, unknown> {
   return Object.fromEntries(
     names.map((name) => {
-      const token = tokenValue(name);
+      const token = state.styles === undefined ? undefined : tokenValue(name);
       if (!token) return [name, state.stored[name] ?? null];
       const value = token.read(state);
       return [name, value === undefined ? null : token.schema.assert(value)];

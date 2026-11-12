@@ -125,6 +125,8 @@ export type RecordedExchange = Readonly<{
   index: number;
   responseSse: string;
   responseHeaders: ResponseHeaders;
+  // The HTTP status the model answers with; a failing one answers with an error body instead.
+  status: number;
   expect: ExchangeExpectation;
 }>;
 
@@ -156,6 +158,8 @@ export type ModelExchange = Readonly<{
   index?: number;
   received: ModelReceived;
   responseSse?: string;
+  // The HTTP status a scripted turn answered with.
+  status?: number;
   failure?: string;
 }>;
 
@@ -325,10 +329,14 @@ export async function loadScenarioBundle(
         readFile(join(exchPath, "response-headers.json"), "utf8"),
         readFile(join(exchPath, "expect.json"), "utf8"),
       ]);
+      const status = Bun.file(join(exchPath, "status.json"));
       exchanges.push({
         index: idx,
         responseSse,
         responseHeaders: ResponseHeaders.assert(JSON.parse(responseHeadersRaw)),
+        status: (await status.exists())
+          ? type("number.integer").assert(await status.json())
+          : 200,
         expect: ExchangeExpectation.assert(JSON.parse(expectRaw)),
       });
     }
@@ -617,10 +625,11 @@ export async function startRecordedModelServer(
           index: exchange.index,
           received,
           responseSse: sse,
+          status: exchange.status,
         });
         notify();
         return new Response(sse, {
-          status: 200,
+          status: exchange.status,
           headers: exchange.responseHeaders,
         });
       } catch (error) {
@@ -757,6 +766,8 @@ export type ScenarioRunFixtureSpec = Readonly<{
   exchanges: readonly {
     sse: string;
     expect: ExchangeExpectation;
+    // A failing HTTP status to answer with, sse then being the error body.
+    status?: number;
   }[];
 }>;
 
@@ -808,12 +819,20 @@ export async function writeScenarioFixture(
     );
     for (let i = 0; i < run.exchanges.length; i += 1) {
       const exDir = join(runDir, "exchanges", String(i));
+      const { status } = run.exchanges[i]!;
       await mkdir(exDir, { recursive: true });
       await writeFile(join(exDir, "response.sse"), run.exchanges[i]!.sse);
       await writeFile(
         join(exDir, "response-headers.json"),
-        JSON.stringify({ "content-type": "text/event-stream; charset=utf-8" }),
+        JSON.stringify({
+          "content-type":
+            status === undefined
+              ? "text/event-stream; charset=utf-8"
+              : "application/json",
+        }),
       );
+      if (status !== undefined)
+        await writeFile(join(exDir, "status.json"), JSON.stringify(status));
       await writeFile(
         join(exDir, "expect.json"),
         JSON.stringify(run.exchanges[i]!.expect, null, 2),

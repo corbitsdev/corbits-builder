@@ -236,18 +236,8 @@ test("designer director holds replies until the latest edits pass check_design a
     usage: state.tokenUsage,
     source: cycleSource,
   });
-  expect(heldUnchecked.some((action) => action.type === "compact")).toBe(true);
-  const reInferUnchecked = await decideWithTurns(uncheckedTurns, {
-    type: "compaction.done",
-    compactor: "@corbits-builder/drop-degenerate-turn",
-    reason: "reply before done",
-  });
-  const infer1 = reInferUnchecked.find((action) => action.type === "infer");
-  const prompt1 =
-    infer1?.type === "infer" && typeof infer1.options?.systemPrompt === "string"
-      ? infer1.options.systemPrompt
-      : undefined;
-  expect(prompt1).toContain(
+  const note1 = heldUnchecked.find((action) => action.type === "compact");
+  expect(note1?.type === "compact" ? note1.reason : "").toContain(
     "Files changed after the last passing check-app, so the work is not done yet.",
   );
 
@@ -266,18 +256,8 @@ test("designer director holds replies until the latest edits pass check_design a
     usage: state.tokenUsage,
     source: cycleSource,
   });
-  expect(heldUnfiled.some((action) => action.type === "compact")).toBe(true);
-  const reInferUnfiled = await decideWithTurns(unfiledTurns, {
-    type: "compaction.done",
-    compactor: "@corbits-builder/drop-degenerate-turn",
-    reason: "reply before done",
-  });
-  const infer2 = reInferUnfiled.find((action) => action.type === "infer");
-  const prompt2 =
-    infer2?.type === "infer" && typeof infer2.options?.systemPrompt === "string"
-      ? infer2.options.systemPrompt
-      : undefined;
-  expect(prompt2).toContain(
+  const note2 = heldUnfiled.find((action) => action.type === "compact");
+  expect(note2?.type === "compact" ? note2.reason : "").toContain(
     "The design option is not filed yet; check_design or file_design_option files it.",
   );
 
@@ -422,20 +402,16 @@ test("coordinator director reminds once after an approval that opened a step, un
 
   const director = subject();
   const turns = approval(opened);
-  expect(await holds(turns, undefined, director)).toBe(true);
-  const retried = await director.decide(
-    {
-      type: "compaction.done",
-      compactor: "@corbits-builder/drop-degenerate-turn",
-      reason: "reply before done",
-    },
-    { ...state, turns },
+  const text = "It is ready for approval.";
+  const held = await director.decide(
+    replied(text),
+    { ...state, turns: [...turns, reply(text)] },
     createCapabilities(),
   );
-  const infer = (Array.isArray(retried) ? retried : [retried]).find(
-    (action) => action.type === "infer",
+  const note = (Array.isArray(held) ? held : [held]).find(
+    (action) => action.type === "compact",
   );
-  expect(infer?.type === "infer" ? infer.options?.systemPrompt : "").toContain(
+  expect(note?.type === "compact" ? note.reason : "").toContain(
     "these can start now: product_requirements",
   );
   expect(await holds(turns, "I will wait until you are ready.", director)).toBe(
@@ -604,20 +580,15 @@ test("coder director never holds a reply that follows a refused access", async (
     usage: state.tokenUsage,
     source: { sourceId: "openai", provider: "openai", model: "gpt-5" },
   };
-  // A held reply's reason, from the prompt it is sampled again with, or undefined once it goes out.
+  // A held reply's note, as its compaction carries it, or undefined once it goes out.
   const heldFor = async (
     director: ReactorDirector,
     turns: ConversationTurn[],
   ) => {
     const actions = await decideOn(director, turns, replied);
     if (actions.some((action) => action.type === "reply")) return undefined;
-    const retried = await decideOn(director, turns, {
-      type: "compaction.done",
-      compactor: "@corbits-builder/drop-degenerate-turn",
-      reason: "reply before done",
-    });
-    const infer = retried.find((action) => action.type === "infer");
-    return infer?.type === "infer" ? infer.options?.systemPrompt : "";
+    const compact = actions.find((action) => action.type === "compact");
+    return compact?.type === "compact" ? compact.reason : "";
   };
 
   const editedAfter: ConversationTurn[] = [

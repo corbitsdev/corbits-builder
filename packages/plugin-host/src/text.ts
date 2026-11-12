@@ -1,4 +1,3 @@
-import type { ArkErrors } from "arktype";
 import {
   inputText,
   type Fact,
@@ -17,16 +16,6 @@ export const EXECUTE_DESCRIPTION =
 
 export const RUNS_DESCRIPTION =
   'See and steer the runs you started with execute. operation "list" lists each run you started in this project that is at work or ended lately: its plugin and action, status, state while it runs, when it started, its last activity, and why a failed run stopped. "wait" waits up to seconds (60 unless given, at most 120) for the first of runIds to end and says which ended; a run\'s report still reaches you as a message after your turn. "stop" stops each of runIds; what a stopped run filed or pushed is kept.';
-
-/** Each field a tool call got wrong, from its schema's errors: by field, the first problem each has. */
-export function wrongFields(errors: ArkErrors) {
-  const wrong = new Map<string, string>();
-  for (const error of errors) {
-    const field = String(error.path[0] ?? "input");
-    if (!wrong.has(field)) wrong.set(field, error.problem);
-  }
-  return [...wrong].map(([field, problem]) => ({ field, problem }));
-}
 
 /** Why a tool call was not run, every wrong field at once, then everything the tool takes. */
 export function wrongCall(

@@ -28,7 +28,7 @@ describe("pick-colours input", () => {
   test("a colour not in the accepted format is refused with the format and an example", () => {
     const result = check({ proposed: { primary: "brand blue" } });
     if (result.ok) throw new Error("brand blue was accepted");
-    expect(result.refusal.field).toBe("proposed");
+    expect(result.refusal.wrong[0]?.field).toBe("proposed");
     expect(result.text).toContain('"brand blue"');
     expect(result.text).toContain('a # and six hex digits, such as "#1d4ed8"');
   });
@@ -38,7 +38,7 @@ describe("pick-colours input", () => {
       proposed: { primary: "#E98428", background: "#ffffff" },
     });
     if (result.ok) throw new Error("the colours in use were proposed");
-    expect(result.refusal.problem).toBe(
+    expect(result.refusal.wrong[0]?.problem).toBe(
       "#E98428, #ffffff are already the colours in use.",
     );
   });

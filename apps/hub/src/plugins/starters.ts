@@ -26,18 +26,30 @@ import { writerTask } from "../workflows/writer-task.ts";
 export const APP_ALREADY_EXISTS =
   "The project already has an app, so its first build is done. A change to it is coder change.";
 
-// What runs({ ... }) offers for a run that holds back the next one.
-const waitOrStop = (runId: string) =>
-  `runs({ operation: "wait", runIds: ["${runId}"] }) waits for it to end, or runs({ operation: "stop", runIds: ["${runId}"] }) stops it; then call execute again.`;
+// What runs({ ... }) offers for a run that holds back the next one, named as runIds lists it.
+const waitOrStop = (runIds: string) =>
+  `runs({ operation: "wait", runIds: [${runIds}] }) waits for it to end, or runs({ operation: "stop", runIds: [${runIds}] }) stops it; then call execute again.`;
 
 // One coder works on the app at a time: the project has one app repository, and a second coder
-// would start from the app without the first one's work and overwrite it when it saves.
-const coderBusy = (runId: string, state: string) =>
-  `The coder was not started. The coder in run ${runId} is ${state === "waiting" ? "saving its last files after its report" : "still at work on the app"}, and one coder works on the app at a time because the project has one app repository: a second coder would start without that run's work and overwrite it. ${waitOrStop(runId)} Giving each coder its own branch of the app, merged when it finishes, would lift this.`;
+// would start from the app without the first one's work and overwrite it when it saves. Without
+// live, the other coder is still starting, from another execute in the same turn.
+function coderBusy(live?: { runId: string; state: string }) {
+  const other =
+    live === undefined
+      ? "Another coder is starting on the app from an execute call in this same turn"
+      : `The coder in run ${live.runId} is ${live.state === "waiting" ? "saving its last files after its report" : "still at work on the app"}`;
+  const next =
+    live === undefined
+      ? `That call returns its run id. ${waitOrStop("its run id")}`
+      : waitOrStop(JSON.stringify(live.runId));
+  return new Refusal(
+    `The coder was not started. ${other}, and one coder works on the app at a time because the project has one app repository: a second coder would start without that run's work and overwrite it. ${next} Giving each coder its own branch of the app, merged when it finishes, would lift this.`,
+  );
+}
 
 // A design concept is one designer's: the hub files that run's design as the concept's option.
 const conceptBusy = (concept: string, runId: string) =>
-  `the ${concept} designer in run ${runId} is still at work, and a concept is one designer's because its design is filed as that concept's option. ${waitOrStop(runId)} A new concept label starts alongside it.`;
+  `the ${concept} designer in run ${runId} is still at work, and a concept is one designer's because its design is filed as that concept's option. ${waitOrStop(JSON.stringify(runId))} A new concept label starts alongside it.`;
 
 // A started run of one specialist.
 const one = ({ runId }: { runId: string }): Started => ({
@@ -100,23 +112,27 @@ const coder = starter(
   async ({ correlation, app }, { instruction }, session, skills) => {
     const { inFlight } = await session.listed();
     const live = inFlight.find((run) => run.role === "coder");
-    if (live) throw new Refusal(coderBusy(live.runId, live.state));
+    if (live) throw coderBusy(live);
     return one(
-      await session.startCoder(correlation, ({ byKind }) => {
-        if (app === "existing")
+      await session.startCoder(
+        correlation,
+        ({ byKind }) => {
+          if (app === "existing")
+            return (
+              coderDocuments(session, byKind) +
+              skills +
+              APP_CHANGE_NOTE +
+              coderTaskMessage(instruction)
+            );
+          if (byKind.has("app")) throw new Refusal(APP_ALREADY_EXISTS);
           return (
             coderDocuments(session, byKind) +
             skills +
-            APP_CHANGE_NOTE +
             coderTaskMessage(instruction)
           );
-        if (byKind.has("app")) throw new Refusal(APP_ALREADY_EXISTS);
-        return (
-          coderDocuments(session, byKind) +
-          skills +
-          coderTaskMessage(instruction)
-        );
-      }),
+        },
+        coderBusy,
+      ),
     );
   },
 );

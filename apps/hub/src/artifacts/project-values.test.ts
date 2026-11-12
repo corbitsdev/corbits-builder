@@ -31,7 +31,7 @@ function harness(
     await next();
   });
   const service = {
-    projectState: async () => ({ styles }),
+    projectState: async () => ({ styles, stored: {} }),
     // Stands in for the filed design's next version, through the real tweak schema.
     saveDesignTweaks: async (
       _actor: unknown,

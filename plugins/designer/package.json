@@ -51,6 +51,12 @@
         "when": "The person wants to see how the app could look: a mockup, design options to compare, or another pass on a design option.",
         "unless": "They want the built app itself changed, or to pick fonts or colours on a screen.",
         "input": "./src/mockup.ts",
+        "reads": [
+          "look.font-primary",
+          "look.font-secondary",
+          "look.color-primary",
+          "look.color-background"
+        ],
         "returns": [
           "filed:design_option"
         ],

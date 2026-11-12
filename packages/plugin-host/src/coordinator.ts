@@ -1,6 +1,6 @@
 import { setTimeout as sleep } from "node:timers/promises";
 import { type } from "arktype";
-import type { Fact, Field } from "@corbits-builder/plugin";
+import { wrongFields, type Fact, type Field } from "@corbits-builder/plugin";
 import {
   isRoute,
   isScreenAction,
@@ -34,7 +34,6 @@ import {
   unknownRuns,
   unmetRequirement,
   wrongCall,
-  wrongFields,
   writesText,
   type Readiness,
 } from "./text.ts";
