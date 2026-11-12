@@ -76,6 +76,7 @@
         "@corbits-builder/plugin": "workspace:*",
         "@corbits-builder/presenter": "workspace:*",
         "@corbits-builder/review-document": "workspace:*",
+        "@corbits-builder/review-mockup": "workspace:*",
         "@corbits-builder/reviewer": "workspace:*",
         "@corbits-builder/schemas": "workspace:*",
         "@corbits-builder/write-build-plan": "workspace:*",
@@ -135,6 +136,7 @@
         "@corbits-builder/pick-colours": "workspace:*",
         "@corbits-builder/pick-fonts": "workspace:*",
         "@corbits-builder/plugin": "workspace:*",
+        "@corbits-builder/review-mockup": "workspace:*",
         "@corbits-builder/schemas": "workspace:*",
         "@corbits/react-ui": "0.5.1",
         "@corbits/slidedeck": "workspace:*",
@@ -277,6 +279,19 @@
         "@corbits-builder/plugin": "workspace:*",
         "@corbits-builder/schemas": "workspace:*",
         "arktype": "catalog:",
+      },
+    },
+    "plugins/review-mockup": {
+      "name": "@corbits-builder/review-mockup",
+      "version": "0.1.0-rc.3",
+      "dependencies": {
+        "@corbits-builder/plugin": "workspace:*",
+        "@corbits/react-ui": "0.5.1",
+        "arktype": "catalog:",
+        "react": "19.3.0",
+      },
+      "devDependencies": {
+        "@types/react": "19.3.0",
       },
     },
     "plugins/write-build-plan": {
@@ -896,6 +911,8 @@
     "@corbits-builder/presenter": ["@corbits-builder/presenter@workspace:workflows/presenter"],
 
     "@corbits-builder/review-document": ["@corbits-builder/review-document@workspace:plugins/review-document"],
+
+    "@corbits-builder/review-mockup": ["@corbits-builder/review-mockup@workspace:plugins/review-mockup"],
 
     "@corbits-builder/reviewer": ["@corbits-builder/reviewer@workspace:workflows/reviewer"],
 

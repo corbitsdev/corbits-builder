@@ -3,10 +3,51 @@
  * a frame. A page has its stylesheet inlined and its screens spliced in, and carries the script
  * through which the frame and the pane around it talk.
  */
+import { type } from "arktype";
 import { DesignBundle } from "@corbits-builder/schemas/artifact";
 import { readJson } from "../../json.ts";
 
 export const MAX_QUOTE_CHARS = 600;
+export const MAX_SCREEN_CHARS = 512;
+const MAX_EXCERPT_CHARS = 160;
+const MAX_SCREENS = 100;
+
+// What the frame's page may send, checked before the parent acts on it: the page is the designer's
+// code, so only plain values of a bounded size are taken.
+const Name = type.string.atLeastLength(1).atMostLength(MAX_SCREEN_CHARS);
+
+/** The page's data-screen sections, each with its data-state sections. */
+export const FrameScreens = type({ screen: "string", states: "string[]" })
+  .array()
+  .atMostLength(MAX_SCREENS);
+export type FrameScreens = typeof FrameScreens.infer;
+
+/** The screen and state the page left unhidden. */
+export const FrameShown = type({ screen: Name, state: Name.or("null") });
+export type FrameShown = typeof FrameShown.infer;
+
+/** The place a click hit while tagging was on. */
+export const FrameTag = type({
+  "+": "reject",
+  page: Name,
+  "screen?": Name,
+  "state?": Name,
+  "testid?": Name,
+  "id?": Name,
+  tag: Name,
+  "excerpt?": type.string.atLeastLength(1).atMostLength(MAX_EXCERPT_CHARS),
+  box: ["number", "number", "number", "number"],
+});
+export type FrameTag = typeof FrameTag.infer;
+
+/** The value read by a frame message type, or null when the page sent something else. */
+export function fromFrame<T>(
+  parse: (value: unknown) => T | type.errors,
+  value: unknown,
+): T | null {
+  const read = parse(value);
+  return read instanceof type.errors ? null : read;
+}
 export const INDEX_PAGE = "index.html";
 
 export const DESIGN_MEDIA_TYPE = "application/vnd.corbits-builder.design+json";
@@ -123,9 +164,11 @@ const scriptJson = (value: unknown) =>
 // also replaces any in-page mockup bar, so the frame shows only the app. The screen and state the
 // menu marks are the sections the mockup left unhidden, read after its own hashchange routing has
 // run, since a route such as #/home may show a state the hash does not name. Look tweaks arrive as
-// a stylesheet the page keeps over its own tokens.
+// a stylesheet the page keeps over its own tokens. While the parent has tagging on, a click names
+// the place it hit (nearest data-testid, else id, else the element) and the mockup never sees it:
+// the listener is the page's first, on the window, in the capture phase.
 function navigator(pages: readonly string[], screen: MockupScreen): string {
-  return `<script>(()=>{const pages=${scriptJson(pages)},here=${scriptJson(screen.page)},start=${scriptJson(screen.hash)};addEventListener("click",(e)=>{const a=e.target instanceof Element?e.target.closest("a[href]"):null;if(!a)return;const href=a.getAttribute("href")??"";if(href.startsWith("#"))return;e.preventDefault();const u=new URL(href,"http://mockup/"+here);const page=decodeURIComponent(u.pathname.slice(1));if(u.origin==="http://mockup"&&pages.includes(page))parent.postMessage({designPage:page,designScreen:u.hash},"*");},true);if(start&&!location.hash)location.hash=start;const seen=()=>{const s=[...document.querySelectorAll("[data-screen]")].find((e)=>!e.hidden);if(!s)return null;const st=[...s.querySelectorAll(":scope > [data-state]")].find((e)=>!e.hidden);return{screen:s.dataset.screen,state:st?st.dataset.state:null};};const t=()=>parent.postMessage({designScreen:location.hash,designShown:seen()},"*");addEventListener("hashchange",()=>setTimeout(t));t();addEventListener("mouseup",()=>{const s=getSelection(),q=s?s.toString().trim():"";if(!q||!s.rangeCount)return;const r=s.getRangeAt(0).getBoundingClientRect();parent.postMessage({designQuote:q.slice(0,${String(MAX_QUOTE_CHARS)}),at:[r.left,r.bottom]},"*");});const hide=document.createElement("style");hide.textContent=".mock-bar{display:none!important}";document.head.append(hide);addEventListener("DOMContentLoaded",()=>{const designScreens=[...document.querySelectorAll("[data-screen]")].map((s)=>({screen:s.dataset.screen,states:[...s.querySelectorAll(":scope > [data-state]")].map((e)=>e.dataset.state)}));parent.postMessage({designScreens,designTheme:!!document.querySelector("[data-theme-toggle]")},"*");t();});addEventListener("message",(e)=>{if(e.source!==parent)return;const go=e.data?.designGoto;if(typeof go==="string")location.hash=go;if(e.data?.designToggleTheme===true)document.querySelector("[data-theme-toggle]")?.click();const tw=e.data?.designTweaks;if(typeof tw==="string"){let st=document.getElementById("builder-tweaks");if(!st){st=document.createElement("style");st.id="builder-tweaks";document.head.append(st);}st.textContent=tw;}});})()</script>`;
+  return `<script>(()=>{const pages=${scriptJson(pages)},here=${scriptJson(screen.page)},start=${scriptJson(screen.hash)};let tagging=false;const cap=(v,n)=>typeof v==="string"&&v.trim()?v.replace(/\\s+/g," ").trim().slice(0,n):undefined;addEventListener("click",(e)=>{if(!tagging)return;e.preventDefault();e.stopImmediatePropagation();if(!(e.target instanceof Element))return;const el=e.target.closest("[data-testid]")??e.target.closest("[id]")??e.target,r=el.getBoundingClientRect(),at={page:cap(here,${String(MAX_SCREEN_CHARS)}),tag:el.tagName.toLowerCase(),box:[r.left,r.top,r.width,r.height].map(Math.round)},more={screen:cap(e.target.closest("[data-screen]")?.dataset.screen,${String(MAX_SCREEN_CHARS)}),state:cap(e.target.closest("[data-state]")?.dataset.state,${String(MAX_SCREEN_CHARS)}),testid:cap(el.getAttribute("data-testid"),${String(MAX_SCREEN_CHARS)}),id:cap(el.id,${String(MAX_SCREEN_CHARS)}),excerpt:cap(el.textContent,${String(MAX_EXCERPT_CHARS)})};for(const k in more)if(more[k]!==undefined)at[k]=more[k];parent.postMessage({designTag:at},"*");},true);addEventListener("click",(e)=>{const a=e.target instanceof Element?e.target.closest("a[href]"):null;if(!a)return;const href=a.getAttribute("href")??"";if(href.startsWith("#"))return;e.preventDefault();const u=new URL(href,"http://mockup/"+here);const page=decodeURIComponent(u.pathname.slice(1));if(u.origin==="http://mockup"&&pages.includes(page))parent.postMessage({designPage:page,designScreen:u.hash},"*");},true);if(start&&!location.hash)location.hash=start;const seen=()=>{const s=[...document.querySelectorAll("[data-screen]")].find((e)=>!e.hidden);if(!s)return null;const st=[...s.querySelectorAll(":scope > [data-state]")].find((e)=>!e.hidden);return{screen:s.dataset.screen,state:st?st.dataset.state:null};};const t=()=>parent.postMessage({designScreen:location.hash,designShown:seen()},"*");addEventListener("hashchange",()=>setTimeout(t));t();addEventListener("mouseup",()=>{const s=getSelection(),q=s?s.toString().trim():"";if(!q||!s.rangeCount)return;const r=s.getRangeAt(0).getBoundingClientRect();parent.postMessage({designQuote:q.slice(0,${String(MAX_QUOTE_CHARS)}),at:[r.left,r.bottom]},"*");});const hide=document.createElement("style");hide.textContent=".mock-bar{display:none!important}";document.head.append(hide);addEventListener("DOMContentLoaded",()=>{const designScreens=[...document.querySelectorAll("[data-screen]")].map((s)=>({screen:s.dataset.screen,states:[...s.querySelectorAll(":scope > [data-state]")].map((e)=>e.dataset.state)}));parent.postMessage({designScreens,designTheme:!!document.querySelector("[data-theme-toggle]")},"*");t();});addEventListener("message",(e)=>{if(e.source!==parent)return;const go=e.data?.designGoto;if(typeof go==="string")location.hash=go;if(typeof e.data?.designTagging==="boolean"){tagging=e.data.designTagging;document.documentElement.style.cursor=tagging?"crosshair":"";}if(e.data?.designToggleTheme===true)document.querySelector("[data-theme-toggle]")?.click();const tw=e.data?.designTweaks;if(typeof tw==="string"){let st=document.getElementById("builder-tweaks");if(!st){st=document.createElement("style");st.id="builder-tweaks";document.head.append(st);}st.textContent=tw;}});})()</script>`;
 }
 
 /** The bundle's first page as it loads, for a still preview that is never navigated. */

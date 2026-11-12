@@ -499,8 +499,10 @@ export type PipelineDriver = Parameters<
   Parameters<typeof withPipelineScenario>[1]
 >[0];
 
-// The recorded weather project from the idea to its app's second version, after one change.
-export async function buildWeatherApp(driver: PipelineDriver): Promise<void> {
+// The recorded weather project from the idea to its approved product requirements.
+export async function writeWeatherDocuments(
+  driver: PipelineDriver,
+): Promise<void> {
   await driver.runStage("documents", async () => {
     await driver.waitForAssistantTurn(
       "documents",
@@ -553,7 +555,11 @@ export async function buildWeatherApp(driver: PipelineDriver): Promise<void> {
       await driver.decideArtifactApproval(step);
     }
   });
+}
 
+// The recorded weather project from the idea to its app's second version, after one change.
+export async function buildWeatherApp(driver: PipelineDriver): Promise<void> {
+  await writeWeatherDocuments(driver);
   await driver.runStage("design", async () => {
     await driver.decideToolApproval({
       stage: "design",

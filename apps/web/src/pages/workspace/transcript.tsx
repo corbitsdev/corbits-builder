@@ -83,8 +83,13 @@ import {
 } from "./work-unit-message.view.tsx";
 import type { CallResult } from "./live-run.ts";
 import { QuestionsCard, type QuestionsState } from "./questions-card.tsx";
-import { ScreenQuestion, type ProjectValuesStore } from "./screen-question.tsx";
-import { screens } from "./screens.ts";
+import {
+  PageScreenCard,
+  ScreenQuestion,
+  type HostSupplies,
+  type ProjectValuesStore,
+} from "./screen-question.tsx";
+import { pageScreens, screens } from "./screens.ts";
 import type { ParkedQuestion } from "../../api/conversation.ts";
 import { QUESTION_TOOL_NAME } from "@intx/types/runtime-core";
 import type { QuestionAnswer } from "@intx/types/signals";
@@ -623,6 +628,10 @@ export type RoomThreadContent = {
   questionsDisabled?: boolean;
   /** The project's values a plugin's screen reads and saves. */
   projectValues?: ProjectValuesStore;
+  /** What the interface supplies a plugin's screen beyond its input. */
+  screenSupplies?: HostSupplies;
+  /** Opens the screen the coordinator placed on the page again, while its question is open. */
+  onOpenPageScreen?: () => void;
   /** Whether question cards ask one question at a time or all at once. */
   questionsLayout?: QuestionsLayout;
 };
@@ -656,6 +665,8 @@ export function RoomThread({
   onAnswerQuestion,
   questionsDisabled = false,
   projectValues,
+  screenSupplies,
+  onOpenPageScreen,
   questionsLayout = "steps",
   children,
 }: RoomThreadProps) {
@@ -704,18 +715,25 @@ export function RoomThread({
               {headed ? null : (
                 <MessageHeader name={wording.speaker.coordinator} />
               )}
-              <ScreenQuestion
-                host={screens[asked.plugin]}
-                input={asked.input}
-                projectValues={projectValues}
-                answer={answer}
-                disabled={questionsDisabled || onAnswerQuestion === undefined}
-                onAnswer={(screenAnswer) =>
-                  onAnswerQuestion === undefined
-                    ? Promise.resolve(false)
-                    : onAnswerQuestion(signalName, screenAnswer)
-                }
-              />
+              {answer === undefined &&
+              pageScreens.has(asked.plugin) &&
+              onOpenPageScreen !== undefined ? (
+                <PageScreenCard onOpen={onOpenPageScreen} />
+              ) : (
+                <ScreenQuestion
+                  host={screens[asked.plugin]}
+                  input={asked.input}
+                  projectValues={projectValues}
+                  answer={answer}
+                  disabled={questionsDisabled || onAnswerQuestion === undefined}
+                  onAnswer={(screenAnswer) =>
+                    onAnswerQuestion === undefined
+                      ? Promise.resolve(false)
+                      : onAnswerQuestion(signalName, screenAnswer)
+                  }
+                  supplies={screenSupplies}
+                />
+              )}
             </Message>
           </ConversationItem>
         );

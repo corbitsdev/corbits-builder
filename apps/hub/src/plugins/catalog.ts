@@ -18,6 +18,7 @@ import pickFonts from "@corbits-builder/pick-fonts";
 import fonts from "@corbits-builder/pick-fonts/data";
 import { Fonts } from "@corbits-builder/pick-fonts/schema";
 import pickColours from "@corbits-builder/pick-colours";
+import reviewMockup from "@corbits-builder/review-mockup";
 import buildApp from "@corbits-builder/build-app";
 import changeApp from "@corbits-builder/change-app";
 import designApp from "@corbits-builder/design-app";
@@ -28,6 +29,7 @@ import { guidance as buildWebAppGuidance } from "@corbits-builder/build-web-app/
 // Relative imports, because the plugins' exports do not include their package.json.
 import pickFontsManifest from "../../../../plugins/pick-fonts/package.json";
 import pickColoursManifest from "../../../../plugins/pick-colours/package.json";
+import reviewMockupManifest from "../../../../plugins/review-mockup/package.json";
 import buildAppManifest from "../../../../plugins/build-app/package.json";
 import changeAppManifest from "../../../../plugins/change-app/package.json";
 import designAppManifest from "../../../../plugins/design-app/package.json";
@@ -195,6 +197,7 @@ export function catalog(plugins: readonly Plugin[]): readonly Plugin[] {
 export const PLUGINS = catalog([
   screenPlugin(pickFontsManifest, pickFonts, Fonts.assert(fonts)),
   screenPlugin(pickColoursManifest, pickColours, undefined),
+  screenPlugin(reviewMockupManifest, reviewMockup, undefined),
   workflowPlugin(
     writeRequirementsManifest,
     writeRequirements,

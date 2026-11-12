@@ -30,6 +30,7 @@
     "@corbits-builder/plugin": "workspace:*",
     "@corbits-builder/presenter": "workspace:*",
     "@corbits-builder/review-document": "workspace:*",
+    "@corbits-builder/review-mockup": "workspace:*",
     "@corbits-builder/reviewer": "workspace:*",
     "@corbits-builder/schemas": "workspace:*",
     "@corbits-builder/write-build-plan": "workspace:*",

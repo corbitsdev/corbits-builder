@@ -17,6 +17,7 @@ import {
 } from "./room.model.ts";
 import { RoomFault, RoomSkeleton } from "./room-skeleton.tsx";
 import { RoomView } from "./room.view.tsx";
+import { ScreenQuestion } from "./screen-question.tsx";
 
 /** The room shows its loading or fault state until its first read is in hand. */
 export function StageWorkspace(props: StageWorkspaceProps) {
@@ -28,8 +29,15 @@ export function StageWorkspace(props: StageWorkspaceProps) {
 
 function ReadyRoom(props: ReadyRoomProps) {
   const { projectId } = props;
-  const { view, nextStep, designChoice, enableAi, liveApp, themes } =
-    useRoom(props);
+  const {
+    view,
+    nextStep,
+    designChoice,
+    enableAi,
+    liveApp,
+    themes,
+    pageScreen,
+  } = useRoom(props);
   return (
     <>
       <RoomView
@@ -38,6 +46,7 @@ function ReadyRoom(props: ReadyRoomProps) {
         designChoice={
           designChoice === null ? null : <DesignChoice {...designChoice} />
         }
+        page={pageScreen === null ? null : <ScreenQuestion {...pageScreen} />}
         paneParts={{
           liveApp: liveApp === null ? null : <LiveApp {...liveApp} />,
           themes: themes === null ? null : <DesignThemes {...themes} />,

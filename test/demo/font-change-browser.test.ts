@@ -27,12 +27,10 @@ import {
 } from "../e2e/support/recorded-model.ts";
 import { readRunConversation } from "../e2e/support/extract.ts";
 import { readStored } from "../baseline/recorder.ts";
+import { signIn, startWebApp, watchPage } from "./browser.ts";
 
 const DEMO_DIR = NonEmptyString.assert(process.env["DEMO_DIR"]);
 const WEB_PORT = Number(NonEmptyString.assert(process.env["DEMO_WEB_PORT"]));
-const WEB_DIR = join(import.meta.dir, "..", "..", "apps", "web");
-// The account startTestHub signs up.
-const PERSON = { email: "e2e@corbits.dev", password: "e2e-password-123456" };
 const FONT_KEYS = ["look.font-primary", "look.font-secondary"];
 const WAIT_MS = 180_000;
 
@@ -230,44 +228,6 @@ const coderTurns = withRequiredTools(
   ],
 );
 
-async function startWebApp(hubOrigin: string) {
-  const web = Bun.spawn(
-    [
-      join(WEB_DIR, "node_modules", ".bin", "vite"),
-      "--host",
-      "127.0.0.1",
-      "--port",
-      String(WEB_PORT),
-    ],
-    {
-      cwd: WEB_DIR,
-      env: {
-        PATH: process.env["PATH"],
-        HOME: process.env["HOME"],
-        UI_HUB_ORIGIN: hubOrigin,
-        UI_PORT: String(WEB_PORT),
-      },
-      stdout: "ignore",
-      stderr: "inherit",
-    },
-  );
-  console.log(`web app dev server pid ${String(web.pid)}`);
-  const url = `http://127.0.0.1:${String(WEB_PORT)}`;
-  const deadline = Date.now() + 60_000;
-  while (Date.now() < deadline) {
-    if (web.exitCode !== null)
-      throw new Error(`The web app exited with ${String(web.exitCode)}`);
-    try {
-      if ((await fetch(url)).ok) return { web, url };
-    } catch {
-      // Not listening yet.
-    }
-    await Bun.sleep(500);
-  }
-  web.kill();
-  throw new Error(`The web app did not answer on ${url}`);
-}
-
 async function snapshot(driver: PipelineDriver) {
   const { client } = driver.hub;
   const { projectTenantId, projectId } = driver;
@@ -339,9 +299,9 @@ test(
             ).approvals.map((approval) => approval.approvalId),
           );
 
-          const consoleLines: string[] = [];
-          const network: Record<string, unknown>[] = [];
-          const { web, url } = await startWebApp(hub.baseUrl);
+          let consoleLines: string[] = [];
+          let network: Record<string, unknown>[] = [];
+          const { web, url } = await startWebApp(hub.baseUrl, WEB_PORT);
           const browser = await chromium.launch({ headless: true });
           try {
             const context = await browser.newContext({
@@ -352,49 +312,13 @@ test(
               },
             });
             const page = await context.newPage();
-            page.on("console", (message) =>
-              consoleLines.push(`${message.type()}: ${message.text()}`),
-            );
-            page.on("pageerror", (error) =>
-              consoleLines.push(`pageerror: ${error.message}`),
-            );
-            page.on("requestfailed", (request) =>
-              network.push({
-                method: request.method(),
-                url: request.url(),
-                failure: request.failure()?.errorText,
-              }),
-            );
-            page.on("response", async (response) => {
-              const request = response.request();
-              if (!request.url().includes("/api/")) return;
-              const entry: Record<string, unknown> = {
-                method: request.method(),
-                url: request.url(),
-                status: response.status(),
-                sent: request.postData(),
-              };
-              network.push(entry);
-              // The calls this flow makes; streams never finish, so their bodies are not read.
-              if (
-                /\/values|\/signals$|\/mail$|\/approvals\//.test(request.url())
-              )
-                try {
-                  entry["received"] = await response.text();
-                } catch (error) {
-                  // A response the page navigated away from has no body left to read.
-                  entry["unreadable"] = String(error);
-                }
-            });
+            ({ consoleLines, network } = watchPage(
+              page,
+              /\/values|\/signals$|\/mail$|\/approvals\//,
+            ));
 
             try {
-              await page.goto(url);
-              await page.locator('input[name="email"]').fill(PERSON.email);
-              await page
-                .locator('input[name="password"]')
-                .fill(PERSON.password);
-              await page.locator('input[name="password"]').press("Enter");
-              await page.waitForLoadState("networkidle");
+              await signIn(page, url);
               await page.goto(`${url}/project/${projectId}`);
               await page
                 .getByText("filed as version 2")

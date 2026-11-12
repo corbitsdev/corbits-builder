@@ -14,8 +14,11 @@ import {
   type ScreenViewProps,
 } from "@corbits-builder/plugin";
 import { QuestionAnswer } from "@intx/types/signals";
+import { Button } from "@corbits/react-ui";
 import { wording } from "../../config.ts";
 import { Fault, InlineNote } from "../../components.jsx";
+import type { DesignFiles } from "./design-bundle.ts";
+import type { MockupFrameProps } from "./mockup-frame.tsx";
 import { SettledReply } from "./questions-card.tsx";
 
 const text = wording.questions;
@@ -32,12 +35,45 @@ export type ProjectValuesStore = {
   save(values: Record<string, string>): Promise<unknown>;
 };
 
+/** The design a screen reviews, and whether the person's approval of it can be recorded here. */
+export type ReviewedDesign = {
+  files: DesignFiles;
+  version: number | "draft";
+  approval: { approve(): Promise<void> } | { unavailable: string };
+};
+
+/** What the interface itself supplies a screen's view, by the names a manifest lists under host. */
+export type HostSupplies = {
+  /** The live draft while a designer works, else the newest filed design or design option. */
+  design: ReviewedDesign | null;
+  /** A design bundle drawn in the design pane's own sandboxed frame. */
+  mockupFrame: ComponentType<MockupFrameProps>;
+  /** The output of the latest question the coordinator asked with the same screen, if answered. */
+  earlierAnswer: unknown;
+};
+
+const SUPPLIED: ReadonlySet<string> = new Set<keyof HostSupplies>([
+  "design",
+  "mockupFrame",
+  "earlierAnswer",
+]);
+
+/** How a screen placed on the page reaches the room's prompt box. */
+export type PageHost = {
+  /** What Send in the prompt box does in place of a reply, given the typed text. */
+  stage(send: ((message: string | undefined) => Promise<boolean>) | null): void;
+  sendStaged(): void;
+  close(): void;
+};
+
 export type ScreenHostProps = {
   input: Record<string, unknown>;
   output: Record<string, unknown> | undefined;
   projectValues: ProjectValuesStore;
   disabled: boolean;
   onAnswer: (answer: QuestionAnswer) => Promise<boolean>;
+  host: HostSupplies;
+  page?: PageHost | undefined;
 };
 
 /** One plugin's screen, typed end to end, behind props every plugin shares. */
@@ -46,7 +82,12 @@ export function screenHost<In, Out, Data, Prepared>(
   plugin: {
     screen: Screen<In, Out, Data, Prepared>;
     view: ComponentType<
-      ScreenViewProps<Type<In>["infer"], Type<Out>["infer"], Prepared>
+      ScreenViewProps<
+        Type<In>["infer"],
+        Type<Out>["infer"],
+        Prepared,
+        HostSupplies
+      >
     >;
     data: Type<Data>["infer"];
     /** Each project value the manifest writes, taken from the screen's output. */
@@ -54,7 +95,12 @@ export function screenHost<In, Out, Data, Prepared>(
   },
 ): ComponentType<ScreenHostProps> {
   const { screen, view: View, data, writes } = plugin;
-  const { handle, reads = [] } = builder;
+  const { handle, reads = [], host: supplied = [] } = builder;
+  const unknown = supplied.find((name) => !SUPPLIED.has(name));
+  if (unknown !== undefined)
+    throw new Error(
+      `${handle} asks for ${unknown}, which this interface does not supply.`,
+    );
   const mapped = Object.keys(writes).sort().join(", ");
   if (mapped !== [...(builder.writes ?? [])].sort().join(", "))
     throw new Error(
@@ -67,6 +113,8 @@ export function screenHost<In, Out, Data, Prepared>(
     projectValues,
     disabled,
     onAnswer,
+    host,
+    page,
   }) {
     const [project, setProject] = useState<ProjectValues>();
     const [unreadable, setUnreadable] = useState(false);
@@ -80,7 +128,12 @@ export function screenHost<In, Out, Data, Prepared>(
       const abort = new AbortController();
       const load = async () => {
         try {
-          setProject(await projectValues.read(reads, abort.signal));
+          // The hub refuses a read of no names, and a screen that reads none needs no read.
+          setProject(
+            reads.length === 0
+              ? {}
+              : await projectValues.read(reads, abort.signal),
+          );
         } catch (cause) {
           if (abort.signal.aborted) return;
           console.warn(`${handle} could not read the project's values.`, cause);
@@ -102,7 +155,8 @@ export function screenHost<In, Out, Data, Prepared>(
     if (!checked.ok || checked.prepared === undefined || answered?.ok === false)
       return <InlineNote>{text.screenUnavailable}</InlineNote>;
 
-    const submit = async (chosen: Type<Out>["infer"]) => {
+    // Whether the answer reached the hub; a fault is the screen's to show.
+    const answerWith = async (chosen: Type<Out>["infer"]) => {
       const result = checkOutput(handle, screen, chosen);
       if (!result.ok) throw new Error(result.text);
       setSubmitting(true);
@@ -118,13 +172,17 @@ export function screenHost<In, Out, Data, Prepared>(
         console.warn(`${handle} could not save the project's values.`, cause);
         setSubmitting(false);
         setFault(text.screenNotSaved);
-        return;
+        return false;
       }
       // Once sent, the screen stays submitting until the run log shows the answer and it settles.
       if (await onAnswer(QuestionAnswer.assert({ output: result.output })))
-        return;
+        return true;
       setSubmitting(false);
       setFault(text.notSent);
+      return false;
+    };
+    const submit = async (chosen: Type<Out>["infer"]) => {
+      await answerWith(chosen);
     };
     return (
       <>
@@ -140,6 +198,21 @@ export function screenHost<In, Out, Data, Prepared>(
           submit={submit}
           submitting={submitting || disabled}
           answer={answered?.output}
+          host={host}
+          page={
+            page === undefined
+              ? undefined
+              : {
+                  close: page.close,
+                  sendStaged: page.sendStaged,
+                  stage: (compose) =>
+                    page.stage(
+                      compose === null
+                        ? null
+                        : (message) => answerWith(compose(message)),
+                    ),
+                }
+          }
         />
         {fault === undefined ? null : <Fault>{fault}</Fault>}
       </>
@@ -147,7 +220,18 @@ export function screenHost<In, Out, Data, Prepared>(
   };
 }
 
-/** The screen in the conversation, or a plain notice when it has no view or no project to read. */
+export type ScreenQuestionProps = {
+  host: ComponentType<ScreenHostProps> | undefined;
+  input: Record<string, unknown>;
+  projectValues: ProjectValuesStore | undefined;
+  answer: QuestionAnswer | undefined;
+  disabled: boolean;
+  onAnswer: ScreenHostProps["onAnswer"];
+  supplies: HostSupplies | undefined;
+  page?: PageHost | undefined;
+};
+
+/** The screen, or a plain notice when it has no view or no project to read. */
 export function ScreenQuestion({
   host: Host,
   input,
@@ -155,17 +239,16 @@ export function ScreenQuestion({
   answer,
   disabled,
   onAnswer,
-}: {
-  host: ComponentType<ScreenHostProps> | undefined;
-  input: Record<string, unknown>;
-  projectValues: ProjectValuesStore | undefined;
-  answer: QuestionAnswer | undefined;
-  disabled: boolean;
-  onAnswer: ScreenHostProps["onAnswer"];
-}) {
+  supplies,
+  page,
+}: ScreenQuestionProps) {
   if (answer !== undefined && "reply" in answer)
     return <SettledReply reply={answer.reply} />;
-  if (Host === undefined || projectValues === undefined)
+  if (
+    Host === undefined ||
+    projectValues === undefined ||
+    supplies === undefined
+  )
     return <InlineNote>{text.screenUnavailable}</InlineNote>;
   return (
     <Host
@@ -176,6 +259,20 @@ export function ScreenQuestion({
       projectValues={projectValues}
       disabled={disabled}
       onAnswer={onAnswer}
+      host={supplies}
+      page={page}
     />
+  );
+}
+
+/** In the conversation, a screen open over the room: the way back to it after it was closed. */
+export function PageScreenCard({ onOpen }: { onOpen: () => void }) {
+  return (
+    <InlineNote>
+      {text.pageScreenOpen}{" "}
+      <Button type="button" size="sm" variant="outline" onClick={onOpen}>
+        {text.pageScreenReopen}
+      </Button>
+    </InlineNote>
   );
 }

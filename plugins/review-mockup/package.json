@@ -1,0 +1,45 @@
+{
+  "name": "@corbits-builder/review-mockup",
+  "version": "0.1.0-rc.3",
+  "private": true,
+  "license": "SEE LICENSE IN ../../LICENSE.md",
+  "author": "Sawyer Cutler <sawyer@dirtroad.dev>",
+  "type": "module",
+  "exports": {
+    ".": "./src/screen.ts",
+    "./schema": "./src/schema.ts",
+    "./view": "./src/view.tsx"
+  },
+  "dependencies": {
+    "@corbits-builder/plugin": "workspace:*",
+    "@corbits/react-ui": "0.5.1",
+    "arktype": "catalog:",
+    "react": "19.3.0"
+  },
+  "devDependencies": {
+    "@types/react": "19.3.0"
+  },
+  "builder": {
+    "handle": "review-mockup",
+    "runs": "screen",
+    "groups": [
+      "look",
+      "design"
+    ],
+    "when": "The design is ready for the person to look at, or needs their approval.",
+    "unless": "The person only asked a question about the design.",
+    "screen": "./src/screen.ts",
+    "authorizes": false,
+    "place": "page",
+    "host": [
+      "design",
+      "mockupFrame",
+      "earlierAnswer"
+    ],
+    "examples": [
+      "let me see the mockup",
+      "I want to give feedback on the design",
+      "the design looks good, approve it"
+    ]
+  }
+}

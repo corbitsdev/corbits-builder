@@ -54,6 +54,7 @@ import { refusalBody } from "../../api/transport.ts";
 import {
   acceptedMaterials,
   attachMaterials,
+  chooseDesign,
   removeMaterial,
   readArtifact,
   readProjectValues,
@@ -151,6 +152,15 @@ import {
 } from "../model-setup.model.ts";
 import { useModelCatalog } from "../settings/model-catalog.ts";
 import type { RoomContent, RoomDock } from "./room.view.tsx";
+import { parseBundle } from "./design-bundle.ts";
+import { MockupFrame } from "./mockup-frame.tsx";
+import type {
+  HostSupplies,
+  PageHost,
+  ReviewedDesign,
+  ScreenQuestionProps,
+} from "./screen-question.tsx";
+import { pageScreens, screens } from "./screens.ts";
 
 // The stream says when the room moved. This read covers what it cannot see,
 // such as a coordinator run replaced while its old stream stays quiet.
@@ -499,6 +509,8 @@ export function useRoom({
   liveApp: { projectId: string; builder: InFlightRun | undefined } | null;
   /** The theme gallery, from the point the coordinator may start the design until one exists. */
   themes: { projectId: string; onUse: (message: string) => void } | null;
+  /** The coordinator's open question when its screen is placed over the whole room. */
+  pageScreen: ScreenQuestionProps | null;
 } {
   const queryClient = useQueryClient();
   const archived = status === "archived";
@@ -519,6 +531,24 @@ export function useRoom({
     ({ signalName, answer }) =>
       answer === undefined && !sentAnswers.has(signalName),
   );
+  const pageQuestion =
+    openQuestion !== undefined &&
+    "plugin" in openQuestion.asked &&
+    pageScreens.has(openQuestion.asked.plugin)
+      ? {
+          signalName: openQuestion.signalName,
+          plugin: openQuestion.asked.plugin,
+          input: openQuestion.asked.input,
+        }
+      : undefined;
+  // The page screen the person closed to read the conversation, by its question's signal.
+  const [closedPage, setClosedPage] = useState<string | null>(null);
+  const pageOpen =
+    pageQuestion !== undefined && closedPage !== pageQuestion.signalName;
+  // What the open page screen sends when the person presses Send, given what they typed.
+  const pageSend = useRef<
+    ((message: string | undefined) => Promise<boolean>) | null
+  >(null);
   // The coder's filed app source is the resume point for a later coder, not a document to read.
   const artifacts = snapshot.artifacts
     .filter((item) => item.kind !== "app")
@@ -1218,8 +1248,16 @@ export function useRoom({
     onUndo: (message) => void undoTypedYes(message),
     onDropped: restoreToComposer,
   });
+  const sendThroughPage = async () => {
+    const staged = pageSend.current;
+    if (staged === null || sending) return;
+    const message = value.trim();
+    if (await staged(message.length === 0 ? undefined : message)) setValue("");
+  };
   // A change to a document a specialist is already building from waits for one more yes.
   const send = () => {
+    if (pageQuestion !== undefined && pageSend.current !== null)
+      return void sendThroughPage();
     if (files.length > 0) return void sendFiles();
     if (typedYes.hold(value)) return setValue("");
     // Without a read of who is at work there is no one to warn about.
@@ -1375,6 +1413,81 @@ export function useRoom({
       dispatch: runDispatch(run, handoffKind(run)),
     }));
   const design = artifacts.find((item) => item.kind === "design");
+  // The design a review screen shows: the live draft while a designer works, else the newest design
+  // option, else the filed design. Only an option is approved there, by the same choice the
+  // conversation's design card makes, so a design is approved one way.
+  const reviewed = options.at(-1) ?? design;
+  const reviewedState =
+    reviewed === undefined ? undefined : documentState(reviewed);
+  const reviewedContent =
+    reviewedState?.status === "ready"
+      ? reviewedState.document.content
+      : undefined;
+  const reviewedFiles = useMemo(
+    () => (reviewedContent === undefined ? null : parseBundle(reviewedContent)),
+    [reviewedContent],
+  );
+  const reviewApproval = (
+    item: ProjectArtifact,
+  ): ReviewedDesign["approval"] => {
+    if (item.kind === DESIGN_OPTION)
+      return {
+        approve: async () => {
+          const receipt = await chooseDesign(projectId, {
+            artifactId: item.artifactId,
+            version: item.version,
+          });
+          setDesignChosen({ concept: receipt.concept, at: Date.now() });
+          onChanged();
+        },
+      };
+    return {
+      unavailable:
+        item.approvedVersion === item.version
+          ? wording.designReview.approved
+          : wording.designReview.noOption,
+    };
+  };
+  const reviewedDesign = (): ReviewedDesign | null => {
+    if (designDraft !== null)
+      return {
+        files: designDraft,
+        version: "draft",
+        approval: { unavailable: wording.designReview.draftNotApprovable },
+      };
+    if (reviewed === undefined || reviewedFiles === null) return null;
+    return {
+      files: reviewedFiles,
+      version: reviewed.version,
+      approval: reviewApproval(reviewed),
+    };
+  };
+  const supplies: HostSupplies = {
+    design: reviewedDesign(),
+    mockupFrame: MockupFrame,
+    // The last round's answer on the same screen, so the person sees what they asked for before.
+    earlierAnswer:
+      pageQuestion === undefined
+        ? undefined
+        : questions
+            .flatMap(({ signalName, asked, answer }) =>
+              signalName !== pageQuestion.signalName &&
+              "plugin" in asked &&
+              asked.plugin === pageQuestion.plugin &&
+              answer !== undefined &&
+              "output" in answer
+                ? [answer.output]
+                : [],
+            )
+            .at(-1),
+  };
+  const pageHost: PageHost = {
+    stage: (staged) => {
+      pageSend.current = staged;
+    },
+    sendStaged: () => void sendThroughPage(),
+    close: () => setClosedPage(pageQuestion?.signalName ?? null),
+  };
   // Concepts stay to compare until the chosen one is filed as the design, or a new round starts.
   const concepts =
     design !== undefined && !inFlight.some((run) => run.concept !== undefined)
@@ -1543,6 +1656,16 @@ export function useRoom({
       onReply: (reply) => void deliver(reply),
     };
   };
+  const answerCard = async (signalName: string, answer: QuestionAnswer) => {
+    try {
+      await deliverAnswer(signalName, answer);
+      return true;
+    } catch (cause) {
+      // The card tells the person and keeps their picks to try again.
+      console.warn("The answers were not sent.", cause);
+      return false;
+    }
+  };
   const emptyConversation = () => {
     if (archived) return "archived";
     return shownTurns.length === 0 && !thinking ? "new" : null;
@@ -1556,6 +1679,7 @@ export function useRoom({
         artifactCount: paneDeliverables.length + concepts.length,
         narrowPane: mobilePane,
         onNarrowPaneChange: setMobilePane,
+        pageOpen,
       },
       conversation: {
         thread: {
@@ -1587,19 +1711,12 @@ export function useRoom({
               }),
           ...(sentId === undefined ? {} : { sentId }),
           questions,
-          onAnswerQuestion: async (signalName, answer) => {
-            try {
-              await deliverAnswer(signalName, answer);
-              return true;
-            } catch (cause) {
-              // The card tells the person and keeps their picks to try again.
-              console.warn("The answers were not sent.", cause);
-              return false;
-            }
-          },
+          onAnswerQuestion: answerCard,
           questionsDisabled: sending || archived,
           questionsLayout,
           projectValues,
+          screenSupplies: supplies,
+          onOpenPageScreen: () => setClosedPage(null),
         },
         empty: emptyConversation(),
         designChosen: archived ? null : designChosen,
@@ -1674,5 +1791,18 @@ export function useRoom({
       designReached && design === undefined && !archived
         ? { projectId, onUse: addToComposer }
         : null,
+    pageScreen:
+      pageQuestion === undefined
+        ? null
+        : {
+            host: screens[pageQuestion.plugin],
+            input: pageQuestion.input,
+            projectValues,
+            answer: undefined,
+            disabled: sending || archived,
+            onAnswer: (answer) => answerCard(pageQuestion.signalName, answer),
+            supplies,
+            page: pageHost,
+          },
   };
 }

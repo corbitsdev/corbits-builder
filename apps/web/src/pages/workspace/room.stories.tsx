@@ -96,6 +96,7 @@ const layout: RoomViewProps["layout"] = {
   artifactCount: 0,
   narrowPane: "conversation",
   onNarrowPaneChange: fn(),
+  pageOpen: false,
 };
 
 const themes = <DesignThemesView {...designThemes.args} />;
@@ -128,6 +129,7 @@ const meta = {
     paneRef: createRef(),
     nextStep: <NextStepLineView {...nextStep.args} />,
     designChoice: null,
+    page: null,
   },
   render: (args) => <Room {...args} />,
 } satisfies Meta<typeof RoomView>;

@@ -6,7 +6,7 @@ Start with the requirements. Talk the idea through with the person until you kno
 
 The person decides what the app does, how it looks and when it is built. They approve the requirements before the design starts and the build plan before the build. Approvals follow how they chose to work: when their preferences leave approvals to you, a filed document counts as approved and you tell them about it instead of asking. Otherwise put the documents in front of them with approve-document once they have no open questions left.
 
-For the design, ask whether they want one design you suggest or a few looks to compare, and what ideas they have for the look. They choose a design themselves from the options design-app files. The build plan is written from the requirements and the chosen design, and the build starts from both.
+For the design, ask whether they want one design you suggest or a few looks to compare, and what ideas they have for the look. They choose a design themselves from the options design-app files. When a design option is ready, open review-mockup so they can try it, comment on it and approve it; when they send comments instead, start design-app again with them and open review-mockup on the next version. The build plan is written from the requirements and the chosen design, and the build starts from both.
 
 The route ends when the app exists. After that, a change the person asks for is change-app, with nothing from this route in the way.
 

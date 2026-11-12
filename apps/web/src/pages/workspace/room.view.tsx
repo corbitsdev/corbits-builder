@@ -55,6 +55,8 @@ export type RoomSlots = {
   designChoice: ReactElement | null;
   /** The reading pane's own such parts. */
   paneParts: ArtifactPaneSlots;
+  /** The coordinator's open question drawn over the whole room; null while there is none. */
+  page: ReactNode;
 };
 
 /** The box the person writes to the coordinator in. */
@@ -131,6 +133,8 @@ export type RoomContent = {
     /** Which of the two a narrow screen shows. */
     narrowPane: "conversation" | "artifacts";
     onNarrowPaneChange: (pane: "conversation" | "artifacts") => void;
+    /** The page slot covers the room, with the prompt box beneath it; closed, it waits hidden. */
+    pageOpen: boolean;
   };
   conversation: {
     thread: RoomThreadContent;
@@ -157,6 +161,7 @@ export function RoomView({
   nextStep,
   designChoice,
   paneParts,
+  page,
 }: RoomViewProps) {
   const { chatFirst, narrowPane, onNarrowPaneChange } = layout;
   const { designChosen } = conversation;
@@ -210,13 +215,28 @@ export function RoomView({
               >
                 <EmptyConversation empty={conversation.empty} />
               </RoomThread>
-              <Dock dock={dock} answersShell={shell.answers} />
+              {layout.pageOpen ? null : (
+                <Dock dock={dock} answersShell={shell.answers} />
+              )}
             </div>
           </section>
           {chatFirst ? null : (
             <ArtifactPane {...documentPane} {...paneParts} paneRef={paneRef} />
           )}
         </div>
+        {page === null ? null : (
+          // Kept while closed, so the screen's draft and the page it shows wait for the person.
+          <div
+            className={styles.page}
+            data-slot="room-page"
+            hidden={!layout.pageOpen}
+          >
+            <div className={styles.pageScreen}>{page}</div>
+            {layout.pageOpen ? (
+              <Dock dock={dock} answersShell={shell.answers} />
+            ) : null}
+          </div>
+        )}
       </div>
       {shell.reply}
     </StageView>

@@ -1024,6 +1024,16 @@ export const wording = {
       "This question can't be shown here. Answer it in your own words below.",
     screenLoading: "Loading…",
     screenNotSaved: "Your choice was not saved. It is kept; try again.",
+    /** In the conversation while a screen placed over the room is open but closed for now. */
+    pageScreenOpen: "Waiting for your review.",
+    pageScreenReopen: "Open",
+  },
+  /** Why the mockup review cannot record an approval of the design it shows. */
+  designReview: {
+    draftNotApprovable:
+      "The designer is still working; approve once it is filed.",
+    noOption: "Only a filed design option can be approved here.",
+    approved: "This design is already approved.",
   },
   archivedProject: {
     title: "This project is archived",

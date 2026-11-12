@@ -1,4 +1,5 @@
 .room {
+  position: relative;
   display: flex;
   flex-direction: column;
   flex: 1 1 auto;
@@ -175,4 +176,32 @@
   .room[data-mobile-pane="artifacts"] .conversationPane {
     display: none;
   }
+}
+
+/* A screen placed on the page covers the room, the prompt box at its foot. */
+.page {
+  position: absolute;
+  inset: 0;
+  z-index: 10;
+  display: flex;
+  flex-direction: column;
+  background: var(--wb-background);
+}
+
+.page[hidden] {
+  display: none;
+}
+
+.pageScreen {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  min-height: 0;
+}
+
+.page > [data-slot="composer"] {
+  box-sizing: border-box;
+  width: 100%;
+  max-width: 46rem;
+  margin-inline: auto;
 }

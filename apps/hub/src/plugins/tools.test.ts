@@ -1,6 +1,7 @@
 import { expect, test } from "bun:test";
 import { guidanceText } from "@corbits-builder/plugin";
 import pickFonts from "@corbits-builder/pick-fonts";
+import reviewMockup from "@corbits-builder/review-mockup";
 import { withoutResumeContext } from "../config/resume.ts";
 import { discover, withPluginHint } from "./tools.ts";
 
@@ -28,9 +29,10 @@ test("discover with nothing matching names the groups and what is in each", () =
       'No plugin matches "send an invoice".',
       "",
       "Groups:",
-      "  look: pick-fonts (Shows the person the fonts in use and fonts to choose a primary and a secondary font from.); pick-colours (Shows the person the primary (brand) and background colours in use and lets them choose new ones.)",
+      `  look: pick-fonts (Shows the person the fonts in use and fonts to choose a primary and a secondary font from.); pick-colours (Shows the person the primary (brand) and background colours in use and lets them choose new ones.); review-mockup (${reviewMockup.describe.summary})`,
       "  type: pick-fonts (Shows the person the fonts in use and fonts to choose a primary and a secondary font from.)",
       "  colour: pick-colours (Shows the person the primary (brand) and background colours in use and lets them choose new ones.)",
+      `  design: review-mockup (${reviewMockup.describe.summary})`,
       "",
       "Call again with group set to one of them, or carry on without a plugin.",
     ].join("\n"),

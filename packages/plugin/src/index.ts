@@ -28,6 +28,12 @@ export const Builder = Common.merge({
   // Project values, by their registered names, that Builder supplies to the screen and saves from its output.
   "reads?": "string[]",
   "writes?": "string[]",
+  // "page" draws the screen over the whole room with the prompt box still in reach; without it the
+  // screen draws in the conversation.
+  "place?": "'page'",
+  // What the host itself supplies the view, by the names its registry knows: data too large or too
+  // live for the input or project values, or a part only the host may draw.
+  "host?": "string[]",
 });
 export type Builder = typeof Builder.infer;
 
@@ -133,8 +139,20 @@ export const defineWorkflow = <In>(workflow: Workflow<In>) => workflow;
 export const Instruction =
   NativeSpecialistAssignment.get("instruction").and("string >= 40");
 
-// What the interface hands a screen's view. Plain props, so this package needs no React.
-export type ScreenViewProps<Input, Output, Prepared> = {
+// What a screen placed on the page shares with the prompt box the person still types in.
+export type PageControls<Output> = {
+  // What the prompt box sends in place of a reply, built with the typed text as its message; null
+  // while there is nothing to send, so typing answers in words.
+  stage(compose: ((message: string | undefined) => Output) | null): void;
+  // Sends what is staged with the prompt box's text, as its Send does.
+  sendStaged(): void;
+  // Back to the conversation without answering; the screen keeps its draft until reopened.
+  close(): void;
+};
+
+// What the interface hands a screen's view. Plain props, so this package needs no React. host
+// holds what the manifest names under host, and page is there for a screen placed on the page.
+export type ScreenViewProps<Input, Output, Prepared, Host = unknown> = {
   input: Input;
   project: ProjectValues;
   prepared: Prepared;
@@ -144,6 +162,8 @@ export type ScreenViewProps<Input, Output, Prepared> = {
   submit(output: Output): Promise<void>;
   submitting: boolean;
   answer: Output | undefined;
+  host?: Host;
+  page?: PageControls<Output> | undefined;
 };
 
 export type Refused = { ok: false; refusal: Refusal; text: string };
