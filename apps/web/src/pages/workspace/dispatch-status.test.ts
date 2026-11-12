@@ -21,7 +21,6 @@ const room = (state: "working" | "waiting" | "approval"): DispatchRoom => ({
   ],
   failed: [],
   seen: new Map(),
-  approvals: [],
   activity: [],
 });
 
@@ -29,9 +28,13 @@ const [coder] = dispatchesOf(
   {
     kind: "tool-trace",
     toolCallId: "call-coder",
-    name: "deploy_coder",
+    name: "execute",
     status: "output-available",
-    input: { instruction: "Build it." },
+    input: {
+      plugin: "coder",
+      action: "build",
+      input: { instruction: "Build it." },
+    },
   },
   { content: JSON.stringify({ runId: "run-coder" }), isError: false },
 );

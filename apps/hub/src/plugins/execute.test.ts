@@ -14,8 +14,6 @@ const deployment = {
   defaultSourceOfferingId: "offering",
 };
 const workflows = {
-  "writer-constraints": deployment,
-  "writer-approaches": deployment,
   "writer-product-requirements": deployment,
   "writer-build-plan": deployment,
   "writer-document": deployment,
@@ -79,7 +77,8 @@ function project(
         values: Object.fromEntries(keys.split(",").map((key) => [key, null])),
       });
     }
-    if (path.endsWith("/design-concepts")) return Response.json(body);
+    if (path.endsWith("/checks")) return Response.json({ checks: [] });
+    if (path.endsWith("/run-records")) return Response.json(body);
     if (path.endsWith("/artifact-approvals")) {
       approvals.push(body);
       return Response.json({ approvalId: "approval", artifacts: [] });
@@ -146,6 +145,7 @@ test("the dynamic coordinator starts work with execute and offers no staged tool
     "discover",
     "execute",
     "runs",
+    "plan",
     "question",
   ]);
 });

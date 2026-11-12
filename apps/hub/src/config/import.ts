@@ -1,8 +1,4 @@
-import type { CoordinatorMode } from "../environment.ts";
-
-const IMPORT_APP_MESSAGE =
-  " The app is already built: its source is filed as the app document, and a coder starts from it, so assign only the work that remains.";
-// In dynamic mode a change to an app that exists goes to a coder at once, documents or not.
+// A change to an app that exists goes to a coder at once, documents or not.
 const DIRECT_CHANGE_MESSAGE =
   " The app is already built: its source is filed as the app document, and it can be changed directly: a change I ask for goes to a coder at once, with no documents to write or approve first.";
 
@@ -22,9 +18,8 @@ export const PLANNED_DOCUMENT_KINDS = [
 // The importing person's opening message to a newly imported project's coordinator, naming the
 // imported documents with no kind of their own so it reads them as the project's materials, and,
 // when the app came in without some of its documents (a person's own repository), which ones
-// the coordinator writes with them from the code; in dynamic mode it only reads the code to learn the app.
+// the coordinator reads the code to learn the app.
 export function importedProjectMessage(
-  mode: CoordinatorMode,
   materials: readonly string[],
   withApp: boolean,
   missing: readonly string[] = [],
@@ -32,26 +27,14 @@ export function importedProjectMessage(
   const filed = materials.length
     ? ` The documents with no place of their own here are filed as materials: ${materials.join(", ")}.`
     : "";
-  if (mode === "dynamic") {
-    const unwritten =
-      withApp && missing.length
-        ? ` The code came from my own repository, so these documents were never written: ${missing.join(", ")}. Read the code with read_artifact, its package.json and README to learn the app.`
-        : "";
-    return (
-      IMPORTED_PROJECT_LEAD +
-      filed +
-      (withApp ? DIRECT_CHANGE_MESSAGE : "") +
-      unwritten
-    );
-  }
   const unwritten =
     withApp && missing.length
-      ? ` The code came from my own repository, so these documents were never written: ${missing.join(", ")}. Read the code with read_artifact, its package.json and README first, and write the brief yourself from what it shows, asking me only what the code cannot tell you; then have the writers produce the rest in order, each instruction carrying what you learned from the code, and have me approve each one before the next.`
+      ? ` The code came from my own repository, so these documents were never written: ${missing.join(", ")}. Read the code with read_artifact, its package.json and README to learn the app.`
       : "";
   return (
     IMPORTED_PROJECT_LEAD +
     filed +
-    (withApp ? IMPORT_APP_MESSAGE : "") +
+    (withApp ? DIRECT_CHANGE_MESSAGE : "") +
     unwritten
   );
 }

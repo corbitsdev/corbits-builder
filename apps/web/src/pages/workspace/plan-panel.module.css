@@ -1,0 +1,57 @@
+.plan {
+  position: relative;
+  display: flex;
+  flex: none;
+  flex-direction: column;
+  box-sizing: border-box;
+  min-height: 0;
+  border-inline-start: 1px solid var(--wb-border);
+  background: var(--wb-background);
+}
+
+/* In a narrow room it lies over the conversation, under the project view. */
+.plan[data-drawer] {
+  position: absolute;
+  inset-block: 0;
+  inset-inline-end: 0;
+  z-index: 5;
+  max-width: 100%;
+  box-shadow: var(--wb-shadow);
+}
+
+/* The grab strip on the panel's left edge. */
+.handle {
+  position: absolute;
+  inset-block: 0;
+  inset-inline-start: -3px;
+  width: 6px;
+  cursor: col-resize;
+  touch-action: none;
+}
+
+.handle:hover,
+.handle:focus-visible {
+  background: var(--wb-border-strong);
+}
+
+.header {
+  display: flex;
+  flex: none;
+  align-items: center;
+  justify-content: space-between;
+  padding: var(--space-1) var(--space-2) var(--space-1) var(--space-4);
+  border-bottom: 1px solid var(--wb-border);
+}
+
+.title {
+  margin: 0;
+  font-size: 0.875rem;
+  font-weight: 600;
+}
+
+.body {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  padding: var(--space-2) var(--space-4);
+}

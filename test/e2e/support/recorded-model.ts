@@ -245,7 +245,7 @@ export function classifyRole(
   if (tools.has("write_deck") || tools.has("file_package")) {
     return "presenter";
   }
-  if (tools.has("write_artifact") && !tools.has("read_artifact")) {
+  if (tools.has("write_artifact")) {
     return "writer";
   }
   const sys = req.messages.find((m) => m.role === "system");

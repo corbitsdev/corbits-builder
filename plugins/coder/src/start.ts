@@ -31,7 +31,9 @@ function coderBusy(live?: Working) {
 }
 
 // A change starts from the app as last saved; a first build's manifest requires that there is none.
-// A coder still on the app refuses at once rather than wait for it.
+// A coder still on the app refuses at once rather than wait for it. A project whose person lets
+// packages install without asking gets the coder whose install_packages does not ask; a running
+// coder keeps the definition it was deployed with.
 export default defineStarter(
   type({
     "+": "reject",
@@ -48,8 +50,12 @@ export default defineStarter(
   ) => {
     const live = (await project.working()).find((run) => run.role === "coder");
     if (live) throw coderBusy(live);
+    const { preferences } = await project.state();
     const { runId } = await project.startAlone({
-      workflow,
+      workflow:
+        preferences["install_any_package"] === "yes"
+          ? "coder-any-package"
+          : workflow,
       correlation,
       // The filed documents a coder works from and the chosen design; with neither, the note
       // that the instruction is the whole assignment.

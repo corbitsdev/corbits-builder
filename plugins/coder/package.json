@@ -32,8 +32,14 @@
     "when": "The app needs building for the first time, or the person asks for a change to the app the project has.",
     "unless": "The person is unsure what they want and a screen would let them choose, or they want only a mockup.",
     "packages": {
-      "coder": "./src/packages/coder.ts",
-      "coder-any-package": "./src/packages/coder-any-package.ts"
+      "coder": {
+        "entry": "./src/packages/coder.ts",
+        "role": "coder"
+      },
+      "coder-any-package": {
+        "entry": "./src/packages/coder-any-package.ts",
+        "role": "coder"
+      }
     },
     "starters": {
       "coder": "./src/start.ts"
@@ -84,6 +90,29 @@
           "correlation": "coder-change",
           "app": "existing"
         }
+      },
+      "builds": {
+        "runs": "check",
+        "when": "Before showing, filing or deploying the app, to prove its saved version still builds.",
+        "requires": [
+          [
+            "app_exists"
+          ]
+        ],
+        "all": [
+          {
+            "command": {
+              "run": [
+                "bun",
+                "run",
+                "build"
+              ]
+            }
+          }
+        ],
+        "returns": [
+          "builds:app"
+        ]
       }
     },
     "examples": [
@@ -97,7 +126,8 @@
     ],
     "facts": {
       "app_exists": "the project has an app, built or imported",
-      "!app_exists": "the project has no app yet"
+      "!app_exists": "the project has no app yet",
+      "builds:app": "the app's saved version builds"
     },
     "values": {
       "stack.language": {

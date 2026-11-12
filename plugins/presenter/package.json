@@ -1,0 +1,66 @@
+{
+  "name": "@corbits-builder/presenter",
+  "version": "0.2.0",
+  "private": true,
+  "description": "Builds a slide deck and an approval package for one audience from the project's approved documents and its chosen design.",
+  "license": "SEE LICENSE IN ../../LICENSE.md",
+  "author": "Sawyer Cutler <sawyer@dirtroad.dev>",
+  "type": "module",
+  "exports": {
+    "./skills": "./src/skills.ts",
+    "./packages/*": "./src/packages/*.ts"
+  },
+  "dependencies": {
+    "@corbits-builder/hub": "workspace:*",
+    "@corbits-builder/plugin": "workspace:*",
+    "@corbits-builder/plugin-host": "workspace:*",
+    "@corbits-builder/schemas": "workspace:*",
+    "@intx/agent": "workspace:*",
+    "@intx/tools-mail": "workspace:*",
+    "@intx/workflow": "workspace:*",
+    "arktype": "catalog:"
+  },
+  "builder": {
+    "handle": "presenter",
+    "runs": "specialist",
+    "groups": [
+      "present",
+      "share",
+      "approval"
+    ],
+    "when": "The person wants to share or present the project to an audience, such as their CEO, an investor or a client, as a slide deck and an approval package.",
+    "unless": "They want a document written or the app itself changed.",
+    "packages": {
+      "presenter": {
+        "entry": "./src/packages/presenter.ts",
+        "role": "presenter"
+      }
+    },
+    "starters": {
+      "presenter": "./src/start.ts"
+    },
+    "actions": {
+      "present": {
+        "runs": "workflow",
+        "when": "The person wants a deck and approval package for an audience, once they have said who it is for, the decision they need and which approved documents it covers.",
+        "unless": "The documents it would cover are not approved yet, or the person has not said who the audience is.",
+        "input": "./src/present.ts",
+        "requires": [
+          [
+            "approved:{kinds}"
+          ]
+        ],
+        "returns": [],
+        "start": {
+          "workflow": "presenter"
+        }
+      }
+    },
+    "examples": [
+      "share this with our CEO",
+      "make a deck for investors",
+      "present the plan to the client",
+      "I need sign-off from my CTO"
+    ]
+  }
+}

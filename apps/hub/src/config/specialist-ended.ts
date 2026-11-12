@@ -1,4 +1,3 @@
-import type { SpawnedRole } from "@corbits-builder/schemas/installed-workflows";
 import { HUB_NOTE_LEAD } from "./resume.ts";
 
 // The hub's note to a coordinator whose specialist stopped before it delivered its result: the plain
@@ -6,38 +5,6 @@ import { HUB_NOTE_LEAD } from "./resume.ts";
 // Interchange gave it.
 
 type Outcome = "failed" | "cancelled";
-
-const PERSON_LINES: Record<SpawnedRole, Record<Outcome, string>> = {
-  writer: {
-    failed: "The writer stopped before finishing.",
-    cancelled: "The writer was stopped.",
-  },
-  reviewer: {
-    failed: "The reviewer stopped before finishing.",
-    cancelled: "The review was stopped.",
-  },
-  coder: {
-    failed: "The app builder stopped before finishing.",
-    cancelled: "The build was stopped.",
-  },
-  designer: {
-    failed: "The designer stopped before finishing.",
-    cancelled: "The design was stopped.",
-  },
-  presenter: {
-    failed: "The presenter stopped before finishing.",
-    cancelled: "The presentation was stopped.",
-  },
-};
-
-const TASKS: Record<SpawnedRole, (kind: string | undefined) => string> = {
-  writer: (kind) => `The writer writing the ${kind ?? "assigned"} document`,
-  reviewer: (kind) =>
-    `The reviewer checking the ${kind ?? "assigned"} document`,
-  coder: () => "The coder building the app",
-  designer: () => "The designer working on the app's design",
-  presenter: () => "The presenter building the approval package",
-};
 
 // A run the coordinator started for a plugin action is named by that action, such as "The coder's
 // change", since one role runs several actions.
@@ -57,10 +24,8 @@ const actionLines = (
 
 export function specialistEndedMessage(ended: {
   runId: string;
-  role: SpawnedRole;
-  kind?: string;
-  // The plugin action the run was started for, when the coordinator started it with execute.
-  action?: { plugin: string; action: string };
+  // The plugin action the run was started for.
+  action: { plugin: string; action: string };
   status: Outcome;
   reason?: { message: string; code?: string };
 }): string {
@@ -68,11 +33,6 @@ export function specialistEndedMessage(ended: {
   const reason = ended.reason
     ? ` Recorded reason${ended.reason.code ? ` (${ended.reason.code})` : ""}: ${ended.reason.message}`
     : "";
-  const { line, task } = ended.action
-    ? actionLines(ended.action, ended.status)
-    : {
-        line: PERSON_LINES[ended.role][ended.status],
-        task: TASKS[ended.role](ended.kind),
-      };
+  const { line, task } = actionLines(ended.action, ended.status);
   return `${HUB_NOTE_LEAD}${line}\n\n${task} in run ${ended.runId} ${how} before finishing, so no result is coming from it.${reason}`;
 }

@@ -12,6 +12,7 @@ export type ShownDocument = {
   title: string;
   artifactId: string;
   version: number;
+  approvedVersion?: number;
 };
 
 export type Host = {
@@ -28,6 +29,7 @@ type Props = ScreenViewProps<
 export const text = {
   title: "Approve the documents",
   version: (version: number) => `version ${String(version)}`,
+  approved: "already approved",
   open: "Open",
   notFiled: (kind: string) => `${kind} is not filed yet.`,
   approve: "Approve",
@@ -56,7 +58,10 @@ export function ApproveDocuments({
       <ul>
         {filed.map((document) => (
           <li key={document.kind}>
-            {document.title}, {text.version(document.version)}{" "}
+            {document.title}, {text.version(document.version)}
+            {document.approvedVersion === document.version
+              ? `, ${text.approved}`
+              : null}{" "}
             <Button
               type="button"
               size="sm"

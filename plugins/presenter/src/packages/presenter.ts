@@ -1,16 +1,19 @@
-import { createPresenterAgent } from "@corbits-builder/presenter/agent";
-import { createPresenterWorkflow } from "@corbits-builder/presenter";
 import { mail, type MailToolEnv } from "@intx/tools-mail/sidecar-bundle";
 import {
   createPackageTools,
   type PackageToolEnv,
-} from "../../artifacts/package-tools.ts";
-import { createSkillTools } from "../../skills/tools.ts";
-import { roleInference } from "../role-inference.ts";
-import { compactingDirector } from "../director.ts";
-import { dropDegenerateTurn, trimHistory } from "../compaction.ts";
-import { savedResultTools } from "../saved-result-tools.ts";
-import { nativePackageName } from "../package-name.ts";
+} from "@corbits-builder/hub/artifacts/package-tools";
+import { createSkillTools } from "@corbits-builder/hub/skills/tools";
+import { roleInference } from "@corbits-builder/hub/workflows/role-inference";
+import { compactingDirector } from "@corbits-builder/hub/workflows/director";
+import {
+  dropDegenerateTurn,
+  trimHistory,
+} from "@corbits-builder/hub/workflows/compaction";
+import { savedResultTools } from "@corbits-builder/hub/workflows/saved-result-tools";
+import { nativePackageName } from "@corbits-builder/hub/workflows/package-name";
+import { createPresenterAgent } from "../agent.ts";
+import { createPresenterWorkflow } from "../workflow.ts";
 
 const compacting = compactingDirector(nativePackageName("presenter"));
 

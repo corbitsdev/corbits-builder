@@ -121,7 +121,7 @@ export interface BuildExecutionPolicy {
   maxToolResultBytes: number;
 }
 export class BuildExecutionError extends Error {}
-const quote = (value: string) => `'${value.replaceAll("'", "'\\''")}'`;
+export const quote = (value: string) => `'${value.replaceAll("'", "'\\''")}'`;
 // `bun --filter`'s line when one workspace's script ends: "@app/server dev: Exited with code 1".
 const PART_EXITED = /^(\S+) \S+: Exited with code \d+$/;
 const PART_LINE = /^(\S+) \S+: (.*)$/;

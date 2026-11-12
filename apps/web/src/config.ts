@@ -207,6 +207,37 @@ export const wording = {
     approved: (version: number) => `Approved v${String(version)}`,
     drafted: (version: number) => `Drafted v${String(version)}`,
   },
+  /** The document bar's approval of the version being read, with no question asking for it. */
+  documentApproval: {
+    approve: (version: number) => `Approve v${String(version)}`,
+    approveLabel: (version: number) => `Approve version ${String(version)}`,
+    approved: (version: number) => `Approved v${String(version)}`,
+    approvedLabel: (version: number, at: string | undefined) =>
+      at === undefined
+        ? `Version ${String(version)} is approved`
+        : `Version ${String(version)} was approved on ${new Date(at).toLocaleString()}`,
+    failed: "That approval was not recorded.",
+  },
+  /** The project view's tab for the named pieces of project data the plugins declare. */
+  projectValues: {
+    tab: "Project values",
+    title: "Values every specialist that reads them is given",
+    loading: "Reading the project values…",
+    failed: "The project values could not load.",
+    notSet: "Not set",
+    save: "Save",
+    saved: (name: string) => `${name} saved.`,
+    notSaved: "That value was not saved.",
+    kind: "What it is",
+    text: "Text",
+    link: "Link",
+    file: "Attached file",
+    linkPlaceholder: "https://",
+    chooseFile: "Choose an attached file",
+    noFiles:
+      "No files are attached yet. Attach one with the paperclip in the message box, then pick it here.",
+    readOnly: "Shown as stored; it has no editor here.",
+  },
   newProject: {
     title: "What do you want to build today?",
     lead: "Turn any half-baked idea into an application",
@@ -385,6 +416,16 @@ export const wording = {
     openProject: "Project",
     /** Takes the person from the project view back to the conversation. */
     closeProject: "Back to the conversation",
+    /** The plan beside the conversation: its heading, its button once folded away, and its parts. */
+    plan: {
+      title: "Plan",
+      hide: "Hide the plan",
+      resize: "Resize the plan",
+      steps: "Plan steps",
+      /** How far along the plan is, beside its button. */
+      progress: (done: number, total: number) =>
+        `${String(done)} of ${String(total)}`,
+    },
   },
   /** The composer's placeholder when no approval is open. An open approval keeps approval.composerPlaceholder. */
   composer: {
@@ -496,16 +537,8 @@ export const wording = {
       runningMany: (count: number) => `Doing ${String(count)} things at once`,
       failed: (count: number) => `${String(count)} did not finish`,
     },
-    /** A hand-off in the coordinator's turn, by tool name or execute's plugin action: who it starts, once started. */
+    /** A hand-off in the coordinator's turn, by execute's plugin action: who it starts, once started. */
     handoff: {
-      deploy_writer: (document?: string) =>
-        document ? `Started the writer · ${document}` : "Started the writer",
-      design_app: () => "Started the designer",
-      deploy_coder: () => "Started the app builder",
-      deploy_presenter: () => "Started the presenter",
-      instruct_coder: () => "Started the app builder on a change",
-      review_artifact: (document?: string) =>
-        document ? `Asked for a review · ${document}` : "Asked for a review",
       "coder build": () => "Started the app builder",
       "coder change": () => "Started the app builder on a change",
       "writer write": (document?: string) =>
@@ -518,20 +551,8 @@ export const wording = {
         document ? `Asked for a review · ${document}` : "Asked for a review",
       "designer mockup": () => "Started the designer",
     } as Record<string, (subject?: string) => string>,
-    /** A hand-off the hub refused, by tool name or execute's plugin action: who it did not start. */
+    /** A hand-off the hub refused, by execute's plugin action: who it did not start. */
     handoffRefused: {
-      deploy_writer: (document?: string) =>
-        document
-          ? `Could not start the writer · ${document}`
-          : "Could not start the writer",
-      design_app: () => "Could not start the designer",
-      deploy_coder: () => "Could not start the app builder",
-      deploy_presenter: () => "Could not start the presenter",
-      instruct_coder: () => "Could not start the app builder on a change",
-      review_artifact: (document?: string) =>
-        document
-          ? `Could not ask for a review · ${document}`
-          : "Could not ask for a review",
       "coder build": () => "Could not start the app builder",
       "coder change": () => "Could not start the app builder on a change",
       "writer write": (document?: string) =>
@@ -584,17 +605,9 @@ export const wording = {
       mail_read: () => "reading a note",
       mail_search: () => "reading notes",
       mail_wait: () => "waiting for a reply",
-      request_approval: () => "waiting for your approval",
-      deploy_writer: () => "starting a writer",
-      review_artifact: () => "asking for a review",
-      design_app: () => "starting the designer",
-      deploy_coder: () => "starting the app builder",
-      deploy_presenter: () => "starting the presenter",
       write_deck: () => "building the slide deck",
       check_deck: () => "checking the slide deck",
       file_package: () => "filing the approval package",
-      instruct_coder: () =>
-        "waiting for you to approve a change for the app builder",
       exec: () => "rewriting a tool call",
       discover: () => "looking up what it can do",
       execute: () => "handing work to a specialist",
@@ -730,15 +743,8 @@ export const wording = {
     } as Record<string, string>,
     /** What a hand-off works on when nothing names it yet. */
     unnamed: "the task",
-    waiting: "Waiting for your go-ahead",
     /** The run is held on a request only the person can approve, such as a package install. */
     approval: "Paused for your approval",
-    /** The hand-off's approval ended without a yes, so nothing started. */
-    declined: {
-      rejected: "Not started — you said not yet",
-      timeout: "Not started — the go-ahead ran out of time",
-      expired: "Not started — the go-ahead expired",
-    },
     /** The hub refused the hand-off, so nothing started. */
     refused: "Not started",
     starting: "Starting…",
@@ -843,87 +849,16 @@ export const wording = {
       undo: "Undo",
       undoHint: "Undo sends your message instead",
     },
-    /** What a teammate would ask, by the native ask. A document ask names its document. */
-    question: {
-      design_app: () => "Ready to start the design?",
-      instruct_coder: () => "Send this change to the app builder?",
-    } as Record<string, (subject?: string) => string>,
-    document: (document: string) => `Happy with the ${document}?`,
-    /** An ask that names neither a document nor a tool. */
+    /** An ask that names no tool. */
     unnamed: "Happy for this to go ahead?",
-    /** The settled line of an ask that names neither a document nor a tool. */
+    /** The settled line of an ask that names no tool. */
     settledUnnamed: "the request",
-    /** A request_approval ask that covers several documents, by their short names. */
-    documents: (names: readonly string[]) =>
-      `Happy with the ${names.slice(0, -1).join(", ")} and ${names.at(-1) ?? ""}?`,
-    /** An ask with no wording of its own and no document, by its tool and main argument. */
+    /** An ask by its tool and main argument. */
     tool: (tool: string, subject?: string) =>
       subject === undefined
         ? `Let the app builder use ${tool}?`
         : `Let the app builder use ${tool} on ${subject}?`,
-    /** The line under an ask that covers no one document. */
-    body: {
-      design_app: "If these look right, the design starts from them.",
-    } as Record<string, string>,
-    /** What the card asks the person to approve, so several open cards never blur together. */
-    approving: {
-      document: (title: string, version: number, by: string) =>
-        `Approving ${title} v${String(version)}, written by the ${by}.`,
-      documents: "Approving each of these documents at the version listed.",
-      design_app: "Approving the start of the design from these documents.",
-      instruct_coder: "Approving this change, sent to the app builder.",
-    },
-    /** Who wrote a document, by its kind; any other kind is a writer's. */
-    writtenBy: {
-      problem_brief: "Coordinator",
-      design: "Designer",
-      approval_package: "Presenter",
-    } as Record<string, string>,
-    writer: "Writer",
-    /** The document written after this one once it is approved, and the line saying so. */
-    nextDocument: {
-      problem_brief: "Constraints",
-      constraints: "Approaches",
-      approaches: "Requirements",
-      product_requirements: "Design",
-      design: "Build plan",
-      build_plan: "App",
-    } as Record<string, string>,
-    next: (document: string) => `Next on approval: ${document}.`,
-    /** The design concepts a design ask starts, listed by name. */
-    concepts: "Design concepts to compare",
-    /** Column headings for those concepts on the design approval card. */
-    conceptColumns: {
-      design: "Design",
-      description: "Description",
-    },
-    /** An ask's own action labels, by its tool, where the defaults read wrong. */
-    actions: {
-      design_app: {
-        /** Zero concepts, or several. */
-        approve: "Start Designs",
-        /** One concept, by its label: "Start Clear Skies". */
-        startNamed: (label: string) => `Start ${label}`,
-        deny: "Not Yet",
-      },
-    } as Record<
-      string,
-      {
-        approve: string;
-        deny: string;
-        startNamed?: (label: string) => string;
-      }
-    >,
-    /** A document the card lists, as a link: "Weather App Brief v2". */
-    source: (title: string, version: number) => `${title} v${String(version)}`,
-    /** A document a several-document approval lists, with who wrote it. */
-    writtenSource: (title: string, version: number, by: string) =>
-      `${title} v${String(version)}, written by the ${by}`,
-    /** Folds the exact versions a several-document card covers. */
-    covers: (count: number) => `Covers ${String(count)} documents`,
-    /** Folds what the specialist is told under the card. */
-    details: "Details",
-    /** A document's name as the card says it. */
+    /** A document's name as an earlier-document warning says it. */
     shortName: {
       problem_brief: "brief",
       constraints: "constraints",
@@ -933,18 +868,10 @@ export const wording = {
       design: "design",
       approval_package: "approval package",
     } as Record<string, string>,
-    /** Takes the reading pane back to the document the card asks about. */
-    show: (document: string) => `Show ${document}`,
-    /** A decided card's one line, where it was asked. */
-    approved: (document: string) => `Approved · ${document}`,
-    /** What an approved ask let go ahead, as its decided line names it: "Approved · the design". */
-    settled: {
-      design_app: "the design",
-      instruct_coder: "the change for the app builder",
-    } as Record<string, string>,
-    /** A declined card's one line: "Not yet · Approaches". */
-    declined: (documents?: string) =>
-      documents === undefined ? "Not yet" : `Not yet · ${documents}`,
+    /** A decided card's one line: "Approved · the request". */
+    approved: (line: string) => `Approved · ${line}`,
+    /** A declined card's one line. */
+    declined: "Not yet",
     packages: (list: string) => `Install ${list} into your app?`,
     packagesDetail: "The app builder needs these to build your app.",
     packagesAllowed: (list: string) => `Allowed · ${list}`,

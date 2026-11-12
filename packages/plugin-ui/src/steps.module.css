@@ -1,0 +1,80 @@
+.steps,
+.children {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.children {
+  margin-inline-start: var(--space-4);
+  border-inline-start: 1px solid var(--wb-border);
+  padding-inline-start: var(--space-2);
+}
+
+.step {
+  min-width: 0;
+}
+
+.row {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: var(--space-2);
+  padding: var(--space-1) 0;
+  font-size: 0.875rem;
+}
+
+summary.row {
+  cursor: pointer;
+}
+
+.title {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.state {
+  display: inline-flex;
+  flex: none;
+  align-items: center;
+  gap: var(--space-1);
+  font-size: 0.75rem;
+}
+
+.icon {
+  width: 0.875rem;
+  height: 0.875rem;
+}
+
+.done {
+  color: var(--wb-okay);
+}
+
+.failed {
+  color: var(--wb-destructive);
+}
+
+.attention {
+  color: var(--wb-primary);
+}
+
+.quiet {
+  color: var(--wb-muted-foreground);
+}
+
+.summary,
+.detail {
+  margin: 0 0 var(--space-2);
+  color: var(--wb-muted-foreground);
+  font-size: 0.8125rem;
+}
+
+.detailTitle {
+  margin: 0;
+  font-weight: 600;
+}
+
+.detail ul {
+  margin: 0;
+  padding-inline-start: var(--space-4);
+}

@@ -1,9 +1,5 @@
 import type { WriterDocumentKind } from "@corbits-builder/schemas/artifact";
 import {
-  DOCUMENT_WRITER_PACKAGE,
-  WRITER_PACKAGES,
-} from "@corbits-builder/schemas/installed-workflows";
-import {
   createDocumentWriterArtifactTools,
   createWriterArtifactTools,
 } from "@corbits-builder/hub/artifacts/tools";
@@ -18,6 +14,7 @@ import { savedResultTools } from "@corbits-builder/hub/workflows/saved-result-to
 import { nativePackageName } from "@corbits-builder/hub/workflows/package-name";
 import { createWriterAgent } from "./agent.ts";
 import { createWriterWorkflow } from "./workflow.ts";
+import { DOCUMENT_WRITER_PACKAGE, WRITER_PACKAGES } from "./task.ts";
 
 /**
  * The writer's workflow package for one known kind, whose write_artifact saves only that kind, or

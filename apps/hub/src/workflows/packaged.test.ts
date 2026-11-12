@@ -36,10 +36,6 @@ test("production entries expose concrete native workflows without callback crede
   process.env.BUILDER_ROLE_INFERENCE = JSON.stringify(inference.coordinator);
   const coordinator = (await import("./entries/coordinator.ts")).default;
   const writers = [
-    (await import("@corbits-builder/writer/packages/writer-constraints"))
-      .default,
-    (await import("@corbits-builder/writer/packages/writer-approaches"))
-      .default,
     (
       await import("@corbits-builder/writer/packages/writer-product-requirements")
     ).default,
@@ -55,7 +51,9 @@ test("production entries expose concrete native workflows without callback crede
   ).default;
   const designer = (await import("@corbits-builder/designer/packages/designer"))
     .default;
-  const presenter = (await import("./entries/presenter.ts")).default;
+  const presenter = (
+    await import("@corbits-builder/presenter/packages/presenter")
+  ).default;
   expect(coordinator.steps.coordinate).toMatchObject({ triggers: "unbounded" });
   for (const writer of writers)
     expect(writer.steps.write).toMatchObject({ triggers: 1 });
@@ -121,13 +119,8 @@ test("built npm tarballs contain importable production workflow metadata and def
     join(tmpdir(), "sb-packaged-definition-test-"),
   );
   try {
-    const manifest = await buildWorkflowPackages(
-      directory,
-      "1.0.0",
-      inference,
-      "classic",
-    );
-    expect(manifest).toHaveLength(11);
+    const manifest = await buildWorkflowPackages(directory, "1.0.0", inference);
+    expect(manifest).toHaveLength(10);
     for (const metadata of manifest) {
       const extracted = join(directory, metadata.assetName);
       await mkdir(extracted);
@@ -157,85 +150,48 @@ test("built npm tarballs contain importable production workflow metadata and def
   // Building starts the coder's browser, whose first start downloads Chrome for Testing.
 }, 180_000);
 
-test("the built coordinator runs the prompt and tool marks COORDINATOR_MODE names, and the hub refuses any other", async () => {
+test("the built coordinator runs its prompt with the plugin tools and no tool waits on the person", async () => {
   const { mkdtemp, rm } = await import("node:fs/promises");
   const { tmpdir } = await import("node:os");
   const { join } = await import("node:path");
   const { pathToFileURL } = await import("node:url");
   const { buildWorkflowPackages } = await import("./build-packages.ts");
   const { nativePackageName } = await import("./package-name.ts");
-  const { readCoordinatorMode } = await import("../environment.ts");
   const { composeCoordinatorPrompt } =
     await import("@corbits-builder/coordinator/prompt");
-  expect(() => readCoordinatorMode({ COORDINATOR_MODE: "lean" })).toThrow(
-    "COORDINATOR_MODE must be classic or dynamic",
-  );
-  const built = async (setting: string | undefined) => {
-    const directory = await mkdtemp(join(tmpdir(), "sb-coordinator-prompt-"));
-    try {
-      const manifest = await buildWorkflowPackages(
-        directory,
-        "1.0.0",
-        inference,
-        readCoordinatorMode({ COORDINATOR_MODE: setting }),
+  const directory = await mkdtemp(join(tmpdir(), "sb-coordinator-prompt-"));
+  try {
+    const manifest = await buildWorkflowPackages(directory, "1.0.0", inference);
+    const coordinator = manifest.find(
+      (item) => item.packageName === nativePackageName("coordinator"),
+    );
+    if (!coordinator) throw new Error("coordinator_package_missing");
+    const child = Bun.spawn(
+      ["tar", "-xzf", join(directory, coordinator.file), "-C", directory],
+      { stdout: "ignore", stderr: "pipe" },
+    );
+    expect(await child.exited).toBe(0);
+    const entry = await import(
+      pathToFileURL(join(directory, "package", coordinator.entry)).href
+    );
+    const { systemPrompt, toolFactories } =
+      entry.default.steps.coordinate.agent;
+    const declared: { name: string; approval?: string }[] =
+      toolFactories.flatMap(
+        (tool: { definitions: { name: string; approval?: string }[] }) =>
+          tool.definitions,
       );
-      const coordinator = manifest.find(
-        (item) => item.packageName === nativePackageName("coordinator"),
-      );
-      if (!coordinator) throw new Error("coordinator_package_missing");
-      const child = Bun.spawn(
-        ["tar", "-xzf", join(directory, coordinator.file), "-C", directory],
-        { stdout: "ignore", stderr: "pipe" },
-      );
-      expect(await child.exited).toBe(0);
-      const entry = await import(
-        pathToFileURL(join(directory, "package", coordinator.entry)).href
-      );
-      const { systemPrompt, toolFactories } =
-        entry.default.steps.coordinate.agent;
-      const declared: { name: string; approval?: string }[] =
-        toolFactories.flatMap(
-          (tool: { definitions: { name: string; approval?: string }[] }) =>
-            tool.definitions,
-        );
-      return {
-        systemPrompt,
-        tools: declared.map(({ name }) => name),
-        marks: declared.filter((definition) => definition.approval),
-      };
-    } finally {
-      await rm(directory, { recursive: true, force: true });
-    }
-  };
-  const classic = composeCoordinatorPrompt("classic");
-  const dynamic = composeCoordinatorPrompt("dynamic");
-  expect(classic).not.toBe(dynamic);
-  const ask = (...names: string[]) =>
-    names.map((name) => ({ name, approval: "ask" }));
-  const classicBuild = {
-    systemPrompt: classic,
-    tools: [
+    expect(systemPrompt).toBe(composeCoordinatorPrompt());
+    // question is Interchange's own tool, offered by the bundle that checks a screen's input.
+    expect(declared.map(({ name }) => name)).toEqual([
       "read_artifact",
-      "write_artifact",
-      "request_approval",
-      "deploy_writer",
-      "review_artifact",
-      "deploy_coder",
-      "instruct_coder",
-      "design_app",
-      "deploy_presenter",
-      "read_skill",
       "discover",
+      "execute",
+      "runs",
       "read_file",
-    ],
-    marks: ask("request_approval", "instruct_coder", "design_app"),
-  };
-  expect(await built(undefined)).toEqual(classicBuild);
-  expect(await built("classic")).toEqual(classicBuild);
-  // question is Interchange's own tool, offered by the bundle that checks a screen's input.
-  expect(await built("dynamic")).toEqual({
-    systemPrompt: dynamic,
-    tools: ["read_artifact", "discover", "execute", "runs", "read_file"],
-    marks: [],
-  });
+    ]);
+    expect(declared.filter((definition) => definition.approval)).toEqual([]);
+  } finally {
+    await rm(directory, { recursive: true, force: true });
+  }
 }, 180_000);

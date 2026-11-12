@@ -29,6 +29,11 @@ export const keys = {
     all: ["userManual"] as const,
     of: (projectId: string) => ["userManual", projectId] as const,
   },
+  /** Every project value the plugins declare, as the project holds it. */
+  projectValues: {
+    all: ["projectValues"] as const,
+    of: (projectId: string) => ["projectValues", projectId] as const,
+  },
   liveApp: {
     all: ["liveApp"] as const,
     of: (projectId: string) => ["liveApp", projectId] as const,

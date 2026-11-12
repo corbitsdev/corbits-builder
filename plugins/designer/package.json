@@ -56,7 +56,10 @@
     "when": "The person wants to see how the app could look, to try or approve a design, or to choose the app's fonts or colours.",
     "unless": "They want the built app itself changed in a way they already stated exactly.",
     "packages": {
-      "designer": "./src/packages/designer.ts"
+      "designer": {
+        "entry": "./src/packages/designer.ts",
+        "role": "designer"
+      }
     },
     "starters": {
       "designer": "./src/start.ts"

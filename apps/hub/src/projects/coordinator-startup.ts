@@ -20,7 +20,6 @@ import {
 import { projectCoordinator } from "../db/schema.ts";
 import { ProjectError } from "./errors.ts";
 import type { Actor } from "../lib/actor.ts";
-import type { CoordinatorMode } from "../environment.ts";
 
 const START_FAILED = "coordinator_start_failed";
 const START_TIMEOUT = "coordinator_start_timeout";
@@ -165,11 +164,13 @@ async function attach(
   if (!runId) {
     let created: { runId: string };
     try {
-      const installed = await ports.installed(actor, projectId);
+      const { packages } = await ports.installed(actor, projectId);
+      const deployment = packages["coordinator"];
+      if (!deployment) throw startFailed();
       created = await ports.deploy({
         tenantId: actor.tenantId,
         principalId: actor.principalId,
-        deployment: installed.coordinator,
+        deployment,
       });
     } catch (error) {
       if (error instanceof ProjectError) throw error;
@@ -258,7 +259,6 @@ export function createInstalledCoordinatorStartup(
     AssetService,
     "createAsset" | "populateAsset" | "readAssetBlob" | "listAssetBlobs"
   >,
-  coordinatorMode: CoordinatorMode,
   allocate: (args: {
     tenantId: string;
     principalId: string;
@@ -271,11 +271,7 @@ export function createInstalledCoordinatorStartup(
   const registry = createCoordinatorRegistry(db);
   return createProjectCoordinatorStartup({
     installed(actor, projectId) {
-      return installForTenant(
-        { db, assets, coordinatorMode },
-        actor,
-        projectId,
-      );
+      return installForTenant({ db, assets }, actor, projectId);
     },
     async boundRun(tenantId, projectId) {
       const [row] = await db

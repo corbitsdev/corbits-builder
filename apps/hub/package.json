@@ -8,6 +8,7 @@
   "exports": {
     "./app": "./src/app.ts",
     "./artifacts/design-tools": "./src/artifacts/design-tools.ts",
+    "./artifacts/package-tools": "./src/artifacts/package-tools.ts",
     "./artifacts/service": "./src/artifacts/service.ts",
     "./artifacts/tools": "./src/artifacts/tools.ts",
     "./builds/browser-catalog": "./src/builds/browser-catalog.ts",

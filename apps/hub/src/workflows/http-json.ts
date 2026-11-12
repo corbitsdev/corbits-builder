@@ -50,6 +50,8 @@ export async function workflowHttpJson(options: {
   handle: string;
   path: string;
   body?: unknown;
+  // A body is posted unless this says it is put.
+  method?: "PUT";
   maxResponseBytes: number;
   signal: AbortSignal;
   timeoutMs?: number;
@@ -66,13 +68,14 @@ export async function mediatedHttpJson(options: {
   credential: HttpMediatedCredential;
   path: string;
   body?: unknown;
+  method?: "PUT";
   maxResponseBytes: number;
   signal: AbortSignal;
   timeoutMs?: number;
 }): Promise<unknown> {
   const { credential } = options;
   const response = await credential.fetch(options.path, {
-    method: options.body === undefined ? "GET" : "POST",
+    method: options.method ?? (options.body === undefined ? "GET" : "POST"),
     credentials: "omit",
     ...(options.body === undefined
       ? {}

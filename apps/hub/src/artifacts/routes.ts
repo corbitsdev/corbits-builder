@@ -21,10 +21,11 @@ import {
   DecidedApprovalList,
   DesignChoice,
   DesignChoiceReceipt,
-  DesignConceptRecord,
   DesignDraft,
   DesignTweaks,
   DesignTweaksReceipt,
+  DocumentApproval,
+  DocumentApprovalReceipt,
   LiveApp,
   MaterialReceipt,
   MaterialRemovedReceipt,
@@ -32,13 +33,19 @@ import {
   ProjectValues,
   ProjectValuesWrite,
   RunAction,
+  RunRecord,
 } from "@corbits-builder/schemas/artifact";
 import { ProjectActivity } from "@corbits-builder/schemas/activity";
 import {
   EXPORT_SECTIONS,
   ExportSection,
+  PlanView,
+  PlanWrite,
   ProjectExport,
+  StoredPlan,
 } from "@corbits-builder/schemas/project";
+import { planRefusal } from "@corbits-builder/plugin-host/coordinator";
+import { planState } from "@corbits-builder/plugin-host/plan";
 import { actorOf } from "../projects/authorization.ts";
 import { ProjectError } from "../projects/errors.ts";
 import { readJson } from "../lib/json.ts";
@@ -46,8 +53,10 @@ import {
   answerQuestionAsCaller,
   mailRunAsCaller,
 } from "../mail/caller-mail.ts";
-import { answerRefusedText } from "../config/answers.ts";
-import { openQuestion, screenOf } from "../plugins/question.ts";
+import { answerRefusedText, documentApprovedNote } from "../config/answers.ts";
+import { askedQuestions, openQuestion, screenOf } from "../plugins/question.ts";
+import type { Checks } from "../plugins/checks.ts";
+import { projectFacts } from "../plugins/facts.ts";
 import { mountApprovalRoundRoutes } from "./approval-rounds.ts";
 import {
   CATALOG,
@@ -57,6 +66,7 @@ import {
   ProjectRoutes,
 } from "../plugins/catalog.ts";
 import type { createArtifactService } from "./service.ts";
+import type { createSettingsService } from "../settings/service.ts";
 import { projectValueWrites, readProjectValues } from "./project-values.ts";
 
 const ROUTES = PLUGINS.filter(isRoute).map(({ builder }) => builder.handle);
@@ -68,6 +78,13 @@ const AnswerPost = type({
   "+": "reject",
   signalName: "string > 0",
   answer: QuestionAnswer,
+});
+
+// The question that puts filed documents in front of the person to approve, by their kinds.
+const ApproveAsked = type({
+  plugin: "'writer'",
+  action: "'approve'",
+  input: { kinds: "string[]" },
 });
 
 const security = [
@@ -93,6 +110,8 @@ export function mountArtifactRoutes(
   app: Hono<TenantEnv>,
   service: ReturnType<typeof createArtifactService>,
   nativeFetch?: (request: Request) => Promise<Response>,
+  checks?: Checks,
+  settings?: ReturnType<typeof createSettingsService>,
 ) {
   const body = async (c: { req: { json(): Promise<unknown> } }) => {
     const json = await readJson(c.req);
@@ -127,6 +146,95 @@ export function mountArtifactRoutes(
       );
     if (Object.keys(stored).length > 0)
       await service.saveStoredValues(current, projectId, stored);
+  };
+  // A screen's answer sets the project preferences it names, saved as Settings saves them, over the
+  // project's other preferences.
+  const prefer = async (
+    c: Context<TenantEnv>,
+    projectId: string,
+    chosen: Readonly<Record<string, string>>,
+  ) => {
+    if (!settings) throw new ProjectError(503, "preferences_unavailable");
+    const current = actorOf(c);
+    const { preferences } = (await settings.read(current, projectId)).fields;
+    const saved = await settings.save(current, projectId, {
+      command: "save_settings",
+      idempotencyKey: crypto.randomUUID(),
+      fields: {
+        preferences: {
+          value: Object.assign({}, preferences?.value, chosen),
+          baseVersion: preferences?.version ?? 0,
+        },
+      },
+    });
+    if (saved.conflicts.length > 0)
+      throw new ProjectError(409, "preferences_changed");
+  };
+  // The one way the person answers the coordinator's open question, from the answers route or an
+  // approval that covers what the question asked: a screen's output saves the values it writes,
+  // records what it approves and sets the preferences it names before the answer reaches the run.
+  const answer = async (
+    c: Context<TenantEnv>,
+    projectId: string,
+    signalName: string,
+    given: typeof QuestionAnswer.infer,
+  ) => {
+    const current = actorOf(c);
+    const { runId, asked } = await openQuestion(
+      c,
+      nativeFetch,
+      projectId,
+      signalName,
+    );
+    const screen = screenOf(asked);
+    if (screen !== undefined && "output" in given) {
+      const answered = screen.answer(given.output);
+      if (!answered.ok)
+        throw new ProjectError(400, "answer_refused", {
+          text: answerRefusedText(screen.name, answered.refusal),
+        });
+      const names = Object.keys(answered.values);
+      const held =
+        names.length === 0
+          ? {}
+          : readProjectValues(
+              names,
+              await service.projectState(current, projectId),
+            );
+      await saveValues(
+        c,
+        projectId,
+        Object.fromEntries(
+          Object.entries(answered.values).filter(
+            ([name, value]) => held[name] !== value,
+          ),
+        ),
+      );
+      if (answered.approves.length > 0)
+        await service.approveShown(
+          current,
+          projectId,
+          answered.approves,
+          screen.returns("input" in asked ? asked.input : undefined),
+          (coordinator, content) =>
+            mailRunAsCaller(
+              c,
+              nativeFetch,
+              current.tenantId,
+              coordinator,
+              content,
+            ),
+        );
+      if (Object.keys(answered.preferences).length > 0)
+        await prefer(c, projectId, answered.preferences);
+    }
+    await answerQuestionAsCaller(
+      c,
+      nativeFetch,
+      { tenantId: current.tenantId, runId },
+      signalName,
+      given,
+    );
   };
   app.get(
     "/:projectId/artifacts",
@@ -348,6 +456,90 @@ export function mountArtifactRoutes(
       });
     },
   );
+  app.get(
+    "/:projectId/plan",
+    describeRoute({
+      tags: ["Artifacts"],
+      operationId: "readProjectPlan",
+      description:
+        "The project's saved plan: the plugin actions to run, in order, each with its children; no steps when none was saved. Each step says where it stands, worked out from the project's facts, its checks' latest records, the coordinator's runs and the questions the person has not answered: done, failed, running, needs_you, waiting (with what it needs), not_started, skipped or cancelled.",
+      security,
+      responses: {
+        200: {
+          description: "The saved plan, each step with where it stands",
+          content: { "application/json": { schema: resolver(PlanView) } },
+        },
+        503: { description: "The hub cannot read the project's records" },
+      },
+    }),
+    async (c) => {
+      const current = actorOf(c);
+      const projectId = c.req.param("projectId");
+      const plan = await service.projectPlan(current, projectId);
+      if (!checks) throw new ProjectError(503, "plan_state_unavailable");
+      const records = await checks.latest(current, projectId);
+      const listed = await service.list(current, projectId);
+      // Only a person reads the conversation; the coordinator, which asks the questions, cannot be
+      // reading the plan while one waits on an answer.
+      const asked =
+        c.get("principal")?.kind === "user"
+          ? (await askedQuestions(c, nativeFetch, projectId)).questions
+          : [];
+      return c.json({
+        steps: planState(CATALOG, plan.steps, {
+          facts: projectFacts({
+            artifacts: listed.artifacts,
+            preferences: listed.preferences,
+            checks: records,
+          }),
+          checks: records,
+          runs: await service.runs(current, projectId),
+          questions: asked.flatMap(({ asked: question, answer }) =>
+            answer === undefined && "plugin" in question ? [question] : [],
+          ),
+        }),
+        updatedAt: plan.updatedAt,
+      });
+    },
+  );
+  app.put(
+    "/:projectId/plan",
+    describeRoute({
+      tags: ["Artifacts"],
+      operationId: "saveProjectPlan",
+      description:
+        "Replaces the project's plan. Every step's plugin and action must be installed and its input must fit that action; what the action requires need not hold yet. A step saved without an id gets one. Only a person gives a step its go-ahead or cancels it: a run's save keeps those already stored under each step's id and ignores any it sends.",
+      security,
+      requestBody: {
+        required: true,
+        content: { "application/json": { schema: resolver(PlanWrite) } },
+      },
+      responses: {
+        200: {
+          description: "The plan as now stored",
+          content: { "application/json": { schema: resolver(StoredPlan) } },
+        },
+        400: {
+          description:
+            "A step the catalog refuses; text names the step and says what is wrong and what to do",
+        },
+      },
+    }),
+    async (c) => {
+      const input = PlanWrite(await body(c));
+      if (input instanceof type.errors)
+        throw new ProjectError(400, "invalid_plan", { issues: input });
+      const refused = planRefusal(CATALOG, input.steps);
+      if (refused) throw new ProjectError(400, "plan_step_refused", refused);
+      return c.json(
+        await service.savePlan(
+          actorOf(c),
+          c.req.param("projectId"),
+          input.steps,
+        ),
+      );
+    },
+  );
   app.post(
     "/:projectId/run-actions",
     describeRoute({
@@ -498,7 +690,7 @@ export function mountArtifactRoutes(
       tags: ["Artifacts"],
       operationId: "readProjectValues",
       description:
-        "The project values named in keys, comma separated, each read from its home: the look values from the filed design's styles.css once a design is filed, and before that, like every other declared value, from the project's own store. A value the project has none of yet is null.",
+        "The project values named in keys, comma separated, each read from its home: the look values from the filed design's styles.css once a design is filed, and before that, like every other declared value, from the project's own store. A value the project has none of yet is null. Without keys, every declared value, with declared saying what each holds and the types it takes.",
       security,
       responses: {
         200: {
@@ -509,14 +701,25 @@ export function mountArtifactRoutes(
       },
     }),
     async (c) => {
-      const names = (c.req.query("keys") ?? "").split(",");
-      const unknown = undeclaredValue(names);
-      if (unknown !== undefined)
-        throw new ProjectError(400, "unknown_project_value", { key: unknown });
+      const keys = c.req.query("keys");
       const state = await service.projectState(
         actorOf(c),
         c.req.param("projectId"),
       );
+      if (keys === undefined)
+        return c.json({
+          values: readProjectValues([...CATALOG.values.keys()], state),
+          declared: Object.fromEntries(
+            [...CATALOG.values].map(([name, declaration]) => [
+              name,
+              { about: declaration.about, types: [declaration.type].flat() },
+            ]),
+          ),
+        });
+      const names = keys.split(",");
+      const unknown = undeclaredValue(names);
+      if (unknown !== undefined)
+        throw new ProjectError(400, "unknown_project_value", { key: unknown });
       return c.json({ values: readProjectValues(names, state) });
     },
   );
@@ -566,7 +769,7 @@ export function mountArtifactRoutes(
       tags: ["Artifacts"],
       operationId: "answerQuestion",
       description:
-        "The signed-in person answers the question the project's coordinator is waiting on, by its signal name: a question card's answers, a screen's output, or a reply they typed instead. For a screen's output the hub checks it against the screen's output schema, saves the project values the screen writes from it where they changed, and records what it approves: a document's approval at the version shown, or the design option chosen as the design, each only among the facts the question allows. Then it delivers the answer to the run through Interchange's signal route as the person. A reply is delivered as it is.",
+        "The signed-in person answers the question the project's coordinator is waiting on, by its signal name: a question card's answers, a screen's output, or a reply they typed instead. For a screen's output the hub checks it against the screen's output schema, saves the project values the screen writes from it where they changed, and records what it approves: a document's approval at the version shown, or the design option chosen as the design, each only among the facts the question allows; and sets the project preferences the screen sets from it, such as leaving approvals to Builder. Then it delivers the answer to the run through Interchange's signal route as the person. A reply is delivered as it is.",
       security: [{ sessionCookie: [] }, { deviceBearer: [] }],
       requestBody: {
         required: true,
@@ -587,65 +790,120 @@ export function mountArtifactRoutes(
       },
     }),
     async (c) => {
-      const current = actorOf(c);
-      const projectId = c.req.param("projectId");
       const input = AnswerPost(await body(c));
       if (input instanceof type.errors)
         throw new ProjectError(400, "invalid_answer", { issues: input });
-      const { runId, asked } = await openQuestion(
+      await answer(c, c.req.param("projectId"), input.signalName, input.answer);
+      return c.json({ signalName: input.signalName });
+    },
+  );
+  app.post(
+    "/:projectId/artifacts/:artifactId/approval",
+    describeRoute({
+      tags: ["Artifacts"],
+      operationId: "approveDocument",
+      description:
+        "The signed-in person approves a filed document at the version they read, with no question asking for it. The hub records the approval of exactly that version as an approve screen's answer records it. When the coordinator is waiting on an approve question whose documents this approval now completes, the hub answers that question as the approve screen would, at each document's current version; otherwise it leaves any such question open and sends the coordinator a hub note naming the document and version.",
+      security: [{ sessionCookie: [] }, { deviceBearer: [] }],
+      requestBody: {
+        required: true,
+        content: { "application/json": { schema: resolver(DocumentApproval) } },
+      },
+      responses: {
+        200: {
+          description: "The approval recorded, and the question it answered",
+          content: {
+            "application/json": {
+              schema: resolver(DocumentApprovalReceipt),
+            },
+          },
+        },
+        403: { description: "The caller is not a person on the project" },
+        404: { description: "No filed artifact by that id" },
+        409: {
+          description:
+            "Not a document, or a version that is no longer the newest",
+        },
+      },
+    }),
+    async (c) => {
+      const current = actorOf(c);
+      const projectId = c.req.param("projectId");
+      const artifactId = c.req.param("artifactId");
+      const input = DocumentApproval(await body(c));
+      if (input instanceof type.errors)
+        throw new ProjectError(400, "invalid_document_approval", {
+          issues: input,
+        });
+      const { kind } = await service.read(current, projectId, { artifactId });
+      // Read before recording, so a conversation that cannot be read refuses with nothing recorded.
+      const { runId, questions } = await askedQuestions(
         c,
         nativeFetch,
         projectId,
-        input.signalName,
       );
-      const screen = screenOf(asked);
-      if (screen !== undefined && "output" in input.answer) {
-        const answered = screen.answer(input.answer.output);
-        if (!answered.ok)
-          throw new ProjectError(400, "answer_refused", {
-            text: answerRefusedText(screen.name, answered.refusal),
-          });
-        const names = Object.keys(answered.values);
-        const held =
-          names.length === 0
-            ? {}
-            : readProjectValues(
-                names,
-                await service.projectState(current, projectId),
-              );
-        await saveValues(
-          c,
-          projectId,
-          Object.fromEntries(
-            Object.entries(answered.values).filter(
-              ([name, value]) => held[name] !== value,
-            ),
+      await service.approveShown(
+        current,
+        projectId,
+        [{ artifactId, version: input.version }],
+        [`approved:${kind}`],
+        (coordinator, content) =>
+          mailRunAsCaller(
+            c,
+            nativeFetch,
+            current.tenantId,
+            coordinator,
+            content,
+          ),
+      );
+      // The open approve question that asks for this document too, with every kind it asks for.
+      const [asking] = questions.flatMap(({ signalName, asked, answer }) => {
+        const approve = ApproveAsked(asked);
+        return answer === undefined &&
+          !(approve instanceof type.errors) &&
+          approve.input.kinds.includes(kind)
+          ? [{ signalName, kinds: approve.input.kinds }]
+          : [];
+      });
+      if (asking !== undefined) {
+        const shown = (await service.list(current, projectId)).artifacts.filter(
+          (artifact) => asking.kinds.includes(artifact.kind),
+        );
+        const covered = asking.kinds.every((each) =>
+          shown.some(
+            (artifact) =>
+              artifact.kind === each &&
+              artifact.approvedVersion === artifact.version,
           ),
         );
-        if (answered.approves.length > 0)
-          await service.approveShown(
-            current,
-            projectId,
-            answered.approves,
-            screen.returns("input" in asked ? asked.input : undefined),
-            (coordinator, content) =>
-              mailRunAsCaller(
-                c,
-                nativeFetch,
-                current.tenantId,
-                coordinator,
-                content,
-              ),
-          );
+        // As the approve screen answers: each document it asked for, at the version on show.
+        if (covered) {
+          await answer(c, projectId, asking.signalName, {
+            output: {
+              approved: shown.map((artifact) => ({
+                kind: artifact.kind,
+                artifactId: artifact.artifactId,
+                version: artifact.version,
+              })),
+            },
+          });
+          return c.json({
+            artifactId,
+            kind,
+            version: input.version,
+            answered: asking.signalName,
+          });
+        }
       }
-      await answerQuestionAsCaller(
-        c,
-        nativeFetch,
-        { tenantId: current.tenantId, runId },
-        input.signalName,
-        input.answer,
-      );
-      return c.json({ signalName: input.signalName });
+      if (runId !== null)
+        await mailRunAsCaller(
+          c,
+          nativeFetch,
+          current.tenantId,
+          runId,
+          documentApprovedNote(kind, input.version),
+        );
+      return c.json({ artifactId, kind, version: input.version });
     },
   );
   app.post(
@@ -857,47 +1115,41 @@ export function mountArtifactRoutes(
     },
   );
   app.post(
-    "/:projectId/design-concepts",
+    "/:projectId/run-records",
     describeRoute({
       tags: ["Artifacts"],
-      operationId: "recordDesignConcept",
+      operationId: "recordRun",
       description:
-        "Names the design concept a designer run the coordinator just deployed works on; the run's design is filed as that concept's design_option.",
+        "Records data against a run a plugin's starter just deployed, before its assignment: the concept it works on (its design is filed as that concept's design_option), or the sources a presentation pins.",
       security,
       requestBody: {
         required: true,
-        content: {
-          "application/json": { schema: resolver(DesignConceptRecord) },
-        },
+        content: { "application/json": { schema: resolver(RunRecord) } },
       },
-      responses: {
-        200: {
-          description: "The recorded run and concept",
-          content: {
-            "application/json": { schema: resolver(DesignConceptRecord) },
-          },
-        },
-      },
+      responses: { 200: { description: "The record as stored" } },
     }),
     async (c) => {
+      const input = RunRecord(await body(c));
+      if (input instanceof type.errors)
+        throw new ProjectError(400, "invalid_run_record", {
+          issues: input.summary,
+        });
+      const projectId = c.req.param("projectId");
+      if (input.name === "concept")
+        return c.json(
+          await service.recordDesignConcept(actorOf(c), projectId, {
+            runId: input.runId,
+            concept: input.data,
+          }),
+        );
       return c.json(
-        await service.recordDesignConcept(
-          actorOf(c),
-          c.req.param("projectId"),
-          await body(c),
-        ),
+        await service.recordPresenterAssignment(actorOf(c), projectId, {
+          runId: input.runId,
+          assignment: input.data,
+        }),
       );
     },
   );
-  app.post("/:projectId/presenter-assignments", async (c) => {
-    return c.json(
-      await service.recordPresenterAssignment(
-        actorOf(c),
-        c.req.param("projectId"),
-        await body(c),
-      ),
-    );
-  });
   app.get(
     "/:projectId/manual",
     describeRoute({

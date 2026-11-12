@@ -2,9 +2,8 @@
  * One hand-off and what came of it as one piece of work: the call that
  * started a specialist, the reports that specialist mailed back, and the
  * approvals for what it made. Everything is joined on native facts: a report
- * by its sender's role and time, an approval by the tool that raised it, the
- * arguments that call carried, and the document kinds it names. A report or
- * approval no single hand-off answers stays on its own.
+ * by its sender's role and time, a package install by the coder at work when it
+ * was raised. A report or approval no single hand-off answers stays on its own.
  */
 import type {
   ConversationMessage,
@@ -14,11 +13,9 @@ import type {
 import { PACKAGE_INSTALL_TOOL } from "@corbits-builder/schemas/package-install";
 import { wording } from "../../config.ts";
 import { toolPhrase } from "./agent-activity.tsx";
-import { APPROVES_KINDS, approvalToolPart } from "./collaboration.ts";
+import { approvalToolPart } from "./collaboration.ts";
 import {
-  DISPATCH_TOOLS,
   subjectOf,
-  targetKind,
   type Dispatch,
   type DispatchStatus,
 } from "./dispatch-card.tsx";
@@ -38,9 +35,6 @@ export type WorkUnit = {
 
 /** The block part carrying where the hand-off stands, as `DispatchStatus`. */
 export const WORK_RESULT_BLOCK = "work-result";
-
-const instructionOf = (approval: DocumentApproval) =>
-  approval.instruction?.trim() === "" ? undefined : approval.instruction;
 
 /**
  * The hand-offs with the reports and approvals each one answers, and those
@@ -76,48 +70,11 @@ export function workUnits(
       : undefined;
   };
 
-  // A hand-off that asks first is answered by the ask its own call raised: the same tool and
-  // instruction, nearest in time, one ask per call, and only when that call started one run.
-  const gated = new Map<string, DocumentApproval>();
-  const gateOf = new Map<DocumentApproval, Dispatch>();
-  for (const approval of approvals) {
-    const tool = approval.toolName;
-    if (tool === undefined || !DISPATCH_TOOLS.has(tool)) continue;
-    const at = approval.at;
-    if (at === undefined) continue;
-    const calls = placed.filter(
-      ({ dispatch }) =>
-        dispatch.tool === tool &&
-        dispatch.instruction === instructionOf(approval) &&
-        !gated.has(dispatch.call),
-    );
-    const nearest = calls.sort(
-      (left, right) => Math.abs(left.at - at) - Math.abs(right.at - at),
-    )[0];
-    if (nearest === undefined) continue;
-    gated.set(nearest.dispatch.call, approval);
-    const runs = placed.filter(
-      ({ dispatch }) => dispatch.call === nearest.dispatch.call,
-    );
-    if (runs.length === 1) gateOf.set(approval, nearest.dispatch);
-  }
-
-  const answers = (approval: DocumentApproval): Dispatch | undefined => {
-    const tool = approval.toolName;
-    if (tool === undefined) return undefined;
-    if (DISPATCH_TOOLS.has(tool)) return gateOf.get(approval);
-    const at = approval.at;
-    if (at === undefined) return undefined;
-    // The coder's own run asks to install packages.
-    if (tool === PACKAGE_INSTALL_TOOL)
-      return latest(at, (dispatch) => dispatch.role === "coder");
-    const kinds = approval.kinds;
-    if (tool !== APPROVES_KINDS || kinds === undefined) return undefined;
-    return latest(at, (dispatch) => {
-      const kind = targetKind(dispatch);
-      return kind !== undefined && kinds.includes(kind);
-    });
-  };
+  // The coder's own run asks to install packages.
+  const answers = (approval: DocumentApproval): Dispatch | undefined =>
+    approval.toolName === PACKAGE_INSTALL_TOOL && approval.at !== undefined
+      ? latest(approval.at, (dispatch) => dispatch.role === "coder")
+      : undefined;
 
   const members = new Map<
     string,
@@ -162,8 +119,6 @@ export function workUnits(
 }
 
 const CALL_STATUS: Record<DispatchStatus["state"], ToolTraceStatus> = {
-  waiting: "pending",
-  declined: "output-denied",
   starting: "pending",
   working: "running",
   // The approval has its own card; a hand-off marked as asking would draw a second, dead one.
@@ -196,10 +151,7 @@ export function workUnitMessage(
 ): ConversationMessage {
   const { dispatch } = unit;
   const subject = workSubject(dispatch, status);
-  const started =
-    !dispatch.pending &&
-    status.state !== "waiting" &&
-    status.state !== "declined";
+  const started = !dispatch.pending;
   const handoff = (
     dispatch.refused === undefined
       ? wording.activity.handoff

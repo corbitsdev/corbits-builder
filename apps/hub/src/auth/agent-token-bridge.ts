@@ -2,7 +2,6 @@ import { type } from "arktype";
 import {
   InstalledWorkflows,
   INSTALLED_WORKFLOWS_KEY,
-  WORKFLOW_PACKAGES,
   type WorkflowRole,
 } from "@corbits-builder/schemas/installed-workflows";
 import { projectCoordinator } from "../db/schema.ts";
@@ -32,10 +31,8 @@ import { projectResource } from "../projects/errors.ts";
 import { spawnedWorkflowRole } from "../workflows/spawn-role.ts";
 import { buildPackageLayout } from "../builds/package-layout.ts";
 import { scopeWorkflows } from "../workflows/project-scope.ts";
-import { nativePackageName } from "../workflows/package-name.ts";
-import { readJson } from "../lib/json.ts";
 import { coordinatorUpgrading } from "@corbits-builder/schemas/conversation";
-import { installsAnyPackage, opensNetwork } from "../config/preferences.ts";
+import { opensNetwork } from "../config/preferences.ts";
 import { loadSettings } from "../settings/policy.ts";
 
 let layoutPromise: ReturnType<typeof buildPackageLayout> | undefined;
@@ -114,23 +111,6 @@ function isNativeWorkflowDeploy(method: string, path: string): boolean {
   return (
     method === "POST" &&
     /^\/api\/tenants\/[^/]+\/workflows\/deployments$/.test(path)
-  );
-}
-
-// A deploy of any writer package. An outdated coordinator names the constraints writer whatever
-// document it means, so that deploy is refused while a handoff waits on busy specialists.
-async function startsWriter(request: Request) {
-  const body = await readJson(request.clone());
-  const pin =
-    typeof body === "object" && body !== null && "pin" in body
-      ? body.pin
-      : undefined;
-  return (
-    typeof pin === "string" &&
-    Object.entries(WORKFLOW_PACKAGES).some(
-      ([name, role]) =>
-        role === "writer" && pin.startsWith(nativePackageName(name) + "@"),
-    )
   );
 }
 
@@ -310,8 +290,6 @@ export function createAgentTokenBridge(
               upgrades.handoff(deployer.tenantId, deployer.runId),
             );
             if (outcome === "handed_off") return heldUntilStopped(c);
-            if (outcome === "busy" && (await startsWriter(c.req.raw)))
-              return c.json({ code: coordinatorUpgrading }, 409);
           }
           await mirrorDelegatableDeployerGrants(db, {
             tenantId: deployer.tenantId,
@@ -382,10 +360,7 @@ export function createAgentTokenBridge(
         domain: row.domain,
         projectId: binding.projectId,
         role,
-        workflows: scopeWorkflows(
-          installed,
-          installsAnyPackage(preferences.value),
-        ),
+        workflows: scopeWorkflows(installed),
         openNetwork: opensNetwork(preferences.value),
         build: await buildLayout(),
       });
@@ -443,13 +418,14 @@ export function createAgentTokenBridge(
     const projectRoute =
       suffix !== null &&
       ((c.req.method === "GET" &&
-        /^(|\/audit|\/artifacts(?:\/[^/]+)?|\/values|\/routes|\/runs)$/.test(
+        /^(|\/audit|\/artifacts(?:\/[^/]+)?|\/values|\/routes|\/plan|\/runs|\/checks)$/.test(
           suffix,
         )) ||
         (c.req.method === "POST" &&
-          /^(\/mutations|\/artifacts|\/artifact-approvals|\/design-concepts|\/presenter-assignments|\/routes|\/run-actions|\/runs\/[^/]+\/stop)$/.test(
+          /^(\/mutations|\/artifacts|\/artifact-approvals|\/run-records|\/routes|\/run-actions|\/check-runs|\/runs\/[^/]+\/stop)$/.test(
             suffix,
-          )));
+          )) ||
+        (c.req.method === "PUT" && suffix === "/plan"));
     const deployRoute =
       c.req.method === "POST" && c.req.path === base + "/workflows/deployments";
     if (!projectRoute && !deployRoute) return denied();

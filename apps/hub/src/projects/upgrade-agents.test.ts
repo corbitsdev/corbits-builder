@@ -14,30 +14,28 @@ const deployment = (pin: string) => ({
   defaultSourceOfferingId: "offering",
 });
 const installed: InstalledWorkflows = {
-  schemaVersion: 2,
-  coordinator: deployment("@corbits-builder/coordinator-native@1.0.0-sha-new"),
-  "writer-constraints": deployment(
-    "@corbits-builder/writer-constraints-native@1.0.0-sha-new",
-  ),
-  "writer-approaches": deployment(
-    "@corbits-builder/writer-approaches-native@1.0.0-sha-new",
-  ),
-  "writer-product-requirements": deployment(
-    "@corbits-builder/writer-product-requirements-native@1.0.0-sha-new",
-  ),
-  "writer-build-plan": deployment(
-    "@corbits-builder/writer-build-plan-native@1.0.0-sha-new",
-  ),
-  "writer-document": deployment(
-    "@corbits-builder/writer-document-native@1.0.0-sha-new",
-  ),
-  reviewer: deployment("@corbits-builder/reviewer-native@1.0.0-sha-new"),
-  coder: deployment("@corbits-builder/coder-native@1.0.0-sha-new"),
-  "coder-any-package": deployment(
-    "@corbits-builder/coder-native@1.0.0-sha-any",
-  ),
-  designer: deployment("@corbits-builder/designer-native@1.0.0-sha-new"),
-  presenter: deployment("@corbits-builder/presenter-native@1.0.0-sha-new"),
+  schemaVersion: 3,
+  packages: {
+    coordinator: deployment(
+      "@corbits-builder/coordinator-native@1.0.0-sha-new",
+    ),
+    "writer-product-requirements": deployment(
+      "@corbits-builder/writer-product-requirements-native@1.0.0-sha-new",
+    ),
+    "writer-build-plan": deployment(
+      "@corbits-builder/writer-build-plan-native@1.0.0-sha-new",
+    ),
+    "writer-document": deployment(
+      "@corbits-builder/writer-document-native@1.0.0-sha-new",
+    ),
+    reviewer: deployment("@corbits-builder/reviewer-native@1.0.0-sha-new"),
+    coder: deployment("@corbits-builder/coder-native@1.0.0-sha-new"),
+    "coder-any-package": deployment(
+      "@corbits-builder/coder-native@1.0.0-sha-any",
+    ),
+    designer: deployment("@corbits-builder/designer-native@1.0.0-sha-new"),
+    presenter: deployment("@corbits-builder/presenter-native@1.0.0-sha-new"),
+  },
 };
 const frozen = (name: string, version: string) => ({
   closure: { topLevel: [{ name, version }] },
@@ -71,10 +69,10 @@ test("a run is stale when its frozen pin is not one installed for its role", () 
       bundle: frozen("@corbits-builder/designer-native", "1.0.0-sha-old"),
     },
     {
-      runId: "approaches-writer",
+      runId: "document-writer",
       role: "writer" as const,
       bundle: frozen(
-        "@corbits-builder/writer-approaches-native",
+        "@corbits-builder/writer-document-native",
         "1.0.0-sha-new",
       ),
     },

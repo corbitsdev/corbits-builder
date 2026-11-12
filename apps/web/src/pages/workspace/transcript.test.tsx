@@ -48,7 +48,6 @@ const standing = (unit: WorkUnit) =>
     inFlight: [],
     failed: [],
     seen: new Map(),
-    approvals: [],
     activity: undefined,
   });
 
@@ -150,48 +149,6 @@ describe("conversation transcript", () => {
     expect(prevented).toEqual(["Enter", " "]);
   });
 
-  test("an approval asks about the document in words", () => {
-    const html = renderToStaticMarkup(
-      <RoomThread
-        standing={standing}
-        turns={[]}
-        approvals={[
-          {
-            approvalId: "appr-1",
-            toolName: "request_approval",
-            document: { kind: briefId, title: "Problem brief", version: 4 },
-          },
-        ]}
-        onDecide={() => {}}
-      />,
-    );
-    expect(html).toContain("Happy with the brief?");
-    expect(html).toContain(">Yes, go ahead<");
-    expect(html).toContain(">Not yet<");
-    expect(html).not.toContain(">Not Yet<");
-    expect(html).not.toContain("<table");
-    expect(html).not.toContain("Start Designs");
-    expect(html).not.toContain("request_approval");
-    expect(html).not.toContain("appr-1");
-    expect(html).not.toContain(briefId);
-    expect(html).not.toContain("approve_artifact");
-    expect(html).not.toContain("sha256");
-  });
-
-  test("a design start does not offer to go ahead without asking", () => {
-    const html = renderToStaticMarkup(
-      <DocumentDecision
-        approval={{ approvalId: "appr-1", toolName: "design_app" }}
-        onYes={() => {}}
-        onAlways={() => {}}
-        onNo={() => {}}
-      />,
-    );
-    expect(html).toContain('data-once=""');
-    expect(html).toContain(">Start Designs<");
-    expect(html).not.toContain("Start designs without asking");
-  });
-
   test("Not yet denies the approval and then takes the person to the composer", () => {
     const calls: string[] = [];
     const thread = RoomThread({
@@ -200,8 +157,8 @@ describe("conversation transcript", () => {
       approvals: [
         {
           approvalId: "appr-1",
-          toolName: "design_app",
-          document: { kind: briefId, title: "Problem brief", version: 1 },
+          toolName: "run_shell",
+          subject: "bun run build",
         },
       ],
       onDecide: (decision) =>
@@ -257,8 +214,8 @@ describe("conversation transcript", () => {
         type: "inference.tool_call.end",
         data: {
           callId: "call-1",
-          name: "request_approval",
-          arguments: { kinds: ["approaches"] },
+          name: "execute",
+          arguments: { plugin: "writer", action: "write" },
         },
       },
       null,
@@ -291,8 +248,8 @@ describe("conversation transcript", () => {
         type: "inference.tool_call.end",
         data: {
           callId: "call-1",
-          name: "request_approval",
-          arguments: { kinds: ["brief"] },
+          name: "question",
+          arguments: { plugin: "designer", action: "pick-fonts" },
         },
       },
       { type: "inference.done" },
@@ -371,11 +328,15 @@ describe("conversation transcript", () => {
               {
                 kind: "tool-trace",
                 toolCallId: "call-1",
-                name: "deploy_writer",
+                name: "execute",
                 status: "output-available",
                 input: {
-                  kind: "constraints",
-                  instruction: "Write the limits.",
+                  plugin: "writer",
+                  action: "write",
+                  input: {
+                    kind: "constraints",
+                    instruction: "Write the limits.",
+                  },
                 },
               },
               { kind: "text", text: "Starting the constraints." },
@@ -431,7 +392,7 @@ describe("conversation transcript", () => {
         approvals={[
           {
             approvalId: "appr-1",
-            document: { kind: briefId, title: "Problem brief", version: 1 },
+            toolName: "run_shell",
             at: 3,
           },
         ]}
@@ -443,7 +404,7 @@ describe("conversation transcript", () => {
       "Start",
       "First words.",
       "Second words.",
-      "Happy with the brief?",
+      wording.approval.tool("run shell"),
       "Next",
     ];
     const positions = order.map((text) => html.indexOf(text));
@@ -494,71 +455,5 @@ describe("conversation transcript", () => {
     ]) {
       expect(html).not.toContain(hidden);
     }
-  });
-
-  test("a document with a blank name is asked about by its tool", () => {
-    const html = renderToStaticMarkup(
-      <DocumentDecision
-        approval={{
-          approvalId: "appr-blank",
-          toolName: "browser.browser_navigate",
-          document: { kind: "notes", title: "", version: 1 },
-        }}
-        onYes={() => {}}
-        onAlways={() => {}}
-        onNo={() => {}}
-      />,
-    );
-    expect(html).toContain("browser navigate");
-    expect(html).not.toContain(wording.approval.document(""));
-  });
-
-  test("a design approval lists each look and starts one by name", () => {
-    const html = renderToStaticMarkup(
-      <DocumentDecision
-        approval={{
-          approvalId: "appr-design",
-          toolName: "design_app",
-          concepts: [
-            {
-              label: "Clear Skies",
-              direction:
-                "Crisp cool neutrals, one cobalt accent, generous whitespace.",
-            },
-          ],
-        }}
-        onYes={() => {}}
-        onAlways={() => {}}
-        onNo={() => {}}
-      />,
-    );
-    expect(html).toContain(">Clear Skies<");
-    expect(html).toContain(">Crisp cool neutrals<");
-    expect(html).not.toContain("generous whitespace");
-    expect(html).toContain(">Start Clear Skies<");
-    expect(html).toContain(">Not Yet<");
-
-    const several = renderToStaticMarkup(
-      <DocumentDecision
-        approval={{
-          approvalId: "appr-several",
-          toolName: "design_app",
-          concepts: [
-            { label: "Clear Skies", direction: "Crisp cool neutrals." },
-            {
-              label: "Night Dock",
-              direction: "Square corners (--radius 0), a deep navy primary.",
-            },
-          ],
-        }}
-        onYes={() => {}}
-        onAlways={() => {}}
-        onNo={() => {}}
-      />,
-    );
-    expect(several).toContain(">Start Designs<");
-    expect(several).toContain(">Night Dock<");
-    expect(several).not.toContain("--radius");
-    expect(several).not.toContain(">Start Clear Skies<");
   });
 });

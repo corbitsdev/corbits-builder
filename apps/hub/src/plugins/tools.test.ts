@@ -1,52 +1,8 @@
 import { expect, test } from "bun:test";
 import { withoutResumeContext } from "../config/resume.ts";
+import type { RuntimeCapabilities } from "@intx/types/runtime-capabilities";
 import { CATALOG } from "./catalog.ts";
-import { discover, withPluginHint } from "./tools.ts";
-
-const designer = CATALOG.installed("designer");
-const writer = CATALOG.installed("writer");
-
-test("discover finds the designer from the person's words and returns how to open its screens", () => {
-  const found = discover({ query: "the font is ugly" });
-  expect(found).toStartWith(
-    "designer runs a specialist. Groups: look, design, type, colour.",
-  );
-  expect(found).toContain(String(designer?.guidance));
-  expect(found).toContain(
-    "Builder gives the screen the project's look.font-primary, look.font-secondary itself; do not pass them.",
-  );
-  expect(found).toContain(
-    'Open it with question({ plugin: "designer", action: "pick-fonts", input }).',
-  );
-});
-
-test("discover lists every plugin in a group", () => {
-  expect(discover({ group: "type" })).toStartWith(
-    "designer runs a specialist.",
-  );
-});
-
-test("discover with nothing matching names the groups and what is in each", () => {
-  const listed = `designer (${designer?.description})`;
-  const documents = `writer (${writer?.description})`;
-  expect(discover({ query: "send an invoice" })).toBe(
-    [
-      'No plugin matches "send an invoice".',
-      "",
-      "Groups:",
-      `  look: ${listed}`,
-      `  design: ${listed}`,
-      `  type: ${listed}`,
-      `  colour: ${listed}`,
-      `  documents: ${documents}`,
-      `  plan: ${documents}`,
-      `  review: ${documents}`,
-      `  approval: ${documents}`,
-      "",
-      "Call again with group set to one of them, or carry on without a plugin.",
-    ].join("\n"),
-  );
-});
+import { createExecuteTools, withPluginHint } from "./tools.ts";
 
 test("a field-matched hint names the font picker alone after the person's words and strips back to them", () => {
   const hinted = withPluginHint("fields", "the font is ugly");
@@ -72,4 +28,127 @@ test("an unrelated message, or the hint switched off, is delivered unchanged", (
   for (const hint of ["triggers", "fields"] as const)
     expect(withPluginHint(hint, "add a login page")).toBe("add a login page");
   expect(withPluginHint("off", "the font is ugly")).toBe("the font is ugly");
+});
+
+const deployment = {
+  source: {
+    kind: "asset" as const,
+    assetId: "asset",
+    package: { format: "tarball" as const },
+  },
+  entry: "entry",
+  pin: "@corbits-builder/coder@1.0.0",
+  sourceOfferingIds: ["offering"],
+  defaultSourceOfferingId: "offering",
+};
+const workflows = {
+  "writer-product-requirements": deployment,
+  "writer-build-plan": deployment,
+  "writer-document": deployment,
+  reviewer: deployment,
+  coder: deployment,
+  designer: deployment,
+};
+
+// The coordinator's question check, reading project values from a hub that answers with response.
+function questionCheck(response: () => Response) {
+  const asked: string[] = [];
+  const fetch = async (path: string) => {
+    asked.push(path);
+    return response();
+  };
+  const capabilities = {
+    resolve: () => ({ resolve: async () => ({ kind: "http", fetch }) }),
+  } as unknown as RuntimeCapabilities;
+  const { checkQuestion } = createExecuteTools({
+    tenantId: "tenant",
+    projectId: "project",
+    domain: "example.invalid",
+    workflows,
+    maxResultBytes: 16384,
+  })({ capabilities } as never);
+  if (!checkQuestion) throw new Error("the execute tools check no questions");
+  return {
+    asked,
+    check: (action: string, input: Record<string, unknown>) =>
+      checkQuestion({ plugin: "designer", action, input }),
+  };
+}
+
+const fontsInUse = () =>
+  Response.json({
+    values: { "look.font-primary": "Inter", "look.font-secondary": null },
+  });
+
+test("a designer pick-fonts question the screen can draw is let through, checked against the project's fonts", async () => {
+  const { asked, check } = questionCheck(fontsInUse);
+  expect(
+    await check("pick-fonts", { proposed: { primary: "Fraunces" } }),
+  ).toBeUndefined();
+  expect(asked).toEqual([
+    "/api/tenants/tenant/projects/project/values?keys=look.font-primary%2Clook.font-secondary",
+  ]);
+  expect(await check("pick-fonts", { proposed: { primary: "Inter" } })).toBe(
+    [
+      "designer pick-fonts was not shown. One field is wrong.",
+      "",
+      'proposed: "Inter" is already the font in use.',
+      "",
+      'Your other fields were fine: list "all".',
+      "Call again proposing a different font, or with no proposal to let the person choose.",
+    ].join("\n"),
+  );
+});
+
+test("a designer pick-fonts question is not let through when the project's fonts cannot be read", async () => {
+  const { check } = questionCheck(() =>
+    Response.json({ code: "forbidden" }, { status: 403 }),
+  );
+  await expect(check("pick-fonts", {})).rejects.toThrow(
+    "workflow_http_unavailable:http_403",
+  );
+});
+
+test("a designer pick-fonts question with an unknown list is refused with every list and how to fix it", async () => {
+  const { check } = questionCheck(fontsInUse);
+  expect(
+    await check("pick-fonts", {
+      proposed: { primary: "Fraunces" },
+      list: "handwriting",
+    }),
+  ).toBe(
+    [
+      "designer pick-fonts was not shown. One field is wrong.",
+      "",
+      'list: "handwriting" is not a list.',
+      "  Use one of:",
+      "    all      Every font. Use when the person has no preference.",
+      "    sans     Clean and modern. Good for apps and dashboards.",
+      "    serif    Classic and bookish. Good for long reading and editorial pages.",
+      "    display  Loud and characterful. Good for headings and logos, not body text.",
+      "    mono     Every letter the same width. Good for code and figures.",
+      "  Or pass up to 20 font names. Or leave list out to offer every font.",
+      "",
+      'Your other fields were fine: proposed {"primary":"Fraunces"}.',
+      "Call again with the same input and list corrected.",
+    ].join("\n"),
+  );
+});
+
+test("a question for a screen the hub does not have is refused with the installed screens", async () => {
+  const { check } = questionCheck(fontsInUse);
+  expect(await check("pick-colors", {})).toBe(
+    [
+      "designer pick-colors is not an installed screen, so nothing was shown.",
+      "",
+      "Installed screens, as plugin and action:",
+      `  designer review: ${CATALOG.screens[0]?.description}`,
+      `  designer choose: ${CATALOG.screens[1]?.description}`,
+      "  designer pick-fonts: Shows the person the fonts in use and fonts to choose a primary and a secondary font from.",
+      "  designer pick-colours: Shows the person the primary (brand) and background colours in use and lets them choose new ones.",
+      `  writer approve: ${CATALOG.screens[4]?.description}`,
+      "",
+      "Call again with plugin and action set to one of them, or ask a plain question with questions instead.",
+    ].join("\n"),
+  );
 });

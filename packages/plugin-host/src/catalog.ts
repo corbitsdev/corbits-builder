@@ -6,24 +6,44 @@ import {
   checkWorkflowInput,
   guidanceText,
   inputText,
+  isCheck,
   isScreen as isScreenModule,
   isWorkflow,
   RouteBuilder,
   SkillsBuilder,
   SpecialistBuilder,
+  type CheckActionBuilder,
+  type CheckOutcome,
   type Fact,
   type ProjectValues,
+  type ProjectView,
   type Refused,
   type ScreenActionBuilder,
   type Shown,
   type ValueDeclaration,
   type WorkflowActionBuilder,
 } from "@corbits-builder/plugin";
-import { negated, patternFact, resolveFacts, templateField } from "./facts.ts";
+import {
+  CHECK_MS,
+  checkCodeInput,
+  checkFields,
+  checkMs,
+  factFields,
+  proofFields,
+  proofText,
+} from "./checks.ts";
+import {
+  makes,
+  negated,
+  patternFact,
+  resolveFacts,
+  templateField,
+} from "./facts.ts";
 import type { Project, Started } from "./coordinator.ts";
 import type { Found } from "./folder.ts";
 import {
   presentsText,
+  checkText,
   requiresText,
   screenText,
   suppliedText,
@@ -36,6 +56,8 @@ export type Host = {
   // The project values the host keeps in a home of its own, such as design tokens; every value a
   // plugin declares is kept in the project's plain store.
   values: Readonly<Record<string, ValueDeclaration>>;
+  // The ids of the preferences a screen's answer may set for the project.
+  preferences: ReadonlySet<string>;
 };
 
 /** A starter a plugin brings, which starts its run in the project with the action's skill packs. */
@@ -127,17 +149,32 @@ export type ScreenAction = ActionBase & {
   builder: ScreenActionBuilder;
   // Why this input cannot be shown, or undefined when it can.
   refusal: (input: unknown, project: ProjectValues) => string | undefined;
-  // The person's answer checked against the screen's output, with the project values it saves and
-  // what it approves, or the refusal when it does not fit.
-  answer: (
-    output: unknown,
-  ) =>
-    | { ok: true; values: Record<string, string>; approves: readonly Shown[] }
+  // The person's answer checked against the screen's output, with the project values it saves, the
+  // preferences it sets and what it approves, or the refusal when it does not fit.
+  answer: (output: unknown) =>
+    | {
+        ok: true;
+        values: Record<string, string>;
+        preferences: Record<string, string>;
+        approves: readonly Shown[];
+      }
     | Refused;
   // The facts an answer to this input may make true.
   returns: (input: unknown) => Fact[];
 };
-export type Action = WorkflowAction | ScreenAction;
+// A check the host runs against the project as saved, recording whether it holds.
+export type CheckAction = ActionBase & {
+  builder: CheckActionBuilder;
+  // The input checked for the check, or the refusal when it is wrong.
+  check: (input: unknown) => { ok: true; input: unknown } | Refused;
+  // Decides, from a read-only view of the project as saved and the checked input.
+  run: (view: ProjectView, input: unknown) => Promise<CheckOutcome>;
+  // How long one run may take: longer for a command check, which runs the app's own commands.
+  ms: number;
+  // The facts a pass for this input makes true.
+  returns: (input: unknown) => Fact[];
+};
+export type Action = WorkflowAction | ScreenAction | CheckAction;
 
 export type SpecialistPlugin = Base & {
   builder: SpecialistBuilder;
@@ -171,8 +208,9 @@ export type Catalog = {
   factText(fact: Fact): string;
   // Every project value by name: the host's own and each one a plugin declares.
   values: ReadonlyMap<string, ValueDeclaration>;
-  // Each workflow package a plugin brings, by name, as its entry's path in the plugins folder.
-  packages: ReadonlyMap<string, string>;
+  // Each workflow package a plugin brings, by name: its entry's path in the plugins folder and the
+  // role its runs play.
+  packages: ReadonlyMap<string, { entry: string; role: string }>;
 };
 
 export const isSpecialist = (plugin: Plugin): plugin is SpecialistPlugin =>
@@ -183,6 +221,8 @@ export const isWorkflowAction = (action: Action): action is WorkflowAction =>
   action.builder.runs === "workflow";
 export const isScreenAction = (action: Action): action is ScreenAction =>
   action.builder.runs === "screen";
+export const isCheckAction = (action: Action): action is CheckAction =>
+  action.builder.runs === "check";
 
 const lines = (
   name: string,
@@ -221,6 +261,8 @@ export function manifestFiles(found: Found) {
       modules: [
         ...Object.values(builder.actions).flatMap((action) => {
           if (action.runs === "workflow") return [action.input];
+          if (action.runs === "check")
+            return action.check === undefined ? [] : [action.check];
           return action.data === undefined
             ? [action.screen]
             : [action.screen, action.data];
@@ -233,8 +275,14 @@ export function manifestFiles(found: Found) {
   return { modules: [], texts: [builder.guidance], folders: [] };
 }
 
-// Refuses a fact that is neither one the host works out, or its negation, nor a template on a field
-// the plugin takes.
+// A template the host fills, or one a check returns, such as "live:{address}".
+const knownTemplate = (fact: Fact, known: ReadonlySet<Fact>) =>
+  fact.startsWith("filed:") ||
+  fact.startsWith("approved:") ||
+  [...known].some((made) => makes(made, fact));
+
+// Refuses a fact that is neither one the host works out or a check makes, or its negation, nor a
+// known template on a field the plugin takes.
 function checkFacts(
   name: string,
   facts: readonly Fact[],
@@ -245,7 +293,7 @@ function checkFacts(
     const field = templateField(fact);
     return field === undefined
       ? !known.has(negated(fact) ?? fact)
-      : !takes(field);
+      : !takes(field) || !knownTemplate(fact, known);
   });
   if (unknown !== undefined)
     throw new Error(
@@ -253,9 +301,28 @@ function checkFacts(
     );
 }
 
+// Each fact a check returns, by the name of the check that makes it true.
+function checkMade(manifests: readonly Manifested[]) {
+  const made = new Map<Fact, string>();
+  for (const { builder } of manifests) {
+    if (builder.runs !== "specialist") continue;
+    for (const [action, declared] of Object.entries(builder.actions))
+      if (declared.runs === "check")
+        for (const fact of declared.returns)
+          made.set(fact, `${builder.handle} ${action}`);
+  }
+  return made;
+}
+
 // Each fact in the words of the one plugin that describes it. Every fact the host works out has
-// words, except a fact about one kind of document, which reads well enough from the kind.
-function factWords(manifests: readonly Manifested[], known: ReadonlySet<Fact>) {
+// words, except a fact about one kind of document, which reads well enough from the kind; a fact a
+// check makes that no plugin describes reads as that check passing.
+function factWords(
+  manifests: readonly Manifested[],
+  host: ReadonlySet<Fact>,
+  made: ReadonlyMap<Fact, string>,
+) {
+  const known = new Set([...host, ...made.keys()]);
   const words = new Map<Fact, { handle: string; text: string }>();
   for (const { builder } of manifests)
     for (const [fact, text] of Object.entries(builder.facts ?? {})) {
@@ -270,7 +337,7 @@ function factWords(manifests: readonly Manifested[], known: ReadonlySet<Fact>) {
         );
       words.set(fact, { handle: builder.handle, text });
     }
-  for (const fact of known)
+  for (const fact of host)
     if (!patternFact(fact) && !words.has(fact))
       throw new Error(`Builder works out ${fact}, but no plugin describes it`);
   return (fact: Fact): string => {
@@ -278,6 +345,13 @@ function factWords(manifests: readonly Manifested[], known: ReadonlySet<Fact>) {
     if (described !== undefined) return described;
     const field = templateField(fact);
     const pattern = patternFact(fact);
+    const maker = [...made].find(
+      ([returned]) => returned === fact || makes(returned, fact),
+    );
+    if (maker !== undefined)
+      return field === undefined
+        ? `the ${maker[1]} check passed`
+        : `the ${maker[1]} check passed for each ${field} given`;
     if (field !== undefined)
       return fact.startsWith("filed:")
         ? `each document named in ${field} is filed`
@@ -319,6 +393,7 @@ function declaredValues(manifests: readonly Manifested[], host: Host) {
   for (const { builder } of manifests) {
     if (builder.runs !== "specialist") continue;
     for (const [action, declared] of Object.entries(builder.actions)) {
+      if (declared.runs === "check") continue;
       const unknown = undeclared(values, declared.reads ?? []);
       if (unknown !== undefined)
         throw new Error(
@@ -343,7 +418,12 @@ async function installScreen(
   handle: string,
   action: string,
   declared: ScreenActionBuilder,
-  { host, values, factText }: Pick<Installing, "host" | "values" | "factText">,
+  {
+    known,
+    values,
+    preferences,
+    factText,
+  }: Pick<Installing, "known" | "values" | "preferences" | "factText">,
 ): Promise<ScreenAction> {
   const name = `${handle} ${action}`;
   const screen = await found.module(declared.screen);
@@ -360,9 +440,15 @@ async function installScreen(
     throw new Error(
       `${name}'s screen writes ${unknown}, which no plugin declares as a project value`,
     );
+  const prefers = Object.entries(screen.prefers ?? {});
+  const unpreferred = prefers.find(([id]) => !preferences.has(id))?.[0];
+  if (unpreferred !== undefined)
+    throw new Error(
+      `${name}'s screen prefers ${unpreferred}, which is not a preference Builder knows`,
+    );
   const returns = declared.returns ?? [];
   const requires = declared.requires ?? [];
-  checkFacts(name, [...requires.flat(), ...returns], host.facts, (field) =>
+  checkFacts(name, [...requires.flat(), ...returns], known, (field) =>
     Object.hasOwn(screen.describe.fields, field),
   );
   if (returns.length > 0 !== (screen.approves !== undefined))
@@ -404,6 +490,9 @@ async function installScreen(
         values: Object.fromEntries(
           writes.map(([value, from]) => [value, from(checked.output)]),
         ),
+        preferences: Object.fromEntries(
+          prefers.map(([id, from]) => [id, from(checked.output)]),
+        ),
         approves: screen.approves?.(checked.output) ?? [],
       };
     },
@@ -411,11 +500,76 @@ async function installScreen(
   };
 }
 
+// A check: its ready-made checks, or its own code, and the input it takes. A ready-made check takes
+// the fields its addresses and its facts name, each as text; its own code takes what its schema does.
+async function installCheck(
+  found: Found,
+  handle: string,
+  action: string,
+  declared: CheckActionBuilder,
+  { known, factText }: Pick<Installing, "known" | "factText">,
+): Promise<CheckAction> {
+  const name = `${handle} ${action}`;
+  const requires = declared.requires ?? [];
+  const facts = [...requires.flat(), ...declared.returns];
+  if (declared.check !== undefined) {
+    const code = await found.module(declared.check);
+    if (!isCheck(code))
+      throw new Error(
+        `${name}'s check ${declared.check} has no check as its default export`,
+      );
+    checkFacts(name, facts, known, () => true);
+    const description = `Runs its own check, ${declared.check}.`;
+    return {
+      plugin: handle,
+      action,
+      name,
+      builder: declared,
+      description,
+      guidance: checkText(name, description, declared, {
+        requires: requiresText(requires, factText),
+        input: code.input
+          ? `Input: ${code.input.expression}`
+          : "It takes no input.",
+      }),
+      check: (raw) => checkCodeInput(name, code, raw),
+      run: async (view, input) => code.run(view, input),
+      ms: CHECK_MS,
+      returns: (input) => resolveFacts(declared.returns, input),
+    };
+  }
+  const proofs = declared.all ?? declared.any ?? [];
+  const proof = declared.all ? { all: proofs } : { any: proofs };
+  const fields = [...new Set([...proofFields(proof), ...factFields(facts)])];
+  checkFacts(name, facts, known, (field) => fields.includes(field));
+  const description = `Proves ${proofText(proof)}.`;
+  return {
+    plugin: handle,
+    action,
+    name,
+    builder: declared,
+    description,
+    guidance: checkText(name, description, declared, {
+      requires: requiresText(requires, factText),
+      input:
+        fields.length === 0
+          ? "It takes no input."
+          : `Input: ${fields.join(", ")}, each an address as text.`,
+    }),
+    check: (raw) => checkFields(name, fields, raw),
+    run: async (view) => view.check(proof),
+    ms: checkMs(proof),
+    returns: (input) => resolveFacts(declared.returns, input),
+  };
+}
+
 type Installing = {
-  host: Host;
+  // Every fact the host works out or a check makes.
+  known: ReadonlySet<Fact>;
   factText: (fact: Fact) => string;
   packs: readonly SkillPack[];
   values: ReadonlyMap<string, ValueDeclaration>;
+  preferences: ReadonlySet<string>;
   starters: ReadonlyMap<string, Starter>;
 };
 
@@ -449,7 +603,9 @@ async function installAction(
   const { handle } = specialist;
   if (declared.runs === "screen")
     return installScreen(found, handle, action, declared, installing);
-  const { host, factText, packs, starters } = installing;
+  if (declared.runs === "check")
+    return installCheck(found, handle, action, declared, installing);
+  const { known, factText, packs, starters } = installing;
   const name = `${handle} ${action}`;
   const facts = [...(declared.requires ?? []).flat(), ...declared.returns];
   const requires = () =>
@@ -460,7 +616,7 @@ async function installAction(
       `${name}'s input ${declared.input} has no workflow as its default export`,
     );
   const { fields } = workflow.describe;
-  checkFacts(name, facts, host.facts, (field) => Object.hasOwn(fields, field));
+  checkFacts(name, facts, known, (field) => Object.hasOwn(fields, field));
   const starter = starters.get(declared.start.workflow);
   if (!starter)
     throw new Error(
@@ -529,12 +685,12 @@ async function routePlugin(
   found: Found,
   builder: RouteBuilder,
   description: string,
-  host: Host,
+  known: ReadonlySet<Fact>,
 ): Promise<RoutePlugin> {
   checkFacts(
     builder.handle,
     [...builder.steps.flatMap((step) => step.requires), builder.outcome],
-    host.facts,
+    known,
     () => false,
   );
   return {
@@ -548,7 +704,8 @@ async function routePlugin(
   };
 }
 
-// Every handle once, and every action a route names among the installed workflow actions.
+// Every handle once, every action a route names among the installed workflow actions, and every
+// action a sequence names among the installed actions.
 function checkCatalog(plugins: readonly Plugin[]) {
   const handles = new Set<string>();
   for (const { builder } of plugins) {
@@ -567,6 +724,18 @@ function checkCatalog(plugins: readonly Plugin[]) {
           throw new Error(
             `${builder.handle} names ${step.plugin} ${step.action}, which is not an installed workflow action`,
           );
+  const installed = plugins
+    .filter(isSpecialist)
+    .flatMap(({ actions }) => actions.map(({ name }) => name));
+  for (const { builder } of plugins.filter(isSpecialist))
+    for (const [name, sequence] of Object.entries(builder.sequences ?? {}))
+      for (const step of sequence.steps) {
+        const action = `${step.plugin ?? builder.handle} ${step.action}`;
+        if (!installed.includes(action))
+          throw new Error(
+            `${builder.handle}'s sequence ${name} names ${action}, which is not an installed action`,
+          );
+      }
 }
 
 // Each pack with the specialist its chain of extends reaches and the workflow actions every pack in
@@ -667,15 +836,17 @@ async function pluginStarters(manifests: readonly Manifested[]) {
 
 // Each workflow package a plugin brings, by name, at its entry's path in the plugins folder.
 function pluginPackages(manifests: readonly Manifested[]) {
-  const packages = new Map<string, string>();
+  const packages = new Map<string, { entry: string; role: string }>();
   for (const { found, builder } of manifests) {
     if (builder.runs !== "specialist") continue;
-    for (const [name, entry] of Object.entries(builder.packages ?? {})) {
+    for (const [name, { entry, role }] of Object.entries(
+      builder.packages ?? {},
+    )) {
       if (packages.has(name))
         throw new Error(
           `${builder.handle} installs ${name}, which another plugin installs too`,
         );
-      packages.set(name, join(found.folder, entry));
+      packages.set(name, { entry: join(found.folder, entry), role });
     }
   }
   return packages;
@@ -693,20 +864,23 @@ export async function loadCatalog(
     found.filter((each) => RunsSkills.allows(each.manifest)).map(packOf),
     manifests,
   );
-  const factText = factWords(manifests, host.facts);
+  const made = checkMade(manifests);
+  const known = new Set([...host.facts, ...made.keys()]);
+  const factText = factWords(manifests, host.facts, made);
   const values = declaredValues(manifests, host);
   const starters = await pluginStarters(manifests);
   const plugins = await Promise.all(
     manifests.map(({ found, builder, description }): Promise<Plugin> => {
       if (builder.runs === "specialist")
         return specialistPlugin(found, builder, description, {
-          host,
+          known,
           factText,
           packs,
           values,
+          preferences: host.preferences,
           starters,
         });
-      return routePlugin(found, builder, description, host);
+      return routePlugin(found, builder, description, known);
     }),
   );
   checkCatalog(plugins);

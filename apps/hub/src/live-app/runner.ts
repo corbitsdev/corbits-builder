@@ -14,6 +14,13 @@ const HOST = fileURLToPath(new URL("./host.ts", import.meta.url));
 const GRACE_MS = 60_000;
 const SWEEP_MS = 5_000;
 
+/** A sandbox host's environment: none of the hub's, which holds its secrets. */
+export const hostEnv = () => ({
+  PATH: `${dirname(process.execPath)}:/usr/local/bin:/usr/bin:/bin`,
+  ...(process.env["HOME"] ? { HOME: process.env["HOME"] } : {}),
+  ...(process.env["TMPDIR"] ? { TMPDIR: process.env["TMPDIR"] } : {}),
+});
+
 // A source the host already follows is not sent again: a directory by its path, a bundle by its hash.
 export type LiveAppSource = { key: string; source: HostSource };
 
@@ -120,12 +127,7 @@ export function createLiveAppRunner(options: {
     const child = Bun.spawn(
       [process.execPath, ...process.execArgv, HOST, workspace],
       {
-        // The host and the app see none of the hub's environment, which holds its secrets.
-        env: {
-          PATH: `${dirname(process.execPath)}:/usr/local/bin:/usr/bin:/bin`,
-          ...(process.env["HOME"] ? { HOME: process.env["HOME"] } : {}),
-          ...(process.env["TMPDIR"] ? { TMPDIR: process.env["TMPDIR"] } : {}),
-        },
+        env: hostEnv(),
         stdin: "pipe",
         stdout: "pipe",
         stderr: "pipe",

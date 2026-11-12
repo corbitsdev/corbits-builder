@@ -3,14 +3,18 @@ import { dispatchesOf } from "./dispatch-card.tsx";
 import { specialistUpdate } from "./specialist-updates.ts";
 import { workUnitMessage, workUnits } from "./work-unit.ts";
 
-test("a hand-off, its reports and its document's approval join as one piece of work", () => {
+test("a hand-off and its reports join as one piece of work", () => {
   const approaches = dispatchesOf(
     {
       kind: "tool-trace",
       toolCallId: "call-approaches",
-      name: "deploy_writer",
+      name: "execute",
       status: "output-available",
-      input: { kind: "approaches", instruction: "Compare three ways in." },
+      input: {
+        plugin: "writer",
+        action: "write",
+        input: { kind: "approaches", instruction: "Compare three ways in." },
+      },
     },
     { content: JSON.stringify({ runId: "run-approaches" }), isError: false },
   );
@@ -18,13 +22,17 @@ test("a hand-off, its reports and its document's approval join as one piece of w
     {
       kind: "tool-trace",
       toolCallId: "call-concepts",
-      name: "design_app",
+      name: "execute",
       status: "output-available",
       input: {
-        concepts: [
-          { label: "Quiet", direction: "Calm" },
-          { label: "Bold", direction: "Loud" },
-        ],
+        plugin: "designer",
+        action: "mockup",
+        input: {
+          concepts: [
+            { label: "Quiet", direction: "Calm" },
+            { label: "Bold", direction: "Loud" },
+          ],
+        },
       },
     },
     {
@@ -51,13 +59,6 @@ test("a hand-off, its reports and its document's approval join as one piece of w
     [report, designerReport],
     [
       {
-        approvalId: "approval-approaches",
-        toolName: "request_approval",
-        kinds: ["approaches"],
-        at: 300,
-        outcome: { status: "rejected", scope: "once" },
-      },
-      {
         approvalId: "approval-packages",
         toolName: "install_packages",
         packages: ["zod"],
@@ -73,10 +74,7 @@ test("a hand-off, its reports and its document's approval join as one piece of w
     "call-concepts:Bold",
   ]);
   expect(unit?.updates).toEqual([report]);
-  expect(unit?.approvals.map((item) => item.approvalId)).toEqual([
-    "approval-approaches",
-  ]);
-  expect(unit?.at).toBe(300);
+  expect(unit?.at).toBe(200);
   // Two designers started together and no coder was handed work, so these answer no one hand-off.
   expect(work.updates).toEqual([designerReport]);
   expect(work.approvals.map((item) => item.approvalId)).toEqual([
@@ -86,9 +84,4 @@ test("a hand-off, its reports and its document's approval join as one piece of w
   if (unit === undefined) throw new Error("no unit");
   const message = workUnitMessage(unit, { state: "finished" });
   expect(message.author).toMatchObject({ kind: "agent", id: "writer" });
-  expect(message.parts.at(-1)).toMatchObject({
-    kind: "tool-trace",
-    status: "output-denied",
-    approval: { id: "approval-approaches", status: "rejected" },
-  });
 });

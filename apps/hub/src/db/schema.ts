@@ -21,6 +21,7 @@ import {
   workflowRun,
 } from "@intx/db/schema";
 import type { CustomModel } from "@corbits-builder/schemas/models";
+import type { StoredPlan } from "@corbits-builder/schemas/project";
 
 export const project = pgTable(
   "project",
@@ -48,6 +49,8 @@ export const project = pgTable(
       .$type<Record<string, unknown>>()
       .notNull()
       .default({}),
+    // The saved plan; null until the coordinator or the person first saves one.
+    plan: jsonb("plan").$type<StoredPlan>(),
     createdAt: timestamp("created_at", { withTimezone: true })
       .notNull()
       .defaultNow(),
@@ -265,6 +268,48 @@ export const runAction = pgTable(
       .defaultNow(),
   },
   (t) => [index("sb_run_action_project_idx").on(t.projectId)],
+);
+
+// One run of a plugin's check against the project as saved, or a person's skip of one. versions
+// names what it read, each at the version it read, so a pass stands only while all of it is current.
+export const checkRun = pgTable(
+  "sb_check_run",
+  {
+    id: text("id").primaryKey(),
+    tenantId: text("tenant_id")
+      .notNull()
+      .references(() => tenant.id),
+    projectId: text("project_id")
+      .notNull()
+      .references(() => project.id),
+    plugin: text("plugin").notNull(),
+    action: text("action").notNull(),
+    input: jsonb("input").$type<Record<string, unknown>>().notNull(),
+    versions: jsonb("versions")
+      .$type<Record<string, string | number | boolean | null>>()
+      .notNull(),
+    result: text("result").$type<"pass" | "fail" | "skipped">().notNull(),
+    summary: text("summary").notNull(),
+    evidence: jsonb("evidence").$type<string[]>().notNull(),
+    // "person:<principal id>", "run:<coordinator run id>" or "hub".
+    triggeredBy: text("triggered_by").notNull(),
+    skippedBy: text("skipped_by").references(() => principal.id),
+    createdAt: timestamp("created_at", { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+  },
+  (t) => [
+    index("sb_check_run_project_idx").on(
+      t.projectId,
+      t.plugin,
+      t.action,
+      t.createdAt,
+    ),
+    check(
+      "sb_check_run_result_check",
+      sql`${t.result} in ('pass', 'fail', 'skipped')`,
+    ),
+  ],
 );
 
 // Invitation lifecycle is product audit data. Identity, role assignments and

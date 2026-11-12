@@ -1,6 +1,5 @@
 import { expect } from "bun:test";
 import { DESIGNER_REPORT, WEATHER_MOCKUP } from "./concept.ts";
-import { withLongerAppCheck } from "./specialists.ts";
 import {
   execute,
   ok,
@@ -11,6 +10,7 @@ import {
   scenario,
   turn,
   user,
+  withLongerAppCheck,
 } from "./runner.ts";
 
 const idea =

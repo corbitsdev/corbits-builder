@@ -8,41 +8,26 @@ const meta = {
   args: {
     approval: {
       approvalId: "approval-1",
-      document: { kind: "problem_brief", title: "Problem brief", version: 2 },
+      toolName: "run_shell",
+      subject: "bun run build",
     },
     onYes: fn(),
     onAlways: fn(),
     onNo: fn(),
-    onShowDocument: fn(),
   },
 } satisfies Meta<typeof DocumentDecision>;
 
 export default meta;
 type Story = StoryObj<typeof meta>;
 
-export const AskingForADocument: Story = {};
-
-export const SeveralDocuments: Story = {
-  args: {
-    approval: {
-      approvalId: "approval-2",
-      sources: [
-        { kind: "problem_brief", title: "Problem brief", version: 2 },
-        {
-          kind: "product_requirements",
-          title: "Product requirements",
-          version: 1,
-        },
-      ],
-    },
-  },
-};
+export const AskingToUseATool: Story = {};
 
 export const Approved: Story = {
   args: {
     approval: {
       approvalId: "approval-3",
-      document: { kind: "problem_brief", title: "Problem brief", version: 2 },
+      toolName: "run_shell",
+      subject: "bun run build",
       outcome: { status: "approved", scope: "once" },
     },
   },

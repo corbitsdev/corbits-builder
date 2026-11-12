@@ -4,30 +4,29 @@ import { HUB_CREDENTIAL_HANDLE } from "@intx/types/credential-delivery";
 import type { RuntimeCapabilities } from "@intx/types/runtime-capabilities";
 import { deriveRunAddress } from "@intx/workflow-deploy";
 import { setTimeout as sleep } from "node:timers/promises";
-import { type, TraversalError } from "arktype";
+import { type } from "arktype";
 import { NativeSpecialistDeployment } from "@corbits-builder/schemas/native-specialist";
 import { SourceRef } from "@corbits-builder/schemas";
-import {
-  WORKFLOW_PACKAGES,
-  type WorkflowProjectScope,
+import type {
+  SpawnedRole,
+  WorkflowProjectScope,
 } from "@corbits-builder/schemas/installed-workflows";
 import {
   ArtifactContent,
   DesignBundle,
-  MATERIAL_KIND,
-  type ArtifactRef,
   type DesignConcept,
 } from "@corbits-builder/schemas/artifact";
 import { Refusal } from "@corbits-builder/plugin-host/coordinator";
 import { Preferences } from "@corbits-builder/schemas/preferences";
 import type { InputKind } from "../config/inputs.ts";
 import {
-  asksOpenQuestions,
   designConceptCeiling,
   preferenceBlock,
 } from "../config/preferences.ts";
 import { resolveWorkflowProjectScope } from "../workflows/project-scope.ts";
+import { WORKFLOW_PACKAGES } from "../plugins/catalog.ts";
 import { workflowHttpJson, WorkflowHttpError } from "../workflows/http-json.ts";
+import { DESIGN_STYLES } from "../artifacts/design-tweaks.ts";
 
 export interface DeployEnv extends BaseEnv {
   capabilities: RuntimeCapabilities;
@@ -41,9 +40,6 @@ export type ProjectOptions = {
   maxResultBytes: number;
 };
 
-export const REQUEST_APPROVAL_DESCRIPTION =
-  "Ask the person to approve the filed documents of the given kinds, each at its current version; for material, every attached or imported material. One ask covers every document ready for the person, so list them all together, an earlier document with the ones that follow it. Ask for approval once the documents have no open questions left; open questions the person must decide go to them with the question tool first. Their approval is what lets the writer of the next document start from them, and a changed document is approved again.";
-
 const ArtifactList = type({
   "+": "ignore",
   artifacts: type({
@@ -54,7 +50,6 @@ const ArtifactList = type({
     version: "number.integer > 0",
     sha256: /^[a-f0-9]{64}$/,
     "approvedVersion?": "number.integer > 0",
-    "openQuestionCount?": "number.integer > 0",
   }).array(),
   inFlight: type({
     "+": "ignore",
@@ -91,19 +86,6 @@ export async function startOnce<T>(
     return await start();
   } finally {
     starting.delete(key);
-  }
-}
-
-export function validArguments<T>(
-  schema: { assert: (value: unknown) => T },
-  value: unknown,
-): T {
-  try {
-    return schema.assert(value);
-  } catch (error) {
-    if (error instanceof TraversalError)
-      throw new Refusal("invalid_arguments: " + error.message);
-    throw error;
   }
 }
 
@@ -177,12 +159,18 @@ export function projectSession(
     encodeURIComponent(options.tenantId) +
     "/projects/" +
     encodeURIComponent(options.projectId);
-  const hub = (path: string, body?: unknown, timeoutMs?: number) =>
+  const hub = (
+    path: string,
+    body?: unknown,
+    timeoutMs?: number,
+    method?: "PUT",
+  ) =>
     workflowHttpJson({
       capabilities: env.capabilities,
       handle: HUB_CREDENTIAL_HANDLE,
       path,
       ...(body === undefined ? {} : { body }),
+      ...(method === undefined ? {} : { method }),
       maxResponseBytes: options.maxResultBytes,
       signal,
       ...(timeoutMs === undefined ? {} : { timeoutMs }),
@@ -190,31 +178,12 @@ export function projectSession(
   const listed = async () => {
     const list = ArtifactList.assert(await hub(projectPath + "/artifacts"));
     const byKind = new Map<string, Ref>();
-    const materials: ArtifactRef[] = [];
-    const approved = new Map<string, number>();
-    const openQuestions = new Map<string, number>();
-    // Options a person has yet to choose from mean the design is already under way.
-    let designOptions = false;
-    for (const item of list.artifacts) {
-      const { kind, artifactId, version, sha256, approvedVersion } = item;
-      if (kind === "design_option") {
-        designOptions = true;
-        continue;
-      }
-      if (kind === MATERIAL_KIND)
-        materials.push({ kind, artifactId, version, sha256 });
-      byKind.set(kind, { artifactId, version, sha256 });
-      if (approvedVersion !== undefined) approved.set(kind, approvedVersion);
-      if (item.openQuestionCount)
-        openQuestions.set(kind, item.openQuestionCount);
-    }
+    for (const { kind, artifactId, version, sha256 } of list.artifacts)
+      if (kind !== "design_option")
+        byKind.set(kind, { artifactId, version, sha256 });
     return {
       artifacts: list.artifacts,
       byKind,
-      materials,
-      approved,
-      openQuestions,
-      designOptions,
       inFlight: list.inFlight,
       appBuilt: list.appBuilt,
       preferences: list.preferences,
@@ -243,42 +212,34 @@ export function projectSession(
       content: files["DESIGN.md"] + "\n\nScreens: " + screens.join(", "),
     };
   };
-  // This runs only after the native approval resolved, so the versions it is about to hand off are
-  // the ones the person approved.
-  const recordApproval = (
-    tool: "request_approval" | "instruct_coder",
-    artifacts: ArtifactRef[],
-  ) => hub(projectPath + "/artifact-approvals", { tool, artifacts });
-  const notFiled = (kind: string) =>
-    new Refusal(
-      kind +
-        "_not_filed: " +
-        (kind === "design"
-          ? "have the designer make it with design_app first"
-          : "write and file the " + kind + " first"),
+  const readDesign = async (ref: Ref) => {
+    const { title, content } = ArtifactContent.assert(
+      await hub(
+        projectPath +
+          "/artifacts/" +
+          encodeURIComponent(ref.artifactId) +
+          "?version=" +
+          String(ref.version),
+      ),
     );
-  // Why the coder tools refuse a coder while another is starting, or still working in live.
-  const coderBusy = (live?: { runId: string }) =>
-    new Refusal(
-      live === undefined
-        ? "coder_starting: a coder is already starting for this project"
-        : "coder_running: the coder is still working in run " +
-            live.runId +
-            "; its reply arrives as a message, and the next change can start after",
-    );
-  const required = (byKind: Map<string, Ref>, kind: string) => {
-    const ref = byKind.get(kind);
-    if (!ref) throw notFiled(kind);
-    return ref;
+    const { files } = DesignBundle.assert(JSON.parse(content));
+    const styles = files[DESIGN_STYLES];
+    return styles === undefined
+      ? { title, tokens: files["DESIGN.md"]! }
+      : { title, tokens: files["DESIGN.md"]!, styles };
   };
   // A fresh deployment warms its workspace with the current versions, the ones named here.
   const inputs = (kinds: readonly InputKind[], byKind: Map<string, Ref>) =>
-    kinds.map((kind) => ({ kind, version: required(byKind, kind).version }));
+    kinds.map((kind) => {
+      const ref = byKind.get(kind);
+      if (!ref) throw new Error(`${kind} is not filed`);
+      return { kind, version: ref.version };
+    });
   // Mail to a fresh deployment lands in its durable inbox and fires the run, so the deploy
   // response is enough to send the assignment, which carries the person's preferences that
   // apply to the receiving role.
   const deploy = async (
-    role: "writer" | "reviewer" | "coder" | "designer" | "presenter",
+    role: SpawnedRole,
     workflowSpec: NativeSpecialistDeployment | undefined,
     preferences: Preferences,
     correlationId: string,
@@ -342,15 +303,10 @@ export function projectSession(
   };
   // The role and installed deployment of a workflow a project starts.
   const installed = (workflow: string) => {
-    const role = Object.entries(WORKFLOW_PACKAGES).find(
-      ([name]) => name === workflow,
-    )?.[1];
-    const spec = Object.entries(options.workflows).find(
-      ([name]) => name === workflow,
-    )?.[1];
+    const role = WORKFLOW_PACKAGES.get(workflow);
     if (role === undefined || role === "coordinator")
       throw new Error(`${workflow} is not a workflow a project starts`);
-    return { role, spec };
+    return { role, spec: options.workflows[workflow] };
   };
   // One run of the workflow's role at a time; a start waits for the last one to end. task builds
   // the assignment from the project as it then stands, or refuses; busy says why none started,
@@ -424,7 +380,11 @@ export function projectSession(
             correlationId,
             content,
             (runId) =>
-              hub(projectPath + "/design-concepts", { runId, concept }),
+              hub(projectPath + "/run-records", {
+                runId,
+                name: "concept",
+                data: concept,
+              }),
           );
           return { ...started, concept: concept.label };
         },
@@ -440,49 +400,15 @@ export function projectSession(
             },
     );
   };
-  // Records the person's approval of the kinds their request_approval named, each at its current version.
-  const approve = async (kinds: readonly string[]) => {
-    const state = await listed();
-    const { byKind, materials, openQuestions, preferences } = state;
-    const open = [...new Set(kinds)].flatMap((kind) => {
-      const count = openQuestions.get(kind);
-      return count
-        ? [`${kind} has ${count} open question${count > 1 ? "s" : ""}`]
-        : [];
-    });
-    if (open.length && asksOpenQuestions(preferences))
-      throw new Refusal(
-        "open_questions: " +
-          open.join(", ") +
-          "; read_artifact shows each one's openQuestions to put to the person with the question tool, and the document revised with their answers can then be approved",
-      );
-    const documents = [...new Set(kinds)].flatMap((kind) => {
-      if (kind !== MATERIAL_KIND) return [{ kind, ...required(byKind, kind) }];
-      if (!materials.length)
-        throw new Refusal(
-          "material_not_filed: the project has no material to approve",
-        );
-      return materials;
-    });
-    await recordApproval("request_approval", documents);
-    for (const { kind, version } of documents)
-      state.approved.set(kind, version);
-    return { state, documents };
-  };
   return {
     options,
     projectPath,
     hub,
     listed,
     readSource,
-    recordApproval,
-    notFiled,
-    coderBusy,
-    required,
+    readDesign,
     inputs,
     deploy,
-    ended,
-    approve,
     installed,
     startAlone,
     startConcepts,

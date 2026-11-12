@@ -1,8 +1,7 @@
 import { type } from "arktype";
 import { defineStarter } from "@corbits-builder/plugin-host/catalog";
 import type { Project } from "@corbits-builder/plugin-host/coordinator";
-import { WRITER_PACKAGES } from "@corbits-builder/schemas/installed-workflows";
-import { DEFAULT_STACK, writerTask } from "./task.ts";
+import { DEFAULT_STACK, WRITER_PACKAGES, writerTask } from "./task.ts";
 
 // A writer writes or revises one document from every other filed document; the build plan alone is
 // written from the design, and to the default stack unless the person asked otherwise.

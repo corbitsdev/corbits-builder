@@ -6,7 +6,6 @@ import { defineTool, type BaseEnv } from "@intx/agent/authoring";
 import { HUB_CREDENTIAL_HANDLE } from "@intx/types/credential-delivery";
 import type { RuntimeCapabilities } from "@intx/types/runtime-capabilities";
 import { Deck, DeckError, validateDeck } from "@corbits/slidedeck";
-import { defaultPackageTitle } from "../config/personas.ts";
 import { resolveWorkflowProjectScope } from "../workflows/project-scope.ts";
 import { workflowHttpJson } from "../workflows/http-json.ts";
 import {
@@ -465,8 +464,7 @@ function deriveDeckTitle(
   if (firstSlide && "title" in firstSlide && firstSlide.title.trim()) {
     return firstSlide.title.trim();
   }
-  const label = assignment.personaLabel ?? assignment.audience;
-  return defaultPackageTitle(label);
+  return `Approval package for ${assignment.personaLabel ?? assignment.audience}`;
 }
 
 export function createPackageTools() {

@@ -1,18 +1,16 @@
 /** Scripted specialists more than one scenario starts. */
 import {
   call,
+  CHECK_APP_MS,
   ok,
-  recorded,
   results,
   say,
   turn,
   user,
-  type Reply,
+  WEATHER_SPECIALISTS,
   type Turn,
 } from "./runner.ts";
 
-// check-app outlasts run_shell's 30-second default on a busy machine, the first build most of all.
-const CHECK_APP_MS = 180_000;
 const themeImport = '@import "@corbits/react-ui/theme.css";\n';
 export const CODER_TOOLS = [
   "read_file",
@@ -85,27 +83,6 @@ export function writerFiles(options: {
   ];
 }
 
-/** Recorded turns whose app checks get the longer time limit the scripted coders use. */
-export function withLongerAppCheck(turns: readonly Turn[]): Turn[] {
-  return turns.map(({ when, reply, requiredTools }) => {
-    const longer: Reply = {};
-    if (reply.text !== undefined) longer.text = reply.text;
-    if (reply.toolCalls !== undefined)
-      longer.toolCalls = reply.toolCalls.map((made) =>
-        made.name === "run_shell" && made.arguments["command"] === "check-app"
-          ? {
-              id: made.id,
-              name: made.name,
-              arguments: { command: "check-app", timeout: CHECK_APP_MS },
-            }
-          : made,
-      );
-    return requiredTools === undefined
-      ? { when, reply: longer }
-      : { when, reply: longer, requiredTools };
-  });
-}
-
 /**
  * A coder whose assignment contains the text and that runs the app check on the starter as it is,
  * which refuses it for want of a README and a user manual, and reports that. A reply before a
@@ -170,7 +147,7 @@ export const coderReports = (options: {
   turn(user(options.assignedWith), say(options.report), CODER_TOOLS),
 ];
 
-const designer = await recorded("designer-1");
+const designer = WEATHER_SPECIALISTS.designer.turns;
 
 /** The recorded weather designer, given one concept of its own by its label. */
 export function designerFor(label: string): Turn[] {

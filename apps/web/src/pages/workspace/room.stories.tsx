@@ -118,6 +118,7 @@ const meta = {
       empty: null,
     },
     dock: composer,
+    plan: [],
     ...paneOf(),
     paneRef: createRef(),
     nextStep: <NextStepLineView {...nextStep.args} />,

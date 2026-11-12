@@ -93,10 +93,6 @@ function WorkLine({
   steps: number;
 }): ReactNode {
   switch (status.state) {
-    case "waiting":
-      return text.waiting;
-    case "declined":
-      return text.declined[status.status];
     case "starting":
       return <ShimmerText>{text.starting}</ShimmerText>;
     case "working":

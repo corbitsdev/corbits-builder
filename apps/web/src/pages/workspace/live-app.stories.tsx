@@ -41,7 +41,7 @@ const files: PaneBarGroup = [
 
 const args: LiveAppViewProps = {
   app: { state: "running", url: APP_URL },
-  builderStatus: { phrase: "Writing the order list", asking: false },
+  builderStatus: { phrase: "Writing the order list" },
   demoLogin: undefined,
   checklist: null,
   files,
@@ -94,15 +94,6 @@ export const NotBuilt: Story = {
 /** Nothing is built yet, but an app builder is at work, so what it is doing shows. */
 export const NotBuiltWhileBuilding: Story = {
   args: { app: { state: "not_built" }, files: [] },
-};
-
-/** The app builder waits on the person's answer, so its dot holds still. */
-export const NotBuiltWhileBuilderAsks: Story = {
-  args: {
-    app: { state: "not_built" },
-    files: [],
-    builderStatus: { phrase: "Asking to install packages", asking: true },
-  },
 };
 
 export const Installing: Story = {

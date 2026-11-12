@@ -4,7 +4,6 @@ import {
   evaluateMailAdmission,
   mailAcceptResource,
 } from "@intx/authz";
-import { DEPLOY_TOOLS } from "../projects/deploy-tools.ts";
 import {
   planCoordinatorSpecialistGrants,
   type CoordinatorRunGrant,
@@ -13,7 +12,7 @@ import {
 const coordinator = "prn_045270a9b4fdcf2c8ee568207724d404";
 const specialist = "run_8784b3aced3363817ce483e5377ea22c";
 const unrelated = "run_4b0dca39e228e2e3eefbf85227bb7fef";
-const consumer = "tool:" + DEPLOY_TOOLS;
+const consumer = "tool:@corbits-builder/plugins/execute";
 const read = {
   conditions: "pessimistic" as const,
   consumer,

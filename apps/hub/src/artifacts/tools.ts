@@ -9,7 +9,6 @@ import type { RuntimeCapabilities } from "@intx/types/runtime-capabilities";
 import {
   AnyDocumentFields,
   ArtifactContent,
-  BriefWrite,
   ArtifactList,
   ArtifactRead,
   ArtifactReceipt,
@@ -52,24 +51,11 @@ const readDefinition = {
     "See which project documents exist, or read one.\nWith no arguments it lists: each document's artifactId, kind, title, current version, sha256, approvedVersion, the version a person approved, and openQuestionCount, the questions its current version leaves open for the person; inFlight, the writer, reviewer, coder and designer runs still open, each with its status, deployed until its first assignment arrives and running after, and each working (mid-turn) or waiting (between turns), with progress once it has acted: its turns so far, its latest tool calls as tool and target, the files it has written, and lastActivityAt; failed, the latest runs that stopped on an error, with when and why, which deliver nothing more; awaitingApproval, the kinds of filed documents whose current version waits on the person's approval; appBuilt, whether the app's first build is done, a version filed after a coder's passing check; and preferenceGuidance, how the person said they wanted to work when the project started; what they say in the conversation wins over it.\nWith a kind or an artifactId it returns that document's content at its current version, or at the given version, with the openQuestions that version leaves for the person; a long document comes in numbered parts, and part reads the next one.",
   inputSchema: { ...ToolRead.toJsonSchema() },
 };
-const briefWriteDefinition = {
-  name: "write_artifact",
-  description:
-    "Write the next version of the problem brief. The hub assigns its id, version and sha256 and returns them. Writing a version is not approval.\nopenQuestions lists each question in the document's Open questions section that the person must answer: a short id, the question as they would read it, whyItBlocks, and suggestedAnswers, your recommendation first. A version written without openQuestions leaves none open.",
-  inputSchema: { ...BriefWrite.toJsonSchema() },
-};
 // Each writer's document by name, and what its write_artifact says about the fields only it has.
 const WRITER_DOCUMENTS: Record<
   WriterDocumentKind,
   { name: string; fieldNotes: string[] }
 > = {
-  constraints: { name: "constraints", fieldNotes: [] },
-  approaches: {
-    name: "approaches document",
-    fieldNotes: [
-      "approaches carries the approaches the document compares, for the person to see side by side: each with a short id, its name, a one-line summary, bestFor, its pros, cons and risks as short phrases, and its effort; recommended names the id of the one you recommend.",
-    ],
-  },
   product_requirements: { name: "product requirements", fieldNotes: [] },
   build_plan: { name: "build plan", fieldNotes: [] },
 };
@@ -147,43 +133,39 @@ interface ArtifactToolSet {
 const savesAs =
   (
     kind: typeof DocumentWrite.infer.kind,
-    check:
-      | typeof BriefWrite
-      | (typeof WriterDocumentFields)[WriterDocumentKind],
+    check: (typeof WriterDocumentFields)[WriterDocumentKind],
   ) =>
   (raw: unknown) => {
     const fields = check(raw);
     return fields instanceof type.errors ? fields : { ...fields, kind };
   };
 
-// A writer's or reviewer's task carries every document it needs in full; a read tool sends
-// writers looking for documents that do not exist.
+// A reviewer's task carries every document it needs in full. A writer's does too, but a writer
+// reads the file a project value points at, so it has a read tool.
 const TOOLS_BY_ROLE: Record<
-  Exclude<WorkflowRole, "writer">,
+  Exclude<WorkflowRole, "writer" | "coordinator">,
   ArtifactToolSet
 > = {
-  coordinator: {
-    definitions: [readDefinition, briefWriteDefinition],
-    save: savesAs("problem_brief", BriefWrite),
-  },
   reviewer: { definitions: [readDefinition] },
   coder: { definitions: [readDefinition] },
   designer: { definitions: [readDefinition] },
   presenter: { definitions: [readDefinition] },
 };
 
-export function createArtifactTools(role: Exclude<WorkflowRole, "writer">) {
+export function createArtifactTools(
+  role: Exclude<WorkflowRole, "writer" | "coordinator">,
+) {
   return artifactTools(role, TOOLS_BY_ROLE[role]);
 }
 
-// The dynamic coordinator reads the project; specialists write every document.
+// The coordinator reads the project; specialists write every document.
 export const createReadArtifactTools = () =>
   artifactTools("coordinator", { definitions: [readDefinition] });
 
 // A writer of a known kind is deployed for it and saves only that kind.
 export function createWriterArtifactTools(kind: WriterDocumentKind) {
   return artifactTools("writer", {
-    definitions: [writerWriteDefinition(kind)],
+    definitions: [writerWriteDefinition(kind), readDefinition],
     save: savesAs(kind, WriterDocumentFields[kind]),
   });
 }
@@ -191,7 +173,7 @@ export function createWriterArtifactTools(kind: WriterDocumentKind) {
 // The writer of any document saves it under the kind it names.
 export const createDocumentWriterArtifactTools = () =>
   artifactTools("writer", {
-    definitions: [documentWriteDefinition],
+    definitions: [documentWriteDefinition, readDefinition],
     save: AnyDocumentFields,
   });
 
@@ -270,20 +252,6 @@ function artifactTools(
               }
             }
             if (call.name === "write_artifact" && save) {
-              // The coordinator's writers own every kind but the brief, so the documents the person
-              // decides on come from them.
-              const rawKind = (call.arguments as { kind?: unknown } | undefined)
-                ?.kind;
-              if (
-                role === "coordinator" &&
-                typeof rawKind === "string" &&
-                rawKind !== "problem_brief"
-              )
-                return {
-                  callId: call.id,
-                  content: `brief_only: you write the problem brief; deploy_writer has a writer write the ${rawKind}`,
-                  isError: true,
-                };
               const input = save(call.arguments);
               if (input instanceof type.errors)
                 return {

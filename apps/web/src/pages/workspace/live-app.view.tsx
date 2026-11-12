@@ -96,19 +96,12 @@ export type LiveAppViewProps = {
 export type BuilderStatusViewProps = {
   /** What the app builder is doing, in the activity strip's words. */
   phrase: string;
-  /** It waits on the person's answer, so the dot holds still. */
-  asking: boolean;
 };
 
-export function BuilderStatusView({ phrase, asking }: BuilderStatusViewProps) {
+export function BuilderStatusView({ phrase }: BuilderStatusViewProps) {
   return (
     <p className={styles.status} role="status">
-      <StatusDot
-        label=""
-        live={!asking}
-        tone={asking ? "warning" : "emphasis"}
-        size="xs"
-      />
+      <StatusDot label="" live tone="emphasis" size="xs" />
       {wording.activity.role.coder}: {phrase}
     </p>
   );

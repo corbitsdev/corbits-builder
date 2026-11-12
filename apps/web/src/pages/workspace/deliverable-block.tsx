@@ -103,6 +103,16 @@ export type PackageRounds = {
   onDeliverMessage?: ((message: string) => Promise<boolean | void>) | undefined;
 };
 
+/**
+ * The person's approval of the document they read, with no question asking for it: the version
+ * approved and when, if any, and how to approve the version on show.
+ */
+export type DocumentApprovalControl = {
+  approvedVersion: number | undefined;
+  approvedAt: string | undefined;
+  approve: (version: number) => Promise<void>;
+};
+
 /** The parts of a document that read the hub for themselves, which whoever draws it fills. */
 export type DeliverableSlots = {
   /** An approval package's rounds: who was asked to sign off and what each decided. */
@@ -123,12 +133,15 @@ export function DeliverableBody({
   onDeliverMessage,
   onViewVersion,
   approachChoice,
+  approval,
   requestedVersion,
   onOpenSource,
   approvalRounds,
   tweakPanel,
 }: DeliverableSlots & {
   state: DeliverableState | undefined;
+  /** Approving the document being read; absent where it cannot be approved here. */
+  approval?: DocumentApprovalControl | undefined;
   designPart?: DesignPart;
   /** The project and the tab's name, which name the file the pane downloads and shares. */
   fileName: { project: string; document: string };
@@ -174,6 +187,7 @@ export function DeliverableBody({
       {...(onDeliverMessage === undefined ? {} : { onDeliverMessage })}
       {...(onViewVersion === undefined ? {} : { onViewVersion })}
       {...(approachChoice === undefined ? {} : { approachChoice })}
+      approval={approval}
       {...(requestedVersion === undefined ? {} : { requestedVersion })}
       {...(onOpenSource === undefined ? {} : { onOpenSource })}
       approvalRounds={approvalRounds}
@@ -209,12 +223,14 @@ function ReadyDocument({
   onDeliverMessage,
   onViewVersion,
   approachChoice,
+  approval,
   requestedVersion,
   onOpenSource,
   approvalRounds,
   tweakPanel,
 }: DeliverableSlots & {
   document: LoadedDeliverable;
+  approval: DocumentApprovalControl | undefined;
   designPart: DesignPart;
   fileName: { project: string; document: string };
   changesOpen: boolean;
@@ -234,6 +250,7 @@ function ReadyDocument({
   const [readError, setReadError] = useState<string | null>(null);
   const [device, setDevice] = useState<PreviewDevice>("desktop");
   const [shareOpen, setShareOpen] = useState(false);
+  const [approving, setApproving] = useState(false);
   const readRef = useRef(onReadVersion);
   readRef.current = onReadVersion;
 
@@ -396,7 +413,43 @@ function ReadyDocument({
           },
         ]
       : [];
+  // The version on show once approved, else Approve while it is the newest; an older version read
+  // from the menu is neither, since only the newest can be approved.
+  const approveVersion = async (
+    approve: DocumentApprovalControl["approve"],
+  ) => {
+    setApproving(true);
+    try {
+      await approve(viewing);
+    } finally {
+      setApproving(false);
+    }
+  };
+  const approveGroup = () => {
+    if (approval === undefined) return [];
+    const words = wording.documentApproval;
+    if (approval.approvedVersion === viewing)
+      return [
+        {
+          id: "approved",
+          label: words.approvedLabel(viewing, approval.approvedAt),
+          text: words.approved(viewing),
+          note: true,
+        },
+      ];
+    if (viewing !== document.version) return [];
+    return [
+      {
+        id: "approve",
+        label: words.approveLabel(viewing),
+        text: words.approve(viewing),
+        disabled: approving,
+        onSelect: () => void approveVersion(approval.approve),
+      },
+    ];
+  };
   const barGroups = [
+    approveGroup(),
     approvalGroup,
     versionGroup({
       versions: document.versions,
@@ -475,10 +528,7 @@ function ReadyDocument({
             }
             {...(chooseApproach === undefined
               ? {}
-              : {
-                  onChoose: (message: string) =>
-                    chooseApproach(message, viewing),
-                })}
+              : { onChoose: chooseApproach })}
           />
         )}
         <DocumentView source={body} />

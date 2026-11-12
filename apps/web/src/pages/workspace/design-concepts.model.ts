@@ -18,7 +18,7 @@ export const DESIGN_OPTION = "design_option";
 
 /**
  * The concepts with a filed option or a designer at work, in the order the person was asked about
- * them. Directions come only from the asks this room has seen.
+ * them. Directions come only from the hand-offs this room has seen.
  */
 export function designConcepts(
   options: readonly ProjectArtifact[],

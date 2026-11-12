@@ -108,27 +108,10 @@ export function turnItemId(turn: TranscriptTurn, index: number): string {
 
 export type DocumentApproval = {
   approvalId: string;
-  /** The document the approval approves, when it singles one out. */
-  document?: {
-    readonly kind: string;
-    readonly title: string;
-    readonly version: number;
-  };
-  /** The documents the approval signs off together, when it covers several. */
-  sources?: readonly {
-    readonly kind: string;
-    readonly title: string;
-    readonly version: number;
-  }[];
   toolName?: string;
-  /** The document kinds a request_approval ask names. */
-  kinds?: readonly string[];
-  instruction?: string;
   /** The ask's main argument, such as the address a browser tool opens. */
   subject?: string;
   packages?: readonly string[];
-  /** The design concepts the approval starts, by name and art direction. */
-  concepts?: readonly { readonly label: string; readonly direction: string }[];
   /** When the native approval was raised, in ms; its card sits there in the thread. */
   at?: number;
   /** How the native record settled it, once it is no longer pending. */

@@ -132,15 +132,6 @@ const meta = {
 export default meta;
 type Story = StoryObj<typeof meta>;
 
-/** The hand-off waits on the person's go-ahead before anything starts. */
-export const WaitingForGoAhead: Story = {
-  args: standing({ state: "waiting" }),
-};
-
-export const Declined: Story = {
-  args: standing({ state: "declined", status: "rejected" }),
-};
-
 export const Starting: Story = {};
 
 /** At work: what the run is doing now, for how long, and the steps it took just before. */

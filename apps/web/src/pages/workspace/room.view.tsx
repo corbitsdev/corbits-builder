@@ -3,7 +3,13 @@
  * beneath it (the composer, or a banner saying why there is none), and the project view that opens
  * over it from a card or the project control and closes back to the conversation.
  */
-import { useEffect, useRef, type ReactNode, type RefObject } from "react";
+import {
+  useEffect,
+  useRef,
+  useState,
+  type ReactNode,
+  type RefObject,
+} from "react";
 import { Paperclip, Sparkles } from "lucide-react";
 import {
   Attachment,
@@ -22,6 +28,7 @@ import {
   PromptInputTextarea,
   PromptInputToolbar,
 } from "@corbits/react-ui";
+import type { StoredPlanStep } from "@corbits-builder/schemas/project";
 import { wording } from "../../config.ts";
 import { Banner, BannerAction, Fault } from "../../components.jsx";
 import { Composer } from "../../composer.tsx";
@@ -33,6 +40,7 @@ import {
   type ArtifactPaneSlots,
 } from "./artifact-pane.tsx";
 import { pastedFiles } from "./pasted-files.ts";
+import { PlanPanel, planProgress, usePlanCollapsed } from "./plan-panel.tsx";
 import { StageView } from "./stage-view.tsx";
 import { RoomThread, type RoomThreadContent } from "./transcript.tsx";
 import styles from "./index.module.css";
@@ -128,10 +136,15 @@ export type RoomContent = {
     empty: "archived" | "new" | null;
   };
   dock: RoomDock;
+  /** The project's plan, top-level steps first; empty while it has none, and then nothing shows it. */
+  plan: readonly StoredPlanStep[];
   documentPane: ArtifactPaneContent;
   /** The project view's pane, which takes focus as it opens. */
   paneRef: RefObject<HTMLElement | null>;
 };
+
+/** Below this width of the room, the plan is a drawer over the conversation. */
+const NARROW_ROOM_PX = 900;
 
 export type RoomViewProps = RoomContent & RoomSlots;
 
@@ -140,6 +153,7 @@ export function RoomView({
   layout,
   conversation,
   dock,
+  plan,
   documentPane,
   paneRef,
   nextStep,
@@ -150,6 +164,25 @@ export function RoomView({
   const conversationRef = useRef<HTMLElement>(null);
   const shell = useShellReply(conversationRef);
   const closeProject = () => onProjectOpenChange(false);
+  // The plan sits beside the conversation; in a room too narrow for that it is a drawer, shut
+  // until the person opens it.
+  const roomRef = useRef<HTMLDivElement>(null);
+  const [narrow, setNarrow] = useState(false);
+  const [drawerOpen, setDrawerOpen] = useState(false);
+  const [planFolded, setPlanFolded] = usePlanCollapsed();
+  useEffect(() => {
+    const room = roomRef.current;
+    if (room === null) return;
+    const observer = new ResizeObserver(() =>
+      setNarrow(room.clientWidth < NARROW_ROOM_PX),
+    );
+    observer.observe(room);
+    return () => observer.disconnect();
+  }, []);
+  const planShown = plan.length > 0 && (narrow ? drawerOpen : !planFolded);
+  const setPlanShown = (shown: boolean) =>
+    narrow ? setDrawerOpen(shown) : setPlanFolded(!shown);
+  const progress = planProgress(plan);
   // Focus goes into the project view as it opens and back to what opened it as it closes.
   useEffect(() => {
     if (!projectOpen) return;
@@ -175,7 +208,7 @@ export function RoomView({
   const roomDock = <Dock dock={dock} answersShell={shell.answers} />;
   return (
     <StageView aria-label={`Conversation for ${title}`}>
-      <div className={styles.room}>
+      <div ref={roomRef} className={styles.room}>
         <section
           ref={conversationRef}
           className={styles.conversationPane}
@@ -184,16 +217,36 @@ export function RoomView({
           <div className={styles.conversation}>
             <div className={styles.top}>
               {nextStep}
-              {projectReady ? (
+              {projectReady || (plan.length > 0 && !planShown) ? (
                 <div className={styles.projectControl}>
-                  <UiButton
-                    type="button"
-                    size="sm"
-                    variant="outline"
-                    onClick={() => onProjectOpenChange(true)}
-                  >
-                    {wording.conversation.openProject}
-                  </UiButton>
+                  {plan.length === 0 || planShown ? null : (
+                    <UiButton
+                      type="button"
+                      size="sm"
+                      variant="outline"
+                      onClick={() => setPlanShown(true)}
+                    >
+                      {wording.conversation.plan.title}
+                      {progress === null ? null : (
+                        <span className={styles.progress}>
+                          {wording.conversation.plan.progress(
+                            progress.done,
+                            progress.total,
+                          )}
+                        </span>
+                      )}
+                    </UiButton>
+                  )}
+                  {projectReady ? (
+                    <UiButton
+                      type="button"
+                      size="sm"
+                      variant="outline"
+                      onClick={() => onProjectOpenChange(true)}
+                    >
+                      {wording.conversation.openProject}
+                    </UiButton>
+                  ) : null}
                 </div>
               ) : null}
             </div>
@@ -203,6 +256,13 @@ export function RoomView({
             {dockInConversation ? roomDock : null}
           </div>
         </section>
+        {planShown ? (
+          <PlanPanel
+            steps={plan}
+            drawer={narrow}
+            onHide={() => setPlanShown(false)}
+          />
+        ) : null}
         {projectReady ? (
           // Kept while closed, so its tabs, previews and drafts keep their place.
           <div

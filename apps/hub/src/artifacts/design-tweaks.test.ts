@@ -35,7 +35,7 @@ test("a chosen secondary font is saved as font-mono, ahead of the stylesheet's f
   ).text();
   const written = projectValueWrites(
     { "look.font-secondary": "JetBrains Mono" },
-    { styles, stored: {} },
+    { styles, stored: {}, materials: [] },
     new Map(),
   );
   const { tokens } = DesignTweaks.assert({ tokens: written.tokens });
@@ -44,6 +44,10 @@ test("a chosen secondary font is saved as font-mono, ahead of the stylesheet's f
     '--font-mono: "JetBrains Mono", "Fira Code", Monaco, Consolas, monospace;',
   );
   expect(
-    readProjectValues(["look.font-secondary"], { styles: saved, stored: {} }),
+    readProjectValues(["look.font-secondary"], {
+      styles: saved,
+      stored: {},
+      materials: [],
+    }),
   ).toEqual({ "look.font-secondary": "JetBrains Mono" });
 });

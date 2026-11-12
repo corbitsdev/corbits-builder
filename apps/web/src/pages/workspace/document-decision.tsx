@@ -1,156 +1,28 @@
 /**
- * The person's decision on a pending approval, as the library's ToolApproval.
- * It names the document it asks about and opens it over the room.
- * Approve records the existing approve call; Not yet records a denial and
- * takes the person to the composer to say what to change.
- * Tool names and a writer's instruction never reach the card. A coder
- * instruction is what the person approves, so it does. The designer starts
- * from the documents the card lists, so its instruction stays folded.
+ * The person's decision on a pending approval, as the library's ToolApproval,
+ * named by the tool that asked and its main argument. Approve records the
+ * existing approve call; Not yet records a denial and takes the person to the
+ * composer to say what to change.
  */
 import type { ReactNode } from "react";
 import { wording } from "../../config.ts";
-import {
-  Button as UiButton,
-  ToolApproval,
-  type ToolApprovalDecision,
-} from "@corbits/react-ui";
-import {
-  approvalQuestion,
-  approvalToolPart,
-  shortDocumentName,
-} from "./collaboration.ts";
+import { ToolApproval, type ToolApprovalDecision } from "@corbits/react-ui";
+import { approvalQuestion, approvalToolPart } from "./collaboration.ts";
 import type { ApprovalOutcome, DocumentApproval } from "./transcript.tsx";
 import styles from "./document-decision.module.css";
 
-/** At most ten words of a design direction, with parenthetical notes removed. */
-function designConceptDescription(direction: string): string {
-  const words = direction
-    .replaceAll(/\([^)]*\)/g, "")
-    .replaceAll(/\s+([,.])/g, "$1")
-    .replaceAll(/\s+/g, " ")
-    .trim()
-    .split(" ")
-    .filter((word) => word !== "");
-  const breakAt = words.findIndex(
-    (word, index) => index >= 2 && (word.endsWith(",") || word.endsWith(".")),
-  );
-  const count =
-    breakAt === -1 ? Math.min(words.length, 10) : Math.min(breakAt + 1, 10);
-  const line = words.slice(0, count).join(" ");
-  return line.endsWith(",") || line.endsWith(".") ? line.slice(0, -1) : line;
-}
-
 const text = wording.approval;
-const INSTRUCTION_ASKS = new Set(["instruct_coder"]);
-const FOLDED_INSTRUCTION_ASKS = new Set(["design_app"]);
-
-function shortName(approval: DocumentApproval): string | undefined {
-  const { document } = approval;
-  if (document === undefined) return undefined;
-  const name = shortDocumentName(document.kind, document.title);
-  // A blank title has no name to ask about, so the card falls back to the tool's wording.
-  return name === "" ? undefined : name;
-}
-
-// The documents a request_approval ask approves together, when it covers more than one.
-export function approvedTogether(approval: DocumentApproval) {
-  return approval.toolName === "request_approval"
-    ? approval.sources
-    : undefined;
-}
-
-function decisionTitle(approval: DocumentApproval): string {
-  const together = approvedTogether(approval);
-  if (together !== undefined)
-    return text.documents(
-      together.map(({ kind, title }) => shortDocumentName(kind, title)),
-    );
-  return approvalQuestion(
-    approval.toolName,
-    shortName(approval),
-    approval.subject,
-  );
-}
-
-function bodyLine(approval: DocumentApproval): string | undefined {
-  const last = approval.document ?? approvedTogether(approval)?.at(-1);
-  const next = last === undefined ? undefined : text.nextDocument[last.kind];
-  if (next !== undefined) return text.next(next);
-  return approval.toolName === undefined
-    ? undefined
-    : text.body[approval.toolName];
-}
-
-/** What exactly the person approves, and who made it. */
-function approvingLine(approval: DocumentApproval): string | undefined {
-  const { document } = approval;
-  if (document !== undefined)
-    return text.approving.document(
-      document.title,
-      document.version,
-      text.writtenBy[document.kind] ?? text.writer,
-    );
-  if (approvedTogether(approval) !== undefined) return text.approving.documents;
-  const tool = approval.toolName;
-  return tool === "design_app" || tool === "instruct_coder"
-    ? text.approving[tool]
-    : undefined;
-}
-
-// A declined ask records no versions, so its line names the documents without one.
-function declinedLine(approval: DocumentApproval): string {
-  const named =
-    approval.document === undefined
-      ? (approvedTogether(approval) ?? [])
-      : [approval.document];
-  return text.declined(
-    named.length === 0 ? undefined : named.map(({ title }) => title).join(", "),
-  );
-}
-
-function actionLabels(approval: DocumentApproval): {
-  approve: string;
-  approveAlways?: string;
-  deny: string;
-} {
-  const preset =
-    approval.toolName === undefined
-      ? undefined
-      : text.actions[approval.toolName];
-  if (approval.toolName !== "design_app" || preset === undefined)
-    return preset ?? { approve: text.approve, deny: text.notYet };
-  const label =
-    approval.concepts?.length === 1 ? approval.concepts[0]?.label : undefined;
-  const startDesigns = preset.approve;
-  const approve =
-    label !== undefined && preset.startNamed !== undefined
-      ? preset.startNamed(label)
-      : startDesigns;
-  return { approve, deny: preset.deny };
-}
 
 function settledLine(approval: DocumentApproval): string {
-  const { document } = approval;
-  if (document !== undefined)
-    return text.approved(`${document.title} v${String(document.version)}`);
-  const together = approvedTogether(approval);
-  if (together !== undefined)
-    return text.approved(
-      together
-        .map(({ title, version }) => `${title} v${String(version)}`)
-        .join(", "),
-    );
-  if (approval.toolName === undefined)
-    return text.approved(text.settledUnnamed);
-  const settled = text.settled[approval.toolName];
   return text.approved(
-    settled ?? approvalQuestion(approval.toolName, undefined, approval.subject),
+    approval.toolName === undefined
+      ? text.settledUnnamed
+      : approvalQuestion(approval.toolName, approval.subject),
   );
 }
 
 export function DocumentDecision({
   approval,
-  onShowDocument,
   disabled = false,
   error,
   onYes,
@@ -158,8 +30,6 @@ export function DocumentDecision({
   countdown,
 }: {
   approval: DocumentApproval;
-  /** Opens that document over the room. */
-  onShowDocument?: (kind: string) => void;
   disabled?: boolean;
   error?: string;
   onYes: () => void;
@@ -168,51 +38,14 @@ export function DocumentDecision({
   /** A typed yes about to approve this card. */
   countdown?: ReactNode;
 }) {
-  const body = bodyLine(approval);
-  const approving = approvingLine(approval);
-  const asked = approval.document;
-  const name = shortName(approval);
-  const together = approvedTogether(approval) !== undefined;
-  const actions = actionLabels(approval);
-  const instruction = approval.instruction;
-  const tool = approval.toolName ?? "";
-  const design = tool === "design_app";
   const decide = (decision: ToolApprovalDecision) => {
     if (decision.outcome === "rejected") onNo();
     else onYes();
   };
-  const sources = approval.sources ?? [];
-  const sourceList =
-    sources.length === 0 ? null : (
-      <ul className={styles.sources}>
-        {sources.map((source) => (
-          <li key={source.kind}>
-            <UiButton
-              type="button"
-              variant="link"
-              size="sm"
-              className={styles.show}
-              title={text.source(source.title, source.version)}
-              disabled={onShowDocument === undefined}
-              onClick={() => onShowDocument?.(source.kind)}
-            >
-              {together
-                ? text.writtenSource(
-                    source.title,
-                    source.version,
-                    text.writtenBy[source.kind] ?? text.writer,
-                  )
-                : text.source(source.title, source.version)}
-            </UiButton>
-          </li>
-        ))}
-      </ul>
-    );
   return (
     <ToolApproval
       className={styles.decision}
       data-once=""
-      data-design={design ? "" : undefined}
       part={approvalToolPart(approval.approvalId, approval.outcome)}
       onDecide={decide}
       disabled={disabled}
@@ -220,69 +53,17 @@ export function DocumentDecision({
       {...(approval.outcome?.status === "approved"
         ? { title: settledLine(approval) }
         : approval.outcome?.status === "rejected"
-          ? { title: declinedLine(approval) }
+          ? { title: text.declined }
           : {})}
       labels={{
-        title: decisionTitle(approval),
-        ...actions,
+        title: approvalQuestion(approval.toolName, approval.subject),
+        approve: text.approve,
+        deny: text.notYet,
         approvedOnce: settledLine(approval),
         approvedAlways: text.always(settledLine(approval)),
-        denied: declinedLine(approval),
+        denied: text.declined,
       }}
     >
-      {approving === undefined ? null : (
-        <p className={styles.what}>{approving}</p>
-      )}
-      {instruction !== undefined && INSTRUCTION_ASKS.has(tool) ? (
-        <p>{instruction}</p>
-      ) : null}
-      {sources.length > 1 ? (
-        <details className={styles.details}>
-          <summary>{text.covers(sources.length)}</summary>
-          {sourceList}
-        </details>
-      ) : (
-        sourceList
-      )}
-      {approval.concepts === undefined ||
-      approval.concepts.length === 0 ? null : (
-        <table className={styles.concepts} aria-label={text.concepts}>
-          <thead>
-            <tr>
-              <th scope="col">{text.conceptColumns.design}</th>
-              <th scope="col">{text.conceptColumns.description}</th>
-            </tr>
-          </thead>
-          <tbody>
-            {approval.concepts.map((concept) => (
-              <tr key={concept.label}>
-                <td>{concept.label}</td>
-                <td>{designConceptDescription(concept.direction)}</td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
-      )}
-      {body === undefined ? null : <p className={styles.next}>{body}</p>}
-      {asked === undefined ||
-      name === undefined ||
-      onShowDocument === undefined ? null : (
-        <UiButton
-          type="button"
-          variant="link"
-          size="sm"
-          className={styles.show}
-          onClick={() => onShowDocument(asked.kind)}
-        >
-          {text.show(name)}
-        </UiButton>
-      )}
-      {instruction !== undefined && FOLDED_INSTRUCTION_ASKS.has(tool) ? (
-        <details className={styles.details}>
-          <summary>{text.details}</summary>
-          <p>{instruction}</p>
-        </details>
-      ) : null}
       {countdown}
     </ToolApproval>
   );

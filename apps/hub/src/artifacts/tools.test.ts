@@ -17,36 +17,8 @@ const deployment = {
   defaultSourceOfferingId: "offering",
 };
 
-const sampleApproaches = {
-  approaches: [
-    {
-      id: "simple",
-      name: "Simple",
-      summary: "Client-side forecast view.",
-      bestFor: "Fast launch",
-      pros: ["Fast to build"],
-      cons: ["No server cache"],
-      effort: "low" as const,
-      risks: ["Rate limits"],
-    },
-    {
-      id: "cached",
-      name: "Cached",
-      summary: "Server-cached forecast view.",
-      bestFor: "Higher traffic",
-      pros: ["Fewer upstream calls"],
-      cons: ["More moving parts"],
-      effort: "medium" as const,
-      risks: ["Stale cache"],
-    },
-  ],
-  recommended: "simple",
-};
-
 // The fields each writer's save takes.
 const WRITER_FIELDS: Record<WriterDocumentKind, string[]> = {
-  constraints: ["content", "kind", "openQuestions", "title"],
-  approaches: ["approaches", "content", "kind", "openQuestions", "title"],
   product_requirements: ["content", "kind", "openQuestions", "title"],
   build_plan: ["content", "kind", "openQuestions", "title"],
 };
@@ -74,8 +46,6 @@ function harness(
         domain: "example.invalid",
         role,
         workflows: {
-          "writer-constraints": deployment,
-          "writer-approaches": deployment,
           "writer-product-requirements": deployment,
           "writer-build-plan": deployment,
           "writer-document": deployment,
@@ -122,55 +92,9 @@ function harness(
   };
 }
 
-test("coordinator write_artifact exposes only problem_brief without approaches", async () => {
-  const coordinator = harness(
-    "coordinator",
-    createArtifactTools("coordinator"),
-  );
-  const definition = coordinator.definitions.find(
-    (item) => item.name === "write_artifact",
-  );
-  expect(definition).toBeDefined();
-  expect(definition?.description).not.toContain("approaches");
-  const properties = (
-    definition?.inputSchema as
-      | { properties?: Record<string, unknown> }
-      | undefined
-  )?.properties;
-  expect(properties?.["kind"]).toEqual({ const: "problem_brief" });
-  expect(properties?.["approaches"]).toBeUndefined();
-
-  const withApproaches = await coordinator.write({
-    kind: "problem_brief",
-    title: "Problem Brief",
-    content: "# Problem Brief\n\nWeather at a glance.",
-    approaches: sampleApproaches,
-  });
-  expect(withApproaches.isError).toBe(true);
-  expect(withApproaches.content).toContain("approaches");
-
-  const wrongKind = await coordinator.write({
-    kind: "constraints",
-    title: "Constraints",
-    content: "# Constraints",
-  });
-  expect(wrongKind.isError).toBe(true);
-  expect(wrongKind.content).toBe(
-    "brief_only: you write the problem brief; deploy_writer has a writer write the constraints",
-  );
-
-  const valid = await coordinator.write({
-    kind: "problem_brief",
-    title: "Problem Brief",
-    content: "# Problem Brief\n\nWeather at a glance.",
-  });
-  expect(valid.isError).toBeUndefined();
-  expect(coordinator.written).toHaveLength(1);
-});
-
 test("every role's artifact tool definitions declare top-level type: object", () => {
   const tools = [
-    ...(["coordinator", "reviewer", "coder", "designer"] as const).map((role) =>
+    ...(["reviewer", "coder", "designer"] as const).map((role) =>
       harness(role, createArtifactTools(role)),
     ),
     ...WRITER_KINDS.map((kind) =>
@@ -218,33 +142,4 @@ test("a writer files under the kind it was deployed for, with or without naming 
       { kind, title: "Named", content: "# Doc" },
     ]);
   }
-});
-
-test("only the approaches writer saves approaches", async () => {
-  for (const kind of WRITER_KINDS.filter((kind) => kind !== "approaches")) {
-    const writer = harness("writer", createWriterArtifactTools(kind));
-    const result = await writer.write({
-      title: "Doc",
-      content: "# Doc",
-      approaches: sampleApproaches,
-    });
-    expect(result.content).toStartWith("invalid_arguments:");
-    expect(result.content).toContain("approaches");
-  }
-
-  const approaches = harness("writer", createWriterArtifactTools("approaches"));
-  const valid = await approaches.write({
-    title: "Approaches",
-    content: "# Approaches",
-    approaches: sampleApproaches,
-  });
-  expect(valid.isError).toBeUndefined();
-  expect(approaches.written).toEqual([
-    {
-      kind: "approaches",
-      title: "Approaches",
-      content: "# Approaches",
-      approaches: sampleApproaches,
-    },
-  ]);
 });

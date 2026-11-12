@@ -1,0 +1,80 @@
+{
+  "name": "@corbits-builder/cloudflare",
+  "version": "0.1.0-rc.3",
+  "private": true,
+  "description": "Checks that the app is ready to deploy to Cloudflare Workers.",
+  "license": "SEE LICENSE IN ../../LICENSE.md",
+  "author": "Sawyer Cutler <sawyer@dirtroad.dev>",
+  "type": "module",
+  "dependencies": {
+    "@corbits-builder/plugin": "workspace:*"
+  },
+  "builder": {
+    "handle": "cloudflare",
+    "runs": "specialist",
+    "groups": [
+      "deploy"
+    ],
+    "when": "The person wants the app on Cloudflare Workers, or asks whether it is ready to go there.",
+    "unless": "The app is meant for another host.",
+    "actions": {
+      "ready": {
+        "runs": "check",
+        "when": "Before deploying to Cloudflare.",
+        "rerun": "change",
+        "all": [
+          {
+            "file": "wrangler.toml"
+          },
+          {
+            "file": "src/index.ts"
+          },
+          {
+            "fileContains": {
+              "path": "package.json",
+              "text": "wrangler"
+            }
+          },
+          {
+            "approved": "build_plan"
+          }
+        ],
+        "returns": [
+          "ready:cloudflare"
+        ]
+      },
+      "routes": {
+        "runs": "check",
+        "when": "Once the app is ready for Cloudflare, before deploying it to the person's own domain, which a Worker answers only through a route.",
+        "requires": [
+          [
+            "ready:cloudflare"
+          ]
+        ],
+        "check": "./src/routes.ts",
+        "returns": [
+          "routed:cloudflare"
+        ]
+      }
+    },
+    "sequences": {
+      "publish": {
+        "title": "Publish to Cloudflare",
+        "steps": [
+          {
+            "title": "Check the app is ready for Cloudflare",
+            "action": "ready"
+          },
+          {
+            "title": "Check the Worker is routed to a domain",
+            "action": "routes"
+          }
+        ]
+      }
+    },
+    "facts": {
+      "ready:cloudflare": "the app has what a Cloudflare Workers deploy needs and the person approved its build plan",
+      "routed:cloudflare": "the app's wrangler.toml routes the Worker to a domain"
+    }
+  }
+}

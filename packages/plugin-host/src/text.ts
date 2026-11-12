@@ -1,7 +1,11 @@
 import {
+  FileValue,
   inputText,
+  LinkValue,
+  type CheckActionBuilder,
   type Fact,
   type Field,
+  type SpecialistBuilder,
   type ValueDeclaration,
 } from "@corbits-builder/plugin";
 import type { Plugin, ScreenAction } from "./catalog.ts";
@@ -16,6 +20,9 @@ export const EXECUTE_DESCRIPTION =
 
 export const RUNS_DESCRIPTION =
   'See and steer the runs you started with execute. operation "list" lists each run you started in this project that is at work or ended lately: its plugin and action, status, state while it runs, when it started, its last activity, and why a failed run stopped. "wait" waits up to seconds (60 unless given, at most 120) for the first of runIds to end and says which ended; a run\'s report still reaches you as a message after your turn. "stop" stops each of runIds; what a stopped run filed or pushed is kept.';
+
+export const PLAN_DESCRIPTION =
+  'Keep the project\'s plan, which shows the person where work of several steps or gates stands. Each step is a plugin action, as discover lists it, with its input, and may hold steps of its own. operation "show" returns the plan; "set" replaces it with steps; "add" appends steps, or inserts them after the step whose id is after, or adds a plugin\'s sequence by its name as discover lists it; "remove" takes out the steps whose ids are stepIds. Each answers with the plan as it now stands.';
 
 // What runs offers for a run that holds back the next one, named as runIds lists it.
 export const waitOrStop = (runIds: string) =>
@@ -49,7 +56,7 @@ export const writesText = (values: Values, writes: readonly string[]) =>
     "\n\nWhen you learn any of these about the project, save it with report_values({ name: value }); it saves only these:",
     ...writes.map(
       (name) =>
-        `- ${name} (${values.get(name)?.type}): ${values.get(name)?.about}`,
+        `- ${name} (${[values.get(name)?.type].flat().join(" or ")}): ${values.get(name)?.about}`,
     ),
   ].join("\n");
 
@@ -57,15 +64,38 @@ export const DISCOVER_DYNAMIC_DESCRIPTION =
   "Find what you can do for the person: every piece of work you can start is a plugin. Pass query with what they asked for, in their words, or group to list every plugin in that group: each comes in a line, with a line for each action saying what it is for and whether it can start or open now, or what it needs first, and then the project's values. Pass plugin, and action, for that action's full guidance and the input it takes; read it before you first start or open an action. Specialist actions and route plugins are started with execute; a screen action is shown to the person with question({ plugin, action, input }).";
 
 /** Missing facts that together make one alternative, with the installed actions that make them true. */
-const missingLine = (
+const missingText = (
   facts: readonly Fact[],
   makers: readonly string[],
   factText: FactText,
 ) =>
-  `  - ${facts.map(factText).join(" and ")}` +
+  facts.map(factText).join(" and ") +
   (makers.length > 0
     ? ` (${[...new Set(makers)].join(" or ")} makes this true)`
     : "");
+
+const missingLine = (
+  facts: readonly Fact[],
+  makers: readonly string[],
+  factText: FactText,
+) => `  - ${missingText(facts, makers, factText)}`;
+
+/**
+ * What an action lacks of its own requirements: each missing fact, or each alternative when it has
+ * several, in plain words with what makes it true.
+ */
+export const missingTexts = (
+  own: readonly (readonly Fact[])[],
+  makers: (fact: Fact) => string[],
+  factText: FactText,
+) =>
+  (own.length === 1 ? own[0]!.map((fact) => [fact]) : own).map((facts) =>
+    missingText(facts, facts.flatMap(makers), factText),
+  );
+
+/** Why a plan step whose run completed has not finished: what it makes true does not hold. */
+export const unfinishedText = (missing: readonly Fact[], factText: FactText) =>
+  `Its run ended, but ${missing.map(factText).join(" and ")} does not hold.`;
 
 /** What an action requires, in plain words; each alternative is enough on its own. */
 export const requiresText = (
@@ -97,15 +127,27 @@ export const assignedValuesText = (
     "\n\nProject values, as the project has them; follow each that is set:",
     ...Object.entries(read).map(
       ([name, value]) =>
-        `- ${name}: ${values.get(name)?.about} ${value === null ? "Not set." : `Value: ${JSON.stringify(value)}`}`,
+        `- ${name}: ${values.get(name)?.about} ${assignedValue(value)}`,
     ),
   ].join("\n");
+
+// A value as a run reads it: a link as its address, a file as its name and where to read it.
+function assignedValue(value: unknown) {
+  if (value === null) return "Not set.";
+  if (LinkValue.allows(value))
+    return `Value: ${value.link}\n  This is a link the person gave; what it points to is the value.`;
+  if (FileValue.allows(value))
+    return `Value: ${value.name ?? value.file}, a file the person attached.\n  Read it with read_artifact({ artifactId: "${value.file}" }).`;
+  return `Value: ${JSON.stringify(value)}`;
+}
 
 // How much of a value discover shows; the actions that read it get all of it.
 const SHOWN_VALUE = 200;
 
 const shownValue = (value: unknown) => {
   if (value === null) return "Not set.";
+  if (LinkValue.allows(value)) return `Now: ${value.link}`;
+  if (FileValue.allows(value)) return `Now: ${value.name ?? value.file}`;
   const json = JSON.stringify(value);
   if (json.length <= SHOWN_VALUE) return `Now: ${json}`;
   return `Now: ${json.slice(0, SHOWN_VALUE)}… (shortened from ${json.length} characters; the actions that read it get all of it)`;
@@ -177,9 +219,7 @@ export function unmetRequirement(
   if (own.length > 0)
     lines.push(
       own.length === 1 ? "It needs:" : "It needs one of these:",
-      ...(own.length === 1 ? own[0]!.map((fact) => [fact]) : own).map((facts) =>
-        missingLine(facts, facts.flatMap(makers), factText),
-      ),
+      ...missingTexts(own, makers, factText).map((line) => `  - ${line}`),
     );
   const holding = routes.filter(({ goAhead }) => goAhead.length > 0);
   for (const { route, goAhead } of holding) {
@@ -272,6 +312,77 @@ export const routeTakesNoAction = (handle: string) =>
 const questionCall = (plugin: string, action: string) =>
   `question({ plugin: "${plugin}", action: "${action}", input })`;
 
+/** A check's guidance: what it proves, when to run it, how long it runs and what it takes. */
+export function checkText(
+  name: string,
+  summary: string,
+  {
+    when,
+    unless,
+    speed,
+  }: Pick<CheckActionBuilder, "when" | "unless" | "speed">,
+  { requires, input }: { requires: string; input: string },
+) {
+  const lines = [
+    `${name} (check): ${summary}`,
+    `Use it when: ${when}`,
+    ...(unless === undefined ? [] : [`Not when: ${unless}`]),
+    `Requires: ${requires}.`,
+    input,
+  ];
+  if (speed === undefined || speed === "person")
+    lines.push(
+      "Run it with execute; Builder checks the project as saved, never work in progress, and execute returns { ran, result, summary, evidence }.",
+    );
+  else
+    lines.push(
+      `Run it with execute; Builder tries it every ${speed.retry.everySeconds} seconds for up to ${speed.retry.forSeconds} seconds, so execute returns at once with its checkId and the result arrives later as a hub note.`,
+    );
+  if (speed === "person")
+    lines.push(
+      "It waits on the person: when it fails, they can fix what it names and run it again, or skip it.",
+    );
+  return lines.join("\n");
+}
+
+// How long ago, in words: "2 minutes ago".
+function ago(ms: number) {
+  const minutes = Math.floor(ms / 60_000);
+  if (minutes < 1) return "just now";
+  if (minutes < 60)
+    return minutes === 1 ? "1 minute ago" : `${minutes} minutes ago`;
+  const hours = Math.floor(minutes / 60);
+  if (hours < 24) return hours === 1 ? "1 hour ago" : `${hours} hours ago`;
+  const days = Math.floor(hours / 24);
+  return days === 1 ? "1 day ago" : `${days} days ago`;
+}
+
+const RAN = {
+  pass: "passed",
+  fail: "failed",
+  skipped: "was skipped by the person",
+};
+
+/** Where a check stands, from its latest record, as discover lists it after "Now:". */
+export function checkStandingText(
+  latest:
+    | {
+        result: "pass" | "fail" | "skipped";
+        summary: string;
+        createdAt: string;
+        current: boolean;
+      }
+    | undefined,
+  at: number,
+) {
+  if (latest === undefined) return "not run yet";
+  const when = ago(at - Date.parse(latest.createdAt));
+  if (!latest.current)
+    return `${RAN[latest.result]} ${when}, but the project has changed what it looked at since; run it again`;
+  if (latest.result === "fail") return `failed: ${latest.summary}`;
+  return `${RAN[latest.result]} ${when}`;
+}
+
 /** How a screen action is opened, as its guidance ends. */
 export const screenText = (plugin: string, action: string) =>
   `Open it with ${questionCall(plugin, action)}.`;
@@ -346,9 +457,6 @@ export function unknownScreen(
   ].join("\n");
 }
 
-export const DISCOVER_DESCRIPTION =
-  "Find a plugin for something the person wants that none of your other tools obviously does. Pass query with what they asked for, in their words, or group to list every plugin in that group. A screen it finds is then shown to the person with question({ plugin, action, input }).";
-
 export const DISCOVER_NEEDS_ONE =
   "Pass one of query, with what the person asked for, group, or plugin.";
 
@@ -377,6 +485,13 @@ export const specialistListing = (
         `  ${action}${screen ? " (screen)" : ""}: ${when} Now: ${now}.`,
     ),
   ].join("\n");
+
+/** Each sequence of a specialist in a line, as discover lists it. */
+export const sequenceLines = ({ handle, sequences = {} }: SpecialistBuilder) =>
+  Object.entries(sequences).map(
+    ([name, { title, steps }]) =>
+      `  sequence ${name}: ${title}, ${steps.map(({ plugin = handle, action }) => `${plugin} ${action}`).join(" then ")}. plan({ operation: "add", sequence: "${handle} ${name}" }) adds it.`,
+  );
 
 /** A route as discover lists it: a line for it, then one for each step. */
 export const routeListing = (

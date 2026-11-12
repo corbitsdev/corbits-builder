@@ -15,28 +15,11 @@ import {
 import { coordinatorUpgrading } from "@corbits-builder/schemas/conversation";
 import { wording } from "../../config.ts";
 import type { CallResult } from "./live-run.ts";
-import type {
-  ApprovalOutcome,
-  DocumentApproval,
-  PlacedDispatch,
-} from "./transcript.tsx";
+import type { PlacedDispatch } from "./transcript.tsx";
 
 const text = wording.dispatch;
 
 type Role = InFlightRun["role"];
-
-const ROLE_OF: Record<string, Role> = {
-  deploy_writer: "writer",
-  review_artifact: "reviewer",
-  deploy_coder: "coder",
-  instruct_coder: "coder",
-  design_app: "designer",
-  deploy_presenter: "presenter",
-};
-
-export const DISPATCH_TOOLS: ReadonlySet<string> = new Set(
-  Object.keys(ROLE_OF),
-);
 
 const EXECUTE = "execute";
 
@@ -70,6 +53,8 @@ export type Dispatch = {
   /** The document kind a writer or reviewer works on. */
   readonly kind?: string;
   readonly concept?: string;
+  /** The concept's art direction, as the call gave it. */
+  readonly direction?: string;
   readonly instruction?: string;
   /** The run the hub reported starting, from the call's result. */
   readonly runId?: string;
@@ -102,14 +87,12 @@ function parsed(content: unknown): unknown {
 }
 
 /**
- * Who a coordinator tool call starts and the arguments the specialist gets: a classic hand-off's
- * own, or an execute call's input. A call still streaming its arguments names no action yet.
+ * Who an execute call starts and the input the specialist gets. A call still streaming its
+ * arguments names no action yet.
  */
 function handoffOf(part: PartTool) {
-  const args = record(part.input);
-  const role = ROLE_OF[part.name];
-  if (role !== undefined) return { role, args, kind: str(args?.["kind"]) };
   if (part.name !== EXECUTE) return undefined;
+  const args = record(part.input);
   const action = `${str(args?.["plugin"])} ${str(args?.["action"])}`;
   const started = ACTION_ROLE[action];
   if (started === undefined) return undefined;
@@ -163,7 +146,8 @@ export function dispatchesOf(
   const concepts = Array.isArray(named)
     ? named.flatMap((item) => {
         const label = str(record(item)?.["label"]);
-        return label === undefined ? [] : [label];
+        const direction = str(record(item)?.["direction"]);
+        return label === undefined ? [] : [{ label, direction }];
       })
     : [];
   if (concepts.length === 0) {
@@ -177,7 +161,7 @@ export function dispatchesOf(
     ];
   }
   const outcomes = Array.isArray(output) ? output.map(record) : [];
-  return concepts.map((concept) => {
+  return concepts.map(({ label: concept, direction }) => {
     const outcome = outcomes.find((item) => item?.["concept"] === concept);
     const runId = str(outcome?.["runId"]);
     const refused = str(outcome?.["error"]);
@@ -185,6 +169,7 @@ export function dispatchesOf(
       ...base,
       key: `${part.toolCallId}:${concept}`,
       concept,
+      ...(direction === undefined ? {} : { direction }),
       ...(runId === undefined ? {} : { runId }),
       ...(refused === undefined ? {} : { refused }),
     };
@@ -219,12 +204,8 @@ export type DispatchRoom = {
     {
       readonly at: number;
       readonly versions: ReadonlyMap<string, number>;
-      readonly call: string;
-      readonly ask: string;
     }
   >;
-  /** The native approvals, pending or as their records settled them. */
-  readonly approvals: readonly DocumentApproval[];
   /** The runs mid-turn, with the tool calls and words their own inference events carried; undefined until read. */
   readonly activity: readonly AgentActivity[] | undefined;
   readonly onOpenDocument?: (kind: string) => void;
@@ -255,11 +236,6 @@ function target(dispatch: Dispatch, artifacts: readonly ProjectArtifact[]) {
 }
 
 export type DispatchStatus =
-  | { readonly state: "waiting" }
-  | {
-      readonly state: "declined";
-      readonly status: Exclude<ApprovalOutcome["status"], "approved">;
-    }
   | { readonly state: "starting" }
   | { readonly state: "working"; readonly since: string }
   /** Mid-turn but held on an approval only the person can give. */
@@ -275,59 +251,13 @@ export type DispatchStatus =
 
 /** Records the first sighting of a hand-off, so a document filed later reads as its result. */
 export function noteDispatch(room: DispatchRoom, dispatch: Dispatch): void {
-  const ask = askOf(dispatch.tool, dispatch.instruction);
-  const seen = room.seen.get(dispatch.key);
-  // A call is first seen while its arguments still stream, so what it asks settles later.
-  if (seen !== undefined) {
-    if (seen.ask !== ask) room.seen.set(dispatch.key, { ...seen, ask });
-    return;
-  }
+  if (room.seen.has(dispatch.key)) return;
   room.seen.set(dispatch.key, {
     at: Date.now(),
-    call: dispatch.call,
-    ask,
     versions: new Map(
       room.artifacts.map((item) => [identity(item), item.version]),
     ),
   });
-}
-
-const askOf = (tool: string, instruction: string | undefined) =>
-  JSON.stringify([tool, instruction ?? null]);
-
-// The run stream carries only live frames, so a call is first seen before its approval is raised.
-// The record names the call's tool and arguments, not the call, so each call asking the same thing
-// takes the first approval raised after it that an earlier call has not taken.
-const RAISED_SLACK_MS = 60_000;
-
-/** The native approval a hand-off's call waited on, when its tool asks for one. */
-function approvalOf(
-  dispatch: Dispatch,
-  room: DispatchRoom,
-): DocumentApproval | undefined {
-  if (dispatch.runId !== undefined) return undefined;
-  const ask = askOf(dispatch.tool, dispatch.instruction);
-  const calls = new Map<string, number>();
-  for (const seen of room.seen.values())
-    if (seen.ask === ask && !calls.has(seen.call))
-      calls.set(seen.call, seen.at);
-  const asked = room.approvals
-    .filter(
-      (approval) =>
-        approval.at !== undefined &&
-        approval.toolName !== undefined &&
-        askOf(approval.toolName, str(approval.instruction)) === ask,
-    )
-    .sort((left, right) => (left.at ?? 0) - (right.at ?? 0));
-  const taken = new Set<DocumentApproval>();
-  for (const [call, at] of calls) {
-    const approval = asked.find(
-      (item) => !taken.has(item) && (item.at ?? 0) >= at - RAISED_SLACK_MS,
-    );
-    if (call === dispatch.call) return approval;
-    if (approval !== undefined) taken.add(approval);
-  }
-  return undefined;
 }
 
 const identity = (item: ProjectArtifact) =>
@@ -360,12 +290,6 @@ export function dispatchStatus(
     const filed = target(dispatch, room.artifacts);
     if (filed !== undefined) return readyOf(filed);
   }
-  // A declined or lapsed approval answers the call in the run's own history, never as a result frame.
-  const approval = approvalOf(dispatch, room);
-  if (approval !== undefined && approval.outcome === undefined)
-    return { state: "waiting" };
-  if (approval?.outcome !== undefined && approval.outcome.status !== "approved")
-    return { state: "declined", status: approval.outcome.status };
   if (dispatch.pending) return { state: "starting" };
   const seen = room.seen.get(dispatch.key);
   const moved = room.artifacts.filter(
@@ -431,14 +355,6 @@ export function subjectOf(dispatch: Dispatch): string | undefined {
   return text.subject[dispatch.role];
 }
 
-const RUN_TOOL: Record<Role, string> = {
-  writer: "deploy_writer",
-  reviewer: "review_artifact",
-  coder: "deploy_coder",
-  designer: "design_app",
-  presenter: "deploy_presenter",
-};
-
 // Who files each thing that is not a document; the coordinator files the brief, so it has no card.
 const FILED_BY: Record<string, Role> = {
   design: "designer",
@@ -480,15 +396,11 @@ export function filedDispatches(
 }
 
 /** A run at work the conversation has no hand-off for, such as one started before a reload. */
-export function runDispatch(
-  run: InFlightRun,
-  kind: string | undefined,
-): Dispatch {
+export function runDispatch(run: InFlightRun): Dispatch {
   return {
     key: `run:${run.runId}`,
     call: `run:${run.runId}`,
-    tool: RUN_TOOL[run.role],
-    ...(kind === undefined ? {} : { kind }),
+    tool: EXECUTE,
     role: run.role,
     runId: run.runId,
     pending: false,

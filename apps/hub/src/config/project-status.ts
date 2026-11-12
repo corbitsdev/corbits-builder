@@ -17,8 +17,6 @@ const list = (items: readonly string[]) =>
     : `${items.slice(0, -1).join(", ")} and ${items.at(-1)!}`;
 
 const APPROVAL: Record<string, string> = {
-  instruct_coder: "Approve the change for the app builder",
-  design_app: "Approve the design work",
   install_packages: "Approve the packages the app builder asked for",
 };
 
@@ -46,10 +44,7 @@ export const projectStatusWording = {
     version === undefined
       ? "It is not saved yet."
       : `Saved as version ${String(version)}.`,
-  approval: (tool: string, kinds: readonly string[]) =>
-    tool === "request_approval" && kinds.length > 0
-      ? `Approve the ${list(kinds.map((kind) => kind.replaceAll("_", " ")))}`
-      : (APPROVAL[tool] ?? "Decide on the open approval"),
+  approval: (tool: string) => APPROVAL[tool] ?? "Decide on the open approval",
   stopped: (role: WorkflowRole, reason: string | undefined) =>
     `${capital(ROLE[role])} stopped${reason === undefined ? "." : `: ${reason}`}`,
   next: {

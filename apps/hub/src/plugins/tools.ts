@@ -1,15 +1,21 @@
 import { defineTool, type AnnotatedToolFactory } from "@intx/agent/authoring";
 import { questionTool } from "@intx/inference";
 import { HUB_CREDENTIAL_HANDLE } from "@intx/types/credential-delivery";
-import { ProjectRuns, ProjectValues } from "@corbits-builder/schemas/artifact";
+import {
+  CheckList,
+  CheckRan,
+  ProjectRuns,
+  ProjectValues,
+} from "@corbits-builder/schemas/artifact";
 import {
   checkedDiscover,
   Discover,
   discoverFor,
-  discoverIn,
   execute,
   Execute,
+  managePlan,
   manageRuns,
+  Plan,
   Runs,
   type Filed,
   type Project,
@@ -18,12 +24,13 @@ import { fields } from "@corbits-builder/plugin-host/search/fields";
 import { triggers } from "@corbits-builder/plugin-host/search/triggers";
 import { words } from "@corbits-builder/plugin-host/search/words";
 import {
-  DISCOVER_DESCRIPTION,
   DISCOVER_DYNAMIC_DESCRIPTION,
   EXECUTE_DESCRIPTION,
+  PLAN_DESCRIPTION,
   pluginHint,
   RUNS_DESCRIPTION,
 } from "@corbits-builder/plugin-host/text";
+import { PlanView } from "@corbits-builder/schemas/project";
 import type { PluginHint } from "../environment.ts";
 import {
   checkDeployments,
@@ -41,11 +48,6 @@ import { isInputKind, skillPacksIndex, startHere } from "../config/inputs.ts";
 import { CATALOG, ProjectRoutes, SCREENS, WITH_SCREENS } from "./catalog.ts";
 import { projectFacts } from "./facts.ts";
 import { checkPluginQuestion } from "./question.ts";
-
-// The classic coordinator finds only specialists with screens, and knows nothing of the project
-// when it does.
-export const discover = (asked: typeof Discover.infer) =>
-  discoverIn(WITH_SCREENS, asked);
 
 // The least score a plugin needs to be hinted. One trigger word is all triggers can score. For fields,
 // a word found in the handle, when, examples and summary ("font") scores 10, while common words
@@ -91,6 +93,7 @@ function filed(
   return {
     versions: byKind,
     read: session.readSource,
+    design: session.readDesign,
     startHere: (kinds, design) => {
       const unknown = kinds.find((kind) => !isInputKind(kind));
       if (unknown !== undefined)
@@ -105,17 +108,37 @@ function filed(
   };
 }
 
+// A check runs within its action's ms on the hub; the call waits a little longer for its answer.
+const CHECK_CALL_GRACE_MS = 15_000;
+
 // The project as the coordinator's tools act on it, through the hub.
 function project(session: ProjectSession): Project {
   const path = session.projectPath + "/routes";
   return {
     state: async () => {
       const listed = await session.listed();
+      const { checks } = CheckList.assert(
+        await session.hub(session.projectPath + "/checks"),
+      );
       return {
-        facts: projectFacts(listed),
+        facts: projectFacts({
+          artifacts: listed.artifacts,
+          preferences: listed.preferences,
+          checks,
+        }),
         asksApprovals: !agentDecidesApprovals(listed.preferences),
+        checks,
+        preferences: listed.preferences,
       };
     },
+    check: async (action, input) =>
+      CheckRan.assert(
+        await session.hub(
+          session.projectPath + "/check-runs",
+          { plugin: action.plugin, action: action.action, input },
+          action.ms + CHECK_CALL_GRACE_MS,
+        ),
+      ),
     routes: async () => ProjectRoutes.assert(await session.hub(path)).routes,
     setRoutes: (routes) => session.hub(path, { routes }),
     values: async (names) =>
@@ -144,6 +167,10 @@ function project(session: ProjectSession): Project {
         `${session.projectPath}/runs/${encodeURIComponent(runId)}/stop`,
         {},
       ),
+    plan: async () =>
+      PlanView.assert(await session.hub(session.projectPath + "/plan")),
+    savePlan: (steps) =>
+      session.hub(session.projectPath + "/plan", { steps }, undefined, "PUT"),
     working: async () => (await session.listed()).inFlight,
     startAlone: ({ workflow, correlation, assignment, busy }) =>
       session.startAlone(
@@ -152,15 +179,25 @@ function project(session: ProjectSession): Project {
         (state) => assignment(filed(session, state)),
         busy,
       ),
-    deploy: async ({ workflow, correlation, assignment }) => {
+    deploy: async ({ workflow, correlation, assignment, record }) => {
       const { role, spec } = session.installed(workflow);
       const state = await session.listed();
+      const now = filed(session, state);
+      const content = await assignment(now);
+      const data = await record?.data(now);
       return session.deploy(
         role,
         spec,
         state.preferences,
         correlation,
-        await assignment(filed(session, state)),
+        content,
+        record &&
+          ((runId) =>
+            session.hub(session.projectPath + "/run-records", {
+              runId,
+              name: record.name,
+              data,
+            })),
       );
     },
     startConcepts: ({ workflow, correlation, concepts, assignment, busy }) =>
@@ -189,28 +226,10 @@ export async function screenProject(
   );
 }
 
-// The classic coordinator finds what it can do from the person's wording instead of carrying every
-// plugin in its prompt.
-export function createPluginTools() {
-  const definitions = [discoverDefinition(DISCOVER_DESCRIPTION)];
-  return defineTool({
-    id: "@corbits-builder/plugins/tools",
-    definitions: definitions.map(({ name }) => ({ name })),
-    factory: () => ({
-      definitions,
-      run: async (call) => {
-        const { input, error } = checkedDiscover(WITH_SCREENS, call.arguments);
-        if (!input) return { callId: call.id, content: error, isError: true };
-        return { callId: call.id, content: discover(input) };
-      },
-    }),
-  });
-}
-
 /**
- * The dynamic coordinator's way to act: discover finds a plugin, execute starts a specialist's
- * action or a route, runs lists, waits on and stops the runs it started, and question opens a
- * screen, whose answer records what it approves.
+ * The coordinator's way to act: discover finds a plugin, execute starts a specialist's
+ * action or a route, runs lists, waits on and stops the runs it started, plan keeps the project's
+ * plan, and question opens a screen, whose answer records what it approves.
  */
 export function createExecuteTools(
   options?: ProjectOptions,
@@ -228,13 +247,23 @@ export function createExecuteTools(
       description: RUNS_DESCRIPTION,
       inputSchema: { ...Runs.toJsonSchema() },
     },
+    {
+      name: "plan",
+      description: PLAN_DESCRIPTION,
+      inputSchema: { ...Plan.toJsonSchema() },
+    },
     questionTool,
   ];
   return defineTool<DeployEnv>({
     id: "@corbits-builder/plugins/execute",
     credentials: [{ handle: HUB_CREDENTIAL_HANDLE }],
     requires: ["capabilities"],
-    definitions: [{ name: "discover" }, { name: "execute" }, { name: "runs" }],
+    definitions: [
+      { name: "discover" },
+      { name: "execute" },
+      { name: "runs" },
+      { name: "plan" },
+    ],
     factory: (env) => ({
       definitions,
       checkQuestion: async (question) =>
@@ -273,6 +302,11 @@ export function createExecuteTools(
             return {
               callId: call.id,
               ...(await manageRuns(project(session), call.arguments, signal)),
+            };
+          if (call.name === "plan")
+            return {
+              callId: call.id,
+              ...(await managePlan(CATALOG, project(session), call.arguments)),
             };
           return {
             callId: call.id,

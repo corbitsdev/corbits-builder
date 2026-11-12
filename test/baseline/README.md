@@ -23,8 +23,7 @@ the unacceptable ones, using these move names:
   closing reply that holds a question mark.
 - `execute:<plugin>.<action>`: started that plugin action with `execute`,
   such as `execute:coder.change` to have a coder change the app, and
-  `execute:<plugin>` for a route. Classic's `instruct_coder` (which waits for
-  approval) counts as `execute:coder.change`.
+  `execute:<plugin>` for a route.
 - `read`: read the project's documents or design with `read_artifact`.
 - `reply`: a closing reply that neither asks nor acts.
 
@@ -34,8 +33,8 @@ starts with a `first` move, and `other` otherwise. A refused screen call
 followed by the same screen counts as one attempt. The verdict is recorded,
 never asserted.
 
-`recorder.ts` turns one case into one record: the remark, model, hint,
-mode and repeat; the project's preferences and frozen models as the hub reports them;
+`recorder.ts` turns one case into one record: the remark, model, hint
+and repeat; the project's preferences and frozen models as the hub reports them;
 whether the hub's plugin note reached the coordinator and which plugins it
 named; the ordered moves with their tool and arguments; for a screen, whether
 the first call was valid and, if refused, whether the next one was; whether it
@@ -78,10 +77,6 @@ app itself is always built on the scripted model, which costs nothing.
   listed and its key (`OPENAI_API_KEY` for Terra, `ANTHROPIC_API_KEY` for
   Sonnet) is set; the key goes to the test hub alone.
 - `BASELINE_HINTS`: comma-separated hint settings. Default all three.
-- `BASELINE_MODE`: the coordinator mode the case hubs run, `classic` or
-  `dynamic` (the hub's `COORDINATOR_MODE`). Default `classic`. The weather
-  app is always built on `classic`, which its recorded fixture follows. Each
-  record names it as `mode`.
 - `BASELINE_REMARK`: run only remarks containing this text.
 - `BASELINE_REPEATS`: repeats per remark. Default from `cases.json` (2).
 - `BASELINE_MAX_CASES`: stop after this many cases.

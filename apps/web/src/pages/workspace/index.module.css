@@ -1,7 +1,7 @@
 .room {
   position: relative;
   display: flex;
-  flex-direction: column;
+  flex-direction: row;
   flex: 1 1 auto;
   min-height: 0;
   min-width: 0;
@@ -33,6 +33,7 @@
 
 .projectControl {
   display: flex;
+  gap: var(--space-2);
   flex: none;
   align-items: center;
   margin-inline-start: auto;
@@ -156,4 +157,10 @@
   height: auto;
   min-height: 0;
   border-inline-start: 0;
+}
+
+/* How far along the plan is, beside its button. */
+.progress {
+  margin-inline-start: var(--space-2);
+  color: var(--wb-muted-foreground);
 }

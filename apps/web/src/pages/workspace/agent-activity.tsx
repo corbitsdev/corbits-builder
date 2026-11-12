@@ -6,8 +6,6 @@ import type { AgentActivity } from "@corbits-builder/client";
 import { wording } from "../../config.ts";
 
 const text = wording.activity;
-// The calls that hold until the person answers.
-const ASKS = new Set(["instruct_coder", "request_approval", "design_app"]);
 const CHECK_SCRIPT = /\bcheck-app\b/;
 
 /** A person sees what the file is, never where it lives: no folders, no internal ids. */
@@ -96,30 +94,18 @@ function verbFor(verbs: readonly string[], subject: string): string {
 // The hub sees a run's events only from its own start; a run open this long with none is idle.
 const IDLE_AFTER_MS = 120_000;
 
-export function activityPhrase(agent: AgentActivity): {
-  phrase: string;
-  asking: boolean;
-} {
+export function activityPhrase(agent: AgentActivity): string {
   // A long command's own word on what it is doing beats a reading of the call that started it.
-  if (agent.command !== undefined)
-    return { phrase: agent.command.line, asking: false };
+  if (agent.command !== undefined) return agent.command.line;
   const latest = agent.tools.at(-1);
   if (latest === undefined) {
-    if (agent.role === "coordinator")
-      return { phrase: text.thinking, asking: false };
+    if (agent.role === "coordinator") return text.thinking;
     const idle = Date.now() - Date.parse(agent.since) > IDLE_AFTER_MS;
-    return { phrase: idle ? text.thinking : text.starting, asking: false };
+    return idle ? text.thinking : text.starting;
   }
-  const asking = ASKS.has(latest.name);
-  if (asking && !latest.running)
-    return { phrase: text.thinking, asking: false };
   const describe = text.tool[latest.name];
   const subject = subjectFor(latest.name, latest.subject);
   const verbs = text.fileVerbs[latest.name];
-  if (verbs && subject)
-    return { phrase: `${verbFor(verbs, subject)} ${subject}`, asking: false };
-  return {
-    phrase: describe ? describe(subject) : text.otherTool(latest.name),
-    asking: asking && latest.running,
-  };
+  if (verbs && subject) return `${verbFor(verbs, subject)} ${subject}`;
+  return describe ? describe(subject) : text.otherTool(latest.name);
 }

@@ -7,10 +7,8 @@ import { ApproachesMeta } from "./approaches.ts";
 const text = type("string > 0").atMostLength(512);
 const sha256 = /^[a-f0-9]{64}$/;
 
-// The documents the hub knows, each with a writer, fields and a template of its own.
-export const WriterDocumentKind = type(
-  "'constraints' | 'approaches' | 'product_requirements' | 'build_plan'",
-);
+// The documents with a writer, fields and a template of their own.
+export const WriterDocumentKind = type("'product_requirements' | 'build_plan'");
 export type WriterDocumentKind = typeof WriterDocumentKind.infer;
 // What no model writes as text. A design concept's option is filed from the designer's workspace
 // by file_design_option, the design by the person's choice among the options, the app from the
@@ -50,14 +48,6 @@ export const ArtifactKindWrite = type({
   "approaches?": ApproachesMeta,
 });
 export type ArtifactKindWrite = typeof ArtifactKindWrite.infer;
-export const BriefWrite = type({
-  "+": "reject",
-  kind: "'problem_brief'",
-  title: text,
-  content,
-  "openQuestions?": OpenQuestions,
-});
-export type BriefWrite = typeof BriefWrite.infer;
 const documentFields = {
   title: text,
   content,
@@ -67,17 +57,6 @@ const documentFields = {
 // kind the writer repeats from its task must match. A flat object, since some providers read only a
 // tool schema's top-level properties and send nothing for a union.
 export const WriterDocumentFields = {
-  constraints: type({
-    "+": "reject",
-    "kind?": "'constraints'",
-    ...documentFields,
-  }),
-  approaches: type({
-    "+": "reject",
-    "kind?": "'approaches'",
-    ...documentFields,
-    "approaches?": ApproachesMeta,
-  }),
   product_requirements: type({
     "+": "reject",
     "kind?": "'product_requirements'",
@@ -154,13 +133,23 @@ export const DesignConcept = type({
 });
 export type DesignConcept = typeof DesignConcept.infer;
 
-// The coordinator records the concept a designer run it just deployed works on.
+// The coordinator records the concept a run it just deployed works on.
 export const DesignConceptRecord = type({
   "+": "reject",
   runId: "string > 0",
   concept: DesignConcept,
 });
 export type DesignConceptRecord = typeof DesignConceptRecord.infer;
+
+// What a plugin's starter records against a run it just deployed, before the run's assignment: a
+// concept the run works on, or the sources a presentation pins.
+export const RunRecord = type({
+  "+": "reject",
+  runId: "string > 0",
+  name: "'concept' | 'presentation'",
+  data: "unknown",
+});
+export type RunRecord = typeof RunRecord.infer;
 
 // The live designer's .builder/designs before it files: unfiled, unversioned and unapproved.
 export const DesignDraft = type({
@@ -342,10 +331,18 @@ export const DesignTweaksReceipt = type({
 export type DesignTweaksReceipt = typeof DesignTweaksReceipt.infer;
 
 // The project values asked for by name, each as stored, any JSON, or null when the project has
-// none yet.
+// none yet. Asked for with no names, every declared value comes, with what each holds and the type
+// or types it takes.
 export const ProjectValues = type({
   "+": "reject",
   values: { "[string]": "unknown" },
+  "declared?": {
+    "[string]": {
+      "+": "reject",
+      about: "string > 0",
+      types: type("string > 0").array().atLeastLength(1),
+    },
+  },
 });
 export type ProjectValues = typeof ProjectValues.infer;
 
@@ -375,6 +372,23 @@ export const DesignChoiceReceipt = type({
 });
 export type DesignChoiceReceipt = typeof DesignChoiceReceipt.infer;
 
+// The person approves a filed document at the version they read, with no question asking for it.
+export const DocumentApproval = type({
+  "+": "reject",
+  version: "number.integer > 0",
+});
+export type DocumentApproval = typeof DocumentApproval.infer;
+
+// The approval recorded, and the open question it answered when it covered all that one asked for.
+export const DocumentApprovalReceipt = type({
+  "+": "reject",
+  artifactId: "string > 0",
+  kind: "string > 0",
+  version: "number.integer > 0",
+  "answered?": "string > 0",
+});
+export type DocumentApprovalReceipt = typeof DocumentApprovalReceipt.infer;
+
 export const ArtifactListItem = type({
   "+": "reject",
   artifactId: "string > 0",
@@ -384,6 +398,8 @@ export const ArtifactListItem = type({
   sha256,
   filedAt: "string > 0",
   "approvedVersion?": "number.integer > 0",
+  // When the person recorded that approval, where the record says.
+  "approvedAt?": "string > 0",
   // How many open questions the current version leaves for the person; none when absent.
   "openQuestionCount?": "number.integer > 0",
 });
@@ -451,6 +467,54 @@ export const ProjectRun = RunAction.merge({
 });
 export type ProjectRun = typeof ProjectRun.infer;
 export const ProjectRuns = type({ "+": "reject", runs: ProjectRun.array() });
+// A check of a plugin to run on its input, against the project as saved.
+export const CheckRun = type({
+  "+": "reject",
+  plugin: "string > 0",
+  action: "string > 0",
+  "input?": "object",
+});
+// What running a check answers: its result, or for one that keeps trying, the id of the record its
+// result will be written to.
+export const CheckRan = type({
+  "+": "reject",
+  ran: "true",
+  checkId: "string > 0",
+  plugin: "string > 0",
+  action: "string > 0",
+  result: "'pass' | 'fail'",
+  summary: "string > 0",
+  evidence: "string[]",
+}).or({
+  "+": "reject",
+  started: "true",
+  checkId: "string > 0",
+  plugin: "string > 0",
+  action: "string > 0",
+});
+// The latest record of one check of the project, for one input.
+export const CheckRecord = type({
+  "+": "reject",
+  checkId: "string > 0",
+  plugin: "string > 0",
+  action: "string > 0",
+  input: "object",
+  result: "'pass' | 'fail' | 'skipped'",
+  summary: "string > 0",
+  evidence: "string[]",
+  // What it read, each at the version it read: the app, each document, approval and value.
+  versions: { "[string]": "string | number | boolean | null" },
+  // Whether each of those is still what the project has saved.
+  current: "boolean",
+  // The facts a pass or skip of it makes true while it is current.
+  returns: "string[]",
+  // A person's principal, the coordinator's run, or the hub.
+  triggeredBy: "string > 0",
+  "skippedBy?": "string > 0",
+  createdAt: "string > 0",
+});
+export type CheckRecord = typeof CheckRecord.infer;
+export const CheckList = type({ "+": "reject", checks: CheckRecord.array() });
 export const ArtifactList = type({
   "+": "reject",
   artifacts: ArtifactListItem.array(),

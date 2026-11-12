@@ -1,8 +1,9 @@
 # Coordinator
 
-The project coordinator: the one agent a person talks to. It interviews them,
-writes the problem brief, hands each later document, the design and the build
-to a specialist, and asks the person for every decision.
+The project coordinator: the one agent a person talks to. It reads the
+project, works out what the person wants and starts the plugin actions that
+get them there: writers, designers and coders do the work, and screens put
+each decision in front of the person.
 
 ## Where it fits
 
@@ -10,19 +11,7 @@ This package only declares data. It imports `@intx/agent/authoring` and
 `@intx/workflow/definition`, nothing else from Interchange. The
 [hub's coordinator entry][entry] imports it, supplies the model, director and
 tools, and builds it into the workflow each project deploys. The tools are
-the hub's. In `classic`:
-
-- `read_artifact`, `write_artifact`: the document list and the brief.
-- `deploy_writer`, `design_app`, `deploy_coder`, `instruct_coder`: start or
-  steer the [writer][writer], [designer][designer] and [coder][coder].
-- `review_artifact`: a second opinion from the [reviewer][reviewer].
-- `request_approval`, `question`: approval and question cards for the
-  person; `question` is Interchange's and waits for the answer.
-- `read_skill`: the problem-brief skill from the writer package.
-- `discover`: finds an installed plugin, such as the font picker, from the
-  person's wording; a screen plugin is then shown with `question`.
-
-In `dynamic` everything it can start is a plugin (`plugins/`):
+the hub's, and everything it can start is a plugin (`plugins/`):
 
 - `discover`: finds plugins from the person's wording, with each specialist's
   actions, what each requires and whether the project has it now.
@@ -35,10 +24,8 @@ In `dynamic` everything it can start is a plugin (`plugins/`):
 ## Layout
 
 - `src/prompt.ts`: the system prompt, plus an optional versioned
-  calibration appended to it. There are two: `classic`, which walks a project
-  through its documents, design and build in order, and `dynamic`, which
-  reads the project and acts on what the person asks, letting each plugin's
-  requirements order the work. The hub's `COORDINATOR_MODE` picks one.
+  calibration appended to it. It reads the project and acts on what the
+  person asks, letting each plugin's requirements order the work.
 - `src/agent.ts`: `createCoordinatorAgent`, which requires an explicit
   provider and model and tags the agent with this package's version.
 - `src/workflow.ts`: `createCoordinatorWorkflow`, one durable mail-triggered
@@ -50,8 +37,4 @@ Prompt conventions are in [AGENTS.md][agents]. `bun run typecheck` and `bun run 
 `bun run dev` runs it in a real project.
 
 [entry]: https://github.com/corbitsdev/corbits-builder/blob/main/apps/hub/src/workflows/entries/coordinator.ts
-[writer]: https://github.com/corbitsdev/corbits-builder/tree/main/plugins/writer
-[designer]: https://github.com/corbitsdev/corbits-builder/tree/main/plugins/designer
-[coder]: https://github.com/corbitsdev/corbits-builder/tree/main/plugins/coder
-[reviewer]: https://github.com/corbitsdev/corbits-builder/tree/main/plugins/writer
 [agents]: https://github.com/corbitsdev/corbits-builder/blob/main/AGENTS.md

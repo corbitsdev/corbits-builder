@@ -57,6 +57,7 @@ import type {
   DesignChoiceReceipt,
   DesignTweaks,
   DesignTweaksReceipt,
+  DocumentApprovalReceipt,
   FailedRun,
   InFlightRun,
   LiveApp,
@@ -72,6 +73,7 @@ import type {
   TriageDecisionInput,
 } from "@corbits-builder/schemas/approval-round";
 import type { ProjectActivity } from "@corbits-builder/schemas/activity";
+import type { PlanView } from "@corbits-builder/schemas/project";
 import type {
   LiveRunStates,
   ProjectStatus,
@@ -141,6 +143,8 @@ export type ProjectArtifact = {
   /** When the current version was filed. */
   filedAt: string;
   approvedVersion?: number;
+  /** When the person recorded that approval, where the record says. */
+  approvedAt?: string;
 };
 
 export type ProductApiClient = Readonly<{
@@ -533,6 +537,12 @@ export type ProductApiClient = Readonly<{
     input: DesignTweaks,
     signal?: AbortSignal,
   ): Promise<DesignTweaksReceipt>;
+  /** The project's saved plan, an empty list where it has none. */
+  projectPlan(
+    tenantId: string,
+    projectId: string,
+    signal?: AbortSignal,
+  ): Promise<PlanView>;
   /** The named project values as stored, null where the project has none yet. */
   projectValues(
     tenantId: string,
@@ -540,6 +550,27 @@ export type ProductApiClient = Readonly<{
     keys: readonly string[],
     signal?: AbortSignal,
   ): Promise<ProjectValues>;
+  /** Every declared project value as stored, with what each holds and the types it takes. */
+  declaredProjectValues(
+    tenantId: string,
+    projectId: string,
+    signal?: AbortSignal,
+  ): Promise<ProjectValues>;
+  /** Saves project values by name, each checked against its declared type; returns them as stored. */
+  saveProjectValues(
+    tenantId: string,
+    projectId: string,
+    values: Readonly<Record<string, unknown>>,
+    signal?: AbortSignal,
+  ): Promise<ProjectValues>;
+  /** The person approves a filed document at the version they read, with no question asking. */
+  approveDocument(
+    tenantId: string,
+    projectId: string,
+    artifactId: string,
+    version: number,
+    signal?: AbortSignal,
+  ): Promise<DocumentApprovalReceipt>;
   /** The person chooses a filed design option at its version; it becomes the approved design. */
   chooseDesign(
     tenantId: string,

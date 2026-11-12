@@ -5,7 +5,6 @@ import { dirname, join } from "node:path";
 import { and, eq, inArray } from "drizzle-orm";
 import { workflowRun } from "@intx/db/schema";
 import type { ProjectExport } from "@corbits-builder/schemas/project";
-import { readCoordinatorMode } from "@corbits-builder/hub/environment";
 import { startTestHub, type TestHubHandle } from "../e2e/support/hub.ts";
 import {
   buildWeatherApp,
@@ -43,17 +42,10 @@ const RESULTS =
 const CASE_DEADLINE_MS = Number(
   process.env["BASELINE_CASE_DEADLINE_MS"] ?? STAGE_DEADLINE_MS,
 );
-// The case hubs' coordinator mode; the weather app is always built in classic mode, which its
-// recorded fixture follows.
-const MODE = readCoordinatorMode({
-  COORDINATOR_MODE: process.env["BASELINE_MODE"],
-});
 const POLL_MS = 1_000;
 const SCRIPTED = "scripted";
 const IMPORT_LEAD = "I just imported this project from a file.";
-// The tool each mode changes an app with.
-const CHANGE_TOOL = MODE === "dynamic" ? "execute" : "instruct_coder";
-const SCRIPTED_TOOLS = ["question", "discover", CHANGE_TOOL, "read_artifact"];
+const SCRIPTED_TOOLS = ["question", "discover", "execute", "read_artifact"];
 const largerText = {
   instruction: "Make the body text larger. Change nothing else.",
 };
@@ -153,13 +145,11 @@ const SCRIPTS: readonly Readonly<{
   {
     turns: [
       {
-        reply: call(
-          "instruct",
-          CHANGE_TOOL,
-          MODE === "dynamic"
-            ? { plugin: "coder", action: "change", input: largerText }
-            : largerText,
-        ),
+        reply: call("instruct", "execute", {
+          plugin: "coder",
+          action: "change",
+          input: largerText,
+        }),
       },
     ],
     moves: ["execute:coder.change"],
@@ -403,7 +393,6 @@ async function runCase(
       remark: kase.remark,
       model: kase.model,
       hint: kase.hint,
-      mode: MODE,
       repeat: kase.repeat,
       projectId,
       runId,
@@ -509,7 +498,6 @@ test("records the coordinator's first moves after a person's remark about a buil
       }
       hub = await startTestHub(recordedModel, {
         pluginHint: hint,
-        coordinatorMode: MODE,
         providerKeys,
       });
 

@@ -9,6 +9,7 @@
   "exports": {
     "./skills": "./src/skills.ts",
     "./task": "./src/task.ts",
+    "./workflow": "./src/workflow.ts",
     "./packages/*": "./src/packages/*.ts"
   },
   "dependencies": {
@@ -38,12 +39,22 @@
     "when": "The project's documents need writing or revising, a second opinion, or the person's approval.",
     "unless": "The person wants the app itself changed, or only a mockup.",
     "packages": {
-      "writer-constraints": "./src/packages/writer-constraints.ts",
-      "writer-approaches": "./src/packages/writer-approaches.ts",
-      "writer-product-requirements": "./src/packages/writer-product-requirements.ts",
-      "writer-build-plan": "./src/packages/writer-build-plan.ts",
-      "writer-document": "./src/packages/writer-document.ts",
-      "reviewer": "./src/packages/reviewer.ts"
+      "writer-product-requirements": {
+        "entry": "./src/packages/writer-product-requirements.ts",
+        "role": "writer"
+      },
+      "writer-build-plan": {
+        "entry": "./src/packages/writer-build-plan.ts",
+        "role": "writer"
+      },
+      "writer-document": {
+        "entry": "./src/packages/writer-document.ts",
+        "role": "writer"
+      },
+      "reviewer": {
+        "entry": "./src/packages/reviewer.ts",
+        "role": "reviewer"
+      }
     },
     "starters": {
       "writer": "./src/start.ts",
@@ -168,8 +179,12 @@
     },
     "values": {
       "brand.guidelines": {
-        "about": "The brand's guidelines in the person's words: voice, tone, and what to do and avoid.",
-        "type": "text"
+        "about": "The brand's guidelines: voice, tone, and what to do and avoid, in the person's words, at a link they gave, or in a file they attached.",
+        "type": [
+          "text",
+          "link",
+          "file"
+        ]
       }
     }
   }

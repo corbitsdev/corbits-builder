@@ -48,7 +48,6 @@ import {
   readCoordinatorStartTimeoutMs,
   readHubEnvironment,
   readPluginHint,
-  readCoordinatorMode,
   readGoogleEmulateBaseUrl,
   required,
 } from "./environment.ts";
@@ -100,6 +99,8 @@ import {
 import { createWorkflowServices } from "./provisioning/workflow-services.ts";
 import { createWorkflowRunStreamRoutes } from "./run-stream.ts";
 import { createAgentActivity } from "./artifacts/activity.ts";
+import { createArtifactService } from "./artifacts/service.ts";
+import { createChecks } from "./plugins/checks.ts";
 import { requestErrorMetadata } from "./request-error.ts";
 import { createLiveAppProxy } from "./live-app/proxy.ts";
 import { createLiveAppRunner } from "./live-app/runner.ts";
@@ -119,7 +120,6 @@ export async function createHubRuntime(
   const coordinatorStartTimeoutMs =
     readCoordinatorStartTimeoutMs(rawEnvironment);
   const pluginHint = readPluginHint(rawEnvironment);
-  const coordinatorMode = readCoordinatorMode(rawEnvironment);
   const handle = createDB(env.database);
   let authEmail: ReturnType<typeof createAuthEmail>;
   try {
@@ -329,7 +329,6 @@ export async function createHubRuntime(
     const coordinatorStartup = createInstalledCoordinatorStartup(
       handle.db,
       assetService,
-      coordinatorMode,
       async (args) => {
         const minted = (prefix: "run_" | "ses_") =>
           prefix +
@@ -391,7 +390,7 @@ export async function createHubRuntime(
       runs: createWorkflowRunReader(agentRepoStore.repoStore),
       installed: (actor, projectId) =>
         installForTenant(
-          { db: handle.db, assets: assetService, coordinatorMode },
+          { db: handle.db, assets: assetService },
           actor,
           projectId,
         ),
@@ -433,7 +432,7 @@ export async function createHubRuntime(
     const coordinatorTokens = createAgentTokenBridge(handle.db, runTokenStore, {
       install: (actor, projectId) =>
         installForTenant(
-          { db: handle.db, assets: assetService, coordinatorMode },
+          { db: handle.db, assets: assetService },
           actor,
           projectId,
         ),
@@ -491,6 +490,30 @@ export async function createHubRuntime(
       createResolveTenant({ db: handle.db }),
       createDeclineNote({ coordinatorAsk: coordinatorAskReader(handle.db) }),
     );
+    // The hub's one runner of plugins' checks; a result is noted to the coordinator through the
+    // hub's own mail route.
+    const checks = createChecks({
+      db: handle.db,
+      artifacts: createArtifactService(
+        handle.db,
+        createWorkflowRunReader(agentRepoStore.repoStore),
+        agentRepoStore.repoStore,
+      ),
+      fetch: async (request) => app.fetch(request),
+    });
+    // A coder's push to a project's app repository is how its main gets a new commit: once
+    // Interchange's receive-pack has moved the ref, the checks the push made stale re-run.
+    app.use(
+      "/api/tenants/:tenantId/assets/app/:repository/git-receive-pack",
+      async (c, next) => {
+        await next();
+        const projectId = /^app-(.+)\.git$/.exec(
+          c.req.param("repository"),
+        )?.[1];
+        if (c.res.ok && projectId)
+          void checks.pushed(projectId, new URL(c.req.url).origin);
+      },
+    );
     mountHubRoutes(app, {
       db: handle.db,
       sidecarRouter,
@@ -527,7 +550,6 @@ export async function createHubRuntime(
         handle.db,
         createWorkflowRunReader(agentRepoStore.repoStore),
         agentRepoStore.repoStore,
-        coordinatorMode,
         coordinatorTokens.authenticateProject,
         {
           ensure: (actor, projectId) =>
@@ -556,6 +578,7 @@ export async function createHubRuntime(
         workflows.localSidecarDataDir,
         liveApps,
         workflows.services.workflowLifecycleService.requestCancellation,
+        checks,
       ),
     );
     app.route(

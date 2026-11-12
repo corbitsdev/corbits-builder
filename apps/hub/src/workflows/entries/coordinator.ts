@@ -1,23 +1,13 @@
 import { createCoordinatorAgent } from "@corbits-builder/coordinator/agent";
 import { createCoordinatorWorkflow } from "@corbits-builder/coordinator";
-import {
-  createArtifactTools,
-  createReadArtifactTools,
-} from "../../artifacts/tools.ts";
-import { createDeployTools } from "../../projects/deploy-tools.ts";
-import { createSkillTools } from "../../skills/tools.ts";
-import { createExecuteTools, createPluginTools } from "../../plugins/tools.ts";
+import { createReadArtifactTools } from "../../artifacts/tools.ts";
+import { createExecuteTools } from "../../plugins/tools.ts";
 import { roleInference } from "../role-inference.ts";
 import { compactingDirector } from "../director.ts";
 import { dropDegenerateTurn, trimHistory } from "../compaction.ts";
 import { savedResultTools } from "../saved-result-tools.ts";
 import { nativePackageName } from "../package-name.ts";
-import { readCoordinatorMode } from "../../environment.ts";
 
-// build-packages.ts inlines the hub's COORDINATOR_MODE; an entry imported directly gets the default.
-const mode = readCoordinatorMode({
-  COORDINATOR_MODE: process.env.BUILDER_COORDINATOR_MODE,
-});
 const compacting = compactingDirector(nativePackageName("coordinator"));
 
 const { source, contextWindow, timeouts, parameters } =
@@ -27,24 +17,13 @@ const agent = createCoordinatorAgent({
     contextWindow,
     timeouts,
     compactAt: 0.6,
-    startAfterApproval: true,
     // The coordinator's run is the project's; nothing starts a failed one again.
     replyOnFailure: true,
   }),
   id: "coordinator",
   capabilities: [],
-  mode,
   inference: { ...source, parameters },
-  tools:
-    mode === "dynamic"
-      ? [createReadArtifactTools(), createExecuteTools(), savedResultTools]
-      : [
-          createArtifactTools("coordinator"),
-          createDeployTools(),
-          createSkillTools(["problem-brief"]),
-          createPluginTools(),
-          savedResultTools,
-        ],
+  tools: [createReadArtifactTools(), createExecuteTools(), savedResultTools],
 });
 const workflow = createCoordinatorWorkflow({
   id: "corbits-builder-coordinator",

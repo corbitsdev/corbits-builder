@@ -8,7 +8,8 @@
   "type": "module",
   "exports": {
     "./comparison": "./src/comparison.tsx",
-    "./markdown": "./src/markdown.tsx"
+    "./markdown": "./src/markdown.tsx",
+    "./steps": "./src/steps.tsx"
   },
   "dependencies": {
     "@corbits/react-ui": "0.5.1",

@@ -174,6 +174,11 @@ test("an undeliverable notice does not hold back a later notice", async () => {
     await handle.db.execute(
       sql`insert into project_coordinator (run_id, project_id, registered_by) values (${coordinator}, ${tenantId}, ${person!.id})`,
     );
+    // A notice names the plugin action each writer was started for.
+    for (const writerRun of [blocked, later])
+      await handle.db.execute(
+        sql`insert into sb_run_action (run_id, tenant_id, project_id, plugin, action) values (${writerRun}, ${tenantId}, ${tenantId}, 'writer', 'write')`,
+      );
 
     const notified = async (runId: string) => {
       const rows = await handle.db.execute<{ notified: boolean }>(

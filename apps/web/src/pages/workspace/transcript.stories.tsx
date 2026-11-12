@@ -101,8 +101,8 @@ export const AskingForApproval: Story = {
     approvals: [
       {
         approvalId: "approval-1",
-        toolName: "request_approval",
-        document: { kind: BRIEF.id, title: BRIEF.title, version: 2 },
+        toolName: "run_shell",
+        subject: "bun run build",
       },
     ],
   },

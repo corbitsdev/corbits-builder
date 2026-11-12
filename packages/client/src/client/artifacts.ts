@@ -26,7 +26,11 @@ export function buildArtifactsMethods(
   | "downloadApp"
   | "exportProjectArchive"
   | "saveDesignTweaks"
+  | "projectPlan"
   | "projectValues"
+  | "declaredProjectValues"
+  | "saveProjectValues"
+  | "approveDocument"
   | "chooseDesign"
   | "acceptedMaterials"
   | "attachMaterials"
@@ -159,10 +163,28 @@ export function buildArtifactsMethods(
         input,
       );
     },
+    projectPlan(tenantId, projectId, signal) {
+      return request(`${projectPath(tenantId, projectId)}/plan`, signal);
+    },
     projectValues(tenantId, projectId, keys, signal) {
       return request(
         `${projectPath(tenantId, projectId)}/values?${new URLSearchParams({ keys: keys.join(",") })}`,
         signal,
+      );
+    },
+    declaredProjectValues(tenantId, projectId, signal) {
+      return request(`${projectPath(tenantId, projectId)}/values`, signal);
+    },
+    saveProjectValues(tenantId, projectId, values, signal) {
+      return request(`${projectPath(tenantId, projectId)}/values`, signal, {
+        values,
+      });
+    },
+    approveDocument(tenantId, projectId, artifactId, version, signal) {
+      return request(
+        `${projectPath(tenantId, projectId)}/artifacts/${encodeURIComponent(artifactId)}/approval`,
+        signal,
+        { version },
       );
     },
     chooseDesign(tenantId, projectId, input, signal) {

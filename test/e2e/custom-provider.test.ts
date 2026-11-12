@@ -251,7 +251,6 @@ test("custom providers install on their API, keep each key on its origin, and re
         installForTenant(
           {
             db: handle.db,
-            coordinatorMode: "classic",
             assets: createAssetService({
               db: handle.db,
               repoStore: createAgentRepoStore({
@@ -274,7 +273,8 @@ test("custom providers install on their API, keep each key on its origin, and re
       const pinned = (role: "coder" | "reviewer") => {
         const offering = visible.find(
           (entry) =>
-            entry.offering.id === installed[role].defaultSourceOfferingId,
+            entry.offering.id ===
+            installed.packages[role]?.defaultSourceOfferingId,
         )!;
         return {
           model: offering.model.canonicalName,

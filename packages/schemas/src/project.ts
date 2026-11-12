@@ -95,6 +95,74 @@ export const ProjectShipReceipt = type({
 });
 export type ProjectShipReceipt = typeof ProjectShipReceipt.infer;
 
+// The plan the coordinator and the person keep for a project: the plugin actions still to run, in
+// order, each optionally holding one level of child steps.
+const PlanStepId = type(/^[A-Za-z0-9_-]{1,32}$/);
+const PlanMark = type({ "+": "reject", by: "string > 0", at: "string > 0" });
+const PlanStepBody = type({
+  "+": "reject",
+  title: text,
+  plugin: "string > 0",
+  action: "string > 0",
+  input: "Record<string, unknown>",
+  // The person wants to be consulted before this step starts.
+  askFirst: "boolean",
+  "goAhead?": PlanMark,
+  "cancelled?": PlanMark,
+});
+const StoredPlanChild = PlanStepBody.merge({ "+": "reject", id: PlanStepId });
+export const StoredPlanStep = StoredPlanChild.merge({
+  "+": "reject",
+  "steps?": StoredPlanChild.array(),
+});
+export type StoredPlanStep = typeof StoredPlanStep.infer;
+export const StoredPlan = type({
+  "+": "reject",
+  steps: StoredPlanStep.array(),
+  updatedAt: "string > 0",
+});
+export type StoredPlan = typeof StoredPlan.infer;
+// Where a step stands, worked out from the project's records each time the plan is read.
+const PlanStepState = type({
+  "+": "reject",
+  state:
+    "'done' | 'failed' | 'running' | 'needs_you' | 'waiting' | 'not_started' | 'skipped' | 'cancelled'",
+  kind: "'workflow' | 'screen' | 'check'",
+  // One plain line: the check's summary, the run's last activity, or why it failed.
+  "summary?": "string > 0",
+  "evidence?": "string[]",
+  // While it waits, each requirement that does not hold, with what would make it true.
+  "needs?": "string[]",
+  "startedAt?": "string > 0",
+  "endedAt?": "string > 0",
+  // The latest run or check record for the step.
+  "runId?": "string > 0",
+  "checkId?": "string > 0",
+});
+const PlanViewChild = StoredPlanChild.merge(PlanStepState);
+// The plan as read, each step with where it stands: no steps and no time when none was ever saved.
+export const PlanView = type({
+  "+": "reject",
+  steps: PlanViewChild.merge({
+    "+": "reject",
+    "steps?": PlanViewChild.array(),
+  }).array(),
+  updatedAt: "string | null",
+});
+export type PlanView = typeof PlanView.infer;
+// A saved step may leave its id out; the hub assigns one.
+const PlanStepWriteChild = PlanStepBody.merge({
+  "+": "reject",
+  "id?": PlanStepId,
+});
+export const PlanStepWrite = PlanStepWriteChild.merge({
+  "+": "reject",
+  "steps?": PlanStepWriteChild.array(),
+});
+export type PlanStepWrite = typeof PlanStepWrite.infer;
+export const PlanWrite = type({ "+": "reject", steps: PlanStepWrite.array() });
+export type PlanWrite = typeof PlanWrite.infer;
+
 // A portable project: every filed document at its current version. approved
 // says a person approved exactly that version; importing the file is the
 // importing person's own approval of each document marked approved.

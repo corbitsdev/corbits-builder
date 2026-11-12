@@ -446,7 +446,7 @@ test(
       );
       const scripted = await startRecordedModelServer(fixtureDir);
       model = scripted;
-      hub = await startTestHub(scripted, { coordinatorMode: "dynamic" });
+      hub = await startTestHub(scripted);
       const { client, workspaceTenantId } = hub;
       const { projectId } = await client.importProject(
         workspaceTenantId,

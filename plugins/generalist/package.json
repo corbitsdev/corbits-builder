@@ -1,0 +1,69 @@
+{
+  "name": "@corbits-builder/generalist",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Does any task no other specialist fits: looks things up, reads the project's documents and app, answers or files a document.",
+  "license": "SEE LICENSE IN ../../LICENSE.md",
+  "author": "Sawyer Cutler <sawyer@dirtroad.dev>",
+  "type": "module",
+  "exports": {
+    "./packages/*": "./src/packages/*.ts"
+  },
+  "dependencies": {
+    "@corbits-builder/hub": "workspace:*",
+    "@corbits-builder/plugin": "workspace:*",
+    "@corbits-builder/plugin-host": "workspace:*",
+    "@corbits-builder/schemas": "workspace:*",
+    "@corbits-builder/writer": "workspace:*",
+    "@corbits/mcp": "0.4.1",
+    "@intx/agent": "workspace:*",
+    "@intx/workflow": "workspace:*",
+    "arktype": "catalog:"
+  },
+  "builder": {
+    "handle": "generalist",
+    "runs": "specialist",
+    "groups": [
+      "research",
+      "questions",
+      "documents"
+    ],
+    "when": "The person asks for something no other specialist's action does: research that needs looking things up on the web, a question about the project or its app's code, or a document such as a competitor analysis, a product comparison or a profit breakdown that needs facts from outside the project.",
+    "unless": "Another specialist's action fits: a document written only from the project's own documents, the product requirements or the build plan (writer), a second opinion or approval of a filed document (writer), building or changing the app (coder), a look, mockup, fonts or colours (designer), or a deck for an audience (presenter).",
+    "packages": {
+      "generalist": {
+        "entry": "./src/packages/generalist.ts",
+        "role": "writer"
+      }
+    },
+    "starters": {
+      "generalist": "./src/start.ts"
+    },
+    "actions": {
+      "do": {
+        "runs": "workflow",
+        "when": "Nothing else fits the task: research on a company, product or library, a comparison or breakdown with facts from the web, an answer about the project or what its app's code does, or any other task. Give a kind and title when the result should be filed as a document; leave them out for a question, whose answer comes back in the reply.",
+        "unless": "One of the other specialists' actions fits the task.",
+        "input": "./src/do.ts",
+        "reads": [
+          "brand.guidelines",
+          "stack.language"
+        ],
+        "writes": [
+          "stack.language"
+        ],
+        "returns": [],
+        "start": {
+          "workflow": "generalist"
+        }
+      }
+    },
+    "examples": [
+      "research our top three competitors",
+      "compare Stripe and Paddle for us",
+      "what is this repository and is it any good",
+      "is this library still maintained",
+      "break down the profit on the premium plan"
+    ]
+  }
+}

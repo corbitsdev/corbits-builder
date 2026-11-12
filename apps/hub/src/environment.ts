@@ -154,17 +154,6 @@ export function readPluginHint(env: Environment): PluginHint {
   return hint;
 }
 
-const CoordinatorMode = type("'classic' | 'dynamic'");
-export type CoordinatorMode = typeof CoordinatorMode.infer;
-
-// How the coordinator works: its system prompt and which of its tools wait for the person.
-export function readCoordinatorMode(env: Environment): CoordinatorMode {
-  const mode = CoordinatorMode(env["COORDINATOR_MODE"] ?? "classic");
-  if (mode instanceof type.errors)
-    throw new Error("COORDINATOR_MODE must be classic or dynamic");
-  return mode;
-}
-
 export function positiveInteger(
   env: Environment,
   name: string,

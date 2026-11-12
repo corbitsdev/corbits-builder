@@ -4,7 +4,7 @@
  * does, and what must hold at the end. Each run writes trace.md and trace.json to
  * SCENARIO_DIR/<name>/: every step in order, what was sent and what came back.
  */
-import { test } from "bun:test";
+import { expect, test } from "bun:test";
 import { appendFileSync } from "node:fs";
 import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
@@ -18,15 +18,11 @@ import { signIn, startWebApp, watchPage } from "../demo/browser.ts";
 import { readRunConversation } from "../e2e/support/extract.ts";
 import { startTestHub, type TestHubHandle } from "../e2e/support/hub.ts";
 import {
-  buildWeatherApp,
   findArtifact,
-  findPendingToolApproval,
   FIXTURE_DIR,
   NonEmptyString,
   openQuestionPark,
   STAGE_DEADLINE_MS,
-  withPipelineScenario,
-  writeWeatherDocuments,
 } from "../e2e/support/pipeline-driver.ts";
 import {
   formatOpenAISseResponse,
@@ -40,6 +36,7 @@ import {
   type RecordedModelServer,
   type ToolResultExpectation,
 } from "../e2e/support/recorded-model.ts";
+import { DESIGNER_REPORT, WEATHER_CONCEPT, WEATHER_MOCKUP } from "./concept.ts";
 
 const SCENARIO_DIR = NonEmptyString.assert(process.env["SCENARIO_DIR"]);
 const POLL_MS = 1_000;
@@ -188,105 +185,191 @@ const REQUIRED_TOOLS: Record<AgentRole, string[]> = {
   presenter: [],
 };
 
+// check-app outlasts run_shell's 30-second default on a busy machine, the first build most of all.
+export const CHECK_APP_MS = 180_000;
+
+/** Recorded turns whose app checks get the longer time limit the scripted coders use. */
+export function withLongerAppCheck(turns: readonly Turn[]): Turn[] {
+  return turns.map(({ when, reply, requiredTools }) => {
+    const longer: Reply = {};
+    if (reply.text !== undefined) longer.text = reply.text;
+    if (reply.toolCalls !== undefined)
+      longer.toolCalls = reply.toolCalls.map((made) =>
+        made.name === "run_shell" && made.arguments["command"] === "check-app"
+          ? {
+              id: made.id,
+              name: made.name,
+              arguments: { command: "check-app", timeout: CHECK_APP_MS },
+            }
+          : made,
+      );
+    return requiredTools === undefined
+      ? { when, reply: longer }
+      : { when, reply: longer, requiredTools };
+  });
+}
+
+// ---- The weather project on the build-web-app route ----
+
+export const WEATHER_IDEA =
+  "I want a weather app where the whole screen animates to match the live weather.";
+
+/** The coordinator's turns from the idea until it asks the person to approve the requirements. */
+export const WEATHER_REQUIREMENTS: readonly Turn[] = [
+  turn(user("weather app"), execute("c_route", "build-web-app", undefined, {})),
+  turn(
+    results(ok("c_route", "execute", "write-requirements")),
+    execute("c_requirements", "writer", "write-requirements", {
+      instruction:
+        "An animated weather web app: current conditions, 24-hour and 7-day forecasts, saved cities and a compare view, using Open-Meteo.",
+    }),
+  ),
+  turn(results(ok("c_requirements", "execute")), say("A writer is on it.")),
+  turn(
+    user("written the requirements"),
+    question("c_approve_requirements", "writer", "approve", {
+      kinds: ["product_requirements"],
+    }),
+  ),
+];
+
+const requirementsApproved = results(
+  ok("c_approve_requirements", "question", '"approved"'),
+);
+
+/** The coordinator's turns from the approved requirements to the built app. */
+export const WEATHER_BUILD: readonly Turn[] = [
+  turn(
+    requirementsApproved,
+    execute("c_mockup", "designer", "mockup", WEATHER_MOCKUP),
+  ),
+  turn(results(ok("c_mockup", "execute")), say("A designer is on it.")),
+  turn(
+    user(DESIGNER_REPORT),
+    question("c_choose", "designer", "review", {
+      note: "The weather-driven design. Approve it to build from it.",
+    }),
+  ),
+  turn(
+    results(ok("c_choose", "question", '"approved"')),
+    execute("c_plan", "writer", "write-build-plan", {
+      instruction: "Plan the build of the approved requirements and design.",
+    }),
+  ),
+  turn(
+    results(ok("c_plan", "execute")),
+    say("A writer is planning the build."),
+  ),
+  turn(user(`The person chose the ${WEATHER_CONCEPT.label}`), say("Noted.")),
+  turn(
+    user("written the build plan"),
+    question("c_approve_plan", "writer", "approve", {
+      kinds: ["build_plan"],
+    }),
+  ),
+  turn(
+    results(ok("c_approve_plan", "question", '"approved"')),
+    execute("c_build", "coder", "build", {
+      instruction: "Build the whole app from the plan and the chosen design.",
+    }),
+  ),
+  turn(results(ok("c_build", "execute")), say("A coder is building it.")),
+  turn(user("Animated Weather"), say("Your app is built.")),
+];
+
+/** The recorded specialists the route starts, by the run keys the weather turns use. */
+export const WEATHER_SPECIALISTS: Readonly<
+  Record<"requirements" | "designer" | "plan" | "coder", Specialist>
+> = {
+  requirements: { role: "writer", turns: await recorded("writer-4") },
+  designer: { role: "designer", turns: await recorded("designer-1") },
+  plan: { role: "writer", turns: await recorded("writer-5") },
+  coder: {
+    role: "coder",
+    turns: withLongerAppCheck(await recorded("coder-1")),
+  },
+};
+
+/** The person approves the first version of the document of the kind when asked to. */
+async function approveFirst(p: Person, kind: string) {
+  const filed = await p.filed(kind, 1);
+  await p.question();
+  const answered = await p.answer({
+    output: { approved: [{ kind, artifactId: filed.artifactId, version: 1 }] },
+  });
+  expect(answered.status).toBe(200);
+}
+
+/** The person approves the requirements, the design and the plan until the app is built. */
+export async function buildWeather(p: Person) {
+  await approveFirst(p, "product_requirements");
+  const option = await p.filed("design_option", 1);
+  await p.question();
+  const chosen = await p.answer({
+    output: {
+      decision: "approved",
+      option: option.artifactId,
+      version: option.version,
+      comments: [],
+    },
+  });
+  expect(chosen.status).toBe(200);
+  await approveFirst(p, "build_plan");
+  await p.filed("app", 1);
+  await p.heard("Your app is built.");
+}
+
 // ---- Starting projects ----
 
 /**
- * fresh: a new project whose coordinator is first sent the idea. weather-documents: the recorded
- * weather project with its documents approved and no design yet. weather-app: the same project
- * built, its app at version 2. The weather projects are built once on a classic hub, exported and
- * kept in SCENARIO_DIR/.cache, then imported into each scenario's dynamic hub.
+ * fresh: a new project whose coordinator is first sent the idea. weather-documents: the weather
+ * project with its requirements approved and no design yet. weather-app: the same project built,
+ * its app at version 1. The weather projects are run once from the idea on the route above,
+ * exported and kept in SCENARIO_DIR/.cache, then imported into each scenario's hub.
  */
 export type Start =
   | Readonly<{ fresh: string }>
   | "weather-documents"
   | "weather-app";
 
-const RecordedRole = type(
-  "'coordinator' | 'designer' | 'coder' | 'presenter' | 'writer' | 'reviewer'",
-);
+const STARTS: Record<"weather-documents" | "weather-app", Scenario> = {
+  "weather-documents": {
+    name: "weather-documents",
+    title: "Animated Weather App",
+    start: { fresh: WEATHER_IDEA },
+    coordinator: [
+      ...WEATHER_REQUIREMENTS,
+      turn(requirementsApproved, say("The requirements are approved.")),
+    ],
+    specialists: { requirements: WEATHER_SPECIALISTS.requirements },
+    person: async (p) => {
+      await approveFirst(p, "product_requirements");
+      await p.heard("The requirements are approved.");
+    },
+  },
+  "weather-app": {
+    name: "weather-app",
+    title: "Animated Weather App",
+    start: { fresh: WEATHER_IDEA },
+    coordinator: [...WEATHER_REQUIREMENTS, ...WEATHER_BUILD],
+    specialists: WEATHER_SPECIALISTS,
+    person: buildWeather,
+  },
+};
 
-// The recorded coordinator's turns up to its design_app call, which waits on an approval no one gives.
-const DOCUMENT_TURNS = 22;
-
-async function exportWeather(
+async function startingProject(
   start: "weather-documents" | "weather-app",
 ): Promise<ProjectExport> {
   const cached = join(SCENARIO_DIR, ".cache", `${start}.json`);
   if (await Bun.file(cached).exists())
     return ProjectExport.assert(JSON.parse(await readFile(cached, "utf8")));
-  const project = {
-    projectId: "animated-weather-app",
-    title: "Animated Weather App",
-    problemStatement: "C: Weather App",
-  };
   let exported: ProjectExport | undefined;
-  if (start === "weather-app")
-    await withPipelineScenario(
-      {
-        fixtureDir: FIXTURE_DIR,
-        projectId: project.projectId,
-        title: project.title,
-        problemStatement: project.problemStatement,
-      },
-      async (driver) => {
-        await buildWeatherApp(driver);
-        exported = await driver.hub.client.exportProject(
-          driver.projectTenantId,
-          driver.projectId,
-        );
-      },
+  await runScenario(STARTS[start], async (person) => {
+    exported = await person.hub.client.exportProject(
+      person.tenantId,
+      person.projectId,
     );
-  else {
-    const fixtureDir = await mkdtemp(join(tmpdir(), "builder-scenario-docs-"));
-    try {
-      const { runs } = await loadScenarioBundle(FIXTURE_DIR);
-      await writeScenarioFixture(
-        fixtureDir,
-        { scenario: "weather-documents", recordedFromCommit: "scripted" },
-        runs
-          .filter(
-            (run) => run.role === "coordinator" || run.stage === "documents",
-          )
-          .filter((run) => run.runKey !== "writer-5")
-          .map((run) => ({
-            runKey: run.runKey,
-            role: RecordedRole.assert(run.role),
-            stage: run.stage,
-            sourceRunId: run.sourceRunId,
-            exchanges: run.exchanges
-              .slice(0, run.role === "coordinator" ? DOCUMENT_TURNS : undefined)
-              .map((exchange) => ({
-                sse: exchange.responseSse,
-                expect: exchange.expect,
-              })),
-          })),
-      );
-      await withPipelineScenario(
-        {
-          fixtureDir,
-          projectId: project.projectId,
-          title: project.title,
-          problemStatement: project.problemStatement,
-        },
-        async (driver) => {
-          await writeWeatherDocuments(driver);
-          const { client } = driver.hub;
-          await driver.waitFor("export", "the design_app approval", async () =>
-            findPendingToolApproval(
-              (await client.nativeApprovals(driver.projectTenantId)).data,
-              "design_app",
-            ),
-          );
-          exported = await client.exportProject(
-            driver.projectTenantId,
-            driver.projectId,
-          );
-        },
-      );
-    } finally {
-      await rm(fixtureDir, { recursive: true, force: true });
-    }
-  }
+  });
   if (exported === undefined) throw new Error(`${start} was not exported`);
   await mkdir(join(SCENARIO_DIR, ".cache"), { recursive: true });
   await writeFile(cached, JSON.stringify(exported));
@@ -514,6 +597,8 @@ export type Person = Readonly<{
   ) => Promise<void>;
 }>;
 
+type Specialist = Readonly<{ role: AgentRole; turns: readonly Turn[] }>;
+
 export type Scenario = Readonly<{
   // The folder the trace goes in, such as s01-any-document.
   name: string;
@@ -521,9 +606,7 @@ export type Scenario = Readonly<{
   start: Start;
   // The coordinator's turns, then each specialist run's by a key of its own.
   coordinator: readonly Turn[];
-  specialists?: Readonly<
-    Record<string, Readonly<{ role: AgentRole; turns: readonly Turn[] }>>
-  >;
+  specialists?: Readonly<Record<string, Specialist>>;
   person: (person: Person) => Promise<void>;
   // The project values the end state reads.
   values?: readonly string[];
@@ -585,7 +668,11 @@ function fixtureRuns(scenario: Scenario) {
   }));
 }
 
-async function runScenario(scenario: Scenario) {
+// `after` runs on the project once the scenario has passed, while its hub is still open.
+async function runScenario(
+  scenario: Scenario,
+  after?: (person: Person) => Promise<void>,
+) {
   const dir = join(SCENARIO_DIR, scenario.name);
   await rm(dir, { recursive: true, force: true });
   await mkdir(dir, { recursive: true });
@@ -604,7 +691,7 @@ async function runScenario(scenario: Scenario) {
 
   const exported =
     typeof scenario.start === "string"
-      ? await exportWeather(scenario.start)
+      ? await startingProject(scenario.start)
       : undefined;
   const runs = fixtureRuns(scenario);
   const fixtureDir = await mkdtemp(join(tmpdir(), "builder-scenario-"));
@@ -628,7 +715,7 @@ async function runScenario(scenario: Scenario) {
       reported = scripted.exchanges().length;
     });
     model = scripted;
-    const opened = await startTestHub(scripted, { coordinatorMode: "dynamic" });
+    const opened = await startTestHub(scripted);
     hub = opened;
     const { client, workspaceTenantId } = opened;
     let projectId: string;
@@ -880,6 +967,7 @@ async function runScenario(scenario: Scenario) {
       await scenario.person(person);
       await person.scriptDone();
       scripted.assertClean();
+      await after?.(person);
     } catch (failure) {
       error = failure;
     }

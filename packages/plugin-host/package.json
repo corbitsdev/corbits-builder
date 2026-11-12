@@ -9,9 +9,11 @@
   "exports": {
     "./bundle": "./src/bundle.ts",
     "./catalog": "./src/catalog.ts",
+    "./checks": "./src/checks.ts",
     "./coordinator": "./src/coordinator.ts",
     "./facts": "./src/facts.ts",
     "./folder": "./src/folder.ts",
+    "./plan": "./src/plan.ts",
     "./search/fields": "./src/search/fields.ts",
     "./search/triggers": "./src/search/triggers.ts",
     "./search/words": "./src/search/words.ts",

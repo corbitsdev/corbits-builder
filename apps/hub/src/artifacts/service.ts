@@ -85,8 +85,11 @@ import {
 import {
   type ExportSection,
   exportSection,
+  type PlanStepWrite,
   ProjectExport,
   ProjectExportMaterial,
+  type StoredPlan,
+  type StoredPlanStep,
 } from "@corbits-builder/schemas/project";
 import JSZip from "jszip";
 import {
@@ -145,10 +148,10 @@ import { designChosenNote } from "../config/design.ts";
 import { loadSettings } from "../settings/policy.ts";
 import {
   agentDecidesApprovals,
+  awaitingApproval,
   preferenceGuidance,
   resolvePreferences,
 } from "../config/preferences.ts";
-import { awaitingApproval } from "../projects/deploy-tools.ts";
 import { frozenModelChoice, workflowBindings } from "../config/models.ts";
 import { modelDirectory } from "../settings/custom-providers.ts";
 import { materialRemovedNote, materialsNote } from "../config/materials.ts";
@@ -196,6 +199,26 @@ const inFlightState = (
   if (heldOnApproval) return "approval";
   return working ? "working" : "waiting";
 };
+// A plan step as stored, under the id it came with or a short new one, with the go-ahead and
+// cancel that marksOf says it keeps.
+function savedPlanStep(
+  step: PlanStepWrite,
+  marksOf: (step: PlanStepWrite, id: string) => PlanStepWrite | undefined,
+): StoredPlanStep {
+  const id = step.id ?? crypto.randomUUID().slice(0, 12);
+  const saved: StoredPlanStep = {
+    id,
+    title: step.title,
+    plugin: step.plugin,
+    action: step.action,
+    input: step.input,
+    askFirst: step.askFirst,
+  };
+  const marks = marksOf(step, id);
+  if (marks?.goAhead) saved.goAhead = marks.goAhead;
+  if (marks?.cancelled) saved.cancelled = marks.cancelled;
+  return saved;
+}
 const RunError = type({ "+": "delete", message: "string", "code?": "string" });
 const UUID = "[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}";
 const isUuid = (value: string) => new RegExp("^" + UUID + "$", "i").test(value);
@@ -892,6 +915,19 @@ export function createArtifactService(
       for (const row of rows) {
         if (!row.contentSha256) continue;
         const approved = await approvedVersion(actor.tenantId, row.id);
+        // When the person recorded it; an approval given through a deploy's ask has no such record.
+        const [record] =
+          approved === undefined
+            ? []
+            : await rawDB
+                .select({ at: artifactImportApproval.createdAt })
+                .from(artifactImportApproval)
+                .where(
+                  and(
+                    eq(artifactImportApproval.artifactId, row.id),
+                    eq(artifactImportApproval.version, approved),
+                  ),
+                );
         const openQuestionCount = openQuestionsOf(row.metadata).length;
         artifacts.push({
           artifactId: row.id,
@@ -901,6 +937,9 @@ export function createArtifactService(
           sha256: row.contentSha256,
           filedAt: await filedAt(row.id, row.version),
           ...(approved === undefined ? {} : { approvedVersion: approved }),
+          ...(record === undefined
+            ? {}
+            : { approvedAt: record.at.toISOString() }),
           ...(openQuestionCount ? { openQuestionCount } : {}),
         });
       }
@@ -1134,6 +1173,65 @@ export function createArtifactService(
       return followed;
     },
 
+    // The plan's steps as stored; where each stands is worked out when it is read.
+    async projectPlan(
+      actor: Actor,
+      projectId: string,
+    ): Promise<{ steps: StoredPlanStep[]; updatedAt: string | null }> {
+      await requireProject(actor, projectId, "read");
+      const [row] = await rawDB
+        .select({ plan: project.plan })
+        .from(project)
+        .where(eq(project.id, projectId));
+      return row?.plan ?? { steps: [], updatedAt: null };
+    },
+
+    // Replaces the plan with steps already checked against the catalog. Only a person gives a step
+    // its go-ahead or cancels it, so a run's save keeps the marks stored under each step's id.
+    async savePlan(
+      actor: Actor,
+      projectId: string,
+      steps: readonly PlanStepWrite[],
+    ): Promise<StoredPlan> {
+      await requireProject(actor, projectId, "manage");
+      const [caller] = await rawDB
+        .select({ kind: principal.kind })
+        .from(principal)
+        .where(eq(principal.id, actor.principalId));
+      const [row] = await rawDB
+        .select({ plan: project.plan })
+        .from(project)
+        .where(eq(project.id, projectId));
+      const before = new Map(
+        (row?.plan?.steps ?? [])
+          .flatMap((step) => [step, ...(step.steps ?? [])])
+          .map((step) => [step.id, step]),
+      );
+      const marksOf = (step: PlanStepWrite, id: string) =>
+        caller?.kind === "user" ? step : before.get(id);
+      const saved = steps.map((step) => {
+        const parent = savedPlanStep(step, marksOf);
+        if (step.steps)
+          parent.steps = step.steps.map((child) =>
+            savedPlanStep(child, marksOf),
+          );
+        return parent;
+      });
+      const ids = saved.flatMap((step) => [
+        step.id,
+        ...(step.steps ?? []).map(({ id }) => id),
+      ]);
+      const repeated = ids.find((id, at) => ids.indexOf(id) !== at);
+      if (repeated !== undefined)
+        throw new ProjectError(400, "repeated_plan_step", { id: repeated });
+      const plan = { steps: saved, updatedAt: new Date().toISOString() };
+      await rawDB
+        .update(project)
+        .set({ plan })
+        .where(eq(project.id, projectId));
+      return plan;
+    },
+
     // Records the plugin action the coordinator just started a specialist run for, before the
     // run's assignment reaches it.
     async recordRunAction(actor: Actor, projectId: string, raw: unknown) {
@@ -1307,7 +1405,7 @@ export function createArtifactService(
     },
 
     // What project values are read from: the filed design at its latest version, with the look
-    // the person saved, and the project's plain store.
+    // the person saved, the project's plain store, and the files attached, which a file value names.
     async projectState(actor: Actor, projectId: string): Promise<ProjectState> {
       await requireProject(actor, projectId, "read");
       const [row] = await rawDB
@@ -1315,9 +1413,17 @@ export function createArtifactService(
         .from(project)
         .where(eq(project.id, projectId));
       const filed = await filedDesign(actor, undefined);
+      const { rows: materials } = await listArtifacts(db, actor.tenantId, {
+        kind: MATERIAL_KIND,
+        limit: MAX_LIST_LIMIT,
+      });
       return {
         styles: filed && (await filed.files())[DESIGN_STYLES],
         stored: row?.values ?? {},
+        materials: materials.map((material) => ({
+          artifactId: material.id,
+          name: material.title,
+        })),
       };
     },
 
@@ -1576,6 +1682,13 @@ export function createArtifactService(
       if ("state" in current) return current;
       await liveApps!.runner.keepAlive(projectId, current);
       return liveAppState(routeTenantId, projectId, current.shown);
+    },
+
+    // The project's saved app, never a coder's work in progress: the commit at the tip of its app
+    // repository's main, or its main-line filed version; undefined while it has none.
+    async savedApp(actor: Actor, projectId: string) {
+      await requireProject(actor, projectId, "read");
+      return savedApp(actor, projectId);
     },
 
     async acceptance(
@@ -2228,7 +2341,7 @@ export function createArtifactService(
       });
     },
 
-    // The coordinator names the concept of a designer run it just deployed, before its assignment.
+    // A plugin's starter names the concept of a run it just deployed, before its assignment.
     async recordDesignConcept(actor: Actor, projectId: string, raw: unknown) {
       const input = DesignConceptRecord(raw);
       if (input instanceof type.errors)
@@ -2249,8 +2362,8 @@ export function createArtifactService(
             eq(workflowRun.tenantId, actor.tenantId),
           ),
         );
-      if (!run || spawnedWorkflowRole(run.bundle) !== "designer")
-        throw new ProjectError(404, "designer_run_not_found", {
+      if (!run || spawnedWorkflowRole(run.bundle) === undefined)
+        throw new ProjectError(404, "spawned_run_not_found", {
           runId: input.runId,
         });
       try {

@@ -21,6 +21,10 @@ import {
   createPosixBuildExecutor,
   IGNORED_CHANGES,
 } from "../builds/posix-sandbox.ts";
+import {
+  INSTALL_TIMEOUT_MS,
+  installPackages,
+} from "../builds/sandbox-command.ts";
 
 export const HostSource = type({ dir: "string > 0" }).or({
   files: { "[string]": "string" },
@@ -28,7 +32,6 @@ export const HostSource = type({ dir: "string > 0" }).or({
 });
 export type HostSource = typeof HostSource.infer;
 
-const INSTALL_TIMEOUT_MS = 280_000;
 const SYNC_DEBOUNCE_MS = 150;
 const STATE_MS = 1_000;
 const tail = (output: string) => output.trim().split("\n").slice(-40);
@@ -137,22 +140,14 @@ async function apply(files: Readonly<Record<string, string | Uint8Array>>) {
     installing = true;
     let result;
     try {
-      result = await executor.run(
-        {
-          id: "install",
-          name: "run_shell",
-          arguments: { command: "bun install", timeout: INSTALL_TIMEOUT_MS },
-        },
-        AbortSignal.timeout(INSTALL_TIMEOUT_MS + 5_000),
-      );
+      result = await installPackages(executor, INSTALL_TIMEOUT_MS);
     } finally {
       installing = false;
     }
-    const output = String(result.content);
-    if (result.isError || output.startsWith("exit code ")) {
+    if (result.exitCode !== 0) {
       failure = {
         error: liveAppWording.commandFailed("bun install"),
-        log: tail(output),
+        log: tail(result.output),
       };
       return;
     }

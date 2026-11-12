@@ -1,20 +1,16 @@
 /**
  * Approvals no longer pending, as their native records settled them, so a
  * decided card keeps its place and outcome in the thread across reloads and
- * decisions made elsewhere. A card names the document versions the hub
- * recorded the approval covering, never the current ones; a declined ask
- * records none, so it names the documents its arguments asked about. A
- * decision made here shows at once, until the record read afterwards confirms it.
+ * decisions made elsewhere. A decision made here shows at once, until the
+ * record read afterwards confirms it.
  */
 import { useEffect, useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
-import type { ProjectArtifact } from "@corbits-builder/client";
 import type { DecidedApproval } from "@corbits-builder/schemas/artifact";
 import { keys } from "../../queries/keys.ts";
 import { askOf } from "../../api/ask.ts";
 import { readDecidedApprovals } from "../../api/activity.ts";
-import { cardDocuments } from "./collaboration.ts";
 import { humanFault } from "./human-fault.ts";
 import type { ApprovalOutcome, DocumentApproval } from "./transcript.tsx";
 
@@ -22,7 +18,6 @@ export type OpenApproval = DocumentApproval & { readonly tenantId: string };
 
 function settledCard(
   record: DecidedApproval,
-  artifacts: readonly ProjectArtifact[],
   decidedHere: DocumentApproval | undefined,
 ): DocumentApproval {
   const outcome: ApprovalOutcome = {
@@ -30,19 +25,11 @@ function settledCard(
     ...(record.scope === null ? {} : { scope: record.scope }),
   };
   if (decidedHere !== undefined) return { ...decidedHere, outcome };
-  const recorded = artifacts.flatMap((item) => {
-    const approved = record.documents.find((ref) => ref.kind === item.kind);
-    return approved === undefined
-      ? []
-      : [{ ...item, version: approved.version }];
-  });
-  const ask = askOf(record.toolName, record.toolArguments);
   const at = Date.parse(record.createdAt);
   return {
     approvalId: record.approvalId,
     ...(Number.isNaN(at) ? {} : { at }),
-    ...cardDocuments(ask, record.status === "approved" ? recorded : artifacts),
-    ...ask,
+    ...askOf(record.toolName, record.toolArguments),
     outcome,
   };
 }
@@ -51,7 +38,6 @@ export function useSettledApprovals(
   projectId: string,
   /** Undefined until the open decisions are read. */
   open: readonly OpenApproval[] | undefined,
-  artifacts: readonly ProjectArtifact[],
 ): {
   settled: readonly DocumentApproval[];
   settle: (approval: OpenApproval, outcome: ApprovalOutcome) => void;
@@ -88,7 +74,7 @@ export function useSettledApprovals(
   const records = decided.data?.approvals ?? [];
   const settled = [
     ...records.map((record) =>
-      settledCard(record, artifacts, decidedHere.get(record.approvalId)),
+      settledCard(record, decidedHere.get(record.approvalId)),
     ),
     ...[...decidedHere.values()].filter(
       (card) =>

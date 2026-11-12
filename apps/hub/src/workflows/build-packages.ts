@@ -3,14 +3,14 @@ import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
 import { join, resolve } from "node:path";
 import { tmpdir } from "node:os";
 import { bundledPlugins } from "@corbits-builder/plugin-host/bundle";
-import { CATALOG, PLUGINS_FOLDER } from "../plugins/catalog.ts";
+import {
+  CATALOG,
+  PLUGINS_FOLDER,
+  WORKFLOW_PACKAGES,
+} from "../plugins/catalog.ts";
 import { nativePackageName } from "./package-name.ts";
 import type { RoleInference } from "./role-inference.ts";
-import type { CoordinatorMode } from "../environment.ts";
-import {
-  WORKFLOW_PACKAGES,
-  type WorkflowRole,
-} from "@corbits-builder/schemas/installed-workflows";
+import type { WorkflowRole } from "@corbits-builder/schemas/installed-workflows";
 
 // The version follows the bundle bytes, so a rebuilt workflow publishes beside the old one instead of
 // colliding with a tarball the registry already holds.
@@ -18,9 +18,9 @@ function contentVersion(base: string, bundle: string): string {
   return `${base}-sha-${createHash("sha256").update(bundle).digest("hex").slice(0, 8)}`;
 }
 
-// Each package is the entry a plugin names for it, else its entry under entries/, built on what its
-// role's model binding resolved to.
-const PACKAGES = Object.entries(WORKFLOW_PACKAGES).map(([name, role]) => {
+// Each package is the entry a plugin names for it, else the hub's own under entries/, built on what
+// its role's model binding resolved to.
+const PACKAGES = [...WORKFLOW_PACKAGES].map(([name, role]) => {
   const plugin = CATALOG.packages.get(name);
   return {
     name,
@@ -28,34 +28,27 @@ const PACKAGES = Object.entries(WORKFLOW_PACKAGES).map(([name, role]) => {
     entry:
       plugin === undefined
         ? join(import.meta.dir, "entries", name + ".ts")
-        : resolve(PLUGINS_FOLDER, plugin),
+        : resolve(PLUGINS_FOLDER, plugin.entry),
   };
 });
-const unknown = [...CATALOG.packages.keys()].find(
-  (name) => !Object.hasOwn(WORKFLOW_PACKAGES, name),
-);
-if (unknown !== undefined)
-  throw new Error(
-    `a plugin installs ${unknown}, which is not a Builder workflow package`,
-  );
 
 export async function buildWorkflowPackages(
   destination: string,
   base: string,
-  inference: Record<WorkflowRole, RoleInference>,
-  coordinatorMode: CoordinatorMode,
+  inference: Partial<Record<WorkflowRole, RoleInference>>,
 ) {
   if (!/^\d+\.\d+\.\d+$/.test(base)) throw new Error("invalid_package_version");
   const output = resolve(destination);
   await mkdir(output, { recursive: true });
   const manifest = [];
   for (const { name, role, entry } of PACKAGES) {
+    const resolved = inference[role];
+    if (!resolved) throw new Error(`role_inference_required:${role}`);
     const result = await Bun.build({
       define: {
         "process.env.BUILDER_ROLE_INFERENCE": JSON.stringify(
-          JSON.stringify(inference[role]),
+          JSON.stringify(resolved),
         ),
-        "process.env.BUILDER_COORDINATOR_MODE": JSON.stringify(coordinatorMode),
       },
       entrypoints: [entry],
       target: "bun",

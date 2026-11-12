@@ -1,7 +1,8 @@
 import type { Fact } from "@corbits-builder/plugin";
 
-// A fact that names one of a plugin's input fields, such as "filed:{kind}".
-const TEMPLATE = /^(filed|approved):\{(\w+)\}$/;
+// A fact that names one of a plugin's input fields, such as "filed:{kind}", or "live:{address}"
+// that a check makes.
+const TEMPLATE = /^(\w+):\{(\w+)\}$/;
 
 // A fact about one kind of filed document, such as "filed:build_plan".
 const PATTERN = /^(filed|approved):(\w+)$/;

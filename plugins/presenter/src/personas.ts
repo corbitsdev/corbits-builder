@@ -157,7 +157,6 @@ export type PresenterDesignTokens = PresenterSourceRef &
 
 export type PackageAssignment = Readonly<{
   sealed: true;
-  projectId: string;
   audience: string;
   personaId: AudiencePersonaId;
   personaLabel: string;
@@ -169,7 +168,6 @@ export type PackageAssignment = Readonly<{
 }>;
 
 export type PresenterAssignmentInput = Readonly<{
-  projectId: string;
   audience: string;
   decisionNeeded: string;
   tone: string;
@@ -204,7 +202,6 @@ export function buildPackageAssignment(
     : documentRefs;
   return {
     sealed: true,
-    projectId: input.projectId,
     audience: input.audience.trim(),
     personaId: persona.id,
     personaLabel: persona.label,
@@ -214,10 +211,6 @@ export function buildPackageAssignment(
     instruction: input.instruction.trim(),
     sources,
   };
-}
-
-export function defaultPackageTitle(label: string): string {
-  return `Approval package for ${label}`;
 }
 
 export function presenterAssignmentMessage(

@@ -68,7 +68,7 @@ export function useBuilderSetup(
   // moves every second even while one long step says nothing.
   const quietMs = useElapsedMs(builder.progress?.lastActivityAt);
   return {
-    doing: agent === undefined ? undefined : activityPhrase(agent).phrase,
+    doing: agent === undefined ? undefined : activityPhrase(agent),
     progress: setupProgressLine(builder.progress, quietMs),
     since: builder.since ?? builder.startedAt,
   };
@@ -205,7 +205,8 @@ export function useLiveApp({
   );
   return {
     app: state(),
-    builderStatus: coder === undefined ? null : activityPhrase(coder),
+    builderStatus:
+      coder === undefined ? null : { phrase: activityPhrase(coder) },
     demoLogin: data?.demoLogin,
     checklist: checklist.data ?? null,
     files,

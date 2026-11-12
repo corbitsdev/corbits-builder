@@ -158,19 +158,17 @@ export function createSpecialistEndNotices(deps: {
             );
     // The hub cancels unpicked concept designers itself after the person's pick; nothing is lost.
     const unpicked = ended.cancellationReason === "design_concept_not_picked";
-    if (!role || correlationId === undefined || !coordinator || unpicked) {
+    if (
+      correlationId === undefined ||
+      !coordinator ||
+      unpicked ||
+      ended.plugin === null ||
+      ended.action === null
+    ) {
       await record(false);
       return true;
     }
     if ((await record(true)).length === 0) return true;
-    // A writer's or reviewer's assignment is correlated as `<role>-<kind>-<runId>` by deploy_writer
-    // and review_artifact.
-    const prefix = role + "-";
-    const suffix = "-" + ended.runId;
-    const kind =
-      correlationId.startsWith(prefix) && correlationId.endsWith(suffix)
-        ? correlationId.slice(prefix.length, -suffix.length) || undefined
-        : undefined;
     const failure =
       ended.status === "failed"
         ? await runFailure(deps.runs, ended)
@@ -187,11 +185,7 @@ export function createSpecialistEndNotices(deps: {
         principalId: coordinator.principalId,
         content: specialistEndedMessage({
           runId: ended.runId,
-          role,
-          ...(kind ? { kind } : {}),
-          ...(ended.plugin !== null && ended.action !== null
-            ? { action: { plugin: ended.plugin, action: ended.action } }
-            : {}),
+          action: { plugin: ended.plugin, action: ended.action },
           status: ended.status === "failed" ? "failed" : "cancelled",
           ...(reason ? { reason } : {}),
         }),

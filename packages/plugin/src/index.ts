@@ -1,5 +1,5 @@
-import { type, type ArkErrors, type Type } from "arktype";
-import { NativeSpecialistAssignment } from "@corbits-builder/schemas/native-specialist";
+import { scope, type, type ArkErrors, type Type } from "arktype";
+import { SpecialistInstruction } from "@corbits-builder/schemas/native-specialist";
 
 // Something true of the project that Builder works out from what it stores, such as "app_exists". A
 // workflow's fact may name one of its input fields, as "filed:{kind}", for the value passed there.
@@ -10,12 +10,33 @@ const Facts = type("string > 0").array();
 // Alternatives, each the facts that together let a plugin start or a screen open.
 const Requires = Facts.atLeastLength(1).array().atLeastLength(1);
 
+// What a link value holds: an http or https address the person gave. Kept as an object so a value
+// that may be text or a link says which it is.
+export const LinkValue = type({
+  "+": "reject",
+  link: type("string.url")
+    .and(/^https?:\/\//i)
+    .describe("an http or https address"),
+});
+
+// What a file value holds: a file the person attached to the project, by the id its material was
+// filed under, and its name, which Builder fills in from the material.
+export const FileValue = type({
+  "+": "reject",
+  file: "string > 0",
+  "name?": "string > 0",
+});
+
+const ValueType = type("'text' | 'json' | 'link' | 'file'");
+export type ValueType = typeof ValueType.infer;
+
 // A named piece of project data a plugin brings, such as "brand.guidelines": what it holds, in one
-// line, and what Builder checks a saved value against. text is a string; json is any JSON value.
+// line, and what Builder checks a saved value against. text is a string; json is any JSON value;
+// link and file are as above. A list of types takes a value of any one of them.
 export const ValueDeclaration = type({
   "+": "reject",
   about: "string > 0",
-  type: "'text' | 'json'",
+  type: ValueType.or(ValueType.array().atLeastLength(2)),
 });
 export type ValueDeclaration = typeof ValueDeclaration.infer;
 
@@ -85,17 +106,127 @@ export const WorkflowActionBuilder = ActionBuilder.merge({
 });
 export type WorkflowActionBuilder = typeof WorkflowActionBuilder.infer;
 
+// The ready-made checks, each a plain description the host evaluates against the project as saved.
+// A network check's address is written out, or named as a field of the check's input, or as a
+// project value.
+export const { Proof, Address } = scope({
+  Address: "string > 0 | Input | Named",
+  Input: { "+": "reject", input: "string > 0" },
+  Named: { "+": "reject", value: "string > 0" },
+  Text: { "+": "reject", path: "string > 0", text: "string > 0" },
+  // A key path into a JSON file, such as "scripts.deploy", and the value it holds there.
+  Key: {
+    "+": "reject",
+    path: "string > 0",
+    key: "string > 0",
+    equals: "unknown",
+  },
+  Equals: { "+": "reject", name: "string > 0", equals: "unknown" },
+  File: { "+": "reject", file: "string > 0" },
+  FileContains: { "+": "reject", fileContains: "Text | Key" },
+  Filed: { "+": "reject", filed: "string > 0" },
+  Approved: { "+": "reject", approved: "string > 0" },
+  DesignChosen: { "+": "reject", designChosen: "true" },
+  Value: { "+": "reject", value: "string > 0 | Equals" },
+  Http: { "+": "reject", http: "Address" },
+  Health: {
+    "+": "reject",
+    health: {
+      "+": "reject",
+      address: "Address",
+      times: "1 <= number.integer <= 5",
+    },
+  },
+  Dns: { "+": "reject", dns: "Address" },
+  // A command run against the saved app, passing when it exits 0. run is the program and its
+  // arguments, never a shell line, so no part of it is read as shell syntax.
+  Command: {
+    "+": "reject",
+    command: {
+      "+": "reject",
+      run: "(string > 0)[] >= 1",
+      "timeoutSeconds?": "1 <= number.integer <= 300",
+    },
+  },
+  All: { "+": "reject", all: "Proof[] >= 1" },
+  Any: { "+": "reject", any: "Proof[] >= 1" },
+  Not: { "+": "reject", not: "Proof" },
+  Proof:
+    "File | FileContains | Filed | Approved | DesignChosen | Value | Http | Health | Dns | Command | All | Any | Not",
+}).export();
+export type Proof = typeof Proof.infer;
+export type Address = typeof Address.infer;
+
+// How long a check runs: once, unless stated; again every few seconds until it passes or the time
+// is up; or once, waiting on the person, who may run it again or skip it.
+const Speed = type("'person'").or({
+  "+": "reject",
+  retry: {
+    "+": "reject",
+    everySeconds: "1 <= number.integer <= 60",
+    forSeconds: "1 <= number.integer <= 3600",
+  },
+});
+
+// Proves one thing about the project as saved and records whether it holds, with evidence: every
+// ready-made check in all, any ready-made check in any, or the code a module's default export runs,
+// as defineCheck makes one.
+export const CheckActionBuilder = type({
+  runs: "'check'",
+  when: "string > 0",
+  "unless?": "string > 0",
+  "requires?": Requires,
+  returns: Facts,
+  "all?": Proof.array().atLeastLength(1),
+  "any?": Proof.array().atLeastLength(1),
+  "check?": "string > 0",
+  "speed?": Speed,
+  // When the hub runs the check again by itself: never, only when asked, unless stated; or on each
+  // saved change to something its latest record read.
+  "rerun?": "'never' | 'change'",
+}).narrow(
+  (action, ctx) =>
+    [action.all, action.any, action.check].filter((made) => made !== undefined)
+      .length === 1 ||
+    ctx.mustBe("a check with exactly one of all, any and check"),
+);
+export type CheckActionBuilder = typeof CheckActionBuilder.infer;
+
+// A ready-made run of several actions that a plan adds as one step holding these steps, in order.
+// A step's action is this plugin's unless plugin names another's.
+const Sequence = type({
+  "+": "reject",
+  title: "string > 0",
+  steps: type({
+    "+": "reject",
+    title: "string > 0",
+    action: "string > 0",
+    "plugin?": "string > 0",
+    "input?": "Record<string, unknown>",
+    "askFirst?": "boolean",
+  })
+    .array()
+    .atLeastLength(1),
+});
+export type Sequence = typeof Sequence.infer;
+
 // A specialist the coordinator composes into its plan, and the actions it can be started on.
 export const SpecialistBuilder = Common.merge({
   runs: "'specialist'",
-  // The workflow packages the host builds and installs from this plugin, by package name, each the
-  // module whose default export is the workflow and whose named exports are its directors.
-  "packages?": { "[string]": "string > 0" },
+  // The sequences a plan can add, by name.
+  "sequences?": { "[string]": Sequence },
+  // The workflow packages the host builds and installs from this plugin, by package name: entry is
+  // the module whose default export is the workflow and whose named exports are its directors, and
+  // role the role its runs play, which picks their model, guidance and one-at-a-time rule.
+  "packages?": {
+    "[string]": { "+": "reject", entry: "string > 0", role: "string > 0" },
+  },
   // The module that starts each workflow its actions' start blocks name, by that name; its default
   // export is a starter, as plugin-host's defineStarter makes one.
   "starters?": { "[string]": "string > 0" },
   actions: type({
-    "[string]": WorkflowActionBuilder.or(ScreenActionBuilder),
+    "[string]":
+      WorkflowActionBuilder.or(ScreenActionBuilder).or(CheckActionBuilder),
   }),
 });
 export type SpecialistBuilder = typeof SpecialistBuilder.infer;
@@ -197,6 +328,9 @@ export type Screen<In, Out, Data, Prepared> = {
   describe: Describe<keyof Type<In>["inferIn"]>;
   // Each project value the answer saves, by its registered name, taken from the screen's output.
   writes?: Record<string, (output: Type<Out>["infer"]) => string>;
+  // Each of the person's preferences the answer sets for the project, by its id, to the option
+  // taken from the screen's output.
+  prefers?: Record<string, (output: Type<Out>["infer"]) => string>;
   // What the answer approves, each at the version the person was shown; the manifest's returns
   // says which facts that may make true.
   approves?: (output: Type<Out>["infer"]) => readonly Shown[];
@@ -214,10 +348,117 @@ export type Workflow<In> = {
 
 export const defineWorkflow = <In>(workflow: Workflow<In>) => workflow;
 
+// The ready-made checks by name, for custom code to combine and run with view.check.
+export const file = (path: string): Proof => ({ file: path });
+export const fileContains = (
+  path: string,
+  holds: string | { key: string; equals: unknown },
+): Proof => ({
+  fileContains:
+    typeof holds === "string"
+      ? { path, text: holds }
+      : { path, key: holds.key, equals: holds.equals },
+});
+export const filed = (kind: string): Proof => ({ filed: kind });
+export const approved = (kind: string): Proof => ({ approved: kind });
+export const designChosen = (): Proof => ({ designChosen: true });
+// Set, or with equals, holding that JSON value.
+export const value = (name: string, equals?: unknown): Proof => ({
+  value: equals === undefined ? name : { name, equals },
+});
+export const http = (address: Address): Proof => ({ http: address });
+export const health = (address: Address, times: number): Proof => ({
+  health: { address, times },
+});
+export const dns = (address: Address): Proof => ({ dns: address });
+export const command = (run: string[], timeoutSeconds?: number): Proof => ({
+  command: timeoutSeconds === undefined ? { run } : { run, timeoutSeconds },
+});
+export const all = (...proofs: Proof[]): Proof => ({ all: proofs });
+export const any = (...proofs: Proof[]): Proof => ({ any: proofs });
+export const not = (proof: Proof): Proof => ({ not: proof });
+
+/** Whether a check held, in a line, with the lines of evidence that show it. */
+export type CheckOutcome = {
+  pass: boolean;
+  summary: string;
+  evidence: readonly string[];
+};
+
+export const pass = (
+  summary: string,
+  evidence: readonly string[] = [],
+): CheckOutcome => ({ pass: true, summary, evidence });
+export const fail = (
+  summary: string,
+  evidence: readonly string[] = [],
+): CheckOutcome => ({ pass: false, summary, evidence });
+
+/**
+ * A command run against the saved app: the step it ended on, its exit code (null when it did not
+ * finish), the tail of its output and whether it ran out of time; or why it could not run.
+ */
+export type CommandRun =
+  | {
+      step: "install" | "command";
+      exitCode: number | null;
+      output: string;
+      timedOut: boolean;
+    }
+  | { error: string };
+
+/**
+ * The project as saved, read-only, as a check sees it: never a run's work in progress. Each read is
+ * recorded, so a pass goes stale once what it read changes.
+ */
+export type ProjectView = {
+  app: {
+    // The saved version: a commit of the app repository, or a filed version; undefined while the
+    // project has no app. Reading it ties the check to the whole app, as a check that cannot name
+    // the paths it depends on is, so any new version makes its record stale.
+    version: string | undefined;
+    // Whether a path is in the app; the record goes stale when that changes.
+    has(path: string): Promise<boolean>;
+    // A text file's content, cut at the host's size cap; undefined when there is no such file. The
+    // record goes stale when the file's content changes or it comes or goes.
+    read(path: string): Promise<string | undefined>;
+    // Runs a command against the saved version in a sandbox of its own, after installing its
+    // packages: how the step that ended it went, or why it could not run at all.
+    run(argv: readonly string[], timeoutSeconds: number): Promise<CommandRun>;
+  };
+  documents: {
+    // The kinds of document filed in the project.
+    kinds(): Promise<readonly string[]>;
+    // A filed document's content at its current version, undefined when none of the kind is filed.
+    read(kind: string): Promise<string | undefined>;
+  };
+  // A project value as stored, null while the project has none.
+  values(name: string): Promise<unknown>;
+  // Whether the person approved the current version of a document kind.
+  approvals(kind: string): Promise<boolean>;
+  facts(): Promise<ReadonlySet<Fact>>;
+  // Runs a ready-made check, or several combined, against this view.
+  check(proof: Proof): Promise<CheckOutcome>;
+};
+
+/** A check's own code: what input it takes, and how it decides from the project as saved. */
+export type Check<In> = {
+  input?: Type<In>;
+  run(view: ProjectView, input: In): CheckOutcome | Promise<CheckOutcome>;
+};
+
+export const defineCheck = <In = Record<string, never>>(check: Check<In>) =>
+  check;
+
+/** Whether a module's default export is a check's own code, as defineCheck makes it. */
+export const isCheck = (value: unknown): value is Check<unknown> =>
+  isRecord(value) &&
+  typeof value["run"] === "function" &&
+  (value["input"] === undefined || typeof value["input"] === "function");
+
 // What a specialist is told to do. A placeholder instruction repeated across turns ends the
 // coordinator in a doom loop; a length floor the schema states gives it a refusal to act on instead.
-export const Instruction =
-  NativeSpecialistAssignment.get("instruction").and("string >= 40");
+export const Instruction = SpecialistInstruction.and("string >= 40");
 
 // What a screen placed on the page shares with the prompt box the person still types in.
 export type PageControls<Output> = {

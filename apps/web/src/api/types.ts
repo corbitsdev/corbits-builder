@@ -48,16 +48,10 @@ export type Wait = {
   createdAt?: string;
   /** The tool name the native approval was raised for, when the record names one. */
   toolName?: string;
-  /** The instruction an instruct_coder or design_app approval carries. */
-  instruction?: string;
   /** The ask's first text argument, which a card with no wording of its own names. */
   subject?: string;
-  /** The document kinds a request_approval ask approves together. */
-  kinds?: readonly string[];
   /** The npm packages a package-install approval names. */
   packages?: readonly string[];
-  /** The design concepts a design_app approval starts. */
-  concepts?: readonly { readonly label: string; readonly direction: string }[];
   /**
    * The coordinator's open input park: the person's move in the
    * conversation. `parkProse` on the carrying event is the question to show;

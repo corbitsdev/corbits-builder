@@ -1,8 +1,16 @@
-import { NativeSpecialistAssignment } from "@corbits-builder/schemas/native-specialist";
 import { SourceRef } from "@corbits-builder/schemas";
+import type { WriterDocumentKind } from "@corbits-builder/schemas/artifact";
 import { writerTaskMessage, type WorkerDocument } from "./contract.ts";
 
 type Source = typeof SourceRef.infer;
+
+// The writer package of each document with fields and a template of its own, and the one that
+// writes any other document under the kind its task names.
+export const WRITER_PACKAGES = {
+  product_requirements: "writer-product-requirements",
+  build_plan: "writer-build-plan",
+} as const satisfies Record<WriterDocumentKind, string>;
+export const DOCUMENT_WRITER_PACKAGE = "writer-document";
 
 // The stack a build plan is written to unless the person asked otherwise.
 export const DEFAULT_STACK =
@@ -12,8 +20,6 @@ function sourceToken(ref: Source): string {
   const base = ref.artifactId + "@" + String(ref.version) + "@" + ref.sha256;
   return ref.locator === undefined ? base : base + "@" + ref.locator;
 }
-
-type Assignment = typeof NativeSpecialistAssignment.infer;
 
 type SourceDocument = { kind: string; title: string; content: string };
 
@@ -40,21 +46,4 @@ export async function writerTask(
     artifact: task.kind,
     ...(current === undefined ? {} : { replaces: sourceToken(current) }),
   });
-}
-
-export async function assignmentToWriterMessage(
-  assignment: Assignment,
-  read: (ref: Source) => Promise<SourceDocument>,
-  current?: Source,
-): Promise<string> {
-  const checked = NativeSpecialistAssignment.assert(assignment);
-  return writerTask(
-    {
-      kind: checked.kind,
-      instruction: checked.instruction,
-      sources: [checked.briefRef, ...checked.sourceRefs],
-      current,
-    },
-    read,
-  );
 }

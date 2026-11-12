@@ -1,8 +1,7 @@
 import { type } from "arktype";
 import { defineStarter } from "@corbits-builder/plugin-host/catalog";
 import type { Project } from "@corbits-builder/plugin-host/coordinator";
-import { DOCUMENT_WRITER_PACKAGE } from "@corbits-builder/schemas/installed-workflows";
-import { writerTask } from "./task.ts";
+import { DOCUMENT_WRITER_PACKAGE, writerTask } from "./task.ts";
 
 // Any document the coordinator names, written from every other filed document. The known kinds
 // keep their own writers for the fields and templates those carry.

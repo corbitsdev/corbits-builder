@@ -224,6 +224,13 @@
       "name": "@corbits-builder/build-web-app",
       "version": "0.1.0-rc.3",
     },
+    "plugins/cloudflare": {
+      "name": "@corbits-builder/cloudflare",
+      "version": "0.1.0-rc.3",
+      "dependencies": {
+        "@corbits-builder/plugin": "workspace:*",
+      },
+    },
     "plugins/coder": {
       "name": "@corbits-builder/coder",
       "version": "0.9.0",
@@ -259,6 +266,35 @@
       },
       "devDependencies": {
         "@types/react": "19.3.0",
+      },
+    },
+    "plugins/generalist": {
+      "name": "@corbits-builder/generalist",
+      "version": "0.1.0",
+      "dependencies": {
+        "@corbits-builder/hub": "workspace:*",
+        "@corbits-builder/plugin": "workspace:*",
+        "@corbits-builder/plugin-host": "workspace:*",
+        "@corbits-builder/schemas": "workspace:*",
+        "@corbits-builder/writer": "workspace:*",
+        "@corbits/mcp": "0.4.1",
+        "@intx/agent": "workspace:*",
+        "@intx/workflow": "workspace:*",
+        "arktype": "catalog:",
+      },
+    },
+    "plugins/presenter": {
+      "name": "@corbits-builder/presenter",
+      "version": "0.2.0",
+      "dependencies": {
+        "@corbits-builder/hub": "workspace:*",
+        "@corbits-builder/plugin": "workspace:*",
+        "@corbits-builder/plugin-host": "workspace:*",
+        "@corbits-builder/schemas": "workspace:*",
+        "@intx/agent": "workspace:*",
+        "@intx/tools-mail": "workspace:*",
+        "@intx/workflow": "workspace:*",
+        "arktype": "catalog:",
       },
     },
     "plugins/react-router-skills": {
@@ -742,14 +778,6 @@
         "@intx/workflow": "workspace:*",
       },
     },
-    "workflows/presenter": {
-      "name": "@corbits-builder/presenter",
-      "version": "0.1.0-rc.3",
-      "dependencies": {
-        "@intx/agent": "workspace:*",
-        "@intx/workflow": "workspace:*",
-      },
-    },
   },
   "patchedDependencies": {
     "@corbits/mcp@0.4.1": "patches/@corbits%2Fmcp@0.4.1.patch",
@@ -838,11 +866,15 @@
 
     "@corbits-builder/client": ["@corbits-builder/client@workspace:packages/client"],
 
+    "@corbits-builder/cloudflare": ["@corbits-builder/cloudflare@workspace:plugins/cloudflare"],
+
     "@corbits-builder/coder": ["@corbits-builder/coder@workspace:plugins/coder"],
 
     "@corbits-builder/coordinator": ["@corbits-builder/coordinator@workspace:workflows/coordinator"],
 
     "@corbits-builder/designer": ["@corbits-builder/designer@workspace:plugins/designer"],
+
+    "@corbits-builder/generalist": ["@corbits-builder/generalist@workspace:plugins/generalist"],
 
     "@corbits-builder/hub": ["@corbits-builder/hub@workspace:apps/hub"],
 
@@ -852,7 +884,7 @@
 
     "@corbits-builder/plugin-ui": ["@corbits-builder/plugin-ui@workspace:packages/plugin-ui"],
 
-    "@corbits-builder/presenter": ["@corbits-builder/presenter@workspace:workflows/presenter"],
+    "@corbits-builder/presenter": ["@corbits-builder/presenter@workspace:plugins/presenter"],
 
     "@corbits-builder/react-router-skills": ["@corbits-builder/react-router-skills@workspace:plugins/react-router-skills"],
 

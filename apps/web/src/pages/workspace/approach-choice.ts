@@ -4,31 +4,13 @@
  */
 import type { ApproachesMeta } from "@corbits-builder/schemas/approaches";
 import { wording } from "../../config.ts";
-import { approvedTogether } from "./document-decision.tsx";
-import type { DocumentApproval } from "./transcript.tsx";
 
 export type ApproachChoice = {
   /** The chosen approach's id for the version filed at filedAt, if the person picked one since. */
   chosen: (meta: ApproachesMeta, filedAt: string) => string | undefined;
-  /** Approves the version's open ask, if any, then sends the message; resolves to a fault, or null once sent. Absent where choosing is closed. */
-  choose?: (message: string, version: number) => Promise<string | null>;
+  /** Declines any open ask, then sends the message; resolves to a fault, or null once sent. Absent where choosing is closed. */
+  choose?: (message: string) => Promise<string | null>;
 };
-
-function namedVersions(approval: DocumentApproval) {
-  return [approval.document, ...(approvedTogether(approval) ?? [])].flatMap(
-    (document) => (document === undefined ? [] : [document]),
-  );
-}
-
-export function asksAbout(
-  approval: DocumentApproval,
-  kind: string,
-  version: number,
-): boolean {
-  return namedVersions(approval).some(
-    (document) => document.kind === kind && document.version === version,
-  );
-}
 
 export function chosenApproach(
   meta: ApproachesMeta,

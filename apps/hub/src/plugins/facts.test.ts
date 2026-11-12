@@ -9,7 +9,7 @@ const filed = (kind: string, version: number, approvedVersion?: number) =>
 const facts = (
   artifacts: ReturnType<typeof filed>[],
   preferences: Record<string, string> = {},
-) => [...projectFacts({ artifacts, preferences })].sort();
+) => [...projectFacts({ artifacts, preferences, checks: [] })].sort();
 
 test("a project with nothing filed has no facts", () => {
   expect(facts([])).toEqual([]);

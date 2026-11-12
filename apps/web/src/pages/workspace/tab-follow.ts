@@ -1,7 +1,7 @@
 /**
  * Which document the reading pane shows.
  *
- * The coordinator's approval, or the document they are writing, is the tab
+ * The document the coordinator is writing is the tab
  * to follow. The person's last explicit choice of a tab or version holds
  * until a newer version is filed; focus moving never releases it.
  */
@@ -21,21 +21,19 @@ export type FollowDocument = {
 export function followDeliverableId(
   documents: readonly FollowDocument[],
   focus: {
-    readonly approvalDeliverableId?: string | null;
     /** The document whose newest version was filed while the room was open. */
     readonly filedDeliverableId?: string | null;
     readonly liveText?: string;
     readonly working?: boolean;
   },
 ): string | null {
-  for (const id of [focus.approvalDeliverableId, focus.filedDeliverableId]) {
-    if (
-      id !== undefined &&
-      id !== null &&
-      documents.some((item) => item.id === id)
-    )
-      return id;
-  }
+  const id = focus.filedDeliverableId;
+  if (
+    id !== undefined &&
+    id !== null &&
+    documents.some((item) => item.id === id)
+  )
+    return id;
   const live = focus.working === true ? (focus.liveText ?? "") : "";
   const haystack = live.toLowerCase();
   if (haystack.length > 0) {

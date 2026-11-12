@@ -45,7 +45,7 @@ function liveLines(
   const before =
     agent.command === undefined ? agent.tools.slice(0, -1) : agent.tools;
   return {
-    doing: sentenceStart(activityPhrase(agent).phrase),
+    doing: sentenceStart(activityPhrase(agent)),
     recent: before.map((tool) => toolPhrase(tool.name, tool.subject)),
   };
 }

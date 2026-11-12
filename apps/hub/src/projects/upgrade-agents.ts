@@ -8,12 +8,12 @@ import {
   type WorkflowRunReader,
 } from "@intx/hub-sessions";
 import { getLogger } from "@intx/log";
-import {
-  roleDeployments,
-  type InstalledWorkflows,
-  type WorkflowRole,
+import type {
+  InstalledWorkflows,
+  WorkflowRole,
 } from "@corbits-builder/schemas/installed-workflows";
 import { spawnedWorkflowRole } from "../workflows/spawn-role.ts";
+import { WORKFLOW_PACKAGES } from "../plugins/catalog.ts";
 import { MODEL_CHOICE_REFUSALS } from "../config/models.ts";
 import { SPECIALIST_OUTDATED } from "../config/agent-upgrade.ts";
 import { HANDOFF_OPENING } from "../config/resume.ts";
@@ -52,8 +52,9 @@ export function staleRuns<T extends { role: WorkflowRole; bundle: unknown }>(
     const pin = pinOf(run.bundle);
     return (
       pin === undefined ||
-      !roleDeployments(installed, run.role).some(
-        (deployment) => deployment.pin === pin,
+      ![...WORKFLOW_PACKAGES].some(
+        ([name, role]) =>
+          role === run.role && installed.packages[name]?.pin === pin,
       )
     );
   });
@@ -245,11 +246,9 @@ export function createAgentUpgrades(deps: {
   }
 
   /**
-   * Replaces an outdated coordinator the moment it starts a specialist, before the deploy lands. A
-   * coordinator from before writers were split names the constraints writer whatever document it
-   * means; its replacement picks the writer from the documents and is told at once, so the work
-   * carries on. Mid-turn the coordinator is never quiet, so this waits only for its specialists and
-   * for any mail on its way to it.
+   * Replaces an outdated coordinator the moment it starts a specialist, before the deploy lands; its
+   * replacement is told at once, so the work carries on. Mid-turn the coordinator is never quiet, so
+   * this waits only for its specialists and for any mail on its way to it.
    */
   async function handoff(
     projectId: string,

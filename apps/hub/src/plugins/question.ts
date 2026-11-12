@@ -32,14 +32,13 @@ export async function checkPluginQuestion(
 }
 
 /**
- * The question a run is still waiting on, by its signal name, from the conversation the person
- * reads: the same run log, read with their authority, that the interface draws the question from.
+ * The coordinator run and every question it parked on, from the conversation the person reads: the
+ * same run log, read with their authority, that the interface draws the questions from.
  */
-export async function openQuestion(
+export async function askedQuestions(
   c: Context<TenantEnv>,
   nativeFetch: ((request: Request) => Promise<Response>) | undefined,
   projectId: string,
-  signalName: string,
 ) {
   if (!nativeFetch) throw new ProjectError(503, "question_answer_unavailable");
   const path =
@@ -58,9 +57,18 @@ export async function openQuestion(
       "conversation_unreadable",
     );
   const { runId, events } = ConversationEvents.assert(read);
-  const question = parkedQuestions(events).find(
-    (asked) => asked.signalName === signalName,
-  );
+  return { runId, questions: parkedQuestions(events) };
+}
+
+/** The question a run is still waiting on, by its signal name. */
+export async function openQuestion(
+  c: Context<TenantEnv>,
+  nativeFetch: ((request: Request) => Promise<Response>) | undefined,
+  projectId: string,
+  signalName: string,
+) {
+  const { runId, questions } = await askedQuestions(c, nativeFetch, projectId);
+  const question = questions.find((asked) => asked.signalName === signalName);
   if (runId === null || question === undefined)
     throw new ProjectError(404, "question_not_found", { signalName });
   if (question.answer !== undefined)

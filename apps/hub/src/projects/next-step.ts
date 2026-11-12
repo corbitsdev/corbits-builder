@@ -216,7 +216,6 @@ export function createProjectNextStep(
         .select({
           id: approval.id,
           tool: approval.toolDefinition,
-          args: approval.toolArguments,
         })
         .from(approval)
         .innerJoin(workflowRun, eq(workflowRun.id, approval.anchorRunId))
@@ -284,19 +283,13 @@ export function createProjectNextStep(
         const name = (asked.tool as { name?: unknown } | null)?.name;
         const tool =
           typeof name === "string" && name !== "" ? name : "approval";
-        const kinds = (asked.args as { kinds?: unknown } | null)?.kinds;
         return note({
           working,
           now: now(who),
           waiting: { kind: "approval", approvalId: asked.id, tool },
           app,
           next: {
-            text: text.approval(
-              tool,
-              Array.isArray(kinds)
-                ? kinds.filter((kind) => typeof kind === "string")
-                : [],
-            ),
+            text: text.approval(tool),
           },
         });
       }

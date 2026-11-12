@@ -42,7 +42,10 @@ import {
 } from "./dispatch-card.tsx";
 import { earlierDocumentRole } from "./earlier-document.ts";
 import { ProductApiError, type ProjectArtifact } from "@corbits-builder/client";
-import type { InFlightRun } from "@corbits-builder/schemas/artifact";
+import {
+  isDocumentKind,
+  type InFlightRun,
+} from "@corbits-builder/schemas/artifact";
 import { toast } from "sonner";
 import { answerQuestion, sendMessage } from "../../api/conversation.ts";
 import type { QuestionAnswer } from "@intx/types/signals";
@@ -50,6 +53,7 @@ import { subscribeWorkflowRun } from "../../api/run-stream.ts";
 import { refusalBody } from "../../api/transport.ts";
 import {
   acceptedMaterials,
+  approveDocument,
   attachMaterials,
   removeMaterial,
   readArtifact,
@@ -68,7 +72,6 @@ import {
 } from "@corbits-builder/schemas/conversation";
 import { keys } from "../../queries/keys.ts";
 import { turnItemId } from "./transcript.tsx";
-import { cardDocuments } from "./collaboration.ts";
 import { useFiledVersions } from "./filed-versions.tsx";
 import { threadUpdates } from "./specialist-updates.ts";
 import { useSettledApprovals, type OpenApproval } from "./settled-approvals.ts";
@@ -77,7 +80,7 @@ import {
   deliverWithOpenApproval,
   useTypedYes,
 } from "./typed-yes.tsx";
-import { asksAbout, chosenApproach } from "./approach-choice.ts";
+import { chosenApproach } from "./approach-choice.ts";
 import {
   DRAFT_TAB,
   followDeliverableId,
@@ -189,10 +192,7 @@ function openDecisionsQuery(projectId: string, active: boolean) {
   });
 }
 
-function documentApprovalsFrom(
-  waits: readonly Wait[],
-  artifacts: readonly ProjectArtifact[],
-): OpenApproval[] {
+function documentApprovalsFrom(waits: readonly Wait[]): OpenApproval[] {
   return waits.flatMap((wait): OpenApproval[] => {
     if (wait.approvalId === undefined || wait.tenantId === undefined) return [];
     const at =
@@ -202,15 +202,9 @@ function documentApprovalsFrom(
         approvalId: wait.approvalId,
         tenantId: wait.tenantId,
         ...(Number.isNaN(at) ? {} : { at }),
-        ...cardDocuments(wait, artifacts),
         ...(wait.toolName === undefined ? {} : { toolName: wait.toolName }),
-        ...(wait.kinds === undefined ? {} : { kinds: wait.kinds }),
-        ...(wait.instruction === undefined
-          ? {}
-          : { instruction: wait.instruction }),
         ...(wait.subject === undefined ? {} : { subject: wait.subject }),
         ...(wait.packages === undefined ? {} : { packages: wait.packages }),
-        ...(wait.concepts === undefined ? {} : { concepts: wait.concepts }),
       },
     ];
   });
@@ -232,12 +226,6 @@ function openingDraft(
     },
   ];
 }
-
-// The hand-offs that name the document their run works on, by the role they start.
-const HANDOFF_ROLE: Record<string, InFlightRun["role"]> = {
-  deploy_writer: "writer",
-  review_artifact: "reviewer",
-};
 
 // Every material shares one kind, but each file is its own tab, so the pane names it by its artifact.
 const MATERIAL = "material";
@@ -276,6 +264,14 @@ function paneDocument(item: ProjectArtifact, seen: SeenVersions): PaneDocument {
         : wording.documentStatus.approved(item.approvedVersion),
     unread: seen[item.artifactId] !== item.version,
     removable: item.kind.startsWith(MATERIAL_TAB),
+    ...(isDocumentKind(item.kind)
+      ? {
+          approval: {
+            approvedVersion: item.approvedVersion,
+            approvedAt: item.approvedAt,
+          },
+        }
+      : {}),
   };
 }
 
@@ -496,6 +492,11 @@ export function useRoom({
   liveApp: { projectId: string; builder: InFlightRun | undefined } | null;
   /** The theme gallery, from the point the coordinator may start the design until one exists. */
   themes: { projectId: string; onUse: (message: string) => void } | null;
+  /** The project values tab, with the attached files a file value may name; none when archived. */
+  values: {
+    projectId: string;
+    files: readonly { artifactId: string; name: string }[];
+  } | null;
   /** The coordinator's open question when its screen is placed over the whole room. */
   pageScreen: ScreenQuestionProps | null;
 } {
@@ -564,11 +565,6 @@ export function useRoom({
   const stepsByAt = useRef(new Map<number, readonly ConversationPart[]>());
   // When this session first saw each hand-off, so the document it files reads as its result.
   const dispatchSeen = useRef<DispatchRoom["seen"]>(new Map());
-  const handoffCalls = useRef(
-    new Map<string, { role: InFlightRun["role"]; kind: string; at: number }>(),
-  );
-  const runKinds = useRef(new Map<string, string>());
-  const usedCalls = useRef(new Set<string>());
   // Every specialist run this session saw, so its card keeps its result after the run ends.
   const runCards = useRef(new Map<string, InFlightRun>());
   // The project view open over the conversation.
@@ -655,9 +651,6 @@ export function useRoom({
     setAttachFault(null);
     stepsByAt.current.clear();
     dispatchSeen.current.clear();
-    handoffCalls.current.clear();
-    runKinds.current.clear();
-    usedCalls.current.clear();
     runCards.current.clear();
   }, [projectId, openingMessage]);
 
@@ -767,15 +760,14 @@ export function useRoom({
     .reverse()
     .find((turn) => turn.role === "assistant")?.text;
   const documentApprovals =
-    waits === undefined ? undefined : documentApprovalsFrom(waits, artifacts);
+    waits === undefined ? undefined : documentApprovalsFrom(waits);
   const { settled: settledApprovals, settle } = useSettledApprovals(
     projectId,
     documentApprovals,
-    artifacts,
   );
   // A card decided here is already its settled line; the pending read lags behind it.
   const pendingFrom = (list: readonly Wait[]): OpenApproval[] =>
-    documentApprovalsFrom(list, artifacts).filter(
+    documentApprovalsFrom(list).filter(
       (approval) =>
         !settledApprovals.some(
           (item) => item.approvalId === approval.approvalId,
@@ -1033,6 +1025,20 @@ export function useRoom({
       toast.error(humanFault(cause, wording.removeAttachment.failed));
     }
   };
+  // The person approves the document they read; the next room read shows it approved.
+  const approveRead = async (id: string, version: number) => {
+    const item = paneDeliverables.find((entry) => entry.kind === id);
+    if (item === undefined) return;
+    try {
+      await approveDocument(projectId, item.artifactId, version);
+      reloadRef.current();
+      onChanged();
+    } catch (cause) {
+      toast.error(
+        await humanFaultWithCode(cause, wording.documentApproval.failed),
+      );
+    }
+  };
   const openProject = (tab: string) => {
     setPaneTab({ value: tab });
     setProjectOpen(true);
@@ -1070,7 +1076,7 @@ export function useRoom({
       documentApprovals?.find((item) => item.approvalId === approvalId) ??
       (cachedWaits === undefined
         ? undefined
-        : documentApprovalsFrom(cachedWaits, artifacts).find(
+        : documentApprovalsFrom(cachedWaits).find(
             (item) => item.approvalId === approvalId,
           ));
     try {
@@ -1144,29 +1150,14 @@ export function useRoom({
   const openApproval = pendingApprovals?.find(
     (approval) => approval.packages === undefined,
   );
-  // Choosing an approach is the person's yes to the version's open ask; the message names the pick.
-  // Resolves to the fault the person sees, or null once the choice is sent.
-  const chooseApproach = async (
-    message: string,
-    version: number,
-  ): Promise<string | null> => {
+  // The message names the pick. Resolves to the fault the person sees, or null once it is sent.
+  const chooseApproach = async (message: string): Promise<string | null> => {
     const currentApprovals = await readPendingApprovals();
     const currentOpen = currentApprovals?.find(
       (approval) => approval.packages === undefined,
     );
-    const kind = selected?.kind;
-    const asked =
-      kind === undefined
-        ? undefined
-        : currentApprovals?.find(
-            (approval) =>
-              approval.packages === undefined &&
-              asksAbout(approval, kind, version),
-          );
     return chooseApproachWithOpenApproval({
-      askedApprovalId: asked?.approvalId,
       openApprovalId: currentOpen?.approvalId,
-      decide: onDecideApproval,
       deliver: () => deliverMail(message),
       decline: (approvalId) =>
         deliverMail(message, false, declineWith(approvalId)),
@@ -1331,7 +1322,6 @@ export function useRoom({
     inFlight,
     failed: snapshot.failed,
     seen: dispatchSeen.current,
-    approvals: shownApprovals,
     activity: agents,
     onOpenDocument: (kind) => {
       // A coder files the app's source, which is read as the running app.
@@ -1355,35 +1345,6 @@ export function useRoom({
       : [],
   );
   for (const dispatch of dispatches) noteDispatch(dispatchRoom, dispatch);
-  // The document a writer or reviewer run works on, from the coordinator's own hand-off call as
-  // the hub's activity read saw it start: the latest such call made before the run started.
-  if (coordinator !== undefined)
-    for (const tool of coordinator.tools) {
-      const role = HANDOFF_ROLE[tool.name];
-      if (role !== undefined && tool.subject !== undefined)
-        handoffCalls.current.set(`${tool.at}:${tool.name}`, {
-          role,
-          kind: tool.subject,
-          at: Date.parse(tool.at),
-        });
-    }
-  const handoffKind = (run: InFlightRun): string | undefined => {
-    const known = runKinds.current.get(run.runId);
-    if (known !== undefined) return known;
-    const started = Date.parse(run.startedAt);
-    const call = [...handoffCalls.current]
-      .filter(
-        ([key, item]) =>
-          item.role === run.role &&
-          item.at <= started &&
-          !usedCalls.current.has(key),
-      )
-      .sort(([, left], [, right]) => right.at - left.at)[0];
-    if (call === undefined) return undefined;
-    usedCalls.current.add(call[0]);
-    runKinds.current.set(run.runId, call[1].kind);
-    return call[1].kind;
-  };
   // A run with no hand-off in this session's view, such as after a reload, still gets its card.
   for (const run of inFlight)
     if (!runCards.current.has(run.runId)) runCards.current.set(run.runId, run);
@@ -1398,7 +1359,7 @@ export function useRoom({
     )
     .map((run) => ({
       at: Date.parse(run.startedAt),
-      dispatch: runDispatch(run, handoffKind(run)),
+      dispatch: runDispatch(run),
     }));
   const cards = [
     ...unseenRuns,
@@ -1454,9 +1415,10 @@ export function useRoom({
       : designConcepts(
           options,
           inFlight,
-          // An ask that names no concepts adds none.
-          shownApprovals.flatMap((approval) =>
-            approval.concepts === undefined ? [] : approval.concepts,
+          dispatches.flatMap(({ concept, direction }) =>
+            concept === undefined || direction === undefined
+              ? []
+              : [{ label: concept, direction }],
           ),
           (option) => {
             const state = documentState(option);
@@ -1552,10 +1514,6 @@ export function useRoom({
     liveApp !== null,
     rolesAtWork?.has("coder") === true,
   );
-  // While an approval is open the pane follows the document it approves.
-  const approvalDeliverableId =
-    pendingApprovals?.find((approval) => approval.document !== undefined)
-      ?.document?.kind ?? null;
   const filed = useFiledVersions({
     projectId,
     documents: artifacts.map((item) =>
@@ -1575,7 +1533,6 @@ export function useRoom({
       filed: true,
     })),
     {
-      approvalDeliverableId,
       filedDeliverableId: filed.at(-1)?.kind ?? null,
       working: streaming || thinking,
       liveText: `${liveTurn?.text ?? ""}\n${latestAssistant ?? ""}`,
@@ -1724,6 +1681,7 @@ export function useRoom({
         empty: emptyConversation(),
       },
       dock: dock(),
+      plan: snapshot.plan,
       documentPane: {
         projectId,
         projectTitle,
@@ -1765,6 +1723,7 @@ export function useRoom({
           : {
               onAddToPrompt: addToPrompt,
               onDeliverMessage: (message: string) => deliver(message),
+              onApprove: approveRead,
             }),
       },
       paneRef: documentPaneRef,
@@ -1789,6 +1748,14 @@ export function useRoom({
       designReached && design === undefined && !archived
         ? { projectId, onUse: addToComposer }
         : null,
+    values: archived
+      ? null
+      : {
+          projectId,
+          files: paneDeliverables
+            .filter((item) => item.kind.startsWith(MATERIAL_TAB))
+            .map((item) => ({ artifactId: item.artifactId, name: item.title })),
+        },
     pageScreen:
       pageQuestion === undefined
         ? null

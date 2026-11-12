@@ -24,10 +24,22 @@ export const FACTS: ReadonlySet<Fact> = new Set([
 
 type Filed = { kind: string; version: number; approvedVersion?: number };
 
-/** What is true of a project, from its filed artifacts and how the person chose to work. */
+// The latest record of a check, with the facts it returns for its input.
+type Checked = {
+  result: "pass" | "fail" | "skipped";
+  current: boolean;
+  returns: readonly Fact[];
+};
+
+/**
+ * What is true of a project, from its filed artifacts, how the person chose to work and its checks.
+ * A fact a check returns holds while that check's latest record is a pass or the person's skip and
+ * everything it read is still what the project has saved.
+ */
 export function projectFacts(project: {
   artifacts: readonly Filed[];
   preferences: Preferences;
+  checks: readonly Checked[];
 }): ReadonlySet<Fact> {
   const facts = new Set<Fact>();
   const agentDecides = agentDecidesApprovals(project.preferences);
@@ -40,5 +52,8 @@ export function projectFacts(project: {
     facts.add(`filed:${kind}`);
     if (approved || agentDecides) facts.add(`approved:${kind}`);
   }
+  for (const { result, current, returns } of project.checks)
+    if (current && result !== "fail")
+      for (const fact of returns) facts.add(fact);
   return facts;
 }

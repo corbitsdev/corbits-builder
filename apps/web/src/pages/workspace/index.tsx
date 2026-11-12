@@ -9,6 +9,7 @@ import { DesignThemes } from "./design-themes.tsx";
 import { LiveApp } from "./live-app.tsx";
 import { TweakPanel } from "./mockup-tweaks.tsx";
 import { NextStepLine } from "./next-step.tsx";
+import { ProjectValues } from "./project-values.tsx";
 import {
   useRoom,
   useRoomGate,
@@ -29,7 +30,7 @@ export function StageWorkspace(props: StageWorkspaceProps) {
 
 function ReadyRoom(props: ReadyRoomProps) {
   const { projectId } = props;
-  const { view, nextStep, enableAi, liveApp, themes, pageScreen } =
+  const { view, nextStep, enableAi, liveApp, themes, values, pageScreen } =
     useRoom(props);
   return (
     <>
@@ -40,6 +41,7 @@ function ReadyRoom(props: ReadyRoomProps) {
         paneParts={{
           liveApp: liveApp === null ? null : <LiveApp {...liveApp} />,
           themes: themes === null ? null : <DesignThemes {...themes} />,
+          values: values === null ? null : <ProjectValues {...values} />,
           conceptMockup: (concept, frame) => (
             <ConceptMockup projectId={projectId} concept={concept} {...frame} />
           ),

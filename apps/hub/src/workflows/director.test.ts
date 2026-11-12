@@ -304,121 +304,6 @@ test("designer director holds replies until the latest edits pass check_design a
   expect(accepted.some((action) => action.type === "reply")).toBe(true);
 });
 
-test("coordinator director reminds once after an approval that opened a step, unless the reply asks the person", async () => {
-  const subject = () =>
-    compactingDirector("@corbits-builder/coordinator-test").factory(
-      { contextWindow: 200_000, compactAt: 0.8, startAfterApproval: true },
-      {} as never,
-      { systemPrompt: "Base prompt.", toolDefinitions: [], compactorNames: [] },
-    ) as ReactorDirector;
-  const reply = (text: string) => ({
-    role: "assistant" as const,
-    model: "gpt-6.1-terra",
-    content: [{ type: "text" as const, text }],
-    timestamp: 5,
-  });
-  const replied = (text: string): ReactorInboundEvent => ({
-    type: "inference.done",
-    turn: reply(text),
-    usage: state.tokenUsage,
-    source: { sourceId: "openai", provider: "openai", model: "gpt-6.1-terra" },
-  });
-  const approval = (
-    extra: { detail?: unknown; isError?: boolean } = {},
-  ): ConversationTurn[] => [
-    {
-      role: "user",
-      content: [{ type: "text", text: "Go with your recommendation." }],
-      timestamp: 0,
-    },
-    {
-      role: "assistant",
-      content: [
-        { type: "tool_call", id: "a", name: "request_approval", arguments: {} },
-      ],
-      timestamp: 1,
-    },
-    {
-      role: "user",
-      content: [
-        {
-          type: "tool_result",
-          callId: "a",
-          content: [{ type: "text", text: "{}" }],
-          ...extra,
-        },
-      ],
-      timestamp: 2,
-    },
-  ];
-  const opened = { detail: { canStart: ["product_requirements"] } };
-  const then = (name: string): ConversationTurn[] => [
-    {
-      role: "assistant",
-      content: [{ type: "tool_call", id: "r", name, arguments: {} }],
-      timestamp: 3,
-    },
-    {
-      role: "user",
-      content: [
-        {
-          type: "tool_result",
-          callId: "r",
-          content: [{ type: "text", text: "{}" }],
-        },
-      ],
-      timestamp: 4,
-    },
-  ];
-  const holds = async (
-    turns: ConversationTurn[],
-    text = "It is ready for approval.",
-    director = subject(),
-  ) => {
-    const actions = await director.decide(
-      replied(text),
-      { ...state, turns: [...turns, reply(text)] },
-      createCapabilities(),
-    );
-    return (Array.isArray(actions) ? actions : [actions]).some(
-      (action) => action.type === "compact",
-    );
-  };
-
-  expect(await holds([...approval(opened), ...then("read_artifact")])).toBe(
-    true,
-  );
-  expect(await holds(approval())).toBe(false);
-  expect(await holds([...approval(opened), ...then("deploy_writer")])).toBe(
-    false,
-  );
-  expect(await holds(approval({ ...opened, isError: true }))).toBe(false);
-  expect(
-    await holds(
-      approval(opened),
-      "Do you want one design or several? Tell me any apps or colours you like.",
-    ),
-  ).toBe(false);
-
-  const director = subject();
-  const turns = approval(opened);
-  const text = "It is ready for approval.";
-  const held = await director.decide(
-    replied(text),
-    { ...state, turns: [...turns, reply(text)] },
-    createCapabilities(),
-  );
-  const note = (Array.isArray(held) ? held : [held]).find(
-    (action) => action.type === "compact",
-  );
-  expect(note?.type === "compact" ? note.reason : "").toContain(
-    "these can start now: product_requirements",
-  );
-  expect(await holds(turns, "I will wait until you are ready.", director)).toBe(
-    false,
-  );
-});
-
 test("coder director takes a check-app verdict from the result's detail after trimming drops its text", async () => {
   const subject = compactingDirector("@corbits-builder/coder-test").factory(
     { contextWindow: 200_000, compactAt: 0.8, checkBeforeDone: true },
@@ -657,8 +542,6 @@ test("check_design validates DESIGN.md and .dark in styles.css and auto-files th
           domain: "example.invalid",
           role: "designer",
           workflows: {
-            "writer-constraints": deployment,
-            "writer-approaches": deployment,
             "writer-product-requirements": deployment,
             "writer-build-plan": deployment,
             "writer-document": deployment,

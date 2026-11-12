@@ -20,8 +20,6 @@ import {
 import {
   InstalledWorkflows,
   INSTALLED_WORKFLOWS_KEY,
-  WORKFLOW_PACKAGES,
-  type WorkflowPackage,
 } from "@corbits-builder/schemas/installed-workflows";
 import type { RoleBinding } from "@corbits-builder/schemas/models";
 import type { WorkflowRole } from "@corbits-builder/schemas/installed-workflows";
@@ -39,10 +37,10 @@ import {
 import { projectModelChoice } from "../projects/model-choice.ts";
 import { ProjectError } from "../projects/errors.ts";
 import { buildWorkflowPackages } from "./build-packages.ts";
+import { WORKFLOW_PACKAGES } from "../plugins/catalog.ts";
 import { nativePackageName } from "./package-name.ts";
 import { resolveRoleInference, type RoleInference } from "./role-inference.ts";
 import type { Actor } from "../lib/actor.ts";
-import type { CoordinatorMode } from "../environment.ts";
 
 const PACKAGE_VERSION = "1.0.0";
 const HUB = { kind: "hub" } as const;
@@ -53,15 +51,13 @@ type InstallForTenantPorts = {
     AssetService,
     "createAsset" | "populateAsset" | "listAssetBlobs"
   >;
-  coordinatorMode: CoordinatorMode;
 };
 
 type Bindings = Record<WorkflowRole, RoleBinding>;
-type Inference = Record<WorkflowRole, RoleInference>;
+type Inference = Partial<Record<WorkflowRole, RoleInference>>;
 type Source = Pick<RoleBinding, "provider" | "model">;
 
-// One build per coordinator mode and set of resolved role inference: both are inlined, so they
-// are part of the bundle.
+// One build per set of resolved role inference: it is inlined, so it is part of the bundle.
 const packages = new Map<
   string,
   Promise<
@@ -106,18 +102,13 @@ function installedFrom(config: unknown): InstalledWorkflows | null {
   return parsed instanceof type.errors ? null : parsed;
 }
 
-async function buildAndRead(
-  key: string,
-  inference: Inference,
-  coordinatorMode: CoordinatorMode,
-) {
+async function buildAndRead(key: string, inference: Inference) {
   const directory = await mkdtemp(join(tmpdir(), "sb-hub-packages-"));
   try {
     const manifest = await buildWorkflowPackages(
       directory,
       PACKAGE_VERSION,
       inference,
-      coordinatorMode,
     );
     return await Promise.all(
       manifest.map(async (item) => ({
@@ -135,11 +126,11 @@ async function buildAndRead(
   }
 }
 
-function builtPackages(inference: Inference, coordinatorMode: CoordinatorMode) {
-  const key = JSON.stringify([coordinatorMode, inference]);
+function builtPackages(inference: Inference) {
+  const key = JSON.stringify(inference);
   const cached = packages.get(key);
   if (cached) return cached;
-  const building = buildAndRead(key, inference, coordinatorMode);
+  const building = buildAndRead(key, inference);
   packages.set(key, building);
   return building;
 }
@@ -325,14 +316,8 @@ async function offeringId(
 }
 
 type Built = Awaited<ReturnType<typeof builtPackages>>;
-const ROLES = [
-  "coordinator",
-  "writer",
-  "reviewer",
-  "coder",
-  "designer",
-  "presenter",
-] as const;
+// The roles the installed packages play.
+const ROLES = [...new Set(WORKFLOW_PACKAGES.values())];
 
 /** A stored descriptor is current only while it pins this build's packages and each package's offering still serves its role's source. */
 async function isCurrent(
@@ -346,16 +331,20 @@ async function isCurrent(
   const pins = new Set(
     built.map((item) => item.packageName + "@" + item.version),
   );
-  const packages = Object.entries(WORKFLOW_PACKAGES) as [
-    WorkflowPackage,
-    WorkflowRole,
-  ][];
-  if (!packages.every(([name]) => pins.has(installed[name].pin))) return false;
+  const packages = [...WORKFLOW_PACKAGES];
+  if (
+    !packages.every(([name]) => {
+      const pin = installed.packages[name]?.pin;
+      return pin !== undefined && pins.has(pin);
+    })
+  )
+    return false;
   const visible = await listVisibleOfferings(db, tenantId);
   for (const [name, role] of packages) {
     const row = visible.find(
       (candidate) =>
-        candidate.offering.id === installed[name].defaultSourceOfferingId,
+        candidate.offering.id ===
+        installed.packages[name]?.defaultSourceOfferingId,
     );
     if (!row || !(await servesSource(db, directory, row, bindings[role])))
       return false;
@@ -442,8 +431,7 @@ export async function installForTenant(
         role,
         resolveRoleInference(directory, role, bindings[role]),
       ]),
-    ) as Inference,
-    ports.coordinatorMode,
+    ),
   );
   const existing = installedFrom(row?.config);
   if (
@@ -508,9 +496,9 @@ export async function installForTenant(
     };
   };
   const descriptor = InstalledWorkflows.assert({
-    schemaVersion: 2,
-    ...Object.fromEntries(
-      Object.entries(WORKFLOW_PACKAGES).map(([name, role]) => [
+    schemaVersion: 3,
+    packages: Object.fromEntries(
+      [...WORKFLOW_PACKAGES].map(([name, role]) => [
         name,
         deployment(nativePackageName(name), role),
       ]),

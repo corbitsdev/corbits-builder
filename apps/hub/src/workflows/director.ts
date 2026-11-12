@@ -81,7 +81,7 @@ const MAX_EMPTY_TURNS = 3;
 // not held forever, and its reply never reaches the coordinator as a finished report.
 const MAX_UNCHECKED_REPLIES = 3;
 
-// What a specialist's held reply is told besides what is missing; a coordinator is reminded once.
+// What a held reply is told besides what is missing.
 const FINISH_OR_SAY_WHY = ` Do that, then reply. If it cannot be done, reply saying why; after ${MAX_UNCHECKED_REPLIES} held replies the run ends as not finished, with your last reply as the reason.`;
 
 // Why a run whose replies were held every time failed: what it did not do, and its last words.
@@ -256,43 +256,12 @@ function unfiled(turns: readonly ConversationTurn[]): boolean {
   return true;
 }
 
-const READ_TOOLS = new Set(["read_artifact", "read_skill", "read_file"]);
-const ApprovalDetail = type({ canStart: "string[] > 0" });
-
-/*
- * A model often answers an approval by saying the document is ready for approval and starting
- * nothing. The steps the approval opened are still waiting while only reads follow it.
- */
-function unstartedSteps(
-  turns: readonly ConversationTurn[],
-): string[] | undefined {
-  // A reply that asks the person something hands the turn to them on purpose.
-  const asks = turns
-    .at(-1)
-    ?.content.some(
-      (block) => block.type === "text" && /[?？]/.test(block.text),
-    );
-  if (asks) return undefined;
-  for (const call of taskCalls(turns)) {
-    if (call.name === "request_approval") {
-      const detail = ApprovalDetail(call.detail);
-      return call.isError || detail instanceof type.errors
-        ? undefined
-        : detail.canStart;
-    }
-    if (!READ_TOOLS.has(call.name)) return undefined;
-  }
-  return undefined;
-}
-
 function holdReply(
   config: {
     checkBeforeDone?: boolean;
     fileBeforeDone?: boolean;
-    startAfterApproval?: boolean;
   },
   turns: readonly ConversationTurn[],
-  held: number,
 ): string | undefined {
   // A refused access ends the agent's job: the reply it led to says what it finished, so nothing
   // holds it.
@@ -304,11 +273,6 @@ function holdReply(
       return "The design option is not filed yet; check_design or file_design_option files it.";
     return "The document is not filed yet; write_artifact files it.";
   }
-  // The person may have asked to wait, so the approval is a reminder once rather than a rule.
-  const steps =
-    config.startAfterApproval && held === 0 ? unstartedSteps(turns) : undefined;
-  if (steps)
-    return `The approval went through, so these can start now: ${steps.join(", ")}. Start what the person wants next, unless they asked to wait.`;
   return undefined;
 }
 
@@ -321,10 +285,8 @@ function holdReply(
  * replyOnFailure is the reply. With checkBeforeDone, a final reply waits for a passing check-app
  * after the last file change; with fileBeforeDone, it waits for a filed document; each held reply
  * is answered in the same conversation with what is missing, and a fourth fails the run as not
- * finished. With startAfterApproval, a reply after an approval that starts and asks nothing is held
- * once. A reply after a Builder tool refused the agent's access is never held. With presents, a
- * reply after
- * filed work ends with it, so the coordinator reads which screen shows the work. Every inference retries an
+ * finished. A reply after a Builder tool refused the agent's access is never held. With presents, a
+ * reply after filed work ends with it, so the coordinator reads which screen shows the work. Every inference retries an
  * overloaded, slow or rate-limited model a few times; once that gives up, the run fails, or with
  * replyOnFailure the error is the reply. The model-specific numbers come from the agent
  * definition's director config.
@@ -337,8 +299,6 @@ export const compactingDirector = (packageName: string) =>
     checkBeforeDone?: boolean;
     // Whether a final reply waits for a write_artifact that filed the task's document.
     fileBeforeDone?: boolean;
-    // Whether a reply after an approval that starts and asks nothing is held once.
-    startAfterApproval?: boolean;
     // Whether a runaway or a model failure is the reply rather than a failed run.
     replyOnFailure?: boolean;
     // What a reply after filed work ends with: the screen that shows the work to the person.
@@ -352,7 +312,6 @@ export const compactingDirector = (packageName: string) =>
       compactAt: "0 < number < 1",
       "checkBeforeDone?": "boolean",
       "fileBeforeDone?": "boolean",
-      "startAfterApproval?": "boolean",
       "replyOnFailure?": "boolean",
       "presents?": "string | null",
       timeouts: { "+": "reject", "totalTimeoutMs?": "number.integer > 0" },
@@ -425,7 +384,7 @@ export const compactingDirector = (packageName: string) =>
               (block) => block.type === "tool_call",
             );
             const notDone = replying
-              ? holdReply(config, state.turns, uncheckedReplies)
+              ? holdReply(config, state.turns)
               : undefined;
             if (notDone) {
               uncheckedReplies += 1;
@@ -437,11 +396,7 @@ export const compactingDirector = (packageName: string) =>
                 caps.checkpoint("reply-before-done"),
                 caps.compact(
                   DROP_DEGENERATE,
-                  HELD_REPLY +
-                    notDone +
-                    (config.checkBeforeDone || config.fileBeforeDone
-                      ? FINISH_OR_SAY_WHY
-                      : ""),
+                  HELD_REPLY + notDone + FINISH_OR_SAY_WHY,
                 ),
               ];
             }

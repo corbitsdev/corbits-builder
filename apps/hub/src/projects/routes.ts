@@ -4,6 +4,8 @@ import { mountDesignThemeRoutes } from "../artifacts/design-themes.ts";
 import { createArtifactService } from "../artifacts/service.ts";
 import type { AgentActivityTracker } from "../artifacts/activity.ts";
 import { mountProjectAuditRoutes } from "../audit/routes.ts";
+import { mountCheckRoutes, type Checks } from "../plugins/checks.ts";
+import { createSettingsService } from "../settings/service.ts";
 import { Hono, type Context, type MiddlewareHandler } from "hono";
 import { describeRoute, resolver } from "hono-openapi";
 import {
@@ -48,7 +50,6 @@ import { MODEL_CHOICE_REFUSALS } from "../config/models.ts";
 import { mailRunAsCaller } from "../mail/caller-mail.ts";
 import { readJson } from "../lib/json.ts";
 import { errorCode, requestErrorMetadata } from "../request-error.ts";
-import type { CoordinatorMode } from "../environment.ts";
 
 const log = getLogger(["corbits-builder", "hub", "projects"]);
 
@@ -178,7 +179,6 @@ export function createProjectRoutes(
   db: DB["db"],
   runs: WorkflowRunReader,
   repoStore: RepoStore,
-  coordinatorMode: CoordinatorMode,
   authenticate: MiddlewareHandler<AppEnv> = requireAuth,
   startCoordinator?: CoordinatorStart,
   stopCoordinator?: (actor: Actor, projectId: string) => Promise<void>,
@@ -191,6 +191,7 @@ export function createProjectRoutes(
     runId: string,
     reason: string,
   ) => Promise<unknown>,
+  checks?: Checks,
 ) {
   const app = new Hono<TenantEnv>();
   const service = createProjectService(db);
@@ -215,6 +216,24 @@ export function createProjectRoutes(
   app.use("*", async (c, next) => {
     c.header("cache-control", "no-store");
     await next();
+  });
+  // Every document version, app version, approval and value the project saves comes through one of
+  // these routes, so each write that succeeds re-runs the checks it made stale. The checks' own
+  // routes only record runs and skips, which change nothing a check reads.
+  app.use("/:projectId/*", async (c, next) => {
+    await next();
+    if (
+      checks === undefined ||
+      c.req.method === "GET" ||
+      !c.res.ok ||
+      /\/check(s|-runs)(\/|$)/.test(c.req.path)
+    )
+      return;
+    void checks.changed(
+      actorOf(c),
+      c.req.param("projectId"),
+      new URL(c.req.url).origin,
+    );
   });
   app.post(
     "/import",
@@ -322,7 +341,6 @@ export function createProjectRoutes(
             nativeFetch,
             await service.read(created.actor, projectId),
             importedProjectMessage(
-              coordinatorMode,
               materials.map(({ title }) => title),
               kinds.includes("app"),
               PLANNED_DOCUMENT_KINDS.filter((kind) => !kinds.includes(kind)),
@@ -695,7 +713,14 @@ export function createProjectRoutes(
       }
     },
   );
-  mountArtifactRoutes(app, artifacts, nativeFetch);
+  mountArtifactRoutes(
+    app,
+    artifacts,
+    nativeFetch,
+    checks,
+    createSettingsService(db),
+  );
+  if (checks) mountCheckRoutes(app, checks);
   mountProjectNextStepRoutes(app, createProjectNextStep(db, runs, liveApps));
   mountDesignThemeRoutes(app, db);
   mountProjectAuditRoutes(app, db);

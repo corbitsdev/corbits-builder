@@ -1,14 +1,21 @@
-import { type } from "arktype";
-import type { ValueDeclaration } from "@corbits-builder/plugin";
+import { type, type Type } from "arktype";
+import {
+  FileValue,
+  LinkValue,
+  type ValueDeclaration,
+  type ValueType,
+} from "@corbits-builder/plugin";
 import type { DesignTweaks } from "@corbits-builder/schemas/artifact";
 import { ProjectError, typeIssues } from "../projects/errors.ts";
 import { declarations } from "./design-tokens.ts";
 
 // What the project has stored that its values are read from: the filed design's styles.css, and
-// the project's plain store of every other value by name.
+// the project's plain store of every other value by name. materials are the files the person
+// attached, which a file value names.
 export type ProjectState = {
   styles: string | undefined;
   stored: Readonly<Record<string, unknown>>;
+  materials: readonly { artifactId: string; name: string }[];
 };
 
 type FontToken = Extract<keyof DesignTweaks["tokens"], `font-${string}`>;
@@ -96,16 +103,63 @@ export const TOKEN_DECLARATIONS: Readonly<Record<string, ValueDeclaration>> =
 const tokenValue = (name: string) =>
   TOKEN_VALUES.find((value) => value.name === name);
 
-const STORED_TYPES = {
+const STORED_TYPES: Record<ValueType, Type<unknown>> = {
   text: type("string"),
   json: type("unknown"),
-} as const;
+  link: LinkValue,
+  file: FileValue,
+};
 
 const invalid = (key: string, issues: type.errors) =>
   new ProjectError(400, "invalid_project_value", {
     key,
     issues: typeIssues(issues, key),
   });
+
+// The type a value's shape names: a string is text, { link } a link, { file } a file.
+function shapeOf(value: unknown): ValueType {
+  if (typeof value === "string") return "text";
+  if (typeof value !== "object" || value === null) return "json";
+  if ("link" in value) return "link";
+  if ("file" in value) return "file";
+  return "json";
+}
+
+// A value checked against its declared type or, of several, the one its shape names, so a refusal
+// says what is wrong with it as that kind. A file is stored with the name of the material it names,
+// which must be one the person attached to this project.
+function storedValue(
+  name: string,
+  value: unknown,
+  declaration: ValueDeclaration,
+  state: ProjectState,
+) {
+  const types = [declaration.type].flat();
+  const shaped = types.find((each) => each === shapeOf(value));
+  const schema =
+    shaped === undefined
+      ? types
+          .map((each) => STORED_TYPES[each])
+          .reduce((one, other) => one.or(other))
+      : STORED_TYPES[shaped];
+  const checked = schema(value);
+  if (checked instanceof type.errors) throw invalid(name, checked);
+  if (!types.includes("file") || !FileValue.allows(checked)) return checked;
+  const material = state.materials.find(
+    ({ artifactId }) => artifactId === checked.file,
+  );
+  if (material === undefined)
+    throw new ProjectError(400, "invalid_project_value", {
+      key: name,
+      issues: [
+        {
+          path: `${name}.file`,
+          message: "is not a file attached to this project",
+        },
+      ],
+    });
+  return { file: material.artifactId, name: material.name };
+}
 
 /**
  * Each named value split by its home: design tokens written over the project's filed design, and
@@ -130,9 +184,7 @@ export function projectValueWrites(
     const declaration = declared.get(name);
     if (!declaration)
       throw new Error(`${name} is not a declared project value`);
-    const checked = STORED_TYPES[declaration.type](value);
-    if (checked instanceof type.errors) throw invalid(name, checked);
-    stored[name] = checked;
+    stored[name] = storedValue(name, value, declaration, state);
   }
   return { tokens, stored };
 }

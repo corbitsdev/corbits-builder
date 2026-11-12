@@ -17,7 +17,7 @@ const coder = {
 };
 
 test("a long command's own word on its progress replaces the reading of the call", () => {
-  expect(activityPhrase(coder).phrase).toMatch(/brief/);
+  expect(activityPhrase(coder)).toMatch(/brief/);
   expect(
     activityPhrase({
       ...coder,
@@ -26,7 +26,7 @@ test("a long command's own word on its progress replaces the reading of the call
         at: "2026-11-02T01:41:40.000Z",
       },
     }),
-  ).toEqual({ phrase: "installing the app's packages", asking: false });
+  ).toBe("installing the app's packages");
 });
 
 test("a call whose raw result means nothing to a person is described in plain words", () => {

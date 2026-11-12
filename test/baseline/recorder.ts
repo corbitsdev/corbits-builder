@@ -6,7 +6,6 @@ import {
   type RunConversation,
 } from "../e2e/support/extract.ts";
 import type { TestHubHandle } from "../e2e/support/hub.ts";
-import type { CoordinatorMode } from "@corbits-builder/hub/environment";
 import { openQuestionPark } from "../e2e/support/pipeline-driver.ts";
 
 export const Move = type(
@@ -68,11 +67,9 @@ export type Observation = Readonly<{
 }>;
 
 // An action started is execute:<plugin>.<action>, a route followed execute:<plugin> and a screen
-// opened open:<plugin>.<action>; classic's
-// instruct_coder is the coder's change action by another name.
+// opened open:<plugin>.<action>.
 function moveOf(tool: string, args: Record<string, unknown>): string {
   if (tool === "discover") return tool;
-  if (tool === "instruct_coder") return "execute:coder.change";
   if (tool === "execute")
     return typeof args["action"] === "string"
       ? `execute:${String(args["plugin"])}.${args["action"]}`
@@ -250,7 +247,6 @@ export function recordCase(
     remark: Remark;
     model: CaseModel;
     hint: HintSetting;
-    mode: CoordinatorMode;
     repeat: number;
     projectId: string;
     runId: string;
@@ -275,7 +271,6 @@ export function recordCase(
     model: input.model.id,
     profile: input.model.profile,
     hint: input.hint,
-    mode: input.mode,
     repeat: input.repeat,
     projectId: input.projectId,
     runId: input.runId,

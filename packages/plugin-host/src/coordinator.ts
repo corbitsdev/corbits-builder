@@ -1,13 +1,20 @@
 import { setTimeout as sleep } from "node:timers/promises";
 import { type } from "arktype";
-import { wrongFields, type Fact, type Field } from "@corbits-builder/plugin";
 import {
+  wrongFields,
+  type Fact,
+  type Field,
+  type Sequence,
+} from "@corbits-builder/plugin";
+import {
+  isCheckAction,
   isRoute,
   isScreenAction,
   isSpecialist,
   isWorkflowAction,
   type Action,
   type Catalog,
+  type CheckAction,
   type Plugin,
   type RoutePlugin,
   type ScreenAction,
@@ -22,6 +29,7 @@ import {
   DISCOVER_MORE,
   DISCOVER_NEEDS_ONE,
   foundPlugins,
+  checkStandingText,
   isReady,
   noActionFound,
   noPluginFound,
@@ -35,6 +43,7 @@ import {
   routeLeft,
   routeTakesNoAction,
   screenNotExecuted,
+  sequenceLines,
   specialistListing,
   unknownAction,
   unknownPlugin,
@@ -86,6 +95,10 @@ export type Filed = {
   read(
     version: FiledVersion,
   ): Promise<{ kind: string; title: string; content: string }>;
+  // A filed design at a version: its title, its DESIGN.md tokens and its stylesheet when it has one.
+  design(
+    version: FiledVersion,
+  ): Promise<{ title: string; tokens: string; styles?: string }>;
   // The opening that names each filed document of these kinds and, with design, the chosen design,
   // where each sits read-only in the run's workspace; undefined when none of them is filed.
   startHere(kinds: readonly string[], design: boolean): string | undefined;
@@ -97,11 +110,59 @@ export type Filed = {
  */
 export type Concept = { label: string; direction: string };
 
+/** The latest record of a check in the project, as the host keeps it. */
+export type CheckStanding = {
+  plugin: string;
+  action: string;
+  result: "pass" | "fail" | "skipped";
+  summary: string;
+  createdAt: string;
+  // Whether what it looked at is still what the project has saved.
+  current: boolean;
+};
+
+/** What running a check answers: its result, or, for one that keeps trying, the id it reports by. */
+export type CheckRan =
+  | {
+      ran: true;
+      checkId: string;
+      plugin: string;
+      action: string;
+      result: "pass" | "fail";
+      summary: string;
+      evidence: readonly string[];
+    }
+  | { started: true; plugin: string; action: string; checkId: string };
+
+/** A step of the project's plan as the host keeps it: a plugin action with its input. */
+type SavedPlanChild = {
+  id: string;
+  title: string;
+  plugin: string;
+  action: string;
+  input: Record<string, unknown>;
+  askFirst: boolean;
+};
+export type SavedPlanStep = SavedPlanChild & {
+  steps?: readonly SavedPlanChild[];
+};
+/** A step of the plan as saved: one with no id is new, and the host gives it one. */
+type PlanChildWrite = Omit<SavedPlanChild, "id"> & { id?: string };
+export type PlanStepWrite = PlanChildWrite & { steps?: PlanChildWrite[] };
+
 /** What the coordinator's tools need from the project they act on, which only the host can do. */
 export type Project = {
-  // What is true of the project, from what the host stores, and whether the person decides
-  // approvals rather than leaving them to Builder.
-  state(): Promise<{ facts: ReadonlySet<Fact>; asksApprovals: boolean }>;
+  // What is true of the project, from what the host stores, whether the person decides approvals
+  // rather than leaving them to Builder, the latest record of each check, and how the person chose
+  // to work: each preference's choice by its id.
+  state(): Promise<{
+    facts: ReadonlySet<Fact>;
+    asksApprovals: boolean;
+    checks: readonly CheckStanding[];
+    preferences: Readonly<Record<string, string>>;
+  }>;
+  // Runs a check on its checked input against the project as saved.
+  check(action: CheckAction, input: unknown): Promise<CheckRan>;
   // The handles of the routes the project follows.
   routes(): Promise<readonly string[]>;
   setRoutes(handles: readonly string[]): Promise<unknown>;
@@ -118,6 +179,10 @@ export type Project = {
   runs(): Promise<readonly Run[]>;
   // Stops a run the coordinator started that is still at work.
   stop(runId: string): Promise<unknown>;
+  // The project's plan as the host shows it, with what it says of each step besides what was saved.
+  plan(): Promise<{ steps: readonly SavedPlanStep[] }>;
+  // Replaces the plan; a step saved with its id keeps the person's marks on it.
+  savePlan(steps: readonly PlanStepWrite[]): Promise<unknown>;
   // The runs at work in the project, whoever started them.
   working(): Promise<readonly Working[]>;
   // Deploys the installed workflow, one run of its role at a time: busy refuses while another is
@@ -132,11 +197,13 @@ export type Project = {
   }): Promise<{ runId: string }>;
   // Deploys the installed workflow, as many runs at a time as are started; assignment writes the
   // run's first message from the project as it then stands, and the host adds the values block and
-  // the person's preferences.
+  // the person's preferences. record, when given, is stored against the run under its name before
+  // the run gets its assignment, from the same project as the assignment saw it.
   deploy(run: {
     workflow: string;
     correlation: string;
     assignment(filed: Filed): string | Promise<string>;
+    record?: { name: string; data(filed: Filed): unknown };
   }): Promise<{ runId: string }>;
   // Deploys the installed workflow once for each concept, each concept one run's at a time and
   // recorded as that run's, within the host's ceiling on concepts at work. A concept's run starts
@@ -233,26 +300,6 @@ function guidanceOf(
   return [action.guidance, ...now(action)].join("\n");
 }
 
-/**
- * What discover answers from the given plugins, each in full. Its tool asks for exactly one of
- * query, group and plugin.
- */
-export function discoverIn(
-  plugins: readonly Plugin[],
-  asked: typeof Discover.infer,
-) {
-  if (asked.plugin !== undefined)
-    return guidanceOf(
-      plugins,
-      asked,
-      () => [],
-      () => [],
-    );
-  const found = foundBy(plugins, asked);
-  if (found.length === 0) return noPluginFound(asked, groupsOf(plugins));
-  return foundPlugins(found);
-}
-
 /** discover's arguments, or why they are wrong, with what discover takes among these plugins. */
 export function checkedDiscover(plugins: readonly Plugin[], raw: unknown) {
   const takes: Record<string, Field> = {
@@ -307,7 +354,7 @@ export function checkedDiscover(plugins: readonly Plugin[], raw: unknown) {
 // What is true of the project, and the routes it follows. A route whose outcome holds is left, so
 // nothing from it applies after.
 async function projectState(catalog: Catalog, project: Project) {
-  const { facts, asksApprovals } = await project.state();
+  const { facts, asksApprovals, checks } = await project.state();
   const handles = await project.routes();
   const routes = catalog.plugins
     .filter(isRoute)
@@ -317,7 +364,7 @@ async function projectState(catalog: Catalog, project: Project) {
     );
   if (routes.length !== handles.length)
     await project.setRoutes(routes.map(({ builder }) => builder.handle));
-  return { facts, asksApprovals, routes };
+  return { facts, asksApprovals, checks, routes };
 }
 type ProjectState = Awaited<ReturnType<typeof projectState>>;
 
@@ -327,7 +374,8 @@ const makersOf = (catalog: Catalog, fact: Fact) =>
     (action.builder.returns ?? []).some((made) => makes(made, fact)),
   );
 
-const makersIn = (catalog: Catalog) => (fact: Fact) =>
+/** The names of the actions whose finished work makes a fact true. */
+export const makersIn = (catalog: Catalog) => (fact: Fact) =>
   makersOf(catalog, fact).map(({ name }) => name);
 
 // The person's go-ahead: a fact that only their answer on a screen makes true, such as an approval
@@ -342,7 +390,7 @@ const isGoAhead = (catalog: Catalog, fact: Fact) => {
 function readiness(
   catalog: Catalog,
   action: Action,
-  { facts, asksApprovals, routes }: ProjectState,
+  { facts, asksApprovals, routes }: Omit<ProjectState, "checks">,
   input?: unknown,
 ): Readiness {
   const requires = (action.builder.requires ?? []).map((alternative) =>
@@ -402,13 +450,24 @@ const stepsOf = (catalog: Catalog, route: RoutePlugin, state: ProjectState) =>
     };
   });
 
-// Whether an action could start, or a screen open, in the project now.
-const now = (catalog: Catalog, action: Action, state: ProjectState) =>
-  readinessText(
-    readiness(catalog, action, state),
+// Whether an action could start, or a screen open, in the project now; for a check that can run,
+// its latest result.
+function now(catalog: Catalog, action: Action, state: ProjectState) {
+  const ready = readiness(catalog, action, state);
+  if (isCheckAction(action) && isReady(ready))
+    return checkStandingText(
+      state.checks.find(
+        (check) =>
+          check.plugin === action.plugin && check.action === action.action,
+      ),
+      Date.now(),
+    );
+  return readinessText(
+    ready,
     catalog.factText,
     isScreenAction(action) ? "can open now" : "can start now",
   );
+}
 
 // What discover adds about each plugin for this project.
 function status(
@@ -427,12 +486,14 @@ function status(
       ),
     ];
   if (!isSpecialist(plugin)) return [];
+  const sequences = sequenceLines(plugin.builder);
   return [
     "",
     "Now:",
     ...plugin.actions.map(
       (action) => `  ${action.name}: ${now(catalog, action, state)}`,
     ),
+    ...(sequences.length > 0 ? ["", "Sequences:", ...sequences] : []),
   ];
 }
 
@@ -441,16 +502,19 @@ function status(
 function listing(catalog: Catalog, plugin: Plugin, state: ProjectState) {
   const { handle } = plugin.builder;
   if (isSpecialist(plugin))
-    return specialistListing(
-      handle,
-      plugin.description,
-      plugin.actions.map((action) => ({
-        action: action.action,
-        screen: isScreenAction(action),
-        when: action.builder.when,
-        now: now(catalog, action, state),
-      })),
-    );
+    return [
+      specialistListing(
+        handle,
+        plugin.description,
+        plugin.actions.map((action) => ({
+          action: action.action,
+          screen: isScreenAction(action),
+          when: action.builder.when,
+          now: now(catalog, action, state),
+        })),
+      ),
+      ...sequenceLines(plugin.builder),
+    ].join("\n");
   return routeListing(
     handle,
     plugin.description,
@@ -519,6 +583,64 @@ export async function screenRefusal(
     catalog.factText,
     "question",
   );
+}
+
+/**
+ * Why a plan cannot hold this step, or undefined when it can: its plugin and action must be
+ * installed and its input must fit, refused in the words execute and question use. What the action
+ * requires is not asked, since a plan holds steps for later; a screen's input is checked without
+ * the project's values, which it reads only when it is shown.
+ */
+export function planStepRefusal(
+  catalog: Catalog,
+  step: { plugin: string; action: string; input: unknown },
+) {
+  const plugin = catalog.installed(step.plugin);
+  if (!plugin)
+    return unknownPlugin(
+      step.plugin,
+      catalog.actions.map(({ name }) => name),
+    );
+  if (isRoute(plugin)) return routeTakesNoAction(plugin.builder.handle);
+  const action = installedAction(catalog, plugin.builder.handle, step.action);
+  if (!action)
+    return unknownAction(plugin.builder.handle, step.action, plugin.actions);
+  if (isScreenAction(action)) return action.refusal(step.input, {});
+  const checked = action.check(step.input);
+  return checked.ok ? undefined : checked.text;
+}
+
+type PlannedStep = {
+  title: string;
+  plugin: string;
+  action: string;
+  input: unknown;
+};
+
+/**
+ * Why a plan cannot be saved, naming by its number the first step it cannot hold, such as 2.1 for
+ * the first step under the second; undefined when it can.
+ */
+export function planRefusal(
+  catalog: Catalog,
+  steps: readonly (PlannedStep & { steps?: readonly PlannedStep[] })[],
+) {
+  const numbered = steps.flatMap((step, at) => [
+    { number: `${at + 1}`, step },
+    ...(step.steps ?? []).map((child, under) => ({
+      number: `${at + 1}.${under + 1}`,
+      step: child,
+    })),
+  ]);
+  for (const { number, step } of numbered) {
+    const refused = planStepRefusal(catalog, step);
+    if (refused !== undefined)
+      return {
+        step: number,
+        text: `Step ${number}, "${step.title}" (${step.plugin} ${step.action}), cannot be in the plan, so the plan was not saved.\n\n${refused}`,
+      };
+  }
+  return undefined;
 }
 
 export type Outcome = { content: string; isError?: true };
@@ -613,7 +735,9 @@ export async function execute(
   if (!plugin)
     return {
       content: unknownPlugin(asked.plugin, [
-        ...catalog.actions.filter(isWorkflowAction).map(({ name }) => name),
+        ...catalog.actions
+          .filter((action) => !isScreenAction(action))
+          .map(({ name }) => name),
         ...catalog.plugins.filter(isRoute).map(({ builder }) => builder.handle),
       ]),
       isError: true,
@@ -653,6 +777,10 @@ export async function execute(
         "execute",
       ),
       isError: true,
+    };
+  if (isCheckAction(action))
+    return {
+      content: JSON.stringify(await project.check(action, checked.input)),
     };
   // The hub refuses a read of no names.
   const { reads = [], writes = [], presents } = action.builder;
@@ -754,4 +882,299 @@ export async function manageRuns(
       note: "A finished run's report reaches you as a message after this turn.",
     }),
   };
+}
+
+const PlanChildInput = type({
+  "+": "reject",
+  title: "string > 0",
+  plugin: "string > 0",
+  action: "string > 0",
+  input: "Record<string, unknown>",
+  "askFirst?": "boolean",
+});
+type PlanChildInput = typeof PlanChildInput.infer;
+export const Plan = type({
+  "+": "reject",
+  operation: "'show' | 'set' | 'add' | 'remove'",
+  "steps?": PlanChildInput.merge({
+    "+": "reject",
+    "steps?": PlanChildInput.array(),
+  }).array(),
+  "sequence?": "string > 0",
+  "after?": "string > 0",
+  "stepIds?": type("string > 0").array().atLeastLength(1),
+});
+type PlanCall = typeof Plan.infer;
+type Problem = { field: string; problem: string };
+
+// The fields each operation of plan takes besides operation.
+const PLAN_TAKES: Record<PlanCall["operation"], readonly string[]> = {
+  show: [],
+  set: ["steps"],
+  add: ["steps", "sequence", "after"],
+  remove: ["stepIds"],
+};
+
+// Every plugin's sequences, by the name plan adds them by, such as "cloudflare publish".
+function sequencesIn(catalog: Catalog) {
+  const sequences = new Map<string, { handle: string; sequence: Sequence }>();
+  for (const { builder } of catalog.plugins.filter(isSpecialist))
+    for (const [name, sequence] of Object.entries(builder.sequences ?? {}))
+      sequences.set(`${builder.handle} ${name}`, {
+        handle: builder.handle,
+        sequence,
+      });
+  return sequences;
+}
+
+const planFields = (catalog: Catalog): Record<string, Field> => ({
+  operation: {
+    about: "What to do; each answers with the plan as it now stands.",
+    choices: {
+      show: "The plan.",
+      set: "Replace the plan with steps; [] empties it.",
+      add: "Add steps, or one sequence, at the end or after the step after names.",
+      remove: "Take out each step stepIds names, with the steps it holds.",
+    },
+  },
+  steps: {
+    about:
+      "For set and add: each step as { title, plugin, action, input, askFirst?, steps? }: a plugin action as discover lists it, the input its guidance describes, askFirst true when the person wants to be asked before it starts, and the steps it holds, in the same shape but holding none.",
+  },
+  sequence: {
+    about:
+      "For add, in place of steps: a plugin's sequence, added as one step holding its steps.",
+    choices: Object.fromEntries(
+      [...sequencesIn(catalog)].map(([name, { sequence }]) => [
+        name,
+        sequence.title,
+      ]),
+    ),
+  },
+  after: {
+    about:
+      "For add: the id of the step the new steps go after; at the end without it.",
+  },
+  stepIds: { about: "For remove: the ids of the steps to take out." },
+});
+
+const wrongPlanCall = (
+  catalog: Catalog,
+  wrong: readonly Problem[],
+): Outcome => ({
+  content: wrongCall(
+    "plan",
+    "the plan was not changed",
+    wrong,
+    planFields(catalog),
+  ),
+  isError: true,
+});
+
+// What is wrong with a call before the plan is read: a field its operation does not take, one it
+// needs, or a sequence no plugin has.
+function planCallProblems(
+  asked: PlanCall,
+  sequences: ReadonlyMap<string, unknown>,
+) {
+  const { operation } = asked;
+  const wrong: Problem[] = Object.keys(asked)
+    .filter(
+      (field) =>
+        field !== "operation" && !PLAN_TAKES[operation].includes(field),
+    )
+    .map((field) => ({ field, problem: `${operation} takes no ${field}` }));
+  if (operation === "set" && asked.steps === undefined)
+    wrong.push({
+      field: "steps",
+      problem: "set needs the steps the plan holds",
+    });
+  if (operation === "remove" && asked.stepIds === undefined)
+    wrong.push({
+      field: "stepIds",
+      problem: "remove needs the steps to take out",
+    });
+  if (
+    operation === "add" &&
+    (asked.steps === undefined) === (asked.sequence === undefined)
+  )
+    wrong.push({
+      field: "steps",
+      problem: "add needs either steps or sequence, and not both",
+    });
+  if (asked.sequence !== undefined && !sequences.has(asked.sequence))
+    wrong.push({
+      field: "sequence",
+      problem: `${JSON.stringify(asked.sequence)} is not a sequence of any plugin`,
+    });
+  return wrong;
+}
+
+// What is wrong with the step ids a call names, against the plan as saved.
+function planIdProblems(
+  asked: PlanCall,
+  saved: readonly SavedPlanStep[],
+  adding: readonly PlanStepWrite[],
+) {
+  const children = saved.flatMap((step) => step.steps ?? []);
+  const all = [...saved, ...children];
+  const ids = all.map(({ id }) => id);
+  const listed =
+    all.length === 0
+      ? "the plan has no steps yet"
+      : `the plan's steps: ${all.map(({ id, title }) => `${id} (${title})`).join(", ")}`;
+  const wrong: Problem[] = [];
+  const unknown = (asked.stepIds ?? []).filter((id) => !ids.includes(id));
+  if (unknown.length > 0)
+    wrong.push({
+      field: "stepIds",
+      problem: `${unknown.join(", ")} not in the plan; ${listed}`,
+    });
+  const { after } = asked;
+  if (after !== undefined && !ids.includes(after))
+    wrong.push({
+      field: "after",
+      problem: `${after} is not in the plan; ${listed}`,
+    });
+  if (
+    children.some(({ id }) => id === after) &&
+    adding.some(({ steps }) => steps !== undefined)
+  )
+    wrong.push({
+      field: "after",
+      problem: `${after} is held by another step, so what goes after it cannot hold steps; name the step that holds it`,
+    });
+  return wrong;
+}
+
+// A saved step as it is saved again, under its id so the person's marks on it stay.
+const childWrite = ({
+  id,
+  title,
+  plugin,
+  action,
+  input,
+  askFirst,
+}: SavedPlanChild): PlanChildWrite => ({
+  id,
+  title,
+  plugin,
+  action,
+  input,
+  askFirst,
+});
+function stepWrite(step: SavedPlanStep): PlanStepWrite {
+  const written: PlanStepWrite = childWrite(step);
+  if (step.steps) written.steps = step.steps.map(childWrite);
+  return written;
+}
+
+// A step the call names, new to the plan.
+const childOf = ({
+  title,
+  plugin,
+  action,
+  input,
+  askFirst = false,
+}: PlanChildInput): PlanChildWrite => ({
+  title,
+  plugin,
+  action,
+  input,
+  askFirst,
+});
+function newStep(
+  step: PlanChildInput & { steps?: PlanChildInput[] },
+): PlanStepWrite {
+  const written: PlanStepWrite = childOf(step);
+  if (step.steps) written.steps = step.steps.map(childOf);
+  return written;
+}
+
+// A sequence as one step holding its steps. A step names an action, so it names the last, whose
+// finished work finishes the sequence.
+function sequenceStep(handle: string, { title, steps }: Sequence) {
+  const children = steps.map((step) =>
+    childOf({
+      title: step.title,
+      plugin: step.plugin ?? handle,
+      action: step.action,
+      input: step.input ?? {},
+      askFirst: step.askFirst ?? false,
+    }),
+  );
+  const last = children[children.length - 1]!;
+  const step: PlanStepWrite = childOf({
+    title,
+    plugin: last.plugin,
+    action: last.action,
+    input: last.input,
+  });
+  step.steps = children;
+  return step;
+}
+
+// The plan with steps added at its end, or after the step after names, at whichever level it is.
+function added(
+  plan: PlanStepWrite[],
+  adding: readonly PlanStepWrite[],
+  after: string | undefined,
+) {
+  if (after === undefined) return [...plan, ...adding];
+  const at = plan.findIndex(({ id }) => id === after);
+  if (at >= 0) return plan.toSpliced(at + 1, 0, ...adding);
+  for (const step of plan) {
+    const under = step.steps?.findIndex(({ id }) => id === after) ?? -1;
+    if (step.steps && under >= 0)
+      step.steps = step.steps.toSpliced(under + 1, 0, ...adding);
+  }
+  return plan;
+}
+
+// The plan without the steps ids names, nor what they hold.
+function removed(plan: PlanStepWrite[], ids: readonly string[]) {
+  const kept = ({ id }: PlanChildWrite) =>
+    id === undefined || !ids.includes(id);
+  for (const step of plan) if (step.steps) step.steps = step.steps.filter(kept);
+  return plan.filter(kept);
+}
+
+/**
+ * The project's plan: shown, replaced, added to or taken from. A change is saved whole, each saved
+ * step under its id, and answers with the plan as it then stands; a plan the catalog refuses is not
+ * saved, and the refusal names the step.
+ */
+export async function managePlan(
+  catalog: Catalog,
+  project: Project,
+  raw: unknown,
+): Promise<Outcome> {
+  const asked = Plan(raw);
+  if (asked instanceof type.errors)
+    return wrongPlanCall(catalog, wrongFields(asked));
+  const sequences = sequencesIn(catalog);
+  const wrong = planCallProblems(asked, sequences);
+  if (wrong.length > 0) return wrongPlanCall(catalog, wrong);
+  if (asked.operation === "show")
+    return { content: JSON.stringify(await project.plan()) };
+  let steps = (asked.steps ?? []).map(newStep);
+  if (asked.operation !== "set") {
+    const { steps: saved } = await project.plan();
+    const sequence =
+      asked.sequence === undefined ? undefined : sequences.get(asked.sequence);
+    const adding = sequence
+      ? [sequenceStep(sequence.handle, sequence.sequence)]
+      : steps;
+    const wrongIds = planIdProblems(asked, saved, adding);
+    if (wrongIds.length > 0) return wrongPlanCall(catalog, wrongIds);
+    const current = saved.map(stepWrite);
+    steps =
+      asked.operation === "add"
+        ? added(current, adding, asked.after)
+        : removed(current, asked.stepIds ?? []);
+  }
+  const refused = planRefusal(catalog, steps);
+  if (refused) return { content: refused.text, isError: true };
+  await project.savePlan(steps);
+  return { content: JSON.stringify(await project.plan()) };
 }
