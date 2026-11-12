@@ -16,7 +16,7 @@ import {
 export const questionTool: ToolDefinition = {
   name: QUESTION_TOOL_NAME,
   description:
-    "Ask the person one or more questions and wait for their answers. Each question has the full question, a short header, and options with a label and a description. Put the option you recommend first and end its label with (Recommended). Leave options empty for a free-text answer. multiple lets the person pick several. custom, on by default, lets them type their own answer, so do not add an Other option. The result is { answers: [{ question, answer: [chosen labels or typed text] }] } in the order asked, or { reply } when the person wrote back instead of answering. To show the person a screen instead, pass plugin with the screen's name and input with what it needs, and no questions; the result is { output } from the screen, or { reply }.",
+    "Ask the person one or more questions and wait for their answers. Each question has the full question, a short header, and options with a label and a description. Put the option you recommend first and end its label with (Recommended). Leave options empty for a free-text answer. multiple lets the person pick several. custom, on by default, lets them type their own answer, so do not add an Other option. The result is { answers: [{ question, answer: [chosen labels or typed text] }] } in the order asked, or { reply } when the person wrote back instead of answering. To show the person a screen instead, pass plugin with the screen's name, action when the plugin names its screens by action, and input with what it needs, and no questions; the result is { output } from the screen, or { reply }.",
   inputSchema: { ...QuestionToolInput.toJsonSchema() },
 };
 
@@ -76,7 +76,8 @@ export function createQuestionExtension(
 
 function asked(question: QuestionArguments): AskedQuestion {
   if ("plugin" in question) {
-    return { plugin: question.plugin, input: question.input };
+    const { plugin, action, input } = question;
+    return action === undefined ? { plugin, input } : { plugin, action, input };
   }
   return {
     questions: question.questions.map((prompt) => ({

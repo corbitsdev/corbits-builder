@@ -10,7 +10,7 @@ async function bundledFolder(plugins: string) {
   const imports: string[] = [];
   const entries: string[] = [];
   for (const found of await readPluginFolder(plugins)) {
-    const { modules, texts } = manifestFiles(found);
+    const { modules, texts, folders } = manifestFiles(found);
     const imported = modules.map((path) => {
       const name = `module${imports.length}`;
       imports.push(
@@ -23,8 +23,13 @@ async function bundledFolder(plugins: string) {
         async (path) => `${json(path)}: ${json(await found.text(path))}`,
       ),
     );
+    const listed = await Promise.all(
+      folders.map(
+        async (path) => `${json(path)}: ${json(await found.files(path))}`,
+      ),
+    );
     entries.push(
-      `{ folder: ${json(found.folder)}, manifest: ${json(found.manifest)}, modules: { ${imported.join(", ")} }, texts: { ${inlined.join(", ")} } }`,
+      `{ folder: ${json(found.folder)}, manifest: ${json(found.manifest)}, modules: { ${imported.join(", ")} }, texts: { ${inlined.join(", ")} }, files: { ${listed.join(", ")} } }`,
     );
   }
   return [
@@ -35,11 +40,12 @@ async function bundledFolder(plugins: string) {
     `  return files[path];`,
     `};`,
     `export const readPluginFolder = async () =>`,
-    `  folders.map(({ folder, manifest, modules, texts }) => ({`,
+    `  folders.map(({ folder, manifest, modules, texts, files }) => ({`,
     `    folder,`,
     `    manifest,`,
     `    module: async (path) => named(folder, modules, path),`,
     `    text: async (path) => named(folder, texts, path),`,
+    `    files: async (path) => named(folder, files, path),`,
     `  }));`,
   ].join("\n");
 }

@@ -305,7 +305,8 @@ function holdReply(
  * replyOnFailure is the reply. With checkBeforeDone, a final reply waits for a passing check-app
  * after the last file change; with fileBeforeDone, it waits for a filed document; with
  * startAfterApproval, a reply after an approval that starts and asks nothing is held once. A reply
- * after a Builder tool refused the agent's access is never held. Every inference retries an
+ * after a Builder tool refused the agent's access is never held. With presents, a reply after
+ * filed work ends with it, so the coordinator reads which screen shows the work. Every inference retries an
  * overloaded, slow or rate-limited model a few times; once that gives up, the run fails, or with
  * replyOnFailure the error is the reply. The model-specific numbers come from the agent
  * definition's director config.
@@ -322,6 +323,8 @@ export const compactingDirector = (packageName: string) =>
     startAfterApproval?: boolean;
     // Whether a runaway or a model failure is the reply rather than a failed run.
     replyOnFailure?: boolean;
+    // What a reply after filed work ends with: the screen that shows the work to the person.
+    presents?: string | null;
     // Timeouts every inference carries, where the source overrides Interchange's defaults.
     timeouts: Timeouts;
   }>({
@@ -333,6 +336,7 @@ export const compactingDirector = (packageName: string) =>
       "fileBeforeDone?": "boolean",
       "startAfterApproval?": "boolean",
       "replyOnFailure?": "boolean",
+      "presents?": "string | null",
       timeouts: { "+": "reject", "totalTimeoutMs?": "number.integer > 0" },
     }),
     factory: (config, env, agent) => {
@@ -440,8 +444,17 @@ export const compactingDirector = (packageName: string) =>
               caps.compact(COMPACTOR, "context_overflow"),
             ];
           }
-          const actions = await inner.decide(event, state, caps);
-          const list = Array.isArray(actions) ? actions : [actions];
+          const decided = await inner.decide(event, state, caps);
+          const list = Array.isArray(decided) ? decided : [decided];
+          const { presents } = config;
+          const actions =
+            presents && !unfiled(state.turns)
+              ? list.map((action) =>
+                  action.type === "reply"
+                    ? caps.reply(`${action.content}\n\n${presents}`)
+                    : action,
+                )
+              : decided;
           const input = state.lastCycleUsage
             ? state.lastCycleUsage.input + state.lastCycleUsage.cacheRead
             : 0;

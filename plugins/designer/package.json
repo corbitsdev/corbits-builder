@@ -1,0 +1,141 @@
+{
+  "name": "@corbits-builder/designer-plugin",
+  "version": "0.1.0-rc.3",
+  "private": true,
+  "description": "Designs how the app could look, as mockups the person compares, tries and approves, and lets the person choose its fonts and colours.",
+  "license": "SEE LICENSE IN ../../LICENSE.md",
+  "author": "Sawyer Cutler <sawyer@dirtroad.dev>",
+  "type": "module",
+  "exports": {
+    "./mockup": "./src/mockup.ts",
+    "./pick-fonts": "./src/pick-fonts/screen.ts",
+    "./pick-fonts/schema": "./src/pick-fonts/schema.ts",
+    "./pick-fonts/view": "./src/pick-fonts/view.tsx",
+    "./pick-fonts/data": "./data/fonts.json",
+    "./pick-colours": "./src/pick-colours/screen.ts",
+    "./pick-colours/schema": "./src/pick-colours/schema.ts",
+    "./pick-colours/view": "./src/pick-colours/view.tsx",
+    "./review": "./src/review/screen.ts",
+    "./review/schema": "./src/review/schema.ts",
+    "./review/view": "./src/review/view.tsx"
+  },
+  "dependencies": {
+    "@corbits-builder/plugin": "workspace:*",
+    "@corbits-builder/schemas": "workspace:*",
+    "@corbits/react-ui": "0.5.1",
+    "arktype": "catalog:",
+    "lucide-react": "0.545.0",
+    "react": "19.3.0"
+  },
+  "devDependencies": {
+    "@types/react": "19.3.0"
+  },
+  "builder": {
+    "handle": "designer",
+    "runs": "specialist",
+    "groups": [
+      "look",
+      "design",
+      "type",
+      "colour"
+    ],
+    "when": "The person wants to see how the app could look, to try or approve a design, or to choose the app's fonts or colours.",
+    "unless": "They want the built app itself changed in a way they already stated exactly.",
+    "actions": {
+      "mockup": {
+        "runs": "workflow",
+        "when": "The person wants to see how the app could look: a mockup, design options to compare, or another pass on a design option.",
+        "unless": "They want the built app itself changed, or to pick fonts or colours on a screen.",
+        "input": "./src/mockup.ts",
+        "returns": [
+          "filed:design_option"
+        ],
+        "start": {
+          "workflow": "designer"
+        },
+        "presents": "review"
+      },
+      "review": {
+        "runs": "screen",
+        "when": "The design is ready for the person to look at, or needs their approval.",
+        "unless": "The person only asked a question about the design.",
+        "screen": "./src/review/screen.ts",
+        "view": "./src/review/view.tsx",
+        "authorizes": false,
+        "place": "page",
+        "host": [
+          "design",
+          "mockupFrame",
+          "earlierAnswer"
+        ]
+      },
+      "pick-fonts": {
+        "runs": "screen",
+        "when": "The person is unhappy with the typeface or unsure which font would suit.",
+        "unless": "They already said exactly which font they want, or they want text bigger or smaller, or a whole new look.",
+        "screen": "./src/pick-fonts/screen.ts",
+        "view": "./src/pick-fonts/view.tsx",
+        "data": "./data/fonts.json",
+        "authorizes": false,
+        "reads": [
+          "look.font-primary",
+          "look.font-secondary"
+        ],
+        "writes": [
+          "look.font-primary",
+          "look.font-secondary"
+        ]
+      },
+      "pick-colours": {
+        "runs": "screen",
+        "when": "The person is unhappy with the colours or unsure which colours would suit the brand or the background.",
+        "unless": "They already said exactly which colour they want, or they want another font, bigger or smaller text, or a whole new look.",
+        "screen": "./src/pick-colours/screen.ts",
+        "view": "./src/pick-colours/view.tsx",
+        "authorizes": false,
+        "reads": [
+          "look.color-primary",
+          "look.color-background"
+        ],
+        "writes": [
+          "look.color-primary",
+          "look.color-background"
+        ]
+      }
+    },
+    "examples": [
+      "make me a mockup for a dog-walking app",
+      "show me a few different looks",
+      "can I see what it would look like",
+      "redesign it",
+      "let me see the mockup",
+      "I want to give feedback on the design",
+      "the design looks good, approve it",
+      "the font is ugly",
+      "can we use a different typeface",
+      "I'm not sure about the font, what else could work",
+      "the writing looks boring, can it be more elegant",
+      "make it look like a newspaper with a serif",
+      "the colours clash",
+      "can we make it less orange",
+      "I don't know which colour would suit us",
+      "the background is too bright",
+      "the buttons don't look right"
+    ],
+    "triggers": [
+      "font",
+      "fonts",
+      "typeface",
+      "lettering",
+      "colour",
+      "color",
+      "colours",
+      "colors",
+      "palette"
+    ],
+    "facts": {
+      "filed:design_option": "a design option is filed",
+      "design_chosen": "the person chose a design from the design options"
+    }
+  }
+}

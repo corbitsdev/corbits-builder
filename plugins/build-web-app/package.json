@@ -23,8 +23,8 @@
         "requires": []
       },
       {
-        "plugin": "design-app",
-        "action": "design",
+        "plugin": "designer",
+        "action": "mockup",
         "requires": [
           "approved:product_requirements"
         ]

@@ -281,6 +281,13 @@
       "when": 1794453958127,
       "tag": "0039_project_route",
       "breakpoints": true
+    },
+    {
+      "idx": 40,
+      "version": "7",
+      "when": 1794470790340,
+      "tag": "0040_project_values",
+      "breakpoints": true
     }
   ]
 }

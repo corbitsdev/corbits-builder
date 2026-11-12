@@ -2,7 +2,8 @@ import { describe, expect, test } from "bun:test";
 import { checkInput, checkOutput } from "@corbits-builder/plugin";
 import screen from "./screen.ts";
 
-const check = (output: unknown) => checkOutput("review-mockup", screen, output);
+const check = (output: unknown) =>
+  checkOutput("designer review", screen, output);
 
 const box: [number, number, number, number] = [12, 40, 120, 32];
 // A comment as the frame reports a click on the search link of the home screen.
@@ -19,7 +20,7 @@ const comment = {
   },
 };
 
-describe("review-mockup output", () => {
+describe("review output", () => {
   test("asking for changes with no comment and no message is refused", () => {
     const result = check({ decision: "changes", version: 2, comments: [] });
     if (result.ok) throw new Error("an empty request for changes was taken");
@@ -56,7 +57,7 @@ describe("review-mockup output", () => {
 
 test("the coordinator passes only a note; the design is the host's", () => {
   const take = (input: unknown) =>
-    checkInput("review-mockup", screen, input, undefined, {}).ok;
+    checkInput("designer review", screen, input, undefined, {}).ok;
   expect(take({})).toBe(true);
   expect(take({ note: "The search link is bigger now." })).toBe(true);
   expect(take({ design: "v2" })).toBe(false);

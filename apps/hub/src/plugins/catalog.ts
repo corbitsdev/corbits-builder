@@ -1,8 +1,13 @@
 import { resolve } from "node:path";
 import { type } from "arktype";
-import { loadCatalog, type Host } from "@corbits-builder/plugin-host/catalog";
+import {
+  isSpecialist,
+  isWorkflowAction,
+  loadCatalog,
+  type Host,
+} from "@corbits-builder/plugin-host/catalog";
 import { readPluginFolder } from "@corbits-builder/plugin-host/folder";
-import { unregisteredValue } from "../artifacts/project-values.ts";
+import { TOKEN_DECLARATIONS } from "../artifacts/project-values.ts";
 import { FACTS } from "./facts.ts";
 import { STARTERS } from "./starters.ts";
 
@@ -11,11 +16,11 @@ export { isRoute } from "@corbits-builder/plugin-host/catalog";
 // From this file rather than the working directory, so every way of starting the hub finds it.
 export const PLUGINS_FOLDER = resolve(import.meta.dir, "../../../../plugins");
 
-// All the plugins need from the hub: the facts it works out, the project values it stores and the
-// workflows it starts.
+// All the plugins need from the hub: the facts it works out, the project values it keeps in the
+// design's tokens and the workflows it starts.
 export const HOST: Host = {
   facts: FACTS,
-  unknownValue: unregisteredValue,
+  values: TOKEN_DECLARATIONS,
   starters: STARTERS,
 };
 
@@ -26,6 +31,28 @@ export const CATALOG = await loadCatalog(
 );
 export const PLUGINS = CATALOG.plugins;
 export const SCREENS = CATALOG.screens;
+// The specialists that have screens, which is all the classic coordinator finds.
+export const WITH_SCREENS = PLUGINS.filter(
+  (plugin) =>
+    isSpecialist(plugin) &&
+    SCREENS.some((screen) => screen.plugin === plugin.builder.handle),
+);
+
+/**
+ * What a finished run of an installed workflow tells the coordinator about the screen that shows
+ * its work, from the action that starts it; null when that action presents nothing.
+ */
+export function presentsFor(workflow: string) {
+  const starting = CATALOG.actions
+    .filter(isWorkflowAction)
+    .filter(({ builder }) => builder.start.workflow === workflow);
+  const presents = new Set(starting.map(({ presents }) => presents));
+  if (presents.size > 1)
+    throw new Error(
+      `${starting.map(({ name }) => name).join(", ")} start ${workflow} but present different screens`,
+    );
+  return starting[0]?.presents ?? null;
+}
 
 // The route a project follows, as the hub stores it: a route plugin's handle, or null for none.
 export const ProjectRoute = type({ "+": "reject", route: "string > 0 | null" });

@@ -1,6 +1,6 @@
 import { describe, expect, test } from "bun:test";
 import { checkInput, checkOutput, guidanceText } from "@corbits-builder/plugin";
-import raw from "../data/fonts.json";
+import raw from "../../data/fonts.json";
 import { Fonts, lists } from "./schema.ts";
 import screen from "./screen.ts";
 
@@ -12,7 +12,7 @@ const project = {
   "look.font-secondary": "Space Mono",
 };
 const check = (input: unknown) =>
-  checkInput("pick-fonts", screen, input, fonts, project);
+  checkInput("designer pick-fonts", screen, input, fonts, project);
 
 describe("pick-fonts input", () => {
   test("no input at all offers every font and the fonts in use", () => {
@@ -67,7 +67,7 @@ describe("pick-fonts input", () => {
     if (result.ok) return;
     expect(result.text).toBe(
       [
-        "pick-fonts was not shown. One field is wrong.",
+        "designer pick-fonts was not shown. One field is wrong.",
         "",
         'list: "handwriting" is not a list.',
         "  Use one of:",
@@ -95,14 +95,14 @@ describe("pick-fonts input", () => {
 
 describe("pick-fonts guidance and output", () => {
   test("guidance names every list with its description", () => {
-    const text = guidanceText("pick-fonts", screen, []);
+    const text = guidanceText("designer pick-fonts", screen, []);
     for (const [name, about] of Object.entries(lists))
       expect(text).toContain(`\n    ${name.padEnd(9)}${about}\n`);
   });
 
   test("a chosen font without its license is rejected", () => {
     const inter = fonts.find((font) => font.name === "Inter");
-    const result = checkOutput("pick-fonts", screen, {
+    const result = checkOutput("designer pick-fonts", screen, {
       primary: { name: "Inter", lists: ["sans"] },
       secondary: inter,
     });

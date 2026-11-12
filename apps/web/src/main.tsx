@@ -9,6 +9,7 @@ import { createRoot } from "react-dom/client";
 import { ThemeProvider } from "@corbits/react-ui";
 import { QueryClientProvider } from "@tanstack/react-query";
 import { App } from "./App.jsx";
+import "./pages/workspace/screen-files.ts";
 import { queryCacheReady, queryClient } from "./queries/client.ts";
 import { openSharedEventSource } from "./shared-event-source.ts";
 import { redirectHashLink } from "./routes.ts";

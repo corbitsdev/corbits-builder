@@ -9,6 +9,8 @@ export type Found = {
   module(path: string): Promise<unknown>;
   // A text file the manifest names, by its path there.
   text(path: string): Promise<string>;
+  // Every file in a folder the manifest names, keyed by its path inside that folder.
+  files(path: string): Promise<Record<string, string>>;
 };
 
 const hasBuilder = (manifest: unknown) =>
@@ -33,6 +35,18 @@ export async function readPluginFolder(plugins: string): Promise<Found[]> {
         module: async (named: string) =>
           (await import(resolve(root, named))).default,
         text: (named: string) => Bun.file(resolve(root, named)).text(),
+        files: async (named: string) => {
+          const cwd = resolve(root, named);
+          const paths = [...new Bun.Glob("**/*").scanSync({ cwd })].sort();
+          return Object.fromEntries(
+            await Promise.all(
+              paths.map(async (path) => [
+                path,
+                await Bun.file(join(cwd, path)).text(),
+              ]),
+            ),
+          );
+        },
       };
     }),
   );

@@ -736,13 +736,14 @@ const QuestionPrompt = type({
 });
 
 /**
- * A screen the person's interface draws instead of prompts: a plugin name and
- * its input. The runtime carries the input without reading it. `questions`
- * is ruled out so the union with prompts, whose defaults are morphs, can tell
- * the two apart.
+ * A screen the person's interface draws instead of prompts: a plugin name,
+ * optionally one of its actions, and its input. The runtime carries the input
+ * without reading it. `questions` is ruled out so the union with prompts,
+ * whose defaults are morphs, can tell the two apart.
  */
 const QuestionScreen = type({
   plugin: "string > 0",
+  "action?": "string > 0",
   input: "Record<string, unknown>",
   "questions?": "never",
 });
@@ -763,6 +764,7 @@ export type QuestionArguments = typeof QuestionArguments.infer;
 export const QuestionToolInput = type({
   "questions?": QuestionPrompt.array().atLeastLength(1),
   "plugin?": "string > 0",
+  "action?": "string > 0",
   "input?": "Record<string, unknown>",
 });
 

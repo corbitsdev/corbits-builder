@@ -110,9 +110,15 @@ const SCRIPTS: readonly Readonly<{
   },
   {
     turns: [
-      { reply: call("open", "question", { plugin: "pick-fonts", input: {} }) },
+      {
+        reply: call("open", "question", {
+          plugin: "designer",
+          action: "pick-fonts",
+          input: {},
+        }),
+      },
     ],
-    moves: ["open:pick-fonts"],
+    moves: ["open:designer.pick-fonts"],
     screen: { firstValid: true, retryValid: null },
     readBeforeActing: false,
   },
@@ -120,19 +126,21 @@ const SCRIPTS: readonly Readonly<{
     turns: [
       {
         reply: call("open_bad", "question", {
-          plugin: "pick-fonts",
+          plugin: "designer",
+          action: "pick-fonts",
           input: { list: "fancy" },
         }),
         refused: true,
       },
       {
         reply: call("open_again", "question", {
-          plugin: "pick-fonts",
+          plugin: "designer",
+          action: "pick-fonts",
           input: {},
         }),
       },
     ],
-    moves: ["open:pick-fonts", "open:pick-fonts"],
+    moves: ["open:designer.pick-fonts", "open:designer.pick-fonts"],
     screen: { firstValid: false, retryValid: true },
     readBeforeActing: false,
   },
@@ -181,12 +189,15 @@ const HINTED: Readonly<
 > = {
   off: {},
   triggers: {
-    "the font is ugly": ["pick-fonts"],
-    "the font is too small": ["pick-fonts"],
+    "the font is ugly": ["designer pick-fonts"],
+    "the font is too small": ["designer pick-fonts"],
+    "change the font to Inter": ["designer pick-fonts"],
   },
   fields: {
-    "the font is ugly": ["pick-fonts"],
-    "the font is too small": ["pick-fonts"],
+    "the font is ugly": ["designer pick-fonts"],
+    "the font is too small": ["designer pick-fonts"],
+    "I don't know if I love how this looks": ["designer review"],
+    "the title looks weird": ["designer review"],
   },
 };
 

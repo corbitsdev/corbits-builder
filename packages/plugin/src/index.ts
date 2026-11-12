@@ -9,6 +9,15 @@ const Facts = type("string > 0").array();
 // Alternatives, each the facts that together let a plugin start.
 const Requires = Facts.atLeastLength(1).array().atLeastLength(1);
 
+// A named piece of project data a plugin brings, such as "brand.guidelines": what it holds, in one
+// line, and what Builder checks a saved value against. text is a string; json is any JSON value.
+export const ValueDeclaration = type({
+  "+": "reject",
+  about: "string > 0",
+  type: "'text' | 'json'",
+});
+export type ValueDeclaration = typeof ValueDeclaration.infer;
+
 const Common = type({
   handle: "string > 0",
   groups: "string[] > 0",
@@ -19,11 +28,24 @@ const Common = type({
   "triggers?": "string[]",
   // Each fact this plugin's work is about, in plain words, as refusals and discover say it.
   "facts?": { "[string]": "string > 0" },
+  // The project values this plugin brings, by namespaced name; any plugin may then read them.
+  "values?": { "[string]": ValueDeclaration },
 });
 
-// The `builder` block of a screen plugin's package.json: what the coordinator searches and reads.
-export const Builder = Common.merge({
+// One thing a specialist does, with the facts it needs to start and the facts its finished work makes.
+const ActionBuilder = type({
+  when: "string > 0",
+  unless: "string > 0",
+  "requires?": Requires,
+  returns: Facts,
+});
+
+// Something put in front of the person: the coordinator opens it with question, naming the plugin
+// and the action, and the person's answer is the question's result.
+export const ScreenActionBuilder = type({
   runs: "'screen'",
+  when: "string > 0",
+  unless: "string > 0",
   screen: "string > 0",
   // The module whose default export draws the screen in the interface.
   view: "string > 0",
@@ -39,15 +61,7 @@ export const Builder = Common.merge({
   // live for the input or project values, or a part only the host may draw.
   "host?": "string[]",
 });
-export type Builder = typeof Builder.infer;
-
-// One thing a specialist does, with the facts it needs to start and the facts its finished work makes.
-const ActionBuilder = type({
-  when: "string > 0",
-  unless: "string > 0",
-  "requires?": Requires,
-  returns: Facts,
-});
+export type ScreenActionBuilder = typeof ScreenActionBuilder.infer;
 
 // Another agent does the work in its own run.
 export const WorkflowActionBuilder = ActionBuilder.merge({
@@ -55,6 +69,10 @@ export const WorkflowActionBuilder = ActionBuilder.merge({
   input: "string > 0",
   // The installed workflow the host starts, and what that workflow's starter takes besides the input.
   start: { workflow: "string > 0", "[string]": "unknown" },
+  // Project values, by name, that Builder puts in the run's assignment.
+  "reads?": "string[]",
+  // The screen action of the same plugin that shows the finished work to the person.
+  "presents?": "string > 0",
 });
 export type WorkflowActionBuilder = typeof WorkflowActionBuilder.infer;
 
@@ -70,7 +88,10 @@ export type ToolActionBuilder = typeof ToolActionBuilder.infer;
 // A specialist the coordinator composes into its plan, and the actions it can be started on.
 export const SpecialistBuilder = Common.merge({
   runs: "'specialist'",
-  actions: type({ "[string]": WorkflowActionBuilder.or(ToolActionBuilder) }),
+  actions: type({
+    "[string]":
+      WorkflowActionBuilder.or(ToolActionBuilder).or(ScreenActionBuilder),
+  }),
 });
 export type SpecialistBuilder = typeof SpecialistBuilder.infer;
 
@@ -90,6 +111,22 @@ export const RouteBuilder = Common.merge({
   outcome: "string > 0",
 });
 export type RouteBuilder = typeof RouteBuilder.infer;
+
+// Guidance a specialist's agent reads when its work calls for it: the markdown files in skills,
+// which the host lays into the agent's workspace and lists in its assignment, one line per pack.
+// extends names the specialist, or the pack this one narrows, as a framework's pack narrows a web
+// app pack, so a new framework is a new pack without a change to the one it narrows. The
+// coordinator never sees a pack.
+export const SkillsBuilder = type({
+  handle: "string > 0",
+  runs: "'skills'",
+  extends: "string > 0",
+  // The specialist's actions it serves; without it, every action the pack it narrows serves.
+  "actions?": "string[] > 0",
+  when: "string > 0",
+  skills: "string > 0",
+});
+export type SkillsBuilder = typeof SkillsBuilder.infer;
 
 export type Refusal = {
   field: string;

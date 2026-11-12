@@ -12,6 +12,7 @@ import {
 import { homedir } from "node:os";
 import { basename, dirname, join } from "node:path";
 import { hasCode } from "@intx/types";
+import { isWorkflowAction } from "@corbits-builder/plugin-host/catalog";
 import {
   AppBundle,
   type ArtifactContent,
@@ -24,9 +25,11 @@ import {
   DESIGNER_INPUTS,
   INPUTS_DIRECTORY,
   KIT_DIGEST,
+  SKILLS_DIRECTORY,
   inputFile,
   inputPath,
 } from "../config/inputs.ts";
+import { CATALOG } from "../plugins/catalog.ts";
 import {
   checkScript,
   kitDigest,
@@ -241,8 +244,24 @@ export function sharedBrowser() {
 type ReadFiled = (kind: string) => Promise<ArtifactContent | undefined>;
 type ReadBundle = () => Promise<Readonly<Record<string, string>> | undefined>;
 
-// Every warm writes the current filed inputs afresh: the role's documents under INPUTS_DIRECTORY,
-// and for an app the component kit digest beside them and the design unpacked into .builder.
+// The files of every skill pack of an action that starts this workflow, each in its pack's folder.
+const packFiles = (workflow: string) =>
+  Object.fromEntries(
+    CATALOG.actions
+      .filter(isWorkflowAction)
+      .filter((action) => action.builder.start.workflow === workflow)
+      .flatMap((action) => action.packs)
+      .flatMap(({ path, files }) =>
+        Object.entries(files).map(([file, text]) => [
+          `${SKILLS_DIRECTORY}/${path}/${file}`,
+          text,
+        ]),
+      ),
+  );
+
+// Every warm writes the current filed inputs afresh: the role's documents and skill packs under
+// INPUTS_DIRECTORY, and for an app the component kit digest beside them and the design unpacked
+// into .builder.
 async function writeInputs(
   kind: "app" | "design",
   workspace: string,
@@ -256,6 +275,10 @@ async function writeInputs(
         [inputPath(input)]: inputFile(document, kind === "app"),
       });
   }
+  await writeBundle(
+    workspace,
+    packFiles(kind === "app" ? "coder" : "designer"),
+  );
   if (kind !== "app") return;
   await writeBundle(workspace, { [KIT_DIGEST]: KIT });
   const design = await read("design");

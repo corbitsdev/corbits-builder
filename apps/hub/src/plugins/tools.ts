@@ -1,6 +1,7 @@
 import { defineTool, type AnnotatedToolFactory } from "@intx/agent/authoring";
 import { questionTool } from "@intx/inference";
 import { HUB_CREDENTIAL_HANDLE } from "@intx/types/credential-delivery";
+import { ProjectValues } from "@corbits-builder/schemas/artifact";
 import {
   checkedDiscover,
   Discover,
@@ -12,6 +13,7 @@ import {
 } from "@corbits-builder/plugin-host/coordinator";
 import { fields } from "@corbits-builder/plugin-host/search/fields";
 import { triggers } from "@corbits-builder/plugin-host/search/triggers";
+import { words } from "@corbits-builder/plugin-host/search/words";
 import {
   DISCOVER_DESCRIPTION,
   DISCOVER_DYNAMIC_DESCRIPTION,
@@ -32,14 +34,15 @@ import {
   type ProjectSession,
 } from "../projects/project-session.ts";
 import { projectScopeFailure } from "../workflows/project-scope.ts";
-import { CATALOG, ProjectRoute, SCREENS } from "./catalog.ts";
+import { CATALOG, ProjectRoute, SCREENS, WITH_SCREENS } from "./catalog.ts";
 import { projectFacts } from "./facts.ts";
 import { checkPluginQuestion } from "./question.ts";
 import { startAction } from "./starters.ts";
 
-// The classic coordinator finds only screens, and knows nothing of the project when it does.
+// The classic coordinator finds only specialists with screens, and knows nothing of the project
+// when it does.
 export const discover = (asked: typeof Discover.infer) =>
-  discoverIn(SCREENS, asked);
+  discoverIn(WITH_SCREENS, asked);
 
 // The least score a plugin needs to be hinted. One trigger word is all triggers can score. For fields,
 // a word found in the handle, when, examples and summary ("font") scores 10, while common words
@@ -52,15 +55,21 @@ const HINT_SEARCHES = {
 };
 const MAX_HINTED = 3;
 
-// The person's message with a note naming screens its words suggest, or unchanged when none does.
+// The person's message with a note naming the screens its words suggest, or unchanged when none
+// does: of each plugin its words find, the screens whose when shares one of them.
 export function withPluginHint(hint: PluginHint, message: string): string {
   if (hint === "off") return message;
   const { search: hintSearch, least } = HINT_SEARCHES[hint];
-  const hinted = hintSearch(message, SCREENS)
+  const asked = words(message);
+  const hinted = hintSearch(message, WITH_SCREENS)
     .filter(({ score }) => score >= least)
     .slice(0, MAX_HINTED)
     .flatMap(({ handle }) =>
-      SCREENS.filter((screen) => screen.builder.handle === handle),
+      SCREENS.filter(
+        ({ plugin, builder }) =>
+          plugin === handle &&
+          [...words(builder.when)].some((word) => asked.has(word)),
+      ),
     );
   return hinted.length === 0 ? message : message + pluginHint(hinted);
 }
@@ -78,7 +87,14 @@ function project(session: ProjectSession): Project {
     facts: async () => projectFacts(await session.listed()),
     route: async () => ProjectRoute.assert(await session.hub(path)).route,
     setRoute: (route) => session.hub(path, { route }),
-    start: (action, input) => startAction(action, input, session),
+    values: async (names) =>
+      ProjectValues.assert(
+        await session.hub(
+          `${session.projectPath}/values?${new URLSearchParams({ keys: names.join(",") })}`,
+        ),
+      ).values,
+    start: (action, input, values) =>
+      startAction(action, input, session, values),
   };
 }
 

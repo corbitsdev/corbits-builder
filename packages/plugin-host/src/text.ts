@@ -1,5 +1,5 @@
-import type { Fact } from "@corbits-builder/plugin";
-import type { Plugin } from "./catalog.ts";
+import type { Fact, ValueDeclaration } from "@corbits-builder/plugin";
+import type { Plugin, ScreenAction } from "./catalog.ts";
 
 // A fact in plain words, as the catalog has it from the plugins.
 type FactText = (fact: Fact) => string;
@@ -7,10 +7,10 @@ type FactText = (fact: Fact) => string;
 // What the coordinator reads about execute, the facts an action requires, and why nothing started.
 
 export const EXECUTE_DESCRIPTION =
-  "Start a specialist plugin's action by the plugin's handle and the action's name, with the input that action's guidance from discover describes, such as { plugin: \"coder\", action: \"change\", input }. A workflow action starts its specialist and returns at once with the run; the outcome arrives later as the specialist's message. A route plugin takes no action: it puts the project on that route and returns its guidance and which of its steps can start now; input { leave: true } takes the project off it. When something an action needs is not true of the project yet, nothing starts, and the refusal names what is missing and which plugin action makes it true. A screen plugin is opened with question, and the writer's approve action with request_approval.";
+  "Start a specialist plugin's action by the plugin's handle and the action's name, with the input that action's guidance from discover describes, such as { plugin: \"coder\", action: \"change\", input }. A workflow action starts its specialist and returns at once with the run; the outcome arrives later as the specialist's message. A route plugin takes no action: it puts the project on that route and returns its guidance and which of its steps can start now; input { leave: true } takes the project off it. When something an action needs is not true of the project yet, nothing starts, and the refusal names what is missing and which plugin action makes it true. A screen action is opened with question({ plugin, action, input }), and the writer's approve action with request_approval.";
 
 export const DISCOVER_DYNAMIC_DESCRIPTION =
-  "Find what you can do for the person: every piece of work you can start is a plugin. Pass query with what they asked for, in their words, or group to list every plugin in that group. A specialist plugin comes with its actions, how to use each, what each requires and whether the project has that now. Specialist actions and route plugins are started with execute; a screen plugin is shown to the person with question({ plugin, input }).";
+  "Find what you can do for the person: every piece of work you can start is a plugin. Pass query with what they asked for, in their words, or group to list every plugin in that group. A specialist plugin comes with its actions, how to use each, what each requires and whether the project has that now. Specialist actions and route plugins are started with execute; a screen action is shown to the person with question({ plugin, action, input }).";
 
 /** Missing facts that together make one alternative, with the installed actions that make them true. */
 const missingLine = (
@@ -33,6 +33,42 @@ export const requiresText = (
     : requires
         .map((alternative) => alternative.map(factText).join(" and "))
         .join("; or ");
+
+/** The guidance line for an action whose run Builder hands project values, or none. */
+export const suppliedText = (reads: readonly string[]) =>
+  reads.length === 0
+    ? []
+    : [
+        `Builder gives the run the project's ${reads.join(", ")} itself; do not pass them.`,
+      ];
+
+type Values = ReadonlyMap<string, ValueDeclaration>;
+
+/** The block a run's assignment carries for the project values its action reads. */
+export const assignedValuesText = (
+  values: Values,
+  read: Readonly<Record<string, unknown>>,
+) =>
+  [
+    "\n\nProject values, as the person set them; follow each that is set:",
+    ...Object.entries(read).map(
+      ([name, value]) =>
+        `- ${name}: ${values.get(name)?.about} ${value === null ? "Not set." : `Value: ${JSON.stringify(value)}`}`,
+    ),
+  ].join("\n");
+
+/** The project's values as discover lists them, so the coordinator knows what exists. */
+export const projectValuesText = (
+  values: Values,
+  read: Readonly<Record<string, unknown>>,
+) =>
+  [
+    "\n\nProject values (Builder hands each to the actions and screens that read it; only the person sets them):",
+    ...[...values].map(
+      ([name, { about }]) =>
+        `  ${name}: ${about} ${read[name] === null ? "Not set." : "Set."}`,
+    ),
+  ].join("\n");
 
 export type Readiness = {
   // The project is following this route and the action is one of its steps.
@@ -121,8 +157,19 @@ export const unknownAction = (
 export const routeTakesNoAction = (handle: string) =>
   `${handle} is a route and takes no action, so nothing was started. Call again with no action to follow it, or name the specialist whose action you meant.`;
 
-export const screenNotExecuted = (handle: string) =>
-  `${handle} is a screen, so nothing was started. A screen is opened with question({ plugin: "${handle}", input }).`;
+const questionCall = (plugin: string, action: string) =>
+  `question({ plugin: "${plugin}", action: "${action}", input })`;
+
+/** How a screen action is opened, as its guidance ends. */
+export const screenText = (plugin: string, action: string) =>
+  `Open it with ${questionCall(plugin, action)}.`;
+
+export const screenNotExecuted = ({ name, plugin, action }: ScreenAction) =>
+  `${name} is a screen, so nothing was started. A screen is opened with ${questionCall(plugin, action)}.`;
+
+/** What a finished run's report says about the screen that shows its work to the person. */
+export const presentsText = (plugin: string, action: string) =>
+  `To show this to the person, open question({ plugin: "${plugin}", action: "${action}", input: {} }); Builder fills in the newest version itself.`;
 
 export const toolNotExecuted = (handle: string, tool: string) =>
   `${handle} is started with its own tool, so nothing was started. Call ${tool}: only the person's answer to it records what it does.`;
@@ -153,25 +200,30 @@ export const routeFollowed = (
     ...steps.map(({ name, readiness }) => `  ${name}: ${readiness}`),
   ].join("\n");
 
-// What the coordinator reads when its question names a screen plugin the hub does not have.
-export function unknownScreenPlugin(
-  handle: string,
-  installed: readonly Plugin[],
+// What the coordinator reads when its question names a screen the hub does not have.
+export function unknownScreen(
+  asked: { plugin: string; action?: string },
+  installed: readonly ScreenAction[],
 ): string {
+  const named =
+    asked.action === undefined
+      ? `${asked.plugin}, with no action,`
+      : `${asked.plugin} ${asked.action}`;
   return [
-    `${JSON.stringify(handle)} is not an installed screen plugin, so nothing was shown.`,
+    `${named} is not an installed screen, so nothing was shown.`,
     "",
-    "Installed screen plugins:",
+    "Installed screens, as plugin and action:",
     ...installed.map(
-      (plugin) => `  ${plugin.builder.handle}: ${plugin.description}`,
+      ({ plugin, action, description }) =>
+        `  ${plugin} ${action}: ${description}`,
     ),
     "",
-    "Call again with plugin set to one of them, or ask a plain question with questions instead.",
+    "Call again with plugin and action set to one of them, or ask a plain question with questions instead.",
   ].join("\n");
 }
 
 export const DISCOVER_DESCRIPTION =
-  "Find a plugin for something the person wants that none of your other tools obviously does. Pass query with what they asked for, in their words, or group to list every plugin in that group. A screen plugin is then shown to the person with question({ plugin, input }).";
+  "Find a plugin for something the person wants that none of your other tools obviously does. Pass query with what they asked for, in their words, or group to list every plugin in that group. A screen it finds is then shown to the person with question({ plugin, action, input }).";
 
 export const DISCOVER_NEEDS_ONE =
   "Pass either query, with what the person asked for, or group.";
@@ -218,13 +270,12 @@ export const PLUGIN_HINT_LEAD =
 export const PLUGIN_HINT_END =
   "If none fits, call discover or carry on without a plugin.";
 
-export const pluginHint = (plugins: readonly Plugin[]) =>
+export const pluginHint = (screens: readonly ScreenAction[]) =>
   [
     PLUGIN_HINT_LEAD,
-    ...plugins.map(({ builder, description }) =>
-      builder.runs === "screen"
-        ? `- ${builder.handle}: ${description} Open it with question({ plugin: "${builder.handle}" }); Builder supplies the values it reads.`
-        : `- ${builder.handle}: ${description}`,
+    ...screens.map(
+      ({ name, plugin, action, description }) =>
+        `- ${name}: ${description} Open it with question({ plugin: "${plugin}", action: "${action}" }); Builder supplies the values it reads.`,
     ),
     PLUGIN_HINT_END,
   ].join("\n");

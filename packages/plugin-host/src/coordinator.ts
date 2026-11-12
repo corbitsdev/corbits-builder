@@ -2,22 +2,25 @@ import { type } from "arktype";
 import type { Fact } from "@corbits-builder/plugin";
 import {
   isRoute,
-  isScreen,
+  isScreenAction,
   isSpecialist,
   isWorkflowAction,
   type Action,
   type Catalog,
   type Plugin,
   type RoutePlugin,
+  type ScreenAction,
   type WorkflowAction,
 } from "./catalog.ts";
 import { makes, resolveFacts, templateField, unmet } from "./facts.ts";
 import { fields } from "./search/fields.ts";
 import type { Strategy } from "./search/words.ts";
 import {
+  assignedValuesText,
   DISCOVER_NEEDS_ONE,
   foundPlugins,
   noPluginFound,
+  projectValuesText,
   readinessText,
   routeDone,
   routeFollowed,
@@ -39,8 +42,15 @@ export type Project = {
   // The handle of the route the project follows, or null for none.
   route(): Promise<string | null>;
   setRoute(handle: string | null): Promise<unknown>;
-  // Starts a workflow action on its checked input; what it returns is execute's answer.
-  start(action: WorkflowAction, input: unknown): Promise<unknown>;
+  // Each named project value as stored, null where the project has none yet.
+  values(names: readonly string[]): Promise<Readonly<Record<string, unknown>>>;
+  // Starts a workflow action on its checked input, its run's assignment ending with values, the
+  // block of project values it reads; what it returns is execute's answer.
+  start(
+    action: WorkflowAction,
+    input: unknown,
+    values: string,
+  ): Promise<unknown>;
 };
 
 // The one place the search is chosen.
@@ -120,13 +130,17 @@ type ProjectState = Awaited<ReturnType<typeof projectState>>;
 
 const makersIn = (catalog: Catalog) => (fact: Fact) =>
   catalog.actions
-    .filter(({ builder }) => builder.returns.some((made) => makes(made, fact)))
+    .filter(
+      (action) =>
+        !isScreenAction(action) &&
+        action.builder.returns.some((made) => makes(made, fact)),
+    )
     .map(({ name }) => name);
 
 // Where an action stands: what it lacks of its own requirements, for the input when there is one,
 // and what the route the project follows adds for it as a step.
 function readiness(
-  action: Action,
+  action: Exclude<Action, ScreenAction>,
   { facts, route }: ProjectState,
   input?: unknown,
 ): Readiness {
@@ -164,7 +178,7 @@ const stepsOf = (
 ) =>
   route.builder.steps.map(({ plugin, action: name }) => {
     const action = installedAction(catalog, plugin, name);
-    if (!action)
+    if (!action || !isWorkflowAction(action))
       throw new Error(`${route.builder.handle} names ${plugin} ${name}`);
     return {
       name: action.name,
@@ -197,7 +211,7 @@ function status(
     "Now:",
     ...plugin.actions.map(
       (action) =>
-        `  ${action.name}: ${readinessText(readiness(action, state), catalog.factText)}`,
+        `  ${action.name}: ${isScreenAction(action) ? "can open now" : readinessText(readiness(action, state), catalog.factText)}`,
     ),
   ];
 }
@@ -209,8 +223,11 @@ export async function discoverFor(
   asked: typeof Discover.infer,
 ) {
   const state = await projectState(catalog, project);
-  return discoverIn(catalog.plugins, asked, (plugin) =>
-    status(catalog, plugin, state),
+  const values = await project.values([...catalog.values.keys()]);
+  return (
+    discoverIn(catalog.plugins, asked, (plugin) =>
+      status(catalog, plugin, state),
+    ) + projectValuesText(catalog.values, values)
   );
 }
 
@@ -264,8 +281,6 @@ export async function execute(
       ]),
       isError: true,
     };
-  if (isScreen(plugin))
-    return { content: screenNotExecuted(plugin.builder.handle), isError: true };
   if (isRoute(plugin)) {
     if (asked.action !== undefined)
       return {
@@ -285,6 +300,8 @@ export async function execute(
       ),
       isError: true,
     };
+  if (isScreenAction(action))
+    return { content: screenNotExecuted(action), isError: true };
   if (!isWorkflowAction(action))
     return {
       content: toolNotExecuted(action.name, action.builder.tool),
@@ -304,7 +321,13 @@ export async function execute(
       ),
       isError: true,
     };
+  // The hub refuses a read of no names.
+  const reads = action.builder.reads ?? [];
+  const values =
+    reads.length === 0
+      ? ""
+      : assignedValuesText(catalog.values, await project.values(reads));
   return {
-    content: JSON.stringify(await project.start(action, checked.input)),
+    content: JSON.stringify(await project.start(action, checked.input, values)),
   };
 }

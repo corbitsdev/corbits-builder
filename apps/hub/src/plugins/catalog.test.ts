@@ -19,43 +19,46 @@ function withBuilder(folder: string, builder: unknown) {
     manifest: { builder },
     module: found.module,
     text: found.text,
+    files: found.files,
   };
 }
 
-test("a plugin whose builder block has no groups stops the hub, naming its folder and the field", async () => {
-  const loading = loadCatalog(
-    [
-      withBuilder("pick-colours", {
-        handle: "pick-colors",
+// The designer with one screen action, pick-colours, in the given groups and reading the given values.
+const colours = (groups: unknown, reads: string[]) =>
+  withBuilder("designer", {
+    handle: "designer",
+    runs: "specialist",
+    groups,
+    when: "The person wants other colours.",
+    unless: "They want a new look.",
+    facts: {
+      "filed:design_option": "a design option is filed",
+      design_chosen: "the person chose a design from the design options",
+    },
+    actions: {
+      "pick-colours": {
         runs: "screen",
-        screen: "./src/screen.ts",
-        view: "./src/view.tsx",
-        groups: "look",
         when: "The person wants other colours.",
         unless: "They want a new look.",
-      }),
-    ],
-    HOST,
-  );
-  await expect(loading).rejects.toThrow("plugins/pick-colours/package.json");
+        screen: "./src/pick-colours/screen.ts",
+        view: "./src/pick-colours/view.tsx",
+        reads,
+      },
+    },
+  });
+
+test("a plugin whose builder block has no groups stops the hub, naming its folder and the field", async () => {
+  const loading = loadCatalog([colours("look", [])], HOST);
+  await expect(loading).rejects.toThrow("plugins/designer/package.json");
   await expect(loading).rejects.toThrow("groups");
 });
 
-test("a plugin that reads a project value the hub does not have stops the hub", async () => {
+test("a screen that reads a project value the hub does not have stops the hub", async () => {
   await expect(
     loadCatalog(
       [
-        ...folders.filter(({ folder }) => folder !== "pick-colours"),
-        withBuilder("pick-colours", {
-          handle: "pick-colors",
-          runs: "screen",
-          screen: "./src/screen.ts",
-          view: "./src/view.tsx",
-          groups: ["look"],
-          when: "The person wants other colours.",
-          unless: "They want a new look.",
-          reads: ["look.font-primary", "look.colour-primary"],
-        }),
+        ...folders.filter(({ folder }) => folder !== "designer"),
+        colours(["look"], ["look.font-primary", "look.colour-primary"]),
       ],
       HOST,
     ),
@@ -122,14 +125,14 @@ test("a route that names an action that is not installed stops the hub", async (
   ).rejects.toThrow("writer write-chapter");
 });
 
-test("fields finds pick-fonts first from how a person complains about type", () => {
-  expect(handles(fields("the font is ugly", PLUGINS))[0]).toBe("pick-fonts");
+test("fields finds the designer first from how a person complains about type", () => {
+  expect(handles(fields("the font is ugly", PLUGINS))[0]).toBe("designer");
   expect(handles(fields("can we use a different typeface", PLUGINS))[0]).toBe(
-    "pick-fonts",
+    "designer",
   );
 });
 
 test("triggers matches font as a whole word, not inside confront", () => {
-  expect(handles(triggers("change the font", PLUGINS))).toEqual(["pick-fonts"]);
+  expect(handles(triggers("change the font", PLUGINS))).toEqual(["designer"]);
   expect(triggers("I want to confront the problem", PLUGINS)).toEqual([]);
 });

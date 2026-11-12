@@ -10,6 +10,7 @@ import { roleInference } from "../role-inference.ts";
 import { compactingDirector } from "../director.ts";
 import { dropDegenerateTurn, trimHistory } from "../compaction.ts";
 import { nativePackageName } from "../package-name.ts";
+import { presentsFor } from "../../plugins/catalog.ts";
 
 const compacting = compactingDirector(nativePackageName("designer"));
 
@@ -22,6 +23,7 @@ const agent = createDesignerAgent<CodingSidecarEnv & MailToolEnv>({
     compactAt: 0.6,
     checkBeforeDone: true,
     fileBeforeDone: true,
+    presents: presentsFor("designer"),
   }),
   id: "designer",
   standards: [],

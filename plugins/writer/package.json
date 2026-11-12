@@ -125,6 +125,12 @@
       "approved:approaches": "the person approved the current version of the approaches, or leaves approvals to you",
       "approved:product_requirements": "the person approved the current version of the product requirements, or leaves approvals to you",
       "approved:build_plan": "the person approved the current version of the build plan, or leaves approvals to you"
+    },
+    "values": {
+      "brand.guidelines": {
+        "about": "The brand's guidelines in the person's words: voice, tone, and what to do and avoid.",
+        "type": "text"
+      }
     }
   }
 }

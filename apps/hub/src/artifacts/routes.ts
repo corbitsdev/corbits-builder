@@ -41,15 +41,14 @@ import { ProjectError } from "../projects/errors.ts";
 import { readJson } from "../lib/json.ts";
 import { mailRunAsCaller } from "../mail/caller-mail.ts";
 import { mountApprovalRoundRoutes } from "./approval-rounds.ts";
-import { isRoute, PLUGINS, ProjectRoute } from "../plugins/catalog.ts";
+import { CATALOG, isRoute, PLUGINS, ProjectRoute } from "../plugins/catalog.ts";
 import type { createArtifactService } from "./service.ts";
-import {
-  projectValueTokens,
-  readProjectValues,
-  unregisteredValue,
-} from "./project-values.ts";
+import { projectValueWrites, readProjectValues } from "./project-values.ts";
 
 const ROUTES = PLUGINS.filter(isRoute).map(({ builder }) => builder.handle);
+
+const undeclaredValue = (names: readonly string[]) =>
+  names.find((name) => !CATALOG.values.has(name));
 
 const security = [
   { sessionCookie: [] },
@@ -300,19 +299,19 @@ export function mountArtifactRoutes(
       tags: ["Artifacts"],
       operationId: "readProjectValues",
       description:
-        "The project values named in keys, comma separated, each read from where the project stores it, such as the fonts in the filed design's styles.css. A value the project has none of yet is null. Values are saved through the route that owns them, such as design-tweaks.",
+        "The project values named in keys, comma separated, each read from its home: the look values from the filed design's styles.css, every other declared value from the project's own store. A value the project has none of yet is null.",
       security,
       responses: {
         200: {
           description: "Each named value, or null",
           content: { "application/json": { schema: resolver(ProjectValues) } },
         },
-        400: { description: "A key that is not a registered project value" },
+        400: { description: "A key that no plugin declares" },
       },
     }),
     async (c) => {
       const names = (c.req.query("keys") ?? "").split(",");
-      const unknown = unregisteredValue(names);
+      const unknown = undeclaredValue(names);
       if (unknown !== undefined)
         throw new ProjectError(400, "unknown_project_value", { key: unknown });
       const state = await service.projectState(
@@ -328,7 +327,7 @@ export function mountArtifactRoutes(
       tags: ["Artifacts"],
       operationId: "saveProjectValues",
       description:
-        "Saves project values by name, each written where the project stores it: the fonts become design tweaks with the stored fallbacks kept, saved as design-tweaks saves them. Returns the saved values read back.",
+        "Saves project values by name, each checked against its declared type and written to its home: the look values become design tweaks with the stored fallbacks kept, saved as design-tweaks saves them, and every other value goes to the project's own store. Returns the saved values read back.",
       security,
       requestBody: {
         required: true,
@@ -343,10 +342,11 @@ export function mountArtifactRoutes(
         },
         400: {
           description:
-            "A name that is not registered or a value its schema refuses",
+            "A name that no plugin declares or a value its type refuses",
         },
         404: {
-          description: "Neither a live designer nor a filed design to update",
+          description:
+            "A look value with neither a live designer nor a filed design to update",
         },
       },
     }),
@@ -359,20 +359,25 @@ export function mountArtifactRoutes(
           issues: input,
         });
       const names = Object.keys(input.values);
-      const unknown = unregisteredValue(names);
+      const unknown = undeclaredValue(names);
       if (unknown !== undefined)
         throw new ProjectError(400, "unknown_project_value", { key: unknown });
-      const tokens = projectValueTokens(
+      const { tokens, stored } = projectValueWrites(
         input.values,
         await service.projectState(current, projectId),
+        CATALOG.values,
       );
-      await service.saveDesignTweaks(
-        current,
-        projectId,
-        { tokens },
-        (runId, content) =>
-          mailRunAsCaller(c, nativeFetch, current.tenantId, runId, content),
-      );
+      // The tokens first: a project with no design to take them refuses before anything is saved.
+      if (Object.keys(tokens).length > 0)
+        await service.saveDesignTweaks(
+          current,
+          projectId,
+          { tokens },
+          (runId, content) =>
+            mailRunAsCaller(c, nativeFetch, current.tenantId, runId, content),
+        );
+      if (Object.keys(stored).length > 0)
+        await service.saveStoredValues(current, projectId, stored);
       const state = await service.projectState(current, projectId);
       return c.json({ values: readProjectValues(names, state) });
     },

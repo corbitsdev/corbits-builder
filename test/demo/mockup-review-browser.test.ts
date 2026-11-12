@@ -1,6 +1,6 @@
 /**
  * The mockup review driven as the person in the real web app, on a dynamic coordinator: the
- * recorded weather designer files a design option, the coordinator opens review-mockup, the person
+ * recorded weather designer files a design option, the coordinator opens designer review, the person
  * tags a place and sends a comment, a second designer acts on it, and the person approves the next
  * version. Writes the video, screenshots, the browser's console and network, and the raw trace to
  * DEMO_DIR.
@@ -82,7 +82,7 @@ function coordinatorTurns() {
       {
         id,
         name: "question",
-        arguments: { plugin: "review-mockup", input: { note } },
+        arguments: { plugin: "designer", action: "review", input: { note } },
       },
     ],
   });
@@ -92,8 +92,8 @@ function coordinatorTurns() {
         id,
         name: "execute",
         arguments: {
-          plugin: "design-app",
-          action: "design",
+          plugin: "designer",
+          action: "mockup",
           input: { instruction: text, lookIdeas, concepts: [concept] },
         },
       },

@@ -17,10 +17,8 @@
   },
   "dependencies": {
     "@corbits-builder/client": "workspace:*",
-    "@corbits-builder/pick-colours": "workspace:*",
-    "@corbits-builder/pick-fonts": "workspace:*",
+    "@corbits-builder/designer-plugin": "workspace:*",
     "@corbits-builder/plugin": "workspace:*",
-    "@corbits-builder/review-mockup": "workspace:*",
     "@corbits-builder/schemas": "workspace:*",
     "@corbits/react-ui": "0.5.1",
     "@corbits/slidedeck": "workspace:*",

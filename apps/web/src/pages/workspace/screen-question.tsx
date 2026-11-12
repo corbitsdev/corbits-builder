@@ -8,9 +8,9 @@ import type { Type } from "arktype";
 import {
   checkInput,
   checkOutput,
-  type Builder,
   type ProjectValues,
   type Screen,
+  type ScreenActionBuilder,
   type ScreenViewProps,
 } from "@corbits-builder/plugin";
 import { QuestionAnswer } from "@intx/types/signals";
@@ -28,10 +28,7 @@ export const projectFacts: readonly string[] = [];
 
 /** Reads and saves the open project's values by name. */
 export type ProjectValuesStore = {
-  read(
-    keys: readonly string[],
-    signal: AbortSignal,
-  ): Promise<Record<string, string | null>>;
+  read(keys: readonly string[], signal: AbortSignal): Promise<ProjectValues>;
   save(values: Record<string, string>): Promise<unknown>;
 };
 
@@ -76,9 +73,10 @@ export type ScreenHostProps = {
   page?: PageHost | undefined;
 };
 
-/** One plugin's screen, typed end to end, behind props every plugin shares. */
+/** One plugin's screen action, by its name such as "designer pick-fonts", typed end to end, behind props every screen shares. */
 export function screenHost<In, Out, Data, Prepared>(
-  builder: Builder,
+  handle: string,
+  builder: ScreenActionBuilder,
   plugin: {
     screen: Screen<In, Out, Data, Prepared>;
     view: ComponentType<
@@ -95,7 +93,7 @@ export function screenHost<In, Out, Data, Prepared>(
   },
 ): ComponentType<ScreenHostProps> {
   const { screen, view: View, data, writes } = plugin;
-  const { handle, reads = [], host: supplied = [] } = builder;
+  const { reads = [], host: supplied = [] } = builder;
   const unknown = supplied.find((name) => !SUPPLIED.has(name));
   if (unknown !== undefined)
     throw new Error(

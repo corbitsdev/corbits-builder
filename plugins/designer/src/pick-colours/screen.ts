@@ -3,7 +3,7 @@ import {
   refuse,
   type ProjectValues,
 } from "@corbits-builder/plugin";
-import manifest from "../package.json";
+import manifest from "../../package.json";
 import { Color, Input, Output } from "./schema.ts";
 
 const FORMAT = 'a # and six hex digits, such as "#1d4ed8"';
@@ -11,8 +11,8 @@ const FORMAT = 'a # and six hex digits, such as "#1d4ed8"';
 const describe = {
   summary:
     "Shows the person the primary (brand) and background colours in use and lets them choose new ones.",
-  when: manifest.builder.when,
-  unless: manifest.builder.unless,
+  when: manifest.builder.actions["pick-colours"].when,
+  unless: manifest.builder.actions["pick-colours"].unless,
   fields: {
     proposed: {
       about: `Colours you suggest, each ${FORMAT}: { "primary": "#1d4ed8" }. primary is the brand colour of buttons and links, background the page behind everything; give either or both. Leave out to let the person choose.`,
@@ -75,7 +75,7 @@ export default defineScreen({
   },
   describe,
   writes: {
-    "look.color-primary": (output) => output.primary,
-    "look.color-background": (output) => output.background,
+    [IN_USE.primary]: (output) => output.primary,
+    [IN_USE.background]: (output) => output.background,
   },
 });

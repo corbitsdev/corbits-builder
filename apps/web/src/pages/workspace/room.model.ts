@@ -160,7 +160,7 @@ import type {
   ReviewedDesign,
   ScreenQuestionProps,
 } from "./screen-question.tsx";
-import { pageScreens, screens } from "./screens.ts";
+import { screenOf } from "./screens.ts";
 
 // The stream says when the room moved. This read covers what it cannot see,
 // such as a coordinator run replaced while its old stream stays quiet.
@@ -527,11 +527,10 @@ export function useRoom({
   const pageQuestion =
     openQuestion !== undefined &&
     "plugin" in openQuestion.asked &&
-    pageScreens.has(openQuestion.asked.plugin)
+    screenOf(openQuestion.asked)?.page === true
       ? {
           signalName: openQuestion.signalName,
-          plugin: openQuestion.asked.plugin,
-          input: openQuestion.asked.input,
+          asked: openQuestion.asked,
         }
       : undefined;
   // The page screen the person closed to read the conversation, by its question's signal.
@@ -1468,7 +1467,8 @@ export function useRoom({
             .flatMap(({ signalName, asked, answer }) =>
               signalName !== pageQuestion.signalName &&
               "plugin" in asked &&
-              asked.plugin === pageQuestion.plugin &&
+              asked.plugin === pageQuestion.asked.plugin &&
+              asked.action === pageQuestion.asked.action &&
               answer !== undefined &&
               "output" in answer
                 ? [answer.output]
@@ -1787,8 +1787,8 @@ export function useRoom({
       pageQuestion === undefined
         ? null
         : {
-            host: screens[pageQuestion.plugin],
-            input: pageQuestion.input,
+            host: screenOf(pageQuestion.asked)?.host,
+            input: pageQuestion.asked.input,
             projectValues,
             answer: undefined,
             disabled: sending || archived,

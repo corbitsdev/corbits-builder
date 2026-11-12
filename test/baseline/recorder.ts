@@ -10,7 +10,7 @@ import type { CoordinatorMode } from "@corbits-builder/hub/environment";
 import { openQuestionPark } from "../e2e/support/pipeline-driver.ts";
 
 export const Move = type(
-  "'discover' | 'open:pick-fonts' | 'open:pick-colours' | 'ask' | 'read' | 'reply'",
+  "'discover' | 'open:designer.pick-fonts' | 'open:designer.pick-colours' | 'ask' | 'read' | 'reply'",
 ).or(/^execute:[a-z][a-z0-9-]*$/);
 
 const Remark = type({
@@ -67,7 +67,8 @@ export type Observation = Readonly<{
   textTurns: readonly string[];
 }>;
 
-// An action started is execute:<plugin>.<action>, a route followed execute:<plugin>; classic's
+// An action started is execute:<plugin>.<action>, a route followed execute:<plugin> and a screen
+// opened open:<plugin>.<action>; classic's
 // instruct_coder is the coder's change action by another name.
 function moveOf(tool: string, args: Record<string, unknown>): string {
   if (tool === "discover") return tool;
@@ -78,7 +79,7 @@ function moveOf(tool: string, args: Record<string, unknown>): string {
       : `execute:${String(args["plugin"])}`;
   if (tool === "question")
     return typeof args["plugin"] === "string"
-      ? `open:${args["plugin"]}`
+      ? `open:${args["plugin"]}.${String(args["action"])}`
       : "ask";
   if (PROJECT_READS.has(tool)) return "read";
   return `tool:${tool}`;
@@ -213,7 +214,7 @@ export function hintNote(personText: string): {
     reached: true,
     plugins: lines
       .slice(lead + 1)
-      .flatMap((line) => /^- ([a-z0-9-]+):/.exec(line)?.[1] ?? []),
+      .flatMap((line) => /^- ([a-z0-9-]+ [a-z0-9-]+):/.exec(line)?.[1] ?? []),
   };
 }
 

@@ -2,7 +2,7 @@ import type { QuestionCheck } from "@intx/inference";
 import { HUB_CREDENTIAL_HANDLE } from "@intx/types/credential-delivery";
 import type { RuntimeCapabilities } from "@intx/types/runtime-capabilities";
 import { ProjectValues } from "@corbits-builder/schemas/artifact";
-import { unknownScreenPlugin } from "@corbits-builder/plugin-host/text";
+import { unknownScreen } from "@corbits-builder/plugin-host/text";
 import { resolveWorkflowProjectScope } from "../workflows/project-scope.ts";
 import { workflowHttpJson } from "../workflows/http-json.ts";
 import { SCREENS } from "./catalog.ts";
@@ -41,16 +41,19 @@ async function readProjectValues(
 // Refuses a screen's input before the question parks, so the person never sees a screen that
 // cannot draw. A screen is checked against the project as it is, so a failed read is thrown.
 export async function checkPluginQuestion(
-  { plugin, input }: Parameters<QuestionCheck>[0],
+  question: Parameters<QuestionCheck>[0],
   capabilities: RuntimeCapabilities,
   project: { tenantId: string; projectId: string } | undefined,
 ) {
-  const installed = SCREENS.find((screen) => screen.builder.handle === plugin);
-  if (!installed) return unknownScreenPlugin(plugin, SCREENS);
+  const installed = SCREENS.find(
+    ({ plugin, action }) =>
+      plugin === question.plugin && action === question.action,
+  );
+  if (!installed) return unknownScreen(question, SCREENS);
   const reads = installed.builder.reads ?? [];
   const values =
     reads.length > 0
       ? await readProjectValues(capabilities, project, reads)
       : {};
-  return installed.refusal(input, values);
+  return installed.refusal(question.input, values);
 }

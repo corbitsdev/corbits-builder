@@ -19,5 +19,5 @@
     "noEmit": true,
     "jsx": "react-jsx"
   },
-  "include": ["src", ".storybook"]
+  "include": ["src", ".storybook", "../../plugins/*/src/**/*.tsx"]
 }

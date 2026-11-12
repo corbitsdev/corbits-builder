@@ -166,11 +166,15 @@ export function checkDeployments(workflows: ProjectOptions["workflows"]) {
   }
 }
 
-/** The coordinator's view of its project through the hub, and the way it starts a specialist there. */
+/**
+ * The coordinator's view of its project through the hub, and the way it starts a specialist there.
+ * values is the block of project values every assignment it sends carries.
+ */
 export function projectSession(
   env: DeployEnv,
   options: ProjectOptions,
   signal: AbortSignal,
+  values = "",
 ) {
   const projectPath =
     "/api/tenants/" +
@@ -303,7 +307,7 @@ export function projectSession(
         ],
         type: "conversation.message",
         correlationId: correlationId + "-" + deployment.id,
-        content: content + preferenceBlock(preferences, role),
+        content: content + values + preferenceBlock(preferences, role),
       },
       signal,
     );
@@ -465,6 +469,8 @@ export function projectSession(
     approve,
     startCoder,
     startDesigners,
+    // The same session, its assignments carrying this block of project values.
+    withValues: (block: string) => projectSession(env, options, signal, block),
   };
 }
 

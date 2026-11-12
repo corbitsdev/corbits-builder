@@ -85,7 +85,7 @@ import {
   type HostSupplies,
   type ProjectValuesStore,
 } from "./screen-question.tsx";
-import { pageScreens, screens } from "./screens.ts";
+import { screenOf } from "./screens.ts";
 import type { ParkedQuestion } from "../../api/conversation.ts";
 import { QUESTION_TOOL_NAME } from "@intx/types/runtime-core";
 import type { QuestionAnswer } from "@intx/types/signals";
@@ -709,12 +709,12 @@ export function RoomThread({
                 <MessageHeader name={wording.speaker.coordinator} />
               )}
               {answer === undefined &&
-              pageScreens.has(asked.plugin) &&
+              screenOf(asked)?.page === true &&
               onOpenPageScreen !== undefined ? (
                 <PageScreenCard onOpen={onOpenPageScreen} />
               ) : (
                 <ScreenQuestion
-                  host={screens[asked.plugin]}
+                  host={screenOf(asked)?.host}
                   input={asked.input}
                   projectValues={projectValues}
                   answer={answer}

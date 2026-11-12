@@ -508,13 +508,15 @@ export const wording = {
         document ? `Asked for a review · ${document}` : "Asked for a review",
       "coder build": () => "Started the app builder",
       "coder change": () => "Started the app builder on a change",
+      "writer write": (document?: string) =>
+        document ? `Started the writer · ${document}` : "Started the writer",
       "writer write-requirements": (document?: string) =>
         document ? `Started the writer · ${document}` : "Started the writer",
       "writer write-build-plan": (document?: string) =>
         document ? `Started the writer · ${document}` : "Started the writer",
       "writer review": (document?: string) =>
         document ? `Asked for a review · ${document}` : "Asked for a review",
-      "design-app design": () => "Started the designer",
+      "designer mockup": () => "Started the designer",
     } as Record<string, (subject?: string) => string>,
     /** A hand-off the hub refused, by tool name or execute's plugin action: who it did not start. */
     handoffRefused: {
@@ -532,6 +534,10 @@ export const wording = {
           : "Could not ask for a review",
       "coder build": () => "Could not start the app builder",
       "coder change": () => "Could not start the app builder on a change",
+      "writer write": (document?: string) =>
+        document
+          ? `Could not start the writer · ${document}`
+          : "Could not start the writer",
       "writer write-requirements": (document?: string) =>
         document
           ? `Could not start the writer · ${document}`
@@ -544,7 +550,7 @@ export const wording = {
         document
           ? `Could not ask for a review · ${document}`
           : "Could not ask for a review",
-      "design-app design": () => "Could not start the designer",
+      "designer mockup": () => "Could not start the designer",
     } as Record<string, (subject?: string) => string>,
     /** What a tool call is doing, by tool name, given its one identifying argument. */
     tool: {

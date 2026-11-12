@@ -1,11 +1,12 @@
 /**
- * The plugin screens this interface can draw, by plugin handle: every screen plugin in the plugins
- * folder, compiled in when the interface is built, so a new plugin folder needs a rebuild.
+ * The plugin screens this interface can draw, by plugin handle and action: every screen action of
+ * every specialist in the plugins folder. The app entry hands over the plugins' files once, from
+ * screen-files.ts, so nothing else that imports this module needs a bundler to load it.
  */
 import type { ComponentType } from "react";
 import {
-  Builder,
   isScreen,
+  SpecialistBuilder,
   type ScreenViewProps,
 } from "@corbits-builder/plugin";
 import {
@@ -14,82 +15,81 @@ import {
   type ScreenHostProps,
 } from "./screen-question.tsx";
 
-const manifests = import.meta.glob<{ builder?: unknown }>(
-  "../../../../../plugins/*/package.json",
-  { eager: true, import: "default" },
-);
-// Only these files of a plugin are bundled: the rest of its folder is the hub's, which may not
-// run in a browser.
-const modules = import.meta.glob(
-  [
-    "../../../../../plugins/*/src/screen.ts",
-    "../../../../../plugins/*/data/*.json",
-  ],
-  { eager: true, import: "default" },
-);
-const views = import.meta.glob<
-  ComponentType<ScreenViewProps<unknown, unknown, unknown, HostSupplies>>
->("../../../../../plugins/*/src/view.tsx", { eager: true, import: "default" });
+/** The plugins' files the interface bundles, by path from this folder. */
+export type ScreenFiles = {
+  manifests: Record<string, { builder?: unknown }>;
+  modules: Record<string, unknown>;
+  views: Record<
+    string,
+    ComponentType<ScreenViewProps<unknown, unknown, unknown, HostSupplies>>
+  >;
+};
 
-// What a screen plugin's manifest names, from the files bundled above.
+type Installed = { host: ComponentType<ScreenHostProps>; page: boolean };
+
+let installed: ReadonlyMap<string, Installed> = new Map();
+
+// What a screen action's manifest names, from the files bundled.
 function named<File>(
   files: Record<string, File>,
   folder: string,
-  handle: string,
+  name: string,
   path: string,
 ) {
   const file = files[folder + path.replace(/^\.\//, "")];
   if (file === undefined)
     throw new Error(
-      `${handle} names ${path}, which the interface does not bundle: a screen is src/screen.ts, its view src/view.tsx and its data under data/.`,
+      `${name} names ${path}, which the interface does not bundle: a screen is src/<action>/screen.ts, its view src/<action>/view.tsx and its data under data/.`,
     );
   return file;
 }
 
-const builders = Object.entries(manifests).flatMap(([path, { builder }]) =>
-  typeof builder === "object" &&
-  builder !== null &&
-  "runs" in builder &&
-  builder.runs === "screen"
-    ? [
-        {
-          folder: path.slice(0, -"package.json".length),
-          builder: Builder.assert(builder),
-        },
-      ]
-    : [],
-);
+const key = (plugin: string, action: string) => `${plugin} ${action}`;
 
-/** The screens drawn over the whole room rather than in the conversation. */
-export const pageScreens: ReadonlySet<string> = new Set(
-  builders
-    .filter(({ builder }) => builder.place === "page")
-    .map(({ builder }) => builder.handle),
-);
+/** Makes every screen action in the given files drawable. */
+export function installScreens({ manifests, modules, views }: ScreenFiles) {
+  installed = new Map(
+    Object.entries(manifests).flatMap(([path, { builder }]) => {
+      if (
+        typeof builder !== "object" ||
+        builder === null ||
+        !("runs" in builder) ||
+        builder.runs !== "specialist"
+      )
+        return [];
+      const folder = path.slice(0, -"package.json".length);
+      const { handle, actions } = SpecialistBuilder.assert(builder);
+      return Object.entries(actions).flatMap(([action, declared]) => {
+        if (declared.runs !== "screen") return [];
+        const name = key(handle, action);
+        const screen = named(modules, folder, name, declared.screen);
+        if (!isScreen(screen))
+          throw new Error(`${name}'s ${declared.screen} exports no screen.`);
+        let data: unknown;
+        if (declared.data !== undefined) {
+          if (!screen.data)
+            throw new Error(`${name} names data its screen has no schema for.`);
+          data = screen.data.assert(
+            named(modules, folder, name, declared.data),
+          );
+        }
+        const host = screenHost(name, declared, {
+          screen,
+          view: named(views, folder, name, declared.view),
+          data,
+          writes: screen.writes ?? {},
+        });
+        return [[name, { host, page: declared.place === "page" }] as const];
+      });
+    }),
+  );
+}
 
-export const screens: Record<
-  string,
-  ComponentType<ScreenHostProps>
-> = Object.fromEntries(
-  builders.map(({ folder, builder }) => {
-    const { handle } = builder;
-    const screen = named(modules, folder, handle, builder.screen);
-    if (!isScreen(screen))
-      throw new Error(`${handle}'s ${builder.screen} exports no screen.`);
-    let data: unknown;
-    if (builder.data !== undefined) {
-      if (!screen.data)
-        throw new Error(`${handle} names data its screen has no schema for.`);
-      data = screen.data.assert(named(modules, folder, handle, builder.data));
-    }
-    return [
-      handle,
-      screenHost(builder, {
-        screen,
-        view: named(views, folder, handle, builder.view),
-        data,
-        writes: screen.writes ?? {},
-      }),
-    ];
-  }),
-);
+/** The screen a question names, or undefined when this interface has none for it. */
+export const screenOf = ({
+  plugin,
+  action,
+}: {
+  plugin: string;
+  action?: string;
+}) => (action === undefined ? undefined : installed.get(key(plugin, action)));

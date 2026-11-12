@@ -71,7 +71,11 @@ const fontTurns = withRequiredTools(
           {
             id: "coord_fonts_in_use",
             name: "question",
-            arguments: { plugin: "pick-fonts", input: inUse },
+            arguments: {
+              plugin: "designer",
+              action: "pick-fonts",
+              input: inUse,
+            },
           },
         ],
       }),
@@ -87,7 +91,7 @@ const fontTurns = withRequiredTools(
           {
             id: "coord_fonts",
             name: "question",
-            arguments: { plugin: "pick-fonts", input },
+            arguments: { plugin: "designer", action: "pick-fonts", input },
           },
         ],
       }),
@@ -98,7 +102,7 @@ const fontTurns = withRequiredTools(
             callId: "coord_fonts_in_use",
             toolName: "question",
             isError: true,
-            contains: "pick-fonts was not shown. One field is wrong.",
+            contains: "designer pick-fonts was not shown. One field is wrong.",
           },
         ],
       },

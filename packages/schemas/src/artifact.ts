@@ -341,17 +341,18 @@ export const DesignTweaksReceipt = type({
 });
 export type DesignTweaksReceipt = typeof DesignTweaksReceipt.infer;
 
-// The project values asked for by name, each as stored or null when the project has none yet.
+// The project values asked for by name, each as stored, any JSON, or null when the project has
+// none yet.
 export const ProjectValues = type({
   "+": "reject",
-  values: { "[string]": "string | null" },
+  values: { "[string]": "unknown" },
 });
 export type ProjectValues = typeof ProjectValues.infer;
 
-// Project values to save by name; the hub checks each against its registered schema.
+// Project values to save by name; the hub checks each against the type its declaration names.
 export const ProjectValuesWrite = type({
   "+": "reject",
-  values: type({ "[string]": "string" }).narrow(
+  values: type({ "[string]": "unknown" }).narrow(
     (values, ctx) =>
       Object.keys(values).length > 0 || ctx.mustBe("at least one value"),
   ),

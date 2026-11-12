@@ -20,7 +20,9 @@ import {
 
 const POLL_MS = 1_000;
 const coordinatorTools = ["execute", "read_artifact"];
-const coderTools = ["edit_file", "run_shell", "mail_reply"];
+const coderTools = ["read_file", "edit_file", "run_shell", "mail_reply"];
+// The skill pack the change calls for, as the coder's assignment lists it and its workspace holds it.
+const routesPack = ".inputs/skills/web-app-skills/react-router-skills/";
 const instruction =
   "Change the app's font to Inter for all text: set the body font-family to Inter in client/src/styles.css. Change nothing else.";
 const themeImport = '@import "@corbits/react-ui/theme.css";\n';
@@ -151,6 +153,23 @@ test(
                 sse: formatOpenAISseResponse({
                   toolCalls: [
                     {
+                      id: "coder_pack",
+                      name: "read_file",
+                      arguments: { path: routesPack + "routes.md" },
+                    },
+                  ],
+                }),
+                expect: {
+                  lastMessageRole: "user",
+                  userTextContains: `- react-router-skills (${routesPack})`,
+                  requiredTools: coderTools,
+                  toolResults: [],
+                },
+              },
+              {
+                sse: formatOpenAISseResponse({
+                  toolCalls: [
+                    {
                       id: "coder_inter",
                       name: "edit_file",
                       arguments: {
@@ -164,10 +183,15 @@ test(
                   ],
                 }),
                 expect: {
-                  lastMessageRole: "user",
-                  userTextContains: instruction,
+                  lastMessageRole: "tool",
                   requiredTools: coderTools,
-                  toolResults: [],
+                  toolResults: [
+                    {
+                      callId: "coder_pack",
+                      toolName: "read_file",
+                      isError: false,
+                    },
+                  ],
                 },
               },
               {

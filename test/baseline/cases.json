@@ -13,9 +13,12 @@
   "remarks": [
     {
       "text": "the font is ugly",
-      "acceptable": [["open:pick-fonts"], ["discover", "open:pick-fonts"]],
+      "acceptable": [
+        ["open:designer.pick-fonts"],
+        ["discover", "open:designer.pick-fonts"]
+      ],
       "unacceptable": {
-        "anywhere": ["execute:coder.change", "open:pick-colours"],
+        "anywhere": ["execute:coder.change", "open:designer.pick-colours"],
         "first": []
       }
     },
@@ -23,7 +26,7 @@
       "text": "the font is too small",
       "acceptable": [["execute:coder.change"], ["ask"]],
       "unacceptable": {
-        "anywhere": ["open:pick-fonts", "open:pick-colours"],
+        "anywhere": ["open:designer.pick-fonts", "open:designer.pick-colours"],
         "first": []
       }
     },
@@ -32,7 +35,7 @@
       "acceptable": [["ask"], ["discover"]],
       "unacceptable": {
         "anywhere": ["execute:coder.change"],
-        "first": ["open:pick-fonts", "open:pick-colours"]
+        "first": ["open:designer.pick-fonts", "open:designer.pick-colours"]
       }
     },
     {
@@ -49,7 +52,7 @@
       "text": "change the font to Inter",
       "acceptable": [["execute:coder.change"]],
       "unacceptable": {
-        "anywhere": ["open:pick-colours"],
+        "anywhere": ["open:designer.pick-colours"],
         "first": ["ask"]
       }
     },
@@ -59,8 +62,8 @@
       "unacceptable": {
         "anywhere": [
           "execute:coder.change",
-          "open:pick-fonts",
-          "open:pick-colours"
+          "open:designer.pick-fonts",
+          "open:designer.pick-colours"
         ],
         "first": []
       }

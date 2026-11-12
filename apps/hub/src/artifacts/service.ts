@@ -1114,11 +1114,33 @@ export function createArtifactService(
     },
 
     // What project values are read from: the filed design at its latest version, with the look
-    // the person saved.
+    // the person saved, and the project's plain store.
     async projectState(actor: Actor, projectId: string): Promise<ProjectState> {
       await requireProject(actor, projectId, "read");
+      const [row] = await rawDB
+        .select({ values: project.values })
+        .from(project)
+        .where(eq(project.id, projectId));
       const filed = await filedDesign(actor, undefined);
-      return { styles: filed && (await filed.files())[DESIGN_STYLES] };
+      return {
+        styles: filed && (await filed.files())[DESIGN_STYLES],
+        stored: row?.values ?? {},
+      };
+    },
+
+    // Merges values into the project's plain store, each replacing the one of its name.
+    async saveStoredValues(
+      actor: Actor,
+      projectId: string,
+      values: Record<string, unknown>,
+    ) {
+      await requireProject(actor, projectId, "manage");
+      await rawDB
+        .update(project)
+        .set({
+          values: sql`${project.values} || ${JSON.stringify(values)}::jsonb`,
+        })
+        .where(eq(project.id, projectId));
     },
 
     // The person's saved look tokens, written deterministically wherever the design lives: the

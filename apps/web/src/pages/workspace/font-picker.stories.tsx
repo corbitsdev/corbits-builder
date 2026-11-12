@@ -2,17 +2,20 @@ import { useState, type ComponentProps } from "react";
 import type { Meta, StoryObj } from "@storybook/react-vite";
 import { expect, fn } from "storybook/test";
 import { checkInput } from "@corbits-builder/plugin";
-import pickFonts from "@corbits-builder/pick-fonts";
-import fonts from "@corbits-builder/pick-fonts/data";
-import { Fonts } from "@corbits-builder/pick-fonts/schema";
-import { FontPicker, text } from "@corbits-builder/pick-fonts/view";
+import pickFonts from "@corbits-builder/designer-plugin/pick-fonts";
+import fonts from "@corbits-builder/designer-plugin/pick-fonts/data";
+import { Fonts } from "@corbits-builder/designer-plugin/pick-fonts/schema";
+import {
+  FontPicker,
+  text,
+} from "@corbits-builder/designer-plugin/pick-fonts/view";
 
 const prepare = (
   input: Record<string, unknown>,
   project: Record<string, string>,
 ) => {
   const checked = checkInput(
-    "pick-fonts",
+    "designer pick-fonts",
     pickFonts,
     input,
     Fonts.assert(fonts),

@@ -45,8 +45,9 @@ const ACTION_ROLE: Record<
     kind: "product_requirements",
   },
   "writer write-build-plan": { role: "writer", kind: "build_plan" },
+  "writer write": { role: "writer" },
   "writer review": { role: "reviewer" },
-  "design-app design": { role: "designer" },
+  "designer mockup": { role: "designer" },
 };
 
 /** One run a hand-off started or instructed. A design call with concepts is one per concept. */
@@ -107,7 +108,7 @@ function handoffOf(part: PartTool) {
     role: started.role,
     action,
     args: input,
-    kind: str(input?.["kind"]) ?? started.kind,
+    kind: str(input?.["kind"]) ?? started.kind ?? str(input?.["title"]),
   };
 }
 

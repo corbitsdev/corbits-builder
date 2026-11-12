@@ -124,10 +124,8 @@
       "version": "0.1.0-rc.3",
       "dependencies": {
         "@corbits-builder/client": "workspace:*",
-        "@corbits-builder/pick-colours": "workspace:*",
-        "@corbits-builder/pick-fonts": "workspace:*",
+        "@corbits-builder/designer-plugin": "workspace:*",
         "@corbits-builder/plugin": "workspace:*",
-        "@corbits-builder/review-mockup": "workspace:*",
         "@corbits-builder/schemas": "workspace:*",
         "@corbits/react-ui": "0.5.1",
         "@corbits/slidedeck": "workspace:*",
@@ -222,20 +220,12 @@
         "arktype": "catalog:",
       },
     },
-    "plugins/design-app": {
-      "name": "@corbits-builder/design-app",
+    "plugins/designer": {
+      "name": "@corbits-builder/designer-plugin",
       "version": "0.1.0-rc.3",
       "dependencies": {
         "@corbits-builder/plugin": "workspace:*",
         "@corbits-builder/schemas": "workspace:*",
-        "arktype": "catalog:",
-      },
-    },
-    "plugins/pick-colours": {
-      "name": "@corbits-builder/pick-colours",
-      "version": "0.1.0-rc.3",
-      "dependencies": {
-        "@corbits-builder/plugin": "workspace:*",
         "@corbits/react-ui": "0.5.1",
         "arktype": "catalog:",
         "lucide-react": "0.545.0",
@@ -245,32 +235,21 @@
         "@types/react": "19.3.0",
       },
     },
-    "plugins/pick-fonts": {
-      "name": "@corbits-builder/pick-fonts",
+    "plugins/react-router-skills": {
+      "name": "@corbits-builder/react-router-skills",
       "version": "0.1.0-rc.3",
-      "dependencies": {
-        "@corbits-builder/plugin": "workspace:*",
-        "@corbits/react-ui": "0.5.1",
-        "arktype": "catalog:",
-        "lucide-react": "0.545.0",
-        "react": "19.3.0",
-      },
-      "devDependencies": {
-        "@types/react": "19.3.0",
-      },
     },
-    "plugins/review-mockup": {
-      "name": "@corbits-builder/review-mockup",
+    "plugins/rust-skills": {
+      "name": "@corbits-builder/rust-skills",
       "version": "0.1.0-rc.3",
-      "dependencies": {
-        "@corbits-builder/plugin": "workspace:*",
-        "@corbits/react-ui": "0.5.1",
-        "arktype": "catalog:",
-        "react": "19.3.0",
-      },
-      "devDependencies": {
-        "@types/react": "19.3.0",
-      },
+    },
+    "plugins/sveltekit-skills": {
+      "name": "@corbits-builder/sveltekit-skills",
+      "version": "0.1.0-rc.3",
+    },
+    "plugins/web-app-skills": {
+      "name": "@corbits-builder/web-app-skills",
+      "version": "0.1.0-rc.3",
     },
     "plugins/writer": {
       "name": "@corbits-builder/writer-plugin",
@@ -863,15 +842,11 @@
 
     "@corbits-builder/coordinator": ["@corbits-builder/coordinator@workspace:workflows/coordinator"],
 
-    "@corbits-builder/design-app": ["@corbits-builder/design-app@workspace:plugins/design-app"],
-
     "@corbits-builder/designer": ["@corbits-builder/designer@workspace:workflows/designer"],
 
+    "@corbits-builder/designer-plugin": ["@corbits-builder/designer-plugin@workspace:plugins/designer"],
+
     "@corbits-builder/hub": ["@corbits-builder/hub@workspace:apps/hub"],
-
-    "@corbits-builder/pick-colours": ["@corbits-builder/pick-colours@workspace:plugins/pick-colours"],
-
-    "@corbits-builder/pick-fonts": ["@corbits-builder/pick-fonts@workspace:plugins/pick-fonts"],
 
     "@corbits-builder/plugin": ["@corbits-builder/plugin@workspace:packages/plugin"],
 
@@ -879,13 +854,19 @@
 
     "@corbits-builder/presenter": ["@corbits-builder/presenter@workspace:workflows/presenter"],
 
-    "@corbits-builder/review-mockup": ["@corbits-builder/review-mockup@workspace:plugins/review-mockup"],
+    "@corbits-builder/react-router-skills": ["@corbits-builder/react-router-skills@workspace:plugins/react-router-skills"],
 
     "@corbits-builder/reviewer": ["@corbits-builder/reviewer@workspace:workflows/reviewer"],
 
+    "@corbits-builder/rust-skills": ["@corbits-builder/rust-skills@workspace:plugins/rust-skills"],
+
     "@corbits-builder/schemas": ["@corbits-builder/schemas@workspace:packages/schemas"],
 
+    "@corbits-builder/sveltekit-skills": ["@corbits-builder/sveltekit-skills@workspace:plugins/sveltekit-skills"],
+
     "@corbits-builder/web": ["@corbits-builder/web@workspace:apps/web"],
+
+    "@corbits-builder/web-app-skills": ["@corbits-builder/web-app-skills@workspace:plugins/web-app-skills"],
 
     "@corbits-builder/writer": ["@corbits-builder/writer@workspace:workflows/writer"],
 

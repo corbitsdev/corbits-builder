@@ -10,6 +10,7 @@ import {
   APP_CHANGE_NOTE,
   CODER_INPUTS,
   DESIGNER_INPUTS,
+  skillPacksIndex,
   startHere,
 } from "../config/inputs.ts";
 import { DEFAULT_STACK } from "../config/packages.ts";
@@ -24,7 +25,8 @@ export const APP_ALREADY_EXISTS =
   "The project already has an app, so its first build is done. A change to it is coder change.";
 
 // One installed workflow a plugin action starts: start is the action's start block, input the
-// action's checked input, of which the starter reads only its own fields.
+// action's checked input, of which the starter reads only its own fields, and skills the index of
+// the action's skill packs for the assignment.
 function starter<Start extends Type, Input extends Type<object>>(
   start: Start,
   input: Input,
@@ -32,6 +34,7 @@ function starter<Start extends Type, Input extends Type<object>>(
     start: Start["infer"],
     input: Input["infer"],
     session: ProjectSession,
+    skills: string,
   ) => Promise<unknown>,
 ) {
   return {
@@ -40,8 +43,12 @@ function starter<Start extends Type, Input extends Type<object>>(
       return checked instanceof type.errors ? checked.summary : undefined;
     },
     reads: input.props.map(({ key }) => String(key)),
-    run: (raw: unknown, checked: unknown, session: ProjectSession) =>
-      run(start.assert(raw), input.assert(checked), session),
+    run: (
+      raw: unknown,
+      checked: unknown,
+      session: ProjectSession,
+      skills: string,
+    ) => run(start.assert(raw), input.assert(checked), session, skills),
   };
 }
 
@@ -67,16 +74,19 @@ const coder = starter(
     app: "'new' | 'existing'",
   }),
   Instructed,
-  ({ correlation, app }, { instruction }, session) =>
+  ({ correlation, app }, { instruction }, session, skills) =>
     session.startCoder(correlation, ({ byKind }) => {
       if (app === "existing")
         return (
           coderDocuments(session, byKind) +
+          skills +
           APP_CHANGE_NOTE +
           coderTaskMessage(instruction)
         );
       if (byKind.has("app")) throw new Refusal(APP_ALREADY_EXISTS);
-      return coderDocuments(session, byKind) + coderTaskMessage(instruction);
+      return (
+        coderDocuments(session, byKind) + skills + coderTaskMessage(instruction)
+      );
     }),
 );
 
@@ -87,10 +97,13 @@ const designer = starter(
     lookIdeas: "string",
     concepts: DesignConcept.array(),
   }),
-  (_start, input, session) =>
+  (_start, input, session, skills) =>
     session.startDesigners(input, ({ byKind }) => {
       const filed = DESIGNER_INPUTS.filter((kind) => byKind.has(kind));
-      return filed.length > 0 ? startHere(session.inputs(filed, byKind)) : "";
+      return (
+        (filed.length > 0 ? startHere(session.inputs(filed, byKind)) : "") +
+        skills
+      );
     }),
 );
 
@@ -199,14 +212,23 @@ export const STARTERS: Readonly<Record<string, ReturnType<typeof starter>>> = {
   reviewer,
 };
 
-/** Starts a workflow action on its checked input with the starter its manifest names. */
+/**
+ * Starts a workflow action on its checked input with the starter its manifest names, its run's
+ * assignment carrying values, the block of project values the action reads.
+ */
 export function startAction(
   action: WorkflowAction,
   input: unknown,
   session: ProjectSession,
+  values: string,
 ) {
   const named = STARTERS[action.builder.start.workflow];
   if (!named)
     throw new Error(`${action.name} starts a workflow the hub does not have`);
-  return named.run(action.builder.start, input, session);
+  return named.run(
+    action.builder.start,
+    input,
+    session.withValues(values),
+    skillPacksIndex(action.packs),
+  );
 }

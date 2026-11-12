@@ -18,7 +18,7 @@ triggers or fields) and one repeat. The matrix is data in
 the unacceptable ones, using these move names:
 
 - `discover`: looked for a capability with the `discover` tool.
-- `open:pick-fonts`, `open:pick-colours`: opened that screen for the person.
+- `open:designer.pick-fonts`, `open:designer.pick-colours`: opened that screen for the person.
 - `ask`: asked the person a plain question, with the `question` tool or in a
   closing reply that holds a question mark.
 - `execute:<plugin>.<action>`: started that plugin action with `execute`,

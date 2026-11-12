@@ -123,7 +123,7 @@ describe("Builder E2E pipeline replay", () => {
         "look.font-primary": "Arial",
         "look.font-secondary": "Bitter",
       };
-      // Entries of plugins/pick-fonts/data/fonts.json.
+      // Entries of plugins/designer/data/fonts.json.
       const output = {
         primary: { name: "Arial", lists: ["sans"], license: "free" },
         secondary: { name: "Bitter", lists: ["serif"], license: "free" },
@@ -138,7 +138,11 @@ describe("Builder E2E pipeline replay", () => {
               {
                 id: "coord_fonts_in_use",
                 name: "question",
-                arguments: { plugin: "pick-fonts", input: inUse },
+                arguments: {
+                  plugin: "designer",
+                  action: "pick-fonts",
+                  input: inUse,
+                },
               },
             ],
           }),
@@ -154,7 +158,7 @@ describe("Builder E2E pipeline replay", () => {
               {
                 id: "coord_fonts",
                 name: "question",
-                arguments: { plugin: "pick-fonts", input },
+                arguments: { plugin: "designer", action: "pick-fonts", input },
               },
             ],
           }),
@@ -166,7 +170,7 @@ describe("Builder E2E pipeline replay", () => {
                 toolName: "question",
                 isError: true,
                 contains: [
-                  "pick-fonts was not shown. One field is wrong.",
+                  "designer pick-fonts was not shown. One field is wrong.",
                   "",
                   'proposed: "Space Mono" is already the font in use.',
                   "",
@@ -392,7 +396,8 @@ describe("Builder E2E pipeline replay", () => {
               );
               expect(events.filter(isQuestionPark)).toEqual([shown]);
               expect(shown.body["question"]).toEqual({
-                plugin: "pick-fonts",
+                plugin: "designer",
+                action: "pick-fonts",
                 input,
               });
 
@@ -1155,7 +1160,7 @@ describe("Builder E2E pipeline replay", () => {
       const coordinatorTools = ["question", "read_artifact", "write_artifact"];
       // Nothing proposed: the person chooses from every font.
       const input = {};
-      // Entries of plugins/pick-fonts/data/fonts.json.
+      // Entries of plugins/designer/data/fonts.json.
       const output = {
         primary: { name: "Arial", lists: ["sans"], license: "free" },
         secondary: { name: "Bitter", lists: ["serif"], license: "free" },
@@ -1179,7 +1184,8 @@ describe("Builder E2E pipeline replay", () => {
                         id: "coord_bad_list",
                         name: "question",
                         arguments: {
-                          plugin: "pick-fonts",
+                          plugin: "designer",
+                          action: "pick-fonts",
                           input: { list: "fancy" },
                         },
                       },
@@ -1197,7 +1203,11 @@ describe("Builder E2E pipeline replay", () => {
                       {
                         id: "coord_fonts",
                         name: "question",
-                        arguments: { plugin: "pick-fonts", input },
+                        arguments: {
+                          plugin: "designer",
+                          action: "pick-fonts",
+                          input,
+                        },
                       },
                     ],
                   }),
@@ -1209,7 +1219,7 @@ describe("Builder E2E pipeline replay", () => {
                         toolName: "question",
                         isError: true,
                         contains: [
-                          "pick-fonts was not shown. One field is wrong.",
+                          "designer pick-fonts was not shown. One field is wrong.",
                           "",
                           'list: "fancy" is not a list.',
                           "  Use one of:",
@@ -1232,7 +1242,11 @@ describe("Builder E2E pipeline replay", () => {
                       {
                         id: "coord_fonts_again",
                         name: "question",
-                        arguments: { plugin: "pick-fonts", input },
+                        arguments: {
+                          plugin: "designer",
+                          action: "pick-fonts",
+                          input,
+                        },
                       },
                     ],
                   }),
@@ -1303,7 +1317,8 @@ describe("Builder E2E pipeline replay", () => {
               );
               expect(events.filter(isQuestionPark)).toEqual([shown]);
               expect(shown.body["question"]).toEqual({
-                plugin: "pick-fonts",
+                plugin: "designer",
+                action: "pick-fonts",
                 input,
               });
               const shownSignal = NonEmptyString.assert(
@@ -1372,12 +1387,13 @@ describe("Builder E2E pipeline replay", () => {
               const [refused] = stored.toolCalls;
               expect(refused?.name).toBe("question");
               expect(refused?.arguments).toEqual({
-                plugin: "pick-fonts",
+                plugin: "designer",
+                action: "pick-fonts",
                 input: { list: "fancy" },
               });
               expect(refused?.result?.isError).toBe(true);
               expect(refused?.result?.text).toContain(
-                "pick-fonts was not shown",
+                "designer pick-fonts was not shown",
               );
             });
           },
@@ -1395,7 +1411,8 @@ describe("Builder E2E pipeline replay", () => {
       const fixtureDir = await mkdtemp(
         join(tmpdir(), "builder-e2e-plugin-hint-fixture-"),
       );
-      const hint = 'Open it with question({ plugin: "pick-fonts" })';
+      const hint =
+        'Open it with question({ plugin: "designer", action: "pick-fonts" })';
       try {
         await writeScenarioFixture(
           fixtureDir,

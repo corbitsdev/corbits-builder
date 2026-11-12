@@ -1,0 +1,16 @@
+{
+  "name": "@corbits-builder/sveltekit-skills",
+  "version": "0.1.0-rc.3",
+  "private": true,
+  "description": "Routes, data and forms in a SvelteKit app.",
+  "license": "SEE LICENSE IN ../../LICENSE.md",
+  "author": "Sawyer Cutler <sawyer@dirtroad.dev>",
+  "type": "module",
+  "builder": {
+    "handle": "sveltekit-skills",
+    "runs": "skills",
+    "extends": "web-app-skills",
+    "when": "The app is built with SvelteKit: it has svelte.config.js and routes under src/routes.",
+    "skills": "./skills"
+  }
+}

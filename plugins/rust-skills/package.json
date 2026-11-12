@@ -1,0 +1,16 @@
+{
+  "name": "@corbits-builder/rust-skills",
+  "version": "0.1.0-rc.3",
+  "private": true,
+  "description": "How the coder lays out, writes and tests a Rust project.",
+  "license": "SEE LICENSE IN ../../LICENSE.md",
+  "author": "Sawyer Cutler <sawyer@dirtroad.dev>",
+  "type": "module",
+  "builder": {
+    "handle": "rust-skills",
+    "runs": "skills",
+    "extends": "coder",
+    "when": "The project is written in Rust, or the work adds Rust code.",
+    "skills": "./skills"
+  }
+}

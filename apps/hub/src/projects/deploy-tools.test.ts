@@ -592,8 +592,8 @@ function questionCheck(response: () => Response) {
   if (!checkQuestion) throw new Error("the deploy tools check no questions");
   return {
     asked,
-    check: (plugin: string, input: Record<string, unknown>) =>
-      checkQuestion({ plugin, input }),
+    check: (action: string, input: Record<string, unknown>) =>
+      checkQuestion({ plugin: "designer", action, input }),
   };
 }
 
@@ -602,7 +602,7 @@ const fontsInUse = () =>
     values: { "look.font-primary": "Inter", "look.font-secondary": null },
   });
 
-test("a pick-fonts question the screen can draw is let through, checked against the project's fonts", async () => {
+test("a designer pick-fonts question the screen can draw is let through, checked against the project's fonts", async () => {
   const { asked, check } = questionCheck(fontsInUse);
   expect(
     await check("pick-fonts", { proposed: { primary: "Fraunces" } }),
@@ -612,7 +612,7 @@ test("a pick-fonts question the screen can draw is let through, checked against 
   ]);
   expect(await check("pick-fonts", { proposed: { primary: "Inter" } })).toBe(
     [
-      "pick-fonts was not shown. One field is wrong.",
+      "designer pick-fonts was not shown. One field is wrong.",
       "",
       'proposed: "Inter" is already the font in use.',
       "",
@@ -622,7 +622,7 @@ test("a pick-fonts question the screen can draw is let through, checked against 
   );
 });
 
-test("a pick-fonts question is not let through when the project's fonts cannot be read", async () => {
+test("a designer pick-fonts question is not let through when the project's fonts cannot be read", async () => {
   const { check } = questionCheck(() =>
     Response.json({ code: "forbidden" }, { status: 403 }),
   );
@@ -631,7 +631,7 @@ test("a pick-fonts question is not let through when the project's fonts cannot b
   );
 });
 
-test("a pick-fonts question with an unknown list is refused with every list and how to fix it", async () => {
+test("a designer pick-fonts question with an unknown list is refused with every list and how to fix it", async () => {
   const { check } = questionCheck(fontsInUse);
   expect(
     await check("pick-fonts", {
@@ -640,7 +640,7 @@ test("a pick-fonts question with an unknown list is refused with every list and 
     }),
   ).toBe(
     [
-      "pick-fonts was not shown. One field is wrong.",
+      "designer pick-fonts was not shown. One field is wrong.",
       "",
       'list: "handwriting" is not a list.',
       "  Use one of:",
@@ -661,14 +661,14 @@ test("a question for a screen the hub does not have is refused with the installe
   const { check } = questionCheck(fontsInUse);
   expect(await check("pick-colors", {})).toBe(
     [
-      '"pick-colors" is not an installed screen plugin, so nothing was shown.',
+      "designer pick-colors is not an installed screen, so nothing was shown.",
       "",
-      "Installed screen plugins:",
-      "  pick-colours: Shows the person the primary (brand) and background colours in use and lets them choose new ones.",
-      "  pick-fonts: Shows the person the fonts in use and fonts to choose a primary and a secondary font from.",
-      `  review-mockup: ${CATALOG.installed("review-mockup")?.description}`,
+      "Installed screens, as plugin and action:",
+      `  designer review: ${CATALOG.screens[0]?.description}`,
+      "  designer pick-fonts: Shows the person the fonts in use and fonts to choose a primary and a secondary font from.",
+      "  designer pick-colours: Shows the person the primary (brand) and background colours in use and lets them choose new ones.",
       "",
-      "Call again with plugin set to one of them, or ask a plain question with questions instead.",
+      "Call again with plugin and action set to one of them, or ask a plain question with questions instead.",
     ].join("\n"),
   );
 });

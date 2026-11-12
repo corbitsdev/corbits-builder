@@ -1,6 +1,6 @@
 import { describe, expect, test } from "bun:test";
 import { checkInput, guidanceText } from "@corbits-builder/plugin";
-import manifest from "../package.json";
+import manifest from "../../package.json";
 import screen from "./screen.ts";
 
 // What the hub reads from a design whose primary is orange on white.
@@ -9,7 +9,7 @@ const project = {
   "look.color-background": "#ffffff",
 };
 const check = (input: unknown) =>
-  checkInput("pick-colours", screen, input, undefined, project);
+  checkInput("designer pick-colours", screen, input, undefined, project);
 
 describe("pick-colours input", () => {
   test("no input at all shows the colours in use", () => {
@@ -46,7 +46,11 @@ describe("pick-colours input", () => {
 
 test("guidance names the project values Builder supplies", () => {
   expect(
-    guidanceText("pick-colours", screen, manifest.builder.reads),
+    guidanceText(
+      "designer pick-colours",
+      screen,
+      manifest.builder.actions["pick-colours"].reads,
+    ),
   ).toContain(
     "Builder gives the screen the project's look.color-primary, look.color-background itself; do not pass them.",
   );

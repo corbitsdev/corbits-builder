@@ -42,6 +42,12 @@ export const project = pgTable(
     // The handle of the route plugin the project follows, until its outcome holds or the
     // coordinator leaves it.
     route: text("route"),
+    // Each project value a plugin declares, by name, as the person saved it; the look values live
+    // in the design's tokens instead.
+    values: jsonb("values")
+      .$type<Record<string, unknown>>()
+      .notNull()
+      .default({}),
     createdAt: timestamp("created_at", { withTimezone: true })
       .notNull()
       .defaultNow(),

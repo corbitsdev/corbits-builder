@@ -53,6 +53,10 @@
           ]
         ],
         "returns": [],
+        "reads": [
+          "brand.guidelines",
+          "stack.language"
+        ],
         "start": {
           "workflow": "coder",
           "correlation": "coder-change",
@@ -71,6 +75,12 @@
     ],
     "facts": {
       "app_exists": "the project has an app, built or imported"
+    },
+    "values": {
+      "stack.language": {
+        "about": "The programming language the app is written in, such as TypeScript.",
+        "type": "text"
+      }
     }
   }
 }

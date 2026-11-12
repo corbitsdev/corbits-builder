@@ -3,14 +3,14 @@ import {
   refuse,
   type ProjectValues,
 } from "@corbits-builder/plugin";
-import manifest from "../package.json";
+import manifest from "../../package.json";
 import { Fonts, Input, Output, lists, type Font } from "./schema.ts";
 
 const describe = {
   summary:
     "Shows the person the fonts in use and fonts to choose a primary and a secondary font from.",
-  when: manifest.builder.when,
-  unless: manifest.builder.unless,
+  when: manifest.builder.actions["pick-fonts"].when,
+  unless: manifest.builder.actions["pick-fonts"].unless,
   fields: {
     proposed: {
       about:
@@ -146,7 +146,7 @@ export default defineScreen({
   },
   describe,
   writes: {
-    "look.font-primary": (output) => output.primary.name,
-    "look.font-secondary": (output) => output.secondary.name,
+    [IN_USE.primary]: (output) => output.primary.name,
+    [IN_USE.secondary]: (output) => output.secondary.name,
   },
 });
