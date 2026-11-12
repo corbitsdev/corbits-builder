@@ -1,13 +1,25 @@
 {
-  "name": "@corbits-builder/coder-plugin",
-  "version": "0.1.0-rc.3",
+  "name": "@corbits-builder/coder",
+  "version": "0.9.0",
   "private": true,
   "description": "Builds the app the first time, and changes the app the project has, built here or imported.",
   "license": "SEE LICENSE IN ../../LICENSE.md",
   "author": "Sawyer Cutler <sawyer@dirtroad.dev>",
   "type": "module",
+  "exports": {
+    "./assets": "./src/assets.ts",
+    "./contract": "./src/contract.ts",
+    "./packages/*": "./src/packages/*.ts"
+  },
   "dependencies": {
+    "@corbits-builder/hub": "workspace:*",
     "@corbits-builder/plugin": "workspace:*",
+    "@corbits-builder/plugin-host": "workspace:*",
+    "@corbits/mcp": "0.4.1",
+    "@corbits/react-ui": "0.5.1",
+    "@intx/agent": "workspace:*",
+    "@intx/tools-mail": "workspace:*",
+    "@intx/workflow": "workspace:*",
     "arktype": "catalog:"
   },
   "builder": {
@@ -19,6 +31,13 @@
     ],
     "when": "The app needs building for the first time, or the person asks for a change to the app the project has.",
     "unless": "The person is unsure what they want and a screen would let them choose, or they want only a mockup.",
+    "packages": {
+      "coder": "./src/packages/coder.ts",
+      "coder-any-package": "./src/packages/coder-any-package.ts"
+    },
+    "starters": {
+      "coder": "./src/start.ts"
+    },
     "actions": {
       "build": {
         "runs": "workflow",

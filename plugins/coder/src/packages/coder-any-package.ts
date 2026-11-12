@@ -1,4 +1,4 @@
-import { coderPackage } from "../coder-package.ts";
+import { coderPackage } from "../package.ts";
 
 // The coder a project deploys when its person turned on installing any package without asking.
 const coder = await coderPackage("coder-any-package", "allow");

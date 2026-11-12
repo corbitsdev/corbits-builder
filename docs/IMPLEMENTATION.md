@@ -125,7 +125,7 @@ Environment files, installs and build output never leave the workspace.
 | `workflows/writer`        | `@corbits-builder/writer`      | The document writer and its per-kind skills.                     |
 | `workflows/reviewer`      | `@corbits-builder/reviewer`    | The document reviewer.                                           |
 | `workflows/designer`      | `@corbits-builder/designer`    | The designer, its starter, themes and skills.                    |
-| `workflows/coder`         | `@corbits-builder/coder`       | The coder, its app starter and `check-app`.                      |
+| `plugins/coder`           | `@corbits-builder/coder`       | The coder plugin: agent, starter, app starter and `check-app`.   |
 | `packages/schemas`        | `@corbits-builder/schemas`     | Types and schemas shared by the hub, client and workflows.       |
 | `vendor/interchange`      |                                | Interchange at the pinned revision.                              |
 | `deploy/`                 |                                | The Dockerfile and Compose files.                                |
@@ -144,7 +144,7 @@ never imports the server or the database.
 
 The coder's starter is a Bun workspace: a Vite and React client with
 `@corbits/react-ui`, a Hono server and a shared schema package. Its own
-[AGENTS.md](https://github.com/corbitsdev/corbits-builder/blob/main/workflows/coder/starter/AGENTS.md)
+[AGENTS.md](https://github.com/corbitsdev/corbits-builder/blob/main/plugins/coder/starter/AGENTS.md)
 tells the coder where each kind of code goes.
 
 ## Configuration

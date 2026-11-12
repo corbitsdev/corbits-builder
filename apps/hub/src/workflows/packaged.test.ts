@@ -43,9 +43,10 @@ test("production entries expose concrete native workflows without callback crede
     (await import("./entries/writer-document.ts")).default,
   ];
   const reviewer = (await import("./entries/reviewer.ts")).default;
-  const coder = (await import("./entries/coder.ts")).default;
-  const coderAnyPackage = (await import("./entries/coder-any-package.ts"))
-    .default;
+  const coder = (await import("@corbits-builder/coder/packages/coder")).default;
+  const coderAnyPackage = (
+    await import("@corbits-builder/coder/packages/coder-any-package")
+  ).default;
   const designer = (await import("./entries/designer.ts")).default;
   const presenter = (await import("./entries/presenter.ts")).default;
   expect(coordinator.steps.coordinate).toMatchObject({ triggers: "unbounded" });

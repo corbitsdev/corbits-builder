@@ -7,7 +7,10 @@ import { setTimeout as sleep } from "node:timers/promises";
 import { type, TraversalError } from "arktype";
 import { NativeSpecialistDeployment } from "@corbits-builder/schemas/native-specialist";
 import { SourceRef } from "@corbits-builder/schemas";
-import type { WorkflowProjectScope } from "@corbits-builder/schemas/installed-workflows";
+import {
+  WORKFLOW_PACKAGES,
+  type WorkflowProjectScope,
+} from "@corbits-builder/schemas/installed-workflows";
 import {
   ArtifactContent,
   DesignBundle,
@@ -16,6 +19,7 @@ import {
   type DesignConcept,
 } from "@corbits-builder/schemas/artifact";
 import { coderTaskMessage } from "@corbits-builder/coder/contract";
+import { Refusal } from "@corbits-builder/plugin-host/coordinator";
 import { Preferences } from "@corbits-builder/schemas/preferences";
 import type { InputKind } from "../config/inputs.ts";
 import {
@@ -66,8 +70,6 @@ const ArtifactList = type({
   preferences: Preferences,
 });
 type Ref = typeof SourceRef.infer;
-
-export class Refusal extends Error {}
 
 // The deployments route answers only after it installs, probes and gates the source, each stage
 // under its own native deadline: sidecar ensure and connection 120s each, the probe 60s. A shorter
@@ -340,25 +342,35 @@ export function projectSession(
       await sleep(TEARDOWN_POLL_MS, undefined, { signal });
     }
   };
-  // One coder works on the app at a time; a start waits for the last one to end. task builds the
-  // assignment from the project as it then stands, or refuses; busy says why no coder started,
-  // with the live coder when one is still working and none while another is starting.
-  const startCoder = (
+  // One run of the workflow's role at a time; a start waits for the last one to end. task builds
+  // the assignment from the project as it then stands, or refuses; busy says why none started,
+  // with the live run when one is still working and none while another is starting.
+  const startAlone = (
+    workflow: string,
     correlationId: string,
     task: (state: Listed) => string | Promise<string>,
-    busy: (live?: { runId: string; state: string }) => Error,
-  ) =>
-    startOnce(options.projectId + ":coder", busy, async () => {
-      const { state, live } = await ended((run) => run.role === "coder");
+    busy: (live?: Listed["inFlight"][number]) => Error,
+  ) => {
+    const role = Object.entries(WORKFLOW_PACKAGES).find(
+      ([name]) => name === workflow,
+    )?.[1];
+    const spec = Object.entries(options.workflows).find(
+      ([name]) => name === workflow,
+    )?.[1];
+    if (role === undefined || role === "coordinator")
+      throw new Error(`${workflow} is not a workflow a project starts`);
+    return startOnce(options.projectId + ":" + role, busy, async () => {
+      const { state, live } = await ended((run) => run.role === role);
       if (live) throw busy(live);
       return deploy(
-        "coder",
-        options.workflows.coder,
+        role,
+        spec,
         state.preferences,
         correlationId,
         await task(state),
       );
     });
+  };
   // A designer for each concept, each from documents that opens its assignment, or refuses.
   const startDesigners = async (
     input: {
@@ -480,7 +492,7 @@ export function projectSession(
     deploy,
     ended,
     approve,
-    startCoder,
+    startAlone,
     startDesigners,
     // The same session, starting runs for a plugin action.
     forAction: (action: Assigned) =>

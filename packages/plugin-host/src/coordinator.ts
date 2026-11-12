@@ -59,6 +59,23 @@ export type Run = {
   status: "deployed" | "running" | "completed" | "failed" | "cancelled";
 };
 
+/** A refusal the coordinator reads as it stands, such as a starter's reason for starting nothing. */
+export class Refusal extends Error {}
+
+/** A run at work in the project, of any role. */
+export type Working = {
+  runId: string;
+  role: string;
+  state: "working" | "waiting" | "approval";
+};
+
+/** The project as it stands when a run's assignment is written. */
+export type Filed = {
+  // The opening that names each filed document of these kinds and, with design, the chosen design,
+  // where each sits read-only in the run's workspace; undefined when none of them is filed.
+  startHere(kinds: readonly string[], design: boolean): string | undefined;
+};
+
 /** What the coordinator's tools need from the project they act on, which only the host can do. */
 export type Project = {
   // What is true of the project, from what the host stores, and whether the person decides
@@ -80,6 +97,18 @@ export type Project = {
   runs(): Promise<readonly Run[]>;
   // Stops a run the coordinator started that is still at work.
   stop(runId: string): Promise<unknown>;
+  // The runs at work in the project, whoever started them.
+  working(): Promise<readonly Working[]>;
+  // Deploys the installed workflow, one run of its role at a time: busy refuses while another is
+  // starting, or is still at work once a replied one had time to end. assignment writes the run's
+  // first message from the project as it then stands; the host adds the values block and the
+  // person's preferences.
+  startAlone(run: {
+    workflow: string;
+    correlation: string;
+    assignment(filed: Filed): string;
+    busy(live?: Working): Error;
+  }): Promise<{ runId: string }>;
 };
 
 // The one place the search is chosen.

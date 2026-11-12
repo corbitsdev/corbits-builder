@@ -30,7 +30,7 @@
     "vendor",
     "plugins/*/src/**/*.tsx",
     "packages/plugin-ui",
-    "workflows/coder/starter",
+    "plugins/coder/starter",
     "test/seed/**/app",
     "packages/client"
   ]

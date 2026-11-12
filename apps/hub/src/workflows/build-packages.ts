@@ -3,7 +3,7 @@ import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
 import { join, resolve } from "node:path";
 import { tmpdir } from "node:os";
 import { bundledPlugins } from "@corbits-builder/plugin-host/bundle";
-import { PLUGINS_FOLDER } from "../plugins/catalog.ts";
+import { CATALOG, PLUGINS_FOLDER } from "../plugins/catalog.ts";
 import { nativePackageName } from "./package-name.ts";
 import type { RoleInference } from "./role-inference.ts";
 import type { CoordinatorMode } from "../environment.ts";
@@ -18,11 +18,26 @@ function contentVersion(base: string, bundle: string): string {
   return `${base}-sha-${createHash("sha256").update(bundle).digest("hex").slice(0, 8)}`;
 }
 
-// Each package is an entry under entries/ built on what its role's model binding resolved to.
-const PACKAGES = Object.entries(WORKFLOW_PACKAGES).map(([name, role]) => ({
-  name,
-  role,
-}));
+// Each package is the entry a plugin names for it, else its entry under entries/, built on what its
+// role's model binding resolved to.
+const PACKAGES = Object.entries(WORKFLOW_PACKAGES).map(([name, role]) => {
+  const plugin = CATALOG.packages.get(name);
+  return {
+    name,
+    role,
+    entry:
+      plugin === undefined
+        ? join(import.meta.dir, "entries", name + ".ts")
+        : resolve(PLUGINS_FOLDER, plugin),
+  };
+});
+const unknown = [...CATALOG.packages.keys()].find(
+  (name) => !Object.hasOwn(WORKFLOW_PACKAGES, name),
+);
+if (unknown !== undefined)
+  throw new Error(
+    `a plugin installs ${unknown}, which is not a Builder workflow package`,
+  );
 
 export async function buildWorkflowPackages(
   destination: string,
@@ -34,7 +49,7 @@ export async function buildWorkflowPackages(
   const output = resolve(destination);
   await mkdir(output, { recursive: true });
   const manifest = [];
-  for (const { name, role } of PACKAGES) {
+  for (const { name, role, entry } of PACKAGES) {
     const result = await Bun.build({
       define: {
         "process.env.BUILDER_ROLE_INFERENCE": JSON.stringify(
@@ -42,7 +57,7 @@ export async function buildWorkflowPackages(
         ),
         "process.env.BUILDER_COORDINATOR_MODE": JSON.stringify(coordinatorMode),
       },
-      entrypoints: [join(import.meta.dir, "entries", name + ".ts")],
+      entrypoints: [entry],
       target: "bun",
       format: "esm",
       minify: true,

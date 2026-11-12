@@ -28,6 +28,8 @@ const INPUTS = {
   },
 } as const;
 export type InputKind = keyof typeof INPUTS;
+export const isInputKind = (kind: string): kind is InputKind =>
+  Object.hasOwn(INPUTS, kind);
 
 export const DESIGNER_INPUTS = [
   "problem_brief",
@@ -35,7 +37,6 @@ export const DESIGNER_INPUTS = [
   "approaches",
   "product_requirements",
 ] as const;
-export const CODER_INPUTS = [...DESIGNER_INPUTS, "build_plan"] as const;
 
 export const inputPath = (kind: InputKind) =>
   `${INPUTS_DIRECTORY}/${INPUTS[kind].file}`;
@@ -78,11 +79,3 @@ export function skillPacksIndex(packs: readonly SkillPack[]) {
   );
   return `Skill packs, read-only in your workspace: short guides for one kind of work each; a pack indented under another narrows it. Open a pack only when your work calls for it, and leave the rest unread:\n${lines.join("\n")}\n\n`;
 }
-
-// A coder started from the person's words alone: the project has filed no documents and no design.
-export const NO_DOCUMENTS_NOTE =
-  "The project has no documents and no design yet, so there is no build plan and no .builder folder: the instruction below is your whole assignment. Build or change only what it asks; where it leaves something open, choose what suits the app best and say what you chose in your reply. Use the starter's @corbits/react-ui theme for the look. Write ACCEPTANCE.md from what the instruction asks.\n\n";
-
-// A later change starts a fresh coder on the saved app, so its assignment says so after the documents.
-export const APP_CHANGE_NOTE =
-  "The app is already built: your workspace holds it as last saved. This is a change to it, not a new build.\n\n";

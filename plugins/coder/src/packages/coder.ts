@@ -1,4 +1,4 @@
-import { coderPackage } from "../coder-package.ts";
+import { coderPackage } from "../package.ts";
 
 const coder = await coderPackage("coder", "ask");
 export const { director, historyCompactor, degenerateTurnCompactor } = coder;

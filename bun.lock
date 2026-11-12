@@ -226,10 +226,17 @@
       "version": "0.1.0-rc.3",
     },
     "plugins/coder": {
-      "name": "@corbits-builder/coder-plugin",
-      "version": "0.1.0-rc.3",
+      "name": "@corbits-builder/coder",
+      "version": "0.9.0",
       "dependencies": {
+        "@corbits-builder/hub": "workspace:*",
         "@corbits-builder/plugin": "workspace:*",
+        "@corbits-builder/plugin-host": "workspace:*",
+        "@corbits/mcp": "0.4.1",
+        "@corbits/react-ui": "0.5.1",
+        "@intx/agent": "workspace:*",
+        "@intx/tools-mail": "workspace:*",
+        "@intx/workflow": "workspace:*",
         "arktype": "catalog:",
       },
     },
@@ -717,15 +724,6 @@
         "arktype": "catalog:",
       },
     },
-    "workflows/coder": {
-      "name": "@corbits-builder/coder",
-      "version": "0.9.0",
-      "dependencies": {
-        "@corbits/react-ui": "0.5.1",
-        "@intx/agent": "workspace:*",
-        "@intx/workflow": "workspace:*",
-      },
-    },
     "workflows/coordinator": {
       "name": "@corbits-builder/coordinator",
       "version": "0.35.1",
@@ -855,9 +853,7 @@
 
     "@corbits-builder/client": ["@corbits-builder/client@workspace:packages/client"],
 
-    "@corbits-builder/coder": ["@corbits-builder/coder@workspace:workflows/coder"],
-
-    "@corbits-builder/coder-plugin": ["@corbits-builder/coder-plugin@workspace:plugins/coder"],
+    "@corbits-builder/coder": ["@corbits-builder/coder@workspace:plugins/coder"],
 
     "@corbits-builder/coordinator": ["@corbits-builder/coordinator@workspace:workflows/coordinator"],
 

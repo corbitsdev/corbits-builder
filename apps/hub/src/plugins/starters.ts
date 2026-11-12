@@ -1,48 +1,23 @@
-import { type, type Type } from "arktype";
-import type { WorkflowAction } from "@corbits-builder/plugin-host/catalog";
-import type { Started } from "@corbits-builder/plugin-host/coordinator";
-import { coderTaskMessage } from "@corbits-builder/coder/contract";
+import { type } from "arktype";
+import {
+  defineStarter,
+  type Starter,
+  type WorkflowAction,
+} from "@corbits-builder/plugin-host/catalog";
+import {
+  Refusal,
+  type Started,
+} from "@corbits-builder/plugin-host/coordinator";
+import { waitOrStop } from "@corbits-builder/plugin-host/text";
 import { DesignConcept } from "@corbits-builder/schemas/artifact";
 import {
   DOCUMENT_WRITER_PACKAGE,
   WRITER_PACKAGES,
 } from "@corbits-builder/schemas/installed-workflows";
-import {
-  APP_CHANGE_NOTE,
-  CODER_INPUTS,
-  DESIGNER_INPUTS,
-  NO_DOCUMENTS_NOTE,
-  skillPacksIndex,
-  startHere,
-} from "../config/inputs.ts";
+import { DESIGNER_INPUTS, startHere } from "../config/inputs.ts";
 import { DEFAULT_STACK } from "../config/packages.ts";
-import {
-  Refusal,
-  type ProjectListing,
-  type ProjectSession,
-} from "../projects/project-session.ts";
+import type { ProjectSession } from "../projects/project-session.ts";
 import { writerTask } from "../workflows/writer-task.ts";
-
-// What runs({ ... }) offers for a run that holds back the next one, named as runIds lists it.
-const waitOrStop = (runIds: string) =>
-  `runs({ operation: "wait", runIds: [${runIds}] }) waits for it to end, or runs({ operation: "stop", runIds: [${runIds}] }) stops it; then call execute again.`;
-
-// One coder works on the app at a time: the project has one app repository, and a second coder
-// would start from the app without the first one's work and overwrite it when it saves. Without
-// live, the other coder is still starting, from another execute in the same turn.
-function coderBusy(live?: { runId: string; state: string }) {
-  const other =
-    live === undefined
-      ? "Another coder is starting on the app from an execute call in this same turn"
-      : `The coder in run ${live.runId} is ${live.state === "waiting" ? "between turns, just started or saving its last files after its report" : "still at work on the app"}`;
-  const next =
-    live === undefined
-      ? `That call returns its run id. ${waitOrStop("its run id")}`
-      : waitOrStop(JSON.stringify(live.runId));
-  return new Refusal(
-    `The coder was not started. ${other}, and one coder works on the app at a time because the project has one app repository: a second coder would start without that run's work and overwrite it. ${next} Giving each coder its own branch of the app, merged when it finishes, would lift this.`,
-  );
-}
 
 // A design concept is one designer's: the hub files that run's design as the concept's option.
 const conceptBusy = (concept: string, runId: string) =>
@@ -54,93 +29,16 @@ const one = ({ runId }: { runId: string }): Started => ({
   notStarted: [],
 });
 
-// One installed workflow a plugin action starts: start is the action's start block, input the
-// action's checked input, of which the starter reads only its own fields, and skills the index of
-// the action's skill packs for the assignment.
-function starter<Start extends Type, Input extends Type<object>>(
-  start: Start,
-  input: Input,
-  run: (
-    start: Start["infer"],
-    input: Input["infer"],
-    session: ProjectSession,
-    skills: string,
-  ) => Promise<Started>,
-) {
-  return {
-    check(raw: unknown) {
-      const checked = start(raw);
-      return checked instanceof type.errors ? checked.summary : undefined;
-    },
-    reads: input.props.map(({ key }) => String(key)),
-    run: (
-      raw: unknown,
-      checked: unknown,
-      session: ProjectSession,
-      skills: string,
-    ) => run(start.assert(raw), input.assert(checked), session, skills),
-  };
-}
-
 const Instructed = type({ instruction: "string" });
 
-// The filed documents a coder works from, and the chosen design when there is one; with neither,
-// the note that the instruction is the whole assignment.
-function coderDocuments(
-  session: ProjectSession,
-  byKind: ProjectListing["byKind"],
-) {
-  const kinds = CODER_INPUTS.filter((kind) => byKind.has(kind));
-  const design = byKind.get("design")?.version;
-  if (kinds.length === 0 && design === undefined) return NO_DOCUMENTS_NOTE;
-  return startHere(session.inputs(kinds, byKind), design);
-}
-
-// A change starts from the app as last saved; a first build's manifest requires that there is none.
-// A coder still on the app refuses at once rather than wait for it.
-const coder = starter(
-  type({
-    "+": "reject",
-    workflow: "'coder'",
-    correlation: "string > 0",
-    app: "'new' | 'existing'",
-  }),
-  Instructed,
-  async ({ correlation, app }, { instruction }, session, skills) => {
-    const { inFlight } = await session.listed();
-    const live = inFlight.find((run) => run.role === "coder");
-    if (live) throw coderBusy(live);
-    return one(
-      await session.startCoder(
-        correlation,
-        ({ byKind }) => {
-          if (app === "existing")
-            return (
-              coderDocuments(session, byKind) +
-              skills +
-              APP_CHANGE_NOTE +
-              coderTaskMessage(instruction)
-            );
-          return (
-            coderDocuments(session, byKind) +
-            skills +
-            coderTaskMessage(instruction)
-          );
-        },
-        coderBusy,
-      ),
-    );
-  },
-);
-
-const designer = starter(
+const designer = defineStarter(
   type({ "+": "reject", workflow: "'designer'" }),
   type({
     instruction: "string",
     lookIdeas: "string",
     concepts: DesignConcept.array(),
   }),
-  async (_start, input, session, skills) => {
+  async (_start, input, session: ProjectSession, skills) => {
     // A concept whose designer is still at work is refused at once; the others start.
     const { inFlight } = await session.listed();
     const busy = new Map(
@@ -189,14 +87,14 @@ const designer = starter(
 
 // A writer writes or revises one document from every other filed document; the build plan alone is
 // written from the design, and to the default stack unless the person asked otherwise.
-const writer = starter(
+const writer = defineStarter(
   type({
     "+": "reject",
     workflow: "'writer'",
     kind: "'product_requirements' | 'build_plan'",
   }),
   Instructed,
-  async ({ kind }, { instruction }, session) => {
+  async ({ kind }, { instruction }, session: ProjectSession) => {
     const { byKind, preferences } = await session.listed();
     const sources = [...byKind]
       .filter(
@@ -232,10 +130,10 @@ const writer = starter(
 
 // Any document the coordinator names, written from every other filed document. The known kinds
 // above keep their own writers for the fields and templates those carry.
-const document = starter(
+const document = defineStarter(
   type({ "+": "reject", workflow: "'writer-document'" }),
   type({ kind: "string", title: "string", instruction: "string" }),
-  async (_start, { kind, title, instruction }, session) => {
+  async (_start, { kind, title, instruction }, session: ProjectSession) => {
     const { byKind, preferences } = await session.listed();
     const sources = [...byKind]
       .filter(([filed]) => filed !== "app" && filed !== kind)
@@ -260,10 +158,10 @@ const document = starter(
 );
 
 // The reviewer checks the document against the problem brief when the project has one.
-const reviewer = starter(
+const reviewer = defineStarter(
   type({ "+": "reject", workflow: "'reviewer'" }),
   type({ kind: "string", instruction: "string" }),
-  async (_start, { kind, instruction }, session) => {
+  async (_start, { kind, instruction }, session: ProjectSession) => {
     const { byKind, preferences } = await session.listed();
     session.required(byKind, kind);
     const started = await session.deploy(
@@ -286,9 +184,20 @@ const reviewer = starter(
   },
 );
 
-/** The installed workflows a plugin action's start block may name, by that name. */
-export const STARTERS: Readonly<Record<string, ReturnType<typeof starter>>> = {
-  coder,
+/** The installed workflows the hub starts for a plugin action's start block, by the name it gives. */
+export const STARTERS: Readonly<
+  Record<
+    string,
+    Starter & {
+      run(
+        start: unknown,
+        input: unknown,
+        session: ProjectSession,
+        skills: string,
+      ): Promise<Started>;
+    }
+  >
+> = {
   designer,
   writer,
   "writer-document": document,
@@ -296,22 +205,17 @@ export const STARTERS: Readonly<Record<string, ReturnType<typeof starter>>> = {
 };
 
 /**
- * Starts a workflow action on its checked input with the starter its manifest names, its run's
- * assignment carrying values, the block of project values the action reads.
+ * Starts a workflow action on its checked input with the hub's starter its manifest names, in the
+ * session for that action.
  */
 export function startAction(
   action: WorkflowAction,
   input: unknown,
   session: ProjectSession,
-  values: string,
+  skills: string,
 ) {
   const named = STARTERS[action.builder.start.workflow];
   if (!named)
     throw new Error(`${action.name} starts a workflow the hub does not have`);
-  return named.run(
-    action.builder.start,
-    input,
-    session.forAction({ plugin: action.plugin, action: action.action, values }),
-    skillPacksIndex(action.packs),
-  );
+  return named.run(action.builder.start, input, session, skills);
 }

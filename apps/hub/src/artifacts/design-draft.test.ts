@@ -261,7 +261,7 @@ test("check-app serves a per-screen mockup in the headless browser and checks ev
   const home = join(root, "home");
   const checkApp = resolve(
     import.meta.dir,
-    "../../../../workflows/coder/check/check-app.ts",
+    "../../../../plugins/coder/check/check-app.ts",
   );
   try {
     await mkdir(home, { recursive: true });

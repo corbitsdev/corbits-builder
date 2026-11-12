@@ -21,7 +21,6 @@ import { unpackDesign, writeBundle } from "../artifacts/design-tools.ts";
 import { bundleFiles } from "./app-snapshot.ts";
 import type { AppRepository } from "./app-repository.ts";
 import {
-  CODER_INPUTS,
   DESIGNER_INPUTS,
   INPUTS_DIRECTORY,
   KIT_DIGEST,
@@ -36,6 +35,7 @@ import {
   starterFiles,
   watchScript,
 } from "@corbits-builder/coder/assets" with { type: "macro" };
+import { CODER_INPUTS } from "@corbits-builder/coder/contract";
 import { designStarterFiles } from "@corbits-builder/designer/skills" with { type: "macro" };
 
 const STARTER = starterFiles();

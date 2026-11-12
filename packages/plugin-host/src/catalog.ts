@@ -1,4 +1,5 @@
-import { type } from "arktype";
+import { join } from "node:path";
+import { type, type Type } from "arktype";
 import {
   checkInput,
   checkOutput,
@@ -19,6 +20,7 @@ import {
   type WorkflowActionBuilder,
 } from "@corbits-builder/plugin";
 import { negated, patternFact, resolveFacts, templateField } from "./facts.ts";
+import type { Project, Started } from "./coordinator.ts";
 import type { Found } from "./folder.ts";
 import {
   presentsText,
@@ -44,6 +46,56 @@ export type Starter = {
   // The input fields it reads, which every action it starts must take.
   reads: readonly string[];
 };
+
+/** A starter a plugin brings, which starts its run in the project with the action's skill packs. */
+export type PluginStarter = Starter & {
+  run(
+    start: unknown,
+    input: unknown,
+    project: Project,
+    skills: string,
+  ): Promise<Started>;
+};
+
+/**
+ * A starter of one workflow: start is the start block it takes, input the fields of the action's
+ * checked input it reads, and run starts the work in context with the index of the action's skill
+ * packs for the assignment.
+ */
+export function defineStarter<
+  Start extends Type,
+  Input extends Type<object>,
+  Context,
+>(
+  start: Start,
+  input: Input,
+  run: (
+    start: Start["infer"],
+    input: Input["infer"],
+    context: Context,
+    skills: string,
+  ) => Promise<Started>,
+) {
+  return {
+    check(raw: unknown) {
+      const checked = start(raw);
+      return checked instanceof type.errors ? checked.summary : undefined;
+    },
+    reads: input.props.map(({ key }) => String(key)),
+    run: (raw: unknown, checked: unknown, context: Context, skills: string) =>
+      run(start.assert(raw), input.assert(checked), context, skills),
+  };
+}
+
+const isStarter = (value: unknown): value is PluginStarter =>
+  typeof value === "object" &&
+  value !== null &&
+  "check" in value &&
+  typeof value.check === "function" &&
+  "reads" in value &&
+  Array.isArray(value.reads) &&
+  "run" in value &&
+  typeof value.run === "function";
 
 // The builder block of whichever kind the manifest says it runs.
 const Manifest = type({
@@ -73,6 +125,8 @@ export type WorkflowAction = ActionBase & {
   presents: string | null;
   // The skill packs its specialist's agent is given when this action starts it.
   packs: readonly SkillPack[];
+  // The starter its plugin brings, or undefined when the host starts its workflow.
+  starter: PluginStarter | undefined;
 };
 export type ScreenAction = ActionBase & {
   builder: ScreenActionBuilder;
@@ -122,6 +176,8 @@ export type Catalog = {
   factText(fact: Fact): string;
   // Every project value by name: the host's own and each one a plugin declares.
   values: ReadonlyMap<string, ValueDeclaration>;
+  // Each workflow package a plugin brings, by name, as its entry's path in the plugins folder.
+  packages: ReadonlyMap<string, string>;
 };
 
 export const isSpecialist = (plugin: Plugin): plugin is SpecialistPlugin =>
@@ -167,12 +223,15 @@ export function manifestFiles(found: Found) {
   const { builder } = manifestOf(found);
   if (builder.runs === "specialist")
     return {
-      modules: Object.values(builder.actions).flatMap((action) => {
-        if (action.runs === "workflow") return [action.input];
-        return action.data === undefined
-          ? [action.screen]
-          : [action.screen, action.data];
-      }),
+      modules: [
+        ...Object.values(builder.actions).flatMap((action) => {
+          if (action.runs === "workflow") return [action.input];
+          return action.data === undefined
+            ? [action.screen]
+            : [action.screen, action.data];
+        }),
+        ...Object.values(builder.starters ?? {}),
+      ],
       texts: [],
       folders: [],
     };
@@ -362,6 +421,7 @@ type Installing = {
   factText: (fact: Fact) => string;
   packs: readonly SkillPack[];
   values: ReadonlyMap<string, ValueDeclaration>;
+  starters: ReadonlyMap<string, PluginStarter>;
 };
 
 // The finished work's line about the screens that show it, each with when it fits.
@@ -394,7 +454,7 @@ async function installAction(
   const { handle } = specialist;
   if (declared.runs === "screen")
     return installScreen(found, handle, action, declared, installing);
-  const { host, factText, packs } = installing;
+  const { host, factText, packs, starters } = installing;
   const name = `${handle} ${action}`;
   const facts = [...(declared.requires ?? []).flat(), ...declared.returns];
   const requires = () =>
@@ -406,7 +466,8 @@ async function installAction(
     );
   const { fields } = workflow.describe;
   checkFacts(name, facts, host.facts, (field) => Object.hasOwn(fields, field));
-  const starter = host.starters[declared.start.workflow];
+  const own = starters.get(declared.start.workflow);
+  const starter = own ?? host.starters[declared.start.workflow];
   if (!starter)
     throw new Error(
       `${name} starts ${declared.start.workflow}, which is not an installed workflow`,
@@ -433,6 +494,7 @@ async function installAction(
     check: (raw) => checkWorkflowInput(name, workflow, raw),
     presents: presentsOf(name, specialist, declared.presents),
     packs: packs.filter(({ serves }) => serves.includes(name)),
+    starter: own,
   };
 }
 
@@ -588,6 +650,43 @@ async function loadPacks(
   return [...new Set(loaded.map((pack) => pack.specialist))].flatMap(narrowing);
 }
 
+// Each workflow a plugin starts itself, by the name its actions' start blocks give it.
+async function pluginStarters(manifests: readonly Manifested[], host: Host) {
+  const starters = new Map<string, PluginStarter>();
+  for (const { found, builder } of manifests) {
+    if (builder.runs !== "specialist") continue;
+    for (const [workflow, path] of Object.entries(builder.starters ?? {})) {
+      if (starters.has(workflow) || Object.hasOwn(host.starters, workflow))
+        throw new Error(
+          `${builder.handle} starts ${workflow}, which another starter starts too`,
+        );
+      const starter = await found.module(path);
+      if (!isStarter(starter))
+        throw new Error(
+          `${builder.handle}'s starter ${path} has no starter as its default export`,
+        );
+      starters.set(workflow, starter);
+    }
+  }
+  return starters;
+}
+
+// Each workflow package a plugin brings, by name, at its entry's path in the plugins folder.
+function pluginPackages(manifests: readonly Manifested[]) {
+  const packages = new Map<string, string>();
+  for (const { found, builder } of manifests) {
+    if (builder.runs !== "specialist") continue;
+    for (const [name, entry] of Object.entries(builder.packages ?? {})) {
+      if (packages.has(name))
+        throw new Error(
+          `${builder.handle} installs ${name}, which another plugin installs too`,
+        );
+      packages.set(name, join(found.folder, entry));
+    }
+  }
+  return packages;
+}
+
 /** The plugins found, each checked against its manifest and the host; a wrong one is thrown. */
 export async function loadCatalog(
   found: readonly Found[],
@@ -602,6 +701,7 @@ export async function loadCatalog(
   );
   const factText = factWords(manifests, host.facts);
   const values = declaredValues(manifests, host);
+  const starters = await pluginStarters(manifests, host);
   const plugins = await Promise.all(
     manifests.map(({ found, builder, description }): Promise<Plugin> => {
       if (builder.runs === "specialist")
@@ -610,6 +710,7 @@ export async function loadCatalog(
           factText,
           packs,
           values,
+          starters,
         });
       return routePlugin(found, builder, description, host);
     }),
@@ -626,5 +727,6 @@ export async function loadCatalog(
       plugins.find((plugin) => plugin.builder.handle === handle),
     factText,
     values,
+    packages: pluginPackages(manifests),
   };
 }

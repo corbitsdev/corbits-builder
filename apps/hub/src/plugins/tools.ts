@@ -35,6 +35,7 @@ import {
 } from "../projects/project-session.ts";
 import { projectScopeFailure } from "../workflows/project-scope.ts";
 import { agentDecidesApprovals } from "../config/preferences.ts";
+import { isInputKind, skillPacksIndex, startHere } from "../config/inputs.ts";
 import { CATALOG, ProjectRoutes, SCREENS, WITH_SCREENS } from "./catalog.ts";
 import { projectFacts } from "./facts.ts";
 import { checkPluginQuestion } from "./question.ts";
@@ -100,14 +101,51 @@ function project(session: ProjectSession): Project {
           `${session.projectPath}/values?${new URLSearchParams({ keys: names.join(",") })}`,
         ),
       ).values,
-    start: (action, input, values) =>
-      startAction(action, input, session, values),
+    start: (action, input, values) => {
+      const assigned = session.forAction({
+        plugin: action.plugin,
+        action: action.action,
+        values,
+      });
+      const skills = skillPacksIndex(action.packs);
+      if (action.starter)
+        return action.starter.run(
+          action.builder.start,
+          input,
+          project(assigned),
+          skills,
+        );
+      return startAction(action, input, assigned, skills);
+    },
     runs: async () =>
       ProjectRuns.assert(await session.hub(session.projectPath + "/runs")).runs,
     stop: (runId) =>
       session.hub(
         `${session.projectPath}/runs/${encodeURIComponent(runId)}/stop`,
         {},
+      ),
+    working: async () => (await session.listed()).inFlight,
+    startAlone: ({ workflow, correlation, assignment, busy }) =>
+      session.startAlone(
+        workflow,
+        correlation,
+        ({ byKind }) =>
+          assignment({
+            startHere: (kinds, design) => {
+              const unknown = kinds.find((kind) => !isInputKind(kind));
+              if (unknown !== undefined)
+                throw new Error(`${unknown} is not a document Builder stages`);
+              const filed = kinds
+                .filter(isInputKind)
+                .filter((kind) => byKind.has(kind));
+              const version = design
+                ? byKind.get("design")?.version
+                : undefined;
+              if (filed.length === 0 && version === undefined) return undefined;
+              return startHere(session.inputs(filed, byKind), version);
+            },
+          }),
+        busy,
       ),
   };
 }

@@ -15,12 +15,7 @@ import {
 } from "@corbits-builder/schemas/artifact";
 import { Preferences } from "@corbits-builder/schemas/preferences";
 import { DEFAULT_STACK } from "../config/packages.ts";
-import {
-  APP_CHANGE_NOTE,
-  CODER_INPUTS,
-  DESIGNER_INPUTS,
-  startHere,
-} from "../config/inputs.ts";
+import { DESIGNER_INPUTS, startHere } from "../config/inputs.ts";
 import { agentDecidesApprovals } from "../config/preferences.ts";
 import { DESIGN_CONCEPTS, DESIGN_THEMES } from "../config/design.ts";
 import {
@@ -34,11 +29,15 @@ import { checkPluginQuestion } from "../plugins/question.ts";
 import { screenProject } from "../plugins/tools.ts";
 import { projectScopeFailure } from "../workflows/project-scope.ts";
 import { assignmentToWriterMessage } from "../workflows/writer-task.ts";
-import { coderTaskMessage } from "@corbits-builder/coder/contract";
+import {
+  APP_CHANGE_NOTE,
+  CODER_INPUTS,
+  coderTaskMessage,
+} from "@corbits-builder/coder/contract";
+import { Refusal } from "@corbits-builder/plugin-host/coordinator";
 import {
   checkDeployments,
   projectSession,
-  Refusal,
   refusalText,
   REQUEST_APPROVAL_DESCRIPTION,
   resolveProjectOptions,
@@ -220,7 +219,7 @@ export function createDeployTools(
           inputs,
           deploy,
           approve,
-          startCoder,
+          startAlone,
           startDesigners,
         } = projectSession(env, options, signal);
         const refsOf = (byKind: ProjectListing["byKind"]) =>
@@ -380,7 +379,8 @@ export function createDeployTools(
             );
           } else if (call.name === "deploy_coder") {
             const input = validArguments(DeployCoder, call.arguments);
-            result = await startCoder(
+            result = await startAlone(
+              "coder",
               "coder",
               (state) => {
                 const refusal = coderGate(state);
@@ -398,7 +398,8 @@ export function createDeployTools(
             );
           } else if (call.name === "instruct_coder") {
             const input = validArguments(InstructCoder, call.arguments);
-            result = await startCoder(
+            result = await startAlone(
+              "coder",
               "coder-" + call.id,
               async (state) => {
                 const { byKind } = state;

@@ -88,6 +88,12 @@ export type WorkflowActionBuilder = typeof WorkflowActionBuilder.infer;
 // A specialist the coordinator composes into its plan, and the actions it can be started on.
 export const SpecialistBuilder = Common.merge({
   runs: "'specialist'",
+  // The workflow packages the host builds and installs from this plugin, by package name, each the
+  // module whose default export is the workflow and whose named exports are its directors.
+  "packages?": { "[string]": "string > 0" },
+  // The module that starts each workflow its actions' start blocks name, by that name; its default
+  // export is a starter, as plugin-host's defineStarter makes one.
+  "starters?": { "[string]": "string > 0" },
   actions: type({
     "[string]": WorkflowActionBuilder.or(ScreenActionBuilder),
   }),

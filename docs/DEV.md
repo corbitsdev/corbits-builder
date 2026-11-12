@@ -26,7 +26,7 @@ The roles:
 - **Writer** (`workflows/writer`): writes one document.
 - **Reviewer** (`workflows/reviewer`): reviews one document.
 - **Designer** (`workflows/designer`): builds the clickable design.
-- **Coder** (`workflows/coder`): builds the app in a sandbox from its
+- **Coder** (`plugins/coder`): builds the app in a sandbox from its
   starter.
 
 Each role runs on the tier its profile assigns

@@ -1,20 +1,32 @@
-import { createCoderAgent } from "@corbits-builder/coder/agent";
-import { createCoderWorkflow } from "@corbits-builder/coder";
 import {
   createSidecarCodingTools,
   type CodingSidecarEnv,
-} from "../builds/sidecar-tools.ts";
-import { browserCatalog } from "../builds/browser-catalog.ts" with { type: "macro" };
-import { mcpTools } from "@corbits/mcp/interchange/client";
+} from "@corbits-builder/hub/builds/sidecar-tools";
+import { browserCatalog } from "@corbits-builder/hub/builds/browser-catalog" with { type: "macro" };
+import {
+  mcpTools,
+  type McpToolsOptions,
+} from "@corbits/mcp/interchange/client";
 import { mail, type MailToolEnv } from "@intx/tools-mail/sidecar-bundle";
-import { createArtifactTools } from "../artifacts/tools.ts";
-import { createSkillTools } from "../skills/tools.ts";
-import { roleInference } from "./role-inference.ts";
-import { compactingDirector } from "./director.ts";
-import { dropDegenerateTurn, trimHistory } from "./compaction.ts";
-import { nativePackageName } from "./package-name.ts";
-import { DESIGN_STANDARD } from "../config/design.ts";
-import { CODER_MCP } from "../config/mcp.ts";
+import { createArtifactTools } from "@corbits-builder/hub/artifacts/tools";
+import { createSkillTools } from "@corbits-builder/hub/skills/tools";
+import { roleInference } from "@corbits-builder/hub/workflows/role-inference";
+import { compactingDirector } from "@corbits-builder/hub/workflows/director";
+import {
+  dropDegenerateTurn,
+  trimHistory,
+} from "@corbits-builder/hub/workflows/compaction";
+import { nativePackageName } from "@corbits-builder/hub/workflows/package-name";
+import { DESIGN_STANDARD } from "@corbits-builder/hub/config/design";
+import { createCoderAgent } from "./agent.ts";
+import { createCoderWorkflow } from "./workflow.ts";
+
+// Remote MCP servers the coder calls from its own deployment. Exa answers keyless, so no credential
+// handle. Only its read-only tools run without a person's approval.
+const CODER_MCP: McpToolsOptions = {
+  servers: [{ name: "exa", url: "https://mcp.exa.ai/mcp" }],
+  allowWithoutAsk: ["exa.web_search_exa", "exa.web_fetch_exa"],
+};
 
 /**
  * The coder's workflow package. `packageApproval` is frozen into the definition: "ask" declares

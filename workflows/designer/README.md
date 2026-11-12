@@ -42,4 +42,4 @@ real project.
 
 [entry]: https://github.com/corbitsdev/corbits-builder/blob/main/apps/hub/src/workflows/entries/designer.ts
 [coordinator]: https://github.com/corbitsdev/corbits-builder/tree/main/workflows/coordinator
-[coder]: https://github.com/corbitsdev/corbits-builder/tree/main/workflows/coder
+[coder]: https://github.com/corbitsdev/corbits-builder/tree/main/plugins/coder
