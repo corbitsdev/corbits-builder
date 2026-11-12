@@ -4,6 +4,7 @@
  * its sender's role and time. A report no single hand-off answers stays on its
  * own.
  */
+import { isDocumentKind } from "@corbits-builder/schemas/artifact";
 import { wording } from "../../config.ts";
 import type { Dispatch, DispatchStatus } from "./dispatch-card.tsx";
 import type { SpecialistUpdate } from "./specialist-updates.ts";
@@ -67,11 +68,10 @@ export function workUnits(
 }
 
 // A run started by no call in view still reads by what its role files: a writer writes a document,
-// a designer with a concept mocks it up.
+// a designer makes a mockup, of its concept when it has one.
 const fileAction = (dispatch: Dispatch) => {
   if (dispatch.role === "writer") return "writer write";
-  if (dispatch.role === "designer" && dispatch.concept !== undefined)
-    return "designer mockup";
+  if (dispatch.role === "designer") return "designer mockup";
   return undefined;
 };
 
@@ -80,9 +80,12 @@ export function workPhrase(dispatch: Dispatch, status: DispatchStatus): string {
   const done = status.state === "ready" || status.state === "finished";
   const phrase = text.action[dispatch.action ?? fileAction(dispatch) ?? ""];
   if (phrase === undefined) return done ? text.done : text.working;
-  // A document the run filed names it once the call did not.
+  // A document the run filed names it once the call did not; a design or an app names nothing.
   const kind =
-    dispatch.kind ?? (status.state === "ready" ? status.kind : undefined);
+    dispatch.kind ??
+    (status.state === "ready" && isDocumentKind(status.kind)
+      ? status.kind
+      : undefined);
   const thing =
     dispatch.concept ??
     (kind === undefined

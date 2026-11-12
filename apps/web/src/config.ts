@@ -767,9 +767,9 @@ export const wording = {
         done: (thing) => (thing ? `Made the ${thing} mockup` : "Made a mockup"),
       },
     } as Record<string, WorkPhrase>,
-    /** What a specialist does when no known action names it. */
+    /** What a specialist does when no known action names it; its state stays at the row's end. */
     working: "Working",
-    done: "Done",
+    done: "Finished its work",
     /** Where the work stands, at the end of its row. */
     status: {
       pending: "Starting…",
@@ -983,6 +983,7 @@ export const wording = {
     keys: {
       single: "↑↓ move · Enter choose · ← back · → next",
       multi: "↑↓ move · Space tick · Enter next · ← back · → next",
+      text: "Enter next",
       review: "Enter send · ← back",
     },
     composerPlaceholder: "Type here to respond to the above question",

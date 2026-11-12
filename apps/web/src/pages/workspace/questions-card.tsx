@@ -203,6 +203,48 @@ function OtherInput({
   );
 }
 
+/** A question with no options: a field for the answer in the person's own words. Enter submits it. */
+function TextField({
+  question,
+  idPrefix,
+  answer,
+  disabled,
+  focus,
+  onChange,
+  onEnter,
+}: {
+  question: Question;
+  idPrefix: string;
+  answer: Answer;
+  disabled: boolean;
+  focus: boolean;
+  onChange: (answer: Answer) => void;
+  onEnter: () => void;
+}) {
+  const id = `${idPrefix}-${question.id}`;
+  return (
+    <div className={styles.question}>
+      <label className={styles.prompt} htmlFor={id}>
+        {question.question}
+      </label>
+      <Input
+        id={id}
+        autoFocus={focus}
+        disabled={disabled}
+        value={answer.otherText}
+        onChange={(event) =>
+          onChange({ chosen: [], other: true, otherText: event.target.value })
+        }
+        onKeyDown={(event) => {
+          if (event.key !== "Enter" || !complete(answer)) return;
+          event.preventDefault();
+          onEnter();
+        }}
+      />
+    </div>
+  );
+}
+
 /** A value for the Other choice that none of the question's own options use. */
 function otherValue(question: Question): string {
   let value = "other";
@@ -626,6 +668,12 @@ function StepReview({
   );
 }
 
+/** The keyboard hint a question's step shows. */
+function stepKeys(question: Question): "text" | "multi" | "single" {
+  if (question.options.length === 0) return "text";
+  return question.multiple ? "multi" : "single";
+}
+
 function StepsBody({
   idPrefix,
   questions,
@@ -700,26 +748,39 @@ function StepsBody({
         />
       ) : (
         <>
-          <StepQuestion
-            key={question.id}
-            question={question}
-            idPrefix={idPrefix}
-            answer={answerOf(question)}
-            disabled={disabled}
-            focus={moved}
-            onChange={(answer) => setAnswer(question, answer)}
-            onDone={(answer) => {
-              if (complete(answer)) go(step + 1);
-            }}
-            onBack={() => go(step - 1)}
-          />
+          {question.options.length === 0 ? (
+            <TextField
+              key={question.id}
+              question={question}
+              idPrefix={idPrefix}
+              answer={answerOf(question)}
+              disabled={disabled}
+              focus={moved}
+              onChange={(answer) => setAnswer(question, answer)}
+              onEnter={() => go(step + 1)}
+            />
+          ) : (
+            <StepQuestion
+              key={question.id}
+              question={question}
+              idPrefix={idPrefix}
+              answer={answerOf(question)}
+              disabled={disabled}
+              focus={moved}
+              onChange={(answer) => setAnswer(question, answer)}
+              onDone={(answer) => {
+                if (complete(answer)) go(step + 1);
+              }}
+              onBack={() => go(step - 1)}
+            />
+          )}
           <ScreenActions />
         </>
       )}
       <p className={styles.keys}>
         {question === undefined
           ? text.keys.review
-          : text.keys[question.multiple ? "multi" : "single"]}
+          : text.keys[stepKeys(question)]}
       </p>
     </>
   );
@@ -824,6 +885,21 @@ export function QuestionsCard({
         {asked.questions.map((question) => {
           const answer = answerOf(question);
           const onChange = (next: Answer) => setAnswer(question, next);
+          if (question.options.length === 0)
+            return (
+              <TextField
+                key={question.id}
+                question={question}
+                idPrefix={id}
+                answer={answer}
+                disabled={disabled}
+                focus={false}
+                onChange={onChange}
+                onEnter={() => {
+                  if (ready) void send();
+                }}
+              />
+            );
           if (question.multiple)
             return (
               <MultiField

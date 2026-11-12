@@ -66,7 +66,11 @@
   line-height: 1.5;
 }
 
+/* Held to the column: under the start-aligned report a box takes its text's width, so a long word
+   or link would otherwise carry it past the column's edge. */
 .reportText {
+  align-self: stretch;
+  overflow-wrap: anywhere;
   max-height: calc(2 * 1.5em);
   overflow: hidden;
   color: var(--wb-muted-foreground);
