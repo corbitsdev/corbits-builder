@@ -689,7 +689,10 @@ async function routePlugin(
 ): Promise<RoutePlugin> {
   checkFacts(
     builder.handle,
-    [...builder.steps.flatMap((step) => step.requires), builder.outcome],
+    [
+      ...builder.steps.flatMap((step) => step.requires),
+      ...(builder.outcome === undefined ? [] : [builder.outcome]),
+    ],
     known,
     () => false,
   );

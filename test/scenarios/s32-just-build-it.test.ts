@@ -21,7 +21,7 @@ const EXECUTES = ["c_requirements", "c_mockup", "c_plan", "c_build"];
 scenario({
   name: "s32-just-build-it",
   title:
-    "just build it: coder build is refused without documents, the person hands approvals over on one screen, and the route runs to a built app with no approval asked",
+    "just build it: coder build is refused without documents, the person hands approvals over on one screen, Builder chooses the one design, and the route runs to a built app with no approval asked",
   start: { fresh: idea },
   coordinator: [
     turn(
@@ -88,15 +88,23 @@ scenario({
     const handed = await p.answer({ output: { decides: "builder" } });
     expect(handed.status).toBe(200);
     await p.filed("product_requirements", 1);
+    // The one concept's option is the design as it is filed, with no question to the person.
+    expect(WEATHER_MOCKUP.concepts).toHaveLength(1);
+    await p.filed("design", 1);
     await p.filed("build_plan", 1);
     await p.filed("app", 1);
     await p.heard("Your app is built.");
     for (const id of EXECUTES) p.note(`${id} returned`, p.resultOf(id).text);
     p.note("every message the coordinator received", p.messages("coordinator"));
     // Handing over left the approvals to Builder, so the design started on requirements nobody
-    // approved. Nothing chooses a design for the person, so the plan and the build start with the
-    // route's advice that none is chosen.
-    for (const id of ["c_requirements", "c_mockup"])
+    // approved, Builder chose the one design, and the plan and the build start with no advice.
+    for (const id of EXECUTES)
       expect(p.resultOf(id).text).not.toContain('"advice"');
+    const report = p
+      .messages("coordinator")
+      .find((message) => message.includes(DESIGNER_REPORT));
+    expect(report).toContain("chosen automatically");
+    expect(report).not.toContain('action: "choose"');
+    expect(report).not.toContain('action: "review"');
   },
 });

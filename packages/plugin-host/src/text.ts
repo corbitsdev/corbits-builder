@@ -422,7 +422,7 @@ export const routeFollowed = (
   steps: readonly { name: string; readiness: string }[],
 ) =>
   [
-    `The project now follows ${handle}. It stays on it until the outcome holds or you leave it.`,
+    `The project now follows ${handle}. It stays on it until what it leads to holds or you leave it.`,
     ...(others.length > 0
       ? [
           `It also follows ${others.join(", ")}. Where routes share a step, the person's go-ahead any of them asks for holds the step while they decide approvals, and each route's other advice comes with the started run.`,

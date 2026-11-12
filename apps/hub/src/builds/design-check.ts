@@ -12,6 +12,8 @@ export interface FiledDesignArtifact {
   kind: string;
   version: number;
   sha256: string;
+  // Whether the hub chose it as the design itself, approvals being left to Builder.
+  designChosen: boolean;
 }
 
 type Result = {

@@ -1,0 +1,47 @@
+{
+  "name": "@corbits-builder/add-feature",
+  "version": "0.1.0-rc.3",
+  "private": true,
+  "description": "Adds a feature to an existing app: revised requirements and build plan the person approves, then the change.",
+  "license": "SEE LICENSE IN ../../LICENSE.md",
+  "author": "Sawyer Cutler <sawyer@dirtroad.dev>",
+  "type": "module",
+  "builder": {
+    "handle": "add-feature",
+    "runs": "route",
+    "groups": [
+      "build",
+      "plan"
+    ],
+    "when": "The project already has an app and the person wants a new feature or a substantial change to what it does.",
+    "unless": "The project has no app yet, which is build-web-app, or the change is small and stated exactly, such as a font, a colour, a label or a bug fix; start coder change directly.",
+    "guidance": "./SKILL.md",
+    "steps": [
+      {
+        "plugin": "writer",
+        "action": "write-requirements",
+        "requires": []
+      },
+      {
+        "plugin": "writer",
+        "action": "write-build-plan",
+        "requires": [
+          "approved:product_requirements"
+        ]
+      },
+      {
+        "plugin": "coder",
+        "action": "change",
+        "requires": [
+          "approved:build_plan"
+        ]
+      }
+    ],
+    "examples": [
+      "add a login page to my app",
+      "I want users to be able to save favourites",
+      "can we add a way to export the list as a spreadsheet",
+      "the app needs a payments step at checkout"
+    ]
+  }
+}

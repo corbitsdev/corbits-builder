@@ -247,13 +247,31 @@ const filed = (call: TaskCall) =>
 // A writer on 2026-10-30 replied with the whole approaches document as text and never filed it;
 // the coordinator waited on a writer that had already answered. A designer's reply also waits for a
 // filed design option after the last file change. A presenter files the approval package with
-// file_package.
-function unfiled(turns: readonly ConversationTurn[]): boolean {
+// file_package. The call that filed the task's work, unless a file changed after it.
+function lastFiling(turns: readonly ConversationTurn[]): TaskCall | undefined {
   for (const call of taskCalls(turns)) {
-    if (filed(call)) return false;
-    if (WRITE_TOOLS.has(call.name) || ranShell(call, SHELL_WRITE)) return true;
+    if (filed(call)) return call;
+    if (WRITE_TOOLS.has(call.name) || ranShell(call, SHELL_WRITE))
+      return undefined;
   }
-  return true;
+  return undefined;
+}
+
+const unfiled = (turns: readonly ConversationTurn[]) =>
+  lastFiling(turns) === undefined;
+
+const DESIGN_CHOSEN_BY_BUILDER =
+  "This design was chosen automatically because the person handed approvals over to Builder; they can ask to see or change it.";
+
+// What a reply after filed work ends with: the screens that show it, or, for a design option Builder
+// chose itself, that nobody needs to choose it; nothing when the work is not filed.
+function filedEnding(
+  turns: readonly ConversationTurn[],
+  presents: string,
+): string | undefined {
+  const filing = lastFiling(turns);
+  if (!filing) return undefined;
+  return filing.check?.designChosen ? DESIGN_CHOSEN_BY_BUILDER : presents;
 }
 
 function holdReply(
@@ -286,7 +304,8 @@ function holdReply(
  * after the last file change; with fileBeforeDone, it waits for a filed document; each held reply
  * is answered in the same conversation with what is missing, and a fourth fails the run as not
  * finished. A reply after a Builder tool refused the agent's access is never held. With presents, a
- * reply after filed work ends with it, so the coordinator reads which screen shows the work. Every inference retries an
+ * reply after filed work ends with it, so the coordinator reads which screen shows the work, or with
+ * a line that Builder chose the design itself when approvals are handed over. Every inference retries an
  * overloaded, slow or rate-limited model a few times; once that gives up, the run fails, or with
  * replyOnFailure the error is the reply. The model-specific numbers come from the agent
  * definition's director config.
@@ -415,15 +434,16 @@ export const compactingDirector = (packageName: string) =>
           }
           const decided = await inner.decide(event, state, caps);
           const list = Array.isArray(decided) ? decided : [decided];
-          const { presents } = config;
-          const actions =
-            presents && !unfiled(state.turns)
-              ? list.map((action) =>
-                  action.type === "reply"
-                    ? caps.reply(`${action.content}\n\n${presents}`)
-                    : action,
-                )
-              : decided;
+          const ending = config.presents
+            ? filedEnding(state.turns, config.presents)
+            : undefined;
+          const actions = ending
+            ? list.map((action) =>
+                action.type === "reply"
+                  ? caps.reply(`${action.content}\n\n${ending}`)
+                  : action,
+              )
+            : decided;
           const input = state.lastCycleUsage
             ? state.lastCycleUsage.input + state.lastCycleUsage.cacheRead
             : 0;

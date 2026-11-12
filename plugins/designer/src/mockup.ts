@@ -23,7 +23,7 @@ export default defineWorkflow({
       },
       concepts: {
         about:
-          "The looks to design, each a label and a direction naming its colours, type and radii: one for a single suggested design, several clearly different ones to explore, at most five at a time. A concept designed before gets a fresh designer that changes its latest draft.",
+          "The looks to design, each a label and a direction naming its colours, type and radii: one for a single suggested design, several clearly different ones to explore, at most five at a time. When the person has handed approvals over to Builder, give exactly one: that one design is made and used without asking them. A concept designed before gets a fresh designer that changes its latest draft.",
       },
     },
   },

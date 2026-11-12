@@ -580,6 +580,7 @@ export function createSidecarCodingTools(policy: {
             const detail: CheckDetail = {
               checkPassed: passed,
               filed: artifact !== undefined,
+              designChosen: artifact?.designChosen === true,
             };
             return { callId: call.id, content: checklist, detail };
           }

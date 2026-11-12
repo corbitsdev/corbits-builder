@@ -308,7 +308,13 @@ export const ArtifactRef = type({
 });
 export type ArtifactRef = typeof ArtifactRef.infer;
 
-export const ArtifactReceipt = type({ "+": "reject", artifact: ArtifactRef });
+// designChosen: the filed design option is the project's design, chosen by Builder because the
+// person handed approvals over.
+export const ArtifactReceipt = type({
+  "+": "reject",
+  artifact: ArtifactRef,
+  "designChosen?": "true",
+});
 
 // A snapshot names the version that now holds the workspace; filed is false when the latest
 // version already held exactly these files.

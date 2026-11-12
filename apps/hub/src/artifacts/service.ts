@@ -748,6 +748,82 @@ export function createArtifactService(
     return draft;
   }
 
+  // A chosen design option's content is filed as the design, approved by actor as the chooser: the
+  // person, or the designer's run when approvals are left to Builder. The other concepts' designers
+  // would file options nobody compares and hold their slots, so they stop.
+  async function fileChosenDesign(
+    actor: Actor,
+    projectId: string,
+    concept: string,
+    content: string,
+  ): Promise<ArtifactRef> {
+    const [existing] = (
+      await listArtifacts(db, actor.tenantId, { kind: "design", limit: 1 })
+    ).rows;
+    const written = existing
+      ? await writeArtifactVersion(db, {
+          scope: actor,
+          artifactId: existing.id,
+          title: concept,
+          content,
+        })
+      : await db.transaction((tx) =>
+          createArtifact(tx, {
+            scope: actor,
+            ownerPrincipalId: actor.principalId,
+            kind: "design",
+            title: concept,
+            content,
+            source: { origin: "manual" },
+          }),
+        );
+    const design: ArtifactRef = {
+      artifactId: "artifactId" in written ? written.artifactId : written.id,
+      kind: "design",
+      version: written.version,
+      sha256: written.contentSha256!,
+    };
+    await rawDB.insert(artifactImportApproval).values({
+      ...design,
+      tenantId: actor.tenantId,
+      projectId,
+      principalId: actor.principalId,
+    });
+    const others = await rawDB
+      .select({ runId: designConcept.runId })
+      .from(designConcept)
+      .innerJoin(workflowRun, eq(workflowRun.id, designConcept.runId))
+      .where(
+        and(
+          eq(designConcept.tenantId, actor.tenantId),
+          eq(designConcept.projectId, projectId),
+          ne(designConcept.label, concept),
+          inArray(workflowRun.status, ["deployed", "running"]),
+        ),
+      );
+    await Promise.allSettled(
+      others.map(({ runId }) =>
+        cancelRun?.(actor.tenantId, runId, "design_concept_not_picked"),
+      ),
+    );
+    return design;
+  }
+
+  // With approvals left to Builder nobody is asked to pick a design, so a concept's option is chosen
+  // as it is filed, its designer's run recorded as the chooser. Whether the write was so chosen.
+  async function chosenByBuilder(
+    actor: Actor,
+    projectId: string,
+    written: { kind: string; content: string },
+    concept: string | undefined,
+  ) {
+    if (written.kind !== "design_option" || !concept) return false;
+    const settings = await loadSettings(rawDB, actor.tenantId, projectId);
+    if (!agentDecidesApprovals(settings.preferences.value)) return false;
+    await fileChosenDesign(actor, projectId, concept, written.content);
+    return true;
+  }
+
   // The concept of the designer run writing as actor: a workflow principal's ref is its run.
   async function runConcept(actor: Actor) {
     const [row] = await rawDB
@@ -1821,7 +1897,7 @@ export function createArtifactService(
       actor: Actor,
       projectId: string,
       raw: unknown,
-    ): Promise<{ artifact: ArtifactRef }> {
+    ): Promise<{ artifact: ArtifactRef; designChosen?: true }> {
       const input = ArtifactKindWrite(raw);
       if (input instanceof type.errors)
         throw new ProjectError(400, "invalid_artifact_write", {
@@ -1924,7 +2000,8 @@ export function createArtifactService(
               };
       // A design option belongs to the concept its writing designer run was deployed for, and the
       // concept's label is its title, so each concept keeps one option of its own. A concept's
-      // designer never files the design itself: the person's pick among the options does.
+      // designer never files the design itself: the person's pick among the options does, or Builder's
+      // when the person handed approvals over.
       const concept =
         input.kind === "design" || input.kind === "design_option"
           ? await runConcept(actor)
@@ -1965,6 +2042,7 @@ export function createArtifactService(
             },
           };
       }
+      let artifact: ArtifactRef;
       if (existing) {
         const written = await writeArtifactVersion(db, {
           scope: actor,
@@ -1973,34 +2051,36 @@ export function createArtifactService(
           content: input.content,
           ...(metadata ? { metadata } : {}),
         });
-        return {
-          artifact: {
-            artifactId: written.artifactId,
-            kind: input.kind,
-            version: written.version,
-            sha256: written.contentSha256!,
-          },
-        };
-      }
-      const created = await db.transaction((tx) =>
-        createArtifact(tx, {
-          scope: actor,
-          ownerPrincipalId: actor.principalId,
+        artifact = {
+          artifactId: written.artifactId,
           kind: input.kind,
-          title,
-          content: input.content,
-          source: { origin: active?.kind === "user" ? "manual" : "workflow" },
-          ...(metadata ? { metadata } : {}),
-        }),
-      );
-      return {
-        artifact: {
+          version: written.version,
+          sha256: written.contentSha256!,
+        };
+      } else {
+        const created = await db.transaction((tx) =>
+          createArtifact(tx, {
+            scope: actor,
+            ownerPrincipalId: actor.principalId,
+            kind: input.kind,
+            title,
+            content: input.content,
+            source: {
+              origin: active?.kind === "user" ? "manual" : "workflow",
+            },
+            ...(metadata ? { metadata } : {}),
+          }),
+        );
+        artifact = {
           artifactId: created.id,
           kind: created.kind,
           version: created.version,
           sha256: created.contentSha256!,
-        },
-      };
+        };
+      }
+      if (await chosenByBuilder(actor, projectId, input, concept))
+        return { artifact, designChosen: true };
+      return { artifact };
     },
 
     async export(actor: Actor, projectId: string): Promise<ProjectExport> {
@@ -2631,55 +2711,11 @@ export function createArtifactService(
           artifactId: input.artifactId,
           version: input.version,
         });
-      const [existing] = (
-        await listArtifacts(db, actor.tenantId, { kind: "design", limit: 1 })
-      ).rows;
-      const written = existing
-        ? await writeArtifactVersion(db, {
-            scope: actor,
-            artifactId: existing.id,
-            title: stored.title,
-            content: stored.content,
-          })
-        : await db.transaction((tx) =>
-            createArtifact(tx, {
-              scope: actor,
-              ownerPrincipalId: actor.principalId,
-              kind: "design",
-              title: stored.title,
-              content: stored.content,
-              source: { origin: "manual" },
-            }),
-          );
-      const design: ArtifactRef = {
-        artifactId: "artifactId" in written ? written.artifactId : written.id,
-        kind: "design",
-        version: written.version,
-        sha256: written.contentSha256!,
-      };
-      await rawDB.insert(artifactImportApproval).values({
-        ...design,
-        tenantId: actor.tenantId,
+      const design = await fileChosenDesign(
+        actor,
         projectId,
-        principalId: actor.principalId,
-      });
-      // The other concepts' designers would file options nobody compares and hold their slots.
-      const others = await rawDB
-        .select({ runId: designConcept.runId })
-        .from(designConcept)
-        .innerJoin(workflowRun, eq(workflowRun.id, designConcept.runId))
-        .where(
-          and(
-            eq(designConcept.tenantId, actor.tenantId),
-            eq(designConcept.projectId, projectId),
-            ne(designConcept.label, stored.title),
-            inArray(workflowRun.status, ["deployed", "running"]),
-          ),
-        );
-      await Promise.allSettled(
-        others.map(({ runId }) =>
-          cancelRun?.(actor.tenantId, runId, "design_concept_not_picked"),
-        ),
+        stored.title,
+        stored.content,
       );
       const coordinator = await activeCoordinator(projectId);
       if (coordinator)

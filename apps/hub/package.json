@@ -22,6 +22,7 @@
     "./skills/tools": "./src/skills/tools.ts",
     "./workflows/compaction": "./src/workflows/compaction.ts",
     "./workflows/director": "./src/workflows/director.ts",
+    "./workflows/http-json": "./src/workflows/http-json.ts",
     "./workflows/install-for-tenant": "./src/workflows/install-for-tenant.ts",
     "./workflows/package-name": "./src/workflows/package-name.ts",
     "./workflows/role-inference": "./src/workflows/role-inference.ts",

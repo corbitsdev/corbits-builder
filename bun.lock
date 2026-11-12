@@ -220,6 +220,10 @@
       "name": "@corbits/zip",
       "version": "0.1.0-rc.2",
     },
+    "plugins/add-feature": {
+      "name": "@corbits-builder/add-feature",
+      "version": "0.1.0-rc.3",
+    },
     "plugins/build-web-app": {
       "name": "@corbits-builder/build-web-app",
       "version": "0.1.0-rc.3",
@@ -228,7 +232,13 @@
       "name": "@corbits-builder/cloudflare",
       "version": "0.1.0-rc.3",
       "dependencies": {
+        "@corbits-builder/hub": "workspace:*",
         "@corbits-builder/plugin": "workspace:*",
+        "@corbits-builder/plugin-host": "workspace:*",
+        "@corbits-builder/schemas": "workspace:*",
+        "@intx/types": "workspace:*",
+        "@intx/workflow": "workspace:*",
+        "arktype": "catalog:",
       },
     },
     "plugins/coder": {
@@ -874,6 +884,8 @@
     "@better-auth/utils": ["@better-auth/utils@0.5.1", "", { "dependencies": { "@noble/hashes": "^2.0.1" } }, "sha512-WETqw5vQ52uQ/xwWR4E8rTgT6fDEr/wnS+otDNkBCa/69281FCF32OKDdQUcahMCnjsvqXBNiEvAQHFB0EVRRg=="],
 
     "@better-fetch/fetch": ["@better-fetch/fetch@1.3.3", "", {}, "sha512-U6SlDt/GUWtK2JAxS/NhdoYTEim+EL1G5byz2TUj83KjLZBUpYzb5SmX0aXaCnbGkAjFKnV/o/0+cyXMbEcqqg=="],
+
+    "@corbits-builder/add-feature": ["@corbits-builder/add-feature@workspace:plugins/add-feature"],
 
     "@corbits-builder/build-web-app": ["@corbits-builder/build-web-app@workspace:plugins/build-web-app"],
 

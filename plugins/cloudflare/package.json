@@ -7,7 +7,13 @@
   "author": "Sawyer Cutler <sawyer@dirtroad.dev>",
   "type": "module",
   "dependencies": {
-    "@corbits-builder/plugin": "workspace:*"
+    "@corbits-builder/hub": "workspace:*",
+    "@corbits-builder/plugin": "workspace:*",
+    "@corbits-builder/plugin-host": "workspace:*",
+    "@corbits-builder/schemas": "workspace:*",
+    "@intx/types": "workspace:*",
+    "@intx/workflow": "workspace:*",
+    "arktype": "catalog:"
   },
   "builder": {
     "handle": "cloudflare",

@@ -245,7 +245,8 @@ export const RouteBuilder = Common.merge({
   })
     .array()
     .atLeastLength(1),
-  outcome: "string > 0",
+  // The fact that ends the route. A route with none is followed until the coordinator leaves it.
+  "outcome?": "string > 0",
 });
 export type RouteBuilder = typeof RouteBuilder.infer;
 

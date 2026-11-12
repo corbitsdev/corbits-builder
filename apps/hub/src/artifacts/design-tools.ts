@@ -10,6 +10,7 @@ import {
   registerDesignFiler,
   type FiledDesignArtifact,
 } from "../builds/design-check.ts";
+import type { CheckDetail } from "../builds/check-detail.ts";
 import { withoutUnusedStarterHome } from "./design-draft.ts";
 import { withDesignTokens } from "./design-tokens.ts";
 import { DESIGN_STYLES } from "./design-tweaks.ts";
@@ -120,7 +121,7 @@ export function createDesignTools() {
           "/projects/" +
           encodeURIComponent(scope.projectId);
         const title = doc.match(/^#\s+(.+)$/m)?.[1]?.trim() ?? "Design";
-        const { artifact } = HubArtifactReceipt.assert(
+        const receipt = HubArtifactReceipt.assert(
           await workflowHttpJson({
             capabilities: env.capabilities,
             handle: HUB_CREDENTIAL_HANDLE,
@@ -134,6 +135,10 @@ export function createDesignTools() {
             signal,
           }),
         );
+        const artifact = {
+          ...receipt.artifact,
+          designChosen: receipt.designChosen === true,
+        };
         lastFiled = { content, artifact };
         return artifact;
       };
@@ -182,7 +187,16 @@ export function createDesignTools() {
               };
             }
             const artifact = checked.artifact ?? (await fileOption(signal));
-            return { callId: call.id, content: JSON.stringify(artifact) };
+            const detail: CheckDetail = {
+              checkPassed: true,
+              filed: true,
+              designChosen: artifact.designChosen,
+            };
+            return {
+              callId: call.id,
+              content: JSON.stringify(artifact),
+              detail,
+            };
           } catch (error) {
             if (
               error instanceof Error &&

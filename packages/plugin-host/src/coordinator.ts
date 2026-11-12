@@ -360,7 +360,8 @@ async function projectState(catalog: Catalog, project: Project) {
     .filter(isRoute)
     .filter(
       ({ builder }) =>
-        handles.includes(builder.handle) && !facts.has(builder.outcome),
+        handles.includes(builder.handle) &&
+        (builder.outcome === undefined || !facts.has(builder.outcome)),
     );
   if (routes.length !== handles.length)
     await project.setRoutes(routes.map(({ builder }) => builder.handle));
@@ -664,7 +665,7 @@ async function followRoute(
     if (following) await project.setRoutes(others);
     return { content: routeLeft(handle, following) };
   }
-  if (state.facts.has(outcome))
+  if (outcome !== undefined && state.facts.has(outcome))
     return { content: routeDone(handle, outcome, catalog.factText) };
   if (!following) await project.setRoutes([...others, handle]);
   return {

@@ -23,6 +23,12 @@ const nothingStarted = (notStarted: Started["notStarted"]) =>
       notStarted.map(({ reason }) => reason).join(" "),
   );
 
+// With approvals handed over nobody compares concepts: the hub uses the one design filed.
+const oneConceptOnly = (count: number) =>
+  new Refusal(
+    `No designer was started: approvals are handed over to Builder, so one design is made and used without asking the person, and this call named ${count} concepts. Call again with one concept.`,
+  );
+
 // One designer for each concept, from whatever documents the project has filed. A concept whose
 // designer is still at work is refused at once; the others start.
 export default defineStarter(
@@ -38,6 +44,8 @@ export default defineStarter(
     project: Project,
     skills,
   ) => {
+    if (concepts.length > 1 && !(await project.state()).asksApprovals)
+      throw oneConceptOnly(concepts.length);
     const busy = new Map(
       (await project.working()).flatMap((run) =>
         run.role === "designer" && run.concept
