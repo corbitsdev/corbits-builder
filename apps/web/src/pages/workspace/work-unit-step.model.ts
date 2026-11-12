@@ -1,5 +1,5 @@
 /**
- * Where one hand-off stands in the room, as the row its work reads as: its status from native run
+ * Where one hand-off stands in the room, as the step its work reads as: its status from native run
  * records and filed documents, and its steps from the run's own stream.
  */
 import type { PartTool } from "@corbits/react-ui";
@@ -10,8 +10,8 @@ import {
   type Dispatch,
   type DispatchRoom,
 } from "./dispatch-card.tsx";
-import type { WorkUnitStanding } from "./work-unit-message.view.tsx";
-import { workSubject, type WorkUnit } from "./work-unit.ts";
+import type { WorkUnitStanding } from "./work-unit-step.view.tsx";
+import { workPhrase, type WorkUnit } from "./work-unit.ts";
 
 const text = wording.dispatch;
 
@@ -33,7 +33,7 @@ const settled = (step: PartTool): PartTool =>
       }
     : step;
 
-/** A piece of work as its row shows it, from what the room knows of its hand-off. */
+/** A piece of work as its step shows it, from what the room knows of its hand-off. */
 export function workUnitStanding(
   unit: WorkUnit,
   room: DispatchRoom,
@@ -51,15 +51,16 @@ export function workUnitStanding(
   return {
     unitKey: unit.key,
     status,
-    role: dispatch.role,
-    subject: workSubject(dispatch, status) ?? text.unnamed,
+    label: text.row(
+      wording.activity.role[dispatch.role],
+      workPhrase(dispatch, status),
+    ),
     steps: done || status.state === "failed" ? steps.map(settled) : steps,
     preview:
       status.state === "working" && dispatch.runId !== undefined
         ? room.previews?.get(dispatch.runId)
         : undefined,
     report: done ? unit.updates.at(-1)?.text : undefined,
-    approvals: unit.approvals,
     onOpenDocument: room.onOpenDocument,
     watch:
       onWatch === undefined || watchLabel === undefined

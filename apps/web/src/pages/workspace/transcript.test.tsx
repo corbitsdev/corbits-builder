@@ -19,7 +19,7 @@ import {
   waitingOnPerson,
 } from "./live-run.ts";
 import { RoomThread } from "./transcript.tsx";
-import { workUnitStanding } from "./work-unit-message.model.ts";
+import { workUnitStanding } from "./work-unit-step.model.ts";
 import type { WorkUnit } from "./work-unit.ts";
 
 function findElement(
@@ -311,12 +311,14 @@ describe("conversation transcript", () => {
     );
   });
 
-  test("a specialist's report joins its hand-off as one message and a long run of lone ones folds", () => {
+  test("a started specialist is a step of the coordinator's list and a long run of lone reports folds", () => {
     const summary =
       "Wrote the limits for your weather app, covering offline use and units.";
     const html = renderToStaticMarkup(
       <RoomThread
         standing={standing}
+        // The writer is still at work, so the coordinator's list stays open on it.
+        live={() => true}
         turns={[
           { role: "person", text: "Start", at: 1 },
           {
@@ -370,8 +372,15 @@ describe("conversation transcript", () => {
         ]}
       />,
     );
-    expect(html).toContain('data-item-id="work:call-1"');
-    expect(html).toContain(`>${wording.activity.role.writer}<`);
+    expect(html).not.toContain('data-item-id="work:');
+    const row = wording.dispatch.row(
+      wording.activity.role.writer,
+      "Writing the constraints",
+    );
+    expect(html).toContain(row);
+    expect(html.indexOf('data-slot="activity-content"')).toBeLessThan(
+      html.indexOf(row),
+    );
     expect(html).not.toContain('data-slot="update-names">Constraints<');
     expect(html).toContain(wording.updatesFolded(4));
     expect(html).toContain(`data-slot="update-names">${wording.buildSubject}<`);

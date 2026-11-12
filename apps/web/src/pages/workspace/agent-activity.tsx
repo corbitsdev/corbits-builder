@@ -47,6 +47,8 @@ const SUBJECT_KEYS = [
   "query",
   "kind",
   "packages",
+  // The coordinator's runs and plan calls are told apart by what they do.
+  "operation",
 ];
 
 /** What a call's arguments say it touches, as the hub's activity reads it. */

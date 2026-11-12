@@ -285,7 +285,11 @@ export function dispatchStatus(
 ): DispatchStatus {
   if (dispatch.filed === true) {
     const filed = target(dispatch, room.artifacts);
-    if (filed !== undefined) return readyOf(filed);
+    // A run named by what it filed may still be at work on its report.
+    const atWork = room.inFlight.some(
+      (run) => run.runId === dispatch.runId && run.state !== "waiting",
+    );
+    if (filed !== undefined && !atWork) return readyOf(filed);
   }
   if (dispatch.pending) return { state: "starting" };
   const seen = room.seen.get(dispatch.key);
@@ -341,17 +345,6 @@ export function dispatchLive(dispatch: Dispatch, room: DispatchRoom): boolean {
   return state === "starting" || state === "working" || state === "approval";
 }
 
-/** What a hand-off works on: "Constraints", "Quiet concept", "the app". */
-export function subjectOf(dispatch: Dispatch): string | undefined {
-  if (dispatch.concept !== undefined)
-    return wording.design.conceptTitle(dispatch.concept);
-  if (dispatch.kind !== undefined)
-    return (
-      wording.documentTab[dispatch.kind] ?? dispatch.kind.replaceAll("_", " ")
-    );
-  return text.subject[dispatch.role];
-}
-
 // Who files each thing that is not a document; the coordinator files the brief, so it has no card.
 const FILED_BY: Record<string, Role> = {
   design: "designer",
@@ -361,28 +354,52 @@ const FILED_BY: Record<string, Role> = {
 };
 
 /**
- * Each filed thing no hand-off or run card in view covers, such as one filed in an earlier session,
- * as a finished hand-off placed when its current version was filed. A card covers what its action
- * files, and what it already reports as its result, as a run named by no call does.
+ * The runs with no hand-off in view, and each filed thing no hand-off or run covers. A writer run
+ * named by no call is named by the document it filed after it started, so that document is its
+ * result rather than a second row. Anything else, such as one filed in an earlier session, stands as
+ * a finished hand-off placed when its current version was filed. A card covers what its action
+ * files, and what it already reports as its result.
  */
 export function filedDispatches(
   room: DispatchRoom,
-  carded: readonly Dispatch[],
+  handoffs: readonly Dispatch[],
+  runs: readonly PlacedDispatch[],
 ): PlacedDispatch[] {
+  const started = runs.toSorted((left, right) => left.at - right.at);
+  const named = new Map<string, Dispatch>();
   const covered = new Set(
-    carded.flatMap((dispatch) => {
-      const kind =
-        dispatch.concept === undefined
-          ? targetKind(dispatch)
-          : `concept:${dispatch.concept}`;
-      const status = dispatchStatus(dispatch, room);
-      return [kind, status.state === "ready" ? status.kind : undefined];
-    }),
+    [...handoffs, ...started.map(({ dispatch }) => dispatch)].flatMap(
+      (dispatch) => {
+        const kind =
+          dispatch.concept === undefined
+            ? targetKind(dispatch)
+            : `concept:${dispatch.concept}`;
+        const status = dispatchStatus(dispatch, room);
+        return [kind, status.state === "ready" ? status.kind : undefined];
+      },
+    ),
   );
-  return room.artifacts.flatMap((item) => {
+  const filed = room.artifacts.flatMap((item): PlacedDispatch[] => {
     const writes = isDocumentKind(item.kind) && item.kind !== "problem_brief";
     const role = writes ? "writer" : FILED_BY[item.kind];
     if (role === undefined || covered.has(openedKind(item))) return [];
+    const writer = writes
+      ? started.findLast(
+          ({ at, dispatch }) =>
+            dispatch.role === "writer" &&
+            dispatch.kind === undefined &&
+            !named.has(dispatch.key) &&
+            at <= Date.parse(item.filedAt),
+        )
+      : undefined;
+    if (writer !== undefined) {
+      named.set(writer.dispatch.key, {
+        ...writer.dispatch,
+        kind: item.kind,
+        filed: true,
+      });
+      return [];
+    }
     const key = `filed:${item.artifactId}`;
     return [
       {
@@ -400,6 +417,13 @@ export function filedDispatches(
       },
     ];
   });
+  return [
+    ...started.map(({ at, dispatch }) => ({
+      at,
+      dispatch: named.get(dispatch.key) ?? dispatch,
+    })),
+    ...filed,
+  ];
 }
 
 /** A run at work the conversation has no hand-off for, such as one started before a reload. */

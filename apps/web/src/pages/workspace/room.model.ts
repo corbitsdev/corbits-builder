@@ -129,7 +129,7 @@ import {
 } from "./load-room.ts";
 import { designDraftFiled, useDesignDraft } from "./design-preview.model.ts";
 import { useUserManual } from "./user-manual.model.ts";
-import { workUnitStanding } from "./work-unit-message.model.ts";
+import { workUnitStanding } from "./work-unit-step.model.ts";
 import { conceptOfTab, conceptTab } from "./design-concept.ts";
 import { designConcepts, DESIGN_OPTION } from "./design-concepts.model.ts";
 import { useLiveAppPresence } from "./live-app.model.ts";
@@ -1397,13 +1397,7 @@ export function useRoom({
       dispatch: runDispatch(run),
     }));
   for (const { dispatch } of unseenRuns) noteDispatch(dispatchRoom, dispatch);
-  const cards = [
-    ...unseenRuns,
-    ...filedDispatches(dispatchRoom, [
-      ...dispatches,
-      ...unseenRuns.map(({ dispatch }) => dispatch),
-    ]),
-  ];
+  const cards = filedDispatches(dispatchRoom, dispatches, unseenRuns);
   const design = artifacts.find((item) => item.kind === "design");
   // The design a review screen shows: the live draft while a designer works, else the newest design
   // option, else the filed design. Only an option is approved there: the hub records the choice

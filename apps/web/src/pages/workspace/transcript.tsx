@@ -65,12 +65,18 @@ import {
   FoldedUpdatesView,
   SpecialistUpdatesView,
 } from "./specialist-updates.view.tsx";
-import { isHandoff, partsDispatches, type Dispatch } from "./dispatch-card.tsx";
+import {
+  dispatchesOf,
+  isHandoff,
+  partsDispatches,
+  type Dispatch,
+} from "./dispatch-card.tsx";
 import { workUnits, type WorkUnit } from "./work-unit.ts";
 import {
-  WorkUnitMessageView,
+  STEP_STATUS,
+  WorkUnitStepView,
   type WorkUnitStanding,
-} from "./work-unit-message.view.tsx";
+} from "./work-unit-step.view.tsx";
 import type { CallResult } from "./live-run.ts";
 import { QuestionsCard, type QuestionsState } from "./questions-card.tsx";
 import {
@@ -206,11 +212,11 @@ type Placed =
   | { kind: "questions"; at: number; question: ParkedQuestion };
 
 /**
- * The person's and the coordinator's turns in order, with each hand-off and
- * what came of it as one piece of work, and the updates and approvals no
- * hand-off answers, placed between them by time. A piece of work stands at its
- * latest report or approval. Consecutive updates fold into groups. The live
- * turn stays last.
+ * The person's and the coordinator's turns in order, with the approvals,
+ * questions and updates no hand-off answers placed between them by time. Each
+ * hand-off and what came of it is one piece of work, a step of the call that
+ * made it; a run with no call in view stands at its latest report. Consecutive
+ * updates fold into groups. The live turn stays last.
  */
 function threadItems(
   turns: readonly TranscriptTurn[],
@@ -219,22 +225,20 @@ function threadItems(
   runs: readonly PlacedDispatch[],
   questions: readonly ParkedQuestion[],
   results: ReadonlyMap<string, CallResult>,
-): ThreadItem[] {
-  const handoffs = [
-    ...turns.flatMap((turn) =>
-      turn.role === "assistant"
-        ? partsDispatches(visibleTurnParts(turn), results).map(
-            (dispatch): PlacedDispatch => ({
-              at: turn.at < 0 ? Number.POSITIVE_INFINITY : turn.at,
-              dispatch,
-            }),
-          )
-        : [],
-    ),
-    ...runs,
-  ];
+): { items: ThreadItem[]; specialists: Map<string, WorkUnit[]> } {
+  const handoffs = turns.flatMap((turn) =>
+    turn.role === "assistant"
+      ? partsDispatches(visibleTurnParts(turn), results).map(
+          (dispatch): PlacedDispatch => ({
+            at: turn.at < 0 ? Number.POSITIVE_INFINITY : turn.at,
+            dispatch,
+          }),
+        )
+      : [],
+  );
+  const handed = new Set(handoffs.map(({ dispatch }) => dispatch.key));
   const work = workUnits(
-    handoffs,
+    [...handoffs, ...runs],
     distinctUpdates([
       ...threadUpdates,
       ...turns.flatMap((turn) => {
@@ -243,24 +247,32 @@ function threadItems(
         return update === null ? [] : [update];
       }),
     ]),
-    approvals,
   );
+  // A started run is a step of the call that started it; a run with no call in view, its own.
+  const specialists = new Map<string, WorkUnit[]>();
+  for (const unit of work.units) {
+    const same = specialists.get(unit.dispatch.call);
+    if (same === undefined) specialists.set(unit.dispatch.call, [unit]);
+    else same.push(unit);
+  }
   const placed: Placed[] = [
     ...work.updates.map((update): Placed => ({
       kind: "update",
       at: update.at,
       update,
     })),
-    ...work.approvals.map((approval): Placed => ({
+    ...approvals.map((approval): Placed => ({
       kind: "approval",
       at: approval.at ?? Number.POSITIVE_INFINITY,
       approval,
     })),
-    ...work.units.map((unit): Placed => ({
-      kind: "unit",
-      at: unit.at,
-      unit,
-    })),
+    ...work.units
+      .filter((unit) => !handed.has(unit.key))
+      .map((unit): Placed => ({
+        kind: "unit",
+        at: unit.at,
+        unit,
+      })),
     ...questions.map((question): Placed => ({
       kind: "questions",
       at: question.at,
@@ -299,7 +311,7 @@ function threadItems(
     if (entry !== undefined && entry.kind !== "update")
       items.push(placedItem(entry));
   }
-  return items;
+  return { items, specialists };
 }
 
 function placedItem(entry: Exclude<Placed, { kind: "update" }>): Card {
@@ -370,9 +382,15 @@ function liveLast(
 
 const FOLD_AFTER = 3;
 
-type ShownCard = Card | { kind: "folded"; groups: UpdateGroup[] };
+type ShownCard =
+  | Exclude<Card, { kind: "unit" }>
+  | { kind: "folded"; groups: UpdateGroup[] }
+  | { kind: "units"; units: WorkUnit[] };
 
-/** More than three report rows in a row fold under one line, so decisions and hand-offs stay in view. */
+/**
+ * More than three report rows in a row fold under one line, so decisions and hand-offs stay in view,
+ * and runs with no call in view next to each other are one list of steps.
+ */
 function foldUpdates(cards: readonly Card[]): ShownCard[] {
   const shown: ShownCard[] = [];
   let run: UpdateGroup[] = [];
@@ -382,19 +400,23 @@ function foldUpdates(cards: readonly Card[]): ShownCard[] {
     run = [];
   };
   for (const card of cards) {
-    if (card.kind === "updates") run.push(card.group);
-    else {
-      flush();
-      shown.push(card);
+    if (card.kind === "updates") {
+      run.push(card.group);
+      continue;
     }
+    flush();
+    const last = shown.at(-1);
+    if (card.kind !== "unit") shown.push(card);
+    else if (last?.kind === "units") last.units.push(card.unit);
+    else shown.push({ kind: "units", units: [card.unit] });
   }
   flush();
   return shown;
 }
 
 /**
- * A turn's parts with its hand-offs and questions taken out: each becomes its own card after the
- * turn, and a hand-off the hub refused shows nowhere.
+ * A turn's parts in words, with its questions taken out to their own cards. A hand-off stays as the
+ * step its specialist shows in, and one the hub refused, which started nothing, shows nowhere.
  */
 function readableParts(
   parts: readonly ConversationPart[],
@@ -402,8 +424,10 @@ function readableParts(
 ): readonly ConversationPart[] {
   return parts.flatMap((part): ConversationPart[] => {
     if (part.kind !== "tool-trace") return [part];
-    if (isHandoff(part) || part.name === QUESTION_TOOL_NAME) return [];
-    return [readableTool(part, results.get(part.toolCallId))];
+    const result = results.get(part.toolCallId);
+    if (part.name === QUESTION_TOOL_NAME) return [];
+    if (isHandoff(part) && dispatchesOf(part, result).length === 0) return [];
+    return [readableTool(part, result)];
   });
 }
 
@@ -435,17 +459,19 @@ function renderStep(step: ActivityStep): ReactNode {
 }
 
 /**
- * A run of the coordinator's or a specialist's work: its steps open while the work is in progress and
- * fold to one line once it ends, unless the person opened or closed it.
+ * A run of the coordinator's work, the specialists it started among its steps: open while the work is
+ * in progress and folded to one line once it ends, unless the person opened or closed it.
  */
 function Run({
   steps,
   live,
   inProgress,
+  renderStep,
 }: {
   steps: readonly ActivityStep[];
   live: boolean;
   inProgress: boolean;
+  renderStep: (step: ActivityStep) => ReactNode;
 }) {
   const [chosen, setChosen] = useState<boolean>();
   const label = live ? undefined : runLabel(steps);
@@ -563,11 +589,11 @@ export type RoomThreadContent = {
   approvals?: readonly DocumentApproval[];
   /** Native results of the coordinator's calls this session saw, by call id. */
   results?: ReadonlyMap<string, CallResult>;
-  /** Runs at work with no hand-off in view, placed at their start. */
+  /** Runs and filed things with no hand-off in view, placed at their start or filing. */
   runs?: readonly PlacedDispatch[];
   /** The hand-off's run is still starting or at work. */
   live?: (dispatch: Dispatch) => boolean;
-  /** A piece of work as its message shows it, by where its hand-off stands. */
+  /** A piece of work as its step shows it, by where its hand-off stands. */
   standing: (unit: WorkUnit) => WorkUnitStanding;
   onDecide?: (decision: {
     approvalId: string;
@@ -645,24 +671,73 @@ export function RoomThread({
       />
     </MessageFold>
   );
+  const { items, specialists } = threadItems(
+    turns,
+    updates,
+    approvals,
+    runs,
+    questions,
+    results,
+  );
+  // A specialist's own steps, one level in, as its row opens onto them.
+  const specialistRun = (steps: readonly PartTool[]) => (
+    <Activity steps={steps.map((step) => readableTool(step, undefined))} open>
+      <ActivityContent renderStep={renderStep} />
+    </Activity>
+  );
+  // A step that started specialists is each of them; any other is the call itself.
+  const renderWork = (step: ActivityStep): ReactNode => {
+    const units =
+      step.kind === "tool-trace" ? specialists.get(step.toolCallId) : undefined;
+    if (units === undefined) return renderStep(step);
+    return units.map((unit) => (
+      <WorkUnitStepView
+        key={unit.key}
+        {...standing(unit)}
+        run={specialistRun}
+      />
+    ));
+  };
+  // A list stays open while a specialist in it still works.
+  const working = (steps: readonly ActivityStep[]) =>
+    steps.some(
+      (step) =>
+        step.kind === "tool-trace" &&
+        (specialists.get(step.toolCallId) ?? []).some((unit) =>
+          live(unit.dispatch),
+        ),
+    );
   // Under a coordinator header, a coordinator's approval card does not repeat the name.
   const renderCard = (card: ShownCard, position: string, headed: boolean) => {
-    if (card.kind === "unit")
+    if (card.kind === "units") {
+      const steps = card.units.map((unit): PartTool => {
+        const { label, status } = standing(unit);
+        return {
+          kind: "tool-trace",
+          toolCallId: unit.dispatch.call,
+          name: label,
+          status: STEP_STATUS[status.state],
+        };
+      });
       return (
-        <WorkUnitMessageView
-          key={`unit:${card.unit.key}`}
-          {...standing(card.unit)}
-          // Its header says where it stands, so the line counts its steps rather than naming the newest.
-          run={(steps, inProgress) => (
+        <ConversationItem
+          key={`work:${card.units[0]?.key ?? position}`}
+          itemId={`work:${card.units[0]?.key ?? position}`}
+        >
+          <Message from="agent">
+            {headed ? null : (
+              <MessageHeader name={wording.speaker.coordinator} />
+            )}
             <Run
-              steps={steps.map((step) => readableTool(step, undefined))}
+              steps={steps}
               live={false}
-              inProgress={inProgress}
+              inProgress={working(steps)}
+              renderStep={renderWork}
             />
-          )}
-          decision={decisionCard}
-        />
+          </Message>
+        </ConversationItem>
       );
+    }
     if (card.kind === "folded")
       return (
         <FoldedUpdatesView
@@ -822,12 +897,13 @@ export function RoomThread({
           parts={streaming ? visible : settledParts(visible)}
           streaming={streaming}
           renderText={renderTurnText}
-          renderStep={renderStep}
+          renderStep={renderWork}
           renderActivity={(steps, state) => (
             <Run
               steps={steps}
               live={state.streaming && runLive}
-              inProgress={streaming}
+              inProgress={streaming || working(steps)}
+              renderStep={renderWork}
             />
           )}
         />
@@ -842,9 +918,7 @@ export function RoomThread({
       </Message>
     </ConversationItem>
   );
-  const sections = threadSections(
-    threadItems(turns, updates, approvals, runs, questions, results),
-  );
+  const sections = threadSections(items);
   // The coordinator's turn shows one live line, at the bottom: its last run when its words end the
   // conversation, else the thinking line. A run above a card is not the bottom.
   const last = sections.at(-1);

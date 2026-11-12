@@ -1,34 +1,38 @@
-.result {
+/* The row, with what the person can open beside it on the same line. */
+.header {
   display: flex;
   min-width: 0;
   align-items: center;
   gap: var(--space-2);
-  margin: 0;
-  font-size: 0.875rem;
 }
 
-.result[data-state="failed"] {
-  overflow: hidden;
-  white-space: nowrap;
-  text-overflow: ellipsis;
-  color: var(--wb-destructive);
-}
-
-.ready {
+.row {
+  flex: 1 1 0%;
   min-width: 0;
-  overflow: hidden;
-  white-space: nowrap;
-  text-overflow: ellipsis;
 }
 
-.open {
+.action {
   flex: none;
   height: auto;
   padding: 0;
 }
 
-.time {
-  font-variant-numeric: tabular-nums;
+/* Opened, the specialist's own work sits one level in, under its row's words. */
+.work {
+  display: flex;
+  min-width: 0;
+  flex-direction: column;
+  gap: var(--space-1);
+  padding-inline-start: var(--space-4);
+}
+
+.failed {
+  margin: 0;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+  color: var(--wb-destructive);
+  font-size: 0.875rem;
 }
 
 /* What the run is writing as it writes it: about eight lines, the newest kept in view. */
@@ -42,16 +46,6 @@
   font-size: 0.8125rem;
   line-height: 1.5;
   overflow-wrap: anywhere;
-}
-
-/* Where the work stands, as quiet as the role beside it; a run that did not finish reads as such. */
-.state {
-  color: var(--wb-muted-foreground);
-  font-size: 0.75rem;
-}
-
-.state[data-state="failed"] {
-  color: var(--wb-destructive);
 }
 
 /* A finished specialist's last report, two lines until opened. */

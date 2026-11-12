@@ -2,7 +2,7 @@ import type { Meta, StoryObj } from "@storybook/react-vite";
 import type { AskedQuestion } from "@intx/types/runtime-core";
 import { fn } from "storybook/test";
 import { RoomThread, type TranscriptTurn } from "./transcript.tsx";
-import workUnit from "./work-unit-message.stories.tsx";
+import workUnit from "./work-unit-step.stories.tsx";
 
 const BRIEF = { id: "problem_brief", title: "Problem brief" };
 

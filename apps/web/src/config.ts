@@ -25,6 +25,25 @@ export const HUB_NOTE_LEAD = "Hub note, not from the person: ";
 const megabytes = (bytes: number) =>
   `${String(Math.floor(bytes / 1_048_576))} MB`;
 
+// The coordinator's runs and plan calls, by operation; a call still streaming names none yet.
+const RUNS_OPERATION: Record<string, string> = {
+  list: "checking on the work in progress",
+  wait: "waiting for the work to finish",
+  stop: "stopping the work",
+};
+const PLAN_OPERATION: Record<string, string> = {
+  show: "looking at the plan",
+  set: "updating the plan",
+  add: "updating the plan",
+  remove: "updating the plan",
+};
+
+/** What a started specialist does, while it works and once done; `thing` names its document or concept. */
+type WorkPhrase = {
+  readonly working: (thing?: string) => string;
+  readonly done: (thing?: string) => string;
+};
+
 export const wording = {
   builtBy: { label: "Built by Corbits.dev", href: "https://corbits.dev" },
   flourish: {
@@ -589,6 +608,10 @@ export const wording = {
       discover: () => "looking up what it can do",
       execute: () => "handing work to a specialist",
       question: () => "showing you a screen",
+      runs: (operation?: string) =>
+        RUNS_OPERATION[operation ?? ""] ?? "checking on the work in progress",
+      plan: (operation?: string) =>
+        PLAN_OPERATION[operation ?? ""] ?? "working on the plan",
     } as Record<string, (subject?: string) => string>,
     /** What a call returned, in plain words, for a tool whose raw result means nothing to a person. */
     toolResult: {
@@ -712,21 +735,55 @@ export const wording = {
   },
   /** A coordinator hand-off and what came of it, as one message in the conversation. */
   dispatch: {
-    /** What a call works on when its arguments name no document or concept, by the role it starts. */
-    subject: {
-      coder: "the code",
-      designer: "the design",
-      presenter: "the presentation",
-    } as Record<string, string>,
-    /** What a hand-off works on when nothing names it yet. */
-    unnamed: "the task",
-    /** The run is held on a request only the person can approve, such as a package install. */
-    approval: "Paused for your approval",
-    starting: "Starting…",
-    /** The document the run filed, under its steps: "App v2". */
-    ready: (document: string, version: number) =>
-      `${document} v${String(version)}`,
-    open: "Open",
+    /** A specialist's row: who, and what it does. */
+    row: (role: string, doing: string) => `${role} · ${doing}`,
+    /** What a started specialist does, by plugin and action. */
+    action: {
+      "coder build": {
+        working: () => "Building the code",
+        done: () => "Built the code",
+      },
+      "coder change": {
+        working: () => "Changing the code",
+        done: () => "Changed the code",
+      },
+      "writer write-requirements": {
+        working: () => "Writing the requirements",
+        done: () => "Wrote the requirements",
+      },
+      "writer write-build-plan": {
+        working: () => "Writing the build plan",
+        done: () => "Wrote the build plan",
+      },
+      "writer write": {
+        working: (thing) => (thing ? `Writing the ${thing}` : "Writing"),
+        done: (thing) => (thing ? `Wrote the ${thing}` : "Wrote it"),
+      },
+      "writer review": {
+        working: (thing) => (thing ? `Reviewing the ${thing}` : "Reviewing"),
+        done: (thing) => (thing ? `Reviewed the ${thing}` : "Reviewed it"),
+      },
+      "designer mockup": {
+        working: (thing) =>
+          thing ? `Making the ${thing} mockup` : "Making a mockup",
+        done: (thing) => (thing ? `Made the ${thing} mockup` : "Made a mockup"),
+      },
+    } as Record<string, WorkPhrase>,
+    /** What a specialist does when no known action names it. */
+    working: "Working",
+    done: "Done",
+    /** Where the work stands, at the end of its row. */
+    status: {
+      pending: "Starting…",
+      running: "Working",
+      "output-available": "Done",
+      error: "Did not finish",
+      "approval-requested": "Paused for your approval",
+      "output-denied": "Not done",
+    },
+    /** Opens the document the run filed: "App v2 · Open". */
+    open: (document: string, version: number) =>
+      `${document} v${String(version)} · Open`,
     /** Opens the project view on what a working specialist is making, as it makes it. */
     watchDraft: "Watch the draft",
     watchApp: "Watch it run",

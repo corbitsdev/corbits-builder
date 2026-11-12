@@ -70,14 +70,6 @@ test("a hand-off and its reports join as one piece of work", () => {
       ...concepts.map((dispatch) => ({ at: 400, dispatch })),
     ],
     [report, designerReport],
-    [
-      {
-        approvalId: "approval-packages",
-        toolName: "install_packages",
-        packages: ["zod"],
-        at: 600,
-      },
-    ],
   );
 
   const [unit] = work.units;
@@ -88,9 +80,6 @@ test("a hand-off and its reports join as one piece of work", () => {
   ]);
   expect(unit?.updates).toEqual([report]);
   expect(unit?.at).toBe(200);
-  // Two designers started together and no coder was handed work, so these answer no one hand-off.
+  // Two designers started together, so this answers no one hand-off.
   expect(work.updates).toEqual([designerReport]);
-  expect(work.approvals.map((item) => item.approvalId)).toEqual([
-    "approval-packages",
-  ]);
 });
