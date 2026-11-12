@@ -50,6 +50,7 @@ import { toast } from "sonner";
 import { answerQuestion, sendMessage } from "../../api/conversation.ts";
 import type { QuestionAnswer } from "@intx/types/signals";
 import { subscribeWorkflowRun } from "../../api/run-stream.ts";
+import { useRunPreviews } from "./run-preview.ts";
 import { refusalBody } from "../../api/transport.ts";
 import {
   acceptedMaterials,
@@ -178,6 +179,8 @@ const BIND_POLL_MS = 1_000;
 const BIND_WAIT_MS = 15_000;
 // After a run closes, the mirror's commit can trail its last frame.
 const SETTLE_RELOAD_MS = [1_000, 3_000, 7_000, 15_000];
+// Specialist runs whose streams the room holds open at once.
+const STREAMED_RUNS = 6;
 
 function acceptedMaterialsQuery(projectId: string) {
   return queryOptions({
@@ -1338,12 +1341,22 @@ export function useRoom({
     ),
   );
   const inFlight = snapshot.inFlight;
+  // Each run at work streams what it is producing into its card; past a handful, the newest only.
+  const previews = useRunPreviews(
+    runTenantId,
+    inFlight
+      .filter((run) => run.state === "working")
+      .toSorted((a, b) => Date.parse(b.startedAt) - Date.parse(a.startedAt))
+      .slice(0, STREAMED_RUNS)
+      .map((run) => run.runId),
+  );
   const dispatchRoom: DispatchRoom = {
     artifacts: snapshot.artifacts,
     inFlight,
     failed: snapshot.failed,
     seen: dispatchSeen.current,
     activity: agents,
+    previews,
     onOpenDocument: (kind) => {
       // A coder files the app's source, which is read as the running app.
       if (kind === "app") return openProject(LIVE_TAB);

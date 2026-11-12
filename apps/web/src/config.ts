@@ -413,11 +413,14 @@ export const wording = {
     noCoordinator: "This project has no running coordinator.",
     /** Opens everything the project has, its documents, design and preview, over the conversation. */
     openProject: "Project",
+    /** The project button's hint, saying what it opens. */
+    openProjectHint: "Open the project's documents, design and preview",
     /** Takes the person from the project view back to the conversation. */
     closeProject: "Back to the conversation",
-    /** The plan beside the conversation: its heading, its button once folded away, and its parts. */
+    /** The plan beside the conversation: its heading, the button that shows and hides it, and its parts. */
     plan: {
       title: "Plan",
+      show: "Show the plan",
       hide: "Hide the plan",
       resize: "Resize the plan",
       steps: "Plan steps",
@@ -431,7 +434,20 @@ export const wording = {
       notChanged: "That step could not be changed.",
       /** How far along the plan is, beside its button. */
       progress: (done: number, total: number) =>
-        `${String(done)} of ${String(total)}`,
+        `${String(done)}/${String(total)}`,
+      /** The plan button's name: how far along the plan is, and a step that wants a look. */
+      progressLabel: (
+        done: number,
+        total: number,
+        alert: "failed" | "needs_you" | null,
+      ) =>
+        [
+          `Plan: ${String(done)} of ${String(total)} steps done`,
+          alert === "failed" ? "a step failed" : undefined,
+          alert === "needs_you" ? "a step needs you" : undefined,
+        ]
+          .filter((part) => part !== undefined)
+          .join(", "),
     },
   },
   /** The composer's placeholder when no approval is open. An open approval keeps approval.composerPlaceholder. */
@@ -792,6 +808,16 @@ export const wording = {
     watchApp: "Watch it run",
     /** Names the list of the steps a run took just before its live line. */
     recent: "Recent steps",
+    /** Names what a working run is writing, shown as it streams in. */
+    preview: "What it is writing",
+    /** A working run's model is thinking and has written nothing yet. */
+    thinkingThrough: "Thinking it through",
+    /** Beside a finished card's header, opening the hand-off and every report. */
+    stepsToggle: (count: number) =>
+      count === 1 ? "1 step" : `${String(count)} steps`,
+    /** Shows the rest of a finished specialist's report, and folds it again. */
+    more: "More",
+    less: "Less",
     failed: (reason: string) => `Did not finish: ${reason}`,
     failedUnknown: "the run stopped without a reason",
     refusedUnknown: "the hub refused it",

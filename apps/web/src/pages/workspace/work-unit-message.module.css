@@ -49,3 +49,50 @@
   white-space: nowrap;
   text-overflow: ellipsis;
 }
+
+/* What the run is writing as it writes it: about eight lines, the newest kept in view. */
+.preview {
+  max-height: calc(8 * 1.5 * 0.8125rem + 2 * var(--space-2));
+  overflow-y: auto;
+  padding: var(--space-2) var(--space-3);
+  border: 1px solid var(--wb-border);
+  border-radius: var(--radius-md);
+  background: var(--wb-muted);
+  font-size: 0.8125rem;
+  line-height: 1.5;
+  overflow-wrap: anywhere;
+}
+
+/* The steps toggle sits in the header row, as quiet as the role beside it. */
+.steps {
+  height: auto;
+  padding: 0;
+  font-size: 0.75rem;
+}
+
+/* A finished specialist's last report, two lines until opened. */
+.report {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: var(--space-1);
+  min-width: 0;
+  font-size: 0.875rem;
+  line-height: 1.5;
+}
+
+.reportText {
+  max-height: calc(2 * 1.5em);
+  overflow: hidden;
+  color: var(--wb-muted-foreground);
+}
+
+.reportText[data-open] {
+  max-height: none;
+}
+
+.thinking {
+  margin: 0;
+  color: var(--wb-muted-foreground);
+  font-size: 0.8125rem;
+}

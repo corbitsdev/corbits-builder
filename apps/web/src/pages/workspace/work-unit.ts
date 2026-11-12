@@ -52,9 +52,10 @@ export function workUnits(
   approvals: DocumentApproval[];
 } {
   const placed = [...handoffs].sort((left, right) => left.at - right.at);
-  // A filed thing's card stands for no run, so no report or approval is joined to it by time.
+  // A filed thing's card stands for the run that filed it, placed when it filed: the report that
+  // run mails just after belongs on that card, not as a second row naming the same specialist.
   const started = placed.filter(
-    ({ dispatch }) => dispatch.refused === undefined && dispatch.filed !== true,
+    ({ dispatch }) => dispatch.refused === undefined,
   );
   const latest = (
     at: number,

@@ -10,7 +10,7 @@ import {
   type ReactNode,
   type RefObject,
 } from "react";
-import { Paperclip, Sparkles } from "lucide-react";
+import { FolderOpen, Paperclip, Sparkles } from "lucide-react";
 import {
   Attachment,
   type AttachmentItem,
@@ -226,23 +226,46 @@ export function RoomView({
           <div className={styles.conversation}>
             <div className={styles.top}>
               {nextStep}
-              {projectReady || (plan.length > 0 && !planShown) ? (
-                <div className={styles.projectControl}>
-                  {plan.length === 0 || planShown ? null : (
+              {projectReady || progress !== null ? (
+                <div className={styles.controls}>
+                  {progress === null ? null : (
                     <UiButton
                       type="button"
                       size="sm"
-                      variant="outline"
-                      onClick={() => setPlanShown(true)}
+                      variant={planShown ? "secondary" : "ghost"}
+                      className={styles.control}
+                      aria-pressed={planShown}
+                      aria-label={wording.conversation.plan.progressLabel(
+                        progress.done,
+                        progress.total,
+                        progress.alert,
+                      )}
+                      title={
+                        planShown
+                          ? wording.conversation.plan.hide
+                          : wording.conversation.plan.show
+                      }
+                      onClick={() => setPlanShown(!planShown)}
                     >
-                      {wording.conversation.plan.title}
-                      {progress === null ? null : (
-                        <span className={styles.progress}>
-                          {wording.conversation.plan.progress(
-                            progress.done,
-                            progress.total,
-                          )}
-                        </span>
+                      <span className={styles.label}>
+                        {wording.conversation.plan.title}
+                      </span>
+                      <span className={styles.meter} aria-hidden="true">
+                        {progress.marks.map(({ id, mark }) => (
+                          <span key={id} data-mark={mark} />
+                        ))}
+                      </span>
+                      <span className={styles.count}>
+                        {wording.conversation.plan.progress(
+                          progress.done,
+                          progress.total,
+                        )}
+                      </span>
+                      {progress.alert === null ? null : (
+                        <span
+                          className={styles.alert}
+                          data-mark={progress.alert}
+                        />
                       )}
                     </UiButton>
                   )}
@@ -250,10 +273,16 @@ export function RoomView({
                     <UiButton
                       type="button"
                       size="sm"
-                      variant="outline"
+                      variant="ghost"
+                      className={styles.control}
+                      aria-label={wording.conversation.openProject}
+                      title={wording.conversation.openProjectHint}
                       onClick={() => onProjectOpenChange(true)}
                     >
-                      {wording.conversation.openProject}
+                      <FolderOpen size={16} aria-hidden="true" />
+                      <span className={styles.label}>
+                        {wording.conversation.openProject}
+                      </span>
                     </UiButton>
                   ) : null}
                 </div>

@@ -95,6 +95,8 @@ const args: WorkUnitMessageViewProps = {
   subject: "Constraints",
   doing: "Working on Constraints",
   recent: [],
+  preview: undefined,
+  report: undefined,
   refused: false,
   approvals: [],
   onOpenDocument: fn(),

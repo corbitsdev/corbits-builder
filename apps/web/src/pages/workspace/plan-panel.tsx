@@ -52,12 +52,35 @@ export function usePlanCollapsed(): readonly [
   ];
 }
 
-/** How many of the top-level steps are done, or null while no step says where it stands. */
+/** Where a top-level step stands, as the plan's button marks it. */
+export type PlanMark = "done" | "failed" | "needs_you" | "running" | "open";
+
+function markOf(step: PlanStep): PlanMark {
+  if (
+    step.state === "done" ||
+    step.state === "failed" ||
+    step.state === "needs_you" ||
+    step.state === "running"
+  )
+    return step.state;
+  return "open";
+}
+
+/**
+ * How far along the plan is: a mark per top-level step, how many are done, and the step state
+ * that should draw the person to the plan (a failure before a step waiting on them), or null
+ * while the plan has no steps.
+ */
 export function planProgress(steps: readonly PlanStep[]) {
   if (steps.length === 0) return null;
+  const marks = steps.map((step) => ({ id: step.id, mark: markOf(step) }));
+  const has = (mark: PlanMark) => marks.some((each) => each.mark === mark);
+  const alerts = ["failed", "needs_you"] as const;
   return {
-    done: steps.filter((step) => step.state === "done").length,
+    marks,
+    done: marks.filter((each) => each.mark === "done").length,
     total: steps.length,
+    alert: alerts.find(has) ?? null,
   };
 }
 

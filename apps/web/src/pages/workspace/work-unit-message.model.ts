@@ -70,6 +70,14 @@ export function workUnitStanding(
     subject,
     doing,
     recent,
+    preview:
+      status.state === "working" && dispatch.runId !== undefined
+        ? room.previews?.get(dispatch.runId)
+        : undefined,
+    report:
+      status.state === "ready" || status.state === "finished"
+        ? unit.updates.at(-1)?.text
+        : undefined,
     refused: dispatch.refused !== undefined,
     approvals: unit.approvals,
     onOpenDocument: room.onOpenDocument,

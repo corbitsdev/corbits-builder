@@ -4,7 +4,13 @@
  * where it stands is one line, and each approval for what it made is a
  * ToolApproval in the same message that settles to its one quiet line.
  */
-import { Fragment, type ReactNode } from "react";
+import {
+  Fragment,
+  useLayoutEffect,
+  useRef,
+  useState,
+  type ReactNode,
+} from "react";
 import {
   Activity,
   ActivityContent,
@@ -27,6 +33,7 @@ import { wording } from "../../config.ts";
 import { Markdown } from "@corbits-builder/plugin-ui/markdown";
 import type { Dispatch, DispatchStatus } from "./dispatch-card.tsx";
 import { useElapsedMs } from "./elapsed.tsx";
+import type { RunPreview } from "./run-preview.ts";
 import styles from "./work-unit-message.module.css";
 import type { DocumentApproval } from "./transcript.tsx";
 import { WORK_RESULT_BLOCK } from "./work-unit.ts";
@@ -49,6 +56,10 @@ export type WorkUnitStanding = {
   doing: string;
   /** The steps the run took just before, oldest first, shown under the card while it works. */
   recent: readonly string[];
+  /** What the run is producing right now, from its own stream, while it works and frames arrive. */
+  preview: RunPreview | undefined;
+  /** What the specialist reported last, shown under its result once the work is done. */
+  report: string | undefined;
   /** The hub refused the hand-off. */
   refused: boolean;
   /** The approvals for what the work made. */
@@ -114,6 +125,40 @@ function WorkLine({
   }
 }
 
+// Within this many pixels of the end, the preview follows new text; scrolled further up, it stays put.
+const FOLLOW_PX = 24;
+
+/** What the run is writing as it arrives, about eight lines tall, the newest kept in view. */
+function Preview({ preview }: { preview: RunPreview }) {
+  const box = useRef<HTMLDivElement>(null);
+  const following = useRef(true);
+  const shown = preview.kind === "writing" ? preview.text : "";
+  useLayoutEffect(() => {
+    const element = box.current;
+    if (element !== null && following.current)
+      element.scrollTop = element.scrollHeight;
+  }, [shown]);
+  if (preview.kind === "thinking")
+    return <p className={styles.thinking}>{text.thinkingThrough}</p>;
+  return (
+    <div
+      ref={box}
+      className={styles.preview}
+      role="log"
+      aria-label={text.preview}
+      tabIndex={0}
+      onScroll={(event) => {
+        const element = event.currentTarget;
+        following.current =
+          element.scrollHeight - element.scrollTop - element.clientHeight <
+          FOLLOW_PX;
+      }}
+    >
+      <Markdown source={shown} />
+    </div>
+  );
+}
+
 /**
  * Where the work stands: the steps it just took while it works, then the document it filed, or why
  * it stopped.
@@ -121,11 +166,15 @@ function WorkLine({
 function WorkResult({
   status,
   recent,
+  preview,
+  report,
   onOpen,
   watch,
 }: {
   status: DispatchStatus;
   recent: readonly string[];
+  preview: RunPreview | undefined;
+  report: string | undefined;
   onOpen: ((kind: string) => void) | undefined;
   watch: WorkUnitStanding["watch"];
 }) {
@@ -139,6 +188,7 @@ function WorkResult({
             ))}
           </ul>
         )}
+        {preview === undefined ? null : <Preview preview={preview} />}
         {watch === undefined ? null : (
           <Button
             type="button"
@@ -158,25 +208,64 @@ function WorkResult({
         {text.failed(status.reason)}
       </p>
     );
-  if (status.state !== "ready") return null;
+  const said = report === undefined ? null : <Report source={report} />;
+  if (status.state !== "ready") return said;
   const ready = text.ready(status.title, status.version);
   return (
-    <p className={styles.result}>
-      <span className={styles.ready} title={ready}>
-        {ready}
-      </span>
-      {onOpen === undefined ? null : (
+    <>
+      <p className={styles.result}>
+        <span className={styles.ready} title={ready}>
+          {ready}
+        </span>
+        {onOpen === undefined ? null : (
+          <Button
+            type="button"
+            variant="link"
+            size="sm"
+            className={styles.open}
+            onClick={() => onOpen(status.kind)}
+          >
+            {text.open}
+          </Button>
+        )}
+      </p>
+      {said}
+    </>
+  );
+}
+
+/** The specialist's last report, two lines until the person asks for the rest. */
+function Report({ source }: { source: string }) {
+  const box = useRef<HTMLDivElement>(null);
+  const [open, setOpen] = useState(false);
+  const [clipped, setClipped] = useState(false);
+  useLayoutEffect(() => {
+    const element = box.current;
+    if (element !== null && !open)
+      setClipped(element.scrollHeight > element.clientHeight);
+  }, [source, open]);
+  return (
+    <div className={styles.report}>
+      <div
+        ref={box}
+        className={styles.reportText}
+        data-open={open || undefined}
+      >
+        <Markdown source={source} />
+      </div>
+      {clipped ? (
         <Button
           type="button"
           variant="link"
           size="sm"
           className={styles.open}
-          onClick={() => onOpen(status.kind)}
+          aria-expanded={open}
+          onClick={() => setOpen(!open)}
         >
-          {text.open}
+          {open ? text.less : text.more}
         </Button>
-      )}
-    </p>
+      ) : null}
+    </div>
   );
 }
 
@@ -201,6 +290,8 @@ export function WorkUnitMessageView({
   subject,
   doing,
   recent,
+  preview,
+  report,
   refused,
   approvals,
   onOpenDocument,
@@ -209,15 +300,34 @@ export function WorkUnitMessageView({
   decision,
 }: WorkUnitMessageViewProps) {
   const live = status.state === "starting" || status.state === "working";
+  // Done work reads as one thing: its steps open from the header, not from a line that repeats it.
+  const done = status.state === "ready" || status.state === "finished";
+  const [stepsOpen, setStepsOpen] = useState(false);
   const asked = new Map(
     approvals.map((approval) => [approval.approvalId, approval]),
   );
   const approvalOf = (step: ActivityStep) =>
     step.kind === "tool-trace" ? asked.get(step.toolCallId) : undefined;
+  const stepCount = message.parts.filter(
+    (part) => part.kind === "tool-trace" && !asked.has(part.toolCallId),
+  ).length;
   return (
     <ConversationItem itemId={message.id}>
       <Message from="agent" status={message.status}>
-        <MessageHeader name={message.author.name} role={message.author.role} />
+        <MessageHeader name={message.author.name} role={message.author.role}>
+          {done ? (
+            <Button
+              type="button"
+              variant="link"
+              size="sm"
+              className={styles.steps}
+              aria-expanded={stepsOpen}
+              onClick={() => setStepsOpen(!stepsOpen)}
+            >
+              {text.stepsToggle(stepCount)}
+            </Button>
+          ) : null}
+        </MessageHeader>
         <MessageParts
           parts={message.parts}
           streaming={live}
@@ -233,6 +343,28 @@ export function WorkUnitMessageView({
                   {decision(approval)}
                 </Fragment>
               ));
+            const content = (
+              <ActivityContent
+                renderStep={(step) =>
+                  step.kind === "tool-trace" &&
+                  step.toolCallId !== handoffStep ? (
+                    <ReportStep step={step} />
+                  ) : (
+                    handoff(step)
+                  )
+                }
+              />
+            );
+            if (done)
+              return (
+                <Activity
+                  steps={steps}
+                  open={stepsOpen}
+                  onOpenChange={setStepsOpen}
+                >
+                  {content}
+                </Activity>
+              );
             return (
               <Activity steps={steps} streaming={live}>
                 <ActivityTrigger
@@ -248,16 +380,7 @@ export function WorkUnitMessageView({
                   }
                   labels={wording.activity.trigger}
                 />
-                <ActivityContent
-                  renderStep={(step) =>
-                    step.kind === "tool-trace" &&
-                    step.toolCallId !== handoffStep ? (
-                      <ReportStep step={step} />
-                    ) : (
-                      handoff(step)
-                    )
-                  }
-                />
+                {content}
               </Activity>
             );
           }}
@@ -272,6 +395,8 @@ export function WorkUnitMessageView({
               <WorkResult
                 status={status}
                 recent={recent}
+                preview={preview}
+                report={report}
                 onOpen={onOpenDocument}
                 watch={watch}
               />

@@ -36,7 +36,15 @@ const [coder] = dispatchesOf(
       input: { instruction: "Build it." },
     },
   },
-  { content: JSON.stringify({ runId: "run-coder" }), isError: false },
+  {
+    content: JSON.stringify({
+      started: true,
+      plugin: "coder",
+      action: "build",
+      runs: [{ runId: "run-coder" }],
+    }),
+    isError: false,
+  },
 );
 if (coder === undefined) throw new Error("no dispatch");
 

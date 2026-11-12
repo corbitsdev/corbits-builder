@@ -19,26 +19,100 @@
   background: var(--wb-background);
 }
 
-/* The next-step line with the project control at its end, under one hairline. */
+/* The room's top bar: the next-step line on the left, the plan and project controls on the right,
+   on the page's own background above one full-width hairline. With neither, there is no bar. */
 .top {
   display: flex;
   flex-shrink: 0;
+  align-items: center;
   min-width: 0;
+  min-height: 2.75rem;
+  padding-inline-end: var(--space-2);
+  border-bottom: 1px solid var(--wb-border);
+  background: var(--wb-background);
 }
 
-.top > :not(.projectControl) {
+.top:empty {
+  display: none;
+}
+
+.top > :not(.controls) {
   flex: 1;
   min-width: 0;
 }
 
-.projectControl {
+.controls {
   display: flex;
-  gap: var(--space-2);
   flex: none;
   align-items: center;
+  gap: var(--space-1);
   margin-inline-start: auto;
-  padding: var(--space-1) var(--space-4);
-  border-bottom: 1px solid var(--wb-border);
+}
+
+/* Quiet like the project view's bar: muted until hovered or pressed. */
+.control {
+  color: var(--wb-muted-foreground);
+}
+
+.control:hover,
+.control[aria-pressed="true"] {
+  color: var(--wb-foreground);
+}
+
+/* The plan's progress: a segment per step, done in green, the rest neutral, and a step that
+   failed or waits on the person in its own colour. */
+.meter {
+  display: inline-flex;
+  gap: 2px;
+  width: max-content;
+  max-width: 4rem;
+}
+
+.meter > span,
+.alert {
+  background: var(--wb-border);
+}
+
+.meter > span {
+  flex: 0 1 0.625rem;
+  min-width: 2px;
+  height: 4px;
+  border-radius: 999px;
+}
+
+.meter > span[data-mark="running"] {
+  background: var(--wb-muted-foreground);
+}
+
+.meter > span[data-mark="done"] {
+  background: var(--wb-okay);
+}
+
+.meter > [data-mark="failed"],
+.alert[data-mark="failed"] {
+  background: var(--wb-destructive);
+}
+
+.meter > [data-mark="needs_you"],
+.alert[data-mark="needs_you"] {
+  background: var(--wb-primary);
+}
+
+.count {
+  font-size: 0.75rem;
+  font-variant-numeric: tabular-nums;
+}
+
+.alert {
+  width: 6px;
+  height: 6px;
+  border-radius: 999px;
+}
+
+@media (max-width: 480px) {
+  .label {
+    display: none;
+  }
 }
 
 .conversation {
@@ -157,10 +231,4 @@
   height: auto;
   min-height: 0;
   border-inline-start: 0;
-}
-
-/* How far along the plan is, beside its button. */
-.progress {
-  margin-inline-start: var(--space-2);
-  color: var(--wb-muted-foreground);
 }

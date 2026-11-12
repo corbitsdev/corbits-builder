@@ -14,6 +14,7 @@ import {
 } from "@corbits-builder/schemas/artifact";
 import { wording } from "../../config.ts";
 import type { CallResult } from "./live-run.ts";
+import type { RunPreview } from "./run-preview.ts";
 import type { PlacedDispatch } from "./transcript.tsx";
 
 const text = wording.dispatch;
@@ -155,8 +156,14 @@ export function dispatchesOf(
         return label === undefined ? [] : [{ label, direction }];
       })
     : [];
+  // The hub answers a start with each run it started and each concept it did not, with why.
+  const started = record(output);
+  const list = (value: unknown) =>
+    Array.isArray(value) ? value.map(record) : [];
+  const runs = list(started?.["runs"]);
+  const notStarted = list(started?.["notStarted"]);
   if (concepts.length === 0) {
-    const runId = str(record(output)?.["runId"]);
+    const runId = str(runs[0]?.["runId"]);
     return [
       {
         ...base,
@@ -165,11 +172,13 @@ export function dispatchesOf(
       },
     ];
   }
-  const outcomes = Array.isArray(output) ? output.map(record) : [];
   return concepts.map(({ label: concept, direction }) => {
-    const outcome = outcomes.find((item) => item?.["concept"] === concept);
-    const runId = str(outcome?.["runId"]);
-    const refused = str(outcome?.["error"]);
+    const runId = str(
+      runs.find((item) => item?.["concept"] === concept)?.["runId"],
+    );
+    const refused = str(
+      notStarted.find((item) => item?.["concept"] === concept)?.["reason"],
+    );
     return {
       ...base,
       key: `${part.toolCallId}:${concept}`,
@@ -213,6 +222,8 @@ export type DispatchRoom = {
   >;
   /** The runs mid-turn, with the tool calls and words their own inference events carried; undefined until read. */
   readonly activity: readonly AgentActivity[] | undefined;
+  /** What each streamed run is producing right now, by run id. */
+  readonly previews?: ReadonlyMap<string, RunPreview>;
   readonly onOpenDocument?: (kind: string) => void;
   /** Opens the project view on what a working designer or coder is making. */
   readonly onWatch?: (dispatch: Dispatch) => void;

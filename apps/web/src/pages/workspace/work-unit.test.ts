@@ -16,7 +16,15 @@ test("a hand-off and its reports join as one piece of work", () => {
         input: { kind: "approaches", instruction: "Compare three ways in." },
       },
     },
-    { content: JSON.stringify({ runId: "run-approaches" }), isError: false },
+    {
+      content: JSON.stringify({
+        started: true,
+        plugin: "writer",
+        action: "write",
+        runs: [{ runId: "run-approaches" }],
+      }),
+      isError: false,
+    },
   );
   const concepts = dispatchesOf(
     {
@@ -36,10 +44,15 @@ test("a hand-off and its reports join as one piece of work", () => {
       },
     },
     {
-      content: JSON.stringify([
-        { concept: "Quiet", runId: "run-quiet" },
-        { concept: "Bold", runId: "run-bold" },
-      ]),
+      content: JSON.stringify({
+        started: true,
+        plugin: "designer",
+        action: "mockup",
+        runs: [
+          { concept: "Quiet", runId: "run-quiet" },
+          { concept: "Bold", runId: "run-bold" },
+        ],
+      }),
       isError: false,
     },
   );
