@@ -10,9 +10,9 @@ import {
   type PointerEvent,
 } from "react";
 import { PanelRightClose } from "lucide-react";
-import type { StoredPlanStep } from "@corbits-builder/schemas/project";
+import type { PlanView } from "@corbits-builder/schemas/project";
 import { Button } from "@corbits/react-ui";
-import { Steps } from "@corbits-builder/plugin-ui/steps";
+import { Steps, type StepFields } from "@corbits-builder/plugin-ui/steps";
 import { wording } from "../../config.ts";
 import {
   useStoredPreference,
@@ -26,6 +26,8 @@ const MIN_WIDTH = 280;
 const MAX_WIDTH = 440;
 const DEFAULT_WIDTH = 320;
 const KEY_STEP = 16;
+
+type PlanStep = PlanView["steps"][number];
 
 const clampWidth = (width: number) =>
   Math.min(MAX_WIDTH, Math.max(MIN_WIDTH, Math.round(width)));
@@ -51,37 +53,52 @@ export function usePlanCollapsed(): readonly [
 }
 
 /** How many of the top-level steps are done, or null while no step says where it stands. */
-export function planProgress(steps: readonly StoredPlanStep[]) {
-  const marked = steps.filter((step) => "state" in step);
-  if (marked.length === 0) return null;
+export function planProgress(steps: readonly PlanStep[]) {
+  if (steps.length === 0) return null;
   return {
-    done: steps.filter((step) => "state" in step && step.state === "done")
-      .length,
+    done: steps.filter((step) => step.state === "done").length,
     total: steps.length,
   };
 }
 
-function hasRunningClock(steps: readonly StoredPlanStep[]) {
-  return steps.some(
-    (step) =>
-      ("state" in step && step.state === "running" && "startedAt" in step) ||
-      (step.steps ?? []).some(
-        (child) =>
-          "state" in child && child.state === "running" && "startedAt" in child,
-      ),
+function hasRunningClock(steps: readonly PlanStep[]) {
+  const running = (step: StepFields) =>
+    step.state === "running" && step.startedAt !== undefined;
+  return steps.some((step) =>
+    "steps" in step ? step.steps.some(running) : running(step),
   );
+}
+
+function stepNote(step: StepFields) {
+  const words = wording.conversation.plan;
+  const notes = [
+    step.optional === true ? words.optional : undefined,
+    step.approval === "required" ? words.approvalRequired : undefined,
+    step.approval === "optional" ? words.approvalOffered : undefined,
+  ].filter((note) => note !== undefined);
+  return notes.length === 0 ? undefined : notes.join(" · ");
 }
 
 export function PlanPanel({
   steps,
   drawer,
   onHide,
+  onDecline,
+  onGoAhead,
+  onAskFirst,
 }: {
-  steps: readonly StoredPlanStep[];
+  steps: readonly PlanStep[];
   /** The room is narrow, so the panel lies over the conversation. */
   drawer: boolean;
   onHide: () => void;
+  /** Declines an optional step, or brings a declined one back; resolves once the room has it. */
+  onDecline: (stepId: string, declined: boolean) => Promise<void>;
+  /** Gives the go-ahead on a step the person asked to be consulted on; resolves once the room has it. */
+  onGoAhead: (stepId: string) => Promise<void>;
+  /** Turns "ask me first" on or off for a step; resolves once the room has it. */
+  onAskFirst: (stepId: string, askFirst: boolean) => Promise<void>;
 }) {
+  const [changing, setChanging] = useState<string | null>(null);
   const stored = Number(
     useStoredPreference(WIDTH_KEY, parseWidth, String(DEFAULT_WIDTH)),
   );
@@ -96,6 +113,86 @@ export function PlanPanel({
     const timer = setInterval(() => setNow(Date.now()), 1_000);
     return () => clearInterval(timer);
   }, [ticking]);
+  const change = async (stepId: string, send: () => Promise<void>) => {
+    setChanging(stepId);
+    try {
+      await send();
+    } finally {
+      setChanging(null);
+    }
+  };
+  const stepAction = (step: StepFields) => {
+    const words = wording.conversation.plan;
+    const declined = step.declined !== undefined;
+    const saved = steps
+      .flatMap((each) => ("steps" in each ? each.steps : [each]))
+      .find(({ id }) => id === step.id);
+    const waitingOnGo =
+      saved !== undefined &&
+      "askFirst" in saved &&
+      saved.askFirst &&
+      saved.goAhead === undefined &&
+      step.state === "needs_you";
+    const mayAsk =
+      saved !== undefined &&
+      "askFirst" in saved &&
+      !declined &&
+      step.cancelled === undefined &&
+      (step.state === "waiting" ||
+        step.state === "not_started" ||
+        step.state === "needs_you");
+    const mayDecline =
+      declined ||
+      (step.optional === true &&
+        step.state !== "done" &&
+        step.state !== "running");
+    if (!waitingOnGo && !mayAsk && !mayDecline) return null;
+    return (
+      <>
+        {waitingOnGo ? (
+          <Button
+            type="button"
+            variant="ghost"
+            size="sm"
+            className={styles.action}
+            disabled={changing !== null}
+            onClick={() => void change(step.id, () => onGoAhead(step.id))}
+          >
+            {words.goAhead}
+          </Button>
+        ) : null}
+        {mayAsk ? (
+          <Button
+            type="button"
+            variant="ghost"
+            size="sm"
+            className={styles.action}
+            aria-pressed={saved.askFirst}
+            disabled={changing !== null}
+            onClick={() =>
+              void change(step.id, () => onAskFirst(step.id, !saved.askFirst))
+            }
+          >
+            {words.askFirst}
+          </Button>
+        ) : null}
+        {mayDecline ? (
+          <Button
+            type="button"
+            variant="ghost"
+            size="sm"
+            className={styles.action}
+            disabled={changing !== null}
+            onClick={() =>
+              void change(step.id, () => onDecline(step.id, !declined))
+            }
+          >
+            {declined ? words.restore : words.decline}
+          </Button>
+        ) : null}
+      </>
+    );
+  };
   const dragTo = (event: PointerEvent<HTMLDivElement>) => {
     const panel = panelRef.current;
     if (panel === null) return;
@@ -163,6 +260,8 @@ export function PlanPanel({
           steps={steps}
           label={wording.conversation.plan.steps}
           now={ticking ? now : undefined}
+          note={stepNote}
+          action={stepAction}
         />
       </div>
     </aside>

@@ -309,6 +309,20 @@
       "when": 1794499243968,
       "tag": "0043_project_plan",
       "breakpoints": true
+    },
+    {
+      "idx": 44,
+      "version": "7",
+      "when": 1794503032874,
+      "tag": "0044_run_action_plan_step",
+      "breakpoints": true
+    },
+    {
+      "idx": 45,
+      "version": "7",
+      "when": 1794503670265,
+      "tag": "0045_project_following",
+      "breakpoints": true
     }
   ]
 }

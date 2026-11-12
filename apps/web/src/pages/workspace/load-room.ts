@@ -9,7 +9,7 @@ import { wording } from "../../config.ts";
 import type { QueryClient } from "@tanstack/react-query";
 import type { ProjectArtifact } from "@corbits-builder/client";
 import type { FailedRun, InFlightRun } from "@corbits-builder/schemas/artifact";
-import type { StoredPlanStep } from "@corbits-builder/schemas/project";
+import type { PlanView } from "@corbits-builder/schemas/project";
 import {
   listProjectArtifacts,
   readArtifact,
@@ -40,7 +40,7 @@ export type RoomSnapshot = {
   };
   artifacts: ProjectArtifact[];
   /** The project's plan steps, none while it has no plan. */
-  plan: StoredPlanStep[];
+  plan: PlanView["steps"];
   /** The specialist runs at work, which name the design concept a designer works on. */
   inFlight: InFlightRun[];
   /** Specialist runs Interchange settled as failed, with the error their terminal event carries. */

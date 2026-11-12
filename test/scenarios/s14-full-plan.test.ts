@@ -9,7 +9,7 @@ import {
 } from "./runner.ts";
 
 scenario({
-  name: "s14-full-route",
+  name: "s14-full-plan",
   title:
     "build-web-app on a fresh project: requirements approved, a design chosen, a plan approved, the app built",
   start: { fresh: WEATHER_IDEA },
@@ -17,9 +17,9 @@ scenario({
   specialists: WEATHER_SPECIALISTS,
   person: async (p) => {
     await buildWeather(p);
-    // The route's outcome holds, so the project no longer follows it.
-    const route = await p.call("GET", `${p.path}/routes`);
-    p.note("the routes the project follows at the end", route.body);
+    // What ends the plan holds, so the project is no longer following it.
+    const following = await p.call("GET", `${p.path}/following`);
+    p.note("the plans the project is following at the end", following.body);
     const design = await p.filed("design");
     expect(design.approvedVersion).toBe(design.version);
   },

@@ -81,7 +81,7 @@ import {
   type HostSupplies,
   type ProjectValuesStore,
 } from "./screen-question.tsx";
-import { screenOf } from "./screens.ts";
+import type { ScreenLookup } from "./screens.ts";
 import type { ParkedQuestion } from "@corbits-builder/schemas/conversation";
 import { QUESTION_TOOL_NAME } from "@intx/types/runtime-core";
 import type { QuestionAnswer } from "@intx/types/signals";
@@ -587,6 +587,8 @@ export type RoomThreadContent = {
   questionsDisabled?: boolean;
   /** The project's values a plugin's screen reads and saves. */
   projectValues?: ProjectValuesStore;
+  /** Finds the screen a question names, among the plugins the project uses. */
+  screenOf?: ScreenLookup;
   /** What the interface supplies a plugin's screen beyond its input. */
   screenSupplies?: HostSupplies;
   /** Opens the screen the coordinator placed on the page again, while its question is open. */
@@ -621,6 +623,7 @@ export function RoomThread({
   onAnswerQuestion,
   questionsDisabled = false,
   projectValues,
+  screenOf,
   screenSupplies,
   onOpenPageScreen,
   questionsLayout = "steps",
@@ -672,12 +675,12 @@ export function RoomThread({
                 <MessageHeader name={wording.speaker.coordinator} />
               )}
               {answer === undefined &&
-              screenOf(asked)?.page === true &&
+              screenOf?.(asked)?.page === true &&
               onOpenPageScreen !== undefined ? (
                 <PageScreenCard onOpen={onOpenPageScreen} />
               ) : (
                 <ScreenQuestion
-                  host={screenOf(asked)?.host}
+                  host={screenOf?.(asked)?.host}
                   input={asked.input}
                   projectValues={projectValues}
                   answer={answer}

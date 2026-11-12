@@ -6,10 +6,17 @@ import type {
   InferenceError,
   ReactorAction,
   ReactorDirector,
+  ReactorInboundEvent,
   RetryPolicy,
 } from "@intx/types/runtime";
 import { REPETITION_ABORT } from "../inference/repetition.ts";
-import { readCheckDetail, type CheckDetail } from "../builds/check-detail.ts";
+import {
+  DONE_CHECKS_TOOL,
+  readCheckDetail,
+  readDoneChecks,
+  type CheckDetail,
+  type DoneChecks,
+} from "../builds/check-detail.ts";
 import { accessRefused } from "./http-json.ts";
 import {
   COMPACTOR,
@@ -87,6 +94,24 @@ const FINISH_OR_SAY_WHY = ` Do that, then reply. If it cannot be done, reply say
 // Why a run whose replies were held every time failed: what it did not do, and its last words.
 const notFinished = (reason: string, lastWords: string) =>
   `not_finished: ${MAX_UNCHECKED_REPLIES + 1} replies in a row came before the work was done. ${reason} Its last reply: ${JSON.stringify(lastWords)}`;
+
+// The checks a finished reply waits on: the checks of a plugin that its action's done names.
+type Done = { plugin: string; checks: string[] };
+
+// What a held reply is told of the done checks that failed on the app as saved, with their evidence.
+function failedChecks(
+  done: Done,
+  ran: Extract<DoneChecks, { results: unknown }>,
+): string | undefined {
+  const failed = ran.results.filter(({ result }) => result === "fail");
+  if (failed.length === 0) return undefined;
+  const at = ran.commit === undefined ? "" : ` at commit ${ran.commit}`;
+  const each = failed.map(
+    ({ check, summary, evidence }) =>
+      `${done.plugin} ${check} failed: ${summary}${evidence.length > 0 ? `\nEvidence:\n${evidence.join("\n")}` : ""}`,
+  );
+  return `Builder ran the checks the work must pass on the app as saved${at}, and ${each.join("\n\n")}\n\nFix the app so they pass; they run again on your next reply.`;
+}
 
 const TRANSIENT_ERRORS: ReadonlySet<InferenceError["category"]> = new Set([
   "retryable",
@@ -301,9 +326,11 @@ function holdReply(
  * turn that only repeats one sentence is dropped and sampled again, as is a stream the source adapter
  * cut for repeating one passage. The third such turn in one task fails the run, or with
  * replyOnFailure is the reply. With checkBeforeDone, a final reply waits for a passing check-app
- * after the last file change; with fileBeforeDone, it waits for a filed document; each held reply
- * is answered in the same conversation with what is missing, and a fourth fails the run as not
- * finished. A reply after a Builder tool refused the agent's access is never held. With presents, a
+ * after the last file change; with fileBeforeDone, it waits for a filed document; with done, a reply
+ * those rules let out waits for the hub to run the named checks on the app as saved, and goes out
+ * only when they pass. Each held reply is answered in the same conversation with what is missing,
+ * and a fourth fails the run as not finished; done checks that could not be run twice in a row fail
+ * it too. A reply after a Builder tool refused the agent's access is never held. With presents, a
  * reply after filed work ends with it, so the coordinator reads which screen shows the work, or with
  * a line that Builder chose the design itself when approvals are handed over. Every inference retries an
  * overloaded, slow or rate-limited model a few times; once that gives up, the run fails, or with
@@ -318,6 +345,8 @@ export const compactingDirector = (packageName: string) =>
     checkBeforeDone?: boolean;
     // Whether a final reply waits for a write_artifact that filed the task's document.
     fileBeforeDone?: boolean;
+    // The checks the hub runs on the saved result before a final reply goes out.
+    done?: Done;
     // Whether a runaway or a model failure is the reply rather than a failed run.
     replyOnFailure?: boolean;
     // What a reply after filed work ends with: the screen that shows the work to the person.
@@ -331,17 +360,59 @@ export const compactingDirector = (packageName: string) =>
       compactAt: "0 < number < 1",
       "checkBeforeDone?": "boolean",
       "fileBeforeDone?": "boolean",
+      "done?": {
+        "+": "reject",
+        plugin: "string > 0",
+        checks: type("string > 0").array().atLeastLength(1),
+      },
       "replyOnFailure?": "boolean",
       "presents?": "string | null",
       timeouts: { "+": "reject", "totalTimeoutMs?": "number.integer > 0" },
     }),
     factory: (config, env, agent) => {
-      const inner = defaultDirectorFactory({}, env, agent) as ReactorDirector;
+      // The done checks are the director's own call, never the model's.
+      const offered = agent.toolDefinitions.filter(
+        (tool) => tool.name !== DONE_CHECKS_TOOL,
+      );
+      const inner = defaultDirectorFactory({}, env, {
+        systemPrompt: agent.systemPrompt,
+        toolDefinitions: offered,
+        compactorNames: agent.compactorNames,
+      }) as ReactorDirector;
       const limit = Math.floor(config.contextWindow * config.compactAt);
       let compactedSinceInference = false;
       let emptyTurns = 0;
       let degenerateTurns = 0;
       let uncheckedReplies = 0;
+      // The reply waiting on its done checks, by the call that runs them; the reply they passed; and
+      // how many times in a row they could not be run.
+      let checking:
+        | {
+            callId: string;
+            replied: Extract<ReactorInboundEvent, { type: "inference.done" }>;
+          }
+        | undefined;
+      let checkedTurn: ConversationTurn | undefined;
+      let doneRuns = 0;
+      let unrunChecks = 0;
+      // A held reply is answered in the same conversation with what is missing; the fourth in a row
+      // fails the run as not finished.
+      const hold = (
+        caps: Parameters<ReactorDirector["decide"]>[2],
+        notDone: string,
+        lastWords: string,
+      ) => {
+        uncheckedReplies += 1;
+        if (uncheckedReplies > MAX_UNCHECKED_REPLIES)
+          throw new Error(notFinished(notDone, lastWords));
+        return [
+          caps.checkpoint("reply-before-done"),
+          caps.compact(
+            DROP_DEGENERATE,
+            HELD_REPLY + notDone + FINISH_OR_SAY_WHY,
+          ),
+        ];
+      };
       // A thrown error is the reactor's fatal path (INFERENCE.md "Director Decision Function"): it
       // emits reactor.error and ends the run failed, which reaches the coordinator as a specialist
       // ended notice instead of a reply that reads as the specialist's result.
@@ -356,6 +427,37 @@ export const compactingDirector = (packageName: string) =>
       const director: ReactorDirector = {
         decide: async (event, state, caps) => {
           if (event.type === "message.received") degenerateTurns = 0;
+          const { done } = config;
+          if (
+            done &&
+            event.type === "tool.done" &&
+            event.result.callId === checking?.callId
+          ) {
+            const { replied } = checking;
+            checking = undefined;
+            const lastWords = textOf(replied.turn.content);
+            const ran = readDoneChecks(event.result);
+            const names = done.checks
+              .map((check) => `${done.plugin} ${check}`)
+              .join(", ");
+            if ("unrun" in ran) {
+              unrunChecks += 1;
+              if (unrunChecks > 1)
+                throw new Error(
+                  `not_finished: ${names} could not be run on the app as saved: ${ran.unrun}. Its last reply: ${JSON.stringify(lastWords)}`,
+                );
+              return hold(
+                caps,
+                `Builder could not run ${names} on the app as saved, so the work is not known to be done: ${ran.unrun}.`,
+                lastWords,
+              );
+            }
+            unrunChecks = 0;
+            const failed = failedChecks(done, ran);
+            if (failed) return hold(caps, failed, lastWords);
+            checkedTurn = replied.turn;
+            return director.decide(replied, state, caps);
+          }
           // The source adapter cut a stream that repeated one passage; nothing of the turn was kept.
           if (
             event.type === "inference.error" &&
@@ -368,7 +470,7 @@ export const compactingDirector = (packageName: string) =>
                 caps.checkpoint("repetition-abort"),
                 caps.infer({
                   systemPrompt: agent.systemPrompt,
-                  tools: [...agent.toolDefinitions],
+                  tools: offered,
                   providerOptions: resample(),
                 }),
               ];
@@ -405,17 +507,28 @@ export const compactingDirector = (packageName: string) =>
             const notDone = replying
               ? holdReply(config, state.turns)
               : undefined;
-            if (notDone) {
-              uncheckedReplies += 1;
-              if (uncheckedReplies > MAX_UNCHECKED_REPLIES)
-                throw new Error(
-                  notFinished(notDone, textOf(event.turn.content)),
-                );
+            if (notDone) return hold(caps, notDone, textOf(event.turn.content));
+            // The rules above passed; the hub runs the done checks before the reply goes out.
+            if (
+              replying &&
+              done &&
+              event.turn !== checkedTurn &&
+              !refusedBeforeReply(state.turns)
+            ) {
+              doneRuns += 1;
+              checking = { callId: `done-checks-${doneRuns}`, replied: event };
               return [
-                caps.checkpoint("reply-before-done"),
-                caps.compact(
-                  DROP_DEGENERATE,
-                  HELD_REPLY + notDone + FINISH_OR_SAY_WHY,
+                caps.checkpoint("done-checks"),
+                caps.executeTools(
+                  [
+                    {
+                      id: checking.callId,
+                      name: DONE_CHECKS_TOOL,
+                      arguments: { plugin: done.plugin, checks: done.checks },
+                    },
+                  ],
+                  false,
+                  false,
                 ),
               ];
             }

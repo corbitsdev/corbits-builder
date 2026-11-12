@@ -96,7 +96,7 @@ export const ProjectShipReceipt = type({
 export type ProjectShipReceipt = typeof ProjectShipReceipt.infer;
 
 // The plan the coordinator and the person keep for a project: the plugin actions still to run, in
-// order, each optionally holding one level of child steps.
+// order. A step is either an action step or a group that only holds action steps, one level deep.
 const PlanStepId = type(/^[A-Za-z0-9_-]{1,32}$/);
 const PlanMark = type({ "+": "reject", by: "string > 0", at: "string > 0" });
 const PlanStepBody = type({
@@ -109,18 +109,23 @@ const PlanStepBody = type({
   askFirst: "boolean",
   "goAhead?": PlanMark,
   "cancelled?": PlanMark,
-  // From the journey the step came from: whether the person may decline it, and when it waits for
-  // their go-ahead, as the route plugin's step says; without approval it asks for none.
+  // From the ready-made plan the step came from: whether the person may decline it, and when it
+  // waits for their go-ahead, as that plan's step says; without approval it asks for none.
   "optional?": "boolean",
   "approval?": "'required' | 'optional'",
   // The person said no to an optional step; it stays declined until they restore it.
   "declined?": PlanMark,
 });
 const StoredPlanChild = PlanStepBody.merge({ "+": "reject", id: PlanStepId });
-export const StoredPlanStep = StoredPlanChild.merge({
+export type StoredPlanChild = typeof StoredPlanChild.infer;
+// A group names no action and starts nothing; where it stands is worked out from its steps.
+const StoredPlanGroup = type({
   "+": "reject",
-  "steps?": StoredPlanChild.array(),
+  id: PlanStepId,
+  title: text,
+  steps: StoredPlanChild.array(),
 });
+export const StoredPlanStep = StoredPlanChild.or(StoredPlanGroup);
 export type StoredPlanStep = typeof StoredPlanStep.infer;
 export const StoredPlan = type({
   "+": "reject",
@@ -128,11 +133,13 @@ export const StoredPlan = type({
   updatedAt: "string > 0",
 });
 export type StoredPlan = typeof StoredPlan.infer;
+const PlanStepStateName = type(
+  "'done' | 'failed' | 'running' | 'needs_you' | 'waiting' | 'not_started' | 'skipped' | 'cancelled'",
+);
 // Where a step stands, worked out from the project's records each time the plan is read.
 const PlanStepState = type({
   "+": "reject",
-  state:
-    "'done' | 'failed' | 'running' | 'needs_you' | 'waiting' | 'not_started' | 'skipped' | 'cancelled'",
+  state: PlanStepStateName,
   kind: "'workflow' | 'screen' | 'check'",
   // One plain line: the check's summary, the run's last activity, or why it failed.
   "summary?": "string > 0",
@@ -147,23 +154,31 @@ const PlanStepState = type({
 });
 const PlanViewChild = StoredPlanChild.merge(PlanStepState);
 // The plan as read, each step with where it stands: no steps and no time when none was ever saved.
+const PlanViewGroup = type({
+  "+": "reject",
+  id: PlanStepId,
+  title: text,
+  state: PlanStepStateName,
+  "needs?": "string[]",
+  steps: PlanViewChild.array(),
+});
 export const PlanView = type({
   "+": "reject",
-  steps: PlanViewChild.merge({
-    "+": "reject",
-    "steps?": PlanViewChild.array(),
-  }).array(),
+  steps: PlanViewChild.or(PlanViewGroup).array(),
   updatedAt: "string | null",
 });
 export type PlanView = typeof PlanView.infer;
 // A saved step may leave its id out; the hub assigns one.
-const PlanStepWriteChild = PlanStepBody.merge({
+const PlanChildWrite = PlanStepBody.merge({
   "+": "reject",
   "id?": PlanStepId,
 });
-export const PlanStepWrite = PlanStepWriteChild.merge({
+export type PlanChildWrite = typeof PlanChildWrite.infer;
+export const PlanStepWrite = PlanChildWrite.or({
   "+": "reject",
-  "steps?": PlanStepWriteChild.array(),
+  "id?": PlanStepId,
+  title: text,
+  steps: PlanChildWrite.array(),
 });
 export type PlanStepWrite = typeof PlanStepWrite.infer;
 export const PlanWrite = type({ "+": "reject", steps: PlanStepWrite.array() });

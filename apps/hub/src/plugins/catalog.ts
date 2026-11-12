@@ -17,7 +17,7 @@ import { PREFERENCES } from "../config/preferences.ts";
 import { FACTS } from "./facts.ts";
 
 export {
-  isRoute,
+  isReadyPlan,
   isWorkflowAction,
 } from "@corbits-builder/plugin-host/catalog";
 
@@ -100,7 +100,7 @@ export const WITH_SCREENS = PLUGINS.filter(
 export function presentsFor(workflow: string) {
   const starting = CATALOG.actions
     .filter(isWorkflowAction)
-    .filter(({ builder }) => builder.start.workflow === workflow);
+    .filter((action) => action.workflow === workflow);
   const presents = new Set(starting.map(({ presents }) => presents));
   if (presents.size > 1)
     throw new Error(
@@ -109,8 +109,8 @@ export function presentsFor(workflow: string) {
   return starting[0]?.presents ?? null;
 }
 
-// The routes a project follows, as the hub stores them: route plugins' handles.
-export const ProjectRoutes = type({
+// The ready-made plans a project is following, as the hub stores them: their handles.
+export const ProjectFollowing = type({
   "+": "reject",
-  routes: type("string > 0").array(),
+  following: type("string > 0").array(),
 });

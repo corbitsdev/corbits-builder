@@ -16,7 +16,7 @@ the hub's, and everything it can start is a plugin (`plugins/`):
 - `discover`: finds plugins from the person's wording, with each specialist's
   actions, what each requires and whether the project has it now.
 - `execute`: starts a specialist plugin's action, such as the coder's
-  `change`, or puts the project on a route plugin, such as `build-web-app`.
+  `change`, or has the project follow a ready-made plan, such as `build-web-app`.
 - `question`: opens a screen plugin, such as the writer's `approve`, or asks
   the person plainly. The hub records what a screen's answer approves.
 - `read_artifact`: the document list and each document; it writes none.

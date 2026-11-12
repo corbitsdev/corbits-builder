@@ -104,20 +104,20 @@ test("a workflow action that requires a fact Builder cannot work out, or templat
   ).toContain("polisher polish");
 });
 
-test("a route that names an action that is not installed stops the hub", async () => {
+test("a ready-made plan that names an action that is not installed stops the hub", async () => {
   await expect(
     loadCatalog(
       [
         ...folders.filter(({ folder }) => folder !== "build-web-app"),
         withBuilder("build-web-app", {
           handle: "write-a-novel",
-          runs: "route",
+          runs: "plan",
           groups: ["writing"],
           when: "The person wants a novel.",
           unless: "They want an app.",
           guidance: "./SKILL.md",
           steps: [{ plugin: "writer", action: "write-chapter", requires: [] }],
-          outcome: "app_exists",
+          ends: "app_exists",
         }),
       ],
       HOST,

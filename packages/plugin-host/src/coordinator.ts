@@ -9,7 +9,7 @@ import {
 } from "@corbits-builder/plugin";
 import {
   isCheckAction,
-  isRoute,
+  isReadyPlan,
   isScreenAction,
   isSpecialist,
   isWorkflowAction,
@@ -17,7 +17,7 @@ import {
   type Catalog,
   type CheckAction,
   type Plugin,
-  type RoutePlugin,
+  type ReadyPlanPlugin,
   type ScreenAction,
   type WorkflowAction,
 } from "./catalog.ts";
@@ -37,16 +37,19 @@ import {
   noPluginFound,
   projectValuesText,
   readinessText,
-  routeListing,
-  routeAdvice,
-  routeDone,
-  routeFollowed,
-  routeInputRefused,
-  routeLeft,
-  routeTakesNoAction,
+  readyPlanListing,
+  readyPlanAdvice,
+  readyPlanDone,
+  readyPlanFollowed,
+  readyPlanInputRefused,
+  readyPlanLeft,
+  readyPlanTakesNoAction,
   planLine,
   screenNotExecuted,
+  PLAN_STEP_REMINDER,
+  stepAwaitsGoAhead,
   stepDeclined,
+  stepNotThisAction,
   specialistListing,
   unknownAction,
   unknownPlugin,
@@ -137,7 +140,10 @@ export type CheckRan =
     }
   | { started: true; plugin: string; action: string; checkId: string };
 
-/** A step of the project's plan as the host keeps it: a plugin action with its input. */
+/**
+ * An action step of the project's plan as the host shows it: a plugin action with its input, and
+ * where it stands.
+ */
 type SavedPlanChild = {
   id: string;
   title: string;
@@ -145,18 +151,27 @@ type SavedPlanChild = {
   action: string;
   input: Record<string, unknown>;
   askFirst: boolean;
+  goAhead?: { by: string; at: string };
   optional?: boolean;
   approval?: ApprovalWhen;
   declined?: { by: string; at: string };
+  state: string;
 };
-export type SavedPlanStep = SavedPlanChild & {
-  steps?: readonly SavedPlanChild[];
-};
+/** A step of the plan: an action step, or a group that only holds action steps. */
+export type SavedPlanStep =
+  | SavedPlanChild
+  | { id: string; title: string; steps: readonly SavedPlanChild[] };
 /** A step of the plan as saved: one with no id is new, and the host gives it one. */
-type PlanChildWrite = Omit<SavedPlanChild, "id" | "declined"> & {
+type PlanChildWrite = Omit<SavedPlanChild, "id" | "declined" | "state"> & {
   id?: string;
 };
-export type PlanStepWrite = PlanChildWrite & { steps?: PlanChildWrite[] };
+export type PlanStepWrite =
+  | PlanChildWrite
+  | { id?: string; title: string; steps: PlanChildWrite[] };
+
+// The plan's action steps, those its groups hold among them.
+const actionSteps = (steps: readonly SavedPlanStep[]) =>
+  steps.flatMap((step) => ("steps" in step ? step.steps : [step]));
 
 /** What the coordinator's tools need from the project they act on, which only the host can do. */
 export type Project = {
@@ -173,17 +188,18 @@ export type Project = {
   }>;
   // Runs a check on its checked input against the project as saved.
   check(action: CheckAction, input: unknown): Promise<CheckRan>;
-  // The handles of the routes the project follows.
-  routes(): Promise<readonly string[]>;
-  setRoutes(handles: readonly string[]): Promise<unknown>;
+  // The handles of the ready-made plans the project is following.
+  following(): Promise<readonly string[]>;
+  setFollowing(handles: readonly string[]): Promise<unknown>;
   // Each named project value as stored, null where the project has none yet.
   values(names: readonly string[]): Promise<Readonly<Record<string, unknown>>>;
   // Starts a workflow action on its checked input, its run's assignment ending with values, the
-  // block of project values it reads and writes.
+  // block of project values it reads and writes; each run is recorded as doing the plan step step.
   start(
     action: WorkflowAction,
     input: unknown,
     values: string,
+    step: string | undefined,
   ): Promise<Started>;
   // The runs the coordinator started in the project that are at work or ended lately.
   runs(): Promise<readonly Run[]>;
@@ -252,6 +268,7 @@ export const Execute = type({
   plugin: "string > 0",
   "action?": "string > 0",
   "input?": "object",
+  "step?": "string > 0",
 });
 export const Runs = type({
   "+": "reject",
@@ -259,7 +276,7 @@ export const Runs = type({
   "runIds?": type("string > 0").array().atLeastLength(1),
   "seconds?": "1 <= number.integer <= 120",
 });
-const RouteInput = type({ "+": "reject", "leave?": "true" });
+const ReadyPlanInput = type({ "+": "reject", "leave?": "true" });
 
 const WAIT_SECONDS = 60;
 const WAIT_POLL_MS = 2_000;
@@ -361,21 +378,21 @@ export function checkedDiscover(plugins: readonly Plugin[], raw: unknown) {
   return { input };
 }
 
-// What is true of the project, and the routes it follows. A route whose outcome holds is left, so
-// nothing from it applies after.
+// What is true of the project, and the ready-made plans it is following. A plan whose ending fact
+// holds is left, so nothing from it applies after.
 async function projectState(catalog: Catalog, project: Project) {
   const { facts, personFacts, asksApprovals, checks } = await project.state();
-  const handles = await project.routes();
-  const routes = catalog.plugins
-    .filter(isRoute)
+  const handles = await project.following();
+  const following = catalog.plugins
+    .filter(isReadyPlan)
     .filter(
       ({ builder }) =>
         handles.includes(builder.handle) &&
-        (builder.outcome === undefined || !facts.has(builder.outcome)),
+        (builder.ends === undefined || !facts.has(builder.ends)),
     );
-  if (routes.length !== handles.length)
-    await project.setRoutes(routes.map(({ builder }) => builder.handle));
-  return { facts, personFacts, asksApprovals, checks, routes };
+  if (following.length !== handles.length)
+    await project.setFollowing(following.map(({ builder }) => builder.handle));
+  return { facts, personFacts, asksApprovals, checks, following };
 }
 type ProjectState = Awaited<ReturnType<typeof projectState>>;
 
@@ -390,13 +407,18 @@ export const makersIn = (catalog: Catalog) => (fact: Fact) =>
   makersOf(catalog, fact).map(({ name }) => name);
 
 // Where an action stands: what it lacks of its own requirements, for the input when there is one,
-// and what each route the project follows asks of it as a step. A step's approval holds it back:
+// and what each ready-made plan the project is following asks of it as a step. A step's approval holds it back:
 // one required always, on the person's own go-ahead, so approvals left to Builder do not count for
 // it; one optional only while the person decides approvals. What else the step requires is advice.
 function readiness(
   catalog: Catalog,
   action: Action,
-  { facts, personFacts, asksApprovals, routes }: Omit<ProjectState, "checks">,
+  {
+    facts,
+    personFacts,
+    asksApprovals,
+    following,
+  }: Omit<ProjectState, "checks">,
   input?: unknown,
 ): Readiness {
   const requires = (action.builder.requires ?? []).map((alternative) =>
@@ -404,7 +426,7 @@ function readiness(
   );
   return {
     own: unmet(requires, facts),
-    routes: routes.flatMap(({ builder }) => {
+    plans: following.flatMap(({ builder }) => {
       const step = builder.steps.find(
         (named) =>
           named.plugin === action.plugin && named.action === action.action,
@@ -422,7 +444,7 @@ function readiness(
         ...unapproved.filter((fact) => !goAhead.includes(fact)),
       ];
       if (goAhead.length === 0 && advice.length === 0) return [];
-      return [{ route: builder.handle, goAhead, advice }];
+      return [{ plan: builder.handle, goAhead, advice }];
     }),
   };
 }
@@ -437,15 +459,20 @@ const installedAction = (
     (action) => action.plugin === plugin && action.action === name,
   );
 
-// Each step of a route as if the project followed it, besides the routes it already follows.
-const stepsOf = (catalog: Catalog, route: RoutePlugin, state: ProjectState) =>
-  route.builder.steps.map(({ plugin, action: name, optional }) => {
+// Each step of a ready-made plan as if the project followed it, besides the plans it is already
+// following.
+const stepsOf = (
+  catalog: Catalog,
+  readyPlan: ReadyPlanPlugin,
+  state: ProjectState,
+) =>
+  readyPlan.builder.steps.map(({ plugin, action: name, optional }) => {
     const action = installedAction(catalog, plugin, name);
     if (!action || isScreenAction(action))
-      throw new Error(`${route.builder.handle} names ${plugin} ${name}`);
-    const routes = state.routes.includes(route)
-      ? state.routes
-      : [...state.routes, route];
+      throw new Error(`${readyPlan.builder.handle} names ${plugin} ${name}`);
+    const following = state.following.includes(readyPlan)
+      ? state.following
+      : [...state.following, readyPlan];
     const { facts, personFacts, asksApprovals } = state;
     return {
       name: optional
@@ -456,7 +483,7 @@ const stepsOf = (catalog: Catalog, route: RoutePlugin, state: ProjectState) =>
           facts,
           personFacts,
           asksApprovals,
-          routes,
+          following,
         }),
         catalog.factText,
       ),
@@ -488,11 +515,11 @@ function status(
   plugin: Plugin,
   state: ProjectState,
 ): string[] {
-  if (isRoute(plugin))
+  if (isReadyPlan(plugin))
     return [
-      state.routes.includes(plugin)
+      state.following.includes(plugin)
         ? "This project is following it."
-        : "Start it with execute; the project then follows it, besides any route it follows already.",
+        : "Start it with execute; the project then follows it, besides any ready-made plan it is following already.",
       "Steps:",
       ...stepsOf(catalog, plugin, state).map(
         ({ name, readiness: line }) => `  ${name}: ${line}`,
@@ -523,10 +550,10 @@ function listing(catalog: Catalog, plugin: Plugin, state: ProjectState) {
         now: now(catalog, action, state),
       })),
     );
-  return routeListing(
+  return readyPlanListing(
     handle,
     plugin.description,
-    state.routes.includes(plugin),
+    state.following.includes(plugin),
     stepsOf(catalog, plugin, state),
   );
 }
@@ -564,7 +591,7 @@ export async function discoverFor(
     ...found.map((plugin) => listing(catalog, plugin, state)),
     ...choices,
     projectValuesText(catalog.values, values),
-    planLine(steps.flatMap((step) => [step, ...(step.steps ?? [])])),
+    planLine(actionSteps(steps)),
     DISCOVER_MORE,
   ].join("\n\n");
 }
@@ -590,7 +617,7 @@ export async function screenRefusal(
   const ready = readiness(
     catalog,
     screen,
-    { facts, personFacts, asksApprovals, routes: [] },
+    { facts, personFacts, asksApprovals, following: [] },
     input,
   );
   if (isReady(ready)) return undefined;
@@ -619,12 +646,12 @@ export function planStepRefusal(
       step.plugin,
       catalog.actions.map(({ name }) => name),
     );
-  if (isRoute(plugin)) return routeTakesNoAction(plugin.builder.handle);
+  if (isReadyPlan(plugin)) return readyPlanTakesNoAction(plugin.builder.handle);
   const action = installedAction(catalog, plugin.builder.handle, step.action);
   if (!action)
     return unknownAction(plugin.builder.handle, step.action, plugin.actions);
   if (isScreenAction(action)) return action.refusal(step.input, {});
-  // A journey's step whose input only the work so far can say is held with none, and execute
+  // A ready-made plan's step whose input only the work so far can say is held with none, and execute
   // checks the input it starts on.
   if (isWorkflowAction(action) && isEmpty(step.input)) return undefined;
   const checked = action.check(step.input);
@@ -649,15 +676,16 @@ type PlannedStep = {
  */
 export function planRefusal(
   catalog: Catalog,
-  steps: readonly (PlannedStep & { steps?: readonly PlannedStep[] })[],
+  steps: readonly (PlannedStep | { steps: readonly PlannedStep[] })[],
 ) {
-  const numbered = steps.flatMap((step, at) => [
-    { number: `${at + 1}`, step },
-    ...(step.steps ?? []).map((child, under) => ({
-      number: `${at + 1}.${under + 1}`,
-      step: child,
-    })),
-  ]);
+  const numbered = steps.flatMap((step, at) =>
+    "steps" in step
+      ? step.steps.map((child, under) => ({
+          number: `${at + 1}.${under + 1}`,
+          step: child,
+        }))
+      : [{ number: `${at + 1}`, step }],
+  );
   for (const { number, step } of numbered) {
     const refused = planStepRefusal(catalog, step);
     if (refused !== undefined)
@@ -671,56 +699,59 @@ export function planRefusal(
 
 export type Outcome = { content: string; isError?: true };
 
-async function followRoute(
+async function followReadyPlan(
   catalog: Catalog,
   project: Project,
-  route: RoutePlugin,
+  readyPlan: ReadyPlanPlugin,
   raw: unknown,
   state: ProjectState,
 ): Promise<Outcome> {
-  const { handle, outcome } = route.builder;
-  const input = RouteInput(raw);
+  const { handle, ends } = readyPlan.builder;
+  const input = ReadyPlanInput(raw);
   if (input instanceof type.errors)
-    return { content: routeInputRefused(handle, input.summary), isError: true };
-  const following = state.routes.includes(route);
-  const others = state.routes
-    .filter((other) => other !== route)
+    return {
+      content: readyPlanInputRefused(handle, input.summary),
+      isError: true,
+    };
+  const following = state.following.includes(readyPlan);
+  const others = state.following
+    .filter((other) => other !== readyPlan)
     .map(({ builder }) => builder.handle);
   if (input.leave) {
-    if (following) await project.setRoutes(others);
-    return { content: routeLeft(handle, following) };
+    if (following) await project.setFollowing(others);
+    return { content: readyPlanLeft(handle, following) };
   }
-  if (outcome !== undefined && state.facts.has(outcome))
-    return { content: routeDone(handle, outcome, catalog.factText) };
-  if (!following) await project.setRoutes([...others, handle]);
+  if (ends !== undefined && state.facts.has(ends))
+    return { content: readyPlanDone(handle, ends, catalog.factText) };
+  if (!following) await project.setFollowing([...others, handle]);
   return {
-    content: routeFollowed(
+    content: readyPlanFollowed(
       handle,
       others,
-      route.guidance,
-      stepsOf(catalog, route, state),
+      readyPlan.guidance,
+      stepsOf(catalog, readyPlan, state),
     ),
   };
 }
 
-// The plan step the person declined that this start would do: the same action, making the same
-// facts for its input, as writer write declined for a user manual is not declined for a report.
-function declinedStep(
+// The plan step the person holds back that this start would do, by `held`: the same action, making
+// the same facts for its input, as writer write declined for a user manual is not declined for a
+// report.
+function heldStep(
   action: Action,
   input: unknown,
   plan: { steps: readonly SavedPlanStep[] },
+  held: (step: SavedPlanChild) => boolean,
 ) {
   const returns = action.builder.returns ?? [];
   const making = resolveFacts(returns, input);
-  return plan.steps
-    .flatMap((step) => [step, ...(step.steps ?? [])])
-    .find(
-      (step) =>
-        step.declined !== undefined &&
-        step.plugin === action.plugin &&
-        step.action === action.action &&
-        isDeepStrictEqual(resolveFacts(returns, step.input), making),
-    );
+  return actionSteps(plan.steps).find(
+    (step) =>
+      held(step) &&
+      step.plugin === action.plugin &&
+      step.action === action.action &&
+      isDeepStrictEqual(resolveFacts(returns, step.input), making),
+  );
 }
 
 // What execute takes, with every plugin it can start.
@@ -736,13 +767,34 @@ const executeFields = (catalog: Catalog): Record<string, Field> => ({
   },
   action: {
     about:
-      "The name of the specialist's action to start, as discover lists it; a route takes none.",
+      "The name of the specialist's action to start, as discover lists it; a ready-made plan takes none.",
   },
   input: {
     about:
-      "The input that action's guidance describes; for a route, none to follow it or { leave: true } to leave it.",
+      "The input that action's guidance describes; for a ready-made plan, none to follow it or { leave: true } to stop following it.",
+  },
+  step: {
+    about:
+      "The id of the plan step this start does, as plan names it; it must do this same action.",
   },
 });
+
+// The plan step a start does when the call names none: the one action step not done yet with the
+// same action on the same checked input, as a check record is keyed; none when none or several do.
+function matchingStep(
+  action: WorkflowAction,
+  input: unknown,
+  steps: readonly SavedPlanChild[],
+) {
+  const matching = steps.filter((step) => {
+    if (step.state === "done") return false;
+    if (step.plugin !== action.plugin || step.action !== action.action)
+      return false;
+    const checked = action.check(step.input);
+    return checked.ok && isDeepStrictEqual(checked.input, input);
+  });
+  return matching.length === 1 ? matching[0]?.id : undefined;
+}
 
 /** What execute answers for a workflow action it started. */
 type Result = {
@@ -753,12 +805,12 @@ type Result = {
   notStarted?: Started["notStarted"];
   // The screen actions that can show the finished work, as plugin and action.
   presents?: string[];
-  // What a route the project follows suggests doing first, and why.
+  // What a ready-made plan the project is following suggests doing first, and why.
   advice?: string;
 };
 
 /**
- * Starts a specialist's workflow action, or follows or leaves a route, once its input, what it
+ * Starts a specialist's workflow action, or follows or leaves a ready-made plan, once its input, what it
  * cannot work without and the person's go-ahead hold.
  */
 export async function execute(
@@ -784,18 +836,20 @@ export async function execute(
         ...catalog.actions
           .filter((action) => !isScreenAction(action))
           .map(({ name }) => name),
-        ...catalog.plugins.filter(isRoute).map(({ builder }) => builder.handle),
+        ...catalog.plugins
+          .filter(isReadyPlan)
+          .map(({ builder }) => builder.handle),
       ]),
       isError: true,
     };
-  if (isRoute(plugin)) {
+  if (isReadyPlan(plugin)) {
     if (asked.action !== undefined)
       return {
-        content: routeTakesNoAction(plugin.builder.handle),
+        content: readyPlanTakesNoAction(plugin.builder.handle),
         isError: true,
       };
     const state = await projectState(catalog, project);
-    return followRoute(catalog, project, plugin, asked.input ?? {}, state);
+    return followReadyPlan(catalog, project, plugin, asked.input ?? {}, state);
   }
   const action = installedAction(catalog, plugin.builder.handle, asked.action);
   if (!action)
@@ -812,10 +866,45 @@ export async function execute(
   const state = await projectState(catalog, project);
   const checked = action.check(asked.input ?? {});
   if (!checked.ok) return { content: checked.text, isError: true };
-  const declined = declinedStep(action, checked.input, await project.plan());
+  const plan = await project.plan();
+  const declined = heldStep(
+    action,
+    checked.input,
+    plan,
+    (step) => step.declined !== undefined,
+  );
   if (declined)
     return {
       content: stepDeclined(action.name, declined.title),
+      isError: true,
+    };
+  const asking = heldStep(
+    action,
+    checked.input,
+    plan,
+    (step) => step.askFirst && step.goAhead === undefined,
+  );
+  if (asking)
+    return {
+      content: stepAwaitsGoAhead(action.name, asking.title),
+      isError: true,
+    };
+  const planned = actionSteps(plan.steps);
+  const named = planned.find(({ id }) => id === asked.step);
+  if (
+    asked.step !== undefined &&
+    (named?.plugin !== action.plugin || named.action !== action.action)
+  )
+    return {
+      content: stepNotThisAction(
+        action.name,
+        asked.step,
+        named,
+        planned.filter(
+          (step) =>
+            step.plugin === action.plugin && step.action === action.action,
+        ),
+      ),
       isError: true,
     };
   const ready = readiness(catalog, action, state, checked.input);
@@ -841,7 +930,12 @@ export async function execute(
       ? ""
       : assignedValuesText(catalog.values, await project.values(reads));
   if (writes.length > 0) values += writesText(catalog.values, writes);
-  const started = await project.start(action, checked.input, values);
+  const started = await project.start(
+    action,
+    checked.input,
+    values,
+    asked.step ?? matchingStep(action, checked.input, planned),
+  );
   const result: Result = {
     started: true,
     plugin: action.plugin,
@@ -851,7 +945,11 @@ export async function execute(
   if (started.notStarted.length > 0) result.notStarted = started.notStarted;
   if (presents)
     result.presents = presents.map((name) => `${action.plugin} ${name}`);
-  const advice = routeAdvice(ready.routes, makersIn(catalog), catalog.factText);
+  const advice = readyPlanAdvice(
+    ready.plans,
+    makersIn(catalog),
+    catalog.factText,
+  );
   if (advice !== "") result.advice = advice;
   return { content: JSON.stringify(result) };
 }
@@ -948,11 +1046,12 @@ type PlanChildInput = typeof PlanChildInput.infer;
 export const Plan = type({
   "+": "reject",
   operation: "'show' | 'set' | 'add' | 'remove'",
-  "steps?": PlanChildInput.merge({
+  "steps?": PlanChildInput.or({
     "+": "reject",
-    "steps?": PlanChildInput.array(),
+    title: "string > 0",
+    steps: PlanChildInput.array(),
   }).array(),
-  "route?": "string > 0",
+  "plan?": "string > 0",
   "after?": "string > 0",
   "stepIds?": type("string > 0").array().atLeastLength(1),
 });
@@ -963,7 +1062,7 @@ type Problem = { field: string; problem: string };
 const PLAN_TAKES: Record<PlanCall["operation"], readonly string[]> = {
   show: [],
   set: ["steps"],
-  add: ["steps", "route", "after"],
+  add: ["steps", "plan", "after"],
   remove: ["stepIds"],
 };
 
@@ -973,20 +1072,20 @@ const planFields = (catalog: Catalog): Record<string, Field> => ({
     choices: {
       show: "The plan.",
       set: "Replace the plan with steps; [] empties it.",
-      add: "Add steps, or one journey, at the end or after the step after names.",
+      add: "Add steps, or one ready-made plan, at the end or after the step after names.",
       remove: "Take out each step stepIds names, with the steps it holds.",
     },
   },
   steps: {
     about:
-      "For set and add: each step as { title, plugin, action, input, askFirst?, steps? }: a plugin action as discover lists it, the input its guidance describes, askFirst true when the person wants to be asked before it starts, and the steps it holds, in the same shape but holding none.",
+      "For set and add: each step either an action step { title, plugin, action, input, askFirst? }: a plugin action as discover lists it, the input its guidance describes, askFirst true when the person wants to be asked before it starts; or a group { title, steps } that names no plugin, action or input, starts nothing and holds action steps. A step with both steps and an action is refused.",
   },
-  route: {
+  plan: {
     about:
-      "For add, in place of steps: a journey, by its route's handle, added as one step holding its steps, each saying whether the person may decline it and how its approval is asked for. The project then follows the route, as execute on it does.",
+      "For add, in place of steps: a ready-made plan, by its handle, added as one group holding its steps, each saying whether the person may decline it and how its approval is asked for. The project then follows that plan, as execute on it does.",
     choices: Object.fromEntries(
       catalog.plugins
-        .filter(isRoute)
+        .filter(isReadyPlan)
         .map(({ builder, description }) => [builder.handle, description]),
     ),
   },
@@ -1011,7 +1110,7 @@ const wrongPlanCall = (
 });
 
 // What is wrong with a call before the plan is read: a field its operation does not take, one it
-// needs, or a route the catalog does not have.
+// needs, or a ready-made plan the catalog does not have.
 function planCallProblems(catalog: Catalog, asked: PlanCall) {
   const { operation } = asked;
   const wrong: Problem[] = Object.keys(asked)
@@ -1032,18 +1131,18 @@ function planCallProblems(catalog: Catalog, asked: PlanCall) {
     });
   if (
     operation === "add" &&
-    (asked.steps === undefined) === (asked.route === undefined)
+    (asked.steps === undefined) === (asked.plan === undefined)
   )
     wrong.push({
       field: "steps",
-      problem: "add needs either steps or route, and not both",
+      problem: "add needs either steps or plan, and not both",
     });
-  const route =
-    asked.route === undefined ? undefined : catalog.installed(asked.route);
-  if (asked.route !== undefined && (!route || !isRoute(route)))
+  const named =
+    asked.plan === undefined ? undefined : catalog.installed(asked.plan);
+  if (asked.plan !== undefined && (!named || !isReadyPlan(named)))
     wrong.push({
-      field: "route",
-      problem: `${JSON.stringify(asked.route)} is not an installed route`,
+      field: "plan",
+      problem: `${JSON.stringify(asked.plan)} is not an installed ready-made plan`,
     });
   return wrong;
 }
@@ -1054,7 +1153,7 @@ function planIdProblems(
   saved: readonly SavedPlanStep[],
   adding: readonly PlanStepWrite[],
 ) {
-  const children = saved.flatMap((step) => step.steps ?? []);
+  const children = saved.flatMap((step) => ("steps" in step ? step.steps : []));
   const all = [...saved, ...children];
   const ids = all.map(({ id }) => id);
   const listed =
@@ -1076,7 +1175,7 @@ function planIdProblems(
     });
   if (
     children.some(({ id }) => id === after) &&
-    adding.some(({ steps }) => steps !== undefined)
+    adding.some((step) => "steps" in step)
   )
     wrong.push({
       field: "after",
@@ -1086,7 +1185,7 @@ function planIdProblems(
 }
 
 // A saved step as it is saved again, under its id so the person's marks on it stay, and with what
-// its journey said of it.
+// its ready-made plan said of it.
 function childWrite({
   id,
   title,
@@ -1110,9 +1209,8 @@ function childWrite({
   return written;
 }
 function stepWrite(step: SavedPlanStep): PlanStepWrite {
-  const written: PlanStepWrite = childWrite(step);
-  if (step.steps) written.steps = step.steps.map(childWrite);
-  return written;
+  if (!("steps" in step)) return childWrite(step);
+  return { id: step.id, title: step.title, steps: step.steps.map(childWrite) };
 }
 
 // A step the call names, new to the plan.
@@ -1130,17 +1228,18 @@ const childOf = ({
   askFirst,
 });
 function newStep(
-  step: PlanChildInput & { steps?: PlanChildInput[] },
+  step: PlanChildInput | { title: string; steps: PlanChildInput[] },
 ): PlanStepWrite {
-  const written: PlanStepWrite = childOf(step);
-  if (step.steps) written.steps = step.steps.map(childOf);
-  return written;
+  if (!("steps" in step)) return childOf(step);
+  return { title: step.title, steps: step.steps.map(childOf) };
 }
 
-// A journey as one step holding its steps, each with whether the person may decline it and when it
-// waits for their go-ahead. The step names the last step the person may not decline, whose
-// finished work finishes the journey.
-function routeStep({ builder, description }: RoutePlugin) {
+// A ready-made plan as one group holding its steps, each with whether the person may decline it and
+// when it waits for their go-ahead.
+function readyPlanStep({
+  builder,
+  description,
+}: ReadyPlanPlugin): PlanStepWrite {
   const children = builder.steps.map((step) => {
     const child = childOf({
       title: step.title ?? `${step.plugin} ${step.action}`,
@@ -1152,20 +1251,11 @@ function routeStep({ builder, description }: RoutePlugin) {
     if (step.approval) child.approval = step.approval.when;
     return child;
   });
-  const last =
-    children.findLast(({ optional }) => !optional) ??
-    children[children.length - 1]!;
-  const step: PlanStepWrite = childOf({
-    title: description,
-    plugin: last.plugin,
-    action: last.action,
-    input: last.input,
-  });
-  step.steps = children;
-  return step;
+  return { title: description, steps: children };
 }
 
-// The plan with steps added at its end, or after the step after names, at whichever level it is.
+// The plan with steps added at its end, or after the step after names, at whichever level it is;
+// a group holds no groups, which planIdProblems refuses before this.
 function added(
   plan: PlanStepWrite[],
   adding: readonly PlanStepWrite[],
@@ -1174,19 +1264,20 @@ function added(
   if (after === undefined) return [...plan, ...adding];
   const at = plan.findIndex(({ id }) => id === after);
   if (at >= 0) return plan.toSpliced(at + 1, 0, ...adding);
+  const held = adding.flatMap((each) => ("steps" in each ? [] : [each]));
   for (const step of plan) {
-    const under = step.steps?.findIndex(({ id }) => id === after) ?? -1;
-    if (step.steps && under >= 0)
-      step.steps = step.steps.toSpliced(under + 1, 0, ...adding);
+    if (!("steps" in step)) continue;
+    const under = step.steps.findIndex(({ id }) => id === after);
+    if (under >= 0) step.steps = step.steps.toSpliced(under + 1, 0, ...held);
   }
   return plan;
 }
 
 // The plan without the steps ids names, nor what they hold.
 function removed(plan: PlanStepWrite[], ids: readonly string[]) {
-  const kept = ({ id }: PlanChildWrite) =>
-    id === undefined || !ids.includes(id);
-  for (const step of plan) if (step.steps) step.steps = step.steps.filter(kept);
+  const kept = ({ id }: PlanStepWrite) => id === undefined || !ids.includes(id);
+  for (const step of plan)
+    if ("steps" in step) step.steps = step.steps.filter(kept);
   return plan.filter(kept);
 }
 
@@ -1206,14 +1297,16 @@ export async function managePlan(
   const wrong = planCallProblems(catalog, asked);
   if (wrong.length > 0) return wrongPlanCall(catalog, wrong);
   if (asked.operation === "show")
-    return { content: JSON.stringify(await project.plan()) };
-  const route =
-    asked.route === undefined ? undefined : catalog.installed(asked.route);
-  const journey = route && isRoute(route) ? route : undefined;
+    return {
+      content: `${JSON.stringify(await project.plan())}\n\n${PLAN_STEP_REMINDER}`,
+    };
+  const named =
+    asked.plan === undefined ? undefined : catalog.installed(asked.plan);
+  const readyPlan = named && isReadyPlan(named) ? named : undefined;
   let steps = (asked.steps ?? []).map(newStep);
   if (asked.operation !== "set") {
     const { steps: saved } = await project.plan();
-    const adding = journey ? [routeStep(journey)] : steps;
+    const adding = readyPlan ? [readyPlanStep(readyPlan)] : steps;
     const wrongIds = planIdProblems(asked, saved, adding);
     if (wrongIds.length > 0) return wrongPlanCall(catalog, wrongIds);
     const current = saved.map(stepWrite);
@@ -1225,14 +1318,14 @@ export async function managePlan(
   const refused = planRefusal(catalog, steps);
   if (refused) return { content: refused.text, isError: true };
   await project.savePlan(steps);
-  const plan = JSON.stringify(await project.plan());
-  if (!journey) return { content: plan };
-  // The project follows the journey it planned, and the coordinator reads its guidance, as
-  // execute on the route gives it.
-  const followed = await followRoute(
+  const plan = `${JSON.stringify(await project.plan())}\n\n${PLAN_STEP_REMINDER}`;
+  if (!readyPlan) return { content: plan };
+  // The project follows the ready-made plan it added, and the coordinator reads its guidance, as
+  // execute on that plan gives it.
+  const followed = await followReadyPlan(
     catalog,
     project,
-    journey,
+    readyPlan,
     {},
     await projectState(catalog, project),
   );

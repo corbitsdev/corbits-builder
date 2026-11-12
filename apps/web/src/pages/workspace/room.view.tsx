@@ -28,7 +28,7 @@ import {
   PromptInputTextarea,
   PromptInputToolbar,
 } from "@corbits/react-ui";
-import type { StoredPlanStep } from "@corbits-builder/schemas/project";
+import type { PlanView } from "@corbits-builder/schemas/project";
 import { wording } from "../../config.ts";
 import { Banner, BannerAction, Fault } from "../../components.jsx";
 import { Composer } from "../../composer.tsx";
@@ -137,7 +137,13 @@ export type RoomContent = {
   };
   dock: RoomDock;
   /** The project's plan, top-level steps first; empty while it has none, and then nothing shows it. */
-  plan: readonly StoredPlanStep[];
+  plan: PlanView["steps"];
+  /** The person declines an optional plan step, or brings back one they declined. */
+  onDeclineStep: (stepId: string, declined: boolean) => Promise<void>;
+  /** The person gives the go-ahead on a step they asked to be consulted on. */
+  onGoAheadStep: (stepId: string) => Promise<void>;
+  /** The person turns "ask me first" on or off for a step that has not started. */
+  onAskFirstStep: (stepId: string, askFirst: boolean) => Promise<void>;
   documentPane: ArtifactPaneContent;
   /** The project view's pane, which takes focus as it opens. */
   paneRef: RefObject<HTMLElement | null>;
@@ -154,6 +160,9 @@ export function RoomView({
   conversation,
   dock,
   plan,
+  onDeclineStep,
+  onGoAheadStep,
+  onAskFirstStep,
   documentPane,
   paneRef,
   nextStep,
@@ -261,6 +270,9 @@ export function RoomView({
             steps={plan}
             drawer={narrow}
             onHide={() => setPlanShown(false)}
+            onDecline={onDeclineStep}
+            onGoAhead={onGoAheadStep}
+            onAskFirst={onAskFirstStep}
           />
         ) : null}
         {projectReady ? (

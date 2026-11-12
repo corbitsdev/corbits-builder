@@ -18,18 +18,22 @@ function contentVersion(base: string, bundle: string): string {
   return `${base}-sha-${createHash("sha256").update(bundle).digest("hex").slice(0, 8)}`;
 }
 
-// Each package is the entry a plugin names for it, else the hub's own under entries/, built on what
-// its role's model binding resolved to.
+// The package entry an agent a plugin declares is built from, with the agent inlined.
+const AGENT_ENTRY = join(import.meta.dir, "agent-package.ts");
+
+// Each package is the entry a plugin names for it, the agent it declares, else the hub's own under
+// entries/, built on what its role's model binding resolved to.
 const PACKAGES = [...WORKFLOW_PACKAGES].map(([name, role]) => {
   const plugin = CATALOG.packages.get(name);
-  return {
-    name,
-    role,
-    entry:
-      plugin === undefined
-        ? join(import.meta.dir, "entries", name + ".ts")
-        : resolve(PLUGINS_FOLDER, plugin.entry),
-  };
+  if (plugin === undefined)
+    return {
+      name,
+      role,
+      entry: join(import.meta.dir, "entries", name + ".ts"),
+    };
+  if ("agent" in plugin)
+    return { name, role, entry: AGENT_ENTRY, agent: plugin.agent };
+  return { name, role, entry: resolve(PLUGINS_FOLDER, plugin.entry) };
 });
 
 export async function buildWorkflowPackages(
@@ -41,15 +45,21 @@ export async function buildWorkflowPackages(
   const output = resolve(destination);
   await mkdir(output, { recursive: true });
   const manifest = [];
-  for (const { name, role, entry } of PACKAGES) {
+  for (const built of PACKAGES) {
+    const { name, role, entry } = built;
     const resolved = inference[role];
     if (!resolved) throw new Error(`role_inference_required:${role}`);
+    const define: Record<string, string> = {
+      "process.env.BUILDER_ROLE_INFERENCE": JSON.stringify(
+        JSON.stringify(resolved),
+      ),
+    };
+    if ("agent" in built)
+      define["process.env.BUILDER_AGENT"] = JSON.stringify(
+        JSON.stringify(built.agent),
+      );
     const result = await Bun.build({
-      define: {
-        "process.env.BUILDER_ROLE_INFERENCE": JSON.stringify(
-          JSON.stringify(resolved),
-        ),
-      },
+      define,
       entrypoints: [entry],
       target: "bun",
       format: "esm",

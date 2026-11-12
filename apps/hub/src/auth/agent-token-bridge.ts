@@ -212,8 +212,8 @@ async function nativeRunIdentity(
 }
 
 // Whether a specialist's run asks for a check of the plugin whose action started it, in the project
-// it was started in: what its workflow's done steps run. The body is read from a copy, so the route
-// still reads it.
+// it was started in: the done checks its director runs before its reply goes out. The body is read
+// from a copy, so the route still reads it.
 async function runsOwnCheck(
   db: ReturnType<typeof createDB>["db"],
   run: { runId: string; tenantId: string },
@@ -463,11 +463,11 @@ export function createAgentTokenBridge(
     const projectRoute =
       suffix !== null &&
       ((c.req.method === "GET" &&
-        /^(|\/audit|\/artifacts(?:\/[^/]+)?|\/values|\/routes|\/plan|\/runs|\/checks)$/.test(
+        /^(|\/audit|\/artifacts(?:\/[^/]+)?|\/values|\/following|\/plan|\/runs|\/checks)$/.test(
           suffix,
         )) ||
         (c.req.method === "POST" &&
-          /^(\/mutations|\/artifacts|\/artifact-approvals|\/run-records|\/routes|\/run-actions|\/check-runs|\/runs\/[^/]+\/stop)$/.test(
+          /^(\/mutations|\/artifacts|\/artifact-approvals|\/run-records|\/following|\/run-actions|\/check-runs|\/runs\/[^/]+\/stop)$/.test(
             suffix,
           )) ||
         (c.req.method === "PUT" && suffix === "/plan"));

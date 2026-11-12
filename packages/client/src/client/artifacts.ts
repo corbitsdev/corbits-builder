@@ -27,6 +27,10 @@ export function buildArtifactsMethods(
   | "exportProjectArchive"
   | "saveDesignTweaks"
   | "projectPlan"
+  | "declinePlanStep"
+  | "restorePlanStep"
+  | "goAheadPlanStep"
+  | "setPlanStepAskFirst"
   | "projectValues"
   | "declaredProjectValues"
   | "saveProjectValues"
@@ -165,6 +169,38 @@ export function buildArtifactsMethods(
     },
     projectPlan(tenantId, projectId, signal) {
       return request(`${projectPath(tenantId, projectId)}/plan`, signal);
+    },
+    declinePlanStep(tenantId, projectId, stepId, signal) {
+      return request(
+        `${projectPath(tenantId, projectId)}/plan/steps/${encodeURIComponent(stepId)}/decline`,
+        signal,
+        {},
+        "POST",
+      );
+    },
+    restorePlanStep(tenantId, projectId, stepId, signal) {
+      return request(
+        `${projectPath(tenantId, projectId)}/plan/steps/${encodeURIComponent(stepId)}/undecline`,
+        signal,
+        {},
+        "POST",
+      );
+    },
+    goAheadPlanStep(tenantId, projectId, stepId, signal) {
+      return request(
+        `${projectPath(tenantId, projectId)}/plan/steps/${encodeURIComponent(stepId)}/go`,
+        signal,
+        {},
+        "POST",
+      );
+    },
+    setPlanStepAskFirst(tenantId, projectId, stepId, askFirst, signal) {
+      return request(
+        `${projectPath(tenantId, projectId)}/plan/steps/${encodeURIComponent(stepId)}/ask-first`,
+        signal,
+        { askFirst },
+        "POST",
+      );
     },
     projectValues(tenantId, projectId, keys, signal) {
       return request(

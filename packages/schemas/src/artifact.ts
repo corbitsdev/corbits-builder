@@ -448,12 +448,14 @@ export const FailedRun = type({
   "error?": { "+": "reject", message: "string", "code?": "string" },
 });
 export type FailedRun = typeof FailedRun.infer;
-// The plugin action the coordinator started a specialist run for, recorded before its assignment.
+// The plugin action the coordinator started a specialist run for, recorded before its assignment,
+// with the id of the plan step it does when the coordinator could tell which.
 export const RunAction = type({
   "+": "reject",
   runId: "string > 0",
   plugin: "string > 0",
   action: "string > 0",
+  "step?": "string > 0",
 });
 // A run the coordinator started in the project, at work or ended lately.
 export const ProjectRun = RunAction.merge({

@@ -60,12 +60,12 @@ scenario({
           `build-web-app: using ${EXPRESS_LABEL} (${EXPRESS})`,
         ),
       ),
-      execute("c_route", "build-web-app", undefined, {}),
+      execute("c_follow", "build-web-app", undefined, {}),
     ),
     // The default build-web-app holds the mockup for the person's approval of the requirements,
     // which are not even written; the express one asks for no go-ahead, so it starts.
     turn(
-      results(ok("c_route", "execute", "write-requirements")),
+      results(ok("c_follow", "execute", "write-requirements")),
       execute("c_mockup", "designer", "mockup", WEATHER_MOCKUP),
     ),
     turn(
@@ -104,7 +104,7 @@ scenario({
       "discover after the selection",
       p.resultOf("c_discover_express").text,
     );
-    p.note("following the route returned", p.resultOf("c_route").text);
+    p.note("following the plan returned", p.resultOf("c_follow").text);
     p.note("the mockup returned", p.resultOf("c_mockup").text);
 
     // The coordinator's own run token, as its tools would send it, cannot switch back.

@@ -18,28 +18,31 @@ const build = {
 };
 
 scenario({
-  name: "s13-route-steering",
+  name: "s13-plan-steering",
   title:
-    "on build-web-app, coder build before a design is chosen is steered, then the route is left",
+    "on build-web-app, coder build before a design is chosen is steered, then the plan is left",
   start: { fresh: "I want an app for booking dog walks. Build it now." },
   expectChange:
-    "routes are to advise instead of refusing; then c_build_on_route starts, or returns its advice as a result that is not an error.",
+    "ready-made plans are to advise instead of refusing; then c_build_on_plan starts, or returns its advice as a result that is not an error.",
   coordinator: [
-    turn(user("dog walks"), execute("c_route", "build-web-app", undefined, {})),
     turn(
-      results(ok("c_route", "execute", "write-requirements")),
-      execute("c_build_on_route", "coder", "build", build),
+      user("dog walks"),
+      execute("c_follow", "build-web-app", undefined, {}),
     ),
     turn(
-      results(refused("c_build_on_route", "execute")),
+      results(ok("c_follow", "execute", "write-requirements")),
+      execute("c_build_on_plan", "coder", "build", build),
+    ),
+    turn(
+      results(refused("c_build_on_plan", "execute")),
       execute("c_leave", "build-web-app", undefined, { leave: true }),
     ),
     turn(
       results(ok("c_leave", "execute")),
-      execute("c_build_off_route", "coder", "build", build),
+      execute("c_build_off_plan", "coder", "build", build),
     ),
     turn(
-      results(ok("c_build_off_route", "execute", '"started":true')),
+      results(ok("c_build_off_plan", "execute", '"started":true')),
       say("A coder is building it."),
     ),
     turn(
@@ -58,10 +61,10 @@ scenario({
   person: async (p) => {
     await p.heard("The coder could not finish the build.");
     for (const id of [
-      "c_route",
-      "c_build_on_route",
+      "c_follow",
+      "c_build_on_plan",
       "c_leave",
-      "c_build_off_route",
+      "c_build_off_plan",
     ])
       p.note(`${id} returned`, p.resultOf(id).text);
   },

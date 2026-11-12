@@ -23,7 +23,7 @@ the unacceptable ones, using these move names:
   closing reply that holds a question mark.
 - `execute:<plugin>.<action>`: started that plugin action with `execute`,
   such as `execute:coder.change` to have a coder change the app, and
-  `execute:<plugin>` for a route.
+  `execute:<plugin>` for a ready-made plan.
 - `read`: read the project's documents or design with `read_artifact`.
 - `reply`: a closing reply that neither asks nor acts.
 

@@ -55,6 +55,10 @@ import {
   acceptedMaterials,
   approveDocument,
   attachMaterials,
+  declinePlanStep,
+  goAheadPlanStep,
+  restorePlanStep,
+  setPlanStepAskFirst,
   removeMaterial,
   readArtifact,
   readProjectValues,
@@ -159,7 +163,7 @@ import type {
   ReviewedDesign,
   ScreenQuestionProps,
 } from "./screen-question.tsx";
-import { screenOf } from "./screens.ts";
+import { screensFor, selectionNames } from "./screens.ts";
 
 // The stream says when the room moved. This read covers what it cannot see,
 // such as a coordinator run replaced while its old stream stays quiet.
@@ -514,6 +518,20 @@ export function useRoom({
   // goes to the conversation rather than to a question that is already closed.
   const [sentAnswers, setSentAnswers] = useState<ReadonlySet<string>>(
     () => new Set(),
+  );
+  const selectionKeys = selectionNames();
+  const selection = useQuery({
+    queryKey: keys.projectValues.selection(projectId),
+    retry: false,
+    refetchOnWindowFocus: false,
+    queryFn:
+      selectionKeys.length === 0
+        ? skipToken
+        : ({ signal }) => readProjectValues(projectId, selectionKeys, signal),
+  });
+  const screenOf = useMemo(
+    () => screensFor(selection.data ?? {}),
+    [selection.data],
   );
   const openQuestion = questions.find(
     ({ signalName, answer }) =>
@@ -1675,6 +1693,7 @@ export function useRoom({
           questionsDisabled: sending || archived,
           questionsLayout,
           projectValues,
+          screenOf,
           screenSupplies: supplies,
           onOpenPageScreen: () => setClosedPage(null),
         },
@@ -1682,6 +1701,33 @@ export function useRoom({
       },
       dock: dock(),
       plan: snapshot.plan,
+      onDeclineStep: async (stepId, declined) => {
+        try {
+          await (declined ? declinePlanStep : restorePlanStep)(
+            projectId,
+            stepId,
+          );
+          reloadRef.current();
+        } catch (cause) {
+          toast.error(humanFault(cause, wording.conversation.plan.notChanged));
+        }
+      },
+      onGoAheadStep: async (stepId) => {
+        try {
+          await goAheadPlanStep(projectId, stepId);
+          reloadRef.current();
+        } catch (cause) {
+          toast.error(humanFault(cause, wording.conversation.plan.notChanged));
+        }
+      },
+      onAskFirstStep: async (stepId, askFirst) => {
+        try {
+          await setPlanStepAskFirst(projectId, stepId, askFirst);
+          reloadRef.current();
+        } catch (cause) {
+          toast.error(humanFault(cause, wording.conversation.plan.notChanged));
+        }
+      },
       documentPane: {
         projectId,
         projectTitle,

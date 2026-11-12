@@ -120,7 +120,7 @@ test("built npm tarballs contain importable production workflow metadata and def
   );
   try {
     const manifest = await buildWorkflowPackages(directory, "1.0.0", inference);
-    expect(manifest).toHaveLength(10);
+    expect(manifest).toHaveLength(11);
     for (const metadata of manifest) {
       const extracted = join(directory, metadata.assetName);
       await mkdir(extracted);

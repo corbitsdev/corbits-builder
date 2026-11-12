@@ -209,16 +209,19 @@ export function withLongerAppCheck(turns: readonly Turn[]): Turn[] {
   });
 }
 
-// ---- The weather project on the build-web-app route ----
+// ---- The weather project on the build-web-app plan ----
 
 export const WEATHER_IDEA =
   "I want a weather app where the whole screen animates to match the live weather.";
 
 /** The coordinator's turns from the idea until it asks the person to approve the requirements. */
 export const WEATHER_REQUIREMENTS: readonly Turn[] = [
-  turn(user("weather app"), execute("c_route", "build-web-app", undefined, {})),
   turn(
-    results(ok("c_route", "execute", "write-requirements")),
+    user("weather app"),
+    execute("c_follow", "build-web-app", undefined, {}),
+  ),
+  turn(
+    results(ok("c_follow", "execute", "write-requirements")),
     execute("c_requirements", "writer", "write-requirements", {
       instruction:
         "An animated weather web app: current conditions, 24-hour and 7-day forecasts, saved cities and a compare view, using Open-Meteo.",
@@ -277,7 +280,7 @@ export const WEATHER_BUILD: readonly Turn[] = [
   turn(user("Animated Weather"), say("Your app is built.")),
 ];
 
-/** The recorded specialists the route starts, by the run keys the weather turns use. */
+/** The recorded specialists the plan starts, by the run keys the weather turns use. */
 export const WEATHER_SPECIALISTS: Readonly<
   Record<"requirements" | "designer" | "plan" | "coder", Specialist>
 > = {
@@ -324,7 +327,7 @@ export async function buildWeather(p: Person) {
 /**
  * fresh: a new project whose coordinator is first sent the idea. weather-documents: the weather
  * project with its requirements approved and no design yet. weather-app: the same project built,
- * its app at version 1. The weather projects are run once from the idea on the route above,
+ * its app at version 1. The weather projects are run once from the idea on the plan above,
  * exported and kept in SCENARIO_DIR/.cache, then imported into each scenario's hub.
  */
 export type Start =
@@ -454,7 +457,9 @@ function modelStep(exchange: ModelExchange): Step {
 
 function shown(value: unknown): string {
   const text =
-    typeof value === "string" ? value : JSON.stringify(value, null, 2);
+    typeof value === "string"
+      ? value
+      : (JSON.stringify(value, null, 2) ?? String(value));
   return text.length > SHOWN
     ? `${text.slice(0, SHOWN)}\n… (${String(text.length - SHOWN)} more characters in trace.json)`
     : text;
@@ -1026,16 +1031,16 @@ async function runScenario(
     );
 }
 
-// The project as it ended: its documents, approvals, route, values, open questions and the last of
-// what the person saw.
+// The project as it ended: its documents, approvals, the plans it is following, values, open
+// questions and the last of what the person saw.
 async function endState(person: Person, values: readonly string[] | undefined) {
   const { client } = person.hub;
   const { tenantId, projectId, path } = person;
-  const [artifacts, decided, conversation, route] = await Promise.all([
+  const [artifacts, decided, conversation, following] = await Promise.all([
     client.projectArtifacts(tenantId, projectId),
     client.decidedApprovals(tenantId, projectId),
     client.conversationEvents(tenantId, projectId),
-    person.call("GET", `${path}/routes`),
+    person.call("GET", `${path}/following`),
   ]);
   const keys = values ?? ["brand.guidelines", "stack.language"];
   return {
@@ -1050,7 +1055,7 @@ async function endState(person: Person, values: readonly string[] | undefined) {
     inFlight: artifacts.inFlight,
     failed: artifacts.failed,
     approvals: decided.approvals,
-    routes: route.body,
+    following: following.body,
     values: (await person.call("GET", `${path}/values?keys=${keys.join(",")}`))
       .body,
     openQuestion: openQuestionPark(conversation.events)?.body ?? null,

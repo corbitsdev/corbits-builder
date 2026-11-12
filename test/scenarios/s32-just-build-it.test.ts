@@ -21,7 +21,7 @@ const EXECUTES = ["c_requirements", "c_mockup", "c_plan", "c_build"];
 scenario({
   name: "s32-just-build-it",
   title:
-    "just build it: coder build is refused without documents, the person hands approvals over on one screen, Builder chooses the one design, and the route runs to a built app with no approval asked",
+    "just build it: coder build is refused without documents, the person hands approvals over on one screen, Builder chooses the one design, and the plan runs to a built app with no approval asked",
   start: { fresh: idea },
   coordinator: [
     turn(
@@ -37,10 +37,10 @@ scenario({
     ),
     turn(
       results(ok("c_hand_over", "question", '"builder"')),
-      execute("c_route", "build-web-app", undefined, {}),
+      execute("c_follow", "build-web-app", undefined, {}),
     ),
     turn(
-      results(ok("c_route", "execute", "write-requirements")),
+      results(ok("c_follow", "execute", "write-requirements")),
       execute("c_requirements", "writer", "write-requirements", {
         instruction:
           "An animated weather web app: current conditions, 24-hour and 7-day forecasts, saved cities and a compare view, using Open-Meteo.",

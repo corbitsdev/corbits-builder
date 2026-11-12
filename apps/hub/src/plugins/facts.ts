@@ -60,8 +60,8 @@ export function projectFacts(project: {
 
 /**
  * The go-ahead facts the person's own answers made true: each document they approved at its current
- * version and the design chosen. An approval left to Builder is not among them, so a route step
- * whose approval is required still waits for the person. A design Builder chose for a single
+ * version and the design chosen. An approval left to Builder is not among them, so a ready-made plan's
+ * step whose approval is required still waits for the person. A design Builder chose for a single
  * concept is recorded as chosen, so it counts.
  */
 export function personFacts(artifacts: readonly Filed[]): ReadonlySet<Fact> {

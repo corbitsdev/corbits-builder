@@ -85,10 +85,12 @@ import {
 import {
   type ExportSection,
   exportSection,
+  type PlanChildWrite,
   type PlanStepWrite,
   ProjectExport,
   ProjectExportMaterial,
   type StoredPlan,
+  type StoredPlanChild,
   type StoredPlanStep,
 } from "@corbits-builder/schemas/project";
 import JSZip from "jszip";
@@ -155,7 +157,13 @@ import {
 import { frozenModelChoice, workflowBindings } from "../config/models.ts";
 import { modelDirectory } from "../settings/custom-providers.ts";
 import { materialRemovedNote, materialsNote } from "../config/materials.ts";
-import { STEP_REQUIRED_TEXT, stepDeclinedNote } from "../config/answers.ts";
+import {
+  STEP_NOT_ASK_FIRST_TEXT,
+  STEP_REQUIRED_TEXT,
+  stepAskFirstNote,
+  stepDeclinedNote,
+  stepGoAheadNote,
+} from "../config/answers.ts";
 import { servingOffering } from "../workflows/install-for-tenant.ts";
 import {
   acceptedMaterials,
@@ -203,11 +211,11 @@ const inFlightState = (
 // A plan step as stored, under the id it came with or a short new one, with the go-ahead, cancel
 // and decline that marksOf says it keeps; only an optional step keeps a decline.
 function savedPlanStep(
-  step: PlanStepWrite,
-  marksOf: (step: PlanStepWrite, id: string) => PlanStepWrite | undefined,
-): StoredPlanStep {
-  const id = step.id ?? crypto.randomUUID().slice(0, 12);
-  const saved: StoredPlanStep = {
+  step: PlanChildWrite,
+  marksOf: (step: PlanChildWrite, id: string) => PlanChildWrite | undefined,
+): StoredPlanChild {
+  const id = step.id ?? newPlanStepId();
+  const saved: StoredPlanChild = {
     id,
     title: step.title,
     plugin: step.plugin,
@@ -216,15 +224,20 @@ function savedPlanStep(
     askFirst: step.askFirst,
   };
   const marks = marksOf(step, id);
-  // What a journey said of a step stays with it: a run's save of a stored step keeps it as stored.
-  const journey = marks ?? step;
-  if (journey.optional) saved.optional = journey.optional;
-  if (journey.approval) saved.approval = journey.approval;
+  // What a ready-made plan said of a step stays with it: a run's save of a stored step keeps it as
+  // stored.
+  const said = marks ?? step;
+  if (said.optional) saved.optional = said.optional;
+  if (said.approval) saved.approval = said.approval;
   if (marks?.goAhead) saved.goAhead = marks.goAhead;
   if (marks?.cancelled) saved.cancelled = marks.cancelled;
   if (marks?.declined && saved.optional) saved.declined = marks.declined;
   return saved;
 }
+// The plan's action steps, those its groups hold among them.
+const planActionSteps = (steps: readonly StoredPlanStep[]) =>
+  steps.flatMap((step) => ("steps" in step ? step.steps : [step]));
+const newPlanStepId = () => crypto.randomUUID().slice(0, 12);
 const RunError = type({ "+": "delete", message: "string", "code?": "string" });
 const UUID = "[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}";
 const isUuid = (value: string) => new RegExp("^" + UUID + "$", "i").test(value);
@@ -1231,26 +1244,26 @@ export function createArtifactService(
       return designDraftOf(files);
     },
 
-    // The route plugins the project follows.
-    async projectRoutes(actor: Actor, projectId: string) {
+    // The ready-made plans the project is following.
+    async projectFollowing(actor: Actor, projectId: string) {
       await requireProject(actor, projectId, "read");
       const [row] = await rawDB
-        .select({ routes: project.routes })
+        .select({ following: project.following })
         .from(project)
         .where(eq(project.id, projectId));
-      return row?.routes ?? [];
+      return row?.following ?? [];
     },
 
-    async followRoutes(
+    async setFollowing(
       actor: Actor,
       projectId: string,
-      routes: readonly string[],
+      handles: readonly string[],
     ) {
       await requireProject(actor, projectId, "manage");
-      const followed = [...new Set(routes)];
+      const followed = [...new Set(handles)];
       await rawDB
         .update(project)
-        .set({ routes: followed })
+        .set({ following: followed })
         .where(eq(project.id, projectId));
       return followed;
     },
@@ -1285,23 +1298,21 @@ export function createArtifactService(
         .from(project)
         .where(eq(project.id, projectId));
       const before = new Map(
-        (row?.plan?.steps ?? [])
-          .flatMap((step) => [step, ...(step.steps ?? [])])
-          .map((step) => [step.id, step]),
+        planActionSteps(row?.plan?.steps ?? []).map((step) => [step.id, step]),
       );
-      const marksOf = (step: PlanStepWrite, id: string) =>
+      const marksOf = (step: PlanChildWrite, id: string) =>
         caller?.kind === "user" ? step : before.get(id);
-      const saved = steps.map((step) => {
-        const parent = savedPlanStep(step, marksOf);
-        if (step.steps)
-          parent.steps = step.steps.map((child) =>
-            savedPlanStep(child, marksOf),
-          );
-        return parent;
+      const saved = steps.map((step): StoredPlanStep => {
+        if (!("steps" in step)) return savedPlanStep(step, marksOf);
+        return {
+          id: step.id ?? newPlanStepId(),
+          title: step.title,
+          steps: step.steps.map((child) => savedPlanStep(child, marksOf)),
+        };
       });
       const ids = saved.flatMap((step) => [
         step.id,
-        ...(step.steps ?? []).map(({ id }) => id),
+        ...("steps" in step ? step.steps : []).map(({ id }) => id),
       ]);
       const repeated = ids.find((id, at) => ids.indexOf(id) !== at);
       if (repeated !== undefined)
@@ -1324,7 +1335,7 @@ export function createArtifactService(
     },
 
     // The person declines an optional plan step, or restores one, and the coordinator is told. Only a
-    // person may, and never on a step the journey requires.
+    // person may, and never on a step its ready-made plan requires.
     async declinePlanStep(
       actor: Actor,
       projectId: string,
@@ -1346,9 +1357,9 @@ export function createArtifactService(
         .from(project)
         .where(eq(project.id, projectId));
       const plan = row?.plan;
-      const step = plan?.steps
-        .flatMap((each) => [each, ...(each.steps ?? [])])
-        .find(({ id }) => id === stepId);
+      const step = planActionSteps(plan?.steps ?? []).find(
+        ({ id }) => id === stepId,
+      );
       if (!plan || !step)
         throw new ProjectError(404, "plan_step_not_found", { id: stepId });
       if (!step.optional)
@@ -1371,6 +1382,59 @@ export function createArtifactService(
           coordinator.runId,
           stepDeclinedNote(step.title, change.declined),
         );
+      return plan;
+    },
+
+    // The person gives the go-ahead on a step they asked to be consulted on, or turns "ask me
+    // first" on or off for a step, and the coordinator is told. Only a person may.
+    async askPlanStep(
+      actor: Actor,
+      projectId: string,
+      stepId: string,
+      change: {
+        ask: { goAhead: true } | { askFirst: boolean };
+        mailRun: (runId: string, content: string) => Promise<void>;
+      },
+    ) {
+      await requireProject(actor, projectId, "manage");
+      const [caller] = await rawDB
+        .select({ kind: principal.kind })
+        .from(principal)
+        .where(eq(principal.id, actor.principalId));
+      if (caller?.kind !== "user")
+        throw new ProjectError(403, "only_a_person_decides");
+      const [row] = await rawDB
+        .select({ plan: project.plan })
+        .from(project)
+        .where(eq(project.id, projectId));
+      const plan = row?.plan;
+      const step = planActionSteps(plan?.steps ?? []).find(
+        ({ id }) => id === stepId,
+      );
+      if (!plan || !step)
+        throw new ProjectError(404, "plan_step_not_found", { id: stepId });
+      let note: string;
+      if ("goAhead" in change.ask) {
+        if (!step.askFirst)
+          throw new ProjectError(409, "plan_step_not_ask_first", {
+            id: stepId,
+            text: STEP_NOT_ASK_FIRST_TEXT,
+          });
+        step.goAhead = { by: actor.principalId, at: new Date().toISOString() };
+        note = stepGoAheadNote(step.title);
+      } else {
+        if (change.ask.askFirst === step.askFirst) return plan;
+        step.askFirst = change.ask.askFirst;
+        if (step.askFirst) delete step.goAhead;
+        note = stepAskFirstNote(step.title, step.askFirst);
+      }
+      plan.updatedAt = new Date().toISOString();
+      await rawDB
+        .update(project)
+        .set({ plan })
+        .where(eq(project.id, projectId));
+      const coordinator = await activeCoordinator(projectId);
+      if (coordinator) await change.mailRun(coordinator.runId, note);
       return plan;
     },
 
@@ -1400,7 +1464,14 @@ export function createArtifactService(
         });
       await rawDB
         .insert(runAction)
-        .values({ ...input, tenantId: actor.tenantId, projectId })
+        .values({
+          runId: input.runId,
+          tenantId: actor.tenantId,
+          projectId,
+          plugin: input.plugin,
+          action: input.action,
+          planStep: input.step ?? null,
+        })
         .onConflictDoNothing();
       return input;
     },
@@ -1414,6 +1485,7 @@ export function createArtifactService(
           runId: runAction.runId,
           plugin: runAction.plugin,
           action: runAction.action,
+          step: runAction.planStep,
           concept: designConcept.label,
           status: workflowRun.status,
           address: workflowRun.address,
@@ -1467,6 +1539,7 @@ export function createArtifactService(
           status: row.status,
           startedAt: row.startedAt.toISOString(),
         };
+        if (row.step !== null) run.step = row.step;
         if (row.concept !== null) run.concept = row.concept;
         if (live)
           run.state = inFlightState(

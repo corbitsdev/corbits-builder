@@ -8,7 +8,7 @@
   "type": "module",
   "builder": {
     "handle": "publish-to-cloudflare",
-    "runs": "route",
+    "runs": "plan",
     "groups": [
       "deploy",
       "plan"
@@ -32,7 +32,7 @@
         ]
       }
     ],
-    "outcome": "routed:cloudflare",
+    "ends": "routed:cloudflare",
     "examples": [
       "publish my app on Cloudflare",
       "put the app on Cloudflare Workers"

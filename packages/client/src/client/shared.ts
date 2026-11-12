@@ -73,7 +73,7 @@ import type {
   TriageDecisionInput,
 } from "@corbits-builder/schemas/approval-round";
 import type { ProjectActivity } from "@corbits-builder/schemas/activity";
-import type { PlanView } from "@corbits-builder/schemas/project";
+import type { PlanView, StoredPlan } from "@corbits-builder/schemas/project";
 import type {
   LiveRunStates,
   ProjectStatus,
@@ -543,6 +543,35 @@ export type ProductApiClient = Readonly<{
     projectId: string,
     signal?: AbortSignal,
   ): Promise<PlanView>;
+  /** The person declines an optional plan step; it stays in the plan as skipped. Refused for a required step. */
+  declinePlanStep(
+    tenantId: string,
+    projectId: string,
+    stepId: string,
+    signal?: AbortSignal,
+  ): Promise<StoredPlan>;
+  /** The person brings back a plan step they declined. */
+  restorePlanStep(
+    tenantId: string,
+    projectId: string,
+    stepId: string,
+    signal?: AbortSignal,
+  ): Promise<StoredPlan>;
+  /** The person gives the go-ahead on a plan step they asked to be consulted on. Refused for a step not set to ask first. */
+  goAheadPlanStep(
+    tenantId: string,
+    projectId: string,
+    stepId: string,
+    signal?: AbortSignal,
+  ): Promise<StoredPlan>;
+  /** The person turns "ask me first" on or off for a plan step; turning it on clears an earlier go-ahead. */
+  setPlanStepAskFirst(
+    tenantId: string,
+    projectId: string,
+    stepId: string,
+    askFirst: boolean,
+    signal?: AbortSignal,
+  ): Promise<StoredPlan>;
   /** The named project values as stored, null where the project has none yet. */
   projectValues(
     tenantId: string,

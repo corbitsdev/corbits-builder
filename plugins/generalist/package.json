@@ -6,18 +6,9 @@
   "license": "SEE LICENSE IN ../../LICENSE.md",
   "author": "Sawyer Cutler <sawyer@dirtroad.dev>",
   "type": "module",
-  "exports": {
-    "./packages/*": "./src/packages/*.ts"
-  },
   "dependencies": {
-    "@corbits-builder/hub": "workspace:*",
     "@corbits-builder/plugin": "workspace:*",
-    "@corbits-builder/plugin-host": "workspace:*",
     "@corbits-builder/schemas": "workspace:*",
-    "@corbits-builder/writer": "workspace:*",
-    "@corbits/mcp": "0.4.1",
-    "@intx/agent": "workspace:*",
-    "@intx/workflow": "workspace:*",
     "arktype": "catalog:"
   },
   "builder": {
@@ -30,14 +21,15 @@
     ],
     "when": "The person asks for something no other specialist's action does: research that needs looking things up on the web, a question about the project or its app's code, or a document such as a competitor analysis, a product comparison or a profit breakdown that needs facts from outside the project.",
     "unless": "Another specialist's action fits: a document written only from the project's own documents, the product requirements or the build plan (writer), a second opinion or approval of a filed document (writer), building or changing the app (coder), a look, mockup, fonts or colours (designer), or a deck for an audience (presenter).",
-    "packages": {
+    "agents": {
       "generalist": {
-        "entry": "./src/packages/generalist.ts",
-        "role": "writer"
+        "prompt": "./prompt.md",
+        "tools": [
+          "read_artifact",
+          "write_artifact",
+          "web"
+        ]
       }
-    },
-    "starters": {
-      "generalist": "./src/start.ts"
     },
     "actions": {
       "do": {
@@ -54,7 +46,7 @@
         ],
         "returns": [],
         "start": {
-          "workflow": "generalist"
+          "agent": "generalist"
         }
       }
     },

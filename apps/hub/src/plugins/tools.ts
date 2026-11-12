@@ -47,7 +47,7 @@ import { agentDecidesApprovals } from "../config/preferences.ts";
 import { isInputKind, skillPacksIndex, startHere } from "../config/inputs.ts";
 import {
   projectCatalog,
-  ProjectRoutes,
+  ProjectFollowing,
   SCREENS,
   WITH_SCREENS,
 } from "./catalog.ts";
@@ -118,7 +118,7 @@ const CHECK_CALL_GRACE_MS = 15_000;
 
 // The project as the coordinator's tools act on it, through the hub.
 function project(session: ProjectSession): Project {
-  const path = session.projectPath + "/routes";
+  const path = session.projectPath + "/following";
   return {
     state: async () => {
       const listed = await session.listed();
@@ -145,15 +145,16 @@ function project(session: ProjectSession): Project {
           action.ms + CHECK_CALL_GRACE_MS,
         ),
       ),
-    routes: async () => ProjectRoutes.assert(await session.hub(path)).routes,
-    setRoutes: (routes) => session.hub(path, { routes }),
+    following: async () =>
+      ProjectFollowing.assert(await session.hub(path)).following,
+    setFollowing: (following) => session.hub(path, { following }),
     values: async (names) =>
       ProjectValues.assert(
         await session.hub(
           `${session.projectPath}/values?${new URLSearchParams({ keys: names.join(",") })}`,
         ),
       ).values,
-    start: (action, input, values) =>
+    start: (action, input, values, step) =>
       action.starter.run(
         action.builder.start,
         input,
@@ -162,6 +163,7 @@ function project(session: ProjectSession): Project {
             plugin: action.plugin,
             action: action.action,
             values,
+            step,
           }),
         ),
         skillPacksIndex(action.packs),
@@ -234,7 +236,7 @@ export async function screenProject(
 
 /**
  * The coordinator's way to act: discover finds a plugin, execute starts a specialist's
- * action or a route, runs lists, waits on and stops the runs it started, plan keeps the project's
+ * action or a ready-made plan, runs lists, waits on and stops the runs it started, plan keeps the project's
  * plan, and question opens a screen, whose answer records what it approves.
  */
 export function createExecuteTools(

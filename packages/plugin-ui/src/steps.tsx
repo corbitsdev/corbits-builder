@@ -14,24 +14,31 @@ export type StepState =
   | "waiting"
   | "not_started"
   | "skipped"
-  | "cancelled";
+  | "cancelled"
+  | "declined";
 
-type StepFields = {
+export type StepFields = {
   id: string;
   title: string;
   /** Where the step stands; a step without one shows no mark. */
   state?: StepState | undefined;
   /** Set once the step is cancelled, which shows as cancelled whatever its state. */
   cancelled?: object | undefined;
+  /** Set once the person declined the step, which shows as declined whatever its state. */
+  declined?: object | undefined;
   summary?: string | undefined;
   evidence?: readonly string[] | undefined;
   needs?: readonly string[] | undefined;
+  /** The person may decline it. */
+  optional?: boolean | undefined;
+  /** Whether it waits for the person's go-ahead before it starts, always or only if they asked. */
+  approval?: "required" | "optional" | undefined;
   /** When the step started, as a timestamp. */
   startedAt?: string | undefined;
 };
 
 export type StepItem = StepFields & {
-  /** The step's own steps; they have none of their own. */
+  /** Set on a group: the steps it holds, which hold none. A group shows only its title and state. */
   steps?: readonly StepFields[] | undefined;
 };
 
@@ -41,6 +48,10 @@ export type StepsProps = {
   label: string;
   /** The time now in milliseconds, which counts a running step's elapsed time; without it none shows. */
   now?: number | undefined;
+  /** A quiet line under a step's title. */
+  note?: ((step: StepFields) => string | undefined) | undefined;
+  /** What the person can do with a step, under its row. */
+  action?: ((step: StepFields) => ReactNode) | undefined;
 };
 
 const words: Record<StepState, string> = {
@@ -52,6 +63,7 @@ const words: Record<StepState, string> = {
   not_started: "Not started",
   skipped: "Skipped",
   cancelled: "Cancelled",
+  declined: "Declined",
 };
 
 const tones: Record<StepState, string> = {
@@ -63,6 +75,7 @@ const tones: Record<StepState, string> = {
   not_started: styles.quiet,
   skipped: styles.quiet,
   cancelled: styles.quiet,
+  declined: styles.quiet,
 };
 
 const marks: Record<StepState, ReactNode> = {
@@ -76,6 +89,7 @@ const marks: Record<StepState, ReactNode> = {
   cancelled: (
     <path d="M8 2.5a5.5 5.5 0 1 0 0 11 5.5 5.5 0 0 0 0-11zM4.1 11.9l7.8-7.8" />
   ),
+  declined: <path d="M8 2.5a5.5 5.5 0 1 0 0 11 5.5 5.5 0 0 0 0-11zM5.5 8h5" />,
 };
 
 function StateMark({
@@ -134,19 +148,35 @@ function Detail({
   );
 }
 
+function stateOf(step: StepFields) {
+  if (step.cancelled !== undefined) return "cancelled";
+  if (step.declined !== undefined) return "declined";
+  return step.state;
+}
+
 function Step({
   step,
   now,
+  note,
+  action,
   children,
 }: {
   step: StepFields;
   now: number | undefined;
+  note: StepsProps["note"];
+  action: StepsProps["action"];
   children?: ReactNode;
 }) {
-  const state = step.cancelled === undefined ? step.state : "cancelled";
+  const state = stateOf(step);
+  const line = note?.(step);
   const head = (
     <>
-      <span className={styles.title}>{step.title}</span>
+      <span className={styles.title}>
+        {step.title}
+        {line === undefined ? null : (
+          <span className={styles.note}>{line}</span>
+        )}
+      </span>
       {state === undefined ? null : (
         <StateMark state={state} now={now} startedAt={step.startedAt} />
       )}
@@ -170,20 +200,37 @@ function Step({
       ) : (
         <div className={styles.row}>{head}</div>
       )}
+      {action?.(step)}
       {children}
     </li>
   );
 }
 
-export function Steps({ steps, label, now }: StepsProps) {
+export function Steps({ steps, label, now, note, action }: StepsProps) {
   return (
     <ol className={styles.steps} aria-label={label}>
       {steps.map((step) => (
-        <Step key={step.id} step={step} now={now}>
+        <Step
+          key={step.id}
+          step={
+            step.steps === undefined
+              ? step
+              : { id: step.id, title: step.title, state: step.state }
+          }
+          now={now}
+          note={step.steps === undefined ? note : undefined}
+          action={step.steps === undefined ? action : undefined}
+        >
           {step.steps === undefined || step.steps.length === 0 ? null : (
             <ol className={styles.children}>
               {step.steps.map((child) => (
-                <Step key={child.id} step={child} now={now} />
+                <Step
+                  key={child.id}
+                  step={child}
+                  now={now}
+                  note={note}
+                  action={action}
+                />
               ))}
             </ol>
           )}

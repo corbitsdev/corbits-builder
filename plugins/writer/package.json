@@ -9,7 +9,6 @@
   "exports": {
     "./skills": "./src/skills.ts",
     "./task": "./src/task.ts",
-    "./workflow": "./src/workflow.ts",
     "./packages/*": "./src/packages/*.ts"
   },
   "dependencies": {

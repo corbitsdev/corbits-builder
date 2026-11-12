@@ -33,6 +33,9 @@ export const keys = {
   projectValues: {
     all: ["projectValues"] as const,
     of: (projectId: string) => ["projectValues", projectId] as const,
+    /** The values that select between plugins sharing a handle; refreshed with the rest when one is saved. */
+    selection: (projectId: string) =>
+      ["projectValues", projectId, "selection"] as const,
   },
   liveApp: {
     all: ["liveApp"] as const,

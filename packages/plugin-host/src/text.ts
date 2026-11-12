@@ -15,13 +15,13 @@ type FactText = (fact: Fact) => string;
 // What the coordinator reads about execute, the facts an action requires, and why nothing started.
 
 export const EXECUTE_DESCRIPTION =
-  "Start a specialist plugin's action by the plugin's handle and the action's name, with the input that action's guidance from discover describes, such as { plugin: \"coder\", action: \"change\", input }. A workflow action starts its specialist and returns at once with { started, plugin, action, runs: [{ runId }], presents, advice }; each run's report arrives later as a message that begins with its run id. Independent pieces of work can start in the same turn, each with its own execute. Nothing starts when the action lacks what it cannot work without, the person's go-ahead that a route the project follows asks for, or when the person declined that step on the plan; the refusal names what is missing and which plugin action makes it true. Anything else a route suggests doing first comes back as advice with the started run. A route plugin takes no action: it adds that route to those the project follows and returns its guidance; input { leave: true } takes the project off it. A screen action is opened with question({ plugin, action, input }).";
+  "Start a specialist plugin's action by the plugin's handle and the action's name, with the input that action's guidance from discover describes, such as { plugin: \"coder\", action: \"change\", input }. A workflow action starts its specialist and returns at once with { started, plugin, action, runs: [{ runId }], presents, advice }; each run's report arrives later as a message that begins with its run id. Independent pieces of work can start in the same turn, each with its own execute. When the start does a step of the plan, pass that step's id as step so the plan shows this run on it. Nothing starts when the action lacks what it cannot work without, the person's go-ahead that a ready-made plan the project is following asks for, or when the person declined that step on the plan; the refusal names what is missing and which plugin action makes it true. Anything else a ready-made plan suggests doing first comes back as advice with the started run. A ready-made plan takes no action: the project starts following it, and you get its guidance; input { leave: true } stops the project following it. A screen action is opened with question({ plugin, action, input }).";
 
 export const RUNS_DESCRIPTION =
   'See and steer the runs you started with execute. operation "list" lists each run you started in this project that is at work or ended lately: its plugin and action, status, state while it runs, when it started, its last activity, and why a failed run stopped. "wait" waits up to seconds (60 unless given, at most 120) for the first of runIds to end and says which ended; a run\'s report still reaches you as a message after your turn. "stop" stops each of runIds; what a stopped run filed or pushed is kept.';
 
 export const PLAN_DESCRIPTION =
-  'Keep the project\'s plan, which shows the person where work of several steps or gates stands. Each step is a plugin action, as discover lists it, with its input, and may hold steps of its own. operation "show" returns the plan; "set" replaces it with steps; "add" appends steps, or inserts them after the step whose id is after, or with route adds a journey by its route\'s handle as one step holding its steps, each marked optional when the person may decline it and with when it waits for their approval, and puts the project on that route; "remove" takes out the steps whose ids are stepIds. Each answers with the plan as it now stands.';
+  'Keep the project\'s plan, which shows the person where work of several steps or gates stands. Each step is either a plugin action, as discover lists it, with its input, or a group with a title that names no action and holds such steps. operation "show" returns the plan; "set" replaces it with steps; "add" appends steps, or inserts them after the step whose id is after, or with plan adds a ready-made plan by its handle as one group holding its steps, each marked optional when the person may decline it and with when it waits for their approval, and has the project follow that plan; "remove" takes out the steps whose ids are stepIds. Each answers with the plan as it now stands; pass a step\'s id as execute\'s step when you start it.';
 
 // What runs offers for a run that holds back the next one, named as runIds lists it.
 export const waitOrStop = (runIds: string) =>
@@ -60,7 +60,7 @@ export const writesText = (values: Values, writes: readonly string[]) =>
   ].join("\n");
 
 export const DISCOVER_DYNAMIC_DESCRIPTION =
-  "Find what you can do for the person: every piece of work you can start is a plugin. Pass query with what they asked for, in their words, or group to list every plugin in that group: each comes in a line, with a line for each action saying what it is for and whether it can start or open now, or what it needs first, and then the project's values. Pass plugin, and action, for that action's full guidance and the input it takes; read it before you first start or open an action. Specialist actions and route plugins are started with execute; a screen action is shown to the person with question({ plugin, action, input }).";
+  "Find what you can do for the person: every piece of work you can start is a plugin. Pass query with what they asked for, in their words, or group to list every plugin in that group: each comes in a line, with a line for each action saying what it is for and whether it can start or open now, or what it needs first, and then the project's values. Pass plugin, and action, for that action's full guidance and the input it takes; read it before you first start or open an action. Specialist actions and ready-made plans are started with execute; a screen action is shown to the person with question({ plugin, action, input }).";
 
 /** Missing facts that together make one alternative, with the installed actions that make them true. */
 const missingText = (
@@ -164,22 +164,23 @@ export const projectValuesText = (
     ),
   ].join("\n");
 
-// What a route the project follows asks of one of its steps that the project lacks: the person's
-// go-ahead, which holds the step back while they decide approvals, and the rest, which is advice.
-export type RouteStep = { route: string; goAhead: Fact[]; advice: Fact[] };
+// What a ready-made plan the project is following asks of one of its steps that the project lacks:
+// the person's go-ahead, which holds the step back while they decide approvals, and the rest, which
+// is advice.
+export type ReadyPlanStep = { plan: string; goAhead: Fact[]; advice: Fact[] };
 
 export type Readiness = {
   // For each of the action's own alternatives, what it still lacks; empty when one holds.
   own: Fact[][];
-  // What each route the project follows asks of this step that the project lacks.
-  routes: RouteStep[];
+  // What each ready-made plan the project is following asks of this step that the project lacks.
+  plans: ReadyPlanStep[];
 };
 
 /** Whether nothing holds an action back: what it needs of its own and the person's go-ahead. */
-export const isReady = ({ own, routes }: Readiness) =>
-  own.length === 0 && routes.every(({ goAhead }) => goAhead.length === 0);
+export const isReady = ({ own, plans }: Readiness) =>
+  own.length === 0 && plans.every(({ goAhead }) => goAhead.length === 0);
 
-/** Whether an action could start, or a screen open, now, in a line for discover and a route's steps. */
+/** Whether an action could start, or a screen open, now, in a line for discover and a ready-made plan's steps. */
 export function readinessText(
   readiness: Readiness,
   factText: FactText,
@@ -189,14 +190,14 @@ export function readinessText(
   const parts = isReady(readiness) ? [ready] : [];
   if (readiness.own.length > 0)
     parts.push(`needs: ${requiresText(readiness.own, factText)}`);
-  for (const { route, goAhead } of readiness.routes)
+  for (const { plan, goAhead } of readiness.plans)
     if (goAhead.length > 0)
       parts.push(
-        `needs the person's go-ahead, which ${route} asks for: ${facts(goAhead)}`,
+        `needs the person's go-ahead, which the ${plan} plan asks for: ${facts(goAhead)}`,
       );
-  for (const { route, advice } of readiness.routes)
+  for (const { plan, advice } of readiness.plans)
     if (advice.length > 0)
-      parts.push(`${route} suggests first: ${facts(advice)}`);
+      parts.push(`the ${plan} plan suggests first: ${facts(advice)}`);
   return parts.join("; ");
 }
 
@@ -206,7 +207,7 @@ export function readinessText(
  */
 export function unmetRequirement(
   handle: string,
-  { own, routes }: Readiness,
+  { own, plans }: Readiness,
   makers: (fact: Fact) => string[],
   factText: FactText,
   tool: "execute" | "question",
@@ -220,11 +221,11 @@ export function unmetRequirement(
       own.length === 1 ? "It needs:" : "It needs one of these:",
       ...missingTexts(own, makers, factText).map((line) => `  - ${line}`),
     );
-  const holding = routes.filter(({ goAhead }) => goAhead.length > 0);
-  for (const { route, goAhead } of holding) {
+  const holding = plans.filter(({ goAhead }) => goAhead.length > 0);
+  for (const { plan, goAhead } of holding) {
     if (lines.length > 2) lines.push("");
     lines.push(
-      `This project follows ${route}, which asks for the person's go-ahead first:`,
+      `This project is following the ${plan} plan, which asks for the person's go-ahead first:`,
       ...goAhead.map((fact) => missingLine([fact], makers(fact), factText)),
     );
   }
@@ -232,24 +233,24 @@ export function unmetRequirement(
     "",
     `Start what makes these true first, or ask the person, then call ${tool} again.`,
   );
-  for (const { route } of holding)
+  for (const { plan } of holding)
     lines.push(
-      `If the person directs the work elsewhere, take the project off ${route} with execute({ plugin: "${route}", input: { leave: true } }).`,
+      `If the person directs the work elsewhere, stop following the ${plan} plan with execute({ plugin: "${plan}", input: { leave: true } }).`,
     );
   return lines.join("\n");
 }
 
-/** What the routes suggest doing before an action that started anyway, and why; empty for nothing. */
-export const routeAdvice = (
-  routes: readonly RouteStep[],
+/** What the ready-made plans suggest doing before an action that started anyway, and why; empty for nothing. */
+export const readyPlanAdvice = (
+  plans: readonly ReadyPlanStep[],
   makers: (fact: Fact) => string[],
   factText: FactText,
 ) =>
-  routes
+  plans
     .filter(({ advice }) => advice.length > 0)
     .map(
-      ({ route, advice }) =>
-        `${route} suggests doing this first: ${advice
+      ({ plan, advice }) =>
+        `The ${plan} plan suggests doing this first: ${advice
           .map((fact) => {
             const making = [...new Set(makers(fact))];
             return making.length > 0
@@ -258,7 +259,7 @@ export const routeAdvice = (
           })
           .join(
             "; ",
-          )}. The route orders the work so each step builds on what the one before made; this started without it.`,
+          )}. The plan orders the work so each step builds on what the one before made; this started without it.`,
     )
     .join("\n");
 
@@ -309,6 +310,32 @@ export const unknownRuns = (
 export const stepDeclined = (name: string, title: string) =>
   `${name} was not started: the person declined this step ("${title}"); they can undo that on the plan. Do not start it another way; carry on with the rest of the plan.`;
 
+/** Why execute did not start a step the person asked to be consulted on before it starts. */
+export const stepAwaitsGoAhead = (name: string, title: string) =>
+  `${name} was not started: the person asked to be consulted before this step ("${title}"); they give the go on the plan. Do not start it another way; carry on with the rest of the plan.`;
+
+/** Why execute did not start an action for the plan step the call named. */
+export function stepNotThisAction(
+  name: string,
+  id: string,
+  named: { title: string; plugin: string; action: string } | undefined,
+  fitting: readonly { id: string; title: string }[],
+) {
+  const said =
+    named === undefined
+      ? `the plan has no action step ${id}`
+      : `plan step ${id} ("${named.title}") does ${named.plugin} ${named.action}, not ${name}`;
+  const instead =
+    fitting.length === 0
+      ? `No step in the plan does ${name}: call again without step, or add the step to the plan first.`
+      : `The plan's steps that do ${name}: ${fitting.map((step) => `${step.id} ("${step.title}")`).join(", ")}. Call again with the one this start does as step, or without step.`;
+  return `${name} was not started: ${said}. ${instead}`;
+}
+
+/** What the plan tool's answers remind the coordinator of. */
+export const PLAN_STEP_REMINDER =
+  "When you start one of these steps with execute, pass its id as step.";
+
 /** The plan in a line for discover: how many steps it holds and which the person declined. */
 export function planLine(
   steps: readonly { title: string; declined?: unknown }[],
@@ -322,8 +349,8 @@ export function planLine(
   return `Plan: ${steps.length} steps; ${said}.`;
 }
 
-export const routeTakesNoAction = (handle: string) =>
-  `${handle} is a route and takes no action, so nothing was started. Call again with no action to follow it, or name the specialist whose action you meant.`;
+export const readyPlanTakesNoAction = (handle: string) =>
+  `${handle} is a ready-made plan and takes no action, so nothing was started. Call again with no action to follow it, or name the specialist whose action you meant.`;
 
 const questionCall = (plugin: string, action: string) =>
   `question({ plugin: "${plugin}", action: "${action}", input })`;
@@ -419,29 +446,29 @@ export const presentsText = (
     ),
   ].join("\n");
 
-export const routeInputRefused = (handle: string, problem: string) =>
-  `${handle} was not changed. Its input takes only leave: true, to take the project off the route; ${problem}. Call again with no input to follow it, or with { leave: true }.`;
+export const readyPlanInputRefused = (handle: string, problem: string) =>
+  `${handle} was not changed. Its input takes only leave: true, to stop the project following the plan; ${problem}. Call again with no input to follow it, or with { leave: true }.`;
 
-export const routeLeft = (handle: string, wasOn: boolean) =>
+export const readyPlanLeft = (handle: string, wasOn: boolean) =>
   wasOn
-    ? `The project no longer follows ${handle}, so nothing of it applies to its steps any more.`
-    : `The project was not following ${handle}, so nothing changed.`;
+    ? `The project is no longer following the ${handle} plan, so nothing of it applies to its steps any more.`
+    : `The project was not following the ${handle} plan, so nothing changed.`;
 
-export const routeDone = (handle: string, outcome: Fact, factText: FactText) =>
-  `${handle} was not followed: what it leads to already holds (${factText(outcome)}). Start the action the person's request needs directly.`;
+export const readyPlanDone = (handle: string, ends: Fact, factText: FactText) =>
+  `${handle} was not followed: what ends it already holds (${factText(ends)}). Start the action the person's request needs directly.`;
 
-/** A route's guidance, how it combines with the others the project follows, and where each step stands. */
-export const routeFollowed = (
+/** A ready-made plan's guidance, how it combines with the others the project is following, and where each step stands. */
+export const readyPlanFollowed = (
   handle: string,
   others: readonly string[],
   guidance: string,
   steps: readonly { name: string; readiness: string }[],
 ) =>
   [
-    `The project now follows ${handle}. It stays on it until what it leads to holds or you leave it.`,
+    `The project is now following the ${handle} plan. It keeps following it until what ends it holds or you leave it.`,
     ...(others.length > 0
       ? [
-          `It also follows ${others.join(", ")}. Where routes share a step, the person's go-ahead any of them asks for holds the step while they decide approvals, and each route's other advice comes with the started run.`,
+          `It is also following ${others.join(", ")}. Where these plans share a step, the person's go-ahead any of them asks for holds the step while they decide approvals, and each plan's other advice comes with the started run.`,
         ]
       : []),
     "",
@@ -517,15 +544,15 @@ export const specialistListing = (
     ),
   ].join("\n");
 
-/** A route as discover lists it: a line for it, then one for each step. */
-export const routeListing = (
+/** A ready-made plan as discover lists it: a line for it, then one for each step. */
+export const readyPlanListing = (
   handle: string,
   description: string,
   following: boolean,
   steps: readonly { name: string; readiness: string }[],
 ) =>
   [
-    `${handle} (route): ${description} ${following ? "This project follows it." : `execute({ plugin: "${handle}" }) has the project follow it.`}`,
+    `${handle} (ready-made plan): ${description} ${following ? "This project is following it." : `execute({ plugin: "${handle}" }) has the project follow it.`}`,
     ...steps.map(({ name, readiness }) => `  step ${name}: ${readiness}.`),
   ].join("\n");
 

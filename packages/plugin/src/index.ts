@@ -97,8 +97,12 @@ export type ScreenActionBuilder = typeof ScreenActionBuilder.infer;
 export const WorkflowActionBuilder = ActionBuilder.merge({
   runs: "'workflow'",
   input: "string > 0",
-  // The installed workflow the host starts, and what that workflow's starter takes besides the input.
-  start: { workflow: "string > 0", "[string]": "unknown" },
+  // The installed workflow the host starts, and what that workflow's starter takes besides the input;
+  // or an agent the plugin declares, which the host starts with its default starter.
+  start: type({ workflow: "string > 0", "[string]": "unknown" }).or({
+    "+": "reject",
+    agent: "string > 0",
+  }),
   // Project values, by name, that Builder puts in the run's assignment.
   "reads?": "string[]",
   // Project values, by name, that the run's agent may save with report_values as it learns them.
@@ -107,7 +111,8 @@ export const WorkflowActionBuilder = ActionBuilder.merge({
   // screen's when says which fits.
   "presents?": "string[] > 0",
   // The check actions of the same plugin that must pass on the saved result before the run counts
-  // as finished; the workflow runs them after its agent and sends a failure back to it.
+  // as finished; the agent's director runs them through the hub when the agent replies, and holds
+  // the reply with a failure's evidence until they pass. The workflow's package passes them to it.
   "done?": "string[] > 0",
 });
 export type WorkflowActionBuilder = typeof WorkflowActionBuilder.infer;
@@ -198,6 +203,39 @@ export const CheckActionBuilder = type({
 );
 export type CheckActionBuilder = typeof CheckActionBuilder.infer;
 
+// The tools the host hands an agent a plugin declares, by name. read_artifact lists and reads the
+// project's documents, with report_values, which saves the project values the starting action
+// writes; write_artifact adds filing a document of any kind; web is Exa's web search and page fetch.
+// Every such agent also has read_file, for reading back a trimmed tool result.
+export const AgentTool = type("'read_artifact' | 'write_artifact' | 'web'");
+export type AgentTool = typeof AgentTool.infer;
+
+// A role whose run needs no workspace, whose model settings a declared agent runs with.
+export const AgentModel = type("'writer' | 'reviewer' | 'presenter'");
+
+// An agent the host builds from its prompt and tools alone: prompt is a markdown file in the plugin,
+// model the role whose model settings it runs with, the writer's unless stated.
+export const AgentBuilder = type({
+  "+": "reject",
+  prompt: "string > 0",
+  tools: AgentTool.array(),
+  "model?": AgentModel,
+});
+export type AgentBuilder = typeof AgentBuilder.infer;
+
+// A declared agent as the host builds its workflow package: the prompt's text, the role it runs as,
+// and whether its reply waits for a filed document, which it does when every action starting it
+// returns a filed fact.
+export const AgentPackage = type({
+  "+": "reject",
+  name: "string > 0",
+  prompt: "string > 0",
+  tools: AgentTool.array(),
+  role: AgentModel,
+  fileBeforeDone: "boolean",
+});
+export type AgentPackage = typeof AgentPackage.infer;
+
 // A specialist the coordinator composes into its plan, and the actions it can be started on.
 export const SpecialistBuilder = Common.merge({
   runs: "'specialist'",
@@ -210,6 +248,9 @@ export const SpecialistBuilder = Common.merge({
   // The module that starts each workflow its actions' start blocks name, by that name; its default
   // export is a starter, as plugin-host's defineStarter makes one.
   "starters?": { "[string]": "string > 0" },
+  // The agents the host builds and installs for this plugin with no code of its own, by package
+  // name; an action starts one with start: { agent }.
+  "agents?": { "[string]": AgentBuilder },
   actions: type({
     "[string]":
       WorkflowActionBuilder.or(ScreenActionBuilder).or(CheckActionBuilder),
@@ -217,16 +258,17 @@ export const SpecialistBuilder = Common.merge({
 });
 export type SpecialistBuilder = typeof SpecialistBuilder.infer;
 
-// When a route step waits for the person's go-ahead: required always waits for the person's own
-// answer, even when they left approvals to Builder; optional waits only while they decide approvals.
+// When a ready-made plan's step waits for the person's go-ahead: required always waits for the
+// person's own answer, even when they left approvals to Builder; optional waits only while they
+// decide approvals.
 const ApprovalWhen = type("'required' | 'optional'");
 export type ApprovalWhen = typeof ApprovalWhen.infer;
 
-// One step of a route: a plugin action, the facts the route suggests having first, and, so a plan
-// can hold it, a title and the input it starts on. An optional step is one the person may decline.
-// approval is the one way a step asks for the person's go-ahead: of names the document kinds they
+// One step of a ready-made plan: a plugin action, the facts the plan suggests having first, and,
+// so the project's plan can hold it, a title and the input it starts on. An optional step is one
+// the person may decline. approval is the one way a step asks for the person's go-ahead: of names the document kinds they
 // approve, and "design" for the design they choose; a step without it asks for none.
-export const RouteStepBuilder = type({
+export const ReadyPlanStepBuilder = type({
   "+": "reject",
   plugin: "string > 0",
   action: "string > 0",
@@ -240,19 +282,19 @@ export const RouteStepBuilder = type({
   "title?": "string > 0",
   "input?": "Record<string, unknown>",
 });
-export type RouteStepBuilder = typeof RouteStepBuilder.infer;
+export type ReadyPlanStepBuilder = typeof ReadyPlanStepBuilder.infer;
 
-// Guidance for reaching an outcome through other plugins' actions. While a project follows it, a
-// step's approval holds the step back as its when says; the facts it requires are advice that
-// execute passes on.
-export const RouteBuilder = Common.merge({
-  runs: "'route'",
+// A ready-made plan: guidance for reaching a goal through other plugins' actions. While a project
+// is following it, a step's approval holds the step back as its when says; the facts it requires
+// are advice that execute passes on.
+export const ReadyPlanBuilder = Common.merge({
+  runs: "'plan'",
   guidance: "string > 0",
-  steps: RouteStepBuilder.array().atLeastLength(1),
-  // The fact that ends the route. A route with none is followed until the coordinator leaves it.
-  "outcome?": "string > 0",
+  steps: ReadyPlanStepBuilder.array().atLeastLength(1),
+  // The fact that ends the plan. A plan with none is followed until the coordinator leaves it.
+  "ends?": "string > 0",
 });
-export type RouteBuilder = typeof RouteBuilder.infer;
+export type ReadyPlanBuilder = typeof ReadyPlanBuilder.infer;
 
 // Guidance a specialist's agent reads when its work calls for it: the markdown files in skills,
 // which the host lays into the agent's workspace and lists in its assignment, one line per pack.

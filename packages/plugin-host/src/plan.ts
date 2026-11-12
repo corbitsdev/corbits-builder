@@ -22,6 +22,13 @@ export type PlanStep = {
   declined?: Mark;
 };
 
+/** A step that only groups the steps it holds: it names no action and starts nothing. */
+export type PlanGroup = {
+  id: string;
+  title: string;
+  steps: readonly PlanStep[];
+};
+
 export type StepState =
   | "done"
   | "failed"
@@ -47,6 +54,15 @@ export type PlanStepView = PlanStep & {
   checkId?: string;
 };
 
+/** A group with where it stands, worked out from its steps. */
+export type PlanGroupView = {
+  id: string;
+  title: string;
+  state: StepState;
+  needs?: string[];
+  steps: PlanStepView[];
+};
+
 /** What the host has recorded of a project, which a plan's state is worked out from. */
 export type PlanRecords = {
   // What is true of the project now, a check's facts among it while its latest record stands.
@@ -63,11 +79,13 @@ export type PlanRecords = {
     current: boolean;
     createdAt: string;
   }[];
-  // The runs the coordinator started, newest first.
+  // The runs the coordinator started, newest first, each with the plan step it was started for
+  // when the host could tell.
   runs: readonly {
     runId: string;
     plugin: string;
     action: string;
+    step?: string;
     status: Run["status"];
     startedAt: string;
     endedAt?: string;
@@ -85,14 +103,14 @@ const settled = ({ state }: PlanStepView) =>
 
 /**
  * Where each step of a plan stands, worked out from the project's records each time, so the plan
- * never says a step is done when the records say otherwise. A run is tied to a step by its plugin
- * and action alone, since the host does not record the input a run started on.
+ * never says a step is done when the records say otherwise. A run is tied to a step by the step it
+ * was started for, or, when the host could not tell which, by its plugin and action alone.
  */
 export function planState(
   catalog: Catalog,
-  steps: readonly (PlanStep & { steps?: readonly PlanStep[] })[],
+  steps: readonly (PlanStep | PlanGroup)[],
   records: PlanRecords,
-): (PlanStepView & { steps?: PlanStepView[] })[] {
+): (PlanStepView | PlanGroupView)[] {
   const { facts } = records;
   const makers = makersIn(catalog);
   const stepView = (step: PlanStep): PlanStepView => {
@@ -118,8 +136,10 @@ export function planState(
     if (step.optional) view.optional = step.optional;
     if (step.approval) view.approval = step.approval;
     if (step.declined) view.declined = step.declined;
-    const run = records.runs.find(
-      (each) => each.plugin === step.plugin && each.action === step.action,
+    const run = records.runs.find((each) =>
+      each.step === undefined
+        ? each.plugin === step.plugin && each.action === step.action
+        : each.step === step.id,
     );
     if (run) {
       view.runId = run.runId;
@@ -184,15 +204,17 @@ export function planState(
     return view;
   };
   return steps.map((step) => {
-    const view: PlanStepView & { steps?: PlanStepView[] } = stepView(step);
-    if (step.steps === undefined) return view;
+    if (!("steps" in step)) return stepView(step);
     const children = step.steps.map(stepView);
-    view.steps = children;
-    if (step.cancelled) return view;
+    const view: PlanGroupView = {
+      id: step.id,
+      title: step.title,
+      state: "not_started",
+      steps: children,
+    };
     const any = (state: StepState) =>
       children.some((child) => child.state === state);
     const next = children.find((child) => !settled(child));
-    delete view.needs;
     if (any("failed")) view.state = "failed";
     else if (any("running")) view.state = "running";
     else if (any("needs_you")) view.state = "needs_you";

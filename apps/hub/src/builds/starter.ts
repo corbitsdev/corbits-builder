@@ -249,7 +249,7 @@ const packFiles = (workflow: string) =>
   Object.fromEntries(
     CATALOG.actions
       .filter(isWorkflowAction)
-      .filter((action) => action.builder.start.workflow === workflow)
+      .filter((action) => action.workflow === workflow)
       .flatMap((action) => action.packs)
       .flatMap(({ path, files }) =>
         Object.entries(files).map(([file, text]) => [

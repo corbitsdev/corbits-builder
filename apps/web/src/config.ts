@@ -422,6 +422,14 @@ export const wording = {
       hide: "Hide the plan",
       resize: "Resize the plan",
       steps: "Plan steps",
+      optional: "optional",
+      approvalRequired: "needs your approval",
+      approvalOffered: "asks for your approval",
+      decline: "Skip this",
+      restore: "Bring it back",
+      goAhead: "Go ahead",
+      askFirst: "Ask me first",
+      notChanged: "That step could not be changed.",
       /** How far along the plan is, beside its button. */
       progress: (done: number, total: number) =>
         `${String(done)} of ${String(total)}`,

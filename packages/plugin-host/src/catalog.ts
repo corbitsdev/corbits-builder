@@ -9,9 +9,10 @@ import {
   isCheck,
   isScreen as isScreenModule,
   isWorkflow,
-  RouteBuilder,
+  ReadyPlanBuilder,
   SkillsBuilder,
   SpecialistBuilder,
+  type AgentPackage,
   type CheckActionBuilder,
   type CheckOutcome,
   type Fact,
@@ -40,7 +41,7 @@ import {
   resolveFacts,
   templateField,
 } from "./facts.ts";
-import type { Project, Started } from "./coordinator.ts";
+import type { FiledVersion, Project, Started } from "./coordinator.ts";
 import type { Found } from "./folder.ts";
 import {
   presentsText,
@@ -105,6 +106,76 @@ export function defineStarter<
   };
 }
 
+type Start = WorkflowActionBuilder["start"];
+/** Whether a start block names an agent the plugin declares rather than an installed workflow. */
+export const startsAgent = (
+  start: Start,
+): start is Exclude<Start, { workflow: string }> => !("workflow" in start);
+
+const AgentInput = type({ instruction: "string", "[string]": "unknown" });
+
+// The default starter's first message: the instruction, each other input field on a line of its own,
+// the documents filed, the kind to file the result under, and the skill packs.
+function agentAssignment(
+  { instruction, ...fields }: typeof AgentInput.infer,
+  filing: readonly string[],
+  versions: ReadonlyMap<string, FiledVersion>,
+  skills: string,
+) {
+  const filed = [...versions].map(
+    ([kind, { version }]) => `${kind} (version ${version})`,
+  );
+  return [
+    instruction,
+    Object.entries(fields)
+      .map(
+        ([name, value]) =>
+          `${name}: ${typeof value === "string" ? value : JSON.stringify(value)}`,
+      )
+      .join("\n"),
+    filed.length === 0
+      ? "Nothing is filed in the project yet."
+      : `Filed in the project: ${filed.join(", ")}.`,
+    ...filing.map((kind) =>
+      versions.has(kind)
+        ? `File your result with write_artifact as kind ${kind}. A version of it is already filed: read it first, as yours replaces it.`
+        : `File your result with write_artifact as kind ${kind}.`,
+    ),
+    skills.trim(),
+  ]
+    .filter((part) => part !== "")
+    .join("\n\n");
+}
+
+// The starter of an agent a plugin declares: one run, whose first message is built from the action's
+// checked input and the project, filing under each kind the action's returns name.
+function agentStarter(agent: string, returns: readonly Fact[]): Starter {
+  return {
+    check: (start) =>
+      startsAgent(start) && start.agent === agent
+        ? undefined
+        : `starts the agent ${agent}`,
+    reads: ["instruction"],
+    run: async (_start, input, project, skills) => {
+      const checked = AgentInput.assert(input);
+      const filing = resolveFacts(returns, checked)
+        .filter((fact) => fact.startsWith("filed:"))
+        .map((fact) => fact.slice("filed:".length));
+      return {
+        runs: [
+          await project.deploy({
+            workflow: agent,
+            correlation: agent,
+            assignment: ({ versions }) =>
+              agentAssignment(checked, filing, versions, skills),
+          }),
+        ],
+        notStarted: [],
+      };
+    },
+  };
+}
+
 const isStarter = (value: unknown): value is Starter =>
   typeof value === "object" &&
   value !== null &&
@@ -119,7 +190,7 @@ const isStarter = (value: unknown): value is Starter =>
 const Manifest = type({
   name: "string > 0",
   "description?": "string",
-  builder: SpecialistBuilder.or(RouteBuilder),
+  builder: SpecialistBuilder.or(ReadyPlanBuilder),
 });
 // A skill pack's manifest, told apart from a plugin's by what it runs before either is checked.
 const RunsSkills = type({ builder: { runs: "'skills'" } });
@@ -150,7 +221,10 @@ export type WorkflowAction = ActionBase & {
   presents: string | null;
   // The skill packs its specialist's agent is given when this action starts it.
   packs: readonly SkillPack[];
-  // The starter a plugin brings for the workflow its start block names.
+  // The installed workflow it starts: the one its start block names, or its declared agent's.
+  workflow: string;
+  // The starter a plugin brings for the workflow its start block names, or the default one for an
+  // agent it declares.
   starter: Starter;
 };
 export type ScreenAction = ActionBase & {
@@ -188,7 +262,7 @@ export type SpecialistPlugin = PluginBase & {
   builder: SpecialistBuilder;
   actions: readonly Action[];
 };
-export type RoutePlugin = PluginBase & { builder: RouteBuilder };
+export type ReadyPlanPlugin = PluginBase & { builder: ReadyPlanBuilder };
 // A skill pack as the host lays it into a specialist's workspace and lists it in the assignment.
 export type SkillPack = {
   builder: SkillsBuilder;
@@ -203,7 +277,7 @@ export type SkillPack = {
   // Every file in its skills folder, by path there.
   files: Readonly<Record<string, string>>;
 };
-export type Plugin = SpecialistPlugin | RoutePlugin;
+export type Plugin = SpecialistPlugin | ReadyPlanPlugin;
 
 // A handle several installed plugins share: the one a project uses and the others. missing is the
 // package the project's selection names when none of them is that package, so it uses the default.
@@ -216,6 +290,10 @@ export type Choice = {
 
 /** The project value that selects which of the plugins sharing a handle a project uses, by package name. */
 export const selectionName = (handle: string) => `plugins.${handle}`;
+
+export type PluginPackage =
+  | { role: string; entry: string }
+  | { role: string; agent: AgentPackage };
 
 /**
  * The installed plugins as one project sees them: one plugin per handle, the one its selection names
@@ -232,9 +310,9 @@ export type Catalog = {
   factText(fact: Fact): string;
   // Every project value by name: the host's own and each one a plugin declares.
   values: ReadonlyMap<string, ValueDeclaration>;
-  // Each workflow package a plugin brings, by name: its entry's path in the plugins folder and the
-  // role its runs play.
-  packages: ReadonlyMap<string, { entry: string; role: string }>;
+  // Each workflow package a plugin brings, by name, with the role its runs play: its entry's path in
+  // the plugins folder, or the agent it declares, which the host builds.
+  packages: ReadonlyMap<string, PluginPackage>;
   // Each handle several installed plugins share, with the one this catalog uses.
   choices: readonly Choice[];
   // The catalog as a project with these values sees it; only the selection values are read.
@@ -243,8 +321,8 @@ export type Catalog = {
 
 export const isSpecialist = (plugin: Plugin): plugin is SpecialistPlugin =>
   plugin.builder.runs === "specialist";
-export const isRoute = (plugin: Plugin): plugin is RoutePlugin =>
-  plugin.builder.runs === "route";
+export const isReadyPlan = (plugin: Plugin): plugin is ReadyPlanPlugin =>
+  plugin.builder.runs === "plan";
 export const isWorkflowAction = (action: Action): action is WorkflowAction =>
   action.builder.runs === "workflow";
 export const isScreenAction = (action: Action): action is ScreenAction =>
@@ -305,7 +383,7 @@ export function manifestFiles(found: Found) {
         }),
         ...Object.values(builder.starters ?? {}),
       ],
-      texts: [],
+      texts: Object.values(builder.agents ?? {}).map(({ prompt }) => prompt),
       folders: [],
     };
   return { modules: [], texts: [builder.guidance], folders: [] };
@@ -684,17 +762,28 @@ async function installAction(
     );
   const { fields } = workflow.describe;
   checkFacts(name, facts, known, (field) => Object.hasOwn(fields, field));
-  const starter = starters.get(declared.start.workflow);
+  const { start } = declared;
+  if (
+    startsAgent(start) &&
+    !Object.hasOwn(specialist.agents ?? {}, start.agent)
+  )
+    throw new Error(
+      `${name} starts the agent ${start.agent}, which ${handle} does not declare`,
+    );
+  const started = startsAgent(start) ? start.agent : start.workflow;
+  const starter = startsAgent(start)
+    ? agentStarter(start.agent, declared.returns)
+    : starters.get(start.workflow);
   if (!starter)
     throw new Error(
-      `${name} starts ${declared.start.workflow}, which is not an installed workflow`,
+      `${name} starts ${started}, which is not an installed workflow`,
     );
-  const problem = starter.check(declared.start);
+  const problem = starter.check(start);
   if (problem !== undefined) throw new Error(`${name} start: ${problem}`);
   const unread = starter.reads.find((field) => !Object.hasOwn(fields, field));
   if (unread !== undefined)
     throw new Error(
-      `${name} starts ${declared.start.workflow}, which reads ${unread}, but its input has no ${unread}`,
+      `${name} starts ${started}, which reads ${unread}, but its input has no ${unread}`,
     );
   const notCheck = declared.done?.find(
     (check) => specialist.actions[check]?.runs !== "check",
@@ -718,6 +807,7 @@ async function installAction(
     check: (raw) => checkWorkflowInput(name, workflow, raw),
     presents: presentsOf(name, specialist, declared.presents),
     packs: packs.filter(({ serves }) => serves.includes(name)),
+    workflow: started,
     starter,
   };
 }
@@ -758,12 +848,12 @@ async function specialistPlugin(
   };
 }
 
-async function routePlugin(
+async function readyPlanPlugin(
   found: Found,
-  builder: RouteBuilder,
+  builder: ReadyPlanBuilder,
   about: Manifested["about"],
   known: ReadonlySet<Fact>,
-): Promise<RoutePlugin> {
+): Promise<ReadyPlanPlugin> {
   const { description } = about;
   checkFacts(
     builder.handle,
@@ -772,7 +862,7 @@ async function routePlugin(
         ...step.requires,
         ...approvalFacts(step.approval),
       ]),
-      ...(builder.outcome === undefined ? [] : [builder.outcome]),
+      ...(builder.ends === undefined ? [] : [builder.ends]),
     ],
     known,
     () => false,
@@ -790,7 +880,7 @@ async function routePlugin(
   };
 }
 
-// Every action a route names is a workflow or check action of each installed specialist with its
+// Every action a ready-made plan names is a workflow or check action of each installed specialist with its
 // handle, so whichever of them a project uses has it.
 function checkCatalog(plugins: readonly Plugin[]) {
   const specialists = plugins.filter(isSpecialist);
@@ -808,7 +898,7 @@ function checkCatalog(plugins: readonly Plugin[]) {
     );
   };
   for (const { builder } of plugins)
-    if (builder.runs === "route")
+    if (builder.runs === "plan")
       for (const step of builder.steps)
         if (!offered(step.plugin, step.action))
           throw new Error(
@@ -816,11 +906,11 @@ function checkCatalog(plugins: readonly Plugin[]) {
           );
 }
 
-// A route step asks for the person's go-ahead only through its approval, so what it requires names
-// no fact that only a screen's answer makes true. And no step the person may not decline needs a
-// fact that only steps they may decline make true in the same route, since declining those would
-// leave the journey with no way on.
-function checkRouteSteps(plugins: readonly Plugin[]) {
+// A ready-made plan's step asks for the person's go-ahead only through its approval, so what it
+// requires names no fact that only a screen's answer makes true. And no step the person may not
+// decline needs a fact that only steps they may decline make true in the same plan, since
+// declining those would leave the plan with no way on.
+function checkReadyPlanSteps(plugins: readonly Plugin[]) {
   const actions = plugins
     .filter(isSpecialist)
     .flatMap(({ actions }) => actions);
@@ -831,7 +921,7 @@ function checkRouteSteps(plugins: readonly Plugin[]) {
     return makers.length > 0 && makers.every(isScreenAction);
   };
   for (const { builder } of plugins) {
-    if (builder.runs !== "route") continue;
+    if (builder.runs !== "plan") continue;
     for (const step of builder.steps) {
       const gate = step.requires.find(goAhead);
       if (gate !== undefined)
@@ -859,7 +949,7 @@ function checkRouteSteps(plugins: readonly Plugin[]) {
         const optional = makers.find((maker) => maker.step.optional);
         if (optional && makers.every((maker) => maker.step.optional))
           throw new Error(
-            `${builder.handle}'s step ${step.plugin} ${step.action} needs ${fact}, which only its optional step ${optional.step.plugin} ${optional.step.action} makes true; declining that step would leave the route with no way on, so make it required or drop ${fact} from what the step needs`,
+            `${builder.handle}'s step ${step.plugin} ${step.action} needs ${fact}, which only its optional step ${optional.step.plugin} ${optional.step.action} makes true; declining that step would leave the plan with no way on, so make it required or drop ${fact} from what the step needs`,
           );
       }
     }
@@ -962,22 +1052,57 @@ async function pluginStarters(manifests: readonly Manifested[]) {
   return starters;
 }
 
-// Each workflow package a plugin brings, by name, at its entry's path in the plugins folder.
-function pluginPackages(manifests: readonly Manifested[]) {
-  const packages = new Map<string, { entry: string; role: string }>();
+// Each declared agent's package: its prompt's text, run as the role whose model it names, the
+// writer's unless stated, its reply waiting for a filed document when every action starting it
+// files one.
+async function agentPackages(found: Found, builder: SpecialistBuilder) {
+  const starting = Object.values(builder.actions).filter(
+    (action) => action.runs === "workflow",
+  );
+  return Promise.all(
+    Object.entries(builder.agents ?? {}).map(
+      async ([name, { prompt, tools, model = "writer" }]) => {
+        const actions = starting.filter(
+          ({ start }) => startsAgent(start) && start.agent === name,
+        );
+        const agent: AgentPackage = {
+          name,
+          prompt: (await found.text(prompt)).trim(),
+          tools,
+          role: model,
+          fileBeforeDone:
+            actions.length > 0 &&
+            actions.every(({ returns }) =>
+              returns.some((fact) => fact.startsWith("filed:")),
+            ),
+        };
+        return [name, { role: model, agent }] as const;
+      },
+    ),
+  );
+}
+
+// Each workflow package a plugin brings, by name: at its entry's path in the plugins folder, or the
+// agent it declares.
+async function pluginPackages(manifests: readonly Manifested[]) {
+  const packages = new Map<string, PluginPackage>();
   // Two plugins with one handle may well bring a package of the same name, which only one can be.
   const owners = new Map<string, string>();
   for (const { found, builder, about } of manifests) {
     if (builder.runs !== "specialist") continue;
-    for (const [name, { entry, role }] of Object.entries(
-      builder.packages ?? {},
-    )) {
+    for (const [name, brought] of [
+      ...Object.entries(builder.packages ?? {}).map(
+        ([name, { entry, role }]) =>
+          [name, { entry: join(found.folder, entry), role }] as const,
+      ),
+      ...(await agentPackages(found, builder)),
+    ]) {
       const other = owners.get(name);
       if (other !== undefined)
         throw new Error(
           `${about.package} installs the workflow package ${name}, which ${other} installs too`,
         );
-      packages.set(name, { entry: join(found.folder, entry), role });
+      packages.set(name, brought);
       owners.set(name, about.package);
     }
   }
@@ -1032,12 +1157,12 @@ export async function loadCatalog(
           preferences: host.preferences,
           starters,
         });
-      return routePlugin(found, builder, about, known);
+      return readyPlanPlugin(found, builder, about, known);
     }),
   );
   checkCatalog(plugins);
-  checkRouteSteps(plugins);
-  const packages = pluginPackages(manifests);
+  checkReadyPlanSteps(plugins);
+  const packages = await pluginPackages(manifests);
   const shared = sharedHandles(plugins, (plugin) => plugin.package);
   // The one place the installed plugins are narrowed to one per handle.
   const catalogOf = (choices: readonly Choice[]): Catalog => {

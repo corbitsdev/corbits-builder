@@ -18,8 +18,22 @@ import {
 } from "@corbits-builder/hub/workflows/compaction";
 import { nativePackageName } from "@corbits-builder/hub/workflows/package-name";
 import { DESIGN_STANDARD } from "@corbits-builder/hub/config/design";
+import manifest from "../package.json";
 import { createCoderAgent } from "./agent.ts";
 import { createCoderWorkflow } from "./workflow.ts";
+
+// Build and change both start this one workflow, and a run is not told which action started it, so
+// a finished reply waits on every check either action's done names.
+const DONE = {
+  plugin: manifest.builder.handle,
+  checks: [
+    ...new Set(
+      Object.values(manifest.builder.actions).flatMap((action) =>
+        "done" in action ? action.done : [],
+      ),
+    ),
+  ],
+};
 
 // Remote MCP servers the coder calls from its own deployment. Exa answers keyless, so no credential
 // handle. Only its read-only tools run without a person's approval.
@@ -50,6 +64,7 @@ export async function coderPackage(
       timeouts,
       compactAt: 0.6,
       checkBeforeDone: true,
+      done: DONE,
     }),
     id: "coder",
     capabilities: [],

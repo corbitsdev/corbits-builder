@@ -5,8 +5,14 @@ import { isAbsolute, join, relative, resolve, sep } from "node:path";
 import { posix } from "@intx/tools-posix/sidecar-bundle";
 import type { ToolCall, ToolResult, ToolRunner } from "@intx/types/runtime";
 import type { RuntimeCapabilities } from "@intx/types/runtime-capabilities";
+import {
+  CHECK_MS,
+  COMMAND_GRACE_MS,
+  COMMAND_SECONDS,
+} from "@corbits-builder/plugin-host/checks";
+import { CheckRan } from "@corbits-builder/schemas/artifact";
 import { resolveWorkflowProjectScope } from "../workflows/project-scope.ts";
-import { WorkflowHttpError } from "../workflows/http-json.ts";
+import { WorkflowHttpError, workflowHttpJson } from "../workflows/http-json.ts";
 import { savedResultTools } from "../workflows/saved-result-tools.ts";
 import { APP_STATUS_TOOL, createCodingTools } from "./coding-tools.ts";
 import {
@@ -15,7 +21,12 @@ import {
   noteCommandProgress,
 } from "./posix-sandbox.ts";
 import { browserTools } from "./browser.ts";
-import type { CheckDetail } from "./check-detail.ts";
+import {
+  DONE_CHECKS_TOOL,
+  DoneChecksCall,
+  type CheckDetail,
+  type DoneChecks,
+} from "./check-detail.ts";
 import type { BrowserCatalog } from "./browser-catalog.ts";
 import {
   CHECK_APP,
@@ -197,6 +208,18 @@ export function appCheckDetail(
 const passedAppCheck = (call: ToolCall, result: ToolResult) =>
   appCheckDetail(call, result)?.checkPassed === true;
 
+// The hub ends a check of one command at its default time; the call waits a little longer for it.
+const DONE_CHECK_CALL_MS =
+  CHECK_MS + COMMAND_SECONDS * 1000 + COMMAND_GRACE_MS + 15_000;
+const DONE_CHECK_RESPONSE_BYTES = 65_536;
+// Only the director calls it, so its description is for the audit, not for a model.
+const doneChecksDefinition = {
+  name: DONE_CHECKS_TOOL,
+  description:
+    "Runs the named checks of a plugin through the hub against the app as saved, once the workspace's last version is saved.",
+  inputSchema: { ...DoneChecksCall.toJsonSchema() },
+};
+
 // A cold install; under the executor's own ceiling.
 const SETUP_TIMEOUT_MS = 115_000;
 // What the person reads while the workspace installs its packages, which can take the whole timeout.
@@ -233,7 +256,9 @@ export function createSidecarCodingTools(policy: {
               : { name: PACKAGE_INSTALL_TOOL },
           ]
         : []),
-      ...(policy.workspace === "app" ? [{ name: APP_STATUS_TOOL }] : []),
+      ...(policy.workspace === "app"
+        ? [{ name: APP_STATUS_TOOL }, { name: DONE_CHECKS_TOOL }]
+        : []),
       ...(design ? [{ name: CHECK_DESIGN_TOOL }] : []),
       ...(policy.browser?.definitions ?? []),
     ],
@@ -247,6 +272,60 @@ export function createSidecarCodingTools(policy: {
           workspace,
           signal,
         );
+      // The checks a finished reply waits on, run by the hub as this run against the app as saved,
+      // once the last version of the workspace reached the project's app repository.
+      const runDoneChecks = async (
+        { plugin, checks }: typeof DoneChecksCall.infer,
+        signal: AbortSignal,
+      ): Promise<DoneChecks> => {
+        await repository?.idle();
+        const saved = repository?.status();
+        if (saved === undefined)
+          return {
+            unrun:
+              "the workspace's app repository never opened, so none of its work is saved",
+          };
+        if (saved.state === "failed")
+          return {
+            unrun: `the workspace's latest version did not reach the project's app repository (${saved.error})`,
+          };
+        try {
+          const scope = await resolveWorkflowProjectScope(
+            env.capabilities,
+            "coder",
+            signal,
+          );
+          const results = [];
+          for (const check of checks) {
+            const ran = CheckRan.assert(
+              await workflowHttpJson({
+                capabilities: env.capabilities,
+                handle: HUB_CREDENTIAL_HANDLE,
+                path: `/api/tenants/${encodeURIComponent(scope.tenantId)}/projects/${encodeURIComponent(scope.projectId)}/check-runs`,
+                body: { plugin, action: check },
+                maxResponseBytes: DONE_CHECK_RESPONSE_BYTES,
+                signal,
+                timeoutMs: DONE_CHECK_CALL_MS,
+              }),
+            );
+            if (!("result" in ran))
+              return {
+                unrun: `${plugin} ${check} keeps trying and has no result yet`,
+              };
+            const { result, summary, evidence } = ran;
+            results.push({ check, result, summary, evidence });
+          }
+          return saved.commit === undefined
+            ? { results }
+            : { commit: saved.commit, results };
+        } catch (error) {
+          log.error("Running the done checks failed: {reason}", {
+            reason: filingFailure(error),
+            ...requestErrorMetadata(error),
+          });
+          return { unrun: filingFailure(error) };
+        }
+      };
       let designCheck: DesignCheck | undefined;
       // The project's app repository, once the workspace is prepared. Every call that can change
       // files versions the workspace in the background; the builder waits on a push only for a
@@ -555,7 +634,7 @@ export function createSidecarCodingTools(policy: {
         ...native,
         definitions: [
           ...native.definitions.filter((tool) => offered(tool.name)),
-          ...(design ? [checkDesignDefinition] : []),
+          ...(design ? [checkDesignDefinition] : [doneChecksDefinition]),
           ...(policy.browser?.tools ?? []),
         ],
         run: async (rawCall, signal) => {
@@ -571,6 +650,17 @@ export function createSidecarCodingTools(policy: {
                 }
               : rawCall;
           if (browserNames.has(call.name)) return runBrowser(call, signal);
+          if (!design && call.name === DONE_CHECKS_TOOL) {
+            const detail = await runDoneChecks(
+              DoneChecksCall.assert(call.arguments),
+              signal,
+            );
+            return {
+              callId: call.id,
+              content: JSON.stringify(detail),
+              detail,
+            };
+          }
           if (design && call.name === CHECK_DESIGN_TOOL) {
             await open(signal);
             if (!designCheck) throw new Error("design_check_missing");

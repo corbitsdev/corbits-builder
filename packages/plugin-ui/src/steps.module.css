@@ -33,6 +33,12 @@ summary.row {
   overflow-wrap: anywhere;
 }
 
+.note {
+  display: block;
+  color: var(--wb-muted-foreground);
+  font-size: 0.75rem;
+}
+
 .state {
   display: inline-flex;
   flex: none;

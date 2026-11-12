@@ -49,6 +49,10 @@
   font-weight: 600;
 }
 
+.action {
+  margin-inline-start: calc(var(--space-2) * -1);
+}
+
 .body {
   flex: 1;
   min-height: 0;

@@ -17,22 +17,22 @@ const plan = {
 };
 
 scenario({
-  name: "s26-routes-combine",
+  name: "s26-plans-combine",
   title:
-    "build-web-app advises on a build plan started before the design is chosen, and after leaving the route the same call carries no advice",
+    "build-web-app advises on a build plan started before the design is chosen, and after leaving the build-web-app plan the same call carries no advice",
   start: "weather-documents",
   coordinator: [
     turn(
       user("Plan the build"),
-      execute("c_route", "build-web-app", undefined, {}),
+      execute("c_follow", "build-web-app", undefined, {}),
     ),
     turn(
-      results(ok("c_route", "execute")),
+      results(ok("c_follow", "execute")),
       execute("c_plan_held", "writer", "write-build-plan", plan),
     ),
     turn(
       results(refused("c_plan_held", "execute")),
-      say("The route waits for you to choose a design first."),
+      say("The plan waits for you to choose a design first."),
     ),
     turn(
       user("I leave the approvals"),
@@ -40,7 +40,7 @@ scenario({
     ),
     turn(
       results(ok("c_plan_advised", "execute", '"advice"')),
-      say("A writer is planning; the route suggested a design first."),
+      say("A writer is planning; the plan suggested a design first."),
     ),
     turn(
       user(),
@@ -62,13 +62,13 @@ scenario({
   },
   person: async (p) => {
     await p.heard("The project is imported.");
-    await p.say("Plan the build, following the usual route.");
-    await p.heard("The route waits for you to choose a design first.");
+    await p.say("Plan the build, following the usual plan.");
+    await p.heard("The plan waits for you to choose a design first.");
     await p.prefer({ agent_decides_approvals: "yes" });
     await p.say("I leave the approvals to you; plan it anyway.");
     await p.heard("The plan is revised.");
     for (const id of [
-      "c_route",
+      "c_follow",
       "c_plan_held",
       "c_plan_advised",
       "c_leave",

@@ -8,7 +8,7 @@
   "type": "module",
   "builder": {
     "handle": "build-web-app",
-    "runs": "route",
+    "runs": "plan",
     "groups": [
       "build",
       "plan"
@@ -56,7 +56,7 @@
         }
       }
     ],
-    "outcome": "app_exists",
+    "ends": "app_exists",
     "examples": [
       "I want to build a weather app",
       "help me make an app for booking dog walks",

@@ -1,0 +1,1 @@
+ALTER TABLE "project" RENAME COLUMN "routes" TO "following";

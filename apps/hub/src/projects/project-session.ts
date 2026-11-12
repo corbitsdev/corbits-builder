@@ -139,9 +139,14 @@ export function checkDeployments(workflows: ProjectOptions["workflows"]) {
   }
 }
 
-// The plugin action a session starts runs for, and the block of project values each run's
-// assignment carries.
-type Assigned = { plugin: string; action: string; values: string };
+// The plugin action a session starts runs for, the plan step they do when the coordinator could
+// tell which, and the block of project values each run's assignment carries.
+type Assigned = {
+  plugin: string;
+  action: string;
+  values: string;
+  step: string | undefined;
+};
 
 /**
  * The coordinator's view of its project through the hub, and the way it starts a specialist there.
@@ -264,6 +269,7 @@ export function projectSession(
         runId: deployment.id,
         plugin: assigned.plugin,
         action: assigned.action,
+        step: assigned.step,
       });
     await beforeAssign?.(deployment.id);
     await env.capabilities.resolve("mail.transport").send(

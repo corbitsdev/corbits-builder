@@ -66,8 +66,8 @@ export type Observation = Readonly<{
   textTurns: readonly string[];
 }>;
 
-// An action started is execute:<plugin>.<action>, a route followed execute:<plugin> and a screen
-// opened open:<plugin>.<action>.
+// An action started is execute:<plugin>.<action>, a ready-made plan followed execute:<plugin> and a
+// screen opened open:<plugin>.<action>.
 function moveOf(tool: string, args: Record<string, unknown>): string {
   if (tool === "discover") return tool;
   if (tool === "execute")

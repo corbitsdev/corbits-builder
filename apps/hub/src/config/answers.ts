@@ -25,4 +25,18 @@ export const stepDeclinedNote = (title: string, declined: boolean) =>
 
 // Why a plan step cannot be declined, for the person.
 export const STEP_REQUIRED_TEXT =
-  "This step is required by the journey, so it cannot be declined. Only a step marked optional can be.";
+  "This step is required by the plan, so it cannot be declined. Only a step marked optional can be.";
+
+// The hub's note to the coordinator once the person gave the go-ahead for a step they asked to be consulted on.
+export const stepGoAheadNote = (title: string) =>
+  `${HUB_NOTE_LEAD}The person gave the go-ahead for the plan step "${title}".\n\nStart it when the plan reaches it.`;
+
+// The hub's note to the coordinator once the person turned "ask me first" on or off for a plan step.
+export const stepAskFirstNote = (title: string, askFirst: boolean) =>
+  askFirst
+    ? `${HUB_NOTE_LEAD}The person asked to be consulted before the plan step "${title}" starts.\n\nDo not start it until they give the go-ahead on the plan.`
+    : `${HUB_NOTE_LEAD}The person no longer wants to be consulted before the plan step "${title}" starts.\n\nStart it when the plan reaches it.`;
+
+// Why a plan step cannot be given a go-ahead, for the person.
+export const STEP_NOT_ASK_FIRST_TEXT =
+  "This step was not set to ask you first, so it needs no go-ahead.";

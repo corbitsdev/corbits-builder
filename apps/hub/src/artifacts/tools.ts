@@ -16,6 +16,7 @@ import {
   type DocumentWrite,
   type WriterDocumentKind,
 } from "@corbits-builder/schemas/artifact";
+import type { AgentPackage } from "@corbits-builder/plugin";
 import type { WorkflowRole } from "@corbits-builder/schemas/installed-workflows";
 import { stripApprovalPackageBinaries } from "./approval-package.ts";
 import { unpackDesign } from "./design-tools.ts";
@@ -170,12 +171,25 @@ export function createWriterArtifactTools(kind: WriterDocumentKind) {
   });
 }
 
+// An agent a plugin declares reads the project's documents as the role it runs as, and with write
+// files a document of any kind.
+export const createAgentArtifactTools = (
+  role: AgentPackage["role"],
+  write: boolean,
+) =>
+  artifactTools(
+    role,
+    write
+      ? {
+          definitions: [documentWriteDefinition, readDefinition],
+          save: AnyDocumentFields,
+        }
+      : { definitions: [readDefinition] },
+  );
+
 // The writer of any document saves it under the kind it names.
 export const createDocumentWriterArtifactTools = () =>
-  artifactTools("writer", {
-    definitions: [documentWriteDefinition, readDefinition],
-    save: AnyDocumentFields,
-  });
+  createAgentArtifactTools("writer", true);
 
 function artifactTools(
   role: WorkflowRole,

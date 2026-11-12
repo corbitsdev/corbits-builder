@@ -28,6 +28,47 @@ export async function readProjectPlan(projectId: string) {
   return productClient().projectPlan(tenantId, projectId);
 }
 
+/** Changes a plan step as the person; a refusal throws with the hub's own sentence. */
+async function changePlanStep(
+  send: (
+    client: ReturnType<typeof productClient>,
+    tenantId: string,
+  ) => Promise<unknown>,
+) {
+  const tenantId = await workspaceTenantId();
+  try {
+    return await send(productClient(), tenantId);
+  } catch (cause) {
+    const text = (await refusal(cause))?.body["text"];
+    if (typeof text === "string") throw new Error(text);
+    throw await readableFailure(cause);
+  }
+}
+
+export const declinePlanStep = (projectId: string, stepId: string) =>
+  changePlanStep((client, tenantId) =>
+    client.declinePlanStep(tenantId, projectId, stepId),
+  );
+
+export const restorePlanStep = (projectId: string, stepId: string) =>
+  changePlanStep((client, tenantId) =>
+    client.restorePlanStep(tenantId, projectId, stepId),
+  );
+
+export const goAheadPlanStep = (projectId: string, stepId: string) =>
+  changePlanStep((client, tenantId) =>
+    client.goAheadPlanStep(tenantId, projectId, stepId),
+  );
+
+export const setPlanStepAskFirst = (
+  projectId: string,
+  stepId: string,
+  askFirst: boolean,
+) =>
+  changePlanStep((client, tenantId) =>
+    client.setPlanStepAskFirst(tenantId, projectId, stepId, askFirst),
+  );
+
 export async function readArtifact(
   projectId: string,
   artifactId: string,

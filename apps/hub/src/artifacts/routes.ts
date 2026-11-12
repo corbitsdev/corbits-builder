@@ -60,12 +60,12 @@ import { projectFacts } from "../plugins/facts.ts";
 import { mountApprovalRoundRoutes } from "./approval-rounds.ts";
 import {
   CATALOG,
-  isRoute,
+  isReadyPlan,
   isSelection,
   isWorkflowAction,
   PLUGINS,
   projectCatalog,
-  ProjectRoutes,
+  ProjectFollowing,
   selectionRefusal,
 } from "../plugins/catalog.ts";
 import type { Actor } from "../lib/actor.ts";
@@ -73,7 +73,9 @@ import type { createArtifactService } from "./service.ts";
 import type { createSettingsService } from "../settings/service.ts";
 import { projectValueWrites, readProjectValues } from "./project-values.ts";
 
-const ROUTES = PLUGINS.filter(isRoute).map(({ builder }) => builder.handle);
+const READY_PLANS = PLUGINS.filter(isReadyPlan).map(
+  ({ builder }) => builder.handle,
+);
 
 const undeclaredValue = (names: readonly string[]) =>
   names.find((name) => !CATALOG.values.has(name));
@@ -90,6 +92,8 @@ const ApproveAsked = type({
   action: "'approve'",
   input: { kinds: "string[]" },
 });
+
+const AskFirst = type({ "+": "reject", askFirst: "boolean" });
 
 const security = [
   { sessionCookie: [] },
@@ -418,62 +422,72 @@ export function mountArtifactRoutes(
     },
   );
   app.get(
-    "/:projectId/routes",
+    "/:projectId/following",
     describeRoute({
       tags: ["Artifacts"],
-      operationId: "readProjectRoutes",
+      operationId: "readProjectFollowing",
       description:
-        "The handles of the route plugins the project follows, none when it follows none.",
+        "The handles of the ready-made plans the project is following, none when it follows none.",
       security,
       responses: {
         200: {
-          description: "The routes the project follows",
-          content: { "application/json": { schema: resolver(ProjectRoutes) } },
+          description: "The ready-made plans the project is following",
+          content: {
+            "application/json": { schema: resolver(ProjectFollowing) },
+          },
         },
       },
     }),
     async (c) =>
       c.json({
-        routes: await service.projectRoutes(
+        following: await service.projectFollowing(
           actorOf(c),
           c.req.param("projectId"),
         ),
       }),
   );
   app.post(
-    "/:projectId/routes",
+    "/:projectId/following",
     describeRoute({
       tags: ["Artifacts"],
-      operationId: "followProjectRoutes",
+      operationId: "setProjectFollowing",
       description:
-        "Sets the installed route plugins the project follows, by their handles; none takes it off every route.",
+        "Sets the installed ready-made plans the project is following, by their handles; none stops it following any.",
       security,
       requestBody: {
         required: true,
-        content: { "application/json": { schema: resolver(ProjectRoutes) } },
+        content: {
+          "application/json": { schema: resolver(ProjectFollowing) },
+        },
       },
       responses: {
         200: {
-          description: "The routes the project now follows",
-          content: { "application/json": { schema: resolver(ProjectRoutes) } },
+          description: "The ready-made plans the project is now following",
+          content: {
+            "application/json": { schema: resolver(ProjectFollowing) },
+          },
         },
-        400: { description: "A handle that is not an installed route plugin" },
+        400: {
+          description: "A handle that is not an installed ready-made plan",
+        },
       },
     }),
     async (c) => {
-      const input = ProjectRoutes(await body(c));
+      const input = ProjectFollowing(await body(c));
       if (input instanceof type.errors)
-        throw new ProjectError(400, "invalid_project_routes", {
+        throw new ProjectError(400, "invalid_project_following", {
           issues: input,
         });
-      const unknown = input.routes.find((route) => !ROUTES.includes(route));
+      const unknown = input.following.find(
+        (handle) => !READY_PLANS.includes(handle),
+      );
       if (unknown !== undefined)
-        throw new ProjectError(400, "unknown_route", { route: unknown });
+        throw new ProjectError(400, "unknown_ready_plan", { plan: unknown });
       return c.json({
-        routes: await service.followRoutes(
+        following: await service.setFollowing(
           actorOf(c),
           c.req.param("projectId"),
-          input.routes,
+          input.following,
         ),
       });
     },
@@ -568,7 +582,7 @@ export function mountArtifactRoutes(
         tags: ["Artifacts"],
         operationId: declined ? "declinePlanStep" : "undeclinePlanStep",
         description: declined
-          ? "The signed-in person declines an optional plan step. The step stays in the plan as skipped, declined by the person, the coordinator cannot start that work while it is declined, and the coordinator gets a hub note saying so. A step the journey requires cannot be declined."
+          ? "The signed-in person declines an optional plan step. The step stays in the plan as skipped, declined by the person, the coordinator cannot start that work while it is declined, and the coordinator gets a hub note saying so. A step its ready-made plan requires cannot be declined."
           : "The signed-in person restores an optional plan step they declined, and the coordinator gets a hub note saying so.",
         security: [{ sessionCookie: [] }, { deviceBearer: [] }],
         responses: {
@@ -580,7 +594,7 @@ export function mountArtifactRoutes(
           404: { description: "No plan step by that id" },
           409: {
             description:
-              "The step is required by its journey; text says so for the person",
+              "The step is required by its plan; text says so for the person",
           },
         },
       }),
@@ -606,13 +620,62 @@ export function mountArtifactRoutes(
         );
       },
     );
+  for (const goAhead of [true, false])
+    app.post(
+      `/:projectId/plan/steps/:stepId/${goAhead ? "go" : "ask-first"}`,
+      describeRoute({
+        tags: ["Artifacts"],
+        operationId: goAhead ? "goAheadPlanStep" : "askFirstPlanStep",
+        description: goAhead
+          ? "The signed-in person gives the go-ahead on a plan step they asked to be consulted on, and the coordinator gets a hub note saying so. A step not set to ask first cannot be given one."
+          : 'The signed-in person turns "ask me first" on or off for a plan step that has not started. Turning it on clears an earlier go-ahead. The coordinator gets a hub note saying so.',
+        security: [{ sessionCookie: [] }, { deviceBearer: [] }],
+        responses: {
+          200: {
+            description: "The plan as now stored",
+            content: { "application/json": { schema: resolver(StoredPlan) } },
+          },
+          400: { description: "The body is not { askFirst: boolean }" },
+          403: { description: "The caller is not a person on the project" },
+          404: { description: "No plan step by that id" },
+          409: {
+            description:
+              "The step is not set to ask first; text says so for the person",
+          },
+        },
+      }),
+      async (c) => {
+        const current = actorOf(c);
+        const input = goAhead ? { goAhead: true } : AskFirst(await body(c));
+        if (input instanceof type.errors)
+          throw new ProjectError(400, "invalid_ask_first", { issues: input });
+        return c.json(
+          await service.askPlanStep(
+            current,
+            c.req.param("projectId"),
+            c.req.param("stepId"),
+            {
+              ask: "goAhead" in input ? { goAhead: true } : input,
+              mailRun: (runId, content) =>
+                mailRunAsCaller(
+                  c,
+                  nativeFetch,
+                  current.tenantId,
+                  runId,
+                  content,
+                ),
+            },
+          ),
+        );
+      },
+    );
   app.post(
     "/:projectId/run-actions",
     describeRoute({
       tags: ["Artifacts"],
       operationId: "recordRunAction",
       description:
-        "Records the plugin action the coordinator just started a specialist run for, before the run's assignment reaches it. The run is then listed among the coordinator's runs, the coordinator may stop it, and it may save the project values that action writes.",
+        "Records the plugin action the coordinator just started a specialist run for, before the run's assignment reaches it, and the id of the plan step it does when the coordinator could tell which. The run is then listed among the coordinator's runs, the plan shows it on that step, the coordinator may stop it, and it may save the project values that action writes.",
       security,
       requestBody: {
         required: true,

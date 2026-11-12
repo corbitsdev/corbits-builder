@@ -401,7 +401,7 @@ export function createChecks(deps: {
       throw new ProjectError(409, "check_requires_unmet", {
         hint: unmetRequirement(
           action.name,
-          { own, routes: [] },
+          { own, plans: [] },
           makersIn(CATALOG),
           CATALOG.factText,
           "execute",

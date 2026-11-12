@@ -46,8 +46,8 @@ const PlanRead = type({
   }).array(),
 });
 
-// The build-web-app journey's steps as the plan shows them.
-async function journey(p: Person) {
+// The build-web-app plan's steps as the project's plan shows them.
+async function readyPlanSteps(p: Person) {
   const read = await p.call("GET", `${p.path}/plan`);
   expect(read.status).toBe(200);
   const [parent] = PlanRead.assert(read.body).steps;
@@ -76,14 +76,14 @@ async function coordinatorBearer(p: Person) {
 }
 
 scenario({
-  name: "s34-journey-flags",
+  name: "s34-plan-flags",
   title:
-    "the build-web-app journey goes on the plan with its user manual optional; the person declines the manual, which the coordinator's token cannot and execute then refuses; a required step cannot be declined; after a hand-over the design starts without asking",
+    "the build-web-app ready-made plan goes on the project's plan with its user manual optional; the person declines the manual, which the coordinator's token cannot and execute then refuses; a required step cannot be declined; after a hand-over the design starts without asking",
   start: { fresh: idea },
   coordinator: [
     turn(
       user("weather app"),
-      call("c_plan", "plan", { operation: "add", route: "build-web-app" }),
+      call("c_plan", "plan", { operation: "add", plan: "build-web-app" }),
     ),
     turn(results(ok("c_plan", "plan", '"optional":true')), say("Planned.")),
     turn(
@@ -118,9 +118,9 @@ scenario({
   },
   person: async (p) => {
     await p.heard("Planned.");
-    p.note("plan add { route } returned", p.resultOf("c_plan").text);
-    const steps = await journey(p);
-    p.note("the journey's steps on the plan", steps);
+    p.note("plan add { plan } returned", p.resultOf("c_plan").text);
+    const steps = await readyPlanSteps(p);
+    p.note("the ready-made plan's steps on the project's plan", steps);
     const byTitle = (title: string) => {
       const step = steps.find((each) => each.title === title);
       if (!step) throw new Error(`The plan has no step "${title}"`);
@@ -149,7 +149,9 @@ scenario({
 
     const declined = await p.call("POST", decline(userManual.id));
     expect(declined.status).toBe(200);
-    const after = (await journey(p)).find((step) => step.id === userManual.id);
+    const after = (await readyPlanSteps(p)).find(
+      (step) => step.id === userManual.id,
+    );
     expect(after?.state).toBe("skipped");
     expect(after?.summary).toBe("declined by the person");
 

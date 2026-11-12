@@ -26,10 +26,10 @@ scenario({
     turn(user("weather app"), say("How would you like to work?")),
     turn(
       user("approvals to you"),
-      execute("c_route", "build-web-app", undefined, {}),
+      execute("c_follow", "build-web-app", undefined, {}),
     ),
     turn(
-      results(ok("c_route", "execute", "write-requirements")),
+      results(ok("c_follow", "execute", "write-requirements")),
       execute("c_requirements", "writer", "write-requirements", {
         instruction:
           "An animated weather web app: current conditions, 24-hour and 7-day forecasts, saved cities and a compare view, using Open-Meteo.",
@@ -95,7 +95,7 @@ scenario({
     expect(chosen.status).toBe(200);
     await p.filed("app", 1);
     await p.heard("Your app is built.");
-    p.note("following the route returned", p.resultOf("c_route").text);
+    p.note("following the plan returned", p.resultOf("c_follow").text);
     for (const id of EXECUTES) p.note(`${id} returned`, p.resultOf(id).text);
     p.note("every message the coordinator received", p.messages("coordinator"));
     for (const id of ["c_requirements", "c_mockup", "c_build"])

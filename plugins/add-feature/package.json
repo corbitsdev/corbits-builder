@@ -8,7 +8,7 @@
   "type": "module",
   "builder": {
     "handle": "add-feature",
-    "runs": "route",
+    "runs": "plan",
     "groups": [
       "build",
       "plan"
