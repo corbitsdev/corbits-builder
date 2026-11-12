@@ -2,7 +2,7 @@
   "name": "@corbits-builder/generalist",
   "version": "0.1.0",
   "private": true,
-  "description": "Does any task no other specialist fits: looks things up, reads the project's documents and app, answers or files a document.",
+  "description": "Does any task no other specialist fits: looks things up, reads the project's documents and code, answers or files a document.",
   "license": "SEE LICENSE IN ../../LICENSE.md",
   "author": "Sawyer Cutler <sawyer@dirtroad.dev>",
   "type": "module",
@@ -19,8 +19,8 @@
       "questions",
       "documents"
     ],
-    "when": "The person asks for something no other specialist's action does: research that needs looking things up on the web, a question about the project or its app's code, or a document such as a competitor analysis, a product comparison or a profit breakdown that needs facts from outside the project.",
-    "unless": "Another specialist's action fits: a document written only from the project's own documents, the product requirements or the build plan (writer), a second opinion or approval of a filed document (writer), building or changing the app (coder), a look, mockup, fonts or colours (designer), or a deck for an audience (presenter).",
+    "when": "The person asks for something no other specialist's action does: research that needs looking things up on the web, a question about the project or its code, or a document such as a competitor analysis, a product comparison or a profit breakdown that needs facts from outside the project.",
+    "unless": "Another specialist's action fits: a document written only from the project's own documents, the product requirements or the build plan (writer), a second opinion or approval of a filed document (writer), building or changing code (coder), a look, mockup, fonts or colours (designer), or a deck for an audience (presenter).",
     "agents": {
       "generalist": {
         "prompt": "./prompt.md",
@@ -34,7 +34,7 @@
     "actions": {
       "do": {
         "runs": "workflow",
-        "when": "Nothing else fits the task: research on a company, product or library, a comparison or breakdown with facts from the web, an answer about the project or what its app's code does, or any other task. Give a kind and title when the result should be filed as a document; leave them out for a question, whose answer comes back in the reply.",
+        "when": "Nothing else fits the task: research on a company, product or library, a comparison or breakdown with facts from the web, an answer about the project or what its code does, or any other task. Give a kind and title when the result should be filed as a document; leave them out for a question, whose answer comes back in the reply.",
         "unless": "One of the other specialists' actions fits the task.",
         "input": "./src/do.ts",
         "reads": [

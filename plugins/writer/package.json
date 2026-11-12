@@ -2,7 +2,7 @@
   "name": "@corbits-builder/writer",
   "version": "0.7.1",
   "private": true,
-  "description": "Writes the project's documents, has them reviewed and puts them in front of the person to approve.",
+  "description": "Writes any document the work needs, has it reviewed and puts documents in front of the person to approve.",
   "license": "SEE LICENSE IN ../../LICENSE.md",
   "author": "Sawyer Cutler <sawyer@dirtroad.dev>",
   "type": "module",
@@ -35,8 +35,8 @@
       "review",
       "approval"
     ],
-    "when": "The project's documents need writing or revising, a second opinion, or the person's approval.",
-    "unless": "The person wants the app itself changed, or only a mockup.",
+    "when": "A document needs writing or revising, of any kind: requirements, a build plan, a brief, an analysis, a manual or anything else; or a filed document needs a second opinion or the person's approval.",
+    "unless": "The person wants the thing itself built or changed, or only a mockup.",
     "packages": {
       "writer-product-requirements": {
         "entry": "./src/packages/writer-product-requirements.ts",
@@ -63,8 +63,8 @@
     "actions": {
       "write": {
         "runs": "workflow",
-        "when": "The person asks for any document that has no action of its own, such as a competitor analysis, a product comparison, a profit breakdown or a security review, or wants one revised.",
-        "unless": "The document is the product requirements or the build plan, which have actions of their own, or the person wants the app itself changed.",
+        "when": "The person asks for any document that has no action of its own, such as a problem brief, constraints, a comparison of approaches, a competitor analysis, a security review or a user manual, or wants one revised.",
+        "unless": "The document is the product requirements or the build plan, which have actions of their own, or the person wants the thing itself built or changed.",
         "input": "./src/write.ts",
         "reads": [
           "brand.guidelines"
@@ -78,8 +78,8 @@
       },
       "write-requirements": {
         "runs": "workflow",
-        "when": "The project needs its product requirements written, or revised with what the person said.",
-        "unless": "The person wants the app itself changed, or only a mockup.",
+        "when": "Something is to be built, of any kind, and what it must do should be written down or revised with what the person said.",
+        "unless": "The person wants the thing itself built or changed, or only a mockup.",
         "input": "./src/write-requirements.ts",
         "reads": [
           "brand.guidelines"
@@ -94,8 +94,8 @@
       },
       "write-build-plan": {
         "runs": "workflow",
-        "when": "The project needs a build plan, or its plan revised: the stack, the phases of work and the checks.",
-        "unless": "What the app must do is still being settled with the person.",
+        "when": "Something is to be built and needs a build plan, or its plan revised: the stack, the phases of work and the checks.",
+        "unless": "What it must do is still being settled with the person.",
         "input": "./src/write-build-plan.ts",
         "reads": [
           "brand.guidelines"
@@ -134,7 +134,7 @@
       "approve": {
         "runs": "screen",
         "when": "Filed documents are ready for the person to approve, with no open questions left.",
-        "unless": "The person chose to let you decide approvals, or the work is a change to an app that already exists.",
+        "unless": "The person chose to let you decide approvals, or the work is a change to something already built.",
         "screen": "./src/approve/screen.ts",
         "view": "./src/approve/view.tsx",
         "requires": [
@@ -155,9 +155,12 @@
       "do a security review of the plan",
       "compare our pricing options",
       "write up what the app should do",
+      "write requirements for a command-line tool",
+      "write a problem brief",
       "add offline mode to the requirements",
       "I want to plan an app for my team",
       "plan how to build it",
+      "plan the data pipeline in Python",
       "use Postgres in the plan instead",
       "is this plan any good",
       "check the requirements for gaps",

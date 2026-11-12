@@ -65,7 +65,7 @@ describe("composer placeholder", () => {
     ).toBe("Ask the writer…");
   });
 
-  test("the coder is called the app builder", () => {
+  test("the coder is named in the placeholder", () => {
     expect(
       placeholder({
         status: standing({
@@ -73,7 +73,7 @@ describe("composer placeholder", () => {
           app: { state: "running" },
         }),
       }),
-    ).toBe("Ask the app builder…");
+    ).toBe("Ask the coder…");
   });
 
   test("the presenter is named while it is working", () => {

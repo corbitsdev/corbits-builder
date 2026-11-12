@@ -94,6 +94,11 @@ scenario({
       ),
       say("Not ready for Cloudflare yet."),
     ),
+    // Saving the config makes ready stale, and the hub re-runs it by itself.
+    turn(
+      user("The cloudflare ready check passed."),
+      say("Your ready check passes now."),
+    ),
     turn(
       user("added the wrangler config"),
       execute("c_ready_2", "cloudflare", "ready", {}),
@@ -155,6 +160,7 @@ scenario({
       manifest.devDependencies = devDependencies;
       files["package.json"] = JSON.stringify(manifest, null, 2);
     });
+    await p.heard("Your ready check passes now.");
     await p.say("I added the wrangler config.");
     await p.heard("Ready for Cloudflare.");
     p.note(

@@ -7,11 +7,8 @@ import { workflowRun } from "@intx/db/schema";
 import type { ProjectExport } from "@corbits-builder/schemas/project";
 import { startTestHub, type TestHubHandle } from "../e2e/support/hub.ts";
 import {
-  buildWeatherApp,
-  FIXTURE_DIR,
   NonEmptyString,
   STAGE_DEADLINE_MS,
-  withPipelineScenario,
 } from "../e2e/support/pipeline-driver.ts";
 import {
   formatOpenAISseResponse,
@@ -32,6 +29,7 @@ import {
   type Observation,
   type Remark,
 } from "./recorder.ts";
+import { startingProject } from "../scenarios/runner.ts";
 
 const RESULTS =
   process.env["BASELINE_RESULTS"] ??
@@ -447,23 +445,7 @@ test("records the coordinator's first moves after a person's remark about a buil
   await mkdir(dirname(RESULTS), { recursive: true });
   console.log(`Baseline: ${selected.length} cases, results in ${RESULTS}`);
 
-  let exported: ProjectExport | undefined;
-  await withPipelineScenario(
-    {
-      fixtureDir: FIXTURE_DIR,
-      projectId: "animated-weather-app",
-      title: "Animated Weather App",
-      problemStatement: "C: Weather App",
-    },
-    async (driver) => {
-      await buildWeatherApp(driver);
-      exported = await driver.hub.client.exportProject(
-        driver.projectTenantId,
-        driver.projectId,
-      );
-    },
-  );
-  if (!exported) throw new Error("The weather app was not exported");
+  const exported = await startingProject("weather-app");
 
   const records: CaseRecord[] = [];
   for (const hint of cases.hints) {

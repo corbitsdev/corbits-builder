@@ -746,10 +746,10 @@ export function ArtifactPane({
         <div className={styles.content}>
           <div className={styles.empty}>
             <FileText size={28} aria-hidden="true" />
-            <h2>Your outputs appear here</h2>
+            <h2>What you make appears here</h2>
             <p>
-              Keep the conversation going on the left. Documents and design
-              previews will be available here as they are written.
+              Keep the conversation going on the left. Documents, designs, code
+              and previews show here as they are made.
             </p>
           </div>
         </div>

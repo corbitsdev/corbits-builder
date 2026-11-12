@@ -124,20 +124,19 @@ export const wording = {
   },
   liveApp: {
     tab: "Live Preview",
-    title: "The app as it is being built",
-    manualTitle: "How to use the app, with pictures of it as built",
-    frameTitle: "The running app",
-    notBuiltTitle: "Your app appears here",
-    notBuilt:
-      "The app builder starts it once you confirm a design and approve the documents.",
+    title: "What the coder is building, as it runs",
+    manualTitle: "How to use it, with pictures of it as built",
+    frameTitle: "The running preview",
+    notBuiltTitle: "Anything that runs appears here",
+    notBuilt: "When the coder builds something you can run, it shows here.",
     setup: {
-      working: "The app builder is setting up your app…",
-      note: "Your app shows here as soon as the app builder's first changes run.",
+      working: "The coder is setting this up…",
+      note: "It shows here as soon as the coder's first changes run.",
       elapsed: (clock: string) => `${clock} elapsed`,
-      checking: "Checking on the app builder…",
+      checking: "Checking on the coder…",
       unknown:
-        "The app builder's progress cannot be read right now; your app shows here once it can.",
-      notWritten: "The app builder has not written any of your app yet.",
+        "The coder's progress cannot be read right now; it shows here once it can.",
+      notWritten: "The coder has not written any files yet.",
       /** The build so far: "12 files written · last: routines · 20 s ago". */
       progress: (files: number, last: string | undefined, ago: string) =>
         `${String(files)} ${files === 1 ? "file" : "files"} written` +
@@ -150,27 +149,27 @@ export const wording = {
       minutesAgo: (minutes: number) => `${String(minutes)} min ago`,
     },
     phase: {
-      installing: "Installing the app's packages",
-      starting: "Starting the app",
+      installing: "Installing the packages it needs",
+      starting: "Starting it",
     },
     filedVersion: (version: number) => `App v${String(version)}`,
     savedWork: (commit: string) => `Latest saved work (${commit.slice(0, 7)})`,
-    stopped: "The app is stopped.",
+    stopped: "It is stopped.",
     stoppedNote: "Nothing is running it right now.",
-    failed: "The app could not start.",
-    restarts: "It starts again when the app's files next change.",
-    lastOutput: "The app's last output",
-    unavailableTitle: "No app preview here",
+    failed: "It could not start.",
+    restarts: "It starts again when its files next change.",
+    lastOutput: "Its last output",
+    unavailableTitle: "No preview here",
     unavailable:
-      "This Builder cannot run apps, so the app cannot be shown here.",
+      "This Builder cannot run what the coder makes, so it cannot be shown here.",
     openInNewTab: "Open in a new tab",
-    download: "Download the app",
-    share: "Share the app",
+    download: "Download the code",
+    share: "Share the code",
     demoLogin: (email: string, password: string) =>
       `Demo login: ${email} · ${password}`,
     checklistShow: "Show the acceptance checklist",
     checklistHide: "Hide the acceptance checklist",
-    controls: "App controls",
+    controls: "Preview controls",
     checklistTitle: "Acceptance checklist",
     checklistProgress: (done: number, total: number) =>
       `${String(done)} of ${String(total)} checked so far.`,
@@ -179,7 +178,7 @@ export const wording = {
   },
   nextStep: {
     action: {
-      open_app: "Open the app",
+      open_app: "Open the preview",
       reply: "Reply",
       resume_coordinator: "Start the coordinator",
     },
@@ -239,26 +238,26 @@ export const wording = {
     readOnly: "Shown as stored; it has no editor here.",
   },
   newProject: {
-    title: "What do you want to build today?",
-    lead: "Turn any half-baked idea into an application",
+    title: "What do you want to make today?",
+    lead: "Build, write, edit or improve anything. Say what you want and the coordinator takes it from there.",
     starting: "Starting your project…",
     titleRequired: "A project needs a title.",
     createFailed: "The project could not be created.",
   },
   appVersion: {
     current: (version: number) => `Downloaded version ${String(version)}.`,
-    saved: "Downloaded the app's saved code.",
+    saved: "Downloaded the saved code.",
     forbidden:
-      "Downloaded the app's saved code. You can view this project but not save a new version of its code.",
+      "Downloaded the saved code. You can view this project but not save a new version of its code.",
     elsewhere:
-      "Downloaded the app's saved code. The app builder's working copy cannot be read from here, so its current code is not in it.",
+      "Downloaded the saved code. The coder's working copy cannot be read from here, so its current code is not in it.",
     failed: (status: number, code: string) =>
-      `Saving the app builder's current code failed (HTTP ${String(status)}, ${code}), so this is the app's saved code without it.`,
+      `Saving the coder's current code failed (HTTP ${String(status)}, ${code}), so this is the saved code without it.`,
     refused: (status: number, code: string) =>
       `The hub refused the request: HTTP ${String(status)}, ${code}.`,
     // Refusals a person reads in plain words instead of by status and code.
     refusals: {
-      app_repository_unreadable: `${productName} cannot read this project's saved app right now.`,
+      app_repository_unreadable: `${productName} cannot read this project's saved code right now.`,
     } as Record<string, string | undefined>,
     unreadable:
       "The hub's answer could not be read; it may be an older hub that has not been restarted.",
@@ -267,11 +266,11 @@ export const wording = {
     title: "Export the project",
     loading: "Checking what this project has to export…",
     sectionsFailed: (reason: string) =>
-      `Only the planning documents can be offered: ${reason}`,
+      `Only the documents can be offered: ${reason}`,
     sections: {
-      planning: "Planning documents",
-      design: "Design documents and mockups",
-      build: "Build",
+      planning: "Documents",
+      design: "Designs and mockups",
+      build: "Code",
     },
     action: "Export",
   },
@@ -286,7 +285,7 @@ export const wording = {
     folderTitle: (title: string, folder: string) =>
       `Import ${title} from ${folder}?`,
     folderCode: (files: number, size: string) =>
-      `Code: ${files} files, ${size}. It is filed as the app, and the app builder starts from it.`,
+      `Code: ${files} files, ${size}. It is filed as the project's code, and the coder starts from it.`,
     folderNoCode:
       "No package.json was found, so no code is filed; only the documents found are.",
     folderNothing: "Nothing to import: no code and no documents were found.",
@@ -327,7 +326,7 @@ export const wording = {
         title: "Slide decks",
         experimental: false,
         description:
-          "Ask the coordinator to present your project for an audience — such as a CEO, CTO, investor, or client — to generate a tailored 16:9 slide deck (.pptx and .pdf) from your approved documents and preview it beside the chat.",
+          "Ask the coordinator to present your project for an audience — such as a CEO, CTO, investor, or client — to generate a tailored 16:9 slide deck (.pptx and .pdf) from the project's work and preview it beside the chat.",
       },
       approvals: {
         id: "experimental_approvals",
@@ -354,7 +353,7 @@ export const wording = {
     title: "Projects",
     subtitle:
       "Every project in this workspace. Archived ones wait under Archived until restored.",
-    filterLabel: "Show projects by stage",
+    filterLabel: "Show projects by status",
     all: "All",
     filter: {
       idea: "Idea",
@@ -443,7 +442,7 @@ export const wording = {
       writer: "writer",
       reviewer: "reviewer",
       designer: "designer",
-      coder: "app builder",
+      coder: "coder",
       presenter: "presenter",
     },
     change: "What needs to change…",
@@ -454,7 +453,7 @@ export const wording = {
   /** What a person's move is waiting on, as the bell and gate name it. */
   wait: {
     permission: "The coordinator asks permission to continue",
-    install: "The builder asks to install packages",
+    install: "The coder asks to install packages",
     wantsToRun: (toolName: string | undefined) =>
       `Wants to run: ${toolName ?? "a step"}`,
     wantsToInstall: (packages: readonly string[]) =>
@@ -464,7 +463,7 @@ export const wording = {
       "The coordinator asked a question in the conversation.",
   },
   speaker: {
-    coder: "App builder",
+    coder: "Coder",
     coordinator: "Coordinator",
     specialist: "Specialist",
     you: "You",
@@ -477,7 +476,7 @@ export const wording = {
       writer: "Writer",
       reviewer: "Reviewer",
       designer: "Designer",
-      coder: "App builder",
+      coder: "Coder",
       presenter: "Presenter",
     },
     /** Before the run's first tool call: the hub has seen nothing from it yet. */
@@ -485,8 +484,8 @@ export const wording = {
     /** How files and commands read in a status line: plain names, never paths or ids. */
     files: {
       earlierOutput: "earlier results",
-      generic: "the app's files",
-      checkApp: "a full check of the app",
+      generic: "the project's files",
+      checkApp: "a full check of the work",
       command: "a quick check",
       known: {
         "DESIGN.md": "the design notes",
@@ -494,8 +493,8 @@ export const wording = {
         "USER-MANUAL.md": "the user manual",
         "ACCEPTANCE.md": "the acceptance checklist",
         "AGENTS.md": "the project guide",
-        "package.json": "the app setup",
-        "index.html": "the main screen",
+        "package.json": "the package setup",
+        "index.html": "the main page",
         "styles.css": "the styles",
         "deck.json": "the slide deck",
         "deck.pptx": "the PowerPoint deck",
@@ -547,8 +546,8 @@ export const wording = {
     },
     /** A hand-off in the coordinator's turn, by execute's plugin action: who it starts, once started. */
     handoff: {
-      "coder build": () => "Started the app builder",
-      "coder change": () => "Started the app builder on a change",
+      "coder build": () => "Started the coder",
+      "coder change": () => "Started the coder on a change",
       "writer write": (document?: string) =>
         document ? `Started the writer · ${document}` : "Started the writer",
       "writer write-requirements": (document?: string) =>
@@ -561,8 +560,8 @@ export const wording = {
     } as Record<string, (subject?: string) => string>,
     /** A hand-off the hub refused, by execute's plugin action: who it did not start. */
     handoffRefused: {
-      "coder build": () => "Could not start the app builder",
-      "coder change": () => "Could not start the app builder on a change",
+      "coder build": () => "Could not start the coder",
+      "coder change": () => "Could not start the coder on a change",
       "writer write": (document?: string) =>
         document
           ? `Could not start the writer · ${document}`
@@ -607,7 +606,7 @@ export const wording = {
         subject ? `filing the ${subject}` : "filing a document",
       install_packages: (subject?: string) =>
         subject ? `installing ${subject}` : "installing packages",
-      app_status: () => "checking the app preview",
+      app_status: () => "checking the preview",
       mail_send: () => "sending a note",
       mail_reply: () => "replying",
       mail_read: () => "reading a note",
@@ -623,7 +622,7 @@ export const wording = {
     } as Record<string, (subject?: string) => string>,
     /** What a call returned, in plain words, for a tool whose raw result means nothing to a person. */
     toolResult: {
-      exec: "The assistant wrote this step in a form the app can't run, so it was asked to write it again.",
+      exec: "The assistant wrote this step in a form Builder can't run, so it was asked to write it again.",
     } as Record<string, string>,
     otherTool: (name: string) => `using ${name.replaceAll("_", " ")}`,
     elapsed: (minutes: number, seconds: number) =>
@@ -645,7 +644,7 @@ export const wording = {
     conceptSketching: (label: string) =>
       `The designer is sketching your ${label} concept…`,
     conceptSketchingNote:
-      "Its mockup shows here once the designer has drafted your app.",
+      "Its mockup shows here once the designer has drafted it.",
     conceptSketchingElapsed: (clock: string) => `${clock} elapsed`,
     conceptWaiting: (label: string) =>
       `The designer of your ${label} concept is between steps.`,
@@ -656,14 +655,14 @@ export const wording = {
   themes: {
     tab: "Design Themes",
     title:
-      "Example mockups of each look. Open one to click through, tweak it and use it for your app.",
+      "Example mockups of each look. Open one to click through, tweak it and use it for your project.",
     gallery: "Design themes",
     open: (label: string) => `Open the ${label} theme`,
     back: "Back to all design themes",
     loading: "Loading design themes…",
     failed: "The design themes could not load.",
     use: "Use this theme",
-    /** The composer message that asks the coordinator to design the app in one theme. */
+    /** The composer message that asks the coordinator to design the work in one theme. */
     message: (label: string, looks: readonly string[]) =>
       looks.length === 0
         ? `Design it in the ${label} theme.`
@@ -745,9 +744,9 @@ export const wording = {
   dispatch: {
     /** What a call works on when its arguments name no document or concept, by the role it starts. */
     subject: {
-      coder: "the app",
+      coder: "the code",
       designer: "the design",
-      presenter: "the approval package",
+      presenter: "the presentation",
     } as Record<string, string>,
     /** What a hand-off works on when nothing names it yet. */
     unnamed: "the task",
@@ -776,7 +775,7 @@ export const wording = {
     open: "Open",
     /** Opens the project view on what a working specialist is making, as it makes it. */
     watchDraft: "Watch the draft",
-    watchApp: "Watch the app",
+    watchApp: "Watch it run",
     /** Names the list of the steps a run took just before its live line. */
     recent: "Recent steps",
     failed: (reason: string) => `Did not finish: ${reason}`,
@@ -864,8 +863,8 @@ export const wording = {
     /** An ask by its tool and main argument. */
     tool: (tool: string, subject?: string) =>
       subject === undefined
-        ? `Let the app builder use ${tool}?`
-        : `Let the app builder use ${tool} on ${subject}?`,
+        ? `Let the specialist use ${tool}?`
+        : `Let the specialist use ${tool} on ${subject}?`,
     /** A document's name as an earlier-document warning says it. */
     shortName: {
       problem_brief: "brief",
@@ -880,8 +879,8 @@ export const wording = {
     approved: (line: string) => `Approved · ${line}`,
     /** A declined card's one line. */
     declined: "Not yet",
-    packages: (list: string) => `Install ${list} into your app?`,
-    packagesDetail: "The app builder needs these to build your app.",
+    packages: (list: string) => `Install ${list} into your project?`,
+    packagesDetail: "The coder needs these to do the work.",
     packagesAllowed: (list: string) => `Allowed · ${list}`,
     /** Allows every later install in this build or change without asking; the next one asks again. */
     packagesAlways: "Always allow",
@@ -951,7 +950,8 @@ export const wording = {
     coordinatorNotStarted: "The coordinator for this project did not start.",
     projectNotOpened: "The project could not be opened.",
     projectLoading: "Loading this project…",
-    projectEmpty: "Describe what you want built to start a project.",
+    projectEmpty:
+      "Describe what you want to make or change to start a project.",
     stepFailed: "That step could not finish.",
   },
   /** The coordinator's questions as a card the person answers in the conversation. */
@@ -1001,7 +1001,7 @@ export const wording = {
   },
   archivedProject: {
     title: "This project is archived",
-    lead: "Its documents, design, and app stay open to read and download. Restore it to work on it again.",
+    lead: "Everything it made stays open to read and download. Restore it to work on it again.",
     restore: "Restore",
     restoring: "Restoring…",
     restoreFailed: "The project could not be restored.",
@@ -1164,7 +1164,7 @@ export const wording = {
     },
     about: {
       section: `About ${productName}`,
-      lead: "Turns an idea into documents, approvals and a built app.",
+      lead: "One assistant that brings in specialists to build, edit, improve or write anything.",
       openSource: "Open source",
       openSourceLead:
         "Work from others this product carries beyond its npm packages, whose licenses ship with them.",

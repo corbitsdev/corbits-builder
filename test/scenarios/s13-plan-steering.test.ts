@@ -1,4 +1,3 @@
-import { coderChecksStarter } from "./specialists.ts";
 import {
   execute,
   ok,
@@ -10,8 +9,6 @@ import {
   user,
 } from "./runner.ts";
 
-const report =
-  "The coder started; check-app wants a README and a user manual first.";
 const build = {
   instruction:
     "Build the dog-walking booking app now, as the person described.",
@@ -41,25 +38,20 @@ scenario({
       results(ok("c_leave", "execute")),
       execute("c_build_off_plan", "coder", "build", build),
     ),
+    // Off the plan a first build still needs its documents filed.
     turn(
-      results(ok("c_build_off_plan", "execute", '"started":true')),
-      say("A coder is building it."),
-    ),
-    turn(
-      user(
-        "Hub note, not from the person: The coder's build stopped before finishing.",
+      results(
+        refused(
+          "c_build_off_plan",
+          "execute",
+          "The project does not have what it needs yet.",
+        ),
       ),
-      say("The coder could not finish the build."),
+      say("The build needs the requirements and a build plan first."),
     ),
   ],
-  specialists: {
-    coder: {
-      role: "coder",
-      turns: coderChecksStarter({ assignedWith: "dog-walking", report }),
-    },
-  },
   person: async (p) => {
-    await p.heard("The coder could not finish the build.");
+    await p.heard("The build needs the requirements and a build plan first.");
     for (const id of [
       "c_follow",
       "c_build_on_plan",

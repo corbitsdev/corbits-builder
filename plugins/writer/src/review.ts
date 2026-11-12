@@ -24,7 +24,10 @@ export default defineWorkflow({
         otherwise:
           "Or the kind of any other filed document, as read_artifact lists it.",
       },
-      instruction: { about: "What the reviewer should check." },
+      instruction: {
+        about:
+          "What the reviewer should check, and what the person asked for that the document must serve. The reviewer sees only the document, the problem brief when one is filed, and this.",
+      },
     },
   },
 });

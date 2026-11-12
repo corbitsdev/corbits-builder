@@ -262,3 +262,21 @@ export async function readRunDesignTheme(
     signal,
   );
 }
+
+// Saves the starter a first build's workspace began from as the project's stack.starter, so a
+// later change starts the coder that fits the code. The build action writes it.
+export async function recordStarter(
+  capabilities: RuntimeCapabilities,
+  scope: { tenantId: string; projectId: string },
+  starter: string,
+  signal: AbortSignal,
+) {
+  await workflowHttpJson({
+    capabilities,
+    handle: HUB_CREDENTIAL_HANDLE,
+    path: projectPath(scope) + "/run-values",
+    body: { values: { "stack.starter": starter } },
+    maxResponseBytes: 16384,
+    signal,
+  });
+}

@@ -1,10 +1,10 @@
 import { type } from "arktype";
 import { defineStarter } from "@corbits-builder/plugin-host/catalog";
 import type { Project } from "@corbits-builder/plugin-host/coordinator";
-import { DEFAULT_STACK, WRITER_PACKAGES, writerTask } from "./task.ts";
+import { WEB_APP_STACK, WRITER_PACKAGES, writerTask } from "./task.ts";
 
 // A writer writes or revises one document from every other filed document; the build plan alone is
-// written from the design, and to the default stack unless the person asked otherwise.
+// written from the design, and is offered the web stack for a web app that has none named.
 export default defineStarter(
   type({
     "+": "reject",
@@ -24,8 +24,8 @@ export default defineStarter(
               instruction:
                 kind === "build_plan"
                   ? instruction +
-                    "\n\nDefault stack unless the person asked otherwise: " +
-                    DEFAULT_STACK
+                    "\n\nWhen this is a web app and neither the project nor the person names a stack, the suggested one is " +
+                    WEB_APP_STACK
                   : instruction,
               sources: [...versions]
                 .filter(

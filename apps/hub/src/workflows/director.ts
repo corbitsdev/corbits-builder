@@ -251,8 +251,9 @@ const ranShell = (call: TaskCall, pattern: RegExp) =>
   pattern.test(call.command);
 
 // Run 36's coder passed check-app, kept editing, broke the app and would have replied done; a reply
-// counts as done only when no file changed after the last passing check. check_design is the
-// designer's check-app; file_design_option files only a design it passed as it stands.
+// counts as done only when no file changed after the last passing check. The coder's tools mark only
+// its starter's finish check (check-app or check-project) as one. check_design is the designer's
+// check-app; file_design_option files only a design it passed as it stands.
 function unchecked(turns: readonly ConversationTurn[]): boolean {
   for (const call of taskCalls(turns)) {
     if (call.check) return call.isError || !call.check.checkPassed;
@@ -310,7 +311,7 @@ function holdReply(
   // holds it.
   if (refusedBeforeReply(turns)) return undefined;
   if (config.checkBeforeDone && unchecked(turns))
-    return "Files changed after the last passing check-app, so the work is not done yet.";
+    return "Files changed after the last passing check, so the work is not done yet.";
   if (config.fileBeforeDone && unfiled(turns)) {
     if (config.checkBeforeDone)
       return "The design option is not filed yet; check_design or file_design_option files it.";
@@ -325,7 +326,7 @@ function holdReply(
  * too long. A turn cut off with no text and no tool call is continued instead of parked, and a
  * turn that only repeats one sentence is dropped and sampled again, as is a stream the source adapter
  * cut for repeating one passage. The third such turn in one task fails the run, or with
- * replyOnFailure is the reply. With checkBeforeDone, a final reply waits for a passing check-app
+ * replyOnFailure is the reply. With checkBeforeDone, a final reply waits for a passing finish check
  * after the last file change; with fileBeforeDone, it waits for a filed document; with done, a reply
  * those rules let out waits for the hub to run the named checks on the app as saved, and goes out
  * only when they pass. Each held reply is answered in the same conversation with what is missing,
@@ -341,7 +342,7 @@ export const compactingDirector = (packageName: string) =>
   defineDirector<{
     contextWindow: number;
     compactAt: number;
-    // Whether a final reply waits for a passing check-app after the last file change.
+    // Whether a final reply waits for a passing finish check after the last file change.
     checkBeforeDone?: boolean;
     // Whether a final reply waits for a write_artifact that filed the task's document.
     fileBeforeDone?: boolean;

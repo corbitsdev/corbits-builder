@@ -32,7 +32,7 @@ export const conceptAssignment = (
   lookIdeas: string,
   instruction: string,
 ) =>
-  `Design concept: ${concept.label}. ${lookOf(concept)}\nThe person compares this concept with any others before they pick the one to build. file_design_option files it as this concept's option.\n\n` +
+  `Design concept: ${concept.label}. ${lookOf(concept)}\nThe person compares this concept with any others before they pick one. file_design_option files it as this concept's option.\n\n` +
   `The person's ideas for the look, in their words: ${lookIdeas.trim()}\n\n` +
   coderTaskMessage(instruction);
 

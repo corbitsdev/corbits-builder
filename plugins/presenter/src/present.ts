@@ -22,7 +22,7 @@ export default defineWorkflow({
         choices: Object.fromEntries(
           AUDIENCE_PERSONAS.map((persona) => [
             persona.id,
-            `${persona.label}: cares about ${persona.cares.join(", ")}; usually reads ${persona.defaultDocuments.join(", ")}`,
+            `${persona.label}: cares about ${persona.cares.join(", ")}; usually reads ${persona.defaultDocuments.join(", ")} when the project has them`,
           ]),
         ),
         otherwise: "Or any other audience, in the person's words.",

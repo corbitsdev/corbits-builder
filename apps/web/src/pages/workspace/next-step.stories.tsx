@@ -28,7 +28,7 @@ export const WordsOnly: Story = {};
 export const AgentsAtWork: Story = {
   args: {
     busy: true,
-    now: "The app builder is working.",
+    now: "The coder is working.",
     next: "Wait for the app, then try it.",
   },
 };
@@ -39,6 +39,6 @@ export const LongStep: Story = {
     busy: true,
     now: "The writer is drafting the product requirements and the reviewer is reading the constraints.",
     next: "Approve the problem brief once you have read the reviewer's notes on it, or say what should change.",
-    action: { label: "Open the app", onSelect: fn() },
+    action: { label: "Open the preview", onSelect: fn() },
   },
 };

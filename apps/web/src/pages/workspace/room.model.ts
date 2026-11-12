@@ -168,6 +168,9 @@ import { screensFor, selectionNames } from "./screens.ts";
 // The stream says when the room moved. This read covers what it cannot see,
 // such as a coordinator run replaced while its old stream stays quiet.
 const FALLBACK_RELOAD_MS = 30_000;
+// The first build records what the code started from once its workspace is set up.
+const STARTER_POLL_MS = 5_000;
+const STARTER_VALUE = "stack.starter";
 // No coordinator's stream announces the next one binding, so an unbound room reads again until it does.
 const BIND_POLL_MS = 1_000;
 // A handoff binds within seconds; past this the room starts the coordinator itself, so a start the
@@ -1525,7 +1528,21 @@ export function useRoom({
     appFiled ||
     firstBuilder !== undefined ||
     paneDeliverables.some((item) => item.kind === "build_plan");
-  const liveApp = appComing ? { projectId, builder: firstBuilder } : null;
+  // Code that started from anything but the web app starter, such as a command-line tool, serves
+  // nothing to preview. A project that never recorded its starter is a web app.
+  const starter = useQuery({
+    queryKey: keys.projectValues.starter(projectId),
+    retry: false,
+    refetchOnWindowFocus: false,
+    refetchInterval: firstBuilder === undefined ? false : STARTER_POLL_MS,
+    queryFn: appComing
+      ? ({ signal }) => readProjectValues(projectId, [STARTER_VALUE], signal)
+      : skipToken,
+  });
+  const started = starter.data?.[STARTER_VALUE];
+  const servesApp = typeof started !== "string" || started === "web-app";
+  const liveApp =
+    appComing && servesApp ? { projectId, builder: firstBuilder } : null;
   // The manual follows the app, so it is read again while the coder works.
   const userManual = useUserManual(
     projectId,

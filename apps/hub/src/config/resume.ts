@@ -23,7 +23,7 @@ export const HUB_NOTE_LEAD = "Hub note, not from the person: ";
 // Sent by the hub, never shown to the person, when a coordinator on an outdated version was replaced
 // as it started a writer: its writer did not start, and the person is not waiting to be asked.
 const HANDOFF_LEAD = `${HUB_NOTE_LEAD}Builder moved this project to a new version`;
-export const HANDOFF_OPENING = `${HANDOFF_LEAD} as you were starting a specialist, so it did not start. Check which documents are filed and approved, start the specialist the work needs next, and carry on without mentioning the move.`;
+export const HANDOFF_OPENING = `${HANDOFF_LEAD} as you were starting a specialist, so it did not start. Check what the project holds and where its plan stands, start what the work needs next, and carry on without mentioning the move.`;
 
 const TURN_CHARS = 2_000;
 const CONTEXT_CHARS = 16_000;
@@ -58,7 +58,7 @@ export function resumeContext(state: {
       ? `Still waiting for the person's approval: ${state.awaiting.join(", ")}.`
       : "",
     state.withApp
-      ? "The app is already built: its source is filed as the app document."
+      ? "The project's code is already built and filed as the app document; a change to it can be made directly."
       : "",
     lines.length
       ? "Earlier conversation, oldest first:\n\n" + lines.join("\n\n")

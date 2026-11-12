@@ -1,45 +1,58 @@
 # Coder
 
-The coder: builds the whole app from the project's approved documents and
-design, in a sandboxed workspace that starts as a working starter app. A
-later change is a new run on the saved app.
+The coder: builds the project's code from its approved documents (and, for a
+web app, its design) in a sandboxed workspace that starts as a working
+starter project, whatever kind of thing the project is. A later change is a
+new run on the saved code.
 
 ## Where it fits
 
 This folder is the whole coder plugin. Its `package.json` `builder` block
 names its two actions, `build` and `change`, the workflow packages the hub
-builds and installs from it (`packages`), and the starter that starts its runs
-(`starters`). The two packages are `coder`, which asks the person before
-installing a package, and `coder-any-package`, which does not. The
+builds and installs from it (`packages`), and the starter module that starts
+its runs (`starters`). Its `coder.starters` block names what a first build can
+start from: `web-app` (`starter/`, finished by `check-app`) and `bare`
+(`starters/bare/`, finished by `check-project`). `coder build` takes the
+starter's name, the first build records it as `stack.starter`, and a later
+`coder change` starts the coder that fits it. Each starter has two packages,
+one that asks the person before installing a package and one (`-any-package`)
+that does not: `coder`, `coder-any-package`, `coder-bare` and
+`coder-bare-any-package`. The
 [coordinator][coordinator] starts them with `execute`. Its tools are file edits and `run_shell`
-in the app workspace, `install_packages`, `app_status`, a headless browser,
-Exa search, `read_artifact`, `read_skill` and `mail`.
+in the workspace, `install_packages`, Exa search, `read_artifact`,
+`read_skill` and `mail`, and for a web app `app_status` and a headless browser.
 
 ## Layout
 
 - `src/build.ts`, `src/change.ts`: each action's input and how the
   coordinator fills it.
-- `src/start.ts`: the starter. It refuses while another coder works on the
-  app, and writes the run's assignment from the filed documents, the chosen
-  design and the instruction.
+- `src/start.ts`: the starter module. It refuses while another coder works on
+  the code, picks the package for the run's starter, and writes the run's
+  assignment from the filed documents, the chosen design and the instruction.
 - `src/package.ts`: `coderPackage`, which assembles the agent from the hub's
-  model, director and tools, and asks the director to hold a reply until
-  check-app passes. `src/packages/` holds one entry per installed package.
-- `src/prompt.ts`: the system prompt.
+  model, director and tools for one starter, and asks the director to hold a
+  reply until that starter's finish check passes. `src/packages/` holds one entry per installed package.
+- `src/prompt.ts`: the system prompt: what any coding job asks, with each
+  starter's own part.
 - `src/agent.ts`: `createCoderAgent`, which requires an explicit provider
   and model and appends the hub's design standard to the prompt.
 - `src/workflow.ts`: `createCoderWorkflow`, a mail-triggered step on a posix
   sidecar that takes one assignment and ends. A later change is a new run
   that clones the saved app.
-- `src/contract.ts`: the documents a coder reads and its assignment text.
+- `src/contract.ts`: the documents a coder reads, the starters, and its
+  assignment text.
 - `starter/`: the starter app (Bun workspace with `client/`, `server/` and
   `packages/shared/`). Its `AGENTS.md` is the coder's guide to the app, and
   its placeholder `README.md` is what `check-app` requires the coder to
   replace.
-- `check/`: `check-app.ts`, which builds, starts and browses the app (or a
-  design mockup), and `watch-page.ts`, which reports page errors during the
-  build. Both are shipped into the workspace.
-- `src/assets.ts`: Bun macros that inline the starter, the check scripts and
+- `starters/bare/`: the starter for anything that is not a web app: one
+  TypeScript package on Bun with a test and no framework.
+- `check/`: `check-app.ts`, which builds, starts and browses a web app (or a
+  design mockup); `check-project.ts`, which runs a project's typecheck, test
+  and build scripts; `steps.ts`, the step both share; and `watch-page.ts`,
+  which reports page errors during a web app's build. They are shipped into
+  the workspace.
+- `src/assets.ts`: Bun macros that inline the starters, the check scripts and
   a digest of `@corbits/react-ui` when the hub is bundled.
 
 ## Working on it

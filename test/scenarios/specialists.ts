@@ -139,12 +139,27 @@ export function coderWorks(options: {
   ];
 }
 
-/** A coder whose assignment contains the text and that reports at once without changing a file. */
+/**
+ * A coder whose assignment contains the text and that reports without changing a file, once the
+ * app check passes: the hub holds a coder's reply until the saved app builds.
+ */
 export const coderReports = (options: {
   assignedWith: string;
   report: string;
 }): Turn[] => [
-  turn(user(options.assignedWith), say(options.report), CODER_TOOLS),
+  turn(
+    user(options.assignedWith),
+    call("coder_check", "run_shell", {
+      command: "check-app",
+      timeout: CHECK_APP_MS,
+    }),
+    CODER_TOOLS,
+  ),
+  turn(
+    results(ok("coder_check", "run_shell")),
+    say(options.report),
+    CODER_TOOLS,
+  ),
 ];
 
 const designer = WEATHER_SPECIALISTS.designer.turns;

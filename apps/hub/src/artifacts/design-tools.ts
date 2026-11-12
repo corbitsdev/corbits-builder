@@ -66,7 +66,7 @@ export function createDesignTools() {
     {
       name: "file_design_option",
       description:
-        "File the .builder folder (DESIGN.md and designs/) as the next version of your design concept's option. The person compares it with the other concepts' options and picks the one to build. The hub assigns its id, version and sha256 and returns them.",
+        "File the .builder folder (DESIGN.md and designs/) as the next version of your design concept's option. The person compares it with the other concepts' options and picks one. The hub assigns its id, version and sha256 and returns them.",
       inputSchema: {
         type: "object",
         properties: {},

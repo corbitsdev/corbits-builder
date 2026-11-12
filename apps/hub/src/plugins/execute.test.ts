@@ -241,7 +241,7 @@ test("coder build is refused without the filed requirements or build plan, and o
       "coder build was not started. The project does not have what it needs yet.",
       "",
       "It needs one of these:",
-      "  - the project has no app yet",
+      "  - the project has no code yet",
     ].join("\n"),
   );
   expect(built.deployed).toEqual([]);
@@ -317,20 +317,20 @@ test("execute on build-web-app puts the project on it and returns its guidance a
       "  designer mockup: can start now",
       "  writer write-build-plan: needs the person's go-ahead, which the build-web-app plan asks for: the person chose a design from the design options",
       "  coder build: needs the person's go-ahead, which the build-web-app plan asks for: the person approved the current version of the build plan, or leaves approvals to you and the person chose a design from the design options",
-      "  writer write (optional, the person may decline it): can start now; the build-web-app plan suggests first: the project has an app, built or imported",
+      "  writer write (optional, the person may decline it): can start now; the build-web-app plan suggests first: the project has code, built or imported",
     ].join("\n"),
   );
   const found = await idea.discover({ query: "build me an app" });
   expect(found.content).toContain("This project is following it.");
   expect(found.content).toContain(
-    "  build: The project has no app yet and its requirements or build plan say what to build. Now: needs the person's go-ahead, which the build-web-app plan asks for: the person approved",
+    "  build: The project has no code yet and its requirements or build plan say what to build. Now: needs the person's go-ahead, which the build-web-app plan asks for: the person approved",
   );
   const guidance = await idea.discover({
     plugin: "coder",
     action: "build",
   });
   expect(guidance.content).toContain(
-    "coder build: Has the coder build the whole app for the first time from the filed documents and, when one is chosen, the design. The documents are the assignment.\nUse it when: The project has no app yet and its requirements or build plan say what to build.\nNot when: The project already has an app; a change to it is coder change.\nRequires: the product requirements are filed and the project has no app yet; or the build plan is filed and the project has no app yet.\n",
+    "coder build: Has the coder build the project's code for the first time from the filed documents and, when one is chosen, the design. The documents are the assignment.\nUse it when: The project has no code yet and its requirements or build plan say what to build.\nNot when: The project already has code; a change to it is coder change.\nRequires: the product requirements are filed and the project has no code yet; or the build plan is filed and the project has no code yet.\n",
   );
   expect(guidance.content).toContain(
     "Now: needs the person's go-ahead, which the build-web-app plan asks for: the person approved",

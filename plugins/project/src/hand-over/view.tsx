@@ -16,7 +16,7 @@ type Props = ScreenViewProps<
 export const text = {
   title: "Approvals",
   handOver:
-    "Builder will write the requirements, design the app, write the build plan and build it without stopping to ask you. You can change anything afterwards, or turn this off at any time.",
+    "Builder will carry out each step of the plan without stopping to ask for your approval. You can change anything afterwards, or turn this off at any time.",
   handedOver:
     "Builder is going ahead without asking you. Turn asking back on and it will stop for your approval before each step again.",
   goAhead: "Go ahead without asking",

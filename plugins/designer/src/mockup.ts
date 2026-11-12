@@ -11,11 +11,11 @@ export default defineWorkflow({
   }),
   describe: {
     summary:
-      "Has a designer make a clickable, responsive mockup of the app for each concept, from whatever documents the project has filed, if any. Each is filed as a design option for the person to compare and choose from.",
+      "Has a designer make a clickable, responsive HTML mockup of an interface for each concept, such as a web app, a mobile app's screens, a dashboard or a marketing page, from the instruction and whatever documents the project has filed, if any. Each is filed as a design option for the person to compare and choose from.",
     fields: {
       instruction: {
         about:
-          "What to design or change. The designer knows nothing of the conversation, so this carries what the app is for and who uses it when no document says so.",
+          "What to design or change. The designer knows nothing of the conversation and cannot see an existing app, so this carries what kind of interface it is, what it is for and who uses it when no document says so, and, for something that exists, its screens and what they show.",
       },
       lookIdeas: {
         about:

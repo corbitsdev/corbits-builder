@@ -1,9 +1,12 @@
 # Designer
 
-The product designer: turns the project's documents into a clickable HTML and
-CSS mockup with a `DESIGN.md` for the coder, and files it as one design
-option for the person to compare. Its screens let the person choose a design
-and pick the app's fonts and colours.
+The product designer: designs an interface, such as a web app, a mobile
+app's screens, a dashboard or a marketing page, as a clickable HTML and CSS
+mockup with a `DESIGN.md` for whoever builds it, and files it as one design
+option for the person to compare. It works from its instruction, from the
+project's documents when there are any, or from a description of something
+that exists. Its screens let the person choose a design and pick its fonts
+and colours.
 
 ## Where it fits
 
@@ -23,8 +26,9 @@ package's starter, themes and skills through its macros.
   it.
 - `src/start.ts`: the starter. It refuses a concept whose designer is still at
   work, starts one designer for each of the others, and writes each run's
-  assignment from the filed documents, the concept and the instruction.
-- `src/contract.ts`: the documents a designer reads and its assignment text.
+  assignment from whatever documents are filed, the concept and the
+  instruction.
+- `src/contract.ts`: the documents a designer can read and its assignment text.
 - `src/packages/designer.ts`: the installed package, which assembles the agent
   from the hub's model, director and tools, and asks the director to hold a
   reply until the design is checked and filed.

@@ -123,7 +123,7 @@ export const ExportCheckFailed: Story = {
     exportDialog: (
       <ExportDialogView
         {...exporting}
-        failure="Only the planning documents can be offered: the hub is unreachable."
+        failure="Only the documents can be offered: the hub is unreachable."
         sections={[
           { section: "planning", available: true, chosen: true },
           { section: "design", available: false, chosen: false },

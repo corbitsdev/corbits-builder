@@ -12,9 +12,9 @@ export const WRITER_PACKAGES = {
 } as const satisfies Record<WriterDocumentKind, string>;
 export const DOCUMENT_WRITER_PACKAGE = "writer-document";
 
-// The stack a build plan is written to unless the person asked otherwise.
-export const DEFAULT_STACK =
-  "the coder's starter, a Bun workspace with client/ (Vite, React, React Router, TanStack Query, Tailwind CSS v4 and @corbits/react-ui), server/ (Hono on Bun, static JSON data or PGlite with Drizzle when the app stores what people enter) and packages/shared (zod schemas both sides use).";
+// The stack suggested to a build plan for a web app when neither the project nor the person names one.
+export const WEB_APP_STACK =
+  "the coder's web starter, a Bun workspace with client/ (Vite, React, React Router, TanStack Query, Tailwind CSS v4 and @corbits/react-ui), server/ (Hono on Bun, static JSON data or PGlite with Drizzle when the app stores what people enter) and packages/shared (zod schemas both sides use).";
 
 function sourceToken(ref: Source): string {
   const base = ref.artifactId + "@" + String(ref.version) + "@" + ref.sha256;
@@ -25,7 +25,7 @@ type SourceDocument = { kind: string; title: string; content: string };
 
 // The documents travel in the assignment, read by the hub at the referenced versions, so the writer
 // has nothing to look up (a writer given a read tool re-read kinds hunting for "the requester's answers").
-// A task may carry no documents at all, when the writer starts a project's first one.
+// A task may carry no documents at all.
 export async function writerTask(
   task: {
     kind: string;

@@ -30,7 +30,7 @@ export const CHECK_MS = 30_000;
 export const COMMAND_SECONDS = 300;
 export const COMMAND_GRACE_MS = 15_000;
 
-export const NO_APP = "the project has no app yet";
+export const NO_APP = "the project has no code filed yet";
 
 /** The project as saved, as a host reads it for a check; ready-made checks run over it. */
 export type Saved = Omit<ProjectView, "check">;
@@ -170,7 +170,7 @@ async function fileProof(
   // leaves the record standing.
   if ("file" in proof)
     return (await view.app.has(proof.file))
-      ? pass(`${proof.file} is in the app`)
+      ? pass(`${proof.file} is in the project's code`)
       : fail(`missing ${proof.file}`);
   const { path } = proof.fileContains;
   const text = await view.app.read(path);
@@ -250,7 +250,7 @@ async function commandProof(proof: Of<"command">, view: ProjectView) {
   if (ran.step === "install")
     return fail(`bun install failed, so ${shown} did not run`, evidence);
   return ran.exitCode === 0
-    ? pass(`${shown} succeeded against the app`, evidence)
+    ? pass(`${shown} succeeded on the project's code`, evidence)
     : fail(`${shown} exited ${ran.exitCode ?? "without a code"}`, evidence);
 }
 
@@ -297,7 +297,7 @@ export function proofText(proof: Proof): string {
   if ("all" in proof) return proof.all.map(proofText).join(", and ");
   if ("any" in proof) return proof.any.map(proofText).join(", or ");
   if ("not" in proof) return `not so: ${proofText(proof.not)}`;
-  if ("file" in proof) return `${proof.file} is in the app`;
+  if ("file" in proof) return `${proof.file} is in the project's code`;
   if ("fileContains" in proof) {
     const { path } = proof.fileContains;
     return "text" in proof.fileContains
@@ -315,7 +315,7 @@ export function proofText(proof: Proof): string {
   if ("http" in proof) return `${address(proof.http)} answers`;
   if ("dns" in proof) return `${address(proof.dns)} resolves`;
   if ("command" in proof)
-    return `${proof.command.run.join(" ")} succeeds against the app`;
+    return `${proof.command.run.join(" ")} succeeds on the project's code`;
   return `${address(proof.health.address)} answers ${proof.health.times} times in a row`;
 }
 

@@ -29,7 +29,7 @@
       "approval"
     ],
     "when": "The person wants to share or present the project to an audience, such as their CEO, an investor or a client, as a slide deck and an approval package.",
-    "unless": "They want a document written or the app itself changed.",
+    "unless": "They want a document written, or the thing itself built or changed.",
     "packages": {
       "presenter": {
         "entry": "./src/packages/presenter.ts",

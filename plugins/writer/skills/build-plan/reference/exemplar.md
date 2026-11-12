@@ -1,13 +1,14 @@
-# Build plan exemplar
+# Build plan exemplar: a web app
 
 A compact excerpt of the shape and tone, for a small gym's class booking
-app. A real plan covers every requirement; take every fact from the
-project's own documents and the instruction's stack.
+web app built on the coder's web starter. A real plan covers every
+requirement; take every fact from the project's own documents and the stack
+the project uses, the person asked for or you chose.
 
 ```markdown
 ## In short
 
-- **Approach A on the default stack**: one server with its own database
+- **Approach A on the suggested web stack**: one server with its own database
   serving the member and staff screens.
 - **Six phases**; the designed screens show in the preview from phase 2, on labelled sample data until phase 5.
 - The riskiest part is **the timetable import**; the fallback is entering
@@ -15,7 +16,7 @@ project's own documents and the instruction's stack.
 
 ## Approach and stack
 
-Approach A, chosen in the approaches document, on the starter's stack: a
+Approach A, chosen in the approaches document, on the web starter's stack: a
 server with a small database and a React client. It holds bookings in one
 place, which a full class refusing the next booking needs (FR-2), and runs
 on one small server inside the budget (the constraints).

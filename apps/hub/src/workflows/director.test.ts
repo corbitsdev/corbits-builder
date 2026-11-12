@@ -238,7 +238,7 @@ test("designer director holds replies until the latest edits pass check_design a
   });
   const note1 = heldUnchecked.find((action) => action.type === "compact");
   expect(note1?.type === "compact" ? note1.reason : "").toContain(
-    "Files changed after the last passing check-app, so the work is not done yet.",
+    "Files changed after the last passing check, so the work is not done yet.",
   );
 
   // 2. Reply when no files changed yet and no design option was filed -> held by fileBeforeDone.
@@ -501,7 +501,7 @@ test("coder director never holds a reply that follows a refused access", async (
     result("write2"),
   ];
   expect(await heldFor(subject(), wrotePast)).toContain(
-    "Files changed after the last passing check-app",
+    "Files changed after the last passing check",
   );
 });
 

@@ -33,9 +33,32 @@ scenario({
     },
   },
   person: async (p) => {
+    const { client } = p.hub;
+    // A directed change goes to a coder at once: no approval, and no document or decision touched.
+    const documents = async () =>
+      (await client.projectArtifacts(p.tenantId, p.projectId)).artifacts
+        .filter((artifact) => artifact.kind !== "app")
+        .map(({ kind, version, approvedVersion }) => ({
+          kind,
+          version,
+          approvedVersion,
+        }));
     await p.heard("The project is imported.");
+    const before = await documents();
+    const decidedBefore = await client.decidedApprovals(
+      p.tenantId,
+      p.projectId,
+    );
     await p.say("change the font to Inter");
     await p.heard("Your app now uses Inter.");
+    const { data: approvals } = await client.nativeApprovals(p.tenantId);
+    expect(approvals.filter(({ status }) => status === "pending")).toEqual([]);
+    expect(await documents()).toEqual(before);
+    expect(await client.decidedApprovals(p.tenantId, p.projectId)).toEqual(
+      decidedBefore,
+    );
+    const { versions } = await client.appVersions(p.tenantId, p.projectId);
+    expect(versions[0]?.source).toBe("check");
     const assignment = p.assignment("coder");
     p.note("the coder's assignment", assignment);
     expect(assignment).toContain(".inputs/skills/");

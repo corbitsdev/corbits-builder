@@ -220,10 +220,7 @@ describe("recorded-model server", () => {
     ).toBe("presenter");
     expect(classifyRole(baseReq, new Set(["file_package"]))).toBe("presenter");
     expect(
-      classifyRole(
-        baseReq,
-        new Set(["deploy_writer", "deploy_presenter", "request_approval"]),
-      ),
+      classifyRole(baseReq, new Set(["execute", "question", "runs"])),
     ).toBe("coordinator");
     expect(
       classifyRole(baseReq, new Set(["check_design", "file_design_option"])),

@@ -27,7 +27,7 @@ One server holds classes, members and bookings in a small database and
 serves the pages members and staff use. The timetable spreadsheet is
 imported once; email confirmations go out through the gym's email service.
 
-### Fit against the brief
+### Fit against what was asked
 
 Meets every success criterion: a full class refuses bookings at the moment
 it fills, and staff open rosters with no copying. Stays within the hosting
@@ -56,7 +56,7 @@ cost: about $10 a month.
 A form writes each booking as a row in the gym's spreadsheet, and staff
 keep reading rosters there.
 
-### Fit against the brief
+### Fit against what was asked
 
 Meets mobile booking; misses "a full class accepts no further bookings",
 because two people can book the last place at once.

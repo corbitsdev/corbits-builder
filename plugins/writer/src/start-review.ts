@@ -6,7 +6,7 @@ import {
 } from "@corbits-builder/plugin-host/coordinator";
 import { writerTask } from "./task.ts";
 
-// The reviewer checks the document against the problem brief when the project has one.
+// The reviewer gets the document and, when the project has one, the problem brief.
 export default defineStarter(
   type({ "+": "reject", workflow: "'reviewer'" }),
   type({ kind: "string", instruction: "string" }),
@@ -22,7 +22,7 @@ export default defineStarter(
             );
           return writerTask(
             {
-              kind: "engineering_review",
+              kind: "review",
               instruction,
               sources: [...versions]
                 .filter(

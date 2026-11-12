@@ -15,7 +15,7 @@ export default defineScreen({
     fields: {
       kinds: {
         about:
-          "The filed documents to approve, by kind. One screen covers every document ready for the person, so list them all together, an earlier document with the ones that follow it.",
+          "The filed documents to approve, by kind. One screen covers every document ready for the person, so list them all together.",
         choices: {
           problem_brief: "the problem brief",
           constraints: "the constraints",

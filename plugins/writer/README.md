@@ -1,8 +1,8 @@
 # Writer
 
-The project's documents: the writer writes one document per run, the reviewer
-gives the coordinator a second opinion on one, and the approve screen puts
-filed documents in front of the person.
+Any document the work needs: the writer writes one document of any kind per
+run, the reviewer gives the coordinator a second opinion on one, and the
+approve screen puts filed documents in front of the person.
 
 ## Where it fits
 
@@ -10,16 +10,17 @@ This folder is the whole writer plugin, with two agents. Its `package.json`
 `builder` block names its actions (`write`, `write-requirements`,
 `write-build-plan`, `review` and the `approve` screen), the workflow packages
 the hub builds and installs from it (`packages`) and the starter of each
-(`starters`). The writer is installed once per known document kind
-(constraints, approaches, product requirements, build plan), whose
-`write_artifact` saves only that kind's fields, and once as `writer-document`,
-which writes any document under the kind its task names. The reviewer is the
-`reviewer` package. The [coordinator][coordinator] starts them with `execute`.
+(`starters`). The writer is installed once each for the product requirements
+and the build plan, whose `write_artifact` saves only that kind, and once as
+`writer-document`, which writes any other document under the kind its task
+names. The reviewer is the `reviewer` package. The
+[coordinator][coordinator] starts them with `execute`.
 
-The writer's tools are the hub's `write_artifact` and `read_skill`; it has no
-read tool, because its task carries every document it needs in full. The
-reviewer has only `mail`: its task carries the problem brief and the document
-to review, and the coordinator weighs its findings as advice.
+The writer's tools are the hub's `write_artifact`, `read_artifact` (for a
+file a project value names; its task carries every document it needs in
+full), `report_values` and `read_skill`. The reviewer has only `mail`: its
+task carries the document to review and the problem brief when one is filed,
+and the coordinator weighs its findings as advice.
 
 ## Layout
 
@@ -29,7 +30,8 @@ to review, and the coordinator weighs its findings as advice.
   starters of the per-kind writers, the writer of any document and the
   reviewer. Each writes its run's assignment from the filed documents.
 - `src/task.ts`: the assignment both agents get, with every document it
-  builds on read in full, and the default stack a build plan is written to.
+  builds on read in full, and the web stack suggested to a build plan for a
+  web app with no stack named.
 - `src/package.ts`: `writerPackage`, which assembles the writer from the hub's
   model, director and tools. `src/packages/` holds one entry per installed
   package, the reviewer's included.
@@ -41,8 +43,9 @@ to review, and the coordinator weighs its findings as advice.
 - `src/reviewer/`: the reviewer's prompt, agent and workflow, built the same
   way.
 - `src/approve/`: the approve screen.
-- `skills/`: one skill per document kind, each a `SKILL.md` and a reference
-  exemplar, including the coordinator's problem-brief skill.
+- `skills/`: one skill per kind of document that has one (problem brief,
+  constraints, approaches, product requirements, build plan), each a
+  `SKILL.md` and reference exemplars, each usable on its own.
 - `src/skills.ts`: a Bun macro that inlines `skills/` when an agent bundle
   is built.
 

@@ -2,7 +2,7 @@
   <img src="https://github.com/corbitsdev/corbits-builder/raw/main/apps/web/src/assets/corbits-mark.svg" alt="Builder" width="96">
 </p>
 <h1 align="center">Builder</h1>
-<p align="center">Turn a half-baked idea into a working application, without being a developer.</p>
+<p align="center">Build, write, edit or improve anything by talking to one assistant, without being a developer.</p>
 <p align="center">
   <a href="https://github.com/corbitsdev/corbits-builder/actions/workflows/ci.yml"><img alt="CI" src="https://github.com/corbitsdev/corbits-builder/actions/workflows/ci.yml/badge.svg"></a>
 </p>
@@ -17,17 +17,17 @@
 
 ## How it works
 
-1. **Describe it.** Tell the coordinator your idea; it asks what a product
-   person would.
-2. **Shape it.** It writes a brief, your constraints and a few approaches. You
-   pick one, and it fills in the requirements.
-3. **Choose a look.** Describe the look you want, or compare design concepts
-   side by side.
-4. **Build it.** It writes a build plan, then builds the app in a live preview.
-5. **Take it.** Download the source, the design and every document.
-
-You approve each document before anything moves on, answer open questions on
-question cards, and can ask for changes while the app is being built.
+1. **Say what you want.** Tell the coordinator what to build, write, edit or
+   improve: an app, a command-line tool, a library, a document, research, an
+   analysis, or a small change to something that exists. It asks what a
+   careful colleague would.
+2. **It brings in the help.** The coordinator composes specialists (a writer, a
+   designer, a coder, a presenter, a generalist, an analyst and any others
+   installed) and ready-made plans to fit the work. There is no fixed path.
+3. **Steer it.** Approve what needs your approval, answer questions on question
+   cards, and ask for changes in plain words at any point, including while
+   something is being built.
+4. **Take it.** Download the code, the design and every document.
 
 ## Quick start
 

@@ -29,22 +29,30 @@ import {
 } from "../config/inputs.ts";
 import { CATALOG } from "../plugins/catalog.ts";
 import {
-  checkScript,
+  checkModules,
+  checkScripts,
   kitDigest,
   starterFiles,
   watchScript,
 } from "@corbits-builder/coder/assets" with { type: "macro" };
-import { CODER_INPUTS } from "@corbits-builder/coder/contract";
+import {
+  CODER_INPUTS,
+  STARTERS,
+  type StarterName,
+} from "@corbits-builder/coder/contract";
 import { DESIGNER_INPUTS } from "@corbits-builder/designer/contract";
 import { designStarterFiles } from "@corbits-builder/designer/skills" with { type: "macro" };
 
-const STARTER = starterFiles();
+const STARTER_FILES = starterFiles();
 const DESIGN_STARTER = designStarterFiles();
 export const STARTER_INDEX = DESIGN_STARTER[".builder/designs/index.html"]!;
 export const STARTER_HOME_SCREEN =
   DESIGN_STARTER[".builder/designs/screens/home.html"]!;
 const KIT = kitDigest();
-export const CHECK_APP = checkScript();
+// Each starter's finish check by its command name, and the module they share.
+export const CHECKS = checkScripts();
+export const CHECK_MODULES = checkModules();
+export const CHECK_APP = CHECKS["check-app"]!;
 export const WATCH_PAGE = watchScript();
 
 const SCREENS_PLACEHOLDER = "<!-- builder:screens -->";
@@ -260,12 +268,13 @@ const packFiles = (workflow: string) =>
   );
 
 // Every warm writes the current filed inputs afresh: the role's documents and skill packs under
-// INPUTS_DIRECTORY, and for an app the component kit digest beside them and the design unpacked
+// INPUTS_DIRECTORY, and for a web app the component kit digest beside them and the design unpacked
 // into .builder.
 async function writeInputs(
   kind: "app" | "design",
   workspace: string,
   read: ReadFiled,
+  serves: boolean,
 ) {
   await rm(join(workspace, INPUTS_DIRECTORY), { recursive: true, force: true });
   for (const input of kind === "app" ? CODER_INPUTS : DESIGNER_INPUTS) {
@@ -279,7 +288,7 @@ async function writeInputs(
     workspace,
     packFiles(kind === "app" ? "coder" : "designer"),
   );
-  if (kind !== "app") return;
+  if (!serves) return;
   await writeBundle(workspace, { [KIT_DIGEST]: KIT });
   const design = await read("design");
   if (design) await unpackDesign(design.content, workspace);
@@ -287,18 +296,10 @@ async function writeInputs(
 
 const THEME_STYLES = join("designs", "styles.css");
 
-async function seedFiles(
-  kind: "app" | "design",
-  read: ReadFiled,
+async function designSeed(
   readTheme: ReadBundle,
   readPrevious: ReadBundle,
-): Promise<Record<string, string | Uint8Array>> {
-  if (kind === "app") {
-    const filedApp = await read("app");
-    return filedApp
-      ? bundleFiles(AppBundle.assert(JSON.parse(filedApp.content)))
-      : STARTER;
-  }
+): Promise<Record<string, string>> {
   const previous = await readPrevious();
   if (previous)
     return {
@@ -316,10 +317,10 @@ async function seedFiles(
     : DESIGN_STARTER;
 }
 
-// Seeds a fresh workspace and returns the setup command the sandbox must still run, if any: an app
-// is a checkout of its repository's main once main holds a version; before then, or while the
-// repository is unavailable, it starts from the project's filed app when there is one, else from
-// the app starter; a seed made while the repository is unavailable becomes a version on top of main
+// Seeds a fresh workspace and returns the setup command the sandbox must still run, if any, and the
+// starter it began from when it began from one: an app is a checkout of its repository's main once
+// main holds a version; before then, or while the repository is unavailable, it starts from the
+// project's filed app when there is one, else from the run's starter; a seed made while the repository is unavailable becomes a version on top of main
 // once it is reachable. A design starts from the draft an earlier designer left for its concept, else
 // from the design starter in the stylesheet of the theme its concept starts from; the theme's sample
 // screens and DESIGN.md only preview it. The marker sits beside the workspace, out of the sandbox's
@@ -331,21 +332,43 @@ export async function prepareWorkspace(
   read: ReadFiled,
   readTheme: ReadBundle = async () => undefined,
   readPrevious: ReadBundle = async () => undefined,
-  app?: { repository: AppRepository; signal: AbortSignal },
-) {
-  if (app) await app.repository.prepare(app.signal);
-  const seeded =
-    kind === "app" ? "package.json" : join(".builder", "DESIGN.md");
-  if (!(await exists(join(workspace, seeded))))
-    await writeBundle(
-      workspace,
-      await seedFiles(kind, read, readTheme, readPrevious),
-    );
-  await writeInputs(kind, workspace, read);
+  app?: {
+    repository: AppRepository;
+    signal: AbortSignal;
+    starter: StarterName;
+  },
+): Promise<{
+  setup: { command: string; done: () => Promise<void> } | undefined;
+  started: StarterName | undefined;
+}> {
+  if (kind === "design") {
+    if (!(await exists(join(workspace, ".builder", "DESIGN.md"))))
+      await writeBundle(workspace, await designSeed(readTheme, readPrevious));
+    await writeInputs(kind, workspace, read, false);
+    return { setup: undefined, started: undefined };
+  }
+  if (!app) throw new Error("app_workspace_needs_its_repository");
+  await app.repository.prepare(app.signal);
+  let started: StarterName | undefined;
+  if (!(await exists(join(workspace, "package.json")))) {
+    const filedApp = await read("app");
+    if (filedApp)
+      await writeBundle(
+        workspace,
+        bundleFiles(AppBundle.assert(JSON.parse(filedApp.content))),
+      );
+    else {
+      await writeBundle(workspace, STARTER_FILES[app.starter]!);
+      started = app.starter;
+    }
+  }
+  await writeInputs(kind, workspace, read, STARTERS[app.starter].serves);
   const marker = join(dirname(workspace), ".workspace-ready");
-  if (kind !== "app" || (await exists(marker))) return undefined;
-  return {
-    command: "bun install --frozen-lockfile",
-    done: () => writeFile(marker, ""),
-  };
+  const setup = (await exists(marker))
+    ? undefined
+    : {
+        command: "bun install --frozen-lockfile",
+        done: () => writeFile(marker, ""),
+      };
+  return { setup, started };
 }

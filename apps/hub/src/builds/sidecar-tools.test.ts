@@ -23,29 +23,44 @@ test("a check-app run records its verdict however the command runs it", () => {
     "bash -lc 'check-app'",
     "timeout 600 check-app 2>&1 | tail -40",
   ])
-    expect(appCheckDetail(shell(command), output(PASSED))).toEqual({
-      checkPassed: true,
-    });
+    expect(appCheckDetail(shell(command), output(PASSED), "check-app")).toEqual(
+      {
+        checkPassed: true,
+      },
+    );
 });
 
 test("only an app check-app pass of a command that succeeded counts as passed", () => {
   expect(
-    appCheckDetail(shell("check-app"), output("check failed: 1 problem(s)")),
+    appCheckDetail(
+      shell("check-app"),
+      output("check failed: 1 problem(s)"),
+      "check-app",
+    ),
   ).toEqual({ checkPassed: false });
   expect(
-    appCheckDetail(shell("check-app .builder/designs"), output(MOCKUP_PASSED)),
+    appCheckDetail(
+      shell("check-app .builder/designs"),
+      output(MOCKUP_PASSED),
+      "check-app",
+    ),
   ).toEqual({ checkPassed: false });
   expect(
-    appCheckDetail(shell("check-app"), {
-      callId: "call",
-      content: PASSED,
-      isError: true,
-    }),
+    appCheckDetail(
+      shell("check-app"),
+      {
+        callId: "call",
+        content: PASSED,
+        isError: true,
+      },
+      "check-app",
+    ),
   ).toEqual({ checkPassed: false });
   expect(
     appCheckDetail(
       shell("check-app && bun test"),
       output(`exit code 1\n${PASSED}`),
+      "check-app",
     ),
   ).toEqual({ checkPassed: false });
 });
@@ -55,18 +70,21 @@ test("a command that only names check-app records no verdict", () => {
     appCheckDetail(
       shell("grep -rn check-app ."),
       output(`src/check.ts:12: ${PASSED}`),
+      "check-app",
     ),
   ).toBeUndefined();
   expect(
     appCheckDetail(
       shell("check-app --help"),
       output("check-app   check the app here"),
+      "check-app",
     ),
   ).toBeUndefined();
   expect(
     appCheckDetail(
       { id: "call", name: "read_file", arguments: { path: "check-app" } },
       output(PASSED),
+      "check-app",
     ),
   ).toBeUndefined();
 });

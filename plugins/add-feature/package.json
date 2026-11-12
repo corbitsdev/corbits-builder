@@ -14,7 +14,7 @@
       "plan"
     ],
     "when": "The project already has an app and the person wants a new feature or a substantial change to what it does.",
-    "unless": "The project has no app yet, which is build-web-app, or the change is small and stated exactly, such as a font, a colour, a label or a bug fix; start coder change directly.",
+    "unless": "The project has no app yet; then build-web-app fits a web app, and for anything else put together a plan of your own from the plugins that fit. Or the change is small and stated exactly, such as a font, a colour, a label or a bug fix; start coder change directly.",
     "guidance": "./SKILL.md",
     "steps": [
       {

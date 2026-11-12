@@ -98,8 +98,8 @@ scenario({
     p.note("following the plan returned", p.resultOf("c_follow").text);
     for (const id of EXECUTES) p.note(`${id} returned`, p.resultOf(id).text);
     p.note("every message the coordinator received", p.messages("coordinator"));
-    for (const id of ["c_requirements", "c_mockup", "c_build"])
+    // With approvals left to Builder the one design is used at once, so the plan has nothing to advise.
+    for (const id of EXECUTES)
       expect(p.resultOf(id).text).not.toContain('"advice"');
-    expect(p.resultOf("c_plan").text).toContain('"advice"');
   },
 });

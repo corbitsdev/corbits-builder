@@ -1352,7 +1352,7 @@ export async function extractWeatherAppFixture(options?: {
         text: "Engineering review of constraints: All constraints (C-1 through C-14) and non-goals (NG-1 through NG-8) align with the Problem Brief's Open-Meteo proxy, 60fps canvas animation, WCAG AA contrast, and browser-only persistence requirements. Ready for approval.",
         expect: {
           lastMessageRole: "user",
-          userTextContains: '"artifact":"engineering_review"',
+          userTextContains: '"artifact":"review"',
           requiredTools: ["mail_search", "mail_reply", "mail_send"],
           toolResults: [],
         },

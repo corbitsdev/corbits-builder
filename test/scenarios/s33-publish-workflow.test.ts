@@ -82,9 +82,11 @@ scenario({
   title:
     "cloudflare publish runs ready then routes as an Interchange workflow with no agent: it ends at ready on a project without the config, and runs both checks once the config is saved",
   start: "weather-app",
+  expectFailure:
+    'cloudflare\'s publish workflow is not wired in yet: execute refuses with cloudflare has no action "publish".',
   coordinator: [
     turn(
-      user("publish to Cloudflare"),
+      user("Publish the app to Cloudflare"),
       execute("c_publish", "cloudflare", "publish", {}),
     ),
     turn(

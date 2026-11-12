@@ -1345,6 +1345,10 @@ export function mountArtifactRoutes(
             "Whether the app is running, starting, stopped, failed or has no files yet",
           content: { "application/json": { schema: resolver(LiveApp) } },
         },
+        409: {
+          description:
+            "The project's code serves no web app to run, as its stack.starter says (no_web_app)",
+        },
         503: {
           description:
             "This hub does not serve apps, or the project's app repository cannot be read",
@@ -1373,6 +1377,10 @@ export function mountArtifactRoutes(
         200: {
           description: "The app's state after the request",
           content: { "application/json": { schema: resolver(LiveApp) } },
+        },
+        409: {
+          description:
+            "The project's code serves no web app to run, as its stack.starter says (no_web_app)",
         },
         503: {
           description:

@@ -36,6 +36,9 @@ export const keys = {
     /** The values that select between plugins sharing a handle; refreshed with the rest when one is saved. */
     selection: (projectId: string) =>
       ["projectValues", projectId, "selection"] as const,
+    /** What the project's code started from, which says whether it serves a web app to preview. */
+    starter: (projectId: string) =>
+      ["projectValues", projectId, "starter"] as const,
   },
   liveApp: {
     all: ["liveApp"] as const,

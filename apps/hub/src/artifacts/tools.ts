@@ -49,7 +49,7 @@ const ToolRead = ArtifactRead.merge({ "part?": "number.integer > 0" });
 const readDefinition = {
   name: "read_artifact",
   description:
-    "See which project documents exist, or read one.\nWith no arguments it lists: each document's artifactId, kind, title, current version, sha256, approvedVersion, the version a person approved, and openQuestionCount, the questions its current version leaves open for the person; inFlight, the writer, reviewer, coder and designer runs still open, each with its status, deployed until its first assignment arrives and running after, and each working (mid-turn) or waiting (between turns), with progress once it has acted: its turns so far, its latest tool calls as tool and target, the files it has written, and lastActivityAt; failed, the latest runs that stopped on an error, with when and why, which deliver nothing more; awaitingApproval, the kinds of filed documents whose current version waits on the person's approval; appBuilt, whether the app's first build is done, a version filed after a coder's passing check; and preferenceGuidance, how the person said they wanted to work when the project started; what they say in the conversation wins over it.\nWith a kind or an artifactId it returns that document's content at its current version, or at the given version, with the openQuestions that version leaves for the person; a long document comes in numbered parts, and part reads the next one.",
+    "See which project documents exist, or read one.\nWith no arguments it lists: each document's artifactId, kind, title, current version, sha256, approvedVersion, the version a person approved, and openQuestionCount, the questions its current version leaves open for the person; inFlight, the specialists' runs still open, each with its status, deployed until its first assignment arrives and running after, and each working (mid-turn) or waiting (between turns), with progress once it has acted: its turns so far, its latest tool calls as tool and target, the files it has written, and lastActivityAt; failed, the latest runs that stopped on an error, with when and why, which deliver nothing more; awaitingApproval, the kinds of filed documents whose current version waits on the person's approval; appBuilt, whether the project's code (the document of kind app) has had its first build, a version filed after a passing check or brought in by import; and preferenceGuidance, how the person said they wanted to work when the project started; what they say in the conversation wins over it.\nWith a kind or an artifactId it returns that document's content at its current version, or at the given version, with the openQuestions that version leaves for the person; a long document comes in numbered parts, and part reads the next one.",
   inputSchema: { ...ToolRead.toJsonSchema() },
 };
 // Each writer's document by name, and what its write_artifact says about the fields only it has.
@@ -67,7 +67,7 @@ function writerWriteDefinition(kind: WriterDocumentKind) {
     name: "write_artifact",
     description: [
       `Write the next version of the ${name}. The hub assigns its id, version and sha256 and returns them. Writing a version is not approval.`,
-      "openQuestions lists each question in the document's Open questions section that the person must answer: a short id, the question as they would read it, whyItBlocks, and suggestedAnswers, your recommendation first. A version written without openQuestions leaves none open.",
+      "openQuestions lists each question the document leaves for the person to answer, as its Open questions section asks them: a short id, the question as they would read it, whyItBlocks, and suggestedAnswers, your recommendation first. A version written without openQuestions leaves none open.",
       ...fieldNotes,
     ].join("\n"),
     inputSchema: { ...WriterDocumentFields[kind].toJsonSchema() },
@@ -78,7 +78,7 @@ const documentWriteDefinition = {
   name: "write_artifact",
   description: [
     "Write the next version of the document your task names. kind is the kind your task names, a short lowercase slug such as competitor_analysis, the same for every version; title is its title; content is the document itself as markdown sections. The hub assigns its id, version and sha256 and returns them. Writing a version is not approval.",
-    "openQuestions lists each question in the document's Open questions section that the person must answer: a short id, the question as they would read it, whyItBlocks, and suggestedAnswers, your recommendation first. A version written without openQuestions leaves none open.",
+    "openQuestions lists each question the document leaves for the person to answer, as its Open questions section asks them: a short id, the question as they would read it, whyItBlocks, and suggestedAnswers, your recommendation first. A version written without openQuestions leaves none open.",
   ].join("\n"),
   inputSchema: { ...AnyDocumentFields.toJsonSchema() },
 };

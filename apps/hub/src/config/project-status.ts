@@ -6,7 +6,7 @@ const ROLE: Record<WorkflowRole, string> = {
   writer: "a writer",
   reviewer: "a reviewer",
   designer: "the designer",
-  coder: "the app builder",
+  coder: "the coder",
   presenter: "the presenter",
 };
 
@@ -17,7 +17,7 @@ const list = (items: readonly string[]) =>
     : `${items.slice(0, -1).join(", ")} and ${items.at(-1)!}`;
 
 const APPROVAL: Record<string, string> = {
-  install_packages: "Approve the packages the app builder asked for",
+  install_packages: "Approve the packages the coder asked for",
 };
 
 export const projectStatusWording = {
@@ -30,7 +30,7 @@ export const projectStatusWording = {
   unknown: (role: WorkflowRole) =>
     `Whether ${ROLE[role]} is working is unknown: its history could not be read.`,
   app: {
-    not_started: "No app yet.",
+    not_started: "Nothing is running yet.",
     starting: "The app is starting.",
     running: "The app is running.",
     stopped: "The app is stopped.",
@@ -38,7 +38,7 @@ export const projectStatusWording = {
       reason === undefined
         ? "The app is not running."
         : `The app is not running: ${reason}`,
-    unavailable: "This Builder cannot run apps.",
+    unavailable: "This Builder does not run what it builds.",
   },
   saved: (version: number | undefined) =>
     version === undefined

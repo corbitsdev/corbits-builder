@@ -12,7 +12,7 @@ const INPUTS = {
   },
   constraints: {
     file: "constraints.md",
-    use: "the bounds the app works within and why",
+    use: "the bounds the project works within and why",
   },
   approaches: {
     file: "approaches.md",
@@ -20,11 +20,11 @@ const INPUTS = {
   },
   product_requirements: {
     file: "requirements.md",
-    use: "what the app must do and for whom",
+    use: "what the project must do and for whom",
   },
   build_plan: {
     file: "build-plan.md",
-    use: "the stack, the build phases and the acceptance checklist",
+    use: "how it is built, in what phases, and the acceptance checklist",
   },
 } as const;
 export type InputKind = keyof typeof INPUTS;

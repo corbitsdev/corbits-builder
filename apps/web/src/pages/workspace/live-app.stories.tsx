@@ -33,7 +33,7 @@ const LOG = [
 const files: PaneBarGroup = [
   {
     id: "download",
-    label: "Download the app",
+    label: "Download the code",
     icon: <Download size={16} aria-hidden="true" />,
     onSelect: fn(),
   },
@@ -91,7 +91,7 @@ export const NotBuilt: Story = {
   args: { app: { state: "not_built" }, files: [], builderStatus: null },
 };
 
-/** Nothing is built yet, but an app builder is at work, so what it is doing shows. */
+/** Nothing is built yet, but an coder is at work, so what it is doing shows. */
 export const NotBuiltWhileBuilding: Story = {
   args: { app: { state: "not_built" }, files: [] },
 };
@@ -157,12 +157,12 @@ export const Refused: Story = {
   },
 };
 
-/** The app builder is writing the project's first app. */
+/** The coder is writing the project's first app. */
 export const SettingUp: Story = {
   args: { app: { state: "setting_up", url: undefined } },
 };
 
-/** The starter answers, but is held back while the app builder's progress is being read. */
+/** The starter answers, but is held back while the coder's progress is being read. */
 export const StarterHeldWhileChecking: Story = {
   args: { app: { state: "held", url: APP_URL, builder: "checking" } },
 };
@@ -171,7 +171,7 @@ export const StarterHeldProgressUnknown: Story = {
   args: { app: { state: "held", url: APP_URL, builder: "unknown" } },
 };
 
-/** The app builder is idle and has written none of the app yet. */
+/** The coder is idle and has written none of the app yet. */
 export const StarterHeldNothingWritten: Story = {
   args: { app: { state: "held", url: APP_URL, builder: "idle" } },
 };

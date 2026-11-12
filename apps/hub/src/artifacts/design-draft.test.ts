@@ -648,7 +648,7 @@ test("designer agent writes per-screen files, is held by checkBeforeDone until c
       "Premature reply before checking or filing.",
     );
     expect(conversations[2]).toContain(
-      "Files changed after the last passing check-app, so the work is not done yet.",
+      "Files changed after the last passing check, so the work is not done yet.",
     );
 
     const draft = await readDesignDraft(workspace);

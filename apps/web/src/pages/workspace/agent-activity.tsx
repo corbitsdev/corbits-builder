@@ -6,7 +6,7 @@ import type { AgentActivity } from "@corbits-builder/client";
 import { wording } from "../../config.ts";
 
 const text = wording.activity;
-const CHECK_SCRIPT = /\bcheck-app\b/;
+const CHECK_SCRIPT = /\bcheck-(?:app|project)\b/;
 
 /** A person sees what the file is, never where it lives: no folders, no internal ids. */
 export function fileLabel(path: string): string {

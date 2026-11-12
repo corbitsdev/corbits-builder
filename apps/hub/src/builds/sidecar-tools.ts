@@ -30,6 +30,8 @@ import {
 import type { BrowserCatalog } from "./browser-catalog.ts";
 import {
   CHECK_APP,
+  CHECK_MODULES,
+  CHECKS,
   WATCH_PAGE,
   prepareWorkspace,
   sharedBrowser,
@@ -40,7 +42,9 @@ import {
   readFiledDocument,
   readPreviousDesignDraft,
   readRunDesignTheme,
+  recordStarter,
 } from "./app-snapshot.ts";
+import { STARTERS, type StarterName } from "@corbits-builder/coder/contract";
 import { INPUTS_DIRECTORY } from "../config/inputs.ts";
 import {
   createAppRepository,
@@ -182,31 +186,38 @@ const succeeded = (result: ToolResult) =>
 const VERSIONED = new Set([...WRITES, "run_shell", PACKAGE_INSTALL_TOOL]);
 // Bounds teardown: the wait for the last version, then the revoke.
 const VERSION_CLOSE_MS = 15_000;
-// check-app's verdict heads a line of its output, however the command runs it (timeout, env, a
-// wrapper or a pipe); a command that only names check-app, such as grep -rn check-app, prints none.
-const CHECK_APP_VERDICT = /^check (?:passed|failed):/m;
-// A mockup check passes without building anything; only this verdict says the app built and ran.
-const APP_CHECK_PASSED = /^check passed: built, started,/m;
+// A finish check's verdict heads a line of its output, however the command runs it (timeout, env, a
+// wrapper or a pipe); a command that only names the check, such as grep -rn check-app, prints none.
+const CHECK_VERDICT = /^check (?:passed|failed):/m;
+// The verdict that says each finish check passed on the project. A mockup check-app passes without
+// building anything; only its own verdict says the app built and ran.
+const CHECK_PASSED: Readonly<Record<string, RegExp>> = {
+  "check-app": /^check passed: built, started,/m,
+  "check-project": /^check passed: typechecked, tested and built/m,
+};
 
-/** A check-app run's verdict; check-app && bun test passes only when both do. */
+/**
+ * A run of the starter's finish check and its verdict; check-app && bun test passes only when both
+ * do. Any other command, another starter's check included, is no finish check.
+ */
 export function appCheckDetail(
   call: ToolCall,
   result: ToolResult,
+  check: string,
 ): CheckDetail | undefined {
   const command = call.arguments["command"];
+  const passed = CHECK_PASSED[check];
   if (
+    !passed ||
     call.name !== "run_shell" ||
     typeof command !== "string" ||
-    !command.includes("check-app")
+    !command.includes(check)
   )
     return undefined;
   const output = String(result.content);
-  if (!CHECK_APP_VERDICT.test(output)) return undefined;
-  return { checkPassed: succeeded(result) && APP_CHECK_PASSED.test(output) };
+  if (!CHECK_VERDICT.test(output)) return undefined;
+  return { checkPassed: succeeded(result) && passed.test(output) };
 }
-
-const passedAppCheck = (call: ToolCall, result: ToolResult) =>
-  appCheckDetail(call, result)?.checkPassed === true;
 
 // The hub ends a check of one command at its default time; the call waits a little longer for it.
 const DONE_CHECK_CALL_MS =
@@ -216,7 +227,7 @@ const DONE_CHECK_RESPONSE_BYTES = 65_536;
 const doneChecksDefinition = {
   name: DONE_CHECKS_TOOL,
   description:
-    "Runs the named checks of a plugin through the hub against the app as saved, once the workspace's last version is saved.",
+    "Runs the named checks of a plugin through the hub against the project's code as saved, once the workspace's last version is saved.",
   inputSchema: { ...DoneChecksCall.toJsonSchema() },
 };
 
@@ -226,16 +237,27 @@ const SETUP_TIMEOUT_MS = 115_000;
 const SETUP_PROGRESS = "installing the app's packages";
 
 // A source-closure-safe declaration: only explicit policy is captured. The
-// native child supplies the step workspace; the sandbox is built inside it.
+// native child supplies the step workspace; the sandbox is built inside it. An app workspace names
+// the starter its code begins from, which picks its finish check and whether a web app runs in it.
 export function createSidecarCodingTools(policy: {
   approval: "ask" | "allow";
   workspace: "app" | "design";
   packageInstall?: "ask" | "allow";
-  browser?: BrowserCatalog;
+  starter?: StarterName;
+  browser?: BrowserCatalog | undefined;
 }) {
   if (!["ask", "allow"].includes(policy.approval))
     throw new Error("invalid_coding_policy");
+  if ((policy.workspace === "app") !== (policy.starter !== undefined))
+    throw new Error("invalid_coding_policy");
   const design = policy.workspace === "design";
+  const starter = policy.starter && STARTERS[policy.starter];
+  // The finish check the starter names; a designer's check-app runs through check_design instead.
+  const check = starter?.check ?? "check-app";
+  // Whether a web app runs in the workspace for the agent to open, check and report on.
+  const serves = starter?.serves === true;
+  const passedCheck = (call: ToolCall, result: ToolResult) =>
+    appCheckDetail(call, result, check)?.checkPassed === true;
   const offered = (name: string) => !design || DESIGNER_TOOLS.has(name);
   return defineTool<CodingSidecarEnv>({
     id: "@corbits-builder/coding/sidecar-posix",
@@ -256,9 +278,8 @@ export function createSidecarCodingTools(policy: {
               : { name: PACKAGE_INSTALL_TOOL },
           ]
         : []),
-      ...(policy.workspace === "app"
-        ? [{ name: APP_STATUS_TOOL }, { name: DONE_CHECKS_TOOL }]
-        : []),
+      ...(serves ? [{ name: APP_STATUS_TOOL }] : []),
+      ...(policy.workspace === "app" ? [{ name: DONE_CHECKS_TOOL }] : []),
       ...(design ? [{ name: CHECK_DESIGN_TOOL }] : []),
       ...(policy.browser?.definitions ?? []),
     ],
@@ -361,13 +382,18 @@ export function createSidecarCodingTools(policy: {
                   sign: signWithSidecarKey,
                 }))
               : undefined;
-          const setup = await prepareWorkspace(
+          const prepared = await prepareWorkspace(
             policy.workspace,
             workspace,
             (kind) => readFiledDocument(env.capabilities, scope, kind, signal),
             () => readRunDesignTheme(env.capabilities, scope, signal),
             () => readPreviousDesignDraft(env.capabilities, scope, signal),
-            app && { repository: app, signal },
+            app &&
+              policy.starter && {
+                repository: app,
+                signal,
+                starter: policy.starter,
+              },
           );
           repository = app;
           repository?.schedule("Start");
@@ -377,19 +403,21 @@ export function createSidecarCodingTools(policy: {
             scope.build,
             {
               openNetwork: scope.openNetwork,
-              commands: { "check-app": CHECK_APP },
+              commands: design
+                ? { "check-app": CHECK_APP }
+                : { [check]: CHECKS[check]! },
+              commandModules: CHECK_MODULES,
               browser: policy.browser !== undefined,
-              app: policy.workspace === "app",
+              app: serves,
               browsers: await sharedBrowser(),
               ...(policy.workspace === "app"
-                ? {
-                    readOnly: [".builder", INPUTS_DIRECTORY],
-                    pageWatcher: WATCH_PAGE,
-                  }
+                ? { readOnly: [".builder", INPUTS_DIRECTORY] }
                 : { readOnly: [INPUTS_DIRECTORY] }),
+              ...(serves ? { pageWatcher: WATCH_PAGE } : {}),
             },
           );
           try {
+            const { setup, started } = prepared;
             if (setup) {
               // The install says nothing the hub can relay until it ends, so the person is told what
               // is running for its whole length.
@@ -416,8 +444,10 @@ export function createSidecarCodingTools(policy: {
                 );
               await setup.done();
             }
-            // The coder's app is live from its first call, so it can open it whenever it wants.
-            if (policy.workspace === "app") await executor.app();
+            if (started !== undefined)
+              await recordStarter(env.capabilities, scope, started, signal);
+            // A web app is live from the coder's first call, so it can open it whenever it wants.
+            if (serves) await executor.app();
           } catch (error) {
             await executor.dispose();
             throw error;
@@ -464,8 +494,7 @@ export function createSidecarCodingTools(policy: {
           )
             return {
               callId: call.id,
-              content:
-                "refused: a command must finish before it returns, so nothing runs in the background here. check-app builds the app, starts it and opens its pages itself.",
+              content: `refused: a command must finish before it returns, so nothing runs in the background here. ${check} starts whatever it checks itself.`,
               isError: true,
             };
           const workspace = await realpath(env.toolCwd);
@@ -538,7 +567,7 @@ export function createSidecarCodingTools(policy: {
           }
           const ran = await (await ready).run(call, signal);
           const result =
-            policy.workspace === "app" && passedAppCheck(call, ran)
+            policy.workspace === "app" && passedCheck(call, ran)
               ? {
                   ...ran,
                   content: `${ran.content}\n${await fileCheckedApp(repository, () => fileWorkspace(workspace, signal), signal)}`,
@@ -575,7 +604,9 @@ export function createSidecarCodingTools(policy: {
         const workspace = await realpath(env.toolCwd);
         const missing = await undeclaredImports(workspace, path);
         if (!missing?.packages.length) return "";
-        const { directory, packages } = missing;
+        const { packages } = missing;
+        // The project's own package.json sits at the workspace root, named "." to install into.
+        const directory = missing.directory || ".";
         const manifest = join(directory, "package.json");
         if (!WorkspacePath.allows(directory))
           return `${path} imports ${packages.join(", ")}, which ${manifest} does not list.`;
@@ -628,7 +659,7 @@ export function createSidecarCodingTools(policy: {
         executor: lazySandbox,
         approval: policy.approval,
         ...(policy.packageInstall ? { packageInstall: true } : {}),
-        app: policy.workspace === "app",
+        app: serves,
       }).factory(env);
       return {
         ...native,
@@ -681,13 +712,13 @@ export function createSidecarCodingTools(policy: {
               isError: true,
             };
           const ran = await native.run(call, signal);
-          const detail = appCheckDetail(call, ran);
+          const detail = appCheckDetail(call, ran, check);
           const result = detail ? { ...ran, detail } : ran;
           // A passing check was versioned before it was filed.
           if (
             repository &&
             VERSIONED.has(call.name) &&
-            !passedAppCheck(call, result)
+            !passedCheck(call, result)
           )
             repository.schedule(EDIT);
           const versioning =

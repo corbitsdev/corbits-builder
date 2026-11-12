@@ -41,6 +41,7 @@ export function writerPackage(kind?: WriterDocumentKind) {
         ? createDocumentWriterArtifactTools()
         : createWriterArtifactTools(kind),
       createSkillTools([
+        "problem-brief",
         "constraints",
         "approaches",
         "product-requirements",

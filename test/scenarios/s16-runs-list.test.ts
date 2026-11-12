@@ -88,7 +88,7 @@ scenario({
     expect(working).toContain('"plugin":"writer"');
     expect(working).toContain('"plugin":"coder"');
     expect(ended).toContain('"status":"completed"');
-    // A coder's last activity names what its call was given, not the tool alone.
-    expect(ended).toContain('"lastActivity":"run_shell sleep 20"');
+    // A coder's reply is held until the hub's done checks pass, so they are its last activity.
+    expect(ended).toContain('"lastActivity":"run_done_checks"');
   },
 });

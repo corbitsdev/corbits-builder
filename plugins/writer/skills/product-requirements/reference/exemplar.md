@@ -1,4 +1,4 @@
-# Product requirements exemplar
+# Product requirements exemplar: a web app
 
 A compact excerpt of the shape and tone, for a small gym's class booking
 app. A real document lists every requirement; take every fact from the

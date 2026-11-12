@@ -2,7 +2,7 @@
   "name": "@corbits-builder/designer",
   "version": "0.2.0",
   "private": true,
-  "description": "Designs how the app could look, as mockups the person compares, tries and approves, and lets the person choose its fonts and colours.",
+  "description": "Designs how an interface could look, such as a web app, a mobile app's screens, a dashboard or a marketing page, as clickable mockups the person compares, tries and approves, and lets the person choose its fonts and colours.",
   "license": "SEE LICENSE IN ../../LICENSE.md",
   "author": "Sawyer Cutler <sawyer@dirtroad.dev>",
   "type": "module",
@@ -53,8 +53,8 @@
       "type",
       "colour"
     ],
-    "when": "The person wants to see how the app could look, to try or approve a design, or to choose the app's fonts or colours.",
-    "unless": "They want the built app itself changed in a way they already stated exactly.",
+    "when": "The person wants to see how something they are making could look, to try or approve a design, or to choose its fonts or colours.",
+    "unless": "They want something already built changed in a way they already stated exactly.",
     "packages": {
       "designer": {
         "entry": "./src/packages/designer.ts",
@@ -67,8 +67,8 @@
     "actions": {
       "mockup": {
         "runs": "workflow",
-        "when": "The person wants to see how the app could look: a mockup, design options to compare, or another pass on a design option.",
-        "unless": "They want the built app itself changed, or to pick fonts or colours on a screen.",
+        "when": "The person wants to see how an interface could look: a mockup, design options to compare, or another pass on a design option.",
+        "unless": "They want something already built changed, or to pick fonts or colours on a screen.",
         "input": "./src/mockup.ts",
         "reads": [
           "brand.guidelines",
@@ -155,6 +155,8 @@
     },
     "examples": [
       "make me a mockup for a dog-walking app",
+      "design the screens for my phone app",
+      "mock up a landing page for my product",
       "show me a few different looks",
       "can I see what it would look like",
       "redesign it",

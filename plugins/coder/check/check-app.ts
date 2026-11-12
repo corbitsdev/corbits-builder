@@ -10,6 +10,7 @@ import { mkdir, stat } from "node:fs/promises";
 import { createServer } from "node:net";
 import { homedir } from "node:os";
 import { basename, dirname, join, resolve, sep } from "node:path";
+import { failedScript } from "./steps.ts";
 
 if (process.argv[2] === "--help" || process.argv[2] === "-h") {
   console.log(
@@ -46,7 +47,7 @@ const RULES = [
   },
   {
     kind: "coverage",
-    rule: "DESIGN.md names every interface requirement (IR-n), and every screen it lists is in the mockup",
+    rule: "DESIGN.md names every interface requirement (IR-n) the requirements list, when they list any, and every screen it lists is in the mockup",
     app: false,
   },
   {
@@ -455,12 +456,8 @@ async function checkCoverage(
         .split(/^## Interface requirements/m)[1]
         ?.split(/^## /m)[0]
     : undefined;
+  // A design made from an instruction alone has no interface requirements to cover.
   const ids = [...new Set(section?.match(/\bIR-\d+\b/g))];
-  if (!ids.length)
-    problems.push({
-      kind: "coverage",
-      detail: `.inputs/requirements.md has no IR-n under "## Interface requirements" to check the design against`,
-    });
   const unnamed = ids.filter((id) => !new RegExp(`\\b${id}\\b`).test(design));
   if (unnamed.length)
     problems.push({
@@ -634,14 +631,8 @@ if (staticRoot) {
     });
   // Vite builds code that does not typecheck, so a pass would otherwise not mean the code compiles.
   for (const script of ["typecheck", "build"]) {
-    const step = Bun.spawn(["bun", "run", script], {
-      stdout: "pipe",
-      stderr: "pipe",
-    });
-    const output =
-      (await new Response(step.stdout).text()) +
-      (await new Response(step.stderr).text());
-    if ((await step.exited) !== 0) fail(script, output.slice(-3000));
+    const failed = await failedScript(script);
+    if (failed !== undefined) fail(script, failed);
   }
   const port = await freePort();
   origin = `http://127.0.0.1:${port}`;

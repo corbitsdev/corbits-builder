@@ -1,6 +1,6 @@
-// A change to an app that exists goes to a coder at once, documents or not.
+// A change to code that exists starts at once, documents or not.
 const DIRECT_CHANGE_MESSAGE =
-  " The app is already built: its source is filed as the app document, and it can be changed directly: a change I ask for goes to a coder at once, with no documents to write or approve first.";
+  " The code is already built and filed as the app document, so a change I ask for can be made directly, with no documents to write or approve first.";
 
 export const IMPORTED_PROJECT_LEAD =
   "I just imported this project from a file. Acknowledge the import, then tell me in a few plain sentences what the imported documents establish and what happens next.";
@@ -29,7 +29,7 @@ export function importedProjectMessage(
     : "";
   const unwritten =
     withApp && missing.length
-      ? ` The code came from my own repository, so these documents were never written: ${missing.join(", ")}. Read the code with read_artifact, its package.json and README to learn the app.`
+      ? ` The code came from my own repository, so it brought none of these documents: ${missing.join(", ")}. None is needed to change it; read the code with read_artifact, starting with its README and package.json, to learn what it is.`
       : "";
   return (
     IMPORTED_PROJECT_LEAD +

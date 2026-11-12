@@ -138,6 +138,7 @@ import {
   warmStepWorkspace,
 } from "./design-draft.ts";
 import type { LiveApps } from "../live-app/runner.ts";
+import { isStarterName, STARTERS } from "@corbits-builder/coder/contract";
 import { appContent, bundleFiles } from "../builds/app-snapshot.ts";
 import { MAX_DESIGN_BYTES } from "./design-tools.ts";
 import { DESIGN_STYLES, setThemeTokens } from "./design-tweaks.ts";
@@ -668,9 +669,17 @@ export function createArtifactService(
     };
   }
 
-  // The project's current files to run, or the app's state when there are none to run.
+  // The project's current files to run, or the app's state when there are none to run. Code whose
+  // starter serves no web app, such as a command-line tool, has nothing to run here.
   async function runnableApp(actor: Actor, projectId: string) {
     await requireProject(actor, projectId, "read");
+    const [row] = await rawDB
+      .select({ values: project.values })
+      .from(project)
+      .where(eq(project.id, projectId));
+    const starter = row?.values["stack.starter"];
+    if (isStarterName(starter) && !STARTERS[starter].serves)
+      throw new ProjectError(409, "no_web_app", { starter });
     if (!liveApps) throw new ProjectError(503, "live_app_unavailable");
     const current = await appSource(actor, projectId);
     if (current) return current;

@@ -2,7 +2,7 @@
   "name": "@corbits-builder/build-web-app",
   "version": "0.1.0-rc.3",
   "private": true,
-  "description": "Takes an idea to a built web app: requirements the person approves, a design they choose, a build plan, then the build.",
+  "description": "A ready-made plan for a web app: requirements the person approves, a design they choose, a build plan, then the build.",
   "license": "SEE LICENSE IN ../../LICENSE.md",
   "author": "Sawyer Cutler <sawyer@dirtroad.dev>",
   "type": "module",
@@ -14,8 +14,8 @@
       "build",
       "plan"
     ],
-    "when": "The person brings an idea for an app and wants it planned, designed and built.",
-    "unless": "The project already has an app, or the person wants only one piece of the work, such as a mockup.",
+    "when": "The person brings an idea for a web app and wants it planned, designed and built.",
+    "unless": "The project already has an app, the person wants only one piece of the work, such as a mockup, or what they want is not a web app, such as a command-line tool, a library, a script or a document; then put together a plan of your own from the plugins that fit.",
     "guidance": "./SKILL.md",
     "steps": [
       {

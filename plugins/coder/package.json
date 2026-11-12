@@ -2,7 +2,7 @@
   "name": "@corbits-builder/coder",
   "version": "0.9.0",
   "private": true,
-  "description": "Builds the app the first time, and changes the app the project has, built here or imported.",
+  "description": "Builds the project's code the first time, whatever kind of thing it is, and changes the code the project has, built here or imported.",
   "license": "SEE LICENSE IN ../../LICENSE.md",
   "author": "Sawyer Cutler <sawyer@dirtroad.dev>",
   "type": "module",
@@ -31,8 +31,8 @@
       "build",
       "change"
     ],
-    "when": "The app needs building for the first time, or the person asks for a change to the app the project has.",
-    "unless": "The person is unsure what they want and a screen would let them choose, or they want only a mockup.",
+    "when": "The project's code needs building for the first time, or the person asks for a change to the code the project has.",
+    "unless": "The person is still unsure what they want and would rather compare options or see a mockup first.",
     "packages": {
       "coder": {
         "entry": "./src/packages/coder.ts",
@@ -40,6 +40,14 @@
       },
       "coder-any-package": {
         "entry": "./src/packages/coder-any-package.ts",
+        "role": "coder"
+      },
+      "coder-bare": {
+        "entry": "./src/packages/coder-bare.ts",
+        "role": "coder"
+      },
+      "coder-bare-any-package": {
+        "entry": "./src/packages/coder-bare-any-package.ts",
         "role": "coder"
       }
     },
@@ -49,8 +57,8 @@
     "actions": {
       "build": {
         "runs": "workflow",
-        "when": "The project has no app yet and its requirements or build plan say what to build.",
-        "unless": "The project already has an app; a change to it is coder change.",
+        "when": "The project has no code yet and its requirements or build plan say what to build.",
+        "unless": "The project already has code; a change to it is coder change.",
         "input": "./src/build.ts",
         "requires": [
           [
@@ -66,7 +74,8 @@
           "app_exists"
         ],
         "writes": [
-          "stack.language"
+          "stack.language",
+          "stack.starter"
         ],
         "start": {
           "workflow": "coder",
@@ -79,8 +88,8 @@
       },
       "change": {
         "runs": "workflow",
-        "when": "The person asks for a change to the app the project already has, built here or imported: a fix, an addition or a correction.",
-        "unless": "The project has no app yet, or the person is unsure what they want and a screen would let them choose.",
+        "when": "The person asks for a change to the code the project already has, built here or imported: a fix, an addition or a correction.",
+        "unless": "The project has no code yet, or the person is still unsure what they want and would rather compare options first.",
         "input": "./src/change.ts",
         "requires": [
           [
@@ -90,7 +99,8 @@
         "returns": [],
         "reads": [
           "brand.guidelines",
-          "stack.language"
+          "stack.language",
+          "stack.starter"
         ],
         "writes": [
           "stack.language"
@@ -106,7 +116,7 @@
       },
       "builds": {
         "runs": "check",
-        "when": "Before showing, filing or deploying the app, to prove its saved version still builds.",
+        "when": "Before showing, filing or deploying the project's code, to prove its saved version still builds.",
         "requires": [
           [
             "app_exists"
@@ -130,22 +140,44 @@
     },
     "examples": [
       "build it",
-      "go ahead and build the app",
+      "go ahead and build it",
       "start building",
+      "build me a command-line tool",
       "change the font to Inter",
-      "make the text bigger",
-      "add a settings page",
+      "add a flag that prints the version",
       "the save button does nothing"
     ],
     "facts": {
-      "app_exists": "the project has an app, built or imported",
-      "!app_exists": "the project has no app yet",
-      "builds:app": "the app's saved version builds"
+      "app_exists": "the project has code, built or imported",
+      "!app_exists": "the project has no code yet",
+      "builds:app": "the project's saved code builds"
     },
     "values": {
       "stack.language": {
-        "about": "The programming language the app is written in, such as TypeScript.",
+        "about": "The programming language the project's code is written in, such as TypeScript.",
         "type": "text"
+      },
+      "stack.starter": {
+        "about": "What the project's code started from: web-app for a web app with a browser client and a server, bare for anything else. Builder saves it when the first build starts.",
+        "type": "text"
+      }
+    }
+  },
+  "coder": {
+    "starters": {
+      "web-app": {
+        "about": "A web app people use in a browser: a React client, a Bun server and a shared package, finished when check-app passes.",
+        "folder": "starter",
+        "package": "coder",
+        "check": "check-app",
+        "serves": true
+      },
+      "bare": {
+        "about": "Anything that is not a web app, such as a command-line tool, a library, a script or a service: one TypeScript package on Bun with tests and no framework, finished when check-project passes.",
+        "folder": "starters/bare",
+        "package": "coder-bare",
+        "check": "check-project",
+        "serves": false
       }
     }
   }

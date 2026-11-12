@@ -14,7 +14,7 @@ import { chromium, type Page } from "@playwright/test";
 import type { ProjectArtifact } from "@corbits-builder/client";
 import { ProjectExport } from "@corbits-builder/schemas/project";
 import type { QuestionAnswer } from "@intx/types/signals";
-import { signIn, startWebApp, watchPage } from "../demo/browser.ts";
+import { signIn, startWebApp, watchPage } from "./browser.ts";
 import { readRunConversation } from "../e2e/support/extract.ts";
 import { startTestHub, type TestHubHandle } from "../e2e/support/hub.ts";
 import {
@@ -360,7 +360,7 @@ const STARTS: Record<"weather-documents" | "weather-app", Scenario> = {
   },
 };
 
-async function startingProject(
+export async function startingProject(
   start: "weather-documents" | "weather-app",
 ): Promise<ProjectExport> {
   const cached = join(SCENARIO_DIR, ".cache", `${start}.json`);

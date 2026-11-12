@@ -44,7 +44,9 @@ verdict; why the case stopped; and timings.
 ## Running it
 
 It needs the e2e Postgres from [docs/DEV.md](../../docs/DEV.md#tests) and an
-environment file naming it. Neither `bun run test` nor `bun run test:e2e`
+environment file naming it, and `SCENARIO_DIR` set as for the scenarios in
+[test/scenarios](../scenarios): the built weather app comes from the scenario
+runner's cached starting project. Neither `bun run test` nor `bun run test:e2e`
 picks this folder up; it runs only when named.
 
 The scripted proof runs every case on the scripted model, which acts out a

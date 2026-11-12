@@ -5,9 +5,10 @@ export const PACKAGE_INSTALL_TOOL = "install_packages";
 const PackageSpec = type(
   /^(@[a-z0-9][a-z0-9._~-]*\/)?[a-z0-9][a-z0-9._~-]*(@[A-Za-z0-9.^~<>=*+-]+)?$/,
 ).atMostLength(214);
-// The app is a Bun workspace; a package belongs to the one package that imports it.
+// A package belongs to the one package of the project that imports it: the project itself (.), or
+// in a web app's Bun workspace its client, server or a shared package.
 export const WorkspacePath = type(
-  /^(client|server|packages\/[a-z0-9][a-z0-9-]*)$/,
+  /^(\.|client|server|packages\/[a-z0-9][a-z0-9-]*)$/,
 );
 export const PackageInstallInput = type({
   "+": "reject",

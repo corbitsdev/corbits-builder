@@ -15,7 +15,7 @@ export default defineWorkflow({
   ),
   describe: {
     summary:
-      "Has an agent that can look things up on the web, read the project's documents, attached files and app, and file a document, do the task and report back. With a kind and title it files the result as a document under that kind; without them its report is the answer.",
+      "Has an agent that can look things up on the web, read the project's documents, attached files and code, and file a document, do the task and report back. With a kind and title it files the result as a document under that kind; without them its report is the answer.",
     fields: {
       instruction: {
         about:

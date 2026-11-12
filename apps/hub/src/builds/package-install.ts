@@ -13,7 +13,7 @@ export const packageInstallDefinitions = [
   {
     name: PACKAGE_INSTALL_TOOL,
     description:
-      "Install npm packages into one package of the app (client, server or packages/<name>) with bun add. When an install is declined, build without those packages.",
+      "Install npm packages with bun add into the one package of the project that imports them: . for the project itself, or in a web app's workspace client, server or packages/<name>. When an install is declined, build without those packages.",
     inputSchema,
   },
 ];

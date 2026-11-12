@@ -382,6 +382,8 @@ export async function createPosixBuildExecutor(
     openNetwork?: boolean;
     // Extra commands on PATH, each a Bun script kept beside the shims where the sandbox cannot write.
     commands?: Readonly<Record<string, string>>;
+    // Modules the commands import, by their path from the root, such as "/steps.ts".
+    commandModules?: Readonly<Record<string, string>>;
     // Workspace folders the agent reads but never writes, such as the coder's copy of the design.
     readOnly?: readonly string[];
     // A Bun script that keeps the dev app's page open and prints each error it meets as a JSON line.
@@ -462,7 +464,7 @@ export async function createPosixBuildExecutor(
       const binary = join(shimDirectory, `${name}.bin`);
       const built = await Bun.build({
         entrypoints: [entry],
-        files: { [entry]: source },
+        files: { ...options.commandModules, [entry]: source },
         target: "bun",
         minify: true,
         compile: {

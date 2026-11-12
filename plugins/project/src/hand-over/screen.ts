@@ -9,7 +9,7 @@ export default defineScreen({
   prepare: (input) => input,
   describe: {
     summary:
-      'Tells the person plainly that Builder will write the requirements, design the app, write the build plan and build it without stopping to ask them, with one button to hand their approvals over and one to keep being asked; opened while approvals are already handed over, it offers to ask them again. The answer is { decides: "builder" } or { decides: "person" }, and Builder has then set the project to match; if they write back instead, what they wrote is their answer.',
+      'Tells the person plainly that Builder will carry out each step of the plan without stopping to ask for their approval, with one button to hand their approvals over and one to keep being asked; opened while approvals are already handed over, it offers to ask them again. The answer is { decides: "builder" } or { decides: "person" }, and Builder has then set the project to match; if they write back instead, what they wrote is their answer.',
     when: manifest.builder.actions["hand-over"].when,
     unless: manifest.builder.actions["hand-over"].unless,
     fields: {

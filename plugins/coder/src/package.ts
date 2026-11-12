@@ -20,6 +20,7 @@ import { nativePackageName } from "@corbits-builder/hub/workflows/package-name";
 import { DESIGN_STANDARD } from "@corbits-builder/hub/config/design";
 import manifest from "../package.json";
 import { createCoderAgent } from "./agent.ts";
+import { STARTERS, type StarterName } from "./contract.ts";
 import { createCoderWorkflow } from "./workflow.ts";
 
 // Build and change both start this one workflow, and a run is not told which action started it, so
@@ -42,22 +43,35 @@ const CODER_MCP: McpToolsOptions = {
   allowWithoutAsk: ["exa.web_search_exa", "exa.web_fetch_exa"],
 };
 
+// What only the coder of a web app, whose starter serves one, gets: the design standard, the
+// component kit's skill and a browser to try the app in.
+const WEB_APP = {
+  standards: [DESIGN_STANDARD],
+  skills: ["react-ui", "stack-docs"],
+};
+const NOT_WEB_APP = { standards: [], skills: ["stack-docs"] };
+
 /**
- * The coder's workflow package. `packageApproval` is frozen into the definition: "ask" declares
- * install_packages as an ask tool, "allow" declares it plain (AUTH.md, Grant Requirements on
- * Definitions; the definition hash differs, so each is its own approved definition).
+ * The coder's workflow package for code that starts from one starter. `packageApproval` is frozen
+ * into the definition: "ask" declares install_packages as an ask tool, "allow" declares it plain
+ * (AUTH.md, Grant Requirements on Definitions; the definition hash differs, so each is its own
+ * approved definition). The starter is frozen in too: its prompt, its tools and the check that
+ * finishes it.
  */
 export async function coderPackage(
   name: string,
   packageApproval: "ask" | "allow",
+  starter: StarterName,
 ) {
+  const { serves } = STARTERS[starter];
+  const { standards, skills } = serves ? WEB_APP : NOT_WEB_APP;
   const compacting = compactingDirector(nativePackageName(name));
   const { source, contextWindow, timeouts, parameters } =
     roleInference("coder");
   // Discovered at load so the frozen definition carries the remote tool names.
-  const web = await mcpTools(CODER_MCP);
+  const search = await mcpTools(CODER_MCP);
   // The deployment starts its own browser on first use, so its tools are listed when the bundle is built.
-  const browser = await browserCatalog();
+  const browser = serves ? await browserCatalog() : undefined;
   const agent = createCoderAgent<CodingSidecarEnv & MailToolEnv>({
     director: compacting.build({
       contextWindow,
@@ -68,18 +82,20 @@ export async function coderPackage(
     }),
     id: "coder",
     capabilities: [],
-    standards: [DESIGN_STANDARD],
+    standards,
+    starter,
     inference: { ...source, parameters },
     // The project role child supplies the sandboxed workspace and executor.
     tools: [
       createArtifactTools("coder"),
       mail,
-      createSkillTools(["react-ui", "stack-docs"]),
-      web,
+      createSkillTools(skills),
+      search,
       createSidecarCodingTools({
         approval: "allow",
         workspace: "app",
         packageInstall: packageApproval,
+        starter,
         browser,
       }),
     ],
