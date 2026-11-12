@@ -67,11 +67,15 @@ export type Observation = Readonly<{
   textTurns: readonly string[];
 }>;
 
-// A workflow started is execute:<handle>; classic's instruct_coder is change-app's work by another name.
+// An action started is execute:<plugin>.<action>, a route followed execute:<plugin>; classic's
+// instruct_coder is the coder's change action by another name.
 function moveOf(tool: string, args: Record<string, unknown>): string {
   if (tool === "discover") return tool;
-  if (tool === "instruct_coder") return "execute:change-app";
-  if (tool === "execute") return `execute:${String(args["plugin"])}`;
+  if (tool === "instruct_coder") return "execute:coder.change";
+  if (tool === "execute")
+    return typeof args["action"] === "string"
+      ? `execute:${String(args["plugin"])}.${args["action"]}`
+      : `execute:${String(args["plugin"])}`;
   if (tool === "question")
     return typeof args["plugin"] === "string"
       ? `open:${args["plugin"]}`

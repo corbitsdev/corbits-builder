@@ -1,12 +1,13 @@
 import { expect, test } from "bun:test";
-import changeApp from "@corbits-builder/change-app";
+import change from "@corbits-builder/coder-plugin/change";
 import pickColours from "@corbits-builder/pick-colours";
 import {
   catalog,
   PLUGINS,
   routePlugin,
   screenPlugin,
-  workflowPlugin,
+  specialistPlugin,
+  workflowAction,
 } from "./catalog.ts";
 import * as runners from "./runners.ts";
 import { fields } from "./search/fields.ts";
@@ -54,30 +55,38 @@ test("a plugin that reads a project value the hub does not have is refused when 
   ).toThrow("look.colour-primary");
 });
 
-test("a workflow that requires a fact Builder cannot work out, or templates a field it does not take, is refused when the hub loads", () => {
-  const workflow = (requires: string[][]) =>
-    workflowPlugin(
+test("a workflow action that requires a fact Builder cannot work out, or templates a field it does not take, is refused when the hub loads", () => {
+  const specialist = (requires: string[][]) =>
+    specialistPlugin(
       {
         builder: {
-          handle: "polish-app",
-          runs: "workflow",
+          handle: "polisher",
+          runs: "specialist",
           groups: ["build"],
           when: "The person wants the app polished.",
           unless: "They want a change of their own.",
-          input: "./src/input.ts",
-          requires,
-          returns: [],
+          actions: {
+            polish: {
+              runs: "workflow",
+              when: "The person wants the app polished.",
+              unless: "They want a change of their own.",
+              input: "./src/polish.ts",
+              requires,
+              returns: [],
+            },
+          },
         },
       },
-      changeApp,
-      runners.changeApp,
+      { polish: workflowAction(change, runners.changeApp) },
     );
-  expect(() => workflow([["app_polished"]])).toThrow("app_polished");
-  expect(() => workflow([["filed:{kind}"]])).toThrow("filed:{kind}");
-  expect(workflow([["app_exists"]]).builder.handle).toBe("polish-app");
+  expect(() => specialist([["app_polished"]])).toThrow(
+    "polisher polish names app_polished",
+  );
+  expect(() => specialist([["filed:{kind}"]])).toThrow("filed:{kind}");
+  expect(specialist([["app_exists"]]).actions[0]?.name).toBe("polisher polish");
 });
 
-test("a route that names a plugin that is not installed is refused when the hub loads", () => {
+test("a route that names an action that is not installed is refused when the hub loads", () => {
   const route = routePlugin(
     {
       builder: {
@@ -87,13 +96,13 @@ test("a route that names a plugin that is not installed is refused when the hub 
         when: "The person wants a novel.",
         unless: "They want an app.",
         guidance: "./SKILL.md",
-        steps: [{ plugin: "write-chapter", requires: [] }],
+        steps: [{ plugin: "writer", action: "write-chapter", requires: [] }],
         outcome: "app_exists",
       },
     },
     "Write it.",
   );
-  expect(() => catalog([...PLUGINS, route])).toThrow("write-chapter");
+  expect(() => catalog([...PLUGINS, route])).toThrow("writer write-chapter");
 });
 
 test("fields finds pick-fonts first from how a person complains about type", () => {

@@ -21,9 +21,10 @@ the unacceptable ones, using these move names:
 - `open:pick-fonts`, `open:pick-colours`: opened that screen for the person.
 - `ask`: asked the person a plain question, with the `question` tool or in a
   closing reply that holds a question mark.
-- `execute:<handle>`: started that workflow plugin with `execute`, such as
-  `execute:change-app` to have a coder change the app. Classic's
-  `instruct_coder` (which waits for approval) counts as `execute:change-app`.
+- `execute:<plugin>.<action>`: started that plugin action with `execute`,
+  such as `execute:coder.change` to have a coder change the app, and
+  `execute:<plugin>` for a route. Classic's `instruct_coder` (which waits for
+  approval) counts as `execute:coder.change`.
 - `read`: read the project's documents or design with `read_artifact`.
 - `reply`: a closing reply that neither asks nor acts.
 

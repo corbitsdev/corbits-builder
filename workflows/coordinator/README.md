@@ -24,12 +24,12 @@ the hub's. In `classic`:
 
 In `dynamic` everything it can start is a plugin (`plugins/`):
 
-- `discover`: finds plugins from the person's wording, with what each
-  requires and whether the project has it now.
-- `execute`: starts a workflow plugin, such as `change-app`, or puts the
-  project on a route plugin, such as `build-web-app`.
+- `discover`: finds plugins from the person's wording, with each specialist's
+  actions, what each requires and whether the project has it now.
+- `execute`: starts a specialist plugin's action, such as the coder's
+  `change`, or puts the project on a route plugin, such as `build-web-app`.
 - `question`: opens a screen plugin, or asks the person plainly.
-- `request_approval`: the `approve-document` plugin's own tool, because only
+- `request_approval`: the writer plugin's `approve` action, because only
   the person's answer to an asking tool records an approval.
 - `read_artifact`: the document list and each document; it writes none.
 

@@ -1,9 +1,9 @@
-import type buildAppInput from "@corbits-builder/build-app";
-import type changeAppInput from "@corbits-builder/change-app";
+import type buildAppInput from "@corbits-builder/coder-plugin/build";
+import type changeAppInput from "@corbits-builder/coder-plugin/change";
 import type designAppInput from "@corbits-builder/design-app";
-import type reviewDocumentInput from "@corbits-builder/review-document";
-import type writeBuildPlanInput from "@corbits-builder/write-build-plan";
-import type writeRequirementsInput from "@corbits-builder/write-requirements";
+import type reviewDocumentInput from "@corbits-builder/writer-plugin/review";
+import type writeBuildPlanInput from "@corbits-builder/writer-plugin/write-build-plan";
+import type writeRequirementsInput from "@corbits-builder/writer-plugin/write-requirements";
 import { coderTaskMessage } from "@corbits-builder/coder/contract";
 import { WRITER_PACKAGES } from "@corbits-builder/schemas/installed-workflows";
 import {
@@ -21,7 +21,7 @@ import {
 } from "../projects/project-session.ts";
 import { writerTask } from "../workflows/writer-task.ts";
 
-// Turns a workflow plugin's checked input into the start of its specialist's run. What the plugin
+// Turns a workflow action's checked input into the start of its specialist's run. What the action
 // requires is checked before; a runner refuses only what it finds when it starts.
 export type Runner<In> = (
   input: In,

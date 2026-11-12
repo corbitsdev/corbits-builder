@@ -97,7 +97,8 @@ test(
                       id: "coord_inter",
                       name: "execute",
                       arguments: {
-                        plugin: "change-app",
+                        plugin: "coder",
+                        action: "change",
                         input: { instruction },
                       },
                     },

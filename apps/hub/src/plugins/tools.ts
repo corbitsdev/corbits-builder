@@ -14,13 +14,14 @@ import {
   DISCOVER_DYNAMIC_DESCRIPTION,
   EXECUTE_DESCRIPTION,
   readinessText,
-  requiresText,
   routeDone,
   routeFollowed,
   routeInputRefused,
   routeLeft,
+  routeTakesNoAction,
   screenNotExecuted,
   toolNotExecuted,
+  unknownAction,
   unknownPlugin,
   unmetRequirement,
   type Readiness,
@@ -40,18 +41,18 @@ import {
 } from "../projects/project-session.ts";
 import { projectScopeFailure } from "../workflows/project-scope.ts";
 import {
+  ACTIONS,
   installed,
   isRoute,
   isScreen,
-  isStartable,
-  isTool,
-  isWorkflow,
+  isSpecialist,
+  isWorkflowAction,
   PLUGINS,
   ProjectRoute,
   SCREENS,
+  type Action,
   type Plugin,
   type RoutePlugin,
-  type Startable,
 } from "./catalog.ts";
 import { projectFacts, resolveFacts, templateField, unmet } from "./facts.ts";
 import { checkPluginQuestion } from "./question.ts";
@@ -73,6 +74,7 @@ const Discover = type({
 const Execute = type({
   "+": "reject",
   plugin: "string > 0",
+  "action?": "string > 0",
   "input?": "object",
 });
 const RouteInput = type({ "+": "reject", "leave?": "true" });
@@ -186,30 +188,30 @@ async function projectState(session: ProjectSession) {
 }
 type ProjectState = Awaited<ReturnType<typeof projectState>>;
 
-// Whether a plugin's finished work makes a fact true; "filed:{kind}" makes any document filed.
+// Whether an action's finished work makes a fact true; "filed:{kind}" makes any document filed.
 const makes = (made: Fact, fact: Fact) =>
   made === fact ||
   (templateField(made) !== undefined &&
     made.split(":")[0] === fact.split(":")[0]);
 const makers = (fact: Fact) =>
-  PLUGINS.filter(isStartable)
-    .filter(({ builder }) => builder.returns.some((made) => makes(made, fact)))
-    .map(({ builder }) => builder.handle);
+  ACTIONS.filter(({ builder }) =>
+    builder.returns.some((made) => makes(made, fact)),
+  ).map(({ name }) => name);
 
-// Where a plugin stands: what it lacks of its own requirements, for the input when there is one,
+// Where an action stands: what it lacks of its own requirements, for the input when there is one,
 // and what the route the project follows adds for it as a step.
 function readiness(
-  plugin: Startable,
+  action: Action,
   { facts, route }: ProjectState,
   input?: unknown,
 ): Readiness {
-  const requires = (plugin.builder.requires ?? []).map((alternative) =>
+  const requires = (action.builder.requires ?? []).map((alternative) =>
     input === undefined
       ? alternative.filter((fact) => templateField(fact) === undefined)
       : resolveFacts(alternative, input),
   );
   const step = route?.builder.steps.find(
-    ({ plugin: handle }) => handle === plugin.builder.handle,
+    (named) => named.plugin === action.plugin && named.action === action.action,
   );
   const readied: Readiness = {
     own: unmet(requires, facts),
@@ -219,17 +221,19 @@ function readiness(
   return readied;
 }
 
-// Each step of a route as if the project followed it. Only a plugin execute starts can be held.
+// The installed action that a plugin's handle and an action's name pick out.
+const installedAction = (plugin: string, name: string | undefined) =>
+  ACTIONS.find((action) => action.plugin === plugin && action.action === name);
+
+// Each step of a route as if the project followed it.
 const stepsOf = (route: RoutePlugin, facts: ProjectState["facts"]) =>
-  route.builder.steps.map(({ plugin: handle }) => {
-    const step = installed(handle);
+  route.builder.steps.map(({ plugin, action: name }) => {
+    const action = installedAction(plugin, name);
+    if (!action)
+      throw new Error(`${route.builder.handle} names ${plugin} ${name}`);
     return {
-      plugin: handle,
-      readiness: readinessText(
-        step && isStartable(step)
-          ? readiness(step, { facts, route })
-          : { own: [], fromRoute: [] },
-      ),
+      name: action.name,
+      readiness: readinessText(readiness(action, { facts, route })),
     };
   });
 
@@ -242,13 +246,17 @@ function status(plugin: Plugin, state: ProjectState): string[] {
         : "Start it with execute; the project then follows it.",
       "Steps:",
       ...stepsOf(plugin, state.facts).map(
-        ({ plugin: handle, readiness: line }) => `  ${handle}: ${line}`,
+        ({ name, readiness: line }) => `  ${name}: ${line}`,
       ),
     ];
-  if (!isStartable(plugin)) return [];
+  if (!isSpecialist(plugin)) return [];
   return [
-    `Requires: ${requiresText(plugin.builder.requires ?? [])}.`,
-    `Now: ${readinessText(readiness(plugin, state))}.`,
+    "",
+    "Now:",
+    ...plugin.actions.map(
+      (action) =>
+        `  ${action.name}: ${readinessText(readiness(action, state))}`,
+    ),
   ];
 }
 
@@ -276,7 +284,8 @@ async function followRoute(
   };
 }
 
-// Starts a workflow plugin, or follows or leaves a route, once its input and requirements hold.
+// Starts a specialist's workflow action, or follows or leaves a route, once its input and
+// requirements hold.
 async function execute(
   session: ProjectSession,
   raw: unknown,
@@ -287,39 +296,54 @@ async function execute(
   const plugin = installed(asked.plugin);
   if (!plugin)
     return {
-      content: unknownPlugin(
-        asked.plugin,
-        PLUGINS.filter((found) => isWorkflow(found) || isRoute(found)).map(
-          ({ builder }) => builder.handle,
-        ),
-      ),
+      content: unknownPlugin(asked.plugin, [
+        ...ACTIONS.filter(isWorkflowAction).map(({ name }) => name),
+        ...PLUGINS.filter(isRoute).map(({ builder }) => builder.handle),
+      ]),
       isError: true,
     };
   if (isScreen(plugin))
     return { content: screenNotExecuted(plugin.builder.handle), isError: true };
-  if (isTool(plugin))
+  if (isRoute(plugin)) {
+    if (asked.action !== undefined)
+      return {
+        content: routeTakesNoAction(plugin.builder.handle),
+        isError: true,
+      };
+    const state = await projectState(session);
+    return followRoute(session, plugin, asked.input ?? {}, state);
+  }
+  const action = installedAction(plugin.builder.handle, asked.action);
+  if (!action)
     return {
-      content: toolNotExecuted(plugin.builder.handle, plugin.builder.tool),
+      content: unknownAction(
+        plugin.builder.handle,
+        asked.action,
+        plugin.actions,
+      ),
+      isError: true,
+    };
+  if (!isWorkflowAction(action))
+    return {
+      content: toolNotExecuted(action.name, action.builder.tool),
       isError: true,
     };
   const state = await projectState(session);
-  if (isRoute(plugin))
-    return followRoute(session, plugin, asked.input ?? {}, state);
-  const checked = plugin.check(asked.input ?? {});
+  const checked = action.check(asked.input ?? {});
   if (!checked.ok) return { content: checked.text, isError: true };
-  const ready = readiness(plugin, state, checked.input);
+  const ready = readiness(action, state, checked.input);
   if (ready.own.length > 0 || ready.fromRoute.length > 0)
     return {
-      content: unmetRequirement(plugin.builder.handle, ready, makers),
+      content: unmetRequirement(action.name, ready, makers),
       isError: true,
     };
   return { content: JSON.stringify(await checked.start(session)) };
 }
 
 /**
- * The dynamic coordinator's way to act: discover finds a plugin, execute starts it, question opens
- * a screen, and request_approval is approve-document's own tool, because only the person's answer
- * to an asking tool records an approval.
+ * The dynamic coordinator's way to act: discover finds a plugin, execute starts a specialist's
+ * action or a route, question opens a screen, and request_approval is the writer's approve action,
+ * because only the person's answer to an asking tool records an approval.
  */
 export function createExecuteTools(
   options?: ProjectOptions,

@@ -64,10 +64,9 @@
       "version": "0.1.0-rc.3",
       "dependencies": {
         "@anthropic-ai/sandbox-runtime": "0.0.81",
-        "@corbits-builder/build-app": "workspace:*",
         "@corbits-builder/build-web-app": "workspace:*",
-        "@corbits-builder/change-app": "workspace:*",
         "@corbits-builder/coder": "workspace:*",
+        "@corbits-builder/coder-plugin": "workspace:*",
         "@corbits-builder/coordinator": "workspace:*",
         "@corbits-builder/design-app": "workspace:*",
         "@corbits-builder/designer": "workspace:*",
@@ -75,13 +74,11 @@
         "@corbits-builder/pick-fonts": "workspace:*",
         "@corbits-builder/plugin": "workspace:*",
         "@corbits-builder/presenter": "workspace:*",
-        "@corbits-builder/review-document": "workspace:*",
         "@corbits-builder/review-mockup": "workspace:*",
         "@corbits-builder/reviewer": "workspace:*",
         "@corbits-builder/schemas": "workspace:*",
-        "@corbits-builder/write-build-plan": "workspace:*",
-        "@corbits-builder/write-requirements": "workspace:*",
         "@corbits-builder/writer": "workspace:*",
+        "@corbits-builder/writer-plugin": "workspace:*",
         "@corbits/agent-token": "0.2.2",
         "@corbits/artifacts": "0.3.0",
         "@corbits/codex-provider": "0.1.5",
@@ -211,24 +208,12 @@
       "name": "@corbits/zip",
       "version": "0.1.0-rc.2",
     },
-    "plugins/approve-document": {
-      "name": "@corbits-builder/approve-document",
-      "version": "0.1.0-rc.3",
-    },
-    "plugins/build-app": {
-      "name": "@corbits-builder/build-app",
-      "version": "0.1.0-rc.3",
-      "dependencies": {
-        "@corbits-builder/plugin": "workspace:*",
-        "arktype": "catalog:",
-      },
-    },
     "plugins/build-web-app": {
       "name": "@corbits-builder/build-web-app",
       "version": "0.1.0-rc.3",
     },
-    "plugins/change-app": {
-      "name": "@corbits-builder/change-app",
+    "plugins/coder": {
+      "name": "@corbits-builder/coder-plugin",
       "version": "0.1.0-rc.3",
       "dependencies": {
         "@corbits-builder/plugin": "workspace:*",
@@ -272,15 +257,6 @@
         "@types/react": "19.3.0",
       },
     },
-    "plugins/review-document": {
-      "name": "@corbits-builder/review-document",
-      "version": "0.1.0-rc.3",
-      "dependencies": {
-        "@corbits-builder/plugin": "workspace:*",
-        "@corbits-builder/schemas": "workspace:*",
-        "arktype": "catalog:",
-      },
-    },
     "plugins/review-mockup": {
       "name": "@corbits-builder/review-mockup",
       "version": "0.1.0-rc.3",
@@ -294,19 +270,12 @@
         "@types/react": "19.3.0",
       },
     },
-    "plugins/write-build-plan": {
-      "name": "@corbits-builder/write-build-plan",
+    "plugins/writer": {
+      "name": "@corbits-builder/writer-plugin",
       "version": "0.1.0-rc.3",
       "dependencies": {
         "@corbits-builder/plugin": "workspace:*",
-        "arktype": "catalog:",
-      },
-    },
-    "plugins/write-requirements": {
-      "name": "@corbits-builder/write-requirements",
-      "version": "0.1.0-rc.3",
-      "dependencies": {
-        "@corbits-builder/plugin": "workspace:*",
+        "@corbits-builder/schemas": "workspace:*",
         "arktype": "catalog:",
       },
     },
@@ -882,17 +851,13 @@
 
     "@better-fetch/fetch": ["@better-fetch/fetch@1.3.3", "", {}, "sha512-U6SlDt/GUWtK2JAxS/NhdoYTEim+EL1G5byz2TUj83KjLZBUpYzb5SmX0aXaCnbGkAjFKnV/o/0+cyXMbEcqqg=="],
 
-    "@corbits-builder/approve-document": ["@corbits-builder/approve-document@workspace:plugins/approve-document"],
-
-    "@corbits-builder/build-app": ["@corbits-builder/build-app@workspace:plugins/build-app"],
-
     "@corbits-builder/build-web-app": ["@corbits-builder/build-web-app@workspace:plugins/build-web-app"],
-
-    "@corbits-builder/change-app": ["@corbits-builder/change-app@workspace:plugins/change-app"],
 
     "@corbits-builder/client": ["@corbits-builder/client@workspace:packages/client"],
 
     "@corbits-builder/coder": ["@corbits-builder/coder@workspace:workflows/coder"],
+
+    "@corbits-builder/coder-plugin": ["@corbits-builder/coder-plugin@workspace:plugins/coder"],
 
     "@corbits-builder/coordinator": ["@corbits-builder/coordinator@workspace:workflows/coordinator"],
 
@@ -910,8 +875,6 @@
 
     "@corbits-builder/presenter": ["@corbits-builder/presenter@workspace:workflows/presenter"],
 
-    "@corbits-builder/review-document": ["@corbits-builder/review-document@workspace:plugins/review-document"],
-
     "@corbits-builder/review-mockup": ["@corbits-builder/review-mockup@workspace:plugins/review-mockup"],
 
     "@corbits-builder/reviewer": ["@corbits-builder/reviewer@workspace:workflows/reviewer"],
@@ -920,11 +883,9 @@
 
     "@corbits-builder/web": ["@corbits-builder/web@workspace:apps/web"],
 
-    "@corbits-builder/write-build-plan": ["@corbits-builder/write-build-plan@workspace:plugins/write-build-plan"],
-
-    "@corbits-builder/write-requirements": ["@corbits-builder/write-requirements@workspace:plugins/write-requirements"],
-
     "@corbits-builder/writer": ["@corbits-builder/writer@workspace:workflows/writer"],
+
+    "@corbits-builder/writer-plugin": ["@corbits-builder/writer-plugin@workspace:plugins/writer"],
 
     "@corbits/agent-token": ["@corbits/agent-token@0.2.2", "", { "dependencies": { "arktype": "^2.2.0" }, "peerDependencies": { "@intx/db": "^0.5.0", "@intx/hub-api": "^0.5.0", "drizzle-orm": "^0.45.2", "hono": "^4.11.9", "postgres": "^3.4.8" } }, "sha512-w3q9sNAS3d/Z531dFLvNb1l7BewlSWEyC1yG9erZN7lKRsCszbYXZTy69dKWhV+JR/VpXFkbpDmwjqQFqGfvyw=="],
 

@@ -37,40 +37,53 @@ export const Builder = Common.merge({
 });
 export type Builder = typeof Builder.infer;
 
-// Another agent does a piece of work in its own run.
-export const WorkflowBuilder = Common.merge({
-  runs: "'workflow'",
-  input: "string > 0",
+// One thing a specialist does, with the facts it needs to start and the facts its finished work makes.
+const ActionBuilder = type({
+  when: "string > 0",
+  unless: "string > 0",
   "requires?": Requires,
   returns: Facts,
 });
-export type WorkflowBuilder = typeof WorkflowBuilder.infer;
 
-// Guidance for reaching an outcome through other plugins, named by handle. While a project follows
-// it, each step also needs the step's own facts.
+// Another agent does the work in its own run.
+export const WorkflowActionBuilder = ActionBuilder.merge({
+  runs: "'workflow'",
+  input: "string > 0",
+});
+export type WorkflowActionBuilder = typeof WorkflowActionBuilder.infer;
+
+// Started with a tool of its own, for work that must wait on the person's answer to that tool. Its
+// input is the tool's, so the action says what it does itself.
+export const ToolActionBuilder = ActionBuilder.merge({
+  runs: "'tool'",
+  tool: "string > 0",
+  summary: "string > 0",
+});
+export type ToolActionBuilder = typeof ToolActionBuilder.infer;
+
+// A specialist the coordinator composes into its plan, and the actions it can be started on.
+export const SpecialistBuilder = Common.merge({
+  runs: "'specialist'",
+  actions: type({ "[string]": WorkflowActionBuilder.or(ToolActionBuilder) }),
+});
+export type SpecialistBuilder = typeof SpecialistBuilder.infer;
+
+// Guidance for reaching an outcome through other plugins' actions. While a project follows it, each
+// step also needs the step's own facts.
 export const RouteBuilder = Common.merge({
   runs: "'route'",
   guidance: "string > 0",
-  steps: type({ "+": "reject", plugin: "string > 0", requires: Facts })
+  steps: type({
+    "+": "reject",
+    plugin: "string > 0",
+    action: "string > 0",
+    requires: Facts,
+  })
     .array()
     .atLeastLength(1),
   outcome: "string > 0",
 });
 export type RouteBuilder = typeof RouteBuilder.infer;
-
-// Started with a tool of its own, for work that must wait on the person's answer to that tool.
-export const ToolBuilder = Common.merge({
-  runs: "'tool'",
-  tool: "string > 0",
-  "requires?": Requires,
-  returns: Facts,
-});
-export type ToolBuilder = typeof ToolBuilder.infer;
-
-export const PluginBuilder = Builder.or(WorkflowBuilder)
-  .or(RouteBuilder)
-  .or(ToolBuilder);
-export type PluginBuilder = typeof PluginBuilder.infer;
 
 export type Refusal = {
   field: string;
@@ -126,7 +139,7 @@ export const defineScreen = <In, Out, Data, Prepared>(
   screen: Screen<In, Out, Data, Prepared>,
 ) => screen;
 
-// A workflow plugin's input and how the coordinator fills it; when and unless are its manifest's.
+// A workflow action's input and how the coordinator fills it; when and unless are its manifest's.
 export type Workflow<In> = {
   input: Type<In>;
   describe: Pick<Describe<keyof Type<In>["inferIn"]>, "summary" | "fields">;

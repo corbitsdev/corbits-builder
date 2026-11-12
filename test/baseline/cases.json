@@ -15,13 +15,13 @@
       "text": "the font is ugly",
       "acceptable": [["open:pick-fonts"], ["discover", "open:pick-fonts"]],
       "unacceptable": {
-        "anywhere": ["execute:change-app", "open:pick-colours"],
+        "anywhere": ["execute:coder.change", "open:pick-colours"],
         "first": []
       }
     },
     {
       "text": "the font is too small",
-      "acceptable": [["execute:change-app"], ["ask"]],
+      "acceptable": [["execute:coder.change"], ["ask"]],
       "unacceptable": {
         "anywhere": ["open:pick-fonts", "open:pick-colours"],
         "first": []
@@ -31,23 +31,23 @@
       "text": "I don't know if I love how this looks",
       "acceptable": [["ask"], ["discover"]],
       "unacceptable": {
-        "anywhere": ["execute:change-app"],
+        "anywhere": ["execute:coder.change"],
         "first": ["open:pick-fonts", "open:pick-colours"]
       }
     },
     {
       "text": "the title looks weird",
       "acceptable": [["ask"]],
-      "unacceptable": { "anywhere": ["execute:change-app"], "first": [] }
+      "unacceptable": { "anywhere": ["execute:coder.change"], "first": [] }
     },
     {
       "text": "I'm struggling to read it",
       "acceptable": [["ask"]],
-      "unacceptable": { "anywhere": ["execute:change-app"], "first": [] }
+      "unacceptable": { "anywhere": ["execute:coder.change"], "first": [] }
     },
     {
       "text": "change the font to Inter",
-      "acceptable": [["execute:change-app"]],
+      "acceptable": [["execute:coder.change"]],
       "unacceptable": {
         "anywhere": ["open:pick-colours"],
         "first": ["ask"]
@@ -58,7 +58,7 @@
       "acceptable": [["read", "ask"]],
       "unacceptable": {
         "anywhere": [
-          "execute:change-app",
+          "execute:coder.change",
           "open:pick-fonts",
           "open:pick-colours"
         ],

@@ -1,0 +1,67 @@
+{
+  "name": "@corbits-builder/coder-plugin",
+  "version": "0.1.0-rc.3",
+  "private": true,
+  "description": "Builds the app the first time, and changes the app the project has, built here or imported.",
+  "license": "SEE LICENSE IN ../../LICENSE.md",
+  "author": "Sawyer Cutler <sawyer@dirtroad.dev>",
+  "type": "module",
+  "exports": {
+    "./build": "./src/build.ts",
+    "./change": "./src/change.ts"
+  },
+  "dependencies": {
+    "@corbits-builder/plugin": "workspace:*",
+    "arktype": "catalog:"
+  },
+  "builder": {
+    "handle": "coder",
+    "runs": "specialist",
+    "groups": [
+      "build",
+      "change"
+    ],
+    "when": "The app needs building for the first time, or the person asks for a change to the app the project has.",
+    "unless": "The person is unsure what they want and a screen would let them choose, or they want only a mockup.",
+    "actions": {
+      "build": {
+        "runs": "workflow",
+        "when": "The project has no app yet and its requirements or build plan say what to build.",
+        "unless": "The project already has an app; a change to it is coder change.",
+        "input": "./src/build.ts",
+        "requires": [
+          [
+            "filed:product_requirements"
+          ],
+          [
+            "filed:build_plan"
+          ]
+        ],
+        "returns": [
+          "app_exists"
+        ]
+      },
+      "change": {
+        "runs": "workflow",
+        "when": "The person asks for a change to the app the project already has, built here or imported: a fix, an addition or a correction.",
+        "unless": "The project has no app yet, or the person is unsure what they want and a screen would let them choose.",
+        "input": "./src/change.ts",
+        "requires": [
+          [
+            "app_exists"
+          ]
+        ],
+        "returns": []
+      }
+    },
+    "examples": [
+      "build it",
+      "go ahead and build the app",
+      "start building",
+      "change the font to Inter",
+      "make the text bigger",
+      "add a settings page",
+      "the save button does nothing"
+    ]
+  }
+}

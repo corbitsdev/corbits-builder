@@ -149,12 +149,12 @@ const SCRIPTS: readonly Readonly<{
           "instruct",
           CHANGE_TOOL,
           MODE === "dynamic"
-            ? { plugin: "change-app", input: largerText }
+            ? { plugin: "coder", action: "change", input: largerText }
             : largerText,
         ),
       },
     ],
-    moves: ["execute:change-app"],
+    moves: ["execute:coder.change"],
     screen: null,
     readBeforeActing: false,
   },

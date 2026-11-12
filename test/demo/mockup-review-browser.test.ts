@@ -93,6 +93,7 @@ function coordinatorTurns() {
         name: "execute",
         arguments: {
           plugin: "design-app",
+          action: "design",
           input: { instruction: text, lookIdeas, concepts: [concept] },
         },
       },

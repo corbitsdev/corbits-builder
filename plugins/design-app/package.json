@@ -2,6 +2,7 @@
   "name": "@corbits-builder/design-app",
   "version": "0.1.0-rc.3",
   "private": true,
+  "description": "Designs how the app could look, as mockups the person compares and chooses from.",
   "license": "SEE LICENSE IN ../../LICENSE.md",
   "author": "Sawyer Cutler <sawyer@dirtroad.dev>",
   "type": "module",
@@ -15,17 +16,24 @@
   },
   "builder": {
     "handle": "design-app",
-    "runs": "workflow",
+    "runs": "specialist",
     "groups": [
       "look",
       "design"
     ],
     "when": "The person wants to see how the app could look: a mockup, design options to compare, or another pass on a design option.",
     "unless": "They want the built app itself changed, or to pick fonts or colours on a screen.",
-    "input": "./src/input.ts",
-    "returns": [
-      "filed:design_option"
-    ],
+    "actions": {
+      "design": {
+        "runs": "workflow",
+        "when": "The person wants to see how the app could look: a mockup, design options to compare, or another pass on a design option.",
+        "unless": "They want the built app itself changed, or to pick fonts or colours on a screen.",
+        "input": "./src/input.ts",
+        "returns": [
+          "filed:design_option"
+        ]
+      }
+    },
     "examples": [
       "make me a mockup for a dog-walking app",
       "show me a few different looks",

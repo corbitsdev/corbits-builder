@@ -21,24 +21,28 @@
     "guidance": "./SKILL.md",
     "steps": [
       {
-        "plugin": "write-requirements",
+        "plugin": "writer",
+        "action": "write-requirements",
         "requires": []
       },
       {
         "plugin": "design-app",
+        "action": "design",
         "requires": [
           "approved:product_requirements"
         ]
       },
       {
-        "plugin": "write-build-plan",
+        "plugin": "writer",
+        "action": "write-build-plan",
         "requires": [
           "approved:product_requirements",
           "design_chosen"
         ]
       },
       {
-        "plugin": "build-app",
+        "plugin": "coder",
+        "action": "build",
         "requires": [
           "approved:build_plan",
           "design_chosen"
