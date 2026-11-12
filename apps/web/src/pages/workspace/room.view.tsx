@@ -1,9 +1,10 @@
 /**
- * The project room as it looks: the conversation with the coordinator, the dock beneath it (the
- * composer, or a banner saying why there is none), and the reading pane beside it once there is
- * something to read.
+ * The project room as it looks: the conversation with the coordinator across the page, the dock
+ * beneath it (the composer, or a banner saying why there is none), and the project view that opens
+ * over it from a card or the project control and closes back to the conversation.
  */
 import {
+  useEffect,
   useRef,
   type ReactElement,
   type ReactNode,
@@ -126,13 +127,11 @@ export type RoomContent = {
   /** The project's name. */
   title: string;
   layout: {
-    /** Nothing is filed yet, so the conversation takes the whole width and there is no pane. */
-    chatFirst: boolean;
-    /** How many documents and design concepts the pane holds, for the narrow screen's switch. */
-    artifactCount: number;
-    /** Which of the two a narrow screen shows. */
-    narrowPane: "conversation" | "artifacts";
-    onNarrowPaneChange: (pane: "conversation" | "artifacts") => void;
+    /** Something is filed, drafted or running, so the project view has something to show. */
+    projectReady: boolean;
+    /** The project view covers the room, with the prompt box beneath it; closed, it waits hidden. */
+    projectOpen: boolean;
+    onProjectOpenChange: (open: boolean) => void;
     /** The page slot covers the room, with the prompt box beneath it; closed, it waits hidden. */
     pageOpen: boolean;
   };
@@ -145,7 +144,7 @@ export type RoomContent = {
   };
   dock: RoomDock;
   documentPane: ArtifactPaneContent;
-  /** The reading pane itself, which the room moves focus to. */
+  /** The project view's pane, which takes focus as it opens. */
   paneRef: RefObject<HTMLElement | null>;
 };
 
@@ -163,9 +162,30 @@ export function RoomView({
   paneParts,
   page,
 }: RoomViewProps) {
-  const { chatFirst, narrowPane, onNarrowPaneChange } = layout;
+  const { projectReady, projectOpen, onProjectOpenChange, pageOpen } = layout;
   const { designChosen } = conversation;
-  const shell = useShellReply(paneRef);
+  const conversationRef = useRef<HTMLElement>(null);
+  const shell = useShellReply(conversationRef);
+  const closeProject = () => onProjectOpenChange(false);
+  // Focus goes into the project view as it opens and back to what opened it as it closes.
+  useEffect(() => {
+    if (!projectOpen) return;
+    const opener = document.activeElement;
+    paneRef.current?.focus();
+    return () => {
+      if (opener instanceof HTMLElement) opener.focus();
+    };
+  }, [projectOpen]);
+  // A menu inside the view closes on Escape first, and marks the key as used; a screen placed on
+  // the page sits over the view, so the key is not the view's while it is open.
+  useEffect(() => {
+    if (!projectOpen || pageOpen) return;
+    const onKey = (event: KeyboardEvent) => {
+      if (event.key === "Escape" && !event.defaultPrevented) closeProject();
+    };
+    document.addEventListener("keydown", onKey);
+    return () => document.removeEventListener("keydown", onKey);
+  }, [projectOpen, pageOpen]);
   const placedChoice = (): PlacedChoice | null => {
     if (designChosen !== null)
       return {
@@ -175,66 +195,64 @@ export function RoomView({
     return designChoice === null ? null : { card: designChoice };
   };
   const choice = placedChoice();
+  // The prompt box stays in reach under whatever covers the conversation.
+  const dockInProject = projectOpen && !pageOpen;
+  const dockInConversation = !projectOpen && !pageOpen;
+  const roomDock = <Dock dock={dock} answersShell={shell.answers} />;
   return (
     <StageView aria-label={`Conversation for ${title}`}>
-      <div
-        className={styles.room}
-        data-mobile-pane={chatFirst ? "conversation" : narrowPane}
-      >
-        {chatFirst ? null : (
-          <nav className={styles.mobileSwitch} aria-label="Workspace panes">
-            <button
-              type="button"
-              aria-pressed={narrowPane === "conversation"}
-              onClick={() => onNarrowPaneChange("conversation")}
-            >
-              Conversation
-            </button>
-            <button
-              type="button"
-              aria-pressed={narrowPane === "artifacts"}
-              onClick={() => onNarrowPaneChange("artifacts")}
-            >
-              Artifacts ({layout.artifactCount})
-            </button>
-          </nav>
-        )}
-        <div
-          className={styles.panes}
-          data-chat-first={chatFirst ? "" : undefined}
+      <div className={styles.room}>
+        <section
+          ref={conversationRef}
+          className={styles.conversationPane}
+          aria-label="Project conversation"
         >
-          <section
-            className={styles.conversationPane}
-            aria-label="Project conversation"
-          >
-            <div className={styles.conversation}>
+          <div className={styles.conversation}>
+            <div className={styles.top}>
               {nextStep}
-              <RoomThread
-                {...conversation.thread}
-                {...(choice === null ? {} : { designChoice: choice })}
-              >
-                <EmptyConversation empty={conversation.empty} />
-              </RoomThread>
-              {layout.pageOpen ? null : (
-                <Dock dock={dock} answersShell={shell.answers} />
-              )}
+              {projectReady ? (
+                <div className={styles.projectControl}>
+                  <UiButton
+                    type="button"
+                    size="sm"
+                    variant="outline"
+                    onClick={() => onProjectOpenChange(true)}
+                  >
+                    {wording.conversation.openProject}
+                  </UiButton>
+                </div>
+              ) : null}
             </div>
-          </section>
-          {chatFirst ? null : (
-            <ArtifactPane {...documentPane} {...paneParts} paneRef={paneRef} />
-          )}
-        </div>
-        {page === null ? null : (
-          // Kept while closed, so the screen's draft and the page it shows wait for the person.
+            <RoomThread
+              {...conversation.thread}
+              {...(choice === null ? {} : { designChoice: choice })}
+            >
+              <EmptyConversation empty={conversation.empty} />
+            </RoomThread>
+            {dockInConversation ? roomDock : null}
+          </div>
+        </section>
+        {projectReady ? (
+          // Kept while closed, so its tabs, previews and drafts keep their place.
           <div
             className={styles.page}
-            data-slot="room-page"
-            hidden={!layout.pageOpen}
+            data-slot="room-project"
+            hidden={!projectOpen}
           >
+            <ArtifactPane
+              {...documentPane}
+              {...paneParts}
+              paneRef={paneRef}
+              onClose={closeProject}
+            />
+            {dockInProject ? roomDock : null}
+          </div>
+        ) : null}
+        {page === null ? null : (
+          // Kept while closed, so the screen's draft and the page it shows wait for the person.
+          <div className={styles.page} data-slot="room-page" hidden={!pageOpen}>
             <div className={styles.pageScreen}>{page}</div>
-            {layout.pageOpen ? (
-              <Dock dock={dock} answersShell={shell.answers} />
-            ) : null}
+            {pageOpen ? roomDock : null}
           </div>
         )}
       </div>

@@ -1,6 +1,6 @@
 /**
  * The person's decision on a pending approval, as the library's ToolApproval.
- * It names the document open on the right, at the version shown there.
+ * It names the document it asks about and opens it over the room.
  * Approve records the existing approve call; Not yet records a denial and
  * takes the person to the composer to say what to change.
  * Tool names and a writer's instruction never reach the card. A coder
@@ -59,18 +59,17 @@ export function approvedTogether(approval: DocumentApproval) {
     : undefined;
 }
 
-function decisionTitle(approval: DocumentApproval, shown: boolean): string {
+function decisionTitle(approval: DocumentApproval): string {
   const together = approvedTogether(approval);
   if (together !== undefined)
     return text.documents(
       together.map(({ kind, title }) => shortDocumentName(kind, title)),
     );
-  const question = approvalQuestion(
+  return approvalQuestion(
     approval.toolName,
     shortName(approval),
     approval.subject,
   );
-  return shown ? `${question} ${text.openOnRight}` : question;
 }
 
 function bodyLine(approval: DocumentApproval): string | undefined {
@@ -151,7 +150,6 @@ function settledLine(approval: DocumentApproval): string {
 
 export function DocumentDecision({
   approval,
-  shownDocument,
   onShowDocument,
   disabled = false,
   error,
@@ -160,9 +158,7 @@ export function DocumentDecision({
   countdown,
 }: {
   approval: DocumentApproval;
-  /** The document the reading pane shows, by kind. */
-  shownDocument?: string | null;
-  /** Takes the reading pane to that document. */
+  /** Opens that document over the room. */
   onShowDocument?: (kind: string) => void;
   disabled?: boolean;
   error?: string;
@@ -175,7 +171,6 @@ export function DocumentDecision({
   const body = bodyLine(approval);
   const approving = approvingLine(approval);
   const asked = approval.document;
-  const shown = asked !== undefined && shownDocument === asked.kind;
   const name = shortName(approval);
   const together = approvedTogether(approval) !== undefined;
   const actions = actionLabels(approval);
@@ -228,7 +223,7 @@ export function DocumentDecision({
           ? { title: declinedLine(approval) }
           : {})}
       labels={{
-        title: decisionTitle(approval, shown),
+        title: decisionTitle(approval),
         ...actions,
         approvedOnce: settledLine(approval),
         approvedAlways: text.always(settledLine(approval)),
@@ -270,7 +265,6 @@ export function DocumentDecision({
       )}
       {body === undefined ? null : <p className={styles.next}>{body}</p>}
       {asked === undefined ||
-      shown ||
       name === undefined ||
       onShowDocument === undefined ? null : (
         <UiButton

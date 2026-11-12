@@ -8,31 +8,6 @@
   overflow: hidden;
 }
 
-.mobileSwitch {
-  display: none;
-}
-
-/* The library Panel resizes the document from its start edge, so the row is
-   the flex row it expects: the conversation takes what the panel leaves. */
-.panes {
-  display: flex;
-  flex: 1;
-  min-height: 0;
-  min-width: 0;
-  width: 100%;
-  overflow: hidden;
-}
-
-/* Chat-first: before a stage has a drafted artifact, the conversation is
-   the whole page — one centred column at a reading measure, the composer at
-   its bottom. The split earns its keep only once there is something to split
-   against. */
-.panes[data-chat-first] {
-  flex-direction: column;
-  max-width: 52rem;
-  margin: 0 auto;
-}
-
 .conversationPane {
   position: relative;
   display: flex;
@@ -44,16 +19,25 @@
   background: var(--wb-background);
 }
 
-/* The column runs the full height, so the composer sits at the window's
-   foot with the thread above it, not just under the last message. */
-.panes[data-chat-first] > .conversationPane {
-  width: 100%;
+/* The next-step line with the project control at its end, under one hairline. */
+.top {
+  display: flex;
+  flex-shrink: 0;
+  min-width: 0;
 }
 
-/* The split's proportions before the person drags it. */
-.panes > [data-slot="artifact-pane"] {
-  width: var(--resizable-width, 58%);
-  background: var(--wb-background);
+.top > :not(.projectControl) {
+  flex: 1;
+  min-width: 0;
+}
+
+.projectControl {
+  display: flex;
+  flex: none;
+  align-items: center;
+  margin-inline-start: auto;
+  padding: var(--space-1) var(--space-4);
+  border-bottom: 1px solid var(--wb-border);
 }
 
 .conversation {
@@ -74,25 +58,6 @@
   width: 100%;
   max-width: 46rem;
   margin-inline: auto;
-}
-
-/* The composer arrives once there is something it could send: it rises
-   into place rather than appearing. */
-.panes[data-chat-first] [data-slot="composer"] {
-  animation: composer-in 280ms ease-out backwards;
-}
-
-@keyframes composer-in {
-  from {
-    opacity: 0;
-    transform: translateY(16px);
-  }
-}
-
-@media (prefers-reduced-motion: reduce) {
-  .panes[data-chat-first] [data-slot="composer"] {
-    animation: none;
-  }
 }
 
 /* The archived banner's lead, fault and action, spaced as the banner spaces its rows. */
@@ -125,60 +90,12 @@
 }
 
 @media (max-width: 900px) {
-  .conversationPane {
-    border-bottom: 1px solid var(--wb-border);
-  }
-
-  .panes[data-chat-first] [data-slot="composer"] {
+  .conversation > [data-slot="composer"] {
     padding-right: calc(var(--space-4) + 44px + var(--space-6));
   }
 }
 
-@media (max-width: 760px) {
-  .mobileSwitch {
-    display: flex;
-    flex-shrink: 0;
-    gap: var(--space-2);
-    padding: var(--space-2) var(--space-4);
-    border-bottom: 1px solid var(--wb-border);
-  }
-
-  .mobileSwitch button {
-    flex: 1;
-    min-height: 44px;
-    padding: var(--space-2);
-    border-radius: var(--radius-md);
-    color: var(--wb-muted-foreground);
-    font: inherit;
-  }
-
-  .mobileSwitch button[aria-pressed="true"] {
-    background: var(--wb-muted);
-    color: var(--wb-foreground);
-    font-weight: 600;
-  }
-
-  .mobileSwitch button:focus-visible {
-    outline: 2px solid var(--wb-ring);
-    outline-offset: 2px;
-  }
-
-  /* One pane at a time, chosen by the switch: the document is not resized. */
-  .panes > [data-slot="artifact-pane"] {
-    flex: 1;
-    width: auto;
-    min-width: 0;
-    max-width: none;
-    border-inline-start: 0;
-  }
-
-  .room[data-mobile-pane="conversation"] [data-slot="artifact-pane"],
-  .room[data-mobile-pane="artifacts"] .conversationPane {
-    display: none;
-  }
-}
-
-/* A screen placed on the page covers the room, the prompt box at its foot. */
+/* A screen placed on the page, or the project view, covers the room, the prompt box at its foot. */
 .page {
   position: absolute;
   inset: 0;
@@ -204,4 +121,18 @@
   width: 100%;
   max-width: 46rem;
   margin-inline: auto;
+}
+
+/* The pane is a side panel by make, which a narrow container lays over everything; over the room
+   it takes the page above the prompt box at every width. */
+.page > [data-slot="artifact-pane"] {
+  position: relative;
+  z-index: auto;
+  flex: 1;
+  width: auto;
+  min-width: 0;
+  max-width: none;
+  height: auto;
+  min-height: 0;
+  border-inline-start: 0;
 }

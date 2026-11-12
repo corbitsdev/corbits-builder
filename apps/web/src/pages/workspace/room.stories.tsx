@@ -26,12 +26,12 @@ import thread, {
   Thinking as coordinatorThinking,
 } from "./transcript.stories.tsx";
 
-// Holds what the room asks its host to keep: the words being typed, the pane a narrow screen
-// shows, and the document the pane reads.
+// Holds what the room asks its host to keep: the words being typed, whether the project view is
+// open, and the document it reads.
 function Room(args: RoomViewProps) {
   const { dock, documentPane: pane } = args;
   const [text, setText] = useState(dock.kind === "composer" ? dock.text : "");
-  const [narrowPane, setNarrowPane] = useState(args.layout.narrowPane);
+  const [projectOpen, setProjectOpen] = useState(args.layout.projectOpen);
   const [selectedId, setSelectedId] = useState(pane.selectedId);
   return (
     <div style={{ height: "100vh", display: "flex", flexDirection: "column" }}>
@@ -39,8 +39,8 @@ function Room(args: RoomViewProps) {
         {...args}
         layout={{
           ...args.layout,
-          narrowPane,
-          onNarrowPaneChange: setNarrowPane,
+          projectOpen,
+          onProjectOpenChange: setProjectOpen,
         }}
         dock={
           dock.kind === "composer"
@@ -92,23 +92,18 @@ function paneOf(story: Partial<ArtifactPaneProps> = {}) {
 }
 
 const layout: RoomViewProps["layout"] = {
-  chatFirst: true,
-  artifactCount: 0,
-  narrowPane: "conversation",
-  onNarrowPaneChange: fn(),
+  projectReady: false,
+  projectOpen: false,
+  onProjectOpenChange: fn(),
   pageOpen: false,
 };
 
 const themes = <DesignThemesView {...designThemes.args} />;
 
-// The room once the first documents are filed: the pane opens beside the conversation, with the
-// themes to browse before a design exists.
+// The room once the first documents are filed: the conversation still fills the room, and the
+// project control opens them over it, with the themes to browse before a design exists.
 const withDocuments = {
-  layout: {
-    ...layout,
-    chatFirst: false,
-    artifactCount: documentPane.args.documents.length,
-  },
+  layout: { ...layout, projectReady: true },
   ...paneOf({ themes }),
 } satisfies Partial<RoomViewProps>;
 
@@ -164,7 +159,7 @@ export const CoordinatorThinking: Story = {
   },
 };
 
-/** The coordinator asks for a yes on a document, which is there to read beside the ask. */
+/** The coordinator asks for a yes on a document, which opens from the ask. */
 export const ApprovalWaiting: Story = {
   args: {
     ...withDocuments,
@@ -328,8 +323,16 @@ export const ArchivedRestoring: Story = {
   },
 };
 
-/** The filed documents open beside the conversation, with the themes to browse before a design exists. */
+/** Documents are filed; the conversation fills the room and the project control opens them. */
 export const WithDocument: Story = { args: withDocuments };
+
+/** The project view open over the room, the prompt box still at its foot. */
+export const ProjectOpen: Story = {
+  args: {
+    ...withDocuments,
+    layout: { ...withDocuments.layout, projectOpen: true },
+  },
+};
 
 export const DocumentLoading: Story = {
   args: {
@@ -345,10 +348,10 @@ export const DocumentFailed: Story = {
   },
 };
 
-/** The app is being built: it runs in the pane, beside the plan it is built from and its manual. */
+/** The app is being built: it runs in the open project view, beside the plan it is built from and its manual. */
 export const AppBuilt: Story = {
   args: {
-    ...withDocuments,
+    ...ProjectOpen.args,
     ...paneOf({ ...appAndManual.args, openTab: { value: LIVE_TAB } }),
   },
 };

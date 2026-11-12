@@ -91,6 +91,7 @@ describe("empty project room", () => {
         state={states.get("build_plan")}
         onSelect={() => {}}
         onSeen={() => {}}
+        onClose={() => {}}
         {...parts}
       />,
     );
@@ -118,6 +119,7 @@ describe("empty project room", () => {
         state={state}
         onSelect={() => {}}
         onSeen={() => {}}
+        onClose={() => {}}
         onRetry={() => {}}
         {...parts}
       />,

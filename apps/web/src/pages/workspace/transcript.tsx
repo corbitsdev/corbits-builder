@@ -71,11 +71,7 @@ import {
   FoldedUpdatesView,
   SpecialistUpdatesView,
 } from "./specialist-updates.view.tsx";
-import {
-  DISPATCH_TOOLS,
-  partsDispatches,
-  type Dispatch,
-} from "./dispatch-card.tsx";
+import { isHandoff, partsDispatches, type Dispatch } from "./dispatch-card.tsx";
 import { workUnits, type WorkUnit } from "./work-unit.ts";
 import {
   WorkUnitMessageView,
@@ -457,7 +453,7 @@ function readableParts(
   results: ReadonlyMap<string, CallResult>,
 ): readonly ConversationPart[] {
   const carded = (tool: PartTool) =>
-    DISPATCH_TOOLS.has(tool.name) || tool.name === QUESTION_TOOL_NAME;
+    isHandoff(tool) || tool.name === QUESTION_TOOL_NAME;
   return parts.flatMap((part): ConversationPart[] => {
     const readable = (tool: PartTool) =>
       readableTool(tool, results.get(tool.toolCallId));
@@ -594,10 +590,8 @@ export type RoomThreadContent = {
   thinking?: boolean;
   /** Documents the person can open from a name in the conversation. */
   documents?: readonly NamedDocument[];
-  /** Opens that document in the reading pane. The id is not shown. */
+  /** Opens that document over the room. The id is not shown. */
   onOpenDocument?: (id: string) => void;
-  /** The document the reading pane shows, by kind, so a card can say where it is. */
-  shownDocument?: string | null;
   /** Pending document decisions. Not decided here. */
   approvals?: readonly DocumentApproval[];
   /** Native results of the coordinator's calls this session saw, by call id. */
@@ -649,7 +643,6 @@ export function RoomThread({
   thinking = false,
   documents = [],
   onOpenDocument,
-  shownDocument = null,
   approvals = [],
   results = new Map(),
   runs = [],
@@ -815,7 +808,6 @@ export function RoomThread({
     ) : (
       <DocumentDecision
         approval={approval}
-        shownDocument={shownDocument}
         {...(onOpenDocument === undefined
           ? {}
           : { onShowDocument: onOpenDocument })}

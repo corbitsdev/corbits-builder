@@ -243,13 +243,6 @@ const HANDOFF_ROLE: Record<string, InFlightRun["role"]> = {
   review_artifact: "reviewer",
 };
 
-// The documents the coordinator waits for before design_app.
-const DESIGN_INPUTS = [
-  "problem_brief",
-  "constraints",
-  "approaches",
-  "product_requirements",
-];
 // Every material shares one kind, but each file is its own tab, so the pane names it by its artifact.
 const MATERIAL = "material";
 const MATERIAL_TAB = `${MATERIAL}:`;
@@ -592,9 +585,8 @@ export function useRoom({
   const usedCalls = useRef(new Set<string>());
   // Every specialist run this session saw, so its card keeps its result after the run ends.
   const runCards = useRef(new Map<string, InFlightRun>());
-  const [mobilePane, setMobilePane] = useState<"conversation" | "artifacts">(
-    "conversation",
-  );
+  // The project view open over the conversation.
+  const [projectOpen, setProjectOpen] = useState(false);
   const [sent, setSent] = useState<SentMessage[]>(() =>
     openingDraft(projectId, openingMessage),
   );
@@ -668,7 +660,7 @@ export function useRoom({
     setDocumentChoice(null);
     setPaneTab(null);
     setDesignChosen(null);
-    setMobilePane("conversation");
+    setProjectOpen(false);
     setSent(openingDraft(projectId, openingMessage));
     setSendFailed(false);
     setSendFault(null);
@@ -1008,7 +1000,6 @@ export function useRoom({
     setValue((current) =>
       current.trim().length === 0 ? text : `${current.trimEnd()}\n\n${text}`,
     );
-    setMobilePane("conversation");
     composerRef.current?.focus();
   };
   const addToPrompt = (passage: PassageQuote) =>
@@ -1057,11 +1048,13 @@ export function useRoom({
       toast.error(humanFault(cause, wording.removeAttachment.failed));
     }
   };
+  const openProject = (tab: string) => {
+    setPaneTab({ value: tab });
+    setProjectOpen(true);
+  };
   const openDocument = (id: string) => {
-    setPaneTab({ value: id });
+    openProject(id);
     if (conceptOfTab(id) === undefined) chooseDocument(id);
-    setMobilePane("artifacts");
-    queueMicrotask(() => documentPaneRef.current?.focus());
   };
   // "settled" is a 409: someone already decided the ask, or its run moved on; the page reads
   // where it stands.
@@ -1271,7 +1264,6 @@ export function useRoom({
   // The composer is disabled while the decline saves, so the cursor goes there once it can take it.
   const [changesAsked, setChangesAsked] = useState(false);
   const requestChanges = () => {
-    setMobilePane("conversation");
     setChangesAsked(true);
   };
   const unbound = events === null;
@@ -1356,10 +1348,13 @@ export function useRoom({
     seen: dispatchSeen.current,
     approvals: shownApprovals,
     activity: agents,
-    onOpenDocument: (kind) =>
+    onOpenDocument: (kind) => {
+      // A coder files the app's source, which is read as the running app.
+      if (kind === "app") return openProject(LIVE_TAB);
       openDocument(
         kind.startsWith("concept:") ? conceptTab(kind.slice(8)) : kind,
-      ),
+      );
+    },
   };
   const dispatches = shownTurns.flatMap((turn) =>
     turn.role === "assistant" && turn.parts !== undefined
@@ -1527,20 +1522,22 @@ export function useRoom({
       },
     };
   };
-  // The themes join the pane at the point the coordinator may start the design.
+  // The themes join the pane once the requirements say what the app is, so a look can be applied to it.
   const designReached =
-    DESIGN_INPUTS.every((kind) =>
-      artifacts.some((item) => item.kind === kind),
-    ) ||
+    artifacts.some((item) => item.kind === "product_requirements") ||
     options.length > 0 ||
     inFlight.some((run) => run.concept !== undefined);
   const appFiled = snapshot.artifacts.some((item) => item.kind === "app");
   const firstBuilder = appFiled
     ? undefined
     : inFlight.find((run) => run.role === "coder");
-  const liveApp = paneDeliverables.some((item) => item.kind === "build_plan")
-    ? { projectId, builder: firstBuilder }
-    : null;
+  // There is an app to preview once one is filed, built here or imported, or a coder is building
+  // it; a filed build plan shows where it will appear.
+  const appComing =
+    appFiled ||
+    firstBuilder !== undefined ||
+    paneDeliverables.some((item) => item.kind === "build_plan");
+  const liveApp = appComing ? { projectId, builder: firstBuilder } : null;
   // The manual follows the app, so it is read again while the coder works.
   const userManual = useUserManual(
     projectId,
@@ -1585,12 +1582,12 @@ export function useRoom({
     paneDeliverables.find((item) => item.kind === shownId) ?? null;
   const selectedState = selected === null ? undefined : documentState(selected);
 
-  // Until the first document is filed there is nothing to read beside the conversation, so it
-  // takes the whole width; the document pane arrives with that document.
-  const chatFirst =
+  // Until the first document is filed, drafted or there is an app, the project view has nothing to show.
+  const nothingYet =
     paneDeliverables.length === 0 &&
     designDraft === null &&
-    concepts.length === 0;
+    concepts.length === 0 &&
+    liveApp === null;
   const dock = (): RoomDock => {
     if (archived)
       return {
@@ -1626,7 +1623,7 @@ export function useRoom({
         approvalOpen: openApproval !== undefined,
         questionsOpen: openQuestion !== undefined,
         status: projectStatus.data,
-        chatFirst,
+        chatFirst: nothingYet,
       }),
       inputRef: composerRef,
       working: working || sending,
@@ -1675,10 +1672,9 @@ export function useRoom({
     view: {
       title: projectTitle,
       layout: {
-        chatFirst,
-        artifactCount: paneDeliverables.length + concepts.length,
-        narrowPane: mobilePane,
-        onNarrowPaneChange: setMobilePane,
+        projectReady: !nothingYet,
+        projectOpen,
+        onProjectOpenChange: setProjectOpen,
         pageOpen,
       },
       conversation: {
@@ -1691,7 +1687,6 @@ export function useRoom({
             title: item.title,
           })),
           onOpenDocument: openDocument,
-          shownDocument: chatFirst ? null : (selected?.kind ?? null),
           approvals: shownApprovals,
           results: liveRun.results,
           runs: unseenRuns,
@@ -1777,10 +1772,7 @@ export function useRoom({
             ...(liveApp === null
               ? {}
               : {
-                  open_app: () => {
-                    setPaneTab({ value: LIVE_TAB });
-                    setMobilePane("artifacts");
-                  },
+                  open_app: () => openProject(LIVE_TAB),
                 }),
           },
         },

@@ -203,7 +203,7 @@ export function workUnitMessage(
     dispatch.refused === undefined
       ? wording.activity.handoff
       : wording.activity.handoffRefused
-  )[dispatch.tool];
+  )[dispatch.action ?? dispatch.tool];
   const parts: ConversationPart[] = [
     {
       kind: "tool-trace",

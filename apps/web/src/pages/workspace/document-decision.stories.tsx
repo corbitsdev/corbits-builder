@@ -22,10 +22,6 @@ type Story = StoryObj<typeof meta>;
 
 export const AskingForADocument: Story = {};
 
-export const DocumentShown: Story = {
-  args: { shownDocument: "problem_brief" },
-};
-
 export const SeveralDocuments: Story = {
   args: {
     approval: {

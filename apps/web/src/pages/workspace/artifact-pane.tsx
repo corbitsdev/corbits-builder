@@ -12,8 +12,9 @@ import {
 import { wording } from "../../config.ts";
 import {
   Panel,
+  PanelActions,
+  PanelClose,
   PanelContent,
-  PanelHandle,
   PanelHeader,
   PanelPane,
   PanelTab,
@@ -51,10 +52,6 @@ import { UserManualView } from "./user-manual.view.tsx";
 import type { UserManual } from "@corbits-builder/schemas/artifact";
 import type { PreviewDevice } from "./device-preview.tsx";
 import type { PassageQuote } from "./passage-note.tsx";
-import {
-  useDocumentPaneWidth,
-  writeDocumentPaneWidth,
-} from "./document-pane-width.ts";
 import {
   readStoredPreference,
   writeStoredPreference,
@@ -216,13 +213,9 @@ const flowRank = (kind: string) => {
   return rank === -1 ? FLOW.length : rank;
 };
 
-// Keep messages, approval cards and the composer readable beside a wide preview.
-const CONVERSATION_MIN_PX = 400;
-const DOCUMENT_MIN_PX = 360;
-
 /** The parts of the pane that read the hub for themselves, which whoever draws the pane fills. */
 export type ArtifactPaneSlots = DeliverableSlots & {
-  /** Once a build plan is filed, a tab for the app it builds. */
+  /** Once there is an app, filed or being built, or a build plan for one, a tab for it. */
   liveApp?: ReactElement | null;
   /** Before a design exists, prebuilt themes to preview, tweak and use through the composer. */
   themes?: ReactElement | null;
@@ -273,6 +266,8 @@ export type ArtifactPaneProps = ArtifactPaneContent &
   ArtifactPaneSlots & {
     /** The pane itself, for whoever moves focus to it. */
     paneRef?: Ref<HTMLElement>;
+    /** Closes the pane, back to the conversation it opened over. */
+    onClose: () => void;
   };
 
 /**
@@ -297,6 +292,7 @@ export function ArtifactPane({
   onSeen,
   onRemove,
   paneRef,
+  onClose,
   onRetry,
   onReadVersion,
   onAddToPrompt,
@@ -426,7 +422,6 @@ export function ArtifactPane({
     });
     choose(kind);
   };
-  const width = useDocumentPaneWidth(projectId);
   // The document on show: none while a tab that is not a filed document is open.
   const shown =
     (tabId !== null && isSideOnly(tabId)) || conceptShown
@@ -496,7 +491,8 @@ export function ArtifactPane({
     );
   };
   const outputs = documents.length > 0 || draftShown || concepts.length > 0;
-  const hasTabs = outputs || themes !== null;
+  const hasTabs =
+    outputs || themes !== null || liveApp !== null || manual !== null;
   useEffect(() => {
     if (shown?.unread) onSeen(shown.id);
   }, [shown?.id, shown?.unread]);
@@ -506,14 +502,7 @@ export function ArtifactPane({
       className={styles.pane}
       data-slot="artifact-pane"
       aria-label="Artifacts"
-      width={width}
-      onWidthChange={(nextWidth) =>
-        writeDocumentPaneWidth(projectId, nextWidth)
-      }
-      minWidth={DOCUMENT_MIN_PX}
-      mainMinWidth={CONVERSATION_MIN_PX}
     >
-      <PanelHandle label="Resize the document pane" />
       {hasTabs ? (
         <PanelHeader
           // Chromium rings a clicked tab once any key is pressed, a modifier included, so a tab
@@ -547,46 +536,51 @@ export function ArtifactPane({
                   : item.status;
                 return {
                   rank: flowRank(item.id),
-                  tabs: [
-                    ...documentViews(item).map((view) => (
-                      <PanelTab
-                        key={view.value}
-                        value={view.value}
-                        title={`${item.title}. ${status}`}
-                        aria-label={`${view.label}, ${status}`}
-                        icon={
-                          unread ? (
-                            <StatusDot label="" size="xs" tone="emphasis" />
-                          ) : undefined
-                        }
-                        {...(view.part === "mockup"
-                          ? {}
-                          : tabMenuProps(view.value))}
-                      >
-                        {view.label}
-                      </PanelTab>
-                    )),
-                    item.id === "build_plan" && liveApp !== null ? (
-                      <PanelTab
-                        key={LIVE_TAB}
-                        value={LIVE_TAB}
-                        title={wording.liveApp.title}
-                      >
-                        {wording.liveApp.tab}
-                      </PanelTab>
-                    ) : null,
-                    item.id === "build_plan" && manual !== null ? (
-                      <PanelTab
-                        key={MANUAL_TAB}
-                        value={MANUAL_TAB}
-                        title={wording.liveApp.manualTitle}
-                      >
-                        {wording.documentTab["user_manual"]}
-                      </PanelTab>
-                    ) : null,
-                  ],
+                  tabs: documentViews(item).map((view) => (
+                    <PanelTab
+                      key={view.value}
+                      value={view.value}
+                      title={`${item.title}. ${status}`}
+                      aria-label={`${view.label}, ${status}`}
+                      icon={
+                        unread ? (
+                          <StatusDot label="" size="xs" tone="emphasis" />
+                        ) : undefined
+                      }
+                      {...(view.part === "mockup"
+                        ? {}
+                        : tabMenuProps(view.value))}
+                    >
+                      {view.label}
+                    </PanelTab>
+                  )),
                 };
               }),
+              // After the build plan when there is one; an app built from requirements alone, or
+              // imported, has none.
+              {
+                rank: flowRank("build_plan"),
+                tabs: [
+                  liveApp !== null ? (
+                    <PanelTab
+                      key={LIVE_TAB}
+                      value={LIVE_TAB}
+                      title={wording.liveApp.title}
+                    >
+                      {wording.liveApp.tab}
+                    </PanelTab>
+                  ) : null,
+                  manual !== null ? (
+                    <PanelTab
+                      key={MANUAL_TAB}
+                      value={MANUAL_TAB}
+                      title={wording.liveApp.manualTitle}
+                    >
+                      {wording.documentTab["user_manual"]}
+                    </PanelTab>
+                  ) : null,
+                ],
+              },
               ...(draftShown
                 ? [
                     {
@@ -694,6 +688,13 @@ export function ArtifactPane({
               </MenuContent>
             </Menu>
           )}
+          <PanelActions>
+            <PanelClose
+              label={wording.conversation.closeProject}
+              title={wording.conversation.closeProject}
+              onClick={onClose}
+            />
+          </PanelActions>
         </PanelHeader>
       ) : null}
       {!outputs && tabId === null ? (

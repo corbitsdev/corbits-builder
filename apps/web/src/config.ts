@@ -281,7 +281,7 @@ export const wording = {
     untitledProject: "Project",
     noProjectTitle: "No project open",
     noProjectLead:
-      "Choose a project from the list. Chat stays on the left and outputs on the right.",
+      "Choose a project from the list. Its outputs open from the conversation.",
   },
   whatsNew: {
     title: "What's new",
@@ -375,11 +375,16 @@ export const wording = {
     label: "Conversation",
     map: "Conversation map",
     empty: "Nothing in the conversation yet",
-    emptyLead: "Replies show here. Saved documents show on the right.",
+    emptyLead:
+      "Replies show here, and each saved document opens from where it was saved.",
     startingCoordinator: "Starting the coordinator…",
     enableAiFirst: "Enable AI to start the conversation",
     dropFiles: "Drop files to attach them",
     noCoordinator: "This project has no running coordinator.",
+    /** Opens everything the project has, its documents, design and preview, over the conversation. */
+    openProject: "Project",
+    /** Takes the person from the project view back to the conversation. */
+    closeProject: "Back to the conversation",
   },
   /** The composer's placeholder when no approval is open. An open approval keeps approval.composerPlaceholder. */
   composer: {
@@ -491,7 +496,7 @@ export const wording = {
       runningMany: (count: number) => `Doing ${String(count)} things at once`,
       failed: (count: number) => `${String(count)} did not finish`,
     },
-    /** A hand-off in the coordinator's turn, by tool name: who it starts, once started. */
+    /** A hand-off in the coordinator's turn, by tool name or execute's plugin action: who it starts, once started. */
     handoff: {
       deploy_writer: (document?: string) =>
         document ? `Started the writer · ${document}` : "Started the writer",
@@ -501,8 +506,17 @@ export const wording = {
       instruct_coder: () => "Started the app builder on a change",
       review_artifact: (document?: string) =>
         document ? `Asked for a review · ${document}` : "Asked for a review",
+      "coder build": () => "Started the app builder",
+      "coder change": () => "Started the app builder on a change",
+      "writer write-requirements": (document?: string) =>
+        document ? `Started the writer · ${document}` : "Started the writer",
+      "writer write-build-plan": (document?: string) =>
+        document ? `Started the writer · ${document}` : "Started the writer",
+      "writer review": (document?: string) =>
+        document ? `Asked for a review · ${document}` : "Asked for a review",
+      "design-app design": () => "Started the designer",
     } as Record<string, (subject?: string) => string>,
-    /** A hand-off the hub refused, by tool name: who it did not start. */
+    /** A hand-off the hub refused, by tool name or execute's plugin action: who it did not start. */
     handoffRefused: {
       deploy_writer: (document?: string) =>
         document
@@ -516,6 +530,21 @@ export const wording = {
         document
           ? `Could not ask for a review · ${document}`
           : "Could not ask for a review",
+      "coder build": () => "Could not start the app builder",
+      "coder change": () => "Could not start the app builder on a change",
+      "writer write-requirements": (document?: string) =>
+        document
+          ? `Could not start the writer · ${document}`
+          : "Could not start the writer",
+      "writer write-build-plan": (document?: string) =>
+        document
+          ? `Could not start the writer · ${document}`
+          : "Could not start the writer",
+      "writer review": (document?: string) =>
+        document
+          ? `Could not ask for a review · ${document}`
+          : "Could not ask for a review",
+      "design-app design": () => "Could not start the designer",
     } as Record<string, (subject?: string) => string>,
     /** What a tool call is doing, by tool name, given its one identifying argument. */
     tool: {
@@ -561,6 +590,9 @@ export const wording = {
       instruct_coder: () =>
         "waiting for you to approve a change for the app builder",
       exec: () => "rewriting a tool call",
+      discover: () => "looking up what it can do",
+      execute: () => "handing work to a specialist",
+      question: () => "showing you a screen",
     } as Record<string, (subject?: string) => string>,
     /** What a call returned, in plain words, for a tool whose raw result means nothing to a person. */
     toolResult: {
@@ -695,12 +727,11 @@ export const wording = {
   },
   /** A coordinator hand-off and what came of it, as one message in the conversation. */
   dispatch: {
-    /** What a call works on when its arguments name no document or concept. */
+    /** What a call works on when its arguments name no document or concept, by the role it starts. */
     subject: {
-      deploy_coder: "the app",
-      instruct_coder: "the app",
-      design_app: "the design",
-      deploy_presenter: "the approval package",
+      coder: "the app",
+      designer: "the design",
+      presenter: "the approval package",
     } as Record<string, string>,
     /** What a hand-off works on when nothing names it yet. */
     unnamed: "the task",
@@ -734,6 +765,8 @@ export const wording = {
     ready: (document: string, version: number) =>
       `✓ ${document} v${String(version)} ready`,
     open: "Open",
+    /** Names the list of the steps a run took just before its live line. */
+    recent: "Recent steps",
     failed: (reason: string) => `Did not finish: ${reason}`,
     failedUnknown: "the run stopped without a reason",
     refusedUnknown: "the hub refused it",
@@ -902,7 +935,6 @@ export const wording = {
       design: "design",
       approval_package: "approval package",
     } as Record<string, string>,
-    openOnRight: "It's open on the right.",
     /** Takes the reading pane back to the document the card asks about. */
     show: (document: string) => `Show ${document}`,
     /** A decided card's one line, where it was asked. */

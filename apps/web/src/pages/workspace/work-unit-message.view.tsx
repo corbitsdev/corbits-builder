@@ -47,6 +47,8 @@ export type WorkUnitStanding = {
   subject: string;
   /** What the run is doing right now, shown while it works. */
   doing: string;
+  /** The steps the run took just before, oldest first, shown under the card while it works. */
+  recent: readonly string[];
   /** The hub refused the hand-off. */
   refused: boolean;
   /** The approvals for what the work made. */
@@ -114,14 +116,27 @@ function WorkLine({
   }
 }
 
-/** Where the work stands once it has an outcome: the document it filed, or why it stopped. */
+/**
+ * Where the work stands: the steps it just took while it works, then the document it filed, or why
+ * it stopped.
+ */
 function WorkResult({
   status,
+  recent,
   onOpen,
 }: {
   status: DispatchStatus;
+  recent: readonly string[];
   onOpen: ((kind: string) => void) | undefined;
 }) {
+  if (status.state === "working" && recent.length > 0)
+    return (
+      <ul className={styles.recent} aria-label={text.recent}>
+        {recent.map((line, index) => (
+          <li key={`${String(index)}:${line}`}>{line}</li>
+        ))}
+      </ul>
+    );
   if (status.state === "failed")
     return (
       <p className={styles.result} data-state="failed" title={status.reason}>
@@ -170,6 +185,7 @@ export function WorkUnitMessageView({
   role,
   subject,
   doing,
+  recent,
   refused,
   approvals,
   onOpenDocument,
@@ -237,7 +253,11 @@ export function WorkUnitMessageView({
           }}
           renderBlock={(part) =>
             part.block.type === WORK_RESULT_BLOCK ? (
-              <WorkResult status={status} onOpen={onOpenDocument} />
+              <WorkResult
+                status={status}
+                recent={recent}
+                onOpen={onOpenDocument}
+              />
             ) : null
           }
         />

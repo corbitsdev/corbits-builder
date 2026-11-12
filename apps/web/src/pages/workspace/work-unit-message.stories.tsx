@@ -94,6 +94,7 @@ const args: WorkUnitMessageViewProps = {
   role: "writer",
   subject: "Constraints",
   doing: "Working on Constraints",
+  recent: [],
   refused: false,
   approvals: [],
   onOpenDocument: fn(),
@@ -141,7 +142,7 @@ export const Declined: Story = {
 
 export const Starting: Story = {};
 
-/** At work: what the run is doing now, and for how long. */
+/** At work: what the run is doing now, for how long, and the steps it took just before. */
 export const Working: Story = {
   args: {
     ...standing(
@@ -152,6 +153,7 @@ export const Working: Story = {
       REPORTS.slice(0, 1),
     ),
     doing: "Reading the problem brief",
+    recent: ["Reading the constraints", "Searching the approaches"],
   },
 };
 

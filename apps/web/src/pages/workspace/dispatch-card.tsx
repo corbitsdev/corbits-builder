@@ -30,12 +30,33 @@ export const DISPATCH_TOOLS: ReadonlySet<string> = new Set(
   Object.keys(ROLE_OF),
 );
 
+const EXECUTE = "execute";
+
+// The specialist actions an execute call starts, by plugin and action, with the document a writer
+// action always writes.
+const ACTION_ROLE: Record<
+  string,
+  { readonly role: Role; readonly kind?: string }
+> = {
+  "coder build": { role: "coder" },
+  "coder change": { role: "coder" },
+  "writer write-requirements": {
+    role: "writer",
+    kind: "product_requirements",
+  },
+  "writer write-build-plan": { role: "writer", kind: "build_plan" },
+  "writer review": { role: "reviewer" },
+  "design-app design": { role: "designer" },
+};
+
 /** One run a hand-off started or instructed. A design call with concepts is one per concept. */
 export type Dispatch = {
   readonly key: string;
   /** The tool call that made it. */
   readonly call: string;
   readonly tool: string;
+  /** The plugin action an execute call started, such as "coder change". */
+  readonly action?: string;
   readonly role: Role;
   /** The document kind a writer or reviewer works on. */
   readonly kind?: string;
@@ -69,23 +90,46 @@ function parsed(content: unknown): unknown {
   }
 }
 
+/**
+ * Who a coordinator tool call starts and the arguments the specialist gets: a classic hand-off's
+ * own, or an execute call's input. A call still streaming its arguments names no action yet.
+ */
+function handoffOf(part: PartTool) {
+  const args = record(part.input);
+  const role = ROLE_OF[part.name];
+  if (role !== undefined) return { role, args, kind: str(args?.["kind"]) };
+  if (part.name !== EXECUTE) return undefined;
+  const action = `${str(args?.["plugin"])} ${str(args?.["action"])}`;
+  const started = ACTION_ROLE[action];
+  if (started === undefined) return undefined;
+  const input = record(args?.["input"]);
+  return {
+    role: started.role,
+    action,
+    args: input,
+    kind: str(input?.["kind"]) ?? started.kind,
+  };
+}
+
+/** Whether a coordinator tool call starts a specialist, so it reads as a hand-off card. */
+export const isHandoff = (part: PartTool) => handoffOf(part) !== undefined;
+
 /** The hand-offs one coordinator tool call made, or none when it is not a hand-off. */
 export function dispatchesOf(
   part: PartTool,
   result: CallResult | undefined,
 ): Dispatch[] {
-  const role = ROLE_OF[part.name];
-  if (role === undefined) return [];
+  const handoff = handoffOf(part);
+  if (handoff === undefined) return [];
+  const { role, action, args, kind } = handoff;
   const pending = part.status !== "output-available";
-  // A call still streaming its arguments has none to read yet.
-  const args = record(part.input);
   const instruction = str(args?.["instruction"]);
-  const kind = str(args?.["kind"]);
   const base = {
     call: part.toolCallId,
     tool: part.name,
     role,
     pending,
+    ...(action === undefined ? {} : { action }),
     ...(instruction === undefined ? {} : { instruction }),
     ...(kind === undefined ? {} : { kind }),
   };
@@ -177,8 +221,8 @@ export type DispatchRoom = {
 
 /** The artifact a hand-off files, by kind. */
 export function targetKind(dispatch: Dispatch): string | undefined {
-  if (dispatch.tool === "deploy_writer") return dispatch.kind;
-  if (dispatch.tool === "design_app")
+  if (dispatch.role === "writer") return dispatch.kind;
+  if (dispatch.role === "designer")
     return dispatch.concept === undefined ? "design" : undefined;
   if (dispatch.role === "coder") return "app";
   if (dispatch.role === "presenter") return "approval_package";
@@ -367,7 +411,7 @@ export function subjectOf(dispatch: Dispatch): string | undefined {
     return (
       wording.documentTab[dispatch.kind] ?? dispatch.kind.replaceAll("_", " ")
     );
-  return text.subject[dispatch.tool];
+  return text.subject[dispatch.role];
 }
 
 const RUN_TOOL: Record<Role, string> = {

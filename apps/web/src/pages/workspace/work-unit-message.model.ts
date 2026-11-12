@@ -4,7 +4,7 @@
  */
 import type { AgentActivity } from "@corbits-builder/client";
 import { wording } from "../../config.ts";
-import { activityPhrase } from "./agent-activity.tsx";
+import { activityPhrase, toolPhrase } from "./agent-activity.tsx";
 import {
   dispatchStatus,
   noteDispatch,
@@ -19,20 +19,29 @@ const text = wording.dispatch;
 const sentenceStart = (line: string) =>
   line.charAt(0).toUpperCase() + line.slice(1);
 
-/** What the run is doing now, from its own tool events, else what it works on. */
-function liveLine(
+/**
+ * What the run is doing now, from its own tool events, else what it works on, and the steps it took
+ * just before, oldest first.
+ */
+function liveLines(
   dispatch: Dispatch,
   subject: string,
   activity: readonly AgentActivity[] | undefined,
-): string {
+): { doing: string; recent: readonly string[] } {
   const agent = activity?.find((item) =>
     dispatch.runId === undefined
       ? item.role === dispatch.role
       : item.runId === dispatch.runId,
   );
-  return agent === undefined || agent.tools.length === 0
-    ? text.working(subject)
-    : sentenceStart(activityPhrase(agent).phrase);
+  if (agent === undefined || agent.tools.length === 0)
+    return { doing: text.working(subject), recent: [] };
+  // A long command's own line is what it does now, so every call it read is a step before it.
+  const before =
+    agent.command === undefined ? agent.tools.slice(0, -1) : agent.tools;
+  return {
+    doing: sentenceStart(activityPhrase(agent).phrase),
+    recent: before.map((tool) => toolPhrase(tool.name, tool.subject)),
+  };
 }
 
 /** A piece of work as its message shows it, from what the room knows of its hand-off. */
@@ -44,13 +53,15 @@ export function workUnitStanding(
   noteDispatch(room, dispatch);
   const status = dispatchStatus(dispatch, room);
   const subject = workSubject(dispatch, status) ?? text.unnamed;
+  const { doing, recent } = liveLines(dispatch, subject, room.activity);
   return {
     message: workUnitMessage(unit, status),
     handoffStep: dispatch.key,
     status,
     role: dispatch.role,
     subject,
-    doing: liveLine(dispatch, subject, room.activity),
+    doing,
+    recent,
     refused: dispatch.refused !== undefined,
     approvals: unit.approvals,
     onOpenDocument: room.onOpenDocument,
