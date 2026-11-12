@@ -597,6 +597,19 @@ function SpecialistEnded({ text }: { text: string }) {
   );
 }
 
+/**
+ * Some person turns are the hub writing as the person: an import's opening and
+ * a specialist-ended notice. They read as a divider or a notice, never as a
+ * message, so the map must not count them as turns the person took.
+ */
+type PersonTurnKind = "divider" | "notice" | "message";
+
+function personTurnKind(text: string): PersonTurnKind {
+  if (text.startsWith(IMPORTED_PROJECT_LEAD)) return "divider";
+  if (text.startsWith(SPECIALIST_ENDED_LEAD)) return "notice";
+  return "message";
+}
+
 /** What the thread shows and what the person can do in it. */
 export type RoomThreadContent = {
   turns: readonly TranscriptTurn[];
@@ -877,7 +890,11 @@ export function RoomThread({
   }
   const mapTurns = sections.flatMap(
     (section, position): ConversationMapTurn[] => {
-      if (section.kind !== "person" || section.turn.text.trim() === "")
+      if (
+        section.kind !== "person" ||
+        personTurnKind(section.turn.text) !== "message" ||
+        section.turn.text.trim() === ""
+      )
         return [];
       const next = sections[position + 1];
       const reply =
@@ -970,7 +987,8 @@ export function RoomThread({
           }
           const { turn, index } = section;
           const itemId = turnItemId(turn, index);
-          if (turn.text.startsWith(IMPORTED_PROJECT_LEAD))
+          const entry = personTurnKind(turn.text);
+          if (entry === "divider")
             return (
               <ConversationItem key={itemId} itemId={itemId}>
                 <ConversationDivider>
@@ -978,7 +996,7 @@ export function RoomThread({
                 </ConversationDivider>
               </ConversationItem>
             );
-          if (turn.text.startsWith(SPECIALIST_ENDED_LEAD))
+          if (entry === "notice")
             return (
               <ConversationItem key={itemId} itemId={itemId}>
                 <ConversationNotice>
