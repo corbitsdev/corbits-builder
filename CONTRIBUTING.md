@@ -138,12 +138,14 @@ change follows, whether a person or a coding agent writes it.
   keeps the tools it started with until it is idle and replaced, so a route
   those tools call must still accept them.
 - **No secrets.** The `.env.*.example` files are the only tracked env files.
-- **`vendor/interchange` is upstream code**, pinned at
+- **`vendor/interchange` is the upstream code Builder runs**, pinned at
   [vendor/VENDORED_REVISION](https://github.com/corbitsdev/corbits-builder/blob/main/vendor/VENDORED_REVISION). Propose changes at
   [faremeter/interchange](https://github.com/faremeter/interchange). A
   deliberate local change is its own commit that also updates
   `vendor/interchange.manifest.json`; `bun run vendor:verify` fails on
-  anything unrecorded.
+  anything unrecorded. A bump vendors only what
+  [the vendor policy](https://github.com/corbitsdev/corbits-builder/blob/main/docs/IMPLEMENTATION.md#vendor-policy)
+  lists.
 
 ## Releasing
 

@@ -329,14 +329,6 @@
         "tar": "catalog:",
       },
     },
-    "vendor/interchange/packages/hub-client": {
-      "name": "@intx/hub-client",
-      "version": "0.5.0",
-      "dependencies": {
-        "@intx/types": "workspace:*",
-        "arktype": "catalog:",
-      },
-    },
     "vendor/interchange/packages/hub-common": {
       "name": "@intx/hub-common",
       "version": "0.5.0",
@@ -378,48 +370,11 @@
         "@intx/mime": "workspace:*",
       },
     },
-    "vendor/interchange/packages/inference-catalog": {
-      "name": "@intx/inference-catalog",
-      "version": "0.5.0",
-      "devDependencies": {
-        "@intx/inference": "workspace:*",
-        "@intx/inference-discovery": "workspace:*",
-        "@intx/types": "workspace:*",
-        "arktype": "catalog:",
-      },
-    },
     "vendor/interchange/packages/inference-discovery": {
       "name": "@intx/inference-discovery",
       "version": "0.5.0",
       "dependencies": {
         "@intx/types": "workspace:*",
-        "arktype": "catalog:",
-      },
-    },
-    "vendor/interchange/packages/inference-discovery-anthropic": {
-      "name": "@intx/inference-discovery-anthropic",
-      "version": "0.5.0",
-      "dependencies": {
-        "@intx/inference-discovery": "workspace:*",
-        "arktype": "catalog:",
-      },
-      "devDependencies": {
-        "@intx/inference": "workspace:*",
-      },
-    },
-    "vendor/interchange/packages/inference-discovery-google-genai": {
-      "name": "@intx/inference-discovery-google-genai",
-      "version": "0.5.0",
-      "dependencies": {
-        "@intx/inference-discovery": "workspace:*",
-        "arktype": "catalog:",
-      },
-    },
-    "vendor/interchange/packages/inference-discovery-openai": {
-      "name": "@intx/inference-discovery-openai",
-      "version": "0.5.0",
-      "dependencies": {
-        "@intx/inference-discovery": "workspace:*",
         "arktype": "catalog:",
       },
     },
@@ -897,23 +852,13 @@
 
     "@intx/hub-api": ["@intx/hub-api@workspace:vendor/interchange/packages/hub-api"],
 
-    "@intx/hub-client": ["@intx/hub-client@workspace:vendor/interchange/packages/hub-client"],
-
     "@intx/hub-common": ["@intx/hub-common@workspace:vendor/interchange/packages/hub-common"],
 
     "@intx/hub-sessions": ["@intx/hub-sessions@workspace:vendor/interchange/packages/hub-sessions"],
 
     "@intx/inference": ["@intx/inference@workspace:vendor/interchange/packages/inference"],
 
-    "@intx/inference-catalog": ["@intx/inference-catalog@workspace:vendor/interchange/packages/inference-catalog"],
-
     "@intx/inference-discovery": ["@intx/inference-discovery@workspace:vendor/interchange/packages/inference-discovery"],
-
-    "@intx/inference-discovery-anthropic": ["@intx/inference-discovery-anthropic@workspace:vendor/interchange/packages/inference-discovery-anthropic"],
-
-    "@intx/inference-discovery-google-genai": ["@intx/inference-discovery-google-genai@workspace:vendor/interchange/packages/inference-discovery-google-genai"],
-
-    "@intx/inference-discovery-openai": ["@intx/inference-discovery-openai@workspace:vendor/interchange/packages/inference-discovery-openai"],
 
     "@intx/inference-testing": ["@intx/inference-testing@workspace:vendor/interchange/packages/inference-testing"],
 
