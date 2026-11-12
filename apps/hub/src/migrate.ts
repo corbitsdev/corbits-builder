@@ -9,6 +9,7 @@ import {
   type MigrationEnvironment,
 } from "./environment.ts";
 import { migrateProductDatabase } from "./db/migrate.ts";
+import { moveAgentStateToStepState } from "./migrate-agent-state.ts";
 import { errorCode } from "./request-error.ts";
 
 const migrationsFolder = fileURLToPath(
@@ -16,7 +17,7 @@ const migrationsFolder = fileURLToPath(
 );
 
 export async function migrateDatabase(
-  environment: Pick<MigrationEnvironment, "migrationDatabase">,
+  environment: MigrationEnvironment,
 ): Promise<void> {
   const config = environment.migrationDatabase;
   const client = postgres({
@@ -31,6 +32,7 @@ export async function migrateDatabase(
     await runArtifactMigrations(config, { schema: "public" });
     await runAgentTokenMigrations(config, { schema: "public" });
     await migrateProductDatabase(db);
+    await moveAgentStateToStepState(db, environment);
   } finally {
     await client.end();
   }
