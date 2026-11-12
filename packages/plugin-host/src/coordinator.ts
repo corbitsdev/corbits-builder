@@ -49,7 +49,6 @@ import {
   PLAN_STEP_REMINDER,
   stepAwaitsGoAhead,
   stepDeclined,
-  stepNotThisAction,
   specialistListing,
   unknownAction,
   unknownPlugin,
@@ -889,24 +888,6 @@ export async function execute(
       content: stepAwaitsGoAhead(action.name, asking.title),
       isError: true,
     };
-  const planned = actionSteps(plan.steps);
-  const named = planned.find(({ id }) => id === asked.step);
-  if (
-    asked.step !== undefined &&
-    (named?.plugin !== action.plugin || named.action !== action.action)
-  )
-    return {
-      content: stepNotThisAction(
-        action.name,
-        asked.step,
-        named,
-        planned.filter(
-          (step) =>
-            step.plugin === action.plugin && step.action === action.action,
-        ),
-      ),
-      isError: true,
-    };
   const ready = readiness(catalog, action, state, checked.input);
   if (!isReady(ready))
     return {
@@ -923,6 +904,16 @@ export async function execute(
     return {
       content: JSON.stringify(await project.check(action, checked.input)),
     };
+  // A step id is a hint for tying the run to the plan, never a reason to hold work back: one that
+  // names no step for this action falls back to the step the action and input point at.
+  const planned = actionSteps(plan.steps);
+  const sameAction = planned.filter(
+    (step) => step.plugin === action.plugin && step.action === action.action,
+  );
+  const step =
+    sameAction.find(({ id }) => id === asked.step)?.id ??
+    matchingStep(action, checked.input, planned) ??
+    (sameAction.length === 1 ? sameAction[0]?.id : undefined);
   // The hub refuses a read of no names.
   const { reads = [], writes = [], presents } = action.builder;
   let values =
@@ -930,12 +921,7 @@ export async function execute(
       ? ""
       : assignedValuesText(catalog.values, await project.values(reads));
   if (writes.length > 0) values += writesText(catalog.values, writes);
-  const started = await project.start(
-    action,
-    checked.input,
-    values,
-    asked.step ?? matchingStep(action, checked.input, planned),
-  );
+  const started = await project.start(action, checked.input, values, step);
   const result: Result = {
     started: true,
     plugin: action.plugin,

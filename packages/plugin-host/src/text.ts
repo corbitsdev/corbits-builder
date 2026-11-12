@@ -314,24 +314,6 @@ export const stepDeclined = (name: string, title: string) =>
 export const stepAwaitsGoAhead = (name: string, title: string) =>
   `${name} was not started: the person asked to be consulted before this step ("${title}"); they give the go on the plan. Do not start it another way; carry on with the rest of the plan.`;
 
-/** Why execute did not start an action for the plan step the call named. */
-export function stepNotThisAction(
-  name: string,
-  id: string,
-  named: { title: string; plugin: string; action: string } | undefined,
-  fitting: readonly { id: string; title: string }[],
-) {
-  const said =
-    named === undefined
-      ? `the plan has no action step ${id}`
-      : `plan step ${id} ("${named.title}") does ${named.plugin} ${named.action}, not ${name}`;
-  const instead =
-    fitting.length === 0
-      ? `No step in the plan does ${name}: call again without step, or add the step to the plan first.`
-      : `The plan's steps that do ${name}: ${fitting.map((step) => `${step.id} ("${step.title}")`).join(", ")}. Call again with the one this start does as step, or without step.`;
-  return `${name} was not started: ${said}. ${instead}`;
-}
-
 /** What the plan tool's answers remind the coordinator of. */
 export const PLAN_STEP_REMINDER =
   "When you start one of these steps with execute, pass its id as step.";
