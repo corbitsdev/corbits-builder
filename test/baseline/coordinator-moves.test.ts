@@ -51,12 +51,12 @@ const MODE = readCoordinatorMode({
 const POLL_MS = 1_000;
 const SCRIPTED = "scripted";
 const IMPORT_LEAD = "I just imported this project from a file.";
-const SCRIPTED_TOOLS = [
-  "question",
-  "discover",
-  "instruct_coder",
-  "read_artifact",
-];
+// The tool each mode changes an app with.
+const CHANGE_TOOL = MODE === "dynamic" ? "execute" : "instruct_coder";
+const SCRIPTED_TOOLS = ["question", "discover", CHANGE_TOOL, "read_artifact"];
+const largerText = {
+  instruction: "Make the body text larger. Change nothing else.",
+};
 
 type Case = Readonly<{
   remark: Remark;
@@ -145,12 +145,16 @@ const SCRIPTS: readonly Readonly<{
   {
     turns: [
       {
-        reply: call("instruct", "instruct_coder", {
-          instruction: "Make the body text larger. Change nothing else.",
-        }),
+        reply: call(
+          "instruct",
+          CHANGE_TOOL,
+          MODE === "dynamic"
+            ? { plugin: "change-app", input: largerText }
+            : largerText,
+        ),
       },
     ],
-    moves: ["instruct_coder"],
+    moves: ["execute:change-app"],
     screen: null,
     readBeforeActing: false,
   },

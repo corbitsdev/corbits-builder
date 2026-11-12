@@ -441,9 +441,9 @@ export function createAgentTokenBridge(
     const projectRoute =
       suffix !== null &&
       ((c.req.method === "GET" &&
-        /^(|\/audit|\/artifacts(?:\/[^/]+)?|\/values)$/.test(suffix)) ||
+        /^(|\/audit|\/artifacts(?:\/[^/]+)?|\/values|\/route)$/.test(suffix)) ||
         (c.req.method === "POST" &&
-          /^(\/mutations|\/artifacts|\/artifact-approvals|\/design-concepts|\/presenter-assignments)$/.test(
+          /^(\/mutations|\/artifacts|\/artifact-approvals|\/design-concepts|\/presenter-assignments|\/route)$/.test(
             suffix,
           )));
     const deployRoute =

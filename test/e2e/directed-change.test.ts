@@ -19,7 +19,7 @@ import {
 } from "./support/recorded-model.ts";
 
 const POLL_MS = 1_000;
-const coordinatorTools = ["instruct_coder", "read_artifact"];
+const coordinatorTools = ["execute", "read_artifact"];
 const coderTools = ["edit_file", "run_shell", "mail_reply"];
 const instruction =
   "Change the app's font to Inter for all text: set the body font-family to Inter in client/src/styles.css. Change nothing else.";
@@ -95,8 +95,11 @@ test(
                   toolCalls: [
                     {
                       id: "coord_inter",
-                      name: "instruct_coder",
-                      arguments: { instruction },
+                      name: "execute",
+                      arguments: {
+                        plugin: "change-app",
+                        input: { instruction },
+                      },
                     },
                   ],
                 }),
@@ -117,7 +120,7 @@ test(
                   toolResults: [
                     {
                       callId: "coord_inter",
-                      toolName: "instruct_coder",
+                      toolName: "execute",
                       isError: false,
                       keys: ["runId", "role"],
                     },

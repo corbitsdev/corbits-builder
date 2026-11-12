@@ -1,7 +1,7 @@
 import { type } from "arktype";
 
-// The first message is the whole assignment: the task, the documents it builds on in full, the one
-// kind to write, and, when that kind is already filed, the version this one replaces.
+// The first message is the whole assignment: the task, the documents it builds on in full, if any,
+// the one kind to write, and, when that kind is already filed, the version this one replaces.
 const Document = type({
   "+": "reject",
   ref: "string > 0",
@@ -13,7 +13,7 @@ const WorkerTask = type({
   "+": "reject",
   type: "'writer.task'",
   task: "string > 0",
-  documents: Document.array().atLeastLength(1),
+  documents: Document.array(),
   artifact: "string > 0",
   "replaces?": "string > 0",
 });

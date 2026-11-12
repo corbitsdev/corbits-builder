@@ -1094,6 +1094,25 @@ export function createArtifactService(
       return designDraftOf(files);
     },
 
+    // The route plugin the project follows, or null when it follows none.
+    async projectRoute(actor: Actor, projectId: string) {
+      await requireProject(actor, projectId, "read");
+      const [row] = await rawDB
+        .select({ route: project.route })
+        .from(project)
+        .where(eq(project.id, projectId));
+      return row?.route ?? null;
+    },
+
+    async followRoute(actor: Actor, projectId: string, route: string | null) {
+      await requireProject(actor, projectId, "manage");
+      await rawDB
+        .update(project)
+        .set({ route })
+        .where(eq(project.id, projectId));
+      return route;
+    },
+
     // What project values are read from: the filed design at its latest version, with the look
     // the person saved.
     async projectState(actor: Actor, projectId: string): Promise<ProjectState> {

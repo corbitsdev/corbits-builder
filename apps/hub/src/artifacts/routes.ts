@@ -41,12 +41,15 @@ import { ProjectError } from "../projects/errors.ts";
 import { readJson } from "../lib/json.ts";
 import { mailRunAsCaller } from "../mail/caller-mail.ts";
 import { mountApprovalRoundRoutes } from "./approval-rounds.ts";
+import { isRoute, PLUGINS, ProjectRoute } from "../plugins/catalog.ts";
 import type { createArtifactService } from "./service.ts";
 import {
   projectValueTokens,
   readProjectValues,
   unregisteredValue,
 } from "./project-values.ts";
+
+const ROUTES = PLUGINS.filter(isRoute).map(({ builder }) => builder.handle);
 
 const security = [
   { sessionCookie: [] },
@@ -234,6 +237,61 @@ export function mountArtifactRoutes(
       return c.json(
         await service.previousDesignDraft(actorOf(c), c.req.param("projectId")),
       );
+    },
+  );
+  app.get(
+    "/:projectId/route",
+    describeRoute({
+      tags: ["Artifacts"],
+      operationId: "readProjectRoute",
+      description:
+        "The handle of the route plugin the project follows, or null when it follows none.",
+      security,
+      responses: {
+        200: {
+          description: "The route the project follows",
+          content: { "application/json": { schema: resolver(ProjectRoute) } },
+        },
+      },
+    }),
+    async (c) =>
+      c.json({
+        route: await service.projectRoute(actorOf(c), c.req.param("projectId")),
+      }),
+  );
+  app.post(
+    "/:projectId/route",
+    describeRoute({
+      tags: ["Artifacts"],
+      operationId: "followProjectRoute",
+      description:
+        "Puts the project on an installed route plugin by its handle, or takes it off with null.",
+      security,
+      requestBody: {
+        required: true,
+        content: { "application/json": { schema: resolver(ProjectRoute) } },
+      },
+      responses: {
+        200: {
+          description: "The route the project now follows",
+          content: { "application/json": { schema: resolver(ProjectRoute) } },
+        },
+        400: { description: "A handle that is not an installed route plugin" },
+      },
+    }),
+    async (c) => {
+      const input = ProjectRoute(await body(c));
+      if (input instanceof type.errors)
+        throw new ProjectError(400, "invalid_project_route", { issues: input });
+      if (input.route !== null && !ROUTES.includes(input.route))
+        throw new ProjectError(400, "unknown_route", { route: input.route });
+      return c.json({
+        route: await service.followRoute(
+          actorOf(c),
+          c.req.param("projectId"),
+          input.route,
+        ),
+      });
     },
   );
   app.get(

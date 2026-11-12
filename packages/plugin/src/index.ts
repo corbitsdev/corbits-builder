@@ -1,27 +1,70 @@
 import { type, type ArkErrors, type Type } from "arktype";
+import { NativeSpecialistAssignment } from "@corbits-builder/schemas/native-specialist";
 
-// Something true of the project, such as "fonts_chosen".
+// Something true of the project that Builder works out from what it stores, such as "app_exists". A
+// workflow's fact may name one of its input fields, as "filed:{kind}", for the value passed there.
 export type Fact = string;
 
-// The `builder` block of a plugin's package.json: what the coordinator searches and reads.
-export const Builder = type({
+const Facts = type("string > 0").array();
+// Alternatives, each the facts that together let a plugin start.
+const Requires = Facts.atLeastLength(1).array().atLeastLength(1);
+
+const Common = type({
   handle: "string > 0",
-  runs: "string > 0",
   groups: "string[] > 0",
   when: "string > 0",
   unless: "string > 0",
-  "screen?": "string > 0",
-  "data?": "string > 0",
-  "returns?": { fact: "string > 0" },
-  "authorizes?": "boolean",
-  // Project values, by their registered names, that Builder supplies to the screen and saves from its output.
-  "reads?": "string[]",
-  "writes?": "string[]",
   // How a person would ask for it, in their words.
   "examples?": "string[]",
   "triggers?": "string[]",
 });
+
+// The `builder` block of a screen plugin's package.json: what the coordinator searches and reads.
+export const Builder = Common.merge({
+  runs: "'screen'",
+  screen: "string > 0",
+  "data?": "string > 0",
+  "authorizes?": "boolean",
+  // Project values, by their registered names, that Builder supplies to the screen and saves from its output.
+  "reads?": "string[]",
+  "writes?": "string[]",
+});
 export type Builder = typeof Builder.infer;
+
+// Another agent does a piece of work in its own run.
+export const WorkflowBuilder = Common.merge({
+  runs: "'workflow'",
+  input: "string > 0",
+  "requires?": Requires,
+  returns: Facts,
+});
+export type WorkflowBuilder = typeof WorkflowBuilder.infer;
+
+// Guidance for reaching an outcome through other plugins, named by handle. While a project follows
+// it, each step also needs the step's own facts.
+export const RouteBuilder = Common.merge({
+  runs: "'route'",
+  guidance: "string > 0",
+  steps: type({ "+": "reject", plugin: "string > 0", requires: Facts })
+    .array()
+    .atLeastLength(1),
+  outcome: "string > 0",
+});
+export type RouteBuilder = typeof RouteBuilder.infer;
+
+// Started with a tool of its own, for work that must wait on the person's answer to that tool.
+export const ToolBuilder = Common.merge({
+  runs: "'tool'",
+  tool: "string > 0",
+  "requires?": Requires,
+  returns: Facts,
+});
+export type ToolBuilder = typeof ToolBuilder.infer;
+
+export const PluginBuilder = Builder.or(WorkflowBuilder)
+  .or(RouteBuilder)
+  .or(ToolBuilder);
+export type PluginBuilder = typeof PluginBuilder.infer;
 
 export type Refusal = {
   field: string;
@@ -77,6 +120,19 @@ export const defineScreen = <In, Out, Data, Prepared>(
   screen: Screen<In, Out, Data, Prepared>,
 ) => screen;
 
+// A workflow plugin's input and how the coordinator fills it; when and unless are its manifest's.
+export type Workflow<In> = {
+  input: Type<In>;
+  describe: Pick<Describe<keyof Type<In>["inferIn"]>, "summary" | "fields">;
+};
+
+export const defineWorkflow = <In>(workflow: Workflow<In>) => workflow;
+
+// What a specialist is told to do. A placeholder instruction repeated across turns ends the
+// coordinator in a doom loop; a length floor the schema states gives it a refusal to act on instead.
+export const Instruction =
+  NativeSpecialistAssignment.get("instruction").and("string >= 40");
+
 // What the interface hands a screen's view. Plain props, so this package needs no React.
 export type ScreenViewProps<Input, Output, Prepared> = {
   input: Input;
@@ -92,14 +148,19 @@ export type ScreenViewProps<Input, Output, Prepared> = {
 
 export type Refused = { ok: false; refusal: Refusal; text: string };
 
+// What did not happen, as the refusal's first words: "was not shown" for a screen.
+const SHOWN = "was not shown";
+const STARTED = "was not started";
+
 const refused = (
   handle: string,
+  outcome: string,
   refusal: Refusal,
   input: unknown,
 ): Refused => ({
   ok: false,
   refusal,
-  text: refusalText(handle, refusal, input),
+  text: refusalText(handle, outcome, refusal, input),
 });
 
 const isRecord = (value: unknown): value is Record<string, unknown> =>
@@ -146,6 +207,7 @@ export function checkInput<In, Out, Data, Prepared>(
   if (input instanceof type.errors)
     return refused(
       handle,
+      SHOWN,
       schemaRefusal(screen.describe.fields, input),
       fineFields(rawInput, input),
     );
@@ -157,7 +219,7 @@ export function checkInput<In, Out, Data, Prepared>(
     };
   } catch (error) {
     if (!isRefusal(error)) throw error;
-    return refused(handle, error.refusal, input);
+    return refused(handle, SHOWN, error.refusal, input);
   }
 }
 
@@ -170,10 +232,27 @@ export function checkOutput<In, Out, Data, Prepared>(
   if (output instanceof type.errors)
     return refused(
       handle,
+      SHOWN,
       schemaRefusal({}, output),
       fineFields(rawOutput, output),
     );
   return { ok: true, output };
+}
+
+export function checkWorkflowInput<In>(
+  handle: string,
+  workflow: Workflow<In>,
+  rawInput: unknown,
+): { ok: true; input: Type<In>["infer"] } | Refused {
+  const input = workflow.input(rawInput);
+  if (input instanceof type.errors)
+    return refused(
+      handle,
+      STARTED,
+      schemaRefusal(workflow.describe.fields, input),
+      fineFields(rawInput, input),
+    );
+  return { ok: true, input };
 }
 
 function columns(rows: Record<string, string>, indent: string) {
@@ -198,8 +277,14 @@ export function guidanceText<In, Out, Data, Prepared>(
     lines.push(
       `Builder gives the screen the project's ${reads.join(", ")} itself; do not pass them.`,
     );
-  lines.push("", "Input:");
-  const entries: [string, Field][] = Object.entries(fields);
+  lines.push("", inputText(fields));
+  return lines.join("\n");
+}
+
+// The input a plugin takes, field by field, as its guidance shows it.
+export function inputText(fields: Record<string, Field>) {
+  const lines = ["Input:"];
+  const entries = Object.entries(fields);
   const width = Math.max(...entries.map(([name]) => name.length)) + 2;
   for (const [name, field] of entries) {
     lines.push(`  ${name.padEnd(width)}${field.about}`);
@@ -209,9 +294,14 @@ export function guidanceText<In, Out, Data, Prepared>(
   return lines.join("\n");
 }
 
-export function refusalText(handle: string, refusal: Refusal, input: unknown) {
+export function refusalText(
+  handle: string,
+  outcome: string,
+  refusal: Refusal,
+  input: unknown,
+) {
   const lines = [
-    `${handle} was not shown. One field is wrong.`,
+    `${handle} ${outcome}. One field is wrong.`,
     "",
     `${refusal.field}: ${refusal.problem}`,
   ];

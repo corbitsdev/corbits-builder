@@ -39,6 +39,9 @@ export const project = pgTable(
     ),
     // The person's own mark, apart from the lifecycle: a shipped project stays active and usable.
     shippedAt: timestamp("shipped_at", { withTimezone: true }),
+    // The handle of the route plugin the project follows, until its outcome holds or the
+    // coordinator leaves it.
+    route: text("route"),
     createdAt: timestamp("created_at", { withTimezone: true })
       .notNull()
       .defaultNow(),

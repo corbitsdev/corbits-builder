@@ -13,19 +13,15 @@
   "remarks": [
     {
       "text": "the font is ugly",
-      "acceptable": [
-        ["open:pick-fonts"],
-        ["discover", "open:pick-fonts"],
-        ["read", "open:pick-fonts"]
-      ],
+      "acceptable": [["open:pick-fonts"], ["discover", "open:pick-fonts"]],
       "unacceptable": {
-        "anywhere": ["instruct_coder", "open:pick-colours"],
+        "anywhere": ["execute:change-app", "open:pick-colours"],
         "first": []
       }
     },
     {
       "text": "the font is too small",
-      "acceptable": [["instruct_coder"], ["ask"]],
+      "acceptable": [["execute:change-app"], ["ask"]],
       "unacceptable": {
         "anywhere": ["open:pick-fonts", "open:pick-colours"],
         "first": []
@@ -35,23 +31,23 @@
       "text": "I don't know if I love how this looks",
       "acceptable": [["ask"], ["discover"]],
       "unacceptable": {
-        "anywhere": ["instruct_coder"],
+        "anywhere": ["execute:change-app"],
         "first": ["open:pick-fonts", "open:pick-colours"]
       }
     },
     {
       "text": "the title looks weird",
       "acceptable": [["ask"]],
-      "unacceptable": { "anywhere": ["instruct_coder"], "first": [] }
+      "unacceptable": { "anywhere": ["execute:change-app"], "first": [] }
     },
     {
       "text": "I'm struggling to read it",
       "acceptable": [["ask"]],
-      "unacceptable": { "anywhere": ["instruct_coder"], "first": [] }
+      "unacceptable": { "anywhere": ["execute:change-app"], "first": [] }
     },
     {
       "text": "change the font to Inter",
-      "acceptable": [["instruct_coder"], ["read", "instruct_coder"]],
+      "acceptable": [["execute:change-app"]],
       "unacceptable": {
         "anywhere": ["open:pick-colours"],
         "first": ["ask"]
@@ -61,7 +57,11 @@
       "text": "that doesn't match my brand guidelines",
       "acceptable": [["read", "ask"]],
       "unacceptable": {
-        "anywhere": ["instruct_coder", "open:pick-fonts", "open:pick-colours"],
+        "anywhere": [
+          "execute:change-app",
+          "open:pick-fonts",
+          "open:pick-colours"
+        ],
         "first": []
       }
     }

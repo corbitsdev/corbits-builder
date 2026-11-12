@@ -21,12 +21,14 @@ the unacceptable ones, using these move names:
 - `open:pick-fonts`, `open:pick-colours`: opened that screen for the person.
 - `ask`: asked the person a plain question, with the `question` tool or in a
   closing reply that holds a question mark.
-- `instruct_coder`: told the coder to change the app (it waits for approval).
+- `execute:<handle>`: started that workflow plugin with `execute`, such as
+  `execute:change-app` to have a coder change the app. Classic's
+  `instruct_coder` (which waits for approval) counts as `execute:change-app`.
 - `read`: read the project's documents or design with `read_artifact`.
 - `reply`: a closing reply that neither asks nor acts.
 
 Any other tool shows up as `tool:<name>`. A run of moves is acceptable when an
-`acceptable` list begins it, unacceptable when it holds an `anywhere` move or
+`acceptable` list begins it, or begins what follows its leading reads, unacceptable when it holds an `anywhere` move or
 starts with a `first` move, and `other` otherwise. A refused screen call
 followed by the same screen counts as one attempt. The verdict is recorded,
 never asserted.

@@ -184,11 +184,16 @@ test("the built coordinator runs the prompt and tool marks COORDINATOR_MODE name
       );
       const { systemPrompt, toolFactories } =
         entry.default.steps.coordinate.agent;
-      const marks = toolFactories.flatMap(
-        (tool: { definitions: { name: string; approval?: string }[] }) =>
-          tool.definitions.filter((definition) => definition.approval),
-      );
-      return { systemPrompt, marks };
+      const declared: { name: string; approval?: string }[] =
+        toolFactories.flatMap(
+          (tool: { definitions: { name: string; approval?: string }[] }) =>
+            tool.definitions,
+        );
+      return {
+        systemPrompt,
+        tools: declared.map(({ name }) => name),
+        marks: declared.filter((definition) => definition.approval),
+      };
     } finally {
       await rm(directory, { recursive: true, force: true });
     }
@@ -200,12 +205,34 @@ test("the built coordinator runs the prompt and tool marks COORDINATOR_MODE name
     names.map((name) => ({ name, approval: "ask" }));
   const classicBuild = {
     systemPrompt: classic,
+    tools: [
+      "read_artifact",
+      "write_artifact",
+      "request_approval",
+      "deploy_writer",
+      "review_artifact",
+      "deploy_coder",
+      "instruct_coder",
+      "design_app",
+      "deploy_presenter",
+      "read_skill",
+      "discover",
+      "read_file",
+    ],
     marks: ask("request_approval", "instruct_coder", "design_app"),
   };
   expect(await built(undefined)).toEqual(classicBuild);
   expect(await built("classic")).toEqual(classicBuild);
+  // question is Interchange's own tool, offered by the bundle that checks a screen's input.
   expect(await built("dynamic")).toEqual({
     systemPrompt: dynamic,
-    marks: ask("request_approval", "design_app"),
+    tools: [
+      "read_artifact",
+      "discover",
+      "execute",
+      "request_approval",
+      "read_file",
+    ],
+    marks: ask("request_approval"),
   });
 }, 180_000);

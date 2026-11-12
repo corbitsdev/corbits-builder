@@ -133,6 +133,10 @@ export function createArtifactTools(role: Exclude<WorkflowRole, "writer">) {
   return artifactTools(role, TOOLS_BY_ROLE[role]);
 }
 
+// The dynamic coordinator reads the project; specialists write every document.
+export const createReadArtifactTools = () =>
+  artifactTools("coordinator", { definitions: [readDefinition] });
+
 // A writer is deployed for one kind and saves only that kind.
 export function createWriterArtifactTools(kind: WriterDocumentKind) {
   return artifactTools("writer", {

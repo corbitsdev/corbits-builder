@@ -10,7 +10,7 @@ This package only declares data. It imports `@intx/agent/authoring` and
 `@intx/workflow/definition`, nothing else from Interchange. The
 [hub's coordinator entry][entry] imports it, supplies the model, director and
 tools, and builds it into the workflow each project deploys. The tools are
-the hub's:
+the hub's. In `classic`:
 
 - `read_artifact`, `write_artifact`: the document list and the brief.
 - `deploy_writer`, `design_app`, `deploy_coder`, `instruct_coder`: start or
@@ -22,15 +22,24 @@ the hub's:
 - `discover`: finds an installed plugin, such as the font picker, from the
   person's wording; a screen plugin is then shown with `question`.
 
+In `dynamic` everything it can start is a plugin (`plugins/`):
+
+- `discover`: finds plugins from the person's wording, with what each
+  requires and whether the project has it now.
+- `execute`: starts a workflow plugin, such as `change-app`, or puts the
+  project on a route plugin, such as `build-web-app`.
+- `question`: opens a screen plugin, or asks the person plainly.
+- `request_approval`: the `approve-document` plugin's own tool, because only
+  the person's answer to an asking tool records an approval.
+- `read_artifact`: the document list and each document; it writes none.
+
 ## Layout
 
 - `src/prompt.ts`: the system prompt, plus an optional versioned
   calibration appended to it. There are two: `classic`, which walks a project
   through its documents, design and build in order, and `dynamic`, which
-  reads the project and acts on what the person asks, letting each tool's
-  refusals order the work. The hub's `COORDINATOR_MODE` picks one; in
-  `dynamic` it also starts a change to an app that exists, built or imported,
-  without asking the person first.
+  reads the project and acts on what the person asks, letting each plugin's
+  requirements order the work. The hub's `COORDINATOR_MODE` picks one.
 - `src/agent.ts`: `createCoordinatorAgent`, which requires an explicit
   provider and model and tags the agent with this package's version.
 - `src/workflow.ts`: `createCoordinatorWorkflow`, one durable mail-triggered

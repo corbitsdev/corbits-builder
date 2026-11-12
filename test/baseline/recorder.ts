@@ -10,13 +10,14 @@ import type { CoordinatorMode } from "@corbits-builder/hub/environment";
 import { openQuestionPark } from "../e2e/support/pipeline-driver.ts";
 
 export const Move = type(
-  "'discover' | 'open:pick-fonts' | 'open:pick-colours' | 'ask' | 'instruct_coder' | 'read' | 'reply'",
-);
+  "'discover' | 'open:pick-fonts' | 'open:pick-colours' | 'ask' | 'read' | 'reply'",
+).or(/^execute:[a-z][a-z0-9-]*$/);
 
 const Remark = type({
   "+": "reject",
   text: "string > 0",
-  // Each is a run of first moves; a run that begins the observed moves is acceptable.
+  // Each is a run of first moves; a run that begins the observed moves, with or without the reads
+  // that lead them, is acceptable.
   acceptable: Move.array().atLeastLength(1).array(),
   unacceptable: { "+": "reject", anywhere: Move.array(), first: Move.array() },
 });
@@ -66,8 +67,11 @@ export type Observation = Readonly<{
   textTurns: readonly string[];
 }>;
 
+// A workflow started is execute:<handle>; classic's instruct_coder is change-app's work by another name.
 function moveOf(tool: string, args: Record<string, unknown>): string {
-  if (tool === "discover" || tool === "instruct_coder") return tool;
+  if (tool === "discover") return tool;
+  if (tool === "instruct_coder") return "execute:change-app";
+  if (tool === "execute") return `execute:${String(args["plugin"])}`;
   if (tool === "question")
     return typeof args["plugin"] === "string"
       ? `open:${args["plugin"]}`
@@ -223,9 +227,13 @@ export function verdict(
     (first !== undefined && atFirst.includes(first))
   )
     return "unacceptable";
+  const acting = collapsed.findIndex((move) => move !== "read");
+  const afterReads = acting < 0 ? [] : collapsed.slice(acting);
   if (
-    remark.acceptable.some((run) =>
-      run.every((move, index) => collapsed[index] === move),
+    [collapsed, afterReads].some((observed) =>
+      remark.acceptable.some((run) =>
+        run.every((move, index) => observed[index] === move),
+      ),
     )
   )
     return "acceptable";

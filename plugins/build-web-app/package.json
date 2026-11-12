@@ -1,0 +1,55 @@
+{
+  "name": "@corbits-builder/build-web-app",
+  "version": "0.1.0-rc.3",
+  "private": true,
+  "description": "Takes an idea to a built web app: requirements the person approves, a design they choose, a build plan, then the build.",
+  "license": "SEE LICENSE IN ../../LICENSE.md",
+  "author": "Sawyer Cutler <sawyer@dirtroad.dev>",
+  "type": "module",
+  "exports": {
+    "./guidance": "./src/guidance.ts"
+  },
+  "builder": {
+    "handle": "build-web-app",
+    "runs": "route",
+    "groups": [
+      "build",
+      "plan"
+    ],
+    "when": "The person brings an idea for an app and wants it planned, designed and built.",
+    "unless": "The project already has an app, or the person wants only one piece of the work, such as a mockup.",
+    "guidance": "./SKILL.md",
+    "steps": [
+      {
+        "plugin": "write-requirements",
+        "requires": []
+      },
+      {
+        "plugin": "design-app",
+        "requires": [
+          "approved:product_requirements"
+        ]
+      },
+      {
+        "plugin": "write-build-plan",
+        "requires": [
+          "approved:product_requirements",
+          "design_chosen"
+        ]
+      },
+      {
+        "plugin": "build-app",
+        "requires": [
+          "approved:build_plan",
+          "design_chosen"
+        ]
+      }
+    ],
+    "outcome": "app_exists",
+    "examples": [
+      "I want to build a weather app",
+      "help me make an app for booking dog walks",
+      "build me an app"
+    ]
+  }
+}

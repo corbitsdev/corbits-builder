@@ -1,9 +1,12 @@
 import { createCoordinatorAgent } from "@corbits-builder/coordinator/agent";
 import { createCoordinatorWorkflow } from "@corbits-builder/coordinator";
-import { createArtifactTools } from "../../artifacts/tools.ts";
+import {
+  createArtifactTools,
+  createReadArtifactTools,
+} from "../../artifacts/tools.ts";
 import { createDeployTools } from "../../projects/deploy-tools.ts";
 import { createSkillTools } from "../../skills/tools.ts";
-import { createPluginTools } from "../../plugins/tools.ts";
+import { createExecuteTools, createPluginTools } from "../../plugins/tools.ts";
 import { roleInference } from "../role-inference.ts";
 import { compactingDirector } from "../director.ts";
 import { dropDegenerateTurn, trimHistory } from "../compaction.ts";
@@ -32,13 +35,16 @@ const agent = createCoordinatorAgent({
   capabilities: [],
   mode,
   inference: { ...source, parameters },
-  tools: [
-    createArtifactTools("coordinator"),
-    createDeployTools(mode),
-    createSkillTools(["problem-brief"]),
-    createPluginTools(),
-    savedResultTools,
-  ],
+  tools:
+    mode === "dynamic"
+      ? [createReadArtifactTools(), createExecuteTools(), savedResultTools]
+      : [
+          createArtifactTools("coordinator"),
+          createDeployTools(),
+          createSkillTools(["problem-brief"]),
+          createPluginTools(),
+          savedResultTools,
+        ],
 });
 const workflow = createCoordinatorWorkflow({
   id: "corbits-builder-coordinator",

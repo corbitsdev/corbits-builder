@@ -32,9 +32,6 @@
     "unless": "They already said exactly which font they want, or they want text bigger or smaller, or a whole new look.",
     "screen": "./src/screen.ts",
     "data": "./data/fonts.json",
-    "returns": {
-      "fact": "fonts_chosen"
-    },
     "authorizes": false,
     "reads": [
       "look.font-primary",

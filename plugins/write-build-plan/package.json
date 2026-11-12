@@ -1,0 +1,41 @@
+{
+  "name": "@corbits-builder/write-build-plan",
+  "version": "0.1.0-rc.3",
+  "private": true,
+  "license": "SEE LICENSE IN ../../LICENSE.md",
+  "author": "Sawyer Cutler <sawyer@dirtroad.dev>",
+  "type": "module",
+  "exports": {
+    ".": "./src/input.ts"
+  },
+  "dependencies": {
+    "@corbits-builder/plugin": "workspace:*",
+    "arktype": "catalog:"
+  },
+  "builder": {
+    "handle": "write-build-plan",
+    "runs": "workflow",
+    "groups": [
+      "documents",
+      "plan"
+    ],
+    "when": "The project needs a build plan, or its plan revised: the stack, the phases of work and the checks.",
+    "unless": "What the app must do is still being settled with the person.",
+    "input": "./src/input.ts",
+    "requires": [
+      [
+        "filed:product_requirements"
+      ],
+      [
+        "app_exists"
+      ]
+    ],
+    "returns": [
+      "filed:build_plan"
+    ],
+    "examples": [
+      "plan how to build it",
+      "use Postgres in the plan instead"
+    ]
+  }
+}

@@ -23,12 +23,17 @@ export const DISCOVER_DESCRIPTION =
 export const DISCOVER_NEEDS_ONE =
   "Pass either query, with what the person asked for, or group.";
 
-export const foundPlugins = (found: readonly Plugin[]) =>
+// Each plugin found, with what status says of it for the project when discover knows the project.
+export const foundPlugins = (
+  found: readonly Plugin[],
+  status: (plugin: Plugin) => string[] = () => [],
+) =>
   found
-    .map(({ builder, guidance }) =>
+    .map((plugin) =>
       [
-        `${builder.handle} runs a ${builder.runs}. Groups: ${builder.groups.join(", ")}.`,
-        guidance,
+        `${plugin.builder.handle} runs a ${plugin.builder.runs}. Groups: ${plugin.builder.groups.join(", ")}.`,
+        plugin.guidance,
+        ...status(plugin),
       ].join("\n"),
     )
     .join("\n\n");
