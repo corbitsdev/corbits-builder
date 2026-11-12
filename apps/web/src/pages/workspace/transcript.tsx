@@ -67,7 +67,12 @@ import {
   FoldedUpdatesView,
   SpecialistUpdatesView,
 } from "./specialist-updates.view.tsx";
-import { isHandoff, partsDispatches, type Dispatch } from "./dispatch-card.tsx";
+import {
+  isHandoff,
+  partsDispatches,
+  refusalLine,
+  type Dispatch,
+} from "./dispatch-card.tsx";
 import { workUnits, type WorkUnit } from "./work-unit.ts";
 import {
   WorkUnitMessageView,
@@ -174,10 +179,12 @@ function readableTool(
   const { input, output: _output, ...call } = part;
   const subject = toolSubject(input);
   const handoff = wording.activity.handoff[part.name];
+  const refusal = refusalLine(part, result);
   const name =
-    handoff !== undefined && part.status === "output-available"
+    refusal ??
+    (handoff !== undefined && part.status === "output-available"
       ? handoff(subject === undefined ? undefined : sentenceCase(subject))
-      : toolPhrase(part.name, subject);
+      : toolPhrase(part.name, subject));
   return {
     ...call,
     name,
@@ -186,7 +193,9 @@ function readableTool(
       ? {}
       : {
           output: toolResult(part.name, result.content),
-          ...(result.isError ? { status: "error" as const } : {}),
+          ...(result.isError && refusal === undefined
+            ? { status: "error" as const }
+            : {}),
         }),
   };
 }
@@ -411,7 +420,8 @@ function readableParts(
   results: ReadonlyMap<string, CallResult>,
 ): readonly ConversationPart[] {
   const carded = (tool: PartTool) =>
-    isHandoff(tool) || tool.name === QUESTION_TOOL_NAME;
+    isHandoff(tool, results.get(tool.toolCallId)) ||
+    tool.name === QUESTION_TOOL_NAME;
   return parts.flatMap((part): ConversationPart[] => {
     const readable = (tool: PartTool) =>
       readableTool(tool, results.get(tool.toolCallId));

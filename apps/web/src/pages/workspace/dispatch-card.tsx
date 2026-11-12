@@ -12,7 +12,6 @@ import {
   type FailedRun,
   type InFlightRun,
 } from "@corbits-builder/schemas/artifact";
-import { coordinatorUpgrading } from "@corbits-builder/schemas/conversation";
 import { wording } from "../../config.ts";
 import type { CallResult } from "./live-run.ts";
 import type { PlacedDispatch } from "./transcript.tsx";
@@ -105,8 +104,26 @@ function handoffOf(part: PartTool) {
   };
 }
 
-/** Whether a coordinator tool call starts a specialist, so it reads as a hand-off card. */
-export const isHandoff = (part: PartTool) => handoffOf(part) !== undefined;
+/**
+ * Whether a coordinator tool call is a hand-off card. A call whose result is an error started
+ * nothing, so it is no card: it stays a step of the coordinator's own work.
+ */
+export const isHandoff = (part: PartTool, result: CallResult | undefined) =>
+  handoffOf(part) !== undefined && result?.isError !== true;
+
+/** The quiet line for an execute call the hub refused, naming whom it tried to start and the refusal's first sentence. */
+export function refusalLine(
+  part: PartTool,
+  result: CallResult | undefined,
+): string | undefined {
+  const handoff = handoffOf(part);
+  if (handoff === undefined || result?.isError !== true) return undefined;
+  const reason = str(result.content)?.split(/(?<=\.)\s/, 1)[0];
+  return wording.activity.handoffCorrected(
+    wording.activity.handoffWho[handoff.action] ?? handoff.action,
+    reason ?? text.refusedUnknown,
+  );
+}
 
 /** The hand-offs one coordinator tool call made, or none when it is not a hand-off. */
 export function dispatchesOf(
@@ -128,20 +145,8 @@ export function dispatchesOf(
     ...(kind === undefined ? {} : { kind }),
   };
   const output = result === undefined ? undefined : parsed(result.content);
-  // A replaced coordinator's start is redone by its successor, so it is not the person's failure.
-  if (
-    result?.isError === true &&
-    str(result.content)?.includes(coordinatorUpgrading) === true
-  )
-    return [];
-  if (result?.isError === true)
-    return [
-      {
-        ...base,
-        key: part.toolCallId,
-        refused: str(result.content) ?? text.refusedUnknown,
-      },
-    ];
+  // An error result started nothing: the coordinator's own call was corrected, so it is no card.
+  if (result?.isError === true) return [];
   const named = args?.["concepts"];
   const concepts = Array.isArray(named)
     ? named.flatMap((item) => {

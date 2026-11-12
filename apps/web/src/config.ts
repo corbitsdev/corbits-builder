@@ -580,6 +580,19 @@ export const wording = {
           : "Could not ask for a review",
       "designer mockup": () => "Could not start the designer",
     } as Record<string, (subject?: string) => string>,
+    /** Whom a refused hand-off tried to start, by execute's plugin action. */
+    handoffWho: {
+      "coder build": "the coder",
+      "coder change": "the coder on a change",
+      "writer write": "the writer",
+      "writer write-requirements": "the writer",
+      "writer write-build-plan": "the writer",
+      "writer review": "a review",
+      "designer mockup": "the designer",
+    } as Record<string, string>,
+    /** The coordinator's own corrected call, in its steps: nothing started, so nothing failed. */
+    handoffCorrected: (who: string, reason: string) =>
+      `Tried to start ${who}; Builder said no: ${reason}`,
     /** What a tool call is doing, by tool name, given its one identifying argument. */
     tool: {
       read_file: (subject?: string) =>
