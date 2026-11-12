@@ -9,6 +9,7 @@ import {
   type Environment,
 } from "./environment.ts";
 import { migrateProductDatabase } from "./db/migrate.ts";
+import { moveAgentStateToStepState } from "./migrate-agent-state.ts";
 import { errorCode } from "./request-error.ts";
 
 const migrationsFolder = fileURLToPath(
@@ -31,6 +32,7 @@ export async function migrateDatabase(
     await runArtifactMigrations(config, { schema: "public" });
     await runAgentTokenMigrations(config, { schema: "public" });
     await migrateProductDatabase(db);
+    await moveAgentStateToStepState(db, env);
   } finally {
     await client.end();
   }

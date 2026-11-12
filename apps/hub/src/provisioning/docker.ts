@@ -119,6 +119,16 @@ async function removeContainer(
   }
 }
 
+/** Removes every sidecar container this hub started, whatever its allocation or image. */
+export async function removeHubSidecars(
+  engine: DockerEngine,
+  hubId: string,
+): Promise<number> {
+  const containers = await listContainers(engine, [`${LABEL.hub}=${hubId}`]);
+  for (const { Id } of containers) await removeContainer(engine, Id);
+  return containers.length;
+}
+
 /**
  * One container per sidecar, with its own anonymous data volume, labelled with
  * this hub, the allocation, the generation and the sidecar id.
