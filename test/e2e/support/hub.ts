@@ -2,11 +2,13 @@ import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import postgres from "postgres";
+import { createDB, type DB } from "@intx/db";
 import {
   createProductApiClient,
   type ProductApiClient,
 } from "@corbits-builder/client";
 import { createHubRuntime } from "@corbits-builder/hub/app";
+import type { PluginHint } from "@corbits-builder/hub/environment";
 import { migrateDatabase } from "@corbits-builder/hub/migrate";
 import type { RecordedModelServer } from "./recorded-model.ts";
 
@@ -15,12 +17,21 @@ export type TestHubHandle = Readonly<{
   workspaceTenantId: string;
   client: ProductApiClient;
   fakeCredentialSecret: string;
+  dataDir: string;
+  // Looks up a run's mail address, which locates its stored conversation under dataDir.
+  db: DB["db"];
   subscribeRunStream: (
     projectTenantId: string,
     runId: string,
     onFrame: (event: string, data: string) => void,
   ) => () => void;
   close: () => Promise<void>;
+}>;
+
+export type TestHubOptions = Readonly<{
+  pluginHint?: PluginHint;
+  // Provider API keys by the hub's own variable names, such as ANTHROPIC_API_KEY.
+  providerKeys?: Readonly<Record<string, string>>;
 }>;
 
 function readTestDbServerConfig(): {
@@ -139,8 +150,10 @@ export async function signUpSessionCookie(
 
 export async function startTestHub(
   recordedModel: RecordedModelServer,
+  options: TestHubOptions = {},
 ): Promise<TestHubHandle> {
   const database = await createTestDatabase();
+  const handle = createDB(database.connection);
 
   const dataDir = await mkdtemp(join(tmpdir(), "builder-e2e-hub-"));
   const fakeCredentialSecret = `sk-fake-e2e-secret-${crypto.randomUUID()}`;
@@ -180,6 +193,8 @@ export async function startTestHub(
     GOOGLE_EMULATE_URL: "http://127.0.0.1:9999",
     COORDINATOR_START_TIMEOUT_MS: "120000",
   };
+  if (options.pluginHint) hubEnv["PLUGIN_HINT"] = options.pluginHint;
+  Object.assign(hubEnv, options.providerKeys);
 
   let runtime: Awaited<ReturnType<typeof createHubRuntime>> | undefined;
   let server: ReturnType<typeof Bun.serve> | undefined;
@@ -335,6 +350,8 @@ export async function startTestHub(
       workspaceTenantId,
       client,
       fakeCredentialSecret,
+      dataDir,
+      db: handle.db,
       subscribeRunStream,
       close: async () => {
         for (const controller of activeStreams) {
@@ -343,6 +360,7 @@ export async function startTestHub(
         activeStreams.clear();
         if (server) await server.stop(true);
         if (runtime) await runtime.close();
+        await handle.close();
         await rm(dataDir, { recursive: true, force: true });
         await database.drop();
       },
@@ -354,6 +372,7 @@ export async function startTestHub(
     activeStreams.clear();
     if (server) await server.stop(true);
     if (runtime) await runtime.close();
+    await handle.close();
     await rm(dataDir, { recursive: true, force: true });
     await database.drop();
     throw error;

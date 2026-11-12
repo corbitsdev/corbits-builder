@@ -9,8 +9,16 @@ import {
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { type } from "arktype";
+import { eq } from "drizzle-orm";
+import type { DB } from "@intx/db";
+import { workflowRun } from "@intx/db/schema";
+import {
+  createAgentRepoStore,
+  workflowRunRepoIdForAddress,
+} from "@intx/hub-sessions";
 import { reconstructDurableConversation } from "@intx/workflow-host";
 import type { ConversationTurn } from "@intx/types/runtime";
+import { loadHubSigningKey } from "@corbits-builder/hub/signing-key";
 import {
   formatOpenAISseResponse,
   type ExchangeExpectation,
@@ -98,19 +106,26 @@ async function loadStoredTurns(
       `Refusing to read non-weather-app run directory: ${runDir}`,
     );
   }
+  return readCommittedTurns(join(runsRoot, runDir), step);
+}
+
+async function readCommittedTurns(
+  repoDir: string,
+  step: string,
+): Promise<readonly ConversationTurn[]> {
   const dest = await mkdtemp(join(tmpdir(), "builder-extract-"));
   try {
     const proc = Bun.spawn(
       [
         "sh",
         "-c",
-        `git -C "${join(runsRoot, runDir)}" archive --format=tar refs/heads/main agent-state | tar -x -C "${dest}"`,
+        `git -C "${repoDir}" archive --format=tar refs/heads/main agent-state | tar -x -C "${dest}"`,
       ],
       { stdout: "ignore", stderr: "pipe" },
     );
     if ((await proc.exited) !== 0) {
       throw new Error(
-        `Failed to unpack ${runDir}: ${await new Response(proc.stderr).text()}`,
+        `Failed to unpack ${repoDir}: ${await new Response(proc.stderr).text()}`,
       );
     }
     const conv = await reconstructDurableConversation(
@@ -118,12 +133,75 @@ async function loadStoredTurns(
       step,
     );
     if (!conv) {
-      throw new Error(`No durable conversation found in ${runDir} (${step})`);
+      throw new Error(`No durable conversation found in ${repoDir} (${step})`);
     }
     return conv.turns;
   } finally {
     await rm(dest, { recursive: true, force: true });
   }
+}
+
+export type RunConversation = Readonly<{
+  personTexts: readonly string[];
+  assistantTexts: readonly string[];
+  toolCalls: readonly Readonly<{
+    name: string;
+    arguments: Record<string, unknown>;
+    result: Readonly<{ text: string; isError: boolean }> | undefined;
+  }>[];
+}>;
+
+/**
+ * One run's conversation as its agent stored it, in order: what the model was sent, what it said,
+ * and each tool call with its result, refused calls included. Step is the agent's workflow step
+ * ("coordinate" for the coordinator). Read it once the turn to inspect has reached the person.
+ */
+export async function readRunConversation(
+  hub: Readonly<{ dataDir: string; db: DB["db"] }>,
+  runId: string,
+  step: string,
+): Promise<RunConversation> {
+  const [run] = await hub.db
+    .select({ address: workflowRun.address })
+    .from(workflowRun)
+    .where(eq(workflowRun.id, runId));
+  if (!run?.address) throw new Error(`Run ${runId} has no mail address`);
+  const { repoStore } = createAgentRepoStore({
+    dataDir: hub.dataDir,
+    signingKey: await loadHubSigningKey(hub.dataDir),
+  });
+  const turns = await readCommittedTurns(
+    repoStore.getRepoDir(workflowRunRepoIdForAddress(run.address)),
+    step,
+  );
+  const results = new Map<string, { text: string; isError: boolean }>();
+  for (const turn of turns) {
+    for (const block of turn.content) {
+      if (block.type !== "tool_result") continue;
+      results.set(block.callId, {
+        text: block.content
+          .flatMap((part) => (part.type === "text" ? [part.text] : []))
+          .join("\n"),
+        isError: block.isError === true,
+      });
+    }
+  }
+  const texts = (role: ConversationTurn["role"]) =>
+    turns
+      .filter((turn) => turn.role === role)
+      .map((turn) => extractTurnText(turn))
+      .filter((text) => text !== "");
+  return {
+    personTexts: texts("user"),
+    assistantTexts: texts("assistant"),
+    toolCalls: turns
+      .flatMap((turn) => extractToolCalls(turn))
+      .map((call) => ({
+        name: call.name,
+        arguments: call.arguments,
+        result: results.get(call.id),
+      })),
+  };
 }
 
 function extractTurnText(turn: ConversationTurn | undefined): string {
