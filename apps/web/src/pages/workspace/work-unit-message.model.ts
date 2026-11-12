@@ -16,6 +16,12 @@ import { workSubject, workUnitMessage, type WorkUnit } from "./work-unit.ts";
 
 const text = wording.dispatch;
 
+// The specialists whose work shows as it happens: the designer's draft and the coder's running app.
+const WATCH: Partial<Record<Dispatch["role"], string>> = {
+  designer: text.watchDraft,
+  coder: text.watchApp,
+};
+
 const sentenceStart = (line: string) =>
   line.charAt(0).toUpperCase() + line.slice(1);
 
@@ -54,6 +60,8 @@ export function workUnitStanding(
   const status = dispatchStatus(dispatch, room);
   const subject = workSubject(dispatch, status) ?? text.unnamed;
   const { doing, recent } = liveLines(dispatch, subject, room.activity);
+  const { onWatch } = room;
+  const watchLabel = WATCH[dispatch.role];
   return {
     message: workUnitMessage(unit, status),
     handoffStep: dispatch.key,
@@ -65,5 +73,9 @@ export function workUnitStanding(
     refused: dispatch.refused !== undefined,
     approvals: unit.approvals,
     onOpenDocument: room.onOpenDocument,
+    watch:
+      onWatch === undefined || watchLabel === undefined
+        ? undefined
+        : { label: watchLabel, open: () => onWatch(dispatch) },
   };
 }

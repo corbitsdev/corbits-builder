@@ -1,4 +1,10 @@
-import type { Fact, ValueDeclaration } from "@corbits-builder/plugin";
+import type { ArkErrors } from "arktype";
+import {
+  inputText,
+  type Fact,
+  type Field,
+  type ValueDeclaration,
+} from "@corbits-builder/plugin";
 import type { Plugin, ScreenAction } from "./catalog.ts";
 
 // A fact in plain words, as the catalog has it from the plugins.
@@ -7,7 +13,52 @@ type FactText = (fact: Fact) => string;
 // What the coordinator reads about execute, the facts an action requires, and why nothing started.
 
 export const EXECUTE_DESCRIPTION =
-  "Start a specialist plugin's action by the plugin's handle and the action's name, with the input that action's guidance from discover describes, such as { plugin: \"coder\", action: \"change\", input }. A workflow action starts its specialist and returns at once with the run; the outcome arrives later as the specialist's message. A route plugin takes no action: it puts the project on that route and returns its guidance and which of its steps can start now; input { leave: true } takes the project off it. When something an action needs is not true of the project yet, nothing starts, and the refusal names what is missing and which plugin action makes it true. A screen action is opened with question({ plugin, action, input }).";
+  "Start a specialist plugin's action by the plugin's handle and the action's name, with the input that action's guidance from discover describes, such as { plugin: \"coder\", action: \"change\", input }. A workflow action starts its specialist and returns at once with { started, plugin, action, runs: [{ runId }], presents, advice }; each run's report arrives later as a message that begins with its run id. Independent pieces of work can start in the same turn, each with its own execute. Nothing starts when the action lacks what it cannot work without, or the person's go-ahead that a route the project follows asks for while they decide approvals; the refusal names what is missing and which plugin action makes it true. Anything else a route suggests doing first comes back as advice with the started run. A route plugin takes no action: it adds that route to those the project follows and returns its guidance; input { leave: true } takes the project off it. A screen action is opened with question({ plugin, action, input }).";
+
+export const RUNS_DESCRIPTION =
+  'See and steer the runs you started with execute. operation "list" lists each run you started in this project that is at work or ended lately: its plugin and action, status, state while it runs, when it started, its last activity, and why a failed run stopped. "wait" waits up to seconds (60 unless given, at most 120) for the first of runIds to end and says which ended; a run\'s report still reaches you as a message after your turn. "stop" stops each of runIds; what a stopped run filed or pushed is kept.';
+
+/** Each field a tool call got wrong, from its schema's errors: by field, the first problem each has. */
+export function wrongFields(errors: ArkErrors) {
+  const wrong = new Map<string, string>();
+  for (const error of errors) {
+    const field = String(error.path[0] ?? "input");
+    if (!wrong.has(field)) wrong.set(field, error.problem);
+  }
+  return [...wrong].map(([field, problem]) => ({ field, problem }));
+}
+
+/** Why a tool call was not run, every wrong field at once, then everything the tool takes. */
+export function wrongCall(
+  tool: string,
+  outcome: string,
+  wrong: readonly { field: string; problem: string }[],
+  fields: Record<string, Field>,
+) {
+  return [
+    `${tool} was not run, so ${outcome}. ${wrong.length === 1 ? "One field is" : `${wrong.length} fields are`} wrong:`,
+    ...wrong.map(({ field, problem }) =>
+      Object.hasOwn(fields, field)
+        ? `  ${field}: ${problem}`
+        : `  ${field}: ${tool} takes no ${field}`,
+    ),
+    "",
+    `What ${tool} takes:`,
+    inputText(fields),
+    "",
+    "Call again with every field above corrected.",
+  ].join("\n");
+}
+
+/** What a run's assignment says about the project values it may save as it learns them. */
+export const writesText = (values: Values, writes: readonly string[]) =>
+  [
+    "\n\nWhen you learn any of these about the project, save it with report_values({ name: value }); it saves only these:",
+    ...writes.map(
+      (name) =>
+        `- ${name} (${values.get(name)?.type}): ${values.get(name)?.about}`,
+    ),
+  ].join("\n");
 
 export const DISCOVER_DYNAMIC_DESCRIPTION =
   "Find what you can do for the person: every piece of work you can start is a plugin. Pass query with what they asked for, in their words, or group to list every plugin in that group. A specialist plugin comes with its actions, how to use each, what each requires and whether the project has that now. Specialist actions and route plugins are started with execute; a screen action is shown to the person with question({ plugin, action, input }).";
@@ -70,34 +121,42 @@ export const projectValuesText = (
     ),
   ].join("\n");
 
+// What a route the project follows asks of one of its steps that the project lacks: the person's
+// go-ahead, which holds the step back while they decide approvals, and the rest, which is advice.
+export type RouteStep = { route: string; goAhead: Fact[]; advice: Fact[] };
+
 export type Readiness = {
-  // The project is following this route and the action is one of its steps.
-  route?: string;
   // For each of the action's own alternatives, what it still lacks; empty when one holds.
   own: Fact[][];
-  // What the route adds for this step that the project lacks.
-  fromRoute: Fact[];
+  // What each route the project follows asks of this step that the project lacks.
+  routes: RouteStep[];
 };
 
+/** Whether nothing holds an action back: what it needs of its own and the person's go-ahead. */
+export const isReady = ({ own, routes }: Readiness) =>
+  own.length === 0 && routes.every(({ goAhead }) => goAhead.length === 0);
+
 /** Whether an action could start now, in a line for discover and a route's steps. */
-export function readinessText(
-  { route, own, fromRoute }: Readiness,
-  factText: FactText,
-) {
-  if (own.length === 0 && fromRoute.length === 0) return "can start now";
-  const parts: string[] = [];
-  if (own.length > 0) parts.push(`needs: ${requiresText(own, factText)}`);
-  if (fromRoute.length > 0)
-    parts.push(
-      `because this project is following ${route}, it also needs: ${fromRoute.map(factText).join(" and ")}`,
-    );
+export function readinessText(readiness: Readiness, factText: FactText) {
+  const facts = (list: readonly Fact[]) => list.map(factText).join(" and ");
+  const parts = isReady(readiness) ? ["can start now"] : [];
+  if (readiness.own.length > 0)
+    parts.push(`needs: ${requiresText(readiness.own, factText)}`);
+  for (const { route, goAhead } of readiness.routes)
+    if (goAhead.length > 0)
+      parts.push(
+        `needs the person's go-ahead, which ${route} asks for: ${facts(goAhead)}`,
+      );
+  for (const { route, advice } of readiness.routes)
+    if (advice.length > 0)
+      parts.push(`${route} suggests first: ${facts(advice)}`);
   return parts.join("; ");
 }
 
 /** Why a workflow action was not started, naming each missing fact and what makes it true. */
 export function unmetRequirement(
   handle: string,
-  { route, own, fromRoute }: Readiness,
+  { own, routes }: Readiness,
   makers: (fact: Fact) => string[],
   factText: FactText,
 ) {
@@ -112,23 +171,47 @@ export function unmetRequirement(
         missingLine(facts, facts.flatMap(makers), factText),
       ),
     );
-  if (fromRoute.length > 0) {
-    if (own.length > 0) lines.push("");
+  const holding = routes.filter(({ goAhead }) => goAhead.length > 0);
+  for (const { route, goAhead } of holding) {
+    if (lines.length > 2) lines.push("");
     lines.push(
-      `Because this project is following ${route}, it also needs:`,
-      ...fromRoute.map((fact) => missingLine([fact], makers(fact), factText)),
+      `The person decides approvals, and this project follows ${route}, which asks for their go-ahead first:`,
+      ...goAhead.map((fact) => missingLine([fact], makers(fact), factText)),
     );
   }
   lines.push(
     "",
     "Start what makes these true first, or ask the person, then call execute again.",
   );
-  if (fromRoute.length > 0)
+  for (const { route } of holding)
     lines.push(
-      `If the person directs the work elsewhere, take the project off the route with execute({ plugin: "${route}", input: { leave: true } }).`,
+      `If the person directs the work elsewhere, take the project off ${route} with execute({ plugin: "${route}", input: { leave: true } }).`,
     );
   return lines.join("\n");
 }
+
+/** What the routes suggest doing before an action that started anyway, and why; empty for nothing. */
+export const routeAdvice = (
+  routes: readonly RouteStep[],
+  makers: (fact: Fact) => string[],
+  factText: FactText,
+) =>
+  routes
+    .filter(({ advice }) => advice.length > 0)
+    .map(
+      ({ route, advice }) =>
+        `${route} suggests doing this first: ${advice
+          .map((fact) => {
+            const making = [...new Set(makers(fact))];
+            return making.length > 0
+              ? `${factText(fact)} (${making.join(" or ")} makes this true)`
+              : factText(fact);
+          })
+          .join(
+            "; ",
+          )}. The route orders the work so each step builds on what the one before made; this started without it.`,
+    )
+    .join("\n");
 
 export const unknownPlugin = (handle: string, startable: readonly string[]) =>
   [
@@ -154,6 +237,25 @@ export const unknownAction = (
     "Call again with action set to one of them.",
   ].join("\n");
 
+/** Why runs did nothing with run ids that are not runs the coordinator started here. */
+export const unknownRuns = (
+  operation: string,
+  unknown: readonly string[],
+  yours: readonly { runId: string; plugin: string; action: string }[],
+) =>
+  [
+    `${unknown.join(", ")} ${unknown.length === 1 ? "is not a run" : "are not runs"} you started in this project, so nothing was done with ${operation}.`,
+    "",
+    yours.length === 0
+      ? "You have started no runs here yet; execute starts one."
+      : "Your runs:",
+    ...yours.map(
+      ({ runId, plugin, action }) => `  ${runId}: ${plugin} ${action}`,
+    ),
+    "",
+    "Call again with runIds from that list.",
+  ].join("\n");
+
 export const routeTakesNoAction = (handle: string) =>
   `${handle} is a route and takes no action, so nothing was started. Call again with no action to follow it, or name the specialist whose action you meant.`;
 
@@ -167,29 +269,44 @@ export const screenText = (plugin: string, action: string) =>
 export const screenNotExecuted = ({ name, plugin, action }: ScreenAction) =>
   `${name} is a screen, so nothing was started. A screen is opened with ${questionCall(plugin, action)}.`;
 
-/** What a finished run's report says about the screen that shows its work to the person. */
-export const presentsText = (plugin: string, action: string) =>
-  `To show this to the person, open question({ plugin: "${plugin}", action: "${action}", input: {} }); Builder fills in the newest version itself.`;
+/** What a finished run's report says about the screens that can show its work to the person. */
+export const presentsText = (
+  plugin: string,
+  screens: readonly { action: string; when: string }[],
+) =>
+  [
+    "To show this to the person, open the screen that fits; Builder fills in the newest version itself:",
+    ...screens.map(
+      ({ action, when }) =>
+        `- question({ plugin: "${plugin}", action: "${action}", input: {} }) when: ${when}`,
+    ),
+  ].join("\n");
 
 export const routeInputRefused = (handle: string, problem: string) =>
   `${handle} was not changed. Its input takes only leave: true, to take the project off the route; ${problem}. Call again with no input to follow it, or with { leave: true }.`;
 
 export const routeLeft = (handle: string, wasOn: boolean) =>
   wasOn
-    ? `The project no longer follows ${handle}. Each action now needs only what it cannot work without.`
+    ? `The project no longer follows ${handle}, so nothing of it applies to its steps any more.`
     : `The project was not following ${handle}, so nothing changed.`;
 
 export const routeDone = (handle: string, outcome: Fact, factText: FactText) =>
   `${handle} was not followed: what it leads to already holds (${factText(outcome)}). Start the action the person's request needs directly.`;
 
-/** A route's guidance and where each of its steps stands. */
+/** A route's guidance, how it combines with the others the project follows, and where each step stands. */
 export const routeFollowed = (
   handle: string,
+  others: readonly string[],
   guidance: string,
   steps: readonly { name: string; readiness: string }[],
 ) =>
   [
     `The project now follows ${handle}. It stays on it until the outcome holds or you leave it.`,
+    ...(others.length > 0
+      ? [
+          `It also follows ${others.join(", ")}. Where routes share a step, the person's go-ahead any of them asks for holds the step while they decide approvals, and each route's other advice comes with the started run.`,
+        ]
+      : []),
     "",
     guidance,
     "",

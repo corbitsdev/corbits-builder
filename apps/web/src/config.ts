@@ -22,6 +22,28 @@ export const IMPORTED_PROJECT_LEAD =
  */
 export const SPECIALIST_ENDED_LEAD = "Status update: ";
 
+/**
+ * The hub's notes to the coordinator that it mails as the person, each with the quiet line the
+ * thread shows in its place. The hub marks none of them, so each is matched on the fixed wording of
+ * coordinatorTweaksNote in apps/hub/src/config/design-tweaks.ts and designChosenNote in
+ * apps/hub/src/config/design.ts, which a person does not write.
+ */
+export const HUB_NOTES: readonly {
+  readonly pattern: RegExp;
+  readonly line: (match: RegExpExecArray) => string;
+}[] = [
+  {
+    pattern:
+      /^The person saved look tweaks to the design in (?:the live designer's|a new version of the filed design's) styles\.css/,
+    line: () => "Look saved to the design.",
+  },
+  {
+    pattern:
+      /^The person chose the ([\s\S]+) design concept\. It is filed as the design at version \d+, approved by them\./,
+    line: (match) => `Design chosen: ${match[1] ?? ""}.`,
+  },
+];
+
 const megabytes = (bytes: number) =>
   `${String(Math.floor(bytes / 1_048_576))} MB`;
 
@@ -630,17 +652,6 @@ export const wording = {
       `The designer of your ${label} concept is between steps.`,
     /** The pane bar's control that shows what a design concept is going for. */
     conceptDirection: "What this design mockup is going for",
-    /** The conversation's ask to confirm the one filed design concept. */
-    confirmOne:
-      "If you like the design and want to move on to preparing a build plan, confirm. Otherwise, tell me what to change.",
-    /** The same ask when several concepts are filed; each concept's name opens its mockup. */
-    confirmSeveral:
-      "If you like one of the designs and want to move on to preparing a build plan, confirm it. Otherwise, tell me what to change.",
-    confirm: "Confirm",
-    confirmConcept: (label: string) => `Confirm the ${label} design`,
-    confirming: "Confirming…",
-    chosen: (label: string) => `✓ Using ${label}`,
-    chooseFailed: "The design could not be chosen.",
   },
   /** Prebuilt looks a person previews, tweaks and picks before any design exists. */
   themes: {
@@ -771,6 +782,9 @@ export const wording = {
     ready: (document: string, version: number) =>
       `✓ ${document} v${String(version)} ready`,
     open: "Open",
+    /** Opens the project view on what a working specialist is making, as it makes it. */
+    watchDraft: "Watch the draft",
+    watchApp: "Watch the app",
     /** Names the list of the steps a run took just before its live line. */
     recent: "Recent steps",
     failed: (reason: string) => `Did not finish: ${reason}`,

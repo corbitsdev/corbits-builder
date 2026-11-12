@@ -22,13 +22,13 @@ function standing(input: {
 function placeholder(input: {
   approvalOpen?: boolean;
   questionsOpen?: boolean;
-  chatFirst?: boolean;
+  nothingFiled?: boolean;
   status?: ProjectStatus;
 }): string {
   return composerPlaceholder({
     approvalOpen: input.approvalOpen ?? false,
     questionsOpen: input.questionsOpen ?? false,
-    chatFirst: input.chatFirst ?? false,
+    nothingFiled: input.nothingFiled ?? false,
     status: input.status,
   });
 }
@@ -90,7 +90,7 @@ describe("composer placeholder", () => {
   test("a running app beats a failure", () => {
     expect(
       placeholder({
-        chatFirst: true,
+        nothingFiled: true,
         status: standing({
           app: { state: "running" },
           failedSpecialist: "writer",
@@ -102,7 +102,7 @@ describe("composer placeholder", () => {
   test("a failed app beats an empty project", () => {
     expect(
       placeholder({
-        chatFirst: true,
+        nothingFiled: true,
         status: standing({ app: { state: "failed" } }),
       }),
     ).toBe("What needs fixing…");
@@ -111,7 +111,7 @@ describe("composer placeholder", () => {
   test("a failed specialist beats an empty project", () => {
     expect(
       placeholder({
-        chatFirst: true,
+        nothingFiled: true,
         status: standing({
           app: { state: "stopped" },
           failedSpecialist: "designer",
@@ -123,7 +123,7 @@ describe("composer placeholder", () => {
   test("an empty project beats the fallback", () => {
     expect(
       placeholder({
-        chatFirst: true,
+        nothingFiled: true,
         status: standing({
           working: [{ role: "writer", state: "unknown" }],
           app: { state: "not_started" },
@@ -147,7 +147,7 @@ describe("composer placeholder", () => {
     expect(
       placeholder({
         approvalOpen: true,
-        chatFirst: true,
+        nothingFiled: true,
         status: standing({
           working: [{ role: "coder", state: "working" }],
           app: { state: "failed", reason: "crashed" },

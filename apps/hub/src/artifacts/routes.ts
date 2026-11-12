@@ -28,8 +28,10 @@ import {
   LiveApp,
   MaterialReceipt,
   MaterialRemovedReceipt,
+  ProjectRuns,
   ProjectValues,
   ProjectValuesWrite,
+  RunAction,
 } from "@corbits-builder/schemas/artifact";
 import { ProjectActivity } from "@corbits-builder/schemas/activity";
 import {
@@ -46,7 +48,13 @@ import {
 } from "../mail/caller-mail.ts";
 import { openQuestion, screenOf } from "../plugins/question.ts";
 import { mountApprovalRoundRoutes } from "./approval-rounds.ts";
-import { CATALOG, isRoute, PLUGINS, ProjectRoute } from "../plugins/catalog.ts";
+import {
+  CATALOG,
+  isRoute,
+  isWorkflowAction,
+  PLUGINS,
+  ProjectRoutes,
+} from "../plugins/catalog.ts";
 import type { createArtifactService } from "./service.ts";
 import { projectValueWrites, readProjectValues } from "./project-values.ts";
 
@@ -278,56 +286,206 @@ export function mountArtifactRoutes(
     },
   );
   app.get(
-    "/:projectId/route",
+    "/:projectId/routes",
     describeRoute({
       tags: ["Artifacts"],
-      operationId: "readProjectRoute",
+      operationId: "readProjectRoutes",
       description:
-        "The handle of the route plugin the project follows, or null when it follows none.",
+        "The handles of the route plugins the project follows, none when it follows none.",
       security,
       responses: {
         200: {
-          description: "The route the project follows",
-          content: { "application/json": { schema: resolver(ProjectRoute) } },
+          description: "The routes the project follows",
+          content: { "application/json": { schema: resolver(ProjectRoutes) } },
         },
       },
     }),
     async (c) =>
       c.json({
-        route: await service.projectRoute(actorOf(c), c.req.param("projectId")),
+        routes: await service.projectRoutes(
+          actorOf(c),
+          c.req.param("projectId"),
+        ),
       }),
   );
   app.post(
-    "/:projectId/route",
+    "/:projectId/routes",
     describeRoute({
       tags: ["Artifacts"],
-      operationId: "followProjectRoute",
+      operationId: "followProjectRoutes",
       description:
-        "Puts the project on an installed route plugin by its handle, or takes it off with null.",
+        "Sets the installed route plugins the project follows, by their handles; none takes it off every route.",
       security,
       requestBody: {
         required: true,
-        content: { "application/json": { schema: resolver(ProjectRoute) } },
+        content: { "application/json": { schema: resolver(ProjectRoutes) } },
       },
       responses: {
         200: {
-          description: "The route the project now follows",
-          content: { "application/json": { schema: resolver(ProjectRoute) } },
+          description: "The routes the project now follows",
+          content: { "application/json": { schema: resolver(ProjectRoutes) } },
         },
         400: { description: "A handle that is not an installed route plugin" },
       },
     }),
     async (c) => {
-      const input = ProjectRoute(await body(c));
+      const input = ProjectRoutes(await body(c));
       if (input instanceof type.errors)
-        throw new ProjectError(400, "invalid_project_route", { issues: input });
-      if (input.route !== null && !ROUTES.includes(input.route))
-        throw new ProjectError(400, "unknown_route", { route: input.route });
+        throw new ProjectError(400, "invalid_project_routes", {
+          issues: input,
+        });
+      const unknown = input.routes.find((route) => !ROUTES.includes(route));
+      if (unknown !== undefined)
+        throw new ProjectError(400, "unknown_route", { route: unknown });
       return c.json({
-        route: await service.followRoute(
+        routes: await service.followRoutes(
           actorOf(c),
           c.req.param("projectId"),
-          input.route,
+          input.routes,
+        ),
+      });
+    },
+  );
+  app.post(
+    "/:projectId/run-actions",
+    describeRoute({
+      tags: ["Artifacts"],
+      operationId: "recordRunAction",
+      description:
+        "Records the plugin action the coordinator just started a specialist run for, before the run's assignment reaches it. The run is then listed among the coordinator's runs, the coordinator may stop it, and it may save the project values that action writes.",
+      security,
+      requestBody: {
+        required: true,
+        content: { "application/json": { schema: resolver(RunAction) } },
+      },
+      responses: {
+        200: {
+          description: "The recorded run and action",
+          content: { "application/json": { schema: resolver(RunAction) } },
+        },
+        404: { description: "No specialist run by that id in the project" },
+      },
+    }),
+    async (c) =>
+      c.json(
+        await service.recordRunAction(
+          actorOf(c),
+          c.req.param("projectId"),
+          await body(c),
+        ),
+      ),
+  );
+  app.get(
+    "/:projectId/runs",
+    describeRoute({
+      tags: ["Artifacts"],
+      operationId: "listCoordinatorRuns",
+      description:
+        "The runs the coordinator started in the project for a plugin action: every one still at work, with its state and latest activity as far as this hub saw it, and the latest that ended, with why when one failed.",
+      security,
+      responses: {
+        200: {
+          description: "The coordinator's runs, newest first",
+          content: { "application/json": { schema: resolver(ProjectRuns) } },
+        },
+      },
+    }),
+    async (c) =>
+      c.json({
+        runs: await service.runs(actorOf(c), c.req.param("projectId")),
+      }),
+  );
+  app.post(
+    "/:projectId/runs/:runId/stop",
+    describeRoute({
+      tags: ["Artifacts"],
+      operationId: "stopCoordinatorRun",
+      description:
+        "Stops a run the coordinator started in the project, through Interchange's cancellation. What the run filed or pushed before it stopped is kept.",
+      security,
+      responses: {
+        200: { description: "The stop was requested" },
+        404: {
+          description:
+            "No run the coordinator started in the project by that id",
+        },
+        409: { description: "The run has already ended" },
+      },
+    }),
+    async (c) =>
+      c.json(
+        await service.stopRun(
+          actorOf(c),
+          c.req.param("projectId"),
+          c.req.param("runId"),
+        ),
+      ),
+  );
+  app.post(
+    "/:projectId/run-values",
+    describeRoute({
+      tags: ["Artifacts"],
+      operationId: "saveRunValues",
+      description:
+        "A specialist run saves project values it learned: only those the plugin action it was started for writes, each checked against its declared type and stored as the values route stores it. Returns the saved values read back.",
+      security,
+      requestBody: {
+        required: true,
+        content: {
+          "application/json": { schema: resolver(ProjectValuesWrite) },
+        },
+      },
+      responses: {
+        200: {
+          description: "Each saved value as now stored",
+          content: { "application/json": { schema: resolver(ProjectValues) } },
+        },
+        400: {
+          description:
+            "A name that no plugin declares or a value its type refuses",
+        },
+        403: {
+          description: "A value the run's action does not write",
+        },
+      },
+    }),
+    async (c) => {
+      const current = actorOf(c);
+      const projectId = c.req.param("projectId");
+      const input = ProjectValuesWrite(await body(c));
+      if (input instanceof type.errors)
+        throw new ProjectError(400, "invalid_project_values", {
+          issues: input,
+        });
+      const unknown = undeclaredValue(Object.keys(input.values));
+      if (unknown !== undefined)
+        throw new ProjectError(400, "unknown_project_value", {
+          key: unknown,
+          issues: [
+            { path: unknown, message: "is not a value any plugin declares" },
+          ],
+        });
+      // Refuses a value its declared type does not take. Every value an action writes is one a
+      // plugin declares, kept in the plain store, so the values are stored as they came.
+      projectValueWrites(
+        input.values,
+        await service.projectState(current, projectId),
+        CATALOG.values,
+      );
+      await service.saveRunValues(current, projectId, input.values, (run) => {
+        const action = CATALOG.actions
+          .filter(isWorkflowAction)
+          .find(
+            (installed) =>
+              installed.plugin === run.plugin &&
+              installed.action === run.action,
+          );
+        return action?.builder.writes ?? [];
+      });
+      return c.json({
+        values: readProjectValues(
+          Object.keys(input.values),
+          await service.projectState(current, projectId),
         ),
       });
     },

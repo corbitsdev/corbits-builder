@@ -178,6 +178,7 @@ export function createSpecialistEndNotices(deps: {
         runId: coordinator.runId,
         principalId: coordinator.principalId,
         content: specialistEndedMessage({
+          runId: ended.runId,
           role,
           ...(kind ? { kind } : {}),
           status: ended.status === "failed" ? "failed" : "cancelled",

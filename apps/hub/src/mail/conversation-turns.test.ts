@@ -153,6 +153,7 @@ test("a person's words read back with the line breaks they typed", async () => {
 
 test("a specialist-ended notice reads back without its coordinator-only part", async () => {
   const notice = specialistEndedMessage({
+    runId: "run-1",
     role: "writer",
     status: "failed",
     reason: { message: "provider refused the request" },

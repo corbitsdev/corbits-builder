@@ -218,6 +218,8 @@ export type DispatchRoom = {
   /** The runs mid-turn, with the tool calls and words their own inference events carried; undefined until read. */
   readonly activity: readonly AgentActivity[] | undefined;
   readonly onOpenDocument?: (kind: string) => void;
+  /** Opens the project view on what a working designer or coder is making. */
+  readonly onWatch?: (dispatch: Dispatch) => void;
 };
 
 /** The artifact a hand-off files, by kind. */

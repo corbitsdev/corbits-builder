@@ -55,6 +55,8 @@ export type WorkUnitStanding = {
   approvals: readonly DocumentApproval[];
   /** Opens the document the work filed; absent where nothing can open it. */
   onOpenDocument: ((kind: string) => void) | undefined;
+  /** Opens what the work makes as it makes it, offered while it works; absent where nothing shows it. */
+  watch: { label: string; open: () => void } | undefined;
 };
 
 export type WorkUnitMessageViewProps = WorkUnitStanding & {
@@ -124,18 +126,35 @@ function WorkResult({
   status,
   recent,
   onOpen,
+  watch,
 }: {
   status: DispatchStatus;
   recent: readonly string[];
   onOpen: ((kind: string) => void) | undefined;
+  watch: WorkUnitStanding["watch"];
 }) {
-  if (status.state === "working" && recent.length > 0)
+  if (status.state === "working")
     return (
-      <ul className={styles.recent} aria-label={text.recent}>
-        {recent.map((line, index) => (
-          <li key={`${String(index)}:${line}`}>{line}</li>
-        ))}
-      </ul>
+      <>
+        {recent.length === 0 ? null : (
+          <ul className={styles.recent} aria-label={text.recent}>
+            {recent.map((line, index) => (
+              <li key={`${String(index)}:${line}`}>{line}</li>
+            ))}
+          </ul>
+        )}
+        {watch === undefined ? null : (
+          <Button
+            type="button"
+            variant="link"
+            size="sm"
+            className={styles.open}
+            onClick={watch.open}
+          >
+            {watch.label}
+          </Button>
+        )}
+      </>
     );
   if (status.state === "failed")
     return (
@@ -189,6 +208,7 @@ export function WorkUnitMessageView({
   refused,
   approvals,
   onOpenDocument,
+  watch,
   handoff,
   decision,
 }: WorkUnitMessageViewProps) {
@@ -257,6 +277,7 @@ export function WorkUnitMessageView({
                 status={status}
                 recent={recent}
                 onOpen={onOpenDocument}
+                watch={watch}
               />
             ) : null
           }

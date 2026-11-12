@@ -28,7 +28,7 @@ export function composerPlaceholder(input: {
   /** Absent until project status has loaded. */
   status: ProjectStatus | undefined;
   /** No pane deliverables, design draft, or concepts yet. */
-  chatFirst: boolean;
+  nothingFiled: boolean;
 }): string {
   if (input.approvalOpen) return wording.approval.composerPlaceholder;
   if (input.questionsOpen) return wording.questions.composerPlaceholder;
@@ -39,6 +39,6 @@ export function composerPlaceholder(input: {
   if (status.app.state === "running") return copy.change;
   if (status.app.state === "failed" || status.failedSpecialist !== undefined)
     return copy.fix;
-  if (input.chatFirst) return copy.making;
+  if (input.nothingFiled) return copy.making;
   return copy.reply;
 }

@@ -288,7 +288,7 @@ export function createAgentTokenBridge(
     }
     const nativeBearer = bearer.startsWith(NATIVE_RUN_TOKEN_PREFIX);
     const artifactRoute =
-      /^\/api\/tenants\/[^/]+\/projects\/[^/]+\/(?:artifacts(?:\/[^/]+)?|artifact-approvals|design-themes\/run|design-draft\/previous|app-repository(?:\/revoke)?)$/.test(
+      /^\/api\/tenants\/[^/]+\/projects\/[^/]+\/(?:artifacts(?:\/[^/]+)?|artifact-approvals|design-themes\/run|design-draft\/previous|app-repository(?:\/revoke)?|run-values)$/.test(
         c.req.path,
       );
     const runtimeScope = c.req.path === "/api/workflow-project-scope";
@@ -396,10 +396,11 @@ export function createAgentTokenBridge(
     }
     const base = "/api/tenants/" + encodeURIComponent(identity.tenantId);
     // Spawned specialists hold no project binding; their native grants decide
-    // which artifacts they may read and write.
+    // which artifacts they may read and write. run-values saves only what the
+    // run's own plugin action writes, which the hub checks for the run.
     if (artifactRoute && !(await registry.boundRun(identity.runId))) {
       const collection =
-        /\/(?:artifacts|artifact-approvals|app-repository(?:\/revoke)?)$/.test(
+        /\/(?:artifacts|artifact-approvals|app-repository(?:\/revoke)?|run-values)$/.test(
           c.req.path,
         );
       if (
@@ -442,9 +443,11 @@ export function createAgentTokenBridge(
     const projectRoute =
       suffix !== null &&
       ((c.req.method === "GET" &&
-        /^(|\/audit|\/artifacts(?:\/[^/]+)?|\/values|\/route)$/.test(suffix)) ||
+        /^(|\/audit|\/artifacts(?:\/[^/]+)?|\/values|\/routes|\/runs)$/.test(
+          suffix,
+        )) ||
         (c.req.method === "POST" &&
-          /^(\/mutations|\/artifacts|\/artifact-approvals|\/design-concepts|\/presenter-assignments|\/route)$/.test(
+          /^(\/mutations|\/artifacts|\/artifact-approvals|\/design-concepts|\/presenter-assignments|\/routes|\/run-actions|\/runs\/[^/]+\/stop)$/.test(
             suffix,
           )));
     const deployRoute =

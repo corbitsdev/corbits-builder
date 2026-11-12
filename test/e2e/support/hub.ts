@@ -19,6 +19,8 @@ export type TestHubHandle = Readonly<{
   baseUrl: string;
   workspaceTenantId: string;
   client: ProductApiClient;
+  // The signed-up person's session, for a hub call the client has no method for.
+  cookie: string;
   fakeCredentialSecret: string;
   dataDir: string;
   // Looks up a run's mail address, which locates its stored conversation under dataDir.
@@ -30,6 +32,10 @@ export type TestHubHandle = Readonly<{
   ) => () => void;
   close: () => Promise<void>;
 }>;
+
+// The key the test hub encrypts stored credentials with, run tokens among them.
+export const CREDENTIAL_KEY =
+  "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef";
 
 export type TestHubOptions = Readonly<{
   pluginHint?: PluginHint;
@@ -188,8 +194,7 @@ export async function startTestHub(
     HUB_API_ORIGIN: baseUrl,
     UI_PUBLIC_URL: baseUrl,
     HUB_DATA_DIR: dataDir,
-    CREDENTIAL_ENCRYPTION_KEY:
-      "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef",
+    CREDENTIAL_ENCRYPTION_KEY: CREDENTIAL_KEY,
     PRINCIPAL_KEY_ENCRYPTION_KEY:
       "fedcba9876543210fedcba9876543210fedcba9876543210fedcba9876543210",
     BETTER_AUTH_SECRET:
@@ -355,6 +360,7 @@ export async function startTestHub(
       baseUrl,
       workspaceTenantId,
       client,
+      cookie,
       fakeCredentialSecret,
       dataDir,
       db: handle.db,

@@ -11,7 +11,10 @@ import { TOKEN_DECLARATIONS } from "../artifacts/project-values.ts";
 import { FACTS } from "./facts.ts";
 import { STARTERS } from "./starters.ts";
 
-export { isRoute } from "@corbits-builder/plugin-host/catalog";
+export {
+  isRoute,
+  isWorkflowAction,
+} from "@corbits-builder/plugin-host/catalog";
 
 // From this file rather than the working directory, so every way of starting the hub finds it.
 export const PLUGINS_FOLDER = resolve(import.meta.dir, "../../../../plugins");
@@ -39,7 +42,7 @@ export const WITH_SCREENS = PLUGINS.filter(
 );
 
 /**
- * What a finished run of an installed workflow tells the coordinator about the screen that shows
+ * What a finished run of an installed workflow tells the coordinator about the screens that show
  * its work, from the action that starts it; null when that action presents nothing.
  */
 export function presentsFor(workflow: string) {
@@ -54,5 +57,8 @@ export function presentsFor(workflow: string) {
   return starting[0]?.presents ?? null;
 }
 
-// The route a project follows, as the hub stores it: a route plugin's handle, or null for none.
-export const ProjectRoute = type({ "+": "reject", route: "string > 0 | null" });
+// The routes a project follows, as the hub stores them: route plugins' handles.
+export const ProjectRoutes = type({
+  "+": "reject",
+  routes: type("string > 0").array(),
+});

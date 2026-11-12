@@ -125,7 +125,7 @@ test(
                       callId: "coord_inter",
                       toolName: "execute",
                       isError: false,
-                      keys: ["runId", "role"],
+                      keys: ["started", "plugin", "action", "runs"],
                     },
                   ],
                 },

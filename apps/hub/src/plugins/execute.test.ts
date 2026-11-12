@@ -27,11 +27,16 @@ const workflows = {
 type Filed = { kind: string; version: number; approvedVersion?: number };
 
 // A project as the hub stores it, and what the coordinator's tools did to it.
-function project(artifacts: Filed[], route: string | null = null) {
-  const state = { artifacts, route };
+function project(
+  artifacts: Filed[],
+  routes: string[] = [],
+  preferences: Record<string, string> = {},
+) {
+  const state = { artifacts, routes };
   const deployed: string[] = [];
   const mailed: string[] = [];
   const approvals: unknown[] = [];
+  const recorded: unknown[] = [];
   const fetch = async (path: string, init: RequestInit) => {
     const body = init.body ? JSON.parse(String(init.body)) : undefined;
     if (path.endsWith("/workflows/deployments")) {
@@ -58,11 +63,15 @@ function project(artifacts: Filed[], route: string | null = null) {
         ),
         inFlight: [],
         appBuilt: false,
-        preferences: {},
+        preferences,
       });
-    if (path.endsWith("/route")) {
-      if (body) state.route = body.route;
-      return Response.json({ route: state.route });
+    if (path.endsWith("/routes")) {
+      if (body) state.routes = body.routes;
+      return Response.json({ routes: state.routes });
+    }
+    if (path.endsWith("/run-actions")) {
+      recorded.push(body);
+      return Response.json(body);
     }
     if (path.includes("/values?")) {
       const keys = new URL(path, "http://hub").searchParams.get("keys") ?? "";
@@ -104,6 +113,7 @@ function project(artifacts: Filed[], route: string | null = null) {
     deployed,
     mailed,
     approvals,
+    recorded,
     definitions: tools.definitions.map(({ name }) => name),
     execute: (asked: Record<string, unknown>) => call("execute", asked),
     discover: (args: Record<string, unknown>) => call("discover", args),
@@ -132,7 +142,12 @@ const designerMockup = {
 };
 
 test("the dynamic coordinator starts work with execute and offers no staged tool", () => {
-  expect(project([]).definitions).toEqual(["discover", "execute", "question"]);
+  expect(project([]).definitions).toEqual([
+    "discover",
+    "execute",
+    "runs",
+    "question",
+  ]);
 });
 
 test("execute refuses an unknown plugin, a bad input and a screen, and starts nothing", async () => {
@@ -147,6 +162,13 @@ test("execute refuses an unknown plugin, a bad input and a screen, and starts no
     '"polish-app" is not an installed plugin, so nothing was started.',
   );
   expect(unknown.content).toContain("coder change");
+
+  const malformed = await empty.execute({ plugn: "coder", action: "change" });
+  expect(malformed.isError).toBe(true);
+  expect(malformed.content).toStartWith(
+    "execute was not run, so nothing was started. 2 fields are wrong:\n  plugin: must be a string (was missing)\n  plugn: execute takes no plugn",
+  );
+  expect(malformed.content).toContain("What execute takes:\nInput:\n  plugin");
 
   const bad = await empty.execute({
     plugin: "coder",
@@ -180,23 +202,32 @@ test("coder change starts a coder on a project that holds only an imported app, 
     input: change,
   });
   expect(started.isError).toBeUndefined();
-  expect(started.content).toContain('"role":"coder"');
+  expect(JSON.parse(String(started.content))).toEqual({
+    started: true,
+    plugin: "coder",
+    action: "change",
+    runs: [{ runId: "run-1" }],
+  });
+  expect(imported.recorded).toEqual([
+    { runId: "run-1", plugin: "coder", action: "change" },
+  ]);
   expect(imported.deployed).toHaveLength(1);
   expect(imported.mailed[0]).toContain(change.instruction);
+  expect(imported.mailed[0]).toContain(
+    "save it with report_values({ name: value }); it saves only these:\n- stack.language (text)",
+  );
   expect(imported.approvals).toEqual([]);
-  expect(imported.state.route).toBeNull();
+  expect(imported.state.routes).toEqual([]);
 });
 
-test("coder build is refused until what it builds from is filed, then starts, and is refused once an app exists", async () => {
+test("coder build starts on a fresh project from the instruction alone, and is refused once an app exists", async () => {
   const empty = project([]);
-  const refused = await empty.execute(coderBuild);
-  expect(refused.isError).toBe(true);
-  expect(refused.content).toStartWith("coder build was not started.");
-  expect(empty.deployed).toEqual([]);
-
-  const planned = project([filed("product_requirements")]);
-  expect((await planned.execute(coderBuild)).isError).toBeUndefined();
-  expect(planned.deployed).toHaveLength(1);
+  expect((await empty.execute(coderBuild)).isError).toBeUndefined();
+  expect(empty.deployed).toHaveLength(1);
+  expect(empty.mailed[0]).toStartWith(
+    "The project has no documents and no design yet",
+  );
+  expect(empty.mailed[0]).toContain(build.instruction);
 
   const built = project([filed("product_requirements"), filed("app")]);
   expect((await built.execute(coderBuild)).content).toBe(
@@ -205,39 +236,53 @@ test("coder build is refused until what it builds from is filed, then starts, an
   expect(built.deployed).toEqual([]);
 });
 
-test("on build-web-app, coder build names what it lacks of its own and what the route adds", async () => {
-  const following = project([], "build-web-app");
+test("on build-web-app, coder build waits for the person's go-ahead while they decide approvals, and otherwise starts with the route's advice", async () => {
+  const following = project([], ["build-web-app"]);
   const refused = await following.execute(coderBuild);
   expect(refused.content).toBe(
     [
       "coder build was not started. The project does not have what it needs yet.",
       "",
-      "It needs one of these:",
-      "  - the product requirements are filed (writer write or writer write-requirements makes this true)",
-      "  - the build plan is filed (writer write or writer write-build-plan makes this true)",
-      "",
-      "Because this project is following build-web-app, it also needs:",
+      "The person decides approvals, and this project follows build-web-app, which asks for their go-ahead first:",
       "  - the person approved the current version of the build plan, or leaves approvals to you (writer approve makes this true)",
       "  - the person chose a design from the design options (designer review or designer choose makes this true)",
       "",
       "Start what makes these true first, or ask the person, then call execute again.",
-      'If the person directs the work elsewhere, take the project off the route with execute({ plugin: "build-web-app", input: { leave: true } }).',
+      'If the person directs the work elsewhere, take the project off build-web-app with execute({ plugin: "build-web-app", input: { leave: true } }).',
     ].join("\n"),
   );
+  expect(following.deployed).toEqual([]);
+
+  const leftToBuilder = project([filed("build_plan")], ["build-web-app"], {
+    agent_decides_approvals: "yes",
+  });
+  const started = JSON.parse(
+    String((await leftToBuilder.execute(coderBuild)).content),
+  );
+  expect(started.advice).toBe(
+    "build-web-app suggests doing this first: the person chose a design from the design options (designer review or designer choose makes this true). The route orders the work so each step builds on what the one before made; this started without it.",
+  );
+  expect(leftToBuilder.deployed).toHaveLength(1);
 });
 
 test("designer mockup starts a designer with nothing filed, unless the project follows build-web-app and the requirements are not approved", async () => {
   const alone = project([]);
-  expect((await alone.execute(designerMockup)).content).toContain(
-    '"role":"designer"',
-  );
+  expect(
+    JSON.parse(String((await alone.execute(designerMockup)).content)),
+  ).toEqual({
+    started: true,
+    plugin: "designer",
+    action: "mockup",
+    runs: [{ runId: "run-1", concept: "Park" }],
+    presents: ["designer choose", "designer review"],
+  });
   expect(alone.deployed).toHaveLength(1);
 
-  const following = project([filed("product_requirements")], "build-web-app");
+  const following = project([filed("product_requirements")], ["build-web-app"]);
   const refused = await following.execute(designerMockup);
   expect(refused.isError).toBe(true);
   expect(refused.content).toContain(
-    "Because this project is following build-web-app, it also needs:\n  - the person approved the current version of the product requirements",
+    "this project follows build-web-app, which asks for their go-ahead first:\n  - the person approved the current version of the product requirements",
   );
   expect(following.deployed).toEqual([]);
 
@@ -249,7 +294,7 @@ test("designer mockup starts a designer with nothing filed, unless the project f
 test("execute on build-web-app puts the project on it and returns its guidance and where each step stands", async () => {
   const idea = project([filed("product_requirements", true)]);
   const followed = await idea.execute({ plugin: "build-web-app" });
-  expect(idea.state.route).toBe("build-web-app");
+  expect(idea.state.routes).toEqual(["build-web-app"]);
   expect(followed.content).toStartWith(
     "The project now follows build-web-app.",
   );
@@ -259,8 +304,8 @@ test("execute on build-web-app puts the project on it and returns its guidance a
       "Where each step stands now:",
       "  writer write-requirements: can start now",
       "  designer mockup: can start now",
-      "  writer write-build-plan: because this project is following build-web-app, it also needs: the person chose a design from the design options",
-      "  coder build: because this project is following build-web-app, it also needs: the person approved the current version of the build plan, or leaves approvals to you and the person chose a design from the design options",
+      "  writer write-build-plan: needs the person's go-ahead, which build-web-app asks for: the person chose a design from the design options",
+      "  coder build: needs the person's go-ahead, which build-web-app asks for: the person approved the current version of the build plan, or leaves approvals to you and the person chose a design from the design options",
     ].join("\n"),
   );
   const found = await idea.discover({ query: "build me an app" });
@@ -269,15 +314,15 @@ test("execute on build-web-app puts the project on it and returns its guidance a
     "coder runs a specialist. Groups: build, change.",
   );
   expect(found.content).toContain(
-    "coder build: Has the coder build the whole app for the first time from the filed documents and, when one is chosen, the design. The documents are the assignment.\nUse it when: The project has no app yet and its requirements or build plan say what to build.\nNot when: The project already has an app; a change to it is coder change.\nRequires: the product requirements are filed; or the build plan is filed.\nInput:",
+    "coder build: Has the coder build the whole app for the first time: from the filed documents and the chosen design when there are any, or from the instruction alone when the person wants it built now.\nUse it when: The project has no app yet: built from its requirements, build plan and design when they are filed, or from the person's instruction alone when they want it built now.\nNot when: The project already has an app; a change to it is coder change.\nRequires: nothing.\nInput:",
   );
   expect(found.content).toContain(
-    "Now:\n  coder build: because this project is following build-web-app, it also needs: the person approved",
+    "Now:\n  coder build: needs the person's go-ahead, which build-web-app asks for: the person approved",
   );
 });
 
 test("leave takes the project off the route, and so does the app existing", async () => {
-  const following = project([], "build-web-app");
+  const following = project([], ["build-web-app"]);
   expect(
     (
       await following.execute({
@@ -286,11 +331,11 @@ test("leave takes the project off the route, and so does the app existing", asyn
       })
     ).content,
   ).toBe(
-    "The project no longer follows build-web-app. Each action now needs only what it cannot work without.",
+    "The project no longer follows build-web-app, so nothing of it applies to its steps any more.",
   );
-  expect(following.state.route).toBeNull();
+  expect(following.state.routes).toEqual([]);
 
-  const built = project([filed("app")], "build-web-app");
+  const built = project([filed("app")], ["build-web-app"]);
   expect((await built.execute(designerMockup)).isError).toBeUndefined();
-  expect(built.state.route).toBeNull();
+  expect(built.state.routes).toEqual([]);
 });

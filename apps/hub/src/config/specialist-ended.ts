@@ -47,6 +47,7 @@ const TASKS: Record<SpawnedRole, (kind: string | undefined) => string> = {
 };
 
 export function specialistEndedMessage(ended: {
+  runId: string;
   role: SpawnedRole;
   kind?: string;
   status: Outcome;
@@ -56,7 +57,7 @@ export function specialistEndedMessage(ended: {
   const reason = ended.reason
     ? ` Recorded reason${ended.reason.code ? ` (${ended.reason.code})` : ""}: ${ended.reason.message}`
     : "";
-  return `${SPECIALIST_ENDED_LEAD}${PERSON_LINES[ended.role][ended.status]}${COORDINATOR_ONLY}${TASKS[ended.role](ended.kind)} ${how} before finishing, so no result is coming from it.${reason}`;
+  return `${SPECIALIST_ENDED_LEAD}${PERSON_LINES[ended.role][ended.status]}${COORDINATOR_ONLY}${TASKS[ended.role](ended.kind)} in run ${ended.runId} ${how} before finishing, so no result is coming from it.${reason}`;
 }
 
 /** A person-sent turn as the person may read it: a specialist-ended notice loses its coordinator-only part. */

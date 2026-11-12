@@ -1,7 +1,7 @@
 import { type } from "arktype";
 import type { ValueDeclaration } from "@corbits-builder/plugin";
 import type { DesignTweaks } from "@corbits-builder/schemas/artifact";
-import { ProjectError } from "../projects/errors.ts";
+import { ProjectError, typeIssues } from "../projects/errors.ts";
 import { declarations } from "./design-tokens.ts";
 
 // What the project has stored that its values are read from: the filed design's styles.css, and
@@ -100,7 +100,10 @@ const STORED_TYPES = {
 } as const;
 
 const invalid = (key: string, issues: type.errors) =>
-  new ProjectError(400, "invalid_project_value", { key, issues });
+  new ProjectError(400, "invalid_project_value", {
+    key,
+    issues: typeIssues(issues, key),
+  });
 
 /**
  * Each named value split by its home: design tokens written over the project's current state, and

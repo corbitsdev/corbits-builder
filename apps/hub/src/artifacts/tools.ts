@@ -96,6 +96,30 @@ const documentWriteDefinition = {
   inputSchema: { ...AnyDocumentFields.toJsonSchema() },
 };
 
+// A specialist saves what it learned of the project values its assignment lists; the hub keeps
+// to the names the plugin action it was started for writes.
+const ReportValues = type({ "[string]": "unknown" });
+const reportValuesDefinition = {
+  name: "report_values",
+  description:
+    'Save project values you learned while working, by name, such as { "stack.language": "TypeScript" }. Your assignment lists the values your work saves and what each holds; a name it does not list is refused and nothing is saved.',
+  inputSchema: { ...ReportValues.toJsonSchema() },
+};
+
+// Why the hub saved none of the values, field by field, as the agent can correct it.
+function valuesRefused(callId: string, error: WorkflowHttpError) {
+  return {
+    callId,
+    content: [
+      `Nothing was saved (${error.refusalCode ?? "refused"}).`,
+      ...(error.issues ?? []).map(({ path, message }) => `${path}: ${message}`),
+      ...(error.hint ? [error.hint] : []),
+      "Call again with only the values your assignment lists, each of the type it names.",
+    ].join("\n"),
+    isError: true,
+  };
+}
+
 export function failure(callId: string, error: unknown) {
   if (error instanceof WorkflowHttpError && error.status)
     return {
@@ -173,8 +197,11 @@ export const createDocumentWriterArtifactTools = () =>
 
 function artifactTools(
   role: WorkflowRole,
-  { definitions, save }: ArtifactToolSet,
+  { definitions: own, save }: ArtifactToolSet,
 ): AnnotatedToolFactory<ArtifactToolEnv> {
+  // Every specialist may save the project values its plugin action writes.
+  const definitions =
+    role === "coordinator" ? own : [...own, reportValuesDefinition];
   return defineTool<ArtifactToolEnv>({
     id: "@corbits-builder/artifacts/tools",
     credentials: [{ handle: HUB_CREDENTIAL_HANDLE }],
@@ -201,12 +228,12 @@ function artifactTools(
               role,
               signal,
             );
-            const base =
+            const projectPath =
               "/api/tenants/" +
               encodeURIComponent(scope.tenantId) +
               "/projects/" +
-              encodeURIComponent(scope.projectId) +
-              "/artifacts";
+              encodeURIComponent(scope.projectId);
+            const base = projectPath + "/artifacts";
             const request = (path: string, body?: unknown) =>
               workflowHttpJson({
                 capabilities: env.capabilities,
@@ -217,6 +244,31 @@ function artifactTools(
                 maxResponseBytes: Number.POSITIVE_INFINITY,
                 signal,
               });
+            if (call.name === "report_values") {
+              const values = ReportValues(call.arguments);
+              if (values instanceof type.errors)
+                return {
+                  callId: call.id,
+                  content: `Nothing was saved: pass the values as { name: value }, such as { "stack.language": "TypeScript" }; ${values.summary}`,
+                  isError: true,
+                };
+              try {
+                return {
+                  callId: call.id,
+                  content: JSON.stringify(
+                    await request(projectPath + "/run-values", { values }),
+                  ),
+                };
+              } catch (error) {
+                if (
+                  error instanceof WorkflowHttpError &&
+                  (error.status === 400 ||
+                    (error.status === 403 && error.refusalCode !== "forbidden"))
+                )
+                  return valuesRefused(call.id, error);
+                throw error;
+              }
+            }
             if (call.name === "write_artifact" && save) {
               // The coordinator's writers own every kind but the brief, so the documents the person
               // decides on come from them.

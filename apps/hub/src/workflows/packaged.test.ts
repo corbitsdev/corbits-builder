@@ -227,7 +227,7 @@ test("the built coordinator runs the prompt and tool marks COORDINATOR_MODE name
   // question is Interchange's own tool, offered by the bundle that checks a screen's input.
   expect(await built("dynamic")).toEqual({
     systemPrompt: dynamic,
-    tools: ["read_artifact", "discover", "execute", "read_file"],
+    tools: ["read_artifact", "discover", "execute", "runs", "read_file"],
     marks: [],
   });
 }, 180_000);

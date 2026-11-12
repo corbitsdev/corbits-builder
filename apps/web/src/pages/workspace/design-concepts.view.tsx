@@ -1,10 +1,8 @@
 /**
  * Design concepts as the person compares them: a concept's filed design or its designer's live
- * draft, a sketch in the concept's own look until there is one to show, and the choice between
- * the filed concepts asked in the conversation.
+ * draft, and a sketch in the concept's own look until there is one to show.
  */
 import type { CSSProperties, ReactNode } from "react";
-import { Badge, Button } from "@corbits/react-ui";
 import { Info } from "lucide-react";
 import { wording } from "../../config.ts";
 import type { DesignFiles } from "./design-bundle.ts";
@@ -150,74 +148,5 @@ function ConceptSketching({
         <p className={styles.direction}>{direction}</p>
       )}
     </Sketching>
-  );
-}
-
-/** The design the person chose in the conversation, in place of the ask it answered. */
-export const DesignChosenView = ({ concept }: { concept: string }) => (
-  <p className={styles.choice}>
-    <Badge tone="success">{wording.design.chosen(concept)}</Badge>
-  </p>
-);
-
-export type DesignChoiceViewProps = {
-  /** The concepts with a filed design, each confirmable. */
-  concepts: readonly { label: string; direction: string | undefined }[];
-  /** A choice is being filed, so the confirm buttons wait. */
-  choosing: boolean;
-  onShow: (label: string) => void;
-  onChoose: (label: string) => void;
-};
-
-/** The person's choice of a filed concept, asked in the conversation. */
-export function DesignChoiceView({
-  concepts,
-  choosing,
-  onShow,
-  onChoose,
-}: DesignChoiceViewProps) {
-  const [only] = concepts;
-  if (concepts.length === 1 && only !== undefined)
-    return (
-      <div className={styles.choice}>
-        <p>{wording.design.confirmOne}</p>
-        <Button
-          type="button"
-          size="sm"
-          disabled={choosing}
-          onClick={() => onChoose(only.label)}
-        >
-          {choosing ? wording.design.confirming : wording.design.confirm}
-        </Button>
-      </div>
-    );
-  return (
-    <div className={styles.choice}>
-      <p>{wording.design.confirmSeveral}</p>
-      <ul className={styles.options}>
-        {concepts.map((concept) => (
-          <li key={concept.label}>
-            <Button
-              type="button"
-              variant="link"
-              size="sm"
-              title={concept.direction}
-              onClick={() => onShow(concept.label)}
-            >
-              {concept.label}
-            </Button>
-            <Button
-              type="button"
-              size="sm"
-              disabled={choosing}
-              aria-label={wording.design.confirmConcept(concept.label)}
-              onClick={() => onChoose(concept.label)}
-            >
-              {choosing ? wording.design.confirming : wording.design.confirm}
-            </Button>
-          </li>
-        ))}
-      </ul>
-    </div>
   );
 }

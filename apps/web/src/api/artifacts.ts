@@ -3,7 +3,6 @@ import {
   type PackageZipReviewerQuery,
 } from "@corbits-builder/client";
 import type {
-  DesignChoice,
   DesignTweaks,
   UserManual,
 } from "@corbits-builder/schemas/artifact";
@@ -201,11 +200,6 @@ export async function readProjectValues(
     signal,
   );
   return read.values;
-}
-
-export async function chooseDesign(projectId: string, input: DesignChoice) {
-  const tenantId = await workspaceTenantId();
-  return productClient().chooseDesign(tenantId, projectId, input);
 }
 
 /** The file types the coordinator reads and how many and how large they may be. */

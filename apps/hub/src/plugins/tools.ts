@@ -1,7 +1,7 @@
 import { defineTool, type AnnotatedToolFactory } from "@intx/agent/authoring";
 import { questionTool } from "@intx/inference";
 import { HUB_CREDENTIAL_HANDLE } from "@intx/types/credential-delivery";
-import { ProjectValues } from "@corbits-builder/schemas/artifact";
+import { ProjectRuns, ProjectValues } from "@corbits-builder/schemas/artifact";
 import {
   checkedDiscover,
   Discover,
@@ -9,6 +9,8 @@ import {
   discoverIn,
   execute,
   Execute,
+  manageRuns,
+  Runs,
   type Project,
 } from "@corbits-builder/plugin-host/coordinator";
 import { fields } from "@corbits-builder/plugin-host/search/fields";
@@ -19,6 +21,7 @@ import {
   DISCOVER_DYNAMIC_DESCRIPTION,
   EXECUTE_DESCRIPTION,
   pluginHint,
+  RUNS_DESCRIPTION,
 } from "@corbits-builder/plugin-host/text";
 import type { PluginHint } from "../environment.ts";
 import {
@@ -31,7 +34,8 @@ import {
   type ProjectSession,
 } from "../projects/project-session.ts";
 import { projectScopeFailure } from "../workflows/project-scope.ts";
-import { CATALOG, ProjectRoute, SCREENS, WITH_SCREENS } from "./catalog.ts";
+import { agentDecidesApprovals } from "../config/preferences.ts";
+import { CATALOG, ProjectRoutes, SCREENS, WITH_SCREENS } from "./catalog.ts";
 import { projectFacts } from "./facts.ts";
 import { checkPluginQuestion } from "./question.ts";
 import { startAction } from "./starters.ts";
@@ -79,11 +83,17 @@ const discoverDefinition = (description: string) => ({
 
 // The project as the coordinator's tools act on it, through the hub.
 function project(session: ProjectSession): Project {
-  const path = session.projectPath + "/route";
+  const path = session.projectPath + "/routes";
   return {
-    facts: async () => projectFacts(await session.listed()),
-    route: async () => ProjectRoute.assert(await session.hub(path)).route,
-    setRoute: (route) => session.hub(path, { route }),
+    state: async () => {
+      const listed = await session.listed();
+      return {
+        facts: projectFacts(listed),
+        asksApprovals: !agentDecidesApprovals(listed.preferences),
+      };
+    },
+    routes: async () => ProjectRoutes.assert(await session.hub(path)).routes,
+    setRoutes: (routes) => session.hub(path, { routes }),
     values: async (names) =>
       ProjectValues.assert(
         await session.hub(
@@ -92,6 +102,13 @@ function project(session: ProjectSession): Project {
       ).values,
     start: (action, input, values) =>
       startAction(action, input, session, values),
+    runs: async () =>
+      ProjectRuns.assert(await session.hub(session.projectPath + "/runs")).runs,
+    stop: (runId) =>
+      session.hub(
+        `${session.projectPath}/runs/${encodeURIComponent(runId)}/stop`,
+        {},
+      ),
   };
 }
 
@@ -105,7 +122,7 @@ export function createPluginTools() {
     factory: () => ({
       definitions,
       run: async (call) => {
-        const { input, error } = checkedDiscover(call.arguments);
+        const { input, error } = checkedDiscover(WITH_SCREENS, call.arguments);
         if (!input) return { callId: call.id, content: error, isError: true };
         return { callId: call.id, content: discover(input) };
       },
@@ -115,7 +132,8 @@ export function createPluginTools() {
 
 /**
  * The dynamic coordinator's way to act: discover finds a plugin, execute starts a specialist's
- * action or a route, and question opens a screen, whose answer records what it approves.
+ * action or a route, runs lists, waits on and stops the runs it started, and question opens a
+ * screen, whose answer records what it approves.
  */
 export function createExecuteTools(
   options?: ProjectOptions,
@@ -128,13 +146,18 @@ export function createExecuteTools(
       description: EXECUTE_DESCRIPTION,
       inputSchema: { ...Execute.toJsonSchema() },
     },
+    {
+      name: "runs",
+      description: RUNS_DESCRIPTION,
+      inputSchema: { ...Runs.toJsonSchema() },
+    },
     questionTool,
   ];
   return defineTool<DeployEnv>({
     id: "@corbits-builder/plugins/execute",
     credentials: [{ handle: HUB_CREDENTIAL_HANDLE }],
     requires: ["capabilities"],
-    definitions: [{ name: "discover" }, { name: "execute" }],
+    definitions: [{ name: "discover" }, { name: "execute" }, { name: "runs" }],
     factory: (env) => ({
       definitions,
       checkQuestion: (question) =>
@@ -153,7 +176,10 @@ export function createExecuteTools(
         try {
           signal.throwIfAborted();
           if (call.name === "discover") {
-            const { input, error } = checkedDiscover(call.arguments);
+            const { input, error } = checkedDiscover(
+              CATALOG.plugins,
+              call.arguments,
+            );
             if (!input)
               return { callId: call.id, content: error, isError: true };
             return {
@@ -165,6 +191,11 @@ export function createExecuteTools(
             return {
               callId: call.id,
               ...(await execute(CATALOG, project(session), call.arguments)),
+            };
+          if (call.name === "runs")
+            return {
+              callId: call.id,
+              ...(await manageRuns(project(session), call.arguments, signal)),
             };
           return {
             callId: call.id,

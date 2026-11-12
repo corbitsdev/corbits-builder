@@ -57,7 +57,10 @@
         "start": {
           "workflow": "designer"
         },
-        "presents": "review"
+        "presents": [
+          "choose",
+          "review"
+        ]
       },
       "review": {
         "runs": "screen",

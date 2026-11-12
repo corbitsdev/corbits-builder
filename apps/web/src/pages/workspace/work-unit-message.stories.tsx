@@ -98,6 +98,7 @@ const args: WorkUnitMessageViewProps = {
   refused: false,
   approvals: [],
   onOpenDocument: fn(),
+  watch: undefined,
   // The thread draws the hand-off's own step as a call that opens onto its instruction.
   handoff: (step) =>
     step.kind === "tool-trace" ? (
@@ -154,6 +155,20 @@ export const Working: Story = {
     ),
     doing: "Reading the problem brief",
     recent: ["Reading the constraints", "Searching the approaches"],
+  },
+};
+
+/** A designer at work offers to open its draft as it takes shape. */
+export const WatchingADesigner: Story = {
+  args: {
+    ...standing({
+      state: "working",
+      since: new Date(Date.now() - 95_000).toISOString(),
+    }),
+    role: "designer",
+    subject: "the design",
+    doing: "Writing the home page",
+    watch: { label: "Watch the draft", open: fn() },
   },
 };
 

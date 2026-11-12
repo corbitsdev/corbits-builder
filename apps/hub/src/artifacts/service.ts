@@ -67,6 +67,8 @@ import {
   type DecidedApprovalList,
   type FailedRun,
   type InFlightRun,
+  type ProjectRun,
+  RunAction,
   type ArtifactRef,
   type AppSnapshotReceipt,
   type AppSnapshotState,
@@ -99,6 +101,7 @@ import {
   designConcept,
   project,
   projectCoordinator,
+  runAction,
   settingsRecord,
 } from "../db/schema.ts";
 import type { AgentActivityTracker } from "./activity.ts";
@@ -180,6 +183,8 @@ const APPROVAL_COVERS: Record<string, (kind: string) => boolean> = {
   instruct_coder: (kind) => kind !== "app" && kind !== "design_option",
 };
 const RECENT_FAILURES = 5;
+// How many of the coordinator's ended runs its runs list keeps, newest first.
+const RECENT_RUNS = 10;
 // A command's progress line older than this was left by a command that died; it is not shown.
 const COMMAND_PROGRESS_STALE_MS = 5 * 60_000;
 // A run held on an approval is mid-turn, so its activity reads as work; the pending record is what
@@ -403,6 +408,15 @@ export function createArtifactService(
   ) {
     return (await authorizeProject(rawDB, actor, projectId, action)).allowed;
   }
+
+  // The one write into the project's plain store of values, each replacing the one of its name.
+  const storeValues = (projectId: string, values: Record<string, unknown>) =>
+    rawDB
+      .update(project)
+      .set({
+        values: sql`${project.values} || ${JSON.stringify(values)}::jsonb`,
+      })
+      .where(eq(project.id, projectId));
 
   // The role's runs, newest first, each with its warm step, the design concept it works on, if
   // any, whether it is live and when it ended: the live runs, or with ended, every run.
@@ -1096,23 +1110,193 @@ export function createArtifactService(
       return designDraftOf(files);
     },
 
-    // The route plugin the project follows, or null when it follows none.
-    async projectRoute(actor: Actor, projectId: string) {
+    // The route plugins the project follows.
+    async projectRoutes(actor: Actor, projectId: string) {
       await requireProject(actor, projectId, "read");
       const [row] = await rawDB
-        .select({ route: project.route })
+        .select({ routes: project.routes })
         .from(project)
         .where(eq(project.id, projectId));
-      return row?.route ?? null;
+      return row?.routes ?? [];
     },
 
-    async followRoute(actor: Actor, projectId: string, route: string | null) {
+    async followRoutes(
+      actor: Actor,
+      projectId: string,
+      routes: readonly string[],
+    ) {
       await requireProject(actor, projectId, "manage");
+      const followed = [...new Set(routes)];
       await rawDB
         .update(project)
-        .set({ route })
+        .set({ routes: followed })
         .where(eq(project.id, projectId));
-      return route;
+      return followed;
+    },
+
+    // Records the plugin action the coordinator just started a specialist run for, before the
+    // run's assignment reaches it.
+    async recordRunAction(actor: Actor, projectId: string, raw: unknown) {
+      const input = RunAction(raw);
+      if (input instanceof type.errors)
+        throw new ProjectError(400, "invalid_run_action", { issues: input });
+      await requireProject(actor, projectId, "manage");
+      const [run] = await rawDB
+        .select({ bundle: workflowRunLaunchSpec.frozenApprovalBundle })
+        .from(workflowRun)
+        .innerJoin(
+          workflowRunLaunchSpec,
+          eq(workflowRunLaunchSpec.anchorRunId, workflowRun.id),
+        )
+        .where(
+          and(
+            eq(workflowRun.id, input.runId),
+            eq(workflowRun.tenantId, actor.tenantId),
+          ),
+        );
+      if (!run || !spawnedWorkflowRole(run.bundle))
+        throw new ProjectError(404, "specialist_run_not_found", {
+          runId: input.runId,
+        });
+      await rawDB
+        .insert(runAction)
+        .values({ ...input, tenantId: actor.tenantId, projectId })
+        .onConflictDoNothing();
+      return input;
+    },
+
+    // The runs the coordinator started in the project: every one still at work, and the latest
+    // that ended.
+    async runs(actor: Actor, projectId: string): Promise<ProjectRun[]> {
+      await requireProject(actor, projectId, "read");
+      const rows = await rawDB
+        .select({
+          runId: runAction.runId,
+          plugin: runAction.plugin,
+          action: runAction.action,
+          concept: designConcept.label,
+          status: workflowRun.status,
+          address: workflowRun.address,
+          startedAt: workflowRun.createdAt,
+          endedAt: workflowRun.endedAt,
+          failureCode: workflowRun.failureCode,
+          failureMessage: workflowRun.failureMessage,
+        })
+        .from(runAction)
+        .innerJoin(workflowRun, eq(workflowRun.id, runAction.runId))
+        .leftJoin(designConcept, eq(designConcept.runId, runAction.runId))
+        .where(
+          and(
+            eq(runAction.tenantId, actor.tenantId),
+            eq(runAction.projectId, projectId),
+          ),
+        )
+        .orderBy(desc(workflowRun.createdAt))
+        .limit(RECENT_RUNS * 4);
+      const heldOnApproval = new Set(
+        (
+          await rawDB
+            .select({ runId: approval.anchorRunId })
+            .from(approval)
+            .where(
+              and(
+                eq(approval.tenantId, actor.tenantId),
+                eq(approval.status, "pending"),
+              ),
+            )
+        ).map((row) => row.runId),
+      );
+      let ended = 0;
+      const listed: ProjectRun[] = [];
+      for (const row of rows) {
+        const live = row.status === "deployed" || row.status === "running";
+        if (!live) ended += 1;
+        if (!live && ended > RECENT_RUNS) continue;
+        const progress = tracker?.progress(row.runId);
+        const lastActivity = progress?.recent.at(-1);
+        const error =
+          row.status === "failed" ? await runFailure(runs, row) : undefined;
+        const run: ProjectRun = {
+          runId: row.runId,
+          plugin: row.plugin,
+          action: row.action,
+          status: row.status,
+          startedAt: row.startedAt.toISOString(),
+        };
+        if (row.concept !== null) run.concept = row.concept;
+        if (live)
+          run.state = inFlightState(
+            heldOnApproval.has(row.runId),
+            tracker?.of(row.runId)?.working,
+          );
+        if (row.endedAt) run.endedAt = row.endedAt.toISOString();
+        if (lastActivity) run.lastActivity = lastActivity;
+        if (progress) run.lastActivityAt = progress.lastActivityAt;
+        if (error) run.error = error.message;
+        listed.push(run);
+      }
+      return listed;
+    },
+
+    // Stops a run the coordinator started in the project, through Interchange's own cancellation.
+    async stopRun(actor: Actor, projectId: string, runId: string) {
+      await requireProject(actor, projectId, "manage");
+      const [run] = await rawDB
+        .select({ status: workflowRun.status })
+        .from(runAction)
+        .innerJoin(workflowRun, eq(workflowRun.id, runAction.runId))
+        .where(
+          and(
+            eq(runAction.runId, runId),
+            eq(runAction.tenantId, actor.tenantId),
+            eq(runAction.projectId, projectId),
+          ),
+        );
+      if (!run) throw new ProjectError(404, "run_not_found", { runId });
+      if (!isLiveWorkflowRunStatus(run.status))
+        throw new ProjectError(409, "run_ended", { runId, status: run.status });
+      if (!cancelRun) throw new ProjectError(503, "run_stop_unavailable");
+      await cancelRun(actor.tenantId, runId, "stopped_by_coordinator");
+      return { runId };
+    },
+
+    // Saves values for the calling specialist run: only those the plugin action it was started for
+    // writes. A run holds no project write of its own; this is its one way to save a value.
+    async saveRunValues(
+      actor: Actor,
+      projectId: string,
+      values: Record<string, unknown>,
+      writes: (run: { plugin: string; action: string }) => readonly string[],
+    ) {
+      await requireProject(actor, projectId, "read");
+      const [run] = await rawDB
+        .select({ plugin: runAction.plugin, action: runAction.action })
+        .from(runAction)
+        .innerJoin(principal, eq(principal.refId, runAction.runId))
+        .where(
+          and(
+            eq(principal.id, actor.principalId),
+            eq(principal.kind, "workflow"),
+            eq(runAction.tenantId, actor.tenantId),
+            eq(runAction.projectId, projectId),
+          ),
+        );
+      if (!run)
+        throw new ProjectError(403, "run_saves_no_values", {
+          hint: "This run was not started for a plugin action that saves project values, so it saves none.",
+        });
+      const allowed = writes(run);
+      const refused = Object.keys(values).filter(
+        (name) => !allowed.includes(name),
+      );
+      if (refused.length > 0)
+        throw new ProjectError(403, "run_value_not_written", {
+          issues: refused.map((name) => ({
+            path: name,
+            message: `is not a value ${run.plugin} ${run.action} saves; it saves ${allowed.length > 0 ? allowed.join(", ") : "none"}`,
+          })),
+        });
+      await storeValues(projectId, values);
     },
 
     // What project values are read from: the filed design at its latest version, with the look
@@ -1137,12 +1321,7 @@ export function createArtifactService(
       values: Record<string, unknown>,
     ) {
       await requireProject(actor, projectId, "manage");
-      await rawDB
-        .update(project)
-        .set({
-          values: sql`${project.values} || ${JSON.stringify(values)}::jsonb`,
-        })
-        .where(eq(project.id, projectId));
+      await storeValues(projectId, values);
     },
 
     // The person's saved look tokens, written deterministically wherever the design lives: the

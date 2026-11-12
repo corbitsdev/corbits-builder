@@ -20,23 +20,31 @@
   border-radius: 2px;
 }
 
-/* The measure applies to running text, not the block: a table, code fence
-   or embedded frame inside the same document reads better at the pane's
-   full width than squeezed into the same column as the prose around it.
-   Left-aligned rather than centred: the measure lines up with the document
-   header above it, and a centred column in a wide pane reads as a mistake.
-   Wide enough that the card's own width — not this cap — is usually what
-   limits a line: 80ch left a wide empty gutter once the document pane grew
-   to take the room the proportional chat column gave up. */
+/* In a passage the measure applies to running text, not the block: a table
+   or code fence reads better at its container's full width. Wide enough that
+   the container's own width, not this cap, is usually what limits a line. */
 .prose > :where(h1, h2, h3, h4, h5, h6, p, ul, ol, blockquote) {
   max-width: min(120ch, 1100px);
 }
 
-/* In the document pane a line of running text stops at a comfortable reading
-   length, and its last line is not left with one word. */
+/* A document read for itself is one centred column at a comfortable reading
+   length, about 70 characters a line, whose last lines are not left with one
+   word. A table, code fence or long word inside it scrolls or wraps within the
+   column rather than widening the page. */
+.prose[data-document] {
+  min-width: 0;
+  max-width: 72ch;
+  margin-inline: auto;
+  overflow-wrap: break-word;
+}
+
 .prose[data-document] > :where(p, ul, ol, blockquote) {
-  max-width: 75ch;
   text-wrap: pretty;
+}
+
+/* A heading sits closer to the section it opens than to the one before it. */
+.prose[data-document] > :where(h2, h3, h4) + * {
+  margin-top: 0.5em;
 }
 
 .prose > * + * {
@@ -199,7 +207,7 @@
   }
 
   .prose > *,
-  .prose[data-document] > :where(p, ul, ol, blockquote) {
+  .prose[data-document] {
     max-width: none;
   }
 

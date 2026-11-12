@@ -62,6 +62,7 @@ function render(selected: PaneDocument | null, state?: DeliverableState) {
       state={state}
       onSelect={() => {}}
       onSeen={() => {}}
+      open
       onClose={() => {}}
       {...parts}
     />,

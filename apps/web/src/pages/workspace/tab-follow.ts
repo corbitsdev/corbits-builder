@@ -9,6 +9,9 @@
 /** The live app's tab, which the pane shows itself and the room opens by name. */
 export const LIVE_TAB = "live-app";
 
+/** The live designer's unfiled mockup's tab, which the room opens to watch it take shape. */
+export const DRAFT_TAB = "design-draft";
+
 export type FollowDocument = {
   readonly id: string;
   readonly title: string;

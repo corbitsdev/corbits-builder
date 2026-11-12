@@ -57,7 +57,7 @@ import {
   writeStoredPreference,
 } from "../../stored-preference.ts";
 import { printDocument } from "./print-document.ts";
-import { LIVE_TAB } from "./tab-follow.ts";
+import { DRAFT_TAB, LIVE_TAB } from "./tab-follow.ts";
 import { useTabStrip } from "./tab-strip.ts";
 import type { ApproachChoice } from "./approach-choice.ts";
 
@@ -77,7 +77,6 @@ export type PaneDocument = {
 const TAB_PREFIX = "workspace-document";
 // No pane carries this value, so the body shows none while no tab is selected yet.
 const NO_TAB = "";
-const DRAFT_TAB = "design-draft";
 const draftIds = panelTabIds(TAB_PREFIX, DRAFT_TAB);
 const MANUAL_TAB = "user-manual";
 const manualIds = panelTabIds(TAB_PREFIX, MANUAL_TAB);
@@ -266,6 +265,8 @@ export type ArtifactPaneProps = ArtifactPaneContent &
   ArtifactPaneSlots & {
     /** The pane itself, for whoever moves focus to it. */
     paneRef?: Ref<HTMLElement>;
+    /** The pane is in view; a closed one waits hidden, so nothing in it is being read. */
+    open: boolean;
     /** Closes the pane, back to the conversation it opened over. */
     onClose: () => void;
   };
@@ -292,6 +293,7 @@ export function ArtifactPane({
   onSeen,
   onRemove,
   paneRef,
+  open,
   onClose,
   onRetry,
   onReadVersion,
@@ -363,6 +365,7 @@ export function ArtifactPane({
     if (openTab === null) return;
     setSide(
       openTab.value === LIVE_TAB ||
+        openTab.value === DRAFT_TAB ||
         openTab.value === MANUAL_TAB ||
         conceptOfTab(openTab.value) !== undefined
         ? openTab.value
@@ -494,8 +497,8 @@ export function ArtifactPane({
   const hasTabs =
     outputs || themes !== null || liveApp !== null || manual !== null;
   useEffect(() => {
-    if (shown?.unread) onSeen(shown.id);
-  }, [shown?.id, shown?.unread]);
+    if (open && shown?.unread) onSeen(shown.id);
+  }, [open, shown?.id, shown?.unread]);
   return (
     <Panel
       ref={paneRef}

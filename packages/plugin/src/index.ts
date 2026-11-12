@@ -73,8 +73,11 @@ export const WorkflowActionBuilder = ActionBuilder.merge({
   start: { workflow: "string > 0", "[string]": "unknown" },
   // Project values, by name, that Builder puts in the run's assignment.
   "reads?": "string[]",
-  // The screen action of the same plugin that shows the finished work to the person.
-  "presents?": "string > 0",
+  // Project values, by name, that the run's agent may save with report_values as it learns them.
+  "writes?": "string[] > 0",
+  // The screen actions of the same plugin that can show the finished work to the person; each
+  // screen's when says which fits.
+  "presents?": "string[] > 0",
 });
 export type WorkflowActionBuilder = typeof WorkflowActionBuilder.infer;
 
@@ -87,8 +90,9 @@ export const SpecialistBuilder = Common.merge({
 });
 export type SpecialistBuilder = typeof SpecialistBuilder.infer;
 
-// Guidance for reaching an outcome through other plugins' actions. While a project follows it, each
-// step also needs the step's own facts.
+// Guidance for reaching an outcome through other plugins' actions. While a project follows it, a
+// step's facts that only the person's answer on a screen makes true hold the step back while the
+// person decides approvals; the step's other facts are advice that execute passes on.
 export const RouteBuilder = Common.merge({
   runs: "'route'",
   guidance: "string > 0",

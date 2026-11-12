@@ -426,6 +426,30 @@ export const FailedRun = type({
   "error?": { "+": "reject", message: "string", "code?": "string" },
 });
 export type FailedRun = typeof FailedRun.infer;
+// The plugin action the coordinator started a specialist run for, recorded before its assignment.
+export const RunAction = type({
+  "+": "reject",
+  runId: "string > 0",
+  plugin: "string > 0",
+  action: "string > 0",
+});
+// A run the coordinator started in the project, at work or ended lately.
+export const ProjectRun = RunAction.merge({
+  "concept?": "string > 0",
+  // Interchange's run status.
+  status: "'deployed' | 'running' | 'completed' | 'failed' | 'cancelled'",
+  // While it runs, as inFlight says it: working, waiting between turns, or held on an approval.
+  "state?": "'working' | 'waiting' | 'approval'",
+  startedAt: "string > 0",
+  "endedAt?": "string > 0",
+  // Its latest tool call as tool and target, and when it last acted, as far as the hub saw.
+  "lastActivity?": "string > 0",
+  "lastActivityAt?": "string > 0",
+  // Why a failed run stopped.
+  "error?": "string > 0",
+});
+export type ProjectRun = typeof ProjectRun.infer;
+export const ProjectRuns = type({ "+": "reject", runs: ProjectRun.array() });
 export const ArtifactList = type({
   "+": "reject",
   artifacts: ArtifactListItem.array(),

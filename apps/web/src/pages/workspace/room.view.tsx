@@ -3,13 +3,7 @@
  * beneath it (the composer, or a banner saying why there is none), and the project view that opens
  * over it from a card or the project control and closes back to the conversation.
  */
-import {
-  useEffect,
-  useRef,
-  type ReactElement,
-  type ReactNode,
-  type RefObject,
-} from "react";
+import { useEffect, useRef, type ReactNode, type RefObject } from "react";
 import { Paperclip, Sparkles } from "lucide-react";
 import {
   Attachment,
@@ -38,22 +32,15 @@ import {
   type ArtifactPaneContent,
   type ArtifactPaneSlots,
 } from "./artifact-pane.tsx";
-import { DesignChosenView } from "./design-concepts.view.tsx";
 import { pastedFiles } from "./pasted-files.ts";
 import { StageView } from "./stage-view.tsx";
-import {
-  RoomThread,
-  type PlacedChoice,
-  type RoomThreadContent,
-} from "./transcript.tsx";
+import { RoomThread, type RoomThreadContent } from "./transcript.tsx";
 import styles from "./index.module.css";
 
 /** The parts of the room that read the hub for themselves, which the page fills. */
 export type RoomSlots = {
   /** The line above the conversation saying where the project stands and the person's next step. */
   nextStep: ReactNode;
-  /** The ask to choose a design, asked last in the conversation; null while there is none to ask. */
-  designChoice: ReactElement | null;
   /** The reading pane's own such parts. */
   paneParts: ArtifactPaneSlots;
   /** The coordinator's open question drawn over the whole room; null while there is none. */
@@ -139,8 +126,6 @@ export type RoomContent = {
     thread: RoomThreadContent;
     /** What stands in the thread's place: an archived project's note, or a new project's welcome. */
     empty: "archived" | "new" | null;
-    /** The design the person chose here and when, which keeps its place in the conversation. */
-    designChosen: { concept: string; at: number } | null;
   };
   dock: RoomDock;
   documentPane: ArtifactPaneContent;
@@ -158,12 +143,10 @@ export function RoomView({
   documentPane,
   paneRef,
   nextStep,
-  designChoice,
   paneParts,
   page,
 }: RoomViewProps) {
   const { projectReady, projectOpen, onProjectOpenChange, pageOpen } = layout;
-  const { designChosen } = conversation;
   const conversationRef = useRef<HTMLElement>(null);
   const shell = useShellReply(conversationRef);
   const closeProject = () => onProjectOpenChange(false);
@@ -186,15 +169,6 @@ export function RoomView({
     document.addEventListener("keydown", onKey);
     return () => document.removeEventListener("keydown", onKey);
   }, [projectOpen, pageOpen]);
-  const placedChoice = (): PlacedChoice | null => {
-    if (designChosen !== null)
-      return {
-        at: designChosen.at,
-        card: <DesignChosenView concept={designChosen.concept} />,
-      };
-    return designChoice === null ? null : { card: designChoice };
-  };
-  const choice = placedChoice();
   // The prompt box stays in reach under whatever covers the conversation.
   const dockInProject = projectOpen && !pageOpen;
   const dockInConversation = !projectOpen && !pageOpen;
@@ -223,10 +197,7 @@ export function RoomView({
                 </div>
               ) : null}
             </div>
-            <RoomThread
-              {...conversation.thread}
-              {...(choice === null ? {} : { designChoice: choice })}
-            >
+            <RoomThread {...conversation.thread}>
               <EmptyConversation empty={conversation.empty} />
             </RoomThread>
             {dockInConversation ? roomDock : null}
@@ -243,6 +214,7 @@ export function RoomView({
               {...documentPane}
               {...paneParts}
               paneRef={paneRef}
+              open={projectOpen}
               onClose={closeProject}
             />
             {dockInProject ? roomDock : null}

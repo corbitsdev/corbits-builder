@@ -78,6 +78,7 @@ import {
 } from "./typed-yes.tsx";
 import { asksAbout, chosenApproach } from "./approach-choice.ts";
 import {
+  DRAFT_TAB,
   followDeliverableId,
   LIVE_TAB,
   shownDeliverableId,
@@ -121,11 +122,7 @@ import { designDraftFiled, useDesignDraft } from "./design-preview.model.ts";
 import { useUserManual } from "./user-manual.model.ts";
 import { workUnitStanding } from "./work-unit-message.model.ts";
 import { conceptOfTab, conceptTab } from "./design-concept.ts";
-import {
-  designConcepts,
-  DESIGN_OPTION,
-  type DesignChoiceProps,
-} from "./design-concepts.model.ts";
+import { designConcepts, DESIGN_OPTION } from "./design-concepts.model.ts";
 import { useLiveAppPresence } from "./live-app.model.ts";
 import { useQuestionsLayout } from "../../questions-layout-setting.ts";
 import {
@@ -493,8 +490,6 @@ export function useRoom({
   view: RoomContent;
   /** The line above the conversation; null on an archived project, which has none. */
   nextStep: NextStepLineProps | null;
-  /** The ask to choose among the filed concepts; null while there is none to ask. */
-  designChoice: DesignChoiceProps | null;
   enableAi: EnableAiDialogProps;
   /** The app the build plan builds, once one is filed. */
   liveApp: { projectId: string; builder: InFlightRun | undefined } | null;
@@ -562,11 +557,6 @@ export function useRoom({
     null,
   );
   const [paneTab, setPaneTab] = useState<{ value: string } | null>(null);
-  // The design the person chose here, by the hub's receipt, and when, so the outcome keeps its place.
-  const [designChosen, setDesignChosen] = useState<{
-    concept: string;
-    at: number;
-  } | null>(null);
   const documentPaneRef = useRef<HTMLElement>(null);
   const composerRef = useRef<HTMLTextAreaElement>(null);
   // Each committed reply's thinking and tool work, as this session watched it.
@@ -654,7 +644,6 @@ export function useRoom({
     setApprovalError(null);
     setDocumentChoice(null);
     setPaneTab(null);
-    setDesignChosen(null);
     setProjectOpen(false);
     setSent(openingDraft(projectId, openingMessage));
     setSendFailed(false);
@@ -1350,6 +1339,14 @@ export function useRoom({
         kind.startsWith("concept:") ? conceptTab(kind.slice(8)) : kind,
       );
     },
+    onWatch: (dispatch) => {
+      if (dispatch.role === "coder") return openProject(LIVE_TAB);
+      openProject(
+        dispatch.concept === undefined
+          ? DRAFT_TAB
+          : conceptTab(dispatch.concept),
+      );
+    },
   };
   const dispatches = shownTurns.flatMap((turn) =>
     turn.role === "assistant" && turn.parts !== undefined
@@ -1405,7 +1402,7 @@ export function useRoom({
   const design = artifacts.find((item) => item.kind === "design");
   // The design a review screen shows: the live draft while a designer works, else the newest design
   // option, else the filed design. Only an option is approved there: the hub records the choice
-  // from the answer, as the conversation's design card records it.
+  // from the answer.
   const reviewed = options.at(-1) ?? design;
   const reviewedState =
     reviewed === undefined ? undefined : documentState(reviewed);
@@ -1463,8 +1460,7 @@ export function useRoom({
             ? design.title
             : undefined,
         );
-  // Filed concepts wait on the person's choice, asked last in the conversation; a choice made here
-  // keeps its outcome where it was made.
+  // Filed concepts wait on the person's choice on the designer's choose screen.
   const choosable = concepts.some((concept) => concept.chosen)
     ? []
     : concepts.filter((concept) => concept.option !== undefined);
@@ -1525,19 +1521,6 @@ export function useRoom({
     },
     sendStaged: () => void sendThroughPage(),
     close: () => setClosedPage(pageQuestion?.signalName ?? null),
-  };
-  const designAsk = (): DesignChoiceProps | null => {
-    if (archived || designChosen !== null || choosable.length === 0)
-      return null;
-    return {
-      projectId,
-      concepts: choosable,
-      onShowConcept: openDocument,
-      onChosen: (concept) => {
-        setDesignChosen({ concept, at: Date.now() });
-        onChanged();
-      },
-    };
   };
   // The themes join the pane once the requirements say what the app is, so a look can be applied to it.
   const designReached =
@@ -1640,7 +1623,7 @@ export function useRoom({
         approvalOpen: openApproval !== undefined,
         questionsOpen: openQuestion !== undefined,
         status: projectStatus.data,
-        chatFirst: nothingYet,
+        nothingFiled: nothingYet,
       }),
       inputRef: composerRef,
       working: working || sending,
@@ -1731,7 +1714,6 @@ export function useRoom({
           onOpenPageScreen: () => setClosedPage(null),
         },
         empty: emptyConversation(),
-        designChosen: archived ? null : designChosen,
       },
       dock: dock(),
       documentPane: {
@@ -1793,7 +1775,6 @@ export function useRoom({
                 }),
           },
         },
-    designChoice: designAsk(),
     enableAi: { open: enablingAi, onOpenChange: setEnablingAi },
     liveApp,
     themes:

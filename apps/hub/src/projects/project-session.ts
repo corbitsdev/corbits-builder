@@ -160,15 +160,20 @@ export function checkDeployments(workflows: ProjectOptions["workflows"]) {
   }
 }
 
+// The plugin action a session starts runs for, and the block of project values each run's
+// assignment carries.
+type Assigned = { plugin: string; action: string; values: string };
+
 /**
  * The coordinator's view of its project through the hub, and the way it starts a specialist there.
- * values is the block of project values every assignment it sends carries.
+ * With assigned, each run it starts is recorded as started for that plugin action before its
+ * assignment, which carries the action's block of project values.
  */
 export function projectSession(
   env: DeployEnv,
   options: ProjectOptions,
   signal: AbortSignal,
-  values = "",
+  assigned?: Assigned,
 ) {
   const projectPath =
     "/api/tenants/" +
@@ -293,6 +298,12 @@ export function projectSession(
         DEPLOY_TIMEOUT_MS,
       ),
     );
+    if (assigned)
+      await hub(projectPath + "/run-actions", {
+        runId: deployment.id,
+        plugin: assigned.plugin,
+        action: assigned.action,
+      });
     await beforeAssign?.(deployment.id);
     await env.capabilities.resolve("mail.transport").send(
       {
@@ -301,7 +312,10 @@ export function projectSession(
         ],
         type: "conversation.message",
         correlationId: correlationId + "-" + deployment.id,
-        content: content + values + preferenceBlock(preferences, role),
+        content:
+          content +
+          (assigned?.values ?? "") +
+          preferenceBlock(preferences, role),
       },
       signal,
     );
@@ -463,8 +477,9 @@ export function projectSession(
     approve,
     startCoder,
     startDesigners,
-    // The same session, its assignments carrying this block of project values.
-    withValues: (block: string) => projectSession(env, options, signal, block),
+    // The same session, starting runs for a plugin action.
+    forAction: (action: Assigned) =>
+      projectSession(env, options, signal, action),
   };
 }
 

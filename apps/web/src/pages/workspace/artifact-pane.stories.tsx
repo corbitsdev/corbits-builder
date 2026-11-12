@@ -124,6 +124,7 @@ const meta = {
     state: ready,
     onSelect: fn(),
     onSeen: fn(),
+    open: true,
     onClose: fn(),
     onRetry: fn(),
     onAddToPrompt: fn(),

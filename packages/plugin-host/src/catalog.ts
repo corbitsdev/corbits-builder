@@ -69,7 +69,7 @@ export type WorkflowAction = ActionBase & {
   builder: WorkflowActionBuilder;
   // The input checked for the host's starter, or the refusal when it is wrong.
   check: (input: unknown) => { ok: true; input: unknown } | Refused;
-  // What its finished run's report adds about the screen that shows the work, or null for none.
+  // What its finished run's report adds about the screens that show the work, or null for none.
   presents: string | null;
   // The skill packs its specialist's agent is given when this action starts it.
   packs: readonly SkillPack[];
@@ -267,6 +267,15 @@ function declaredValues(manifests: readonly Manifested[], host: Host) {
         throw new Error(
           `${builder.handle} ${action} names ${unknown}, which no plugin declares as a project value`,
         );
+      // A run saves only into the project's plain store, where every plugin's value lives.
+      const unwritable =
+        declared.runs === "workflow"
+          ? declared.writes?.find((name) => !owners.has(name))
+          : undefined;
+      if (unwritable !== undefined)
+        throw new Error(
+          `${builder.handle} ${action} writes ${unwritable}, which no plugin declares as a project value`,
+        );
     }
   }
   return values;
@@ -348,13 +357,34 @@ type Installing = {
   values: ReadonlyMap<string, ValueDeclaration>;
 };
 
+// The finished work's line about the screens that show it, each with when it fits.
+function presentsOf(
+  name: string,
+  { handle, actions }: SpecialistBuilder,
+  presents: readonly string[] | undefined,
+) {
+  if (presents === undefined) return null;
+  return presentsText(
+    handle,
+    presents.map((screen) => {
+      const declared = actions[screen];
+      if (declared?.runs !== "screen")
+        throw new Error(
+          `${name} presents ${screen}, which is not a screen of ${handle}`,
+        );
+      return { action: screen, when: declared.when };
+    }),
+  );
+}
+
 async function installAction(
   found: Found,
-  handle: string,
+  specialist: SpecialistBuilder,
   action: string,
   declared: SpecialistBuilder["actions"][string],
   installing: Installing,
 ): Promise<Action> {
+  const { handle } = specialist;
   if (declared.runs === "screen")
     return installScreen(found, handle, action, declared, installing);
   const { host, factText, packs } = installing;
@@ -394,10 +424,7 @@ async function installAction(
       inputText(fields),
     ].join("\n"),
     check: (raw) => checkWorkflowInput(name, workflow, raw),
-    presents:
-      declared.presents === undefined
-        ? null
-        : presentsText(handle, declared.presents),
+    presents: presentsOf(name, specialist, declared.presents),
     packs: packs.filter(({ serves }) => serves.includes(name)),
   };
 }
@@ -412,7 +439,7 @@ async function specialistPlugin(
   const { packs } = installing;
   const actions = await Promise.all(
     Object.entries(builder.actions).map(([name, declared]) =>
-      installAction(found, handle, name, declared, installing),
+      installAction(found, builder, name, declared, installing),
     ),
   );
   const own = packs
@@ -458,8 +485,7 @@ async function routePlugin(
   };
 }
 
-// Every handle once, every action a route names among the installed workflow actions, and every
-// screen an action presents among its own plugin's screens.
+// Every handle once, and every action a route names among the installed workflow actions.
 function checkCatalog(plugins: readonly Plugin[]) {
   const handles = new Set<string>();
   for (const { builder } of plugins) {
@@ -467,19 +493,6 @@ function checkCatalog(plugins: readonly Plugin[]) {
       throw new Error(`${builder.handle} is installed twice`);
     handles.add(builder.handle);
   }
-  for (const { actions } of plugins.filter(isSpecialist))
-    for (const action of actions.filter(isWorkflowAction)) {
-      const { presents } = action.builder;
-      if (
-        presents !== undefined &&
-        !actions.some(
-          (screen) => isScreenAction(screen) && screen.action === presents,
-        )
-      )
-        throw new Error(
-          `${action.name} presents ${presents}, which is not a screen of ${action.plugin}`,
-        );
-    }
   const started = plugins
     .filter(isSpecialist)
     .flatMap(({ actions }) => actions.filter(isWorkflowAction))

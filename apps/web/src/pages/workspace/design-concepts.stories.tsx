@@ -3,8 +3,6 @@ import { useState } from "react";
 import { fn } from "storybook/test";
 import {
   ConceptMockupView,
-  DesignChoiceView,
-  DesignChosenView,
   type ConceptMockupViewProps,
 } from "./design-concepts.view.tsx";
 import { TweakPanelView } from "./mockup-tweaks.view.tsx";
@@ -91,37 +89,4 @@ export const SketchingBeforeDesigner: Story = {
     direction: undefined,
     mockup: { state: "sketching", look: {}, designer: undefined },
   },
-};
-
-const choice = {
-  concepts: [
-    { label: "Paper", direction: DIRECTION },
-    { label: "Quiet", direction: "Cool greys, generous space and small type." },
-  ],
-  choosing: false,
-  onShow: fn(),
-  onChoose: fn(),
-};
-
-/** Several concepts are filed; each name opens its mockup. */
-export const ChoiceOfSeveral: StoryObj = {
-  parameters: { layout: "padded" },
-  render: () => <DesignChoiceView {...choice} />,
-};
-
-export const ChoiceOfOne: StoryObj = {
-  parameters: { layout: "padded" },
-  render: () => (
-    <DesignChoiceView {...choice} concepts={choice.concepts.slice(0, 1)} />
-  ),
-};
-
-export const ChoiceBeingFiled: StoryObj = {
-  parameters: { layout: "padded" },
-  render: () => <DesignChoiceView {...choice} choosing />,
-};
-
-export const Chosen: StoryObj = {
-  parameters: { layout: "padded" },
-  render: () => <DesignChosenView concept="Paper" />,
 };

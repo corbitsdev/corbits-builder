@@ -7,6 +7,7 @@
  * not invent a coordinator turn, and it does not decide an approval on its own.
  */
 import {
+  HUB_NOTES,
   IMPORTED_PROJECT_LEAD,
   SPECIALIST_ENDED_LEAD,
   wording,
@@ -226,22 +227,17 @@ export type PlacedDispatch = {
   readonly dispatch: Dispatch;
 };
 
-/** The coordinator's ask to choose a design, placed when it was answered, else last. */
-export type PlacedChoice = { readonly at?: number; readonly card: ReactNode };
-
 type ThreadItem =
   | { kind: "turn"; turn: TranscriptTurn; index: number }
   | { kind: "updates"; group: UpdateGroup }
   | { kind: "approval"; approval: DocumentApproval }
   | { kind: "unit"; unit: WorkUnit }
-  | { kind: "choice"; card: ReactNode }
   | { kind: "questions"; question: ParkedQuestion };
 
 type Placed =
   | { kind: "update"; at: number; update: SpecialistUpdate }
   | { kind: "approval"; at: number; approval: DocumentApproval }
   | { kind: "unit"; at: number; unit: WorkUnit }
-  | { kind: "choice"; at: number; card: ReactNode }
   | { kind: "questions"; at: number; question: ParkedQuestion };
 
 /**
@@ -256,13 +252,9 @@ function threadItems(
   threadUpdates: readonly SpecialistUpdate[],
   approvals: readonly DocumentApproval[],
   runs: readonly PlacedDispatch[],
-  asks: {
-    choice: PlacedChoice | undefined;
-    questions: readonly ParkedQuestion[];
-  },
+  questions: readonly ParkedQuestion[],
   results: ReadonlyMap<string, CallResult>,
 ): ThreadItem[] {
-  const { choice, questions } = asks;
   const handoffs = [
     ...turns.flatMap((turn) =>
       turn.role === "assistant"
@@ -304,15 +296,6 @@ function threadItems(
       at: unit.at,
       unit,
     })),
-    ...(choice === undefined
-      ? []
-      : [
-          {
-            kind: "choice",
-            at: choice.at ?? Number.POSITIVE_INFINITY,
-            card: choice.card,
-          } satisfies Placed,
-        ]),
     ...questions.map((question): Placed => ({
       kind: "questions",
       at: question.at,
@@ -345,7 +328,7 @@ function threadItems(
     items.push({ kind: "turn", turn, index });
   });
   flushBefore(Number.POSITIVE_INFINITY);
-  // An approval or choice with no known time still shows, after everything else.
+  // An approval with no known time still shows, after everything else.
   for (; next < placed.length; next += 1) {
     const entry = placed[next];
     if (entry !== undefined && entry.kind !== "update")
@@ -358,9 +341,7 @@ function placedItem(entry: Exclude<Placed, { kind: "update" }>): Card {
   if (entry.kind === "approval")
     return { kind: "approval", approval: entry.approval };
   if (entry.kind === "unit") return { kind: "unit", unit: entry.unit };
-  if (entry.kind === "questions")
-    return { kind: "questions", question: entry.question };
-  return { kind: "choice", card: entry.card };
+  return { kind: "questions", question: entry.question };
 }
 
 type Card = Exclude<ThreadItem, { kind: "turn" }>;
@@ -405,8 +386,8 @@ function threadSections(items: readonly ThreadItem[]): Section[] {
 
 /**
  * A piece of work still at work is current, so it sits after the reports and decisions that came
- * while it ran rather than at the call that started it. The design choice waits on the person, so it
- * stays after those.
+ * while it ran rather than at the call that started it. A question waits on the person, so it stays
+ * after those.
  */
 function liveLast(
   cards: readonly Card[],
@@ -414,12 +395,11 @@ function liveLast(
 ): Card[] {
   const isLive = (card: Card) =>
     card.kind === "unit" && live(card.unit.dispatch);
-  const isChoice = (card: Card) =>
-    card.kind === "choice" || card.kind === "questions";
+  const isQuestion = (card: Card) => card.kind === "questions";
   return [
-    ...cards.filter((card) => !isLive(card) && !isChoice(card)),
+    ...cards.filter((card) => !isLive(card) && !isQuestion(card)),
     ...cards.filter(isLive),
-    ...cards.filter(isChoice),
+    ...cards.filter(isQuestion),
   ];
 }
 
@@ -555,6 +535,15 @@ function runLabel(steps: readonly ActivityStep[]): string | undefined {
   );
 }
 
+/** The quiet line for a note the hub mailed as the person, or undefined for the person's own words. */
+function hubNoteLine(text: string): string | undefined {
+  for (const note of HUB_NOTES) {
+    const match = note.pattern.exec(text);
+    if (match !== null) return note.line(match);
+  }
+  return undefined;
+}
+
 // The hub's notice: the person's line, then a coordinator-only paragraph quoting the native reason.
 const RECORDED_REASON = /Recorded reason(?: \(([^)]+)\))?: ([\s\S]*)$/;
 
@@ -631,7 +620,6 @@ export type RoomThreadContent = {
 };
 
 export type RoomThreadProps = RoomThreadContent & {
-  designChoice?: PlacedChoice;
   /** Agent output rendered in the same log, after the turns. */
   children?: ReactNode;
 };
@@ -646,7 +634,6 @@ export function RoomThread({
   approvals = [],
   results = new Map(),
   runs = [],
-  designChoice,
   live = () => false,
   standing,
   onDecide,
@@ -757,17 +744,6 @@ export function RoomThread({
         </ConversationItem>
       );
     }
-    if (card.kind === "choice")
-      return (
-        <ConversationItem key="design-choice" itemId="design-choice">
-          <Message from="agent">
-            {headed ? null : (
-              <MessageHeader name={wording.speaker.coordinator} />
-            )}
-            {card.card}
-          </Message>
-        </ConversationItem>
-      );
     return renderApproval(card.approval, position, headed);
   };
   const renderUpdates = (group: UpdateGroup, subject: string | undefined) => (
@@ -889,14 +865,7 @@ export function RoomThread({
     </ConversationItem>
   );
   const sections = threadSections(
-    threadItems(
-      turns,
-      updates,
-      approvals,
-      runs,
-      { choice: designChoice, questions },
-      results,
-    ),
+    threadItems(turns, updates, approvals, runs, questions, results),
   );
   // The coordinator's turn shows one live line, at the bottom: its last run when its words end the
   // conversation, else the thinking line. A run above a card is not the bottom.
@@ -917,7 +886,11 @@ export function RoomThread({
   }
   const mapTurns = sections.flatMap(
     (section, position): ConversationMapTurn[] => {
-      if (section.kind !== "person" || section.turn.text.trim() === "")
+      if (
+        section.kind !== "person" ||
+        section.turn.text.trim() === "" ||
+        hubNoteLine(section.turn.text) !== undefined
+      )
         return [];
       const next = sections[position + 1];
       const reply =
@@ -993,6 +966,13 @@ export function RoomThread({
                 <ConversationDivider>
                   {wording.projectImported}
                 </ConversationDivider>
+              </ConversationItem>
+            );
+          const hubNote = hubNoteLine(turn.text);
+          if (hubNote !== undefined)
+            return (
+              <ConversationItem key={itemId} itemId={itemId}>
+                <ConversationNotice>{hubNote}</ConversationNotice>
               </ConversationItem>
             );
           if (turn.text.startsWith(SPECIALIST_ENDED_LEAD))
