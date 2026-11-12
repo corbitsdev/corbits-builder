@@ -1,0 +1,66 @@
+{
+  "name": "@corbits-builder/build-web-app-express",
+  "version": "0.1.0-rc.3",
+  "private": true,
+  "description": "Builds a web app from an idea with nothing waiting on the person",
+  "license": "SEE LICENSE IN ../../LICENSE.md",
+  "author": "Sawyer Cutler <sawyer@dirtroad.dev>",
+  "type": "module",
+  "builder": {
+    "handle": "build-web-app",
+    "runs": "route",
+    "groups": [
+      "build",
+      "plan"
+    ],
+    "when": "The person brings an idea for an app and wants it planned, designed and built.",
+    "unless": "The project already has an app, or the person wants only one piece of the work, such as a mockup.",
+    "guidance": "./SKILL.md",
+    "steps": [
+      {
+        "plugin": "writer",
+        "action": "write-requirements",
+        "title": "Write the requirements",
+        "requires": []
+      },
+      {
+        "plugin": "designer",
+        "action": "mockup",
+        "title": "Design the look",
+        "requires": []
+      },
+      {
+        "plugin": "writer",
+        "action": "write-build-plan",
+        "title": "Write the build plan",
+        "requires": []
+      },
+      {
+        "plugin": "coder",
+        "action": "build",
+        "title": "Build the app",
+        "requires": []
+      },
+      {
+        "plugin": "writer",
+        "action": "write",
+        "title": "Write the user manual",
+        "optional": true,
+        "requires": [
+          "app_exists"
+        ],
+        "input": {
+          "kind": "user_manual",
+          "title": "User manual",
+          "instruction": "Write a user manual for the app as built: what it is for, how to get started, each screen and task step by step in plain words, and answers to the questions a first-time user is likely to ask."
+        }
+      }
+    ],
+    "outcome": "app_exists",
+    "examples": [
+      "I want to build a weather app",
+      "help me make an app for booking dog walks",
+      "build me an app"
+    ]
+  }
+}

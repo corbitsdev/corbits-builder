@@ -5,10 +5,9 @@ import {
   type CheckActionBuilder,
   type Fact,
   type Field,
-  type SpecialistBuilder,
   type ValueDeclaration,
 } from "@corbits-builder/plugin";
-import type { Plugin, ScreenAction } from "./catalog.ts";
+import type { Choice, Plugin, ScreenAction } from "./catalog.ts";
 
 // A fact in plain words, as the catalog has it from the plugins.
 type FactText = (fact: Fact) => string;
@@ -16,13 +15,13 @@ type FactText = (fact: Fact) => string;
 // What the coordinator reads about execute, the facts an action requires, and why nothing started.
 
 export const EXECUTE_DESCRIPTION =
-  "Start a specialist plugin's action by the plugin's handle and the action's name, with the input that action's guidance from discover describes, such as { plugin: \"coder\", action: \"change\", input }. A workflow action starts its specialist and returns at once with { started, plugin, action, runs: [{ runId }], presents, advice }; each run's report arrives later as a message that begins with its run id. Independent pieces of work can start in the same turn, each with its own execute. Nothing starts when the action lacks what it cannot work without, or the person's go-ahead that a route the project follows asks for while they decide approvals; the refusal names what is missing and which plugin action makes it true. Anything else a route suggests doing first comes back as advice with the started run. A route plugin takes no action: it adds that route to those the project follows and returns its guidance; input { leave: true } takes the project off it. A screen action is opened with question({ plugin, action, input }).";
+  "Start a specialist plugin's action by the plugin's handle and the action's name, with the input that action's guidance from discover describes, such as { plugin: \"coder\", action: \"change\", input }. A workflow action starts its specialist and returns at once with { started, plugin, action, runs: [{ runId }], presents, advice }; each run's report arrives later as a message that begins with its run id. Independent pieces of work can start in the same turn, each with its own execute. Nothing starts when the action lacks what it cannot work without, the person's go-ahead that a route the project follows asks for, or when the person declined that step on the plan; the refusal names what is missing and which plugin action makes it true. Anything else a route suggests doing first comes back as advice with the started run. A route plugin takes no action: it adds that route to those the project follows and returns its guidance; input { leave: true } takes the project off it. A screen action is opened with question({ plugin, action, input }).";
 
 export const RUNS_DESCRIPTION =
   'See and steer the runs you started with execute. operation "list" lists each run you started in this project that is at work or ended lately: its plugin and action, status, state while it runs, when it started, its last activity, and why a failed run stopped. "wait" waits up to seconds (60 unless given, at most 120) for the first of runIds to end and says which ended; a run\'s report still reaches you as a message after your turn. "stop" stops each of runIds; what a stopped run filed or pushed is kept.';
 
 export const PLAN_DESCRIPTION =
-  'Keep the project\'s plan, which shows the person where work of several steps or gates stands. Each step is a plugin action, as discover lists it, with its input, and may hold steps of its own. operation "show" returns the plan; "set" replaces it with steps; "add" appends steps, or inserts them after the step whose id is after, or adds a plugin\'s sequence by its name as discover lists it; "remove" takes out the steps whose ids are stepIds. Each answers with the plan as it now stands.';
+  'Keep the project\'s plan, which shows the person where work of several steps or gates stands. Each step is a plugin action, as discover lists it, with its input, and may hold steps of its own. operation "show" returns the plan; "set" replaces it with steps; "add" appends steps, or inserts them after the step whose id is after, or with route adds a journey by its route\'s handle as one step holding its steps, each marked optional when the person may decline it and with when it waits for their approval, and puts the project on that route; "remove" takes out the steps whose ids are stepIds. Each answers with the plan as it now stands.';
 
 // What runs offers for a run that holds back the next one, named as runIds lists it.
 export const waitOrStop = (runIds: string) =>
@@ -225,7 +224,7 @@ export function unmetRequirement(
   for (const { route, goAhead } of holding) {
     if (lines.length > 2) lines.push("");
     lines.push(
-      `The person decides approvals, and this project follows ${route}, which asks for their go-ahead first:`,
+      `This project follows ${route}, which asks for the person's go-ahead first:`,
       ...goAhead.map((fact) => missingLine([fact], makers(fact), factText)),
     );
   }
@@ -305,6 +304,23 @@ export const unknownRuns = (
     "",
     "Call again with runIds from that list.",
   ].join("\n");
+
+/** Why execute did not start a step the person declined on the plan. */
+export const stepDeclined = (name: string, title: string) =>
+  `${name} was not started: the person declined this step ("${title}"); they can undo that on the plan. Do not start it another way; carry on with the rest of the plan.`;
+
+/** The plan in a line for discover: how many steps it holds and which the person declined. */
+export function planLine(
+  steps: readonly { title: string; declined?: unknown }[],
+) {
+  if (steps.length === 0) return "Plan: none saved yet.";
+  const declined = steps.filter((step) => step.declined !== undefined);
+  const said =
+    declined.length === 0
+      ? "the person declined none"
+      : `the person declined ${declined.length}, which stay undone until they restore them: ${declined.map(({ title }) => title).join(", ")}`;
+  return `Plan: ${steps.length} steps; ${said}.`;
+}
 
 export const routeTakesNoAction = (handle: string) =>
   `${handle} is a route and takes no action, so nothing was started. Call again with no action to follow it, or name the specialist whose action you meant.`;
@@ -467,6 +483,21 @@ export const DISCOVER_ACTION_NEEDS_PLUGIN =
 export const DISCOVER_MORE =
   "For an action's full guidance and the input it takes, call discover({ plugin, action }); discover({ plugin }) gives all of a plugin's.";
 
+// A plugin as discover names it among the others with its handle.
+const named = ({ label, package: name }: Plugin) =>
+  label === name ? name : `${label} (${name})`;
+
+/** discover's line on a handle several installed plugins share: the one the project uses and the others. */
+export const choiceText = ({ handle, using, others, missing }: Choice) =>
+  [
+    `${handle}: using ${named(using)}; also installed: ${others.map(named).join("; ")} (the person can switch on the project's values).`,
+    ...(missing === undefined
+      ? []
+      : [
+          `The project's values select ${missing}, which is not installed, so it uses the default.`,
+        ]),
+  ].join(" ");
+
 /** A specialist as discover lists it: a line for it, then one for each action. */
 export const specialistListing = (
   handle: string,
@@ -485,13 +516,6 @@ export const specialistListing = (
         `  ${action}${screen ? " (screen)" : ""}: ${when} Now: ${now}.`,
     ),
   ].join("\n");
-
-/** Each sequence of a specialist in a line, as discover lists it. */
-export const sequenceLines = ({ handle, sequences = {} }: SpecialistBuilder) =>
-  Object.entries(sequences).map(
-    ([name, { title, steps }]) =>
-      `  sequence ${name}: ${title}, ${steps.map(({ plugin = handle, action }) => `${plugin} ${action}`).join(" then ")}. plan({ operation: "add", sequence: "${handle} ${name}" }) adds it.`,
-  );
 
 /** A route as discover lists it: a line for it, then one for each step. */
 export const routeListing = (

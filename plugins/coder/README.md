@@ -10,9 +10,8 @@ This folder is the whole coder plugin. Its `package.json` `builder` block
 names its two actions, `build` and `change`, the workflow packages the hub
 builds and installs from it (`packages`), and the starter that starts its runs
 (`starters`). The two packages are `coder`, which asks the person before
-installing a package, and `coder-any-package`, which does not. The dynamic
-[coordinator][coordinator] starts them with `execute`; the classic one with
-`deploy_coder` and `instruct_coder`. Its tools are file edits and `run_shell`
+installing a package, and `coder-any-package`, which does not. The
+[coordinator][coordinator] starts them with `execute`. Its tools are file edits and `run_shell`
 in the app workspace, `install_packages`, `app_status`, a headless browser,
 Exa search, `read_artifact`, `read_skill` and `mail`.
 

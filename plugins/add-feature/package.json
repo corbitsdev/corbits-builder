@@ -25,16 +25,24 @@
       {
         "plugin": "writer",
         "action": "write-build-plan",
-        "requires": [
-          "approved:product_requirements"
-        ]
+        "requires": [],
+        "approval": {
+          "of": [
+            "product_requirements"
+          ],
+          "when": "optional"
+        }
       },
       {
         "plugin": "coder",
         "action": "change",
-        "requires": [
-          "approved:build_plan"
-        ]
+        "requires": [],
+        "approval": {
+          "of": [
+            "build_plan"
+          ],
+          "when": "optional"
+        }
       }
     ],
     "examples": [

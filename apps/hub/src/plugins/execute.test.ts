@@ -78,6 +78,8 @@ function project(
       });
     }
     if (path.endsWith("/checks")) return Response.json({ checks: [] });
+    if (path.endsWith("/plan"))
+      return Response.json({ steps: [], updatedAt: null });
     if (path.endsWith("/run-records")) return Response.json(body);
     if (path.endsWith("/artifact-approvals")) {
       approvals.push(body);
@@ -252,7 +254,7 @@ test("on build-web-app, coder build waits for the person's go-ahead while they d
     [
       "coder build was not started. The project does not have what it needs yet.",
       "",
-      "The person decides approvals, and this project follows build-web-app, which asks for their go-ahead first:",
+      "This project follows build-web-app, which asks for the person's go-ahead first:",
       "  - the person approved the current version of the build plan, or leaves approvals to you (writer approve makes this true)",
       "  - the person chose a design from the design options (designer review or designer choose makes this true)",
       "",
@@ -291,7 +293,7 @@ test("designer mockup starts a designer with nothing filed, unless the project f
   const refused = await following.execute(designerMockup);
   expect(refused.isError).toBe(true);
   expect(refused.content).toContain(
-    "this project follows build-web-app, which asks for their go-ahead first:\n  - the person approved the current version of the product requirements",
+    "This project follows build-web-app, which asks for the person's go-ahead first:\n  - the person approved the current version of the product requirements",
   );
   expect(following.deployed).toEqual([]);
 
@@ -315,6 +317,7 @@ test("execute on build-web-app puts the project on it and returns its guidance a
       "  designer mockup: can start now",
       "  writer write-build-plan: needs the person's go-ahead, which build-web-app asks for: the person chose a design from the design options",
       "  coder build: needs the person's go-ahead, which build-web-app asks for: the person approved the current version of the build plan, or leaves approvals to you and the person chose a design from the design options",
+      "  writer write (optional, the person may decline it): can start now; build-web-app suggests first: the project has an app, built or imported",
     ].join("\n"),
   );
   const found = await idea.discover({ query: "build me an app" });

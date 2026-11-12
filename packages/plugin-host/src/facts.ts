@@ -64,3 +64,11 @@ export function unmet(
   );
   return missing.some((lacking) => lacking.length === 0) ? [] : missing;
 }
+
+/** The facts a route step's approval asks for: approved:<kind> for each document, design_chosen for the design. */
+export const approvalFacts = (
+  approval: { of: readonly string[] } | undefined,
+) =>
+  (approval?.of ?? []).map((what) =>
+    what === "design" ? "design_chosen" : `approved:${what}`,
+  );

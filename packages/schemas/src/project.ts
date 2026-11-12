@@ -109,6 +109,12 @@ const PlanStepBody = type({
   askFirst: "boolean",
   "goAhead?": PlanMark,
   "cancelled?": PlanMark,
+  // From the journey the step came from: whether the person may decline it, and when it waits for
+  // their go-ahead, as the route plugin's step says; without approval it asks for none.
+  "optional?": "boolean",
+  "approval?": "'required' | 'optional'",
+  // The person said no to an optional step; it stays declined until they restore it.
+  "declined?": PlanMark,
 });
 const StoredPlanChild = PlanStepBody.merge({ "+": "reject", id: PlanStepId });
 export const StoredPlanStep = StoredPlanChild.merge({

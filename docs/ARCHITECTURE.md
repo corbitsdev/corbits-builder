@@ -87,16 +87,16 @@ assignment and has no read tool, so it works only from what it was given.
 ### Approvals
 
 Approvals are the runtime's own human approvals. A tool that needs a person's
-go-ahead (`request_approval`, `design_app`, `instruct_coder`, adding a package)
-is declared as asking, so the runtime parks the call until a person resolves
-it. After it resolves, the hub records the exact document versions and hashes
+go-ahead (a plugin's `approve` screen, adding a package) is declared as
+asking, so the runtime parks the call until a person resolves it. After it resolves, the hub records the exact document versions and hashes
 it covered, and only those whose hash still matches storage.
 
 - Versions and hashes come from the hub, never from model input, so an
   approval cannot be pointed at a version the person did not see.
 - Choosing a design option and importing a project as approved are the
   person's own acts; the hub records that person as the approver.
-- Hand-off tools check approvals before they start the next writer.
+- A plugin action lists what it requires, and the hub refuses it until the
+  project has those approved documents.
 
 ### Questions
 
@@ -179,17 +179,18 @@ that other clients can make too.
    packages on the project's model bindings and deploys the coordinator.
 2. The person's messages are mail to the coordinator. Its replies are mail
    back, shown as the conversation.
-3. The coordinator files the brief itself, then hands work off with hub tools:
-   `deploy_writer` and `review_artifact` for documents, `design_app` for design
-   concepts, `deploy_coder` for the first build, and `instruct_coder` for each
-   later change. The first build is done once a version of the app is filed
-   after a passing check, not by an import; from then `deploy_coder` is
-   refused, and before then `instruct_coder` is.
+3. The coordinator files the brief itself, then hands work off with
+   `execute({ plugin, action, input })`: a writer for documents, a designer
+   for design concepts, a coder to build the app and to change it later. It
+   finds what exists with `discover`, puts a decision in front of the person
+   with `question({ plugin, action, input })`, and follows its runs with `runs`
+   and its saved plan with `plan`. The first build is done once a version of
+   the app is filed after a passing check, not by an import.
 4. The hub builds each assignment from its own templates: the task, the
    documents it builds on in full and pinned by version and hash, and the kind
-   to write. The tool checks prerequisites first: earlier documents exist and
-   are approved, and no coder, or designer on the same concept, is already
-   running.
+   to write. `execute` checks what the action requires first: earlier
+   documents exist and are approved, and no coder, or designer on the same
+   concept, is already running.
 5. The specialist works, files its result as a document version and mails a
    short summary back on the assignment's thread.
 6. The coordinator reads the filed document, judges it and either has it
@@ -204,7 +205,7 @@ the conversation; documents carry the work.
 
 - **No fixed stages.** The coordinator decides the order of work from the
   document list and the conversation. The order documents build on each other
-  is enforced as prerequisites in the hand-off tools, not as a stage machine.
+  is enforced as the requirements each plugin action declares, not as a stage machine.
 - **Agent behaviour lives in agent definitions and tools.** Prompts describe
   the task and the domain. Turn order, reply termination and loop detection are
   the runtime's job. Hub code covers human decisions and tenant state.

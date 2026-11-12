@@ -16,3 +16,13 @@ export const answerRefusedText = (screen: string, refusal: Refusal) =>
     "",
     "Nothing was saved and the question is still open, so it can be answered again with these corrected.",
   ].join("\n");
+
+// The hub's note to the coordinator once the person declined an optional plan step, or restored one.
+export const stepDeclinedNote = (title: string, declined: boolean) =>
+  declined
+    ? `${HUB_NOTE_LEAD}The person declined the plan step "${title}".\n\nDo not start it or do its work another way; carry on with the rest of the plan. It stays declined until they restore it on the plan.`
+    : `${HUB_NOTE_LEAD}The person restored the plan step "${title}" they had declined.\n\nIt is part of the plan again; start it when the plan reaches it.`;
+
+// Why a plan step cannot be declined, for the person.
+export const STEP_REQUIRED_TEXT =
+  "This step is required by the journey, so it cannot be declined. Only a step marked optional can be.";

@@ -155,6 +155,7 @@ import {
 import { frozenModelChoice, workflowBindings } from "../config/models.ts";
 import { modelDirectory } from "../settings/custom-providers.ts";
 import { materialRemovedNote, materialsNote } from "../config/materials.ts";
+import { STEP_REQUIRED_TEXT, stepDeclinedNote } from "../config/answers.ts";
 import { servingOffering } from "../workflows/install-for-tenant.ts";
 import {
   acceptedMaterials,
@@ -199,8 +200,8 @@ const inFlightState = (
   if (heldOnApproval) return "approval";
   return working ? "working" : "waiting";
 };
-// A plan step as stored, under the id it came with or a short new one, with the go-ahead and
-// cancel that marksOf says it keeps.
+// A plan step as stored, under the id it came with or a short new one, with the go-ahead, cancel
+// and decline that marksOf says it keeps; only an optional step keeps a decline.
 function savedPlanStep(
   step: PlanStepWrite,
   marksOf: (step: PlanStepWrite, id: string) => PlanStepWrite | undefined,
@@ -215,8 +216,13 @@ function savedPlanStep(
     askFirst: step.askFirst,
   };
   const marks = marksOf(step, id);
+  // What a journey said of a step stays with it: a run's save of a stored step keeps it as stored.
+  const journey = marks ?? step;
+  if (journey.optional) saved.optional = journey.optional;
+  if (journey.approval) saved.approval = journey.approval;
   if (marks?.goAhead) saved.goAhead = marks.goAhead;
   if (marks?.cancelled) saved.cancelled = marks.cancelled;
+  if (marks?.declined && saved.optional) saved.declined = marks.declined;
   return saved;
 }
 const RunError = type({ "+": "delete", message: "string", "code?": "string" });
@@ -1300,11 +1306,71 @@ export function createArtifactService(
       const repeated = ids.find((id, at) => ids.indexOf(id) !== at);
       if (repeated !== undefined)
         throw new ProjectError(400, "repeated_plan_step", { id: repeated });
+      // The person's no is remembered on the plan, so only they can take a declined step out of it.
+      const dropped = [...before.values()].find(
+        (step) => step.declined && !ids.includes(step.id),
+      );
+      if (caller?.kind !== "user" && dropped)
+        throw new ProjectError(409, "declined_plan_step_removed", {
+          id: dropped.id,
+          text: `The person declined "${dropped.title}", so it stays in the plan; leave it there and carry on with the rest.`,
+        });
       const plan = { steps: saved, updatedAt: new Date().toISOString() };
       await rawDB
         .update(project)
         .set({ plan })
         .where(eq(project.id, projectId));
+      return plan;
+    },
+
+    // The person declines an optional plan step, or restores one, and the coordinator is told. Only a
+    // person may, and never on a step the journey requires.
+    async declinePlanStep(
+      actor: Actor,
+      projectId: string,
+      stepId: string,
+      change: {
+        declined: boolean;
+        mailRun: (runId: string, content: string) => Promise<void>;
+      },
+    ) {
+      await requireProject(actor, projectId, "manage");
+      const [caller] = await rawDB
+        .select({ kind: principal.kind })
+        .from(principal)
+        .where(eq(principal.id, actor.principalId));
+      if (caller?.kind !== "user")
+        throw new ProjectError(403, "only_a_person_declines");
+      const [row] = await rawDB
+        .select({ plan: project.plan })
+        .from(project)
+        .where(eq(project.id, projectId));
+      const plan = row?.plan;
+      const step = plan?.steps
+        .flatMap((each) => [each, ...(each.steps ?? [])])
+        .find(({ id }) => id === stepId);
+      if (!plan || !step)
+        throw new ProjectError(404, "plan_step_not_found", { id: stepId });
+      if (!step.optional)
+        throw new ProjectError(409, "plan_step_required", {
+          id: stepId,
+          text: STEP_REQUIRED_TEXT,
+        });
+      if (change.declined === (step.declined !== undefined)) return plan;
+      if (change.declined)
+        step.declined = { by: actor.principalId, at: new Date().toISOString() };
+      else delete step.declined;
+      plan.updatedAt = new Date().toISOString();
+      await rawDB
+        .update(project)
+        .set({ plan })
+        .where(eq(project.id, projectId));
+      const coordinator = await activeCoordinator(projectId);
+      if (coordinator)
+        await change.mailRun(
+          coordinator.runId,
+          stepDeclinedNote(step.title, change.declined),
+        );
       return plan;
     },
 

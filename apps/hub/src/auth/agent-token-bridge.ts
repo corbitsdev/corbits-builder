@@ -4,7 +4,9 @@ import {
   INSTALLED_WORKFLOWS_KEY,
   type WorkflowRole,
 } from "@corbits-builder/schemas/installed-workflows";
-import { projectCoordinator } from "../db/schema.ts";
+import { CheckRun } from "@corbits-builder/schemas/artifact";
+import { projectCoordinator, runAction } from "../db/schema.ts";
+import { readJson } from "../lib/json.ts";
 import { verifyAgentToken } from "@corbits/agent-token";
 import { sha256 } from "@intx/crypto";
 import { createGrantStore, type createDB } from "@intx/db";
@@ -209,6 +211,30 @@ async function nativeRunIdentity(
   };
 }
 
+// Whether a specialist's run asks for a check of the plugin whose action started it, in the project
+// it was started in: what its workflow's done steps run. The body is read from a copy, so the route
+// still reads it.
+async function runsOwnCheck(
+  db: ReturnType<typeof createDB>["db"],
+  run: { runId: string; tenantId: string },
+  projectId: string,
+  request: Request,
+) {
+  const asked = CheckRun(await readJson(request.clone()));
+  if (asked instanceof type.errors) return false;
+  const [started] = await db
+    .select({ plugin: runAction.plugin })
+    .from(runAction)
+    .where(
+      and(
+        eq(runAction.runId, run.runId),
+        eq(runAction.tenantId, run.tenantId),
+        eq(runAction.projectId, projectId),
+      ),
+    );
+  return started?.plugin === asked.plugin;
+}
+
 export function createAgentTokenBridge(
   db: ReturnType<typeof createDB>["db"],
   runTokens?: RunTokenLookup,
@@ -372,15 +398,34 @@ export function createAgentTokenBridge(
     const base = "/api/tenants/" + encodeURIComponent(identity.tenantId);
     // Spawned specialists hold no project binding; their native grants decide
     // which artifacts they may read and write. run-values saves only what the
-    // run's own plugin action writes, which the hub checks for the run.
-    if (artifactRoute && !(await registry.boundRun(identity.runId))) {
+    // run's own plugin action writes, which the hub checks for the run. A specialist runs only
+    // the checks of its own plugin.
+    const checkProject = c.req.path.match(
+      /^\/api\/tenants\/[^/]+\/projects\/([^/]+)\/check-runs$/,
+    )?.[1];
+    if (
+      (artifactRoute || checkProject !== undefined) &&
+      !(await registry.boundRun(identity.runId))
+    ) {
       const collection =
         /\/(?:artifacts|artifact-approvals|app-repository(?:\/revoke)?|run-values)$/.test(
           c.req.path,
         );
-      if (
-        !nativeBearer ||
-        (c.req.method !== "GET" && !(collection && c.req.method === "POST"))
+      if (!nativeBearer) return denied();
+      if (checkProject !== undefined) {
+        if (
+          c.req.method !== "POST" ||
+          !(await runsOwnCheck(
+            db,
+            { runId: identity.runId, tenantId: identity.tenantId },
+            decodeURIComponent(checkProject),
+            c.req.raw,
+          ))
+        )
+          return denied();
+      } else if (
+        c.req.method !== "GET" &&
+        !(collection && c.req.method === "POST")
       )
         return denied();
       const [actor] = await db

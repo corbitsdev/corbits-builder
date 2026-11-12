@@ -15,10 +15,12 @@
     "@corbits-builder/hub": "workspace:*",
     "@corbits-builder/plugin": "workspace:*",
     "@corbits-builder/plugin-host": "workspace:*",
+    "@corbits-builder/schemas": "workspace:*",
     "@corbits/mcp": "0.4.1",
     "@corbits/react-ui": "0.5.1",
     "@intx/agent": "workspace:*",
     "@intx/tools-mail": "workspace:*",
+    "@intx/types": "workspace:*",
     "@intx/workflow": "workspace:*",
     "arktype": "catalog:"
   },
@@ -70,7 +72,10 @@
           "workflow": "coder",
           "correlation": "coder",
           "app": "new"
-        }
+        },
+        "done": [
+          "builds"
+        ]
       },
       "change": {
         "runs": "workflow",
@@ -94,7 +99,10 @@
           "workflow": "coder",
           "correlation": "coder-change",
           "app": "existing"
-        }
+        },
+        "done": [
+          "builds"
+        ]
       },
       "builds": {
         "runs": "check",

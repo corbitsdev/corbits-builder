@@ -45,8 +45,13 @@ import {
 import { projectScopeFailure } from "../workflows/project-scope.ts";
 import { agentDecidesApprovals } from "../config/preferences.ts";
 import { isInputKind, skillPacksIndex, startHere } from "../config/inputs.ts";
-import { CATALOG, ProjectRoutes, SCREENS, WITH_SCREENS } from "./catalog.ts";
-import { projectFacts } from "./facts.ts";
+import {
+  projectCatalog,
+  ProjectRoutes,
+  SCREENS,
+  WITH_SCREENS,
+} from "./catalog.ts";
+import { personFacts, projectFacts } from "./facts.ts";
 import { checkPluginQuestion } from "./question.ts";
 
 // The least score a plugin needs to be hinted. One trigger word is all triggers can score. For fields,
@@ -126,6 +131,7 @@ function project(session: ProjectSession): Project {
           preferences: listed.preferences,
           checks,
         }),
+        personFacts: personFacts(listed.artifacts),
         asksApprovals: !agentDecidesApprovals(listed.preferences),
         checks,
         preferences: listed.preferences,
@@ -281,22 +287,24 @@ export function createExecuteTools(
         const session = projectSession(env, options, signal);
         try {
           signal.throwIfAborted();
+          // Every tool sees one plugin per handle: the one the person selected for the project.
+          const catalog = await projectCatalog(project(session).values);
           if (call.name === "discover") {
             const { input, error } = checkedDiscover(
-              CATALOG.plugins,
+              catalog.plugins,
               call.arguments,
             );
             if (!input)
               return { callId: call.id, content: error, isError: true };
             return {
               callId: call.id,
-              content: await discoverFor(CATALOG, project(session), input),
+              content: await discoverFor(catalog, project(session), input),
             };
           }
           if (call.name === "execute")
             return {
               callId: call.id,
-              ...(await execute(CATALOG, project(session), call.arguments)),
+              ...(await execute(catalog, project(session), call.arguments)),
             };
           if (call.name === "runs")
             return {
@@ -306,7 +314,7 @@ export function createExecuteTools(
           if (call.name === "plan")
             return {
               callId: call.id,
-              ...(await managePlan(CATALOG, project(session), call.arguments)),
+              ...(await managePlan(catalog, project(session), call.arguments)),
             };
           return {
             callId: call.id,

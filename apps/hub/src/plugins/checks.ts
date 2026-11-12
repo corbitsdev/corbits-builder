@@ -9,6 +9,7 @@ import { getLogger } from "@intx/log";
 import type { CheckOutcome, CommandRun } from "@corbits-builder/plugin";
 import {
   isCheckAction,
+  type Catalog,
   type CheckAction,
 } from "@corbits-builder/plugin-host/catalog";
 import {
@@ -45,7 +46,7 @@ import { createHubMail } from "../mail/hub-mail.ts";
 import { actorOf } from "../projects/authorization.ts";
 import { ProjectError } from "../projects/errors.ts";
 import { requestErrorMetadata } from "../request-error.ts";
-import { CATALOG } from "./catalog.ts";
+import { CATALOG, projectCatalog } from "./catalog.ts";
 import { createCommandRunner } from "./command-runner.ts";
 import { projectFacts } from "./facts.ts";
 
@@ -63,8 +64,8 @@ export type Row = typeof checkRun.$inferSelect;
 const sha256 = (value: unknown) =>
   new Bun.CryptoHasher("sha256").update(JSON.stringify(value)).digest("hex");
 
-const installedCheck = (plugin: string, action: string) =>
-  CATALOG.actions
+const installedCheck = (catalog: Catalog, plugin: string, action: string) =>
+  catalog.actions
     .filter(isCheckAction)
     .find((check) => check.plugin === plugin && check.action === action);
 
@@ -208,7 +209,8 @@ const recordOf = (row: Row, now: Now): CheckRecord => {
     evidence: row.evidence,
     versions: row.versions,
     current: isCurrent(row.versions, now),
-    returns: installedCheck(row.plugin, row.action)?.returns(row.input) ?? [],
+    returns:
+      installedCheck(CATALOG, row.plugin, row.action)?.returns(row.input) ?? [],
     triggeredBy: row.triggeredBy,
     createdAt: row.createdAt.toISOString(),
   };
@@ -462,7 +464,7 @@ export function createChecks(deps: {
   const rerun = async (actor: Actor, projectId: string, origin: string) => {
     const { records } = await standing(actor, projectId);
     for (const record of records) {
-      const action = installedCheck(record.plugin, record.action);
+      const action = installedCheck(CATALOG, record.plugin, record.action);
       if (
         record.current ||
         action?.builder.rerun !== "change" ||
@@ -514,7 +516,11 @@ export function createChecks(deps: {
       const asked = CheckRun(raw);
       if (asked instanceof type.errors)
         throw new ProjectError(400, "invalid_check_run", { issues: asked });
-      const action = installedCheck(asked.plugin, asked.action);
+      const state = await artifacts.projectState(actor, projectId);
+      const catalog = await projectCatalog(async (names) =>
+        readProjectValues(names, state),
+      );
+      const action = installedCheck(catalog, asked.plugin, asked.action);
       if (!action)
         throw new ProjectError(404, "check_not_found", {
           plugin: asked.plugin,

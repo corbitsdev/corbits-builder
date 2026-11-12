@@ -4,6 +4,7 @@ import {
   isSpecialist,
   isWorkflowAction,
   loadCatalog,
+  selectionName,
   type Host,
 } from "@corbits-builder/plugin-host/catalog";
 import { readPluginFolder } from "@corbits-builder/plugin-host/folder";
@@ -37,6 +38,43 @@ export const CATALOG = await loadCatalog(
   HOST,
 );
 export const PLUGINS = CATALOG.plugins;
+
+// The project values that select, of each handle several plugins share, the one a project uses.
+const SELECTIONS = CATALOG.choices.map(({ handle }) => selectionName(handle));
+
+/**
+ * The catalog as one project sees it, from its values read by name: of each handle several plugins
+ * share, the one the person selected, else the default. Everything that acts on a project resolves
+ * plugins through it.
+ */
+export async function projectCatalog(
+  read: (
+    names: readonly string[],
+  ) => Promise<Readonly<Record<string, unknown>>>,
+) {
+  // The hub refuses a read of no names.
+  return CATALOG.select(SELECTIONS.length === 0 ? {} : await read(SELECTIONS));
+}
+
+/** Whether a project value is the selection of one of the plugins sharing a handle. */
+export const isSelection = (name: string) => SELECTIONS.includes(name);
+
+/**
+ * Why a value cannot be saved as a selection, which names a package installed with that handle;
+ * undefined when it can, or when the name is no selection.
+ */
+export function selectionRefusal(name: string, value: unknown) {
+  const choice = CATALOG.choices.find(
+    ({ handle }) => selectionName(handle) === name,
+  );
+  if (!choice) return undefined;
+  const packages = [choice.using, ...choice.others].map(
+    (plugin) => plugin.package,
+  );
+  return packages.some((each) => each === value)
+    ? undefined
+    : `is not an installed ${choice.handle} plugin: ${packages.join(" or ")}`;
+}
 // Every workflow package Builder installs and the role its runs play: the hub's coordinator and each
 // package a plugin brings. A role is what picks a run's model, guidance and wording, so a plugin
 // naming one Builder does not know stops the hub.

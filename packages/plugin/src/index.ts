@@ -41,7 +41,10 @@ export const ValueDeclaration = type({
 export type ValueDeclaration = typeof ValueDeclaration.infer;
 
 const Common = type({
+  // Several plugins may share a handle, and a project uses one of them: the one the person selects,
+  // else the one that says it is the default. Exactly one of them must.
   handle: "string > 0",
+  "default?": "true",
   groups: "string[] > 0",
   when: "string > 0",
   unless: "string > 0",
@@ -103,6 +106,9 @@ export const WorkflowActionBuilder = ActionBuilder.merge({
   // The screen actions of the same plugin that can show the finished work to the person; each
   // screen's when says which fits.
   "presents?": "string[] > 0",
+  // The check actions of the same plugin that must pass on the saved result before the run counts
+  // as finished; the workflow runs them after its agent and sends a failure back to it.
+  "done?": "string[] > 0",
 });
 export type WorkflowActionBuilder = typeof WorkflowActionBuilder.infer;
 
@@ -192,29 +198,9 @@ export const CheckActionBuilder = type({
 );
 export type CheckActionBuilder = typeof CheckActionBuilder.infer;
 
-// A ready-made run of several actions that a plan adds as one step holding these steps, in order.
-// A step's action is this plugin's unless plugin names another's.
-const Sequence = type({
-  "+": "reject",
-  title: "string > 0",
-  steps: type({
-    "+": "reject",
-    title: "string > 0",
-    action: "string > 0",
-    "plugin?": "string > 0",
-    "input?": "Record<string, unknown>",
-    "askFirst?": "boolean",
-  })
-    .array()
-    .atLeastLength(1),
-});
-export type Sequence = typeof Sequence.infer;
-
 // A specialist the coordinator composes into its plan, and the actions it can be started on.
 export const SpecialistBuilder = Common.merge({
   runs: "'specialist'",
-  // The sequences a plan can add, by name.
-  "sequences?": { "[string]": Sequence },
   // The workflow packages the host builds and installs from this plugin, by package name: entry is
   // the module whose default export is the workflow and whose named exports are its directors, and
   // role the role its runs play, which picks their model, guidance and one-at-a-time rule.
@@ -231,20 +217,38 @@ export const SpecialistBuilder = Common.merge({
 });
 export type SpecialistBuilder = typeof SpecialistBuilder.infer;
 
+// When a route step waits for the person's go-ahead: required always waits for the person's own
+// answer, even when they left approvals to Builder; optional waits only while they decide approvals.
+const ApprovalWhen = type("'required' | 'optional'");
+export type ApprovalWhen = typeof ApprovalWhen.infer;
+
+// One step of a route: a plugin action, the facts the route suggests having first, and, so a plan
+// can hold it, a title and the input it starts on. An optional step is one the person may decline.
+// approval is the one way a step asks for the person's go-ahead: of names the document kinds they
+// approve, and "design" for the design they choose; a step without it asks for none.
+export const RouteStepBuilder = type({
+  "+": "reject",
+  plugin: "string > 0",
+  action: "string > 0",
+  requires: Facts,
+  "optional?": "boolean",
+  "approval?": {
+    "+": "reject",
+    of: type("string > 0").array().atLeastLength(1),
+    when: ApprovalWhen,
+  },
+  "title?": "string > 0",
+  "input?": "Record<string, unknown>",
+});
+export type RouteStepBuilder = typeof RouteStepBuilder.infer;
+
 // Guidance for reaching an outcome through other plugins' actions. While a project follows it, a
-// step's facts that only the person's answer on a screen makes true hold the step back while the
-// person decides approvals; the step's other facts are advice that execute passes on.
+// step's approval holds the step back as its when says; the facts it requires are advice that
+// execute passes on.
 export const RouteBuilder = Common.merge({
   runs: "'route'",
   guidance: "string > 0",
-  steps: type({
-    "+": "reject",
-    plugin: "string > 0",
-    action: "string > 0",
-    requires: Facts,
-  })
-    .array()
-    .atLeastLength(1),
+  steps: RouteStepBuilder.array().atLeastLength(1),
   // The fact that ends the route. A route with none is followed until the coordinator leaves it.
   "outcome?": "string > 0",
 });

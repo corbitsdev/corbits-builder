@@ -72,10 +72,8 @@ own credential:
 
 - documents: `read_artifact`, `write_artifact`
   ([apps/hub/src/artifacts/tools.ts](https://github.com/corbitsdev/corbits-builder/blob/main/apps/hub/src/artifacts/tools.ts));
-- hand-offs and decisions: `request_approval`, Interchange's `question`,
-  `deploy_writer`, `review_artifact`, `design_app`, `deploy_coder`,
-  `instruct_coder`
-  ([apps/hub/src/projects/deploy-tools.ts](https://github.com/corbitsdev/corbits-builder/blob/main/apps/hub/src/projects/deploy-tools.ts));
+- hand-offs and decisions: `discover`, `execute`, `question`, `runs` and `plan`
+  ([apps/hub/src/plugins/tools.ts](https://github.com/corbitsdev/corbits-builder/blob/main/apps/hub/src/plugins/tools.ts));
 - design filing: `file_design_option`
   ([apps/hub/src/artifacts/design-tools.ts](https://github.com/corbitsdev/corbits-builder/blob/main/apps/hub/src/artifacts/design-tools.ts));
 - skills: `read_skill`

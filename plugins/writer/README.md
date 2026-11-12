@@ -14,8 +14,7 @@ the hub builds and installs from it (`packages`) and the starter of each
 (constraints, approaches, product requirements, build plan), whose
 `write_artifact` saves only that kind's fields, and once as `writer-document`,
 which writes any document under the kind its task names. The reviewer is the
-`reviewer` package. The dynamic [coordinator][coordinator] starts them with
-`execute`; the classic one with `deploy_writer` and `review_artifact`.
+`reviewer` package. The [coordinator][coordinator] starts them with `execute`.
 
 The writer's tools are the hub's `write_artifact` and `read_skill`; it has no
 read tool, because its task carries every document it needs in full. The
@@ -30,8 +29,7 @@ to review, and the coordinator weighs its findings as advice.
   starters of the per-kind writers, the writer of any document and the
   reviewer. Each writes its run's assignment from the filed documents.
 - `src/task.ts`: the assignment both agents get, with every document it
-  builds on read in full, and the default stack a build plan is written to;
-  shared with the classic tools.
+  builds on read in full, and the default stack a build plan is written to.
 - `src/package.ts`: `writerPackage`, which assembles the writer from the hub's
   model, director and tools. `src/packages/` holds one entry per installed
   package, the reviewer's included.

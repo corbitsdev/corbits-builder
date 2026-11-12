@@ -1,0 +1,41 @@
+{
+  "name": "@corbits-builder/cloudflare-publish",
+  "version": "0.1.0-rc.3",
+  "private": true,
+  "description": "Gets a built app ready to publish on Cloudflare Workers: checks it has what a deploy needs, then that the Worker is routed to a domain.",
+  "license": "SEE LICENSE IN ../../LICENSE.md",
+  "author": "Sawyer Cutler <sawyer@dirtroad.dev>",
+  "type": "module",
+  "builder": {
+    "handle": "publish-to-cloudflare",
+    "runs": "route",
+    "groups": [
+      "deploy",
+      "plan"
+    ],
+    "when": "The project has an app and the person wants it published on Cloudflare Workers.",
+    "unless": "The app is meant for another host, or the project has no app yet.",
+    "guidance": "./SKILL.md",
+    "steps": [
+      {
+        "plugin": "cloudflare",
+        "action": "ready",
+        "title": "Check the app is ready for Cloudflare",
+        "requires": []
+      },
+      {
+        "plugin": "cloudflare",
+        "action": "routes",
+        "title": "Check the Worker is routed to a domain",
+        "requires": [
+          "ready:cloudflare"
+        ]
+      }
+    ],
+    "outcome": "routed:cloudflare",
+    "examples": [
+      "publish my app on Cloudflare",
+      "put the app on Cloudflare Workers"
+    ]
+  }
+}

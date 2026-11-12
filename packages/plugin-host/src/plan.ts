@@ -1,5 +1,5 @@
 import { isDeepStrictEqual } from "node:util";
-import type { Fact } from "@corbits-builder/plugin";
+import type { ApprovalWhen, Fact } from "@corbits-builder/plugin";
 import { isCheckAction, isScreenAction, type Catalog } from "./catalog.ts";
 import { makersIn, type Run } from "./coordinator.ts";
 import { holds, resolveFacts, unmet } from "./facts.ts";
@@ -17,6 +17,9 @@ export type PlanStep = {
   askFirst: boolean;
   goAhead?: Mark;
   cancelled?: Mark;
+  optional?: boolean;
+  approval?: ApprovalWhen;
+  declined?: Mark;
 };
 
 export type StepState =
@@ -75,6 +78,8 @@ export type PlanRecords = {
   questions: readonly { plugin: string; action?: string }[];
 };
 
+const DECLINED_SUMMARY = "declined by the person";
+
 const settled = ({ state }: PlanStepView) =>
   state === "done" || state === "skipped";
 
@@ -110,6 +115,9 @@ export function planState(
     };
     if (step.goAhead) view.goAhead = step.goAhead;
     if (step.cancelled) view.cancelled = step.cancelled;
+    if (step.optional) view.optional = step.optional;
+    if (step.approval) view.approval = step.approval;
+    if (step.declined) view.declined = step.declined;
     const run = records.runs.find(
       (each) => each.plugin === step.plugin && each.action === step.action,
     );
@@ -153,6 +161,7 @@ export function planState(
     );
     const state = (): StepState => {
       if (step.cancelled) return "cancelled";
+      if (step.declined) return "skipped";
       if (record?.result === "skipped" && record.current) return "skipped";
       if (record?.result === "fail") return "failed";
       if (record?.result === "pass" && record.current) return "done";
@@ -166,6 +175,8 @@ export function planState(
       return "not_started";
     };
     view.state = state();
+    if (view.state === "skipped" && step.declined)
+      view.summary = DECLINED_SUMMARY;
     if (view.state === "failed" && run?.status === "completed")
       view.summary = unfinishedText(missing, catalog.factText);
     if (view.state === "waiting")

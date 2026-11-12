@@ -33,6 +33,7 @@ import {
   proofText,
 } from "./checks.ts";
 import {
+  approvalFacts,
   makes,
   negated,
   patternFact,
@@ -116,6 +117,7 @@ const isStarter = (value: unknown): value is Starter =>
 
 // The builder block of whichever kind the manifest says it runs.
 const Manifest = type({
+  name: "string > 0",
   "description?": "string",
   builder: SpecialistBuilder.or(RouteBuilder),
 });
@@ -127,6 +129,12 @@ type Base = {
   description: string;
   // What the coordinator reads to use it.
   guidance: string;
+};
+type PluginBase = Base & {
+  // Its package's name, which tells it from other plugins with the same handle.
+  package: string;
+  // How discover names it among the others with its handle: its description, or its package's name.
+  label: string;
 };
 type ActionBase = Base & {
   plugin: string;
@@ -176,11 +184,11 @@ export type CheckAction = ActionBase & {
 };
 export type Action = WorkflowAction | ScreenAction | CheckAction;
 
-export type SpecialistPlugin = Base & {
+export type SpecialistPlugin = PluginBase & {
   builder: SpecialistBuilder;
   actions: readonly Action[];
 };
-export type RoutePlugin = Base & { builder: RouteBuilder };
+export type RoutePlugin = PluginBase & { builder: RouteBuilder };
 // A skill pack as the host lays it into a specialist's workspace and lists it in the assignment.
 export type SkillPack = {
   builder: SkillsBuilder;
@@ -197,6 +205,22 @@ export type SkillPack = {
 };
 export type Plugin = SpecialistPlugin | RoutePlugin;
 
+// A handle several installed plugins share: the one a project uses and the others. missing is the
+// package the project's selection names when none of them is that package, so it uses the default.
+export type Choice = {
+  handle: string;
+  using: Plugin;
+  others: readonly Plugin[];
+  missing?: string;
+};
+
+/** The project value that selects which of the plugins sharing a handle a project uses, by package name. */
+export const selectionName = (handle: string) => `plugins.${handle}`;
+
+/**
+ * The installed plugins as one project sees them: one plugin per handle, the one its selection names
+ * of those that share a handle, else their default.
+ */
 export type Catalog = {
   plugins: readonly Plugin[];
   // The screens a question can show.
@@ -211,6 +235,10 @@ export type Catalog = {
   // Each workflow package a plugin brings, by name: its entry's path in the plugins folder and the
   // role its runs play.
   packages: ReadonlyMap<string, { entry: string; role: string }>;
+  // Each handle several installed plugins share, with the one this catalog uses.
+  choices: readonly Choice[];
+  // The catalog as a project with these values sees it; only the selection values are read.
+  select(values: Readonly<Record<string, unknown>>): Catalog;
 };
 
 export const isSpecialist = (plugin: Plugin): plugin is SpecialistPlugin =>
@@ -237,8 +265,16 @@ function manifestOf(found: Found) {
     throw new Error(
       `plugins/${found.folder}/package.json: ${manifest.summary}`,
     );
-  const { builder, description = "" } = manifest;
-  return { found, builder, description };
+  const { name, builder, description = "" } = manifest;
+  return {
+    found,
+    builder,
+    about: {
+      package: name,
+      label: description === "" ? name : description,
+      description,
+    },
+  };
 }
 type Manifested = ReturnType<typeof manifestOf>;
 
@@ -372,10 +408,41 @@ const undeclared = (
 // A namespace and a name, such as "brand.guidelines".
 const VALUE_NAME = /^[a-z][a-z0-9-]*(\.[a-z][a-z0-9-]*)+$/;
 
-// Every project value by name: the host's own, then each a plugin declares. A value is declared
-// once, so its words and type never disagree; any number of actions may read it.
+// Each handle several plugins share, with its default, the one that says so; exactly one must.
+function sharedHandles<Each extends { builder: Plugin["builder"] }>(
+  all: readonly Each[],
+  packageOf: (each: Each) => string,
+) {
+  const byHandle = new Map<string, Each[]>();
+  for (const each of all) {
+    const { handle } = each.builder;
+    byHandle.set(handle, [...(byHandle.get(handle) ?? []), each]);
+  }
+  return [...byHandle].flatMap(([handle, sharing]) => {
+    if (sharing.length === 1) return [];
+    const defaults = sharing.filter(({ builder }) => builder.default);
+    const [preset] = defaults;
+    if (preset === undefined || defaults.length > 1)
+      throw new Error(
+        `${handle} is installed by ${sharing.map(packageOf).join(", ")}; exactly one of them must say "default": true in its builder block`,
+      );
+    return [{ handle, preset, sharing }];
+  });
+}
+
+// Every project value by name: the host's own, the selection of each handle several plugins share,
+// then each a plugin declares. A value is declared once, so its words and type never disagree; any
+// number of actions may read it.
 function declaredValues(manifests: readonly Manifested[], host: Host) {
   const values = new Map(Object.entries(host.values));
+  for (const { handle, preset, sharing } of sharedHandles(
+    manifests,
+    ({ about }) => about.package,
+  ))
+    values.set(selectionName(handle), {
+      about: `Which ${handle} plugin this project uses, by package name: ${sharing.map(({ about }) => about.package).join(" or ")}. Without one it uses ${preset.about.package}.`,
+      type: "text",
+    });
   const owners = new Map<string, string>();
   for (const { builder } of manifests)
     for (const [name, value] of Object.entries(builder.values ?? {})) {
@@ -629,6 +696,13 @@ async function installAction(
     throw new Error(
       `${name} starts ${declared.start.workflow}, which reads ${unread}, but its input has no ${unread}`,
     );
+  const notCheck = declared.done?.find(
+    (check) => specialist.actions[check]?.runs !== "check",
+  );
+  if (notCheck !== undefined)
+    throw new Error(
+      `${name} is done when ${notCheck} passes, which is not a check of ${handle}`,
+    );
   return {
     plugin: handle,
     action,
@@ -651,10 +725,11 @@ async function installAction(
 async function specialistPlugin(
   found: Found,
   builder: SpecialistBuilder,
-  description: string,
+  about: Manifested["about"],
   installing: Installing,
 ): Promise<SpecialistPlugin> {
   const { handle } = builder;
+  const { description } = about;
   const { packs } = installing;
   const actions = await Promise.all(
     Object.entries(builder.actions).map(([name, declared]) =>
@@ -666,6 +741,8 @@ async function specialistPlugin(
     .map((pack) => pack.builder.handle);
   return {
     builder,
+    package: about.package,
+    label: about.label,
     description,
     actions,
     guidance: [
@@ -684,13 +761,17 @@ async function specialistPlugin(
 async function routePlugin(
   found: Found,
   builder: RouteBuilder,
-  description: string,
+  about: Manifested["about"],
   known: ReadonlySet<Fact>,
 ): Promise<RoutePlugin> {
+  const { description } = about;
   checkFacts(
     builder.handle,
     [
-      ...builder.steps.flatMap((step) => step.requires),
+      ...builder.steps.flatMap((step) => [
+        ...step.requires,
+        ...approvalFacts(step.approval),
+      ]),
       ...(builder.outcome === undefined ? [] : [builder.outcome]),
     ],
     known,
@@ -698,6 +779,8 @@ async function routePlugin(
   );
   return {
     builder,
+    package: about.package,
+    label: about.label,
     description,
     guidance: [
       ...lines(builder.handle, builder, description),
@@ -707,38 +790,80 @@ async function routePlugin(
   };
 }
 
-// Every handle once, every action a route names among the installed workflow actions, and every
-// action a sequence names among the installed actions.
+// Every action a route names is a workflow or check action of each installed specialist with its
+// handle, so whichever of them a project uses has it.
 function checkCatalog(plugins: readonly Plugin[]) {
-  const handles = new Set<string>();
-  for (const { builder } of plugins) {
-    if (handles.has(builder.handle))
-      throw new Error(`${builder.handle} is installed twice`);
-    handles.add(builder.handle);
-  }
-  const started = plugins
-    .filter(isSpecialist)
-    .flatMap(({ actions }) => actions.filter(isWorkflowAction))
-    .map(({ name }) => name);
+  const specialists = plugins.filter(isSpecialist);
+  const offered = (handle: string, name: string) => {
+    const sharing = specialists.filter(
+      ({ builder }) => builder.handle === handle,
+    );
+    return (
+      sharing.length > 0 &&
+      sharing.every(({ actions }) =>
+        actions.some(
+          (action) => action.action === name && !isScreenAction(action),
+        ),
+      )
+    );
+  };
   for (const { builder } of plugins)
     if (builder.runs === "route")
       for (const step of builder.steps)
-        if (!started.includes(`${step.plugin} ${step.action}`))
+        if (!offered(step.plugin, step.action))
           throw new Error(
-            `${builder.handle} names ${step.plugin} ${step.action}, which is not an installed workflow action`,
+            `${builder.handle} names ${step.plugin} ${step.action}, which is not an installed workflow or check action of every plugin with that handle`,
           );
-  const installed = plugins
+}
+
+// A route step asks for the person's go-ahead only through its approval, so what it requires names
+// no fact that only a screen's answer makes true. And no step the person may not decline needs a
+// fact that only steps they may decline make true in the same route, since declining those would
+// leave the journey with no way on.
+function checkRouteSteps(plugins: readonly Plugin[]) {
+  const actions = plugins
     .filter(isSpecialist)
-    .flatMap(({ actions }) => actions.map(({ name }) => name));
-  for (const { builder } of plugins.filter(isSpecialist))
-    for (const [name, sequence] of Object.entries(builder.sequences ?? {}))
-      for (const step of sequence.steps) {
-        const action = `${step.plugin ?? builder.handle} ${step.action}`;
-        if (!installed.includes(action))
+    .flatMap(({ actions }) => actions);
+  const goAhead = (fact: Fact) => {
+    const makers = actions.filter((action) =>
+      (action.builder.returns ?? []).some((made) => makes(made, fact)),
+    );
+    return makers.length > 0 && makers.every(isScreenAction);
+  };
+  for (const { builder } of plugins) {
+    if (builder.runs !== "route") continue;
+    for (const step of builder.steps) {
+      const gate = step.requires.find(goAhead);
+      if (gate !== undefined)
+        throw new Error(
+          `${builder.handle}'s step ${step.plugin} ${step.action} requires ${gate}, which only the person's answer makes true; say it with approval instead`,
+        );
+    }
+    const making = builder.steps.map((step) => {
+      const returns =
+        actions.find(
+          (action) =>
+            action.plugin === step.plugin && action.action === step.action,
+        )?.builder.returns ?? [];
+      return {
+        step,
+        made: step.input ? resolveFacts(returns, step.input) : returns,
+      };
+    });
+    for (const { step } of making) {
+      if (step.optional) continue;
+      for (const fact of step.requires) {
+        const makers = making.filter((maker) =>
+          maker.made.some((each) => makes(each, fact)),
+        );
+        const optional = makers.find((maker) => maker.step.optional);
+        if (optional && makers.every((maker) => maker.step.optional))
           throw new Error(
-            `${builder.handle}'s sequence ${name} names ${action}, which is not an installed action`,
+            `${builder.handle}'s step ${step.plugin} ${step.action} needs ${fact}, which only its optional step ${optional.step.plugin} ${optional.step.action} makes true; declining that step would leave the route with no way on, so make it required or drop ${fact} from what the step needs`,
           );
       }
+    }
+  }
 }
 
 // Each pack with the specialist its chain of extends reaches and the workflow actions every pack in
@@ -840,19 +965,43 @@ async function pluginStarters(manifests: readonly Manifested[]) {
 // Each workflow package a plugin brings, by name, at its entry's path in the plugins folder.
 function pluginPackages(manifests: readonly Manifested[]) {
   const packages = new Map<string, { entry: string; role: string }>();
-  for (const { found, builder } of manifests) {
+  // Two plugins with one handle may well bring a package of the same name, which only one can be.
+  const owners = new Map<string, string>();
+  for (const { found, builder, about } of manifests) {
     if (builder.runs !== "specialist") continue;
     for (const [name, { entry, role }] of Object.entries(
       builder.packages ?? {},
     )) {
-      if (packages.has(name))
+      const other = owners.get(name);
+      if (other !== undefined)
         throw new Error(
-          `${builder.handle} installs ${name}, which another plugin installs too`,
+          `${about.package} installs the workflow package ${name}, which ${other} installs too`,
         );
       packages.set(name, { entry: join(found.folder, entry), role });
+      owners.set(name, about.package);
     }
   }
   return packages;
+}
+
+// Of each handle several plugins share, the one these project values select, else the default.
+function choose(
+  shared: ReturnType<typeof sharedHandles<Plugin>>,
+  values: Readonly<Record<string, unknown>>,
+) {
+  return shared.map(({ handle, preset, sharing }): Choice => {
+    const selected = values[selectionName(handle)];
+    const using =
+      sharing.find((plugin) => plugin.package === selected) ?? preset;
+    const choice: Choice = {
+      handle,
+      using,
+      others: sharing.filter((plugin) => plugin !== using),
+    };
+    if (typeof selected === "string" && selected !== using.package)
+      choice.missing = selected;
+    return choice;
+  });
 }
 
 /** The plugins found, each checked against its manifest and the host; a wrong one is thrown. */
@@ -873,9 +1022,9 @@ export async function loadCatalog(
   const values = declaredValues(manifests, host);
   const starters = await pluginStarters(manifests);
   const plugins = await Promise.all(
-    manifests.map(({ found, builder, description }): Promise<Plugin> => {
+    manifests.map(({ found, builder, about }): Promise<Plugin> => {
       if (builder.runs === "specialist")
-        return specialistPlugin(found, builder, description, {
+        return specialistPlugin(found, builder, about, {
           known,
           factText,
           packs,
@@ -883,21 +1032,36 @@ export async function loadCatalog(
           preferences: host.preferences,
           starters,
         });
-      return routePlugin(found, builder, description, known);
+      return routePlugin(found, builder, about, known);
     }),
   );
   checkCatalog(plugins);
-  const actions = plugins
-    .filter(isSpecialist)
-    .flatMap(({ actions }) => actions);
-  return {
-    plugins,
-    screens: actions.filter(isScreenAction),
-    actions,
-    installed: (handle) =>
-      plugins.find((plugin) => plugin.builder.handle === handle),
-    factText,
-    values,
-    packages: pluginPackages(manifests),
+  checkRouteSteps(plugins);
+  const packages = pluginPackages(manifests);
+  const shared = sharedHandles(plugins, (plugin) => plugin.package);
+  // The one place the installed plugins are narrowed to one per handle.
+  const catalogOf = (choices: readonly Choice[]): Catalog => {
+    const using = plugins.filter((plugin) =>
+      choices.every(
+        (choice) =>
+          choice.handle !== plugin.builder.handle || choice.using === plugin,
+      ),
+    );
+    const actions = using
+      .filter(isSpecialist)
+      .flatMap(({ actions }) => actions);
+    return {
+      plugins: using,
+      screens: actions.filter(isScreenAction),
+      actions,
+      installed: (handle) =>
+        using.find((plugin) => plugin.builder.handle === handle),
+      factText,
+      values,
+      packages,
+      choices,
+      select: (selected) => catalogOf(choose(shared, selected)),
+    };
   };
+  return catalogOf(choose(shared, {}));
 }

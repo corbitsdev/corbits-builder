@@ -86,6 +86,7 @@ test("a designer pick-fonts question the screen can draw is let through, checked
     await check("pick-fonts", { proposed: { primary: "Fraunces" } }),
   ).toBeUndefined();
   expect(asked).toEqual([
+    "/api/tenants/tenant/projects/project/values?keys=plugins.build-web-app",
     "/api/tenants/tenant/projects/project/values?keys=look.font-primary%2Clook.font-secondary",
   ]);
   expect(await check("pick-fonts", { proposed: { primary: "Inter" } })).toBe(

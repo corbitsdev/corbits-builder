@@ -228,6 +228,10 @@
       "name": "@corbits-builder/build-web-app",
       "version": "0.1.0-rc.3",
     },
+    "plugins/build-web-app-express": {
+      "name": "@corbits-builder/build-web-app-express",
+      "version": "0.1.0-rc.3",
+    },
     "plugins/cloudflare": {
       "name": "@corbits-builder/cloudflare",
       "version": "0.1.0-rc.3",
@@ -241,6 +245,10 @@
         "arktype": "catalog:",
       },
     },
+    "plugins/cloudflare-publish": {
+      "name": "@corbits-builder/cloudflare-publish",
+      "version": "0.1.0-rc.3",
+    },
     "plugins/coder": {
       "name": "@corbits-builder/coder",
       "version": "0.9.0",
@@ -248,10 +256,12 @@
         "@corbits-builder/hub": "workspace:*",
         "@corbits-builder/plugin": "workspace:*",
         "@corbits-builder/plugin-host": "workspace:*",
+        "@corbits-builder/schemas": "workspace:*",
         "@corbits/mcp": "0.4.1",
         "@corbits/react-ui": "0.5.1",
         "@intx/agent": "workspace:*",
         "@intx/tools-mail": "workspace:*",
+        "@intx/types": "workspace:*",
         "@intx/workflow": "workspace:*",
         "arktype": "catalog:",
       },
@@ -889,9 +899,13 @@
 
     "@corbits-builder/build-web-app": ["@corbits-builder/build-web-app@workspace:plugins/build-web-app"],
 
+    "@corbits-builder/build-web-app-express": ["@corbits-builder/build-web-app-express@workspace:plugins/build-web-app-express"],
+
     "@corbits-builder/client": ["@corbits-builder/client@workspace:packages/client"],
 
     "@corbits-builder/cloudflare": ["@corbits-builder/cloudflare@workspace:plugins/cloudflare"],
+
+    "@corbits-builder/cloudflare-publish": ["@corbits-builder/cloudflare-publish@workspace:plugins/cloudflare-publish"],
 
     "@corbits-builder/coder": ["@corbits-builder/coder@workspace:plugins/coder"],
 

@@ -6,6 +6,7 @@ import {
   ConversationEvents,
   parkedQuestions,
 } from "@corbits-builder/schemas/conversation";
+import type { Catalog } from "@corbits-builder/plugin-host/catalog";
 import {
   screenRefusal,
   type Project,
@@ -14,7 +15,7 @@ import { unknownScreen } from "@corbits-builder/plugin-host/text";
 import { callerHeaders } from "../mail/caller-mail.ts";
 import { readJson } from "../lib/json.ts";
 import { ProjectError } from "../projects/errors.ts";
-import { CATALOG, SCREENS } from "./catalog.ts";
+import { projectCatalog } from "./catalog.ts";
 
 // Refuses a screen's input, or a project without what the screen needs, before the question parks,
 // so the person never sees a screen that cannot draw. A screen is checked against the project as it
@@ -23,12 +24,13 @@ export async function checkPluginQuestion(
   question: Parameters<QuestionCheck>[0],
   project: Project,
 ) {
-  const installed = SCREENS.find(
+  const catalog = await projectCatalog(project.values);
+  const installed = catalog.screens.find(
     ({ plugin, action }) =>
       plugin === question.plugin && action === question.action,
   );
-  if (!installed) return unknownScreen(question, SCREENS);
-  return screenRefusal(CATALOG, project, installed, question.input);
+  if (!installed) return unknownScreen(question, catalog.screens);
+  return screenRefusal(catalog, project, installed, question.input);
 }
 
 /**
@@ -76,10 +78,10 @@ export async function openQuestion(
   return { runId, asked: question.asked };
 }
 
-/** The installed screen a question opened, or undefined for a question asked in words. */
-export function screenOf(asked: AskedQuestion) {
+/** The project's screen a question opened, or undefined for a question asked in words. */
+export function screenOf(catalog: Catalog, asked: AskedQuestion) {
   if (!("plugin" in asked)) return undefined;
-  const installed = SCREENS.find(
+  const installed = catalog.screens.find(
     ({ plugin, action }) => plugin === asked.plugin && action === asked.action,
   );
   if (!installed) throw new ProjectError(409, "screen_not_installed");

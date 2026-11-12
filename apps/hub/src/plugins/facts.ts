@@ -57,3 +57,19 @@ export function projectFacts(project: {
       for (const fact of returns) facts.add(fact);
   return facts;
 }
+
+/**
+ * The go-ahead facts the person's own answers made true: each document they approved at its current
+ * version and the design chosen. An approval left to Builder is not among them, so a route step
+ * whose approval is required still waits for the person. A design Builder chose for a single
+ * concept is recorded as chosen, so it counts.
+ */
+export function personFacts(artifacts: readonly Filed[]): ReadonlySet<Fact> {
+  const facts = new Set<Fact>();
+  for (const { kind, version, approvedVersion } of artifacts) {
+    if (approvedVersion !== version) continue;
+    if (kind === "design") facts.add("design_chosen");
+    if (isDocumentKind(kind)) facts.add(`approved:${kind}`);
+  }
+  return facts;
+}

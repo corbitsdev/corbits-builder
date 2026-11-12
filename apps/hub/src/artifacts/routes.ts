@@ -61,10 +61,14 @@ import { mountApprovalRoundRoutes } from "./approval-rounds.ts";
 import {
   CATALOG,
   isRoute,
+  isSelection,
   isWorkflowAction,
   PLUGINS,
+  projectCatalog,
   ProjectRoutes,
+  selectionRefusal,
 } from "../plugins/catalog.ts";
+import type { Actor } from "../lib/actor.ts";
 import type { createArtifactService } from "./service.ts";
 import type { createSettingsService } from "../settings/service.ts";
 import { projectValueWrites, readProjectValues } from "./project-values.ts";
@@ -118,9 +122,14 @@ export function mountArtifactRoutes(
     if (json === undefined) throw new ProjectError(400, "invalid_json");
     return json;
   };
+  // The catalog as the project sees it, with the plugins its selections name.
+  const catalogOf = async (actor: Actor, projectId: string) => {
+    const state = await service.projectState(actor, projectId);
+    return projectCatalog(async (names) => readProjectValues(names, state));
+  };
   // The one way project values are saved, from the values route or a screen's answer: each name
   // one the catalog declares, the look values written as design tweaks once a design is filed, the
-  // rest stored.
+  // rest stored. Only a person selects which of the plugins sharing a handle the project uses.
   const saveValues = async (
     c: Context<TenantEnv>,
     projectId: string,
@@ -130,6 +139,19 @@ export function mountArtifactRoutes(
     const unknown = undeclaredValue(Object.keys(values));
     if (unknown !== undefined)
       throw new ProjectError(400, "unknown_project_value", { key: unknown });
+    for (const [name, value] of Object.entries(values)) {
+      if (!isSelection(name)) continue;
+      if (c.get("principal")?.kind !== "user")
+        throw new ProjectError(403, "plugin_selection_person_only", {
+          key: name,
+        });
+      const refused = selectionRefusal(name, value);
+      if (refused !== undefined)
+        throw new ProjectError(400, "invalid_project_value", {
+          key: name,
+          issues: [{ path: name, message: refused }],
+        });
+    }
     const { tokens, stored } = projectValueWrites(
       values,
       await service.projectState(current, projectId),
@@ -186,7 +208,7 @@ export function mountArtifactRoutes(
       projectId,
       signalName,
     );
-    const screen = screenOf(asked);
+    const screen = screenOf(await catalogOf(current, projectId), asked);
     if (screen !== undefined && "output" in given) {
       const answered = screen.answer(given.output);
       if (!answered.ok)
@@ -486,7 +508,7 @@ export function mountArtifactRoutes(
           ? (await askedQuestions(c, nativeFetch, projectId)).questions
           : [];
       return c.json({
-        steps: planState(CATALOG, plan.steps, {
+        steps: planState(await catalogOf(current, projectId), plan.steps, {
           facts: projectFacts({
             artifacts: listed.artifacts,
             preferences: listed.preferences,
@@ -529,17 +551,61 @@ export function mountArtifactRoutes(
       const input = PlanWrite(await body(c));
       if (input instanceof type.errors)
         throw new ProjectError(400, "invalid_plan", { issues: input });
-      const refused = planRefusal(CATALOG, input.steps);
-      if (refused) throw new ProjectError(400, "plan_step_refused", refused);
-      return c.json(
-        await service.savePlan(
-          actorOf(c),
-          c.req.param("projectId"),
-          input.steps,
-        ),
+      const current = actorOf(c);
+      const projectId = c.req.param("projectId");
+      const refused = planRefusal(
+        await catalogOf(current, projectId),
+        input.steps,
       );
+      if (refused) throw new ProjectError(400, "plan_step_refused", refused);
+      return c.json(await service.savePlan(current, projectId, input.steps));
     },
   );
+  for (const declined of [true, false])
+    app.post(
+      `/:projectId/plan/steps/:stepId/${declined ? "decline" : "undecline"}`,
+      describeRoute({
+        tags: ["Artifacts"],
+        operationId: declined ? "declinePlanStep" : "undeclinePlanStep",
+        description: declined
+          ? "The signed-in person declines an optional plan step. The step stays in the plan as skipped, declined by the person, the coordinator cannot start that work while it is declined, and the coordinator gets a hub note saying so. A step the journey requires cannot be declined."
+          : "The signed-in person restores an optional plan step they declined, and the coordinator gets a hub note saying so.",
+        security: [{ sessionCookie: [] }, { deviceBearer: [] }],
+        responses: {
+          200: {
+            description: "The plan as now stored",
+            content: { "application/json": { schema: resolver(StoredPlan) } },
+          },
+          403: { description: "The caller is not a person on the project" },
+          404: { description: "No plan step by that id" },
+          409: {
+            description:
+              "The step is required by its journey; text says so for the person",
+          },
+        },
+      }),
+      async (c) => {
+        const current = actorOf(c);
+        return c.json(
+          await service.declinePlanStep(
+            current,
+            c.req.param("projectId"),
+            c.req.param("stepId"),
+            {
+              declined,
+              mailRun: (runId, content) =>
+                mailRunAsCaller(
+                  c,
+                  nativeFetch,
+                  current.tenantId,
+                  runId,
+                  content,
+                ),
+            },
+          ),
+        );
+      },
+    );
   app.post(
     "/:projectId/run-actions",
     describeRoute({
@@ -666,8 +732,9 @@ export function mountArtifactRoutes(
         await service.projectState(current, projectId),
         CATALOG.values,
       );
+      const catalog = await catalogOf(current, projectId);
       await service.saveRunValues(current, projectId, input.values, (run) => {
-        const action = CATALOG.actions
+        const action = catalog.actions
           .filter(isWorkflowAction)
           .find(
             (installed) =>

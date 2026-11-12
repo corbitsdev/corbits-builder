@@ -9,7 +9,7 @@ This package only declares data. It imports `@intx/agent/authoring` and
 `@intx/workflow/definition` from Interchange. The
 [hub's presenter entry][entry] imports it, supplies the model, director and
 tools, and builds it into the workflow the [coordinator][coordinator] starts
-with `deploy_presenter`. The presenter's tools are the hub's `write_deck`,
+with `execute`. The presenter's tools are the hub's `write_deck`,
 `check_deck`, `file_package`, `mail` and `read_skill`; it has no project read
 tool, because its assignment carries the selected documents and design tokens
 in full.

@@ -8,6 +8,7 @@
   "type": "module",
   "builder": {
     "handle": "build-web-app",
+    "default": true,
     "runs": "route",
     "groups": [
       "build",
@@ -20,30 +21,60 @@
       {
         "plugin": "writer",
         "action": "write-requirements",
+        "title": "Write the requirements",
         "requires": []
       },
       {
         "plugin": "designer",
         "action": "mockup",
-        "requires": [
-          "approved:product_requirements"
-        ]
+        "title": "Design the look",
+        "requires": [],
+        "approval": {
+          "of": [
+            "product_requirements"
+          ],
+          "when": "optional"
+        }
       },
       {
         "plugin": "writer",
         "action": "write-build-plan",
-        "requires": [
-          "approved:product_requirements",
-          "design_chosen"
-        ]
+        "title": "Write the build plan",
+        "requires": [],
+        "approval": {
+          "of": [
+            "product_requirements",
+            "design"
+          ],
+          "when": "optional"
+        }
       },
       {
         "plugin": "coder",
         "action": "build",
+        "title": "Build the app",
+        "requires": [],
+        "approval": {
+          "of": [
+            "build_plan",
+            "design"
+          ],
+          "when": "optional"
+        }
+      },
+      {
+        "plugin": "writer",
+        "action": "write",
+        "title": "Write the user manual",
+        "optional": true,
         "requires": [
-          "approved:build_plan",
-          "design_chosen"
-        ]
+          "app_exists"
+        ],
+        "input": {
+          "kind": "user_manual",
+          "title": "User manual",
+          "instruction": "Write a user manual for the app as built: what it is for, how to get started, each screen and task step by step in plain words, and answers to the questions a first-time user is likely to ask."
+        }
       }
     ],
     "outcome": "app_exists",

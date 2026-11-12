@@ -50,12 +50,6 @@ type ToolApprovalStep = Readonly<{
   feedback?: string;
 }>;
 
-type ExpectedArtifactState = Readonly<{
-  kind: string;
-  version: number;
-  approvedVersion?: number;
-}>;
-
 function createEventSignal(recordedModel: RecordedModelServer): {
   notify: () => void;
   waitForNext: (stage: string, signal: AbortSignal) => Promise<void>;
@@ -142,7 +136,7 @@ export function openQuestionPark<
   );
 }
 
-export function findPendingToolApproval(
+function findPendingToolApproval(
   approvals: readonly NativeApproval[],
   toolName: string,
   expectedArtifactKind?: string,
@@ -195,11 +189,6 @@ export async function withPipelineScenario(
     projectId: string;
     coordinatorRunId: string;
     runStage: <T>(name: string, fn: () => Promise<T>) => Promise<T>;
-    waitFor: <T>(
-      stage: string,
-      description: string,
-      check: () => Promise<T | undefined>,
-    ) => Promise<T>;
     waitForAssistantTurn: (stage: string, substring: string) => Promise<void>;
     waitForArtifactAndTurn: (
       stage: string,
@@ -213,14 +202,6 @@ export async function withPipelineScenario(
       stage: string,
       version: number,
       presentationSubstring: string,
-    ) => Promise<void>;
-    assertArtifactStates: (
-      expected: readonly ExpectedArtifactState[],
-    ) => Promise<readonly ProjectArtifact[]>;
-    assertSecretRedacted: (
-      artifacts: readonly ProjectArtifact[],
-      secret: string,
-      minDecidedApprovals?: number,
     ) => Promise<void>;
   }) => Promise<void>,
 ): Promise<void> {
@@ -305,7 +286,6 @@ export async function withPipelineScenario(
             Math.round(performance.now() - start);
           return result;
         },
-        waitFor,
         waitForAssistantTurn: async (stage, substring) => {
           await waitFor(
             stage,
@@ -436,45 +416,6 @@ export async function withPipelineScenario(
           expect(designReceipt.design.kind).toBe("design");
           expect(designReceipt.design.version).toBe(version);
         },
-        assertArtifactStates: async (expected) => {
-          const { artifacts, failed } = await client.projectArtifacts(
-            projectTenantId,
-            options.projectId,
-          );
-          expect(failed).toEqual([]);
-          for (const item of expected) {
-            const found = findArtifact(artifacts, item.kind);
-            expect(found?.version).toBe(item.version);
-            if (item.approvedVersion !== undefined) {
-              expect(found?.approvedVersion).toBe(item.approvedVersion);
-            }
-          }
-          return artifacts;
-        },
-        assertSecretRedacted: async (
-          artifacts,
-          secret,
-          minDecidedApprovals,
-        ) => {
-          for (const item of artifacts) {
-            const full = await client.artifact(
-              projectTenantId,
-              options.projectId,
-              item.artifactId,
-            );
-            expect(JSON.stringify(full)).not.toContain(secret);
-          }
-          const [finalConv, finalActivity, decided] = await Promise.all([
-            client.conversationEvents(projectTenantId, options.projectId),
-            client.projectActivity(projectTenantId, options.projectId),
-            client.decidedApprovals(projectTenantId, options.projectId),
-          ]);
-          expect(JSON.stringify(finalConv)).not.toContain(secret);
-          expect(JSON.stringify(finalActivity)).not.toContain(secret);
-          const expectedMin =
-            minDecidedApprovals !== undefined ? minDecidedApprovals : 6;
-          expect(decided.approvals.length).toBeGreaterThanOrEqual(expectedMin);
-        },
       });
 
       stageTimingsMs["total"] = Math.round(performance.now() - totalStart);
@@ -500,9 +441,7 @@ export type PipelineDriver = Parameters<
 >[0];
 
 // The recorded weather project from the idea to its approved product requirements.
-export async function writeWeatherDocuments(
-  driver: PipelineDriver,
-): Promise<void> {
+async function writeWeatherDocuments(driver: PipelineDriver): Promise<void> {
   await driver.runStage("documents", async () => {
     await driver.waitForAssistantTurn(
       "documents",

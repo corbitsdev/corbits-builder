@@ -11,8 +11,8 @@ This folder is the whole designer plugin. Its `package.json` `builder` block
 names its actions (the `mockup` workflow and the `review`, `choose`,
 `pick-fonts` and `pick-colours` screens), the workflow package the hub builds
 and installs from it (`packages`), and the starter that starts its runs
-(`starters`). The dynamic [coordinator][coordinator] starts it with `execute`;
-the classic one with `design_app`, one designer per design concept and pass.
+(`starters`). The [coordinator][coordinator] starts it with `execute`, one designer
+per design concept and pass.
 Its tools are file reads and writes in its workspace, `check_design`,
 `file_design_option` and `mail`; it has no shell. The hub also reads this
 package's starter, themes and skills through its macros.
@@ -24,8 +24,7 @@ package's starter, themes and skills through its macros.
 - `src/start.ts`: the starter. It refuses a concept whose designer is still at
   work, starts one designer for each of the others, and writes each run's
   assignment from the filed documents, the concept and the instruction.
-- `src/contract.ts`: the documents a designer reads and its assignment text,
-  shared with the classic `design_app`.
+- `src/contract.ts`: the documents a designer reads and its assignment text.
 - `src/packages/designer.ts`: the installed package, which assembles the agent
   from the hub's model, director and tools, and asks the director to hold a
   reply until the design is checked and filed.

@@ -1,10 +1,11 @@
 import { setTimeout as sleep } from "node:timers/promises";
+import { isDeepStrictEqual } from "node:util";
 import { type } from "arktype";
 import {
   wrongFields,
+  type ApprovalWhen,
   type Fact,
   type Field,
-  type Sequence,
 } from "@corbits-builder/plugin";
 import {
   isCheckAction,
@@ -20,11 +21,12 @@ import {
   type ScreenAction,
   type WorkflowAction,
 } from "./catalog.ts";
-import { holds, makes, resolveFacts, unmet } from "./facts.ts";
+import { approvalFacts, holds, makes, resolveFacts, unmet } from "./facts.ts";
 import { fields } from "./search/fields.ts";
 import type { Strategy } from "./search/words.ts";
 import {
   assignedValuesText,
+  choiceText,
   DISCOVER_ACTION_NEEDS_PLUGIN,
   DISCOVER_MORE,
   DISCOVER_NEEDS_ONE,
@@ -42,8 +44,9 @@ import {
   routeInputRefused,
   routeLeft,
   routeTakesNoAction,
+  planLine,
   screenNotExecuted,
-  sequenceLines,
+  stepDeclined,
   specialistListing,
   unknownAction,
   unknownPlugin,
@@ -142,21 +145,28 @@ type SavedPlanChild = {
   action: string;
   input: Record<string, unknown>;
   askFirst: boolean;
+  optional?: boolean;
+  approval?: ApprovalWhen;
+  declined?: { by: string; at: string };
 };
 export type SavedPlanStep = SavedPlanChild & {
   steps?: readonly SavedPlanChild[];
 };
 /** A step of the plan as saved: one with no id is new, and the host gives it one. */
-type PlanChildWrite = Omit<SavedPlanChild, "id"> & { id?: string };
+type PlanChildWrite = Omit<SavedPlanChild, "id" | "declined"> & {
+  id?: string;
+};
 export type PlanStepWrite = PlanChildWrite & { steps?: PlanChildWrite[] };
 
 /** What the coordinator's tools need from the project they act on, which only the host can do. */
 export type Project = {
-  // What is true of the project, from what the host stores, whether the person decides approvals
+  // What is true of the project, from what the host stores; the go-ahead facts that the person's own
+  // answers made true, not counting approvals left to Builder; whether the person decides approvals
   // rather than leaving them to Builder, the latest record of each check, and how the person chose
   // to work: each preference's choice by its id.
   state(): Promise<{
     facts: ReadonlySet<Fact>;
+    personFacts: ReadonlySet<Fact>;
     asksApprovals: boolean;
     checks: readonly CheckStanding[];
     preferences: Readonly<Record<string, string>>;
@@ -354,7 +364,7 @@ export function checkedDiscover(plugins: readonly Plugin[], raw: unknown) {
 // What is true of the project, and the routes it follows. A route whose outcome holds is left, so
 // nothing from it applies after.
 async function projectState(catalog: Catalog, project: Project) {
-  const { facts, asksApprovals, checks } = await project.state();
+  const { facts, personFacts, asksApprovals, checks } = await project.state();
   const handles = await project.routes();
   const routes = catalog.plugins
     .filter(isRoute)
@@ -365,7 +375,7 @@ async function projectState(catalog: Catalog, project: Project) {
     );
   if (routes.length !== handles.length)
     await project.setRoutes(routes.map(({ builder }) => builder.handle));
-  return { facts, asksApprovals, checks, routes };
+  return { facts, personFacts, asksApprovals, checks, routes };
 }
 type ProjectState = Awaited<ReturnType<typeof projectState>>;
 
@@ -379,19 +389,14 @@ const makersOf = (catalog: Catalog, fact: Fact) =>
 export const makersIn = (catalog: Catalog) => (fact: Fact) =>
   makersOf(catalog, fact).map(({ name }) => name);
 
-// The person's go-ahead: a fact that only their answer on a screen makes true, such as an approval
-// or the design they chose.
-const isGoAhead = (catalog: Catalog, fact: Fact) => {
-  const makers = makersOf(catalog, fact);
-  return makers.length > 0 && makers.every(isScreenAction);
-};
-
 // Where an action stands: what it lacks of its own requirements, for the input when there is one,
-// and what each route the project follows asks of it as a step.
+// and what each route the project follows asks of it as a step. A step's approval holds it back:
+// one required always, on the person's own go-ahead, so approvals left to Builder do not count for
+// it; one optional only while the person decides approvals. What else the step requires is advice.
 function readiness(
   catalog: Catalog,
   action: Action,
-  { facts, asksApprovals, routes }: Omit<ProjectState, "checks">,
+  { facts, personFacts, asksApprovals, routes }: Omit<ProjectState, "checks">,
   input?: unknown,
 ): Readiness {
   const requires = (action.builder.requires ?? []).map((alternative) =>
@@ -404,20 +409,20 @@ function readiness(
         (named) =>
           named.plugin === action.plugin && named.action === action.action,
       );
-      const missing = (step?.requires ?? []).filter(
-        (fact) => !holds(fact, facts),
+      if (!step) return [];
+      const when = step.approval?.when;
+      const unapproved = approvalFacts(step.approval).filter(
+        (fact) => !holds(fact, when === "required" ? personFacts : facts),
       );
-      if (missing.length === 0) return [];
-      const goAhead = asksApprovals
-        ? missing.filter((fact) => isGoAhead(catalog, fact))
-        : [];
-      return [
-        {
-          route: builder.handle,
-          goAhead,
-          advice: missing.filter((fact) => !goAhead.includes(fact)),
-        },
+      const waits =
+        when === "required" || (when === "optional" && asksApprovals);
+      const goAhead = waits ? unapproved : [];
+      const advice = [
+        ...step.requires.filter((fact) => !holds(fact, facts)),
+        ...unapproved.filter((fact) => !goAhead.includes(fact)),
       ];
+      if (goAhead.length === 0 && advice.length === 0) return [];
+      return [{ route: builder.handle, goAhead, advice }];
     }),
   };
 }
@@ -434,18 +439,25 @@ const installedAction = (
 
 // Each step of a route as if the project followed it, besides the routes it already follows.
 const stepsOf = (catalog: Catalog, route: RoutePlugin, state: ProjectState) =>
-  route.builder.steps.map(({ plugin, action: name }) => {
+  route.builder.steps.map(({ plugin, action: name, optional }) => {
     const action = installedAction(catalog, plugin, name);
-    if (!action || !isWorkflowAction(action))
+    if (!action || isScreenAction(action))
       throw new Error(`${route.builder.handle} names ${plugin} ${name}`);
     const routes = state.routes.includes(route)
       ? state.routes
       : [...state.routes, route];
-    const { facts, asksApprovals } = state;
+    const { facts, personFacts, asksApprovals } = state;
     return {
-      name: action.name,
+      name: optional
+        ? `${action.name} (optional, the person may decline it)`
+        : action.name,
       readiness: readinessText(
-        readiness(catalog, action, { facts, asksApprovals, routes }),
+        readiness(catalog, action, {
+          facts,
+          personFacts,
+          asksApprovals,
+          routes,
+        }),
         catalog.factText,
       ),
     };
@@ -487,14 +499,12 @@ function status(
       ),
     ];
   if (!isSpecialist(plugin)) return [];
-  const sequences = sequenceLines(plugin.builder);
   return [
     "",
     "Now:",
     ...plugin.actions.map(
       (action) => `  ${action.name}: ${now(catalog, action, state)}`,
     ),
-    ...(sequences.length > 0 ? ["", "Sequences:", ...sequences] : []),
   ];
 }
 
@@ -503,19 +513,16 @@ function status(
 function listing(catalog: Catalog, plugin: Plugin, state: ProjectState) {
   const { handle } = plugin.builder;
   if (isSpecialist(plugin))
-    return [
-      specialistListing(
-        handle,
-        plugin.description,
-        plugin.actions.map((action) => ({
-          action: action.action,
-          screen: isScreenAction(action),
-          when: action.builder.when,
-          now: now(catalog, action, state),
-        })),
-      ),
-      ...sequenceLines(plugin.builder),
-    ].join("\n");
+    return specialistListing(
+      handle,
+      plugin.description,
+      plugin.actions.map((action) => ({
+        action: action.action,
+        screen: isScreenAction(action),
+        when: action.builder.when,
+        now: now(catalog, action, state),
+      })),
+    );
   return routeListing(
     handle,
     plugin.description,
@@ -534,20 +541,30 @@ export async function discoverFor(
   asked: typeof Discover.infer,
 ) {
   const state = await projectState(catalog, project);
-  if (asked.plugin !== undefined)
-    return guidanceOf(
-      catalog.plugins,
-      asked,
-      (plugin) => status(catalog, plugin, state),
-      (action) => [`Now: ${now(catalog, action, state)}.`],
-    );
   const found = foundBy(catalog.plugins, asked);
+  // A line on each handle found that several installed plugins share.
+  const choices = catalog.choices
+    .filter(({ using }) => found.includes(using))
+    .map(choiceText);
+  if (asked.plugin !== undefined)
+    return [
+      guidanceOf(
+        catalog.plugins,
+        asked,
+        (plugin) => status(catalog, plugin, state),
+        (action) => [`Now: ${now(catalog, action, state)}.`],
+      ),
+      ...choices,
+    ].join("\n\n");
   if (found.length === 0)
     return noPluginFound(asked, groupsOf(catalog.plugins));
   const values = await project.values([...catalog.values.keys()]);
+  const { steps } = await project.plan();
   return [
     ...found.map((plugin) => listing(catalog, plugin, state)),
+    ...choices,
     projectValuesText(catalog.values, values),
+    planLine(steps.flatMap((step) => [step, ...(step.steps ?? [])])),
     DISCOVER_MORE,
   ].join("\n\n");
 }
@@ -569,11 +586,11 @@ export async function screenRefusal(
   );
   if (refused !== undefined || screen.builder.requires === undefined)
     return refused;
-  const { facts, asksApprovals } = await project.state();
+  const { facts, personFacts, asksApprovals } = await project.state();
   const ready = readiness(
     catalog,
     screen,
-    { facts, asksApprovals, routes: [] },
+    { facts, personFacts, asksApprovals, routes: [] },
     input,
   );
   if (isReady(ready)) return undefined;
@@ -607,9 +624,17 @@ export function planStepRefusal(
   if (!action)
     return unknownAction(plugin.builder.handle, step.action, plugin.actions);
   if (isScreenAction(action)) return action.refusal(step.input, {});
+  // A journey's step whose input only the work so far can say is held with none, and execute
+  // checks the input it starts on.
+  if (isWorkflowAction(action) && isEmpty(step.input)) return undefined;
   const checked = action.check(step.input);
   return checked.ok ? undefined : checked.text;
 }
+
+const isEmpty = (input: unknown) =>
+  typeof input === "object" &&
+  input !== null &&
+  Object.keys(input).length === 0;
 
 type PlannedStep = {
   title: string;
@@ -676,6 +701,26 @@ async function followRoute(
       stepsOf(catalog, route, state),
     ),
   };
+}
+
+// The plan step the person declined that this start would do: the same action, making the same
+// facts for its input, as writer write declined for a user manual is not declined for a report.
+function declinedStep(
+  action: Action,
+  input: unknown,
+  plan: { steps: readonly SavedPlanStep[] },
+) {
+  const returns = action.builder.returns ?? [];
+  const making = resolveFacts(returns, input);
+  return plan.steps
+    .flatMap((step) => [step, ...(step.steps ?? [])])
+    .find(
+      (step) =>
+        step.declined !== undefined &&
+        step.plugin === action.plugin &&
+        step.action === action.action &&
+        isDeepStrictEqual(resolveFacts(returns, step.input), making),
+    );
 }
 
 // What execute takes, with every plugin it can start.
@@ -767,6 +812,12 @@ export async function execute(
   const state = await projectState(catalog, project);
   const checked = action.check(asked.input ?? {});
   if (!checked.ok) return { content: checked.text, isError: true };
+  const declined = declinedStep(action, checked.input, await project.plan());
+  if (declined)
+    return {
+      content: stepDeclined(action.name, declined.title),
+      isError: true,
+    };
   const ready = readiness(catalog, action, state, checked.input);
   if (!isReady(ready))
     return {
@@ -901,7 +952,7 @@ export const Plan = type({
     "+": "reject",
     "steps?": PlanChildInput.array(),
   }).array(),
-  "sequence?": "string > 0",
+  "route?": "string > 0",
   "after?": "string > 0",
   "stepIds?": type("string > 0").array().atLeastLength(1),
 });
@@ -912,21 +963,9 @@ type Problem = { field: string; problem: string };
 const PLAN_TAKES: Record<PlanCall["operation"], readonly string[]> = {
   show: [],
   set: ["steps"],
-  add: ["steps", "sequence", "after"],
+  add: ["steps", "route", "after"],
   remove: ["stepIds"],
 };
-
-// Every plugin's sequences, by the name plan adds them by, such as "cloudflare publish".
-function sequencesIn(catalog: Catalog) {
-  const sequences = new Map<string, { handle: string; sequence: Sequence }>();
-  for (const { builder } of catalog.plugins.filter(isSpecialist))
-    for (const [name, sequence] of Object.entries(builder.sequences ?? {}))
-      sequences.set(`${builder.handle} ${name}`, {
-        handle: builder.handle,
-        sequence,
-      });
-  return sequences;
-}
 
 const planFields = (catalog: Catalog): Record<string, Field> => ({
   operation: {
@@ -934,7 +973,7 @@ const planFields = (catalog: Catalog): Record<string, Field> => ({
     choices: {
       show: "The plan.",
       set: "Replace the plan with steps; [] empties it.",
-      add: "Add steps, or one sequence, at the end or after the step after names.",
+      add: "Add steps, or one journey, at the end or after the step after names.",
       remove: "Take out each step stepIds names, with the steps it holds.",
     },
   },
@@ -942,14 +981,13 @@ const planFields = (catalog: Catalog): Record<string, Field> => ({
     about:
       "For set and add: each step as { title, plugin, action, input, askFirst?, steps? }: a plugin action as discover lists it, the input its guidance describes, askFirst true when the person wants to be asked before it starts, and the steps it holds, in the same shape but holding none.",
   },
-  sequence: {
+  route: {
     about:
-      "For add, in place of steps: a plugin's sequence, added as one step holding its steps.",
+      "For add, in place of steps: a journey, by its route's handle, added as one step holding its steps, each saying whether the person may decline it and how its approval is asked for. The project then follows the route, as execute on it does.",
     choices: Object.fromEntries(
-      [...sequencesIn(catalog)].map(([name, { sequence }]) => [
-        name,
-        sequence.title,
-      ]),
+      catalog.plugins
+        .filter(isRoute)
+        .map(({ builder, description }) => [builder.handle, description]),
     ),
   },
   after: {
@@ -973,11 +1011,8 @@ const wrongPlanCall = (
 });
 
 // What is wrong with a call before the plan is read: a field its operation does not take, one it
-// needs, or a sequence no plugin has.
-function planCallProblems(
-  asked: PlanCall,
-  sequences: ReadonlyMap<string, unknown>,
-) {
+// needs, or a route the catalog does not have.
+function planCallProblems(catalog: Catalog, asked: PlanCall) {
   const { operation } = asked;
   const wrong: Problem[] = Object.keys(asked)
     .filter(
@@ -997,16 +1032,18 @@ function planCallProblems(
     });
   if (
     operation === "add" &&
-    (asked.steps === undefined) === (asked.sequence === undefined)
+    (asked.steps === undefined) === (asked.route === undefined)
   )
     wrong.push({
       field: "steps",
-      problem: "add needs either steps or sequence, and not both",
+      problem: "add needs either steps or route, and not both",
     });
-  if (asked.sequence !== undefined && !sequences.has(asked.sequence))
+  const route =
+    asked.route === undefined ? undefined : catalog.installed(asked.route);
+  if (asked.route !== undefined && (!route || !isRoute(route)))
     wrong.push({
-      field: "sequence",
-      problem: `${JSON.stringify(asked.sequence)} is not a sequence of any plugin`,
+      field: "route",
+      problem: `${JSON.stringify(asked.route)} is not an installed route`,
     });
   return wrong;
 }
@@ -1048,22 +1085,30 @@ function planIdProblems(
   return wrong;
 }
 
-// A saved step as it is saved again, under its id so the person's marks on it stay.
-const childWrite = ({
+// A saved step as it is saved again, under its id so the person's marks on it stay, and with what
+// its journey said of it.
+function childWrite({
   id,
   title,
   plugin,
   action,
   input,
   askFirst,
-}: SavedPlanChild): PlanChildWrite => ({
-  id,
-  title,
-  plugin,
-  action,
-  input,
-  askFirst,
-});
+  optional,
+  approval,
+}: SavedPlanChild): PlanChildWrite {
+  const written: PlanChildWrite = {
+    id,
+    title,
+    plugin,
+    action,
+    input,
+    askFirst,
+  };
+  if (optional) written.optional = optional;
+  if (approval) written.approval = approval;
+  return written;
+}
 function stepWrite(step: SavedPlanStep): PlanStepWrite {
   const written: PlanStepWrite = childWrite(step);
   if (step.steps) written.steps = step.steps.map(childWrite);
@@ -1092,21 +1137,26 @@ function newStep(
   return written;
 }
 
-// A sequence as one step holding its steps. A step names an action, so it names the last, whose
-// finished work finishes the sequence.
-function sequenceStep(handle: string, { title, steps }: Sequence) {
-  const children = steps.map((step) =>
-    childOf({
-      title: step.title,
-      plugin: step.plugin ?? handle,
+// A journey as one step holding its steps, each with whether the person may decline it and when it
+// waits for their go-ahead. The step names the last step the person may not decline, whose
+// finished work finishes the journey.
+function routeStep({ builder, description }: RoutePlugin) {
+  const children = builder.steps.map((step) => {
+    const child = childOf({
+      title: step.title ?? `${step.plugin} ${step.action}`,
+      plugin: step.plugin,
       action: step.action,
       input: step.input ?? {},
-      askFirst: step.askFirst ?? false,
-    }),
-  );
-  const last = children[children.length - 1]!;
+    });
+    child.optional = step.optional ?? false;
+    if (step.approval) child.approval = step.approval.when;
+    return child;
+  });
+  const last =
+    children.findLast(({ optional }) => !optional) ??
+    children[children.length - 1]!;
   const step: PlanStepWrite = childOf({
-    title,
+    title: description,
     plugin: last.plugin,
     action: last.action,
     input: last.input,
@@ -1153,19 +1203,17 @@ export async function managePlan(
   const asked = Plan(raw);
   if (asked instanceof type.errors)
     return wrongPlanCall(catalog, wrongFields(asked));
-  const sequences = sequencesIn(catalog);
-  const wrong = planCallProblems(asked, sequences);
+  const wrong = planCallProblems(catalog, asked);
   if (wrong.length > 0) return wrongPlanCall(catalog, wrong);
   if (asked.operation === "show")
     return { content: JSON.stringify(await project.plan()) };
+  const route =
+    asked.route === undefined ? undefined : catalog.installed(asked.route);
+  const journey = route && isRoute(route) ? route : undefined;
   let steps = (asked.steps ?? []).map(newStep);
   if (asked.operation !== "set") {
     const { steps: saved } = await project.plan();
-    const sequence =
-      asked.sequence === undefined ? undefined : sequences.get(asked.sequence);
-    const adding = sequence
-      ? [sequenceStep(sequence.handle, sequence.sequence)]
-      : steps;
+    const adding = journey ? [routeStep(journey)] : steps;
     const wrongIds = planIdProblems(asked, saved, adding);
     if (wrongIds.length > 0) return wrongPlanCall(catalog, wrongIds);
     const current = saved.map(stepWrite);
@@ -1177,5 +1225,16 @@ export async function managePlan(
   const refused = planRefusal(catalog, steps);
   if (refused) return { content: refused.text, isError: true };
   await project.savePlan(steps);
-  return { content: JSON.stringify(await project.plan()) };
+  const plan = JSON.stringify(await project.plan());
+  if (!journey) return { content: plan };
+  // The project follows the journey it planned, and the coordinator reads its guidance, as
+  // execute on the route gives it.
+  const followed = await followRoute(
+    catalog,
+    project,
+    journey,
+    {},
+    await projectState(catalog, project),
+  );
+  return { content: `${plan}\n\n${followed.content}` };
 }
