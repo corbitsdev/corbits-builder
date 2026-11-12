@@ -297,6 +297,19 @@
         "arktype": "catalog:",
       },
     },
+    "plugins/project": {
+      "name": "@corbits-builder/project",
+      "version": "0.1.0",
+      "dependencies": {
+        "@corbits-builder/plugin": "workspace:*",
+        "@corbits/react-ui": "0.5.1",
+        "arktype": "catalog:",
+        "react": "19.3.0",
+      },
+      "devDependencies": {
+        "@types/react": "19.3.0",
+      },
+    },
     "plugins/react-router-skills": {
       "name": "@corbits-builder/react-router-skills",
       "version": "0.1.0-rc.3",
@@ -885,6 +898,8 @@
     "@corbits-builder/plugin-ui": ["@corbits-builder/plugin-ui@workspace:packages/plugin-ui"],
 
     "@corbits-builder/presenter": ["@corbits-builder/presenter@workspace:plugins/presenter"],
+
+    "@corbits-builder/project": ["@corbits-builder/project@workspace:plugins/project"],
 
     "@corbits-builder/react-router-skills": ["@corbits-builder/react-router-skills@workspace:plugins/react-router-skills"],
 

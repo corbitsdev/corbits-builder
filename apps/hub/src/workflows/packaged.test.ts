@@ -188,6 +188,7 @@ test("the built coordinator runs its prompt with the plugin tools and no tool wa
       "discover",
       "execute",
       "runs",
+      "plan",
       "read_file",
     ]);
     expect(declared.filter((definition) => definition.approval)).toEqual([]);

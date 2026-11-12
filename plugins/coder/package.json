@@ -47,11 +47,16 @@
     "actions": {
       "build": {
         "runs": "workflow",
-        "when": "The project has no app yet: built from its requirements, build plan and design when they are filed, or from the person's instruction alone when they want it built now.",
+        "when": "The project has no app yet and its requirements or build plan say what to build.",
         "unless": "The project already has an app; a change to it is coder change.",
         "input": "./src/build.ts",
         "requires": [
           [
+            "filed:product_requirements",
+            "!app_exists"
+          ],
+          [
+            "filed:build_plan",
             "!app_exists"
           ]
         ],

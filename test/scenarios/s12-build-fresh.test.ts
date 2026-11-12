@@ -1,15 +1,19 @@
-import { coderChecksStarter } from "./specialists.ts";
-import { execute, ok, results, say, scenario, turn, user } from "./runner.ts";
-
-const report =
-  "The coder started; check-app wants a README and a user manual first.";
+import { expect } from "bun:test";
+import {
+  execute,
+  refused,
+  results,
+  say,
+  scenario,
+  turn,
+  user,
+} from "./runner.ts";
 
 scenario({
   name: "s12-build-fresh",
-  title: "coder build on a fresh project with only an instruction",
+  title:
+    "coder build on a fresh project with only an instruction is refused for want of documents",
   start: { fresh: "Just build me a to-do list app, nothing fancy." },
-  expectChange:
-    "coder build without documents has just landed; before it, this call was refused for want of filed requirements or a build plan.",
   coordinator: [
     turn(
       user("to-do list"),
@@ -19,25 +23,14 @@ scenario({
       }),
     ),
     turn(
-      results(ok("c_build", "execute", '"started":true')),
-      say("A coder is building it."),
-    ),
-    turn(
-      user(
-        "Hub note, not from the person: The coder's build stopped before finishing.",
-      ),
-      say("The coder could not finish the build."),
+      results(refused("c_build", "execute", "product requirements")),
+      say("The app needs its requirements written first."),
     ),
   ],
-  specialists: {
-    coder: {
-      role: "coder",
-      turns: coderChecksStarter({ assignedWith: "to-do list", report }),
-    },
-  },
   person: async (p) => {
-    await p.heard("The coder could not finish the build.");
-    p.note("coder build returned", p.resultOf("c_build").text);
-    p.note("the coder's assignment", p.assignment("coder"));
+    await p.heard("The app needs its requirements written first.");
+    const refusal = p.resultOf("c_build").text;
+    p.note("coder build returned", refusal);
+    expect(refusal).toContain("build plan");
   },
 });

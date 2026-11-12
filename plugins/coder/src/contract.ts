@@ -7,7 +7,8 @@ export const CODER_INPUTS = [
   "build_plan",
 ] as const;
 
-// A coder started from the person's words alone: the project has filed no documents and no design.
+// A coder started from the person's words alone: a change to an imported app whose project has filed
+// no documents and no design. A first build always has documents, as its manifest requires.
 export const NO_DOCUMENTS_NOTE =
   "The project has no documents and no design yet, so there is no build plan and no .builder folder: the instruction below is your whole assignment. Build or change only what it asks; where it leaves something open, choose what suits the app best and say what you chose in your reply. Use the starter's @corbits/react-ui theme for the look. Write ACCEPTANCE.md from what the instruction asks.\n\n";
 

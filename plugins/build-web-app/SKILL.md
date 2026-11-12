@@ -12,4 +12,4 @@ Work that does not depend on other work can run at once, such as a document bein
 
 The route ends when the app exists. After that, a change the person asks for is coder change, with nothing from this route in the way.
 
-When the person tells you to skip ahead and build now, coder build starts from their instruction alone. If they decide approvals themselves and the route still waits on their go-ahead, leave the route with execute({ plugin: "build-web-app", input: { leave: true } }); leave it too when they direct the work elsewhere, such as only a mockup.
+When the person tells you to just build it, every step still runs, in order: coder build needs the filed requirements or build plan, because the specialists work from the documents. While they decide approvals themselves, open the project plugin's hand-over screen once, question({ plugin: "project", action: "hand-over", input: { decides: "person" } }); when they hand approvals over, start each step as the one before it files, without asking. Leave the route with execute({ plugin: "build-web-app", input: { leave: true } }) when they direct the work elsewhere, such as only a mockup.
