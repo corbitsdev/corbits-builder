@@ -58,8 +58,6 @@ export type Dispatch = {
   readonly instruction?: string;
   /** The run the hub reported starting, from the call's result. */
   readonly runId?: string;
-  /** The hub refused the call; its own reason. */
-  readonly refused?: string;
   /** The call is still being made. */
   readonly pending: boolean;
   /** Stands for a filed thing whose hand-off is not in view, such as one from an earlier session. */
@@ -106,25 +104,10 @@ function handoffOf(part: PartTool) {
 }
 
 /**
- * Whether a coordinator tool call is a hand-off card. A call whose result is an error started
- * nothing, so it is no card: it stays a step of the coordinator's own work.
+ * Whether a coordinator tool call is a hand-off, which is never one of its steps: a started one is
+ * its own card, and a refused one goes back to the coordinator as its result, so the room skips it.
  */
-export const isHandoff = (part: PartTool, result: CallResult | undefined) =>
-  handoffOf(part) !== undefined && result?.isError !== true;
-
-/** The quiet line for an execute call the hub refused, naming whom it tried to start and the refusal's first sentence. */
-export function refusalLine(
-  part: PartTool,
-  result: CallResult | undefined,
-): string | undefined {
-  const handoff = handoffOf(part);
-  if (handoff === undefined || result?.isError !== true) return undefined;
-  const reason = str(result.content)?.split(/(?<=\.)\s/, 1)[0];
-  return wording.activity.handoffCorrected(
-    wording.activity.handoffWho[handoff.action] ?? handoff.action,
-    reason ?? text.refusedUnknown,
-  );
-}
+export const isHandoff = (part: PartTool) => handoffOf(part) !== undefined;
 
 /** The hand-offs one coordinator tool call made, or none when it is not a hand-off. */
 export function dispatchesOf(
@@ -156,12 +139,15 @@ export function dispatchesOf(
         return label === undefined ? [] : [{ label, direction }];
       })
     : [];
-  // The hub answers a start with each run it started and each concept it did not, with why.
+  // The hub answers a start with each run it started and each concept it did not, with why. A
+  // concept it did not start goes back to the coordinator in that answer, so it is no card.
   const started = record(output);
   const list = (value: unknown) =>
     Array.isArray(value) ? value.map(record) : [];
   const runs = list(started?.["runs"]);
-  const notStarted = list(started?.["notStarted"]);
+  const notStarted = new Set(
+    list(started?.["notStarted"]).map((item) => item?.["concept"]),
+  );
   if (concepts.length === 0) {
     const runId = str(runs[0]?.["runId"]);
     return [
@@ -172,21 +158,20 @@ export function dispatchesOf(
       },
     ];
   }
-  return concepts.map(({ label: concept, direction }) => {
+  return concepts.flatMap(({ label: concept, direction }) => {
+    if (notStarted.has(concept)) return [];
     const runId = str(
       runs.find((item) => item?.["concept"] === concept)?.["runId"],
     );
-    const refused = str(
-      notStarted.find((item) => item?.["concept"] === concept)?.["reason"],
-    );
-    return {
-      ...base,
-      key: `${part.toolCallId}:${concept}`,
-      concept,
-      ...(direction === undefined ? {} : { direction }),
-      ...(runId === undefined ? {} : { runId }),
-      ...(refused === undefined ? {} : { refused }),
-    };
+    return [
+      {
+        ...base,
+        key: `${part.toolCallId}:${concept}`,
+        concept,
+        ...(direction === undefined ? {} : { direction }),
+        ...(runId === undefined ? {} : { runId }),
+      },
+    ];
   });
 }
 
@@ -195,17 +180,11 @@ export function partsDispatches(
   parts: readonly ConversationPart[],
   results: ReadonlyMap<string, CallResult>,
 ): Dispatch[] {
-  return parts.flatMap((part) => {
-    const tools =
-      part.kind === "tool-trace"
-        ? [part]
-        : part.kind === "tool-batch"
-          ? part.tools
-          : [];
-    return tools.flatMap((tool) =>
-      dispatchesOf(tool, results.get(tool.toolCallId)),
-    );
-  });
+  return parts.flatMap((part) =>
+    part.kind === "tool-trace"
+      ? dispatchesOf(part, results.get(part.toolCallId))
+      : [],
+  );
 }
 
 export type DispatchRoom = {
@@ -304,8 +283,6 @@ export function dispatchStatus(
   dispatch: Dispatch,
   room: DispatchRoom,
 ): DispatchStatus {
-  if (dispatch.refused !== undefined)
-    return { state: "failed", reason: dispatch.refused };
   if (dispatch.filed === true) {
     const filed = target(dispatch, room.artifacts);
     if (filed !== undefined) return readyOf(filed);

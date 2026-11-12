@@ -27,6 +27,7 @@ scenario({
     turn(
       user("Just build it"),
       execute("c_build_early", "coder", "build", {
+        starter: "web-app",
         instruction:
           "Build an animated weather web app: current conditions and forecasts, the whole screen animating to the live weather.",
       }),
@@ -63,6 +64,7 @@ scenario({
     turn(
       user(),
       execute("c_build", "coder", "build", {
+        starter: "web-app",
         instruction: "Build the whole app from the plan and the design.",
       }),
     ),

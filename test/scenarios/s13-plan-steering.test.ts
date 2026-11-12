@@ -10,6 +10,7 @@ import {
 } from "./runner.ts";
 
 const build = {
+  starter: "web-app",
   instruction:
     "Build the dog-walking booking app now, as the person described.",
 };

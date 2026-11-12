@@ -20,28 +20,47 @@ states, errors and details they would miss if absent.
 1. `## In short`: two to four one-line bullets: what the first version does,
    the count of must requirements, the decisions you made that the person
    should check. **Bold the words that carry the meaning.**
-2. `## Purpose`: one paragraph on what it is for, in new words.
-3. `## Users`: each group of people, or each system, that uses it and what
-   they need from it.
-4. `## Scope`: what the first version covers.
-5. `## Non-goals`: what it leaves out, each with its reason.
-6. `## Functional requirements`: `FR-n`, what it does.
-7. `## Non-functional requirements`: `NFR-n`, how well it does it: speed,
-   reliability, privacy and security, compatibility with the platforms and
-   versions it must run on, and accessibility where people use it directly.
-8. `## Interface requirements`: `IR-n`, when the thing has an interface, as
-   almost everything does: each screen a person uses when it has screens,
-   each command, option and output when it runs at a command line, each
-   endpoint or public function when other code calls it, and each outside
-   service, file format or data source it reads or writes.
-9. `## Acceptance criteria`: `AC-n`, each a check naming the requirement it
-   proves: what someone does and what they then see or get.
-10. `## Assumptions`: each gap you decided, one correctable line each.
-11. `## Open questions`: only when a must depends on an answer only the
+2. `## Problem`: the problem in one tight paragraph in the person's words,
+   what they do about it today and where that fails, and what a fix is
+   worth to them, with their numbers where they gave any.
+3. `## Users`: each group of people, or each system, that uses it, what
+   they need from it, and roughly how many.
+4. `## Success`: the few checks a person could run against the finished
+   thing to say it solved the problem.
+5. `## Bounds`: one line each for the form it takes and the forms left out,
+   where it runs, where its real data comes from and is kept, who may see
+   what, each outside service or account it needs from the person, and any
+   budget or date they named.
+6. `## Approach`: the way of building it you chose and why in two or three
+   sentences, then each real alternative in one line with what it would
+   have given up.
+7. `## Scope`: what the first version covers and what waits for later.
+8. `## Non-goals`: what it leaves out, each with its reason.
+9. `## Functional requirements`: `FR-n`, what it does.
+10. `## Non-functional requirements`: `NFR-n`, how well it does it: speed,
+    reliability, privacy and security, compatibility with the platforms and
+    versions it must run on, and accessibility where people use it directly.
+11. `## Interface requirements`: `IR-n`, when the thing has an interface, as
+    almost everything does: each screen a person uses when it has screens,
+    each command, option and output when it runs at a command line, each
+    endpoint or public function when other code calls it, and each outside
+    service, file format or data source it reads or writes.
+12. `## Acceptance criteria`: `AC-n`, each a check naming the requirement it
+    proves: what someone does and what they then see or get.
+13. `## Assumptions`: each gap you decided, one correctable line each. Every
+    technical choice the person left open is settled here with your pick
+    and its reason.
+14. `## Open questions`: only when a must depends on an answer only the
     person can give, most important first, each with your recommendation.
     Each one here is also one of write_artifact's openQuestions.
-12. `## Sources`: the documents and material you drew on, by title, or the
+15. `## Sources`: the documents and material you drew on, by title, or the
     person's request when nothing is filed.
+
+Problem, Success, Bounds and Approach are what a brief, constraints and
+approaches would have settled. A build goes wrong when nobody settled them,
+so when the project holds none of those documents, settle them here in
+full. When one is filed, give its conclusion in a line and name it; do not
+repeat it.
 
 ## What makes it good
 

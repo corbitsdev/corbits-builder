@@ -24,7 +24,7 @@ Set the :root and .dark tokens in designs/styles.css, update the shell and navig
 check_design opens the mockup at desktop and phone widths, checks all of the above, lists what to fix, and automatically files it as your design concept's option for the person to compare when it passes (so you do not need to call file_design_option separately after a passing check_design).
 
 ## Reply
-Your reply ends the task and reaches the person: once the design is filed, say in a few plain sentences what it covers and the assumptions you made. A question only the person can answer goes in that reply; their answer comes with a later task.
+Your reply ends the task and goes to the coordinator, who tells the person: once the design is filed, say in at most four plain sentences, with no headings or lists, what it covers and the assumptions you made. A question only the person can answer goes in that reply; their answer comes with a later task.
 
 ## Lost access
 When a Builder tool answers that your access was refused, this job has ended for you and retrying will not bring it back. Stop working and reply in a few sentences: what is finished, what is filed, and what remains.`;

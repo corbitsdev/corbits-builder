@@ -33,7 +33,6 @@ import {
   Reasoning,
   ShimmerText,
   Tool,
-  ToolGroup,
   ToolHeader,
   ToolInput,
   ToolOutput,
@@ -67,12 +66,7 @@ import {
   FoldedUpdatesView,
   SpecialistUpdatesView,
 } from "./specialist-updates.view.tsx";
-import {
-  isHandoff,
-  partsDispatches,
-  refusalLine,
-  type Dispatch,
-} from "./dispatch-card.tsx";
+import { isHandoff, partsDispatches, type Dispatch } from "./dispatch-card.tsx";
 import { workUnits, type WorkUnit } from "./work-unit.ts";
 import {
   WorkUnitMessageView,
@@ -154,11 +148,6 @@ function ChatProse({
   return <Markdown source={source} openDocument={onOpenDocument} />;
 }
 
-const sentenceCase = (kind: string) => {
-  const words = kind.replaceAll("_", " ");
-  return words.charAt(0).toUpperCase() + words.slice(1);
-};
-
 function instructionOf(input: unknown): string | undefined {
   if (typeof input !== "object" || input === null) return undefined;
   const instruction = (input as Record<string, unknown>)["instruction"];
@@ -169,33 +158,23 @@ function instructionOf(input: unknown): string | undefined {
 
 /**
  * A call named in plain words, so the activity's live line and steps read like
- * a person at work. A finished hand-off says whom it started. Opened, it shows
- * its instruction, else its arguments, and what the call returned.
+ * a person at work. Opened, it shows its instruction, else its arguments, and
+ * what the call returned.
  */
 function readableTool(
   part: PartTool,
   result: CallResult | undefined,
 ): PartTool {
   const { input, output: _output, ...call } = part;
-  const subject = toolSubject(input);
-  const handoff = wording.activity.handoff[part.name];
-  const refusal = refusalLine(part, result);
-  const name =
-    refusal ??
-    (handoff !== undefined && part.status === "output-available"
-      ? handoff(subject === undefined ? undefined : sentenceCase(subject))
-      : toolPhrase(part.name, subject));
   return {
     ...call,
-    name,
+    name: toolPhrase(part.name, toolSubject(input)),
     ...(input === undefined ? {} : { input: instructionOf(input) ?? input }),
     ...(result === undefined
       ? {}
       : {
           output: toolResult(part.name, result.content),
-          ...(result.isError && refusal === undefined
-            ? { status: "error" as const }
-            : {}),
+          ...(result.isError ? { status: "error" as const } : {}),
         }),
   };
 }
@@ -414,25 +393,18 @@ function foldUpdates(cards: readonly Card[]): ShownCard[] {
   return shown;
 }
 
-/** A turn's parts with its hand-offs and questions taken out: each becomes its own card after the turn. */
+/**
+ * A turn's parts with its hand-offs and questions taken out: each becomes its own card after the
+ * turn, and a hand-off the hub refused shows nowhere.
+ */
 function readableParts(
   parts: readonly ConversationPart[],
   results: ReadonlyMap<string, CallResult>,
 ): readonly ConversationPart[] {
-  const carded = (tool: PartTool) =>
-    isHandoff(tool, results.get(tool.toolCallId)) ||
-    tool.name === QUESTION_TOOL_NAME;
   return parts.flatMap((part): ConversationPart[] => {
-    const readable = (tool: PartTool) =>
-      readableTool(tool, results.get(tool.toolCallId));
-    if (part.kind === "tool-trace") return carded(part) ? [] : [readable(part)];
-    if (part.kind === "tool-batch") {
-      const tools = part.tools.filter((tool) => !carded(tool)).map(readable);
-      const [only] = tools;
-      if (only === undefined) return [];
-      return tools.length === 1 ? [only] : [{ ...part, tools }];
-    }
-    return [part];
+    if (part.kind !== "tool-trace") return [part];
+    if (isHandoff(part) || part.name === QUESTION_TOOL_NAME) return [];
+    return [readableTool(part, results.get(part.toolCallId))];
   });
 }
 
@@ -460,13 +432,38 @@ function ToolLine({ part }: { part: PartTool }) {
 /** One opened step: each call a row that opens onto what it was given and what came back. */
 function renderStep(step: ActivityStep): ReactNode {
   if (step.kind === "reasoning") return <Reasoning part={step} />;
-  if (step.kind === "tool-trace") return <ToolLine part={step} />;
+  return step.kind === "tool-trace" ? <ToolLine part={step} /> : null;
+}
+
+/**
+ * A run of the coordinator's work: its steps open while the turn is in progress and fold to one line
+ * once it ends, unless the person opened or closed it.
+ */
+function Run({
+  steps,
+  live,
+  inProgress,
+}: {
+  steps: readonly ActivityStep[];
+  live: boolean;
+  inProgress: boolean;
+}) {
+  const [chosen, setChosen] = useState<boolean>();
+  const label = live ? undefined : runLabel(steps);
   return (
-    <ToolGroup
-      part={step}
-      labels={wording.activity.group}
-      renderTool={(tool) => <ToolLine part={tool} />}
-    />
+    <Activity
+      steps={steps}
+      streaming={live}
+      open={chosen ?? inProgress}
+      onOpenChange={setChosen}
+    >
+      <ActivityTrigger
+        {...(label === undefined ? {} : { label })}
+        labels={wording.activity.trigger}
+        className={styles.run}
+      />
+      <ActivityContent renderStep={renderStep} />
+    </Activity>
   );
 }
 
@@ -507,12 +504,8 @@ const wordsOf = (parts: readonly ConversationPart[]) =>
 /** A finished run's one line: thought keeps the library's summary, tool work alone is named in words. */
 function runLabel(steps: readonly ActivityStep[]): string | undefined {
   if (steps.some((step) => step.kind === "reasoning")) return undefined;
-  const tools = steps.flatMap((step): readonly PartTool[] =>
-    step.kind === "tool-batch"
-      ? step.tools
-      : step.kind === "tool-trace"
-        ? [step]
-        : [],
+  const tools = steps.flatMap((step) =>
+    step.kind === "tool-trace" ? [step] : [],
   );
   const only = tools.length === 1 ? tools[0]?.name : undefined;
   return wording.activity.run(
@@ -827,20 +820,13 @@ export function RoomThread({
           streaming={streaming}
           renderText={renderTurnText}
           renderStep={renderStep}
-          renderActivity={(steps, state) => {
-            const live = state.streaming && runLive;
-            const label = live ? undefined : runLabel(steps);
-            return (
-              <Activity steps={steps} streaming={live}>
-                <ActivityTrigger
-                  {...(label === undefined ? {} : { label })}
-                  labels={wording.activity.trigger}
-                  className={styles.run}
-                />
-                <ActivityContent renderStep={renderStep} />
-              </Activity>
-            );
-          }}
+          renderActivity={(steps, state) => (
+            <Run
+              steps={steps}
+              live={state.streaming && runLive}
+              inProgress={streaming}
+            />
+          )}
         />
         <MessageSendStatus />
         {turn.role === "assistant" && !streaming && wordsOf(visible) !== "" ? (

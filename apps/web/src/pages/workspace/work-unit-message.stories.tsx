@@ -97,7 +97,6 @@ const args: WorkUnitMessageViewProps = {
   recent: [],
   preview: undefined,
   report: undefined,
-  refused: false,
   approvals: [],
   onOpenDocument: fn(),
   watch: undefined,
@@ -192,15 +191,4 @@ export const Failed: Story = {
     { state: "failed", reason: "the model provider refused the request" },
     REPORTS.slice(0, 1),
   ),
-};
-
-/** The hub refused the hand-off, so nothing started. */
-export const Refused: Story = {
-  args: {
-    ...standing({
-      state: "failed",
-      reason: "a writer is already at work on Constraints",
-    }),
-    refused: true,
-  },
 };

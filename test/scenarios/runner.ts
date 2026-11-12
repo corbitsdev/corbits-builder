@@ -273,6 +273,7 @@ export const WEATHER_BUILD: readonly Turn[] = [
   turn(
     results(ok("c_approve_plan", "question", '"approved"')),
     execute("c_build", "coder", "build", {
+      starter: "web-app",
       instruction: "Build the whole app from the plan and the chosen design.",
     }),
   ),

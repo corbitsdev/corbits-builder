@@ -34,7 +34,8 @@ function coderBusy(live?: Working) {
 }
 
 // What the run starts from: a first build's chosen starter, which its workspace is seeded from and
-// records as stack.starter; a change, the starter the project's code was built from.
+// records as stack.starter; a change, the starter the project's code was built from. Code that
+// records none was built before starters could be chosen, when every build was a web app.
 async function starterOf(
   app: "new" | "existing",
   input: Readonly<Record<string, unknown>>,

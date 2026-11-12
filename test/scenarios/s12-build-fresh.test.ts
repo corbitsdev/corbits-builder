@@ -18,6 +18,7 @@ scenario({
     turn(
       user("to-do list"),
       execute("c_build", "coder", "build", {
+        starter: "web-app",
         instruction:
           "Build a to-do list web app: add, tick off and delete tasks, kept in the browser.",
       }),

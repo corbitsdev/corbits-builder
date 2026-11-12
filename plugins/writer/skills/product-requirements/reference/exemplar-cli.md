@@ -13,14 +13,41 @@ take every fact from the project's own documents.
 - I decided **photos with no date keep their name and are listed**; correct
   it if you would rather skip the folder.
 
-## Purpose
+## Problem
 
-Turn a camera's folder of IMG_0001 names into names you can sort and search
-by date, without opening each photo.
+After each trip your camera's folder is full of IMG_0001 names, and you
+open each photo to learn when it was taken. Renaming them by hand takes an
+evening for about 2,000 photos; names that sort and search by date remove
+that step.
 
 ## Users
 
 - You, running it on a folder after each trip, on a Mac or Linux laptop.
+
+## Success
+
+- After a run, sorting the folder by name puts the photos in the order they
+  were taken.
+- A dry run shows every rename and changes nothing.
+- No photo is overwritten or lost.
+
+## Bounds
+
+- Form: a command-line tool; no app or screens.
+- Runs: on your Mac or Linux laptop, on a folder you point it at.
+- Data: the photos' own EXIF dates; nothing is stored or sent anywhere.
+- Access: only the folder you name.
+- Outside: no services or accounts.
+- Budget: none named; no date.
+
+## Approach
+
+One small command that reads each photo's EXIF date and renames in place,
+because it needs nothing installed beyond the tool.
+
+- A script that runs on every new import: more automatic, but it renames
+  without you asking.
+- A photo-library app plugin: tidier, but ties you to one app.
 
 ## Scope
 

@@ -78,7 +78,6 @@ export function workUnitStanding(
       status.state === "ready" || status.state === "finished"
         ? unit.updates.at(-1)?.text
         : undefined,
-    refused: dispatch.refused !== undefined,
     approvals: unit.approvals,
     onOpenDocument: room.onOpenDocument,
     watch:

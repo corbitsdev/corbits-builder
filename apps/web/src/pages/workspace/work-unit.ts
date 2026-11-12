@@ -54,14 +54,11 @@ export function workUnits(
   const placed = [...handoffs].sort((left, right) => left.at - right.at);
   // A filed thing's card stands for the run that filed it, placed when it filed: the report that
   // run mails just after belongs on that card, not as a second row naming the same specialist.
-  const started = placed.filter(
-    ({ dispatch }) => dispatch.refused === undefined,
-  );
   const latest = (
     at: number,
     belongs: (dispatch: Dispatch) => boolean,
   ): Dispatch | undefined => {
-    const before = started.filter(
+    const before = placed.filter(
       (handoff) => handoff.at <= at && belongs(handoff.dispatch),
     );
     const last = before.at(-1);
@@ -153,11 +150,7 @@ export function workUnitMessage(
   const { dispatch } = unit;
   const subject = workSubject(dispatch, status);
   const started = !dispatch.pending;
-  const handoff = (
-    dispatch.refused === undefined
-      ? wording.activity.handoff
-      : wording.activity.handoffRefused
-  )[dispatch.action ?? dispatch.tool];
+  const handoff = wording.activity.handoff[dispatch.action ?? dispatch.tool];
   const parts: ConversationPart[] = [
     {
       kind: "tool-trace",

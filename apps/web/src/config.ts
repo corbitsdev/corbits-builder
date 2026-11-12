@@ -540,16 +540,6 @@ export const wording = {
       "approval-requested": "Waiting for you",
       "output-denied": "Not done",
     },
-    /** Several steps taken at the same time, as one row. */
-    group: {
-      ran: (count: number) => `${String(count)} steps at once`,
-      running: (count: number, done: number) =>
-        `${String(count)} steps at once · ${String(done)} done`,
-      held: (count: number, done: number) =>
-        `${String(count)} steps at once · ${String(done)} done`,
-      waiting: (count: number) => `${String(count)} waiting for you`,
-      failed: (count: number) => `${String(count)} did not finish`,
-    },
     /** A finished run of tool work with no thinking: its one step by name, else how many. */
     run: (count: number, only?: string) =>
       only === undefined ? `${String(count)} steps` : only,
@@ -574,41 +564,6 @@ export const wording = {
         document ? `Asked for a review · ${document}` : "Asked for a review",
       "designer mockup": () => "Started the designer",
     } as Record<string, (subject?: string) => string>,
-    /** A hand-off the hub refused, by execute's plugin action: who it did not start. */
-    handoffRefused: {
-      "coder build": () => "Could not start the coder",
-      "coder change": () => "Could not start the coder on a change",
-      "writer write": (document?: string) =>
-        document
-          ? `Could not start the writer · ${document}`
-          : "Could not start the writer",
-      "writer write-requirements": (document?: string) =>
-        document
-          ? `Could not start the writer · ${document}`
-          : "Could not start the writer",
-      "writer write-build-plan": (document?: string) =>
-        document
-          ? `Could not start the writer · ${document}`
-          : "Could not start the writer",
-      "writer review": (document?: string) =>
-        document
-          ? `Could not ask for a review · ${document}`
-          : "Could not ask for a review",
-      "designer mockup": () => "Could not start the designer",
-    } as Record<string, (subject?: string) => string>,
-    /** Whom a refused hand-off tried to start, by execute's plugin action. */
-    handoffWho: {
-      "coder build": "the coder",
-      "coder change": "the coder on a change",
-      "writer write": "the writer",
-      "writer write-requirements": "the writer",
-      "writer write-build-plan": "the writer",
-      "writer review": "a review",
-      "designer mockup": "the designer",
-    } as Record<string, string>,
-    /** The coordinator's own corrected call, in its steps: nothing started, so nothing failed. */
-    handoffCorrected: (who: string, reason: string) =>
-      `Tried to start ${who}; Builder said no: ${reason}`,
     /** What a tool call is doing, by tool name, given its one identifying argument. */
     tool: {
       read_file: (subject?: string) =>
@@ -781,8 +736,6 @@ export const wording = {
     unnamed: "the task",
     /** The run is held on a request only the person can approve, such as a package install. */
     approval: "Paused for your approval",
-    /** The hub refused the hand-off, so nothing started. */
-    refused: "Not started",
     starting: "Starting…",
     /** At work before its run reports a step of its own. */
     working: (subject: string) => `Working on ${subject}`,
@@ -820,7 +773,6 @@ export const wording = {
     less: "Less",
     failed: (reason: string) => `Did not finish: ${reason}`,
     failedUnknown: "the run stopped without a reason",
-    refusedUnknown: "the hub refused it",
   },
   /** Before a message changes a document a specialist is building from. */
   earlierDocument: {

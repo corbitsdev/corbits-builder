@@ -60,8 +60,6 @@ export type WorkUnitStanding = {
   preview: RunPreview | undefined;
   /** What the specialist reported last, shown under its result once the work is done. */
   report: string | undefined;
-  /** The hub refused the hand-off. */
-  refused: boolean;
   /** The approvals for what the work made. */
   approvals: readonly DocumentApproval[];
   /** Opens the document the work filed; absent where nothing can open it. */
@@ -95,12 +93,8 @@ function WorkLine({
   role,
   subject,
   doing,
-  refused,
   steps,
-}: Pick<
-  WorkUnitMessageViewProps,
-  "status" | "role" | "subject" | "doing" | "refused"
-> & {
+}: Pick<WorkUnitMessageViewProps, "status" | "role" | "subject" | "doing"> & {
   steps: number;
 }): ReactNode {
   switch (status.state) {
@@ -120,7 +114,6 @@ function WorkLine({
       return text.steps(text.done[role](subject), steps);
     case "finished":
     case "failed":
-      if (refused) return text.refused;
       return text.steps(text.ended(subject), steps);
   }
 }
@@ -292,7 +285,6 @@ export function WorkUnitMessageView({
   recent,
   preview,
   report,
-  refused,
   approvals,
   onOpenDocument,
   watch,
@@ -302,7 +294,9 @@ export function WorkUnitMessageView({
   const live = status.state === "starting" || status.state === "working";
   // Done work reads as one thing: its steps open from the header, not from a line that repeats it.
   const done = status.state === "ready" || status.state === "finished";
-  const [stepsOpen, setStepsOpen] = useState(false);
+  // Its steps stay open while the work is in progress and fold once it ends, unless the person chose.
+  const [chosen, setChosen] = useState<boolean>();
+  const stepsOpen = chosen ?? (live || status.state === "approval");
   const asked = new Map(
     approvals.map((approval) => [approval.approvalId, approval]),
   );
@@ -322,7 +316,7 @@ export function WorkUnitMessageView({
               size="sm"
               className={styles.steps}
               aria-expanded={stepsOpen}
-              onClick={() => setStepsOpen(!stepsOpen)}
+              onClick={() => setChosen(!stepsOpen)}
             >
               {text.stepsToggle(stepCount)}
             </Button>
@@ -360,13 +354,18 @@ export function WorkUnitMessageView({
                 <Activity
                   steps={steps}
                   open={stepsOpen}
-                  onOpenChange={setStepsOpen}
+                  onOpenChange={setChosen}
                 >
                   {content}
                 </Activity>
               );
             return (
-              <Activity steps={steps} streaming={live}>
+              <Activity
+                steps={steps}
+                streaming={live}
+                open={stepsOpen}
+                onOpenChange={setChosen}
+              >
                 <ActivityTrigger
                   label={
                     <WorkLine
@@ -374,7 +373,6 @@ export function WorkUnitMessageView({
                       role={role}
                       subject={subject}
                       doing={doing}
-                      refused={refused}
                       steps={steps.length}
                     />
                   }
