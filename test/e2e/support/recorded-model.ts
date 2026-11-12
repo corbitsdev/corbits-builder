@@ -178,7 +178,11 @@ export function classifyRole(
   req: OpenAIChatRequest,
   tools: ReadonlySet<string>,
 ): AgentRole | undefined {
-  if (tools.has("deploy_writer") || tools.has("request_approval")) {
+  if (
+    tools.has("deploy_writer") ||
+    tools.has("request_approval") ||
+    tools.has("execute")
+  ) {
     return "coordinator";
   }
   if (tools.has("file_design_option") || tools.has("check_design")) {
