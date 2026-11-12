@@ -42,6 +42,7 @@ import { buildWorkflowPackages } from "./build-packages.ts";
 import { nativePackageName } from "./package-name.ts";
 import { resolveRoleInference, type RoleInference } from "./role-inference.ts";
 import type { Actor } from "../lib/actor.ts";
+import type { CoordinatorPrompt } from "../environment.ts";
 
 const PACKAGE_VERSION = "1.0.0";
 const HUB = { kind: "hub" } as const;
@@ -52,13 +53,15 @@ type InstallForTenantPorts = {
     AssetService,
     "createAsset" | "populateAsset" | "listAssetBlobs"
   >;
+  coordinatorPrompt: CoordinatorPrompt;
 };
 
 type Bindings = Record<WorkflowRole, RoleBinding>;
 type Inference = Record<WorkflowRole, RoleInference>;
 type Source = Pick<RoleBinding, "provider" | "model">;
 
-// One build per set of resolved role inference: it is inlined, so it is part of the bundle.
+// One build per coordinator prompt and set of resolved role inference: both are inlined, so they
+// are part of the bundle.
 const packages = new Map<
   string,
   Promise<
@@ -103,13 +106,18 @@ function installedFrom(config: unknown): InstalledWorkflows | null {
   return parsed instanceof type.errors ? null : parsed;
 }
 
-async function buildAndRead(key: string, inference: Inference) {
+async function buildAndRead(
+  key: string,
+  inference: Inference,
+  coordinatorPrompt: CoordinatorPrompt,
+) {
   const directory = await mkdtemp(join(tmpdir(), "sb-hub-packages-"));
   try {
     const manifest = await buildWorkflowPackages(
       directory,
       PACKAGE_VERSION,
       inference,
+      coordinatorPrompt,
     );
     return await Promise.all(
       manifest.map(async (item) => ({
@@ -127,11 +135,14 @@ async function buildAndRead(key: string, inference: Inference) {
   }
 }
 
-function builtPackages(inference: Inference) {
-  const key = JSON.stringify(inference);
+function builtPackages(
+  inference: Inference,
+  coordinatorPrompt: CoordinatorPrompt,
+) {
+  const key = JSON.stringify([coordinatorPrompt, inference]);
   const cached = packages.get(key);
   if (cached) return cached;
-  const building = buildAndRead(key, inference);
+  const building = buildAndRead(key, inference, coordinatorPrompt);
   packages.set(key, building);
   return building;
 }
@@ -435,6 +446,7 @@ export async function installForTenant(
         resolveRoleInference(directory, role, bindings[role]),
       ]),
     ) as Inference,
+    ports.coordinatorPrompt,
   );
   const existing = installedFrom(row?.config);
   if (

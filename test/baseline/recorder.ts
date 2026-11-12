@@ -6,6 +6,7 @@ import {
   type RunConversation,
 } from "../e2e/support/extract.ts";
 import type { TestHubHandle } from "../e2e/support/hub.ts";
+import type { CoordinatorPrompt } from "@corbits-builder/hub/environment";
 import { openQuestionPark } from "../e2e/support/pipeline-driver.ts";
 
 export const Move = type(
@@ -236,6 +237,7 @@ export function recordCase(
     remark: Remark;
     model: CaseModel;
     hint: HintSetting;
+    prompt: CoordinatorPrompt;
     repeat: number;
     projectId: string;
     runId: string;
@@ -260,6 +262,7 @@ export function recordCase(
     model: input.model.id,
     profile: input.model.profile,
     hint: input.hint,
+    prompt: input.prompt,
     repeat: input.repeat,
     projectId: input.projectId,
     runId: input.runId,

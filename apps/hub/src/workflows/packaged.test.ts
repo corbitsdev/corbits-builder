@@ -112,7 +112,12 @@ test("built npm tarballs contain importable production workflow metadata and def
     join(tmpdir(), "sb-packaged-definition-test-"),
   );
   try {
-    const manifest = await buildWorkflowPackages(directory, "1.0.0", inference);
+    const manifest = await buildWorkflowPackages(
+      directory,
+      "1.0.0",
+      inference,
+      "classic",
+    );
     expect(manifest).toHaveLength(10);
     for (const metadata of manifest) {
       const extracted = join(directory, metadata.assetName);
@@ -141,4 +146,51 @@ test("built npm tarballs contain importable production workflow metadata and def
     await rm(directory, { recursive: true, force: true });
   }
   // Building starts the coder's browser, whose first start downloads Chrome for Testing.
+}, 180_000);
+
+test("the built coordinator runs the prompt COORDINATOR_PROMPT names, and the hub refuses any other", async () => {
+  const { mkdtemp, rm } = await import("node:fs/promises");
+  const { tmpdir } = await import("node:os");
+  const { join } = await import("node:path");
+  const { pathToFileURL } = await import("node:url");
+  const { buildWorkflowPackages } = await import("./build-packages.ts");
+  const { nativePackageName } = await import("./package-name.ts");
+  const { readCoordinatorPrompt } = await import("../environment.ts");
+  const { composeCoordinatorPrompt } =
+    await import("@corbits-builder/coordinator/prompt");
+  expect(() => readCoordinatorPrompt({ COORDINATOR_PROMPT: "lean" })).toThrow(
+    "COORDINATOR_PROMPT must be classic or dynamic",
+  );
+  const built = async (setting: string | undefined) => {
+    const directory = await mkdtemp(join(tmpdir(), "sb-coordinator-prompt-"));
+    try {
+      const manifest = await buildWorkflowPackages(
+        directory,
+        "1.0.0",
+        inference,
+        readCoordinatorPrompt({ COORDINATOR_PROMPT: setting }),
+      );
+      const coordinator = manifest.find(
+        (item) => item.packageName === nativePackageName("coordinator"),
+      );
+      if (!coordinator) throw new Error("coordinator_package_missing");
+      const child = Bun.spawn(
+        ["tar", "-xzf", join(directory, coordinator.file), "-C", directory],
+        { stdout: "ignore", stderr: "pipe" },
+      );
+      expect(await child.exited).toBe(0);
+      const entry = await import(
+        pathToFileURL(join(directory, "package", coordinator.entry)).href
+      );
+      return entry.default.steps.coordinate.agent.systemPrompt;
+    } finally {
+      await rm(directory, { recursive: true, force: true });
+    }
+  };
+  const classic = composeCoordinatorPrompt("classic");
+  const dynamic = composeCoordinatorPrompt("dynamic");
+  expect(classic).not.toBe(dynamic);
+  expect(await built(undefined)).toBe(classic);
+  expect(await built("classic")).toBe(classic);
+  expect(await built("dynamic")).toBe(dynamic);
 }, 180_000);

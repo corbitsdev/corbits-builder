@@ -50,6 +50,14 @@
       "unacceptable": { "anywhere": ["instruct_coder"], "first": [] }
     },
     {
+      "text": "change the font to Inter",
+      "acceptable": [["instruct_coder"], ["read", "instruct_coder"]],
+      "unacceptable": {
+        "anywhere": ["open:pick-colours"],
+        "first": ["ask"]
+      }
+    },
+    {
       "text": "that doesn't match my brand guidelines",
       "acceptable": [["read", "ask"]],
       "unacceptable": {

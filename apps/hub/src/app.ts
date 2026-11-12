@@ -48,6 +48,7 @@ import {
   readCoordinatorStartTimeoutMs,
   readHubEnvironment,
   readPluginHint,
+  readCoordinatorPrompt,
   readGoogleEmulateBaseUrl,
   required,
 } from "./environment.ts";
@@ -118,6 +119,7 @@ export async function createHubRuntime(
   const coordinatorStartTimeoutMs =
     readCoordinatorStartTimeoutMs(rawEnvironment);
   const pluginHint = readPluginHint(rawEnvironment);
+  const coordinatorPrompt = readCoordinatorPrompt(rawEnvironment);
   const handle = createDB(env.database);
   let authEmail: ReturnType<typeof createAuthEmail>;
   try {
@@ -327,6 +329,7 @@ export async function createHubRuntime(
     const coordinatorStartup = createInstalledCoordinatorStartup(
       handle.db,
       assetService,
+      coordinatorPrompt,
       async (args) => {
         const minted = (prefix: "run_" | "ses_") =>
           prefix +
@@ -388,7 +391,7 @@ export async function createHubRuntime(
       runs: createWorkflowRunReader(agentRepoStore.repoStore),
       installed: (actor, projectId) =>
         installForTenant(
-          { db: handle.db, assets: assetService },
+          { db: handle.db, assets: assetService, coordinatorPrompt },
           actor,
           projectId,
         ),
@@ -430,7 +433,7 @@ export async function createHubRuntime(
     const coordinatorTokens = createAgentTokenBridge(handle.db, runTokenStore, {
       install: (actor, projectId) =>
         installForTenant(
-          { db: handle.db, assets: assetService },
+          { db: handle.db, assets: assetService, coordinatorPrompt },
           actor,
           projectId,
         ),

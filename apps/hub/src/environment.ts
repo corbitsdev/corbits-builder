@@ -154,6 +154,17 @@ export function readPluginHint(env: Environment): PluginHint {
   return hint;
 }
 
+const CoordinatorPrompt = type("'classic' | 'dynamic'");
+export type CoordinatorPrompt = typeof CoordinatorPrompt.infer;
+
+// Which system prompt the coordinator's package is built with.
+export function readCoordinatorPrompt(env: Environment): CoordinatorPrompt {
+  const prompt = CoordinatorPrompt(env["COORDINATOR_PROMPT"] ?? "classic");
+  if (prompt instanceof type.errors)
+    throw new Error("COORDINATOR_PROMPT must be classic or dynamic");
+  return prompt;
+}
+
 export function positiveInteger(
   env: Environment,
   name: string,

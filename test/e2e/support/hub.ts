@@ -8,7 +8,10 @@ import {
   type ProductApiClient,
 } from "@corbits-builder/client";
 import { createHubRuntime } from "@corbits-builder/hub/app";
-import type { PluginHint } from "@corbits-builder/hub/environment";
+import type {
+  CoordinatorPrompt,
+  PluginHint,
+} from "@corbits-builder/hub/environment";
 import { migrateDatabase } from "@corbits-builder/hub/migrate";
 import type { RecordedModelServer } from "./recorded-model.ts";
 
@@ -30,6 +33,7 @@ export type TestHubHandle = Readonly<{
 
 export type TestHubOptions = Readonly<{
   pluginHint?: PluginHint;
+  coordinatorPrompt?: CoordinatorPrompt;
   // Provider API keys by the hub's own variable names, such as ANTHROPIC_API_KEY.
   providerKeys?: Readonly<Record<string, string>>;
 }>;
@@ -194,6 +198,8 @@ export async function startTestHub(
     COORDINATOR_START_TIMEOUT_MS: "120000",
   };
   if (options.pluginHint) hubEnv["PLUGIN_HINT"] = options.pluginHint;
+  if (options.coordinatorPrompt)
+    hubEnv["COORDINATOR_PROMPT"] = options.coordinatorPrompt;
   Object.assign(hubEnv, options.providerKeys);
 
   let runtime: Awaited<ReturnType<typeof createHubRuntime>> | undefined;

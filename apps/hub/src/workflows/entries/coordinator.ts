@@ -9,6 +9,7 @@ import { compactingDirector } from "../director.ts";
 import { dropDegenerateTurn, trimHistory } from "../compaction.ts";
 import { savedResultTools } from "../saved-result-tools.ts";
 import { nativePackageName } from "../package-name.ts";
+import { readCoordinatorPrompt } from "../../environment.ts";
 
 const compacting = compactingDirector(nativePackageName("coordinator"));
 
@@ -25,6 +26,10 @@ const agent = createCoordinatorAgent({
   }),
   id: "coordinator",
   capabilities: [],
+  // build-packages.ts inlines the hub's COORDINATOR_PROMPT; an entry imported directly gets the default.
+  prompt: readCoordinatorPrompt({
+    COORDINATOR_PROMPT: process.env.BUILDER_COORDINATOR_PROMPT,
+  }),
   inference: { ...source, parameters },
   tools: [
     createArtifactTools("coordinator"),

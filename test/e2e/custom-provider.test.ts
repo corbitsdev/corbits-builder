@@ -251,6 +251,7 @@ test("custom providers install on their API, keep each key on its origin, and re
         installForTenant(
           {
             db: handle.db,
+            coordinatorPrompt: "classic",
             assets: createAssetService({
               db: handle.db,
               repoStore: createAgentRepoStore({
