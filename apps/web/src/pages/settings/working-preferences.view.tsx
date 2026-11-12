@@ -15,7 +15,7 @@ export type PreferenceRow = {
   label: string;
   group: PreferenceGroup;
   /** What the preference decides. */
-  hint: string;
+  hint: string | undefined;
   options: readonly { readonly id: string; readonly label: string }[];
   /** The id of the option chosen. */
   choice: string;

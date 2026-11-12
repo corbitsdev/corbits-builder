@@ -32,8 +32,9 @@ type PickedChoice = { choice: string };
 
 const { fallback } = wording.settings.preferences;
 
-/** The hub's preferences, and the ones it offers before they are read. */
-function listPreferences(hub: Registry): Registry {
+/** The hub's preferences, and the ones it offers before they are read or when they cannot be. */
+function listPreferences(hub: Registry | null): Registry {
+  if (!hub) return fallback;
   const fromFallback = fallback.filter(
     (item) => !hub.some((entry) => entry.id === item.id),
   );
@@ -116,7 +117,6 @@ export function useWorkingPreferences({
         keepSaved(loaded);
       } catch (cause) {
         if (cancelled) return;
-        setRegistry((current) => current ?? []);
         setFault(message(cause));
       }
     }
@@ -171,15 +171,19 @@ export function useWorkingPreferences({
     const pick = { choice };
     pickedRef.current[id] = pick;
     setPicked({ ...pickedRef.current });
-    queue.current = queue.current.then(() => saveToHub(id, pick));
+    const before = queue.current;
+    queue.current = (async () => {
+      await before;
+      await saveToHub(id, pick);
+    })();
   };
 
   return {
-    preferences: listPreferences(registry ?? []).map((preference) => ({
+    preferences: listPreferences(registry).map((preference) => ({
       id: preference.id,
       label: preference.label,
       group: preference.group,
-      hint: preference.hint ?? "",
+      hint: preference.hint,
       options: preference.options,
       choice:
         inBrowser[preference.id] ??
