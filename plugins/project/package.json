@@ -8,6 +8,7 @@
   "type": "module",
   "dependencies": {
     "@corbits-builder/plugin": "workspace:*",
+    "@corbits-builder/plugin-ui": "workspace:*",
     "@corbits/react-ui": "0.5.1",
     "arktype": "catalog:",
     "react": "19.3.0"

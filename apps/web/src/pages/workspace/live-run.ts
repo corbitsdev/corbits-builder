@@ -53,7 +53,8 @@ export const emptyLiveRun: LiveRun = {
   results: new Map(),
 };
 
-function resultOf(
+/** A `tool.done` frame's call result, from the coordinator's stream or a specialist's. */
+export function resultOf(
   event: RunStreamEvent,
 ): (CallResult & { callId: string }) | undefined {
   const result = (event.data as { result?: unknown } | undefined)?.result;

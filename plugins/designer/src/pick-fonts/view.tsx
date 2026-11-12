@@ -7,6 +7,7 @@ import { useEffect, useId, useRef, useState, type KeyboardEvent } from "react";
 import { Check, X } from "lucide-react";
 import { Badge, Button, GateBlock, Input } from "@corbits/react-ui";
 import type { ScreenViewProps } from "@corbits-builder/plugin";
+import { ScreenActions } from "@corbits-builder/plugin-ui/screen-actions";
 import type { Font, Input as ScreenInput, Output } from "./schema.ts";
 import styles from "./view.module.css";
 
@@ -165,8 +166,7 @@ function Proposal({
       className={styles.card}
       gate={{ kind: "form", title: text.title }}
       footer={
-        <div className={styles.footer}>
-          {hint === undefined ? null : <p className={styles.hint}>{hint}</p>}
+        <ScreenActions note={hint}>
           <Button
             type="button"
             size="sm"
@@ -187,7 +187,7 @@ function Proposal({
           >
             {submitting ? text.saving : text.useProposed}
           </Button>
-        </div>
+        </ScreenActions>
       }
     >
       <div className={styles.picker}>
@@ -353,8 +353,7 @@ function Choosing({
       className={styles.card}
       gate={{ kind: "form", title: text.title }}
       footer={
-        <div className={styles.footer}>
-          {hint === undefined ? null : <p className={styles.hint}>{hint}</p>}
+        <ScreenActions note={hint}>
           <Button
             type="button"
             size="sm"
@@ -366,7 +365,7 @@ function Choosing({
           >
             {submitting ? text.saving : text.save}
           </Button>
-        </div>
+        </ScreenActions>
       }
     >
       <div className={styles.picker}>

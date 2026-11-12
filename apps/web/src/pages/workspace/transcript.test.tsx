@@ -81,9 +81,7 @@ describe("conversation transcript", () => {
     expect(html).toContain('data-slot="message-parts"');
     expect(html).toContain("What is the weather?");
     expect(html).toContain("Checking.");
-    expect(html).not.toContain("Look up the city");
     expect(html).not.toContain("location");
-    expect(html).not.toContain('data-slot="tool"');
     expect(html).not.toContain("Approved once");
     expect(html).not.toContain("Approve always");
   });

@@ -6,6 +6,7 @@
 import { useId } from "react";
 import { Button } from "@corbits/react-ui";
 import type { ScreenViewProps } from "@corbits-builder/plugin";
+import { ScreenActions } from "@corbits-builder/plugin-ui/screen-actions";
 import type { Input, Output } from "./schema.ts";
 import styles from "./view.module.css";
 
@@ -126,7 +127,7 @@ export function ApproveDocuments({
           </li>
         ))}
       </ul>
-      <div className={styles.actions}>
+      <ScreenActions note={text.orWrite}>
         <Button
           type="button"
           size="sm"
@@ -143,8 +144,7 @@ export function ApproveDocuments({
         >
           {text.approve}
         </Button>
-        <p className={styles.hint}>{text.orWrite}</p>
-      </div>
+      </ScreenActions>
     </section>
   );
 }

@@ -15,6 +15,7 @@
     "@corbits-builder/hub": "workspace:*",
     "@corbits-builder/plugin": "workspace:*",
     "@corbits-builder/plugin-host": "workspace:*",
+    "@corbits-builder/plugin-ui": "workspace:*",
     "@corbits-builder/schemas": "workspace:*",
     "@corbits/react-ui": "0.5.1",
     "@intx/agent": "workspace:*",

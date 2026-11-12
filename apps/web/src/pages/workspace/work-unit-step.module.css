@@ -11,6 +11,13 @@
   min-width: 0;
 }
 
+/* The phrase says what the specialist did, so it wraps rather than being cut short. */
+.row > span:first-of-type {
+  overflow: visible;
+  white-space: normal;
+  overflow-wrap: anywhere;
+}
+
 .action {
   flex: none;
   height: auto;

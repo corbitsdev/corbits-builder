@@ -177,19 +177,8 @@ function readableTool(
     ...(input === undefined ? {} : { input: instructionOf(input) ?? input }),
     ...(result === undefined
       ? {}
-      : {
-          output: toolResult(part.name, result.content),
-          ...(result.isError ? { status: "error" as const } : {}),
-        }),
+      : { output: toolResult(part.name, result.content) }),
   };
-}
-
-/** A finished turn's work folds into one run before its words, so it reads "3 steps". */
-function settledParts(
-  parts: readonly ConversationPart[],
-): readonly ConversationPart[] {
-  const words = parts.filter((part) => part.kind === "text");
-  return [...parts.filter((part) => part.kind !== "text"), ...words];
 }
 
 /** A run or filed thing with no hand-off in this session's view, placed at its start or filing. */
@@ -416,7 +405,9 @@ function foldUpdates(cards: readonly Card[]): ShownCard[] {
 
 /**
  * A turn's parts in words, with its questions taken out to their own cards. A hand-off stays as the
- * step its specialist shows in, and one the hub refused, which started nothing, shows nowhere.
+ * step its specialist shows in, and one the hub refused, which started nothing, shows nowhere. A
+ * call that returned an error is the agent's to correct, not a step the person reads, so it shows
+ * nowhere either.
  */
 function readableParts(
   parts: readonly ConversationPart[],
@@ -425,7 +416,7 @@ function readableParts(
   return parts.flatMap((part): ConversationPart[] => {
     if (part.kind !== "tool-trace") return [part];
     const result = results.get(part.toolCallId);
-    if (part.name === QUESTION_TOOL_NAME) return [];
+    if (part.name === QUESTION_TOOL_NAME || result?.isError === true) return [];
     if (isHandoff(part) && dispatchesOf(part, result).length === 0) return [];
     return [readableTool(part, result)];
   });
@@ -444,10 +435,7 @@ function ToolLine({ part }: { part: PartTool }) {
       ) : (
         <ToolInput title={wording.activity.input} />
       )}
-      <ToolOutput
-        title={wording.activity.output}
-        errorTitle={wording.activity.outputError}
-      />
+      <ToolOutput title={wording.activity.output} />
     </Tool>
   );
 }
@@ -459,29 +447,21 @@ function renderStep(step: ActivityStep): ReactNode {
 }
 
 /**
- * A run of the coordinator's work, the specialists it started among its steps: open while the work is
- * in progress and folded to one line once it ends, unless the person opened or closed it.
+ * A run of the coordinator's work, the specialists it started among its steps. It opens once and
+ * stays as the person leaves it: the end of the work never folds it, so the page does not move.
  */
 function Run({
   steps,
   live,
-  inProgress,
   renderStep,
 }: {
   steps: readonly ActivityStep[];
   live: boolean;
-  inProgress: boolean;
   renderStep: (step: ActivityStep) => ReactNode;
 }) {
-  const [chosen, setChosen] = useState<boolean>();
   const label = live ? undefined : runLabel(steps);
   return (
-    <Activity
-      steps={steps}
-      streaming={live}
-      open={chosen ?? inProgress}
-      onOpenChange={setChosen}
-    >
+    <Activity steps={steps} streaming={live} defaultOpen>
       <ActivityTrigger
         {...(label === undefined ? {} : { label })}
         labels={wording.activity.trigger}
@@ -698,15 +678,6 @@ export function RoomThread({
       />
     ));
   };
-  // A list stays open while a specialist in it still works.
-  const working = (steps: readonly ActivityStep[]) =>
-    steps.some(
-      (step) =>
-        step.kind === "tool-trace" &&
-        (specialists.get(step.toolCallId) ?? []).some((unit) =>
-          live(unit.dispatch),
-        ),
-    );
   // Under a coordinator header, a coordinator's approval card does not repeat the name.
   const renderCard = (card: ShownCard, position: string, headed: boolean) => {
     if (card.kind === "units") {
@@ -728,12 +699,7 @@ export function RoomThread({
             {headed ? null : (
               <MessageHeader name={wording.speaker.coordinator} />
             )}
-            <Run
-              steps={steps}
-              live={false}
-              inProgress={working(steps)}
-              renderStep={renderWork}
-            />
+            <Run steps={steps} live={false} renderStep={renderWork} />
           </Message>
         </ConversationItem>
       );
@@ -894,7 +860,7 @@ export function RoomThread({
       >
         <MessageHeader name={turnLabel(turn)} />
         <MessageParts
-          parts={streaming ? visible : settledParts(visible)}
+          parts={visible}
           streaming={streaming}
           renderText={renderTurnText}
           renderStep={renderWork}
@@ -902,7 +868,6 @@ export function RoomThread({
             <Run
               steps={steps}
               live={state.streaming && runLive}
-              inProgress={streaming || working(steps)}
               renderStep={renderWork}
             />
           )}

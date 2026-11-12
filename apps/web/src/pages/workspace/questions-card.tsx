@@ -24,6 +24,10 @@ import type { QuestionsLayout } from "../../questions-layout-setting.ts";
 import { clsx } from "clsx";
 import { type } from "arktype";
 import { Fault } from "../../components.jsx";
+import {
+  ScreenActions,
+  ScreenCancel,
+} from "@corbits-builder/plugin-ui/screen-actions";
 import { readJson } from "../../json.ts";
 import styles from "./questions-card.module.css";
 
@@ -607,15 +611,17 @@ function StepReview({
           answer: answerLabels(question, answerOf(question)).join(", "),
         }))}
       />
-      <Button
-        autoFocus={focus}
-        type="button"
-        size="sm"
-        disabled={!canSend}
-        onClick={onSend}
-      >
-        {sending ? text.sending : text.send}
-      </Button>
+      <ScreenActions>
+        <Button
+          autoFocus={focus}
+          type="button"
+          size="sm"
+          disabled={!canSend}
+          onClick={onSend}
+        >
+          {sending ? text.sending : text.send}
+        </Button>
+      </ScreenActions>
     </div>
   );
 }
@@ -693,19 +699,22 @@ function StepsBody({
           sending={sending}
         />
       ) : (
-        <StepQuestion
-          key={question.id}
-          question={question}
-          idPrefix={idPrefix}
-          answer={answerOf(question)}
-          disabled={disabled}
-          focus={moved}
-          onChange={(answer) => setAnswer(question, answer)}
-          onDone={(answer) => {
-            if (complete(answer)) go(step + 1);
-          }}
-          onBack={() => go(step - 1)}
-        />
+        <>
+          <StepQuestion
+            key={question.id}
+            question={question}
+            idPrefix={idPrefix}
+            answer={answerOf(question)}
+            disabled={disabled}
+            focus={moved}
+            onChange={(answer) => setAnswer(question, answer)}
+            onDone={(answer) => {
+              if (complete(answer)) go(step + 1);
+            }}
+            onBack={() => go(step - 1)}
+          />
+          <ScreenActions />
+        </>
       )}
       <p className={styles.keys}>
         {question === undefined
@@ -763,17 +772,11 @@ export function QuestionsCard({
     setSending(false);
     setFailed(true);
   };
-  const cancel = (
-    <Button
-      type="button"
-      size="sm"
-      variant="outline"
-      disabled={disabled}
-      onClick={() => void send(true)}
-    >
-      {text.cancel}
-    </Button>
-  );
+  const cancel = {
+    label: text.cancel,
+    disabled,
+    onCancel: () => void send(true),
+  };
   const notSent = failed ? <Fault>{text.notSent}</Fault> : undefined;
   const gate = {
     kind: "form" as const,
@@ -781,26 +784,19 @@ export function QuestionsCard({
   };
   if (layout === "steps")
     return (
-      <GateBlock
-        className={styles.card}
-        gate={gate}
-        footer={
-          <>
-            {cancel}
-            {notSent}
-          </>
-        }
-      >
-        <StepsBody
-          idPrefix={id}
-          questions={asked.questions}
-          answerOf={answerOf}
-          setAnswer={setAnswer}
-          disabled={disabled}
-          sending={sending}
-          onSend={() => void send()}
-        />
-      </GateBlock>
+      <ScreenCancel value={cancel}>
+        <GateBlock className={styles.card} gate={gate} footer={notSent}>
+          <StepsBody
+            idPrefix={id}
+            questions={asked.questions}
+            answerOf={answerOf}
+            setAnswer={setAnswer}
+            disabled={disabled}
+            sending={sending}
+            onSend={() => void send()}
+          />
+        </GateBlock>
+      </ScreenCancel>
     );
   return (
     <GateBlock
@@ -808,15 +804,18 @@ export function QuestionsCard({
       gate={gate}
       footer={
         <>
-          <Button
-            type="button"
-            size="sm"
-            disabled={disabled || !ready}
-            onClick={() => void send()}
-          >
-            {sending ? text.sending : text.send}
-          </Button>
-          {cancel}
+          <ScreenCancel value={cancel}>
+            <ScreenActions>
+              <Button
+                type="button"
+                size="sm"
+                disabled={disabled || !ready}
+                onClick={() => void send()}
+              >
+                {sending ? text.sending : text.send}
+              </Button>
+            </ScreenActions>
+          </ScreenCancel>
           {notSent}
         </>
       }

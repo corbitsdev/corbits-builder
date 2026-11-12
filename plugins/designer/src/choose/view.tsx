@@ -7,6 +7,7 @@
 import type { ComponentType } from "react";
 import { Button } from "@corbits/react-ui";
 import type { PageControls, ScreenViewProps } from "@corbits-builder/plugin";
+import { ScreenActions } from "@corbits-builder/plugin-ui/screen-actions";
 import { Comparison } from "@corbits-builder/plugin-ui/comparison";
 import type { FrameProps } from "../review/view.tsx";
 import type { Comment, Input, Output } from "./schema.ts";
@@ -157,22 +158,24 @@ function Choose({
         {picked !== undefined && "unavailable" in picked.approval ? (
           <span className={styles.hint}>{picked.approval.unavailable}</span>
         ) : null}
-        <Button
-          type="button"
-          size="sm"
-          disabled={
-            submitting ||
-            picked === undefined ||
-            "unavailable" in picked.approval
-          }
-          onClick={() => {
-            if (picked === undefined) return;
-            const { approval } = picked;
-            if ("option" in approval) void choose(picked, approval.option);
-          }}
-        >
-          {text.choose}
-        </Button>
+        <ScreenActions>
+          <Button
+            type="button"
+            size="sm"
+            disabled={
+              submitting ||
+              picked === undefined ||
+              "unavailable" in picked.approval
+            }
+            onClick={() => {
+              if (picked === undefined) return;
+              const { approval } = picked;
+              if ("option" in approval) void choose(picked, approval.option);
+            }}
+          >
+            {text.choose}
+          </Button>
+        </ScreenActions>
         <Button type="button" size="sm" variant="ghost" onClick={page.close}>
           {text.close}
         </Button>

@@ -12,6 +12,7 @@ import {
 } from "react";
 import { Button } from "@corbits/react-ui";
 import type { PageControls, ScreenViewProps } from "@corbits-builder/plugin";
+import { ScreenActions } from "@corbits-builder/plugin-ui/screen-actions";
 import { Output, type At, type Comment, type Input } from "./schema.ts";
 import styles from "./view.module.css";
 
@@ -324,31 +325,33 @@ function Review({
         {"unavailable" in approval ? (
           <span className={styles.hint}>{approval.unavailable}</span>
         ) : null}
-        <Button
-          type="button"
-          size="sm"
-          variant="outline"
-          disabled={submitting || "unavailable" in approval}
-          onClick={() => {
-            if ("option" in approval)
-              void submit({
-                decision: "approved",
-                version,
-                option: approval.option,
-                comments,
-              });
-          }}
-        >
-          {text.approve}
-        </Button>
-        <Button
-          type="button"
-          size="sm"
-          disabled={submitting || comments.length === 0}
-          onClick={page.sendStaged}
-        >
-          {text.sendFeedback}
-        </Button>
+        <ScreenActions>
+          <Button
+            type="button"
+            size="sm"
+            variant="outline"
+            disabled={submitting || "unavailable" in approval}
+            onClick={() => {
+              if ("option" in approval)
+                void submit({
+                  decision: "approved",
+                  version,
+                  option: approval.option,
+                  comments,
+                });
+            }}
+          >
+            {text.approve}
+          </Button>
+          <Button
+            type="button"
+            size="sm"
+            disabled={submitting || comments.length === 0}
+            onClick={page.sendStaged}
+          >
+            {text.sendFeedback}
+          </Button>
+        </ScreenActions>
         <Button type="button" size="sm" variant="ghost" onClick={page.close}>
           {text.close}
         </Button>

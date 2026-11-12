@@ -2,7 +2,8 @@
  * A piece of work as one step in the coordinator's list, the same step from start to end: the
  * specialist, what it does and where it stands as its row, with what the person can open beside it;
  * opened, its own steps one level in, each added as it happens, then what it is writing, why it
- * stopped, or its report. It is open while it works and folds once it ends, unless the person chose.
+ * stopped, or its report. It opens once and only the person folds it, so its end does not move the
+ * page.
  */
 import { useLayoutEffect, useRef, useState, type ReactNode } from "react";
 import {
@@ -101,9 +102,11 @@ function RowAction({
         variant="link"
         size="sm"
         className={styles.action}
+        aria-label={text.openNamed(status.title, status.version)}
+        title={text.openNamed(status.title, status.version)}
         onClick={() => onOpen(status.kind)}
       >
-        {text.open(status.title, status.version)}
+        {text.open}
       </Button>
     );
   return null;
@@ -189,13 +192,7 @@ export function WorkUnitStepView({
   watch,
   run,
 }: WorkUnitStepViewProps) {
-  const [chosen, setChosen] = useState<boolean>();
-  const live =
-    status.state === "starting" ||
-    status.state === "working" ||
-    status.state === "approval";
-  // Why it stopped shows at once, as a failed call opens.
-  const open = chosen ?? (live || status.state === "failed");
+  const [open, setOpen] = useState(true);
   return (
     <Tool
       // The row always opens onto its work, so its steps stand as its detail.
@@ -207,7 +204,7 @@ export function WorkUnitStepView({
         input: steps,
       }}
       open={open}
-      onOpenChange={setChosen}
+      onOpenChange={setOpen}
     >
       <div className={styles.header}>
         {status.state === "working" ? (

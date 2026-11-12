@@ -9,6 +9,7 @@
   "exports": {
     "./comparison": "./src/comparison.tsx",
     "./markdown": "./src/markdown.tsx",
+    "./screen-actions": "./src/screen-actions.tsx",
     "./steps": "./src/steps.tsx"
   },
   "dependencies": {

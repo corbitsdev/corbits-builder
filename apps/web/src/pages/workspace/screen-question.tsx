@@ -15,6 +15,7 @@ import {
 } from "@corbits-builder/plugin";
 import { QuestionAnswer } from "@intx/types/signals";
 import { Button } from "@corbits/react-ui";
+import { ScreenCancel } from "@corbits-builder/plugin-ui/screen-actions";
 import { wording } from "../../config.ts";
 import { Fault, InlineNote } from "../../components.jsx";
 import type { DesignFiles } from "./design-bundle.ts";
@@ -188,7 +189,13 @@ export function screenHost<In, Out, Data, Prepared>(
       await answerWith(chosen);
     };
     return (
-      <>
+      <ScreenCancel
+        value={{
+          label: text.cancel,
+          disabled: submitting || disabled,
+          onCancel: () => void send({ reply: text.cancelReply }),
+        }}
+      >
         <View
           input={checked.input}
           project={shown}
@@ -217,19 +224,8 @@ export function screenHost<In, Out, Data, Prepared>(
                 }
           }
         />
-        {settled ? null : (
-          <Button
-            type="button"
-            size="sm"
-            variant="outline"
-            disabled={submitting || disabled}
-            onClick={() => void send({ reply: text.cancelReply })}
-          >
-            {text.cancel}
-          </Button>
-        )}
         {fault === undefined ? null : <Fault>{fault}</Fault>}
-      </>
+      </ScreenCancel>
     );
   };
 }

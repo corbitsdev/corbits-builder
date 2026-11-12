@@ -381,6 +381,42 @@ async function* everyVersion(db: ArtifactDb, artifactId: string) {
   } while (cursor !== undefined);
 }
 
+// A document name as its words, so requirements, Build-Plan and build_plan compare alike.
+function nameWords(name: string) {
+  return name
+    .toLowerCase()
+    .split(/[\s_-]+/)
+    .filter(Boolean)
+    .join(" ");
+}
+
+/**
+ * The project's document of the kind an agent asked for. A kind it names loosely (requirements
+ * for product_requirements, or the document's title) reads the one filed document it can only
+ * mean, so a near miss costs no second call. The refusal names what is filed for the same reason;
+ * a model that re-reads to confirm a miss trips the doom loop, and tool wrappers relay only the hint.
+ */
+async function documentOfKind(db: ArtifactDb, tenantId: string, kind: string) {
+  const [exact] = (await listArtifacts(db, tenantId, { kind, limit: 1 })).rows;
+  if (exact) return exact;
+  const { rows } = await listArtifacts(db, tenantId, { limit: MAX_LIST_LIMIT });
+  const filed = rows.filter((row) => row.contentSha256);
+  const asked = nameWords(kind);
+  const matches = filed.filter(
+    (row) =>
+      ` ${nameWords(row.kind)} `.includes(` ${asked} `) ||
+      nameWords(row.title) === asked,
+  );
+  const [only, ...others] = matches;
+  if (only && !others.length) return only;
+  const listed = filed.map((row) => `${row.kind} ("${row.title}")`).join(", ");
+  throw new ProjectError(404, "artifact_not_found", {
+    hint: filed.length
+      ? `no document of kind ${kind} is filed; call again with the kind of one of the filed documents: ${listed}`
+      : `no document of kind ${kind} is filed; this project has no documents yet`,
+  });
+}
+
 /**
  * Whether the project's app has had its first build: a version filed after a coder's passing
  * check, where an import is recorded as one.
@@ -1970,33 +2006,15 @@ export function createArtifactService(
         (input.artifactId && !pinned && !isUuid(input.artifactId)
           ? input.artifactId
           : undefined);
-      const artifactId = pinned
-        ? pinned[1]
-        : byKind
-          ? (
-              await listArtifacts(db, actor.tenantId, {
-                kind: byKind,
-                limit: 1,
-              })
-            ).rows[0]?.id
-          : input.artifactId;
-      if (!artifactId) {
-        if (!byKind)
-          throw new ProjectError(404, "artifact_not_found", {
-            hint: "call read_artifact with no arguments to list artifactIds and kinds",
-          });
-        // The hint names what is filed, so a missing kind needs no second call; a model that
-        // re-reads to confirm a miss trips the doom loop. Tool wrappers relay only the hint.
-        const { rows } = await listArtifacts(db, actor.tenantId, {
-          limit: MAX_LIST_LIMIT,
-        });
-        const filed = rows
-          .filter((row) => row.contentSha256)
-          .map((row) => row.kind);
+      const named =
+        pinned || !byKind
+          ? undefined
+          : await documentOfKind(db, actor.tenantId, byKind);
+      const artifactId = pinned?.[1] ?? named?.id ?? input.artifactId;
+      if (!artifactId)
         throw new ProjectError(404, "artifact_not_found", {
-          hint: `no ${byKind} document has been written yet; filed kinds: ${filed.join(", ") || "none"}`,
+          hint: "call read_artifact with no arguments to list artifactIds and kinds",
         });
-      }
       // readArtifact is the model-facing chunked reader (8000-character budget);
       // the hub serves whole documents, so it reads the stored version directly.
       const row = await getArtifact(db, artifactId);
@@ -2005,7 +2023,7 @@ export function createArtifactService(
       // The app by its kind is the main line; snapshots are read by their version.
       const resolved =
         version ??
-        (byKind === "app" && !pinned
+        (named?.kind === "app"
           ? (await mainLineVersion(artifactId))?.version
           : row.version);
       if (resolved === undefined)

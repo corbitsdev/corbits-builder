@@ -4,6 +4,7 @@
  */
 import { Button } from "@corbits/react-ui";
 import type { ScreenViewProps } from "@corbits-builder/plugin";
+import { ScreenActions } from "@corbits-builder/plugin-ui/screen-actions";
 import type { Input, Output } from "./schema.ts";
 
 type Decides = (typeof Output.infer)["decides"];
@@ -46,19 +47,20 @@ export function HandOver({ input, submit, submitting, answer }: Props) {
   return (
     <section aria-label={text.title} data-slot="hand-over">
       <p>{asking ? text.handOver : text.handedOver}</p>
-      {choices.map(({ label, decides }, index) => (
-        <Button
-          key={decides}
-          type="button"
-          size="sm"
-          variant={index === 0 ? "primary" : "outline"}
-          disabled={submitting}
-          onClick={() => void submit({ decides })}
-        >
-          {label}
-        </Button>
-      ))}
-      <p>{text.orWrite}</p>
+      <ScreenActions note={text.orWrite}>
+        {choices.map(({ label, decides }, index) => (
+          <Button
+            key={decides}
+            type="button"
+            size="sm"
+            variant={index === 0 ? "primary" : "outline"}
+            disabled={submitting}
+            onClick={() => void submit({ decides })}
+          >
+            {label}
+          </Button>
+        ))}
+      </ScreenActions>
     </section>
   );
 }

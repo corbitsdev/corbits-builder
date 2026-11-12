@@ -549,13 +549,11 @@ export const wording = {
     /** An opened step: what it was given and what came back. */
     input: "Details",
     output: "Result",
-    outputError: "What went wrong",
     /** A step's state at the end of its row. */
     status: {
       pending: "Queued",
       running: "Working",
       "output-available": "Done",
-      error: "Did not finish",
       "approval-requested": "Waiting for you",
       "output-denied": "Not done",
     },
@@ -781,9 +779,10 @@ export const wording = {
       "approval-requested": "Paused for your approval",
       "output-denied": "Not done",
     },
-    /** Opens the document the run filed: "App v2 · Open". */
-    open: (document: string, version: number) =>
-      `${document} v${String(version)} · Open`,
+    /** Opens the document the run filed; named in full for a screen reader and on hover. */
+    open: "Open",
+    openNamed: (document: string, version: number) =>
+      `Open ${document} v${String(version)}`,
     /** Opens the project view on what a working specialist is making, as it makes it. */
     watchDraft: "Watch the draft",
     watchApp: "Watch it run",
