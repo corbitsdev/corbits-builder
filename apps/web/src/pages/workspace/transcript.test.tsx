@@ -6,7 +6,7 @@ import {
   maxTurnText,
 } from "@corbits-builder/schemas/conversation";
 import { wording } from "../../config.ts";
-import { Markdown } from "../../markdown.tsx";
+import { Markdown } from "@corbits-builder/plugin-ui/markdown";
 import { DocumentDecision } from "./document-decision.tsx";
 import {
   awaitingCommit,

@@ -203,14 +203,6 @@ export async function readProjectValues(
   return read.values;
 }
 
-export async function saveProjectValues(
-  projectId: string,
-  values: Record<string, string>,
-) {
-  const tenantId = await workspaceTenantId();
-  return productClient().saveProjectValues(tenantId, projectId, values);
-}
-
 export async function chooseDesign(projectId: string, input: DesignChoice) {
   const tenantId = await workspaceTenantId();
   return productClient().chooseDesign(tenantId, projectId, input);

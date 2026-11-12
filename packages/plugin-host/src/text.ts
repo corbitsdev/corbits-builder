@@ -7,7 +7,7 @@ type FactText = (fact: Fact) => string;
 // What the coordinator reads about execute, the facts an action requires, and why nothing started.
 
 export const EXECUTE_DESCRIPTION =
-  "Start a specialist plugin's action by the plugin's handle and the action's name, with the input that action's guidance from discover describes, such as { plugin: \"coder\", action: \"change\", input }. A workflow action starts its specialist and returns at once with the run; the outcome arrives later as the specialist's message. A route plugin takes no action: it puts the project on that route and returns its guidance and which of its steps can start now; input { leave: true } takes the project off it. When something an action needs is not true of the project yet, nothing starts, and the refusal names what is missing and which plugin action makes it true. A screen action is opened with question({ plugin, action, input }), and the writer's approve action with request_approval.";
+  "Start a specialist plugin's action by the plugin's handle and the action's name, with the input that action's guidance from discover describes, such as { plugin: \"coder\", action: \"change\", input }. A workflow action starts its specialist and returns at once with the run; the outcome arrives later as the specialist's message. A route plugin takes no action: it puts the project on that route and returns its guidance and which of its steps can start now; input { leave: true } takes the project off it. When something an action needs is not true of the project yet, nothing starts, and the refusal names what is missing and which plugin action makes it true. A screen action is opened with question({ plugin, action, input }).";
 
 export const DISCOVER_DYNAMIC_DESCRIPTION =
   "Find what you can do for the person: every piece of work you can start is a plugin. Pass query with what they asked for, in their words, or group to list every plugin in that group. A specialist plugin comes with its actions, how to use each, what each requires and whether the project has that now. Specialist actions and route plugins are started with execute; a screen action is shown to the person with question({ plugin, action, input }).";
@@ -170,9 +170,6 @@ export const screenNotExecuted = ({ name, plugin, action }: ScreenAction) =>
 /** What a finished run's report says about the screen that shows its work to the person. */
 export const presentsText = (plugin: string, action: string) =>
   `To show this to the person, open question({ plugin: "${plugin}", action: "${action}", input: {} }); Builder fills in the newest version itself.`;
-
-export const toolNotExecuted = (handle: string, tool: string) =>
-  `${handle} is started with its own tool, so nothing was started. Call ${tool}: only the person's answer to it records what it does.`;
 
 export const routeInputRefused = (handle: string, problem: string) =>
   `${handle} was not changed. Its input takes only leave: true, to take the project off the route; ${problem}. Call again with no input to follow it, or with { leave: true }.`;

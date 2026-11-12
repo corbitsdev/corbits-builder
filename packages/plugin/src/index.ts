@@ -41,7 +41,8 @@ const ActionBuilder = type({
 });
 
 // Something put in front of the person: the coordinator opens it with question, naming the plugin
-// and the action, and the person's answer is the question's result.
+// and the action, and the person's answer is the question's result. The project values it saves
+// are the ones its screen's writes maps from the answer.
 export const ScreenActionBuilder = type({
   runs: "'screen'",
   when: "string > 0",
@@ -50,10 +51,11 @@ export const ScreenActionBuilder = type({
   // The module whose default export draws the screen in the interface.
   view: "string > 0",
   "data?": "string > 0",
-  "authorizes?": "boolean",
-  // Project values, by their registered names, that Builder supplies to the screen and saves from its output.
+  // Project values, by their registered names, that Builder supplies to the screen.
   "reads?": "string[]",
-  "writes?": "string[]",
+  // The facts the person's answer can make true, each recorded from what the screen's approves
+  // names; a templated fact names an input field, so the person approves only what was asked.
+  "returns?": Facts,
   // "page" draws the screen over the whole room with the prompt box still in reach; without it the
   // screen draws in the conversation.
   "place?": "'page'",
@@ -76,21 +78,11 @@ export const WorkflowActionBuilder = ActionBuilder.merge({
 });
 export type WorkflowActionBuilder = typeof WorkflowActionBuilder.infer;
 
-// Started with a tool of its own, for work that must wait on the person's answer to that tool. Its
-// input is the tool's, so the action says what it does itself.
-export const ToolActionBuilder = ActionBuilder.merge({
-  runs: "'tool'",
-  tool: "string > 0",
-  summary: "string > 0",
-});
-export type ToolActionBuilder = typeof ToolActionBuilder.infer;
-
 // A specialist the coordinator composes into its plan, and the actions it can be started on.
 export const SpecialistBuilder = Common.merge({
   runs: "'specialist'",
   actions: type({
-    "[string]":
-      WorkflowActionBuilder.or(ToolActionBuilder).or(ScreenActionBuilder),
+    "[string]": WorkflowActionBuilder.or(ScreenActionBuilder),
   }),
 });
 export type SpecialistBuilder = typeof SpecialistBuilder.infer;
@@ -166,6 +158,9 @@ export type Describe<Fields extends PropertyKey> = {
   fields: { [name in Fields]-?: Field };
 };
 
+// A filed artifact at the version the person was shown, such as a document they approved.
+export type Shown = { artifactId: string; version: number };
+
 export type Screen<In, Out, Data, Prepared> = {
   input: Type<In>;
   output: Type<Out>;
@@ -176,8 +171,11 @@ export type Screen<In, Out, Data, Prepared> = {
     project: ProjectValues,
   ) => Prepared;
   describe: Describe<keyof Type<In>["inferIn"]>;
-  // Each project value the manifest writes, taken from the screen's output.
+  // Each project value the answer saves, by its registered name, taken from the screen's output.
   writes?: Record<string, (output: Type<Out>["infer"]) => string>;
+  // What the answer approves, each at the version the person was shown; the manifest's returns
+  // says which facts that may make true.
+  approves?: (output: Type<Out>["infer"]) => readonly Shown[];
 };
 
 export const defineScreen = <In, Out, Data, Prepared>(

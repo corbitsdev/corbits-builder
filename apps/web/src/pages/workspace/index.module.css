@@ -103,10 +103,31 @@
   display: flex;
   flex-direction: column;
   background: var(--wb-background);
+  /* It fades and grows in as it opens and back out as it closes; display waits for the fade. */
+  transition:
+    opacity 180ms ease-out,
+    scale 180ms ease-out,
+    display 180ms ease-out allow-discrete;
 }
 
 .page[hidden] {
   display: none;
+  opacity: 0;
+  scale: 0.985;
+  pointer-events: none;
+}
+
+@starting-style {
+  .page {
+    opacity: 0;
+    scale: 0.985;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .page {
+    transition: none;
+  }
 }
 
 .pageScreen {

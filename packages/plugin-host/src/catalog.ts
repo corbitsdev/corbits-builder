@@ -1,6 +1,7 @@
 import { type } from "arktype";
 import {
   checkInput,
+  checkOutput,
   checkWorkflowInput,
   guidanceText,
   inputText,
@@ -13,11 +14,11 @@ import {
   type ProjectValues,
   type Refused,
   type ScreenActionBuilder,
-  type ToolActionBuilder,
+  type Shown,
   type ValueDeclaration,
   type WorkflowActionBuilder,
 } from "@corbits-builder/plugin";
-import { patternFact, templateField } from "./facts.ts";
+import { patternFact, resolveFacts, templateField } from "./facts.ts";
 import type { Found } from "./folder.ts";
 import {
   presentsText,
@@ -73,13 +74,21 @@ export type WorkflowAction = ActionBase & {
   // The skill packs its specialist's agent is given when this action starts it.
   packs: readonly SkillPack[];
 };
-export type ToolAction = ActionBase & { builder: ToolActionBuilder };
 export type ScreenAction = ActionBase & {
   builder: ScreenActionBuilder;
   // Why this input cannot be shown, or undefined when it can.
   refusal: (input: unknown, project: ProjectValues) => string | undefined;
+  // The person's answer checked against the screen's output, with the project values it saves and
+  // what it approves, or the refusal when it does not fit.
+  answer: (
+    output: unknown,
+  ) =>
+    | { ok: true; values: Record<string, string>; approves: readonly Shown[] }
+    | Refused;
+  // The facts an answer to this input may make true.
+  returns: (input: unknown) => Fact[];
 };
-export type Action = WorkflowAction | ToolAction | ScreenAction;
+export type Action = WorkflowAction | ScreenAction;
 
 export type SpecialistPlugin = Base & {
   builder: SpecialistBuilder;
@@ -106,7 +115,7 @@ export type Catalog = {
   plugins: readonly Plugin[];
   // The screens a question can show.
   screens: readonly ScreenAction[];
-  // Every action of every specialist: started with execute or its own tool, or opened with question.
+  // Every action of every specialist: started with execute, or opened with question.
   actions: readonly Action[];
   installed(handle: string): Plugin | undefined;
   // A fact in plain words.
@@ -160,7 +169,6 @@ export function manifestFiles(found: Found) {
     return {
       modules: Object.values(builder.actions).flatMap((action) => {
         if (action.runs === "workflow") return [action.input];
-        if (action.runs === "tool") return [];
         return action.data === undefined
           ? [action.screen]
           : [action.screen, action.data];
@@ -224,6 +232,12 @@ function factWords(manifests: readonly Manifested[], known: ReadonlySet<Fact>) {
   };
 }
 
+// The value names that no plugin declares, of those an action names.
+const undeclared = (
+  values: ReadonlyMap<string, ValueDeclaration>,
+  named: readonly string[],
+) => named.find((name) => !values.has(name));
+
 // A namespace and a name, such as "brand.guidelines".
 const VALUE_NAME = /^[a-z][a-z0-9-]*(\.[a-z][a-z0-9-]*)+$/;
 
@@ -248,12 +262,7 @@ function declaredValues(manifests: readonly Manifested[], host: Host) {
   for (const { builder } of manifests) {
     if (builder.runs !== "specialist") continue;
     for (const [action, declared] of Object.entries(builder.actions)) {
-      if (declared.runs === "tool") continue;
-      const named = [
-        ...(declared.reads ?? []),
-        ...(declared.runs === "screen" ? (declared.writes ?? []) : []),
-      ];
-      const unknown = named.find((name) => !values.has(name));
+      const unknown = undeclared(values, declared.reads ?? []);
       if (unknown !== undefined)
         throw new Error(
           `${builder.handle} ${action} names ${unknown}, which no plugin declares as a project value`,
@@ -268,12 +277,32 @@ async function installScreen(
   handle: string,
   action: string,
   declared: ScreenActionBuilder,
+  { host, values }: Pick<Installing, "host" | "values">,
 ): Promise<ScreenAction> {
   const name = `${handle} ${action}`;
   const screen = await found.module(declared.screen);
   if (!isScreenModule(screen))
     throw new Error(
       `${name}'s screen ${declared.screen} has no screen as its default export`,
+    );
+  const writes = Object.entries(screen.writes ?? {});
+  const unknown = undeclared(
+    values,
+    writes.map(([value]) => value),
+  );
+  if (unknown !== undefined)
+    throw new Error(
+      `${name}'s screen writes ${unknown}, which no plugin declares as a project value`,
+    );
+  const returns = declared.returns ?? [];
+  checkFacts(name, returns, host.facts, (field) =>
+    Object.hasOwn(screen.describe.fields, field),
+  );
+  if (returns.length > 0 !== (screen.approves !== undefined))
+    throw new Error(
+      returns.length > 0
+        ? `${name} returns facts, but its screen approves nothing`
+        : `${name}'s screen approves, but its manifest returns no facts`,
     );
   let data: unknown;
   if (declared.data !== undefined) {
@@ -297,44 +326,42 @@ async function installScreen(
       const checked = checkInput(name, screen, input, data, project);
       return checked.ok ? undefined : checked.text;
     },
+    answer(raw) {
+      const checked = checkOutput(name, screen, raw);
+      if (!checked.ok) return checked;
+      return {
+        ok: true,
+        values: Object.fromEntries(
+          writes.map(([value, from]) => [value, from(checked.output)]),
+        ),
+        approves: screen.approves?.(checked.output) ?? [],
+      };
+    },
+    returns: (input) => resolveFacts(returns, input),
   };
 }
+
+type Installing = {
+  host: Host;
+  factText: (fact: Fact) => string;
+  packs: readonly SkillPack[];
+  values: ReadonlyMap<string, ValueDeclaration>;
+};
 
 async function installAction(
   found: Found,
   handle: string,
   action: string,
   declared: SpecialistBuilder["actions"][string],
-  {
-    host,
-    factText,
-    packs,
-  }: {
-    host: Host;
-    factText: (fact: Fact) => string;
-    packs: readonly SkillPack[];
-  },
+  installing: Installing,
 ): Promise<Action> {
   if (declared.runs === "screen")
-    return installScreen(found, handle, action, declared);
+    return installScreen(found, handle, action, declared, installing);
+  const { host, factText, packs } = installing;
   const name = `${handle} ${action}`;
   const facts = [...(declared.requires ?? []).flat(), ...declared.returns];
   const requires = () =>
     `Requires: ${requiresText(declared.requires ?? [], factText)}.`;
-  if (declared.runs === "tool") {
-    // The input is its own tool's, which the host defines, so any field may be templated.
-    checkFacts(name, facts, host.facts, () => true);
-    return {
-      plugin: handle,
-      action,
-      name,
-      builder: declared,
-      description: declared.summary,
-      guidance: [...lines(name, declared, declared.summary), requires()].join(
-        "\n",
-      ),
-    };
-  }
   const workflow = await found.module(declared.input);
   if (!isWorkflow(workflow))
     throw new Error(
@@ -379,14 +406,13 @@ async function specialistPlugin(
   found: Found,
   builder: SpecialistBuilder,
   description: string,
-  host: Host,
-  factText: (fact: Fact) => string,
-  packs: readonly SkillPack[],
+  installing: Installing,
 ): Promise<SpecialistPlugin> {
   const { handle } = builder;
+  const { packs } = installing;
   const actions = await Promise.all(
     Object.entries(builder.actions).map(([name, declared]) =>
-      installAction(found, handle, name, declared, { host, factText, packs }),
+      installAction(found, handle, name, declared, installing),
     ),
   );
   const own = packs
@@ -398,7 +424,7 @@ async function specialistPlugin(
     actions,
     guidance: [
       ...lines(handle, builder, description),
-      `Start one of its actions with execute({ plugin: "${handle}", action, input }), with the input that action describes; an action started with a tool of its own, or a screen opened with question, says so.`,
+      `Start one of its actions with execute({ plugin: "${handle}", action, input }), with the input that action describes; a screen opened with question says so.`,
       ...(own.length > 0
         ? [
             `Its agent has skill packs it opens as the work calls for them, which are not started: ${own.join(", ")}.`,
@@ -559,14 +585,12 @@ export async function loadCatalog(
   const plugins = await Promise.all(
     manifests.map(({ found, builder, description }): Promise<Plugin> => {
       if (builder.runs === "specialist")
-        return specialistPlugin(
-          found,
-          builder,
-          description,
+        return specialistPlugin(found, builder, description, {
           host,
           factText,
           packs,
-        );
+          values,
+        });
       return routePlugin(found, builder, description, host);
     }),
   );

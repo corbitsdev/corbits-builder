@@ -1061,7 +1061,6 @@ export const wording = {
     screenUnavailable:
       "This question can't be shown here. Answer it in your own words below.",
     screenLoading: "Loading…",
-    screenNotSaved: "Your choice was not saved. It is kept; try again.",
     /** In the conversation while a screen placed over the room is open but closed for now. */
     pageScreenOpen: "Waiting for your review.",
     pageScreenReopen: "Open",

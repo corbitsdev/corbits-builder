@@ -30,6 +30,7 @@
     "./repository-import": "./src/repository-import.ts"
   },
   "dependencies": {
+    "@intx/types": "workspace:*",
     "arktype": "catalog:",
     "ignore": "5.3.2"
   }

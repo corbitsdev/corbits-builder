@@ -1,0 +1,69 @@
+/* The items side by side as far as the width allows; a narrow screen stacks them, so nothing
+   scrolls sideways. */
+.comparison {
+  min-width: 0;
+  margin: 0;
+  padding: 0;
+  border: 0;
+}
+
+.legend {
+  margin-bottom: var(--space-3);
+  padding: 0;
+  font-size: 0.875rem;
+  font-weight: 600;
+}
+
+.items {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 18rem), 1fr));
+  gap: var(--space-4);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.items > li {
+  display: flex;
+  min-width: 0;
+}
+
+.items .item {
+  flex: 1;
+  min-width: 0;
+  gap: var(--space-3);
+  padding: var(--space-3);
+  border-color: var(--wb-border);
+  background: var(--wb-card);
+}
+
+.items .item[data-chosen] {
+  border-color: var(--wb-primary);
+  box-shadow: 0 0 0 1px var(--wb-primary);
+}
+
+.pick {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  font-size: 0.9375rem;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.pick input {
+  margin: 0;
+  accent-color: var(--wb-primary);
+}
+
+.body {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+
+.note {
+  margin: 0;
+  font-size: 0.8125rem;
+  color: var(--wb-muted-foreground);
+}

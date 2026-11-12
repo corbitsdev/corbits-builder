@@ -9,8 +9,7 @@
  * and its releasing signal) from the events.
  */
 import type { ConversationEvents } from "@corbits-builder/schemas/conversation";
-import { AskedQuestion } from "@intx/types/runtime-core";
-import { QuestionAnswer } from "@intx/types/signals";
+import type { QuestionAnswer } from "@intx/types/signals";
 import { wording } from "../config.ts";
 import { productClient } from "./transport.ts";
 import {
@@ -179,45 +178,19 @@ export function latestQuestion(
   };
 }
 
-// --- The coordinator's questions ----------------------------------------------
-
-/** A question the coordinator paused on, from its wait in the run log, with the answer once one arrived. */
-export type ParkedQuestion = {
-  at: number;
-  signalName: string;
-  asked: AskedQuestion;
-  answer?: QuestionAnswer;
-};
-
-/** Every question the coordinator asked in this run, oldest first. */
-export function parkedQuestions(
-  events: readonly ConversationEvent[],
-): ParkedQuestion[] {
-  const questions: ParkedQuestion[] = [];
-  for (const { type: kind, body } of events) {
-    const signalName = body["signalName"];
-    if (typeof signalName !== "string") continue;
-    if (kind === "SignalAwaited" && body["parkKind"] === "question") {
-      questions.push({
-        at: Date.parse(String(body["at"])),
-        signalName,
-        asked: AskedQuestion.assert(body["question"]),
-      });
-    }
-    if (kind !== "SignalReceived") continue;
-    const parked = questions.find((item) => item.signalName === signalName);
-    if (parked !== undefined)
-      parked.answer = QuestionAnswer.assert(body["payload"]);
-  }
-  return questions;
-}
-
-/** Answers the coordinator's open question; the run takes it as the question call's result. */
+/**
+ * Answers the coordinator's open question through the hub, which saves and records what a screen's
+ * answer does; the run takes it as the question call's result.
+ */
 export async function answerQuestion(
   projectId: string,
   signalName: string,
   answer: QuestionAnswer,
 ): Promise<void> {
-  const { client, tenantId, runId } = await coordinatorRun(projectId);
-  await client.answerQuestion(tenantId, runId, signalName, answer);
+  await productClient().answerQuestion(
+    await workspaceTenantId(),
+    projectId,
+    signalName,
+    answer,
+  );
 }

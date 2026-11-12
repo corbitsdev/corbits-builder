@@ -66,6 +66,11 @@
   color: var(--wb-muted-foreground);
 }
 
+/* A section a link jumps to keeps a little room above its heading. */
+.prose[data-document] > [id] {
+  scroll-margin-block-start: var(--space-4);
+}
+
 .prose > :first-child {
   margin-top: 0;
 }

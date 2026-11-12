@@ -29,7 +29,12 @@ describe("review output", () => {
   });
 
   test("an approval needs no comment", () => {
-    const result = check({ decision: "approved", version: 2, comments: [] });
+    const result = check({
+      decision: "approved",
+      version: 2,
+      option: "design-option-1",
+      comments: [],
+    });
     if (!result.ok) throw new Error(result.text);
     expect(result.output.decision).toBe("approved");
   });

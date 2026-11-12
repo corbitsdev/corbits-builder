@@ -51,6 +51,7 @@ import {
   DesignDraft,
   ArtifactRead,
   DesignTweaks,
+  isDocumentKind,
   type AcceptanceChecklist,
   type AcceptedMaterials,
   type UserManual,
@@ -73,6 +74,7 @@ import {
   type AppVersionList,
 } from "@corbits-builder/schemas/artifact";
 import type { SpawnedRole } from "@corbits-builder/schemas/installed-workflows";
+import type { Fact, Shown } from "@corbits-builder/plugin";
 import { OpenQuestions } from "@corbits-builder/schemas/questions";
 import {
   ApproachesMeta,
@@ -1956,8 +1958,70 @@ export function createArtifactService(
       };
     },
 
-    // The import route calls this for each document its file marks approved,
-    // right after writing it; the importing person is the approver.
+    // A person's answer to a screen approves what it was shown: a document at that version, or a
+    // design option, which is chosen as the design. Each must make one of the facts the question
+    // allows and still be the newest version, or nothing is recorded.
+    async approveShown(
+      actor: Actor,
+      projectId: string,
+      shown: readonly Shown[],
+      allowed: readonly Fact[],
+      mailRun: (runId: string, content: string) => Promise<void>,
+    ) {
+      await requireProject(actor, projectId, "manage");
+      const [approver] = await rawDB
+        .select({ kind: principal.kind })
+        .from(principal)
+        .where(eq(principal.id, actor.principalId));
+      if (approver?.kind !== "user")
+        throw new ProjectError(403, "approval_person_only");
+      const approvals: ArtifactRef[] = [];
+      for (const { artifactId, version } of shown) {
+        const row = await getArtifact(db, artifactId);
+        if (!row || row.tenantId !== actor.tenantId)
+          throw new ProjectError(404, "artifact_not_found", { artifactId });
+        let fact: Fact | undefined;
+        if (row.kind === "design_option") fact = "design_chosen";
+        else if (isDocumentKind(row.kind)) fact = `approved:${row.kind}`;
+        if (fact === undefined || !allowed.includes(fact))
+          throw new ProjectError(409, "approval_not_asked", {
+            kind: row.kind,
+            allowed: allowed.join(", "),
+          });
+        const [newest] = (
+          await listArtifactVersions(db, artifactId, { limit: 1 })
+        ).versions;
+        const stored = await getArtifactVersion(db, artifactId, version);
+        if (!stored?.contentSha256 || newest?.version !== version)
+          throw new ProjectError(409, "artifact_ref_stale", {
+            artifactId,
+            version,
+          });
+        approvals.push({
+          artifactId,
+          kind: row.kind,
+          version,
+          sha256: stored.contentSha256,
+        });
+      }
+      for (const ref of approvals) {
+        if (ref.kind === "design_option")
+          await this.chooseDesign(
+            actor,
+            projectId,
+            { artifactId: ref.artifactId, version: ref.version },
+            mailRun,
+          );
+        else if (
+          (await approvedVersion(actor.tenantId, ref.artifactId)) !==
+          ref.version
+        )
+          await this.recordImportApproval(actor, projectId, ref);
+      }
+    },
+
+    // The import route calls this for each document its file marks approved, and a screen's
+    // answer for each document it approves; the person is the approver.
     async recordImportApproval(
       actor: Actor,
       projectId: string,

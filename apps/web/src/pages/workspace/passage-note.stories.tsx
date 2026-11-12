@@ -1,6 +1,6 @@
 import type { Meta, StoryObj } from "@storybook/react-vite";
 import { fn } from "storybook/test";
-import { Markdown } from "../../markdown.tsx";
+import { Markdown } from "@corbits-builder/plugin-ui/markdown";
 import { PassageQuotes } from "./passage-note.tsx";
 
 const meta = {

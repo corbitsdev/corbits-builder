@@ -1,7 +1,7 @@
 /**
  * A question the coordinator asked as a plugin's screen. The plugin, not the agent, decides what is
- * drawn: its view gets the project's values it reads, the checked input and the draft. Its output is
- * saved to the project values it writes, then answers the question.
+ * drawn: its view gets the project's values it reads, the checked input and the draft. Its output
+ * answers the question through the hub, which saves the values it writes and records what it approves.
  */
 import { useEffect, useState, type ComponentType } from "react";
 import type { Type } from "arktype";
@@ -26,17 +26,25 @@ const text = wording.questions;
 // The project's facts, which gate options such as paid fonts. None reach the interface yet.
 export const projectFacts: readonly string[] = [];
 
-/** Reads and saves the open project's values by name. */
+/** Reads the open project's values by name. */
 export type ProjectValuesStore = {
   read(keys: readonly string[], signal: AbortSignal): Promise<ProjectValues>;
-  save(values: Record<string, string>): Promise<unknown>;
 };
 
-/** The design a screen reviews, and whether the person's approval of it can be recorded here. */
+/** The design a screen reviews, and the design option an approval of it chooses, if any. */
 export type ReviewedDesign = {
   files: DesignFiles;
   version: number | "draft";
-  approval: { approve(): Promise<void> } | { unavailable: string };
+  approval: { option: string } | { unavailable: string };
+};
+
+/** A filed document at its current version, as a screen lists it to approve. */
+export type ShownDocument = {
+  kind: string;
+  title: string;
+  artifactId: string;
+  version: number;
+  approvedVersion?: number;
 };
 
 /** What the interface itself supplies a screen's view, by the names a manifest lists under host. */
@@ -47,12 +55,27 @@ export type HostSupplies = {
   mockupFrame: ComponentType<MockupFrameProps>;
   /** The output of the latest question the coordinator asked with the same screen, if answered. */
   earlierAnswer: unknown;
+  /** The project's filed documents, and a way to open one over the room by its kind. */
+  documents: { list: readonly ShownDocument[]; open(kind: string): void };
+  /** The filed design concepts the person has yet to choose between, in the order they were asked about. */
+  designConcepts: readonly ChoosableConcept[];
+};
+
+/** A filed design concept, and the design option choosing it approves, if any. */
+export type ChoosableConcept = {
+  label: string;
+  direction: string | undefined;
+  files: DesignFiles;
+  version: number;
+  approval: ReviewedDesign["approval"];
 };
 
 const SUPPLIED: ReadonlySet<string> = new Set<keyof HostSupplies>([
   "design",
   "mockupFrame",
   "earlierAnswer",
+  "documents",
+  "designConcepts",
 ]);
 
 /** How a screen placed on the page reaches the room's prompt box. */
@@ -88,21 +111,14 @@ export function screenHost<In, Out, Data, Prepared>(
       >
     >;
     data: Type<Data>["infer"];
-    /** Each project value the manifest writes, taken from the screen's output. */
-    writes: Record<string, (output: Type<Out>["infer"]) => string>;
   },
 ): ComponentType<ScreenHostProps> {
-  const { screen, view: View, data, writes } = plugin;
+  const { screen, view: View, data } = plugin;
   const { reads = [], host: supplied = [] } = builder;
   const unknown = supplied.find((name) => !SUPPLIED.has(name));
   if (unknown !== undefined)
     throw new Error(
       `${handle} asks for ${unknown}, which this interface does not supply.`,
-    );
-  const mapped = Object.keys(writes).sort().join(", ");
-  if (mapped !== [...(builder.writes ?? [])].sort().join(", "))
-    throw new Error(
-      `${handle}'s screen maps "${mapped}", not the values its manifest writes.`,
     );
 
   return function ScreenHost({
@@ -159,19 +175,6 @@ export function screenHost<In, Out, Data, Prepared>(
       if (!result.ok) throw new Error(result.text);
       setSubmitting(true);
       setFault(undefined);
-      const changed: Record<string, string> = {};
-      for (const [name, from] of Object.entries(writes)) {
-        const value = from(result.output);
-        if (value !== shown[name]) changed[name] = value;
-      }
-      try {
-        if (Object.keys(changed).length > 0) await projectValues.save(changed);
-      } catch (cause) {
-        console.warn(`${handle} could not save the project's values.`, cause);
-        setSubmitting(false);
-        setFault(text.screenNotSaved);
-        return false;
-      }
       // Once sent, the screen stays submitting until the run log shows the answer and it settles.
       if (await onAnswer(QuestionAnswer.assert({ output: result.output })))
         return true;

@@ -9,7 +9,12 @@
   "dependencies": {
     "@corbits-builder/plugin": "workspace:*",
     "@corbits-builder/schemas": "workspace:*",
-    "arktype": "catalog:"
+    "@corbits/react-ui": "0.5.1",
+    "arktype": "catalog:",
+    "react": "19.3.0"
+  },
+  "devDependencies": {
+    "@types/react": "19.3.0"
   },
   "builder": {
     "handle": "writer",
@@ -85,18 +90,16 @@
         }
       },
       "approve": {
-        "runs": "tool",
-        "tool": "request_approval",
-        "summary": "Puts filed documents in front of the person to approve, each at its current version. Only the person's answer on the approval card records an approval, so it is started with its own tool, request_approval({ kinds }), and never with execute.",
+        "runs": "screen",
         "when": "Filed documents are ready for the person to approve, with no open questions left.",
         "unless": "The person chose to let you decide approvals, or the work is a change to an app that already exists.",
-        "requires": [
-          [
-            "filed:{kinds}"
-          ]
-        ],
+        "screen": "./src/approve/screen.ts",
+        "view": "./src/approve/view.tsx",
         "returns": [
           "approved:{kinds}"
+        ],
+        "host": [
+          "documents"
         ]
       }
     },

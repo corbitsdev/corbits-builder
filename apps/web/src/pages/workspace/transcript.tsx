@@ -51,7 +51,7 @@ import {
   type ToolApprovalStatus,
 } from "@corbits/react-ui";
 import { toolPhrase, toolResult, toolSubject } from "./agent-activity.tsx";
-import { DOCUMENT_LINK, Markdown } from "../../markdown.jsx";
+import { DOCUMENT_LINK, Markdown } from "@corbits-builder/plugin-ui/markdown";
 import { toast } from "sonner";
 import styles from "./transcript.module.css";
 import { proseSegments, type NamedDocument } from "./collaboration.ts";
@@ -86,7 +86,7 @@ import {
   type ProjectValuesStore,
 } from "./screen-question.tsx";
 import { screenOf } from "./screens.ts";
-import type { ParkedQuestion } from "../../api/conversation.ts";
+import type { ParkedQuestion } from "@corbits-builder/schemas/conversation";
 import { QUESTION_TOOL_NAME } from "@intx/types/runtime-core";
 import type { QuestionAnswer } from "@intx/types/signals";
 

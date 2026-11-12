@@ -132,15 +132,10 @@ const designerMockup = {
 };
 
 test("the dynamic coordinator starts work with execute and offers no staged tool", () => {
-  expect(project([]).definitions).toEqual([
-    "discover",
-    "execute",
-    "question",
-    "request_approval",
-  ]);
+  expect(project([]).definitions).toEqual(["discover", "execute", "question"]);
 });
 
-test("execute refuses an unknown plugin, a bad input, a screen and the writer's approve action, and starts nothing", async () => {
+test("execute refuses an unknown plugin, a bad input and a screen, and starts nothing", async () => {
   const empty = project([filed("app")]);
   const unknown = await empty.execute({
     plugin: "polish-app",
@@ -167,11 +162,6 @@ test("execute refuses an unknown plugin, a bad input, a screen and the writer's 
     (await empty.execute({ plugin: "designer", action: "pick-fonts" })).content,
   ).toBe(
     'designer pick-fonts is a screen, so nothing was started. A screen is opened with question({ plugin: "designer", action: "pick-fonts", input }).',
-  );
-  expect(
-    (await empty.execute({ plugin: "writer", action: "approve" })).content,
-  ).toStartWith(
-    "writer approve is started with its own tool, so nothing was started. Call request_approval",
   );
   expect(empty.deployed).toEqual([]);
 });
@@ -228,7 +218,7 @@ test("on build-web-app, coder build names what it lacks of its own and what the 
       "",
       "Because this project is following build-web-app, it also needs:",
       "  - the person approved the current version of the build plan, or leaves approvals to you (writer approve makes this true)",
-      "  - the person chose a design from the design options",
+      "  - the person chose a design from the design options (designer review or designer choose makes this true)",
       "",
       "Start what makes these true first, or ask the person, then call execute again.",
       'If the person directs the work elsewhere, take the project off the route with execute({ plugin: "build-web-app", input: { leave: true } }).',

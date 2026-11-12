@@ -7,7 +7,7 @@
 import { wording } from "../../config.ts";
 import { useEffect, useRef, useState, type ReactNode } from "react";
 import { CsvTable, ShimmerText } from "@corbits/react-ui";
-import { Markdown } from "../../markdown.jsx";
+import { DocumentView } from "@corbits-builder/plugin-ui/markdown";
 import { APPROVAL_PACKAGE_MEDIA_TYPE } from "./approval-package.ts";
 import { ApprovalPackagePreview } from "./approval-package-preview.tsx";
 import { DESIGN_MEDIA_TYPE, parseBundle } from "./design-bundle.ts";
@@ -481,7 +481,7 @@ function ReadyDocument({
                 })}
           />
         )}
-        <Markdown source={body} document />
+        <DocumentView source={body} />
       </>
     );
   };

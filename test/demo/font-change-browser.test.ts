@@ -318,7 +318,7 @@ test(
             const page = await context.newPage();
             ({ consoleLines, network } = watchPage(
               page,
-              /\/values|\/signals$|\/mail$|\/approvals\//,
+              /\/values|\/answers$|\/mail$|\/approvals\//,
             ));
 
             try {

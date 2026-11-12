@@ -43,22 +43,16 @@ import { earlierDocumentRole } from "./earlier-document.ts";
 import { ProductApiError, type ProjectArtifact } from "@corbits-builder/client";
 import type { InFlightRun } from "@corbits-builder/schemas/artifact";
 import { toast } from "sonner";
-import {
-  answerQuestion,
-  parkedQuestions,
-  sendMessage,
-} from "../../api/conversation.ts";
+import { answerQuestion, sendMessage } from "../../api/conversation.ts";
 import type { QuestionAnswer } from "@intx/types/signals";
 import { subscribeWorkflowRun } from "../../api/run-stream.ts";
 import { refusalBody } from "../../api/transport.ts";
 import {
   acceptedMaterials,
   attachMaterials,
-  chooseDesign,
   removeMaterial,
   readArtifact,
   readProjectValues,
-  saveProjectValues,
 } from "../../api/artifacts.ts";
 import { documentsForPane } from "./document-read.ts";
 import {
@@ -67,7 +61,10 @@ import {
   startProjectCoordinator,
 } from "../../api/projects.ts";
 import type { ChatMessage, Wait } from "../../api/types.ts";
-import { deliveredText } from "@corbits-builder/schemas/conversation";
+import {
+  deliveredText,
+  parkedQuestions,
+} from "@corbits-builder/schemas/conversation";
 import { keys } from "../../queries/keys.ts";
 import { turnItemId } from "./transcript.tsx";
 import { cardDocuments } from "./collaboration.ts";
@@ -155,6 +152,7 @@ import type { RoomContent, RoomDock } from "./room.view.tsx";
 import { parseBundle } from "./design-bundle.ts";
 import { MockupFrame } from "./mockup-frame.tsx";
 import type {
+  ChoosableConcept,
   HostSupplies,
   PageHost,
   ReviewedDesign,
@@ -553,8 +551,6 @@ export function useRoom({
     () => ({
       read: (keys: readonly string[], signal: AbortSignal) =>
         readProjectValues(projectId, keys, signal),
-      save: (values: Record<string, string>) =>
-        saveProjectValues(projectId, values),
     }),
     [projectId],
   );
@@ -1408,8 +1404,8 @@ export function useRoom({
     }));
   const design = artifacts.find((item) => item.kind === "design");
   // The design a review screen shows: the live draft while a designer works, else the newest design
-  // option, else the filed design. Only an option is approved there, by the same choice the
-  // conversation's design card makes, so a design is approved one way.
+  // option, else the filed design. Only an option is approved there: the hub records the choice
+  // from the answer, as the conversation's design card records it.
   const reviewed = options.at(-1) ?? design;
   const reviewedState =
     reviewed === undefined ? undefined : documentState(reviewed);
@@ -1424,17 +1420,7 @@ export function useRoom({
   const reviewApproval = (
     item: ProjectArtifact,
   ): ReviewedDesign["approval"] => {
-    if (item.kind === DESIGN_OPTION)
-      return {
-        approve: async () => {
-          const receipt = await chooseDesign(projectId, {
-            artifactId: item.artifactId,
-            version: item.version,
-          });
-          setDesignChosen({ concept: receipt.concept, at: Date.now() });
-          onChanged();
-        },
-      };
+    if (item.kind === DESIGN_OPTION) return { option: item.artifactId };
     return {
       unavailable:
         item.approvedVersion === item.version
@@ -1455,33 +1441,6 @@ export function useRoom({
       version: reviewed.version,
       approval: reviewApproval(reviewed),
     };
-  };
-  const supplies: HostSupplies = {
-    design: reviewedDesign(),
-    mockupFrame: MockupFrame,
-    // The last round's answer on the same screen, so the person sees what they asked for before.
-    earlierAnswer:
-      pageQuestion === undefined
-        ? undefined
-        : questions
-            .flatMap(({ signalName, asked, answer }) =>
-              signalName !== pageQuestion.signalName &&
-              "plugin" in asked &&
-              asked.plugin === pageQuestion.asked.plugin &&
-              asked.action === pageQuestion.asked.action &&
-              answer !== undefined &&
-              "output" in answer
-                ? [answer.output]
-                : [],
-            )
-            .at(-1),
-  };
-  const pageHost: PageHost = {
-    stage: (staged) => {
-      pageSend.current = staged;
-    },
-    sendStaged: () => void sendThroughPage(),
-    close: () => setClosedPage(pageQuestion?.signalName ?? null),
   };
   // Concepts stay to compare until the chosen one is filed as the design, or a new round starts.
   const concepts =
@@ -1509,6 +1468,64 @@ export function useRoom({
   const choosable = concepts.some((concept) => concept.chosen)
     ? []
     : concepts.filter((concept) => concept.option !== undefined);
+  // Each filed concept's bundle, parsed once per version it is filed at rather than on every
+  // render of the room; the key names exactly the contents parsed.
+  const choosableKey = choosable
+    .map(
+      ({ option }) => `${option?.artifactId ?? ""}@${String(option?.version)}`,
+    )
+    .join("\n");
+  const choosableFiles = useMemo(
+    () => choosable.map((concept) => parseBundle(concept.content ?? "")),
+    [choosableKey],
+  );
+  const choosableConcepts = (): ChoosableConcept[] =>
+    choosable.flatMap((concept, index) => {
+      const files = choosableFiles[index];
+      const filed = options.find(
+        (option) => option.artifactId === concept.option?.artifactId,
+      );
+      if (files === undefined || files === null || filed === undefined)
+        return [];
+      return [
+        {
+          label: concept.label,
+          direction: concept.direction,
+          files,
+          version: filed.version,
+          approval: reviewApproval(filed),
+        },
+      ];
+    });
+  const supplies: HostSupplies = {
+    design: reviewedDesign(),
+    designConcepts: choosableConcepts(),
+    mockupFrame: MockupFrame,
+    // The last round's answer on the same screen, so the person sees what they asked for before.
+    earlierAnswer:
+      pageQuestion === undefined
+        ? undefined
+        : questions
+            .flatMap(({ signalName, asked, answer }) =>
+              signalName !== pageQuestion.signalName &&
+              "plugin" in asked &&
+              asked.plugin === pageQuestion.asked.plugin &&
+              asked.action === pageQuestion.asked.action &&
+              answer !== undefined &&
+              "output" in answer
+                ? [answer.output]
+                : [],
+            )
+            .at(-1),
+    documents: { list: artifacts, open: openDocument },
+  };
+  const pageHost: PageHost = {
+    stage: (staged) => {
+      pageSend.current = staged;
+    },
+    sendStaged: () => void sendThroughPage(),
+    close: () => setClosedPage(pageQuestion?.signalName ?? null),
+  };
   const designAsk = (): DesignChoiceProps | null => {
     if (archived || designChosen !== null || choosable.length === 0)
       return null;

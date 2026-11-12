@@ -1,10 +1,11 @@
 import { type } from "arktype";
-import type { Hono } from "hono";
+import type { Context, Hono } from "hono";
 import { bodyLimit } from "hono/body-limit";
 import { contentDispositionHeader } from "@corbits/artifacts";
 import { PER_MESSAGE_TOTAL_LIMIT_BYTES } from "@intx/types";
 import { describeRoute, resolver } from "hono-openapi";
 import type { TenantEnv } from "@intx/hub-api";
+import { QuestionAnswer } from "@intx/types/signals";
 import {
   AcceptanceChecklist,
   AcceptedMaterials,
@@ -39,7 +40,11 @@ import {
 import { actorOf } from "../projects/authorization.ts";
 import { ProjectError } from "../projects/errors.ts";
 import { readJson } from "../lib/json.ts";
-import { mailRunAsCaller } from "../mail/caller-mail.ts";
+import {
+  answerQuestionAsCaller,
+  mailRunAsCaller,
+} from "../mail/caller-mail.ts";
+import { openQuestion, screenOf } from "../plugins/question.ts";
 import { mountApprovalRoundRoutes } from "./approval-rounds.ts";
 import { CATALOG, isRoute, PLUGINS, ProjectRoute } from "../plugins/catalog.ts";
 import type { createArtifactService } from "./service.ts";
@@ -49,6 +54,12 @@ const ROUTES = PLUGINS.filter(isRoute).map(({ builder }) => builder.handle);
 
 const undeclaredValue = (names: readonly string[]) =>
   names.find((name) => !CATALOG.values.has(name));
+
+const AnswerPost = type({
+  "+": "reject",
+  signalName: "string > 0",
+  answer: QuestionAnswer,
+});
 
 const security = [
   { sessionCookie: [] },
@@ -78,6 +89,34 @@ export function mountArtifactRoutes(
     const json = await readJson(c.req);
     if (json === undefined) throw new ProjectError(400, "invalid_json");
     return json;
+  };
+  // The one way project values are saved, from the values route or a screen's answer: each name
+  // one the catalog declares, the look values written as design tweaks, the rest stored.
+  const saveValues = async (
+    c: Context<TenantEnv>,
+    projectId: string,
+    values: Readonly<Record<string, unknown>>,
+  ) => {
+    const current = actorOf(c);
+    const unknown = undeclaredValue(Object.keys(values));
+    if (unknown !== undefined)
+      throw new ProjectError(400, "unknown_project_value", { key: unknown });
+    const { tokens, stored } = projectValueWrites(
+      values,
+      await service.projectState(current, projectId),
+      CATALOG.values,
+    );
+    // The tokens first: a project with no design to take them refuses before anything is saved.
+    if (Object.keys(tokens).length > 0)
+      await service.saveDesignTweaks(
+        current,
+        projectId,
+        { tokens },
+        (runId, content) =>
+          mailRunAsCaller(c, nativeFetch, current.tenantId, runId, content),
+      );
+    if (Object.keys(stored).length > 0)
+      await service.saveStoredValues(current, projectId, stored);
   };
   app.get(
     "/:projectId/artifacts",
@@ -358,28 +397,99 @@ export function mountArtifactRoutes(
         throw new ProjectError(400, "invalid_project_values", {
           issues: input,
         });
-      const names = Object.keys(input.values);
-      const unknown = undeclaredValue(names);
-      if (unknown !== undefined)
-        throw new ProjectError(400, "unknown_project_value", { key: unknown });
-      const { tokens, stored } = projectValueWrites(
-        input.values,
-        await service.projectState(current, projectId),
-        CATALOG.values,
-      );
-      // The tokens first: a project with no design to take them refuses before anything is saved.
-      if (Object.keys(tokens).length > 0)
-        await service.saveDesignTweaks(
-          current,
-          projectId,
-          { tokens },
-          (runId, content) =>
-            mailRunAsCaller(c, nativeFetch, current.tenantId, runId, content),
-        );
-      if (Object.keys(stored).length > 0)
-        await service.saveStoredValues(current, projectId, stored);
+      await saveValues(c, projectId, input.values);
       const state = await service.projectState(current, projectId);
-      return c.json({ values: readProjectValues(names, state) });
+      return c.json({
+        values: readProjectValues(Object.keys(input.values), state),
+      });
+    },
+  );
+  app.post(
+    "/:projectId/answers",
+    describeRoute({
+      tags: ["Artifacts"],
+      operationId: "answerQuestion",
+      description:
+        "The signed-in person answers the question the project's coordinator is waiting on, by its signal name: a question card's answers, a screen's output, or a reply they typed instead. For a screen's output the hub checks it against the screen's output schema, saves the project values the screen writes from it where they changed, and records what it approves: a document's approval at the version shown, or the design option chosen as the design, each only among the facts the question allows. Then it delivers the answer to the run through Interchange's signal route as the person. A reply is delivered as it is.",
+      security: [{ sessionCookie: [] }, { deviceBearer: [] }],
+      requestBody: {
+        required: true,
+        content: { "application/json": { schema: resolver(AnswerPost) } },
+      },
+      responses: {
+        200: { description: "The answer was recorded and delivered" },
+        400: {
+          description:
+            "The output does not fit the screen; text is the refusal in full",
+        },
+        403: { description: "The caller is not a person on the project" },
+        404: { description: "No open question by that signal name" },
+        409: {
+          description:
+            "The question was answered already, or the answer approves what was not asked or a version that is no longer the newest",
+        },
+      },
+    }),
+    async (c) => {
+      const current = actorOf(c);
+      const projectId = c.req.param("projectId");
+      const input = AnswerPost(await body(c));
+      if (input instanceof type.errors)
+        throw new ProjectError(400, "invalid_answer", { issues: input });
+      const { runId, asked } = await openQuestion(
+        c,
+        nativeFetch,
+        projectId,
+        input.signalName,
+      );
+      const screen = screenOf(asked);
+      if (screen !== undefined && "output" in input.answer) {
+        const answered = screen.answer(input.answer.output);
+        if (!answered.ok)
+          throw new ProjectError(400, "answer_refused", {
+            text: answered.text,
+          });
+        const names = Object.keys(answered.values);
+        const held =
+          names.length === 0
+            ? {}
+            : readProjectValues(
+                names,
+                await service.projectState(current, projectId),
+              );
+        await saveValues(
+          c,
+          projectId,
+          Object.fromEntries(
+            Object.entries(answered.values).filter(
+              ([name, value]) => held[name] !== value,
+            ),
+          ),
+        );
+        if (answered.approves.length > 0)
+          await service.approveShown(
+            current,
+            projectId,
+            answered.approves,
+            screen.returns("input" in asked ? asked.input : undefined),
+            (coordinator, content) =>
+              mailRunAsCaller(
+                c,
+                nativeFetch,
+                current.tenantId,
+                coordinator,
+                content,
+              ),
+          );
+      }
+      await answerQuestionAsCaller(
+        c,
+        nativeFetch,
+        { tenantId: current.tenantId, runId },
+        input.signalName,
+        input.answer,
+      );
+      return c.json({ signalName: input.signalName });
     },
   );
   app.post(

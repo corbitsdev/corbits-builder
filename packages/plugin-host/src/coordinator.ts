@@ -5,11 +5,9 @@ import {
   isScreenAction,
   isSpecialist,
   isWorkflowAction,
-  type Action,
   type Catalog,
   type Plugin,
   type RoutePlugin,
-  type ScreenAction,
   type WorkflowAction,
 } from "./catalog.ts";
 import { makes, resolveFacts, templateField, unmet } from "./facts.ts";
@@ -28,7 +26,6 @@ import {
   routeLeft,
   routeTakesNoAction,
   screenNotExecuted,
-  toolNotExecuted,
   unknownAction,
   unknownPlugin,
   unmetRequirement,
@@ -130,17 +127,15 @@ type ProjectState = Awaited<ReturnType<typeof projectState>>;
 
 const makersIn = (catalog: Catalog) => (fact: Fact) =>
   catalog.actions
-    .filter(
-      (action) =>
-        !isScreenAction(action) &&
-        action.builder.returns.some((made) => makes(made, fact)),
+    .filter((action) =>
+      (action.builder.returns ?? []).some((made) => makes(made, fact)),
     )
     .map(({ name }) => name);
 
 // Where an action stands: what it lacks of its own requirements, for the input when there is one,
 // and what the route the project follows adds for it as a step.
 function readiness(
-  action: Exclude<Action, ScreenAction>,
+  action: WorkflowAction,
   { facts, route }: ProjectState,
   input?: unknown,
 ): Readiness {
@@ -302,11 +297,6 @@ export async function execute(
     };
   if (isScreenAction(action))
     return { content: screenNotExecuted(action), isError: true };
-  if (!isWorkflowAction(action))
-    return {
-      content: toolNotExecuted(action.name, action.builder.tool),
-      isError: true,
-    };
   const state = await projectState(catalog, project);
   const checked = action.check(asked.input ?? {});
   if (!checked.ok) return { content: checked.text, isError: true };

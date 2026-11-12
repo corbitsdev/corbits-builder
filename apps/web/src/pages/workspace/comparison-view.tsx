@@ -7,7 +7,7 @@ import { Button } from "@corbits/react-ui";
 import { X } from "lucide-react";
 import { useState } from "react";
 import { wording } from "../../config.ts";
-import { Markdown } from "../../markdown.jsx";
+import { Markdown } from "@corbits-builder/plugin-ui/markdown";
 import { markChanges } from "../../revisions.ts";
 import { DiffPane } from "./diff-pane.tsx";
 import styles from "./comparison-view.module.css";

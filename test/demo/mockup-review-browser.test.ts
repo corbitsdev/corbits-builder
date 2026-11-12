@@ -472,10 +472,7 @@ test(
           recordVideo: { dir: DEMO_DIR, size: { width: 1280, height: 800 } },
         });
         const page = await context.newPage();
-        ({ consoleLines, network } = watchPage(
-          page,
-          /\/signals$|\/design-choice$/,
-        ));
+        ({ consoleLines, network } = watchPage(page, /\/answers$/));
         const review = page.locator('[data-slot="mockup-review"]');
         const roomPage = page.locator('[data-slot="room-page"]');
         const mockup = page.frameLocator(

@@ -4,6 +4,7 @@ import { CATALOG } from "./catalog.ts";
 import { discover, withPluginHint } from "./tools.ts";
 
 const designer = CATALOG.installed("designer");
+const writer = CATALOG.installed("writer");
 
 test("discover finds the designer from the person's words and returns how to open its screens", () => {
   const found = discover({ query: "the font is ugly" });
@@ -27,6 +28,7 @@ test("discover lists every plugin in a group", () => {
 
 test("discover with nothing matching names the groups and what is in each", () => {
   const listed = `designer (${designer?.description})`;
+  const documents = `writer (${writer?.description})`;
   expect(discover({ query: "send an invoice" })).toBe(
     [
       'No plugin matches "send an invoice".',
@@ -36,6 +38,10 @@ test("discover with nothing matching names the groups and what is in each", () =
       `  design: ${listed}`,
       `  type: ${listed}`,
       `  colour: ${listed}`,
+      `  documents: ${documents}`,
+      `  plan: ${documents}`,
+      `  review: ${documents}`,
+      `  approval: ${documents}`,
       "",
       "Call again with group set to one of them, or carry on without a plugin.",
     ].join("\n"),

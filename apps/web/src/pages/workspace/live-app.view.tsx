@@ -22,7 +22,7 @@ import {
   TriangleAlert,
   X,
 } from "lucide-react";
-import { Markdown } from "../../markdown.jsx";
+import { DocumentView, Markdown } from "@corbits-builder/plugin-ui/markdown";
 import { wording } from "../../config.ts";
 import {
   Sketching,
@@ -489,7 +489,7 @@ function ChecklistRow({ item }: { item: ChecklistItem }) {
             <span>{item.title}</span>
           </summary>
           <div className={styles.checklistEvidence}>
-            <Markdown source={evidence} document />
+            <DocumentView source={evidence} />
           </div>
         </details>
       )}
@@ -543,7 +543,7 @@ function Checklist({
         </Button>
       </header>
       {total === 0 ? (
-        <Markdown source={markdown} document />
+        <DocumentView source={markdown} />
       ) : (
         <ul className={styles.checklistItems}>
           {entries.map((entry, index) =>

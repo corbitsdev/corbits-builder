@@ -29,6 +29,7 @@
     "node_modules",
     "vendor",
     "plugins/*/src/**/*.tsx",
+    "packages/plugin-ui",
     "workflows/coder/starter",
     "test/seed/**/app",
     "packages/client"

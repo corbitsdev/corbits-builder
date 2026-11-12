@@ -19,11 +19,8 @@ import { wording } from "../config.ts";
 import { productClient } from "./transport.ts";
 import type { Wait } from "./types.ts";
 import { askOf } from "./ask.ts";
-import {
-  isInputPark,
-  parkedQuestions,
-  readConversationEvents,
-} from "./conversation.ts";
+import { parkedQuestions } from "@corbits-builder/schemas/conversation";
+import { isInputPark, readConversationEvents } from "./conversation.ts";
 import { workspaceTenantId } from "./auth.ts";
 
 function approvalWait(

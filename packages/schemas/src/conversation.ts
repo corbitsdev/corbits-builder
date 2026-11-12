@@ -1,4 +1,6 @@
 import { type } from "arktype";
+import { AskedQuestion } from "@intx/types/runtime-core";
+import { QuestionAnswer } from "@intx/types/signals";
 
 // These are the native mail request/acceptance and committed-event wire shapes.
 // No client-side principal, target run or trigger identity is accepted.
@@ -81,3 +83,34 @@ export const ConversationEvents = type({
 export type ConversationEvents = typeof ConversationEvents.infer;
 export type ConversationTextTurn = typeof conversationTextTurn.infer;
 export type ConversationThread = typeof conversationThread.infer;
+
+/** A question the coordinator paused on, from its wait in the run log, with the answer once one arrived. */
+export type ParkedQuestion = {
+  at: number;
+  signalName: string;
+  asked: AskedQuestion;
+  answer?: QuestionAnswer;
+};
+
+/** Every question the coordinator asked in a run, oldest first, from its committed events. */
+export function parkedQuestions(
+  events: ConversationEvents["events"],
+): ParkedQuestion[] {
+  const questions: ParkedQuestion[] = [];
+  for (const { type: kind, body } of events) {
+    const signalName = body["signalName"];
+    if (typeof signalName !== "string") continue;
+    if (kind === "SignalAwaited" && body["parkKind"] === "question") {
+      questions.push({
+        at: Date.parse(String(body["at"])),
+        signalName,
+        asked: AskedQuestion.assert(body["question"]),
+      });
+    }
+    if (kind !== "SignalReceived") continue;
+    const parked = questions.find((item) => item.signalName === signalName);
+    if (parked !== undefined)
+      parked.answer = QuestionAnswer.assert(body["payload"]);
+  }
+  return questions;
+}

@@ -337,8 +337,7 @@ describe("Builder E2E pipeline replay", () => {
             problemStatement: "C: Weather App",
           },
           async (driver) => {
-            const { hub, projectTenantId, projectId, coordinatorRunId } =
-              driver;
+            const { hub, projectTenantId, projectId } = driver;
             const { client } = hub;
 
             await buildWeatherApp(driver);
@@ -401,15 +400,14 @@ describe("Builder E2E pipeline replay", () => {
                 input,
               });
 
-              // What the web app does when the person confirms: the fonts are saved as design
-              // tweaks before the screen's output is returned.
-              expect(
-                await client.saveProjectValues(
-                  projectTenantId,
-                  projectId,
-                  chosen,
-                ),
-              ).toEqual({ values: chosen });
+              // The hub saves the fonts the screen's output names as design tweaks, then
+              // returns the output to the run.
+              await client.answerQuestion(
+                projectTenantId,
+                projectId,
+                NonEmptyString.assert(shown.body["signalName"]),
+                { output },
+              );
               expect(
                 await client.projectValues(
                   projectTenantId,
@@ -430,13 +428,6 @@ describe("Builder E2E pipeline replay", () => {
                 { kind: "build_plan", version: 1, approvedVersion: 1 },
                 { kind: "app", version: 2 },
               ]);
-
-              await client.answerQuestion(
-                projectTenantId,
-                coordinatorRunId,
-                NonEmptyString.assert(shown.body["signalName"]),
-                { output },
-              );
               await driver.decideToolApproval({
                 stage: "font-change",
                 toolName: "instruct_coder",
@@ -1081,8 +1072,7 @@ describe("Builder E2E pipeline replay", () => {
             problemStatement: "Build Bakery Orders for our shop.",
           },
           async (driver) => {
-            const { hub, projectTenantId, projectId, coordinatorRunId } =
-              driver;
+            const { hub, projectTenantId, projectId } = driver;
             const { client } = hub;
 
             await driver.runStage("question", async () => {
@@ -1110,17 +1100,14 @@ describe("Builder E2E pipeline replay", () => {
 
               // Only the open question's own ids answer it.
               await expect(
-                client.answerQuestion(
-                  projectTenantId,
-                  coordinatorRunId,
-                  signalName,
-                  { answers: { "not-a-question": ["Counter staff"] } },
-                ),
+                client.answerQuestion(projectTenantId, projectId, signalName, {
+                  answers: { "not-a-question": ["Counter staff"] },
+                }),
               ).rejects.toThrow();
 
               await client.answerQuestion(
                 projectTenantId,
-                coordinatorRunId,
+                projectId,
                 signalName,
                 { answers: { [asked.id]: ["Counter staff"] } },
               );
@@ -1327,7 +1314,7 @@ describe("Builder E2E pipeline replay", () => {
 
               await client.answerQuestion(
                 projectTenantId,
-                coordinatorRunId,
+                projectId,
                 shownSignal,
                 { output },
               );
@@ -1358,17 +1345,14 @@ describe("Builder E2E pipeline replay", () => {
 
               // A screen is answered by its output or a reply, never by prompt ids.
               await expect(
-                client.answerQuestion(
-                  projectTenantId,
-                  coordinatorRunId,
-                  askedSignal,
-                  { answers: { primary: ["Arial"] } },
-                ),
+                client.answerQuestion(projectTenantId, projectId, askedSignal, {
+                  answers: { primary: ["Arial"] },
+                }),
               ).rejects.toThrow("Bad Request");
 
               await client.answerQuestion(
                 projectTenantId,
-                coordinatorRunId,
+                projectId,
                 askedSignal,
                 { reply },
               );

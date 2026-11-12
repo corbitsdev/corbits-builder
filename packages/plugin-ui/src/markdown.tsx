@@ -10,10 +10,21 @@
  * is applied, so there is no path by which markup in a draft becomes markup on
  * the page — no `dangerouslySetInnerHTML`, no raw-HTML passthrough, no
  * sanitiser to keep up to date. What is not handled below renders as text.
+ *
+ * `Markdown` is a passage inside something else, such as a message; `DocumentView` is a whole
+ * document read for itself, at a reading measure, its sections anchored so a link or a comment
+ * can point at one.
  */
 import type { JSX, ReactNode } from "react";
-import { DEL, END, INS } from "./revisions.ts";
 import styles from "./markdown.module.css";
+
+/**
+ * Tracked changes, marked inline in the source: INS…END for added text, DEL…END for removed.
+ * Control characters a model never emits.
+ */
+export const INS = "\u0001";
+export const DEL = "\u0002";
+export const END = "\u0003";
 
 /**
  * Inline spans: code, bold, italic, links, with tracked changes threaded through them.
@@ -291,25 +302,56 @@ function parse(source: string): Block[] {
 // A checklist item, "- [ ] ..." or "- [x] ...", shows its box.
 const TASK = /^\[([ xX])\]\s+/;
 
-export function Markdown({
-  source,
-  document = false,
-  images,
-  openDocument,
-}: {
+/**
+ * Each heading's anchor, from its words, as `section-<words>`; a repeated heading counts up, so
+ * every anchor names one section.
+ */
+function anchors(blocks: readonly Block[]): (string | undefined)[] {
+  const seen = new Map<string, number>();
+  return blocks.map((block) => {
+    if (block.kind !== "heading") return undefined;
+    const words = block.text
+      .replace(MARKS, "")
+      .toLowerCase()
+      .replace(/[^\p{L}\p{N}]+/gu, "-")
+      .replace(/^-+|-+$/g, "");
+    const anchor = `section-${words}`;
+    const count = (seen.get(anchor) ?? 0) + 1;
+    seen.set(anchor, count);
+    return count === 1 ? anchor : `${anchor}-${count}`;
+  });
+}
+
+export type MarkdownProps = {
   source: string;
-  /** A document read in the document pane: running text keeps a reading measure. */
-  document?: boolean;
+  /** Pictures the source names, by the path it gives them. */
   images?: ReadonlyMap<string, string>;
   /** Opens a `document:` link; without it such a link shows as its words. */
   openDocument?: (id: string) => void;
-}): JSX.Element {
+};
+
+export type DocumentViewProps = MarkdownProps;
+
+/** A passage of markdown inside something else, such as a message. */
+export const Markdown = (props: MarkdownProps) => prose(props, false);
+
+/**
+ * A whole document read for itself: running text keeps a reading measure, and each section's
+ * heading carries its anchor, so `#section-<words>` links to it.
+ */
+export const DocumentView = (props: DocumentViewProps) => prose(props, true);
+
+function prose(
+  { source, images, openDocument }: MarkdownProps,
+  reading: boolean,
+): JSX.Element {
   const blocks = parse(source);
+  const sections = reading ? anchors(blocks) : [];
   return (
     <div
       className={styles.prose}
       data-slot="prose"
-      data-document={document ? "" : undefined}
+      data-document={reading ? "" : undefined}
     >
       {blocks.map((block, index) => {
         const key = `b${index}`;
@@ -317,7 +359,7 @@ export function Markdown({
           case "heading": {
             const Tag = `h${block.level}` as "h2" | "h3" | "h4";
             return (
-              <Tag key={key}>
+              <Tag key={key} id={sections[index]}>
                 {inline(block.text, key, undefined, images, openDocument)}
               </Tag>
             );

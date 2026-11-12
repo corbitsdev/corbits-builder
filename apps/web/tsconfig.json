@@ -19,5 +19,10 @@
     "noEmit": true,
     "jsx": "react-jsx"
   },
-  "include": ["src", ".storybook", "../../plugins/*/src/**/*.tsx"]
+  "include": [
+    "src",
+    ".storybook",
+    "../../plugins/*/src/**/*.tsx",
+    "../../packages/plugin-ui/src"
+  ]
 }

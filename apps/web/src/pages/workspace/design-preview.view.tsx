@@ -16,7 +16,7 @@ import {
   type ReactNode,
 } from "react";
 import { wording } from "../../config.ts";
-import { Markdown } from "../../markdown.jsx";
+import { DocumentView } from "@corbits-builder/plugin-ui/markdown";
 import { InlineNote, MenuItemLabel } from "../../components.jsx";
 import {
   FrameScreens,
@@ -366,6 +366,6 @@ export function DesignPreviewView({
   return notes === undefined ? (
     <InlineNote>{wording.design.noPlan}</InlineNote>
   ) : (
-    <Markdown document source={notes.replace(/^\s*# [^\n]*\n+/, "")} />
+    <DocumentView source={notes.replace(/^\s*# [^\n]*\n+/, "")} />
   );
 }

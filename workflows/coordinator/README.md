@@ -28,9 +28,8 @@ In `dynamic` everything it can start is a plugin (`plugins/`):
   actions, what each requires and whether the project has it now.
 - `execute`: starts a specialist plugin's action, such as the coder's
   `change`, or puts the project on a route plugin, such as `build-web-app`.
-- `question`: opens a screen plugin, or asks the person plainly.
-- `request_approval`: the writer plugin's `approve` action, because only
-  the person's answer to an asking tool records an approval.
+- `question`: opens a screen plugin, such as the writer's `approve`, or asks
+  the person plainly. The hub records what a screen's answer approves.
 - `read_artifact`: the document list and each document; it writes none.
 
 ## Layout

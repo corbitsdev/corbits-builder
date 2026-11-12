@@ -25,10 +25,7 @@ import {
   checkDeployments,
   projectSession,
   refusalText,
-  RequestApproval,
-  REQUEST_APPROVAL_DESCRIPTION,
   resolveProjectOptions,
-  validArguments,
   type DeployEnv,
   type ProjectOptions,
   type ProjectSession,
@@ -118,8 +115,7 @@ export function createPluginTools() {
 
 /**
  * The dynamic coordinator's way to act: discover finds a plugin, execute starts a specialist's
- * action or a route, question opens a screen, and request_approval is the writer's approve action,
- * because only the person's answer to an asking tool records an approval.
+ * action or a route, and question opens a screen, whose answer records what it approves.
  */
 export function createExecuteTools(
   options?: ProjectOptions,
@@ -133,21 +129,12 @@ export function createExecuteTools(
       inputSchema: { ...Execute.toJsonSchema() },
     },
     questionTool,
-    {
-      name: "request_approval",
-      description: REQUEST_APPROVAL_DESCRIPTION,
-      inputSchema: { ...RequestApproval.toJsonSchema() },
-    },
   ];
   return defineTool<DeployEnv>({
     id: "@corbits-builder/plugins/execute",
     credentials: [{ handle: HUB_CREDENTIAL_HANDLE }],
     requires: ["capabilities"],
-    definitions: [
-      { name: "discover" },
-      { name: "execute" },
-      { name: "request_approval", approval: "ask" },
-    ],
+    definitions: [{ name: "discover" }, { name: "execute" }],
     factory: (env) => ({
       definitions,
       checkQuestion: (question) =>
@@ -179,14 +166,6 @@ export function createExecuteTools(
               callId: call.id,
               ...(await execute(CATALOG, project(session), call.arguments)),
             };
-          if (call.name === "request_approval") {
-            const { kinds } = validArguments(RequestApproval, call.arguments);
-            const { documents } = await session.approve(kinds);
-            return {
-              callId: call.id,
-              content: JSON.stringify({ approved: documents }),
-            };
-          }
           return {
             callId: call.id,
             content: "unknown_plugin_tool",

@@ -27,7 +27,6 @@ export function buildArtifactsMethods(
   | "exportProjectArchive"
   | "saveDesignTweaks"
   | "projectValues"
-  | "saveProjectValues"
   | "chooseDesign"
   | "acceptedMaterials"
   | "attachMaterials"
@@ -165,11 +164,6 @@ export function buildArtifactsMethods(
         `${projectPath(tenantId, projectId)}/values?${new URLSearchParams({ keys: keys.join(",") })}`,
         signal,
       );
-    },
-    saveProjectValues(tenantId, projectId, values, signal) {
-      return request(`${projectPath(tenantId, projectId)}/values`, signal, {
-        values,
-      });
     },
     chooseDesign(tenantId, projectId, input, signal) {
       return request(

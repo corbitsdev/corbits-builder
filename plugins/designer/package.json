@@ -17,10 +17,14 @@
     "./pick-colours/view": "./src/pick-colours/view.tsx",
     "./review": "./src/review/screen.ts",
     "./review/schema": "./src/review/schema.ts",
-    "./review/view": "./src/review/view.tsx"
+    "./review/view": "./src/review/view.tsx",
+    "./choose": "./src/choose/screen.ts",
+    "./choose/schema": "./src/choose/schema.ts",
+    "./choose/view": "./src/choose/view.tsx"
   },
   "dependencies": {
     "@corbits-builder/plugin": "workspace:*",
+    "@corbits-builder/plugin-ui": "workspace:*",
     "@corbits-builder/schemas": "workspace:*",
     "@corbits/react-ui": "0.5.1",
     "arktype": "catalog:",
@@ -61,12 +65,29 @@
         "unless": "The person only asked a question about the design.",
         "screen": "./src/review/screen.ts",
         "view": "./src/review/view.tsx",
-        "authorizes": false,
+        "returns": [
+          "design_chosen"
+        ],
         "place": "page",
         "host": [
           "design",
           "mockupFrame",
           "earlierAnswer"
+        ]
+      },
+      "choose": {
+        "runs": "screen",
+        "when": "Several design concepts are filed and the person is to pick the one they want.",
+        "unless": "Only one design is filed, which review shows, or the person only asked a question about the designs.",
+        "screen": "./src/choose/screen.ts",
+        "view": "./src/choose/view.tsx",
+        "returns": [
+          "design_chosen"
+        ],
+        "place": "page",
+        "host": [
+          "designConcepts",
+          "mockupFrame"
         ]
       },
       "pick-fonts": {
@@ -76,12 +97,7 @@
         "screen": "./src/pick-fonts/screen.ts",
         "view": "./src/pick-fonts/view.tsx",
         "data": "./data/fonts.json",
-        "authorizes": false,
         "reads": [
-          "look.font-primary",
-          "look.font-secondary"
-        ],
-        "writes": [
           "look.font-primary",
           "look.font-secondary"
         ]
@@ -92,12 +108,7 @@
         "unless": "They already said exactly which colour they want, or they want another font, bigger or smaller text, or a whole new look.",
         "screen": "./src/pick-colours/screen.ts",
         "view": "./src/pick-colours/view.tsx",
-        "authorizes": false,
         "reads": [
-          "look.color-primary",
-          "look.color-background"
-        ],
-        "writes": [
           "look.color-primary",
           "look.color-background"
         ]

@@ -77,7 +77,6 @@ export function installScreens({ manifests, modules, views }: ScreenFiles) {
           screen,
           view: named(views, folder, name, declared.view),
           data,
-          writes: screen.writes ?? {},
         });
         return [[name, { host, page: declared.place === "page" }] as const];
       });

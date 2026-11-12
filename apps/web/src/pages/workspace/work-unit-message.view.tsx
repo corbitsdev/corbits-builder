@@ -24,7 +24,7 @@ import {
   type ToolApprovalDecision,
 } from "@corbits/react-ui";
 import { wording } from "../../config.ts";
-import { Markdown } from "../../markdown.jsx";
+import { Markdown } from "@corbits-builder/plugin-ui/markdown";
 import type { Dispatch, DispatchStatus } from "./dispatch-card.tsx";
 import { useElapsedMs } from "./elapsed.tsx";
 import styles from "./work-unit-message.module.css";

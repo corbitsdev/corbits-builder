@@ -33,11 +33,11 @@ export type FrameProps = {
   ref?: Ref<FrameHandle>;
 };
 
-/** The design to review, and whether the host can record the person's approval of it. */
+/** The design to review, and the design option an approval of it chooses, if any. */
 export type ReviewedDesign = {
   files: Readonly<Record<string, string>>;
   version: number | "draft";
-  approval: { approve(): Promise<void> } | { unavailable: string };
+  approval: { option: string } | { unavailable: string };
 };
 
 export type Host = {
@@ -73,7 +73,6 @@ export const text = {
   cancel: "Cancel",
   remove: "Remove",
   noDesign: "There is no design to review yet.",
-  notApproved: "The design was not approved. Try again.",
   approved: (version: number | "draft") =>
     `Approved the design, version ${String(version)}.`,
   changes: (count: number) =>
@@ -140,7 +139,6 @@ function Review({
   const [shown, setShown] = useState<Place | null>(null);
   const [pending, setPending] = useState<typeof At.infer | null>(null);
   const [words, setWords] = useState("");
-  const [fault, setFault] = useState<string>();
   const comments = draft.comments ?? NONE;
   const { version, approval } = design;
   const lastRound =
@@ -157,17 +155,6 @@ function Review({
     return () => page.stage(null);
   }, [page, comments, version]);
 
-  const approve = async (record: () => Promise<void>) => {
-    setFault(undefined);
-    try {
-      await record();
-    } catch (cause) {
-      console.warn("The design was not approved.", cause);
-      setFault(text.notApproved);
-      return;
-    }
-    await submit({ decision: "approved", version, comments });
-  };
   const addComment = () => {
     if (pending === null || words.trim().length === 0) return;
     setDraft({ comments: [...comments, { text: words.trim(), at: pending }] });
@@ -337,18 +324,19 @@ function Review({
         {"unavailable" in approval ? (
           <span className={styles.hint}>{approval.unavailable}</span>
         ) : null}
-        {fault === undefined ? null : (
-          <span className={styles.hint} role="alert">
-            {fault}
-          </span>
-        )}
         <Button
           type="button"
           size="sm"
           variant="outline"
           disabled={submitting || "unavailable" in approval}
           onClick={() => {
-            if ("approve" in approval) void approve(() => approval.approve());
+            if ("option" in approval)
+              void submit({
+                decision: "approved",
+                version,
+                option: approval.option,
+                comments,
+              });
           }}
         >
           {text.approve}

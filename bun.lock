@@ -126,6 +126,7 @@
         "@corbits-builder/client": "workspace:*",
         "@corbits-builder/designer-plugin": "workspace:*",
         "@corbits-builder/plugin": "workspace:*",
+        "@corbits-builder/plugin-ui": "workspace:*",
         "@corbits-builder/schemas": "workspace:*",
         "@corbits/react-ui": "0.5.1",
         "@corbits/slidedeck": "workspace:*",
@@ -187,10 +188,22 @@
         "arktype": "catalog:",
       },
     },
+    "packages/plugin-ui": {
+      "name": "@corbits-builder/plugin-ui",
+      "version": "0.1.0-rc.3",
+      "dependencies": {
+        "@corbits/react-ui": "0.5.1",
+        "react": "19.3.0",
+      },
+      "devDependencies": {
+        "@types/react": "19.3.0",
+      },
+    },
     "packages/schemas": {
       "name": "@corbits-builder/schemas",
       "version": "0.1.0-rc.3",
       "dependencies": {
+        "@intx/types": "workspace:*",
         "arktype": "catalog:",
         "ignore": "5.3.2",
       },
@@ -225,6 +238,7 @@
       "version": "0.1.0-rc.3",
       "dependencies": {
         "@corbits-builder/plugin": "workspace:*",
+        "@corbits-builder/plugin-ui": "workspace:*",
         "@corbits-builder/schemas": "workspace:*",
         "@corbits/react-ui": "0.5.1",
         "arktype": "catalog:",
@@ -257,7 +271,12 @@
       "dependencies": {
         "@corbits-builder/plugin": "workspace:*",
         "@corbits-builder/schemas": "workspace:*",
+        "@corbits/react-ui": "0.5.1",
         "arktype": "catalog:",
+        "react": "19.3.0",
+      },
+      "devDependencies": {
+        "@types/react": "19.3.0",
       },
     },
     "vendor/interchange/apps/sidecar": {
@@ -851,6 +870,8 @@
     "@corbits-builder/plugin": ["@corbits-builder/plugin@workspace:packages/plugin"],
 
     "@corbits-builder/plugin-host": ["@corbits-builder/plugin-host@workspace:packages/plugin-host"],
+
+    "@corbits-builder/plugin-ui": ["@corbits-builder/plugin-ui@workspace:packages/plugin-ui"],
 
     "@corbits-builder/presenter": ["@corbits-builder/presenter@workspace:workflows/presenter"],
 

@@ -25,19 +25,29 @@ export const Comment = type({
   at: At,
 });
 
+// An approval names the design option it chooses, at the filed version the person was shown.
 export const Output = type({
   "+": "reject",
   decision: "'approved' | 'changes'",
   version: "number.integer > 0 | 'draft'",
+  "option?": "string > 0",
   comments: Comment.array(),
   "message?": "0 < string <= 4000",
-}).narrow(
-  (output, ctx) =>
-    output.decision === "approved" ||
-    output.comments.length > 0 ||
-    output.message !== undefined ||
+}).narrow((output, ctx) => {
+  if (output.decision === "changes")
+    return (
+      output.comments.length > 0 ||
+      output.message !== undefined ||
+      ctx.reject({
+        path: ["comments"],
+        expected: "at least one comment, or a message, to ask for changes",
+      })
+    );
+  return (
+    (output.option !== undefined && output.version !== "draft") ||
     ctx.reject({
-      path: ["comments"],
-      expected: "at least one comment, or a message, to ask for changes",
-    }),
-);
+      path: ["option"],
+      expected: "the design option approved, at a filed version",
+    })
+  );
+});

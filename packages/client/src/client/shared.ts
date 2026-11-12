@@ -63,7 +63,6 @@ import type {
   MaterialReceipt,
   MaterialRemovedReceipt,
   ProjectValues,
-  ProjectValuesWrite,
 } from "@corbits-builder/schemas/artifact";
 import type {
   ApprovalRound,
@@ -313,10 +312,10 @@ export type ProductApiClient = Readonly<{
     projectId: string,
     signal?: AbortSignal,
   ): Promise<ConversationEvents>;
-  /** Answers the coordinator's open question, by the ids the run gave its prompts. */
+  /** Answers the coordinator's open question in the project, by the ids the run gave its prompts. */
   answerQuestion(
-    projectTenantId: string,
-    coordinatorRunId: string,
+    tenantId: string,
+    projectId: string,
     signalName: string,
     answer: QuestionAnswer,
     signal?: AbortSignal,
@@ -537,13 +536,6 @@ export type ProductApiClient = Readonly<{
     tenantId: string,
     projectId: string,
     keys: readonly string[],
-    signal?: AbortSignal,
-  ): Promise<ProjectValues>;
-  /** Saves project values by name where the project stores them; returns them read back. */
-  saveProjectValues(
-    tenantId: string,
-    projectId: string,
-    values: ProjectValuesWrite["values"],
     signal?: AbortSignal,
   ): Promise<ProjectValues>;
   /** The person chooses a filed design option at its version; it becomes the approved design. */

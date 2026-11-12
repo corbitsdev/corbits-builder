@@ -7,10 +7,7 @@
  * the marks so the structure still parses.
  */
 import { diffLines, diffWordsWithSpace } from "diff";
-
-export const INS = "\u0001";
-export const DEL = "\u0002";
-export const END = "\u0003";
+import { DEL, END, INS } from "@corbits-builder/plugin-ui/markdown";
 
 const PREFIX = /^(\s*(?:#{1,6}\s+|[-*+]\s+|\d+[.)]\s+|>\s?))/;
 

@@ -79,7 +79,7 @@ describe("mockup review", () => {
 
   test("a staged comment shows where it points, and can be sent", () => {
     const html = review(
-      { files, version: 2, approval: { approve: () => Promise.resolve() } },
+      { files, version: 2, approval: { option: "design-option-1" } },
       { draft: { comments: [comment] } },
     );
     expect(html).toContain(comment.text);
@@ -90,7 +90,7 @@ describe("mockup review", () => {
 
   test("the last round's comments are listed to read, not to remove", () => {
     const html = review(
-      { files, version: 3, approval: { approve: () => Promise.resolve() } },
+      { files, version: 3, approval: { option: "design-option-1" } },
       { earlier: { decision: "changes", version: 2, comments: [comment] } },
     );
     expect(html).toContain(text.lastRound);
