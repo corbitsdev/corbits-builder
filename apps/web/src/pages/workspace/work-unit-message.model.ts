@@ -1,10 +1,9 @@
 /**
- * Where one hand-off stands in the room, as the message its work reads as: its status from native
- * run records and filed documents, and what its run is doing from the run's own tool events.
+ * Where one hand-off stands in the room, as the row its work reads as: its status from native run
+ * records and filed documents, and its steps from the run's own stream.
  */
-import type { AgentActivity } from "@corbits-builder/client";
+import type { PartTool } from "@corbits/react-ui";
 import { wording } from "../../config.ts";
-import { activityPhrase, toolPhrase } from "./agent-activity.tsx";
 import {
   dispatchStatus,
   noteDispatch,
@@ -12,7 +11,7 @@ import {
   type DispatchRoom,
 } from "./dispatch-card.tsx";
 import type { WorkUnitStanding } from "./work-unit-message.view.tsx";
-import { workSubject, workUnitMessage, type WorkUnit } from "./work-unit.ts";
+import { workSubject, type WorkUnit } from "./work-unit.ts";
 
 const text = wording.dispatch;
 
@@ -22,35 +21,19 @@ const WATCH: Partial<Record<Dispatch["role"], string>> = {
   coder: text.watchApp,
 };
 
-const sentenceStart = (line: string) =>
-  line.charAt(0).toUpperCase() + line.slice(1);
+// A run that ended returned from every call it made, though its stream closed before saying so.
+const settled = (step: PartTool): PartTool =>
+  step.status === "running"
+    ? {
+        kind: "tool-trace",
+        toolCallId: step.toolCallId,
+        name: step.name,
+        status: "output-available",
+        input: step.input,
+      }
+    : step;
 
-/**
- * What the run is doing now, from its own tool events, else what it works on, and the steps it took
- * just before, oldest first.
- */
-function liveLines(
-  dispatch: Dispatch,
-  subject: string,
-  activity: readonly AgentActivity[] | undefined,
-): { doing: string; recent: readonly string[] } {
-  const agent = activity?.find((item) =>
-    dispatch.runId === undefined
-      ? item.role === dispatch.role
-      : item.runId === dispatch.runId,
-  );
-  if (agent === undefined || agent.tools.length === 0)
-    return { doing: text.working(subject), recent: [] };
-  // A long command's own line is what it does now, so every call it read is a step before it.
-  const before =
-    agent.command === undefined ? agent.tools.slice(0, -1) : agent.tools;
-  return {
-    doing: sentenceStart(activityPhrase(agent)),
-    recent: before.map((tool) => toolPhrase(tool.name, tool.subject)),
-  };
-}
-
-/** A piece of work as its message shows it, from what the room knows of its hand-off. */
+/** A piece of work as its row shows it, from what the room knows of its hand-off. */
 export function workUnitStanding(
   unit: WorkUnit,
   room: DispatchRoom,
@@ -58,26 +41,24 @@ export function workUnitStanding(
   const { dispatch } = unit;
   noteDispatch(room, dispatch);
   const status = dispatchStatus(dispatch, room);
-  const subject = workSubject(dispatch, status) ?? text.unnamed;
-  const { doing, recent } = liveLines(dispatch, subject, room.activity);
+  const done = status.state === "ready" || status.state === "finished";
+  const steps =
+    (dispatch.runId === undefined
+      ? undefined
+      : room.steps?.get(dispatch.runId)) ?? [];
   const { onWatch } = room;
   const watchLabel = WATCH[dispatch.role];
   return {
-    message: workUnitMessage(unit, status),
-    handoffStep: dispatch.key,
+    unitKey: unit.key,
     status,
     role: dispatch.role,
-    subject,
-    doing,
-    recent,
+    subject: workSubject(dispatch, status) ?? text.unnamed,
+    steps: done || status.state === "failed" ? steps.map(settled) : steps,
     preview:
       status.state === "working" && dispatch.runId !== undefined
         ? room.previews?.get(dispatch.runId)
         : undefined,
-    report:
-      status.state === "ready" || status.state === "finished"
-        ? unit.updates.at(-1)?.text
-        : undefined,
+    report: done ? unit.updates.at(-1)?.text : undefined,
     approvals: unit.approvals,
     onOpenDocument: room.onOpenDocument,
     watch:

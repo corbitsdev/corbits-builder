@@ -5,36 +5,24 @@
  * by its sender's role and time, a package install by the coder at work when it
  * was raised. A report or approval no single hand-off answers stays on its own.
  */
-import type {
-  ConversationMessage,
-  ConversationPart,
-  ToolTraceStatus,
-} from "@corbits/react-ui";
 import { PACKAGE_INSTALL_TOOL } from "@corbits-builder/schemas/package-install";
 import { wording } from "../../config.ts";
-import { toolPhrase } from "./agent-activity.tsx";
-import { approvalToolPart } from "./collaboration.ts";
 import {
   subjectOf,
   type Dispatch,
   type DispatchStatus,
 } from "./dispatch-card.tsx";
-import { summaryLine, type SpecialistUpdate } from "./specialist-updates.ts";
+import type { SpecialistUpdate } from "./specialist-updates.ts";
 import type { DocumentApproval, PlacedDispatch } from "./transcript.tsx";
 
 export type WorkUnit = {
   readonly key: string;
-  /** When the hand-off was made; a call in the live turn has no time yet, so it is last. */
-  readonly startedAt: number;
   /** Its latest report or approval, where it stands in the thread. */
   readonly at: number;
   readonly dispatch: Dispatch;
   readonly updates: readonly SpecialistUpdate[];
   readonly approvals: readonly DocumentApproval[];
 };
-
-/** The block part carrying where the hand-off stands, as `DispatchStatus`. */
-export const WORK_RESULT_BLOCK = "work-result";
 
 /**
  * The hand-offs with the reports and approvals each one answers, and those
@@ -102,7 +90,6 @@ export function workUnits(
     const unit = members.get(dispatch.key) ?? { updates: [], approvals: [] };
     return {
       key: dispatch.key,
-      startedAt: at,
       at: Math.max(
         at,
         ...unit.updates.map((update) => update.at),
@@ -116,16 +103,6 @@ export function workUnits(
   return { units, updates: loneUpdates, approvals: loneApprovals };
 }
 
-const CALL_STATUS: Record<DispatchStatus["state"], ToolTraceStatus> = {
-  starting: "pending",
-  working: "running",
-  // The approval has its own card; a hand-off marked as asking would draw a second, dead one.
-  approval: "running",
-  ready: "output-available",
-  finished: "output-available",
-  failed: "error",
-};
-
 /** What a hand-off works on, as its message names it: "Approaches", "Quiet concept", "the app". */
 export function workSubject(
   dispatch: Dispatch,
@@ -136,62 +113,4 @@ export function workSubject(
     subjectOf(dispatch) ??
     (status.state === "ready" ? wording.documentTab[status.kind] : undefined)
   );
-}
-
-/**
- * A piece of work as one agent message: the specialist and what it works on
- * as its header, the hand-off and each report as steps, where it stands as a
- * result block, then each approval as a tool part carrying its record.
- */
-export function workUnitMessage(
-  unit: WorkUnit,
-  status: DispatchStatus,
-): ConversationMessage {
-  const { dispatch } = unit;
-  const subject = workSubject(dispatch, status);
-  const started = !dispatch.pending;
-  const handoff = wording.activity.handoff[dispatch.action ?? dispatch.tool];
-  const parts: ConversationPart[] = [
-    {
-      kind: "tool-trace",
-      toolCallId: dispatch.key,
-      name:
-        started && handoff !== undefined
-          ? handoff(subject)
-          : toolPhrase(dispatch.tool, undefined),
-      status: CALL_STATUS[status.state],
-      ...(dispatch.instruction === undefined
-        ? {}
-        : { input: dispatch.instruction }),
-    },
-    ...unit.updates.map((update): ConversationPart => ({
-      kind: "tool-trace",
-      toolCallId: `${dispatch.key}:report:${String(update.at)}`,
-      name: summaryLine(update.text),
-      status: "output-available",
-      output: update.text,
-    })),
-    { kind: "block", block: { type: WORK_RESULT_BLOCK, data: status } },
-    ...unit.approvals.map((approval): ConversationPart => ({
-      ...approvalToolPart(approval.approvalId, approval.outcome),
-      input: approval,
-    })),
-  ];
-  // A call in the live turn is being made now.
-  const at = Number.isFinite(unit.startedAt) ? unit.startedAt : Date.now();
-  return {
-    id: `work:${unit.key}`,
-    author: {
-      id: dispatch.role,
-      kind: "agent",
-      name: wording.activity.role[dispatch.role],
-      ...(subject === undefined ? {} : { role: subject }),
-    },
-    at: new Date(at).toISOString(),
-    status:
-      status.state === "starting" || status.state === "working"
-        ? "streaming"
-        : "sent",
-    parts,
-  };
 }

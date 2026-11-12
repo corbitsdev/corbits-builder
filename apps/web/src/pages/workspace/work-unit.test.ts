@@ -1,7 +1,7 @@
 import { expect, test } from "bun:test";
 import { dispatchesOf } from "./dispatch-card.tsx";
 import { specialistUpdate } from "./specialist-updates.ts";
-import { workUnitMessage, workUnits } from "./work-unit.ts";
+import { workUnits } from "./work-unit.ts";
 
 test("a hand-off and its reports join as one piece of work", () => {
   const approaches = dispatchesOf(
@@ -93,8 +93,4 @@ test("a hand-off and its reports join as one piece of work", () => {
   expect(work.approvals.map((item) => item.approvalId)).toEqual([
     "approval-packages",
   ]);
-
-  if (unit === undefined) throw new Error("no unit");
-  const message = workUnitMessage(unit, { state: "finished" });
-  expect(message.author).toMatchObject({ kind: "agent", id: "writer" });
 });

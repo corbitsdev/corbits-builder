@@ -550,20 +550,6 @@ export const wording = {
       runningMany: (count: number) => `Doing ${String(count)} things at once`,
       failed: (count: number) => `${String(count)} did not finish`,
     },
-    /** A hand-off in the coordinator's turn, by execute's plugin action: who it starts, once started. */
-    handoff: {
-      "coder build": () => "Started the coder",
-      "coder change": () => "Started the coder on a change",
-      "writer write": (document?: string) =>
-        document ? `Started the writer · ${document}` : "Started the writer",
-      "writer write-requirements": (document?: string) =>
-        document ? `Started the writer · ${document}` : "Started the writer",
-      "writer write-build-plan": (document?: string) =>
-        document ? `Started the writer · ${document}` : "Started the writer",
-      "writer review": (document?: string) =>
-        document ? `Asked for a review · ${document}` : "Asked for a review",
-      "designer mockup": () => "Started the designer",
-    } as Record<string, (subject?: string) => string>,
     /** What a tool call is doing, by tool name, given its one identifying argument. */
     tool: {
       read_file: (subject?: string) =>
@@ -737,41 +723,20 @@ export const wording = {
     /** The run is held on a request only the person can approve, such as a package install. */
     approval: "Paused for your approval",
     starting: "Starting…",
-    /** At work before its run reports a step of its own. */
-    working: (subject: string) => `Working on ${subject}`,
-    /** The folded line once the run filed what it was asked for, by role: "Wrote Approaches". */
-    done: {
-      writer: (subject: string) => `Wrote ${subject}`,
-      reviewer: (subject: string) => `Reviewed ${subject}`,
-      designer: (subject: string) => `Drafted ${subject}`,
-      coder: (subject: string) => `Built ${subject}`,
-      presenter: (subject: string) => `Prepared ${subject}`,
-    },
-    /** The run ended without filing what it was asked for. */
-    ended: (subject: string) => `Worked on ${subject}`,
-    /** The hand-off and the reports under one line: "Wrote Approaches · 3 steps". */
-    steps: (line: string, count: number) =>
-      count < 2 ? line : `${line} · ${String(count)} steps`,
-    /** The document the run filed, under the header that already says it was written. */
+    /** The document the run filed, under its steps: "App v2". */
     ready: (document: string, version: number) =>
       `${document} v${String(version)}`,
     open: "Open",
     /** Opens the project view on what a working specialist is making, as it makes it. */
     watchDraft: "Watch the draft",
     watchApp: "Watch it run",
-    /** Names the list of the steps a run took just before its live line. */
-    recent: "Recent steps",
     /** Names what a working run is writing, shown as it streams in. */
     preview: "What it is writing",
     /** A working run's model is thinking and has written nothing yet. */
     thinkingThrough: "Thinking it through",
-    /** Beside a finished card's header, opening the hand-off and every report. */
-    stepsToggle: (count: number) =>
-      count === 1 ? "1 step" : `${String(count)} steps`,
     /** Shows the rest of a finished specialist's report, and folds it again. */
     more: "More",
     less: "Less",
-    failed: (reason: string) => `Did not finish: ${reason}`,
     failedUnknown: "the run stopped without a reason",
   },
   /** Before a message changes a document a specialist is building from. */

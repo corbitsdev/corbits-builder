@@ -42,7 +42,6 @@ import {
   type ConversationPart,
   type PartText,
   type PartTool,
-  type ToolApprovalDecision,
   type ToolApprovalStatus,
 } from "@corbits/react-ui";
 import { toolPhrase, toolResult, toolSubject } from "./agent-activity.tsx";
@@ -436,8 +435,8 @@ function renderStep(step: ActivityStep): ReactNode {
 }
 
 /**
- * A run of the coordinator's work: its steps open while the turn is in progress and fold to one line
- * once it ends, unless the person opened or closed it.
+ * A run of the coordinator's or a specialist's work: its steps open while the work is in progress and
+ * fold to one line once it ends, unless the person opened or closed it.
  */
 function Run({
   steps,
@@ -653,7 +652,14 @@ export function RoomThread({
         <WorkUnitMessageView
           key={`unit:${card.unit.key}`}
           {...standing(card.unit)}
-          handoff={renderStep}
+          // Its header says where it stands, so the line counts its steps rather than naming the newest.
+          run={(steps, inProgress) => (
+            <Run
+              steps={steps.map((step) => readableTool(step, undefined))}
+              live={false}
+              inProgress={inProgress}
+            />
+          )}
           decision={decisionCard}
         />
       );
@@ -737,24 +743,15 @@ export function RoomThread({
   const renderUpdates = (group: UpdateGroup, subject: string | undefined) => (
     <SpecialistUpdatesView key={group.key} row={updatesRow(group, subject)} />
   );
-  /** The decision card; `decide` lets the message it sits in look after focus as it settles. */
-  const decisionCard = (
-    approval: DocumentApproval,
-    decide?: (decision: ToolApprovalDecision) => void,
-  ) => {
+  const decisionCard = (approval: DocumentApproval) => {
     const countdown =
       typedYes !== undefined &&
       typedYes.held.approvalId === approval.approvalId &&
       approval.outcome === undefined ? (
         <TypedYesCountdown held={typedYes.held} onUndo={typedYes.onUndo} />
       ) : undefined;
-    const choose = (choice: "yes" | "always" | "no") => {
-      decide?.({
-        outcome: choice === "no" ? "rejected" : "approved",
-        scope: choice === "always" ? "always" : "once",
-      });
+    const choose = (choice: "yes" | "always" | "no") =>
       onDecide?.({ approvalId: approval.approvalId, choice });
-    };
     return approval.packages ? (
       <PackageDecision
         approvalId={approval.approvalId}

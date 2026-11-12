@@ -50,7 +50,7 @@ import { toast } from "sonner";
 import { answerQuestion, sendMessage } from "../../api/conversation.ts";
 import type { QuestionAnswer } from "@intx/types/signals";
 import { subscribeWorkflowRun } from "../../api/run-stream.ts";
-import { useRunPreviews } from "./run-preview.ts";
+import { useRunStreams } from "./run-preview.ts";
 import { refusalBody } from "../../api/transport.ts";
 import {
   acceptedMaterials,
@@ -1341,8 +1341,9 @@ export function useRoom({
     ),
   );
   const inFlight = snapshot.inFlight;
-  // Each run at work streams what it is producing into its card; past a handful, the newest only.
-  const previews = useRunPreviews(
+  // Each run at work streams its steps and what it is producing into its card; past a handful, the
+  // newest only.
+  const { previews, steps: runSteps } = useRunStreams(
     runTenantId,
     inFlight
       .filter((run) => run.state === "working")
@@ -1355,8 +1356,8 @@ export function useRoom({
     inFlight,
     failed: snapshot.failed,
     seen: dispatchSeen.current,
-    activity: agents,
     previews,
+    steps: runSteps,
     onOpenDocument: (kind) => {
       // A coder files the app's source, which is read as the running app.
       if (kind === "app") return openProject(LIVE_TAB);

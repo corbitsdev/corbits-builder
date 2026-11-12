@@ -55,7 +55,8 @@ function toolCallsOf(value: unknown): readonly ToolCallSnapshot[] | undefined {
   return calls;
 }
 
-function finishedCallOf(
+/** The call a model finished writing, from an `inference.tool_call.end` frame's data. */
+export function finishedCallOf(
   data: RunStreamEvent["data"],
 ): FinishedCall | undefined {
   const callId = data?.callId;

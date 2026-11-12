@@ -1,8 +1,8 @@
 /**
- * A piece of work as one agent message through MessageParts: the hand-off and
- * the specialist's reports fold into one activity named by what came of it,
- * where it stands is one line, and each approval for what it made is a
- * ToolApproval in the same message that settles to its one quiet line.
+ * A piece of work as one row in the room, the same row from start to end: the specialist, what it
+ * works on and where it stands as its header; its steps as the thread's own run of steps, each
+ * added as it happens, open while it works and folded once it ends; then what it filed, its
+ * report, and each approval for what it made.
  */
 import {
   Fragment,
@@ -12,22 +12,11 @@ import {
   type ReactNode,
 } from "react";
 import {
-  Activity,
-  ActivityContent,
-  ActivityTrigger,
   Button,
   ConversationItem,
   Message,
   MessageHeader,
-  MessageParts,
-  ShimmerText,
-  Tool,
-  ToolHeader,
-  ToolOutput,
-  type ActivityStep,
-  type ConversationMessage,
   type PartTool,
-  type ToolApprovalDecision,
 } from "@corbits/react-ui";
 import { wording } from "../../config.ts";
 import { Markdown } from "@corbits-builder/plugin-ui/markdown";
@@ -36,26 +25,22 @@ import { useElapsedMs } from "./elapsed.tsx";
 import type { RunPreview } from "./run-preview.ts";
 import styles from "./work-unit-message.module.css";
 import type { DocumentApproval } from "./transcript.tsx";
-import { WORK_RESULT_BLOCK } from "./work-unit.ts";
 
 const text = wording.dispatch;
+const state = wording.activity.status;
 
-/** A piece of work as its message shows it, by where its hand-off stands. */
+/** A piece of work as its row shows it, by where its hand-off stands. */
 export type WorkUnitStanding = {
-  /** The work as one agent message: the hand-off and each report as steps, where it stands, then each approval. */
-  message: ConversationMessage;
-  /** The hand-off's own step among the message's steps; every other step is a report. */
-  handoffStep: string;
+  /** The work's hand-off, naming its row. */
+  unitKey: string;
   /** Where the hand-off stands. */
   status: DispatchStatus;
   /** Who does the work. */
   role: Dispatch["role"];
   /** What it works on: "Constraints", "Quiet concept", "the app". */
   subject: string;
-  /** What the run is doing right now, shown while it works. */
-  doing: string;
-  /** The steps the run took just before, oldest first, shown under the card while it works. */
-  recent: readonly string[];
+  /** Each call the specialist made while the room watched it, in order. */
+  steps: readonly PartTool[];
   /** What the run is producing right now, from its own stream, while it works and frames arrive. */
   preview: RunPreview | undefined;
   /** What the specialist reported last, shown under its result once the work is done. */
@@ -69,13 +54,10 @@ export type WorkUnitStanding = {
 };
 
 export type WorkUnitMessageViewProps = WorkUnitStanding & {
-  /** The hand-off's own step, as the coordinator's turns draw a call. */
-  handoff: (step: ActivityStep) => ReactNode;
+  /** The steps as the thread draws a run of them, open while `inProgress` unless the person chose. */
+  run: (steps: readonly PartTool[], inProgress: boolean) => ReactNode;
   /** An approval for what the work made, pending or settled. */
-  decision: (
-    approval: DocumentApproval,
-    decide?: (decision: ToolApprovalDecision) => void,
-  ) => ReactNode;
+  decision: (approval: DocumentApproval) => ReactNode;
 };
 
 function Elapsed({ since }: { since: string }) {
@@ -87,34 +69,24 @@ function Elapsed({ since }: { since: string }) {
   );
 }
 
-/** The activity's one line, by where the hand-off stands. */
-function WorkLine({
-  status,
-  role,
-  subject,
-  doing,
-  steps,
-}: Pick<WorkUnitMessageViewProps, "status" | "role" | "subject" | "doing"> & {
-  steps: number;
-}): ReactNode {
+/** Where the work stands, beside its name: it never names the step it is on. */
+function StateLabel({ status }: { status: DispatchStatus }): ReactNode {
   switch (status.state) {
     case "starting":
-      return <ShimmerText>{text.starting}</ShimmerText>;
+      return text.starting;
     case "working":
       return (
         <>
-          <ShimmerText key={doing}>{doing}</ShimmerText>{" "}
-          <Elapsed since={status.since} />
+          {state.running} <Elapsed since={status.since} />
         </>
       );
-    // Nothing moves until the person answers, so no shimmer and no clock running on it.
     case "approval":
       return text.approval;
     case "ready":
-      return text.steps(text.done[role](subject), steps);
     case "finished":
+      return state["output-available"];
     case "failed":
-      return text.steps(text.ended(subject), steps);
+      return state.error;
   }
 }
 
@@ -153,19 +125,17 @@ function Preview({ preview }: { preview: RunPreview }) {
 }
 
 /**
- * Where the work stands: the steps it just took while it works, then the document it filed, or why
- * it stopped.
+ * Under the steps: what the run is writing while it works, then the document it filed and its
+ * report, or why it stopped.
  */
 function WorkResult({
   status,
-  recent,
   preview,
   report,
   onOpen,
   watch,
 }: {
   status: DispatchStatus;
-  recent: readonly string[];
   preview: RunPreview | undefined;
   report: string | undefined;
   onOpen: ((kind: string) => void) | undefined;
@@ -174,13 +144,6 @@ function WorkResult({
   if (status.state === "working")
     return (
       <>
-        {recent.length === 0 ? null : (
-          <ul className={styles.recent} aria-label={text.recent}>
-            {recent.map((line, index) => (
-              <li key={`${String(index)}:${line}`}>{line}</li>
-            ))}
-          </ul>
-        )}
         {preview === undefined ? null : <Preview preview={preview} />}
         {watch === undefined ? null : (
           <Button
@@ -198,7 +161,7 @@ function WorkResult({
   if (status.state === "failed")
     return (
       <p className={styles.result} data-state="failed" title={status.reason}>
-        {text.failed(status.reason)}
+        {status.reason}
       </p>
     );
   const said = report === undefined ? null : <Report source={report} />;
@@ -262,145 +225,40 @@ function Report({ source }: { source: string }) {
   );
 }
 
-/** One report the specialist mailed back, by its first line, opening to all of it. */
-function ReportStep({ step }: { step: PartTool }) {
-  return (
-    <Tool part={{ ...step, name: "" }}>
-      <ToolHeader label={step.name} statusLabels={{ "output-available": "" }} />
-      <ToolOutput
-        title={wording.reported}
-        render={(value) => <Markdown source={String(value)} />}
-      />
-    </Tool>
-  );
-}
-
 export function WorkUnitMessageView({
-  message,
-  handoffStep,
+  unitKey,
   status,
   role,
   subject,
-  doing,
-  recent,
+  steps,
   preview,
   report,
   approvals,
   onOpenDocument,
   watch,
-  handoff,
+  run,
   decision,
 }: WorkUnitMessageViewProps) {
   const live = status.state === "starting" || status.state === "working";
-  // Done work reads as one thing: its steps open from the header, not from a line that repeats it.
-  const done = status.state === "ready" || status.state === "finished";
-  // Its steps stay open while the work is in progress and fold once it ends, unless the person chose.
-  const [chosen, setChosen] = useState<boolean>();
-  const stepsOpen = chosen ?? (live || status.state === "approval");
-  const asked = new Map(
-    approvals.map((approval) => [approval.approvalId, approval]),
-  );
-  const approvalOf = (step: ActivityStep) =>
-    step.kind === "tool-trace" ? asked.get(step.toolCallId) : undefined;
-  const stepCount = message.parts.filter(
-    (part) => part.kind === "tool-trace" && !asked.has(part.toolCallId),
-  ).length;
   return (
-    <ConversationItem itemId={message.id}>
-      <Message from="agent" status={message.status}>
-        <MessageHeader name={message.author.name} role={message.author.role}>
-          {done ? (
-            <Button
-              type="button"
-              variant="link"
-              size="sm"
-              className={styles.steps}
-              aria-expanded={stepsOpen}
-              onClick={() => setChosen(!stepsOpen)}
-            >
-              {text.stepsToggle(stepCount)}
-            </Button>
-          ) : null}
+    <ConversationItem itemId={`work:${unitKey}`}>
+      <Message from="agent" status={live ? "streaming" : "sent"}>
+        <MessageHeader name={wording.activity.role[role]} role={subject}>
+          <span className={styles.state} data-state={status.state}>
+            <StateLabel status={status} />
+          </span>
         </MessageHeader>
-        <MessageParts
-          parts={message.parts}
-          streaming={live}
-          renderActivity={(steps) => {
-            // Decided approvals fold together after the result; each keeps its own quiet line.
-            const decided = steps.flatMap((step) => {
-              const approval = approvalOf(step);
-              return approval === undefined ? [] : [approval];
-            });
-            if (decided.length === steps.length)
-              return decided.map((approval) => (
-                <Fragment key={approval.approvalId}>
-                  {decision(approval)}
-                </Fragment>
-              ));
-            const content = (
-              <ActivityContent
-                renderStep={(step) =>
-                  step.kind === "tool-trace" &&
-                  step.toolCallId !== handoffStep ? (
-                    <ReportStep step={step} />
-                  ) : (
-                    handoff(step)
-                  )
-                }
-              />
-            );
-            if (done)
-              return (
-                <Activity
-                  steps={steps}
-                  open={stepsOpen}
-                  onOpenChange={setChosen}
-                >
-                  {content}
-                </Activity>
-              );
-            return (
-              <Activity
-                steps={steps}
-                streaming={live}
-                open={stepsOpen}
-                onOpenChange={setChosen}
-              >
-                <ActivityTrigger
-                  label={
-                    <WorkLine
-                      status={status}
-                      role={role}
-                      subject={subject}
-                      doing={doing}
-                      steps={steps.length}
-                    />
-                  }
-                  labels={wording.activity.trigger}
-                />
-                {content}
-              </Activity>
-            );
-          }}
-          renderApproval={(part, decide) => {
-            const approval = asked.get(part.toolCallId);
-            return approval === undefined
-              ? undefined
-              : decision(approval, decide);
-          }}
-          renderBlock={(part) =>
-            part.block.type === WORK_RESULT_BLOCK ? (
-              <WorkResult
-                status={status}
-                recent={recent}
-                preview={preview}
-                report={report}
-                onOpen={onOpenDocument}
-                watch={watch}
-              />
-            ) : null
-          }
+        {run(steps, live || status.state === "approval")}
+        <WorkResult
+          status={status}
+          preview={preview}
+          report={report}
+          onOpen={onOpenDocument}
+          watch={watch}
         />
+        {approvals.map((approval) => (
+          <Fragment key={approval.approvalId}>{decision(approval)}</Fragment>
+        ))}
       </Message>
     </ConversationItem>
   );

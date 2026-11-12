@@ -48,7 +48,6 @@ const standing = (unit: WorkUnit) =>
     inFlight: [],
     failed: [],
     seen: new Map(),
-    activity: undefined,
   });
 
 describe("conversation transcript", () => {

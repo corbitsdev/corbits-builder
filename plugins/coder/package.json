@@ -170,14 +170,18 @@
         "folder": "starter",
         "package": "coder",
         "check": "check-app",
-        "serves": true
+        "serves": true,
+        "setup": "bun install --frozen-lockfile",
+        "setupFailed": "If it says the lockfile is frozen, bring bun.lock up to date with install_packages, naming the packages the output says changed at the versions package.json gives them."
       },
       "bare": {
         "about": "Anything that is not a web app, such as a command-line tool, a library, a script or a service: one TypeScript package on Bun with tests and no framework, finished when check-project passes.",
         "folder": "starters/bare",
         "package": "coder-bare",
         "check": "check-project",
-        "serves": false
+        "serves": false,
+        "setup": "bun install --frozen-lockfile",
+        "setupFailed": "If it says the lockfile is frozen, bring bun.lock up to date with install_packages, naming the packages the output says changed at the versions package.json gives them."
       }
     }
   }

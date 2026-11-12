@@ -1,15 +1,18 @@
 /**
- * What a specialist run is producing right now, from its own run stream: the long text a tool call
- * is writing, else the model's words, else that it is thinking. Each frame repeats the whole
- * snapshot so far, so a late subscriber catches up on its first frame, and the preview is read
- * from the newest snapshot a few times a second rather than on every frame.
+ * What a specialist run is doing, from its own run stream: each tool call it makes, in order, and
+ * what it is producing right now, the long text a tool call is writing, else the model's words,
+ * else that it is thinking. Each frame repeats the whole snapshot so far, so a late subscriber
+ * catches up on the preview on its first frame; the stream does not replay calls made before it
+ * opened. Both are read a few times a second rather than on every frame.
  */
 import { useEffect, useRef, useState } from "react";
+import type { PartTool } from "@corbits/react-ui";
 import {
   partialOf,
   subscribeWorkflowRun,
   type RunStreamEvent,
 } from "../../api/run-stream.ts";
+import { finishedCallOf } from "./conversation-parts.ts";
 
 export type RunPreview =
   | { readonly kind: "writing"; readonly text: string }
@@ -128,16 +131,63 @@ function nextSnapshot(
 }
 
 /**
- * The preview of each named run, streamed while it is named. A stream the hub refuses or drops shows
- * nothing for that run, so its card keeps its stage line.
+ * A run's calls after one frame: a finished call joins once, as running, and the next model call
+ * starts only once every call before it returned, so those are done.
  */
-export function useRunPreviews(
+function nextSteps(
+  steps: readonly PartTool[],
+  event: RunStreamEvent,
+): readonly PartTool[] {
+  if (event.type === "inference.start")
+    return steps.map((step) =>
+      step.status === "running"
+        ? {
+            kind: "tool-trace",
+            toolCallId: step.toolCallId,
+            name: step.name,
+            status: "output-available",
+            input: step.input,
+          }
+        : step,
+    );
+  if (event.type !== "inference.tool_call.end") return steps;
+  const call = finishedCallOf(event.data);
+  if (
+    call === undefined ||
+    steps.some((step) => step.toolCallId === call.callId)
+  )
+    return steps;
+  return [
+    ...steps,
+    {
+      kind: "tool-trace",
+      toolCallId: call.callId,
+      name: call.name,
+      status: "running",
+      input: call.arguments,
+    },
+  ];
+}
+
+/**
+ * The preview of each named run, streamed while it is named, and every call each run made while
+ * this room watched it, kept after its stream closes so finished work still lists its steps. A
+ * stream the hub refuses or drops shows no preview for that run.
+ */
+export function useRunStreams(
   tenantId: string | undefined,
   runIds: readonly string[],
-): ReadonlyMap<string, RunPreview> {
+): {
+  previews: ReadonlyMap<string, RunPreview>;
+  steps: ReadonlyMap<string, readonly PartTool[]>;
+} {
   const [previews, setPreviews] = useState<ReadonlyMap<string, RunPreview>>(
     () => new Map(),
   );
+  const [steps, setSteps] = useState<ReadonlyMap<string, readonly PartTool[]>>(
+    () => new Map(),
+  );
+  const calls = useRef(new Map<string, readonly PartTool[]>());
   const streams = useRef(
     new Map<
       string,
@@ -160,6 +210,7 @@ export function useRunPreviews(
         if (preview !== undefined) next.set(runId, preview);
       }
       setPreviews(next);
+      setSteps(new Map(calls.current));
     };
     const schedule = () => {
       timer.current ??= window.setTimeout(flush, FLUSH_MS);
@@ -187,6 +238,10 @@ export function useRunPreviews(
       stream.unsubscribe = subscribeWorkflowRun(tenantId, runId, {
         onEvent: (event) => {
           stream.snapshot = nextSnapshot(stream.snapshot, event);
+          calls.current.set(
+            runId,
+            nextSteps(calls.current.get(runId) ?? [], event),
+          );
           schedule();
         },
         onError: () => {
@@ -208,5 +263,5 @@ export function useRunPreviews(
     };
   }, []);
 
-  return previews;
+  return { previews, steps };
 }

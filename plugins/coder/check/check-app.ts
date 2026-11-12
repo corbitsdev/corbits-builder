@@ -1,5 +1,5 @@
-// check-app: checks the app's README (and user manual, once written), builds the app, starts it,
-// and opens every page it links to in a headless browser at a desktop and a phone width, saving a
+// check-app: checks the app's README (and user manual, once written) and that its bun.lock is
+// current, builds the app, starts it, and opens every page it links to in a headless browser at a desktop and a phone width, saving a
 // desktop picture of each page under docs/manual/ when a manual uses them. Exits non-zero when
 // anything a person would hit is broken.
 // check-app <folder>: serves that folder of static files (a design mockup) instead, and also fails
@@ -10,7 +10,7 @@ import { mkdir, stat } from "node:fs/promises";
 import { createServer } from "node:net";
 import { homedir } from "node:os";
 import { basename, dirname, join, resolve, sep } from "node:path";
-import { failedScript } from "./steps.ts";
+import { failedScript, staleLockfile } from "./steps.ts";
 
 if (process.argv[2] === "--help" || process.argv[2] === "-h") {
   console.log(
@@ -59,6 +59,11 @@ const RULES = [
     kind: "decoration",
     rule: "surfaces are solid colour tokens and UI text carries no emoji",
     app: false,
+  },
+  {
+    kind: "lockfile",
+    rule: "bun.lock matches the package.json files",
+    app: true,
   },
   { kind: "typecheck", rule: "bun run typecheck passes", app: true },
   { kind: "build", rule: "bun run build passes", app: true },
@@ -629,6 +634,8 @@ if (staticRoot) {
       detail:
         "docs/USER-MANUAL.md shows no picture of the app from docs/manual/",
     });
+  const stale = await staleLockfile();
+  if (stale !== undefined) problems.push({ kind: "lockfile", detail: stale });
   // Vite builds code that does not typecheck, so a pass would otherwise not mean the code compiles.
   for (const script of ["typecheck", "build"]) {
     const failed = await failedScript(script);

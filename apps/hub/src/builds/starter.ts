@@ -338,7 +338,9 @@ export async function prepareWorkspace(
     starter: StarterName;
   },
 ): Promise<{
-  setup: { command: string; done: () => Promise<void> } | undefined;
+  setup:
+    | { command: string; advice: string; done: () => Promise<void> }
+    | undefined;
   started: StarterName | undefined;
 }> {
   if (kind === "design") {
@@ -362,12 +364,14 @@ export async function prepareWorkspace(
       started = app.starter;
     }
   }
-  await writeInputs(kind, workspace, read, STARTERS[app.starter].serves);
+  const declared = STARTERS[app.starter];
+  await writeInputs(kind, workspace, read, declared.serves);
   const marker = join(dirname(workspace), ".workspace-ready");
   const setup = (await exists(marker))
     ? undefined
     : {
-        command: "bun install --frozen-lockfile",
+        command: declared.setup,
+        advice: declared.setupFailed,
         done: () => writeFile(marker, ""),
       };
   return { setup, started };

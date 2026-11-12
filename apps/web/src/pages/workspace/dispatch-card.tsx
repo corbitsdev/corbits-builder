@@ -6,7 +6,7 @@
  * documents.
  */
 import type { ConversationPart, PartTool } from "@corbits/react-ui";
-import type { AgentActivity, ProjectArtifact } from "@corbits-builder/client";
+import type { ProjectArtifact } from "@corbits-builder/client";
 import {
   isDocumentKind,
   type FailedRun,
@@ -199,10 +199,10 @@ export type DispatchRoom = {
       readonly versions: ReadonlyMap<string, number>;
     }
   >;
-  /** The runs mid-turn, with the tool calls and words their own inference events carried; undefined until read. */
-  readonly activity: readonly AgentActivity[] | undefined;
   /** What each streamed run is producing right now, by run id. */
   readonly previews?: ReadonlyMap<string, RunPreview>;
+  /** Each call a streamed run made while the room watched it, in order, by run id. */
+  readonly steps?: ReadonlyMap<string, readonly PartTool[]>;
   readonly onOpenDocument?: (kind: string) => void;
   /** Opens the project view on what a working designer or coder is making. */
   readonly onWatch?: (dispatch: Dispatch) => void;

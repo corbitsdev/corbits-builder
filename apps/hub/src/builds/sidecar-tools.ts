@@ -354,6 +354,10 @@ export function createSidecarCodingTools(policy: {
       let repository: AppRepository | undefined;
       // The same repository from the start of setup, so teardown during setup still closes it.
       let opened: AppRepository | undefined;
+      // What a failed setup printed, until a result carries it to the agent.
+      let setupFailure: string | undefined;
+      // Writes the ready marker while setup has not yet succeeded.
+      let markReady: (() => Promise<void>) | undefined;
       let browser:
         | {
             url: string;
@@ -438,11 +442,17 @@ export function createSidecarCodingTools(policy: {
               } finally {
                 await clearCommandProgress(workspace);
               }
-              if (!succeeded(result))
-                throw new Error(
-                  `workspace_setup_failed: ${String(result.content).slice(-2000)}`,
-                );
-              await setup.done();
+              // A failed setup still opens the workspace, so the agent works on the files as they are
+              // and can repair what failed with its own tools; it is told once, by the call that
+              // started the workspace, and install_packages marks the workspace ready.
+              if (succeeded(result)) await setup.done();
+              else {
+                log.warn("Workspace setup failed: {command}", {
+                  command: setup.command,
+                });
+                markReady = setup.done;
+                setupFailure = `workspace_setup_failed: setup ran ${setup.command} and it did not finish. The files are as saved and every tool works on them. Its output:\n${String(result.content).slice(-2000)}\n${setup.advice}`;
+              }
             }
             if (started !== undefined)
               await recordStarter(env.capabilities, scope, started, signal);
@@ -458,7 +468,7 @@ export function createSidecarCodingTools(policy: {
             );
           return executor;
         } catch (error) {
-          // A failed setup is retried by the next call rather than failing every later one.
+          // A workspace that failed to start is started again by the next call.
           sandbox = undefined;
           throw error;
         }
@@ -661,6 +671,109 @@ export function createSidecarCodingTools(policy: {
         ...(policy.packageInstall ? { packageInstall: true } : {}),
         app: serves,
       }).factory(env);
+      const runCall = async (
+        rawCall: ToolCall,
+        signal: AbortSignal,
+      ): Promise<ToolResult> => {
+        const rawPath = rawCall.arguments?.["path"];
+        const call =
+          design && typeof rawPath === "string"
+            ? {
+                ...rawCall,
+                arguments: {
+                  ...rawCall.arguments,
+                  path: designPath(rawPath),
+                },
+              }
+            : rawCall;
+        if (browserNames.has(call.name)) return runBrowser(call, signal);
+        if (!design && call.name === DONE_CHECKS_TOOL) {
+          const detail = await runDoneChecks(
+            DoneChecksCall.assert(call.arguments),
+            signal,
+          );
+          return {
+            callId: call.id,
+            content: JSON.stringify(detail),
+            detail,
+          };
+        }
+        if (design && call.name === CHECK_DESIGN_TOOL) {
+          await open(signal);
+          if (!designCheck) throw new Error("design_check_missing");
+          await syncDesignScreensOnDisk(await realpath(env.toolCwd));
+          const { checklist, passed, artifact } =
+            await designCheck.current(signal);
+          const detail: CheckDetail = {
+            checkPassed: passed,
+            filed: artifact !== undefined,
+            designChosen: artifact?.designChosen === true,
+          };
+          return { callId: call.id, content: checklist, detail };
+        }
+        if (!offered(call.name))
+          return {
+            callId: call.id,
+            content: `unknown_tool: ${call.name}`,
+            isError: true,
+          };
+        const ran = await native.run(call, signal);
+        const detail = appCheckDetail(call, ran, check);
+        const result = detail ? { ...ran, detail } : ran;
+        // A passing check was versioned before it was filed.
+        if (
+          repository &&
+          VERSIONED.has(call.name) &&
+          !passedCheck(call, result)
+        )
+          repository.schedule(EDIT);
+        const versioning =
+          typeof result.content === "string"
+            ? repository?.unheard()
+            : undefined;
+        if (
+          result.isError ||
+          typeof result.content !== "string" ||
+          !REPORTING.has(call.name)
+        )
+          return versioning
+            ? {
+                ...result,
+                content: `${String(result.content)}\n\n${versioning}`,
+              }
+            : result;
+        const notes = [];
+        const path = call.arguments["path"];
+        const executor = await sandbox;
+        if (WRITES.has(call.name) && typeof path === "string") {
+          const workspace = await realpath(env.toolCwd);
+          if (policy.packageInstall)
+            notes.push(await installImports(call, path, signal));
+          // After the import scan, so a package it installed resolves.
+          if (policy.workspace === "app" && executor)
+            notes.push(
+              await typeProbe(executor, workspace, path, call.id, signal),
+            );
+          if (touchesDesigns(workspace, path))
+            await syncDesignScreensOnDisk(workspace);
+        }
+        if (call.name === PACKAGE_INSTALL_TOOL && succeeded(result)) {
+          // The install rewrote the lockfile to match every package.json, so setup is done.
+          await markReady?.();
+          markReady = undefined;
+          notes.push(await restartForPackages());
+        }
+        if (versioning) notes.push(versioning);
+        const reports = executor?.reports() ?? [];
+        if (reports.length)
+          notes.push(
+            `The running app reports:\n${reports.map((report) => `- ${report}`).join("\n")}`,
+          );
+        return {
+          ...result,
+          content: [result.content, ...notes.filter(Boolean)].join("\n\n"),
+        };
+      };
       return {
         ...native,
         definitions: [
@@ -668,101 +781,13 @@ export function createSidecarCodingTools(policy: {
           ...(design ? [checkDesignDefinition] : [doneChecksDefinition]),
           ...(policy.browser?.tools ?? []),
         ],
-        run: async (rawCall, signal) => {
-          const rawPath = rawCall.arguments?.["path"];
-          const call =
-            design && typeof rawPath === "string"
-              ? {
-                  ...rawCall,
-                  arguments: {
-                    ...rawCall.arguments,
-                    path: designPath(rawPath),
-                  },
-                }
-              : rawCall;
-          if (browserNames.has(call.name)) return runBrowser(call, signal);
-          if (!design && call.name === DONE_CHECKS_TOOL) {
-            const detail = await runDoneChecks(
-              DoneChecksCall.assert(call.arguments),
-              signal,
-            );
-            return {
-              callId: call.id,
-              content: JSON.stringify(detail),
-              detail,
-            };
-          }
-          if (design && call.name === CHECK_DESIGN_TOOL) {
-            await open(signal);
-            if (!designCheck) throw new Error("design_check_missing");
-            await syncDesignScreensOnDisk(await realpath(env.toolCwd));
-            const { checklist, passed, artifact } =
-              await designCheck.current(signal);
-            const detail: CheckDetail = {
-              checkPassed: passed,
-              filed: artifact !== undefined,
-              designChosen: artifact?.designChosen === true,
-            };
-            return { callId: call.id, content: checklist, detail };
-          }
-          if (!offered(call.name))
-            return {
-              callId: call.id,
-              content: `unknown_tool: ${call.name}`,
-              isError: true,
-            };
-          const ran = await native.run(call, signal);
-          const detail = appCheckDetail(call, ran, check);
-          const result = detail ? { ...ran, detail } : ran;
-          // A passing check was versioned before it was filed.
-          if (
-            repository &&
-            VERSIONED.has(call.name) &&
-            !passedCheck(call, result)
-          )
-            repository.schedule(EDIT);
-          const versioning =
-            typeof result.content === "string"
-              ? repository?.unheard()
-              : undefined;
-          if (
-            result.isError ||
-            typeof result.content !== "string" ||
-            !REPORTING.has(call.name)
-          )
-            return versioning
-              ? {
-                  ...result,
-                  content: `${String(result.content)}\n\n${versioning}`,
-                }
-              : result;
-          const notes = [];
-          const path = call.arguments["path"];
-          const executor = await sandbox;
-          if (WRITES.has(call.name) && typeof path === "string") {
-            const workspace = await realpath(env.toolCwd);
-            if (policy.packageInstall)
-              notes.push(await installImports(call, path, signal));
-            // After the import scan, so a package it installed resolves.
-            if (policy.workspace === "app" && executor)
-              notes.push(
-                await typeProbe(executor, workspace, path, call.id, signal),
-              );
-            if (touchesDesigns(workspace, path))
-              await syncDesignScreensOnDisk(workspace);
-          }
-          if (call.name === PACKAGE_INSTALL_TOOL && succeeded(result))
-            notes.push(await restartForPackages());
-          if (versioning) notes.push(versioning);
-          const reports = executor?.reports() ?? [];
-          if (reports.length)
-            notes.push(
-              `The running app reports:\n${reports.map((report) => `- ${report}`).join("\n")}`,
-            );
-          return {
-            ...result,
-            content: [result.content, ...notes.filter(Boolean)].join("\n\n"),
-          };
+        run: async (call, signal) => {
+          const result = await runCall(call, signal);
+          const failure = setupFailure;
+          if (failure === undefined || typeof result.content !== "string")
+            return result;
+          setupFailure = undefined;
+          return { ...result, content: `${failure}\n\n${result.content}` };
         },
         dispose: async () => {
           await opened?.close(AbortSignal.timeout(VERSION_CLOSE_MS));
