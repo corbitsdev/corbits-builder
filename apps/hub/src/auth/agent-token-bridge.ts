@@ -2,7 +2,7 @@ import { type } from "arktype";
 import {
   InstalledWorkflows,
   INSTALLED_WORKFLOWS_KEY,
-  WRITER_PACKAGES,
+  WORKFLOW_PACKAGES,
   type WorkflowRole,
 } from "@corbits-builder/schemas/installed-workflows";
 import { projectCoordinator } from "../db/schema.ts";
@@ -127,8 +127,9 @@ async function startsWriter(request: Request) {
       : undefined;
   return (
     typeof pin === "string" &&
-    Object.values(WRITER_PACKAGES).some((name) =>
-      pin.startsWith(nativePackageName(name) + "@"),
+    Object.entries(WORKFLOW_PACKAGES).some(
+      ([name, role]) =>
+        role === "writer" && pin.startsWith(nativePackageName(name) + "@"),
     )
   );
 }

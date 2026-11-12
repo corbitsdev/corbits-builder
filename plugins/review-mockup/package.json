@@ -29,6 +29,7 @@
     "when": "The design is ready for the person to look at, or needs their approval.",
     "unless": "The person only asked a question about the design.",
     "screen": "./src/screen.ts",
+    "view": "./src/view.tsx",
     "authorizes": false,
     "place": "page",
     "host": [

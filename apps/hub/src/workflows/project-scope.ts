@@ -28,6 +28,7 @@ export function scopeWorkflows(
     "writer-approaches": installed["writer-approaches"],
     "writer-product-requirements": installed["writer-product-requirements"],
     "writer-build-plan": installed["writer-build-plan"],
+    "writer-document": installed["writer-document"],
     // A bundle frozen before writers were split cannot read its scope without writer, and a
     // coordinator waiting on the person must still finish their approval. Starting a writer from it
     // would start the constraints writer for any document, so the hub hands such a coordinator off

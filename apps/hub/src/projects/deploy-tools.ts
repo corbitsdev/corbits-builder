@@ -9,6 +9,8 @@ import {
   ArtifactContent,
   DesignBundle,
   DesignConcept,
+  isDocumentKind,
+  MATERIAL_KIND,
   WriterDocumentKind,
 } from "@corbits-builder/schemas/artifact";
 import { Preferences } from "@corbits-builder/schemas/preferences";
@@ -33,12 +35,10 @@ import { projectScopeFailure } from "../workflows/project-scope.ts";
 import { assignmentToWriterMessage } from "../workflows/writer-task.ts";
 import { coderTaskMessage } from "@corbits-builder/coder/contract";
 import {
-  APPROVABLE,
   checkDeployments,
   projectSession,
   Refusal,
   refusalText,
-  RequestApproval,
   REQUEST_APPROVAL_DESCRIPTION,
   resolveProjectOptions,
   validArguments,
@@ -48,6 +48,21 @@ import {
 } from "./project-session.ts";
 
 export const DEPLOY_TOOLS = "@corbits-builder/deploy/tools";
+// The documents the classic coordinator's staged writers file, each approved under its own kind.
+const APPROVABLE = [
+  "problem_brief",
+  "constraints",
+  "approaches",
+  "product_requirements",
+  "build_plan",
+] as const;
+const RequestApproval = type({
+  "+": "reject",
+  kinds: type
+    .enumerated(...APPROVABLE, MATERIAL_KIND)
+    .array()
+    .atLeastLength(1),
+});
 const CODER_DOCUMENTS = [...CODER_INPUTS, "design"] as const;
 const DeployWriter = type({
   "+": "reject",
@@ -68,8 +83,7 @@ export function awaitingApproval<
   if (agentDecidesApprovals(preferences)) return [];
   return filed.filter(
     (item) =>
-      (APPROVABLE as readonly string[]).includes(item.kind) &&
-      item.approvedVersion !== item.version,
+      isDocumentKind(item.kind) && item.approvedVersion !== item.version,
   );
 }
 

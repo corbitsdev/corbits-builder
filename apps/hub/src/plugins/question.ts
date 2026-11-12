@@ -2,7 +2,7 @@ import type { QuestionCheck } from "@intx/inference";
 import { HUB_CREDENTIAL_HANDLE } from "@intx/types/credential-delivery";
 import type { RuntimeCapabilities } from "@intx/types/runtime-capabilities";
 import { ProjectValues } from "@corbits-builder/schemas/artifact";
-import { unknownScreenPlugin } from "../config/screen-plugins.ts";
+import { unknownScreenPlugin } from "@corbits-builder/plugin-host/text";
 import { resolveWorkflowProjectScope } from "../workflows/project-scope.ts";
 import { workflowHttpJson } from "../workflows/http-json.ts";
 import { SCREENS } from "./catalog.ts";

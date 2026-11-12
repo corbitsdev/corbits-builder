@@ -28,6 +28,9 @@ const installed: InstalledWorkflows = {
   "writer-build-plan": deployment(
     "@corbits-builder/writer-build-plan-native@1.0.0-sha-new",
   ),
+  "writer-document": deployment(
+    "@corbits-builder/writer-document-native@1.0.0-sha-new",
+  ),
   reviewer: deployment("@corbits-builder/reviewer-native@1.0.0-sha-new"),
   coder: deployment("@corbits-builder/coder-native@1.0.0-sha-new"),
   "coder-any-package": deployment(

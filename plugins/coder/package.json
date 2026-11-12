@@ -6,10 +6,6 @@
   "license": "SEE LICENSE IN ../../LICENSE.md",
   "author": "Sawyer Cutler <sawyer@dirtroad.dev>",
   "type": "module",
-  "exports": {
-    "./build": "./src/build.ts",
-    "./change": "./src/change.ts"
-  },
   "dependencies": {
     "@corbits-builder/plugin": "workspace:*",
     "arktype": "catalog:"
@@ -39,7 +35,12 @@
         ],
         "returns": [
           "app_exists"
-        ]
+        ],
+        "start": {
+          "workflow": "coder",
+          "correlation": "coder",
+          "app": "new"
+        }
       },
       "change": {
         "runs": "workflow",
@@ -51,7 +52,12 @@
             "app_exists"
           ]
         ],
-        "returns": []
+        "returns": [],
+        "start": {
+          "workflow": "coder",
+          "correlation": "coder-change",
+          "app": "existing"
+        }
       }
     },
     "examples": [
@@ -62,6 +68,9 @@
       "make the text bigger",
       "add a settings page",
       "the save button does nothing"
-    ]
+    ],
+    "facts": {
+      "app_exists": "the project has an app, built or imported"
+    }
   }
 }

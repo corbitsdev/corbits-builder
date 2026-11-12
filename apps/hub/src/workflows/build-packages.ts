@@ -2,6 +2,8 @@ import { createHash } from "node:crypto";
 import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
 import { join, resolve } from "node:path";
 import { tmpdir } from "node:os";
+import { bundledPlugins } from "@corbits-builder/plugin-host/bundle";
+import { PLUGINS_FOLDER } from "../plugins/catalog.ts";
 import { nativePackageName } from "./package-name.ts";
 import type { RoleInference } from "./role-inference.ts";
 import type { CoordinatorMode } from "../environment.ts";
@@ -45,6 +47,7 @@ export async function buildWorkflowPackages(
       format: "esm",
       minify: true,
       conditions: ["intx-src"],
+      plugins: [bundledPlugins(PLUGINS_FOLDER)],
     });
     if (!result.success || result.outputs.length !== 1)
       throw new Error(

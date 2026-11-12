@@ -1,56 +1,95 @@
-/** The plugin screens this interface can draw, by plugin handle. First-party plugins are compiled in. */
+/**
+ * The plugin screens this interface can draw, by plugin handle: every screen plugin in the plugins
+ * folder, compiled in when the interface is built, so a new plugin folder needs a rebuild.
+ */
 import type { ComponentType } from "react";
-import { Builder } from "@corbits-builder/plugin";
-import pickFonts from "@corbits-builder/pick-fonts";
-import fonts from "@corbits-builder/pick-fonts/data";
-import { Fonts } from "@corbits-builder/pick-fonts/schema";
-import { FontPicker } from "@corbits-builder/pick-fonts/view";
-import pickColours from "@corbits-builder/pick-colours";
-import { ColourPicker } from "@corbits-builder/pick-colours/view";
-import reviewMockup from "@corbits-builder/review-mockup";
-import { MockupReview } from "@corbits-builder/review-mockup/view";
-// Relative imports, because the plugins' exports do not include their package.json.
-import pickFontsManifest from "../../../../../plugins/pick-fonts/package.json";
-import pickColoursManifest from "../../../../../plugins/pick-colours/package.json";
-import reviewMockupManifest from "../../../../../plugins/review-mockup/package.json";
-import { screenHost, type ScreenHostProps } from "./screen-question.tsx";
+import {
+  Builder,
+  isScreen,
+  type ScreenViewProps,
+} from "@corbits-builder/plugin";
+import {
+  screenHost,
+  type HostSupplies,
+  type ScreenHostProps,
+} from "./screen-question.tsx";
 
-const manifests = {
-  pickFonts: Builder.assert(pickFontsManifest.builder),
-  pickColours: Builder.assert(pickColoursManifest.builder),
-  reviewMockup: Builder.assert(reviewMockupManifest.builder),
-};
+const manifests = import.meta.glob<{ builder?: unknown }>(
+  "../../../../../plugins/*/package.json",
+  { eager: true, import: "default" },
+);
+// Only these files of a plugin are bundled: the rest of its folder is the hub's, which may not
+// run in a browser.
+const modules = import.meta.glob(
+  [
+    "../../../../../plugins/*/src/screen.ts",
+    "../../../../../plugins/*/data/*.json",
+  ],
+  { eager: true, import: "default" },
+);
+const views = import.meta.glob<
+  ComponentType<ScreenViewProps<unknown, unknown, unknown, HostSupplies>>
+>("../../../../../plugins/*/src/view.tsx", { eager: true, import: "default" });
+
+// What a screen plugin's manifest names, from the files bundled above.
+function named<File>(
+  files: Record<string, File>,
+  folder: string,
+  handle: string,
+  path: string,
+) {
+  const file = files[folder + path.replace(/^\.\//, "")];
+  if (file === undefined)
+    throw new Error(
+      `${handle} names ${path}, which the interface does not bundle: a screen is src/screen.ts, its view src/view.tsx and its data under data/.`,
+    );
+  return file;
+}
+
+const builders = Object.entries(manifests).flatMap(([path, { builder }]) =>
+  typeof builder === "object" &&
+  builder !== null &&
+  "runs" in builder &&
+  builder.runs === "screen"
+    ? [
+        {
+          folder: path.slice(0, -"package.json".length),
+          builder: Builder.assert(builder),
+        },
+      ]
+    : [],
+);
 
 /** The screens drawn over the whole room rather than in the conversation. */
 export const pageScreens: ReadonlySet<string> = new Set(
-  Object.values(manifests)
-    .filter((builder) => builder.place === "page")
-    .map((builder) => builder.handle),
+  builders
+    .filter(({ builder }) => builder.place === "page")
+    .map(({ builder }) => builder.handle),
 );
 
-export const screens: Record<string, ComponentType<ScreenHostProps>> = {
-  "pick-fonts": screenHost(manifests.pickFonts, {
-    screen: pickFonts,
-    view: FontPicker,
-    data: Fonts.assert(fonts),
-    writes: {
-      "look.font-primary": (output) => output.primary.name,
-      "look.font-secondary": (output) => output.secondary.name,
-    },
+export const screens: Record<
+  string,
+  ComponentType<ScreenHostProps>
+> = Object.fromEntries(
+  builders.map(({ folder, builder }) => {
+    const { handle } = builder;
+    const screen = named(modules, folder, handle, builder.screen);
+    if (!isScreen(screen))
+      throw new Error(`${handle}'s ${builder.screen} exports no screen.`);
+    let data: unknown;
+    if (builder.data !== undefined) {
+      if (!screen.data)
+        throw new Error(`${handle} names data its screen has no schema for.`);
+      data = screen.data.assert(named(modules, folder, handle, builder.data));
+    }
+    return [
+      handle,
+      screenHost(builder, {
+        screen,
+        view: named(views, folder, handle, builder.view),
+        data,
+        writes: screen.writes ?? {},
+      }),
+    ];
   }),
-  "pick-colours": screenHost(manifests.pickColours, {
-    screen: pickColours,
-    view: ColourPicker,
-    data: undefined,
-    writes: {
-      "look.color-primary": (output) => output.primary,
-      "look.color-background": (output) => output.background,
-    },
-  }),
-  "review-mockup": screenHost(manifests.reviewMockup, {
-    screen: reviewMockup,
-    view: MockupReview,
-    data: undefined,
-    writes: {},
-  }),
-};
+);

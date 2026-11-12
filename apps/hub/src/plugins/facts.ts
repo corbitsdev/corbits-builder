@@ -1,8 +1,10 @@
 import type { Fact } from "@corbits-builder/plugin";
+import { isDocumentKind } from "@corbits-builder/schemas/artifact";
 import type { Preferences } from "@corbits-builder/schemas/preferences";
 import { agentDecidesApprovals } from "../config/preferences.ts";
 
-// The documents a person approves, each filed and approved under its own kind.
+// The documents a plugin may name in a plain fact. Any other document's kind is named through a
+// template on a field the plugin takes, such as "filed:{kind}", and holds once it is filed.
 export const DOCUMENT_KINDS = [
   "problem_brief",
   "constraints",
@@ -11,7 +13,7 @@ export const DOCUMENT_KINDS = [
   "build_plan",
 ] as const;
 
-// Every fact Builder can work out. A design option is filed but never approved: the person
+// Every fact a plugin may name plainly. A design option is filed but never approved: the person
 // approves a design by choosing one.
 export const FACTS: ReadonlySet<Fact> = new Set([
   ...[...DOCUMENT_KINDS, "design_option"].map((kind) => `filed:${kind}`),
@@ -19,27 +21,6 @@ export const FACTS: ReadonlySet<Fact> = new Set([
   "design_chosen",
   "app_exists",
 ]);
-
-// A fact that names one of a plugin's input fields, such as "filed:{kind}".
-const TEMPLATE = /^(filed|approved):\{(\w+)\}$/;
-
-/** The input field a templated fact names, or undefined for a plain fact. */
-export const templateField = (fact: Fact) => TEMPLATE.exec(fact)?.[2];
-
-/** Each fact with its input field replaced by the value passed there, one fact for each listed value. */
-export function resolveFacts(facts: readonly Fact[], input: unknown): Fact[] {
-  const fields = new Map(
-    typeof input === "object" && input !== null ? Object.entries(input) : [],
-  );
-  return facts.flatMap((fact) => {
-    const match = TEMPLATE.exec(fact);
-    if (!match) return [fact];
-    const value = fields.get(match[2]!);
-    return (Array.isArray(value) ? value : [value]).map(
-      (item) => `${match[1]}:${String(item)}`,
-    );
-  });
-}
 
 type Filed = { kind: string; version: number; approvedVersion?: number };
 
@@ -54,24 +35,10 @@ export function projectFacts(project: {
     const approved = approvedVersion === version;
     if (kind === "app") facts.add("app_exists");
     if (kind === "design" && approved) facts.add("design_chosen");
-    if (!FACTS.has(`filed:${kind}`)) continue;
+    if (kind === "design_option") facts.add("filed:design_option");
+    if (!isDocumentKind(kind)) continue;
     facts.add(`filed:${kind}`);
-    if (FACTS.has(`approved:${kind}`) && (approved || agentDecides))
-      facts.add(`approved:${kind}`);
+    if (approved || agentDecides) facts.add(`approved:${kind}`);
   }
   return facts;
-}
-
-/**
- * The one check of what a plugin requires: for each alternative, the facts it still lacks. An
- * empty list means nothing is required or one alternative holds.
- */
-export function unmet(
-  requires: readonly (readonly Fact[])[],
-  facts: ReadonlySet<Fact>,
-): Fact[][] {
-  const missing = requires.map((alternative) =>
-    alternative.filter((fact) => !facts.has(fact)),
-  );
-  return missing.some((lacking) => lacking.length === 0) ? [] : missing;
 }

@@ -7,6 +7,7 @@ import {
 import { HUB_CREDENTIAL_HANDLE } from "@intx/types/credential-delivery";
 import type { RuntimeCapabilities } from "@intx/types/runtime-capabilities";
 import {
+  AnyDocumentFields,
   ArtifactContent,
   BriefWrite,
   ArtifactList,
@@ -86,6 +87,15 @@ function writerWriteDefinition(kind: WriterDocumentKind) {
   };
 }
 
+const documentWriteDefinition = {
+  name: "write_artifact",
+  description: [
+    "Write the next version of the document your task names. kind is the kind your task names, a short lowercase slug such as competitor_analysis, the same for every version; title is its title; content is the document itself as markdown sections. The hub assigns its id, version and sha256 and returns them. Writing a version is not approval.",
+    "openQuestions lists each question in the document's Open questions section that the person must answer: a short id, the question as they would read it, whyItBlocks, and suggestedAnswers, your recommendation first. A version written without openQuestions leaves none open.",
+  ].join("\n"),
+  inputSchema: { ...AnyDocumentFields.toJsonSchema() },
+};
+
 export function failure(callId: string, error: unknown) {
   if (error instanceof WorkflowHttpError && error.status)
     return {
@@ -102,16 +112,25 @@ export function failure(callId: string, error: unknown) {
   return projectScopeFailure(callId, error);
 }
 
-// The tools a role gets, and for a role that writes, the kind it files and the fields it checks.
+// The tools a role gets, and for a role that writes, the check of its fields that names the kind
+// they file under.
 interface ArtifactToolSet {
   definitions: readonly (typeof readDefinition)[];
-  save?: {
-    kind: typeof DocumentWrite.infer.kind;
-    fields:
-      | typeof BriefWrite
-      | (typeof WriterDocumentFields)[WriterDocumentKind];
-  };
+  save?: (fields: unknown) => typeof DocumentWrite.infer | type.errors;
 }
+
+// A role deployed for one kind files its fields under that kind.
+const savesAs =
+  (
+    kind: typeof DocumentWrite.infer.kind,
+    check:
+      | typeof BriefWrite
+      | (typeof WriterDocumentFields)[WriterDocumentKind],
+  ) =>
+  (raw: unknown) => {
+    const fields = check(raw);
+    return fields instanceof type.errors ? fields : { ...fields, kind };
+  };
 
 // A writer's or reviewer's task carries every document it needs in full; a read tool sends
 // writers looking for documents that do not exist.
@@ -121,7 +140,7 @@ const TOOLS_BY_ROLE: Record<
 > = {
   coordinator: {
     definitions: [readDefinition, briefWriteDefinition],
-    save: { kind: "problem_brief", fields: BriefWrite },
+    save: savesAs("problem_brief", BriefWrite),
   },
   reviewer: { definitions: [readDefinition] },
   coder: { definitions: [readDefinition] },
@@ -137,13 +156,20 @@ export function createArtifactTools(role: Exclude<WorkflowRole, "writer">) {
 export const createReadArtifactTools = () =>
   artifactTools("coordinator", { definitions: [readDefinition] });
 
-// A writer is deployed for one kind and saves only that kind.
+// A writer of a known kind is deployed for it and saves only that kind.
 export function createWriterArtifactTools(kind: WriterDocumentKind) {
   return artifactTools("writer", {
     definitions: [writerWriteDefinition(kind)],
-    save: { kind, fields: WriterDocumentFields[kind] },
+    save: savesAs(kind, WriterDocumentFields[kind]),
   });
 }
+
+// The writer of any document saves it under the kind it names.
+export const createDocumentWriterArtifactTools = () =>
+  artifactTools("writer", {
+    definitions: [documentWriteDefinition],
+    save: AnyDocumentFields,
+  });
 
 function artifactTools(
   role: WorkflowRole,
@@ -206,14 +232,13 @@ function artifactTools(
                   content: `brief_only: you write the problem brief; deploy_writer has a writer write the ${rawKind}`,
                   isError: true,
                 };
-              const fields = save.fields(call.arguments);
-              if (fields instanceof type.errors)
+              const input = save(call.arguments);
+              if (input instanceof type.errors)
                 return {
                   callId: call.id,
-                  content: "invalid_arguments: " + fields.summary,
+                  content: "invalid_arguments: " + input.summary,
                   isError: true,
                 };
-              const input = { ...fields, kind: save.kind };
               const body = JSON.stringify(input);
               const earlier = written.get(input.kind);
               if (earlier?.body === body)

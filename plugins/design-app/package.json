@@ -6,9 +6,6 @@
   "license": "SEE LICENSE IN ../../LICENSE.md",
   "author": "Sawyer Cutler <sawyer@dirtroad.dev>",
   "type": "module",
-  "exports": {
-    ".": "./src/input.ts"
-  },
   "dependencies": {
     "@corbits-builder/plugin": "workspace:*",
     "@corbits-builder/schemas": "workspace:*",
@@ -31,7 +28,10 @@
         "input": "./src/input.ts",
         "returns": [
           "filed:design_option"
-        ]
+        ],
+        "start": {
+          "workflow": "designer"
+        }
       }
     },
     "examples": [
@@ -39,6 +39,10 @@
       "show me a few different looks",
       "can I see what it would look like",
       "redesign it"
-    ]
+    ],
+    "facts": {
+      "filed:design_option": "a design option is filed",
+      "design_chosen": "the person chose a design from the design options"
+    }
   }
 }

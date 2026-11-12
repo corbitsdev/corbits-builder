@@ -6,11 +6,6 @@
   "license": "SEE LICENSE IN ../../LICENSE.md",
   "author": "Sawyer Cutler <sawyer@dirtroad.dev>",
   "type": "module",
-  "exports": {
-    "./write-requirements": "./src/write-requirements.ts",
-    "./write-build-plan": "./src/write-build-plan.ts",
-    "./review": "./src/review.ts"
-  },
   "dependencies": {
     "@corbits-builder/plugin": "workspace:*",
     "@corbits-builder/schemas": "workspace:*",
@@ -28,6 +23,18 @@
     "when": "The project's documents need writing or revising, a second opinion, or the person's approval.",
     "unless": "The person wants the app itself changed, or only a mockup.",
     "actions": {
+      "write": {
+        "runs": "workflow",
+        "when": "The person asks for any document that has no action of its own, such as a competitor analysis, a product comparison, a profit breakdown or a security review, or wants one revised.",
+        "unless": "The document is the product requirements or the build plan, which have actions of their own, or the person wants the app itself changed.",
+        "input": "./src/write.ts",
+        "returns": [
+          "filed:{kind}"
+        ],
+        "start": {
+          "workflow": "writer-document"
+        }
+      },
       "write-requirements": {
         "runs": "workflow",
         "when": "The project needs its product requirements written, or revised with what the person said.",
@@ -35,7 +42,11 @@
         "input": "./src/write-requirements.ts",
         "returns": [
           "filed:product_requirements"
-        ]
+        ],
+        "start": {
+          "workflow": "writer",
+          "kind": "product_requirements"
+        }
       },
       "write-build-plan": {
         "runs": "workflow",
@@ -52,7 +63,11 @@
         ],
         "returns": [
           "filed:build_plan"
-        ]
+        ],
+        "start": {
+          "workflow": "writer",
+          "kind": "build_plan"
+        }
       },
       "review": {
         "runs": "workflow",
@@ -64,7 +79,10 @@
             "filed:{kind}"
           ]
         ],
-        "returns": []
+        "returns": [],
+        "start": {
+          "workflow": "reviewer"
+        }
       },
       "approve": {
         "runs": "tool",
@@ -83,6 +101,9 @@
       }
     },
     "examples": [
+      "write me a competitor analysis",
+      "do a security review of the plan",
+      "compare our pricing options",
       "write up what the app should do",
       "add offline mode to the requirements",
       "I want to plan an app for my team",
@@ -92,6 +113,18 @@
       "check the requirements for gaps",
       "I approve the plan",
       "show me what I need to sign off"
-    ]
+    ],
+    "facts": {
+      "filed:problem_brief": "the problem brief is filed",
+      "filed:constraints": "the constraints are filed",
+      "filed:approaches": "the approaches are filed",
+      "filed:product_requirements": "the product requirements are filed",
+      "filed:build_plan": "the build plan is filed",
+      "approved:problem_brief": "the person approved the current version of the problem brief, or leaves approvals to you",
+      "approved:constraints": "the person approved the current version of the constraints, or leaves approvals to you",
+      "approved:approaches": "the person approved the current version of the approaches, or leaves approvals to you",
+      "approved:product_requirements": "the person approved the current version of the product requirements, or leaves approvals to you",
+      "approved:build_plan": "the person approved the current version of the build plan, or leaves approvals to you"
+    }
   }
 }

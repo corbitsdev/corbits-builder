@@ -1,7 +1,7 @@
 import { expect, test } from "bun:test";
 import type { RuntimeCapabilities } from "@intx/types/runtime-capabilities";
 import { createDeployTools } from "./deploy-tools.ts";
-import reviewMockup from "@corbits-builder/review-mockup";
+import { CATALOG } from "../plugins/catalog.ts";
 
 const deployment = {
   source: {
@@ -25,6 +25,7 @@ const workflows = {
     "writer-product-requirements",
   ),
   "writer-build-plan": writerDeployment("writer-build-plan"),
+  "writer-document": writerDeployment("writer-document"),
   reviewer: deployment,
   coder: deployment,
   designer: deployment,
@@ -663,9 +664,9 @@ test("a question for a screen the hub does not have is refused with the installe
       '"pick-colors" is not an installed screen plugin, so nothing was shown.',
       "",
       "Installed screen plugins:",
-      "  pick-fonts: Shows the person the fonts in use and fonts to choose a primary and a secondary font from.",
       "  pick-colours: Shows the person the primary (brand) and background colours in use and lets them choose new ones.",
-      `  review-mockup: ${reviewMockup.describe.summary}`,
+      "  pick-fonts: Shows the person the fonts in use and fonts to choose a primary and a secondary font from.",
+      `  review-mockup: ${CATALOG.installed("review-mockup")?.description}`,
       "",
       "Call again with plugin set to one of them, or ask a plain question with questions instead.",
     ].join("\n"),

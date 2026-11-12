@@ -1,31 +1,23 @@
-import { type } from "arktype";
 import { defineTool, type AnnotatedToolFactory } from "@intx/agent/authoring";
 import { questionTool } from "@intx/inference";
 import { HUB_CREDENTIAL_HANDLE } from "@intx/types/credential-delivery";
-import type { Fact } from "@corbits-builder/plugin";
+import {
+  checkedDiscover,
+  Discover,
+  discoverFor,
+  discoverIn,
+  execute,
+  Execute,
+  type Project,
+} from "@corbits-builder/plugin-host/coordinator";
+import { fields } from "@corbits-builder/plugin-host/search/fields";
+import { triggers } from "@corbits-builder/plugin-host/search/triggers";
 import {
   DISCOVER_DESCRIPTION,
-  DISCOVER_NEEDS_ONE,
-  foundPlugins,
-  noPluginFound,
-  pluginHint,
-} from "../config/screen-plugins.ts";
-import {
   DISCOVER_DYNAMIC_DESCRIPTION,
   EXECUTE_DESCRIPTION,
-  readinessText,
-  routeDone,
-  routeFollowed,
-  routeInputRefused,
-  routeLeft,
-  routeTakesNoAction,
-  screenNotExecuted,
-  toolNotExecuted,
-  unknownAction,
-  unknownPlugin,
-  unmetRequirement,
-  type Readiness,
-} from "../config/execute.ts";
+  pluginHint,
+} from "@corbits-builder/plugin-host/text";
 import type { PluginHint } from "../environment.ts";
 import {
   checkDeployments,
@@ -40,75 +32,10 @@ import {
   type ProjectSession,
 } from "../projects/project-session.ts";
 import { projectScopeFailure } from "../workflows/project-scope.ts";
-import {
-  ACTIONS,
-  installed,
-  isRoute,
-  isScreen,
-  isSpecialist,
-  isWorkflowAction,
-  PLUGINS,
-  ProjectRoute,
-  SCREENS,
-  type Action,
-  type Plugin,
-  type RoutePlugin,
-} from "./catalog.ts";
-import { projectFacts, resolveFacts, templateField, unmet } from "./facts.ts";
+import { CATALOG, ProjectRoute, SCREENS } from "./catalog.ts";
+import { projectFacts } from "./facts.ts";
 import { checkPluginQuestion } from "./question.ts";
-import { fields } from "./search/fields.ts";
-import { triggers } from "./search/triggers.ts";
-import type { Strategy } from "./search/words.ts";
-
-// The one place the search is chosen.
-const search: Strategy = fields;
-
-const MAX_FOUND = 5;
-
-// One object rather than a union: providers want a tool's input schema to be a plain object.
-const Discover = type({
-  "+": "reject",
-  "query?": "string > 0",
-  "group?": "string > 0",
-});
-const Execute = type({
-  "+": "reject",
-  plugin: "string > 0",
-  "action?": "string > 0",
-  "input?": "object",
-});
-const RouteInput = type({ "+": "reject", "leave?": "true" });
-
-const groupsOf = (plugins: readonly Plugin[]) => {
-  const groups = new Map<string, Plugin[]>();
-  for (const plugin of plugins)
-    for (const group of plugin.builder.groups) {
-      const members = groups.get(group) ?? [];
-      members.push(plugin);
-      groups.set(group, members);
-    }
-  return groups;
-};
-
-// What discover answers from the given plugins. Its tool asks for exactly one of query and group.
-function discoverIn(
-  plugins: readonly Plugin[],
-  asked: typeof Discover.infer,
-  status?: (plugin: Plugin) => string[],
-) {
-  const { query, group } = asked;
-  const groups = groupsOf(plugins);
-  let found: readonly Plugin[] = [];
-  if (query !== undefined)
-    found = search(query, plugins)
-      .slice(0, MAX_FOUND)
-      .flatMap(({ handle }) =>
-        plugins.filter((plugin) => plugin.builder.handle === handle),
-      );
-  if (group !== undefined) found = groups.get(group) ?? [];
-  if (found.length === 0) return noPluginFound(asked, groups);
-  return foundPlugins(found, status);
-}
+import { startAction } from "./starters.ts";
 
 // The classic coordinator finds only screens, and knows nothing of the project when it does.
 export const discover = (asked: typeof Discover.infer) =>
@@ -144,12 +71,15 @@ const discoverDefinition = (description: string) => ({
   inputSchema: { ...Discover.toJsonSchema() },
 });
 
-function checkedDiscover(raw: unknown) {
-  const input = Discover(raw);
-  if (input instanceof type.errors) return { error: input.summary };
-  if ((input.query === undefined) === (input.group === undefined))
-    return { error: DISCOVER_NEEDS_ONE };
-  return { input };
+// The project as the coordinator's tools act on it, through the hub.
+function project(session: ProjectSession): Project {
+  const path = session.projectPath + "/route";
+  return {
+    facts: async () => projectFacts(await session.listed()),
+    route: async () => ProjectRoute.assert(await session.hub(path)).route,
+    setRoute: (route) => session.hub(path, { route }),
+    start: (action, input) => startAction(action, input, session),
+  };
 }
 
 // The classic coordinator finds what it can do from the person's wording instead of carrying every
@@ -168,176 +98,6 @@ export function createPluginTools() {
       },
     }),
   });
-}
-
-// What is true of the project, and the route it follows. A route whose outcome holds is left, so
-// nothing from it applies after.
-async function projectState(session: ProjectSession) {
-  const listing = await session.listed();
-  const facts = projectFacts(listing);
-  const path = session.projectPath + "/route";
-  const { route: handle } = ProjectRoute.assert(await session.hub(path));
-  let route = PLUGINS.filter(isRoute).find(
-    (plugin) => plugin.builder.handle === handle,
-  );
-  if (route && facts.has(route.builder.outcome)) {
-    await session.hub(path, { route: null });
-    route = undefined;
-  }
-  return { facts, route };
-}
-type ProjectState = Awaited<ReturnType<typeof projectState>>;
-
-// Whether an action's finished work makes a fact true; "filed:{kind}" makes any document filed.
-const makes = (made: Fact, fact: Fact) =>
-  made === fact ||
-  (templateField(made) !== undefined &&
-    made.split(":")[0] === fact.split(":")[0]);
-const makers = (fact: Fact) =>
-  ACTIONS.filter(({ builder }) =>
-    builder.returns.some((made) => makes(made, fact)),
-  ).map(({ name }) => name);
-
-// Where an action stands: what it lacks of its own requirements, for the input when there is one,
-// and what the route the project follows adds for it as a step.
-function readiness(
-  action: Action,
-  { facts, route }: ProjectState,
-  input?: unknown,
-): Readiness {
-  const requires = (action.builder.requires ?? []).map((alternative) =>
-    input === undefined
-      ? alternative.filter((fact) => templateField(fact) === undefined)
-      : resolveFacts(alternative, input),
-  );
-  const step = route?.builder.steps.find(
-    (named) => named.plugin === action.plugin && named.action === action.action,
-  );
-  const readied: Readiness = {
-    own: unmet(requires, facts),
-    fromRoute: (step?.requires ?? []).filter((fact) => !facts.has(fact)),
-  };
-  if (route && step) readied.route = route.builder.handle;
-  return readied;
-}
-
-// The installed action that a plugin's handle and an action's name pick out.
-const installedAction = (plugin: string, name: string | undefined) =>
-  ACTIONS.find((action) => action.plugin === plugin && action.action === name);
-
-// Each step of a route as if the project followed it.
-const stepsOf = (route: RoutePlugin, facts: ProjectState["facts"]) =>
-  route.builder.steps.map(({ plugin, action: name }) => {
-    const action = installedAction(plugin, name);
-    if (!action)
-      throw new Error(`${route.builder.handle} names ${plugin} ${name}`);
-    return {
-      name: action.name,
-      readiness: readinessText(readiness(action, { facts, route })),
-    };
-  });
-
-// What discover adds about each plugin for this project.
-function status(plugin: Plugin, state: ProjectState): string[] {
-  if (isRoute(plugin))
-    return [
-      state.route === plugin
-        ? "This project is following it."
-        : "Start it with execute; the project then follows it.",
-      "Steps:",
-      ...stepsOf(plugin, state.facts).map(
-        ({ name, readiness: line }) => `  ${name}: ${line}`,
-      ),
-    ];
-  if (!isSpecialist(plugin)) return [];
-  return [
-    "",
-    "Now:",
-    ...plugin.actions.map(
-      (action) =>
-        `  ${action.name}: ${readinessText(readiness(action, state))}`,
-    ),
-  ];
-}
-
-type Outcome = { content: string; isError?: true };
-
-async function followRoute(
-  session: ProjectSession,
-  route: RoutePlugin,
-  raw: unknown,
-  state: ProjectState,
-): Promise<Outcome> {
-  const { handle, outcome } = route.builder;
-  const input = RouteInput(raw);
-  if (input instanceof type.errors)
-    return { content: routeInputRefused(handle, input.summary), isError: true };
-  const path = session.projectPath + "/route";
-  if (input.leave) {
-    if (state.route === route) await session.hub(path, { route: null });
-    return { content: routeLeft(handle, state.route === route) };
-  }
-  if (state.facts.has(outcome)) return { content: routeDone(handle, outcome) };
-  if (state.route !== route) await session.hub(path, { route: handle });
-  return {
-    content: routeFollowed(handle, route.guidance, stepsOf(route, state.facts)),
-  };
-}
-
-// Starts a specialist's workflow action, or follows or leaves a route, once its input and
-// requirements hold.
-async function execute(
-  session: ProjectSession,
-  raw: unknown,
-): Promise<Outcome> {
-  const asked = Execute(raw);
-  if (asked instanceof type.errors)
-    return { content: asked.summary, isError: true };
-  const plugin = installed(asked.plugin);
-  if (!plugin)
-    return {
-      content: unknownPlugin(asked.plugin, [
-        ...ACTIONS.filter(isWorkflowAction).map(({ name }) => name),
-        ...PLUGINS.filter(isRoute).map(({ builder }) => builder.handle),
-      ]),
-      isError: true,
-    };
-  if (isScreen(plugin))
-    return { content: screenNotExecuted(plugin.builder.handle), isError: true };
-  if (isRoute(plugin)) {
-    if (asked.action !== undefined)
-      return {
-        content: routeTakesNoAction(plugin.builder.handle),
-        isError: true,
-      };
-    const state = await projectState(session);
-    return followRoute(session, plugin, asked.input ?? {}, state);
-  }
-  const action = installedAction(plugin.builder.handle, asked.action);
-  if (!action)
-    return {
-      content: unknownAction(
-        plugin.builder.handle,
-        asked.action,
-        plugin.actions,
-      ),
-      isError: true,
-    };
-  if (!isWorkflowAction(action))
-    return {
-      content: toolNotExecuted(action.name, action.builder.tool),
-      isError: true,
-    };
-  const state = await projectState(session);
-  const checked = action.check(asked.input ?? {});
-  if (!checked.ok) return { content: checked.text, isError: true };
-  const ready = readiness(action, state, checked.input);
-  if (ready.own.length > 0 || ready.fromRoute.length > 0)
-    return {
-      content: unmetRequirement(action.name, ready, makers),
-      isError: true,
-    };
-  return { content: JSON.stringify(await checked.start(session)) };
 }
 
 /**
@@ -393,18 +153,15 @@ export function createExecuteTools(
             const { input, error } = checkedDiscover(call.arguments);
             if (!input)
               return { callId: call.id, content: error, isError: true };
-            const state = await projectState(session);
             return {
               callId: call.id,
-              content: discoverIn(PLUGINS, input, (plugin) =>
-                status(plugin, state),
-              ),
+              content: await discoverFor(CATALOG, project(session), input),
             };
           }
           if (call.name === "execute")
             return {
               callId: call.id,
-              ...(await execute(session, call.arguments)),
+              ...(await execute(CATALOG, project(session), call.arguments)),
             };
           if (call.name === "request_approval") {
             const { kinds } = validArguments(RequestApproval, call.arguments);

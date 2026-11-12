@@ -461,3 +461,5 @@ function Choosing({
     </GateBlock>
   );
 }
+
+export default FontPicker;

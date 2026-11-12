@@ -1,19 +1,14 @@
 import { expect, test } from "bun:test";
-import { guidanceText } from "@corbits-builder/plugin";
-import pickFonts from "@corbits-builder/pick-fonts";
-import reviewMockup from "@corbits-builder/review-mockup";
 import { withoutResumeContext } from "../config/resume.ts";
+import { CATALOG } from "./catalog.ts";
 import { discover, withPluginHint } from "./tools.ts";
+
+const reviewMockup = CATALOG.installed("review-mockup");
 
 test("discover finds pick-fonts from the person's words and returns how to use it", () => {
   const found = discover({ query: "the font is ugly" });
   expect(found).toStartWith("pick-fonts runs a screen. Groups: look, type.");
-  expect(found).toContain(
-    guidanceText("pick-fonts", pickFonts, [
-      "look.font-primary",
-      "look.font-secondary",
-    ]),
-  );
+  expect(found).toContain(String(CATALOG.installed("pick-fonts")?.guidance));
   expect(found).toContain(
     "Builder gives the screen the project's look.font-primary, look.font-secondary itself; do not pass them.",
   );
@@ -29,10 +24,10 @@ test("discover with nothing matching names the groups and what is in each", () =
       'No plugin matches "send an invoice".',
       "",
       "Groups:",
-      `  look: pick-fonts (Shows the person the fonts in use and fonts to choose a primary and a secondary font from.); pick-colours (Shows the person the primary (brand) and background colours in use and lets them choose new ones.); review-mockup (${reviewMockup.describe.summary})`,
-      "  type: pick-fonts (Shows the person the fonts in use and fonts to choose a primary and a secondary font from.)",
+      `  look: pick-colours (Shows the person the primary (brand) and background colours in use and lets them choose new ones.); pick-fonts (Shows the person the fonts in use and fonts to choose a primary and a secondary font from.); review-mockup (${reviewMockup?.description})`,
       "  colour: pick-colours (Shows the person the primary (brand) and background colours in use and lets them choose new ones.)",
-      `  design: review-mockup (${reviewMockup.describe.summary})`,
+      "  type: pick-fonts (Shows the person the fonts in use and fonts to choose a primary and a secondary font from.)",
+      `  design: review-mockup (${reviewMockup?.description})`,
       "",
       "Call again with group set to one of them, or carry on without a plugin.",
     ].join("\n"),

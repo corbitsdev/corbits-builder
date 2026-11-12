@@ -6,9 +6,6 @@
   "license": "SEE LICENSE IN ../../LICENSE.md",
   "author": "Sawyer Cutler <sawyer@dirtroad.dev>",
   "type": "module",
-  "exports": {
-    "./guidance": "./src/guidance.ts"
-  },
   "builder": {
     "handle": "build-web-app",
     "runs": "route",

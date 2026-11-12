@@ -40,6 +40,7 @@ test("production entries expose concrete native workflows without callback crede
     (await import("./entries/writer-approaches.ts")).default,
     (await import("./entries/writer-product-requirements.ts")).default,
     (await import("./entries/writer-build-plan.ts")).default,
+    (await import("./entries/writer-document.ts")).default,
   ];
   const reviewer = (await import("./entries/reviewer.ts")).default;
   const coder = (await import("./entries/coder.ts")).default;
@@ -118,7 +119,7 @@ test("built npm tarballs contain importable production workflow metadata and def
       inference,
       "classic",
     );
-    expect(manifest).toHaveLength(10);
+    expect(manifest).toHaveLength(11);
     for (const metadata of manifest) {
       const extracted = join(directory, metadata.assetName);
       await mkdir(extracted);

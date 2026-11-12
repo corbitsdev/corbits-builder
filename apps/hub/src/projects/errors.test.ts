@@ -68,6 +68,7 @@ test("a rejected write_artifact call reaches the agent with {path, message} issu
         "writer-approaches": deployment,
         "writer-product-requirements": deployment,
         "writer-build-plan": deployment,
+        "writer-document": deployment,
         reviewer: deployment,
         coder: deployment,
         designer: deployment,
@@ -175,7 +176,7 @@ test("typeIssues names the rule for narrow checks, unions and extra keys without
     {
       path: "kind",
       message:
-        'must be "app", "approaches", "approval_package", "build_plan", "constraints", "design", "design_option", "problem_brief" or "product_requirements"',
+        "must be a document kind: a short lowercase slug such as build_plan",
     },
     { path: "extra", message: "is not allowed here" },
   ]);

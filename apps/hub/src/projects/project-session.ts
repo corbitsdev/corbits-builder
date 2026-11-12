@@ -11,6 +11,7 @@ import type { WorkflowProjectScope } from "@corbits-builder/schemas/installed-wo
 import {
   ArtifactContent,
   DesignBundle,
+  DocumentKind,
   MATERIAL_KIND,
   type ArtifactRef,
   type DesignConcept,
@@ -39,19 +40,10 @@ export type ProjectOptions = {
   maxResultBytes: number;
 };
 
-export const APPROVABLE = [
-  "problem_brief",
-  "constraints",
-  "approaches",
-  "product_requirements",
-  "build_plan",
-] as const;
+// Any filed document's kind, or material.
 export const RequestApproval = type({
   "+": "reject",
-  kinds: type
-    .enumerated(...APPROVABLE, MATERIAL_KIND)
-    .array()
-    .atLeastLength(1),
+  kinds: DocumentKind.or(`'${MATERIAL_KIND}'`).array().atLeastLength(1),
 });
 export const REQUEST_APPROVAL_DESCRIPTION =
   "Ask the person to approve the filed documents of the given kinds, each at its current version; for material, every attached or imported material. One ask covers every document ready for the person, so list them all together, an earlier document with the ones that follow it. Ask for approval once the documents have no open questions left; open questions the person must decide go to them with the question tool first. Their approval is what lets the writer of the next document start from them, and a changed document is approved again.";

@@ -30,6 +30,7 @@
     "when": "The person is unhappy with the colours or unsure which colours would suit the brand or the background.",
     "unless": "They already said exactly which colour they want, or they want another font, bigger or smaller text, or a whole new look.",
     "screen": "./src/screen.ts",
+    "view": "./src/view.tsx",
     "authorizes": false,
     "reads": [
       "look.color-primary",

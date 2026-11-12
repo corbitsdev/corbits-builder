@@ -145,4 +145,8 @@ export default defineScreen({
     return { fonts: offered(fonts, input.list), current, proposed };
   },
   describe,
+  writes: {
+    "look.font-primary": (output) => output.primary.name,
+    "look.font-secondary": (output) => output.secondary.name,
+  },
 });

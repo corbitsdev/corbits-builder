@@ -1,11 +1,11 @@
 import { defineWorkflow, Instruction } from "@corbits-builder/plugin";
-import { WriterDocumentKind } from "@corbits-builder/schemas/artifact";
+import { DocumentKind } from "@corbits-builder/schemas/artifact";
 import { type } from "arktype";
 
 export default defineWorkflow({
   input: type({
     "+": "reject",
-    kind: WriterDocumentKind.or("'problem_brief'"),
+    kind: DocumentKind,
     instruction: Instruction,
   }),
   describe: {
@@ -21,6 +21,8 @@ export default defineWorkflow({
           product_requirements: "the product requirements",
           build_plan: "the build plan",
         },
+        otherwise:
+          "Or the kind of any other filed document, as read_artifact lists it.",
       },
       instruction: { about: "What the reviewer should check." },
     },

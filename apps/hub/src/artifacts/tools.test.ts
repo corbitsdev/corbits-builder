@@ -78,6 +78,7 @@ function harness(
           "writer-approaches": deployment,
           "writer-product-requirements": deployment,
           "writer-build-plan": deployment,
+          "writer-document": deployment,
           reviewer: deployment,
           coder: deployment,
           designer: deployment,

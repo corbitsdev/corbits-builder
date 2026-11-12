@@ -40,7 +40,7 @@ export type Cases = typeof Cases.infer;
 export type CaseModel = Cases["models"][number];
 export type HintSetting = Cases["hints"][number];
 
-// The hub appends this note to the person's message (apps/hub/src/config/screen-plugins.ts).
+// The hub appends this note to the person's message (packages/plugin-host/src/text.ts).
 const HINT_LEAD = "Builder's note, not written by the person:";
 const PROJECT_READS = new Set(["read_artifact"]);
 

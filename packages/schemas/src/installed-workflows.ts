@@ -15,6 +15,7 @@ export const WORKFLOW_PACKAGES = {
   "writer-approaches": "writer",
   "writer-product-requirements": "writer",
   "writer-build-plan": "writer",
+  "writer-document": "writer",
   reviewer: "reviewer",
   coder: "coder",
   // The coder whose install_packages does not ask, for a project that turned asking off.
@@ -24,21 +25,24 @@ export const WORKFLOW_PACKAGES = {
 } as const satisfies Record<string, WorkflowRole>;
 export type WorkflowPackage = keyof typeof WORKFLOW_PACKAGES;
 
-// Each writer package saves only its own document kind.
+// Each writer package of a known kind saves only that kind.
 export const WRITER_PACKAGES = {
   constraints: "writer-constraints",
   approaches: "writer-approaches",
   product_requirements: "writer-product-requirements",
   build_plan: "writer-build-plan",
 } as const satisfies Record<WriterDocumentKind, WorkflowPackage>;
+// The writer of any document, which saves it under the kind its task names.
+export const DOCUMENT_WRITER_PACKAGE = "writer-document";
 
 const writerDeployments = {
   "writer-constraints": NativeSpecialistDeployment,
   "writer-approaches": NativeSpecialistDeployment,
   "writer-product-requirements": NativeSpecialistDeployment,
   "writer-build-plan": NativeSpecialistDeployment,
+  "writer-document": NativeSpecialistDeployment,
 } as const satisfies Record<
-  (typeof WRITER_PACKAGES)[WriterDocumentKind],
+  (typeof WRITER_PACKAGES)[WriterDocumentKind] | typeof DOCUMENT_WRITER_PACKAGE,
   unknown
 >;
 

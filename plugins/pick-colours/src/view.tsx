@@ -237,3 +237,5 @@ function Choosing({
     </GateBlock>
   );
 }
+
+export default ColourPicker;

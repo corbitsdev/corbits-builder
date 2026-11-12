@@ -690,6 +690,7 @@ test("check_design validates DESIGN.md and .dark in styles.css and auto-files th
             "writer-approaches": deployment,
             "writer-product-requirements": deployment,
             "writer-build-plan": deployment,
+            "writer-document": deployment,
             reviewer: deployment,
             coder: deployment,
             designer: deployment,

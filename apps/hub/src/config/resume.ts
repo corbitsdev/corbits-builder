@@ -1,7 +1,10 @@
 import type { ConversationTextTurn } from "@corbits-builder/schemas/conversation";
 import type { ApprovalDecision } from "@intx/types/signals";
 import { IMPORTED_PROJECT_LEAD } from "./import.ts";
-import { PLUGIN_HINT_END, PLUGIN_HINT_LEAD } from "./screen-plugins.ts";
+import {
+  PLUGIN_HINT_END,
+  PLUGIN_HINT_LEAD,
+} from "@corbits-builder/plugin-host/text";
 import { SPECIALIST_ENDED_LEAD } from "./specialist-ended.ts";
 
 // A resumed project's new coordinator starts with no history. The hub holds what it needs and

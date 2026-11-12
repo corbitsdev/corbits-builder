@@ -74,4 +74,8 @@ export default defineScreen({
     return { current, proposed };
   },
   describe,
+  writes: {
+    "look.color-primary": (output) => output.primary,
+    "look.color-background": (output) => output.background,
+  },
 });

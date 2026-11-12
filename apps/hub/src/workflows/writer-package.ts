@@ -1,18 +1,28 @@
 import { createWriterAgent } from "@corbits-builder/writer/agent";
 import { createWriterWorkflow } from "@corbits-builder/writer";
 import type { WriterDocumentKind } from "@corbits-builder/schemas/artifact";
-import { createWriterArtifactTools } from "../artifacts/tools.ts";
+import {
+  createDocumentWriterArtifactTools,
+  createWriterArtifactTools,
+} from "../artifacts/tools.ts";
 import { createSkillTools } from "../skills/tools.ts";
 import { roleInference } from "./role-inference.ts";
 import { compactingDirector } from "./director.ts";
 import { dropDegenerateTurn, trimHistory } from "./compaction.ts";
 import { savedResultTools } from "./saved-result-tools.ts";
-import { WRITER_PACKAGES } from "@corbits-builder/schemas/installed-workflows";
+import {
+  DOCUMENT_WRITER_PACKAGE,
+  WRITER_PACKAGES,
+} from "@corbits-builder/schemas/installed-workflows";
 import { nativePackageName } from "./package-name.ts";
 
-/** The writer's workflow package for one document kind, whose write_artifact saves only that kind. */
-export function writerPackage(kind: WriterDocumentKind) {
-  const name = WRITER_PACKAGES[kind];
+/**
+ * The writer's workflow package for one known kind, whose write_artifact saves only that kind, or
+ * with no kind the writer of any document, which saves it under the kind it names.
+ */
+export function writerPackage(kind?: WriterDocumentKind) {
+  const name =
+    kind === undefined ? DOCUMENT_WRITER_PACKAGE : WRITER_PACKAGES[kind];
   const compacting = compactingDirector(nativePackageName(name));
   const { source, contextWindow, timeouts, parameters } =
     roleInference("writer");
@@ -27,7 +37,9 @@ export function writerPackage(kind: WriterDocumentKind) {
     capabilities: [],
     inference: { ...source, parameters },
     tools: [
-      createWriterArtifactTools(kind),
+      kind === undefined
+        ? createDocumentWriterArtifactTools()
+        : createWriterArtifactTools(kind),
       createSkillTools([
         "constraints",
         "approaches",

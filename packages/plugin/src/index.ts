@@ -17,12 +17,16 @@ const Common = type({
   // How a person would ask for it, in their words.
   "examples?": "string[]",
   "triggers?": "string[]",
+  // Each fact this plugin's work is about, in plain words, as refusals and discover say it.
+  "facts?": { "[string]": "string > 0" },
 });
 
 // The `builder` block of a screen plugin's package.json: what the coordinator searches and reads.
 export const Builder = Common.merge({
   runs: "'screen'",
   screen: "string > 0",
+  // The module whose default export draws the screen in the interface.
+  view: "string > 0",
   "data?": "string > 0",
   "authorizes?": "boolean",
   // Project values, by their registered names, that Builder supplies to the screen and saves from its output.
@@ -49,6 +53,8 @@ const ActionBuilder = type({
 export const WorkflowActionBuilder = ActionBuilder.merge({
   runs: "'workflow'",
   input: "string > 0",
+  // The installed workflow the host starts, and what that workflow's starter takes besides the input.
+  start: { workflow: "string > 0", "[string]": "unknown" },
 });
 export type WorkflowActionBuilder = typeof WorkflowActionBuilder.infer;
 
@@ -133,6 +139,8 @@ export type Screen<In, Out, Data, Prepared> = {
     project: ProjectValues,
   ) => Prepared;
   describe: Describe<keyof Type<In>["inferIn"]>;
+  // Each project value the manifest writes, taken from the screen's output.
+  writes?: Record<string, (output: Type<Out>["infer"]) => string>;
 };
 
 export const defineScreen = <In, Out, Data, Prepared>(
@@ -198,6 +206,20 @@ const refused = (
 
 const isRecord = (value: unknown): value is Record<string, unknown> =>
   typeof value === "object" && value !== null && !Array.isArray(value);
+
+/** Whether a module's default export is a workflow action's input, as defineWorkflow makes one. */
+export const isWorkflow = (value: unknown): value is Workflow<unknown> =>
+  isRecord(value) &&
+  typeof value["input"] === "function" &&
+  isRecord(value["describe"]) &&
+  typeof value["describe"]["summary"] === "string" &&
+  isRecord(value["describe"]["fields"]);
+
+/** Whether a module's default export is a screen, as defineScreen makes one. */
+export const isScreen = (
+  value: unknown,
+): value is Screen<unknown, unknown, unknown, unknown> =>
+  isRecord(value) && typeof value["output"] === "function" && isWorkflow(value);
 
 function schemaRefusal(
   fields: Record<string, Field | undefined>,

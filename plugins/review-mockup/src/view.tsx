@@ -368,3 +368,5 @@ function Review({
     </section>
   );
 }
+
+export default MockupReview;

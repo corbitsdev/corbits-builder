@@ -7,17 +7,34 @@ import { ApproachesMeta } from "./approaches.ts";
 const text = type("string > 0").atMostLength(512);
 const sha256 = /^[a-f0-9]{64}$/;
 
-// Documents a model writes as text. A design concept's option is filed from the designer's
-// workspace by file_design_option, the design by the person's choice among the options, and the
-// app from the coder's workspace each time check-app passes.
+// The documents the hub knows, each with a writer, fields and a template of its own.
 export const WriterDocumentKind = type(
   "'constraints' | 'approaches' | 'product_requirements' | 'build_plan'",
 );
 export type WriterDocumentKind = typeof WriterDocumentKind.infer;
-const DocumentKind = WriterDocumentKind.or("'problem_brief'");
-const WritableArtifactKind = DocumentKind.or(
-  "'design' | 'design_option' | 'app' | 'approval_package'",
-);
+// What no model writes as text. A design concept's option is filed from the designer's workspace
+// by file_design_option, the design by the person's choice among the options, the app from the
+// coder's workspace each time check-app passes, and the approval package by the presenter.
+const BUNDLE_KINDS = [
+  "design",
+  "design_option",
+  "app",
+  "approval_package",
+] as const;
+// A file the person attached to the project, filed under its filename; attaching the same name
+// again files its next version. A text file's content is its text, any other file's a base64
+// data: URL.
+export const MATERIAL_KIND = "material";
+// Any kind a model writes as text: a short slug, the known kinds among them. A kind the hub does not
+// know is simply a document, filed, versioned, reviewed and approved like the known ones. A pattern
+// rather than a narrow, so a tool's input schema carries it.
+export const DocumentKind = type(
+  new RegExp(
+    `^(?!(?:${[...BUNDLE_KINDS, MATERIAL_KIND].join("|")})$)[a-z][a-z0-9_]{0,63}$`,
+  ),
+).describe("a document kind: a short lowercase slug such as build_plan");
+export const isDocumentKind = (kind: string) => DocumentKind.allows(kind);
+const WritableArtifactKind = DocumentKind.or(type.enumerated(...BUNDLE_KINDS));
 const content = type("string > 0").atMostLength(256 * 1024);
 export const DocumentContent = content;
 export const MAX_APPROVAL_PACKAGE_BYTES = 4 * 1024 * 1024;
@@ -72,6 +89,12 @@ export const WriterDocumentFields = {
     ...documentFields,
   }),
 };
+// The fields a writer of any document saves, under the kind its task names.
+export const AnyDocumentFields = type({
+  "+": "reject",
+  kind: DocumentKind,
+  ...documentFields,
+});
 export const DocumentWrite = type({
   "+": "reject",
   kind: DocumentKind,
@@ -477,11 +500,6 @@ export const DecidedApprovalList = type({
   approvals: DecidedApproval.array(),
 });
 export type DecidedApprovalList = typeof DecidedApprovalList.infer;
-
-// A file the person attached to the project, filed under its filename; attaching the same name
-// again files its next version. A text file's content is its text, any other file's a base64
-// data: URL.
-export const MATERIAL_KIND = "material";
 
 export const MaterialReceipt = type({
   "+": "reject",

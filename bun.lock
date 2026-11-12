@@ -64,21 +64,15 @@
       "version": "0.1.0-rc.3",
       "dependencies": {
         "@anthropic-ai/sandbox-runtime": "0.0.81",
-        "@corbits-builder/build-web-app": "workspace:*",
         "@corbits-builder/coder": "workspace:*",
-        "@corbits-builder/coder-plugin": "workspace:*",
         "@corbits-builder/coordinator": "workspace:*",
-        "@corbits-builder/design-app": "workspace:*",
         "@corbits-builder/designer": "workspace:*",
-        "@corbits-builder/pick-colours": "workspace:*",
-        "@corbits-builder/pick-fonts": "workspace:*",
         "@corbits-builder/plugin": "workspace:*",
+        "@corbits-builder/plugin-host": "workspace:*",
         "@corbits-builder/presenter": "workspace:*",
-        "@corbits-builder/review-mockup": "workspace:*",
         "@corbits-builder/reviewer": "workspace:*",
         "@corbits-builder/schemas": "workspace:*",
         "@corbits-builder/writer": "workspace:*",
-        "@corbits-builder/writer-plugin": "workspace:*",
         "@corbits/agent-token": "0.2.2",
         "@corbits/artifacts": "0.3.0",
         "@corbits/codex-provider": "0.1.5",
@@ -184,6 +178,14 @@
       "version": "0.1.0-rc.3",
       "dependencies": {
         "@corbits-builder/schemas": "workspace:*",
+        "arktype": "catalog:",
+      },
+    },
+    "packages/plugin-host": {
+      "name": "@corbits-builder/plugin-host",
+      "version": "0.1.0-rc.3",
+      "dependencies": {
+        "@corbits-builder/plugin": "workspace:*",
         "arktype": "catalog:",
       },
     },
@@ -872,6 +874,8 @@
     "@corbits-builder/pick-fonts": ["@corbits-builder/pick-fonts@workspace:plugins/pick-fonts"],
 
     "@corbits-builder/plugin": ["@corbits-builder/plugin@workspace:packages/plugin"],
+
+    "@corbits-builder/plugin-host": ["@corbits-builder/plugin-host@workspace:packages/plugin-host"],
 
     "@corbits-builder/presenter": ["@corbits-builder/presenter@workspace:workflows/presenter"],
 
