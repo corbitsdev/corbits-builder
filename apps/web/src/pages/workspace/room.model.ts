@@ -1382,9 +1382,10 @@ export function useRoom({
       at: Date.parse(run.startedAt),
       dispatch: runDispatch(run),
     }));
+  for (const { dispatch } of unseenRuns) noteDispatch(dispatchRoom, dispatch);
   const cards = [
     ...unseenRuns,
-    ...filedDispatches(snapshot.artifacts, [
+    ...filedDispatches(dispatchRoom, [
       ...dispatches,
       ...unseenRuns.map(({ dispatch }) => dispatch),
     ]),

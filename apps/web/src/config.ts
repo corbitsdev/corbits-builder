@@ -783,8 +783,9 @@ export const wording = {
     /** The hand-off and the reports under one line: "Wrote Approaches · 3 steps". */
     steps: (line: string, count: number) =>
       count < 2 ? line : `${line} · ${String(count)} steps`,
+    /** The document the run filed, under the header that already says it was written. */
     ready: (document: string, version: number) =>
-      `✓ ${document} v${String(version)} ready`,
+      `${document} v${String(version)}`,
     open: "Open",
     /** Opens the project view on what a working specialist is making, as it makes it. */
     watchDraft: "Watch the draft",

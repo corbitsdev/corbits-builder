@@ -277,9 +277,13 @@ const WRITTEN = new Set([
   "build_plan",
 ]);
 
+// The kind a ready card opens: a concept's option opens under its concept.
+const openedKind = (filed: ProjectArtifact) =>
+  filed.kind === "design_option" ? `concept:${filed.title}` : filed.kind;
+
 const readyOf = (filed: ProjectArtifact): DispatchStatus => ({
   state: "ready",
-  kind: filed.kind === "design_option" ? `concept:${filed.title}` : filed.kind,
+  kind: openedKind(filed),
   title: filed.title,
   version: filed.version,
 });
@@ -369,18 +373,28 @@ const FILED_BY: Record<string, Role> = {
 };
 
 /**
- * Each filed thing no hand-off or run card in view made, such as one filed in an earlier session,
- * as a finished hand-off placed when its current version was filed.
+ * Each filed thing no hand-off or run card in view covers, such as one filed in an earlier session,
+ * as a finished hand-off placed when its current version was filed. A card covers what its action
+ * files, and what it already reports as its result, as a run named by no call does.
  */
 export function filedDispatches(
-  artifacts: readonly ProjectArtifact[],
+  room: DispatchRoom,
   carded: readonly Dispatch[],
 ): PlacedDispatch[] {
-  const made = new Set(carded.map((dispatch) => target(dispatch, artifacts)));
-  return artifacts.flatMap((item) => {
+  const covered = new Set(
+    carded.flatMap((dispatch) => {
+      const kind =
+        dispatch.concept === undefined
+          ? targetKind(dispatch)
+          : `concept:${dispatch.concept}`;
+      const status = dispatchStatus(dispatch, room);
+      return [kind, status.state === "ready" ? status.kind : undefined];
+    }),
+  );
+  return room.artifacts.flatMap((item) => {
     const writes = isDocumentKind(item.kind) && item.kind !== "problem_brief";
     const role = writes ? "writer" : FILED_BY[item.kind];
-    if (role === undefined || made.has(item)) return [];
+    if (role === undefined || covered.has(openedKind(item))) return [];
     const key = `filed:${item.artifactId}`;
     return [
       {

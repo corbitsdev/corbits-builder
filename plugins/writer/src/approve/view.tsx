@@ -1,10 +1,13 @@
 /**
- * The documents the person is asked to approve, each at its current version with a way to open it,
- * and one Approve for them all. Settles to one line once answered.
+ * The ask to approve the documents, as one card in the conversation: what is asked, each document
+ * at its current version with a way to open it, and one Approve for them all. Settles to one line
+ * once answered.
  */
+import { useId } from "react";
 import { Button } from "@corbits/react-ui";
 import type { ScreenViewProps } from "@corbits-builder/plugin";
 import type { Input, Output } from "./schema.ts";
+import styles from "./view.module.css";
 
 /** A filed document at its current version, as the host lists it. */
 export type ShownDocument = {
@@ -26,17 +29,29 @@ type Props = ScreenViewProps<
   Host
 >;
 
+// How the ask names a lone document by its kind; any other kind is "this document".
+const NAMED: Record<string, string> = {
+  problem_brief: "the problem brief",
+  constraints: "the constraints",
+  approaches: "the approaches",
+  product_requirements: "the requirements",
+  build_plan: "the build plan",
+};
+
 export const text = {
   title: "Approve the documents",
-  version: (version: number) => `version ${String(version)}`,
+  ask: ([only, ...others]: readonly string[]) =>
+    only !== undefined && others.length === 0
+      ? `Approve ${NAMED[only] ?? "this document"}?`
+      : `Approve these ${String(others.length + 1)} documents?`,
+  version: (version: number) => `v${String(version)}`,
   approved: "already approved",
   open: "Open",
   notFiled: (kind: string) => `${kind} is not filed yet.`,
   approve: "Approve",
   orWrite: "Or write below what should change.",
   noDocuments: "The documents cannot be shown here.",
-  settled: (approved: readonly { kind: string; version: number }[]) =>
-    `Approved ${approved.map(({ kind, version }) => `${kind} version ${String(version)}`).join(", ")}.`,
+  settled: (approved: readonly string[]) => `Approved: ${approved.join(", ")}`,
 };
 
 export function ApproveDocuments({
@@ -46,26 +61,59 @@ export function ApproveDocuments({
   answer,
   host,
 }: Props) {
-  if (answer !== undefined) return <p>{text.settled(answer.approved)}</p>;
-  if (host === undefined) return <p>{text.noDocuments}</p>;
+  const askId = useId();
+  if (answer !== undefined) {
+    const titles = new Map(
+      host?.documents.list.map((document) => [document.kind, document.title]),
+    );
+    const line = text.settled(
+      answer.approved.map(
+        ({ kind, version }) =>
+          `${titles.get(kind) ?? kind} ${text.version(version)}`,
+      ),
+    );
+    return (
+      <p className={styles.settled} title={line}>
+        <span aria-hidden="true" className={styles.mark}>
+          ✓
+        </span>
+        <span>{line}</span>
+      </p>
+    );
+  }
+  if (host === undefined)
+    return <p className={styles.hint}>{text.noDocuments}</p>;
   const { list, open } = host.documents;
   const filed = list.filter((document) => input.kinds.includes(document.kind));
   const missing = input.kinds.filter(
     (kind) => !filed.some((document) => document.kind === kind),
   );
   return (
-    <section aria-label={text.title} data-slot="approve-documents">
-      <ul>
+    <section
+      className={styles.card}
+      aria-labelledby={askId}
+      data-slot="approve-documents"
+    >
+      <p id={askId} className={styles.question}>
+        {text.ask(input.kinds)}
+      </p>
+      <ul className={styles.documents}>
         {filed.map((document) => (
-          <li key={document.kind}>
-            {document.title}, {text.version(document.version)}
-            {document.approvedVersion === document.version
-              ? `, ${text.approved}`
-              : null}{" "}
+          <li key={document.kind} className={styles.document}>
+            <span className={styles.title} title={document.title}>
+              {document.title}
+            </span>
+            <span className={styles.meta}>
+              {text.version(document.version)}
+              {document.approvedVersion === document.version
+                ? ` · ${text.approved}`
+                : null}
+            </span>
             <Button
               type="button"
               size="sm"
-              variant="outline"
+              variant="link"
+              className={styles.open}
               onClick={() => open(document.kind)}
             >
               {text.open}
@@ -73,26 +121,30 @@ export function ApproveDocuments({
           </li>
         ))}
         {missing.map((kind) => (
-          <li key={kind}>{text.notFiled(kind)}</li>
+          <li key={kind} className={styles.document}>
+            <span className={styles.meta}>{text.notFiled(kind)}</span>
+          </li>
         ))}
       </ul>
-      <Button
-        type="button"
-        size="sm"
-        disabled={submitting || missing.length > 0}
-        onClick={() =>
-          void submit({
-            approved: filed.map(({ kind, artifactId, version }) => ({
-              kind,
-              artifactId,
-              version,
-            })),
-          })
-        }
-      >
-        {text.approve}
-      </Button>
-      <p>{text.orWrite}</p>
+      <div className={styles.actions}>
+        <Button
+          type="button"
+          size="sm"
+          disabled={submitting || missing.length > 0}
+          onClick={() =>
+            void submit({
+              approved: filed.map(({ kind, artifactId, version }) => ({
+                kind,
+                artifactId,
+                version,
+              })),
+            })
+          }
+        >
+          {text.approve}
+        </Button>
+        <p className={styles.hint}>{text.orWrite}</p>
+      </div>
     </section>
   );
 }
