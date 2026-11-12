@@ -108,7 +108,9 @@ export function withLongerAppCheck(turns: readonly Turn[]): Turn[] {
 
 /**
  * A coder whose assignment contains the text and that runs the app check on the starter as it is,
- * which refuses it for want of a README and a user manual, and reports that.
+ * which refuses it for want of a README and a user manual, and reports that. A reply before a
+ * passing check is held with a note in the same conversation; the fourth ends the run as not
+ * finished, and the coordinator is told so in a hub note.
  */
 export function coderChecksStarter(options: {
   assignedWith: string;
@@ -123,14 +125,13 @@ export function coderChecksStarter(options: {
       }),
       CODER_TOOLS,
     ),
-    // A coder that stops before its app is filed is asked again with the same history, four
-    // times in all, before its reply goes to the coordinator.
-    ...Array.from({ length: 4 }, () =>
-      turn(
-        results(ok("coder_check", "run_shell", "check failed")),
-        say(options.report),
-        CODER_TOOLS,
-      ),
+    turn(
+      results(ok("coder_check", "run_shell", "check failed")),
+      say(options.report),
+      CODER_TOOLS,
+    ),
+    ...Array.from({ length: 3 }, () =>
+      turn(user("Builder held your reply"), say(options.report), CODER_TOOLS),
     ),
   ];
 }

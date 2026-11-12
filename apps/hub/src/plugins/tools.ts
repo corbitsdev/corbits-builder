@@ -112,6 +112,21 @@ function project(session: ProjectSession): Project {
   };
 }
 
+/** The coordinator's project, as a screen its question opens is checked against. */
+export async function screenProject(
+  env: DeployEnv,
+  options: ProjectOptions | undefined,
+) {
+  const signal = new AbortController().signal;
+  return project(
+    projectSession(
+      env,
+      options ?? (await resolveProjectOptions(env.capabilities, signal)),
+      signal,
+    ),
+  );
+}
+
 // The classic coordinator finds what it can do from the person's wording instead of carrying every
 // plugin in its prompt.
 export function createPluginTools() {
@@ -160,8 +175,8 @@ export function createExecuteTools(
     definitions: [{ name: "discover" }, { name: "execute" }, { name: "runs" }],
     factory: (env) => ({
       definitions,
-      checkQuestion: (question) =>
-        checkPluginQuestion(question, env.capabilities, options),
+      checkQuestion: async (question) =>
+        checkPluginQuestion(question, await screenProject(env, options)),
       run: async (call, signal) => {
         if (!options) {
           try {

@@ -30,6 +30,26 @@ export function resolveFacts(facts: readonly Fact[], input: unknown): Fact[] {
   });
 }
 
+/** The fact a negated one, such as "!app_exists", says must not hold; undefined for any other. */
+export const negated = (fact: Fact) =>
+  fact.startsWith("!") ? fact.slice(1) : undefined;
+
+/** Whether an action's finished work makes a fact true; "filed:{kind}" makes any document filed. */
+export const makes = (made: Fact, fact: Fact) =>
+  made === fact ||
+  (templateField(made) !== undefined &&
+    made.split(":")[0] === fact.split(":")[0]);
+
+// A template no input has filled holds when any document is in its state, as "filed:{kind}" does
+// once something is filed: what discover can say before the coordinator picks the documents.
+export function holds(fact: Fact, facts: ReadonlySet<Fact>) {
+  const not = negated(fact);
+  if (not !== undefined) return !facts.has(not);
+  if (templateField(fact) !== undefined)
+    return [...facts].some((known) => makes(fact, known));
+  return facts.has(fact);
+}
+
 /**
  * The one check of what a plugin requires: for each alternative, the facts it still lacks. An
  * empty list means nothing is required or one alternative holds.
@@ -39,13 +59,7 @@ export function unmet(
   facts: ReadonlySet<Fact>,
 ): Fact[][] {
   const missing = requires.map((alternative) =>
-    alternative.filter((fact) => !facts.has(fact)),
+    alternative.filter((fact) => !holds(fact, facts)),
   );
   return missing.some((lacking) => lacking.length === 0) ? [] : missing;
 }
-
-/** Whether an action's finished work makes a fact true; "filed:{kind}" makes any document filed. */
-export const makes = (made: Fact, fact: Fact) =>
-  made === fact ||
-  (templateField(made) !== undefined &&
-    made.split(":")[0] === fact.split(":")[0]);

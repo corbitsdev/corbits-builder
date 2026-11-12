@@ -42,7 +42,12 @@ scenario({
       results(ok("c_build_off_route", "execute", '"started":true')),
       say("A coder is building it."),
     ),
-    turn(user(report), say("Your app is built.")),
+    turn(
+      user(
+        "Hub note, not from the person: The coder's build stopped before finishing.",
+      ),
+      say("The coder could not finish the build."),
+    ),
   ],
   specialists: {
     coder: {
@@ -51,7 +56,7 @@ scenario({
     },
   },
   person: async (p) => {
-    await p.heard("Your app is built.");
+    await p.heard("The coder could not finish the build.");
     for (const id of [
       "c_route",
       "c_build_on_route",

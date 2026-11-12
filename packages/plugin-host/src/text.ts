@@ -50,7 +50,7 @@ export const writesText = (values: Values, writes: readonly string[]) =>
   ].join("\n");
 
 export const DISCOVER_DYNAMIC_DESCRIPTION =
-  "Find what you can do for the person: every piece of work you can start is a plugin. Pass query with what they asked for, in their words, or group to list every plugin in that group. A specialist plugin comes with its actions, how to use each, what each requires and whether the project has that now. Specialist actions and route plugins are started with execute; a screen action is shown to the person with question({ plugin, action, input }).";
+  "Find what you can do for the person: every piece of work you can start is a plugin. Pass query with what they asked for, in their words, or group to list every plugin in that group: each comes in a line, with a line for each action saying what it is for and whether it can start or open now, or what it needs first, and then the project's values. Pass plugin, and action, for that action's full guidance and the input it takes; read it before you first start or open an action. Specialist actions and route plugins are started with execute; a screen action is shown to the person with question({ plugin, action, input }).";
 
 /** Missing facts that together make one alternative, with the installed actions that make them true. */
 const missingLine = (
@@ -90,23 +90,32 @@ export const assignedValuesText = (
   read: Readonly<Record<string, unknown>>,
 ) =>
   [
-    "\n\nProject values, as the person set them; follow each that is set:",
+    "\n\nProject values, as the project has them; follow each that is set:",
     ...Object.entries(read).map(
       ([name, value]) =>
         `- ${name}: ${values.get(name)?.about} ${value === null ? "Not set." : `Value: ${JSON.stringify(value)}`}`,
     ),
   ].join("\n");
 
-/** The project's values as discover lists them, so the coordinator knows what exists. */
+// How much of a value discover shows; the actions that read it get all of it.
+const SHOWN_VALUE = 200;
+
+const shownValue = (value: unknown) => {
+  if (value === null) return "Not set.";
+  const json = JSON.stringify(value);
+  if (json.length <= SHOWN_VALUE) return `Now: ${json}`;
+  return `Now: ${json.slice(0, SHOWN_VALUE)}… (shortened from ${json.length} characters; the actions that read it get all of it)`;
+};
+
+/** The project's values as discover lists them, each with what it holds now. */
 export const projectValuesText = (
   values: Values,
   read: Readonly<Record<string, unknown>>,
 ) =>
   [
-    "\n\nProject values (Builder hands each to the actions and screens that read it; only the person sets them):",
+    "Project values (Builder hands each to the actions and screens that read it; the person sets them on screens, and an action that writes one saves it as its run learns it):",
     ...[...values].map(
-      ([name, { about }]) =>
-        `  ${name}: ${about} ${read[name] === null ? "Not set." : "Set."}`,
+      ([name, { about }]) => `  ${name}: ${about} ${shownValue(read[name])}`,
     ),
   ].join("\n");
 
@@ -125,10 +134,14 @@ export type Readiness = {
 export const isReady = ({ own, routes }: Readiness) =>
   own.length === 0 && routes.every(({ goAhead }) => goAhead.length === 0);
 
-/** Whether an action could start now, in a line for discover and a route's steps. */
-export function readinessText(readiness: Readiness, factText: FactText) {
+/** Whether an action could start, or a screen open, now, in a line for discover and a route's steps. */
+export function readinessText(
+  readiness: Readiness,
+  factText: FactText,
+  ready = "can start now",
+) {
   const facts = (list: readonly Fact[]) => list.map(factText).join(" and ");
-  const parts = isReady(readiness) ? ["can start now"] : [];
+  const parts = isReady(readiness) ? [ready] : [];
   if (readiness.own.length > 0)
     parts.push(`needs: ${requiresText(readiness.own, factText)}`);
   for (const { route, goAhead } of readiness.routes)
@@ -142,15 +155,19 @@ export function readinessText(readiness: Readiness, factText: FactText) {
   return parts.join("; ");
 }
 
-/** Why a workflow action was not started, naming each missing fact and what makes it true. */
+/**
+ * Why a workflow action was not started with execute, or a screen not shown with question, naming
+ * each missing fact and what makes it true.
+ */
 export function unmetRequirement(
   handle: string,
   { own, routes }: Readiness,
   makers: (fact: Fact) => string[],
   factText: FactText,
+  tool: "execute" | "question",
 ) {
   const lines = [
-    `${handle} was not started. The project does not have what it needs yet.`,
+    `${handle} was not ${tool === "execute" ? "started" : "shown"}. The project does not have what it needs yet.`,
     "",
   ];
   if (own.length > 0)
@@ -170,7 +187,7 @@ export function unmetRequirement(
   }
   lines.push(
     "",
-    "Start what makes these true first, or ask the person, then call execute again.",
+    `Start what makes these true first, or ask the person, then call ${tool} again.`,
   );
   for (const { route } of holding)
     lines.push(
@@ -329,7 +346,54 @@ export const DISCOVER_DESCRIPTION =
   "Find a plugin for something the person wants that none of your other tools obviously does. Pass query with what they asked for, in their words, or group to list every plugin in that group. A screen it finds is then shown to the person with question({ plugin, action, input }).";
 
 export const DISCOVER_NEEDS_ONE =
-  "Pass either query, with what the person asked for, or group.";
+  "Pass one of query, with what the person asked for, group, or plugin.";
+
+export const DISCOVER_ACTION_NEEDS_PLUGIN =
+  "Pass action with the plugin whose action it is.";
+
+/** What discover's listing ends with: how to read an action in full. */
+export const DISCOVER_MORE =
+  "For an action's full guidance and the input it takes, call discover({ plugin, action }); discover({ plugin }) gives all of a plugin's.";
+
+/** A specialist as discover lists it: a line for it, then one for each action. */
+export const specialistListing = (
+  handle: string,
+  description: string,
+  actions: readonly {
+    action: string;
+    screen: boolean;
+    when: string;
+    now: string;
+  }[],
+) =>
+  [
+    `${handle}: ${description}`,
+    ...actions.map(
+      ({ action, screen, when, now }) =>
+        `  ${action}${screen ? " (screen)" : ""}: ${when} Now: ${now}.`,
+    ),
+  ].join("\n");
+
+/** A route as discover lists it: a line for it, then one for each step. */
+export const routeListing = (
+  handle: string,
+  description: string,
+  following: boolean,
+  steps: readonly { name: string; readiness: string }[],
+) =>
+  [
+    `${handle} (route): ${description} ${following ? "This project follows it." : `execute({ plugin: "${handle}" }) has the project follow it.`}`,
+    ...steps.map(({ name, readiness }) => `  step ${name}: ${readiness}.`),
+  ].join("\n");
+
+export const noActionFound = (
+  handle: string,
+  asked: string,
+  actions: readonly string[],
+) =>
+  actions.length === 0
+    ? `${handle} has no actions. Call discover({ plugin: "${handle}" }) for its guidance.`
+    : `${handle} has no action ${JSON.stringify(asked)}. Its actions: ${actions.join(", ")}. Call discover again with one of them.`;
 
 // Each plugin found, with what status says of it for the project when discover knows the project.
 export const foundPlugins = (
@@ -347,13 +411,14 @@ export const foundPlugins = (
     .join("\n\n");
 
 export function noPluginFound(
-  asked: { query?: string; group?: string },
+  asked: { query?: string; group?: string; plugin?: string },
   groups: ReadonlyMap<string, readonly Plugin[]>,
 ): string {
-  const missing =
-    asked.group === undefined
-      ? `No plugin matches ${JSON.stringify(asked.query)}.`
-      : `No plugin is in the group ${JSON.stringify(asked.group)}.`;
+  let missing = `No plugin matches ${JSON.stringify(asked.query)}.`;
+  if (asked.group !== undefined)
+    missing = `No plugin is in the group ${JSON.stringify(asked.group)}.`;
+  if (asked.plugin !== undefined)
+    missing = `No plugin is called ${JSON.stringify(asked.plugin)}.`;
   return [
     missing,
     "",

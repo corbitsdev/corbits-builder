@@ -30,8 +30,6 @@ scenario({
   title:
     "a coder saves the language it found, is refused a value its action does not write and one of the wrong type, and its run token cannot write values directly",
   start: "weather-app",
-  expectFailure:
-    "discover lists only whether each project value is set, never its value, so the coordinator cannot see the language the coder saved; and on any request a person would make, even one only the coder answers, discover lists several plugins and runs past the 10,000 characters a tool result keeps, cutting the values list off entirely; only discover of one group shows the list",
   values: ["stack.language", "brand.guidelines"],
   coordinator: [
     turn(
@@ -173,5 +171,7 @@ scenario({
     const stored = await p.call("GET", `${p.path}/values?keys=stack.language`);
     expect(stored.body).toEqual({ values: { "stack.language": language } });
     expect(p.resultOf("c_discover_group").text).toContain(language);
+    expect(p.resultOf("c_discover").text).toContain(language);
+    expect(p.resultOf("c_discover_narrow").text).toContain(language);
   },
 });

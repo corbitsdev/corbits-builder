@@ -18,7 +18,7 @@ import {
   type ValueDeclaration,
   type WorkflowActionBuilder,
 } from "@corbits-builder/plugin";
-import { patternFact, resolveFacts, templateField } from "./facts.ts";
+import { negated, patternFact, resolveFacts, templateField } from "./facts.ts";
 import type { Found } from "./folder.ts";
 import {
   presentsText,
@@ -179,7 +179,8 @@ export function manifestFiles(found: Found) {
   return { modules: [], texts: [builder.guidance], folders: [] };
 }
 
-// Refuses a fact that is neither one the host works out nor a template on a field the plugin takes.
+// Refuses a fact that is neither one the host works out, or its negation, nor a template on a field
+// the plugin takes.
 function checkFacts(
   name: string,
   facts: readonly Fact[],
@@ -188,7 +189,9 @@ function checkFacts(
 ) {
   const unknown = facts.find((fact) => {
     const field = templateField(fact);
-    return field === undefined ? !known.has(fact) : !takes(field);
+    return field === undefined
+      ? !known.has(negated(fact) ?? fact)
+      : !takes(field);
   });
   if (unknown !== undefined)
     throw new Error(
@@ -202,7 +205,7 @@ function factWords(manifests: readonly Manifested[], known: ReadonlySet<Fact>) {
   const words = new Map<Fact, { handle: string; text: string }>();
   for (const { builder } of manifests)
     for (const [fact, text] of Object.entries(builder.facts ?? {})) {
-      if (!known.has(fact))
+      if (!known.has(negated(fact) ?? fact))
         throw new Error(
           `${builder.handle} describes ${fact}, which is not a fact Builder knows`,
         );
@@ -286,7 +289,7 @@ async function installScreen(
   handle: string,
   action: string,
   declared: ScreenActionBuilder,
-  { host, values }: Pick<Installing, "host" | "values">,
+  { host, values, factText }: Pick<Installing, "host" | "values" | "factText">,
 ): Promise<ScreenAction> {
   const name = `${handle} ${action}`;
   const screen = await found.module(declared.screen);
@@ -304,7 +307,8 @@ async function installScreen(
       `${name}'s screen writes ${unknown}, which no plugin declares as a project value`,
     );
   const returns = declared.returns ?? [];
-  checkFacts(name, returns, host.facts, (field) =>
+  const requires = declared.requires ?? [];
+  checkFacts(name, [...requires.flat(), ...returns], host.facts, (field) =>
     Object.hasOwn(screen.describe.fields, field),
   );
   if (returns.length > 0 !== (screen.approves !== undefined))
@@ -329,6 +333,9 @@ async function installScreen(
     description: screen.describe.summary,
     guidance: [
       guidanceText(name, screen, declared.reads ?? []),
+      ...(requires.length > 0
+        ? [`Requires: ${requiresText(requires, factText)}.`]
+        : []),
       screenText(handle, action),
     ].join("\n"),
     refusal(input, project) {

@@ -25,6 +25,11 @@
         "when": "The project has no app yet: built from its requirements, build plan and design when they are filed, or from the person's instruction alone when they want it built now.",
         "unless": "The project already has an app; a change to it is coder change.",
         "input": "./src/build.ts",
+        "requires": [
+          [
+            "!app_exists"
+          ]
+        ],
         "returns": [
           "app_exists"
         ],
@@ -72,7 +77,8 @@
       "the save button does nothing"
     ],
     "facts": {
-      "app_exists": "the project has an app, built or imported"
+      "app_exists": "the project has an app, built or imported",
+      "!app_exists": "the project has no app yet"
     },
     "values": {
       "stack.language": {

@@ -19,6 +19,9 @@ const QUERIES = {
   d_nothing: "zebra quantum saxophone",
 };
 
+// A tool result keeps 10,000 characters; the listing must leave the values and the way on whole.
+const KEPT = 10_000;
+
 const lookUp = (asked: string) => [
   turn(
     user(asked),
@@ -26,10 +29,13 @@ const lookUp = (asked: string) => [
       ...Object.entries(QUERIES).map(([id, query]) =>
         call(id, "discover", { query }),
       ),
+      call("d_action", "discover", { plugin: "writer", action: "write" }),
     ),
   ),
   turn(
-    results(...Object.keys(QUERIES).map((id) => ok(id, "discover"))),
+    results(
+      ...[...Object.keys(QUERIES), "d_action"].map((id) => ok(id, "discover")),
+    ),
     say("I looked everything up."),
   ),
 ];
@@ -38,8 +44,14 @@ async function record(p: Person) {
   await p.heard("I looked everything up.");
   for (const [id, query] of Object.entries(QUERIES))
     p.note(`discover "${query}"`, p.resultOf(id).text);
-  expect(p.resultOf("d_font").text).toContain("pick-fonts");
-  expect(p.resultOf("d_review").text).toContain("writer write");
+  p.note("discover writer write", p.resultOf("d_action").text);
+  expect(p.resultOf("d_font").text).toContain("pick-fonts (screen)");
+  expect(p.resultOf("d_review").text).toContain("  write: ");
+  const anything = p.resultOf("d_anything").text;
+  expect(anything.length).toBeLessThan(KEPT);
+  expect(anything).toContain("Project values");
+  expect(anything).toEndWith("discover({ plugin }) gives all of a plugin's.");
+  expect(p.resultOf("d_action").text).toContain("Input:");
 }
 
 scenario({

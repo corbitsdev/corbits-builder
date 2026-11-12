@@ -23,9 +23,6 @@ import {
 } from "../projects/project-session.ts";
 import { writerTask } from "../workflows/writer-task.ts";
 
-export const APP_ALREADY_EXISTS =
-  "The project already has an app, so its first build is done. A change to it is coder change.";
-
 // What runs({ ... }) offers for a run that holds back the next one, named as runIds lists it.
 const waitOrStop = (runIds: string) =>
   `runs({ operation: "wait", runIds: [${runIds}] }) waits for it to end, or runs({ operation: "stop", runIds: [${runIds}] }) stops it; then call execute again.`;
@@ -37,7 +34,7 @@ function coderBusy(live?: { runId: string; state: string }) {
   const other =
     live === undefined
       ? "Another coder is starting on the app from an execute call in this same turn"
-      : `The coder in run ${live.runId} is ${live.state === "waiting" ? "saving its last files after its report" : "still at work on the app"}`;
+      : `The coder in run ${live.runId} is ${live.state === "waiting" ? "between turns, just started or saving its last files after its report" : "still at work on the app"}`;
   const next =
     live === undefined
       ? `That call returns its run id. ${waitOrStop("its run id")}`
@@ -99,8 +96,8 @@ function coderDocuments(
   return startHere(session.inputs(kinds, byKind), design);
 }
 
-// A first build refuses a project that has an app; a change starts from the app as last saved. A
-// coder still on the app refuses at once rather than wait for it.
+// A change starts from the app as last saved; a first build's manifest requires that there is none.
+// A coder still on the app refuses at once rather than wait for it.
 const coder = starter(
   type({
     "+": "reject",
@@ -124,7 +121,6 @@ const coder = starter(
               APP_CHANGE_NOTE +
               coderTaskMessage(instruction)
             );
-          if (byKind.has("app")) throw new Refusal(APP_ALREADY_EXISTS);
           return (
             coderDocuments(session, byKind) +
             skills +

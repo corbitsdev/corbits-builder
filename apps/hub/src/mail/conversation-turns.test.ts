@@ -5,7 +5,6 @@ import { join } from "node:path";
 import { $ } from "bun";
 import { declineNote } from "../config/decline.ts";
 import { resumeMessage } from "../config/resume.ts";
-import { specialistEndedMessage } from "../config/specialist-ended.ts";
 import {
   readDurableConversationTurns,
   unsavedPersonTurns,
@@ -151,22 +150,6 @@ test("a person's words read back with the line breaks they typed", async () => {
   ]);
 });
 
-test("a specialist-ended notice reads back without its coordinator-only part", async () => {
-  const notice = specialistEndedMessage({
-    runId: "run-1",
-    role: "writer",
-    status: "failed",
-    reason: { message: "provider refused the request" },
-  });
-  const dir = await runRepo([{ from: person, text: notice }]);
-  expect(await personTexts(dir, "note")).toEqual([
-    {
-      role: "person",
-      text: "Status update: The writer stopped before finishing.",
-    },
-  ]);
-});
-
 test("a resumed message reads back without its held context", async () => {
   const context =
     "Background: this project's conversation continues from an earlier session. This is where it stood, not a new request.\n\nEarlier conversation, oldest first:\n\nPerson: hi";
@@ -175,14 +158,6 @@ test("a resumed message reads back without its held context", async () => {
   ]);
   expect(await personTexts(dir, "note")).toEqual([
     { role: "person", text: "Line one\n\nLine two" },
-  ]);
-});
-
-test("a person's own message with the notice lead reads back whole", async () => {
-  const typed = "Status update: done\n\nmore details";
-  const dir = await runRepo([{ from: person, text: typed }]);
-  expect(await personTexts(dir, "note")).toEqual([
-    { role: "person", text: typed },
   ]);
 });
 

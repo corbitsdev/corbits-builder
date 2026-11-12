@@ -230,8 +230,13 @@ test("coder build starts on a fresh project from the instruction alone, and is r
   expect(empty.mailed[0]).toContain(build.instruction);
 
   const built = project([filed("product_requirements"), filed("app")]);
-  expect((await built.execute(coderBuild)).content).toBe(
-    "The project already has an app, so its first build is done. A change to it is coder change.",
+  expect((await built.execute(coderBuild)).content).toStartWith(
+    [
+      "coder build was not started. The project does not have what it needs yet.",
+      "",
+      "It needs:",
+      "  - the project has no app yet",
+    ].join("\n"),
   );
   expect(built.deployed).toEqual([]);
 });
@@ -309,15 +314,19 @@ test("execute on build-web-app puts the project on it and returns its guidance a
     ].join("\n"),
   );
   const found = await idea.discover({ query: "build me an app" });
-  expect(found.content).toContain("This project is following it.");
+  expect(found.content).toContain("This project follows it.");
   expect(found.content).toContain(
-    "coder runs a specialist. Groups: build, change.",
+    "  build: The project has no app yet: built from its requirements, build plan and design when they are filed, or from the person's instruction alone when they want it built now. Now: needs the person's go-ahead, which build-web-app asks for: the person approved",
   );
-  expect(found.content).toContain(
-    "coder build: Has the coder build the whole app for the first time: from the filed documents and the chosen design when there are any, or from the instruction alone when the person wants it built now.\nUse it when: The project has no app yet: built from its requirements, build plan and design when they are filed, or from the person's instruction alone when they want it built now.\nNot when: The project already has an app; a change to it is coder change.\nRequires: nothing.\nInput:",
+  const guidance = await idea.discover({
+    plugin: "coder",
+    action: "build",
+  });
+  expect(guidance.content).toContain(
+    "coder build: Has the coder build the whole app for the first time: from the filed documents and the chosen design when there are any, or from the instruction alone when the person wants it built now.\nUse it when: The project has no app yet: built from its requirements, build plan and design when they are filed, or from the person's instruction alone when they want it built now.\nNot when: The project already has an app; a change to it is coder change.\nRequires: the project has no app yet.\n",
   );
-  expect(found.content).toContain(
-    "Now:\n  coder build: needs the person's go-ahead, which build-web-app asks for: the person approved",
+  expect(guidance.content).toContain(
+    "Now: needs the person's go-ahead, which build-web-app asks for: the person approved",
   );
 });
 

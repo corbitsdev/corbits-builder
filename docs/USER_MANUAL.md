@@ -414,7 +414,7 @@ provider's status in **Settings → Providers**, then send your message again.
 - **"Not started — the go-ahead ran out of time"** (or **expired**): ask the
   coordinator to try again.
 - **"Did not finish: …"** on a hand-off: ask the coordinator to try again.
-- **A quiet "Status update" line saying a specialist ended**: it gives the
+- **A quiet line saying a specialist ended**: it gives the
   reason, such as "it ran out of time". The coordinator can start it again; ask the
   coordinator to carry on.
 - **"The app could not start."**: open **The app's last output** to see why,

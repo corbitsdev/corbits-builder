@@ -33,6 +33,9 @@
         "when": "The person asks for any document that has no action of its own, such as a competitor analysis, a product comparison, a profit breakdown or a security review, or wants one revised.",
         "unless": "The document is the product requirements or the build plan, which have actions of their own, or the person wants the app itself changed.",
         "input": "./src/write.ts",
+        "reads": [
+          "brand.guidelines"
+        ],
         "returns": [
           "filed:{kind}"
         ],
@@ -45,6 +48,9 @@
         "when": "The project needs its product requirements written, or revised with what the person said.",
         "unless": "The person wants the app itself changed, or only a mockup.",
         "input": "./src/write-requirements.ts",
+        "reads": [
+          "brand.guidelines"
+        ],
         "returns": [
           "filed:product_requirements"
         ],
@@ -58,6 +64,9 @@
         "when": "The project needs a build plan, or its plan revised: the stack, the phases of work and the checks.",
         "unless": "What the app must do is still being settled with the person.",
         "input": "./src/write-build-plan.ts",
+        "reads": [
+          "brand.guidelines"
+        ],
         "requires": [
           [
             "filed:product_requirements"
@@ -95,6 +104,11 @@
         "unless": "The person chose to let you decide approvals, or the work is a change to an app that already exists.",
         "screen": "./src/approve/screen.ts",
         "view": "./src/approve/view.tsx",
+        "requires": [
+          [
+            "filed:{kinds}"
+          ]
+        ],
         "returns": [
           "approved:{kinds}"
         ],

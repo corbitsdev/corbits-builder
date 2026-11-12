@@ -8,7 +8,12 @@ import { decodeMail } from "@intx/mime";
 import { listMail } from "@intx/storage-isogit/node";
 import { runFailure } from "../artifacts/service.ts";
 import { specialistEndedMessage } from "../config/specialist-ended.ts";
-import { endedRun, project, projectCoordinator } from "../db/schema.ts";
+import {
+  endedRun,
+  project,
+  projectCoordinator,
+  runAction,
+} from "../db/schema.ts";
 import type { HubMail } from "../mail/hub-mail.ts";
 import { errorCode, requestErrorMetadata } from "../request-error.ts";
 import { spawnedWorkflowRole } from "../workflows/spawn-role.ts";
@@ -97,6 +102,8 @@ export function createSpecialistEndNotices(deps: {
         cancellationReason: workflowRun.cancellationReason,
         projectId: project.id,
         bundle: workflowRunLaunchSpec.frozenApprovalBundle,
+        plugin: runAction.plugin,
+        action: runAction.action,
       })
       .from(workflowRun)
       .innerJoin(project, eq(project.tenantId, workflowRun.tenantId))
@@ -105,6 +112,7 @@ export function createSpecialistEndNotices(deps: {
         eq(workflowRunLaunchSpec.anchorRunId, workflowRun.id),
       )
       .leftJoin(endedRun, eq(endedRun.runId, workflowRun.id))
+      .leftJoin(runAction, eq(runAction.runId, workflowRun.id))
       .where(
         and(
           inArray(workflowRun.status, ["failed", "cancelled"]),
@@ -181,6 +189,9 @@ export function createSpecialistEndNotices(deps: {
           runId: ended.runId,
           role,
           ...(kind ? { kind } : {}),
+          ...(ended.plugin !== null && ended.action !== null
+            ? { action: { plugin: ended.plugin, action: ended.action } }
+            : {}),
           status: ended.status === "failed" ? "failed" : "cancelled",
           ...(reason ? { reason } : {}),
         }),

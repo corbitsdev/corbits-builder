@@ -6,12 +6,7 @@
  * native approval is still a decision on the existing path. This view does
  * not invent a coordinator turn, and it does not decide an approval on its own.
  */
-import {
-  HUB_NOTE_LEAD,
-  IMPORTED_PROJECT_LEAD,
-  SPECIALIST_ENDED_LEAD,
-  wording,
-} from "../../config.ts";
+import { HUB_NOTE_LEAD, IMPORTED_PROJECT_LEAD, wording } from "../../config.ts";
 import type { QuestionsLayout } from "../../questions-layout-setting.ts";
 import { Fragment, useState, type ReactNode } from "react";
 import { Check, Copy } from "lucide-react";
@@ -541,7 +536,8 @@ function hubNoteLine(text: string): string | undefined {
   return text.slice(HUB_NOTE_LEAD.length).split("\n\n", 1)[0];
 }
 
-// The hub's notice: the person's line, then a coordinator-only paragraph quoting the native reason.
+// The hub's note that a specialist ended: the person's line, then a coordinator-only paragraph
+// quoting the native reason.
 const RECORDED_REASON = /Recorded reason(?: \(([^)]+)\))?: ([\s\S]*)$/;
 
 /** A specialist-ended notice in plain words; the recorded reason stays under Details. */
@@ -969,16 +965,14 @@ export function RoomThread({
           if (hubNote !== undefined)
             return (
               <ConversationItem key={itemId} itemId={itemId}>
-                <ConversationNotice>{hubNote}</ConversationNotice>
-              </ConversationItem>
-            );
-          if (turn.text.startsWith(SPECIALIST_ENDED_LEAD))
-            return (
-              <ConversationItem key={itemId} itemId={itemId}>
                 <ConversationNotice>
-                  <SpecialistEnded
-                    text={turn.text.slice(SPECIALIST_ENDED_LEAD.length)}
-                  />
+                  {RECORDED_REASON.test(turn.text) ? (
+                    <SpecialistEnded
+                      text={turn.text.slice(HUB_NOTE_LEAD.length)}
+                    />
+                  ) : (
+                    hubNote
+                  )}
                 </ConversationNotice>
               </ConversationItem>
             );

@@ -16,13 +16,6 @@ export const IMPORTED_PROJECT_LEAD =
   "I just imported this project from a file. Acknowledge the import, then tell me in a few plain sentences what the imported documents establish and what happens next.";
 
 /**
- * The lead of the hub's notice to the coordinator that a specialist ended before
- * finishing. It mirrors SPECIALIST_ENDED_LEAD in apps/hub/src/config/specialist-ended.ts;
- * the thread shows the rest as a quiet line rather than as words the person typed.
- */
-export const SPECIALIST_ENDED_LEAD = "Status update: ";
-
-/**
  * The lead of every note the hub mails the coordinator as the person. It mirrors HUB_NOTE_LEAD in
  * apps/hub/src/config/resume.ts; the thread shows the note's first paragraph as a quiet line and
  * keeps the rest, which is for the coordinator.

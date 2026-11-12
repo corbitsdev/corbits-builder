@@ -1213,7 +1213,11 @@ export function createArtifactService(
         if (!live) ended += 1;
         if (!live && ended > RECENT_RUNS) continue;
         const progress = tracker?.progress(row.runId);
-        const lastActivity = progress?.recent.at(-1);
+        // The latest call with what it was given, as far as its turn's calls are kept.
+        const latest = tracker?.of(row.runId).tools.at(-1);
+        let lastActivity = progress?.recent.at(-1);
+        if (latest) lastActivity = latest.name;
+        if (latest?.subject) lastActivity = `${latest.name} ${latest.subject}`;
         const error =
           row.status === "failed" ? await runFailure(runs, row) : undefined;
         const run: ProjectRun = {
@@ -1229,6 +1233,9 @@ export function createArtifactService(
             heldOnApproval.has(row.runId),
             tracker?.of(row.runId)?.working,
           );
+        // The hub has seen nothing of a run that has not begun its first turn.
+        if (live && run.state === "waiting" && !progress)
+          run.state = "starting";
         if (row.endedAt) run.endedAt = row.endedAt.toISOString();
         if (lastActivity) run.lastActivity = lastActivity;
         if (progress) run.lastActivityAt = progress.lastActivityAt;

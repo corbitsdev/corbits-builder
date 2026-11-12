@@ -38,7 +38,10 @@ scenario({
       }),
     ),
     turn(results(ok("c_write", "execute")), say("A writer is on it.")),
-    turn(user(), call("c_list", "runs", { operation: "list" })),
+    turn(
+      user("Hub note, not from the person"),
+      call("c_list", "runs", { operation: "list" }),
+    ),
     turn(results(ok("c_list", "runs")), say("The writer could not work.")),
   ],
   specialists: {
@@ -59,6 +62,9 @@ scenario({
       p.projectId,
     );
     p.note("failed runs the hub lists", failed);
+    expect(p.messages("coordinator").at(-1)).toContain(
+      "Hub note, not from the person: The writer's write stopped before finishing.",
+    );
     expect(p.resultOf("c_list").text).toContain('"status":"failed"');
     expect(p.resultOf("c_list").text).toContain('"error"');
   },

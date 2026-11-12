@@ -22,8 +22,6 @@ scenario({
   name: "s02-bad-input-then-recovery",
   title:
     "a writer write with a missing field and a wrong kind is refused with what to fix, and the corrected call starts",
-  expectFailure:
-    "the refusal names only the first wrong field (instruction missing); the wrong kind goes unmentioned, appears in neither the wrong nor the fine fields, and no valid kind is suggested, so 'call again with the same input' repeats the bad kind",
   start: { fresh: "Write me a competitor analysis of the dog-walking apps." },
   coordinator: [
     turn(

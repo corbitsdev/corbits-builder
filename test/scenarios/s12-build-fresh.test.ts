@@ -22,7 +22,12 @@ scenario({
       results(ok("c_build", "execute", '"started":true')),
       say("A coder is building it."),
     ),
-    turn(user(report), say("Your to-do app is built.")),
+    turn(
+      user(
+        "Hub note, not from the person: The coder's build stopped before finishing.",
+      ),
+      say("The coder could not finish the build."),
+    ),
   ],
   specialists: {
     coder: {
@@ -31,7 +36,7 @@ scenario({
     },
   },
   person: async (p) => {
-    await p.heard("Your to-do app is built.");
+    await p.heard("The coder could not finish the build.");
     p.note("coder build returned", p.resultOf("c_build").text);
     p.note("the coder's assignment", p.assignment("coder"));
   },

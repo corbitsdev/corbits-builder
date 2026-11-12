@@ -5,7 +5,6 @@ import {
   PLUGIN_HINT_END,
   PLUGIN_HINT_LEAD,
 } from "@corbits-builder/plugin-host/text";
-import { SPECIALIST_ENDED_LEAD } from "./specialist-ended.ts";
 
 // A resumed project's new coordinator starts with no history. The hub holds what it needs and
 // delivers it with the person's next message, so its first turn answers that message.
@@ -36,8 +35,7 @@ const turnLine = ({ role, text }: ConversationTextTurn): string => {
   if (role === "assistant") return "You: " + clip(text);
   if (text.startsWith(IMPORTED_PROJECT_LEAD))
     return "The project was imported from a file.";
-  if (text.startsWith(SPECIALIST_ENDED_LEAD) || text.startsWith(HUB_NOTE_LEAD))
-    return clip(text);
+  if (text.startsWith(HUB_NOTE_LEAD)) return clip(text);
   return "Person: " + clip(text);
 };
 

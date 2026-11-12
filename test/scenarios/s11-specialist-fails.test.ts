@@ -14,9 +14,16 @@ import type { AgentRole } from "../e2e/support/recorded-model.ts";
 const gaveUp =
   "I could not find enough about the competitors to write anything.";
 
+// A writer's reply before its document is filed is held, with a note in the same conversation;
+// after three held replies the fourth ends the run as not finished.
 const givesUp: { role: AgentRole; turns: Turn[] } = {
   role: "writer",
-  turns: [turn(user("competitor_analysis"), say(gaveUp))],
+  turns: [
+    turn(user("competitor_analysis"), say(gaveUp)),
+    ...Array.from({ length: 3 }, () =>
+      turn(user("Builder held your reply"), say(gaveUp)),
+    ),
+  ],
 };
 
 scenario({
@@ -34,16 +41,12 @@ scenario({
       }),
     ),
     turn(results(ok("c_write", "execute")), say("A writer is on it.")),
-    turn(user(), say("The writer stopped without a document.")),
+    turn(
+      user("Hub note, not from the person: The writer's write stopped"),
+      say("The writer stopped without a document."),
+    ),
   ],
-  specialists: {
-    // A writer that ends without filing is sent its assignment again as a fresh conversation,
-    // four times in all, before its reply goes to the coordinator.
-    "writer-1": givesUp,
-    "writer-2": givesUp,
-    "writer-3": givesUp,
-    "writer-4": givesUp,
-  },
+  specialists: { writer: givesUp },
   person: async (p) => {
     await p.heard("The writer stopped without a document.");
     const turns = await p.hub.client.conversationEvents(
@@ -56,6 +59,8 @@ scenario({
       p.projectId,
     );
     p.note("failed runs the hub lists", failed);
+    p.note("what the coordinator was told", p.messages("coordinator").at(-1));
+    expect(p.messages("coordinator").at(-1)).toContain("not_finished");
     expect(artifacts.some((item) => item.kind === "competitor_analysis")).toBe(
       false,
     );

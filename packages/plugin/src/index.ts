@@ -3,10 +3,11 @@ import { NativeSpecialistAssignment } from "@corbits-builder/schemas/native-spec
 
 // Something true of the project that Builder works out from what it stores, such as "app_exists". A
 // workflow's fact may name one of its input fields, as "filed:{kind}", for the value passed there.
+// What an action requires may also name a fact that must not hold, as "!app_exists".
 export type Fact = string;
 
 const Facts = type("string > 0").array();
-// Alternatives, each the facts that together let a plugin start.
+// Alternatives, each the facts that together let a plugin start or a screen open.
 const Requires = Facts.atLeastLength(1).array().atLeastLength(1);
 
 // A named piece of project data a plugin brings, such as "brand.guidelines": what it holds, in one
@@ -26,7 +27,8 @@ const Common = type({
   // How a person would ask for it, in their words.
   "examples?": "string[]",
   "triggers?": "string[]",
-  // Each fact this plugin's work is about, in plain words, as refusals and discover say it.
+  // Each fact this plugin's work is about, in plain words, as refusals and discover say it; "!fact"
+  // words the fact not holding.
   "facts?": { "[string]": "string > 0" },
   // The project values this plugin brings, by namespaced name; any plugin may then read them.
   "values?": { "[string]": ValueDeclaration },
@@ -51,6 +53,8 @@ export const ScreenActionBuilder = type({
   // The module whose default export draws the screen in the interface.
   view: "string > 0",
   "data?": "string > 0",
+  // What the project must have before the screen can draw anything, as a workflow action requires.
+  "requires?": Requires,
   // Project values, by their registered names, that Builder supplies to the screen.
   "reads?": "string[]",
   // The facts the person's answer can make true, each recorded from what the screen's approves

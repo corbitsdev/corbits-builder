@@ -438,11 +438,12 @@ export const ProjectRun = RunAction.merge({
   "concept?": "string > 0",
   // Interchange's run status.
   status: "'deployed' | 'running' | 'completed' | 'failed' | 'cancelled'",
-  // While it runs, as inFlight says it: working, waiting between turns, or held on an approval.
-  "state?": "'working' | 'waiting' | 'approval'",
+  // While it runs, as inFlight says it: working, waiting between turns, or held on an approval; or
+  // starting, before its first turn.
+  "state?": "'starting' | 'working' | 'waiting' | 'approval'",
   startedAt: "string > 0",
   "endedAt?": "string > 0",
-  // Its latest tool call as tool and target, and when it last acted, as far as the hub saw.
+  // Its latest tool call as tool and what it was given, and when it last acted, as far as the hub saw.
   "lastActivity?": "string > 0",
   "lastActivityAt?": "string > 0",
   // Why a failed run stopped.

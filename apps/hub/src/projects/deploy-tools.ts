@@ -31,6 +31,7 @@ import {
 } from "../config/personas.ts";
 import { DESIGN_STYLES } from "../artifacts/design-tweaks.ts";
 import { checkPluginQuestion } from "../plugins/question.ts";
+import { screenProject } from "../plugins/tools.ts";
 import { projectScopeFailure } from "../workflows/project-scope.ts";
 import { assignmentToWriterMessage } from "../workflows/writer-task.ts";
 import { coderTaskMessage } from "@corbits-builder/coder/contract";
@@ -195,8 +196,8 @@ export function createDeployTools(
     ],
     factory: (env) => ({
       definitions,
-      checkQuestion: (question) =>
-        checkPluginQuestion(question, env.capabilities, options),
+      checkQuestion: async (question) =>
+        checkPluginQuestion(question, await screenProject(env, options)),
       run: async (call, signal) => {
         if (!options) {
           try {

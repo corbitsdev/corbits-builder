@@ -6,22 +6,28 @@ import {
   isScreenAction,
   isSpecialist,
   isWorkflowAction,
+  type Action,
   type Catalog,
   type Plugin,
   type RoutePlugin,
+  type ScreenAction,
   type WorkflowAction,
 } from "./catalog.ts";
-import { makes, resolveFacts, templateField, unmet } from "./facts.ts";
+import { holds, makes, resolveFacts, unmet } from "./facts.ts";
 import { fields } from "./search/fields.ts";
 import type { Strategy } from "./search/words.ts";
 import {
   assignedValuesText,
+  DISCOVER_ACTION_NEEDS_PLUGIN,
+  DISCOVER_MORE,
   DISCOVER_NEEDS_ONE,
   foundPlugins,
   isReady,
+  noActionFound,
   noPluginFound,
   projectValuesText,
   readinessText,
+  routeListing,
   routeAdvice,
   routeDone,
   routeFollowed,
@@ -29,6 +35,7 @@ import {
   routeLeft,
   routeTakesNoAction,
   screenNotExecuted,
+  specialistListing,
   unknownAction,
   unknownPlugin,
   unknownRuns,
@@ -85,6 +92,9 @@ export const Discover = type({
   "+": "reject",
   "query?": "string > 0",
   "group?": "string > 0",
+  // One plugin's full guidance, or with action that one action's.
+  "plugin?": "string > 0",
+  "action?": "string > 0",
 });
 export const Execute = type({
   "+": "reject",
@@ -114,30 +124,72 @@ const groupsOf = (plugins: readonly Plugin[]) => {
   return groups;
 };
 
-/** What discover answers from the given plugins. Its tool asks for exactly one of query and group. */
+// The plugins a query, a group or a plugin's handle picks out.
+function foundBy(plugins: readonly Plugin[], asked: typeof Discover.infer) {
+  const { query, group, plugin } = asked;
+  if (query !== undefined)
+    return search(query, plugins)
+      .slice(0, MAX_FOUND)
+      .flatMap(({ handle }) =>
+        plugins.filter((each) => each.builder.handle === handle),
+      );
+  if (group !== undefined) return groupsOf(plugins).get(group) ?? [];
+  return plugins.filter((each) => each.builder.handle === plugin);
+}
+
+// The full guidance discover's plugin, and action when given, name, with status's word on the
+// plugin and now's on the action; why nothing was found when either is not there.
+function guidanceOf(
+  plugins: readonly Plugin[],
+  asked: typeof Discover.infer,
+  status: (plugin: Plugin) => string[],
+  now: (action: Action) => string[],
+) {
+  const [plugin] = foundBy(plugins, asked);
+  if (!plugin) return noPluginFound(asked, groupsOf(plugins));
+  if (asked.action === undefined) return foundPlugins([plugin], status);
+  const actions = isSpecialist(plugin) ? plugin.actions : [];
+  const action = actions.find((each) => each.action === asked.action);
+  if (!action)
+    return noActionFound(
+      plugin.builder.handle,
+      asked.action,
+      actions.map((each) => each.action),
+    );
+  return [action.guidance, ...now(action)].join("\n");
+}
+
+/**
+ * What discover answers from the given plugins, each in full. Its tool asks for exactly one of
+ * query, group and plugin.
+ */
 export function discoverIn(
   plugins: readonly Plugin[],
   asked: typeof Discover.infer,
-  status?: (plugin: Plugin) => string[],
 ) {
-  const { query, group } = asked;
-  const groups = groupsOf(plugins);
-  let found: readonly Plugin[] = [];
-  if (query !== undefined)
-    found = search(query, plugins)
-      .slice(0, MAX_FOUND)
-      .flatMap(({ handle }) =>
-        plugins.filter((plugin) => plugin.builder.handle === handle),
-      );
-  if (group !== undefined) found = groups.get(group) ?? [];
-  if (found.length === 0) return noPluginFound(asked, groups);
-  return foundPlugins(found, status);
+  if (asked.plugin !== undefined)
+    return guidanceOf(
+      plugins,
+      asked,
+      () => [],
+      () => [],
+    );
+  const found = foundBy(plugins, asked);
+  if (found.length === 0) return noPluginFound(asked, groupsOf(plugins));
+  return foundPlugins(found);
 }
 
 /** discover's arguments, or why they are wrong, with what discover takes among these plugins. */
 export function checkedDiscover(plugins: readonly Plugin[], raw: unknown) {
   const takes: Record<string, Field> = {
     query: { about: "What the person asked for, in their words." },
+    plugin: {
+      about:
+        "A plugin's handle, for its full guidance and the input each action takes.",
+    },
+    action: {
+      about: "One of that plugin's actions, for its guidance alone.",
+    },
     group: {
       about: "A group, to list every plugin in it.",
       choices: Object.fromEntries(
@@ -154,12 +206,24 @@ export function checkedDiscover(plugins: readonly Plugin[], raw: unknown) {
     return {
       error: wrongCall("discover", outcome, wrongFields(input), takes),
     };
-  if ((input.query === undefined) === (input.group === undefined))
+  const asked = [input.query, input.group, input.plugin].filter(
+    (named) => named !== undefined,
+  );
+  if (asked.length !== 1)
     return {
       error: wrongCall(
         "discover",
         outcome,
         [{ field: "query", problem: DISCOVER_NEEDS_ONE }],
+        takes,
+      ),
+    };
+  if (input.action !== undefined && input.plugin === undefined)
+    return {
+      error: wrongCall(
+        "discover",
+        outcome,
+        [{ field: "action", problem: DISCOVER_ACTION_NEEDS_PLUGIN }],
         takes,
       ),
     };
@@ -203,14 +267,12 @@ const isGoAhead = (catalog: Catalog, fact: Fact) => {
 // and what each route the project follows asks of it as a step.
 function readiness(
   catalog: Catalog,
-  action: WorkflowAction,
+  action: Action,
   { facts, asksApprovals, routes }: ProjectState,
   input?: unknown,
 ): Readiness {
   const requires = (action.builder.requires ?? []).map((alternative) =>
-    input === undefined
-      ? alternative.filter((fact) => templateField(fact) === undefined)
-      : resolveFacts(alternative, input),
+    input === undefined ? alternative : resolveFacts(alternative, input),
   );
   return {
     own: unmet(requires, facts),
@@ -219,7 +281,9 @@ function readiness(
         (named) =>
           named.plugin === action.plugin && named.action === action.action,
       );
-      const missing = (step?.requires ?? []).filter((fact) => !facts.has(fact));
+      const missing = (step?.requires ?? []).filter(
+        (fact) => !holds(fact, facts),
+      );
       if (missing.length === 0) return [];
       const goAhead = asksApprovals
         ? missing.filter((fact) => isGoAhead(catalog, fact))
@@ -264,6 +328,14 @@ const stepsOf = (catalog: Catalog, route: RoutePlugin, state: ProjectState) =>
     };
   });
 
+// Whether an action could start, or a screen open, in the project now.
+const now = (catalog: Catalog, action: Action, state: ProjectState) =>
+  readinessText(
+    readiness(catalog, action, state),
+    catalog.factText,
+    isScreenAction(action) ? "can open now" : "can start now",
+  );
+
 // What discover adds about each plugin for this project.
 function status(
   catalog: Catalog,
@@ -285,24 +357,93 @@ function status(
     "",
     "Now:",
     ...plugin.actions.map(
-      (action) =>
-        `  ${action.name}: ${isScreenAction(action) ? "can open now" : readinessText(readiness(catalog, action, state), catalog.factText)}`,
+      (action) => `  ${action.name}: ${now(catalog, action, state)}`,
     ),
   ];
 }
 
-/** discover for a project: every plugin it finds, with where each stands for the project. */
+// A plugin as discover lists it: a line for it, and a line for each action or step with where it
+// stands for the project.
+function listing(catalog: Catalog, plugin: Plugin, state: ProjectState) {
+  const { handle } = plugin.builder;
+  if (isSpecialist(plugin))
+    return specialistListing(
+      handle,
+      plugin.description,
+      plugin.actions.map((action) => ({
+        action: action.action,
+        screen: isScreenAction(action),
+        when: action.builder.when,
+        now: now(catalog, action, state),
+      })),
+    );
+  return routeListing(
+    handle,
+    plugin.description,
+    state.routes.includes(plugin),
+    stepsOf(catalog, plugin, state),
+  );
+}
+
+/**
+ * discover for a project. A query or a group lists each plugin found in a line or two, with where
+ * each action stands, and the project's values; a plugin, or one of its actions, comes in full.
+ */
 export async function discoverFor(
   catalog: Catalog,
   project: Project,
   asked: typeof Discover.infer,
 ) {
   const state = await projectState(catalog, project);
+  if (asked.plugin !== undefined)
+    return guidanceOf(
+      catalog.plugins,
+      asked,
+      (plugin) => status(catalog, plugin, state),
+      (action) => [`Now: ${now(catalog, action, state)}.`],
+    );
+  const found = foundBy(catalog.plugins, asked);
+  if (found.length === 0)
+    return noPluginFound(asked, groupsOf(catalog.plugins));
   const values = await project.values([...catalog.values.keys()]);
-  return (
-    discoverIn(catalog.plugins, asked, (plugin) =>
-      status(catalog, plugin, state),
-    ) + projectValuesText(catalog.values, values)
+  return [
+    ...found.map((plugin) => listing(catalog, plugin, state)),
+    projectValuesText(catalog.values, values),
+    DISCOVER_MORE,
+  ].join("\n\n");
+}
+
+/** Why a screen cannot be shown for this input in the project as it is, or undefined when it can. */
+export async function screenRefusal(
+  catalog: Catalog,
+  project: Project,
+  screen: ScreenAction,
+  input: unknown,
+) {
+  const reads = screen.builder.reads ?? [];
+  const values = reads.length > 0 ? await project.values(reads) : {};
+  const refused = screen.refusal(
+    input,
+    Object.fromEntries(
+      Object.entries(values).map(([name, value]) => [name, value ?? undefined]),
+    ),
+  );
+  if (refused !== undefined || screen.builder.requires === undefined)
+    return refused;
+  const { facts, asksApprovals } = await project.state();
+  const ready = readiness(
+    catalog,
+    screen,
+    { facts, asksApprovals, routes: [] },
+    input,
+  );
+  if (isReady(ready)) return undefined;
+  return unmetRequirement(
+    screen.name,
+    ready,
+    makersIn(catalog),
+    catalog.factText,
+    "question",
   );
 }
 
@@ -435,6 +576,7 @@ export async function execute(
         ready,
         makersIn(catalog),
         catalog.factText,
+        "execute",
       ),
       isError: true,
     };

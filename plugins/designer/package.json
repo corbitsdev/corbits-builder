@@ -52,6 +52,7 @@
         "unless": "They want the built app itself changed, or to pick fonts or colours on a screen.",
         "input": "./src/mockup.ts",
         "reads": [
+          "brand.guidelines",
           "look.font-primary",
           "look.font-secondary",
           "look.color-primary",
@@ -74,6 +75,11 @@
         "unless": "The person only asked a question about the design.",
         "screen": "./src/review/screen.ts",
         "view": "./src/review/view.tsx",
+        "requires": [
+          [
+            "filed:design_option"
+          ]
+        ],
         "returns": [
           "design_chosen"
         ],
@@ -90,6 +96,11 @@
         "unless": "Only one design is filed, which review shows, or the person only asked a question about the designs.",
         "screen": "./src/choose/screen.ts",
         "view": "./src/choose/view.tsx",
+        "requires": [
+          [
+            "filed:design_option"
+          ]
+        ],
         "returns": [
           "design_chosen"
         ],

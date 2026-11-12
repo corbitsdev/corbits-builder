@@ -1,12 +1,9 @@
 import type { SpawnedRole } from "@corbits-builder/schemas/installed-workflows";
+import { HUB_NOTE_LEAD } from "./resume.ts";
 
-// The hub's mail to a coordinator whose specialist stopped before it delivered its result. It
-// reaches the coordinator as the person's message. The fixed lead and the plain first paragraph are
-// what the person sees, as a quiet line rather than as words they typed; the paragraph after it is
-// for the coordinator only and quotes the recorded reason as Interchange gave it.
-export const SPECIALIST_ENDED_LEAD = "Status update: ";
-
-const COORDINATOR_ONLY = "\n\n";
+// The hub's note to a coordinator whose specialist stopped before it delivered its result: the plain
+// line the person sees, then for the coordinator alone the run and the recorded reason as
+// Interchange gave it.
 
 type Outcome = "failed" | "cancelled";
 
@@ -33,10 +30,6 @@ const PERSON_LINES: Record<SpawnedRole, Record<Outcome, string>> = {
   },
 };
 
-const NOTICE_LINES = new Set(
-  Object.values(PERSON_LINES).flatMap((lines) => Object.values(lines)),
-);
-
 const TASKS: Record<SpawnedRole, (kind: string | undefined) => string> = {
   writer: (kind) => `The writer writing the ${kind ?? "assigned"} document`,
   reviewer: (kind) =>
@@ -46,10 +39,28 @@ const TASKS: Record<SpawnedRole, (kind: string | undefined) => string> = {
   presenter: () => "The presenter building the approval package",
 };
 
+// A run the coordinator started for a plugin action is named by that action, such as "The coder's
+// change", since one role runs several actions.
+const actionLines = (
+  { plugin, action }: { plugin: string; action: string },
+  status: Outcome,
+) => {
+  const words = `The ${plugin}'s ${action.replaceAll("-", " ")}`;
+  return {
+    line:
+      status === "failed"
+        ? `${words} stopped before finishing.`
+        : `${words} was stopped.`,
+    task: `The ${plugin} ${action} action`,
+  };
+};
+
 export function specialistEndedMessage(ended: {
   runId: string;
   role: SpawnedRole;
   kind?: string;
+  // The plugin action the run was started for, when the coordinator started it with execute.
+  action?: { plugin: string; action: string };
   status: Outcome;
   reason?: { message: string; code?: string };
 }): string {
@@ -57,16 +68,11 @@ export function specialistEndedMessage(ended: {
   const reason = ended.reason
     ? ` Recorded reason${ended.reason.code ? ` (${ended.reason.code})` : ""}: ${ended.reason.message}`
     : "";
-  return `${SPECIALIST_ENDED_LEAD}${PERSON_LINES[ended.role][ended.status]}${COORDINATOR_ONLY}${TASKS[ended.role](ended.kind)} in run ${ended.runId} ${how} before finishing, so no result is coming from it.${reason}`;
-}
-
-/** A person-sent turn as the person may read it: a specialist-ended notice loses its coordinator-only part. */
-export function personTurnText(text: string): string {
-  if (!text.startsWith(SPECIALIST_ENDED_LEAD)) return text;
-  const end = text.indexOf(COORDINATOR_ONLY);
-  if (end === -1) return text;
-  // A person may type the same lead; only the hub's own notice lines are cut.
-  return NOTICE_LINES.has(text.slice(SPECIALIST_ENDED_LEAD.length, end))
-    ? text.slice(0, end)
-    : text;
+  const { line, task } = ended.action
+    ? actionLines(ended.action, ended.status)
+    : {
+        line: PERSON_LINES[ended.role][ended.status],
+        task: TASKS[ended.role](ended.kind),
+      };
+  return `${HUB_NOTE_LEAD}${line}\n\n${task} in run ${ended.runId} ${how} before finishing, so no result is coming from it.${reason}`;
 }

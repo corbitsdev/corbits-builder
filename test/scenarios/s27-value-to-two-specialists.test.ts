@@ -21,8 +21,6 @@ scenario({
   title:
     "brand guidelines the person saved reach both a writer's and a coder's assignment",
   start: "weather-app",
-  expectFailure:
-    'writer write declares no reads, so its assignment carries no project values; only coder change, which reads brand.guidelines and stack.language, gets the guidelines. The writer\'s actions would need reads: ["brand.guidelines"] in plugins/writer/package.json',
   coordinator: [
     turn(
       user("release notes"),

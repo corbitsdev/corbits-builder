@@ -39,7 +39,7 @@ scenario({
     ),
     turn(results(ok("c_stop", "runs")), say("I stopped the coder.")),
     turn(
-      user("was stopped before finishing"),
+      user("Hub note, not from the person: The coder's change was stopped."),
       say("The coder's stop is confirmed."),
     ),
     turn(
@@ -100,6 +100,9 @@ scenario({
     await p.heard("The text is bigger now.");
     p.note("every message the coordinator received", p.messages("coordinator"));
     expect(p.resultOf("c_stop").text).toContain('"stopped"');
+    expect(JSON.stringify(seen.turns)).toContain(
+      "Hub note, not from the person: The coder's change was stopped.",
+    );
     expect(p.resultOf("c_again").isError).toBe(false);
   },
 });
