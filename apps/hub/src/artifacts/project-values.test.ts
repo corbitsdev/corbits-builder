@@ -8,7 +8,7 @@ import { mountArtifactRoutes } from "./routes.ts";
 import type { createArtifactService } from "./service.ts";
 
 const STARTER = new URL(
-  "../../../../workflows/designer/starter/.builder/designs/styles.css",
+  "../../../../plugins/designer/starter/.builder/designs/styles.css",
   import.meta.url,
 );
 

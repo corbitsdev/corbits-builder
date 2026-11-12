@@ -1,16 +1,10 @@
 import { describe, expect, test } from "bun:test";
 import { renderToStaticMarkup } from "react-dom/server";
 import { checkInput } from "@corbits-builder/plugin";
-import pickFonts from "@corbits-builder/designer-plugin/pick-fonts";
-import fonts from "@corbits-builder/designer-plugin/pick-fonts/data";
-import {
-  Fonts,
-  type Font,
-} from "@corbits-builder/designer-plugin/pick-fonts/schema";
-import {
-  FontPicker,
-  text,
-} from "@corbits-builder/designer-plugin/pick-fonts/view";
+import pickFonts from "@corbits-builder/designer/pick-fonts";
+import fonts from "@corbits-builder/designer/pick-fonts/data";
+import { Fonts, type Font } from "@corbits-builder/designer/pick-fonts/schema";
+import { FontPicker, text } from "@corbits-builder/designer/pick-fonts/view";
 
 const inList = {
   "look.font-primary": "Inter",

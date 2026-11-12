@@ -62,19 +62,40 @@ export type Run = {
 /** A refusal the coordinator reads as it stands, such as a starter's reason for starting nothing. */
 export class Refusal extends Error {}
 
-/** A run at work in the project, of any role. */
+/** A run at work in the project, of any role, with the concept it works on when it has one. */
 export type Working = {
   runId: string;
   role: string;
   state: "working" | "waiting" | "approval";
+  concept?: string;
+};
+
+/** One version of a document filed in the project. */
+export type FiledVersion = {
+  artifactId: string;
+  version: number;
+  sha256: string;
 };
 
 /** The project as it stands when a run's assignment is written. */
 export type Filed = {
+  // The current version of each filed document, by kind.
+  versions: ReadonlyMap<string, FiledVersion>;
+  // A filed document at a version, as an assignment carries it: a design is its DESIGN.md and the
+  // names of its screens.
+  read(
+    version: FiledVersion,
+  ): Promise<{ kind: string; title: string; content: string }>;
   // The opening that names each filed document of these kinds and, with design, the chosen design,
   // where each sits read-only in the run's workspace; undefined when none of them is filed.
   startHere(kinds: readonly string[], design: boolean): string | undefined;
 };
+
+/**
+ * One of several looks at the same work that the person compares before choosing one: its label
+ * and the direction its run takes.
+ */
+export type Concept = { label: string; direction: string };
 
 /** What the coordinator's tools need from the project they act on, which only the host can do. */
 export type Project = {
@@ -106,9 +127,33 @@ export type Project = {
   startAlone(run: {
     workflow: string;
     correlation: string;
-    assignment(filed: Filed): string;
+    assignment(filed: Filed): string | Promise<string>;
     busy(live?: Working): Error;
   }): Promise<{ runId: string }>;
+  // Deploys the installed workflow, as many runs at a time as are started; assignment writes the
+  // run's first message from the project as it then stands, and the host adds the values block and
+  // the person's preferences.
+  deploy(run: {
+    workflow: string;
+    correlation: string;
+    assignment(filed: Filed): string | Promise<string>;
+  }): Promise<{ runId: string }>;
+  // Deploys the installed workflow once for each concept, each concept one run's at a time and
+  // recorded as that run's, within the host's ceiling on concepts at work. A concept's run starts
+  // once its replied one had time to end; busy refuses it while another is starting, or while live
+  // still works on it. Each concept reports its run, or why it did not start.
+  startConcepts(run: {
+    workflow: string;
+    correlation: string;
+    concepts: readonly Concept[];
+    assignment(filed: Filed, concept: Concept): string;
+    busy(concept: string, live?: Working): Error;
+  }): Promise<
+    readonly (
+      | { concept: string; runId: string }
+      | { concept: string; error: string }
+    )[]
+  >;
 };
 
 // The one place the search is chosen.

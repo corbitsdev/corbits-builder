@@ -70,7 +70,6 @@
         "@corbits-builder/plugin": "workspace:*",
         "@corbits-builder/plugin-host": "workspace:*",
         "@corbits-builder/presenter": "workspace:*",
-        "@corbits-builder/reviewer": "workspace:*",
         "@corbits-builder/schemas": "workspace:*",
         "@corbits-builder/writer": "workspace:*",
         "@corbits/agent-token": "0.2.2",
@@ -124,7 +123,7 @@
       "version": "0.1.0-rc.3",
       "dependencies": {
         "@corbits-builder/client": "workspace:*",
-        "@corbits-builder/designer-plugin": "workspace:*",
+        "@corbits-builder/designer": "workspace:*",
         "@corbits-builder/plugin": "workspace:*",
         "@corbits-builder/plugin-ui": "workspace:*",
         "@corbits-builder/schemas": "workspace:*",
@@ -241,13 +240,19 @@
       },
     },
     "plugins/designer": {
-      "name": "@corbits-builder/designer-plugin",
-      "version": "0.1.0-rc.3",
+      "name": "@corbits-builder/designer",
+      "version": "0.2.0",
       "dependencies": {
+        "@corbits-builder/coder": "workspace:*",
+        "@corbits-builder/hub": "workspace:*",
         "@corbits-builder/plugin": "workspace:*",
+        "@corbits-builder/plugin-host": "workspace:*",
         "@corbits-builder/plugin-ui": "workspace:*",
         "@corbits-builder/schemas": "workspace:*",
         "@corbits/react-ui": "0.5.1",
+        "@intx/agent": "workspace:*",
+        "@intx/tools-mail": "workspace:*",
+        "@intx/workflow": "workspace:*",
         "arktype": "catalog:",
         "lucide-react": "0.545.0",
         "react": "19.3.0",
@@ -273,12 +278,17 @@
       "version": "0.1.0-rc.3",
     },
     "plugins/writer": {
-      "name": "@corbits-builder/writer-plugin",
-      "version": "0.1.0-rc.3",
+      "name": "@corbits-builder/writer",
+      "version": "0.7.1",
       "dependencies": {
+        "@corbits-builder/hub": "workspace:*",
         "@corbits-builder/plugin": "workspace:*",
+        "@corbits-builder/plugin-host": "workspace:*",
         "@corbits-builder/schemas": "workspace:*",
         "@corbits/react-ui": "0.5.1",
+        "@intx/agent": "workspace:*",
+        "@intx/tools-mail": "workspace:*",
+        "@intx/workflow": "workspace:*",
         "arktype": "catalog:",
         "react": "19.3.0",
       },
@@ -732,37 +742,12 @@
         "@intx/workflow": "workspace:*",
       },
     },
-    "workflows/designer": {
-      "name": "@corbits-builder/designer",
-      "version": "0.2.0",
-      "dependencies": {
-        "@intx/agent": "workspace:*",
-        "@intx/workflow": "workspace:*",
-      },
-    },
     "workflows/presenter": {
       "name": "@corbits-builder/presenter",
       "version": "0.1.0-rc.3",
       "dependencies": {
         "@intx/agent": "workspace:*",
         "@intx/workflow": "workspace:*",
-      },
-    },
-    "workflows/reviewer": {
-      "name": "@corbits-builder/reviewer",
-      "version": "0.6.0",
-      "dependencies": {
-        "@intx/agent": "workspace:*",
-        "@intx/workflow": "workspace:*",
-      },
-    },
-    "workflows/writer": {
-      "name": "@corbits-builder/writer",
-      "version": "0.7.1",
-      "dependencies": {
-        "@intx/agent": "workspace:*",
-        "@intx/workflow": "workspace:*",
-        "arktype": "catalog:",
       },
     },
   },
@@ -857,9 +842,7 @@
 
     "@corbits-builder/coordinator": ["@corbits-builder/coordinator@workspace:workflows/coordinator"],
 
-    "@corbits-builder/designer": ["@corbits-builder/designer@workspace:workflows/designer"],
-
-    "@corbits-builder/designer-plugin": ["@corbits-builder/designer-plugin@workspace:plugins/designer"],
+    "@corbits-builder/designer": ["@corbits-builder/designer@workspace:plugins/designer"],
 
     "@corbits-builder/hub": ["@corbits-builder/hub@workspace:apps/hub"],
 
@@ -873,8 +856,6 @@
 
     "@corbits-builder/react-router-skills": ["@corbits-builder/react-router-skills@workspace:plugins/react-router-skills"],
 
-    "@corbits-builder/reviewer": ["@corbits-builder/reviewer@workspace:workflows/reviewer"],
-
     "@corbits-builder/rust-skills": ["@corbits-builder/rust-skills@workspace:plugins/rust-skills"],
 
     "@corbits-builder/schemas": ["@corbits-builder/schemas@workspace:packages/schemas"],
@@ -885,9 +866,7 @@
 
     "@corbits-builder/web-app-skills": ["@corbits-builder/web-app-skills@workspace:plugins/web-app-skills"],
 
-    "@corbits-builder/writer": ["@corbits-builder/writer@workspace:workflows/writer"],
-
-    "@corbits-builder/writer-plugin": ["@corbits-builder/writer-plugin@workspace:plugins/writer"],
+    "@corbits-builder/writer": ["@corbits-builder/writer@workspace:plugins/writer"],
 
     "@corbits/agent-token": ["@corbits/agent-token@0.2.2", "", { "dependencies": { "arktype": "^2.2.0" }, "peerDependencies": { "@intx/db": "^0.5.0", "@intx/hub-api": "^0.5.0", "drizzle-orm": "^0.45.2", "hono": "^4.11.9", "postgres": "^3.4.8" } }, "sha512-w3q9sNAS3d/Z531dFLvNb1l7BewlSWEyC1yG9erZN7lKRsCszbYXZTy69dKWhV+JR/VpXFkbpDmwjqQFqGfvyw=="],
 

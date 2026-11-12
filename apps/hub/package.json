@@ -7,6 +7,7 @@
   "type": "module",
   "exports": {
     "./app": "./src/app.ts",
+    "./artifacts/design-tools": "./src/artifacts/design-tools.ts",
     "./artifacts/service": "./src/artifacts/service.ts",
     "./artifacts/tools": "./src/artifacts/tools.ts",
     "./builds/browser-catalog": "./src/builds/browser-catalog.ts",
@@ -14,6 +15,7 @@
     "./config/design": "./src/config/design.ts",
     "./environment": "./src/environment.ts",
     "./migrate": "./src/migrate.ts",
+    "./plugins/catalog": "./src/plugins/catalog.ts",
     "./projects/app-repository": "./src/projects/app-repository.ts",
     "./signing-key": "./src/signing-key.ts",
     "./skills/tools": "./src/skills/tools.ts",
@@ -22,6 +24,7 @@
     "./workflows/install-for-tenant": "./src/workflows/install-for-tenant.ts",
     "./workflows/package-name": "./src/workflows/package-name.ts",
     "./workflows/role-inference": "./src/workflows/role-inference.ts",
+    "./workflows/saved-result-tools": "./src/workflows/saved-result-tools.ts",
     "./config/models": "./src/config/models.ts",
     "./settings/policy": "./src/settings/policy.ts"
   },
@@ -33,7 +36,6 @@
     "@corbits-builder/plugin": "workspace:*",
     "@corbits-builder/plugin-host": "workspace:*",
     "@corbits-builder/presenter": "workspace:*",
-    "@corbits-builder/reviewer": "workspace:*",
     "@corbits-builder/schemas": "workspace:*",
     "@corbits-builder/writer": "workspace:*",
     "@corbits/agent-token": "0.2.2",

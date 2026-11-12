@@ -11,6 +11,7 @@ import {
   Execute,
   manageRuns,
   Runs,
+  type Filed,
   type Project,
 } from "@corbits-builder/plugin-host/coordinator";
 import { fields } from "@corbits-builder/plugin-host/search/fields";
@@ -30,6 +31,7 @@ import {
   refusalText,
   resolveProjectOptions,
   type DeployEnv,
+  type ProjectListing,
   type ProjectOptions,
   type ProjectSession,
 } from "../projects/project-session.ts";
@@ -39,7 +41,6 @@ import { isInputKind, skillPacksIndex, startHere } from "../config/inputs.ts";
 import { CATALOG, ProjectRoutes, SCREENS, WITH_SCREENS } from "./catalog.ts";
 import { projectFacts } from "./facts.ts";
 import { checkPluginQuestion } from "./question.ts";
-import { startAction } from "./starters.ts";
 
 // The classic coordinator finds only specialists with screens, and knows nothing of the project
 // when it does.
@@ -82,6 +83,28 @@ const discoverDefinition = (description: string) => ({
   inputSchema: { ...Discover.toJsonSchema() },
 });
 
+// The project as it stands when a run's assignment is written, from the documents filed in it.
+function filed(
+  session: ProjectSession,
+  { byKind }: Pick<ProjectListing, "byKind">,
+): Filed {
+  return {
+    versions: byKind,
+    read: session.readSource,
+    startHere: (kinds, design) => {
+      const unknown = kinds.find((kind) => !isInputKind(kind));
+      if (unknown !== undefined)
+        throw new Error(`${unknown} is not a document Builder stages`);
+      const staged = kinds
+        .filter(isInputKind)
+        .filter((kind) => byKind.has(kind));
+      const version = design ? byKind.get("design")?.version : undefined;
+      if (staged.length === 0 && version === undefined) return undefined;
+      return startHere(session.inputs(staged, byKind), version);
+    },
+  };
+}
+
 // The project as the coordinator's tools act on it, through the hub.
 function project(session: ProjectSession): Project {
   const path = session.projectPath + "/routes";
@@ -101,22 +124,19 @@ function project(session: ProjectSession): Project {
           `${session.projectPath}/values?${new URLSearchParams({ keys: names.join(",") })}`,
         ),
       ).values,
-    start: (action, input, values) => {
-      const assigned = session.forAction({
-        plugin: action.plugin,
-        action: action.action,
-        values,
-      });
-      const skills = skillPacksIndex(action.packs);
-      if (action.starter)
-        return action.starter.run(
-          action.builder.start,
-          input,
-          project(assigned),
-          skills,
-        );
-      return startAction(action, input, assigned, skills);
-    },
+    start: (action, input, values) =>
+      action.starter.run(
+        action.builder.start,
+        input,
+        project(
+          session.forAction({
+            plugin: action.plugin,
+            action: action.action,
+            values,
+          }),
+        ),
+        skillPacksIndex(action.packs),
+      ),
     runs: async () =>
       ProjectRuns.assert(await session.hub(session.projectPath + "/runs")).runs,
     stop: (runId) =>
@@ -129,22 +149,26 @@ function project(session: ProjectSession): Project {
       session.startAlone(
         workflow,
         correlation,
-        ({ byKind }) =>
-          assignment({
-            startHere: (kinds, design) => {
-              const unknown = kinds.find((kind) => !isInputKind(kind));
-              if (unknown !== undefined)
-                throw new Error(`${unknown} is not a document Builder stages`);
-              const filed = kinds
-                .filter(isInputKind)
-                .filter((kind) => byKind.has(kind));
-              const version = design
-                ? byKind.get("design")?.version
-                : undefined;
-              if (filed.length === 0 && version === undefined) return undefined;
-              return startHere(session.inputs(filed, byKind), version);
-            },
-          }),
+        (state) => assignment(filed(session, state)),
+        busy,
+      ),
+    deploy: async ({ workflow, correlation, assignment }) => {
+      const { role, spec } = session.installed(workflow);
+      const state = await session.listed();
+      return session.deploy(
+        role,
+        spec,
+        state.preferences,
+        correlation,
+        await assignment(filed(session, state)),
+      );
+    },
+    startConcepts: ({ workflow, correlation, concepts, assignment, busy }) =>
+      session.startConcepts(
+        workflow,
+        correlation,
+        concepts,
+        (state, concept) => assignment(filed(session, state), concept),
         busy,
       ),
   };

@@ -103,6 +103,11 @@ export const ok = (callId: string, toolName: string, contains?: string) =>
   result(callId, toolName, false, contains);
 export const refused = (callId: string, toolName: string, contains?: string) =>
   result(callId, toolName, true, contains);
+/** The call's result, whether it ran or was refused. */
+export const settled = (callId: string, toolName: string) => ({
+  callId,
+  toolName,
+});
 
 export const say = (text: string): Reply => ({ text });
 export const call = (

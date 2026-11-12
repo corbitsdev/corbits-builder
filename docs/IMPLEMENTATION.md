@@ -122,9 +122,8 @@ Environment files, installs and build output never leave the workspace.
 | `packages/client`         | `@corbits-builder/client`      | The typed client for the hub's API.                              |
 | `apps/web`                | `@corbits-builder/web`         | The interface, built only on the client and the schemas.         |
 | `workflows/coordinator`   | `@corbits-builder/coordinator` | The coordinator's agent, prompt and workflow.                    |
-| `workflows/writer`        | `@corbits-builder/writer`      | The document writer and its per-kind skills.                     |
-| `workflows/reviewer`      | `@corbits-builder/reviewer`    | The document reviewer.                                           |
-| `workflows/designer`      | `@corbits-builder/designer`    | The designer, its starter, themes and skills.                    |
+| `plugins/writer`          | `@corbits-builder/writer`      | The writer plugin: the writer, its skills, and the reviewer.     |
+| `plugins/designer`        | `@corbits-builder/designer`    | The designer plugin: agent, starter, themes, skills and screens. |
 | `plugins/coder`           | `@corbits-builder/coder`       | The coder plugin: agent, starter, app starter and `check-app`.   |
 | `packages/schemas`        | `@corbits-builder/schemas`     | Types and schemas shared by the hub, client and workflows.       |
 | `vendor/interchange`      |                                | Interchange at the pinned revision.                              |

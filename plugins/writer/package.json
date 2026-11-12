@@ -1,15 +1,25 @@
 {
-  "name": "@corbits-builder/writer-plugin",
-  "version": "0.1.0-rc.3",
+  "name": "@corbits-builder/writer",
+  "version": "0.7.1",
   "private": true,
   "description": "Writes the project's documents, has them reviewed and puts them in front of the person to approve.",
   "license": "SEE LICENSE IN ../../LICENSE.md",
   "author": "Sawyer Cutler <sawyer@dirtroad.dev>",
   "type": "module",
+  "exports": {
+    "./skills": "./src/skills.ts",
+    "./task": "./src/task.ts",
+    "./packages/*": "./src/packages/*.ts"
+  },
   "dependencies": {
+    "@corbits-builder/hub": "workspace:*",
     "@corbits-builder/plugin": "workspace:*",
+    "@corbits-builder/plugin-host": "workspace:*",
     "@corbits-builder/schemas": "workspace:*",
     "@corbits/react-ui": "0.5.1",
+    "@intx/agent": "workspace:*",
+    "@intx/tools-mail": "workspace:*",
+    "@intx/workflow": "workspace:*",
     "arktype": "catalog:",
     "react": "19.3.0"
   },
@@ -27,6 +37,19 @@
     ],
     "when": "The project's documents need writing or revising, a second opinion, or the person's approval.",
     "unless": "The person wants the app itself changed, or only a mockup.",
+    "packages": {
+      "writer-constraints": "./src/packages/writer-constraints.ts",
+      "writer-approaches": "./src/packages/writer-approaches.ts",
+      "writer-product-requirements": "./src/packages/writer-product-requirements.ts",
+      "writer-build-plan": "./src/packages/writer-build-plan.ts",
+      "writer-document": "./src/packages/writer-document.ts",
+      "reviewer": "./src/packages/reviewer.ts"
+    },
+    "starters": {
+      "writer": "./src/start.ts",
+      "writer-document": "./src/start-document.ts",
+      "reviewer": "./src/start-review.ts"
+    },
     "actions": {
       "write": {
         "runs": "workflow",

@@ -11,12 +11,13 @@ import {
   results,
   say,
   scenario,
+  settled,
   turn,
   user,
 } from "./runner.ts";
 
 const firstReport = "The settings page is tidy.";
-const biggerReport = "The text is bigger.";
+const sameTurnReport = "The change is in.";
 const tidy = {
   instruction:
     "Tidy the settings page: align the labels and group the unit toggles.",
@@ -35,7 +36,7 @@ scenario({
   title:
     "a second coder while one works is refused, and two coder starts in one turn",
   start: "weather-app",
-  // Which of two starts in one turn wins is a race; this run saw the later call start.
+  // Which of two starts in one turn wins is a race, so either may start and the other is refused.
   expectChange:
     "two coder starts in one turn get a plain refusal for whichever loses the race to start; before that change, both could start.",
   coordinator: [
@@ -68,12 +69,12 @@ scenario({
     ),
     turn(
       results(
-        refused("c_same_turn_1", "execute", "in this same turn"),
-        ok("c_same_turn_2", "execute"),
+        settled("c_same_turn_1", "execute"),
+        settled("c_same_turn_2", "execute"),
       ),
-      say("One coder started; the headings wait their turn."),
+      say("One coder started; the other change waits its turn."),
     ),
-    turn(user(biggerReport), say("The text is bigger now.")),
+    turn(user(sameTurnReport), say("The change is in now.")),
   ],
   specialists: {
     coder: {
@@ -84,11 +85,12 @@ scenario({
         report: firstReport,
       }),
     },
-    "coder-bigger": {
+    // Whichever same-turn start wins: both instructions end "most of all".
+    "coder-same-turn": {
       role: "coder",
       turns: coderReports({
-        assignedWith: "text bigger",
-        report: biggerReport,
+        assignedWith: "most of all",
+        report: sameTurnReport,
       }),
     },
   },
@@ -99,11 +101,14 @@ scenario({
       p.asked("coder") > 0 ? true : undefined,
     );
     await p.say("Also make the text bigger.");
-    await p.heard("The text is bigger now.");
+    await p.heard("The change is in now.");
     p.note("the second start while the first works", p.resultOf("c_busy").text);
     p.note("runs wait on the first coder", p.resultOf("c_wait").text);
     p.note("the first of two starts in one turn", p.resultOf("c_same_turn_1"));
     p.note("the second of two starts in one turn", p.resultOf("c_same_turn_2"));
-    expect(p.resultOf("c_same_turn_1").isError).toBe(true);
+    const sameTurn = [p.resultOf("c_same_turn_1"), p.resultOf("c_same_turn_2")];
+    const refusedOnes = sameTurn.filter(({ isError }) => isError);
+    expect(refusedOnes).toHaveLength(1);
+    expect(refusedOnes[0]!.text).toContain("in this same turn");
   },
 });

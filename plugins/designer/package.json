@@ -1,12 +1,15 @@
 {
-  "name": "@corbits-builder/designer-plugin",
-  "version": "0.1.0-rc.3",
+  "name": "@corbits-builder/designer",
+  "version": "0.2.0",
   "private": true,
   "description": "Designs how the app could look, as mockups the person compares, tries and approves, and lets the person choose its fonts and colours.",
   "license": "SEE LICENSE IN ../../LICENSE.md",
   "author": "Sawyer Cutler <sawyer@dirtroad.dev>",
   "type": "module",
   "exports": {
+    "./agent": "./src/agent.ts",
+    "./contract": "./src/contract.ts",
+    "./skills": "./src/skills.ts",
     "./mockup": "./src/mockup.ts",
     "./pick-fonts": "./src/pick-fonts/screen.ts",
     "./pick-fonts/schema": "./src/pick-fonts/schema.ts",
@@ -20,13 +23,20 @@
     "./review/view": "./src/review/view.tsx",
     "./choose": "./src/choose/screen.ts",
     "./choose/schema": "./src/choose/schema.ts",
-    "./choose/view": "./src/choose/view.tsx"
+    "./choose/view": "./src/choose/view.tsx",
+    "./packages/*": "./src/packages/*.ts"
   },
   "dependencies": {
+    "@corbits-builder/coder": "workspace:*",
+    "@corbits-builder/hub": "workspace:*",
     "@corbits-builder/plugin": "workspace:*",
+    "@corbits-builder/plugin-host": "workspace:*",
     "@corbits-builder/plugin-ui": "workspace:*",
     "@corbits-builder/schemas": "workspace:*",
     "@corbits/react-ui": "0.5.1",
+    "@intx/agent": "workspace:*",
+    "@intx/tools-mail": "workspace:*",
+    "@intx/workflow": "workspace:*",
     "arktype": "catalog:",
     "lucide-react": "0.545.0",
     "react": "19.3.0"
@@ -45,6 +55,12 @@
     ],
     "when": "The person wants to see how the app could look, to try or approve a design, or to choose the app's fonts or colours.",
     "unless": "They want the built app itself changed in a way they already stated exactly.",
+    "packages": {
+      "designer": "./src/packages/designer.ts"
+    },
+    "starters": {
+      "designer": "./src/start.ts"
+    },
     "actions": {
       "mockup": {
         "runs": "workflow",

@@ -1,9 +1,6 @@
 import { describe, expect, test } from "bun:test";
 import { renderToStaticMarkup } from "react-dom/server";
-import {
-  MockupReview,
-  text,
-} from "@corbits-builder/designer-plugin/review/view";
+import { MockupReview, text } from "@corbits-builder/designer/review/view";
 import { MockupFrame } from "./mockup-frame.tsx";
 import type { ReviewedDesign } from "./screen-question.tsx";
 

@@ -36,19 +36,14 @@ export type Host = {
   // The project values the host keeps in a home of its own, such as design tokens; every value a
   // plugin declares is kept in the project's plain store.
   values: Readonly<Record<string, ValueDeclaration>>;
-  // How the host starts workflow actions, by the workflow a manifest's start block names.
-  starters: Readonly<Record<string, Starter>>;
 };
 
+/** A starter a plugin brings, which starts its run in the project with the action's skill packs. */
 export type Starter = {
   // Why a start block is wrong for this starter, or undefined when it takes it.
   check(start: WorkflowActionBuilder["start"]): string | undefined;
   // The input fields it reads, which every action it starts must take.
   reads: readonly string[];
-};
-
-/** A starter a plugin brings, which starts its run in the project with the action's skill packs. */
-export type PluginStarter = Starter & {
   run(
     start: unknown,
     input: unknown,
@@ -87,7 +82,7 @@ export function defineStarter<
   };
 }
 
-const isStarter = (value: unknown): value is PluginStarter =>
+const isStarter = (value: unknown): value is Starter =>
   typeof value === "object" &&
   value !== null &&
   "check" in value &&
@@ -125,8 +120,8 @@ export type WorkflowAction = ActionBase & {
   presents: string | null;
   // The skill packs its specialist's agent is given when this action starts it.
   packs: readonly SkillPack[];
-  // The starter its plugin brings, or undefined when the host starts its workflow.
-  starter: PluginStarter | undefined;
+  // The starter a plugin brings for the workflow its start block names.
+  starter: Starter;
 };
 export type ScreenAction = ActionBase & {
   builder: ScreenActionBuilder;
@@ -421,7 +416,7 @@ type Installing = {
   factText: (fact: Fact) => string;
   packs: readonly SkillPack[];
   values: ReadonlyMap<string, ValueDeclaration>;
-  starters: ReadonlyMap<string, PluginStarter>;
+  starters: ReadonlyMap<string, Starter>;
 };
 
 // The finished work's line about the screens that show it, each with when it fits.
@@ -466,8 +461,7 @@ async function installAction(
     );
   const { fields } = workflow.describe;
   checkFacts(name, facts, host.facts, (field) => Object.hasOwn(fields, field));
-  const own = starters.get(declared.start.workflow);
-  const starter = own ?? host.starters[declared.start.workflow];
+  const starter = starters.get(declared.start.workflow);
   if (!starter)
     throw new Error(
       `${name} starts ${declared.start.workflow}, which is not an installed workflow`,
@@ -494,7 +488,7 @@ async function installAction(
     check: (raw) => checkWorkflowInput(name, workflow, raw),
     presents: presentsOf(name, specialist, declared.presents),
     packs: packs.filter(({ serves }) => serves.includes(name)),
-    starter: own,
+    starter,
   };
 }
 
@@ -651,12 +645,12 @@ async function loadPacks(
 }
 
 // Each workflow a plugin starts itself, by the name its actions' start blocks give it.
-async function pluginStarters(manifests: readonly Manifested[], host: Host) {
-  const starters = new Map<string, PluginStarter>();
+async function pluginStarters(manifests: readonly Manifested[]) {
+  const starters = new Map<string, Starter>();
   for (const { found, builder } of manifests) {
     if (builder.runs !== "specialist") continue;
     for (const [workflow, path] of Object.entries(builder.starters ?? {})) {
-      if (starters.has(workflow) || Object.hasOwn(host.starters, workflow))
+      if (starters.has(workflow))
         throw new Error(
           `${builder.handle} starts ${workflow}, which another starter starts too`,
         );
@@ -701,7 +695,7 @@ export async function loadCatalog(
   );
   const factText = factWords(manifests, host.facts);
   const values = declaredValues(manifests, host);
-  const starters = await pluginStarters(manifests, host);
+  const starters = await pluginStarters(manifests);
   const plugins = await Promise.all(
     manifests.map(({ found, builder, description }): Promise<Plugin> => {
       if (builder.runs === "specialist")

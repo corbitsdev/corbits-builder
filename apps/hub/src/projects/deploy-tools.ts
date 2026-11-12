@@ -14,8 +14,7 @@ import {
   WriterDocumentKind,
 } from "@corbits-builder/schemas/artifact";
 import { Preferences } from "@corbits-builder/schemas/preferences";
-import { DEFAULT_STACK } from "../config/packages.ts";
-import { DESIGNER_INPUTS, startHere } from "../config/inputs.ts";
+import { startHere } from "../config/inputs.ts";
 import { agentDecidesApprovals } from "../config/preferences.ts";
 import { DESIGN_CONCEPTS, DESIGN_THEMES } from "../config/design.ts";
 import {
@@ -28,13 +27,21 @@ import { DESIGN_STYLES } from "../artifacts/design-tweaks.ts";
 import { checkPluginQuestion } from "../plugins/question.ts";
 import { screenProject } from "../plugins/tools.ts";
 import { projectScopeFailure } from "../workflows/project-scope.ts";
-import { assignmentToWriterMessage } from "../workflows/writer-task.ts";
 import {
   APP_CHANGE_NOTE,
   CODER_INPUTS,
   coderTaskMessage,
 } from "@corbits-builder/coder/contract";
+import {
+  conceptAssignment,
+  DESIGNER_INPUTS,
+  designerBusy,
+} from "@corbits-builder/designer/contract";
 import { Refusal } from "@corbits-builder/plugin-host/coordinator";
+import {
+  assignmentToWriterMessage,
+  DEFAULT_STACK,
+} from "@corbits-builder/writer/task";
 import {
   checkDeployments,
   projectSession,
@@ -220,7 +227,7 @@ export function createDeployTools(
           deploy,
           approve,
           startAlone,
-          startDesigners,
+          startConcepts,
         } = projectSession(env, options, signal);
         const refsOf = (byKind: ProjectListing["byKind"]) =>
           [...byKind].map(([kind, ref]) => ({ kind, ...ref }));
@@ -420,11 +427,20 @@ export function createDeployTools(
             );
           } else if (call.name === "design_app") {
             const input = validArguments(DesignApp, call.arguments);
-            result = await startDesigners(input, (state) => {
-              const refusal = designGate(state);
-              if (refusal) throw refusal;
-              return startHere(inputs(DESIGNER_INPUTS, state.byKind));
-            });
+            result = await startConcepts(
+              "designer",
+              "designer",
+              input.concepts,
+              (state, concept) => {
+                const refusal = designGate(state);
+                if (refusal) throw refusal;
+                return (
+                  startHere(inputs(DESIGNER_INPUTS, state.byKind)) +
+                  conceptAssignment(concept, input.lookIdeas, input.instruction)
+                );
+              },
+              designerBusy,
+            );
           } else if (call.name === "deploy_presenter") {
             const input = validArguments(DeployPresenter, call.arguments);
             const { byKind, approved, preferences } = await listed();

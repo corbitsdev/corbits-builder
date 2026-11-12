@@ -6,7 +6,7 @@ import {
   type InferencePreference,
 } from "@intx/agent/authoring";
 import { reviewerPrompt } from "./prompt.ts";
-import { version } from "../package.json";
+import { version } from "../../package.json";
 
 export function createReviewerAgent<Env extends BaseEnv>(options: {
   readonly id: string;

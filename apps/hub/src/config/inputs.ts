@@ -31,13 +31,6 @@ export type InputKind = keyof typeof INPUTS;
 export const isInputKind = (kind: string): kind is InputKind =>
   Object.hasOwn(INPUTS, kind);
 
-export const DESIGNER_INPUTS = [
-  "problem_brief",
-  "constraints",
-  "approaches",
-  "product_requirements",
-] as const;
-
 export const inputPath = (kind: InputKind) =>
   `${INPUTS_DIRECTORY}/${INPUTS[kind].file}`;
 

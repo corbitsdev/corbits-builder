@@ -1,20 +1,23 @@
-import { createWriterAgent } from "@corbits-builder/writer/agent";
-import { createWriterWorkflow } from "@corbits-builder/writer";
 import type { WriterDocumentKind } from "@corbits-builder/schemas/artifact";
-import {
-  createDocumentWriterArtifactTools,
-  createWriterArtifactTools,
-} from "../artifacts/tools.ts";
-import { createSkillTools } from "../skills/tools.ts";
-import { roleInference } from "./role-inference.ts";
-import { compactingDirector } from "./director.ts";
-import { dropDegenerateTurn, trimHistory } from "./compaction.ts";
-import { savedResultTools } from "./saved-result-tools.ts";
 import {
   DOCUMENT_WRITER_PACKAGE,
   WRITER_PACKAGES,
 } from "@corbits-builder/schemas/installed-workflows";
-import { nativePackageName } from "./package-name.ts";
+import {
+  createDocumentWriterArtifactTools,
+  createWriterArtifactTools,
+} from "@corbits-builder/hub/artifacts/tools";
+import { createSkillTools } from "@corbits-builder/hub/skills/tools";
+import { roleInference } from "@corbits-builder/hub/workflows/role-inference";
+import { compactingDirector } from "@corbits-builder/hub/workflows/director";
+import {
+  dropDegenerateTurn,
+  trimHistory,
+} from "@corbits-builder/hub/workflows/compaction";
+import { savedResultTools } from "@corbits-builder/hub/workflows/saved-result-tools";
+import { nativePackageName } from "@corbits-builder/hub/workflows/package-name";
+import { createWriterAgent } from "./agent.ts";
+import { createWriterWorkflow } from "./workflow.ts";
 
 /**
  * The writer's workflow package for one known kind, whose write_artifact saves only that kind, or

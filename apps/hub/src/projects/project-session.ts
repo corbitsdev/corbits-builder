@@ -18,7 +18,6 @@ import {
   type ArtifactRef,
   type DesignConcept,
 } from "@corbits-builder/schemas/artifact";
-import { coderTaskMessage } from "@corbits-builder/coder/contract";
 import { Refusal } from "@corbits-builder/plugin-host/coordinator";
 import { Preferences } from "@corbits-builder/schemas/preferences";
 import type { InputKind } from "../config/inputs.ts";
@@ -27,7 +26,6 @@ import {
   designConceptCeiling,
   preferenceBlock,
 } from "../config/preferences.ts";
-import { designConceptAssignment, designLookIdeas } from "../config/design.ts";
 import { resolveWorkflowProjectScope } from "../workflows/project-scope.ts";
 import { workflowHttpJson, WorkflowHttpError } from "../workflows/http-json.ts";
 
@@ -342,6 +340,18 @@ export function projectSession(
       await sleep(TEARDOWN_POLL_MS, undefined, { signal });
     }
   };
+  // The role and installed deployment of a workflow a project starts.
+  const installed = (workflow: string) => {
+    const role = Object.entries(WORKFLOW_PACKAGES).find(
+      ([name]) => name === workflow,
+    )?.[1];
+    const spec = Object.entries(options.workflows).find(
+      ([name]) => name === workflow,
+    )?.[1];
+    if (role === undefined || role === "coordinator")
+      throw new Error(`${workflow} is not a workflow a project starts`);
+    return { role, spec };
+  };
   // One run of the workflow's role at a time; a start waits for the last one to end. task builds
   // the assignment from the project as it then stands, or refuses; busy says why none started,
   // with the live run when one is still working and none while another is starting.
@@ -351,14 +361,7 @@ export function projectSession(
     task: (state: Listed) => string | Promise<string>,
     busy: (live?: Listed["inFlight"][number]) => Error,
   ) => {
-    const role = Object.entries(WORKFLOW_PACKAGES).find(
-      ([name]) => name === workflow,
-    )?.[1];
-    const spec = Object.entries(options.workflows).find(
-      ([name]) => name === workflow,
-    )?.[1];
-    if (role === undefined || role === "coordinator")
-      throw new Error(`${workflow} is not a workflow a project starts`);
+    const { role, spec } = installed(workflow);
     return startOnce(options.projectId + ":" + role, busy, async () => {
       const { state, live } = await ended((run) => run.role === role);
       if (live) throw busy(live);
@@ -371,67 +374,55 @@ export function projectSession(
       );
     });
   };
-  // A designer for each concept, each from documents that opens its assignment, or refuses.
-  const startDesigners = async (
-    input: {
-      instruction: string;
-      lookIdeas: string;
-      concepts: DesignConcept[];
-    },
-    documents: (state: Listed) => string,
+  // A run of the workflow for each concept, each concept one run's at a time and recorded as that
+  // run's before its assignment. task builds a concept's assignment from the project as it then
+  // stands, or refuses; busy says why a concept did not start, with the live run when one still
+  // works on it and none while another is starting. Each concept reports its own outcome.
+  const startConcepts = async (
+    workflow: string,
+    correlationId: string,
+    concepts: readonly DesignConcept[],
+    task: (state: Listed, concept: DesignConcept) => string,
+    busy: (concept: string, live?: Listed["inFlight"][number]) => Error,
   ) => {
+    const { role, spec } = installed(workflow);
     const { inFlight } = await listed();
     // The person decides how many concepts start; the preference guides the coordinator when they
     // named no number, so only the ceiling holds here.
     const limit = designConceptCeiling();
     // A requested concept already at work is refused below but still counts toward the limit.
-    const concepts = new Set(
+    const labels = new Set(
       inFlight.flatMap((run) =>
-        run.role === "designer" && run.concept ? [run.concept] : [],
+        run.role === role && run.concept ? [run.concept] : [],
       ),
     );
-    for (const concept of input.concepts) concepts.add(concept.label);
-    if (concepts.size > limit)
+    for (const concept of concepts) labels.add(concept.label);
+    if (labels.size > limit)
       throw new Refusal(
         "too_many_concepts: at most " +
           String(limit) +
           " design concepts can be at work at a time, counting those already started",
       );
-    // Each pass on a concept is its own designer, one at a time.
-    const design = (concept: DesignConcept) =>
+    const start = (concept: DesignConcept) =>
       startOnce(
-        options.projectId + ":designer:" + concept.label,
-        () =>
-          new Refusal(
-            "designer_starting: a designer is already starting for this project",
-          ),
+        options.projectId + ":" + role + ":" + concept.label,
+        () => busy(concept.label),
         async () => {
-          // A designer still "deployed" never received its assignment, so it does not hold
-          // the concept.
+          // A run still "deployed" never received its assignment, so it does not hold the concept.
           const { state, live } = await ended(
             (run) =>
-              run.role === "designer" &&
+              run.role === role &&
               run.status === "running" &&
               run.concept === concept.label,
           );
-          const opening = documents(state);
-          if (live)
-            throw new Refusal(
-              "designer_running: the " +
-                concept.label +
-                " designer is still working in run " +
-                live.runId +
-                "; its design arrives as a message, and the next pass on it can start after",
-            );
+          const content = task(state, concept);
+          if (live) throw busy(concept.label, live);
           const started = await deploy(
-            "designer",
-            options.workflows.designer,
+            role,
+            spec,
             state.preferences,
-            "designer",
-            opening +
-              designConceptAssignment(concept) +
-              designLookIdeas(input.lookIdeas) +
-              coderTaskMessage(input.instruction),
+            correlationId,
+            content,
             (runId) =>
               hub(projectPath + "/design-concepts", { runId, concept }),
           );
@@ -439,12 +430,12 @@ export function projectSession(
         },
       );
     // One concept that fails to start leaves the others at work, so each reports its own outcome.
-    return (await Promise.allSettled(input.concepts.map(design))).map(
+    return (await Promise.allSettled(concepts.map(start))).map(
       (outcome, index) =>
         outcome.status === "fulfilled"
           ? outcome.value
           : {
-              concept: input.concepts[index]!.label,
+              concept: concepts[index]!.label,
               error: refusalText(outcome.reason),
             },
     );
@@ -492,8 +483,9 @@ export function projectSession(
     deploy,
     ended,
     approve,
+    installed,
     startAlone,
-    startDesigners,
+    startConcepts,
     // The same session, starting runs for a plugin action.
     forAction: (action: Assigned) =>
       projectSession(env, options, signal, action),

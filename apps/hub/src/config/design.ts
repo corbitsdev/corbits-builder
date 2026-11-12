@@ -128,29 +128,6 @@ export const themeOf = (label: string) => {
   return concept && DESIGN_THEMES.find((theme) => theme.id === concept.theme);
 };
 
-// A theme taken as it is is the concept's look; any other concept names the token changes it makes
-// to the theme it starts from. It names the look, not what the workspace starts from, since a later
-// pass continues the draft an earlier one left.
-const lookOf = (concept: { label: string; direction: string }) => {
-  const theme = themeOf(concept.label);
-  if (
-    theme?.label === concept.label &&
-    theme.direction === concept.direction.trim()
-  )
-    return `Its look is the ${theme.label} theme as it is.`;
-  return `Its look starts from the ${theme?.label ?? "kit's neutral"} theme and changes its tokens: ${concept.direction}`;
-};
-
-export const designConceptAssignment = (concept: {
-  label: string;
-  direction: string;
-}) =>
-  `Design concept: ${concept.label}. ${lookOf(concept)}\nThe person compares this concept with any others before they pick the one to build. file_design_option files it as this concept's option.\n\n`;
-
-// The person's own ideas for the look, carried to each designer in their words.
-export const designLookIdeas = (ideas: string) =>
-  `The person's ideas for the look, in their words: ${ideas.trim()}\n\n`;
-
 // The hub's note to the coordinator once the person chose a design option in the conversation.
 export const designChosenNote = (concept: string, version: number) =>
   `${HUB_NOTE_LEAD}Design chosen: ${concept}.\n\nThe person chose the ${concept} design concept. It is filed as the design at version ${String(version)}, approved by them. The build plan is written from it next.`;

@@ -362,7 +362,7 @@ const freePort = () =>
     });
   });
 
-// The kit's values as the designer's starter ships them (workflows/designer/starter).
+// The kit's values as the designer's starter ships them (plugins/designer/starter).
 const KIT_PRIMARY = "#e98428";
 const KIT_FONT = '"Red Hat Display", "Open Sans", Roboto, Arial, sans-serif';
 const GRADIENT = /(?:repeating-)?(?:linear|radial|conic)-gradient\(/g;

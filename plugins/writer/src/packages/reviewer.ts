@@ -1,11 +1,14 @@
-import { createReviewerAgent } from "@corbits-builder/reviewer/agent";
-import { createReviewerWorkflow } from "@corbits-builder/reviewer";
 import { mail } from "@intx/tools-mail/sidecar-bundle";
-import { roleInference } from "../role-inference.ts";
-import { compactingDirector } from "../director.ts";
-import { dropDegenerateTurn, trimHistory } from "../compaction.ts";
-import { savedResultTools } from "../saved-result-tools.ts";
-import { nativePackageName } from "../package-name.ts";
+import { roleInference } from "@corbits-builder/hub/workflows/role-inference";
+import { compactingDirector } from "@corbits-builder/hub/workflows/director";
+import {
+  dropDegenerateTurn,
+  trimHistory,
+} from "@corbits-builder/hub/workflows/compaction";
+import { savedResultTools } from "@corbits-builder/hub/workflows/saved-result-tools";
+import { nativePackageName } from "@corbits-builder/hub/workflows/package-name";
+import { createReviewerAgent } from "../reviewer/agent.ts";
+import { createReviewerWorkflow } from "../reviewer/workflow.ts";
 
 const compacting = compactingDirector(nativePackageName("reviewer"));
 

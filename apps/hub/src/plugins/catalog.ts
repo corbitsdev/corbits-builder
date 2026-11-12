@@ -9,7 +9,6 @@ import {
 import { readPluginFolder } from "@corbits-builder/plugin-host/folder";
 import { TOKEN_DECLARATIONS } from "../artifacts/project-values.ts";
 import { FACTS } from "./facts.ts";
-import { STARTERS } from "./starters.ts";
 
 export {
   isRoute,
@@ -19,12 +18,11 @@ export {
 // From this file rather than the working directory, so every way of starting the hub finds it.
 export const PLUGINS_FOLDER = resolve(import.meta.dir, "../../../../plugins");
 
-// All the plugins need from the hub: the facts it works out, the project values it keeps in the
-// design's tokens and the workflows it starts.
+// All the plugins need from the hub: the facts it works out and the project values it keeps in the
+// design's tokens.
 export const HOST: Host = {
   facts: FACTS,
   values: TOKEN_DECLARATIONS,
-  starters: STARTERS,
 };
 
 // Every plugin in the folder, checked once when the hub loads; a wrong one stops the hub.

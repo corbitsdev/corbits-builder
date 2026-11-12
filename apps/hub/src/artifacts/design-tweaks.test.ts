@@ -6,7 +6,7 @@ import { projectValueWrites, readProjectValues } from "./project-values.ts";
 test("a saved primary reaches every dark rule of a shipped theme", async () => {
   const css = await Bun.file(
     new URL(
-      "../../../../workflows/designer/themes/modern-sleek/designs/styles.css",
+      "../../../../plugins/designer/themes/modern-sleek/designs/styles.css",
       import.meta.url,
     ),
   ).text();
@@ -29,7 +29,7 @@ test("a commented declaration is left alone", () => {
 test("a chosen secondary font is saved as font-mono, ahead of the stylesheet's fallbacks", async () => {
   const styles = await Bun.file(
     new URL(
-      "../../../../workflows/designer/starter/.builder/designs/styles.css",
+      "../../../../plugins/designer/starter/.builder/designs/styles.css",
       import.meta.url,
     ),
   ).text();

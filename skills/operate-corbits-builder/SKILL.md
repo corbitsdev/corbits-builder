@@ -89,7 +89,7 @@ approved.
    person's to say: ask them, in one round of questions, rather than invent it.
 3. **Draft each missing document the way Builder's own writers do.** Each
    kind has a skill describing its sections and shape in
-   `workflows/writer/skills/<name>/SKILL.md` (`problem-brief`, `constraints`,
+   `plugins/writer/skills/<name>/SKILL.md` (`problem-brief`, `constraints`,
    `approaches`, `product-requirements`, `build-plan`), with finished examples
    under `test/seed/*/docs` and a design under `test/seed/*/designs`. Write
    them from the project as it is: the approaches document records the way it

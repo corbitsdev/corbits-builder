@@ -1,11 +1,12 @@
 import { NativeSpecialistAssignment } from "@corbits-builder/schemas/native-specialist";
 import { SourceRef } from "@corbits-builder/schemas";
-import {
-  writerTaskMessage,
-  type WorkerDocument,
-} from "@corbits-builder/writer/contract";
+import { writerTaskMessage, type WorkerDocument } from "./contract.ts";
 
 type Source = typeof SourceRef.infer;
+
+// The stack a build plan is written to unless the person asked otherwise.
+export const DEFAULT_STACK =
+  "the coder's starter, a Bun workspace with client/ (Vite, React, React Router, TanStack Query, Tailwind CSS v4 and @corbits/react-ui), server/ (Hono on Bun, static JSON data or PGlite with Drizzle when the app stores what people enter) and packages/shared (zod schemas both sides use).";
 
 function sourceToken(ref: Source): string {
   const base = ref.artifactId + "@" + String(ref.version) + "@" + ref.sha256;

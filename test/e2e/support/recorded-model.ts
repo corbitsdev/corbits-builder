@@ -14,7 +14,8 @@ export const ToolResultExpectation = type({
   "+": "reject",
   callId: "string > 0",
   toolName: "string > 0",
-  isError: "boolean",
+  // Left out when either outcome is expected, such as which of two same-turn calls wins a race.
+  "isError?": "boolean",
   "keys?": "string[]",
   "contains?": "string",
   "bind?": "Record<string, string>",
@@ -515,7 +516,10 @@ export async function startRecordedModelServer(
           ? rawText.slice("<error>\n".length, -"\n</error>".length)
           : rawText;
 
-        if (actualIsError !== expected.isError) {
+        if (
+          expected.isError !== undefined &&
+          actualIsError !== expected.isError
+        ) {
           throw recordFailure(
             `Recorded model tool result isError mismatch for ${expected.toolName} (${expected.callId}):\n${ctx}\n  expected isError: ${expected.isError}\n  actual isError: ${actualIsError}\n  actual content: ${unwrapped.slice(0, 2000)}`,
           );

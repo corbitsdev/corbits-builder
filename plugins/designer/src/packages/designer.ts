@@ -1,16 +1,19 @@
-import { createDesignerAgent } from "@corbits-builder/designer/agent";
-import { createDesignerWorkflow } from "@corbits-builder/designer";
 import { mail, type MailToolEnv } from "@intx/tools-mail/sidecar-bundle";
 import {
   createSidecarCodingTools,
   type CodingSidecarEnv,
-} from "../../builds/sidecar-tools.ts";
-import { createDesignTools } from "../../artifacts/design-tools.ts";
-import { roleInference } from "../role-inference.ts";
-import { compactingDirector } from "../director.ts";
-import { dropDegenerateTurn, trimHistory } from "../compaction.ts";
-import { nativePackageName } from "../package-name.ts";
-import { presentsFor } from "../../plugins/catalog.ts";
+} from "@corbits-builder/hub/builds/sidecar-tools";
+import { createDesignTools } from "@corbits-builder/hub/artifacts/design-tools";
+import { roleInference } from "@corbits-builder/hub/workflows/role-inference";
+import { compactingDirector } from "@corbits-builder/hub/workflows/director";
+import {
+  dropDegenerateTurn,
+  trimHistory,
+} from "@corbits-builder/hub/workflows/compaction";
+import { nativePackageName } from "@corbits-builder/hub/workflows/package-name";
+import { presentsFor } from "@corbits-builder/hub/plugins/catalog";
+import { createDesignerAgent } from "../agent.ts";
+import { createDesignerWorkflow } from "../workflow.ts";
 
 const compacting = compactingDirector(nativePackageName("designer"));
 

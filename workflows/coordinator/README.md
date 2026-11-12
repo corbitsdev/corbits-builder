@@ -50,8 +50,8 @@ Prompt conventions are in [AGENTS.md][agents]. `bun run typecheck` and `bun run 
 `bun run dev` runs it in a real project.
 
 [entry]: https://github.com/corbitsdev/corbits-builder/blob/main/apps/hub/src/workflows/entries/coordinator.ts
-[writer]: https://github.com/corbitsdev/corbits-builder/tree/main/workflows/writer
-[designer]: https://github.com/corbitsdev/corbits-builder/tree/main/workflows/designer
+[writer]: https://github.com/corbitsdev/corbits-builder/tree/main/plugins/writer
+[designer]: https://github.com/corbitsdev/corbits-builder/tree/main/plugins/designer
 [coder]: https://github.com/corbitsdev/corbits-builder/tree/main/plugins/coder
-[reviewer]: https://github.com/corbitsdev/corbits-builder/tree/main/workflows/reviewer
+[reviewer]: https://github.com/corbitsdev/corbits-builder/tree/main/plugins/writer
 [agents]: https://github.com/corbitsdev/corbits-builder/blob/main/AGENTS.md

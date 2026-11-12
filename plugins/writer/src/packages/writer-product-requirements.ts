@@ -1,5 +1,5 @@
-import { writerPackage } from "../writer-package.ts";
+import { writerPackage } from "../package.ts";
 
-const writer = writerPackage("build_plan");
+const writer = writerPackage("product_requirements");
 export const { director, historyCompactor, degenerateTurnCompactor } = writer;
 export default writer.workflow;
