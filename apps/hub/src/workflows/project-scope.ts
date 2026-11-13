@@ -28,18 +28,17 @@ export function scopeWorkflows(
   );
 }
 
-// The model sees only the original code (never a refusal body or arbitrary message); the cause stays in the hub log.
+// The model sees the hub's refusal or the original code, never an arbitrary message; the cause stays in the hub log.
 export function projectScopeFailure(callId: string, error: unknown) {
   log.error(
     "Workflow project scope or tool call failed",
     requestErrorMetadata(error),
   );
   const code =
-    error instanceof WorkflowHttpError && error.refusalCode
-      ? error.refusalCode
-      : error instanceof Error && SAFE_CODE.test(error.message)
-        ? error.message
-        : "workflow_project_scope_unavailable";
+    error instanceof WorkflowHttpError ||
+    (error instanceof Error && SAFE_CODE.test(error.message))
+      ? error.message
+      : "workflow_project_scope_unavailable";
   return { callId, content: code, isError: true, ...accessRefusal(error) };
 }
 

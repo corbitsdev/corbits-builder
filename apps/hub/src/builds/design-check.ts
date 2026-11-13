@@ -2,6 +2,7 @@ import { createHash } from "node:crypto";
 import { readFile, realpath } from "node:fs/promises";
 import { join, relative, resolve, sep } from "node:path";
 import { hasCode } from "@intx/types";
+import { designSize, readDesignFiles } from "../artifacts/design-draft.ts";
 import { withDesignTokens } from "../artifacts/design-tokens.ts";
 import { DESIGN_STYLES } from "../artifacts/design-tweaks.ts";
 
@@ -103,6 +104,15 @@ export async function validateDesignWorkspace(
   return undefined;
 }
 
+const TRIM =
+  "designs/index.html holds a copy of every screen, so each screen counts twice: trim repeated markup, such as a copy of a screen for every record or person, and show each state once";
+
+export const designTooLarge = (size: string) =>
+  `design_too_large: ${size}. Over the limit it can be neither filed nor continued by a later designer. ${TRIM}.`;
+
+const designNearLimit = (size: string) =>
+  `design_size: ${size}. That is within 10% of the limit, and a design over it can be neither filed nor continued. ${TRIM} before adding more.`;
+
 function withValidationIssue(output: string, issue: string): string {
   const trimmed = output.trim();
   const detail = issue.replace(/^invalid_design:\s*/, "");
@@ -178,8 +188,14 @@ export function createDesignCheck(workspace: string, run: Run) {
           output: `check-app did not run: ${error instanceof Error ? error.message : String(error)}`,
         };
       }
-      const issue = await validateDesignWorkspace(workspace);
+      const invalid = await validateDesignWorkspace(workspace);
+      // Measured as filing measures it, so the designer trims before a refusal, not after.
+      const size = invalid
+        ? undefined
+        : designSize(await readDesignFiles(workspace));
       if (controller.signal.aborted) return undefined;
+      const issue =
+        invalid ?? (size?.over ? designTooLarge(size.text) : undefined);
       const result: Result = issue
         ? {
             fingerprint: print,
@@ -189,7 +205,10 @@ export function createDesignCheck(workspace: string, run: Run) {
         : {
             fingerprint: print,
             passed: ran.exitCode === 0,
-            checklist: ran.output.trim(),
+            checklist: [
+              ran.output.trim(),
+              ...(size?.near ? [designNearLimit(size.text)] : []),
+            ].join("\n"),
           };
       latest = result;
       return result;

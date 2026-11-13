@@ -87,27 +87,13 @@ export async function startOnce<T>(
   }
 }
 
-// Authorization refusals stay a bare code; any other hub refusal carries the
-// code with its field issues so the model can correct the call.
-function hubRefusal(error: WorkflowHttpError): string {
-  const code = error.refusalCode ?? error.message;
-  if (error.status === 401 || error.status === 403 || !error.issues?.length)
-    return code;
-  return (
-    code +
-    ": " +
-    error.issues.map((issue) => issue.path + " " + issue.message).join("; ")
-  );
-}
-
-export const refusalText = (error: unknown) =>
-  error instanceof Refusal
-    ? error.message
-    : error instanceof WorkflowHttpError
-      ? hubRefusal(error)
-      : error instanceof Error
-        ? error.name + ": " + error.message
-        : String(error);
+export const refusalText = (error: unknown) => {
+  if (error instanceof Refusal || error instanceof WorkflowHttpError)
+    return error.message;
+  return error instanceof Error
+    ? error.name + ": " + error.message
+    : String(error);
+};
 
 /** The project the coordinator's run belongs to, with the specialists it may start. */
 export async function resolveProjectOptions(

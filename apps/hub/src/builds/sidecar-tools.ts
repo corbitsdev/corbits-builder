@@ -119,17 +119,9 @@ const backgrounds = (command: string) =>
 
 const WRITES = new Set(["write_file", "edit_file"]);
 
-// The underlying error's code and message, with what the hub said when it refused.
+// The underlying error's code and message, or what the hub said when it refused.
 function filingFailure(error: unknown) {
-  if (error instanceof WorkflowHttpError)
-    return [
-      error.message,
-      error.refusalCode,
-      error.hint,
-      ...(error.issues ?? []).map((issue) => `${issue.path} ${issue.message}`),
-    ]
-      .filter(Boolean)
-      .join(": ");
+  if (error instanceof WorkflowHttpError) return error.message;
   return error instanceof Error
     ? `${error.name}: ${error.message}`
     : String(error);
@@ -519,6 +511,12 @@ export function createSidecarCodingTools(policy: {
         } catch (error) {
           // A workspace that failed to start is started again by the next call.
           sandbox = undefined;
+          // The next call meets the same refusal, so the agent is told to stop rather than retry.
+          if (error instanceof WorkflowHttpError && error.refused)
+            throw new Error(
+              `workspace_unprepared: the hub refused to prepare the workspace (${error.message}). No tool can read or save files here, and this will not succeed by trying again: stop and reply with what happened.`,
+              { cause: error },
+            );
           throw error;
         }
       }

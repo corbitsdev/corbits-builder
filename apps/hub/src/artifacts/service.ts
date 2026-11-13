@@ -43,6 +43,7 @@ import {
   AppVersionMetadata,
   DocumentContent,
   MAX_APPROVAL_PACKAGE_BYTES,
+  MAX_DESIGN_BYTES,
   MATERIAL_KIND,
   ArtifactKindWrite,
   DesignBundle,
@@ -132,6 +133,7 @@ import {
   readDemoLogin,
   readDesignBundle,
   readDesignDraft,
+  designDraftOf,
   readUserManual,
   manualPictures,
   warmStepWorkspace,
@@ -145,7 +147,6 @@ import {
   bundleFiles,
   workspaceHoldsApp,
 } from "../builds/app-snapshot.ts";
-import { MAX_DESIGN_BYTES } from "./design-tools.ts";
 import { DESIGN_STYLES, setThemeTokens } from "./design-tweaks.ts";
 import type { ProjectState } from "./project-values.ts";
 import {
@@ -316,7 +317,14 @@ function validateArtifactWriteContent(
       });
   }
   // An app is as large as it is.
-  if (input.kind === "approval_package") {
+  if (input.kind === "design" || input.kind === "design_option") {
+    const bytes = Buffer.byteLength(input.content);
+    if (bytes > MAX_DESIGN_BYTES)
+      throw new ProjectError(413, "design_too_large", {
+        bytes,
+        limit: MAX_DESIGN_BYTES,
+      });
+  } else if (input.kind === "approval_package") {
     const bytes = Buffer.byteLength(input.content);
     if (bytes > MAX_APPROVAL_PACKAGE_BYTES)
       throw new ProjectError(413, "approval_package_too_large", {
@@ -873,13 +881,6 @@ export function createArtifactService(
       : undefined;
   }
 
-  function designDraftOf(files: Record<string, string>) {
-    const draft = DesignDraft.assert({ files });
-    if (Buffer.byteLength(JSON.stringify(draft)) > MAX_DESIGN_BYTES)
-      throw new ProjectError(409, "design_draft_too_large");
-    return draft;
-  }
-
   // A chosen design option's content is filed as the design, approved by actor as the chooser: the
   // person, or the designer's run when approvals are left to Builder. The other concepts' designers
   // would file options nobody compares and hold their slots, so they stop.
@@ -1347,8 +1348,14 @@ export function createArtifactService(
         readDesignBundle,
         self.runId,
       );
-      if (left !== undefined) return designDraftOf(left);
       const filed = await filedDesign(actor, concept);
+      // The refusal comes before this run writes a draft, so the concept's next designer finds none
+      // from it and starts from what stands without one.
+      if (left !== undefined)
+        return designDraftOf(
+          left,
+          `This designer run cannot continue it; a new design task for this concept starts from ${filed ? "the filed design" : "the design starter"} instead.`,
+        );
       if (filed) return designDraftOf(await filed.files());
       throw new ProjectError(404, "design_draft_not_found");
     },

@@ -11,7 +11,10 @@ import {
 import { homedir, tmpdir } from "node:os";
 import { dirname, join, resolve } from "node:path";
 import type { RuntimeCapabilities } from "@intx/types/runtime-capabilities";
-import { DesignBundle } from "@corbits-builder/schemas/artifact";
+import {
+  DesignBundle,
+  MAX_DESIGN_BYTES,
+} from "@corbits-builder/schemas/artifact";
 import { createDesignCheck } from "../builds/design-check.ts";
 import {
   spliceDesignScreens,
@@ -19,8 +22,11 @@ import {
 } from "../builds/starter.ts";
 import { CATALOG } from "../plugins/catalog.ts";
 import {
+  designDraftOf,
+  designSize,
   readDesignBundle,
   readDesignDraft,
+  readDesignFiles,
   manualPictureRefs,
   manualPictures,
 } from "./design-draft.ts";
@@ -90,6 +96,75 @@ test("the draft serves only regular files inside .builder/designs", async () => 
   }
 });
 
+// The designer's design tools against a hub that files whatever it is sent.
+function designTools(
+  workspace: string,
+  onFile: (body: { kind: string; title: string; content: string }) => void,
+) {
+  const deployment = {
+    source: {
+      kind: "asset" as const,
+      assetId: "asset",
+      package: { format: "tarball" as const },
+    },
+    entry: "entry",
+    pin: "@corbits-builder/designer@1.0.0",
+    sourceOfferingIds: ["offering"],
+    defaultSourceOfferingId: "offering",
+  };
+  const fetch = async (path: string, init: RequestInit) => {
+    if (path === "/api/workflow-project-scope")
+      return Response.json({
+        tenantId: "tenant",
+        projectId: "project",
+        domain: "example.invalid",
+        role: "designer",
+        workflows: {
+          "writer-product-requirements": deployment,
+          "writer-build-plan": deployment,
+          "writer-document": deployment,
+          reviewer: deployment,
+          coder: deployment,
+          designer: deployment,
+        },
+        openNetwork: false,
+        build: {
+          assetDirectory: "/assets",
+          browserCli: "/browser",
+          childPath: "/child",
+          dependencyRoots: ["/deps"],
+          ripgrepPath: "/rg",
+          runtimeVersion: "1.0.0",
+        },
+      });
+    if (path === "/api/tenants/tenant/projects/project/artifacts") {
+      const filedBody = JSON.parse(String(init.body)) as {
+        kind: string;
+        title: string;
+        content: string;
+      };
+      onFile(filedBody);
+      return Response.json({
+        artifact: {
+          artifactId: "design-1",
+          kind: "design_option",
+          title: filedBody.title,
+          version: 1,
+          sha256: "a".repeat(64),
+        },
+      });
+    }
+    return Response.json({ code: "unexpected_route" }, { status: 404 });
+  };
+  const capabilities = {
+    resolve: () => ({ resolve: async () => ({ kind: "http", fetch }) }),
+  } as unknown as RuntimeCapabilities;
+  return createDesignTools("designer")({
+    toolCwd: workspace,
+    capabilities,
+  } as never);
+}
+
 test("file_design_option packs per-screen files and drops the untouched starter home screen", async () => {
   const workspace = await realpath(
     await mkdtemp(join(tmpdir(), "sb-design-file-")),
@@ -131,68 +206,10 @@ test("file_design_option packs per-screen files and drops the untouched starter 
       'data-screen="orders"',
     );
 
-    const deployment = {
-      source: {
-        kind: "asset" as const,
-        assetId: "asset",
-        package: { format: "tarball" as const },
-      },
-      entry: "entry",
-      pin: "@corbits-builder/designer@1.0.0",
-      sourceOfferingIds: ["offering"],
-      defaultSourceOfferingId: "offering",
-    };
     let filedBody: { kind: string; title: string; content: string } | undefined;
-    const fetch = async (path: string, init: RequestInit) => {
-      if (path === "/api/workflow-project-scope")
-        return Response.json({
-          tenantId: "tenant",
-          projectId: "project",
-          domain: "example.invalid",
-          role: "designer",
-          workflows: {
-            "writer-product-requirements": deployment,
-            "writer-build-plan": deployment,
-            "writer-document": deployment,
-            reviewer: deployment,
-            coder: deployment,
-            designer: deployment,
-          },
-          openNetwork: false,
-          build: {
-            assetDirectory: "/assets",
-            browserCli: "/browser",
-            childPath: "/child",
-            dependencyRoots: ["/deps"],
-            ripgrepPath: "/rg",
-            runtimeVersion: "1.0.0",
-          },
-        });
-      if (path === "/api/tenants/tenant/projects/project/artifacts") {
-        filedBody = JSON.parse(String(init.body)) as {
-          kind: string;
-          title: string;
-          content: string;
-        };
-        return Response.json({
-          artifact: {
-            artifactId: "design-1",
-            kind: "design_option",
-            title: filedBody.title,
-            version: 1,
-            sha256: "a".repeat(64),
-          },
-        });
-      }
-      return Response.json({ code: "unexpected_route" }, { status: 404 });
-    };
-    const capabilities = {
-      resolve: () => ({ resolve: async () => ({ kind: "http", fetch }) }),
-    } as unknown as RuntimeCapabilities;
-    const tools = createDesignTools("designer")({
-      toolCwd: workspace,
-      capabilities,
-    } as never);
+    const tools = designTools(workspace, (body) => {
+      filedBody = body;
+    });
     const result = await tools.run(
       { id: "call-1", name: "file_design_option", arguments: {} },
       new AbortController().signal,
@@ -208,6 +225,92 @@ test("file_design_option packs per-screen files and drops the untouched starter 
       'id="new-order-dialog"',
     );
     expect(parsed.files["DESIGN.md"]).toContain("colors:");
+  } finally {
+    check.dispose();
+    await rm(workspace, { recursive: true, force: true });
+  }
+});
+
+test("a design at the size limit is reported, filed and loads; one byte more is refused naming its largest file", async () => {
+  const workspace = await realpath(
+    await mkdtemp(join(tmpdir(), "sb-design-size-")),
+  );
+  const check = createDesignCheck(workspace, async () => ({
+    exitCode: 0,
+    output: "check passed: served .builder/designs with no errors",
+  }));
+  const signal = new AbortController().signal;
+  try {
+    for (const [path, text] of Object.entries(STARTER)) {
+      const target = join(workspace, path);
+      await mkdir(dirname(target), { recursive: true });
+      await writeFile(target, text);
+    }
+    await writeFile(
+      join(workspace, ".builder", "DESIGN.md"),
+      MODERN_SLEEK["DESIGN.md"]!,
+    );
+    await writeFile(
+      join(workspace, ".builder", "designs", "styles.css"),
+      MODERN_SLEEK["designs/styles.css"]!,
+    );
+    await writeFile(
+      join(workspace, ".builder", "designs", "screens", "overview.html"),
+      '<section data-screen="overview"><div data-state="populated"><h1>Overview</h1></div></section>',
+    );
+    const pad = join(workspace, ".builder", "designs", "notes.txt");
+    await writeFile(pad, "");
+    const room =
+      MAX_DESIGN_BYTES - designSize(await readDesignFiles(workspace)).bytes;
+    await writeFile(pad, "x".repeat(room));
+    expect(designSize(await readDesignFiles(workspace)).bytes).toBe(
+      MAX_DESIGN_BYTES,
+    );
+
+    const near = await check.current(signal);
+    expect(near.passed).toBe(true);
+    expect(near.checklist).toContain(
+      "design_size: the design is 1,048,576 bytes and may be at most 1,048,576",
+    );
+    expect(near.checklist).toContain("designs/notes.txt (");
+    let filed: string | undefined;
+    const tools = designTools(workspace, (body) => {
+      filed = body.content;
+    });
+    const result = await tools.run(
+      { id: "call-1", name: "file_design_option", arguments: {} },
+      signal,
+    );
+    expect(result.isError).toBeUndefined();
+    expect(Buffer.byteLength(filed!)).toBe(MAX_DESIGN_BYTES);
+    expect(designDraftOf((await readDesignBundle(workspace))!)).toBeDefined();
+
+    await writeFile(pad, "x".repeat(room + 1));
+    const over = await check.current(signal);
+    expect(over.passed).toBe(false);
+    expect(over.checklist).toContain("design_too_large: the design is");
+    const refused = await tools.run(
+      { id: "call-2", name: "file_design_option", arguments: {} },
+      signal,
+    );
+    expect(refused.isError).toBe(true);
+    expect(String(refused.content)).toContain("design_too_large");
+    const draft = await readDesignFiles(workspace);
+    expect(() =>
+      designDraftOf(
+        draft,
+        "A new design task starts from the filed design instead.",
+      ),
+    ).toThrow(
+      expect.objectContaining({
+        code: "design_draft_too_large",
+        details: expect.objectContaining({
+          hint: expect.stringMatching(
+            /^The draft cannot be loaded: the design is 1,048,577 bytes and may be at most 1,048,576; its largest files are designs\/notes\.txt \(\d+ KB\).*starts from the filed design instead\.$/,
+          ),
+        }),
+      }),
+    );
   } finally {
     check.dispose();
     await rm(workspace, { recursive: true, force: true });

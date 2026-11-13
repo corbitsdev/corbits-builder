@@ -1,10 +1,14 @@
 import { constants } from "node:fs";
-import { open, realpath } from "node:fs/promises";
+import { open, readFile, realpath } from "node:fs/promises";
 import { dirname, join } from "node:path";
 import { type } from "arktype";
 import { workflowRunRepoIdForAddress } from "@intx/hub-sessions";
 import { hasCode } from "@intx/types";
-import type { UserManual } from "@corbits-builder/schemas/artifact";
+import {
+  DesignDraft,
+  MAX_DESIGN_BYTES,
+  type UserManual,
+} from "@corbits-builder/schemas/artifact";
 import { packApp } from "../builds/app-snapshot.ts";
 import {
   spliceDesignScreens,
@@ -14,6 +18,7 @@ import {
 } from "../builds/starter.ts";
 import { parseJson } from "../lib/json.ts";
 import { ProjectError } from "../projects/errors.ts";
+import { withDesignTokens } from "./design-tokens.ts";
 import { DESIGN_STYLES } from "./design-tweaks.ts";
 
 const hasInlineNonHomeScreen = (index: string | undefined) => {
@@ -118,8 +123,6 @@ export async function readDesignDraft(workspace: string) {
   return withoutUnusedStarterHome(files);
 }
 
-const MAX_DESIGN_DOC_BYTES = 256 * 1024;
-
 // A designer's draft with its DESIGN.md, keyed as a design bundle keys them, so a later designer
 // can continue it; undefined until the mockup has its first change.
 export async function readDesignBundle(workspace: string) {
@@ -128,10 +131,73 @@ export async function readDesignBundle(workspace: string) {
   const doc = await readWorkspaceText(
     workspace,
     join(".builder", "DESIGN.md"),
-    MAX_DESIGN_DOC_BYTES,
+    MAX_DESIGN_BYTES,
   );
   if (doc === null) throw new ProjectError(409, "design_doc_too_large");
   return doc === undefined ? files : { ...files, "DESIGN.md": doc };
+}
+
+// The designer's .builder folder as file_design_option files it: the screens spliced into the
+// shell, the unused starter home dropped, and the tokens of styles.css written into DESIGN.md.
+export async function readDesignFiles(workspace: string) {
+  const files: Record<string, string> = {};
+  for await (const path of new Bun.Glob("**/*").scan({
+    cwd: join(workspace, ".builder"),
+  }))
+    files[path] = await readFile(join(workspace, ".builder", path), "utf8");
+  const packed = withoutUnusedStarterHome(files);
+  const doc = packed["DESIGN.md"];
+  const styles = packed[DESIGN_STYLES];
+  if (doc === undefined || styles === undefined)
+    throw new Error(
+      `invalid_design: .builder needs DESIGN.md and ${DESIGN_STYLES}`,
+    );
+  try {
+    packed["DESIGN.md"] = withDesignTokens(doc, styles);
+  } catch (error) {
+    throw new Error(
+      `invalid_design: ${error instanceof Error ? error.message : String(error)}`,
+      { cause: error },
+    );
+  }
+  return packed;
+}
+
+const kb = (bytes: number) => `${Math.round(bytes / 1024)} KB`;
+
+/** A design's size as it is stored, against the limit, with its largest files named. */
+export function designSize(files: Readonly<Record<string, string>>) {
+  const bytes = Buffer.byteLength(JSON.stringify({ files }));
+  const largest = Object.entries(files)
+    .map(([path, text]) => ({ path, bytes: Buffer.byteLength(text) }))
+    .sort((a, b) => b.bytes - a.bytes)
+    .slice(0, 3)
+    .map((file) => `${file.path} (${kb(file.bytes)})`)
+    .join(", ");
+  return {
+    bytes,
+    over: bytes > MAX_DESIGN_BYTES,
+    near: bytes > MAX_DESIGN_BYTES * 0.9,
+    text: `the design is ${bytes.toLocaleString("en-US")} bytes and may be at most ${MAX_DESIGN_BYTES.toLocaleString("en-US")}; its largest files are ${largest}`,
+  };
+}
+
+/**
+ * A draft as the hub serves it. One over the limit is refused, saying what is largest and, when
+ * given, what a designer starts from instead.
+ */
+export function designDraftOf(files: Record<string, string>, instead?: string) {
+  const draft = DesignDraft.assert({ files });
+  const size = designSize(files);
+  if (size.over)
+    throw new ProjectError(409, "design_draft_too_large", {
+      bytes: size.bytes,
+      limit: MAX_DESIGN_BYTES,
+      hint: [`The draft cannot be loaded: ${size.text}.`, instead]
+        .filter(Boolean)
+        .join(" "),
+    });
+  return draft;
 }
 
 const MAX_ACCEPTANCE_BYTES = 64 * 1024;
@@ -286,8 +352,6 @@ export async function readAcceptance(workspace: string) {
   return markdown;
 }
 
-const MAX_STYLES_BYTES = 256 * 1024;
-
 // Rewrites the designer's .builder/designs/styles.css where it lies, creating it when missing. The
 // designs folder must be the workspace's own and the file is opened without following a symlink.
 export async function editDesignStyles(
@@ -301,7 +365,7 @@ export async function editDesignStyles(
   )
     throw new ProjectError(409, "design_workspace_unsafe");
   const path = join(".builder", DESIGN_STYLES);
-  const css = await readWorkspaceText(workspace, path, MAX_STYLES_BYTES);
+  const css = await readWorkspaceText(workspace, path, MAX_DESIGN_BYTES);
   if (css === null) throw new ProjectError(409, "design_styles_too_large");
   const file = await open(
     join(workspace, path),

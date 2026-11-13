@@ -36,9 +36,15 @@ const WritableArtifactKind = DocumentKind.or(type.enumerated(...BUNDLE_KINDS));
 const content = type("string > 0").atMostLength(256 * 1024);
 export const DocumentContent = content;
 export const MAX_APPROVAL_PACKAGE_BYTES = 4 * 1024 * 1024;
+// A design is one JSON document of its files, {"files": {...}}, measured in UTF-8 bytes: it is
+// stored as one artifact version, sent whole to the person's mockup, and continued by the next
+// designer, so a draft over it can be neither filed nor continued. Mockups of five to seven screens
+// run 240 to 340 KB, nearly half of it the copy of every screen spliced into designs/index.html.
+export const MAX_DESIGN_BYTES = 1024 * 1024;
 
-// A filed approval package runs up to MAX_APPROVAL_PACKAGE_BYTES, which the hub checks in bytes,
-// and a filed app is as large as the app is; the hub holds every other kind to DocumentContent.
+// A filed approval package runs up to MAX_APPROVAL_PACKAGE_BYTES and a design or design option up
+// to MAX_DESIGN_BYTES, which the hub checks in bytes, and a filed app is as large as the app is;
+// the hub holds every other kind to DocumentContent.
 export const ArtifactKindWrite = type({
   "+": "reject",
   kind: WritableArtifactKind,

@@ -116,7 +116,7 @@ test("an execute call of designer pick-fonts does not pause when the project's f
     Response.json({ code: "forbidden" }, { status: 403 }),
   );
   await expect(check("pick-fonts", {})).rejects.toThrow(
-    "workflow_http_unavailable:http_403",
+    "forbidden: the hub refused the call (HTTP 403)",
   );
 });
 
