@@ -1,7 +1,7 @@
 import { isDeepStrictEqual } from "node:util";
-import type { ApprovalWhen, Fact } from "@corbits-builder/plugin";
+import type { Approval, Fact } from "@corbits-builder/plugin";
 import { isCheckAction, isScreenAction, type Catalog } from "./catalog.ts";
-import { makersIn, type Run } from "./coordinator.ts";
+import { gateOf, makersIn, type Run } from "./coordinator.ts";
 import { holds, resolveFacts, unmet } from "./facts.ts";
 import { missingTexts, unfinishedText } from "./text.ts";
 
@@ -18,7 +18,8 @@ export type PlanStep = {
   goAhead?: Mark;
   cancelled?: Mark;
   optional?: boolean;
-  approval?: ApprovalWhen;
+  approval?: Approval;
+  requires?: Fact[];
   declined?: Mark;
 };
 
@@ -70,6 +71,10 @@ export type PlanGroupView = {
 export type PlanRecords = {
   // What is true of the project now, a check's facts among it while its latest record stands.
   facts: ReadonlySet<Fact>;
+  // The go-ahead facts the person's own answers made true, and whether they decide approvals
+  // rather than leaving them to Builder, which a step's approval is held to.
+  personFacts: ReadonlySet<Fact>;
+  asksApprovals: boolean;
   // The latest record of each check, one for each input it ran on.
   checks: readonly {
     checkId: string;
@@ -138,6 +143,7 @@ export function planState(
     if (step.cancelled) view.cancelled = step.cancelled;
     if (step.optional) view.optional = step.optional;
     if (step.approval) view.approval = step.approval;
+    if (step.requires) view.requires = step.requires;
     if (step.declined) view.declined = step.declined;
     const run = records.runs.find((each) =>
       each.step === undefined
@@ -174,7 +180,8 @@ export function planState(
       ),
       facts,
     );
-    const ready = own.length === 0;
+    const { goAhead } = gateOf(step, records);
+    const ready = own.length === 0 && goAhead.length === 0;
     const returns = resolveFacts(action.builder.returns ?? [], step.input);
     const missing = returns.filter((fact) => !holds(fact, facts));
     const done =
@@ -203,7 +210,10 @@ export function planState(
     if (view.state === "failed" && run?.status === "completed")
       view.summary = unfinishedText(missing, catalog.factText);
     if (view.state === "waiting")
-      view.needs = missingTexts(own, makers, catalog.factText);
+      view.needs = [
+        ...missingTexts(own, makers, catalog.factText),
+        ...missingTexts([goAhead], makers, catalog.factText),
+      ];
     return view;
   };
   return steps.map((step) => {

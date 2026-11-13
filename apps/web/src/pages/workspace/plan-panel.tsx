@@ -96,8 +96,8 @@ function stepNote(step: StepFields) {
   const words = wording.conversation.plan;
   const notes = [
     step.optional === true ? words.optional : undefined,
-    step.approval === "required" ? words.approvalRequired : undefined,
-    step.approval === "optional" ? words.approvalOffered : undefined,
+    step.approval?.when === "required" ? words.approvalRequired : undefined,
+    step.approval?.when === "optional" ? words.approvalOffered : undefined,
   ].filter((note) => note !== undefined);
   return notes.length === 0 ? undefined : notes.join(" · ");
 }

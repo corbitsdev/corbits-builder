@@ -56,7 +56,8 @@ import {
 import { answerRefusedText, documentApprovedNote } from "../config/answers.ts";
 import { askedQuestions, openQuestion, screenOf } from "../plugins/question.ts";
 import type { Checks } from "../plugins/checks.ts";
-import { projectFacts } from "../plugins/facts.ts";
+import { personFacts, projectFacts } from "../plugins/facts.ts";
+import { agentDecidesApprovals } from "../config/preferences.ts";
 import { mountApprovalRoundRoutes } from "./approval-rounds.ts";
 import {
   CATALOG,
@@ -528,6 +529,8 @@ export function mountArtifactRoutes(
             preferences: listed.preferences,
             checks: records,
           }),
+          personFacts: personFacts(listed.artifacts),
+          asksApprovals: !agentDecidesApprovals(listed.preferences),
           checks: records,
           runs: await service.runs(current, projectId),
           questions: asked.flatMap(({ asked: question, answer }) =>

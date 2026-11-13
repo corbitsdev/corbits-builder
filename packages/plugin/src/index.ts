@@ -262,31 +262,35 @@ export type SpecialistBuilder = typeof SpecialistBuilder.infer;
 // person's own answer, even when they left approvals to Builder; optional waits only while they
 // decide approvals.
 const ApprovalWhen = type("'required' | 'optional'");
-export type ApprovalWhen = typeof ApprovalWhen.infer;
+
+// How a step asks for the person's go-ahead: of names the document kinds they approve, and
+// "design" for the design they choose; when says when it waits.
+export const Approval = type({
+  "+": "reject",
+  of: type("string > 0").array().atLeastLength(1),
+  when: ApprovalWhen,
+});
+export type Approval = typeof Approval.infer;
 
 // One step of a ready-made plan: a plugin action, the facts the plan suggests having first, and,
 // so the project's plan can hold it, a title and the input it starts on. An optional step is one
-// the person may decline. approval is the one way a step asks for the person's go-ahead: of names the document kinds they
-// approve, and "design" for the design they choose; a step without it asks for none.
+// the person may decline. approval is the one way a step asks for the person's go-ahead; a step
+// without it asks for none.
 export const ReadyPlanStepBuilder = type({
   "+": "reject",
   plugin: "string > 0",
   action: "string > 0",
   requires: Facts,
   "optional?": "boolean",
-  "approval?": {
-    "+": "reject",
-    of: type("string > 0").array().atLeastLength(1),
-    when: ApprovalWhen,
-  },
+  "approval?": Approval,
   "title?": "string > 0",
   "input?": "Record<string, unknown>",
 });
 export type ReadyPlanStepBuilder = typeof ReadyPlanStepBuilder.infer;
 
-// A ready-made plan: guidance for reaching a goal through other plugins' actions. While a project
-// is following it, a step's approval holds the step back as its when says; the facts it requires
-// are advice that execute passes on.
+// A ready-made plan: guidance for reaching a goal through other plugins' actions. Adding it puts
+// each step on the project's plan with its approval and the facts it requires, and the saved step
+// gates the work from then on.
 export const ReadyPlanBuilder = Common.merge({
   runs: "'plan'",
   guidance: "string > 0",

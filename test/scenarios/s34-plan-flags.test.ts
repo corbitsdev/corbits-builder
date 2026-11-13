@@ -41,7 +41,7 @@ const PlanRead = type({
       state: "string",
       "summary?": "string",
       "optional?": "boolean",
-      "approval?": "string",
+      "approval?": { of: "string[]", when: "string" },
     }).array(),
   }).array(),
 });
@@ -130,7 +130,10 @@ scenario({
     expect(userManual.optional).toBe(true);
     const requirements = byTitle("Write the requirements");
     expect(requirements.optional).toBeUndefined();
-    expect(byTitle("Design the look").approval).toBe("optional");
+    expect(byTitle("Design the look").approval).toEqual({
+      of: ["product_requirements"],
+      when: "optional",
+    });
 
     const decline = (id: string) => `${p.path}/plan/steps/${id}/decline`;
     const byToken = await p.call(

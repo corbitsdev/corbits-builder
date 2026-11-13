@@ -226,11 +226,12 @@ function savedPlanStep(
     askFirst: step.askFirst,
   };
   const marks = marksOf(step, id);
-  // What a ready-made plan said of a step stays with it: a run's save of a stored step keeps it as
-  // stored.
+  // Whether a step may be declined and its gate stay as first saved: a run's save of a stored step
+  // keeps them as stored.
   const said = marks ?? step;
   if (said.optional) saved.optional = said.optional;
   if (said.approval) saved.approval = said.approval;
+  if (said.requires) saved.requires = said.requires;
   if (marks?.goAhead) saved.goAhead = marks.goAhead;
   if (marks?.cancelled) saved.cancelled = marks.cancelled;
   if (marks?.declined && saved.optional) saved.declined = marks.declined;

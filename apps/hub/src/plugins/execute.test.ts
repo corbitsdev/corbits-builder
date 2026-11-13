@@ -267,36 +267,38 @@ test("coder build is refused without the filed requirements or build plan, and o
   expect(built.deployed).toEqual([]);
 });
 
-test("on build-web-app, coder build waits for the person's go-ahead while they decide approvals, and otherwise starts with the plan's advice", async () => {
-  const following = project([filed("build_plan")], ["build-web-app"]);
+test("on build-web-app's steps, coder build waits for the person's go-ahead while they decide approvals, and otherwise starts with the step's advice", async () => {
+  const following = project([filed("build_plan")]);
+  await following.plan({ operation: "add", plan: "build-web-app" });
   const refused = await following.execute(coderBuild);
   expect(refused.content).toBe(
     [
       "coder build was not started. The project does not have what it needs yet.",
       "",
-      "This project is following the build-web-app plan, which asks for the person's go-ahead first:",
+      'The plan step "Build the app" asks for the person\'s go-ahead first:',
       "  - the person approved the current version of the build plan, or leaves approvals to you (writer approve makes this true)",
       "  - the person chose a design from the design options (designer review or designer choose makes this true)",
       "",
       "Start what makes these true first, or ask the person, then call execute again.",
-      "If the person directs the work elsewhere, take the build-web-app plan's group out of the project's plan with plan({ operation: \"remove\", stepIds }); the project then stops following it.",
+      'If the person directs the work elsewhere, take the step "Build the app" out of the project\'s plan with plan({ operation: "remove", stepIds }); its gate goes with it.',
     ].join("\n"),
   );
   expect(following.deployed).toEqual([]);
 
-  const leftToBuilder = project([filed("build_plan")], ["build-web-app"], {
+  const leftToBuilder = project([filed("build_plan")], [], {
     agent_decides_approvals: "yes",
   });
+  await leftToBuilder.plan({ operation: "add", plan: "build-web-app" });
   const started = JSON.parse(
     String((await leftToBuilder.execute(coderBuild)).content),
   );
   expect(started.advice).toBe(
-    "The build-web-app plan suggests doing this first: the person chose a design from the design options (designer review or designer choose makes this true). The plan orders the work so each step builds on what the one before made; this started without it.",
+    'The plan step "Build the app" suggests doing this first: the person chose a design from the design options (designer review or designer choose makes this true). The plan orders the work so each step builds on what the one before made; this started without it.',
   );
   expect(leftToBuilder.deployed).toHaveLength(1);
 });
 
-test("designer mockup starts a designer with nothing filed, unless the project follows build-web-app and the requirements are not approved", async () => {
+test("designer mockup starts a designer with nothing filed, unless its build-web-app step waits on the requirements being approved", async () => {
   const alone = project([]);
   expect(
     JSON.parse(String((await alone.execute(designerMockup)).content)),
@@ -309,11 +311,12 @@ test("designer mockup starts a designer with nothing filed, unless the project f
   });
   expect(alone.deployed).toHaveLength(1);
 
-  const following = project([filed("product_requirements")], ["build-web-app"]);
+  const following = project([filed("product_requirements")]);
+  await following.plan({ operation: "add", plan: "build-web-app" });
   const refused = await following.execute(designerMockup);
   expect(refused.isError).toBe(true);
   expect(refused.content).toContain(
-    "This project is following the build-web-app plan, which asks for the person's go-ahead first:\n  - the person approved the current version of the product requirements",
+    'The plan step "Design the look" asks for the person\'s go-ahead first:\n  - the person approved the current version of the product requirements',
   );
   expect(following.deployed).toEqual([]);
 
@@ -345,15 +348,15 @@ test("execute on build-web-app is turned to plan add, which puts the plan's step
       "Where each step stands now:",
       "  writer write-requirements: can start now",
       "  designer mockup: can start now",
-      "  writer write-build-plan: needs the person's go-ahead, which the build-web-app plan asks for: the person chose a design from the design options",
-      "  coder build: needs the person's go-ahead, which the build-web-app plan asks for: the person approved the current version of the build plan, or leaves approvals to you and the person chose a design from the design options",
-      "  writer write (optional, the person may decline it): can start now; the build-web-app plan suggests first: the project has code, built or imported",
+      '  writer write-build-plan: needs the person\'s go-ahead, which the step "Write the build plan" asks for: the person chose a design from the design options',
+      '  coder build: needs the person\'s go-ahead, which the step "Build the app" asks for: the person approved the current version of the build plan, or leaves approvals to you and the person chose a design from the design options',
+      '  writer write (optional, the person may decline it): can start now; the step "Write the user manual" suggests first: the project has code, built or imported',
     ].join("\n"),
   );
   const found = await idea.discover({ query: "build me an app" });
   expect(found.content).toContain("This project is following it.");
   expect(found.content).toContain(
-    "  build: The project has no code yet and its requirements or build plan say what to build. Now: needs the person's go-ahead, which the build-web-app plan asks for: the person approved",
+    '  build: The project has no code yet and its requirements or build plan say what to build. Now: needs the person\'s go-ahead, which the step "Build the app" asks for: the person approved',
   );
   const guidance = await idea.discover({
     plugin: "coder",
@@ -363,7 +366,7 @@ test("execute on build-web-app is turned to plan add, which puts the plan's step
     "coder build: Has the coder build the project's code for the first time from the filed documents and, when one is chosen, the design. The documents are the assignment.\nUse it when: The project has no code yet and its requirements or build plan say what to build.\nNot when: The project already has code; a change to it is coder change.\nRequires: the product requirements are filed and the project has no code yet; or the build plan is filed and the project has no code yet.\n",
   );
   expect(guidance.content).toContain(
-    "Now: needs the person's go-ahead, which the build-web-app plan asks for: the person approved",
+    'Now: needs the person\'s go-ahead, which the step "Build the app" asks for: the person approved',
   );
 });
 

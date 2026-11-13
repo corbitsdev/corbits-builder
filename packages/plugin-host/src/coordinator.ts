@@ -3,7 +3,7 @@ import { isDeepStrictEqual } from "node:util";
 import { type } from "arktype";
 import {
   wrongFields,
-  type ApprovalWhen,
+  Approval,
   type Fact,
   type Field,
 } from "@corbits-builder/plugin";
@@ -39,7 +39,6 @@ import {
   projectValuesText,
   readinessText,
   readyPlanListing,
-  readyPlanAdvice,
   readyPlanDone,
   readyPlanFollowed,
   readyPlanIsAdded,
@@ -49,6 +48,7 @@ import {
   stepAwaitsGoAhead,
   stepDeclined,
   specialistListing,
+  stepAdvice,
   unknownAction,
   unknownPlugin,
   unknownRuns,
@@ -151,7 +151,8 @@ type SavedPlanChild = {
   askFirst: boolean;
   goAhead?: { by: string; at: string };
   optional?: boolean;
-  approval?: ApprovalWhen;
+  approval?: Approval;
+  requires?: Fact[];
   declined?: { by: string; at: string };
   state: string;
 };
@@ -387,8 +388,8 @@ export function checkedDiscover(plugins: readonly Plugin[], raw: unknown) {
   return { input };
 }
 
-// What is true of the project, and the ready-made plans it is following. A plan whose ending fact
-// holds is left, so nothing from it applies after.
+// What is true of the project, its plan, and the ready-made plans it is following. A plan whose
+// ending fact holds is left, so it is no longer listed as followed.
 async function projectState(catalog: Catalog, project: Project) {
   const { facts, personFacts, asksApprovals, checks } = await project.state();
   const handles = await project.following();
@@ -401,7 +402,8 @@ async function projectState(catalog: Catalog, project: Project) {
     );
   if (following.length !== handles.length)
     await project.setFollowing(following.map(({ builder }) => builder.handle));
-  return { facts, personFacts, asksApprovals, checks, following };
+  const plan = await project.plan();
+  return { facts, personFacts, asksApprovals, checks, following, plan };
 }
 type ProjectState = Awaited<ReturnType<typeof projectState>>;
 
@@ -415,48 +417,65 @@ const makersOf = (catalog: Catalog, fact: Fact) =>
 export const makersIn = (catalog: Catalog) => (fact: Fact) =>
   makersOf(catalog, fact).map(({ name }) => name);
 
-// Where an action stands: what it lacks of its own requirements, for the input when there is one,
-// and what each ready-made plan the project is following asks of it as a step. A step's approval holds it back:
-// one required always, on the person's own go-ahead, so approvals left to Builder do not count for
-// it; one optional only while the person decides approvals. What else the step requires is advice.
-function readiness(
-  catalog: Catalog,
-  action: Action,
+/** What gates a plan step: the approval it waits for and the facts it suggests having first. */
+type Gate = { requires?: readonly Fact[]; approval?: Approval };
+
+/**
+ * What a plan step's gate asks that the project lacks. Its approval holds the step back: one
+ * required always, on the person's own go-ahead, so approvals left to Builder do not count for it;
+ * one optional only while the person decides approvals. What else the step requires is advice.
+ */
+export function gateOf(
+  { requires = [], approval }: Gate,
   {
     facts,
     personFacts,
     asksApprovals,
-    following,
-  }: Omit<ProjectState, "checks">,
+  }: Pick<ProjectState, "facts" | "personFacts" | "asksApprovals">,
+) {
+  const when = approval?.when;
+  const unapproved = approvalFacts(approval).filter(
+    (fact) => !holds(fact, when === "required" ? personFacts : facts),
+  );
+  const waits = when === "required" || (when === "optional" && asksApprovals);
+  const goAhead = waits ? unapproved : [];
+  const advice = [
+    ...requires.filter((fact) => !holds(fact, facts)),
+    ...unapproved.filter((fact) => !goAhead.includes(fact)),
+  ];
+  return { goAhead, advice };
+}
+
+// Where an action stands: what it lacks of its own requirements, for the input when there is one,
+// and what the gate of each plan step it would do asks of it.
+function readiness(
+  catalog: Catalog,
+  action: Action,
+  state: Pick<ProjectState, "facts" | "personFacts" | "asksApprovals">,
+  steps: readonly ({ title: string } & Gate)[],
   input?: unknown,
 ): Readiness {
   const requires = (action.builder.requires ?? []).map((alternative) =>
     input === undefined ? alternative : resolveFacts(alternative, input),
   );
   return {
-    own: unmet(requires, facts),
-    plans: following.flatMap(({ builder }) => {
-      const step = builder.steps.find(
-        (named) =>
-          named.plugin === action.plugin && named.action === action.action,
-      );
-      if (!step) return [];
-      const when = step.approval?.when;
-      const unapproved = approvalFacts(step.approval).filter(
-        (fact) => !holds(fact, when === "required" ? personFacts : facts),
-      );
-      const waits =
-        when === "required" || (when === "optional" && asksApprovals);
-      const goAhead = waits ? unapproved : [];
-      const advice = [
-        ...step.requires.filter((fact) => !holds(fact, facts)),
-        ...unapproved.filter((fact) => !goAhead.includes(fact)),
-      ];
+    own: unmet(requires, state.facts),
+    steps: steps.flatMap((step) => {
+      const { goAhead, advice } = gateOf(step, state);
       if (goAhead.length === 0 && advice.length === 0) return [];
-      return [{ plan: builder.handle, goAhead, advice }];
+      return [{ step: step.title, goAhead, advice }];
     }),
   };
 }
+
+// The plan's action steps for this action whose gate still holds: a done step's gate is spent.
+const gatingSteps = (action: Action, steps: readonly SavedPlanStep[]) =>
+  actionSteps(steps).filter(
+    (step) =>
+      step.plugin === action.plugin &&
+      step.action === action.action &&
+      step.state !== "done",
+  );
 
 // The installed action that a plugin's handle and an action's name pick out.
 const installedAction = (
@@ -468,32 +487,25 @@ const installedAction = (
     (action) => action.plugin === plugin && action.action === name,
   );
 
-// Each step of a ready-made plan as if the project followed it, besides the plans it is already
-// following.
+// Each step of a ready-made plan with where it would stand on the project's plan, gated as adding
+// the plan saves it.
 const stepsOf = (
   catalog: Catalog,
   readyPlan: ReadyPlanPlugin,
   state: ProjectState,
 ) =>
-  readyPlan.builder.steps.map(({ plugin, action: name, optional }) => {
-    const action = installedAction(catalog, plugin, name);
+  readyPlanStep(readyPlan).steps.map((step) => {
+    const action = installedAction(catalog, step.plugin, step.action);
     if (!action || isScreenAction(action))
-      throw new Error(`${readyPlan.builder.handle} names ${plugin} ${name}`);
-    const following = state.following.includes(readyPlan)
-      ? state.following
-      : [...state.following, readyPlan];
-    const { facts, personFacts, asksApprovals } = state;
+      throw new Error(
+        `${readyPlan.builder.handle} names ${step.plugin} ${step.action}`,
+      );
     return {
-      name: optional
+      name: step.optional
         ? `${action.name} (optional, the person may decline it)`
         : action.name,
       readiness: readinessText(
-        readiness(catalog, action, {
-          facts,
-          personFacts,
-          asksApprovals,
-          following,
-        }),
+        readiness(catalog, action, state, [step]),
         catalog.factText,
       ),
     };
@@ -502,7 +514,12 @@ const stepsOf = (
 // Whether an action could start, or a screen open, in the project now; for a check that can run,
 // its latest result.
 function now(catalog: Catalog, action: Action, state: ProjectState) {
-  const ready = readiness(catalog, action, state);
+  const ready = readiness(
+    catalog,
+    action,
+    state,
+    gatingSteps(action, state.plan.steps),
+  );
   if (isCheckAction(action) && isReady(ready))
     return checkStandingText(
       state.checks.find(
@@ -595,12 +612,11 @@ export async function discoverFor(
   if (found.length === 0)
     return noPluginFound(asked, groupsOf(catalog.plugins));
   const values = await project.values([...catalog.values.keys()]);
-  const { steps } = await project.plan();
   return [
     ...found.map((plugin) => listing(catalog, plugin, state)),
     ...choices,
     projectValuesText(catalog.values, values),
-    planLine(actionSteps(steps)),
+    planLine(actionSteps(state.plan.steps)),
     DISCOVER_OWN_PLAN,
     DISCOVER_MORE,
   ].join("\n\n");
@@ -627,7 +643,8 @@ export async function screenRefusal(
   const ready = readiness(
     catalog,
     screen,
-    { facts, personFacts, asksApprovals, following: [] },
+    { facts, personFacts, asksApprovals },
+    [],
     input,
   );
   if (isReady(ready)) return undefined;
@@ -755,7 +772,7 @@ const executeFields = (catalog: Catalog): Record<string, Field> => ({
 // The plan step a start does when the call names none: the one action step not done yet with the
 // same action on the same checked input, as a check record is keyed; none when none or several do.
 function matchingStep(
-  action: WorkflowAction,
+  action: WorkflowAction | CheckAction,
   input: unknown,
   steps: readonly SavedPlanChild[],
 ) {
@@ -778,7 +795,7 @@ type Result = {
   notStarted?: Started["notStarted"];
   // The screen actions that can show the finished work, as plugin and action.
   presents?: string[];
-  // What a ready-made plan the project is following suggests doing first, and why.
+  // What the plan step the start does suggests doing first, and why.
   advice?: string;
 };
 
@@ -830,7 +847,7 @@ export async function execute(
   const state = await projectState(catalog, project);
   const checked = action.check(asked.input ?? {});
   if (!checked.ok) return { content: checked.text, isError: true };
-  const plan = await project.plan();
+  const { plan } = state;
   const declined = heldStep(
     action,
     checked.input,
@@ -853,7 +870,24 @@ export async function execute(
       content: stepAwaitsGoAhead(action.name, asking.title),
       isError: true,
     };
-  const ready = readiness(catalog, action, state, checked.input);
+  // A step id is a hint for tying the run to the plan, never a reason to hold work back: one that
+  // names no step for this action falls back to the step the action and input point at. The step
+  // the start does is the one whose gate holds it.
+  const planned = actionSteps(plan.steps);
+  const sameAction = planned.filter(
+    (step) => step.plugin === action.plugin && step.action === action.action,
+  );
+  const stepId =
+    sameAction.find(({ id }) => id === asked.step)?.id ??
+    matchingStep(action, checked.input, planned) ??
+    (sameAction.length === 1 ? sameAction[0]?.id : undefined);
+  const ready = readiness(
+    catalog,
+    action,
+    state,
+    gatingSteps(action, plan.steps).filter(({ id }) => id === stepId),
+    checked.input,
+  );
   if (!isReady(ready))
     return {
       content: unmetRequirement(
@@ -869,16 +903,6 @@ export async function execute(
     return {
       content: JSON.stringify(await project.check(action, checked.input)),
     };
-  // A step id is a hint for tying the run to the plan, never a reason to hold work back: one that
-  // names no step for this action falls back to the step the action and input point at.
-  const planned = actionSteps(plan.steps);
-  const sameAction = planned.filter(
-    (step) => step.plugin === action.plugin && step.action === action.action,
-  );
-  const step =
-    sameAction.find(({ id }) => id === asked.step)?.id ??
-    matchingStep(action, checked.input, planned) ??
-    (sameAction.length === 1 ? sameAction[0]?.id : undefined);
   // The hub refuses a read of no names.
   const { reads = [], writes = [], presents } = action.builder;
   let values =
@@ -886,7 +910,7 @@ export async function execute(
       ? ""
       : assignedValuesText(catalog.values, await project.values(reads));
   if (writes.length > 0) values += writesText(catalog.values, writes);
-  const started = await project.start(action, checked.input, values, step);
+  const started = await project.start(action, checked.input, values, stepId);
   const result: Result = {
     started: true,
     plugin: action.plugin,
@@ -896,11 +920,7 @@ export async function execute(
   if (started.notStarted.length > 0) result.notStarted = started.notStarted;
   if (presents)
     result.presents = presents.map((name) => `${action.plugin} ${name}`);
-  const advice = readyPlanAdvice(
-    ready.plans,
-    makersIn(catalog),
-    catalog.factText,
-  );
+  const advice = stepAdvice(ready.steps, makersIn(catalog), catalog.factText);
   if (advice !== "") result.advice = advice;
   return { content: JSON.stringify(result) };
 }
@@ -993,6 +1013,7 @@ const PlanChildInput = type({
   input: "Record<string, unknown>",
   "askFirst?": "boolean",
   "optional?": "boolean",
+  "approval?": Approval,
 });
 type PlanChildInput = typeof PlanChildInput.infer;
 export const Plan = type({
@@ -1032,11 +1053,11 @@ const planFields = (catalog: Catalog): Record<string, Field> => ({
   },
   steps: {
     about:
-      "For set and add: each step either an action step { title, plugin, action, input, askFirst?, optional? }: a plugin action as discover lists it, the input its guidance describes, askFirst true to wait until the person gives the go on the plan, optional true to let the person decline it; or a group { title, steps } that names no plugin, action or input, starts nothing and holds action steps. A step with both steps and an action is refused.",
+      'For set and add: each step either an action step { title, plugin, action, input, askFirst?, optional?, approval? }: a plugin action as discover lists it, the input its guidance describes, askFirst true to wait until the person gives the go on the plan, optional true to let the person decline it, approval { of: [document kinds, "design" for choosing the design], when: "required" or "optional" } to hold it until the person approves them; or a group { title, steps } that names no plugin, action or input, starts nothing and holds action steps. A step with both steps and an action is refused.',
   },
   plan: {
     about:
-      "For add, in place of steps: a ready-made plan, by its handle, added as one group holding its steps, each saying whether the person may decline it and how its approval is asked for. The project follows that plan while its group is on the plan.",
+      "For add, in place of steps: a ready-made plan, by its handle, added as one group holding its steps, each saying whether the person may decline it, the approval it waits for and what it suggests having first. The project follows that plan while its group is on the plan.",
     choices: Object.fromEntries(
       catalog.plugins
         .filter(isReadyPlan)
@@ -1158,6 +1179,7 @@ function childWrite({
   askFirst,
   optional,
   approval,
+  requires,
 }: SavedPlanChild): PlanChildWrite {
   const written: PlanChildWrite = {
     id,
@@ -1169,6 +1191,7 @@ function childWrite({
   };
   if (optional) written.optional = optional;
   if (approval) written.approval = approval;
+  if (requires) written.requires = requires;
   return written;
 }
 function stepWrite(step: SavedPlanStep): PlanStepWrite {
@@ -1190,9 +1213,11 @@ function childOf({
   input,
   askFirst = false,
   optional,
+  approval,
 }: PlanChildInput): PlanChildWrite {
   const child: PlanChildWrite = { title, plugin, action, input, askFirst };
   if (optional) child.optional = optional;
+  if (approval) child.approval = approval;
   return child;
 }
 function newStep(
@@ -1202,12 +1227,12 @@ function newStep(
   return { title: step.title, steps: step.steps.map(childOf) };
 }
 
-// A ready-made plan as one group holding its steps, each with whether the person may decline it and
-// when it waits for their go-ahead, marked with the plan's handle so the project follows it.
+// A ready-made plan as one group holding its steps, each with whether the person may decline it,
+// its gate as the plan's step says, marked with the plan's handle so the project follows it.
 function readyPlanStep({
   builder,
   description,
-}: ReadyPlanPlugin): PlanStepWrite {
+}: ReadyPlanPlugin): PlanGroupWrite {
   const children = builder.steps.map((step) => {
     const child = childOf({
       title: step.title ?? `${step.plugin} ${step.action}`,
@@ -1216,7 +1241,8 @@ function readyPlanStep({
       input: step.input ?? {},
       optional: step.optional ?? false,
     });
-    if (step.approval) child.approval = step.approval.when;
+    if (step.approval) child.approval = step.approval;
+    if (step.requires.length > 0) child.requires = step.requires;
     return child;
   });
   return { title: description, plan: builder.handle, steps: children };

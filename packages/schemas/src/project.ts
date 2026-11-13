@@ -112,9 +112,16 @@ const PlanStepBody = type({
   // Whether the person may decline the step, as the ready-made plan it came from or the
   // coordinator that wrote it says.
   "optional?": "boolean",
-  // From the ready-made plan the step came from: when it waits for the person's go-ahead, as that
-  // plan's step says; without approval it asks for none.
-  "approval?": "'required' | 'optional'",
+  // The step's gate. approval holds it until the person approves each document kind in of, or
+  // chooses a design for "design": required always on the person's own answer, optional only while
+  // they decide approvals; without approval it asks for none. requires is what the step suggests
+  // having first, passed on as advice when it starts without it.
+  "approval?": {
+    "+": "reject",
+    of: type("string > 0").array().atLeastLength(1),
+    when: "'required' | 'optional'",
+  },
+  "requires?": type("string > 0").array(),
   // The person said no to an optional step; it stays declined until they restore it.
   "declined?": PlanMark,
 });

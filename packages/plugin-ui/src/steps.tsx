@@ -31,8 +31,10 @@ export type StepFields = {
   needs?: readonly string[] | undefined;
   /** The person may decline it. */
   optional?: boolean | undefined;
-  /** Whether it waits for the person's go-ahead before it starts, always or only if they asked. */
-  approval?: "required" | "optional" | undefined;
+  /** The documents it waits for the person to approve before it starts, always or only if they asked. */
+  approval?:
+    | { of: readonly string[]; when: "required" | "optional" }
+    | undefined;
   /** When the step started, as a timestamp. */
   startedAt?: string | undefined;
 };
