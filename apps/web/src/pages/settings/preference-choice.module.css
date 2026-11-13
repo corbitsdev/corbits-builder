@@ -100,6 +100,16 @@
   font-weight: 600;
 }
 
+/* At phone widths the stop names' longest words only just fit, and renderers
+   that round glyph widths (Linux Chromium) push them past the row. */
+@container (max-width: 240px) {
+  .stops {
+    gap: var(--space-1);
+    font-size: 13px;
+    line-height: 18px;
+  }
+}
+
 /* The rail and stops run between the centres of the thumb's two end positions. */
 .track {
   --thumb: 20px;

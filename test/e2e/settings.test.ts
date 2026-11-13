@@ -146,6 +146,16 @@ test("settings fit phone, narrow desktop and full desktop widths", async () => {
   const page = await browser.newPage();
   try {
     await openSettings(page);
+    // Measure the embedded font rather than whichever fallback shows until it swaps in.
+    await page
+      .locator("html")
+      .evaluate(
+        async (element: {
+          ownerDocument: { fonts: { ready: Promise<unknown> } };
+        }) => {
+          await element.ownerDocument.fonts.ready;
+        },
+      );
     for (const width of [320, 390, 560, 561, 600, 640, 700, 768, 1100]) {
       await page.setViewportSize({ width, height: 1000 });
       const content = await page
