@@ -82,7 +82,6 @@
   overflow-wrap: anywhere;
 }
 
-/* The run line's box, so the hand-off to it doesn't move. */
 .thinking {
   align-self: start;
   padding-block: var(--space-1);
@@ -90,35 +89,16 @@
   line-height: 1.25rem;
 }
 
+/* The turn's last line: the thinking line while it works, then its copy action in the same box,
+   so the turn's end does not move what is below it. */
+.footer {
+  min-height: 2rem;
+}
+
 /* The trigger's inline padding (px-1) hangs outside, so its words start under
    the speaker's name. */
 .run {
   margin-inline-start: calc(-1 * var(--space-1));
-}
-
-/* A live run's line shimmers as ShimmerText does, so it alone shows the turn
-   is at work. The trigger's first span is its line; the chevron stays solid. */
-[data-streaming] > .run > span:first-child {
-  background-image: linear-gradient(
-    90deg,
-    var(--muted-foreground) 40%,
-    var(--foreground) 50%,
-    var(--muted-foreground) 60%
-  );
-  background-size: 200% 100%;
-  /* Nothing in the build prefixes; without the clip the text stays transparent. */
-  -webkit-background-clip: text;
-  background-clip: text;
-  color: transparent;
-  animation: global(corbits-shimmer-sweep) 1.8s linear infinite;
-}
-
-@media (prefers-reduced-motion: reduce), (forced-colors: active) {
-  [data-streaming] > .run > span:first-child {
-    animation: none;
-    background: none;
-    color: inherit;
-  }
 }
 
 /* A command as a step's row: its own text in the code face, held to the row's one line. */

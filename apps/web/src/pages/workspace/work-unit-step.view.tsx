@@ -45,6 +45,9 @@ function statusLabels(status: DispatchStatus) {
   return text.status;
 }
 
+/** A working row's live slot: what its run's stream shows, or that it waits with nothing streaming. */
+export type RowPreview = RunPreview | { readonly kind: "waiting" };
+
 /** A piece of work as its step shows it, by where its hand-off stands. */
 export type WorkUnitStanding = {
   /** The work's hand-off, naming its step. */
@@ -55,8 +58,8 @@ export type WorkUnitStanding = {
   label: string;
   /** Each call the specialist made while the room watched it, in order. */
   steps: readonly PartTool[];
-  /** What the run is producing right now, from its own stream, while it works and frames arrive. */
-  preview: RunPreview | undefined;
+  /** What the run is producing right now, from its own stream, for as long as it works. */
+  preview: RowPreview | undefined;
   /** What the coordinator asked it to do; absent when the hand-off carried no instruction. */
   instruction: string | undefined;
   /** What the specialist reported last, shown under its steps once the work is done. */
@@ -187,20 +190,29 @@ function RowAction({
 const FOLLOW_PX = 24;
 
 /**
- * What the run is writing as it arrives, about eight lines tall, the newest kept in view; else the
- * newest two lines of its reasoning, or that it is thinking when its reasoning has no words to show;
- * else that it is waiting with nothing streaming in, so a working row never opens onto nothing.
+ * The working row's one live slot, its height fixed for as long as the run works, its content
+ * replaced in place: what the run is writing, the newest kept in view; else the newest two lines of
+ * its reasoning, or that it is thinking when its reasoning has no words to show; else that it is
+ * waiting with nothing streaming in.
  */
-function Preview({ preview }: { preview: RunPreview | undefined }) {
+function LiveSlot({ preview }: { preview: RowPreview }) {
+  return (
+    <div className={styles.slot}>
+      <SlotContent preview={preview} />
+    </div>
+  );
+}
+
+function SlotContent({ preview }: { preview: RowPreview }) {
   const box = useRef<HTMLDivElement>(null);
   const following = useRef(true);
-  const shown = preview?.kind === "writing" ? preview.text : "";
+  const shown = preview.kind === "writing" ? preview.text : "";
   useLayoutEffect(() => {
     const element = box.current;
     if (element !== null && following.current)
       element.scrollTop = element.scrollHeight;
   }, [shown]);
-  if (preview === undefined)
+  if (preview.kind === "waiting")
     return <p className={styles.thinking}>{text.waitingForStep}</p>;
   if (preview.kind === "thinking" && preview.text.trim() === "")
     return <p className={styles.thinking}>{text.thinkingThrough}</p>;
@@ -305,6 +317,10 @@ export function WorkUnitStepView({
   run,
 }: WorkUnitStepViewProps) {
   const [open, setOpen] = useState(true);
+  // Once the row has held a live slot, what follows the work keeps at least its height, so the end
+  // of the work never pulls the page up.
+  const [held, setHeld] = useState(preview !== undefined);
+  if (preview !== undefined && !held) setHeld(true);
   // The library shows a toggle only for a row with input, so a row with nothing to open has none.
   const hasWork =
     instruction !== undefined ||
@@ -312,7 +328,20 @@ export function WorkUnitStepView({
     report !== undefined ||
     document !== undefined ||
     status.state === "failed" ||
-    preview?.kind === "writing";
+    preview !== undefined;
+  const outcome =
+    preview === undefined ? (
+      <>
+        {status.state === "failed" ? (
+          <p className={styles.failed} title={status.reason}>
+            {status.reason}
+          </p>
+        ) : null}
+        {report === undefined ? null : <Report source={report} />}
+      </>
+    ) : (
+      <LiveSlot preview={preview} />
+    );
   return (
     <Tool
       // The row opens onto its work, so its steps stand as its detail.
@@ -357,13 +386,7 @@ export function WorkUnitStepView({
             </div>
           )}
           {run(steps)}
-          {status.state === "working" ? <Preview preview={preview} /> : null}
-          {status.state === "failed" ? (
-            <p className={styles.failed} title={status.reason}>
-              {status.reason}
-            </p>
-          ) : null}
-          {report === undefined ? null : <Report source={report} />}
+          {held ? <div className={styles.outcome}>{outcome}</div> : outcome}
         </div>
       ) : null}
     </Tool>

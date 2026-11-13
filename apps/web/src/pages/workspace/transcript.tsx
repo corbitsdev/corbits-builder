@@ -29,13 +29,11 @@ import {
   MessageHeader,
   MessageParts,
   MessageSendStatus,
-  Reasoning,
   ShimmerText,
   Tool,
   ToolHeader,
   ToolInput,
   ToolOutput,
-  groupActivity,
   type ActivityStep,
   type ConversationMapTurn,
   type ConversationPart,
@@ -460,41 +458,39 @@ function ToolLine({ part }: { part: PartTool }) {
 
 /** One opened step: each call a row that opens onto what it was given and what came back. */
 function renderStep(step: ActivityStep): ReactNode {
-  if (step.kind === "reasoning") return <Reasoning part={step} />;
   return step.kind === "tool-trace" ? <ToolLine part={step} /> : null;
 }
 
 /**
  * A run of the coordinator's work, the specialists it started among its steps. It opens once and
  * stays as the person leaves it: the end of the work never folds it, so the page does not move. Its
- * header counts its steps, so it never repeats a lone row; a thought that has already settled alone
- * is one quiet line with no header.
+ * header counts its steps, so it never repeats a lone row.
  */
 function Run({
   steps,
-  live,
   renderStep,
 }: {
   steps: readonly ActivityStep[];
-  live: boolean;
   renderStep: (step: ActivityStep) => ReactNode;
 }) {
-  // Fixed when the list first shows, so its header line never comes or goes as steps arrive or end.
-  const [headed] = useState(
-    live || steps.length !== 1 || steps[0]?.kind !== "reasoning",
-  );
-  const count = shownSteps(steps, live);
   return (
-    <Activity steps={steps} streaming={live} defaultOpen>
-      {headed ? (
-        <ActivityTrigger
-          {...(count === 0 ? {} : { label: wording.activity.run(count) })}
-          labels={wording.activity.trigger}
-          className={styles.run}
-        />
-      ) : null}
+    <Activity steps={steps} defaultOpen>
+      <ActivityTrigger
+        label={wording.activity.run(steps.length)}
+        labels={wording.activity.trigger}
+        className={styles.run}
+      />
       <ActivityContent renderStep={renderStep} />
     </Activity>
+  );
+}
+
+/** The coordinator's quiet line while it works, the one live line of its turn. */
+function ThinkingLine() {
+  return (
+    <span className={styles.thinking}>
+      <ShimmerText role="status">{wording.activity.thinkingNow}</ShimmerText>
+    </span>
   );
 }
 
@@ -531,19 +527,6 @@ const wordsOf = (parts: readonly ConversationPart[]) =>
     .flatMap((part) => (part.kind === "text" ? [part.text] : []))
     .join("\n\n")
     .trim();
-
-/**
- * How many rows a list shows. A settled thought with no text shows nothing, as `ActivityContent`
- * leaves it out; with none left the library's own summary names the run.
- */
-function shownSteps(steps: readonly ActivityStep[], live: boolean): number {
-  return steps.filter(
-    (step, index) =>
-      step.kind !== "reasoning" ||
-      step.text.trim() !== "" ||
-      (live && index === steps.length - 1),
-  ).length;
-}
 
 /** The quiet line for a note the hub mailed as the person. */
 function hubNoteLine(text: string): string | undefined {
@@ -740,7 +723,7 @@ export function RoomThread({
             {headed ? null : (
               <MessageHeader name={wording.speaker.coordinator} />
             )}
-            <Run steps={steps} live={false} renderStep={renderWork} />
+            <Run steps={steps} renderStep={renderWork} />
           </Message>
         </ConversationItem>
       );
@@ -885,7 +868,7 @@ export function RoomThread({
     turn: TranscriptTurn,
     visible: readonly ConversationPart[],
     streaming: boolean,
-    runLive: boolean,
+    thinkingHere: boolean,
   ) => (
     <ConversationItem key={itemId} itemId={itemId}>
       <Message
@@ -900,17 +883,21 @@ export function RoomThread({
           streaming={streaming}
           renderText={renderTurnText}
           renderStep={renderWork}
-          renderActivity={(steps, state) => (
-            <Run
-              steps={steps}
-              live={state.streaming && runLive}
-              renderStep={renderWork}
-            />
+          renderActivity={(steps) => (
+            <Run steps={steps} renderStep={renderWork} />
           )}
         />
         <MessageSendStatus />
-        {turn.role === "assistant" && !streaming && wordsOf(visible) !== "" ? (
-          <MessageFooter>
+        {thinkingHere ? (
+          <MessageFooter className={styles.footer}>
+            <ThinkingLine />
+          </MessageFooter>
+        ) : null}
+        {!thinkingHere &&
+        turn.role === "assistant" &&
+        !streaming &&
+        wordsOf(visible) !== "" ? (
+          <MessageFooter className={styles.footer}>
             <MessageActions aria-label={wording.message.actions}>
               <CopyAction text={wordsOf(visible)} />
             </MessageActions>
@@ -920,22 +907,17 @@ export function RoomThread({
     </ConversationItem>
   );
   const sections = threadSections(items);
-  // The coordinator's turn shows one live line, at the bottom: its last run when its words end the
-  // conversation, else the thinking line. A run above a card is not the bottom.
+  // The coordinator's turn shows one live line while it works, at the bottom: in its last message's
+  // footer when its words end the conversation, so its copy action takes the line's place when the
+  // turn ends, else on its own under the last card. A run above a card is not the bottom.
   const last = sections.at(-1);
   let headedLast = false;
   let wordsLast = false;
-  let runLast = false;
   if (last?.kind === "coordinator") {
-    const words = last.turns.flatMap(({ turn }) =>
-      readableParts(visibleTurnParts(turn), results),
+    headedLast = last.turns.some(
+      ({ turn }) => readableParts(visibleTurnParts(turn), results).length > 0,
     );
-    headedLast = words.length > 0;
     wordsLast = headedLast && last.cards.length === 0;
-    runLast =
-      wordsLast &&
-      last.turns.some(({ turn }) => turn.streaming === true) &&
-      groupActivity(words).at(-1)?.kind === "activity";
   }
   // The person's messages, and what the agents produced at the item that shows it.
   const agentEntries = (
@@ -1041,7 +1023,7 @@ export function RoomThread({
                       first.turn,
                       visible,
                       streaming,
-                      section === last && wordsLast,
+                      thinking && section === last && wordsLast,
                     )
                   : null}
                 {foldUpdates(liveLast(section.cards, live)).map((card, at) =>
@@ -1079,20 +1061,16 @@ export function RoomThread({
           const streaming = turn.streaming === true;
           return visible.length === 0
             ? null
-            : renderMessage(itemId, turn, visible, streaming, streaming);
+            : renderMessage(itemId, turn, visible, streaming, false);
         })}
-        {thinking && !runLast ? (
+        {thinking && !wordsLast ? (
           <ConversationItem itemId="colleague-thinking">
             <Message from="agent" status="streaming">
               {/* Under the coordinator's words, as its cards are, the name isn't repeated. */}
               {headedLast ? null : (
                 <MessageHeader name={wording.speaker.coordinator} />
               )}
-              <span className={styles.thinking}>
-                <ShimmerText role="status">
-                  {wording.activity.thinkingNow}
-                </ShimmerText>
-              </span>
+              <ThinkingLine />
             </Message>
           </ConversationItem>
         ) : null}

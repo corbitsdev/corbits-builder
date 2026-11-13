@@ -11,7 +11,7 @@ import {
   type Dispatch,
   type DispatchRoom,
 } from "./dispatch-card.tsx";
-import type { WorkUnitStanding } from "./work-unit-step.view.tsx";
+import type { RowPreview, WorkUnitStanding } from "./work-unit-step.view.tsx";
 import { roleLabel, roleOf } from "./roles.ts";
 import { workPhrase, type WorkUnit } from "./work-unit.ts";
 
@@ -39,6 +39,18 @@ const settled = (step: PartTool, finished: boolean): PartTool =>
       }
     : step;
 
+/**
+ * What a working run's row shows in its live slot: what its stream says it is producing, else
+ * that it is waiting, so the slot is never empty between one model call and the next.
+ */
+function livePreview(
+  runId: string | undefined,
+  room: DispatchRoom,
+): RowPreview {
+  const streamed = runId === undefined ? undefined : room.previews?.get(runId);
+  return streamed ?? { kind: "waiting" };
+}
+
 /** A piece of work as its step shows it, from what the room knows of its hand-off. */
 export function workUnitStanding(
   unit: WorkUnit,
@@ -62,10 +74,7 @@ export function workUnitStanding(
     status,
     label: text.row(role, workPhrase(dispatch, status)),
     steps: ended ? steps.map((step) => settled(step, done)) : steps,
-    preview:
-      status.state === "working" && dispatch.runId !== undefined
-        ? room.previews?.get(dispatch.runId)
-        : undefined,
+    preview: status.state === "working" ? livePreview(runId, room) : undefined,
     instruction: dispatch.instruction,
     report: done ? unit.updates.at(-1)?.text : undefined,
     // A design or an app is not a document: its row offers it to open, with no summary to show.

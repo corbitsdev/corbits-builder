@@ -285,7 +285,11 @@ export function turnLabel(turn: {
   return roleLabel(turn.sender ?? wording.speaker.specialist);
 }
 
-/** Parts the transcript may render. Tool and reasoning frames stay on the turn for devtools; their text is not copied into the body. */
+/**
+ * Parts the transcript may render. Tool and reasoning frames stay on the turn for devtools; their
+ * text is not copied into the body. Reasoning is not shown at all: while the coordinator thinks,
+ * the turn shows one quiet thinking line, so no thought appears and then goes.
+ */
 export function visibleTurnParts(turn: {
   readonly role: "person" | "assistant" | "participant";
   readonly text: string;
@@ -299,6 +303,7 @@ export function visibleTurnParts(turn: {
   if (turn.role === "person") return parts;
   const visible: ConversationPart[] = [];
   for (const part of parts) {
+    if (part.kind === "reasoning") continue;
     if (part.kind !== "text") {
       visible.push(part);
       continue;

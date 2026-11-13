@@ -22,6 +22,7 @@ import {
   savedResults,
   savedTurnSteps,
   streamedRuns,
+  type RunPreview,
 } from "./run-preview.ts";
 import {
   STEP_STATUS,
@@ -413,6 +414,31 @@ test("a working specialist's row shows its reasoning as plain words, or that it 
     previews: new Map([["run-build", { kind: "thinking", text: "" }]]),
   });
   expect(encrypted.html).toContain(`>${wording.dispatch.thinkingThrough}<`);
+});
+
+test("a working row keeps its live slot through every state between steps, and gives it up only when the work ends", () => {
+  const states: (RunPreview | undefined)[] = [
+    undefined,
+    { kind: "thinking", text: "Comparing the two fonts" },
+    // A step landed: the model call ended, so the stream shows nothing until the next one starts.
+    undefined,
+    { kind: "thinking", text: "" },
+    { kind: "writing", text: "body { font-family: Arial; }" },
+    undefined,
+  ];
+  for (const preview of states) {
+    const standing = workUnitStanding(buildUnit(), {
+      ...workingRoom,
+      previews: new Map(preview === undefined ? [] : [["run-build", preview]]),
+    });
+    expect(standing.preview).toEqual(preview ?? { kind: "waiting" });
+  }
+  const finished = workUnitStanding(buildUnit(), {
+    ...emptyRoom,
+    ended: new Map([["run-build", { status: "completed" }]]),
+    previews: new Map([["run-build", { kind: "thinking", text: "late" }]]),
+  });
+  expect(finished.preview).toBeUndefined();
 });
 
 test("a specialist's row never shows the coordinator's reasoning", () => {

@@ -59,9 +59,26 @@
   font-size: 0.875rem;
 }
 
-/* What the run is writing as it writes it: about eight lines, the newest kept in view. */
+/* A working row's one live slot: four lines tall from the first frame to the last, whatever it
+   holds, so nothing below it moves while the run works. */
+.slot {
+  height: calc(4 * 1.5 * 0.8125rem);
+  min-width: 0;
+}
+
+/* What follows the work in a row that held a slot: at least the slot's height, so the work's end
+   never pulls the page up; a report or a reason takes the slot's place. */
+.outcome {
+  display: flex;
+  min-width: 0;
+  min-height: calc(4 * 1.5 * 0.8125rem);
+  flex-direction: column;
+  gap: var(--space-1);
+}
+
+/* What the run is writing as it writes it, filling the slot, the newest kept in view. */
 .preview {
-  max-height: calc(8 * 1.5 * 0.8125rem + 2 * var(--space-2));
+  height: 100%;
   overflow-y: auto;
   padding: var(--space-2) var(--space-3);
   border: 1px solid var(--wb-border);
@@ -130,8 +147,8 @@
   font-size: 0.8125rem;
 }
 
-/* The model's reasoning as it streams: always two lines tall, so the row holds still while words
-   arrive. Short text sits at the top; longer text keeps its newest two lines, cut off above. */
+/* The model's reasoning as it streams, in the slot: its newest two lines. Short text sits at the
+   top; longer text keeps its newest two lines, cut off above. */
 .reasoning {
   height: calc(2 * 1.5 * 0.8125rem);
   overflow: hidden;

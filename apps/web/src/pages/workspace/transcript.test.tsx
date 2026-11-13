@@ -321,7 +321,77 @@ describe("conversation transcript", () => {
     expect(html).not.toContain("timeout");
   });
 
-  test("a coordinator turn shows one live line, at the bottom", () => {
+  test("a working coordinator turn keeps one quiet thinking line at its end through every frame, and never its reasoning", () => {
+    const reasoning = "Weighing which font reads best";
+    const reply = "The order list now sets in the humanist sans.";
+    const frames = [
+      [
+        { type: "message.run.started" },
+        { type: "inference.start" },
+        { type: "inference.delta", data: { partial: { thinking: reasoning } } },
+      ],
+      [
+        {
+          type: "inference.tool_call.end",
+          data: { callId: "c1", name: "Read the brief", arguments: {} },
+        },
+        { type: "inference.done" },
+        { type: "inference.start" },
+      ],
+      [{ type: "inference.delta", data: { partial: { thinking: reasoning } } }],
+      [
+        {
+          type: "inference.text.delta",
+          data: { partial: { thinking: reasoning, text: reply } },
+        },
+      ],
+    ];
+    const person = { role: "person", text: "Change the font", at: 1 } as const;
+    const thinkingLine = `>${wording.activity.thinkingNow}<`;
+    const copy = `aria-label="${wording.message.copy}"`;
+    let run = emptyLiveRun;
+    for (const batch of frames) {
+      for (const frame of batch) run = foldLiveRun(run, frame, null).run;
+      const live = pendingLiveTurn(run, [person]);
+      const html = renderToStaticMarkup(
+        <RoomThread
+          standing={standing}
+          turns={
+            live === null
+              ? [person]
+              : [
+                  person,
+                  {
+                    role: "assistant",
+                    text: live.text,
+                    at: -1,
+                    streaming: true,
+                    parts: live.parts,
+                  },
+                ]
+          }
+          thinking
+        />,
+      );
+      expect(html.split(thinkingLine)).toHaveLength(2);
+      expect(html).not.toContain(reasoning);
+      expect(html).not.toContain(copy);
+      // Nothing of the turn stands below its live line.
+      const end = html.slice(html.indexOf(thinkingLine));
+      expect(end).not.toContain("Read the brief");
+      expect(end).not.toContain(reply);
+    }
+    const finished = renderToStaticMarkup(
+      <RoomThread
+        standing={standing}
+        turns={[person, { role: "assistant", text: reply, at: 2 }]}
+      />,
+    );
+    expect(finished).not.toContain(thinkingLine);
+    expect(finished).toContain(copy);
+  });
+
+  test("the thinking line stays at the bottom, under a report that follows the coordinator's words", () => {
     const live = {
       role: "assistant",
       text: "",
@@ -329,21 +399,7 @@ describe("conversation transcript", () => {
       streaming: true,
       parts: [{ kind: "reasoning", text: "Read the idea" }],
     } as const;
-    const thinkingLine = 'data-item-id="colleague-thinking"';
-    const liveLines = (html: string) =>
-      html.split('data-slot="activity" data-streaming="true"').length -
-      1 +
-      html.split(thinkingLine).length -
-      1;
-    const alone = renderToStaticMarkup(
-      <RoomThread
-        standing={standing}
-        turns={[{ role: "person", text: "Start", at: 1 }, live]}
-        thinking
-      />,
-    );
-    expect(liveLines(alone)).toBe(1);
-    expect(alone).not.toContain(thinkingLine);
+    const thinkingLine = `>${wording.activity.thinkingNow}<`;
     const report = "Saved the requirements.";
     const afterReport = renderToStaticMarkup(
       <RoomThread
@@ -357,7 +413,7 @@ describe("conversation transcript", () => {
         thinking
       />,
     );
-    expect(liveLines(afterReport)).toBe(1);
+    expect(afterReport.split(thinkingLine)).toHaveLength(2);
     expect(afterReport.indexOf(thinkingLine)).toBeGreaterThan(
       afterReport.indexOf(report),
     );
