@@ -13,6 +13,7 @@ import {
 import { Button } from "@corbits/react-ui";
 import type { PageControls, ScreenViewProps } from "@corbits-builder/plugin";
 import { ScreenActions } from "@corbits-builder/plugin-ui/screen-actions";
+import { ScreenSettled } from "@corbits-builder/plugin-ui/screen-card";
 import { Output, type At, type Comment, type Input } from "./schema.ts";
 import styles from "./view.module.css";
 
@@ -65,7 +66,6 @@ export const text = {
   tagHint: "Click a place in the mockup to comment on it.",
   approve: "Approve",
   sendFeedback: "Send feedback",
-  close: "Close",
   comments: "Comments",
   noComments: "No comments yet.",
   lastRound: "Last round",
@@ -74,12 +74,15 @@ export const text = {
   cancel: "Cancel",
   remove: "Remove",
   noDesign: "There is no design to review yet.",
+  asked: "Approve the design?",
   approved: (version: number | "draft") =>
-    `Approved the design, version ${String(version)}.`,
+    version === "draft"
+      ? "Approved the draft"
+      : `Approved, version ${String(version)}`,
   changes: (count: number) =>
     count === 1
-      ? "Sent 1 comment on the mockup."
-      : `Sent ${String(count)} comments on the mockup.`,
+      ? "Sent 1 comment instead"
+      : `Sent ${String(count)} comments instead`,
 };
 
 const placeName = ({ screen, state }: Place) =>
@@ -105,14 +108,17 @@ export function MockupReview(props: Props) {
   const { answer, host } = props;
   if (answer !== undefined)
     return (
-      <p className={styles.settled}>
-        {answer.decision === "approved"
-          ? text.approved(answer.version)
-          : text.changes(answer.comments.length)}
-      </p>
+      <ScreenSettled
+        asked={text.asked}
+        answer={
+          answer.decision === "approved"
+            ? text.approved(answer.version)
+            : text.changes(answer.comments.length)
+        }
+      />
     );
   if (host === undefined || host.design === null || props.page === undefined)
-    return <p className={styles.settled}>{text.noDesign}</p>;
+    return <p className={styles.hint}>{text.noDesign}</p>;
   return (
     <Review {...props} host={host} design={host.design} page={props.page} />
   );
@@ -278,58 +284,57 @@ function Review({
           )}
         </aside>
       </div>
-      <div className={styles.bar} role="toolbar" aria-label={text.title}>
-        <select
-          aria-label={text.screen}
-          value={shownIndex === -1 ? "" : String(shownIndex)}
-          onChange={(event) => {
-            const place = places[Number(event.target.value)];
-            if (place !== undefined) frame.current?.go(place);
-          }}
-        >
-          {shownIndex === -1 ? <option value="">{text.screen}</option> : null}
-          {places.map((place, index) => (
-            <option key={placeName(place)} value={String(index)}>
-              {placeName(place)}
-            </option>
-          ))}
-        </select>
-        <Button
-          type="button"
-          size="sm"
-          variant={device === "desktop" ? "primary" : "outline"}
-          aria-pressed={device === "desktop"}
-          onClick={() => setDevice("desktop")}
-        >
-          {text.desktop}
-        </Button>
-        <Button
-          type="button"
-          size="sm"
-          variant={device === "phone" ? "primary" : "outline"}
-          aria-pressed={device === "phone"}
-          onClick={() => setDevice("phone")}
-        >
-          {text.phone}
-        </Button>
-        <Button
-          type="button"
-          size="sm"
-          variant={tagging ? "primary" : "outline"}
-          aria-pressed={tagging}
-          onClick={() => setTagging((on) => !on)}
-        >
-          {text.tag}
-        </Button>
-        <span className={styles.spacer} />
-        {"unavailable" in approval ? (
-          <span className={styles.hint}>{approval.unavailable}</span>
-        ) : null}
-        <ScreenActions>
+      <div className={styles.bar}>
+        <div className={styles.controls} role="toolbar" aria-label={text.title}>
+          <select
+            aria-label={text.screen}
+            value={shownIndex === -1 ? "" : String(shownIndex)}
+            onChange={(event) => {
+              const place = places[Number(event.target.value)];
+              if (place !== undefined) frame.current?.go(place);
+            }}
+          >
+            {shownIndex === -1 ? <option value="">{text.screen}</option> : null}
+            {places.map((place, index) => (
+              <option key={placeName(place)} value={String(index)}>
+                {placeName(place)}
+              </option>
+            ))}
+          </select>
           <Button
             type="button"
             size="sm"
-            variant="outline"
+            variant={device === "desktop" ? "secondary" : "outline"}
+            aria-pressed={device === "desktop"}
+            onClick={() => setDevice("desktop")}
+          >
+            {text.desktop}
+          </Button>
+          <Button
+            type="button"
+            size="sm"
+            variant={device === "phone" ? "secondary" : "outline"}
+            aria-pressed={device === "phone"}
+            onClick={() => setDevice("phone")}
+          >
+            {text.phone}
+          </Button>
+          <Button
+            type="button"
+            size="sm"
+            variant={tagging ? "secondary" : "outline"}
+            aria-pressed={tagging}
+            onClick={() => setTagging((on) => !on)}
+          >
+            {text.tag}
+          </Button>
+        </div>
+        <ScreenActions
+          note={"unavailable" in approval ? approval.unavailable : undefined}
+        >
+          <Button
+            type="button"
+            size="sm"
             disabled={submitting || "unavailable" in approval}
             onClick={() => {
               if ("option" in approval)
@@ -346,15 +351,13 @@ function Review({
           <Button
             type="button"
             size="sm"
+            variant="outline"
             disabled={submitting || comments.length === 0}
             onClick={page.sendStaged}
           >
             {text.sendFeedback}
           </Button>
         </ScreenActions>
-        <Button type="button" size="sm" variant="ghost" onClick={page.close}>
-          {text.close}
-        </Button>
       </div>
     </section>
   );

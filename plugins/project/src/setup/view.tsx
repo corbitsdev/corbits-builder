@@ -7,6 +7,10 @@ import { useId } from "react";
 import { Button, Checkbox } from "@corbits/react-ui";
 import type { ScreenViewProps } from "@corbits-builder/plugin";
 import { ScreenActions } from "@corbits-builder/plugin-ui/screen-actions";
+import {
+  ScreenCard,
+  ScreenSettled,
+} from "@corbits-builder/plugin-ui/screen-card";
 import type { Input, Output, Step } from "./schema.ts";
 import styles from "./view.module.css";
 
@@ -32,7 +36,7 @@ export const text = {
   later: "I'll do this later",
   tickEach: "Tick each step as you do it.",
   settled: (done: number, total: number, deployment: number, later: number) => {
-    const parts = [`Set-up: ${String(done)} of ${String(total)} done`];
+    const parts = [`${String(done)} of ${String(total)} done`];
     if (deployment > 0)
       parts.push(count(deployment, "needs a deployment", "need a deployment"));
     if (later > 0) parts.push(`${String(later)} left for later`);
@@ -52,22 +56,21 @@ export function Setup({
   submitting,
   answer,
 }: Props) {
-  const titleId = useId();
   const all = numbers(input.steps);
   if (answer !== undefined) {
     const needsDeployment = answer.left.filter(
       (number) => input.steps[number - 1]?.needsDeployment === true,
     ).length;
-    const line = text.settled(
-      answer.done.length,
-      all.length,
-      needsDeployment,
-      answer.left.length - needsDeployment,
-    );
     return (
-      <p className={styles.settled} title={line}>
-        {line}
-      </p>
+      <ScreenSettled
+        asked={input.title}
+        answer={text.settled(
+          answer.done.length,
+          all.length,
+          needsDeployment,
+          answer.left.length - needsDeployment,
+        )}
+      />
     );
   }
   const ticked = draft.done ?? [];
@@ -79,15 +82,36 @@ export function Setup({
     });
   const finished = all.every((number) => ticked.includes(number));
   return (
-    <section
-      className={styles.card}
-      aria-labelledby={titleId}
-      data-slot="setup"
+    <ScreenCard
+      title={input.title}
+      actions={
+        <ScreenActions note={finished ? undefined : text.tickEach}>
+          <Button
+            type="button"
+            size="sm"
+            disabled={submitting || !finished}
+            onClick={() => void submit({ done: all, left: [] })}
+          >
+            {text.done}
+          </Button>
+          <Button
+            type="button"
+            size="sm"
+            variant="outline"
+            disabled={submitting}
+            onClick={() =>
+              void submit({
+                done: ticked,
+                left: all.filter((number) => !ticked.includes(number)),
+              })
+            }
+          >
+            {text.later}
+          </Button>
+        </ScreenActions>
+      }
     >
-      <p id={titleId} className={styles.title}>
-        {input.title}
-      </p>
-      <ol className={styles.steps}>
+      <ol className={styles.steps} data-slot="setup">
         {input.steps.map((step, index) => (
           <SetupStep
             // The steps are fixed once asked, so their place is their identity.
@@ -100,31 +124,7 @@ export function Setup({
         ))}
       </ol>
       <p className={styles.hint}>{text.noSecrets}</p>
-      <ScreenActions note={finished ? undefined : text.tickEach}>
-        <Button
-          type="button"
-          size="sm"
-          disabled={submitting || !finished}
-          onClick={() => void submit({ done: all, left: [] })}
-        >
-          {text.done}
-        </Button>
-        <Button
-          type="button"
-          size="sm"
-          variant="outline"
-          disabled={submitting}
-          onClick={() =>
-            void submit({
-              done: ticked,
-              left: all.filter((number) => !ticked.includes(number)),
-            })
-          }
-        >
-          {text.later}
-        </Button>
-      </ScreenActions>
-    </section>
+    </ScreenCard>
   );
 }
 

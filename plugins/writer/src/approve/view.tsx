@@ -3,11 +3,14 @@
  * at its current version with a way to open it, and one Approve for them all. Settles to one line
  * once answered.
  */
-import { useId } from "react";
 import { Button } from "@corbits/react-ui";
 import type { ScreenViewProps } from "@corbits-builder/plugin";
 import { Markdown } from "@corbits-builder/plugin-ui/markdown";
 import { ScreenActions } from "@corbits-builder/plugin-ui/screen-actions";
+import {
+  ScreenCard,
+  ScreenSettled,
+} from "@corbits-builder/plugin-ui/screen-card";
 import type { Input, Output } from "./schema.ts";
 import styles from "./view.module.css";
 
@@ -55,7 +58,14 @@ export const text = {
   approve: "Approve",
   orWrite: "Or write below what should change.",
   noDocuments: "The documents cannot be shown here.",
-  settled: (approved: readonly string[]) => `Approved: ${approved.join(", ")}`,
+  settled: (approved: readonly { title: string; version: number }[]) => {
+    const [only, ...others] = approved;
+    if (only !== undefined && others.length === 0)
+      return `Approved, version ${String(only.version)}`;
+    return `Approved ${approved
+      .map(({ title, version }) => `${title} ${text.version(version)}`)
+      .join(", ")}`;
+  },
 };
 
 export function ApproveDocuments({
@@ -65,24 +75,20 @@ export function ApproveDocuments({
   answer,
   host,
 }: Props) {
-  const askId = useId();
   if (answer !== undefined) {
     const titles = new Map(
       host?.documents.list.map((document) => [document.kind, document.title]),
     );
-    const line = text.settled(
-      answer.approved.map(
-        ({ kind, version }) =>
-          `${titles.get(kind) ?? kind} ${text.version(version)}`,
-      ),
-    );
     return (
-      <p className={styles.settled} title={line}>
-        <span aria-hidden="true" className={styles.mark}>
-          ✓
-        </span>
-        <span>{line}</span>
-      </p>
+      <ScreenSettled
+        asked={text.ask(answer.approved.map(({ kind }) => kind))}
+        answer={text.settled(
+          answer.approved.map(({ kind, version }) => ({
+            title: titles.get(kind) ?? kind,
+            version,
+          })),
+        )}
+      />
     );
   }
   if (host === undefined)
@@ -93,15 +99,30 @@ export function ApproveDocuments({
     (kind) => !filed.some((document) => document.kind === kind),
   );
   return (
-    <section
-      className={styles.card}
-      aria-labelledby={askId}
-      data-slot="approve-documents"
+    <ScreenCard
+      title={text.ask(input.kinds)}
+      actions={
+        <ScreenActions note={text.orWrite}>
+          <Button
+            type="button"
+            size="sm"
+            disabled={submitting || missing.length > 0}
+            onClick={() =>
+              void submit({
+                approved: filed.map(({ kind, artifactId, version }) => ({
+                  kind,
+                  artifactId,
+                  version,
+                })),
+              })
+            }
+          >
+            {text.approve}
+          </Button>
+        </ScreenActions>
+      }
     >
-      <p id={askId} className={styles.question}>
-        {text.ask(input.kinds)}
-      </p>
-      <ul className={styles.documents}>
+      <ul className={styles.documents} data-slot="approve-documents">
         {filed.map((document) => (
           <li key={document.kind} className={styles.document}>
             <div className={styles.row}>
@@ -137,25 +158,7 @@ export function ApproveDocuments({
           </li>
         ))}
       </ul>
-      <ScreenActions note={text.orWrite}>
-        <Button
-          type="button"
-          size="sm"
-          disabled={submitting || missing.length > 0}
-          onClick={() =>
-            void submit({
-              approved: filed.map(({ kind, artifactId, version }) => ({
-                kind,
-                artifactId,
-                version,
-              })),
-            })
-          }
-        >
-          {text.approve}
-        </Button>
-      </ScreenActions>
-    </section>
+    </ScreenCard>
   );
 }
 

@@ -8,6 +8,7 @@ import type { ComponentType } from "react";
 import { Button } from "@corbits/react-ui";
 import type { PageControls, ScreenViewProps } from "@corbits-builder/plugin";
 import { ScreenActions } from "@corbits-builder/plugin-ui/screen-actions";
+import { ScreenSettled } from "@corbits-builder/plugin-ui/screen-card";
 import { Comparison } from "@corbits-builder/plugin-ui/comparison";
 import type { FrameProps } from "../review/view.tsx";
 import type { Comment, Input, Output } from "./schema.ts";
@@ -40,11 +41,14 @@ export const text = {
   title: "Choose a design",
   comment: "Comment",
   choose: "Choose this design",
-  close: "Close",
   noConcepts: "There are no design concepts to choose from yet.",
-  chosen: (concept: string) => `Chose the design ${concept}.`,
-  comments: (count: number) =>
-    count === 1 ? "Sent 1 comment." : `Sent ${String(count)} comments.`,
+  asked: "Which design?",
+  chosen: (concept: string, comments: number) => {
+    if (comments === 0) return concept;
+    return comments === 1
+      ? `${concept}, with 1 comment`
+      : `${concept}, with ${String(comments)} comments`;
+  },
 };
 
 // The frame reports screens, the screen shown and tagged places; comparing needs none of them.
@@ -54,19 +58,17 @@ export function ConceptChoice(props: Props) {
   const { answer, host } = props;
   if (answer !== undefined)
     return (
-      <p className={styles.settled}>
-        {text.chosen(answer.concept)}
-        {answer.comments.length === 0
-          ? null
-          : ` ${text.comments(answer.comments.length)}`}
-      </p>
+      <ScreenSettled
+        asked={text.asked}
+        answer={text.chosen(answer.concept, answer.comments.length)}
+      />
     );
   if (
     host === undefined ||
     host.designConcepts.length === 0 ||
     props.page === undefined
   )
-    return <p className={styles.settled}>{text.noConcepts}</p>;
+    return <p className={styles.hint}>{text.noConcepts}</p>;
   return <Choose {...props} host={host} page={props.page} />;
 }
 
@@ -77,7 +79,6 @@ function Choose({
   submit,
   submitting,
   host,
-  page,
 }: Props & { host: Host; page: PageControls<ChooseOutput> }) {
   const Frame = host.mockupFrame;
   const comments = draft.comments ?? NONE;
@@ -153,12 +154,14 @@ function Choose({
           }))}
         />
       </div>
-      <div className={styles.bar} role="toolbar" aria-label={text.title}>
-        <span className={styles.spacer} />
-        {picked !== undefined && "unavailable" in picked.approval ? (
-          <span className={styles.hint}>{picked.approval.unavailable}</span>
-        ) : null}
-        <ScreenActions>
+      <div className={styles.bar}>
+        <ScreenActions
+          note={
+            picked !== undefined && "unavailable" in picked.approval
+              ? picked.approval.unavailable
+              : undefined
+          }
+        >
           <Button
             type="button"
             size="sm"
@@ -176,9 +179,6 @@ function Choose({
             {text.choose}
           </Button>
         </ScreenActions>
-        <Button type="button" size="sm" variant="ghost" onClick={page.close}>
-          {text.close}
-        </Button>
       </div>
     </section>
   );

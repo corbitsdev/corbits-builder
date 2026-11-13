@@ -85,10 +85,11 @@ type Story = StoryObj<typeof meta>;
 /** Both fonts in use are in the list: the primary is changed and saved with the secondary kept. */
 export const Browsing: Story = {
   play: async ({ args, canvas, userEvent }) => {
-    await expect(canvas.getByText(text.unchanged)).toBeVisible();
+    await expect(canvas.getByRole("button", { name: text.keep })).toBeVisible();
     await userEvent.type(canvas.getByRole("combobox"), "fra");
     await userEvent.keyboard("{ArrowDown}{Enter}");
-    await userEvent.click(canvas.getByRole("button", { name: text.save }));
+    await expect(canvas.getByText(text.was("JetBrains Mono"))).toBeVisible();
+    await userEvent.click(canvas.getByRole("button", { name: text.change }));
     await expect(args.submit).toHaveBeenCalledWith({
       primary: font("Fraunces"),
       secondary: font("JetBrains Mono"),
@@ -101,7 +102,7 @@ const notInList = prepare(
   { "look.font-primary": "Red Hat Display", "look.font-secondary": "Inter" },
 );
 
-/** The primary in use is not in the list: its stored name shows and Save waits until it is picked. */
+/** The primary in use is not in the list: its stored name shows and the main action waits until it is picked. */
 export const NotInList: Story = {
   args: {
     input: notInList.input,
@@ -112,13 +113,13 @@ export const NotInList: Story = {
     await expect(
       canvas.getByText(text.inUseNamed("Red Hat Display")),
     ).toBeVisible();
-    const save = canvas.getByRole("button", { name: text.save });
-    await expect(save).toBeDisabled();
+    await expect(
+      canvas.getByRole("button", { name: text.keep }),
+    ).toBeDisabled();
     await expect(canvas.getByText(text.missing("primary"))).toBeVisible();
     await userEvent.type(canvas.getByRole("combobox"), "fraunces");
     await userEvent.keyboard("{Enter}");
-    await expect(save).toBeEnabled();
-    await userEvent.click(save);
+    await userEvent.click(canvas.getByRole("button", { name: text.change }));
     await expect(args.submit).toHaveBeenCalledWith({
       primary: font("Fraunces"),
       secondary: font("Inter"),
@@ -133,17 +134,16 @@ const proposalArgs = {
   prepared: proposal.prepared,
 };
 
-/** A proposal shows the font in use beside it; using it keeps the secondary in use. */
+/** A proposal is one press; using it keeps the secondary in use. */
 export const Proposal: Story = {
   args: proposalArgs,
   play: async ({ args, canvas, userEvent }) => {
-    await expect(canvas.getByText(text.inUseNamed("Inter"))).toBeVisible();
-    await expect(
-      canvas.getByText(text.proposedNamed("Fraunces")),
-    ).toBeVisible();
     await userEvent.click(
-      canvas.getByRole("button", { name: text.useProposed }),
+      canvas.getByRole("button", {
+        name: text.useProposed("Fraunces", text.sides.primary),
+      }),
     );
+    await userEvent.click(canvas.getByRole("button", { name: text.change }));
     await expect(args.submit).toHaveBeenCalledWith({
       primary: font("Fraunces"),
       secondary: font("JetBrains Mono"),
@@ -151,14 +151,16 @@ export const Proposal: Story = {
   },
 };
 
-/** "Choose something else" leaves the proposal for the list. */
+/** Without pressing the proposal, the fonts in use are kept as they were. */
 export const ProposalDeclined: Story = {
   args: proposalArgs,
-  play: async ({ canvas, userEvent }) => {
-    await userEvent.click(
-      canvas.getByRole("button", { name: text.chooseOther }),
-    );
+  play: async ({ args, canvas, userEvent }) => {
     await expect(canvas.getByRole("combobox")).toBeVisible();
+    await userEvent.click(canvas.getByRole("button", { name: text.keep }));
+    await expect(args.submit).toHaveBeenCalledWith({
+      primary: font("Inter"),
+      secondary: font("JetBrains Mono"),
+    });
   },
 };
 
@@ -168,7 +170,7 @@ export const Settled: Story = {
   },
   play: async ({ canvas }) => {
     await expect(
-      canvas.getByText("Primary: Fraunces. Secondary: JetBrains Mono."),
+      canvas.getByText("Primary Fraunces, secondary JetBrains Mono"),
     ).toBeVisible();
   },
 };

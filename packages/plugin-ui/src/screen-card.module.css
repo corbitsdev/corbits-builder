@@ -1,0 +1,63 @@
+.card {
+  width: 100%;
+  max-width: 36rem;
+  min-width: 0;
+  font-size: 0.875rem;
+}
+
+/* GateBlock's "Needs you · form" label: the heading says what the card asks. */
+.card > p:first-child {
+  display: none;
+}
+
+.card > h3 {
+  margin-top: 0;
+}
+
+/* Long content scrolls here, so the card keeps its place in the conversation and the page never
+   widens. The padding, taken back by the margin, keeps focus rings inside the scroller's clip. */
+.body {
+  min-width: 0;
+  max-height: 28rem;
+  margin: -3px;
+  padding: 3px;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+}
+
+.settled {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--space-2);
+  max-width: 36rem;
+  min-width: 0;
+  margin: 0;
+  font-size: 0.875rem;
+  line-height: 1.25rem;
+  overflow-wrap: anywhere;
+}
+
+.settled + .settled {
+  margin-top: var(--space-1);
+}
+
+.mark {
+  flex: none;
+  width: 1rem;
+  height: 1.25rem;
+  color: var(--wb-okay);
+}
+
+.asked {
+  color: var(--wb-muted-foreground);
+}
+
+.answer {
+  color: var(--wb-foreground);
+}
+
+.answer::before {
+  content: "·";
+  margin-inline-end: 0.25rem;
+  color: var(--wb-muted-foreground);
+}

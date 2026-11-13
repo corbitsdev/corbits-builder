@@ -1,26 +1,27 @@
 /**
- * The colour picker as the conversation draws it. With a proposal, the colours in use beside the
- * proposed ones; otherwise a colour input for the primary and the background colour. Settles to one
- * line once answered.
+ * The colour picker as the conversation draws it. Each colour in use is its own control: the swatch
+ * opens the system's colour input and the field beside it takes a value typed or pasted. A proposed
+ * colour is one press beside it. The main action keeps the colours until one differs, then changes
+ * them. Settles to one line once answered.
  */
-import { useId, useState } from "react";
-import { Check } from "lucide-react";
-import { Button, GateBlock } from "@corbits/react-ui";
+import { useId } from "react";
+import { Button, Input } from "@corbits/react-ui";
 import type { ScreenViewProps } from "@corbits-builder/plugin";
 import { ScreenActions } from "@corbits-builder/plugin-ui/screen-actions";
-import type { Input as ScreenInput, Output } from "./schema.ts";
+import {
+  ScreenCard,
+  ScreenSettled,
+} from "@corbits-builder/plugin-ui/screen-card";
+import { Color, type Input as ScreenInput, type Output } from "./schema.ts";
 import styles from "./view.module.css";
 
 type Side = "primary" | "background";
 type Pair = Record<Side, string | undefined>;
+type Answer = typeof Output.infer;
 
 export type Prepared = { current: Pair; proposed: Pair };
 
-type Props = ScreenViewProps<
-  typeof ScreenInput.infer,
-  typeof Output.infer,
-  Prepared
->;
+type Props = ScreenViewProps<typeof ScreenInput.infer, Answer, Prepared>;
 
 export const text = {
   title: "Choose your colours",
@@ -30,27 +31,46 @@ export const text = {
   >,
   about:
     "Primary is the brand colour of buttons and links; background is the page behind everything.",
-  inUseNamed: (value: string) => `In use: ${value}`,
-  proposedNamed: (value: string) => `Proposed: ${value}`,
-  none: "None",
-  useProposed: "Use these colours",
-  chooseOther: "Choose something else",
-  unchanged: "Choose a different colour to save.",
+  pick: (side: string) => `Pick the ${side.toLowerCase()} colour`,
+  was: (value: string) => `was ${value}`,
+  useProposed: (value: string) => `Use the proposed ${value}`,
   missing: "Choose both colours to save.",
-  save: "Save colours",
+  format: 'Write each colour as # and six hex digits, such as "#1d4ed8".',
+  keep: "Keep my colours",
+  change: "Change my colours",
+  reset: "Reset",
   saving: "Saving…",
-  settled: (side: string, chosen: string) => `${side}: ${chosen}.`,
+  asked: "Which colours?",
+  kept: "Kept as they were",
+  settled: (primary: string, background: string) =>
+    `Primary ${primary}, background ${background}`,
 };
 
 const sides: readonly Side[] = ["primary", "background"];
 
-function Swatch({ color }: { color: string | undefined }) {
+const differs = (a: string | undefined, b: string | undefined) =>
+  a?.toLowerCase() !== b?.toLowerCase();
+
+/**
+ * What the main action says and sends for the colours as they stand: the colours in use until the
+ * person changes one, and nothing to send while a colour is missing or not in the accepted format.
+ */
+export function choice(prepared: Prepared, draft: Partial<Answer>) {
+  const value = (of: Side) => draft[of] ?? prepared.current[of];
+  const changed = sides.some((of) => differs(value(of), prepared.current[of]));
+  const label = changed ? text.change : text.keep;
+  const primary = value("primary");
+  const background = value("background");
+  if (primary === undefined || background === undefined)
+    return { changed, label, hint: text.missing };
+  if (!Color.allows(primary) || !Color.allows(background))
+    return { changed, label, hint: text.format };
+  return { changed, label, answer: { primary, background } };
+}
+
+function Swatch({ color }: { color: string }) {
   return (
-    <span
-      className={styles.swatch}
-      style={{ background: color ?? "transparent" }}
-      aria-hidden
-    />
+    <span className={styles.swatch} style={{ background: color }} aria-hidden />
   );
 }
 
@@ -62,178 +82,120 @@ export function ColourPicker({
   submitting,
   answer,
 }: Props) {
-  const [browsing, setBrowsing] = useState(false);
+  const id = useId();
   if (answer !== undefined)
     return (
-      <section className={styles.settled} aria-label={text.title}>
-        <p className={styles.settledLine}>
-          <Check className={styles.settledMark} />
-          {sides
-            .map((side) => text.settled(text.sides[side], answer[side]))
-            .join(" ")}
-        </p>
-      </section>
-    );
-  const proposing = sides.some(
-    (of) =>
-      prepared.proposed[of] !== undefined &&
-      prepared.proposed[of]?.toLowerCase() !==
-        prepared.current[of]?.toLowerCase(),
-  );
-  if (proposing && !browsing)
-    return (
-      <Proposal
-        prepared={prepared}
-        submit={submit}
-        submitting={submitting}
-        onChooseOther={() => setBrowsing(true)}
+      <ScreenSettled
+        asked={text.asked}
+        answer={
+          sides.some((of) => differs(answer[of], prepared.current[of]))
+            ? text.settled(answer.primary, answer.background)
+            : text.kept
+        }
       />
     );
-  return (
-    <Choosing
-      prepared={prepared}
-      draft={draft}
-      setDraft={setDraft}
-      submit={submit}
-      submitting={submitting}
-    />
-  );
-}
-
-function Proposal({
-  prepared,
-  submit,
-  submitting,
-  onChooseOther,
-}: Pick<Props, "prepared" | "submit" | "submitting"> & {
-  onChooseOther: () => void;
-}) {
-  const primary = prepared.proposed.primary ?? prepared.current.primary;
-  const background =
-    prepared.proposed.background ?? prepared.current.background;
-  const complete = primary !== undefined && background !== undefined;
-  return (
-    <GateBlock
-      className={styles.card}
-      gate={{ kind: "form", title: text.title }}
-      footer={
-        <ScreenActions note={complete ? undefined : text.missing}>
-          <Button
-            type="button"
-            size="sm"
-            variant="outline"
-            disabled={submitting}
-            onClick={onChooseOther}
-          >
-            {text.chooseOther}
-          </Button>
-          <Button
-            type="button"
-            size="sm"
-            disabled={submitting || !complete}
-            onClick={() => {
-              if (primary !== undefined && background !== undefined)
-                void submit({ primary, background });
-            }}
-          >
-            {submitting ? text.saving : text.useProposed}
-          </Button>
-        </ScreenActions>
-      }
-    >
-      <div className={styles.picker}>
-        <p className={styles.note}>{text.about}</p>
-        {sides.map((of) => {
-          const proposed = prepared.proposed[of];
-          if (proposed === undefined) return null;
-          const current = prepared.current[of];
-          return (
-            <div key={of} className={styles.row}>
-              <span className={styles.label}>{text.sides[of]}</span>
-              <span className={styles.value}>
-                <Swatch color={current} />
-                {text.inUseNamed(current ?? text.none)}
-              </span>
-              <span className={styles.value}>
-                <Swatch color={proposed} />
-                {text.proposedNamed(proposed)}
-              </span>
-            </div>
-          );
-        })}
-      </div>
-    </GateBlock>
-  );
-}
-
-function Choosing({
-  prepared,
-  draft,
-  setDraft,
-  submit,
-  submitting,
-}: Pick<Props, "prepared" | "draft" | "setDraft" | "submit" | "submitting">) {
-  const id = useId();
   const value = (of: Side) => draft[of] ?? prepared.current[of];
-  const primary = value("primary");
-  const background = value("background");
-  const changed = sides.some(
-    (of) => value(of)?.toLowerCase() !== prepared.current[of]?.toLowerCase(),
+  const chosen = choice(prepared, draft);
+  // A side with no colour in use has nothing to go back to.
+  const resettable = sides.filter(
+    (of) =>
+      prepared.current[of] !== undefined &&
+      differs(value(of), prepared.current[of]),
   );
-  let hint: string | undefined;
-  if (primary === undefined || background === undefined) hint = text.missing;
-  else if (!changed) hint = text.unchanged;
+  const set = (of: Side, color: string) =>
+    setDraft(of === "primary" ? { primary: color } : { background: color });
   return (
-    <GateBlock
-      className={styles.card}
-      gate={{ kind: "form", title: text.title }}
-      footer={
-        <ScreenActions note={hint}>
+    <ScreenCard
+      title={text.title}
+      actions={
+        <ScreenActions note={chosen.hint}>
           <Button
             type="button"
             size="sm"
-            disabled={submitting || hint !== undefined}
+            disabled={submitting || chosen.answer === undefined}
             onClick={() => {
-              if (primary !== undefined && background !== undefined)
-                void submit({ primary, background });
+              if (chosen.answer !== undefined) void submit(chosen.answer);
             }}
           >
-            {submitting ? text.saving : text.save}
+            {submitting ? text.saving : chosen.label}
           </Button>
+          {resettable.length === 0 ? null : (
+            <Button
+              type="button"
+              size="sm"
+              variant="outline"
+              disabled={submitting}
+              onClick={() => {
+                for (const of of resettable) {
+                  const current = prepared.current[of];
+                  if (current !== undefined) set(of, current);
+                }
+              }}
+            >
+              {text.reset}
+            </Button>
+          )}
         </ScreenActions>
       }
     >
       <div className={styles.picker}>
         <p className={styles.note}>{text.about}</p>
         {sides.map((of) => {
+          const shown = value(of) ?? "";
           const current = prepared.current[of];
+          const proposed = prepared.proposed[of];
+          const offer =
+            proposed !== undefined && differs(proposed, current)
+              ? proposed
+              : undefined;
           return (
             <div key={of} className={styles.row}>
-              <label className={styles.label} htmlFor={`${id}-${of}`}>
-                {text.sides[of]}
-              </label>
-              <span className={styles.value}>
-                <Swatch color={current} />
-                {text.inUseNamed(current ?? text.none)}
-              </span>
+              {/* The system's colour input is the swatch itself; it shows only a colour it accepts. */}
               <input
-                id={`${id}-${of}`}
                 type="color"
-                value={value(of) ?? ""}
+                className={styles.well}
+                aria-label={text.pick(text.sides[of])}
+                value={Color.allows(shown) ? shown.toLowerCase() : "#000000"}
                 disabled={submitting}
-                onChange={(event) =>
-                  setDraft(
-                    of === "primary"
-                      ? { primary: event.target.value }
-                      : { background: event.target.value },
-                  )
-                }
+                onChange={(event) => set(of, event.target.value)}
               />
+              <div className={styles.field}>
+                <label className={styles.label} htmlFor={`${id}-${of}`}>
+                  {text.sides[of]}
+                  {current !== undefined && differs(shown, current) ? (
+                    <span className={styles.was}>{text.was(current)}</span>
+                  ) : null}
+                </label>
+                <Input
+                  id={`${id}-${of}`}
+                  className={styles.value}
+                  value={shown}
+                  spellCheck={false}
+                  autoComplete="off"
+                  aria-invalid={shown !== "" && !Color.allows(shown)}
+                  disabled={submitting}
+                  onChange={(event) => set(of, event.target.value.trim())}
+                />
+              </div>
+              {offer === undefined ? null : (
+                <Button
+                  type="button"
+                  size="sm"
+                  variant="outline"
+                  className={styles.proposed}
+                  aria-pressed={!differs(shown, offer)}
+                  disabled={submitting}
+                  onClick={() => set(of, offer)}
+                >
+                  <Swatch color={offer} />
+                  {text.useProposed(offer)}
+                </Button>
+              )}
             </div>
           );
         })}
       </div>
-    </GateBlock>
+    </ScreenCard>
   );
 }
 

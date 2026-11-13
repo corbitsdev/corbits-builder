@@ -55,22 +55,27 @@ const picker = (
     />,
   );
 
-const saveDisabled = (html: string) =>
-  /<button[^>]*disabled=""[^>]*>Save fonts</.test(html);
+const mainAction = (html: string) =>
+  /<button[^>]*>(Keep my fonts|Change my fonts)</.exec(html)?.[1];
+const mainDisabled = (html: string) =>
+  /<button[^>]*disabled=""[^>]*>(Keep my fonts|Change my fonts)</.test(html);
 const option = (html: string, name: string) =>
   new RegExp(`role="option"(?:(?!role="option").)*?>${name}<`).test(html);
 
 describe("font picker", () => {
-  test("starts from the fonts in use, and Save waits for a change", () => {
+  test("keeps the fonts in use until one differs, then changes them and offers a reset", () => {
     const open = picker({});
-    expect(saveDisabled(open)).toBe(true);
-    expect(open).toContain(text.unchanged);
+    expect(mainAction(open)).toBe(text.keep);
+    expect(mainDisabled(open)).toBe(false);
+    expect(open).not.toContain(`>${text.reset}<`);
     const changed = picker({ primary: font("Fraunces") });
-    expect(saveDisabled(changed)).toBe(false);
-    expect(changed).not.toContain(text.unchanged);
+    expect(mainAction(changed)).toBe(text.change);
+    expect(mainDisabled(changed)).toBe(false);
+    expect(changed).toContain(text.was("Inter"));
+    expect(changed).toContain(`>${text.reset}<`);
   });
 
-  test("a font in use that is not in the list shows its stored name, and Save waits for that side", () => {
+  test("a font in use that is not in the list shows its stored name, and the main action waits for that side", () => {
     const notInList = prepare(
       {},
       {
@@ -80,18 +85,27 @@ describe("font picker", () => {
     );
     const html = picker({}, {}, notInList);
     expect(html).toContain(text.inUseNamed("Red Hat Display"));
-    expect(saveDisabled(html)).toBe(true);
+    expect(mainDisabled(html)).toBe(true);
     expect(html).toContain(text.missing("primary"));
     const picked = picker({ primary: font("Fraunces") }, {}, notInList);
-    expect(saveDisabled(picked)).toBe(false);
+    expect(mainDisabled(picked)).toBe(false);
   });
 
-  test("a proposal shows the font in use beside the proposed one, not the list", () => {
+  test("a generic family in use is named as the system's default font, not by its keyword", () => {
+    const generic = prepare(
+      { proposed: { primary: "Arial" } },
+      { "look.font-primary": "system-ui", "look.font-secondary": "Inter" },
+    );
+    const html = picker({}, {}, generic).replaceAll("&#x27;", "'");
+    expect(html).toContain(text.inUseNamed(text.systemFont));
+    expect(html).not.toContain("system-ui");
+  });
+
+  test("a proposal is one press beside the fonts in use, with the list still there", () => {
     const html = picker({}, {}, prepare({ proposed: { primary: "Fraunces" } }));
-    expect(html).toContain(text.inUseNamed("Inter"));
-    expect(html).toContain(text.proposedNamed("Fraunces"));
-    expect(html).toContain(text.useProposed);
-    expect(html).not.toContain('role="listbox"');
+    expect(html).toContain(text.useProposed("Fraunces", text.sides.primary));
+    expect(mainAction(html)).toBe(text.keep);
+    expect(html).toContain('role="listbox"');
   });
 
   test("fonts that need a connection the project lacks are left out and counted once", () => {
@@ -109,7 +123,8 @@ describe("font picker", () => {
       {},
       { answer: { primary: font("Fraunces"), secondary: font("Georgia") } },
     );
-    expect(html).toContain("Primary: Fraunces. Secondary: Georgia.");
+    expect(html).toContain(text.asked);
+    expect(html).toContain("Primary Fraunces, secondary Georgia");
     expect(html).not.toContain('role="listbox"');
   });
 });

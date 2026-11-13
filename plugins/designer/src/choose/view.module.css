@@ -35,19 +35,17 @@
 
 .bar {
   display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  gap: var(--space-2);
+  justify-content: flex-end;
   padding: var(--space-2) var(--space-3);
   border-block-start: 1px solid var(--wb-border);
 }
 
-.spacer {
-  flex: 1;
+.bar > [data-slot="screen-actions"] {
+  flex: 0 1 auto;
 }
 
-.settled {
-  margin: 0;
-  font-size: 0.875rem;
-  color: var(--wb-muted-foreground);
+@media (max-width: 30rem) {
+  .bar > [data-slot="screen-actions"] {
+    flex-basis: 100%;
+  }
 }

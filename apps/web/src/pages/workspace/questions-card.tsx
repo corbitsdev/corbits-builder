@@ -9,7 +9,6 @@ import {
   useState,
   type Dispatch,
   type KeyboardEvent,
-  type ReactNode,
   type SetStateAction,
 } from "react";
 import {
@@ -17,11 +16,10 @@ import {
   ChevronDown,
   ChevronLeft,
   CornerDownLeft,
-  CornerDownRight,
   Pencil,
   Plus,
 } from "lucide-react";
-import { Button, Checkbox, GateBlock, Input } from "@corbits/react-ui";
+import { Button, Checkbox, Input } from "@corbits/react-ui";
 import { Tooltip } from "@corbits/react-ui/ui/tooltip";
 import type { AskedQuestion } from "@intx/types/runtime-core";
 import type { QuestionAnswer } from "@intx/types/signals";
@@ -30,6 +28,10 @@ import {
   ScreenActions,
   ScreenCancel,
 } from "@corbits-builder/plugin-ui/screen-actions";
+import {
+  ScreenCard,
+  ScreenSettled,
+} from "@corbits-builder/plugin-ui/screen-card";
 import { wording } from "../../config.ts";
 import { Fault } from "../../components.jsx";
 import { readJson } from "../../json.ts";
@@ -211,53 +213,18 @@ function Settled({
     throw new Error(
       "A question asked as prompts was answered with a screen's output.",
     );
-  return (
-    <SettledBox
-      title={text.answered}
-      mark={<Check className={styles.settledMark} data-ok="" aria-hidden />}
-    >
-      <dl className={styles.answers}>
-        {asked.questions.map((question) => (
-          <div key={question.id}>
-            <dt>{question.question}</dt>
-            <dd>{(answer.answers[question.id] ?? []).join(", ")}</dd>
-          </div>
-        ))}
-      </dl>
-    </SettledBox>
-  );
+  return asked.questions.map((question) => (
+    <ScreenSettled
+      key={question.id}
+      asked={question.question}
+      answer={(answer.answers[question.id] ?? []).join(", ")}
+    />
+  ));
 }
 
 /** Any open question once the person wrote back instead of answering it: what they wrote. */
 export function SettledReply({ reply }: { reply: string }) {
-  return (
-    <SettledBox
-      title={text.answeredInWords}
-      mark={<CornerDownRight className={styles.settledMark} aria-hidden />}
-    >
-      <p className={styles.reply}>{reply}</p>
-    </SettledBox>
-  );
-}
-
-function SettledBox({
-  title,
-  mark,
-  children,
-}: {
-  title: string;
-  mark: ReactNode;
-  children: ReactNode;
-}) {
-  return (
-    <section className={styles.settled} aria-label={title}>
-      <p className={styles.settledTitle}>
-        {mark}
-        {title}
-      </p>
-      {children}
-    </section>
-  );
+  return <ScreenSettled asked={text.answeredInWords} answer={reply} />;
 }
 
 type Mark = "done" | "current" | "upcoming" | "folded";
@@ -615,12 +582,57 @@ function OpenCard({
   };
 
   return (
-    <GateBlock
-      className={styles.card}
-      gate={{ kind: "form", title: text.title(questions.length) }}
-    >
-      {/* Keys act anywhere in the card, from the options to the buttons, and nowhere else. */}
-      <div ref={card} onKeyDown={onKeyDown}>
+    // Keys act anywhere in the card, from the options to the buttons, and nowhere else.
+    <div ref={card} onKeyDown={onKeyDown}>
+      <ScreenCard
+        title={text.title(questions.length)}
+        className={styles.card}
+        actions={
+          <ScreenCancel
+            value={{
+              label: text.cancel,
+              disabled,
+              onCancel: () => void deliver(onCancel),
+            }}
+          >
+            <ScreenActions
+              note={failed ? <Fault>{text.notSent}</Fault> : undefined}
+            >
+              <Tooltip label={last ? text.sendKeys : text.nextKeys}>
+                <Button
+                  type="button"
+                  size="sm"
+                  className={styles.next}
+                  aria-disabled={disabled || !ready}
+                  aria-describedby={
+                    question.options.length === 0 ? undefined : ruleId
+                  }
+                  aria-keyshortcuts={last ? "Enter" : "Enter ArrowRight"}
+                  onClick={() => next(answer)}
+                >
+                  {nextLabel(last, sending)}
+                  <CornerDownLeft aria-hidden />
+                </Button>
+              </Tooltip>
+              <Tooltip label={text.backKeys}>
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  className={styles.back}
+                  data-hidden={step === 0 ? "" : undefined}
+                  disabled={disabled}
+                  aria-keyshortcuts="ArrowLeft"
+                  onClick={() => go(step - 1)}
+                >
+                  <ChevronLeft aria-hidden />
+                  {text.back}
+                </Button>
+              </Tooltip>
+            </ScreenActions>
+          </ScreenCancel>
+        }
+      >
         {questions.length > 1 ? (
           <p className={styles.position} aria-live="polite">
             {text.position(step + 1, questions.length)}
@@ -668,52 +680,8 @@ function OpenCard({
             </li>
           )}
         </ol>
-        <div className={styles.footer}>
-          <ScreenCancel
-            value={{
-              label: text.cancel,
-              disabled,
-              onCancel: () => void deliver(onCancel),
-            }}
-          >
-            <ScreenActions>
-              <Tooltip label={text.backKeys}>
-                <Button
-                  type="button"
-                  variant="ghost"
-                  size="sm"
-                  className={styles.back}
-                  data-hidden={step === 0 ? "" : undefined}
-                  disabled={disabled}
-                  aria-keyshortcuts="ArrowLeft"
-                  onClick={() => go(step - 1)}
-                >
-                  <ChevronLeft aria-hidden />
-                  {text.back}
-                </Button>
-              </Tooltip>
-              {failed ? <Fault>{text.notSent}</Fault> : null}
-              <Tooltip label={last ? text.sendKeys : text.nextKeys}>
-                <Button
-                  type="button"
-                  size="sm"
-                  className={styles.next}
-                  aria-disabled={disabled || !ready}
-                  aria-describedby={
-                    question.options.length === 0 ? undefined : ruleId
-                  }
-                  aria-keyshortcuts={last ? "Enter" : "Enter ArrowRight"}
-                  onClick={() => next(answer)}
-                >
-                  {nextLabel(last, sending)}
-                  <CornerDownLeft aria-hidden />
-                </Button>
-              </Tooltip>
-            </ScreenActions>
-          </ScreenCancel>
-        </div>
-      </div>
-    </GateBlock>
+      </ScreenCard>
+    </div>
   );
 }
 

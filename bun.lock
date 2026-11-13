@@ -191,10 +191,13 @@
       "version": "0.1.0-rc.3",
       "dependencies": {
         "@corbits/react-ui": "0.5.1",
+        "lucide-react": "0.545.0",
         "react": "19.3.0",
       },
       "devDependencies": {
         "@types/react": "19.3.0",
+        "@types/react-dom": "19.3.0",
+        "react-dom": "19.3.0",
       },
     },
     "packages/schemas": {

@@ -14,7 +14,7 @@ const describe = {
   fields: {
     proposed: {
       about:
-        'Fonts you suggest, by name, such as { "primary": "Fraunces" }. primary is for headings and text, secondary for code and figures; give either or both. Leave out to let the person choose.',
+        'Fonts you suggest, by name, such as { "primary": "Fraunces" }. primary is for headings and body text; secondary is only for code and figures, never headings. Give either or both. Leave out to let the person choose.',
     },
     list: {
       about: "Which fonts to offer. Leave out to offer every font.",

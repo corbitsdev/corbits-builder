@@ -2,10 +2,13 @@
  * How many looks the person wants to compare, as one card in the conversation: three choices with
  * their current setting chosen, and one button to go on with it. Settles to one line once answered.
  */
-import { useId } from "react";
 import { Button } from "@corbits/react-ui";
 import type { ScreenViewProps } from "@corbits-builder/plugin";
 import { ScreenActions } from "@corbits-builder/plugin-ui/screen-actions";
+import {
+  ScreenCard,
+  ScreenSettled,
+} from "@corbits-builder/plugin-ui/screen-card";
 import type { Input, Output } from "./schema.ts";
 import styles from "./view.module.css";
 
@@ -27,7 +30,7 @@ export const text = {
   go: (looks: Looks) =>
     looks === "one" ? "Make one look" : `Compare ${looks} looks`,
   orWrite: "Or write below what you have in mind.",
-  settled: (looks: Looks) => `Looks to compare: ${text.label[looks]}`,
+  asked: "How many looks?",
 };
 
 // The setting the person has now, when it is one the card offers; a larger one offers the most.
@@ -44,20 +47,35 @@ export function ChooseLooks({
   submitting,
   answer,
 }: Props) {
-  const askId = useId();
   if (answer !== undefined)
-    return <p className={styles.settled}>{text.settled(answer.looks)}</p>;
+    return (
+      <ScreenSettled asked={text.asked} answer={text.label[answer.looks]} />
+    );
   const chosen = draft.looks ?? offered(input.current);
   return (
-    <section
-      className={styles.card}
-      aria-labelledby={askId}
-      data-slot="choose-looks"
+    <ScreenCard
+      title={text.ask}
+      actions={
+        <ScreenActions note={text.orWrite}>
+          {chosen === undefined ? null : (
+            <Button
+              type="button"
+              size="sm"
+              disabled={submitting}
+              onClick={() => void submit({ looks: chosen })}
+            >
+              {text.go(chosen)}
+            </Button>
+          )}
+        </ScreenActions>
+      }
     >
-      <p id={askId} className={styles.question}>
-        {text.ask}
-      </p>
-      <div className={styles.choices} role="group" aria-labelledby={askId}>
+      <div
+        className={styles.choices}
+        role="group"
+        aria-label={text.ask}
+        data-slot="choose-looks"
+      >
         {LOOKS.map((looks) => (
           <Button
             key={looks}
@@ -72,19 +90,7 @@ export function ChooseLooks({
           </Button>
         ))}
       </div>
-      <ScreenActions note={text.orWrite}>
-        {chosen === undefined ? null : (
-          <Button
-            type="button"
-            size="sm"
-            disabled={submitting}
-            onClick={() => void submit({ looks: chosen })}
-          >
-            {text.go(chosen)}
-          </Button>
-        )}
-      </ScreenActions>
-    </section>
+    </ScreenCard>
   );
 }
 

@@ -69,6 +69,10 @@ scenario({
         .getByText("The design is chosen.")
         .first()
         .waitFor({ timeout: 180_000 });
+      await page
+        .locator('[data-slot="screen-settled"]')
+        .filter({ hasText: `Which design? ${night.label}, with 1 comment` })
+        .waitFor();
       await shoot("03-chosen");
     });
     const answer = p.resultOf("c_choose");

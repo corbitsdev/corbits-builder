@@ -102,6 +102,10 @@ scenario({
         .first()
         .waitFor({ state: "attached", timeout: WAIT_MS });
       await shoot("01-review-open");
+      // Answering is the only way out of the review: there is no Close.
+      expect(
+        await roomPage.getByRole("button", { name: "Close" }).count(),
+      ).toBe(0);
       await page
         .getByRole("combobox", { name: "Screen" })
         .selectOption({ label: "cities / populated" });
@@ -138,6 +142,13 @@ scenario({
         .getByText("The design is approved.")
         .first()
         .waitFor({ timeout: WAIT_MS });
+      const settled = page.locator('[data-slot="screen-settled"]');
+      await settled
+        .filter({ hasText: "Approve the design? Sent 1 comment instead" })
+        .waitFor();
+      await settled
+        .filter({ hasText: /^Approve the design\? Approved, version \d+$/ })
+        .waitFor();
       await shoot("05-approved");
     });
     await p.heard("The build plan comes next");

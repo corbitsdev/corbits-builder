@@ -1,4 +1,13 @@
+/* Fills the row it sits in, such as GateBlock's footer, so the main action can take its width. */
 .actions {
+  display: flex;
+  flex: 1 1 auto;
+  flex-direction: column;
+  gap: var(--space-2);
+  min-width: 0;
+}
+
+.buttons {
   display: flex;
   flex-wrap: wrap;
   align-items: center;
@@ -6,8 +15,14 @@
   min-width: 0;
 }
 
+/* On a phone the main action takes a row of its own, so the rest share one row beneath it. */
+@media (max-width: 30rem) {
+  .buttons > :first-child {
+    flex-basis: 100%;
+  }
+}
+
 .note {
-  margin: 0 0 0 var(--space-1);
   font-size: 0.8125rem;
   color: var(--wb-muted-foreground);
 }

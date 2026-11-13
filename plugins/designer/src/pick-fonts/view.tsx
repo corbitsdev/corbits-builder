@@ -1,26 +1,27 @@
 /**
- * The font picker as the conversation draws it. With a proposal, the fonts in use beside the proposed
- * ones; otherwise one searchable list, and a switch above it that says whether the list is choosing
- * the primary or the secondary font. Settles to one line once answered.
+ * The font picker as the conversation draws it. The fonts in use are the controls: pressing one
+ * points the searchable list beneath at it, and a proposed font is one press. The main action keeps
+ * the fonts until one differs, then changes them. Settles to one line once answered.
  */
 import { useEffect, useId, useRef, useState, type KeyboardEvent } from "react";
 import { Check, X } from "lucide-react";
-import { Badge, Button, GateBlock, Input } from "@corbits/react-ui";
+import { Badge, Button, Input } from "@corbits/react-ui";
 import type { ScreenViewProps } from "@corbits-builder/plugin";
 import { ScreenActions } from "@corbits-builder/plugin-ui/screen-actions";
+import {
+  ScreenCard,
+  ScreenSettled,
+} from "@corbits-builder/plugin-ui/screen-card";
 import type { Font, Input as ScreenInput, Output } from "./schema.ts";
 import styles from "./view.module.css";
 
 type Side = "primary" | "secondary";
 type Pair = Record<Side, Font | undefined>;
+type Answer = typeof Output.infer;
 
 export type Prepared = { fonts: Font[]; current: Pair; proposed: Pair };
 
-type Props = ScreenViewProps<
-  typeof ScreenInput.infer,
-  typeof Output.infer,
-  Prepared
->;
+type Props = ScreenViewProps<typeof ScreenInput.infer, Answer, Prepared>;
 
 type List = Font["lists"][number];
 
@@ -36,7 +37,8 @@ export const text = {
     Side,
     string
   >,
-  about: "Primary is for headings and text, secondary for code and figures.",
+  about:
+    "Primary is for headings and body text. Secondary is only for code and figures, never headings.",
   sidesLabel: "Choosing the font for",
   notChosen: "Not chosen",
   search: "Search fonts",
@@ -45,10 +47,11 @@ export const text = {
   results: (count: number) => (count === 1 ? "1 font" : `${count} fonts`),
   inUse: "In use",
   inUseNamed: (name: string) => `In use: ${name}`,
-  none: "None",
-  proposedNamed: (name: string) => `Proposed: ${name}`,
-  useProposed: "Use these fonts",
-  chooseOther: "Choose something else",
+  systemFont: "the system's default font",
+  was: (name: string) => `was ${name}`,
+  proposed: "Proposed",
+  useProposed: (name: string, side: string) =>
+    `Use ${name} as ${side.toLowerCase()}`,
   paid: "Paid",
   lists: {
     sans: "Sans serif",
@@ -58,12 +61,33 @@ export const text = {
   } satisfies Record<List, string>,
   hidden: (count: number) =>
     `${count} more ${count === 1 ? "font is" : "fonts are"} available with Adobe Fonts connected.`,
-  unchanged: "Choose a different font to save.",
   missing: (sides: string) => `Choose a ${sides} font to save.`,
-  save: "Save fonts",
+  keep: "Keep my fonts",
+  change: "Change my fonts",
+  reset: "Reset",
   saving: "Saving…",
-  settled: (side: string, chosen: string) => `${side}: ${chosen}.`,
+  asked: "Which fonts?",
+  kept: "Kept as they were",
+  settled: (primary: string, secondary: string) =>
+    `Primary ${primary}, secondary ${secondary}`,
 };
+
+// CSS's generic families, which name whatever font the system picks rather than a font.
+const GENERIC = new Set([
+  "serif",
+  "sans-serif",
+  "monospace",
+  "cursive",
+  "fantasy",
+  "math",
+  "emoji",
+  "fangsong",
+  "system-ui",
+  "ui-serif",
+  "ui-sans-serif",
+  "ui-monospace",
+  "ui-rounded",
+]);
 
 const order: readonly List[] = ["sans", "serif", "display", "mono"];
 const sides: readonly Side[] = ["primary", "secondary"];
@@ -77,23 +101,45 @@ function rank(name: string, needle: string) {
   return 3;
 }
 
-// Save stays disabled only with a reason the person can read.
-function saveHint(missing: readonly Side[], changed: boolean) {
-  if (missing.length > 0)
-    return text.missing(
-      missing.map((side) => text.sides[side].toLowerCase()).join(" and "),
-    );
-  if (!changed) return text.unchanged;
-  return undefined;
+// Starts from the fonts in use; one the offered list lacks leaves its side empty.
+const startFont = (prepared: Prepared, of: Side) =>
+  prepared.fonts.find((font) => font.name === prepared.current[of]?.name);
+
+/**
+ * What the main action says and sends for the fonts as they stand: the fonts in use until the
+ * person picks another, and nothing to send while a side has no font from the list.
+ */
+export function choice(prepared: Prepared, draft: Partial<Answer>) {
+  const changed = sides.some(
+    (of) =>
+      draft[of] !== undefined && draft[of].name !== prepared.current[of]?.name,
+  );
+  const label = changed ? text.change : text.keep;
+  const primary = draft.primary ?? startFont(prepared, "primary");
+  const secondary = draft.secondary ?? startFont(prepared, "secondary");
+  const missing = sides.filter(
+    (of) => (draft[of] ?? startFont(prepared, of)) === undefined,
+  );
+  if (primary === undefined || secondary === undefined)
+    return {
+      changed,
+      label,
+      hint: text.missing(
+        missing.map((of) => text.sides[of].toLowerCase()).join(" and "),
+      ),
+    };
+  return { changed, label, answer: { primary, secondary } };
 }
 
 const announcement = (count: number, query: string) =>
   count === 0 ? text.noMatch(query) : text.results(count);
 
-// The name the project stores for a side, which may be a font the list does not have.
+// The name the project stores for a side, which may be a font the list does not have, said as
+// the person would say it.
 function storedName(project: Props["project"], of: Side) {
   const name = project[STORED[of]];
-  return typeof name === "string" ? name : undefined;
+  if (typeof name !== "string") return undefined;
+  return GENERIC.has(name.toLowerCase()) ? text.systemFont : name;
 }
 
 export function FontPicker({
@@ -106,31 +152,15 @@ export function FontPicker({
   submitting,
   answer,
 }: Props) {
-  const [browsing, setBrowsing] = useState(false);
   if (answer !== undefined)
     return (
-      <section className={styles.settled} aria-label={text.title}>
-        <p className={styles.settledLine}>
-          <Check className={styles.settledMark} />
-          {sides
-            .map((side) => text.settled(text.sides[side], answer[side].name))
-            .join(" ")}
-        </p>
-      </section>
-    );
-  const proposing = sides.some(
-    (of) =>
-      prepared.proposed[of] !== undefined &&
-      prepared.proposed[of] !== prepared.current[of],
-  );
-  if (proposing && !browsing)
-    return (
-      <Proposal
-        project={project}
-        prepared={prepared}
-        submit={submit}
-        submitting={submitting}
-        onChooseOther={() => setBrowsing(true)}
+      <ScreenSettled
+        asked={text.asked}
+        answer={
+          sides.some((of) => answer[of].name !== prepared.current[of]?.name)
+            ? text.settled(answer.primary.name, answer.secondary.name)
+            : text.kept
+        }
       />
     );
   return (
@@ -143,70 +173,6 @@ export function FontPicker({
       submit={submit}
       submitting={submitting}
     />
-  );
-}
-
-function Proposal({
-  project,
-  prepared,
-  submit,
-  submitting,
-  onChooseOther,
-}: Pick<Props, "project" | "prepared" | "submit" | "submitting"> & {
-  onChooseOther: () => void;
-}) {
-  const primary = prepared.proposed.primary ?? prepared.current.primary;
-  const secondary = prepared.proposed.secondary ?? prepared.current.secondary;
-  const missing = sides.filter(
-    (of) => (prepared.proposed[of] ?? prepared.current[of]) === undefined,
-  );
-  const hint = saveHint(missing, true);
-  return (
-    <GateBlock
-      className={styles.card}
-      gate={{ kind: "form", title: text.title }}
-      footer={
-        <ScreenActions note={hint}>
-          <Button
-            type="button"
-            size="sm"
-            variant="outline"
-            disabled={submitting}
-            onClick={onChooseOther}
-          >
-            {text.chooseOther}
-          </Button>
-          <Button
-            type="button"
-            size="sm"
-            disabled={submitting || hint !== undefined}
-            onClick={() => {
-              if (primary !== undefined && secondary !== undefined)
-                void submit({ primary, secondary });
-            }}
-          >
-            {submitting ? text.saving : text.useProposed}
-          </Button>
-        </ScreenActions>
-      }
-    >
-      <div className={styles.picker}>
-        <p className={styles.note}>{text.about}</p>
-        {sides.map((of) => {
-          const proposed = prepared.proposed[of];
-          if (proposed === undefined) return null;
-          const inUse =
-            prepared.current[of]?.name ?? storedName(project, of) ?? text.none;
-          return (
-            <div key={of} className={styles.compare}>
-              <span className={styles.sideLabel}>{text.sides[of]}</span>
-              <span>{text.inUseNamed(inUse)}</span>
-              <span>{text.proposedNamed(proposed.name)}</span>
-            </div>
-          );
-        })}
-      </div>
-    </GateBlock>
   );
 }
 
@@ -227,17 +193,9 @@ function Choosing({
   // -1 until the person moves through the list with the arrow keys.
   const [active, setActive] = useState(-1);
 
-  // Starts from the fonts in use; one the offered list lacks leaves its side empty.
-  const value = (of: Side) =>
-    draft[of] ??
-    prepared.fonts.find((font) => font.name === prepared.current[of]?.name);
+  const value = (of: Side) => draft[of] ?? startFont(prepared, of);
   const chosen = value(side);
-  const primary = value("primary");
-  const secondary = value("secondary");
-  const missing = sides.filter((of) => value(of) === undefined);
-  const changed = sides.some(
-    (of) => value(of)?.name !== prepared.current[of]?.name,
-  );
+  const outcome = choice(prepared, draft);
   // A side with no font to submit names what the project stores, which the list may not have.
   const shownFont = (of: Side) => {
     const font = value(of);
@@ -245,7 +203,28 @@ function Choosing({
     const stored = storedName(project, of);
     return stored === undefined ? text.notChosen : text.inUseNamed(stored);
   };
-  const hint = saveHint(missing, changed);
+  // What a changed side had when the card opened, said quietly beside its name.
+  const was = (of: Side) => {
+    const current = prepared.current[of];
+    return current !== undefined && value(of)?.name !== current.name
+      ? text.was(current.name)
+      : undefined;
+  };
+  // A side whose font in use the list lacks has nothing to go back to.
+  const resettable = sides.flatMap((of) => {
+    const start = startFont(prepared, of);
+    return start !== undefined && was(of) !== undefined
+      ? [{ of, font: start }]
+      : [];
+  });
+  const offers = sides.flatMap((of) => {
+    const font = prepared.proposed[of];
+    return font !== undefined && font.name !== prepared.current[of]?.name
+      ? [{ of, font }]
+      : [];
+  });
+  const pick = (of: Side, font: Font) =>
+    setDraft(of === "primary" ? { primary: font } : { secondary: font });
 
   const offered = prepared.fonts.filter(
     (font) => font.needs === undefined || facts.includes(font.needs),
@@ -293,8 +272,7 @@ function Choosing({
     searchRef.current?.focus();
   };
   const choose = (font: Font) => {
-    if (submitting) return;
-    setDraft(side === "primary" ? { primary: font } : { secondary: font });
+    if (!submitting) pick(side, font);
   };
   const onKey = (event: KeyboardEvent<HTMLInputElement>) => {
     const last = shown.length - 1;
@@ -349,22 +327,33 @@ function Choosing({
   };
 
   return (
-    <GateBlock
-      className={styles.card}
-      gate={{ kind: "form", title: text.title }}
-      footer={
-        <ScreenActions note={hint}>
+    <ScreenCard
+      title={text.title}
+      actions={
+        <ScreenActions note={outcome.hint}>
           <Button
             type="button"
             size="sm"
-            disabled={submitting || hint !== undefined}
+            disabled={submitting || outcome.answer === undefined}
             onClick={() => {
-              if (primary !== undefined && secondary !== undefined)
-                void submit({ primary, secondary });
+              if (outcome.answer !== undefined) void submit(outcome.answer);
             }}
           >
-            {submitting ? text.saving : text.save}
+            {submitting ? text.saving : outcome.label}
           </Button>
+          {resettable.length === 0 ? null : (
+            <Button
+              type="button"
+              size="sm"
+              variant="outline"
+              disabled={submitting}
+              onClick={() => {
+                for (const { of, font } of resettable) pick(of, font);
+              }}
+            >
+              {text.reset}
+            </Button>
+          )}
         </ScreenActions>
       }
     >
@@ -382,11 +371,37 @@ function Choosing({
                 setActive(-1);
               }}
             >
-              <span className={styles.sideLabel}>{text.sides[of]}</span>
+              <span className={styles.sideLabel}>
+                {text.sides[of]}
+                <span className={styles.was}>{was(of)}</span>
+              </span>
               <span className={styles.sideFont}>{shownFont(of)}</span>
             </button>
           ))}
         </div>
+        {offers.length === 0 ? null : (
+          <div className={styles.offers}>
+            <span className={styles.offersLabel}>{text.proposed}</span>
+            {offers.map(({ of, font }) => (
+              <Button
+                key={of}
+                type="button"
+                size="sm"
+                variant="outline"
+                className={styles.offer}
+                aria-pressed={value(of)?.name === font.name}
+                disabled={submitting}
+                onClick={() => {
+                  pick(of, font);
+                  setSide(of);
+                  setActive(-1);
+                }}
+              >
+                {text.useProposed(font.name, text.sides[of])}
+              </Button>
+            ))}
+          </div>
+        )}
         <div className={styles.search}>
           <Input
             ref={searchRef}
@@ -457,7 +472,7 @@ function Choosing({
           </p>
         ) : null}
       </div>
-    </GateBlock>
+    </ScreenCard>
   );
 }
 

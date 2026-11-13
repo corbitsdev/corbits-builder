@@ -83,18 +83,19 @@ scenario({
     await p.question();
     await p.browser(async (page, shoot) => {
       await page.getByText("Choose your fonts").waitFor({ timeout: 180_000 });
-      await page.getByText("Proposed: Arial").waitFor();
+      const proposed = page.getByRole("button", {
+        name: "Use Arial as primary",
+      });
+      await proposed.waitFor();
       await shoot("01-font-picker-proposal");
-      await page.getByRole("button", { name: "Choose something else" }).click();
-      await page.getByRole("combobox").fill("Arial");
-      await page.getByRole("option", { name: "Arial", exact: true }).click();
+      await proposed.click();
       await page.getByRole("button", { name: /^Secondary/ }).click();
       await page.getByRole("combobox").fill("Bitter");
       await page.getByRole("option", { name: "Bitter", exact: true }).click();
       await shoot("02-fonts-chosen");
-      await page.getByRole("button", { name: "Save fonts" }).click();
+      await page.getByRole("button", { name: "Change my fonts" }).click();
       await page
-        .getByText("Primary: Arial. Secondary: Bitter.")
+        .getByText("Primary Arial, secondary Bitter")
         .waitFor({ timeout: 180_000 });
       await shoot("03-font-picker-settled");
       await page

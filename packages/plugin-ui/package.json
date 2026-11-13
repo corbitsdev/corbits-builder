@@ -10,13 +10,17 @@
     "./comparison": "./src/comparison.tsx",
     "./markdown": "./src/markdown.tsx",
     "./screen-actions": "./src/screen-actions.tsx",
+    "./screen-card": "./src/screen-card.tsx",
     "./steps": "./src/steps.tsx"
   },
   "dependencies": {
     "@corbits/react-ui": "0.5.1",
+    "lucide-react": "0.545.0",
     "react": "19.3.0"
   },
   "devDependencies": {
-    "@types/react": "19.3.0"
+    "@types/react": "19.3.0",
+    "@types/react-dom": "19.3.0",
+    "react-dom": "19.3.0"
   }
 }

@@ -98,12 +98,12 @@ describe("questions card", () => {
     expect(html).toContain(`>${text.next}<`);
   });
 
-  test("Back, Continue and Cancel share one row of actions", () => {
+  test("Continue, Back and Cancel share one row of actions, Continue first", () => {
     const html = renderToStaticMarkup(
       <QuestionsCard id="signal-1" asked={asked} state={open} />,
     );
     const row =
-      /<div[^>]*>(?:(?!<\/?div)[^])*>Back<(?:(?!<\/?div)[^])*>Continue<(?:(?!<\/?div)[^])*>Cancel<\/button><\/div>/;
+      /<div[^>]*>(?:(?!<\/?div)[^])*>Continue<(?:(?!<\/?div)[^])*>Back<(?:(?!<\/?div)[^])*>Cancel<\/button><\/div>/;
     expect(html).toMatch(row);
     expect(html.split(`>${text.cancel}<`)).toHaveLength(2);
   });
@@ -157,12 +157,14 @@ describe("questions card", () => {
         }}
       />,
     );
-    expect(html).toContain(`aria-label="${text.answered}"`);
-    expect(html).toContain("<dt>Who is it for?</dt><dd>Small teams</dd>");
-    expect(html).toContain(
-      "<dt>What must the first version do?</dt><dd>Track tasks</dd>",
+    const line = (question: string, answer: string) =>
+      `<span>${question}</span> <span>${answer}</span>`;
+    const plain = html.replace(/ class="[^"]*"/g, "");
+    expect(plain).toContain(line("Who is it for?", "Small teams"));
+    expect(plain).toContain(
+      line("What must the first version do?", "Track tasks"),
     );
-    expect(html).toContain("<dt>What is it called?</dt><dd>Bakery orders</dd>");
+    expect(plain).toContain(line("What is it called?", "Bakery orders"));
     expect(html).not.toContain("aria-expanded");
   });
 
@@ -179,7 +181,7 @@ describe("questions card", () => {
     );
     expect(html).toContain(text.answeredInWords);
     expect(html).toContain("Actually, let&#x27;s build a game.");
-    expect(html).not.toContain("<dl");
+    expect(html).not.toContain("<form");
   });
 });
 
