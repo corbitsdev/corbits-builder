@@ -114,6 +114,7 @@
     "tar": "7.5.22"
   },
   "patchedDependencies": {
-    "@corbits/mcp@0.4.1": "patches/@corbits%2Fmcp@0.4.1.patch"
+    "@corbits/mcp@0.4.1": "patches/@corbits%2Fmcp@0.4.1.patch",
+    "@corbits/react-ui@0.5.1": "patches/@corbits%2Freact-ui@0.5.1.patch"
   }
 }

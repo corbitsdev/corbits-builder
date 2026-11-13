@@ -1,0 +1,30 @@
+diff --git a/dist/ui/conversation-map.d.ts b/dist/ui/conversation-map.d.ts
+index 8d6ffee37ca72b7ce5a729c20a6109f3a22bb79c..136ada19f79abd06a1c537a32d0823a6761f7758 100644
+--- a/dist/ui/conversation-map.d.ts
++++ b/dist/ui/conversation-map.d.ts
+@@ -2,8 +2,11 @@ import type { ComponentProps } from "react";
+ export type ConversationMapTurn = {
+     /** The id of the `ConversationItem` that starts the turn. */
+     readonly id: string;
+-    /** What was said, as plain text: the tick's accessible name. */
++    /** What was said, as plain text: the preview's heading, and the tick's
++     * accessible name unless `name` is given. */
+     readonly label: string;
++    /** The tick's accessible name, when it should differ from `label`. */
++    readonly name?: string;
+     /** The reply, as plain text, shown under the label when previewed. */
+     readonly preview?: string;
+ };
+diff --git a/dist/ui/conversation-map.js b/dist/ui/conversation-map.js
+index d00143285adcbdb7e90325342bd9d89b6af1b8a5..a75db37abc960abd26054519b119229c8c95e362 100644
+--- a/dist/ui/conversation-map.js
++++ b/dist/ui/conversation-map.js
+@@ -223,7 +223,7 @@ export const ConversationMap = forwardRef(function ConversationMap({ turns, onSe
+                     const current = turn.id === currentId;
+                     const onScreen = visible.has(turn.id);
+                     const described = preview?.id === turn.id && turn.preview !== undefined;
+-                    return (_jsx("button", { ref: current ? currentRef : undefined, type: "button", "data-slot": "conversation-map-tick", "data-turn-id": turn.id, "data-visible": onScreen ? "" : undefined, "aria-label": turn.label, "aria-current": current ? "location" : undefined, "aria-describedby": described ? previewTextId : undefined, tabIndex: turn.id === stopId ? 0 : -1, 
++                    return (_jsx("button", { ref: current ? currentRef : undefined, type: "button", "data-slot": "conversation-map-tick", "data-turn-id": turn.id, "data-visible": onScreen ? "" : undefined, "aria-label": turn.name ?? turn.label, "aria-current": current ? "location" : undefined, "aria-describedby": described ? previewTextId : undefined, tabIndex: turn.id === stopId ? 0 : -1, 
+                         // A mouse gets the dense rail, the whole conversation at a
+                         // glance, with ticks under the 24px of WCAG 2.5.8. That rests on
+                         // its "equivalent" exception: scrolling the conversation reaches
