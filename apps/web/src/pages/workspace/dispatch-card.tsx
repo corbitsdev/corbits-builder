@@ -203,8 +203,12 @@ export type DispatchRoom = {
   readonly onStop?: (runId: string) => Promise<void>;
 };
 
-/** A run's status as Interchange reports it, with why when it failed. */
-export type RunEnd = { readonly status: string; readonly error?: string };
+/** A run's status as Interchange reports it, with why when it failed and what blocked it. */
+export type RunEnd = {
+  readonly status: string;
+  readonly error?: string;
+  readonly blocked?: { readonly reason: string };
+};
 
 /** The artifact a hand-off files, by kind. */
 export function targetKind(dispatch: Dispatch): string | undefined {
@@ -240,7 +244,9 @@ export type DispatchStatus =
   | { readonly state: "finished" }
   /** The person or the coordinator stopped it. */
   | { readonly state: "stopped" }
-  | { readonly state: "failed"; readonly reason: string };
+  | { readonly state: "failed"; readonly reason: string }
+  /** It reported something it could not get past, in its own words or Builder's. */
+  | { readonly state: "blocked"; readonly reason: string };
 
 /** Records the first sighting of a hand-off, so a document filed later reads as its result. */
 export function noteDispatch(room: DispatchRoom, dispatch: Dispatch): void {
@@ -304,6 +310,13 @@ export function dispatchStatus(
     (writes.length === 1 ? writes[0] : undefined);
   if (filed !== undefined && moved.includes(filed) && !atWork)
     return readyOf(filed);
+  // The run's own record outlasts the room's short lists of failed runs, and a stop made here
+  // shows before the run has wound down. A blocked run ended on its block however Interchange
+  // settled it.
+  const ended =
+    dispatch.runId === undefined ? undefined : room.ended?.get(dispatch.runId);
+  if (ended?.blocked !== undefined)
+    return { state: "blocked", reason: ended.blocked.reason };
   const after = (iso: string) =>
     seen === undefined || Date.parse(iso) >= seen.at - 60_000;
   const failure = room.failed.find((run) =>
@@ -316,10 +329,6 @@ export function dispatchStatus(
       state: "failed",
       reason: failure.error?.message ?? text.failedUnknown,
     };
-  // The run's own record outlasts the room's short lists of failed runs, and a stop made here
-  // shows before the run has wound down.
-  const ended =
-    dispatch.runId === undefined ? undefined : room.ended?.get(dispatch.runId);
   if (ended?.status === "cancelled") return { state: "stopped" };
   if (ended?.status === "failed")
     return { state: "failed", reason: ended.error ?? text.failedUnknown };

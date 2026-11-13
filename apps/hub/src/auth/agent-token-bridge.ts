@@ -306,7 +306,7 @@ export function createAgentTokenBridge(
     }
     const nativeBearer = bearer.startsWith(NATIVE_RUN_TOKEN_PREFIX);
     const artifactRoute =
-      /^\/api\/tenants\/[^/]+\/projects\/[^/]+\/(?:artifacts(?:\/[^/]+)?|artifact-approvals|design-themes\/run|design-draft\/previous|app-repository(?:\/revoke)?|run-values)$/.test(
+      /^\/api\/tenants\/[^/]+\/projects\/[^/]+\/(?:artifacts(?:\/[^/]+)?|artifact-approvals|design-themes\/run|design-draft\/previous|app-repository(?:\/revoke)?|run-values|run-block(?:\/end)?)$/.test(
         c.req.path,
       );
     const runtimeScope = c.req.path === "/api/workflow-project-scope";
@@ -424,8 +424,8 @@ export function createAgentTokenBridge(
     const base = "/api/tenants/" + encodeURIComponent(identity.tenantId);
     // Spawned specialists hold no project binding; their native grants decide
     // which artifacts they may read and write. run-values saves only what the
-    // run's own plugin action writes, which the hub checks for the run. A specialist runs only
-    // the checks of its own plugin.
+    // run's own plugin action writes, which the hub checks for the run, and run-block records and
+    // ends only the calling run. A specialist runs only the checks of its own plugin.
     const checkProject = c.req.path.match(
       /^\/api\/tenants\/[^/]+\/projects\/([^/]+)\/check-runs$/,
     )?.[1];
@@ -434,7 +434,7 @@ export function createAgentTokenBridge(
       !(await registry.boundRun(identity.runId))
     ) {
       const collection =
-        /\/(?:artifacts|artifact-approvals|app-repository(?:\/revoke)?|run-values)$/.test(
+        /\/(?:artifacts|artifact-approvals|app-repository(?:\/revoke)?|run-values|run-block(?:\/end)?)$/.test(
           c.req.path,
         );
       if (!nativeBearer) return denied();

@@ -19,11 +19,15 @@ import {
   type CheckDetail,
   type DoneChecks,
 } from "../builds/check-detail.ts";
+import type { RunBlock } from "@corbits-builder/schemas/activity";
 import { accessRefused } from "./http-json.ts";
+import { BLOCKED_RULE, END_BLOCKED_RUN, REPORT_BLOCKED } from "./blocked.ts";
 import {
   COMPACTOR,
   DROP_DEGENERATE,
   HELD_REPLY,
+  isDirectorNote,
+  REPEATED_FAILURE,
   textOf,
 } from "./compaction.ts";
 
@@ -224,11 +228,11 @@ const SHELL_WRITE =
   /(?<![0-9&])>>?\s*(?!&|\/dev\/null)\S|\b(tee|sed\s+-i|mv|cp|rm|touch)\b/;
 
 const WRITE_TOOLS = new Set(["write_file", "edit_file"]);
-// A user turn that hands the agent a new task: mail, rather than a tool result or a held reply's note.
+// A user turn that hands the agent a new task: mail, rather than a tool result or a director's note.
 const isTask = (turn: ConversationTurn) =>
   turn.role === "user" &&
   turn.content.some(
-    (block) => block.type === "text" && !block.text.startsWith(HELD_REPLY),
+    (block) => block.type === "text" && !isDirectorNote(block.text),
   );
 
 // The current task's calls, newest first: everything after the last mail the agent was handed.
@@ -359,6 +363,166 @@ function holdReply(
   return undefined;
 }
 
+// Whether the agent reported a block in its current task, which its next reply ends the run on.
+const reportedBlock = (turns: readonly ConversationTurn[]) =>
+  taskCalls(turns).some(
+    (call) => call.name === REPORT_BLOCKED && !call.isError,
+  );
+
+// A designer's file tools were refused 99 times for one reason it could not change. Three in a row
+// is one past the twice the shared rule allows, so the agent is told once.
+const NOTE_AFTER_FAILURES = 3;
+// Three more after the note were three chances to change course, so the run ends.
+const END_AFTER_FAILURES = 6;
+// The repeated error is the recorded reason; a block's reason holds at most 2000 characters.
+const FAILURE_QUOTE_CHARS = 500;
+
+// A wait for mail that runs out of time only means no mail came yet; the agent waits again or
+// moves on, which is no sign of being stuck.
+const harmless = (tool: string | undefined, text: string) =>
+  tool === "mail_wait" && text.includes("Timed out after");
+
+const JsonCode = type({ code: "string > 0" });
+
+// What a failed call's result says went wrong, as one key across tools: the code before the first
+// colon of a refusal such as "artifact_write_refused: ...", or a JSON error body's code, else the
+// whole text.
+function failureKey(text: string): string {
+  const code = /^([a-z][a-z0-9_.-]*):/.exec(text)?.[1];
+  if (code !== undefined) return code;
+  if (text.trimStart().startsWith("{")) {
+    try {
+      const body = JsonCode(JSON.parse(text));
+      if (!(body instanceof type.errors)) return body.code;
+    } catch (cause) {
+      if (!(cause instanceof SyntaxError)) throw cause;
+    }
+  }
+  return text.trim().replaceAll(/\s+/g, " ");
+}
+
+/**
+ * The newest tool results of the current task that failed the same way in a row, and the newest of
+ * them. A success or a different failure ends the run of them; a harmless failure is skipped.
+ */
+function failureStreak(turns: readonly ConversationTurn[]) {
+  const tools = new Map<string, string>();
+  for (const turn of turns)
+    for (const block of turn.content)
+      if (block.type === "tool_call") tools.set(block.id, block.name);
+  const streak = { count: 0, key: "", latest: "" };
+  for (let index = turns.length - 1; index >= 0; index--) {
+    const turn = turns[index]!;
+    if (isTask(turn)) return streak;
+    for (const block of [...turn.content].reverse()) {
+      if (block.type !== "tool_result") continue;
+      const said = textOf(block.content);
+      if (harmless(tools.get(block.callId), said)) continue;
+      if (block.isError !== true) return streak;
+      const key = failureKey(said);
+      if (streak.count === 0) {
+        streak.key = key;
+        streak.latest = said;
+      }
+      if (key !== streak.key) return streak;
+      streak.count += 1;
+    }
+  }
+  return streak;
+}
+
+const quoted = (text: string) =>
+  text.length > FAILURE_QUOTE_CHARS
+    ? `${text.slice(0, FAILURE_QUOTE_CHARS)}…`
+    : text;
+
+// The note at the third identical failure; a role without the blocked exit is told only to change
+// course.
+const repeatedFailureNote = (latest: string, blocks: boolean) =>
+  `${REPEATED_FAILURE}your last ${NOTE_AFTER_FAILURES} calls failed with the same error: ${JSON.stringify(quoted(latest))}. Trying again will not change it. Take a different approach${blocks ? `, or if nothing you can do changes it, report the block with ${REPORT_BLOCKED}` : ""}.`;
+
+type Caps = Parameters<ReactorDirector["decide"]>[2];
+
+/**
+ * A director with the way out of work the agent cannot get past. With blocks, once the agent has
+ * reported a block its next reply is let through whatever would hold it and ends the run. Three
+ * tool results in a row that fail the same way get one note to change course; with blocks, six end
+ * the run as blocked by Builder. A run ends as blocked by a stop, not a reply, so its assignment
+ * stays unanswered and the coordinator gets the blocked note.
+ */
+function withBlockedExit(
+  director: ReactorDirector,
+  blocks: boolean,
+): ReactorDirector {
+  let endCall: string | undefined;
+  let endings = 0;
+  // Whether the current streak of identical failures has had its note.
+  let noted = false;
+  // Records Builder's own block first when given one.
+  const endBlocked = (caps: Caps, block: RunBlock | Record<string, never>) => {
+    endings += 1;
+    endCall = `end-blocked-${endings}`;
+    return [
+      caps.checkpoint("blocked"),
+      caps.executeTools(
+        [{ id: endCall, name: END_BLOCKED_RUN, arguments: block }],
+        false,
+        false,
+      ),
+    ];
+  };
+  const brake = (turns: readonly ConversationTurn[], caps: Caps) => {
+    const streak = failureStreak(turns);
+    if (streak.count < NOTE_AFTER_FAILURES) {
+      noted = false;
+      return undefined;
+    }
+    if (blocks && streak.count >= END_AFTER_FAILURES)
+      return endBlocked(caps, {
+        reason: quoted(streak.latest),
+        tried: `Ended by Builder after ${END_AFTER_FAILURES} identical failures in a row.`,
+      });
+    if (noted) return undefined;
+    noted = true;
+    return [
+      caps.checkpoint("repeated-failures"),
+      caps.compact(DROP_DEGENERATE, repeatedFailureNote(streak.latest, blocks)),
+    ];
+  };
+  return {
+    decide: async (event, state, caps) => {
+      // The hub stops the run once its end is requested, so it waits for that rather than replying.
+      if (event.type === "tool.done" && event.result.callId === endCall) {
+        endCall = undefined;
+        const { content, isError } = event.result;
+        if (isError)
+          throw new Error(
+            `blocked_run_not_ended: ${typeof content === "string" ? content : JSON.stringify(content)}`,
+          );
+        return [caps.checkpoint("blocked-run-ending"), caps.wait()];
+      }
+      if (
+        blocks &&
+        event.type === "inference.done" &&
+        !event.turn.content.some((block) => block.type === "tool_call") &&
+        reportedBlock(state.turns)
+      )
+        return endBlocked(caps, {});
+      const decided = await director.decide(event, state, caps);
+      // After a turn's results, before the agent sees them.
+      const infers = (Array.isArray(decided) ? decided : [decided]).some(
+        (action) => action.type === "infer",
+      );
+      if (
+        infers &&
+        (event.type === "tool.done" || event.type === "resume.tool_result")
+      )
+        return brake(state.turns, caps) ?? decided;
+      return decided;
+    },
+  };
+}
+
 /**
  * The default director, plus these rules. Once a turn's input passes compactAt of the model's context
  * window, it compacts before the next inference, and once more when the model refuses a request as
@@ -374,7 +538,10 @@ function holdReply(
  * reply after filed work ends with it, so the coordinator reads which screen shows the work, or with
  * a line that Builder chose the design itself when approvals are handed over. Every inference retries an
  * overloaded, slow or rate-limited model a few times; once that gives up, the run fails, or with
- * replyOnFailure the error is the reply. The model-specific numbers come from the agent
+ * replyOnFailure the error is the reply. An agent offered report_blocked carries the shared rule on
+ * using it, and once it has reported a block its next reply is not held and ends the run as blocked.
+ * Three tool results in a row that fail the same way get one note to change course; with the
+ * blocked exit, six end the run as blocked by Builder. The model-specific numbers come from the agent
  * definition's director config.
  */
 export const compactingDirector = (packageName: string) =>
@@ -413,12 +580,18 @@ export const compactingDirector = (packageName: string) =>
       timeouts: { "+": "reject", "totalTimeoutMs?": "number.integer > 0" },
     }),
     factory: (config, env, agent) => {
-      // The done checks are the director's own call, never the model's.
+      // The done checks and ending a blocked run are the director's own calls, never the model's.
       const offered = agent.toolDefinitions.filter(
-        (tool) => tool.name !== DONE_CHECKS_TOOL,
+        (tool) =>
+          tool.name !== DONE_CHECKS_TOOL && tool.name !== END_BLOCKED_RUN,
       );
+      // A specialist has the blocked exit; the coordinator, which has no one above it to tell, does not.
+      const blocks = offered.some((tool) => tool.name === REPORT_BLOCKED);
+      const systemPrompt = blocks
+        ? `${agent.systemPrompt}\n\n${BLOCKED_RULE}`
+        : agent.systemPrompt;
       const inner = defaultDirectorFactory({}, env, {
-        systemPrompt: agent.systemPrompt,
+        systemPrompt,
         toolDefinitions: offered,
         compactorNames: agent.compactorNames,
       }) as ReactorDirector;
@@ -513,7 +686,7 @@ export const compactingDirector = (packageName: string) =>
               return [
                 caps.checkpoint("repetition-abort"),
                 caps.infer({
-                  systemPrompt: agent.systemPrompt,
+                  systemPrompt,
                   tools: offered,
                   providerOptions: resample(),
                 }),
@@ -626,6 +799,10 @@ export const compactingDirector = (packageName: string) =>
           return actions;
         },
       };
-      return withRetryPolicy(director, !config.replyOnFailure, config.timeouts);
+      return withRetryPolicy(
+        withBlockedExit(director, blocks),
+        !config.replyOnFailure,
+        config.timeouts,
+      );
     },
   });

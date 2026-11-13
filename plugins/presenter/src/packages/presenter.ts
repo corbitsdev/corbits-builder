@@ -6,6 +6,7 @@ import {
 import { createSkillTools } from "@corbits-builder/hub/skills/tools";
 import { roleInference } from "@corbits-builder/hub/workflows/role-inference";
 import { compactingDirector } from "@corbits-builder/hub/workflows/director";
+import { createBlockedTools } from "@corbits-builder/hub/workflows/blocked";
 import {
   dropDegenerateTurn,
   trimHistory,
@@ -40,6 +41,7 @@ const agent = createPresenterAgent<PackageToolEnv & MailToolEnv>({
     mail,
     createSkillTools(presentingSkills()),
     savedResultTools,
+    createBlockedTools(role.name),
   ],
 });
 const workflow = createPresenterWorkflow({

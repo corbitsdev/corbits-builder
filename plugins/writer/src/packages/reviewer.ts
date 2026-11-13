@@ -1,6 +1,7 @@
 import { mail } from "@intx/tools-mail/sidecar-bundle";
 import { roleInference } from "@corbits-builder/hub/workflows/role-inference";
 import { compactingDirector } from "@corbits-builder/hub/workflows/director";
+import { createBlockedTools } from "@corbits-builder/hub/workflows/blocked";
 import {
   dropDegenerateTurn,
   trimHistory,
@@ -28,7 +29,7 @@ const agent = createReviewerAgent({
   role: role.name,
   capabilities: [],
   inference: { ...source, parameters },
-  tools: [mail, savedResultTools],
+  tools: [mail, savedResultTools, createBlockedTools(role.name)],
 });
 const workflow = createReviewerWorkflow({
   id: "corbits-builder-reviewer",

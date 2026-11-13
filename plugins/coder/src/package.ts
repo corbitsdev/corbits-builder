@@ -11,6 +11,7 @@ import { mail, type MailToolEnv } from "@intx/tools-mail/sidecar-bundle";
 import { createArtifactTools } from "@corbits-builder/hub/artifacts/tools";
 import { roleInference } from "@corbits-builder/hub/workflows/role-inference";
 import { compactingDirector } from "@corbits-builder/hub/workflows/director";
+import { createBlockedTools } from "@corbits-builder/hub/workflows/blocked";
 import {
   dropDegenerateTurn,
   trimHistory,
@@ -80,6 +81,7 @@ export async function coderPackage() {
       packageInstall: "ask",
       browser,
     }),
+    createBlockedTools(role.name),
   ];
   const agent = createCoderAgent<CodingSidecarEnv & MailToolEnv>({
     director: compacting.build({

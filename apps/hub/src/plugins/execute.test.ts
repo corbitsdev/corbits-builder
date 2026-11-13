@@ -496,3 +496,41 @@ test("discover lists the project's setup screen with its guidance", async () => 
     "setting: the NAME of the environment setting",
   );
 });
+
+test("a step whose run ended blocked waits again rather than failing", () => {
+  const step = {
+    id: "mockup",
+    title: "Draft the design",
+    plugin: "designer",
+    action: "mockup",
+    input: {},
+    askFirst: false,
+  };
+  const ended = {
+    runId: "run-designer",
+    plugin: "designer",
+    action: "mockup",
+    step: "mockup",
+    status: "cancelled" as const,
+    startedAt: new Date(0).toISOString(),
+    endedAt: new Date(1).toISOString(),
+  };
+  const viewOf = (run: typeof ended & { blocked?: { reason: string } }) =>
+    planState(CATALOG, [step], {
+      facts: new Set(),
+      personFacts: new Set(),
+      asksApprovals: true,
+      checks: [],
+      runs: [run],
+      questions: [],
+    })[0];
+  expect(viewOf(ended)?.state).toBe("failed");
+  const blocked = viewOf({
+    ...ended,
+    blocked: { reason: "The hub refused every file write." },
+  });
+  expect(blocked?.state).toBe("waiting");
+  expect(blocked && "summary" in blocked ? blocked.summary : "").toBe(
+    "The hub refused every file write.",
+  );
+});

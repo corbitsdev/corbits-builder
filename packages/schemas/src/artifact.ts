@@ -1,5 +1,6 @@
 import { type } from "arktype";
 import { RoleName } from "./roles.ts";
+import { RunBlock } from "./activity.ts";
 import { Preferences } from "./preferences.ts";
 import { OpenQuestions } from "./questions.ts";
 import { ApproachesMeta } from "./approaches.ts";
@@ -483,6 +484,8 @@ export const ProjectRun = RunAction.merge({
   "lastActivityAt?": "string > 0",
   // Why a failed run stopped.
   "error?": "string > 0",
+  // What stopped a run that was blocked.
+  "blocked?": RunBlock,
 });
 export type ProjectRun = typeof ProjectRun.infer;
 export const ProjectRuns = type({ "+": "reject", runs: ProjectRun.array() });

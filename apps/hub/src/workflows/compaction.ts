@@ -161,36 +161,52 @@ export function trimHistory(inputTokens: number): Compactor {
 
 export const DROP_DEGENERATE = "@corbits-builder/drop-degenerate-turn";
 
-// How the director's note on a held reply opens. The compactor finds the note in the compaction's
-// reason by it, and the director reads a turn that opens with it as part of the same task.
+// How the director's notes open: on a held reply, and on calls failing the same way. The compactor
+// finds a note in the compaction's reason by its opening, and the director reads a turn that opens
+// with one as part of the same task.
 export const HELD_REPLY =
   "Builder held your reply, so no one has read it yet: ";
+export const REPEATED_FAILURE =
+  "Builder noticed your calls failing the same way: ";
+const NOTE_LEADS = [HELD_REPLY, REPEATED_FAILURE];
 
-const heldNote = (trigger: string) => {
-  const at = trigger.indexOf(HELD_REPLY);
-  return at === -1 ? undefined : trigger.slice(at);
-};
+/** Whether a text is one of the director's notes rather than a task the agent was handed. */
+export const isDirectorNote = (text: string) =>
+  NOTE_LEADS.some((lead) => text.startsWith(lead));
+
+function directorNote(trigger: string) {
+  const at = NOTE_LEADS.map((lead) => trigger.indexOf(lead)).find(
+    (index) => index !== -1,
+  );
+  return at === undefined ? undefined : trigger.slice(at);
+}
 
 // Anthropic refuses to continue from an assistant turn ("does not support assistant message
 // prefill"), so a turn the director will not accept is dropped first.
 // A held reply stays instead, answered by the director's note, so the agent continues the same
-// conversation knowing why and is not handed its assignment again as if new.
+// conversation knowing why and is not handed its assignment again as if new. A note after tool
+// results joins their turn, so the conversation still alternates.
 /**
  * Removes a final assistant turn without a tool call, so the next inference samples it again; for a
- * held reply, adds the director's note after it.
+ * director's note, adds it at the end.
  */
 export const dropDegenerateTurn: Compactor = {
   name: DROP_DEGENERATE,
-  version: "5",
+  version: "6",
   apply: async (turns: ConversationTurn[], { trigger }) => {
     const last = turns.at(-1);
-    const note = heldNote(trigger);
+    const note = directorNote(trigger);
     const drop =
       note === undefined &&
       last?.role === "assistant" &&
       !last.content.some((block) => block.type === "tool_call");
     let output = drop ? turns.slice(0, -1) : turns;
-    if (note !== undefined)
+    if (note !== undefined && last?.role === "user")
+      output = [
+        ...turns.slice(0, -1),
+        { ...last, content: [...last.content, { type: "text", text: note }] },
+      ];
+    else if (note !== undefined)
       output = [
         ...turns,
         {
@@ -203,9 +219,9 @@ export const dropDegenerateTurn: Compactor = {
       output,
       record: {
         strategy: DROP_DEGENERATE,
-        version: "5",
+        version: "6",
         parameters: {},
-        reason: note === undefined ? "unaccepted turn" : "held reply",
+        reason: note === undefined ? "unaccepted turn" : "director note",
         decisions: {
           droppedChars: drop ? JSON.stringify(last.content).length : 0,
         },

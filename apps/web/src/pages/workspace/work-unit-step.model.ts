@@ -60,7 +60,11 @@ export function workUnitStanding(
   noteDispatch(room, dispatch);
   const status = dispatchStatus(dispatch, room);
   const done = status.state === "ready" || status.state === "finished";
-  const ended = done || status.state === "failed" || status.state === "stopped";
+  const ended =
+    done ||
+    status.state === "failed" ||
+    status.state === "stopped" ||
+    status.state === "blocked";
   const steps =
     (dispatch.runId === undefined
       ? undefined

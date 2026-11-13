@@ -101,6 +101,8 @@ export type PlanRecords = {
     endedAt?: string;
     lastActivity?: string;
     error?: string;
+    // What stopped a run that was blocked.
+    blocked?: { reason: string };
   }[];
   // The screens open in front of the person that they have not answered yet.
   questions: readonly { plugin: string; action?: string }[];
@@ -159,6 +161,7 @@ export function planState(
       if (run.endedAt) view.endedAt = run.endedAt;
       if (run.lastActivity) view.summary = run.lastActivity;
       if (run.error) view.summary = run.error;
+      if (run.blocked) view.summary = run.blocked.reason;
     }
     // A check is recorded on its checked input, so the step's is checked the same way to match.
     const checked = isCheckAction(action)
@@ -204,6 +207,8 @@ export function planState(
       if (record?.result === "pass" && record.current) return "done";
       if (run?.status === "deployed" || run?.status === "running")
         return "running";
+      // A blocked run did not fail at the work: the step waits for its cause to be dealt with.
+      if (run?.blocked && !done) return "waiting";
       if (run && !done) return "failed";
       if (ready && isScreenAction(action) && asked) return "needs_you";
       if (done) return "done";

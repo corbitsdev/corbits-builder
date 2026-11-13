@@ -5,6 +5,7 @@ import {
   dispatchStatus,
   dispatchesOf,
   type DispatchRoom,
+  type RunEnd,
 } from "./dispatch-card.tsx";
 
 const room = (state: "working" | "waiting" | "approval"): DispatchRoom => ({
@@ -57,4 +58,28 @@ test("a run held on an approval reads as paused for the person, not as at work",
   });
   // Its work is still current: a document it builds from should not change under it.
   expect(dispatchLive(coder, room("approval"))).toBe(true);
+});
+
+test("a run that ended on a block reads as blocked with its reason, not as stopped or failed", () => {
+  const ended = (end: RunEnd): DispatchRoom => ({
+    artifacts: [],
+    inFlight: [],
+    failed: [],
+    seen: new Map(),
+    ended: new Map([["run-coder", end]]),
+  });
+  expect(dispatchStatus(coder, ended({ status: "cancelled" }))).toEqual({
+    state: "stopped",
+  });
+  const blocked = { reason: "The hub refused every file write." };
+  expect(
+    dispatchStatus(coder, ended({ status: "cancelled", blocked })),
+  ).toEqual({ state: "blocked", reason: blocked.reason });
+  // Builder's end of a blocked run can itself fail; the block is still what happened.
+  expect(
+    dispatchStatus(coder, ended({ status: "failed", error: "x", blocked })),
+  ).toEqual({ state: "blocked", reason: blocked.reason });
+  expect(dispatchLive(coder, ended({ status: "cancelled", blocked }))).toBe(
+    false,
+  );
 });

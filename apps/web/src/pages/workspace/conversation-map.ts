@@ -41,6 +41,8 @@ export function workEntry(
     return entry(text.mapMarked(phrase, wording.dispatch.status.error));
   if (status.state === "stopped")
     return entry(text.mapMarked(phrase, wording.dispatch.stopped));
+  if (status.state === "blocked")
+    return entry(text.mapMarked(phrase, wording.dispatch.blocked));
   return [];
 }
 

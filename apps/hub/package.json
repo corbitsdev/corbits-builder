@@ -22,6 +22,7 @@
     "./projects/app-repository": "./src/projects/app-repository.ts",
     "./signing-key": "./src/signing-key.ts",
     "./skills/tools": "./src/skills/tools.ts",
+    "./workflows/blocked": "./src/workflows/blocked.ts",
     "./workflows/compaction": "./src/workflows/compaction.ts",
     "./workflows/director": "./src/workflows/director.ts",
     "./workflows/http-json": "./src/workflows/http-json.ts",

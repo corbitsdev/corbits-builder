@@ -6,6 +6,7 @@ import {
 import { createDesignTools } from "@corbits-builder/hub/artifacts/design-tools";
 import { roleInference } from "@corbits-builder/hub/workflows/role-inference";
 import { compactingDirector } from "@corbits-builder/hub/workflows/director";
+import { createBlockedTools } from "@corbits-builder/hub/workflows/blocked";
 import {
   dropDegenerateTurn,
   trimHistory,
@@ -62,6 +63,7 @@ const agent = createDesignerAgent<CodingSidecarEnv & MailToolEnv>({
         commandModules: checkModules(),
       },
     }),
+    createBlockedTools(role.name),
   ],
 });
 const workflow = createDesignerWorkflow({

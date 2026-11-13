@@ -8,6 +8,7 @@ import manifest from "../package.json";
 import { createSkillTools } from "@corbits-builder/hub/skills/tools";
 import { roleInference } from "@corbits-builder/hub/workflows/role-inference";
 import { compactingDirector } from "@corbits-builder/hub/workflows/director";
+import { createBlockedTools } from "@corbits-builder/hub/workflows/blocked";
 import {
   dropDegenerateTurn,
   trimHistory,
@@ -48,6 +49,7 @@ export function writerPackage(kind?: WriterDocumentKind) {
         : createWriterArtifactTools(role, kind),
       createSkillTools(documentSkills()),
       savedResultTools,
+      createBlockedTools(role.name),
     ],
   });
   return {

@@ -36,7 +36,7 @@ import {
   RunActionStart,
   DesignConceptRecord,
 } from "@corbits-builder/schemas/artifact";
-import { ProjectActivity } from "@corbits-builder/schemas/activity";
+import { ProjectActivity, RunBlock } from "@corbits-builder/schemas/activity";
 import {
   EXPORT_SECTIONS,
   ExportSection,
@@ -879,6 +879,51 @@ export function mountArtifactRoutes(
         ),
       });
     },
+  );
+  app.post(
+    "/:projectId/run-block",
+    describeRoute({
+      tags: ["Artifacts"],
+      operationId: "recordRunBlock",
+      description:
+        "A specialist run records what stops its work and what it tried, in its own words or in Builder's for it. The run shows as blocked once it ends, and the coordinator's note on its end leads with the block.",
+      security,
+      requestBody: {
+        required: true,
+        content: { "application/json": { schema: resolver(RunBlock) } },
+      },
+      responses: {
+        200: { description: "The block was recorded" },
+        400: { description: "No reason or nothing tried" },
+        403: {
+          description: "The caller is not a run started for a plugin action",
+        },
+      },
+    }),
+    async (c) => {
+      const input = RunBlock(await body(c));
+      if (input instanceof type.errors)
+        throw new ProjectError(400, "invalid_run_block", { issues: input });
+      return c.json(
+        await service.recordBlock(actorOf(c), c.req.param("projectId"), input),
+      );
+    },
+  );
+  app.post(
+    "/:projectId/run-block/end",
+    describeRoute({
+      tags: ["Artifacts"],
+      operationId: "endBlockedRun",
+      description:
+        "Ends the calling specialist run once its block is recorded, through Interchange's cancellation with the reason blocked, as a stop does.",
+      security,
+      responses: {
+        200: { description: "The end was requested" },
+        409: { description: "The run has recorded no block" },
+      },
+    }),
+    async (c) =>
+      c.json(await service.endBlockedRun(actorOf(c), c.req.param("projectId"))),
   );
   app.get(
     "/:projectId/values",

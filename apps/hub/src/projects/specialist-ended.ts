@@ -144,6 +144,7 @@ export function createSpecialistEndNotices(deps: {
         bundle: workflowRunLaunchSpec.frozenApprovalBundle,
         plugin: runAction.plugin,
         action: runAction.action,
+        blocked: runAction.blocked,
       })
       .from(workflowRun)
       .innerJoin(project, eq(project.tenantId, workflowRun.tenantId))
@@ -233,8 +234,9 @@ export function createSpecialistEndNotices(deps: {
           action: { plugin: ended.plugin, action: ended.action },
           status: ended.status === "failed" ? "failed" : "cancelled",
           ...(reason ? { reason } : {}),
+          blocked: ended.blocked,
           lastCalls:
-            ended.status === "failed"
+            ended.status === "failed" && !ended.blocked
               ? await savedLastCalls(deps.repoStore, ended)
               : [],
           agentDecides: agentDecidesApprovals(settings.preferences.value),

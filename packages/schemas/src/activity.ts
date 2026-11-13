@@ -50,12 +50,22 @@ export const RunStep = type({
 });
 export type RunStep = typeof RunStep.infer;
 
+// What stopped a specialist run it could not get past, in its own words or Builder's: what stops the
+// work and what was tried.
+export const RunBlock = type({
+  "+": "reject",
+  reason: "0 < string <= 2000",
+  tried: "0 < string <= 2000",
+});
+export type RunBlock = typeof RunBlock.infer;
+
 // Every call a run made, in the order it made them, and the run's status as Interchange reports
-// it, with why when it failed.
+// it, with why when it failed and what blocked it when it was blocked.
 export const RunSteps = type({
   "+": "reject",
   status: "string > 0",
   "error?": "string > 0",
+  "blocked?": RunBlock,
   steps: RunStep.array(),
 });
 export type RunSteps = typeof RunSteps.infer;

@@ -5,6 +5,7 @@ import { AgentPackage, ROLE_TAG } from "@corbits-builder/plugin";
 import { defineAgent } from "@intx/agent/authoring";
 import { defineWorkflow, step } from "@intx/workflow/definition";
 import { createArtifactTools } from "../artifacts/tools.ts";
+import { createBlockedTools } from "./blocked.ts";
 import { dropDegenerateTurn, trimHistory } from "./compaction.ts";
 import { compactingDirector } from "./director.ts";
 import { nativePackageName } from "./package-name.ts";
@@ -40,6 +41,7 @@ if (tools.includes("web"))
   );
 // A trimmed result's note names read_file, so every agent has it.
 factories.push(savedResultTools);
+factories.push(createBlockedTools(role.name));
 
 const agent = defineAgent({
   id: name,

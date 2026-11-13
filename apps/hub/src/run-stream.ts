@@ -6,9 +6,11 @@
 // hub has seen of its events.
 
 import { type } from "arktype";
+import { eq } from "drizzle-orm";
 import { Hono } from "hono";
 import { streamSSE } from "hono/streaming";
 import type { DB } from "@intx/db";
+import { isLiveWorkflowRunStatus } from "@intx/db/schema";
 import { idResource, type RequireGrant, type TenantEnv } from "@intx/hub-api";
 import { findRoutableById, type SidecarRouter } from "@intx/hub-sessions";
 import { getLogger } from "@intx/log";
@@ -16,6 +18,7 @@ import { parseInferenceEvent } from "@intx/types/runtime";
 import { ContentBlock } from "@intx/types/runtime-core";
 import type { RunStep, RunSteps } from "@corbits-builder/schemas/activity";
 import type { AgentActivityTracker } from "./artifacts/activity.ts";
+import { runAction } from "./db/schema.ts";
 import type { CoordinatorRepoDirSource } from "./mail/coordinator-question.ts";
 import { isRecord, readCommittedTurns } from "./mail/conversation-turns.ts";
 import { errorCode, requestErrorMetadata } from "./request-error.ts";
@@ -175,6 +178,14 @@ export function createWorkflowRunStreamRoutes(deps: {
         steps: [...steps, ...current],
       };
       if (record.failureMessage !== null) saved.error = record.failureMessage;
+      // A run is blocked once it has ended on the block it recorded.
+      if (!isLiveWorkflowRunStatus(record.status)) {
+        const [action] = await deps.db
+          .select({ blocked: runAction.blocked })
+          .from(runAction)
+          .where(eq(runAction.runId, runId));
+        if (action?.blocked) saved.blocked = action.blocked;
+      }
       return c.json(saved);
     },
   );

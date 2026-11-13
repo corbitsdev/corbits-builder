@@ -1,0 +1,1 @@
+ALTER TABLE "sb_run_action" ADD COLUMN "blocked" jsonb;

@@ -854,6 +854,8 @@ export const wording = {
     failedUnknown: "the run stopped without a reason",
     /** A run the person or the coordinator stopped, at the end of its row. */
     stopped: "Stopped",
+    /** A run that hit something it could not get past, at the end of its row; why shows under it. */
+    blocked: "Blocked",
     /** Stops a working specialist, asked once in its row before it does. */
     stop: "Stop",
     stopAsk: (role: string) => `Stop the ${role.toLowerCase()}?`,

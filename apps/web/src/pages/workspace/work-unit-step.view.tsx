@@ -36,11 +36,13 @@ export const STEP_STATUS: Record<DispatchStatus["state"], ToolTraceStatus> = {
   // A run that ended early is a quiet state of its row, not an alarm: its words say how it ended.
   stopped: "output-denied",
   failed: "output-denied",
+  blocked: "output-denied",
 };
 
 /** The words at the end of a row, by where its work stands. */
 function statusLabels(status: DispatchStatus) {
   if (status.state === "stopped") return { "output-denied": text.stopped };
+  if (status.state === "blocked") return { "output-denied": text.blocked };
   if (status.state === "failed") return { "output-denied": text.status.error };
   return text.status;
 }
@@ -328,6 +330,7 @@ export function WorkUnitStepView({
     report !== undefined ||
     document !== undefined ||
     status.state === "failed" ||
+    status.state === "blocked" ||
     preview !== undefined;
   const outcome =
     preview === undefined ? (
@@ -336,6 +339,10 @@ export function WorkUnitStepView({
           <p className={styles.failed} title={status.reason}>
             {status.reason}
           </p>
+        ) : null}
+        {/* The agent's own words on what stops it, read in full: they say what to deal with. */}
+        {status.state === "blocked" ? (
+          <p className={styles.blocked}>{status.reason}</p>
         ) : null}
         {report === undefined ? null : <Report source={report} />}
       </>

@@ -59,6 +59,14 @@
   font-size: 0.875rem;
 }
 
+/* What blocked the run, in the agent's words, wrapped rather than cut short. */
+.blocked {
+  margin: 0;
+  overflow-wrap: anywhere;
+  color: var(--wb-muted-foreground);
+  font-size: 0.875rem;
+}
+
 /* A working row's one live slot: four lines tall from the first frame to the last, whatever it
    holds, so nothing below it moves while the run works. */
 .slot {

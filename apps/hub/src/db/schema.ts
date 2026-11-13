@@ -20,6 +20,7 @@ import {
   tenant,
   workflowRun,
 } from "@intx/db/schema";
+import type { RunBlock } from "@corbits-builder/schemas/activity";
 import type { CustomModel } from "@corbits-builder/schemas/models";
 import type { StoredPlan } from "@corbits-builder/schemas/project";
 
@@ -267,6 +268,8 @@ export const runAction = pgTable(
     planStep: text("plan_step"),
     // What the action's start kept as the run's record, as the action declares it; null for none.
     record: jsonb("record"),
+    // What stopped the run when it reported a block, or Builder did for it; null for none.
+    blocked: jsonb("blocked").$type<RunBlock>(),
     createdAt: timestamp("created_at", { withTimezone: true })
       .notNull()
       .defaultNow(),

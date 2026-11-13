@@ -23,6 +23,7 @@ import {
 import { COORDINATOR_NOTE_LEAD } from "@corbits-builder/schemas/native-specialist";
 import { REPETITION_ABORT } from "../inference/repetition.ts";
 import { trimHistory } from "./compaction.ts";
+import { END_BLOCKED_RUN, REPORT_BLOCKED } from "./blocked.ts";
 import { compactingDirector } from "./director.ts";
 
 const director = (
@@ -781,4 +782,249 @@ test("check_design validates DESIGN.md and .dark in styles.css and auto-files th
     check.dispose();
     await rm(workspace, { recursive: true, force: true });
   }
+});
+
+// A specialist offered the blocked exit, held to every rule a finished reply waits on.
+const specialist = () =>
+  compactingDirector("@corbits-builder/designer-test").factory(
+    {
+      contextWindow: 200_000,
+      compactAt: 0.8,
+      checkBeforeDone: true,
+      fileBeforeDone: true,
+      done: { plugin: "designer", checks: ["check-app"] },
+      timeouts: {},
+    },
+    {} as never,
+    {
+      systemPrompt: "Base prompt.",
+      toolDefinitions: [
+        { name: REPORT_BLOCKED, description: "", inputSchema: {} },
+        { name: END_BLOCKED_RUN, description: "", inputSchema: {} },
+        { name: "write_file", description: "", inputSchema: {} },
+      ],
+      compactorNames: [],
+    },
+  ) as ReactorDirector;
+
+const assignment: ConversationTurn = {
+  role: "user",
+  content: [{ type: "text", text: "Change the font." }],
+  timestamp: 0,
+};
+const called = (
+  id: string,
+  name: string,
+  args: Record<string, unknown> = {},
+) => ({
+  role: "assistant" as const,
+  content: [{ type: "tool_call" as const, id, name, arguments: args }],
+  timestamp: 1,
+});
+const answered = (callId: string, text: string, isError = false) => ({
+  role: "user" as const,
+  content: [
+    {
+      type: "tool_result" as const,
+      callId,
+      content: [{ type: "text" as const, text }],
+      ...(isError ? { isError } : {}),
+    },
+  ],
+  timestamp: 2,
+});
+const said: ConversationTurn = {
+  role: "assistant",
+  content: [{ type: "text", text: "The hub refuses my file writes." }],
+  timestamp: 3,
+};
+const decideOn = async (
+  subject: ReactorDirector,
+  turns: ConversationTurn[],
+  event: ReactorInboundEvent,
+) => {
+  const actions = await subject.decide(
+    event,
+    { ...state, turns },
+    createCapabilities(),
+  );
+  return (Array.isArray(actions) ? actions : [actions]) as ReactorAction[];
+};
+const replied = (turn: ConversationTurn): ReactorInboundEvent => ({
+  type: "inference.done",
+  turn: turn as Extract<ConversationTurn, { role: "assistant" }>,
+  usage: state.tokenUsage,
+  source: { sourceId: "openai", provider: "openai", model: "gpt-5" },
+});
+const toolDone = (callId: string, isError = false): ReactorInboundEvent => ({
+  type: "tool.done",
+  result: { callId, content: "x", ...(isError ? { isError } : {}) },
+});
+const endCallOf = (actions: ReactorAction[]) => {
+  const run = actions.find((action) => action.type === "execute_tools");
+  return run?.type === "execute_tools" ? run.calls[0] : undefined;
+};
+
+test("a reported block lets the next reply through unchecked and ends the run, never replying", async () => {
+  const subject = specialist();
+  const unfinished = [
+    assignment,
+    called("write", "write_file", { path: "a.css", content: "" }),
+    answered("write", "permission_denied: writes are refused", true),
+  ];
+  // Without a block the reply is held, as the work is unchecked and unfiled.
+  const held = await decideOn(
+    specialist(),
+    [...unfinished, said],
+    replied(said),
+  );
+  expect(held.some((action) => action.type === "compact")).toBe(true);
+
+  const blocked = [
+    ...unfinished,
+    called("block", REPORT_BLOCKED, {
+      reason: "The hub refuses my file writes.",
+      tried: "Writing the stylesheet twice.",
+    }),
+    answered("block", "Recorded."),
+    said,
+  ];
+  const ending = await decideOn(subject, blocked, replied(said));
+  expect(ending.some((action) => action.type === "reply")).toBe(false);
+  const end = endCallOf(ending);
+  expect(end?.name).toBe(END_BLOCKED_RUN);
+  // The agent already recorded its block, so ending records nothing of Builder's.
+  expect(end?.arguments).toEqual({});
+  // Once the hub has the end, the run waits for its stop rather than replying.
+  const after = await decideOn(subject, blocked, toolDone(end!.id));
+  expect(after.map((action) => action.type)).toEqual(["checkpoint", "wait"]);
+
+  // An end the hub refused fails the run rather than leaving it waiting.
+  const refused = specialist();
+  const again = endCallOf(await decideOn(refused, blocked, replied(said)));
+  await expect(
+    decideOn(refused, blocked, toolDone(again!.id, true)),
+  ).rejects.toThrow("blocked_run_not_ended");
+
+  // A refused report is no block: the reply is held as before.
+  const unrecorded = [
+    ...unfinished,
+    called("block", REPORT_BLOCKED, { reason: "r", tried: "t" }),
+    answered("block", "run_not_started_for_an_action: no", true),
+    said,
+  ];
+  const stillHeld = await decideOn(specialist(), unrecorded, replied(said));
+  expect(endCallOf(stillHeld)).toBeUndefined();
+});
+
+test("the shared rule on blocks reaches a specialist's prompt and not the coordinator's", async () => {
+  const promptOf = async (subject: ReactorDirector) => {
+    const actions = await decideOn(subject, [assignment], {
+      type: "message.received",
+      message: { role: "user", content: [{ type: "text", text: "go" }] },
+    } as never);
+    const infer = actions.find((action) => action.type === "infer");
+    return infer?.type === "infer" ? infer.options?.systemPrompt : undefined;
+  };
+  expect(await promptOf(specialist())).toContain(REPORT_BLOCKED);
+  expect(await promptOf(director(false))).not.toContain(REPORT_BLOCKED);
+});
+
+// The decision after a turn's results, with the given results in a row since the assignment.
+const afterResults = async (
+  subject: ReactorDirector,
+  results: { name: string; text: string; isError?: boolean }[],
+) => {
+  const turns: ConversationTurn[] = [assignment];
+  results.forEach(({ name, text, isError }, index) => {
+    turns.push(called(`c${index}`, name), answered(`c${index}`, text, isError));
+  });
+  // The default director infers once the batch it ran has every result.
+  await decideOn(subject, turns.slice(0, -2), replied(turns.at(-2)!));
+  return decideOn(subject, turns, toolDone(`c${results.length - 1}`));
+};
+const refusal = (name: string) => ({
+  name,
+  text: `artifact_write_refused: the design is read-only for ${name}`,
+  isError: true,
+});
+const noteOf = (actions: ReactorAction[]) => {
+  const compact = actions.find((action) => action.type === "compact");
+  return compact?.type === "compact" ? compact.reason : undefined;
+};
+const inferred = (actions: ReactorAction[]) =>
+  actions.some((action) => action.type === "infer");
+
+test("three identical failures from any tool get one note, and six end the run as blocked", async () => {
+  const subject = specialist();
+  const tools = ["read_file", "write_file", "check_design"];
+  const failures = (count: number) =>
+    Array.from({ length: count }, (_, index) => refusal(tools[index % 3]!));
+  expect(inferred(await afterResults(subject, failures(2)))).toBe(true);
+  const note = noteOf(await afterResults(subject, failures(3)));
+  expect(note).toContain("artifact_write_refused: the design is read-only");
+  expect(note).toContain(REPORT_BLOCKED);
+  // Once per streak: the fourth and fifth go on to the model.
+  expect(inferred(await afterResults(subject, failures(4)))).toBe(true);
+  expect(inferred(await afterResults(subject, failures(5)))).toBe(true);
+  const end = endCallOf(await afterResults(subject, failures(6)));
+  expect(end?.name).toBe(END_BLOCKED_RUN);
+  expect(end?.arguments).toEqual({
+    reason: "artifact_write_refused: the design is read-only for check_design",
+    tried: "Ended by Builder after 6 identical failures in a row.",
+  });
+});
+
+test("a success, a different error, or a timed-out wait for mail shape the count as they should", async () => {
+  const fail = refusal("write_file");
+  const ok = { name: "read_file", text: "body {}" };
+  // A success between failures starts the count again.
+  expect(
+    noteOf(await afterResults(specialist(), [fail, fail, ok, fail, fail])),
+  ).toBeUndefined();
+  // Different errors do not add up, and an error's code is what makes two the same.
+  const other = {
+    name: "write_file",
+    text: "invalid_arguments: path is required",
+    isError: true,
+  };
+  expect(
+    noteOf(await afterResults(specialist(), [fail, other, fail, other, fail])),
+  ).toBeUndefined();
+  const reworded = {
+    name: "read_file",
+    text: "artifact_write_refused: another wording",
+    isError: true,
+  };
+  expect(
+    noteOf(await afterResults(specialist(), [fail, reworded, fail])),
+  ).toBeDefined();
+  // A wait for mail that ran out of time neither counts nor breaks the run of failures.
+  const waited = {
+    name: "mail_wait",
+    text: JSON.stringify({
+      error: "Timed out after 60s waiting for a matching message",
+      code: "timeout",
+    }),
+    isError: true,
+  };
+  expect(
+    noteOf(await afterResults(specialist(), [fail, waited, waited, fail])),
+  ).toBeUndefined();
+  expect(
+    noteOf(
+      await afterResults(specialist(), [fail, waited, fail, waited, fail]),
+    ),
+  ).toBeDefined();
+});
+
+test("the coordinator gets the note on repeated failures but is never ended as blocked", async () => {
+  const coordinator = director(false);
+  const failures = Array.from({ length: 6 }, () => refusal("execute"));
+  const note = noteOf(await afterResults(coordinator, failures.slice(0, 3)));
+  expect(note).toBeDefined();
+  expect(note).not.toContain(REPORT_BLOCKED);
+  const sixth = await afterResults(coordinator, failures);
+  expect(endCallOf(sixth)).toBeUndefined();
+  expect(inferred(sixth)).toBe(true);
 });

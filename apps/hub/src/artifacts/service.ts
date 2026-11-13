@@ -100,6 +100,7 @@ import {
   CommandProgress,
   type AgentActivity,
   type ProjectActivity,
+  type RunBlock,
 } from "@corbits-builder/schemas/activity";
 import {
   artifactApproval,
@@ -354,6 +355,9 @@ const documentMetadataOf = (metadata: unknown) =>
 const openQuestionsOf = (metadata: unknown) =>
   documentMetadataOf(metadata).openQuestions ?? [];
 
+// The cancellation reason Interchange keeps for a run that ended blocked.
+const BLOCKED_CANCELLATION = "blocked";
+
 // The failed step's error names the cause; RunFailed only says a step failed.
 // A run the hub failed itself, such as on lost capacity, records why on its row.
 export async function runFailure(
@@ -462,6 +466,28 @@ export function createArtifactService(
         ),
       );
     return row;
+  }
+
+  // The specialist run the calling principal is, with the plugin action it was started for.
+  async function callingRun(actor: Actor, projectId: string) {
+    const [run] = await rawDB
+      .select({
+        runId: runAction.runId,
+        plugin: runAction.plugin,
+        action: runAction.action,
+        blocked: runAction.blocked,
+      })
+      .from(runAction)
+      .innerJoin(principal, eq(principal.refId, runAction.runId))
+      .where(
+        and(
+          eq(principal.id, actor.principalId),
+          eq(principal.kind, "workflow"),
+          eq(runAction.tenantId, actor.tenantId),
+          eq(runAction.projectId, projectId),
+        ),
+      );
+    return run;
   }
 
   async function archiveName(projectId: string) {
@@ -1671,6 +1697,7 @@ export function createArtifactService(
           endedAt: workflowRun.endedAt,
           failureCode: workflowRun.failureCode,
           failureMessage: workflowRun.failureMessage,
+          blocked: runAction.blocked,
         })
         .from(runAction)
         .innerJoin(workflowRun, eq(workflowRun.id, runAction.runId))
@@ -1731,6 +1758,7 @@ export function createArtifactService(
         if (lastActivity) run.lastActivity = lastActivity;
         if (progress) run.lastActivityAt = progress.lastActivityAt;
         if (error) run.error = error.message;
+        if (row.blocked !== null) run.blocked = row.blocked;
         listed.push(run);
       }
       return listed;
@@ -1768,23 +1796,42 @@ export function createArtifactService(
     // action writes. A run holds no project write of its own; saveRunValues is its one way to save.
     async valuesRun(actor: Actor, projectId: string) {
       await requireProject(actor, projectId, "read");
-      const [run] = await rawDB
-        .select({ plugin: runAction.plugin, action: runAction.action })
-        .from(runAction)
-        .innerJoin(principal, eq(principal.refId, runAction.runId))
-        .where(
-          and(
-            eq(principal.id, actor.principalId),
-            eq(principal.kind, "workflow"),
-            eq(runAction.tenantId, actor.tenantId),
-            eq(runAction.projectId, projectId),
-          ),
-        );
+      const run = await callingRun(actor, projectId);
       if (!run)
         throw new ProjectError(403, "run_saves_no_values", {
           hint: "This run was not started for a plugin action that saves project values, so it saves none.",
         });
       return run;
+    },
+
+    // Records what stops the calling specialist run, the agent's own report or Builder's for it.
+    async recordBlock(actor: Actor, projectId: string, block: RunBlock) {
+      await requireProject(actor, projectId, "read");
+      const run = await callingRun(actor, projectId);
+      if (!run)
+        throw new ProjectError(403, "run_not_started_for_an_action", {
+          hint: "This run was not started for a plugin action, so Builder has nowhere to record its block.",
+        });
+      await rawDB
+        .update(runAction)
+        .set({ blocked: block })
+        .where(eq(runAction.runId, run.runId));
+      return { runId: run.runId };
+    },
+
+    // Ends the calling run once its block is recorded, through Interchange's cancellation as a stop
+    // does: a specialist parks after it replies rather than ending, and an end with its assignment
+    // unanswered is what sends the coordinator its note.
+    async endBlockedRun(actor: Actor, projectId: string) {
+      await requireProject(actor, projectId, "read");
+      const run = await callingRun(actor, projectId);
+      if (!run?.blocked)
+        throw new ProjectError(409, "run_not_blocked", {
+          hint: "Report the block before the run ends as blocked.",
+        });
+      if (!cancelRun) throw new ProjectError(503, "run_stop_unavailable");
+      await cancelRun(actor.tenantId, run.runId, BLOCKED_CANCELLATION);
+      return { runId: run.runId };
     },
 
     async saveRunValues(

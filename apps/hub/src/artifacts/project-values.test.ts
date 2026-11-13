@@ -146,3 +146,40 @@ test("saving a value its schema refuses is refused", async () => {
     key: "look.font-primary",
   });
 });
+
+test("a run's block reaches the service whole, and one without a reason is refused", async () => {
+  const recorded: unknown[] = [];
+  const app = new Hono<TenantEnv>();
+  app.onError((error, c) => {
+    if (error instanceof ProjectError)
+      return c.json({ code: error.code }, error.status);
+    throw error;
+  });
+  app.use("*", async (c, next) => {
+    c.set("tenant", { id: "tenant-1" } as TenantEnv["Variables"]["tenant"]);
+    c.set("principal", {
+      id: "principal-1",
+    } as TenantEnv["Variables"]["principal"]);
+    await next();
+  });
+  mountArtifactRoutes(app, {
+    recordBlock: async (_actor: unknown, _project: string, block: unknown) => {
+      recorded.push(block);
+      return { runId: "run-1" };
+    },
+  } as unknown as ReturnType<typeof createArtifactService>);
+  const post = (body: unknown) =>
+    app.request("/project-1/run-block", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify(body),
+    });
+  const block = {
+    reason: "The hub refuses every write.",
+    tried: "Writing twice.",
+  };
+  expect((await post(block)).status).toBe(200);
+  expect(recorded).toEqual([block]);
+  expect((await post({ tried: "Writing twice." })).status).toBe(400);
+  expect(recorded).toHaveLength(1);
+});
