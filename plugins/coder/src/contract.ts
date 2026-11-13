@@ -10,17 +10,17 @@ export const CODER_INPUTS = [
 ] as const;
 
 // What a first build can start from, by name: the folder of files the workspace begins as, the
-// coder package that builds on it, the check that says it is finished, whether it serves a web app
-// to preview, the command that prepares a fresh workspace, what an agent can do when that command
-// fails, and the commands a first build saves as the project's stack.checks.
+// coder package that builds on it, whether it serves a web app to preview, the command that
+// prepares a fresh workspace, what an agent can do when that command fails, and the commands a
+// first build saves as the project's stack.checks.
 export const STARTERS = manifest.coder.starters;
 export type StarterName = keyof typeof STARTERS;
 
 // Code with no starter, built or imported, starts from an empty project in whatever stack its task
-// names: its own coder package, and a check that runs the commands the coder declared.
+// names, with its own coder package.
 export const EMPTY = manifest.coder.empty;
 
-/** The coder package, finish check and web app serving of code from the starter, or of code without one. */
+/** The coder package and web app serving of code from the starter, or of code without one. */
 export const startFrom = (starter: StarterName | undefined) =>
   starter === undefined ? EMPTY : STARTERS[starter];
 

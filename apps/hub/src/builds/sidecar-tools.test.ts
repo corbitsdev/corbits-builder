@@ -4,10 +4,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { appCheckDetail, fileCheckedApp } from "./sidecar-tools.ts";
 
-const PASSED =
-  "check passed: built, started, and opened / at 1280 and 390 px with no errors";
-const MOCKUP_PASSED =
-  "check passed: served .builder/designs and opened / at 1280 and 390 px with no errors";
+const PASSED = "check passed: every command in CHECKS.txt succeeded";
 
 const shell = (command: string) => ({
   id: "call",
@@ -16,54 +13,39 @@ const shell = (command: string) => ({
 });
 const output = (content: string) => ({ callId: "call", content });
 
-test("a check-app run records its verdict however the command runs it", () => {
+test("a check-stack run records its verdict however the command runs it", () => {
   for (const command of [
-    "check-app",
-    "cd app && check-app",
-    "timeout 300 check-app",
-    "CI=1 check-app",
-    "./bin/check-app",
-    "bash -lc 'check-app'",
-    "timeout 600 check-app 2>&1 | tail -40",
+    "check-stack",
+    "cd app && check-stack",
+    "timeout 300 check-stack",
+    "CI=1 check-stack",
+    "./bin/check-stack",
+    "bash -lc 'check-stack'",
+    "timeout 600 check-stack 2>&1 | tail -40",
   ])
-    expect(appCheckDetail(shell(command), output(PASSED), "check-app")).toEqual(
-      {
-        checkPassed: true,
-      },
-    );
+    expect(appCheckDetail(shell(command), output(PASSED))).toEqual({
+      checkPassed: true,
+    });
 });
 
-test("only an app check-app pass of a command that succeeded counts as passed", () => {
+test("only a check-stack pass of a command that succeeded counts as passed", () => {
   expect(
     appCheckDetail(
-      shell("check-app"),
-      output("check failed: 1 problem(s)"),
-      "check-app",
+      shell("check-stack"),
+      output("check failed: check-app exited non-zero"),
     ),
   ).toEqual({ checkPassed: false });
   expect(
-    appCheckDetail(
-      shell("check-app .builder/designs"),
-      output(MOCKUP_PASSED),
-      "check-app",
-    ),
+    appCheckDetail(shell("check-stack"), {
+      callId: "call",
+      content: PASSED,
+      isError: true,
+    }),
   ).toEqual({ checkPassed: false });
   expect(
     appCheckDetail(
-      shell("check-app"),
-      {
-        callId: "call",
-        content: PASSED,
-        isError: true,
-      },
-      "check-app",
-    ),
-  ).toEqual({ checkPassed: false });
-  expect(
-    appCheckDetail(
-      shell("check-app && bun test"),
+      shell("check-stack && bun test"),
       output(`exit code 1\n${PASSED}`),
-      "check-app",
     ),
   ).toEqual({ checkPassed: false });
 });
@@ -88,47 +70,45 @@ test("check-stack passes only when every command in CHECKS.txt succeeds, and the
   };
   try {
     expect(
-      appCheckDetail(
-        shell("check-stack"),
-        await run("echo one\n\necho two\n"),
-        "check-stack",
-      ),
+      appCheckDetail(shell("check-stack"), await run("echo one\n\necho two\n")),
     ).toEqual({ checkPassed: true });
     expect(
       appCheckDetail(
         shell("check-stack"),
         await run("echo one\nfalse\necho three\n"),
-        "check-stack",
       ),
     ).toEqual({ checkPassed: false });
-    expect(
-      appCheckDetail(shell("check-stack"), await run(""), "check-stack"),
-    ).toEqual({ checkPassed: false });
+    expect(appCheckDetail(shell("check-stack"), await run(""))).toEqual({
+      checkPassed: false,
+    });
   } finally {
     await rm(workspace, { recursive: true, force: true });
   }
 });
 
-test("a command that only names check-app records no verdict", () => {
+test("a command that only names check-stack, or runs check-app on its own, records no verdict", () => {
   expect(
     appCheckDetail(
-      shell("grep -rn check-app ."),
+      shell("grep -rn check-stack ."),
       output(`src/check.ts:12: ${PASSED}`),
-      "check-app",
     ),
   ).toBeUndefined();
   expect(
     appCheckDetail(
-      shell("check-app --help"),
-      output("check-app   check the app here"),
-      "check-app",
+      shell("check-stack --help"),
+      output("check-stack   run each command in CHECKS.txt"),
     ),
   ).toBeUndefined();
   expect(
     appCheckDetail(
-      { id: "call", name: "read_file", arguments: { path: "check-app" } },
+      { id: "call", name: "read_file", arguments: { path: "check-stack" } },
       output(PASSED),
-      "check-app",
+    ),
+  ).toBeUndefined();
+  expect(
+    appCheckDetail(
+      shell("check-app"),
+      output("check passed: built, started, and opened / at 1280 and 390 px"),
     ),
   ).toBeUndefined();
 });

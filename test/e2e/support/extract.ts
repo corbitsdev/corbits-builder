@@ -1548,7 +1548,7 @@ export async function extractWeatherAppFixture(options?: {
           {
             id: "coder_check_v1",
             name: "run_shell",
-            arguments: { command: "check-app" },
+            arguments: { command: "check-stack" },
           },
         ],
         expect: {
@@ -1618,7 +1618,7 @@ export async function extractWeatherAppFixture(options?: {
           {
             id: "coder_check_v2",
             name: "run_shell",
-            arguments: { command: "check-app" },
+            arguments: { command: "check-stack" },
           },
         ],
         expect: {

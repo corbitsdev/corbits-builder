@@ -50,7 +50,7 @@ export function coderChange(options: {
     turn(
       results(ok("coder_edit", "edit_file")),
       call("coder_check", "run_shell", {
-        command: "check-app",
+        command: "check-stack",
         timeout: CHECK_APP_MS,
       }),
       CODER_TOOLS,
@@ -97,7 +97,7 @@ export function coderChecksStarter(options: {
     turn(
       user(options.assignedWith),
       call("coder_check", "run_shell", {
-        command: "check-app",
+        command: "check-stack",
         timeout: CHECK_APP_MS,
       }),
       CODER_TOOLS,
@@ -150,7 +150,7 @@ export const coderReports = (options: {
   turn(
     user(options.assignedWith),
     call("coder_check", "run_shell", {
-      command: "check-app",
+      command: "check-stack",
       timeout: CHECK_APP_MS,
     }),
     CODER_TOOLS,

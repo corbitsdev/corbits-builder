@@ -60,7 +60,7 @@ scenario({
         turn(
           results(ok("coder_fonts", "edit_file")),
           call("coder_check", "run_shell", {
-            command: "check-app",
+            command: "check-stack",
             timeout: CHECK_APP_MS,
           }),
           CODER_TOOLS,

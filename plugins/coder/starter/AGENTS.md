@@ -35,7 +35,7 @@ Commands, run from the root:
 
 ## Checking the app
 
-`check-app` checks the app the way it ships. It takes up to two minutes. It:
+`check-stack` runs each command in `CHECKS.txt` in order and stops at the first that fails, with its output: a frozen install, then `check-app`. `check-app` checks the app the way it ships. It takes up to two minutes. It:
 
 1. fails when `README.md` or `docs/USER-MANUAL.md` is missing, still the starter's placeholder, or names a local port or machine path, and when the manual shows no picture from `docs/manual/`, shows a picture of a page it did not open, or leaves an area of the app it opened without a picture;
 2. runs `bun run typecheck` and `bun run build`, then `bun run start` on a free `PORT`, and waits for the server to answer;
@@ -56,7 +56,7 @@ The app ships `README.md` and `docs/USER-MANUAL.md`. Both describe the app as bu
 
 `README.md` replaces the starter's placeholder. Both documents refer to "the address the server prints" for where the app runs.
 
-The app is done when every item of the build plan's acceptance checklist works in the running app, `ACCEPTANCE.md` records what you did and saw for each, `README.md` and `docs/USER-MANUAL.md` describe it, and `check-app` passes after the last change you made.
+The app is done when every item of the build plan's acceptance checklist works in the running app, `ACCEPTANCE.md` records what you did and saw for each, `README.md` and `docs/USER-MANUAL.md` describe it, and `check-stack` passes after the last change you made.
 
 ## What stays as it is
 

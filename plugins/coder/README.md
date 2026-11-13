@@ -11,15 +11,15 @@ This folder is the whole coder plugin. Its `package.json` `builder` block
 names its two actions, `build` and `change`, the workflow packages the hub
 builds and installs from it (`packages`), and the starter module that starts
 its runs (`starters`). Its `coder.starters` block names what a first build can
-start from: `web-app` (`starter/`, finished by `check-app`) and `bare`
-(`starters/bare/`, finished by `check-project`). `coder build` may name a
+start from: `web-app` (`starter/`) and `bare` (`starters/bare/`). Every
+coder is finished by `check-stack`, which runs the commands the project's
+`CHECKS.txt` lists; each starter ships one. `coder build` may name a
 starter; the first build records it as `stack.starter`, and a later
 `coder change` starts the coder that fits it. The first build also records the
 starter's `checks` as `stack.checks`, the commands the `builds` check runs in
 order; `build` and `change` may correct them. Without a starter (`coder.empty`)
 the workspace starts empty, the coder builds in whatever stack the task names,
-keeps its checks in `CHECKS.txt`, is finished by `check-stack` and reports
-them as `stack.checks` itself; a change to code with no `stack.starter` gets
+writes its own `CHECKS.txt` and reports its lines as `stack.checks` itself; a change to code with no `stack.starter` gets
 this coder too. Each starter, and code with none, has two packages, one that
 asks the person before installing a package and one (`-any-package`) that does
 not: `coder`, `coder-any-package`, `coder-bare`, `coder-bare-any-package`,
@@ -37,7 +37,7 @@ in the workspace, `install_packages`, Exa search, `read_artifact`,
   assignment from the filed documents, the chosen design and the instruction.
 - `src/package.ts`: `coderPackage`, which assembles the agent from the hub's
   model, director and tools for one starter, and asks the director to hold a
-  reply until that starter's finish check passes. `src/packages/` holds one entry per installed package.
+  reply until `check-stack` passes. `src/packages/` holds one entry per installed package.
 - `src/prompt.ts`: the system prompt: what any coding job asks, with each
   starter's own part.
 - `src/agent.ts`: `createCoderAgent`, which requires an explicit provider
@@ -54,8 +54,7 @@ in the workspace, `install_packages`, Exa search, `read_artifact`,
 - `starters/bare/`: the starter for anything that is not a web app: one
   TypeScript package on Bun with a test and no framework.
 - `check/`: `check-app.ts`, which builds, starts and browses a web app (or a
-  design mockup); `check-project.ts`, which runs a project's typecheck, test
-  and build scripts; `check-stack.ts`, which runs the commands in a
+  design mockup); `check-stack.ts`, which runs the commands in a
   project's `CHECKS.txt`; `steps.ts`, the steps they share; and `watch-page.ts`,
   which reports page errors during a web app's build. They are shipped into
   the workspace.

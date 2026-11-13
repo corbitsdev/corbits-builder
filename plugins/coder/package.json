@@ -176,10 +176,9 @@
   "coder": {
     "starters": {
       "web-app": {
-        "about": "A web app people use in a browser: a React client, a Bun server and a shared package, finished when check-app passes.",
+        "about": "A web app people use in a browser: a React client, a Bun server and a shared package.",
         "folder": "starter",
         "package": "coder",
-        "check": "check-app",
         "serves": true,
         "setup": "bun install --frozen-lockfile",
         "checks": [
@@ -189,10 +188,9 @@
         "setupFailed": "If it says the lockfile is frozen, bring bun.lock up to date with install_packages, naming the packages the output says changed at the versions package.json gives them."
       },
       "bare": {
-        "about": "A TypeScript project on Bun that is not a web app, such as a command-line tool, a library, a script or a service: one package with tests and no framework, finished when check-project passes.",
+        "about": "A TypeScript project on Bun that is not a web app, such as a command-line tool, a library, a script or a service: one package with tests and no framework.",
         "folder": "starters/bare",
         "package": "coder-bare",
-        "check": "check-project",
         "serves": false,
         "setup": "bun install --frozen-lockfile",
         "checks": [
@@ -204,7 +202,6 @@
     },
     "empty": {
       "package": "coder-empty",
-      "check": "check-stack",
       "serves": false
     }
   }

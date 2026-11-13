@@ -179,7 +179,8 @@ const REQUIRED_TOOLS: Record<AgentRole, string[]> = {
   presenter: [],
 };
 
-// check-app outlasts run_shell's 30-second default on a busy machine, the first build most of all.
+// check-stack runs check-app, which outlasts run_shell's 30-second default on a busy machine, the
+// first build most of all.
 export const CHECK_APP_MS = 180_000;
 
 /** Recorded turns whose app checks get the longer time limit the scripted coders use. */
@@ -189,11 +190,11 @@ export function withLongerAppCheck(turns: readonly Turn[]): Turn[] {
     if (reply.text !== undefined) longer.text = reply.text;
     if (reply.toolCalls !== undefined)
       longer.toolCalls = reply.toolCalls.map((made) =>
-        made.name === "run_shell" && made.arguments["command"] === "check-app"
+        made.name === "run_shell" && made.arguments["command"] === "check-stack"
           ? {
               id: made.id,
               name: made.name,
-              arguments: { command: "check-app", timeout: CHECK_APP_MS },
+              arguments: { command: "check-stack", timeout: CHECK_APP_MS },
             }
           : made,
       );

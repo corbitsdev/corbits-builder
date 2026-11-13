@@ -186,38 +186,31 @@ const succeeded = (result: ToolResult) =>
 const VERSIONED = new Set([...WRITES, "run_shell", PACKAGE_INSTALL_TOOL]);
 // Bounds teardown: the wait for the last version, then the revoke.
 const VERSION_CLOSE_MS = 15_000;
-// A finish check's verdict heads a line of its output, however the command runs it (timeout, env, a
-// wrapper or a pipe); a command that only names the check, such as grep -rn check-app, prints none.
+// Every coder finishes when check-stack passes. Its verdict heads a line of its output, however the
+// command runs it (timeout, env, a wrapper or a pipe); a command that only names the check, such as
+// grep -rn check-stack, prints none.
+const FINISH_CHECK = "check-stack";
 const CHECK_VERDICT = /^check (?:passed|failed):/m;
-// The verdict that says each finish check passed on the project. A mockup check-app passes without
-// building anything; only its own verdict says the app built and ran.
-const CHECK_PASSED: Readonly<Record<string, RegExp>> = {
-  "check-app": /^check passed: built, started,/m,
-  "check-project": /^check passed: typechecked, tested and built/m,
-  "check-stack": /^check passed: every command in CHECKS\.txt succeeded/m,
-};
+const CHECK_PASSED = /^check passed: every command in CHECKS\.txt succeeded/m;
 
 /**
- * A run of the starter's finish check and its verdict; check-app && bun test passes only when both
- * do. Any other command, another starter's check included, is no finish check.
+ * A run of the finish check and its verdict; check-stack && bun test passes only when both do. Any
+ * other command, check-app run on its own included, is no finish check.
  */
 export function appCheckDetail(
   call: ToolCall,
   result: ToolResult,
-  check: string,
 ): CheckDetail | undefined {
   const command = call.arguments["command"];
-  const passed = CHECK_PASSED[check];
   if (
-    !passed ||
     call.name !== "run_shell" ||
     typeof command !== "string" ||
-    !command.includes(check)
+    !command.includes(FINISH_CHECK)
   )
     return undefined;
   const output = String(result.content);
   if (!CHECK_VERDICT.test(output)) return undefined;
-  return { checkPassed: succeeded(result) && passed.test(output) };
+  return { checkPassed: succeeded(result) && CHECK_PASSED.test(output) };
 }
 
 // The hub ends a check of one command at its default time; the call waits a little longer for it.
@@ -239,8 +232,7 @@ const SETUP_PROGRESS = "installing the app's packages";
 
 // A source-closure-safe declaration: only explicit policy is captured. The
 // native child supplies the step workspace; the sandbox is built inside it. An app workspace names
-// the starter its code begins from, or none, which picks its finish check and whether a web app
-// runs in it.
+// the starter its code begins from, or none, which picks whether a web app runs in it.
 export function createSidecarCodingTools(policy: {
   approval: "ask" | "allow";
   workspace: "app" | "design";
@@ -253,14 +245,10 @@ export function createSidecarCodingTools(policy: {
   const design = policy.workspace === "design";
   if (design && policy.starter !== undefined)
     throw new Error("invalid_coding_policy");
-  const code = startFrom(policy.starter);
-  // The finish check the code's start names; a designer's check-app runs through check_design
-  // instead.
-  const check = design ? "check-app" : code.check;
   // Whether a web app runs in the workspace for the agent to open, check and report on.
-  const serves = !design && code.serves;
+  const serves = !design && startFrom(policy.starter).serves;
   const passedCheck = (call: ToolCall, result: ToolResult) =>
-    appCheckDetail(call, result, check)?.checkPassed === true;
+    appCheckDetail(call, result)?.checkPassed === true;
   const offered = (name: string) => !design || DESIGNER_TOOLS.has(name);
   return defineTool<CodingSidecarEnv>({
     id: "@corbits-builder/coding/sidecar-posix",
@@ -405,9 +393,7 @@ export function createSidecarCodingTools(policy: {
             scope.build,
             {
               openNetwork: scope.openNetwork,
-              commands: design
-                ? { "check-app": CHECK_APP }
-                : { [check]: CHECKS[check]! },
+              commands: design ? { "check-app": CHECK_APP } : CHECKS,
               commandModules: CHECK_MODULES,
               browser: policy.browser !== undefined,
               app: serves,
@@ -502,7 +488,7 @@ export function createSidecarCodingTools(policy: {
           )
             return {
               callId: call.id,
-              content: `refused: a command must finish before it returns, so nothing runs in the background here. ${check} starts whatever it checks itself.`,
+              content: `refused: a command must finish before it returns, so nothing runs in the background here. ${FINISH_CHECK} starts whatever it checks itself.`,
               isError: true,
             };
           const workspace = await realpath(env.toolCwd);
@@ -716,7 +702,7 @@ export function createSidecarCodingTools(policy: {
             isError: true,
           };
         const ran = await native.run(call, signal);
-        const detail = appCheckDetail(call, ran, check);
+        const detail = appCheckDetail(call, ran);
         const result = detail ? { ...ran, detail } : ran;
         // A passing check was versioned before it was filed.
         if (

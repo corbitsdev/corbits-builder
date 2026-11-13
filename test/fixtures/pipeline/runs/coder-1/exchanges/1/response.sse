@@ -2,7 +2,7 @@ data: {"choices":[{"index":0,"delta":{"role":"assistant"},"finish_reason":null}]
 
 data: {"choices":[{"index":0,"delta":{"tool_calls":[{"index":0,"id":"coder_check_v1","function":{"name":"run_shell","arguments":""}}]},"finish_reason":null}]}
 
-data: {"choices":[{"index":0,"delta":{"tool_calls":[{"index":0,"function":{"arguments":"{\"command\":\"check-app\"}"}}]},"finish_reason":null}]}
+data: {"choices":[{"index":0,"delta":{"tool_calls":[{"index":0,"function":{"arguments":"{\"command\":\"check-stack\"}"}}]},"finish_reason":null}]}
 
 data: {"choices":[{"index":0,"delta":{},"finish_reason":"tool_calls"}]}
 

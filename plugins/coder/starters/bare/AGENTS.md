@@ -10,7 +10,7 @@ Whatever the project is (a command-line tool, a library, a script or a service),
 
 ## Checking the project
 
-`check-project` runs `bun run typecheck`, `bun run test` and `bun run build`, and lists each with what failed. Run it after each step. It does not try the program: run it yourself the way the README says, and check it does what the task asks.
+`check-stack` runs each command in `CHECKS.txt` in order and stops at the first that fails, with its output: a frozen install, then `bun run typecheck`, `bun run test` and `bun run build`. Run it after each step. It does not try the program: run it yourself the way the README says, and check it does what the task asks.
 
 ## The README
 

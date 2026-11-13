@@ -252,7 +252,7 @@ const ranShell = (call: TaskCall, pattern: RegExp) =>
 
 // Run 36's coder passed check-app, kept editing, broke the app and would have replied done; a reply
 // counts as done only when no file changed after the last passing check. The coder's tools mark only
-// its finish check (check-app, check-project or check-stack) as one. check_design is the designer's
+// its finish check, check-stack, as one. check_design is the designer's
 // check-app; file_design_option files only a design it passed as it stands.
 function unchecked(turns: readonly ConversationTurn[]): boolean {
   for (const call of taskCalls(turns)) {

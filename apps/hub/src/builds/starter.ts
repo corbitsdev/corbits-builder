@@ -49,7 +49,7 @@ export const STARTER_INDEX = DESIGN_STARTER[".builder/designs/index.html"]!;
 export const STARTER_HOME_SCREEN =
   DESIGN_STARTER[".builder/designs/screens/home.html"]!;
 const KIT = kitDigest();
-// Each starter's finish check by its command name, and the module they share.
+// Every coder's check commands by name, and the module they share.
 export const CHECKS = checkScripts();
 export const CHECK_MODULES = checkModules();
 export const CHECK_APP = CHECKS["check-app"]!;

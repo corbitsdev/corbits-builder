@@ -22,8 +22,8 @@ const missing = '@import "./inter.css";\n';
 const prepend = `bun -e 'const path = "${styles}"; await Bun.write(path, ${JSON.stringify(missing)} + (await Bun.file(path).text()))'`;
 const firstReply = "All text is now set in Inter.";
 const report = "All text is now set in Inter, and the app builds.";
-const checkApp = (id: string) =>
-  call(id, "run_shell", { command: "check-app", timeout: CHECK_APP_MS });
+const checkStack = (id: string) =>
+  call(id, "run_shell", { command: "check-stack", timeout: CHECK_APP_MS });
 
 scenario({
   name: "s36-done-when",
@@ -56,7 +56,7 @@ scenario({
         ),
         turn(
           results(ok("coder_font", "edit_file")),
-          checkApp("coder_check"),
+          checkStack("coder_check"),
           CODER_TOOLS,
         ),
         turn(
@@ -83,7 +83,7 @@ scenario({
         ),
         turn(
           results(ok("coder_fix", "edit_file")),
-          checkApp("coder_recheck"),
+          checkStack("coder_recheck"),
           CODER_TOOLS,
         ),
         turn(
