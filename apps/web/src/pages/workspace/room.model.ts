@@ -163,7 +163,9 @@ import type {
   PageHost,
   ReviewedDesign,
   ScreenQuestionProps,
+  ShownDocument,
 } from "./screen-question.tsx";
+import { inShort } from "./in-short.ts";
 import { screensFor, selectionNames } from "./screens.ts";
 
 // The stream says when the room moved. This read covers what it cannot see,
@@ -290,6 +292,18 @@ function documentKey(projectId: string, item: ProjectArtifact): string {
     projectId,
     item.kind.startsWith(MATERIAL_TAB) ? { ...item, kind: MATERIAL } : item,
   );
+}
+
+/** A filed document as an approval lists it, with its In short section once its body has loaded. */
+function shownDocument(
+  item: ProjectArtifact,
+  state: DeliverableState | undefined,
+): ShownDocument {
+  const summary =
+    state?.status === "ready" && state.document.mediaType === "text/markdown"
+      ? inShort(state.document.content)
+      : undefined;
+  return summary === undefined ? item : { ...item, summary };
 }
 
 function rejectionText(
@@ -1514,7 +1528,12 @@ export function useRoom({
                 : [],
             )
             .at(-1),
-    documents: { list: artifacts, open: openDocument },
+    documents: {
+      list: artifacts.map((item) =>
+        shownDocument(item, documents[documentKey(projectId, item)]),
+      ),
+      open: openDocument,
+    },
   };
   const pageHost: PageHost = {
     stage: (staged) => {

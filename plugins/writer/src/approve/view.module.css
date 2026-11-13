@@ -26,15 +26,45 @@
   list-style: none;
 }
 
+/* Documents with a summary each read as their own block, so they stand further apart. */
+.documents:has(.summary) {
+  gap: var(--space-3);
+}
+
 .document {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+  min-width: 0;
+}
+
+.row {
   display: flex;
   align-items: center;
   gap: var(--space-2);
   min-width: 0;
 }
 
+/* The document's own In short bullets, quieter than its title; the words it bolds keep full ink. */
+.summary {
+  min-width: 0;
+  color: var(--wb-muted-foreground);
+  overflow-wrap: anywhere;
+}
+
+.summary > [data-slot="prose"] {
+  font-size: 0.8125rem;
+  line-height: 1.5;
+}
+
+.summary strong {
+  font-weight: 500;
+  color: var(--wb-foreground);
+}
+
 .title {
   min-width: 0;
+  font-weight: 500;
   overflow: hidden;
   white-space: nowrap;
   text-overflow: ellipsis;

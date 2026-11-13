@@ -6,6 +6,7 @@
 import { useId } from "react";
 import { Button } from "@corbits/react-ui";
 import type { ScreenViewProps } from "@corbits-builder/plugin";
+import { Markdown } from "@corbits-builder/plugin-ui/markdown";
 import { ScreenActions } from "@corbits-builder/plugin-ui/screen-actions";
 import type { Input, Output } from "./schema.ts";
 import styles from "./view.module.css";
@@ -17,6 +18,8 @@ export type ShownDocument = {
   artifactId: string;
   version: number;
   approvedVersion?: number;
+  /** The document's own `## In short` section, as markdown, when it has one. */
+  summary?: string;
 };
 
 export type Host = {
@@ -101,28 +104,35 @@ export function ApproveDocuments({
       <ul className={styles.documents}>
         {filed.map((document) => (
           <li key={document.kind} className={styles.document}>
-            <span className={styles.title} title={document.title}>
-              {document.title}
-            </span>
-            <span className={styles.meta}>
-              {text.version(document.version)}
-              {document.approvedVersion === document.version
-                ? ` · ${text.approved}`
-                : null}
-            </span>
-            <Button
-              type="button"
-              size="sm"
-              variant="link"
-              className={styles.open}
-              onClick={() => open(document.kind)}
-            >
-              {text.open}
-            </Button>
+            <div className={styles.row}>
+              <span className={styles.title} title={document.title}>
+                {document.title}
+              </span>
+              <span className={styles.meta}>
+                {text.version(document.version)}
+                {document.approvedVersion === document.version
+                  ? ` · ${text.approved}`
+                  : null}
+              </span>
+              <Button
+                type="button"
+                size="sm"
+                variant="link"
+                className={styles.open}
+                onClick={() => open(document.kind)}
+              >
+                {text.open}
+              </Button>
+            </div>
+            {document.summary === undefined ? null : (
+              <div className={styles.summary}>
+                <Markdown source={document.summary} />
+              </div>
+            )}
           </li>
         ))}
         {missing.map((kind) => (
-          <li key={kind} className={styles.document}>
+          <li key={kind} className={styles.row}>
             <span className={styles.meta}>{text.notFiled(kind)}</span>
           </li>
         ))}

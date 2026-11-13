@@ -46,6 +46,8 @@ export type ShownDocument = {
   artifactId: string;
   version: number;
   approvedVersion?: number;
+  /** The document's own `## In short` section, as markdown, when it has one. */
+  summary?: string;
 };
 
 /** What the interface itself supplies a screen's view, by the names a manifest lists under host. */
