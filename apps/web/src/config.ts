@@ -747,7 +747,7 @@ export const wording = {
     /** A working run's model is thinking and has written nothing yet. */
     thinkingThrough: "Thinking it through",
     /** A working run with nothing streaming in right now: a tool running, or a model call not yet in. */
-    waitingForStep: "Waiting for its next step",
+    waitingForStep: "Working. Each step shows here as it happens.",
     /** Shows the rest of a finished specialist's report, and folds it again. */
     more: "More",
     less: "Less",

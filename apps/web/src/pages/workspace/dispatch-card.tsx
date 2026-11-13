@@ -84,6 +84,17 @@ function parsed(content: unknown): unknown {
   }
 }
 
+// The hub starts an action named without its plugin when only one plugin has it, so the call is
+// read the same way.
+function actionOf(plugin: string | undefined, action: string | undefined) {
+  if (action === undefined) return undefined;
+  if (plugin !== undefined) return `${plugin} ${action}`;
+  const [only, ...others] = Object.keys(ACTION_ROLE).filter((key) =>
+    key.endsWith(` ${action}`),
+  );
+  return others.length === 0 ? only : undefined;
+}
+
 /**
  * Who an execute call starts and the input the specialist gets. A call still streaming its
  * arguments names no action yet.
@@ -91,9 +102,9 @@ function parsed(content: unknown): unknown {
 function handoffOf(part: PartTool) {
   if (part.name !== EXECUTE) return undefined;
   const args = record(part.input);
-  const action = `${str(args?.["plugin"])} ${str(args?.["action"])}`;
-  const started = ACTION_ROLE[action];
-  if (started === undefined) return undefined;
+  const action = actionOf(str(args?.["plugin"]), str(args?.["action"]));
+  const started = action === undefined ? undefined : ACTION_ROLE[action];
+  if (action === undefined || started === undefined) return undefined;
   const input = record(args?.["input"]);
   return {
     role: started.role,
