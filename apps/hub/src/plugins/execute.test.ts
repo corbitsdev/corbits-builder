@@ -165,8 +165,13 @@ const designerMockup = {
       "Design a mockup of a dog-walking app for owners booking walks.",
     lookIdeas: "Friendly and warm, left to you.",
     concepts: [
-      { label: "Park", direction: "Greens, rounded type, soft radii." },
+      {
+        label: "Warm and organic",
+        direction: "Greens, rounded type, soft radii.",
+      },
     ],
+    audience: "Dog owners booking walks for the week.",
+    screens: ["Walks: the week's booked walks", "Book: a new walk"],
   },
 };
 
@@ -339,7 +344,7 @@ test("designer mockup starts a designer with nothing filed, unless its build-web
     started: true,
     plugin: "designer",
     action: "mockup",
-    runs: [{ runId: "run-1", concept: "Park" }],
+    runs: [{ runId: "run-1", concept: "Warm and organic" }],
     presents: ["designer choose", "designer review"],
   });
   expect(alone.deployed).toHaveLength(1);

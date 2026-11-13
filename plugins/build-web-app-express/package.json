@@ -27,7 +27,9 @@
         "plugin": "designer",
         "action": "mockup",
         "title": "Design the look",
-        "requires": []
+        "requires": [
+          "filed:product_requirements"
+        ]
       },
       {
         "plugin": "writer",

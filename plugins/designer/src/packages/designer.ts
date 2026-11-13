@@ -19,6 +19,11 @@ import {
 } from "@corbits-builder/coder/assets" with { type: "macro" };
 import manifest from "../../package.json";
 import { createDesignerAgent } from "../agent.ts";
+import { looksSkill } from "../default-looks.ts";
+import {
+  createThemeSkill,
+  designThemeDocs,
+} from "../skills.ts" with { type: "macro" };
 import { createDesignerWorkflow } from "../workflow.ts";
 
 const role = declaredRole(manifest.builder);
@@ -38,7 +43,11 @@ const agent = createDesignerAgent<CodingSidecarEnv & MailToolEnv>({
   }),
   id: "designer",
   role: role.name,
-  standards: [],
+  // Every run gets both skills: a concept with no ready theme needs Create a theme before it draws.
+  standards: [
+    looksSkill(manifest.builder.design, designThemeDocs()),
+    createThemeSkill(),
+  ],
   inference: { ...source, parameters },
   tools: [
     createDesignTools(role.name),

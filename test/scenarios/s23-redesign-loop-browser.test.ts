@@ -51,6 +51,9 @@ scenario({
         instruction: redesign,
         lookIdeas: WEATHER_MOCKUP.lookIdeas,
         concepts: [WEATHER_CONCEPT],
+        createTheme: WEATHER_MOCKUP.createTheme,
+        audience: WEATHER_MOCKUP.audience,
+        screens: WEATHER_MOCKUP.screens,
       }),
     ),
     turn(

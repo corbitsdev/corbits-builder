@@ -8,8 +8,6 @@ The person decides what the app does, how it looks and when it is built. They ap
 
 For the design, ask whether they want one design you suggest or a few looks to compare, and what ideas they have for the look. They choose a design themselves from the options designer mockup files, and the designer's report says which screen shows them. When they send comments instead of approving, start designer mockup again with them. The build plan is written from the requirements and the chosen design, and the build starts from both.
 
-Work that does not depend on other work can run at once, such as a document being written while the designer tries looks.
-
 The plan ends when the app exists. After that, a change the person asks for is coder change, with nothing from this plan in the way.
 
 When the person tells you to just build it, every step still runs, in order: coder build needs the filed requirements or build plan, because the specialists work from the documents. While they decide approvals themselves, open the project plugin's hand-over screen once, question({ plugin: "project", action: "hand-over", input: { decides: "person" } }). When they hand approvals over, start each step as the one before it files, without asking. Leave the plan by taking its group out with plan({ operation: "remove", stepIds }) when they direct the work elsewhere, such as only a mockup.

@@ -26,10 +26,17 @@ package's starter, themes and skills through its macros.
   coordinator fills it: its summary, when to use it and when not, and each
   field. The manifest keeps only what the folder cannot say, such as what the
   action reads and returns and which workflow it starts.
-- `src/start.ts`: the starter. It refuses a concept whose designer is still at
-  work, starts one designer for each of the others, and writes each run's
-  assignment from whatever documents are filed, the concept and the
-  instruction.
+- `src/start.ts`: the starter. It refuses a call that has no theme for a
+  concept (one of the looks, the person's brand saved, or `createTheme`) or no
+  guidance (filed requirements, an app, or `audience` and `screens`), refuses a
+  concept whose designer is still at work, starts one designer for each of the
+  others, and writes each run's assignment from whatever documents are filed,
+  the concept and the instruction.
+- `src/default-looks.ts`: the looks as the coordinator reads them in the
+  mockup's guidance and as the designer's Looks skill gives them, both from
+  `design.looks`.
+- `skills/create-theme/SKILL.md`: the Create a theme skill. Both skills are
+  appended to the designer's system prompt in `src/packages/designer.ts`.
 - `src/contract.ts`: the documents a designer can read and its assignment text.
 - `src/packages/designer.ts`: the installed package, which assembles the agent
   from the hub's model, director and tools, and asks the director to hold a
@@ -50,8 +57,8 @@ package's starter, themes and skills through its macros.
   design.
 - `themes/`: the design themes a person can preview and pick, each a sample
   `DESIGN.md` and `designs/` bundle.
-- `src/skills.ts`: Bun macros that inline the starter and themes when the
-  hub is bundled.
+- `src/skills.ts`: Bun macros that inline the starter, themes and skills when
+  the hub is bundled.
 
 ## Working on it
 

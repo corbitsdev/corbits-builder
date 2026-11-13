@@ -10,7 +10,7 @@ import { mkdir, stat } from "node:fs/promises";
 import { createServer } from "node:net";
 import { homedir } from "node:os";
 import { basename, dirname, join, resolve, sep } from "node:path";
-import { failedScript, staleLockfile } from "./steps.ts";
+import { failedScript, staleLockfile, uncoveredRequirements } from "./steps.ts";
 
 if (process.argv[2] === "--help" || process.argv[2] === "-h") {
   console.log(
@@ -456,14 +456,10 @@ async function checkCoverage(
   const requirements = Bun.file(
     join(root, "..", "..", ".inputs", "requirements.md"),
   );
-  const section = (await requirements.exists())
-    ? (await requirements.text())
-        .split(/^## Interface requirements/m)[1]
-        ?.split(/^## /m)[0]
-    : undefined;
-  // A design made from an instruction alone has no interface requirements to cover.
-  const ids = [...new Set(section?.match(/\bIR-\d+\b/g))];
-  const unnamed = ids.filter((id) => !new RegExp(`\\b${id}\\b`).test(design));
+  const unnamed = uncoveredRequirements(
+    (await requirements.exists()) ? await requirements.text() : undefined,
+    design,
+  );
   if (unnamed.length)
     problems.push({
       kind: "coverage",

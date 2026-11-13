@@ -11,6 +11,11 @@ export const WEATHER_MOCKUP = {
   lookIdeas:
     "Dynamic and flexible look that adapts its palette and full-screen weather animations to the current condition and time of day, with frosted readable panels.",
   concepts: [WEATHER_CONCEPT],
-};
+  // The weather look is the scenario's own, not one of the designer's, and no requirements are
+  // filed, so the call says a theme is to be made and who and what the design is for.
+  createTheme: true,
+  audience: "People checking the weather on a phone or a laptop.",
+  screens: ["Current conditions", "Forecast", "Saved cities", "Settings"],
+} as const;
 
 export const DESIGNER_REPORT = "The weather-driven design is filed";

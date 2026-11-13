@@ -28,3 +28,19 @@ export async function staleLockfile(): Promise<string | undefined> {
     ? undefined
     : `bun.lock no longer matches package.json: add packages with install_packages, not by editing package.json by hand. Undo the hand edit, or redo it with install_packages so bun.lock is rewritten.\n${failed}`;
 }
+
+/**
+ * The interface requirements (IR-n) the requirements list that a design's DESIGN.md never names. A
+ * design made without a requirements document, or from one with no interface requirements, has
+ * none to cover.
+ */
+export function uncoveredRequirements(
+  requirements: string | undefined,
+  design: string,
+): string[] {
+  const section = requirements
+    ?.split(/^## Interface requirements/m)[1]
+    ?.split(/^## /m)[0];
+  const ids = [...new Set(section?.match(/\bIR-\d+\b/g))];
+  return ids.filter((id) => !new RegExp(`\\b${id}\\b`).test(design));
+}
