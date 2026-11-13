@@ -512,12 +512,23 @@ export function useRoom({
   const events = snapshot.conversation.events;
   const mirror = snapshot.conversation.turns;
   const runId = archived ? null : snapshot.conversation.runId;
-  const questions = events === null || archived ? [] : parkedQuestions(events);
-  // An answer the hub accepted closes its question before the next poll shows it, so later typing
-  // goes to the conversation rather than to a question that is already closed.
-  const [sentAnswers, setSentAnswers] = useState<ReadonlySet<string>>(
-    () => new Set(),
-  );
+  // An answer the hub accepted closes its question before the next poll shows it, so its card
+  // settles at once and later typing goes to the conversation rather than to a closed question.
+  const [sentAnswers, setSentAnswers] = useState<
+    ReadonlyMap<string, QuestionAnswer>
+  >(() => new Map());
+  const questions = (
+    events === null || archived ? [] : parkedQuestions(events)
+  ).map((question) => {
+    const sent = sentAnswers.get(question.signalName);
+    if (question.answer !== undefined || sent === undefined) return question;
+    return {
+      at: question.at,
+      signalName: question.signalName,
+      asked: question.asked,
+      answer: sent,
+    };
+  });
   const selectionKeys = selectionNames();
   const selection = useQuery({
     queryKey: keys.projectValues.selection(projectId),
@@ -532,10 +543,7 @@ export function useRoom({
     () => screensFor(selection.data ?? {}),
     [selection.data],
   );
-  const openQuestion = questions.find(
-    ({ signalName, answer }) =>
-      answer === undefined && !sentAnswers.has(signalName),
-  );
+  const openQuestion = questions.find(({ answer }) => answer === undefined);
   const pageQuestion =
     openQuestion !== undefined &&
     "plugin" in openQuestion.asked &&
@@ -870,7 +878,7 @@ export function useRoom({
     setSending(true);
     try {
       await answerQuestion(projectId, signalName, answer);
-      setSentAnswers((sent) => new Set(sent).add(signalName));
+      setSentAnswers((sent) => new Map(sent).set(signalName, answer));
       reloadRef.current();
       onChanged();
     } finally {

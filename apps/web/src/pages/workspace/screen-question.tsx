@@ -174,7 +174,7 @@ export function screenHost<In, Out, Data, Prepared>(
     const send = async (answer: QuestionAnswer) => {
       setSubmitting(true);
       setFault(undefined);
-      // Once sent, the screen stays submitting until the run log shows the answer and it settles.
+      // Once sent, the screen stays submitting until the room shows the answer and it settles.
       if (await onAnswer(answer)) return true;
       setSubmitting(false);
       setFault(text.notSent);

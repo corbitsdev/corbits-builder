@@ -828,7 +828,7 @@ export function QuestionsCard({
             ]),
           ),
         );
-    // Once sent, the card stays sending until the run log shows the answer and it settles.
+    // Once sent, the card stays sending until the room shows the answer and it settles.
     if (sent) return;
     setSending(false);
     setFailed(true);
