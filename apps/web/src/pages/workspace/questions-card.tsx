@@ -87,6 +87,21 @@ function writeKept(id: string, answers: Record<string, Answer> | null): void {
   }
 }
 
+/** The coordinator marks the option it recommends by ending its label with this. */
+const recommendedSuffix = "(Recommended)";
+
+/**
+ * The recommended answer picked to start with, the first such option on a pick-one question; a
+ * question it recommends nothing for starts blank.
+ */
+function startingAnswer(question: Question): Answer {
+  const recommended = question.options
+    .filter((option) => option.label.endsWith(recommendedSuffix))
+    .map((option) => option.label);
+  const chosen = question.multiple ? recommended : recommended.slice(0, 1);
+  return { chosen, own: "" };
+}
+
 function answered(answer: Answer): boolean {
   return answer.chosen.length > 0 || answer.own.trim() !== "";
 }
@@ -705,8 +720,13 @@ function OpenCard({
 /** The answers kept from before a reload; the first question still unanswered opens. */
 function startingDraft(id: string, asked: PromptsQuestion): Draft {
   const kept = readKept(id);
-  const answers = asked.questions.map((question) => kept[question.id] ?? blank);
-  const unanswered = answers.findIndex((answer) => !answered(answer));
+  const answers = asked.questions.map(
+    (question) => kept[question.id] ?? startingAnswer(question),
+  );
+  // A recommendation is only a starting point, so it does not count as the person's answer here.
+  const unanswered = asked.questions.findIndex(
+    (question) => !answered(kept[question.id] ?? blank),
+  );
   return {
     answers,
     step: unanswered < 0 ? answers.length - 1 : unanswered,

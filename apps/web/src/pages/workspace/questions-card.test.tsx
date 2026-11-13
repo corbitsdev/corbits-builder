@@ -74,6 +74,30 @@ describe("questions card", () => {
     expect(html).toContain(`>${text.next}<`);
   });
 
+  test("the recommended answer is preselected", () => {
+    const recommended: PromptsQuestion = {
+      questions: [
+        {
+          ...asked.questions[0]!,
+          options: [
+            { label: "Small teams (Recommended)", description: "" },
+            { label: "Just me", description: "" },
+          ],
+        },
+        asked.questions[1]!,
+      ],
+    };
+    const html = renderToStaticMarkup(
+      <QuestionsCard id="signal-1" asked={recommended} state={open} />,
+    );
+    // The recommended answer is picked, so Continue is ready.
+    expect(html).toMatch(
+      /checked=""\/><span aria-hidden="true"><svg[^]*?<\/span><span>Small teams \(Recommended\)/,
+    );
+    expect(html).toContain('aria-disabled="false"');
+    expect(html).toContain(`>${text.next}<`);
+  });
+
   test("Back, Continue and Cancel share one row of actions", () => {
     const html = renderToStaticMarkup(
       <QuestionsCard id="signal-1" asked={asked} state={open} />,
