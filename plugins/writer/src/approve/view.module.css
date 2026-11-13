@@ -1,92 +1,15 @@
+/* Each document with its summary reads as its own block, so they stand apart. */
 .documents {
   display: flex;
   flex-direction: column;
-  gap: var(--space-1);
+  gap: var(--space-3);
   margin: 0;
   padding: 0;
   list-style: none;
 }
 
-/* Documents with a summary each read as their own block, so they stand further apart. */
-.documents:has(.summary, .noSummary) {
-  gap: var(--space-3);
-}
-
-.document {
-  display: flex;
-  flex-direction: column;
-  gap: var(--space-1);
-  min-width: 0;
-}
-
-.row {
-  display: flex;
-  align-items: center;
-  gap: var(--space-2);
-  min-width: 0;
-}
-
-/* The document's own In short bullets, quieter than its title; the words it bolds keep full ink. */
-.summary {
-  min-width: 0;
-  color: var(--wb-muted-foreground);
-  overflow-wrap: anywhere;
-}
-
-.summary > [data-slot="prose"] {
-  font-size: 0.8125rem;
-  line-height: 1.5;
-}
-
-.summary strong {
-  font-weight: 500;
-  color: var(--wb-foreground);
-}
-
-/* The title opens the document, so reading it is the obvious click; it keeps the ink of a title. */
-.title {
-  min-width: 0;
-  padding: 0;
-  border: 0;
-  background: none;
-  font: inherit;
-  font-weight: 500;
-  color: var(--wb-foreground);
-  text-align: start;
-  text-underline-offset: 4px;
-  overflow: hidden;
-  white-space: nowrap;
-  text-overflow: ellipsis;
-  cursor: pointer;
-}
-
-.title:hover {
-  text-decoration: underline;
-}
-
-.noSummary {
-  margin: 0;
-  font-size: 0.8125rem;
-  color: var(--wb-muted-foreground);
-}
-
-.readFirst {
-  height: auto;
-  padding: 0;
-  font-size: inherit;
-  vertical-align: baseline;
-}
-
 .meta {
-  flex: none;
   color: var(--wb-muted-foreground);
-}
-
-.open {
-  flex: none;
-  height: auto;
-  margin-inline-start: auto;
-  padding: 0;
 }
 
 .hint {

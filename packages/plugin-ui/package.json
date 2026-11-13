@@ -8,6 +8,7 @@
   "type": "module",
   "exports": {
     "./comparison": "./src/comparison.tsx",
+    "./document-block": "./src/document-block.tsx",
     "./markdown": "./src/markdown.tsx",
     "./screen-actions": "./src/screen-actions.tsx",
     "./screen-card": "./src/screen-card.tsx",

@@ -395,7 +395,7 @@ test("after a reload a finished writer's row still opens what it filed", () => {
     renderToStaticMarkup(
       createElement(WorkUnitStepView, { ...standing, run: () => null }),
     ),
-  ).toContain(`>${wording.dispatch.open}<`);
+  ).toContain('<button type="button">Echo Requirements</button>');
 });
 
 test("a coder whose call returned is starting until its own run says otherwise, whatever is already filed", () => {
@@ -607,4 +607,79 @@ test("a run that filed its work reads done once it has ended, with its hand-back
   );
   expect(ended.status.state).toBe("ready");
   expect(ended.report).toBe("Arial is in.");
+});
+
+// A specialist's run that filed what it was asked for and has ended, as its row reads once done.
+const filedRow = (
+  role: string,
+  kind: string,
+  summaries: Map<string, string>,
+) => {
+  const [unit] = workUnits(
+    [
+      {
+        at: 10,
+        dispatch: {
+          key: `call-${role}`,
+          call: `call-${role}`,
+          tool: "execute",
+          role,
+          kind,
+          instruction: "Write it for the people at the counter.",
+          runId: `run-${role}`,
+          pending: false,
+          filed: true,
+        },
+      },
+    ],
+    [],
+  ).units;
+  if (unit === undefined) throw new Error("no work");
+  const opened: string[] = [];
+  const standing = workUnitStanding(unit, {
+    ...emptyRoom,
+    artifacts: [
+      {
+        artifactId: "22222222-2222-4222-8222-222222222222",
+        kind,
+        title: "Counter guide",
+        version: 2,
+        sha256: "0".repeat(64),
+        filedAt: new Date(20).toISOString(),
+      },
+    ],
+    summaries,
+    onOpenDocument: (opening) => opened.push(opening),
+  });
+  return {
+    standing,
+    opened,
+    html: renderToStaticMarkup(
+      createElement(WorkUnitStepView, { ...standing, run: () => null }),
+    ),
+  };
+};
+
+test("a finished row whose run filed a document shows that document with its own summary, first under the row", () => {
+  const { standing, opened, html } = filedRow(
+    "writer",
+    "counter_guide",
+    new Map([["counter_guide", "- **Tap once** to take an order."]]),
+  );
+  expect(standing.status.state).toBe("ready");
+  standing.document?.onOpen(standing.document.kind);
+  expect(opened).toEqual(["counter_guide"]);
+  const block = html.indexOf('data-slot="document-block"');
+  expect(block).toBeGreaterThan(-1);
+  expect(html.indexOf("<strong>Tap once</strong>")).toBeGreaterThan(block);
+  expect(
+    html.indexOf(">Write it for the people at the counter.<"),
+  ).toBeGreaterThan(html.indexOf("<strong>Tap once</strong>"));
+});
+
+test("a finished row whose run filed a design shows no document block", () => {
+  const { standing, html } = filedRow("designer", "design", new Map());
+  expect(standing.status.state).toBe("ready");
+  expect(standing.document).toBeUndefined();
+  expect(html).not.toContain('data-slot="document-block"');
 });

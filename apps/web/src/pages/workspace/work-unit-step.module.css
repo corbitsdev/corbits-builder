@@ -43,6 +43,13 @@
   padding-inline-start: var(--space-4);
 }
 
+/* The document the work filed, first under its row and set apart from how the work went. */
+.document {
+  min-width: 0;
+  margin-block-end: var(--space-2);
+  font-size: 0.875rem;
+}
+
 .failed {
   margin: 0;
   overflow: hidden;
@@ -94,21 +101,27 @@
 .reportText {
   align-self: stretch;
   overflow-wrap: anywhere;
-  /* The box takes the type of the prose it holds, so lh is one line of that text and the clamp cuts
-     only text that runs past whole lines. */
   font-size: 0.9375rem;
   line-height: 1.7;
-  max-height: 2lh;
+  /* Clamped by lines, not height: the space between paragraphs is not a whole line, so a height
+     would cut a line of the next paragraph through the middle. */
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+  line-clamp: 2;
   overflow: hidden;
   color: var(--wb-muted-foreground);
 }
 
 .goal .reportText {
-  max-height: 3lh;
+  -webkit-line-clamp: 3;
+  line-clamp: 3;
 }
 
 .reportText[data-open] {
-  max-height: none;
+  display: block;
+  -webkit-line-clamp: none;
+  line-clamp: none;
 }
 
 .thinking {

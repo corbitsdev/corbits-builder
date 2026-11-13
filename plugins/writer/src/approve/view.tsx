@@ -1,11 +1,14 @@
 /**
  * The ask to approve the documents, as one card in the conversation: what is asked, each document
- * at its current version with its summary and a way to open it, and one Approve for them all.
+ * as the shared document block shows any filed document, and one Approve for them all.
  * Settles to one line once answered.
  */
 import { Button } from "@corbits/react-ui";
 import type { ScreenViewProps } from "@corbits-builder/plugin";
-import { Markdown } from "@corbits-builder/plugin-ui/markdown";
+import {
+  DocumentBlock,
+  documentBlockText,
+} from "@corbits-builder/plugin-ui/document-block";
 import { ScreenActions } from "@corbits-builder/plugin-ui/screen-actions";
 import {
   ScreenCard,
@@ -45,11 +48,7 @@ export const text = {
     only !== undefined && others.length === 0
       ? `Approve ${named(only)}?`
       : `Approve these ${String(others.length + 1)} documents?`,
-  version: (version: number) => `v${String(version)}`,
   approved: "already approved",
-  open: "Open",
-  noSummary: "It has no summary.",
-  readFirst: "Read it first",
   notFiled: (kind: string) => `${kind} is not filed yet.`,
   approve: "Approve",
   orWrite: "Or write below what should change.",
@@ -59,7 +58,10 @@ export const text = {
     if (only !== undefined && others.length === 0)
       return `Approved, version ${String(only.version)}`;
     return `Approved ${approved
-      .map(({ title, version }) => `${title} ${text.version(version)}`)
+      .map(
+        ({ title, version }) =>
+          `${title} ${documentBlockText.version(version)}`,
+      )
       .join(", ")}`;
   },
 };
@@ -120,55 +122,24 @@ export function ApproveDocuments({
     >
       <ul className={styles.documents} data-slot="approve-documents">
         {filed.map((document) => (
-          <li key={document.kind} className={styles.document}>
-            <div className={styles.row}>
-              <button
-                type="button"
-                className={styles.title}
-                title={document.title}
-                onClick={() => open(document.kind)}
-              >
-                {document.title}
-              </button>
-              <span className={styles.meta}>
-                {text.version(document.version)}
-                {document.approvedVersion === document.version
-                  ? ` · ${text.approved}`
-                  : null}
-              </span>
-              <Button
-                type="button"
-                size="sm"
-                variant="link"
-                className={styles.open}
-                onClick={() => open(document.kind)}
-              >
-                {text.open}
-              </Button>
-            </div>
-            {document.summary === undefined ? (
-              <p className={styles.noSummary}>
-                {text.noSummary}{" "}
-                <Button
-                  type="button"
-                  size="sm"
-                  variant="link"
-                  className={styles.readFirst}
-                  onClick={() => open(document.kind)}
-                >
-                  {text.readFirst}
-                </Button>
-              </p>
-            ) : (
-              <div className={styles.summary}>
-                <Markdown source={document.summary} />
-              </div>
-            )}
+          <li key={document.kind}>
+            <DocumentBlock
+              kind={document.kind}
+              title={document.title}
+              version={document.version}
+              note={
+                document.approvedVersion === document.version
+                  ? text.approved
+                  : undefined
+              }
+              summary={document.summary}
+              onOpen={open}
+            />
           </li>
         ))}
         {missing.map((kind) => (
-          <li key={kind} className={styles.row}>
-            <span className={styles.meta}>{text.notFiled(kind)}</span>
+          <li key={kind} className={styles.meta}>
+            {text.notFiled(kind)}
           </li>
         ))}
       </ul>

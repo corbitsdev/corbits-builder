@@ -3,6 +3,7 @@
  * records and filed documents, and its steps from the run's own stream.
  */
 import type { PartTool } from "@corbits/react-ui";
+import { isDocumentKind } from "@corbits-builder/schemas/artifact";
 import { wording } from "../../config.ts";
 import {
   dispatchStatus,
@@ -52,7 +53,7 @@ export function workUnitStanding(
     (dispatch.runId === undefined
       ? undefined
       : room.steps?.get(dispatch.runId)) ?? [];
-  const { onWatch, onStop } = room;
+  const { onWatch, onStop, onOpenDocument } = room;
   const { runId } = dispatch;
   const role = roleLabel(dispatch.role);
   const watchLabel = watchOf(dispatch);
@@ -67,7 +68,20 @@ export function workUnitStanding(
         : undefined,
     instruction: dispatch.instruction,
     report: done ? unit.updates.at(-1)?.text : undefined,
-    onOpenDocument: room.onOpenDocument,
+    // A design or an app is not a document: its row offers it to open, with no summary to show.
+    document:
+      status.state === "ready" &&
+      isDocumentKind(status.kind) &&
+      onOpenDocument !== undefined
+        ? {
+            kind: status.kind,
+            title: status.title,
+            version: status.version,
+            summary: room.summaries?.get(status.kind),
+            onOpen: onOpenDocument,
+          }
+        : undefined,
+    onOpenDocument,
     watch:
       onWatch === undefined || watchLabel === undefined
         ? undefined

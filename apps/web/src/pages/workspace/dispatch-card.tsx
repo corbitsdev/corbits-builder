@@ -194,6 +194,8 @@ export type DispatchRoom = {
   readonly steps?: ReadonlyMap<string, readonly PartTool[]>;
   /** How each shown run ended, as its saved record or a stop made here says, by run id. */
   readonly ended?: ReadonlyMap<string, RunEnd>;
+  /** Each filed document's own `## In short` section, by kind, once its body has loaded. */
+  readonly summaries?: ReadonlyMap<string, string>;
   readonly onOpenDocument?: (kind: string) => void;
   /** Opens the project view on what a working designer or coder is making. */
   readonly onWatch?: (dispatch: Dispatch) => void;

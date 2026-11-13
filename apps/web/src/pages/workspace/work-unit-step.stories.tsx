@@ -29,6 +29,7 @@ const args: WorkUnitStepViewProps = {
   preview: undefined,
   instruction: undefined,
   report: undefined,
+  document: undefined,
   onOpenDocument: fn(),
   watch: undefined,
   stop: undefined,
@@ -80,7 +81,7 @@ export const PausedForApproval: Story = {
   args: { status: { state: "approval" }, steps: STEPS },
 };
 
-/** The work filed its document, which the row opens, with its report under its folded steps. */
+/** The work filed its document, shown first under the row with its summary, then how it went. */
 export const Ready: Story = {
   args: {
     status: {
@@ -91,6 +92,14 @@ export const Ready: Story = {
     },
     label: "Writer · Wrote the constraints",
     steps: done,
+    document: {
+      kind: "constraints",
+      title: "Constraints",
+      version: 1,
+      summary:
+        "- **One counter tablet** takes every order.\n- No customer accounts.",
+      onOpen: fn(),
+    },
     report:
       "Filed the **constraints**: one counter tablet, no customer accounts.",
   },

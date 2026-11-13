@@ -611,6 +611,9 @@ export function useRoom({
     .filter((item) => item.kind !== "app")
     .map(paneArtifact);
   const documents = snapshot.documents;
+  const shownDocuments = artifacts.map((item) =>
+    shownDocument(item, documents[documentKey(projectId, item)]),
+  );
   const [liveRun, setLiveRun] = useState<LiveRun>(emptyLiveRun);
   // Kept stable, so an open screen reads the project's values once rather than on every render.
   const projectValues = useMemo(
@@ -1456,6 +1459,11 @@ export function useRoom({
     inFlight,
     failed: snapshot.failed,
     seen: dispatchSeen.current,
+    summaries: new Map(
+      shownDocuments.flatMap(({ kind, summary }): [string, string][] =>
+        summary === undefined ? [] : [[kind, summary]],
+      ),
+    ),
     previews,
     steps: runSteps,
     ended: new Map([
@@ -1609,9 +1617,7 @@ export function useRoom({
             )
             .at(-1),
     documents: {
-      list: artifacts.map((item) =>
-        shownDocument(item, documents[documentKey(projectId, item)]),
-      ),
+      list: shownDocuments,
       open: openDocument,
     },
   };

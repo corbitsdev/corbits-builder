@@ -14,6 +14,10 @@ import {
   type ToolTraceStatus,
 } from "@corbits/react-ui";
 import { wording } from "../../config.ts";
+import {
+  DocumentBlock,
+  type DocumentBlockProps,
+} from "@corbits-builder/plugin-ui/document-block";
 import { Markdown } from "@corbits-builder/plugin-ui/markdown";
 import type { DispatchStatus } from "./dispatch-card.tsx";
 import { useElapsedMs } from "./elapsed.tsx";
@@ -57,6 +61,8 @@ export type WorkUnitStanding = {
   instruction: string | undefined;
   /** What the specialist reported last, shown under its steps once the work is done. */
   report: string | undefined;
+  /** The document the work filed, shown under its row once done; absent for anything else. */
+  document: DocumentBlockProps | undefined;
   /** Opens the document the work filed; absent where nothing can open it. */
   onOpenDocument: ((kind: string) => void) | undefined;
   /** Opens what the work makes as it makes it, offered while it works; absent where nothing shows it. */
@@ -138,7 +144,7 @@ function StopAction({ stop }: { stop: NonNullable<WorkUnitStanding["stop"]> }) {
   );
 }
 
-/** Beside the row: watch the work while it runs, or open what it filed. */
+/** Beside the row: watch the work while it runs, or open what it filed when no document block does. */
 function RowAction({
   status,
   watch,
@@ -284,6 +290,7 @@ export function WorkUnitStepView({
   preview,
   instruction,
   report,
+  document,
   onOpenDocument,
   watch,
   stop,
@@ -295,6 +302,7 @@ export function WorkUnitStepView({
     instruction !== undefined ||
     steps.length > 0 ||
     report !== undefined ||
+    document !== undefined ||
     status.state === "failed" ||
     preview?.kind === "writing";
   return (
@@ -320,11 +328,20 @@ export function WorkUnitStepView({
             className={styles.row}
           />
         )}
-        <RowAction status={status} watch={watch} onOpen={onOpenDocument} />
+        <RowAction
+          status={status}
+          watch={watch}
+          onOpen={document === undefined ? onOpenDocument : undefined}
+        />
         {stop === undefined ? null : <StopAction stop={stop} />}
       </div>
       {open ? (
         <div className={styles.work}>
+          {document === undefined ? null : (
+            <div className={styles.document}>
+              <DocumentBlock {...document} />
+            </div>
+          )}
           {instruction === undefined ? null : (
             <div className={styles.goal}>
               <span className={styles.goalLabel}>{text.askedTo}</span>
