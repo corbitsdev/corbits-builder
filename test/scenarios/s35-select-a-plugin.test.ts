@@ -23,7 +23,7 @@ const SELECTION = "plugins.build-web-app";
 const DEFAULT = "@corbits-builder/build-web-app";
 const EXPRESS = "@corbits-builder/build-web-app-express";
 const EXPRESS_LABEL =
-  "Builds a web app from an idea with nothing waiting on the person";
+  "A ready-made plan for a web app with nothing waiting on the person";
 
 scenario({
   name: "s35-select-a-plugin",
@@ -82,7 +82,9 @@ scenario({
     await p.heard("There are two ways to build it.");
     const before = p.resultOf("c_discover_default").text;
     p.note("discover before the selection", before);
-    expect(before).toContain(`build-web-app: using Takes an idea`);
+    expect(before).toContain(
+      `build-web-app: using A ready-made plan for a web app: requirements`,
+    );
 
     const saved = await p.call("POST", `${p.path}/values`, {
       values: { [SELECTION]: EXPRESS },

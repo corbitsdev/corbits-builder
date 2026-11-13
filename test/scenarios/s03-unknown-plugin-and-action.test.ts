@@ -42,7 +42,8 @@ scenario({
     p.note("unknown screen", screen);
     expect(plugin).toContain("painter");
     expect(plugin).toContain("designer mockup");
-    expect(plugin).toContain("build-web-app");
+    // A ready-made plan is taken up with the plan tool, so execute does not offer it.
+    expect(plugin).not.toContain("build-web-app");
     expect(action).toContain("paint");
     expect(action).toContain("mockup");
     expect(action).toContain("pick-fonts");
