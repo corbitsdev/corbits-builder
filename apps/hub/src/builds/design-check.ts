@@ -117,7 +117,7 @@ function withValidationIssue(output: string, issue: string): string {
 export const CHECK_DESIGN_TOOL = "check_design";
 export const checkDesignDefinition = {
   name: CHECK_DESIGN_TOOL,
-  description: `Runs check-app on the design as it is now: it serves ${DESIGNS} in a headless browser, opens its screens at desktop and phone widths, checks that ${DESIGN_DOC} is filled in, and that the look is moved off the kit's starting point. Call this once the screens and ${DESIGN_DOC} are written; when it reads "check passed", it also files the .builder folder as your design concept's option.`,
+  description: `Check the design as it is now and, when it passes, file it as your design concept's option for the person to compare. It runs check-app: it serves ${DESIGNS} in a headless browser, opens its screens at desktop and phone widths, checks that ${DESIGN_DOC} is filled in, and that the look is moved off the kit's starting point. Call it once the screens and ${DESIGN_DOC} are written, and again after each fix. It returns the checklist: "check passed" with the filed option on its last line, or what to fix. A pass files the design, so file_design_option is not needed after it, and the same files are never filed twice.`,
   inputSchema: { type: "object", properties: {}, additionalProperties: false },
 };
 

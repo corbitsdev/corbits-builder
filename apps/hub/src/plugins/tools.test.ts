@@ -150,3 +150,30 @@ test("an execute call naming no installed screen is left to execute, which refus
   const { check } = executeCheck(fontsInUse);
   expect(await check("pick-colors", {})).toBeUndefined();
 });
+
+test("the question tool the coordinator is offered describes each of its fields in Builder's words", () => {
+  const { definitions } = createExecuteTools()({} as never);
+  const question = definitions.find(({ name }) => name === "question");
+  const described = { description: expect.stringMatching(/\S/) };
+  expect(question?.inputSchema).toMatchObject({
+    properties: {
+      questions: {
+        description: expect.stringMatching(/\S/),
+        items: {
+          properties: {
+            question: described,
+            header: described,
+            multiple: described,
+            custom: described,
+            options: {
+              description: expect.stringMatching(/\S/),
+              items: {
+                properties: { label: described, description: described },
+              },
+            },
+          },
+        },
+      },
+    },
+  });
+});

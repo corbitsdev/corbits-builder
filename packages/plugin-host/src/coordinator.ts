@@ -285,6 +285,54 @@ const search: Strategy = fields;
 
 const MAX_FOUND = 5;
 
+/**
+ * A field of a coordinator tool as its published schema describes it and a refusal repeats it, with
+ * the fields of what it holds when it holds objects. Choices known only from the project's catalog
+ * are added to the refusal alone.
+ */
+export type Described = Field & {
+  fields?: Readonly<Record<string, Described>>;
+};
+
+const describedText = ({ about, choices = {}, otherwise }: Field) =>
+  [
+    about,
+    ...Object.entries(choices).map(([name, text]) => `${name}: ${text}`),
+    ...(otherwise === undefined ? [] : [otherwise]),
+  ].join(" ");
+
+const isRecord = (value: unknown): value is Record<string, unknown> =>
+  typeof value === "object" && value !== null;
+
+// Sets each property's description from its field, at every depth the schema nests objects.
+function describe(node: unknown, fields: Readonly<Record<string, Described>>) {
+  if (Array.isArray(node)) {
+    for (const each of node) describe(each, fields);
+    return;
+  }
+  if (!isRecord(node)) return;
+  describe(node["items"], fields);
+  describe(node["anyOf"], fields);
+  const { properties } = node;
+  if (!isRecord(properties)) return;
+  for (const [name, property] of Object.entries(properties)) {
+    const field = fields[name];
+    if (!isRecord(property) || field === undefined) continue;
+    property["description"] = describedText(field);
+    describe(property, field.fields ?? {});
+  }
+}
+
+/** A tool's input schema as the model reads it, each property described by its field. */
+export function describedSchema(
+  schema: { toJsonSchema(): object },
+  fields: Readonly<Record<string, Described>>,
+): Record<string, unknown> {
+  const json = { ...schema.toJsonSchema() };
+  describe(json, fields);
+  return json;
+}
+
 // One object rather than a union: providers want a tool's input schema to be a plain object.
 export const Discover = type({
   "+": "reject",
@@ -309,6 +357,63 @@ export const Runs = type({
 });
 
 const WAIT_SECONDS = 60;
+
+const DISCOVER_FIELDS = {
+  query: {
+    about:
+      "What the person asked for, in their words. Set it to find the plugins that fit a request; leave it out when you pass group or plugin.",
+  },
+  plugin: {
+    about:
+      "A plugin's handle, as discover lists it, for its full guidance and the input each of its actions takes. Set it before you first start or open one of its actions; leave it out when you pass query or group.",
+  },
+  action: {
+    about:
+      "One of that plugin's actions, as discover lists them, for that action's guidance alone. Set it only together with plugin; leave it out for all of the plugin's guidance.",
+  },
+  group: {
+    about:
+      "A group's name, as discover lists the groups, to list every plugin in it. Set it to see every plugin for one kind of work; leave it out when you pass query or plugin.",
+  },
+} satisfies Record<keyof typeof Discover.infer, Described>;
+
+const EXECUTE_FIELDS = {
+  plugin: {
+    about:
+      "The handle of the specialist whose action to start or screen to open, one of the plugins discover lists. A ready-made plan is not one: add it with the plan tool.",
+  },
+  action: {
+    about:
+      "The name of the action to start or screen to open, one of that plugin's actions as discover lists them. Always set it: without it nothing starts.",
+  },
+  input: {
+    about:
+      "The input that action's guidance from discover describes. Leave it out only for an action that takes no input.",
+  },
+  step: {
+    about:
+      "The id of the plan step this start does, as the plan tool names it; the step must be for this same action. Set it whenever the work is a step of the plan, so the plan shows this run on it. Leave it out for work that is not on the plan.",
+  },
+} satisfies Record<keyof typeof Execute.infer, Described>;
+
+const RUNS_FIELDS = {
+  operation: {
+    about: "What to do.",
+    choices: {
+      list: "List the runs you started that are at work or ended lately.",
+      wait: "Wait for the first of runIds to end, up to seconds.",
+      stop: "Stop each of runIds.",
+    },
+  },
+  runIds: {
+    about:
+      "The runs to wait for or stop, as execute and list name them. Set it for wait and stop; leave it out for list.",
+  },
+  seconds: {
+    about: `For wait: how long to wait at most, 1 to 120. Leave it out to wait ${WAIT_SECONDS} seconds.`,
+  },
+} satisfies Record<keyof typeof Runs.infer, Described>;
+
 const WAIT_POLL_MS = 2_000;
 
 const groupsOf = (plugins: readonly Plugin[]) => {
@@ -360,16 +465,11 @@ function guidanceOf(
 /** discover's arguments, or why they are wrong, with what discover takes among these plugins. */
 export function checkedDiscover(plugins: readonly Plugin[], raw: unknown) {
   const takes: Record<string, Field> = {
-    query: { about: "What the person asked for, in their words." },
-    plugin: {
-      about:
-        "A plugin's handle, for its full guidance and the input each action takes.",
-    },
-    action: {
-      about: "One of that plugin's actions, for its guidance alone.",
-    },
+    query: DISCOVER_FIELDS.query,
+    plugin: DISCOVER_FIELDS.plugin,
+    action: DISCOVER_FIELDS.action,
     group: {
-      about: "A group, to list every plugin in it.",
+      about: DISCOVER_FIELDS.group.about,
       choices: Object.fromEntries(
         [...groupsOf(plugins)].map(([group, members]) => [
           group,
@@ -769,25 +869,16 @@ function heldStep(
 // What execute takes, with every plugin it can start.
 const executeFields = (catalog: Catalog): Record<string, Field> => ({
   plugin: {
-    about:
-      "The handle of the specialist whose action to start or screen to open.",
+    about: EXECUTE_FIELDS.plugin.about,
     choices: Object.fromEntries(
       catalog.plugins
         .filter(isSpecialist)
         .map(({ builder, description }) => [builder.handle, description]),
     ),
   },
-  action: {
-    about:
-      "The name of the specialist's action to start or screen to open, as discover lists it.",
-  },
-  input: {
-    about: "The input that action's guidance describes.",
-  },
-  step: {
-    about:
-      "The id of the plan step this start does, as plan names it; it must do this same action.",
-  },
+  action: EXECUTE_FIELDS.action,
+  input: EXECUTE_FIELDS.input,
+  step: EXECUTE_FIELDS.step,
 });
 
 // The plan step a start does when the call names none: the one action step not done yet with the
@@ -1030,23 +1121,6 @@ export async function execute(
   return { content: JSON.stringify(result) };
 }
 
-const runsFields: Record<string, Field> = {
-  operation: {
-    about: "What to do.",
-    choices: {
-      list: "List the runs you started that are at work or ended lately.",
-      wait: "Wait for the first of runIds to end, up to seconds.",
-      stop: "Stop each of runIds.",
-    },
-  },
-  runIds: {
-    about: "The runs to wait for or stop, as execute and list name them.",
-  },
-  seconds: {
-    about: `How long wait waits at most: 1 to 120, ${WAIT_SECONDS} unless given.`,
-  },
-};
-
 const ended = (run: Run) =>
   run.status !== "deployed" && run.status !== "running";
 
@@ -1069,7 +1143,7 @@ export async function manageRuns(
     });
   if (asked instanceof type.errors || wrong.length > 0)
     return {
-      content: wrongCall("runs", "nothing was done", wrong, runsFields),
+      content: wrongCall("runs", "nothing was done", wrong, RUNS_FIELDS),
       isError: true,
     };
   const runs = await project.runs();
@@ -1145,7 +1219,57 @@ const PLAN_TAKES: Record<PlanCall["operation"], readonly string[]> = {
   remove: ["stepIds"],
 };
 
-const planFields = (catalog: Catalog): Record<string, Field> => ({
+// A step on the plan: an action step, or a group holding action steps.
+const STEP_FIELDS: Record<string, Described> = {
+  title: {
+    about: "What the step does, in a few words the person reads on the plan.",
+  },
+  plugin: {
+    about:
+      "For an action step: the handle of the plugin whose action it does, as discover lists it. Leave it out of a group.",
+  },
+  action: {
+    about:
+      "For an action step: the action it does, as discover lists that plugin's actions. Leave it out of a group.",
+  },
+  input: {
+    about:
+      "For an action step: the input that action's guidance describes. When only earlier work can say what it is, pass {} and give the real input when you start the step with execute. Leave it out of a group.",
+  },
+  askFirst: {
+    about:
+      "Set it to true when the person asked to be consulted before this step: it then waits until they give the go on the plan. Leave it out to let the step start once it is ready.",
+  },
+  optional: {
+    about:
+      "Set it to true when the person may decline this step because the work is complete without it, such as an extra review; a declined step is not started. Leave it out for a step the work needs.",
+  },
+  approval: {
+    about:
+      "Set it to hold the step until the person approves documents or chooses the design. Taking the step out of the plan takes its approval with it. Leave it out when the step needs no approval.",
+    fields: {
+      of: {
+        about:
+          'The document kinds to approve, as read_artifact lists them, or "design" for choosing the design.',
+      },
+      when: {
+        about: "When the step waits.",
+        choices: {
+          required: "Always wait for the person's own approval.",
+          optional:
+            "Wait only while the person decides approvals rather than leaving them to you.",
+        },
+      },
+    },
+  },
+};
+STEP_FIELDS["steps"] = {
+  about:
+    "For a group: the action steps it holds, in order. A group holds no groups. Leave it out of an action step.",
+  fields: STEP_FIELDS,
+};
+
+const PLAN_FIELDS = {
   operation: {
     about: "What to do; each answers with the plan as it now stands.",
     choices: {
@@ -1158,27 +1282,47 @@ const planFields = (catalog: Catalog): Record<string, Field> => ({
   },
   steps: {
     about:
-      'For set and add: each step either an action step { title, plugin, action, input, askFirst?, optional?, approval? }: a plugin action as discover lists it, the input its guidance describes, askFirst true to wait until the person gives the go on the plan, optional true to let the person decline it, approval { of: [document kinds, "design" for choosing the design], when: "required" or "optional" } to hold it until the person approves them; or a group { title, steps } that names no plugin, action or input, starts nothing and holds action steps. A step with both steps and an action is refused.',
+      "For set and add: the steps, in order. Each is an action step { title, plugin, action, input, askFirst?, optional?, approval? }, which does one plugin action, or a group { title, steps }, which starts nothing and holds action steps. A step with both steps and an action is refused.",
+    fields: STEP_FIELDS,
   },
   plan: {
     about:
-      "For add, in place of steps: a ready-made plan, by its handle, added as one group holding its steps, each saying whether the person may decline it, the approval it waits for and what it suggests having first. The project follows that plan while its group is on the plan.",
-    choices: Object.fromEntries(
-      catalog.plugins
-        .filter(isReadyPlan)
-        .map(({ builder, description }) => [builder.handle, description]),
-    ),
+      "For add, in place of steps: a ready-made plan, by its handle as discover lists it. It goes on as one group holding its steps, each saying whether the person may decline it, the approval it waits for and what it suggests having first, and the project follows that plan while its group is on the plan. Leave it out when you add steps of your own.",
   },
   after: {
     about:
-      "For add: the id of the step the new steps go after; at the end without it or before.",
+      "For add: the id of the step the new steps go after. Leave out both after and before to add them at the end.",
   },
   before: {
     about:
       "For add, in place of after: the id of the step the new steps go before.",
   },
   stepIds: { about: "For remove: the ids of the steps to take out." },
+} satisfies Record<keyof PlanCall, Described>;
+
+const planFields = (catalog: Catalog): Record<string, Field> => ({
+  operation: PLAN_FIELDS.operation,
+  steps: PLAN_FIELDS.steps,
+  plan: {
+    about: PLAN_FIELDS.plan.about,
+    choices: Object.fromEntries(
+      catalog.plugins
+        .filter(isReadyPlan)
+        .map(({ builder, description }) => [builder.handle, description]),
+    ),
+  },
+  after: PLAN_FIELDS.after,
+  before: PLAN_FIELDS.before,
+  stepIds: PLAN_FIELDS.stepIds,
 });
+
+/** The input schema of each of the coordinator's tools, as the model reads it. */
+export const INPUT_SCHEMAS = {
+  discover: describedSchema(Discover, DISCOVER_FIELDS),
+  execute: describedSchema(Execute, EXECUTE_FIELDS),
+  runs: describedSchema(Runs, RUNS_FIELDS),
+  plan: describedSchema(Plan, PLAN_FIELDS),
+};
 
 const wrongPlanCall = (
   catalog: Catalog,

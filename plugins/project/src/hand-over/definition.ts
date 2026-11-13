@@ -20,7 +20,7 @@ export default defineScreen({
     fields: {
       decides: {
         about:
-          "Who decides approvals now, as the Document approvals line of preferenceGuidance says.",
+          "Who decides approvals now, as the Document approvals line of the person's standing settings says; read_artifact lists those settings.",
         choices: {
           person: "the person approves each document now (Off)",
           builder: "approvals are left to Builder now (On)",

@@ -67,7 +67,7 @@ export function createDesignTools(role: string) {
     {
       name: "file_design_option",
       description:
-        "File the .builder folder (DESIGN.md and designs/) as the next version of your design concept's option. The person compares it with the other concepts' options and picks one. The hub assigns its id, version and sha256 and returns them.",
+        "File the .builder folder (DESIGN.md and designs/) as the next version of your design concept's option, which the person compares with the other concepts' options before picking one. Use check_design instead: a passing check_design files the design itself. This files only a design that passes check-app as it is now, and returns the version already filed when these exact files are, so it never files the same design twice. It returns the filed option's id and version. It is refused before check_design has run once, and when the check fails, with what to fix; fix it and run check_design again.",
       inputSchema: {
         type: "object",
         properties: {},

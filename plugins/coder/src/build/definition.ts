@@ -13,7 +13,8 @@ export default defineWorkflow({
     summary:
       "Has the coder build the project's code for the first time from the filed documents and, when one is chosen, the design. The documents are the assignment.",
     when: "The project has no code yet and its requirements or build plan say what to build.",
-    unless: "The project already has code; a change to it is coder change.",
+    unless:
+      "The project already has code: use coder change for any change to it.",
     fields: {
       instruction: {
         about:

@@ -8,6 +8,8 @@ export default defineCheck({
   describe: {
     summary: "Proves the app's wrangler.toml routes the Worker to a domain.",
     when: "Once the app is ready for Cloudflare, before deploying it to the person's own domain, which a Worker answers only through a route.",
+    failed:
+      "wrangler.toml is missing or routes the Worker nowhere, so it would answer only on its workers.dev address. Ask the person which domain it should answer on if they have not said, have the coder add the route with coder change, then run it again.",
   },
   async run(view) {
     const config = await view.check(file("wrangler.toml"));

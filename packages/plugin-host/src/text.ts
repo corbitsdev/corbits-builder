@@ -15,13 +15,13 @@ type FactText = (fact: Fact) => string;
 // What the coordinator reads about execute, the facts an action requires, and why nothing started.
 
 export const EXECUTE_DESCRIPTION =
-  "Start a specialist plugin's action, or open its screen, by the plugin's handle and the action's name. Pass the input that action's guidance from discover describes, such as { plugin: \"coder\", action: \"change\", input }. A workflow action starts its specialist and returns at once with { started, plugin, action, runs: [{ runId }], presents, advice }. Each run's report arrives later as a message that begins with its run id. Independent pieces of work can start in the same turn, each with its own execute. When the start does a step of the plan, pass that step's id as step so the plan shows this run on it. Nothing starts when the action lacks what it cannot work without, or the person's go-ahead that its plan step asks for, or when the person declined that step on the plan. The refusal names what is missing and which plugin action makes it true. Anything else that step suggests doing first comes back as advice with the started run. A ready-made plan is not started with execute: take it up with plan({ operation: \"add\", plan: handle }). A screen action shows the person its screen and waits. The result is { output } from the screen, or { reply } when the person wrote back instead. When the person's approval is all that holds a start back and one screen gives it, execute shows that screen and starts the action once they answer it. If they write back instead, the result is { reply } and nothing started.";
+  "Start a specialist's action, run a check, or open a screen for the person, by the plugin's handle and the action's name as discover lists them. A workflow action starts its specialist and returns at once with { started, runs: [{ runId }], presents, advice }, where advice is what its plan step suggested doing first; each run's report arrives later as a message that begins with its run id. Independent pieces of work can start in the same turn, one execute each. A check returns its record, { ran, result, summary, evidence }, or, for one that keeps trying, its checkId now and its result later as a hub note. A screen waits for the person and returns { output }, their answer, or { reply } when they wrote back instead. When the person's approval is all that holds a start back and one screen gives it, execute shows that screen and starts the action once they answer; if they write back instead, nothing starts. A refusal starts nothing and says why. When the action lacks something, it names which action makes it true: start that first or ask the person. When the person declined the action's plan step, or asked to be consulted before it, carry on with the rest of the plan. A ready-made plan is added with the plan tool, not started here.";
 
 export const RUNS_DESCRIPTION =
-  'See and steer the runs you started with execute. operation "list" lists each run you started in this project that is at work or ended lately. For each it gives its plugin and action, status, state while it runs, when it started, its last activity, and why a failed run stopped. "wait" waits up to seconds (60 unless given, at most 120) for the first of runIds to end and says which ended; a run\'s report still reaches you as a message after your turn. "stop" stops each of runIds; what a stopped run filed or pushed is kept.';
+  "See and steer the runs you started with execute. list returns each run you started in this project that is at work or ended lately, with its plugin and action, status, state while it runs, when it started, its last activity, and why a failed run stopped. wait returns which of runIds ended and which still work, once the first ends or the time is up. You need not wait for a report: it reaches you as a message after your turn. stop returns which runs it stopped and which had already ended; what a stopped run filed or pushed is kept. A run id that is not one of yours is refused with the list of yours.";
 
 export const PLAN_DESCRIPTION =
-  'Keep the project\'s plan, which shows the person where work of several steps or gates stands. It is the only way a plan is set. Each step is either a plugin action, as discover lists it, with its input, or a group with a title that names no action and holds such steps. operation "show" returns the plan. "set" replaces it with steps, which is how you write a plan of your own from the actions that fit. "add" appends steps, or inserts them after the step whose id is after or before the step whose id is before. With plan, "add" takes up a ready-made plan by its handle: its steps go on as one group, each marked optional when the person may decline it and with the approval it waits for. The project follows that plan while its group is on the plan. "remove" takes out the steps whose ids are stepIds, and taking out a ready-made plan\'s group stops the project following it. Once added, a ready-made plan can be adjusted like any steps: add your own before, after or between its steps, inside its group or next to it, and remove those that do not fit. On an action step you write, askFirst true makes it wait until the person gives the go on the plan. optional true lets the person decline it, after which it is not started. approval { of, when } holds a step until the person approves each document kind in of ("design" for choosing the design). when "required" always waits for their own approval; "optional" waits only while they decide approvals rather than leaving them to you. Taking the step out of the plan takes its approval with it. Each operation answers with the plan as it now stands. Pass a step\'s id as execute\'s step when you start it.';
+  "Keep the project's plan, which shows the person what is coming and where work of several steps stands, and holds each step until what it waits for is true. It is the only way a plan is set. Each operation answers with the plan as it now stands, each step with its id; pass that id as execute's step when you start the step. Write a plan of your own with set from the actions that fit, which is the normal case, or take up a ready-made plan with add and plan, which also has the project follow it while its group is on the plan. Once added, a ready-made plan's steps can be adjusted like any others: add your own before, after or between them, inside its group or next to it, and remove those that do not fit. A refusal saves nothing. It names each wrong field, or the first step the plan cannot hold, such as an action that is not installed or an input that does not fit: correct it and call again. Adding a ready-made plan whose work is already done is refused too: start the action the person's request needs directly.";
 
 // What runs offers for a run that holds back the next one, named as runIds lists it.
 export const waitOrStop = (runIds: string) =>
@@ -349,7 +349,11 @@ const screenCall = (plugin: string, action: string) =>
 export function checkText(
   name: string,
   summary: string,
-  { when, unless }: { when: string; unless?: string | undefined },
+  {
+    when,
+    unless,
+    failed,
+  }: { when: string; unless?: string | undefined; failed: string },
   speed: CheckActionBuilder["speed"],
   { requires, input }: { requires: string; input: string },
 ) {
@@ -359,6 +363,7 @@ export function checkText(
     ...(unless === undefined ? [] : [`Not when: ${unless}`]),
     `Requires: ${requires}.`,
     input,
+    `If it fails: ${failed}`,
   ];
   if (speed === undefined || speed === "person")
     lines.push(

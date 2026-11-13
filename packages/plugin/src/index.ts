@@ -673,11 +673,12 @@ export type ProjectView = {
 };
 
 /**
- * A check's definition: when to run it and, for a check whose manifest declares no proofs, its own
- * code: what it proves, the input it takes and how it decides from the project as saved.
+ * A check's definition: when to run it, what a failure means and what to do next, and, for a check
+ * whose manifest declares no proofs, its own code: what it proves, the input it takes and how it
+ * decides from the project as saved.
  */
 export type Check<In> = {
-  describe: { summary?: string; when: string; unless?: string };
+  describe: { summary?: string; when: string; unless?: string; failed: string };
   input?: Type<In>;
   run?(view: ProjectView, input: In): CheckOutcome | Promise<CheckOutcome>;
 };
@@ -701,8 +702,12 @@ export const Instruction = SpecialistInstruction.and("string >= 40");
 // What a screen placed on the page shares with the prompt box the person still types in.
 export type PageControls<Output> = {
   // What the prompt box sends in place of a reply, built with the typed text as its message; null
-  // while there is nothing to send, so typing answers in words.
-  stage(compose: ((message: string | undefined) => Output) | null): void;
+  // while there is nothing to send, so typing answers in words. reply is what the prompt box asks
+  // while it is staged, in place of the screen's own says.reply, such as how much it carries.
+  stage(
+    compose: ((message: string | undefined) => Output) | null,
+    reply?: string,
+  ): void;
   // Sends what is staged with the prompt box's text, as its Send does.
   sendStaged(): void;
   // Back to the conversation without answering; the screen keeps its draft until reopened.

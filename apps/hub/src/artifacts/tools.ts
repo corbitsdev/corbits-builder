@@ -17,6 +17,7 @@ import {
   type WriterDocumentKind,
 } from "@corbits-builder/schemas/artifact";
 import { inShort } from "@corbits-builder/schemas/in-short";
+import { describedSchema } from "@corbits-builder/plugin-host/coordinator";
 import type { Role } from "@corbits-builder/plugin";
 import { COORDINATOR } from "../workflows/coordinator-role.ts";
 import { stripApprovalPackageBinaries } from "./approval-package.ts";
@@ -50,8 +51,25 @@ const ToolRead = ArtifactRead.merge({ "part?": "number.integer > 0" });
 const readDefinition = {
   name: "read_artifact",
   description:
-    "See which project documents exist, or read one.\nWith no arguments it lists:\n- each document's artifactId, kind, title, current version, sha256, approvedVersion (the version a person approved) and openQuestionCount (the questions its current version leaves open for the person);\n- inFlight, the specialists' runs still open. Each has its status, deployed until its first assignment arrives and running after, and is working (mid-turn) or waiting (between turns). Once it has acted it has progress: its turns so far, its latest tool calls as tool and target, the files it has written, and lastActivityAt;\n- failed, the latest runs that stopped on an error, with when and why. They deliver nothing more;\n- awaitingApproval, the kinds of filed documents whose current version waits on the person's approval;\n- appBuilt, whether the project's code (the document of kind app) has had its first build: a version filed after a passing check or brought in by import;\n- preferenceGuidance, the person's standing settings for how they want to work. They apply until the person says otherwise: what they tell you in the conversation overrides a setting.\nWith a kind, as that list names it, or an artifactId it returns that document's content at its current version, or at the given version, with the openQuestions that version leaves for the person. A long document comes in numbered parts, and part reads the next one.",
-  inputSchema: { ...ToolRead.toJsonSchema() },
+    "List first, then read by kind. With no arguments it lists the project:\n- each filed document's kind, title, artifactId, current version, the version the person approved (approvedVersion) and how many questions its current version leaves open for the person;\n- inFlight, the specialists' runs still open. Each has its status, deployed until its first assignment arrives and running after, and is working (mid-turn) or waiting (between turns). Once it has acted it has progress: its turns so far, its latest tool calls as tool and target, the files it has written, and when it last acted;\n- failed, the latest runs that stopped on an error, with when and why. They deliver nothing more;\n- awaitingApproval, the kinds of filed documents whose current version waits on the person's approval;\n- appBuilt, whether the project's code (the document of kind app) has had its first build: a version filed after a passing check or brought in by import;\n- preferenceGuidance, the person's standing settings for how they want to work. They apply until the person says otherwise: what they tell you in the conversation overrides a setting.\nWith a kind from that list it returns that document's content, with the open questions that version leaves for the person. A long document comes in numbered parts.",
+  inputSchema: describedSchema(ToolRead, {
+    kind: {
+      about:
+        "The kind of the document to read, as the list names it. Leave out kind and artifactId to list the project.",
+    },
+    artifactId: {
+      about:
+        "The id of the document to read, in place of kind. Set it for a document you were given by its id, such as a file the person attached; otherwise read by kind.",
+    },
+    version: {
+      about:
+        "The version to read. Set it only for an earlier version; leave it out for the current one.",
+    },
+    part: {
+      about:
+        "The numbered part of a long document to read. Set it to read the part after the one you have; leave it out for the first.",
+    },
+  }),
 };
 // The person asked to approve a document decides from its summary on the card, so none is filed
 // without one.

@@ -408,7 +408,7 @@ test("execute on build-web-app is turned to plan add, which puts the plan's step
     action: "build",
   });
   expect(guidance.content).toContain(
-    "coder build: Has the coder build the project's code for the first time from the filed documents and, when one is chosen, the design. The documents are the assignment.\nUse it when: The project has no code yet and its requirements or build plan say what to build.\nNot when: The project already has code; a change to it is coder change.\nRequires: the product requirements are filed and the project has no code yet; or the build plan is filed and the project has no code yet.\n",
+    "coder build: Has the coder build the project's code for the first time from the filed documents and, when one is chosen, the design. The documents are the assignment.\nUse it when: The project has no code yet and its requirements or build plan say what to build.\nNot when: The project already has code: use coder change for any change to it.\nRequires: the product requirements are filed and the project has no code yet; or the build plan is filed and the project has no code yet.\n",
   );
   expect(guidance.content).toContain(
     'Now: needs the person\'s go-ahead, which the step "Build the app" asks for: the person approved',

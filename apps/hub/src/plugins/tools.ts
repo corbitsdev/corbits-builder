@@ -1,7 +1,10 @@
 import { defineTool, type AnnotatedToolFactory } from "@intx/agent/authoring";
-import { questionTool } from "@intx/inference";
 import { HUB_CREDENTIAL_HANDLE } from "@intx/types/credential-delivery";
-import type { ToolCall } from "@intx/types/runtime-core";
+import {
+  QUESTION_TOOL_NAME,
+  QuestionArguments,
+  type ToolCall,
+} from "@intx/types/runtime-core";
 import {
   CheckList,
   CheckRan,
@@ -10,15 +13,13 @@ import {
 } from "@corbits-builder/schemas/artifact";
 import {
   checkedDiscover,
-  Discover,
+  describedSchema,
   discoverFor,
   execute,
-  Execute,
   executePause,
+  INPUT_SCHEMAS,
   managePlan,
   manageRuns,
-  Plan,
-  Runs,
   type Filed,
   type Project,
 } from "@corbits-builder/plugin-host/coordinator";
@@ -84,11 +85,49 @@ export function withPluginHint(hint: PluginHint, message: string): string {
   return hinted.length === 0 ? message : message + pluginHint(hinted);
 }
 
-const discoverDefinition = (description: string) => ({
-  name: "discover",
-  description,
-  inputSchema: { ...Discover.toJsonSchema() },
-});
+// Interchange parks any call named question until the person answers, whatever definition offered
+// it, so Builder offers it in its own words.
+const questionDefinition = {
+  name: QUESTION_TOOL_NAME,
+  description:
+    "Ask the person one or more questions and wait for their answers. Use it only when the work would be done differently depending on the answer, and never for a choice an action has a screen for: open that screen with execute instead. The result is { answers: [{ question, answer: [the chosen labels or what they typed] }] } in the order asked, or { reply } when the person wrote back instead of answering; a reply is their answer in their own words.",
+  inputSchema: describedSchema(QuestionArguments, {
+    questions: {
+      about: "The questions to ask, in the order the person reads them.",
+      fields: {
+        question: {
+          about: "The full question, as you would ask it in conversation.",
+        },
+        header: {
+          about:
+            "Two or three words naming the topic, such as Pages or Sign-in, shown above the question.",
+        },
+        options: {
+          about:
+            "The answers to pick from, the one you recommend first. Leave it empty only for an answer that has to be free text, such as a name.",
+          fields: {
+            label: {
+              about:
+                "The answer in a few words. End the recommended option's label with (Recommended).",
+            },
+            description: {
+              about:
+                "One plain sentence on what picking it means for the work.",
+            },
+          },
+        },
+        multiple: {
+          about:
+            "Set it to true when several options can all be true at once, such as which features or pages to include. Leave it out when the options rule each other out.",
+        },
+        custom: {
+          about:
+            "On unless set: the person may type their own answer instead, so never add an Other option. Set it to false only when the answer must be one of the options.",
+        },
+      },
+    },
+  }),
+};
 
 // The project as it stands when a run's assignment is written, from the documents filed in it.
 function filed(
@@ -252,23 +291,27 @@ export function createExecuteTools(
 ): AnnotatedToolFactory<DeployEnv> {
   if (options) checkDeployments(options.workflows);
   const definitions = [
-    discoverDefinition(DISCOVER_DYNAMIC_DESCRIPTION),
+    {
+      name: "discover",
+      description: DISCOVER_DYNAMIC_DESCRIPTION,
+      inputSchema: INPUT_SCHEMAS.discover,
+    },
     {
       name: "execute",
       description: EXECUTE_DESCRIPTION,
-      inputSchema: { ...Execute.toJsonSchema() },
+      inputSchema: INPUT_SCHEMAS.execute,
     },
     {
       name: "runs",
       description: RUNS_DESCRIPTION,
-      inputSchema: { ...Runs.toJsonSchema() },
+      inputSchema: INPUT_SCHEMAS.runs,
     },
     {
       name: "plan",
       description: PLAN_DESCRIPTION,
-      inputSchema: { ...Plan.toJsonSchema() },
+      inputSchema: INPUT_SCHEMAS.plan,
     },
-    questionTool,
+    questionDefinition,
   ];
   return defineTool<DeployEnv>({
     id: "@corbits-builder/plugins/execute",

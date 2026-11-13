@@ -31,7 +31,7 @@ export default defineWorkflow({
       },
       lookIdeas: {
         about:
-          "The person's own ideas for the look, in their words, or that they left the look to you.",
+          "The person's own ideas for the look, in their words. When they gave none, say so, such as: The person left the look to the designer.",
       },
       concepts: { about: conceptsAbout(manifest.builder.design.looks) },
       createTheme: {
