@@ -24,6 +24,7 @@ import type { buildPackageLayout } from "./package-layout.ts";
 import { BROWSER_ARGS } from "./browser.ts";
 import { CODER_REGISTRY_HOSTS } from "../config/packages.ts";
 import { COMMAND_PROGRESS_FILE } from "@corbits-builder/schemas/activity";
+import type { AppRun } from "@corbits-builder/schemas/installed-workflows";
 
 const log = getLogger(["corbits-builder", "hub", "posix-sandbox"]);
 
@@ -107,14 +108,19 @@ async function relayStderr(
 }
 
 export type BuildPackageLayout = Awaited<ReturnType<typeof buildPackageLayout>>;
-// The workspace's dev app: its address, whether it runs and its recent output. stopped names the
-// workspace whose dev script exited while the rest kept running, as `bun --filter` names it.
+// The program running in the workspace: its command, the address its last port answers on, whether
+// it runs, whether it printed its waitFor line, and its recent output. stopped names the workspace
+// whose script exited while the rest kept running, as `bun --filter` names it.
 export type DevApp = {
+  command: string;
   url: string;
   running: boolean;
+  ready: boolean;
   log: string[];
   stopped?: string;
 };
+// What runs, and whether its address serves a page the page watcher keeps open.
+export type Running = { run: AppRun; page: boolean };
 
 export interface BuildExecutionPolicy {
   commandTimeoutMs: number;
@@ -390,7 +396,7 @@ export async function createPosixBuildExecutor(
     pageWatcher?: string;
     // Whether the agent drives its app in Playwright's browser, which browser() starts.
     browser?: boolean;
-    // Whether the workspace's dev app runs here, which app() starts.
+    // Whether a program that keeps running runs here, which app() starts.
     app?: boolean;
     // The shared Chrome install, which the sandbox reads through $HOME/browsers but never writes.
     browsers?: string | undefined;
@@ -607,8 +613,11 @@ export async function createPosixBuildExecutor(
       SandboxManager.updateConfig(policy);
     }
     let trustedGate: { nonce: string; timeoutMs: number } | undefined;
+    // What app() starts again when it is called with nothing to run: the last program it started.
+    let lastRun: Running | undefined;
     let devApp:
       | {
+          running: Running;
           process: Bun.Subprocess<"ignore", "pipe", "pipe">;
           view: () => DevApp;
           watcher?: FSWatcher;
@@ -759,32 +768,41 @@ export async function createPosixBuildExecutor(
       if (page) kill(page);
       await Promise.all([child.exited, page?.exited, appRelay.stop()]);
     };
-    const startApp = (): Promise<DevApp> => {
+    const startApp = (next?: Running): Promise<DevApp> => {
       if (disposed)
         return Promise.reject(new BuildExecutionError("sandbox_closed"));
+      const wanted = next ?? lastRun;
+      if (!wanted)
+        return Promise.reject(new BuildExecutionError("nothing_to_run"));
       if (
         devApp &&
+        devApp.running.run.command === wanted.run.command &&
         devApp.process.exitCode === null &&
         devApp.view().stopped === undefined
       )
         return Promise.resolve(devApp.view());
+      lastRun = wanted;
+      const { run, page: watchesPage } = wanted;
       const launchDevApp = async () => {
         try {
           await stopApp();
-          const [port, clientPort] = await Promise.all([
-            freePort(),
-            freePort(),
-          ]);
+          const address = await freePort();
+          const extraPorts = await Promise.all(
+            (run.extraPorts ?? []).map(async (name) => [
+              name,
+              String(await freePort()),
+            ]),
+          );
           await appRelay.reserve();
           const command = await wrapShell(
-            `${appRelay.serve(clientPort)}exec ${quote(executable)} run dev`,
+            `${appRelay.serve(address)}exec /bin/sh -c ${quote(run.command)}`,
           );
           const child = Bun.spawn(["/bin/sh", "-c", command], {
             cwd,
             env: {
               ...childEnv,
-              PORT: String(port),
-              CLIENT_PORT: String(clientPort),
+              ...Object.fromEntries(extraPorts),
+              [run.port]: String(address),
               ...(process.platform === "darwin" ? MACOS_WATCH_POLLING : {}),
             },
             stdin: "ignore",
@@ -794,6 +812,7 @@ export async function createPosixBuildExecutor(
           });
           const lines: string[] = [];
           let stopped: string | undefined;
+          let seen = run.waitFor === undefined;
           const current = () => !disposed && devApp?.process === child;
           // `bun --filter` keeps the other half running when one exits, so the dev server still
           // answers while its API is gone. The next file change starts the whole app again.
@@ -826,6 +845,8 @@ export async function createPosixBuildExecutor(
                 .split("\n")) {
                 if (!line.trim()) continue;
                 if (lines.push(line) > 200) lines.shift();
+                if (run.waitFor !== undefined && line.includes(run.waitFor))
+                  seen = true;
                 const exited = PART_EXITED.exec(line);
                 if (exited && stopped === undefined) partStopped(exited[1]!);
                 if (!current()) continue;
@@ -850,17 +871,18 @@ export async function createPosixBuildExecutor(
           };
           void Promise.all([collect(child.stdout), collect(child.stderr)]);
           await appRelay.start();
-          // Vite serves the client on CLIENT_PORT and proxies /api to the server on PORT; where the
-          // wraps have loopbacks of their own, the relays serve it on one port everywhere.
-          const url = appRelay.url(clientPort);
+          // Where the wraps have loopbacks of their own, the relays serve it on one port everywhere.
+          const url = appRelay.url(address);
           const view = (): DevApp => ({
+            command: run.command,
             url,
             running: child.exitCode === null,
+            ready: child.exitCode === null && seen,
             log: lines.slice(-40),
             ...(stopped === undefined ? {} : { stopped }),
           });
-          devApp = { process: child, view };
-          if (options.pageWatcher) {
+          devApp = { running: wanted, process: child, view };
+          if (options.pageWatcher && watchesPage) {
             const page = Bun.spawn(
               [
                 "/bin/sh",
@@ -1152,9 +1174,10 @@ export async function createPosixBuildExecutor(
       violationCount: () =>
         SandboxManager.getSandboxViolationStore().getTotalCount(),
       /**
-       * Starts `bun run dev` in the workspace under the same sandbox and keeps it running until
-       * dispose, so the agent can use its app while it builds. Calling it again returns the same
-       * app, restarted when it or one of its halves has exited.
+       * Starts a program that keeps running in the workspace under the same sandbox and keeps it
+       * running until dispose or until another is started, which stops it first. Called with
+       * nothing to run, it returns the last program started, restarted when it or one of its
+       * halves has exited.
        */
       app: startApp,
       /** The coder's browser server's URL, started on first use and again whenever it has exited. */

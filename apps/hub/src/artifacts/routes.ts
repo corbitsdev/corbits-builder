@@ -81,6 +81,19 @@ const READY_PLANS = PLUGINS.filter(isReadyPlan).map(
 const undeclaredValue = (names: readonly string[]) =>
   names.find((name) => !CATALOG.values.has(name));
 
+// Why a run may not save a value, with the names it may save as they are spelled. A specialist
+// that wrote stack_language for stack.language resent it until it was stopped as a loop.
+function notWritten(name: string, action: string, writes: readonly string[]) {
+  const loose = (each: string) => each.toLowerCase().replace(/[^a-z0-9]/g, "");
+  const meant = writes.find((each) => loose(each) === loose(name));
+  const named = writes.map((each) => `\`${each}\``).join(", ");
+  const saves =
+    writes.length > 0 ? `It saves only ${named}.` : "It saves no values.";
+  return meant === undefined
+    ? `is not a value ${action} saves. ${saves}`
+    : `is not a value ${action} saves; did you mean \`${meant}\`? ${saves}`;
+}
+
 const AnswerPost = type({
   "+": "reject",
   signalName: "string > 0",
@@ -729,7 +742,7 @@ export function mountArtifactRoutes(
       tags: ["Artifacts"],
       operationId: "stopCoordinatorRun",
       description:
-        "Stops a run the coordinator started in the project, through Interchange's cancellation. What the run filed or pushed before it stopped is kept.",
+        "Stops a run the coordinator started in the project, for the person or the coordinator, through Interchange's cancellation; the coordinator's note on its end says which stopped it. What the run filed or pushed before it stopped is kept.",
       security,
       responses: {
         200: { description: "The stop was requested" },
@@ -746,6 +759,7 @@ export function mountArtifactRoutes(
           actorOf(c),
           c.req.param("projectId"),
           c.req.param("runId"),
+          c.get("principal")?.kind === "user" ? "person" : "coordinator",
         ),
       ),
   );
@@ -768,12 +782,10 @@ export function mountArtifactRoutes(
           description: "Each saved value as now stored",
           content: { "application/json": { schema: resolver(ProjectValues) } },
         },
-        400: {
-          description:
-            "A name that no plugin declares or a value its type refuses",
-        },
+        400: { description: "A value its type refuses" },
         403: {
-          description: "A value the run's action does not write",
+          description:
+            "A value the run's action does not write, named with the values it does",
         },
       },
     }),
@@ -785,13 +797,25 @@ export function mountArtifactRoutes(
         throw new ProjectError(400, "invalid_project_values", {
           issues: input,
         });
-      const unknown = undeclaredValue(Object.keys(input.values));
-      if (unknown !== undefined)
-        throw new ProjectError(400, "unknown_project_value", {
-          key: unknown,
-          issues: [
-            { path: unknown, message: "is not a value any plugin declares" },
-          ],
+      const run = await service.valuesRun(current, projectId);
+      const catalog = await catalogOf(current, projectId);
+      const writes =
+        catalog.actions
+          .filter(isWorkflowAction)
+          .find(
+            (installed) =>
+              installed.plugin === run.plugin &&
+              installed.action === run.action,
+          )?.builder.writes ?? [];
+      const refused = Object.keys(input.values).filter(
+        (name) => !writes.includes(name),
+      );
+      if (refused.length > 0)
+        throw new ProjectError(403, "run_value_not_written", {
+          issues: refused.map((name) => ({
+            path: name,
+            message: notWritten(name, `${run.plugin} ${run.action}`, writes),
+          })),
         });
       // Refuses a value its declared type does not take. Every value an action writes is one a
       // plugin declares, kept in the plain store, so the values are stored as they came.
@@ -800,17 +824,7 @@ export function mountArtifactRoutes(
         await service.projectState(current, projectId),
         CATALOG.values,
       );
-      const catalog = await catalogOf(current, projectId);
-      await service.saveRunValues(current, projectId, input.values, (run) => {
-        const action = catalog.actions
-          .filter(isWorkflowAction)
-          .find(
-            (installed) =>
-              installed.plugin === run.plugin &&
-              installed.action === run.action,
-          );
-        return action?.builder.writes ?? [];
-      });
+      await service.saveRunValues(current, projectId, input.values);
       return c.json({
         values: readProjectValues(
           Object.keys(input.values),

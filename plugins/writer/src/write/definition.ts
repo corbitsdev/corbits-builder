@@ -12,6 +12,9 @@ export default defineWorkflow({
   describe: {
     summary:
       "Has a writer write any document the person asks for, or the next version of one already filed. It is filed under kind and versioned, and can be reviewed and approved like any other document.",
+    when: "The person asks for any document that has no action of its own, such as a problem brief, constraints, a comparison of approaches, a competitor analysis, a security review or a user manual, or wants one revised.",
+    unless:
+      "The document is the product requirements or the build plan, which have actions of their own, or the person wants the thing itself built or changed.",
     fields: {
       kind: {
         about:

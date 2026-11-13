@@ -26,13 +26,15 @@ through the hub's project scope, and its `install_packages` asks the person
 unless they turned on installing any package without asking, which the hub
 grants the run when its workspace starts. The
 [coordinator][coordinator] starts it with `execute`. Its tools are file edits and `run_shell`
-in the workspace, `install_packages`, Exa search, `read_artifact`,
-`read_skill`, `mail`, `app_status` and a headless browser.
+in the workspace, `install_packages`, Exa search, `read_artifact`, `mail`,
+`app_status` and a headless browser.
 
 ## Layout
 
-- `src/build.ts`, `src/change.ts`: each action's input and how the
-  coordinator fills it.
+- `src/build/`, `src/change/`: one folder per action, whose `definition.ts`
+  holds its input and how the coordinator fills it: its summary, when to use
+  it and when not, and each field. `src/builds/definition.ts` says when to run
+  the `builds` check, whose proof the manifest declares.
 - `src/start.ts`: the starter module. It refuses while another coder works on
   the code, records a first build's starter for the hub to apply, and writes
   the run's assignment from the filed documents, the chosen design and the

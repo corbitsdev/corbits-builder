@@ -4,6 +4,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { SandboxManager } from "@anthropic-ai/sandbox-runtime";
 import { rgPath } from "@vscode/ripgrep";
+import { declaredRun } from "@corbits-builder/coder/contract";
 import { buildPackageLayout } from "./package-layout.ts";
 import { createPosixBuildExecutor, publicHostName } from "./posix-sandbox.ts";
 
@@ -36,10 +37,12 @@ test("the open network admits only public names, however a private address is sp
 });
 
 // Exercise real isolation where the host has the required OS sandbox tools.
-test.skipIf(
+const sandboxTest = test.skipIf(
   !SandboxManager.isSupportedPlatform() ||
     SandboxManager.checkDependencies({ command: rgPath }).errors.length > 0,
-)(
+);
+
+sandboxTest(
   "workspace output is writable while host files and approved inputs stay protected",
   async () => {
     const root = await mkdtemp(join(tmpdir(), "builder-sandbox-test-"));
@@ -101,6 +104,118 @@ test.skipIf(
       await executor?.dispose();
       await rm(root, { recursive: true, force: true });
     }
+  },
+  60_000,
+);
+
+// A real sandbox whose workspace holds files, with programs allowed to keep running in it.
+async function withRunner(
+  files: Record<string, string>,
+  use: (
+    executor: Awaited<ReturnType<typeof createPosixBuildExecutor>>,
+    workspace: string,
+  ) => Promise<void>,
+) {
+  const root = await mkdtemp(join(tmpdir(), "builder-runner-test-"));
+  let executor:
+    | Awaited<ReturnType<typeof createPosixBuildExecutor>>
+    | undefined;
+  try {
+    const workspace = join(root, "workspace");
+    await mkdir(workspace);
+    for (const [path, content] of Object.entries(files))
+      await writeFile(join(workspace, path), content);
+    executor = await createPosixBuildExecutor(
+      workspace,
+      { commandTimeoutMs: 10_000, maxToolResultBytes: 64_000 },
+      await buildPackageLayout(),
+      { app: true },
+    );
+    await use(executor, workspace);
+  } finally {
+    await executor?.dispose();
+    await rm(root, { recursive: true, force: true });
+  }
+}
+
+async function untilReady(
+  executor: Awaited<ReturnType<typeof createPosixBuildExecutor>>,
+) {
+  const deadline = Date.now() + 15_000;
+  while (!executor.appState()?.ready && Date.now() < deadline)
+    await Bun.sleep(100);
+  return executor.appState();
+}
+
+sandboxTest(
+  "a program that keeps running stays ready across later calls and is gone once the run ends",
+  async () => {
+    await withRunner({}, async (executor, workspace) => {
+      await executor.app({
+        run: {
+          // Anything still running a few seconds after the run ends writes late.txt.
+          command:
+            "echo listening on $PORT; (sleep 3; echo child > late.txt) & exec sleep 300",
+          port: "PORT",
+          waitFor: "listening",
+        },
+        page: false,
+      });
+      const first = await untilReady(executor);
+      if (!first) throw new Error("program_never_started");
+      expect(first).toMatchObject({ running: true, ready: true });
+      expect(first.log.join("\n")).toMatch(/listening on \d+/);
+      const between = await executor.run(
+        { id: "between", name: "run_shell", arguments: { command: "true" } },
+        new AbortController().signal,
+      );
+      expect(between.isError).not.toBe(true);
+      const second = await executor.app();
+      expect(second).toMatchObject({ running: true, ready: true });
+      expect(second.log).toEqual(first.log);
+      await executor.dispose();
+      await Bun.sleep(4_000);
+      expect(await Bun.file(join(workspace, "late.txt")).exists()).toBe(false);
+    });
+  },
+  60_000,
+);
+
+sandboxTest(
+  "the web starter's program starts as its facts declare and answers on its address",
+  async () => {
+    const run = declaredRun("web-app");
+    if (!run) throw new Error("web_starter_declares_no_run");
+    await withRunner(
+      {
+        "package.json": JSON.stringify({
+          scripts: {
+            dev: "bun -e 'Bun.serve({ port: Number(process.env.CLIENT_PORT), fetch: () => new Response(process.env.PORT) }); console.log(\"ready\")'",
+          },
+        }),
+      },
+      async (executor) => {
+        const app = await executor.app({ run, page: false });
+        expect(app.command).toBe("bun run dev");
+        const deadline = Date.now() + 15_000;
+        let body: string | undefined;
+        while (body === undefined && Date.now() < deadline) {
+          try {
+            body = await (await fetch(app.url)).text();
+          } catch (error) {
+            if (!(error instanceof Error)) throw error;
+            await Bun.sleep(200);
+          }
+        }
+        // The server half gets a port of its own, apart from the address the client answers on.
+        expect(body).toMatch(/^\d+$/);
+        expect(app.url).not.toEndWith(`:${body}`);
+        expect(executor.appState()).toMatchObject({
+          running: true,
+          ready: true,
+        });
+      },
+    );
   },
   60_000,
 );

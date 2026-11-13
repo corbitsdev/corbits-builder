@@ -44,10 +44,6 @@
     },
     "actions": {
       "build": {
-        "runs": "workflow",
-        "when": "The project has no code yet and its requirements or build plan say what to build.",
-        "unless": "The project already has code; a change to it is coder change.",
-        "input": "./src/build.ts",
         "requires": [
           [
             "filed:product_requirements",
@@ -75,10 +71,6 @@
         ]
       },
       "change": {
-        "runs": "workflow",
-        "when": "The person asks for a change to the code the project already has, built here or imported: a fix, an addition or a correction.",
-        "unless": "The project has no code yet, or the person is still unsure what they want and would rather compare options first.",
-        "input": "./src/change.ts",
         "requires": [
           [
             "app_exists"
@@ -103,8 +95,6 @@
         ]
       },
       "builds": {
-        "runs": "check",
-        "when": "Before showing, filing or deploying the project's code, to prove its saved version still builds.",
         "requires": [
           [
             "app_exists"
@@ -157,6 +147,13 @@
         "about": "A web app people use in a browser: a React client, a Bun server and a shared package.",
         "folder": "starter",
         "serves": true,
+        "run": {
+          "command": "bun run dev",
+          "port": "CLIENT_PORT",
+          "extraPorts": [
+            "PORT"
+          ]
+        },
         "setup": "bun install --frozen-lockfile",
         "checks": [
           "bun install --frozen-lockfile",

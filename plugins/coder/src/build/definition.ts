@@ -1,6 +1,6 @@
 import { defineWorkflow, Instruction } from "@corbits-builder/plugin";
 import { type } from "arktype";
-import { STARTER_NAMES, STARTERS } from "./contract.ts";
+import { STARTER_NAMES, STARTERS } from "../contract.ts";
 
 export default defineWorkflow({
   input: type({
@@ -11,6 +11,8 @@ export default defineWorkflow({
   describe: {
     summary:
       "Has the coder build the project's code for the first time from the filed documents and, when one is chosen, the design. The documents are the assignment.",
+    when: "The project has no code yet and its requirements or build plan say what to build.",
+    unless: "The project already has code; a change to it is coder change.",
     fields: {
       instruction: {
         about:

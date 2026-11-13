@@ -1,12 +1,13 @@
 // Regenerates the react-ui component API reference from the installed @corbits/react-ui
-// declarations: one file per component group under plugins/designer/skills/react-ui/reference.
+// declarations: one file per component group under
+// plugins/web-app-starter-skills/skills/react-ui/reference.
 // Run: bun run skills:react-ui
 import { readdirSync, readFileSync, writeFileSync } from "node:fs";
 import { dirname, join, resolve } from "node:path";
 import ts from "typescript";
 
 const root = resolve(import.meta.dir, "..");
-const skills = join(root, "plugins/designer/skills");
+const skills = join(root, "plugins/web-app-starter-skills/skills");
 const packageJson = Bun.resolveSync(
   "@corbits/react-ui/package.json",
   join(root, "apps/web"),

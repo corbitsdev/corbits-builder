@@ -1,5 +1,4 @@
 import { defineScreen } from "@corbits-builder/plugin";
-import manifest from "../../package.json";
 import { Input, Output } from "./schema.ts";
 
 export default defineScreen({
@@ -10,8 +9,9 @@ export default defineScreen({
   describe: {
     summary:
       'Asks the person how many looks they want to compare, one, two or three, with their current setting chosen. The answer is { looks: "one" }, { looks: "two" } or { looks: "three" }, and Builder has then set the project\'s Design concepts preference to match: start that many design concepts. If they write back instead, what they wrote is their answer.',
-    when: manifest.builder.actions.looks.when,
-    unless: manifest.builder.actions.looks.unless,
+    when: "A first set of mockups is about to start and the person has not said how many looks they want to compare.",
+    unless:
+      "They already said how many looks they want, mockups were made already, or they have handed their approvals over to Builder.",
     fields: {
       current: {
         about:

@@ -1,17 +1,16 @@
 import {
   defineScreen,
-  refuse,
   type ProjectValues,
   type WrongField,
 } from "@corbits-builder/plugin";
-import manifest from "../../package.json";
 import { Fonts, Input, Output, lists, type Font } from "./schema.ts";
 
 const describe = {
   summary:
     "Shows the person the fonts in use and fonts to choose a primary and a secondary font from.",
-  when: manifest.builder.actions["pick-fonts"].when,
-  unless: manifest.builder.actions["pick-fonts"].unless,
+  when: "The person is unhappy with the typeface or unsure which font would suit.",
+  unless:
+    "They already said exactly which font they want, or they want text bigger or smaller, or a whole new look.",
   fields: {
     proposed: {
       about:
@@ -137,41 +136,45 @@ export default defineScreen({
   input: Input,
   output: Output,
   data: Fonts,
-  prepare: (input, fonts, project) => {
+  validate: (input, fonts, project) => {
     const wrong = [
       ...SLOTS.flatMap((slot) =>
         wrongProposed(fonts, slot, input.proposed?.[slot]),
       ),
       ...wrongList(fonts, input.list),
     ];
-    if (wrong.length > 0) refuse({ wrong });
-    const current = {
+    if (wrong.length > 0) return wrong;
+    const suggested = SLOTS.flatMap((slot) => {
+      const font = proposedFont(fonts, input.proposed?.[slot]);
+      return font === undefined
+        ? []
+        : [{ font, current: inUse(fonts, project, slot) }];
+    });
+    if (
+      suggested.length === 0 ||
+      suggested.some(({ font, current }) => font !== current)
+    )
+      return [];
+    return [
+      {
+        field: "proposed",
+        problem: `${quoted(suggested.map(({ font }) => font.name))} ${suggested.length === 1 ? "is already the font" : "are already the fonts"} in use.`,
+        otherwise:
+          "Propose a different font, or leave proposed out to let the person choose.",
+      },
+    ];
+  },
+  prepare: (input, fonts, project) => ({
+    fonts: offered(fonts, input.list),
+    current: {
       primary: inUse(fonts, project, "primary"),
       secondary: inUse(fonts, project, "secondary"),
-    };
-    const proposed = {
+    },
+    proposed: {
       primary: proposedFont(fonts, input.proposed?.primary),
       secondary: proposedFont(fonts, input.proposed?.secondary),
-    };
-    const suggested = SLOTS.flatMap((slot) => proposed[slot] ?? []);
-    if (
-      suggested.length > 0 &&
-      SLOTS.every(
-        (slot) =>
-          proposed[slot] === undefined || proposed[slot] === current[slot],
-      )
-    )
-      refuse({
-        wrong: [
-          {
-            field: "proposed",
-            problem: `${quoted(suggested.map((font) => font.name))} ${suggested.length === 1 ? "is already the font" : "are already the fonts"} in use.`,
-          },
-        ],
-        next: "Call again proposing a different font, or with no proposal to let the person choose.",
-      });
-    return { fonts: offered(fonts, input.list), current, proposed };
-  },
+    },
+  }),
   describe,
   writes: {
     [IN_USE.primary]: (output) => output.primary.name,

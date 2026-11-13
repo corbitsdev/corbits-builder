@@ -34,10 +34,6 @@
     },
     "actions": {
       "do": {
-        "runs": "workflow",
-        "when": "Nothing else fits the task: research on a company, product or library, a comparison or breakdown with facts from the web, an answer about the project or what its code does, or any other task. Give a kind and title when the result should be filed as a document; leave them out for a question, whose answer comes back in the reply.",
-        "unless": "One of the other specialists' actions fits the task.",
-        "input": "./src/do.ts",
         "reads": [
           "brand.guidelines",
           "stack.language"

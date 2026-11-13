@@ -75,7 +75,10 @@ import {
   type AppVersion,
   type AppVersionList,
 } from "@corbits-builder/schemas/artifact";
-import type { SpawnedRole } from "@corbits-builder/schemas/installed-workflows";
+import type {
+  AppRun,
+  SpawnedRole,
+} from "@corbits-builder/schemas/installed-workflows";
 import type { Fact, Shown } from "@corbits-builder/plugin";
 import { OpenQuestions } from "@corbits-builder/schemas/questions";
 import {
@@ -139,7 +142,11 @@ import {
   warmStepWorkspace,
 } from "./design-draft.ts";
 import type { LiveApps } from "../live-app/runner.ts";
-import { isStarterName, STARTERS } from "@corbits-builder/coder/contract";
+import {
+  declaredRun,
+  isStarterName,
+  STARTERS,
+} from "@corbits-builder/coder/contract";
 import {
   appContent,
   bundleFiles,
@@ -693,20 +700,29 @@ export function createArtifactService(
     };
   }
 
-  // The project's current files to run, or the app's state when there are none to run. Code whose
-  // starter serves no web app, such as a command-line tool, has nothing to run here.
-  async function runnableApp(actor: Actor, projectId: string) {
+  // The project's current files and how its starter runs them, or the app's state when there are
+  // none to run. Code whose starter serves no web app, such as a command-line tool, or that began
+  // from no starter and so declares no way to run, has nothing to run here.
+  async function runnableApp(
+    actor: Actor,
+    projectId: string,
+  ): Promise<
+    | { app: NonNullable<Awaited<ReturnType<typeof appSource>>>; run: AppRun }
+    | { readonly state: "not_built" }
+  > {
     await requireProject(actor, projectId, "read");
     const [row] = await rawDB
       .select({ values: project.values })
       .from(project)
       .where(eq(project.id, projectId));
     const starter = row?.values["stack.starter"];
-    if (isStarterName(starter) && !STARTERS[starter].serves)
+    if (!isStarterName(starter) || !STARTERS[starter].serves)
       throw new ProjectError(409, "no_web_app", { starter });
+    const run = declaredRun(starter);
+    if (!run) throw new ProjectError(409, "no_web_app", { starter });
     if (!liveApps) throw new ProjectError(503, "live_app_unavailable");
     const current = await appSource(actor, projectId);
-    if (current) return current;
+    if (current) return { app: current, run };
     liveApps.runner.stop(projectId);
     return { state: "not_built" } as const;
   }
@@ -1624,8 +1640,14 @@ export function createArtifactService(
       return listed;
     },
 
-    // Stops a run the coordinator started in the project, through Interchange's own cancellation.
-    async stopRun(actor: Actor, projectId: string, runId: string) {
+    // Stops a run the coordinator started in the project, through Interchange's own cancellation,
+    // recording who stopped it so the coordinator's note says so.
+    async stopRun(
+      actor: Actor,
+      projectId: string,
+      runId: string,
+      stoppedBy: "person" | "coordinator",
+    ) {
       await requireProject(actor, projectId, "manage");
       const [run] = await rawDB
         .select({ status: workflowRun.status })
@@ -1642,18 +1664,13 @@ export function createArtifactService(
       if (!isLiveWorkflowRunStatus(run.status))
         throw new ProjectError(409, "run_ended", { runId, status: run.status });
       if (!cancelRun) throw new ProjectError(503, "run_stop_unavailable");
-      await cancelRun(actor.tenantId, runId, "stopped_by_coordinator");
+      await cancelRun(actor.tenantId, runId, `stopped_by_${stoppedBy}`);
       return { runId };
     },
 
-    // Saves values for the calling specialist run: only those the plugin action it was started for
-    // writes. A run holds no project write of its own; this is its one way to save a value.
-    async saveRunValues(
-      actor: Actor,
-      projectId: string,
-      values: Record<string, unknown>,
-      writes: (run: { plugin: string; action: string }) => readonly string[],
-    ) {
+    // The plugin action the calling specialist run was started for: it saves only the values that
+    // action writes. A run holds no project write of its own; saveRunValues is its one way to save.
+    async valuesRun(actor: Actor, projectId: string) {
       await requireProject(actor, projectId, "read");
       const [run] = await rawDB
         .select({ plugin: runAction.plugin, action: runAction.action })
@@ -1671,17 +1688,15 @@ export function createArtifactService(
         throw new ProjectError(403, "run_saves_no_values", {
           hint: "This run was not started for a plugin action that saves project values, so it saves none.",
         });
-      const allowed = writes(run);
-      const refused = Object.keys(values).filter(
-        (name) => !allowed.includes(name),
-      );
-      if (refused.length > 0)
-        throw new ProjectError(403, "run_value_not_written", {
-          issues: refused.map((name) => ({
-            path: name,
-            message: `is not a value ${run.plugin} ${run.action} saves; it saves ${allowed.length > 0 ? allowed.join(", ") : "none"}`,
-          })),
-        });
+      return run;
+    },
+
+    async saveRunValues(
+      actor: Actor,
+      projectId: string,
+      values: Record<string, unknown>,
+    ) {
+      await requireProject(actor, projectId, "read");
       await storeValues(projectId, values);
     },
 
@@ -1948,8 +1963,8 @@ export function createArtifactService(
       projectId: string,
     ): Promise<LiveApp> {
       const current = await runnableApp(actor, projectId);
-      if ("state" in current) return current;
-      return liveAppState(routeTenantId, projectId, current.shown);
+      if (!("app" in current)) return current;
+      return liveAppState(routeTenantId, projectId, current.app.shown);
     },
 
     // The project is open: its app runs from the project's current files until no one has had it
@@ -1960,9 +1975,9 @@ export function createArtifactService(
       projectId: string,
     ): Promise<LiveApp> {
       const current = await runnableApp(actor, projectId);
-      if ("state" in current) return current;
-      await liveApps!.runner.keepAlive(projectId, current);
-      return liveAppState(routeTenantId, projectId, current.shown);
+      if (!("app" in current)) return current;
+      await liveApps!.runner.keepAlive(projectId, current.app, current.run);
+      return liveAppState(routeTenantId, projectId, current.app.shown);
     },
 
     // The project's saved app, never a coder's work in progress: the commit at the tip of its app

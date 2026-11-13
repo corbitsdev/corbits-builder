@@ -5,6 +5,8 @@ export type Found = {
   // The folder's name under plugins, which errors name until the manifest is checked.
   folder: string;
   manifest: unknown;
+  // Whether the folder holds a file, by its path there.
+  has(path: string): Promise<boolean>;
   // The default export of a module the manifest names, by its path there.
   module(path: string): Promise<unknown>;
   // A text file the manifest names, by its path there.
@@ -32,6 +34,7 @@ export async function readPluginFolder(plugins: string): Promise<Found[]> {
       return {
         folder,
         manifest,
+        has: (named: string) => Bun.file(resolve(root, named)).exists(),
         module: async (named: string) =>
           (await import(resolve(root, named))).default,
         text: (named: string) => Bun.file(resolve(root, named)).text(),

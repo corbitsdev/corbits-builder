@@ -14,11 +14,19 @@ import { CheckRan } from "@corbits-builder/schemas/artifact";
 import { resolveWorkflowProjectScope } from "../workflows/project-scope.ts";
 import { WorkflowHttpError, workflowHttpJson } from "../workflows/http-json.ts";
 import { savedResultTools } from "../workflows/saved-result-tools.ts";
-import { APP_STATUS_TOOL, createCodingTools } from "./coding-tools.ts";
+import { type } from "arktype";
+import {
+  APP_STATUS_TOOL,
+  AppStatusInput,
+  createCodingTools,
+  startedRun,
+} from "./coding-tools.ts";
 import {
   clearCommandProgress,
   createPosixBuildExecutor,
   noteCommandProgress,
+  type DevApp,
+  type Running,
 } from "./posix-sandbox.ts";
 import { browserTools } from "./browser.ts";
 import {
@@ -181,7 +189,12 @@ const succeeded = (result: ToolResult) =>
   !result.isError && !String(result.content).startsWith("exit code ");
 
 // The calls that can change the app's files.
-const VERSIONED = new Set([...WRITES, "run_shell", PACKAGE_INSTALL_TOOL]);
+const VERSIONED = new Set([
+  ...WRITES,
+  "run_shell",
+  APP_STATUS_TOOL,
+  PACKAGE_INSTALL_TOOL,
+]);
 // Bounds teardown: the wait for the last version, then the revoke.
 const VERSION_CLOSE_MS = 15_000;
 // Every coder finishes when check-stack passes. Its verdict heads a line of its output, however the
@@ -223,6 +236,26 @@ const doneChecksDefinition = {
   inputSchema: { ...DoneChecksCall.toJsonSchema() },
 };
 
+// How long app_status waits for a program it starts to print its waitFor line.
+const READY_MS = 60_000;
+const READY_POLL_MS = 250;
+
+/** Starts next, or keeps what runs when next is undefined, and waits until it is ready or ends. */
+async function startUntilReady(
+  executor: Awaited<ReturnType<typeof createPosixBuildExecutor>>,
+  next: Running | undefined,
+  signal: AbortSignal,
+): Promise<DevApp> {
+  let app = await executor.app(next);
+  const deadline = Date.now() + READY_MS;
+  while (app.running && !app.ready && Date.now() < deadline) {
+    signal.throwIfAborted();
+    await Bun.sleep(READY_POLL_MS);
+    app = executor.appState() ?? app;
+  }
+  return app;
+}
+
 // A cold install; under the executor's own ceiling.
 const SETUP_TIMEOUT_MS = 115_000;
 // What the person reads while the workspace installs its packages, which can take the whole timeout.
@@ -262,7 +295,14 @@ export function createSidecarCodingTools(policy: {
               : { name: PACKAGE_INSTALL_TOOL },
           ]
         : []),
-      ...(design ? [] : [{ name: APP_STATUS_TOOL }]),
+      // It runs the command it is given, so it asks as the shell does.
+      ...(design
+        ? []
+        : [
+            policy.approval === "ask"
+              ? { name: APP_STATUS_TOOL, approval: "ask" as const }
+              : { name: APP_STATUS_TOOL },
+          ]),
       ...(policy.workspace === "app" ? [{ name: DONE_CHECKS_TOOL }] : []),
       ...(design ? [{ name: CHECK_DESIGN_TOOL }] : []),
       ...(policy.browser?.definitions ?? []),
@@ -342,9 +382,9 @@ export function createSidecarCodingTools(policy: {
       let setupFailure: string | undefined;
       // Writes the ready marker while setup has not yet succeeded.
       let markReady: (() => Promise<void>) | undefined;
-      // Whether the project's code serves a web app that runs in the workspace for the agent to
-      // open, check and report on, as the hub said when the workspace started.
-      let serves = false;
+      // How the project's code runs while it is worked on, and whether it serves a web app the
+      // agent opens, checks and reports on, as the hub said when the workspace started.
+      let declared: Running | undefined;
       let browser:
         | {
             url: string;
@@ -362,7 +402,9 @@ export function createSidecarCodingTools(policy: {
             signal,
           );
           const workspace = await realpath(env.toolCwd);
-          serves = !design && scope.stack?.serves === true;
+          const run = design ? undefined : scope.stack?.run;
+          const serves = run !== undefined && scope.stack?.serves === true;
+          declared = run && { run, page: serves };
           const app =
             policy.workspace === "app"
               ? (opened ??= createAppRepository({
@@ -393,7 +435,7 @@ export function createSidecarCodingTools(policy: {
               commands: design ? { "check-app": CHECK_APP } : CHECKS,
               commandModules: CHECK_MODULES,
               browser: policy.browser !== undefined,
-              app: serves,
+              app: !design,
               browsers: await sharedBrowser(),
               ...(policy.workspace === "app"
                 ? { readOnly: [".builder", INPUTS_DIRECTORY] }
@@ -435,8 +477,9 @@ export function createSidecarCodingTools(policy: {
                 setupFailure = `workspace_setup_failed: setup ran ${setup.command} and it did not finish. The files are as saved and every tool works on them. Its output:\n${String(result.content).slice(-2000)}\n${setup.advice}`;
               }
             }
-            // A web app is live from the coder's first call, so it can open it whenever it wants.
-            if (serves) await executor.app();
+            // The project's own program is live from the coder's first call, so it can open it
+            // whenever it wants.
+            if (declared) await executor.app(declared);
           } catch (error) {
             await executor.dispose();
             throw error;
@@ -456,15 +499,47 @@ export function createSidecarCodingTools(policy: {
       const lazySandbox: ToolRunner = {
         run: async (call, signal) => {
           const ready = open(signal);
+          const command = (call.arguments as { command?: unknown } | undefined)
+            ?.command;
+          if (
+            (call.name === "run_shell" || call.name === APP_STATUS_TOOL) &&
+            typeof command === "string" &&
+            backgrounds(command)
+          )
+            return {
+              callId: call.id,
+              content:
+                call.name === "run_shell"
+                  ? `refused: nothing runs in the background here, so start a program that keeps running, such as a server, a bot or a desktop app, with ${APP_STATUS_TOOL}.`
+                  : `refused: ${APP_STATUS_TOOL} keeps the program running and stops it and everything it starts itself, so give the command without &, nohup, disown or setsid.`,
+              isError: true,
+            };
           if (call.name === APP_STATUS_TOOL) {
             const executor = await ready;
-            if (!serves)
+            const input = AppStatusInput(call.arguments);
+            if (input instanceof type.errors)
               return {
                 callId: call.id,
-                content:
-                  "nothing to open: the project's code serves no web app, so none runs here. Try the program the way its README says.",
+                content: `invalid_input: ${input.summary}`,
+                isError: true,
               };
-            const app = await executor.app();
+            // Nothing named keeps what runs, or starts the project's own program when nothing does.
+            let next: Running | undefined;
+            if (input.command === undefined)
+              next = executor.appState() ? undefined : declared;
+            else if (input.command === declared?.run.command) next = declared;
+            else
+              next = {
+                run: startedRun(input.command, input.waitFor),
+                page: false,
+              };
+            if (!next && !executor.appState())
+              return {
+                callId: call.id,
+                content: `nothing runs: the project declares no program of its own, so give ${APP_STATUS_TOOL} the command that starts one.`,
+                isError: true,
+              };
+            const app = await startUntilReady(executor, next, signal);
             const answers = await fetch(app.url, {
               signal: AbortSignal.timeout(3000),
             }).then(
@@ -481,18 +556,6 @@ export function createSidecarCodingTools(policy: {
               ...(app.running ? {} : { isError: true }),
             };
           }
-          const command = (call.arguments as { command?: unknown } | undefined)
-            ?.command;
-          if (
-            call.name === "run_shell" &&
-            typeof command === "string" &&
-            backgrounds(command)
-          )
-            return {
-              callId: call.id,
-              content: `refused: a command must finish before it returns, so nothing runs in the background here. ${FINISH_CHECK} starts whatever it checks itself.`,
-              isError: true,
-            };
           const workspace = await realpath(env.toolCwd);
           const path = (call.arguments as { path?: unknown } | undefined)?.path;
           // A result the size cap spilled or compaction trimmed is saved under a tool-output:/// URI;

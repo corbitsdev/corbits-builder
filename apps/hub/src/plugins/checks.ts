@@ -389,7 +389,7 @@ export function createChecks(deps: {
     input: unknown,
     caller: { triggeredBy: string; waited: boolean; origin: string },
   ) => {
-    const checked = action.check(input);
+    const checked = action.validate(input);
     if (!checked.ok)
       throw new ProjectError(400, "invalid_check_input", {
         hint: checked.text,

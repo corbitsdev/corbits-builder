@@ -1,5 +1,4 @@
 import { defineScreen } from "@corbits-builder/plugin";
-import manifest from "../../package.json";
 import { Input, Output } from "./schema.ts";
 
 export default defineScreen({
@@ -10,8 +9,8 @@ export default defineScreen({
   describe: {
     summary:
       'Opens the design\'s clickable mockup over the whole page, where the person tries it, comments on places in it, and approves the design or asks for changes. Builder shows the newest design itself, the live draft while a designer works; do not pass it. The answer is { decision: "approved" }, and Builder has then filed the approved option as the design, or { decision: "changes", comments, message } for the designer, each comment naming the place it points at.',
-    when: manifest.builder.actions.review.when,
-    unless: manifest.builder.actions.review.unless,
+    when: "The design is ready for the person to look at, or needs their approval.",
+    unless: "The person only asked a question about the design.",
     fields: {
       note: {
         about:

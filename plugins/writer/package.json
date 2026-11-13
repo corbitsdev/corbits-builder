@@ -63,10 +63,6 @@
     },
     "actions": {
       "write": {
-        "runs": "workflow",
-        "when": "The person asks for any document that has no action of its own, such as a problem brief, constraints, a comparison of approaches, a competitor analysis, a security review or a user manual, or wants one revised.",
-        "unless": "The document is the product requirements or the build plan, which have actions of their own, or the person wants the thing itself built or changed.",
-        "input": "./src/write.ts",
         "reads": [
           "brand.guidelines"
         ],
@@ -78,10 +74,6 @@
         }
       },
       "write-requirements": {
-        "runs": "workflow",
-        "when": "Something is to be built, of any kind, and what it must do should be written down or revised with what the person said.",
-        "unless": "The person wants the thing itself built or changed, or only a mockup.",
-        "input": "./src/write-requirements.ts",
         "reads": [
           "brand.guidelines"
         ],
@@ -94,10 +86,6 @@
         }
       },
       "write-build-plan": {
-        "runs": "workflow",
-        "when": "Something is to be built and needs a build plan, or its plan revised: the stack, the phases of work and the checks.",
-        "unless": "What it must do is still being settled with the person.",
-        "input": "./src/write-build-plan.ts",
         "reads": [
           "brand.guidelines"
         ],
@@ -118,10 +106,6 @@
         }
       },
       "review": {
-        "runs": "workflow",
-        "when": "You want a second opinion on a filed document before you rely on it or put it to the person.",
-        "unless": "The person asked for something you can start directly.",
-        "input": "./src/review.ts",
         "requires": [
           [
             "filed:{kind}"
@@ -133,11 +117,6 @@
         }
       },
       "approve": {
-        "runs": "screen",
-        "when": "Filed documents are ready for the person to approve, with no open questions left.",
-        "unless": "The person chose to let you decide approvals, or the work is a change to something already built.",
-        "screen": "./src/approve/screen.ts",
-        "view": "./src/approve/view.tsx",
         "requires": [
           [
             "filed:{kinds}"

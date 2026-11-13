@@ -395,7 +395,7 @@ const NOT_RUN = "was not run";
  * A ready-made check's input, every field it names given as text and none other; or the refusal,
  * every wrong field at once.
  */
-export function checkFields(
+export function validateFields(
   name: string,
   fields: readonly string[],
   raw: unknown,
@@ -427,12 +427,12 @@ export function checkFields(
 }
 
 /** A custom check's input as its own schema takes it, or the refusal. */
-export function checkCodeInput(
+export function validateCodeInput(
   name: string,
   code: Check<unknown>,
   raw: unknown,
 ): { ok: true; input: unknown } | Refused {
-  if (!code.input) return checkFields(name, [], raw);
+  if (!code.input) return validateFields(name, [], raw);
   const input = code.input(raw);
   if (!(input instanceof type.errors)) return { ok: true, input };
   const refusal = { wrong: wrongFields(input) };

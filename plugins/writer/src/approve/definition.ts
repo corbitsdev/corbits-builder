@@ -1,5 +1,4 @@
 import { defineScreen } from "@corbits-builder/plugin";
-import manifest from "../../package.json";
 import { Input, Output } from "./schema.ts";
 
 export default defineScreen({
@@ -10,8 +9,9 @@ export default defineScreen({
   describe: {
     summary:
       "Puts filed documents in front of the person to approve, each at its current version, with a way to open each. The answer is { approved: [{ kind, artifactId, version }] }, and Builder has then recorded the approval of exactly those versions; if they write back instead, what they wrote is their answer.",
-    when: manifest.builder.actions.approve.when,
-    unless: manifest.builder.actions.approve.unless,
+    when: "Filed documents are ready for the person to approve, with no open questions left.",
+    unless:
+      "The person chose to let you decide approvals, or the work is a change to something already built.",
     fields: {
       kinds: {
         about:

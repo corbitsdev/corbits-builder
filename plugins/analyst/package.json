@@ -32,10 +32,6 @@
     },
     "actions": {
       "analyse": {
-        "runs": "workflow",
-        "when": "The person wants a question worked through with numbers and the result filed: what a market is worth, what a customer earns or costs, how a price or funnel plays out.",
-        "unless": "The task has no figures to work through.",
-        "input": "./src/analyse.ts",
         "returns": [
           "filed:{kind}"
         ],

@@ -241,6 +241,10 @@
       "name": "@corbits-builder/build-web-app-express",
       "version": "0.1.0-rc.3",
     },
+    "plugins/chat-bot-skills": {
+      "name": "@corbits-builder/chat-bot-skills",
+      "version": "0.1.0-rc.3",
+    },
     "plugins/cloudflare": {
       "name": "@corbits-builder/cloudflare",
       "version": "0.1.0-rc.3",
@@ -296,6 +300,10 @@
       "devDependencies": {
         "@types/react": "19.3.0",
       },
+    },
+    "plugins/desktop-app-skills": {
+      "name": "@corbits-builder/desktop-app-skills",
+      "version": "0.1.0-rc.3",
     },
     "plugins/presenter": {
       "name": "@corbits-builder/presenter",
@@ -912,6 +920,8 @@
 
     "@corbits-builder/build-web-app-express": ["@corbits-builder/build-web-app-express@workspace:plugins/build-web-app-express"],
 
+    "@corbits-builder/chat-bot-skills": ["@corbits-builder/chat-bot-skills@workspace:plugins/chat-bot-skills"],
+
     "@corbits-builder/client": ["@corbits-builder/client@workspace:packages/client"],
 
     "@corbits-builder/cloudflare": ["@corbits-builder/cloudflare@workspace:plugins/cloudflare"],
@@ -923,6 +933,8 @@
     "@corbits-builder/coordinator": ["@corbits-builder/coordinator@workspace:workflows/coordinator"],
 
     "@corbits-builder/designer": ["@corbits-builder/designer@workspace:plugins/designer"],
+
+    "@corbits-builder/desktop-app-skills": ["@corbits-builder/desktop-app-skills@workspace:plugins/desktop-app-skills"],
 
     "@corbits-builder/hub": ["@corbits-builder/hub@workspace:apps/hub"],
 

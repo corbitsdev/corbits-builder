@@ -462,3 +462,21 @@ test("taking the plan's group out stops the project following it, and so does th
   expect((await built.execute(designerMockup)).isError).toBeUndefined();
   expect(built.state.following).toEqual([]);
 });
+
+test("discover lists the project's setup screen with its guidance", async () => {
+  const built = project([filed("app")]);
+  const found = await built.discover({ group: "setup" });
+  expect(found.content).toContain(
+    "  setup (screen): Something built needs the person to set up",
+  );
+  const guidance = await built.discover({ plugin: "project", action: "setup" });
+  expect(guidance.content).toContain(
+    "project setup: Shows the person, as a checklist under a title, the steps they must take outside Builder",
+  );
+  expect(guidance.content).toContain(
+    "Not when: It would ask the person for a secret's value",
+  );
+  expect(guidance.content).toContain(
+    "setting: the NAME of the environment setting",
+  );
+});

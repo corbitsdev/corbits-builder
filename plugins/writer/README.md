@@ -24,8 +24,11 @@ and the coordinator weighs its findings as advice.
 
 ## Layout
 
-- `src/write.ts`, `src/write-requirements.ts`, `src/write-build-plan.ts`,
-  `src/review.ts`: each action's input and how the coordinator fills it.
+- `src/write/`, `src/write-requirements/`, `src/write-build-plan/`,
+  `src/review/`: one folder per action, whose `definition.ts` holds its input
+  and how the coordinator fills it: its summary, when to use it and when not,
+  and each field. The manifest keeps only what the folder cannot say, such as
+  what the action requires and returns and which workflow it starts.
 - `src/start.ts`, `src/start-document.ts`, `src/start-review.ts`: the
   starters of the per-kind writers, the writer of any document and the
   reviewer. Each writes its run's assignment from the filed documents.
@@ -42,7 +45,8 @@ and the coordinator weighs its findings as advice.
 - `src/contract.ts`: `writerTaskMessage`, the schema-checked assignment.
 - `src/reviewer/`: the reviewer's prompt, agent and workflow, built the same
   way.
-- `src/approve/`: the approve screen.
+- `src/approve/`: the approve screen: its `definition.ts`, which validates the
+  input and prepares what `view.tsx` draws.
 - `skills/`: one skill per kind of document that has one (problem brief,
   constraints, approaches, product requirements, build plan), each a
   `SKILL.md` and reference exemplars, each usable on its own.

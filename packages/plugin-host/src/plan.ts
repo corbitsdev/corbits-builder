@@ -139,7 +139,7 @@ export function planState(
       input: step.input,
       askFirst: step.askFirst,
       state: "not_started",
-      kind: action.builder.runs,
+      kind: action.kind,
     };
     if (step.goAhead) view.goAhead = step.goAhead;
     if (step.cancelled) view.cancelled = step.cancelled;
@@ -162,7 +162,7 @@ export function planState(
     }
     // A check is recorded on its checked input, so the step's is checked the same way to match.
     const checked = isCheckAction(action)
-      ? action.check(step.input)
+      ? action.validate(step.input)
       : undefined;
     const input = checked?.ok ? checked.input : step.input;
     const record = records.checks.find(

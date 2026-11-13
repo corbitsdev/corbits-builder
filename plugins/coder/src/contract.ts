@@ -10,9 +10,9 @@ export const CODER_INPUTS = [
 ] as const;
 
 // What a first build can start from, by name: the folder of files the hub writes onto the
-// project's repository before the coder starts, whether that code serves a web app, the command
-// that prepares a fresh workspace, what an agent can do when that command fails, and the commands
-// the hub saves as the project's stack.checks.
+// project's repository before the coder starts, whether that code serves a web app, how it runs
+// while it is worked on, the command that prepares a fresh workspace, what an agent can do when
+// that command fails, and the commands the hub saves as the project's stack.checks.
 export const STARTERS = manifest.coder.starters;
 export type StarterName = keyof typeof STARTERS;
 
@@ -23,13 +23,23 @@ export const STARTER_NAMES = Object.keys(STARTERS).filter(isStarterName);
 
 /**
  * What code that began from a starter declares of itself, by the project's stack.starter: the
- * command that prepares a fresh workspace, what to do when it fails, and whether it serves a web
- * app. Code that began from none declares nothing.
+ * command that prepares a fresh workspace, what to do when it fails, whether it serves a web app,
+ * and how it runs. Code that began from none declares nothing.
  */
 export function declaredStack(starter: unknown) {
   if (!isStarterName(starter)) return undefined;
   const { setup, setupFailed, serves } = STARTERS[starter];
-  return { setup, setupFailed, serves };
+  const run = declaredRun(starter);
+  return run
+    ? { setup, setupFailed, serves, run }
+    : { setup, setupFailed, serves };
+}
+
+/** How code that began from the starter runs while it is worked on, or undefined when it declares none. */
+export function declaredRun(starter: unknown) {
+  if (!isStarterName(starter)) return undefined;
+  const facts = STARTERS[starter];
+  return "run" in facts ? facts.run : undefined;
 }
 
 // A coder started from the person's words alone: a change to an imported project that has filed no

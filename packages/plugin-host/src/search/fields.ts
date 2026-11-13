@@ -11,7 +11,7 @@ export const fields: Strategy = (query, plugins) => {
     const weighted: [number, string[]][] = [
       [3, [builder.handle.replaceAll("-", " ")]],
       [3, builder.groups],
-      [3, [builder.when, ...actions.map((action) => action.builder.when)]],
+      [3, [builder.when, ...actions.map((action) => action.when)]],
       [3, builder.examples ?? []],
       [1, [description, ...actions.map((action) => action.description)]],
     ];

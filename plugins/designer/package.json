@@ -10,21 +10,21 @@
     "./agent": "./src/agent.ts",
     "./contract": "./src/contract.ts",
     "./skills": "./src/skills.ts",
-    "./mockup": "./src/mockup.ts",
-    "./pick-fonts": "./src/pick-fonts/screen.ts",
+    "./mockup": "./src/mockup/definition.ts",
+    "./pick-fonts": "./src/pick-fonts/definition.ts",
     "./pick-fonts/schema": "./src/pick-fonts/schema.ts",
     "./pick-fonts/view": "./src/pick-fonts/view.tsx",
-    "./pick-fonts/data": "./data/fonts.json",
-    "./pick-colours": "./src/pick-colours/screen.ts",
+    "./pick-fonts/data": "./src/pick-fonts/data.json",
+    "./pick-colours": "./src/pick-colours/definition.ts",
     "./pick-colours/schema": "./src/pick-colours/schema.ts",
     "./pick-colours/view": "./src/pick-colours/view.tsx",
-    "./review": "./src/review/screen.ts",
+    "./review": "./src/review/definition.ts",
     "./review/schema": "./src/review/schema.ts",
     "./review/view": "./src/review/view.tsx",
-    "./choose": "./src/choose/screen.ts",
+    "./choose": "./src/choose/definition.ts",
     "./choose/schema": "./src/choose/schema.ts",
     "./choose/view": "./src/choose/view.tsx",
-    "./looks": "./src/looks/screen.ts",
+    "./looks": "./src/looks/definition.ts",
     "./looks/schema": "./src/looks/schema.ts",
     "./looks/view": "./src/looks/view.tsx",
     "./packages/*": "./src/packages/*.ts"
@@ -69,10 +69,6 @@
     },
     "actions": {
       "mockup": {
-        "runs": "workflow",
-        "when": "The person wants to see how an interface could look: a mockup, design options to compare, or another pass on a design option.",
-        "unless": "They want something already built changed, or to pick fonts or colours on a screen.",
-        "input": "./src/mockup.ts",
         "reads": [
           "brand.guidelines",
           "look.font-primary",
@@ -91,19 +87,8 @@
           "review"
         ]
       },
-      "looks": {
-        "runs": "screen",
-        "when": "A first set of mockups is about to start and the person has not said how many looks they want to compare.",
-        "unless": "They already said how many looks they want, mockups were made already, or they have handed their approvals over to Builder.",
-        "screen": "./src/looks/screen.ts",
-        "view": "./src/looks/view.tsx"
-      },
+      "looks": {},
       "review": {
-        "runs": "screen",
-        "when": "The design is ready for the person to look at, or needs their approval.",
-        "unless": "The person only asked a question about the design.",
-        "screen": "./src/review/screen.ts",
-        "view": "./src/review/view.tsx",
         "requires": [
           [
             "filed:design_option"
@@ -120,11 +105,6 @@
         ]
       },
       "choose": {
-        "runs": "screen",
-        "when": "Several design concepts are filed and the person is to pick the one they want.",
-        "unless": "Only one design is filed, which review shows, or the person only asked a question about the designs.",
-        "screen": "./src/choose/screen.ts",
-        "view": "./src/choose/view.tsx",
         "requires": [
           [
             "filed:design_option"
@@ -140,23 +120,12 @@
         ]
       },
       "pick-fonts": {
-        "runs": "screen",
-        "when": "The person is unhappy with the typeface or unsure which font would suit.",
-        "unless": "They already said exactly which font they want, or they want text bigger or smaller, or a whole new look.",
-        "screen": "./src/pick-fonts/screen.ts",
-        "view": "./src/pick-fonts/view.tsx",
-        "data": "./data/fonts.json",
         "reads": [
           "look.font-primary",
           "look.font-secondary"
         ]
       },
       "pick-colours": {
-        "runs": "screen",
-        "when": "The person is unhappy with the colours or unsure which colours would suit the brand or the background.",
-        "unless": "They already said exactly which colour they want, or they want another font, bigger or smaller text, or a whole new look.",
-        "screen": "./src/pick-colours/screen.ts",
-        "view": "./src/pick-colours/view.tsx",
         "reads": [
           "look.color-primary",
           "look.color-background"

@@ -50,6 +50,7 @@ import {
   readyPlanFollowed,
   readyPlanIsAdded,
   planLine,
+  optionalLeft,
   PLAN_STEP_REMINDER,
   stepAwaitsGoAhead,
   stepDeclined,
@@ -579,7 +580,7 @@ function listing(catalog: Catalog, plugin: Plugin, state: ProjectState) {
       plugin.actions.map((action) => ({
         action: action.action,
         screen: isScreenAction(action),
-        when: action.builder.when,
+        when: action.when,
         now: now(catalog, action, state),
       })),
     );
@@ -688,7 +689,7 @@ export function planStepRefusal(
   // A ready-made plan's step whose input only the work so far can say is held with none, and execute
   // checks the input it starts on.
   if (isWorkflowAction(action) && isEmpty(step.input)) return undefined;
-  const checked = action.check(step.input);
+  const checked = action.validate(step.input);
   return checked.ok ? undefined : checked.text;
 }
 
@@ -788,7 +789,7 @@ function matchingStep(
     if (step.state === "done") return false;
     if (step.plugin !== action.plugin || step.action !== action.action)
       return false;
-    const checked = action.check(step.input);
+    const checked = action.validate(step.input);
     return checked.ok && isDeepStrictEqual(checked.input, input);
   });
   return matching.length === 1 ? matching[0]?.id : undefined;
@@ -856,7 +857,7 @@ async function executing(
   if (isScreenAction(action))
     return { screen: action, input: asked.input ?? {} };
   const state = await projectState(catalog, project);
-  const checked = action.check(asked.input ?? {});
+  const checked = action.validate(asked.input ?? {});
   if (!checked.ok) return { refused: checked.text };
   const { plan } = state;
   const declined = heldStep(
@@ -1370,6 +1371,30 @@ function removed(plan: PlanStepWrite[], ids: readonly string[]) {
   return plan.filter(kept);
 }
 
+const SETTLED = new Set(["done", "skipped", "cancelled"]);
+
+// The plan as it stands, and once only optional steps are left unstarted, what is owed on them.
+async function planAnswer(
+  saved: { steps: readonly SavedPlanStep[] },
+  project: Project,
+) {
+  const answer = `${JSON.stringify(saved)}\n\n${PLAN_STEP_REMINDER}`;
+  const steps = actionSteps(saved.steps);
+  const left = steps.filter(
+    (step) => step.optional && step.state === "not_started",
+  );
+  if (
+    left.length === 0 ||
+    steps.some((step) => !step.optional && !SETTLED.has(step.state))
+  )
+    return answer;
+  const { asksApprovals } = await project.state();
+  return `${answer}\n\n${optionalLeft(
+    left.map(({ title }) => title),
+    asksApprovals,
+  )}`;
+}
+
 /**
  * The project's plan: shown, replaced, added to or taken from. A change is saved whole, each saved
  * step under its id, and answers with the plan as it then stands; a plan the catalog refuses is not
@@ -1387,9 +1412,7 @@ export async function managePlan(
   const wrong = planCallProblems(catalog, asked);
   if (wrong.length > 0) return wrongPlanCall(catalog, wrong);
   if (asked.operation === "show")
-    return {
-      content: `${JSON.stringify(await project.plan())}\n\n${PLAN_STEP_REMINDER}`,
-    };
+    return { content: await planAnswer(await project.plan(), project) };
   const named =
     asked.plan === undefined ? undefined : catalog.installed(asked.plan);
   const readyPlan = named && isReadyPlan(named) ? named : undefined;
@@ -1423,7 +1446,7 @@ export async function managePlan(
       "steps" in step && step.plan !== undefined ? [step.plan] : [],
     ),
   );
-  const plan = `${JSON.stringify(saved)}\n\n${PLAN_STEP_REMINDER}`;
+  const plan = await planAnswer(saved, project);
   if (!readyPlan) return { content: plan };
   // The coordinator reads the guidance of the ready-made plan it added and where each step stands.
   const state = await projectState(catalog, project);

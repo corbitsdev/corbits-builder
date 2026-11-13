@@ -317,6 +317,14 @@ export const stepAwaitsGoAhead = (name: string, title: string) =>
 export const PLAN_STEP_REMINDER =
   "When you start one of these steps with execute, pass its id as step.";
 
+/** The optional steps not started once every other step is done, which a done report once left out silently. */
+export const optionalLeft = (titles: readonly string[], asks: boolean) => {
+  const named = titles.map((title) => `"${title}"`).join(", ");
+  return asks
+    ? `Every other step is done. Offer these optional steps to the person as a quick yes or no before saying the work is done, and say which they left out: ${named}.`
+    : `Every other step is done. The person lets you decide on these optional steps; when you say the work is done, say which you left out: ${named}.`;
+};
+
 /** The plan in a line for discover: how many steps it holds and which the person declined. */
 export function planLine(
   steps: readonly { title: string; declined?: unknown }[],
@@ -341,11 +349,8 @@ const screenCall = (plugin: string, action: string) =>
 export function checkText(
   name: string,
   summary: string,
-  {
-    when,
-    unless,
-    speed,
-  }: Pick<CheckActionBuilder, "when" | "unless" | "speed">,
+  { when, unless }: { when: string; unless?: string | undefined },
+  speed: CheckActionBuilder["speed"],
   { requires, input }: { requires: string; input: string },
 ) {
   const lines = [

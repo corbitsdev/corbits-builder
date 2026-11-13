@@ -5,12 +5,12 @@ import { readPluginFolder } from "./folder.ts";
 
 const json = (value: unknown) => JSON.stringify(value);
 
-// folder.ts as a bundle needs it: every file the folder's manifests name, imported or inlined.
+// folder.ts as a bundle needs it: every file the folder's manifests lead to, imported or inlined.
 async function bundledFolder(plugins: string) {
   const imports: string[] = [];
   const entries: string[] = [];
   for (const found of await readPluginFolder(plugins)) {
-    const { modules, texts, folders } = manifestFiles(found);
+    const { modules, texts, folders, present } = await manifestFiles(found);
     const imported = modules.map((path) => {
       const name = `module${imports.length}`;
       imports.push(
@@ -29,7 +29,7 @@ async function bundledFolder(plugins: string) {
       ),
     );
     entries.push(
-      `{ folder: ${json(found.folder)}, manifest: ${json(found.manifest)}, modules: { ${imported.join(", ")} }, texts: { ${inlined.join(", ")} }, files: { ${listed.join(", ")} } }`,
+      `{ folder: ${json(found.folder)}, manifest: ${json(found.manifest)}, present: ${json(present)}, modules: { ${imported.join(", ")} }, texts: { ${inlined.join(", ")} }, files: { ${listed.join(", ")} } }`,
     );
   }
   return [
@@ -40,9 +40,10 @@ async function bundledFolder(plugins: string) {
     `  return files[path];`,
     `};`,
     `export const readPluginFolder = async () =>`,
-    `  folders.map(({ folder, manifest, modules, texts, files }) => ({`,
+    `  folders.map(({ folder, manifest, present, modules, texts, files }) => ({`,
     `    folder,`,
     `    manifest,`,
+    `    has: async (path) => present.includes(path),`,
     `    module: async (path) => named(folder, modules, path),`,
     `    text: async (path) => named(folder, texts, path),`,
     `    files: async (path) => named(folder, files, path),`,

@@ -1,8 +1,12 @@
 import { describe, expect, test } from "bun:test";
-import { checkInput, checkOutput, guidanceText } from "@corbits-builder/plugin";
-import raw from "../../data/fonts.json";
+import {
+  validateInput,
+  validateOutput,
+  guidanceText,
+} from "@corbits-builder/plugin";
+import raw from "./data.json";
 import { Fonts, lists } from "./schema.ts";
-import screen from "./screen.ts";
+import screen from "./definition.ts";
 
 const fonts = Fonts.assert(raw);
 const font = (name: string) => fonts.find((each) => each.name === name);
@@ -12,7 +16,7 @@ const project = {
   "look.font-secondary": "Space Mono",
 };
 const check = (input: unknown) =>
-  checkInput("designer pick-fonts", screen, input, fonts, project);
+  validateInput("designer pick-fonts", screen, input, fonts, project);
 
 describe("pick-fonts input", () => {
   test("no input at all offers every font and the fonts in use", () => {
@@ -104,7 +108,7 @@ describe("pick-fonts guidance and output", () => {
 
   test("a chosen font without its license is rejected", () => {
     const inter = fonts.find((font) => font.name === "Inter");
-    const result = checkOutput("designer pick-fonts", screen, {
+    const result = validateOutput("designer pick-fonts", screen, {
       primary: { name: "Inter", lists: ["sans"] },
       secondary: inter,
     });

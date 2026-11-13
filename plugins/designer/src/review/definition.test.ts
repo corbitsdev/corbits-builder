@@ -1,9 +1,9 @@
 import { describe, expect, test } from "bun:test";
-import { checkInput, checkOutput } from "@corbits-builder/plugin";
-import screen from "./screen.ts";
+import { validateInput, validateOutput } from "@corbits-builder/plugin";
+import screen from "./definition.ts";
 
 const check = (output: unknown) =>
-  checkOutput("designer review", screen, output);
+  validateOutput("designer review", screen, output);
 
 const box: [number, number, number, number] = [12, 40, 120, 32];
 // A comment as the frame reports a click on the search link of the home screen.
@@ -62,7 +62,7 @@ describe("review output", () => {
 
 test("the coordinator passes only a note; the design is the host's", () => {
   const take = (input: unknown) =>
-    checkInput("designer review", screen, input, undefined, {}).ok;
+    validateInput("designer review", screen, input, undefined, {}).ok;
   expect(take({})).toBe(true);
   expect(take({ note: "The search link is bigger now." })).toBe(true);
   expect(take({ design: "v2" })).toBe(false);

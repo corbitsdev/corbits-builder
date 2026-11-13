@@ -58,30 +58,21 @@ const Common = type({
   "values?": { "[string]": ValueDeclaration },
 });
 
-// One thing a specialist does, with the facts it needs to start and the facts its finished work makes.
-const ActionBuilder = type({
-  when: "string > 0",
-  unless: "string > 0",
-  "requires?": Requires,
-  returns: Facts,
-});
+// What a plugin's manifest says of one action: only what its folder cannot. An action is the folder
+// src/<action>/, whose definition.ts default export holds its input, its guidance and, for a screen,
+// how its input is validated and prepared; with a view.tsx there the action is shown to the person,
+// with check proofs it is a check, and otherwise it starts work. A data.json there is data it ships.
 
 // Something put in front of the person: the coordinator opens it with question, naming the plugin
 // and the action, and the person's answer is the question's result. The project values it saves
-// are the ones its screen's writes maps from the answer.
+// are the ones its definition's writes maps from the answer.
 export const ScreenActionBuilder = type({
-  runs: "'screen'",
-  when: "string > 0",
-  unless: "string > 0",
-  screen: "string > 0",
-  // The module whose default export draws the screen in the interface.
-  view: "string > 0",
-  "data?": "string > 0",
+  "+": "reject",
   // What the project must have before the screen can draw anything, as a workflow action requires.
   "requires?": Requires,
   // Project values, by their registered names, that Builder supplies to the screen.
   "reads?": "string[]",
-  // The facts the person's answer can make true, each recorded from what the screen's approves
+  // The facts the person's answer can make true, each recorded from what the definition's approves
   // names; a templated fact names an input field, so the person approves only what was asked.
   "returns?": Facts,
   // "page" draws the screen over the whole room with the prompt box still in reach; without it the
@@ -93,10 +84,12 @@ export const ScreenActionBuilder = type({
 });
 export type ScreenActionBuilder = typeof ScreenActionBuilder.infer;
 
-// Another agent does the work in its own run.
-export const WorkflowActionBuilder = ActionBuilder.merge({
-  runs: "'workflow'",
-  input: "string > 0",
+// Another agent does the work in its own run, with the facts it needs to start and the facts its
+// finished work makes.
+export const WorkflowActionBuilder = type({
+  "+": "reject",
+  "requires?": Requires,
+  returns: Facts,
   // The installed workflow the host starts, and what that workflow's starter takes besides the input;
   // or an agent the plugin declares, which the host starts with its default starter.
   start: type({ workflow: "string > 0", "[string]": "unknown" }).or({
@@ -188,26 +181,23 @@ const Speed = type("'person'").or({
 });
 
 // Proves one thing about the project as saved and records whether it holds, with evidence: every
-// ready-made check in all, any ready-made check in any, or the code a module's default export runs,
-// as defineCheck makes one.
+// ready-made check in all, any ready-made check in any, or, with neither, the code its definition
+// runs, as defineCheck makes one.
 export const CheckActionBuilder = type({
-  runs: "'check'",
-  when: "string > 0",
-  "unless?": "string > 0",
+  "+": "reject",
   "requires?": Requires,
   returns: Facts,
   "all?": Proof.array().atLeastLength(1),
   "any?": Proof.array().atLeastLength(1),
-  "check?": "string > 0",
   "speed?": Speed,
   // When the hub runs the check again by itself: never, only when asked, unless stated; or on each
   // saved change to something its latest record read.
   "rerun?": "'never' | 'change'",
 }).narrow(
   (action, ctx) =>
-    [action.all, action.any, action.check].filter((made) => made !== undefined)
-      .length === 1 ||
-    ctx.mustBe("a check with exactly one of all, any and check"),
+    action.all === undefined ||
+    action.any === undefined ||
+    ctx.mustBe("a check with all or any, not both"),
 );
 export type CheckActionBuilder = typeof CheckActionBuilder.infer;
 
@@ -262,10 +252,9 @@ export const SpecialistBuilder = Common.merge({
   // The agents the host builds and installs for this plugin with no code of its own, by package
   // name; an action starts one with start: { agent }.
   "agents?": { "[string]": AgentBuilder },
-  actions: type({
-    "[string]":
-      WorkflowActionBuilder.or(ScreenActionBuilder).or(CheckActionBuilder),
-  }),
+  // Each action by its folder's name; its folder says which kind it is, and so which builder its
+  // entry is checked against.
+  actions: { "[string]": "object" },
 });
 export type SpecialistBuilder = typeof SpecialistBuilder.infer;
 
@@ -338,26 +327,8 @@ export type WrongField = {
   otherwise?: string;
 };
 
-// Every wrong field at once, so an agent fixing one is never refused again for the next. next
-// replaces the plain "call again with these corrected" where a refusal needs other advice.
-export type Refusal = { wrong: readonly WrongField[]; next?: string };
-
-export class RefusalError extends Error {
-  constructor(readonly refusal: Refusal) {
-    super(
-      refusal.wrong
-        .map(({ field, problem }) => `${field}: ${problem}`)
-        .join("; "),
-    );
-  }
-}
-
-export const isRefusal = (error: unknown): error is RefusalError =>
-  error instanceof RefusalError;
-
-export function refuse(refusal: Refusal): never {
-  throw new RefusalError(refusal);
-}
+// Every wrong field at once, so an agent fixing one is never refused again for the next.
+export type Refusal = { wrong: readonly WrongField[] };
 
 export type Field = {
   about: string;
@@ -382,6 +353,14 @@ export type Screen<In, Out, Data, Prepared> = {
   input: Type<In>;
   output: Type<Out>;
   data?: Type<Data>;
+  // The fields of an input its schema takes that the screen still cannot show, each with what is
+  // wrong; none when it can.
+  validate?: (
+    input: Type<In>["infer"],
+    data: Type<Data>["infer"],
+    project: ProjectValues,
+  ) => readonly WrongField[];
+  // What the view gets from a valid input.
   prepare?: (
     input: Type<In>["infer"],
     data: Type<Data>["infer"],
@@ -402,10 +381,10 @@ export const defineScreen = <In, Out, Data, Prepared>(
   screen: Screen<In, Out, Data, Prepared>,
 ) => screen;
 
-// A workflow action's input and how the coordinator fills it; when and unless are its manifest's.
+// A workflow action's input and how the coordinator fills it.
 export type Workflow<In> = {
   input: Type<In>;
-  describe: Pick<Describe<keyof Type<In>["inferIn"]>, "summary" | "fields">;
+  describe: Describe<keyof Type<In>["inferIn"]>;
 };
 
 export const defineWorkflow = <In>(workflow: Workflow<In>) => workflow;
@@ -513,19 +492,26 @@ export type ProjectView = {
   check(proof: Proof): Promise<CheckOutcome>;
 };
 
-/** A check's own code: what input it takes, and how it decides from the project as saved. */
+/**
+ * A check's definition: when to run it and, for a check whose manifest declares no proofs, its own
+ * code: what it proves, the input it takes and how it decides from the project as saved.
+ */
 export type Check<In> = {
+  describe: { summary?: string; when: string; unless?: string };
   input?: Type<In>;
-  run(view: ProjectView, input: In): CheckOutcome | Promise<CheckOutcome>;
+  run?(view: ProjectView, input: In): CheckOutcome | Promise<CheckOutcome>;
 };
 
 export const defineCheck = <In = Record<string, never>>(check: Check<In>) =>
   check;
 
-/** Whether a module's default export is a check's own code, as defineCheck makes it. */
+/** Whether a module's default export is a check's definition, as defineCheck makes it. */
 export const isCheck = (value: unknown): value is Check<unknown> =>
   isRecord(value) &&
-  typeof value["run"] === "function" &&
+  isRecord(value["describe"]) &&
+  typeof value["describe"]["when"] === "string" &&
+  value["describe"]["fields"] === undefined &&
+  (value["run"] === undefined || typeof value["run"] === "function") &&
   (value["input"] === undefined || typeof value["input"] === "function");
 
 // What a specialist is told to do. A placeholder instruction repeated across turns ends the
@@ -579,12 +565,14 @@ const refused = (
 const isRecord = (value: unknown): value is Record<string, unknown> =>
   typeof value === "object" && value !== null && !Array.isArray(value);
 
-/** Whether a module's default export is a workflow action's input, as defineWorkflow makes one. */
+/** Whether a module's default export is a workflow action's definition, as defineWorkflow makes one. */
 export const isWorkflow = (value: unknown): value is Workflow<unknown> =>
   isRecord(value) &&
   typeof value["input"] === "function" &&
   isRecord(value["describe"]) &&
   typeof value["describe"]["summary"] === "string" &&
+  typeof value["describe"]["when"] === "string" &&
+  typeof value["describe"]["unless"] === "string" &&
   isRecord(value["describe"]["fields"]);
 
 /** Whether a module's default export is a screen, as defineScreen makes one. */
@@ -635,7 +623,7 @@ function fineFields(raw: unknown, errors: ArkErrors) {
   );
 }
 
-export function checkInput<In, Out, Data, Prepared>(
+export function validateInput<In, Out, Data, Prepared>(
   handle: string,
   screen: Screen<In, Out, Data, Prepared>,
   rawInput: unknown,
@@ -652,19 +640,12 @@ export function checkInput<In, Out, Data, Prepared>(
       schemaRefusal(screen.describe.fields, input),
       fineFields(rawInput, input),
     );
-  try {
-    return {
-      ok: true,
-      input,
-      prepared: screen.prepare?.(input, data, project),
-    };
-  } catch (error) {
-    if (!isRefusal(error)) throw error;
-    return refused(handle, SHOWN, error.refusal, input);
-  }
+  const wrong = screen.validate?.(input, data, project) ?? [];
+  if (wrong.length > 0) return refused(handle, SHOWN, { wrong }, input);
+  return { ok: true, input, prepared: screen.prepare?.(input, data, project) };
 }
 
-export function checkOutput<In, Out, Data, Prepared>(
+export function validateOutput<In, Out, Data, Prepared>(
   handle: string,
   screen: Screen<In, Out, Data, Prepared>,
   rawOutput: unknown,
@@ -680,7 +661,7 @@ export function checkOutput<In, Out, Data, Prepared>(
   return { ok: true, output };
 }
 
-export function checkWorkflowInput<In>(
+export function validateWorkflowInput<In>(
   handle: string,
   workflow: Workflow<In>,
   rawInput: unknown,
@@ -775,8 +756,7 @@ export function refusalText(
   if (fine.length > 0)
     lines.push(`Your other fields were fine: ${fine.join(", ")}.`);
   lines.push(
-    refusal.next ??
-      `Call again with the same input and ${names.join(" and ")} corrected.`,
+    `Call again with the same input and ${names.join(" and ")} corrected.`,
   );
   return lines.join("\n");
 }

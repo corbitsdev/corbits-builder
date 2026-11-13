@@ -5,6 +5,10 @@ const ROUTE = /^\s*(routes?\s*=|\[\[routes\]\])/;
 
 // Without a route a Worker answers only on its workers.dev address.
 export default defineCheck({
+  describe: {
+    summary: "Proves the app's wrangler.toml routes the Worker to a domain.",
+    when: "Once the app is ready for Cloudflare, before deploying it to the person's own domain, which a Worker answers only through a route.",
+  },
   async run(view) {
     const config = await view.check(file("wrangler.toml"));
     if (!config.pass) return config;

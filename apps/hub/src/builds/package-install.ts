@@ -73,14 +73,15 @@ export function createPackageGate(workspace: string, executor: ToolRunner) {
 
   return {
     handles: (name: string) => name === PACKAGE_INSTALL_TOOL,
+    /** Refuses a command line that fetches packages around the gate. */
     async refuseShell(call: ToolCall): Promise<ToolResult | undefined> {
       const command = call.arguments["command"];
-      if (call.name !== "run_shell" || typeof command !== "string")
-        return undefined;
+      if (typeof command !== "string") return undefined;
       if (FETCHING_COMMAND.test(command))
         return refuse(call, {
           code: "package_install_refused",
-          summary: "Install packages with install_packages, not the shell.",
+          summary:
+            "Install packages with install_packages, not the shell, then run what they install with bun run, or with app_status when it keeps running.",
         });
       if (!BARE_INSTALL.test(command)) return undefined;
       const names = new Set<string>();

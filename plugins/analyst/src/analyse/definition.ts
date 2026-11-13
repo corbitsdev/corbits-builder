@@ -12,6 +12,8 @@ export default defineWorkflow({
   describe: {
     summary:
       "Has an analyst work through the numbers of a question, from the project's documents and figures it looks up on the web, and file the analysis as a document under kind.",
+    when: "The person wants a question worked through with numbers and the result filed: what a market is worth, what a customer earns or costs, how a price or funnel plays out.",
+    unless: "The task has no figures to work through.",
     fields: {
       instruction: {
         about:

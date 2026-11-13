@@ -77,9 +77,8 @@ export function withPluginHint(hint: PluginHint, message: string): string {
     .slice(0, MAX_HINTED)
     .flatMap(({ handle }) =>
       SCREENS.filter(
-        ({ plugin, builder }) =>
-          plugin === handle &&
-          [...words(builder.when)].some((word) => asked.has(word)),
+        ({ plugin, when }) =>
+          plugin === handle && [...words(when)].some((word) => asked.has(word)),
       ),
     );
   return hinted.length === 0 ? message : message + pluginHint(hinted);

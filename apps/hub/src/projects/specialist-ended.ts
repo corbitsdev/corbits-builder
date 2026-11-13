@@ -7,6 +7,7 @@ import { getLogger } from "@intx/log";
 import { decodeMail } from "@intx/mime";
 import { listMail } from "@intx/storage-isogit/node";
 import { runFailure } from "../artifacts/service.ts";
+import { agentDecidesApprovals } from "../config/preferences.ts";
 import { specialistEndedMessage } from "../config/specialist-ended.ts";
 import {
   endedRun,
@@ -14,11 +15,49 @@ import {
   projectCoordinator,
   runAction,
 } from "../db/schema.ts";
+import type { CoordinatorRepoDirSource } from "../mail/coordinator-question.ts";
+import { readCommittedTurns } from "../mail/conversation-turns.ts";
 import type { HubMail } from "../mail/hub-mail.ts";
 import { errorCode, requestErrorMetadata } from "../request-error.ts";
+import { runSteps } from "../run-stream.ts";
+import { loadSettings } from "../settings/policy.ts";
 import { spawnedWorkflowRole } from "../workflows/spawn-role.ts";
 
 const log = getLogger(["corbits-builder", "hub", "specialist-ended"]);
+
+// Enough of a failed run's end for the coordinator to name the cause without flooding its context.
+const LAST_CALLS = 5;
+const CALL_CLIP = 300;
+
+const clip = (text: string) =>
+  text.length > CALL_CLIP ? `${text.slice(0, CALL_CLIP)}…` : text;
+
+// The run's last calls from its saved conversation, each with the start of what it returned.
+async function savedLastCalls(
+  repoStore: CoordinatorRepoDirSource,
+  run: { runId: string; address: string | null },
+): Promise<string[]> {
+  if (run.address === null) return [];
+  try {
+    const turns = await readCommittedTurns(repoStore, run.address);
+    return runSteps(turns ?? [])
+      .slice(-LAST_CALLS)
+      .map(({ name, arguments: input, result }) => {
+        let returned = "no result came back";
+        if (result)
+          returned = `${result.isError ? "error: " : ""}${clip(result.content)}`;
+        return `- ${clip(`${name} ${JSON.stringify(input)}`)}\n  returned: ${returned}`;
+      });
+  } catch (error) {
+    // An unreadable conversation leaves the notice with the recorded reason alone.
+    log.warn("Reading ended specialist {runId}'s calls failed", {
+      runId: run.runId,
+      ...errorCode(error),
+      ...requestErrorMetadata(error),
+    });
+    return [];
+  }
+}
 
 // The correlation id of the latest assignment the run received after its last outgoing mail; none
 // when it answered every assignment it was given.
@@ -87,6 +126,7 @@ export async function liveSpecialistRuns(
 export function createSpecialistEndNotices(deps: {
   db: DB["db"];
   runs: WorkflowRunReader;
+  repoStore: CoordinatorRepoDirSource;
   mailDirectory: string;
   mail: HubMail;
 }) {
@@ -178,6 +218,11 @@ export function createSpecialistEndNotices(deps: {
       (ended.cancellationReason === null
         ? undefined
         : { message: ended.cancellationReason });
+    const settings = await loadSettings(
+      db,
+      coordinator.tenantId,
+      ended.projectId,
+    );
     try {
       await deps.mail({
         tenantId: coordinator.tenantId,
@@ -188,6 +233,11 @@ export function createSpecialistEndNotices(deps: {
           action: { plugin: ended.plugin, action: ended.action },
           status: ended.status === "failed" ? "failed" : "cancelled",
           ...(reason ? { reason } : {}),
+          lastCalls:
+            ended.status === "failed"
+              ? await savedLastCalls(deps.repoStore, ended)
+              : [],
+          agentDecides: agentDecidesApprovals(settings.preferences.value),
         }),
       });
     } catch (error) {

@@ -667,6 +667,7 @@ export async function createHubRuntime(
         reconcileNext: createSpecialistEndNotices({
           db: handle.db,
           runs: createWorkflowRunReader(agentRepoStore.repoStore),
+          repoStore: agentRepoStore.repoStore,
           mailDirectory: reportMailDirectory,
           mail: hubMail,
         }),

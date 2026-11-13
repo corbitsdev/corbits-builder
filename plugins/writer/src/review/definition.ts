@@ -11,6 +11,8 @@ export default defineWorkflow({
   describe: {
     summary:
       "Has a reviewer give a second opinion on one filed document. The review arrives later as a message; it is advice for you to weigh, and approval stays with the person.",
+    when: "You want a second opinion on a filed document before you rely on it or put it to the person.",
+    unless: "The person asked for something you can start directly.",
     fields: {
       kind: {
         about: "The filed document to review.",

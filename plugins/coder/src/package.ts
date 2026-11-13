@@ -9,7 +9,6 @@ import {
 } from "@corbits/mcp/interchange/client";
 import { mail, type MailToolEnv } from "@intx/tools-mail/sidecar-bundle";
 import { createArtifactTools } from "@corbits-builder/hub/artifacts/tools";
-import { createSkillTools } from "@corbits-builder/hub/skills/tools";
 import { roleInference } from "@corbits-builder/hub/workflows/role-inference";
 import { compactingDirector } from "@corbits-builder/hub/workflows/director";
 import {
@@ -58,7 +57,6 @@ export async function coderPackage() {
   const tools = [
     createArtifactTools("coder"),
     mail,
-    createSkillTools(["react-ui", "stack-docs"]),
     search,
     createSidecarCodingTools({
       approval: "allow",

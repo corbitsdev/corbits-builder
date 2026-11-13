@@ -4,6 +4,7 @@ import { fileURLToPath } from "node:url";
 import { getLogger } from "@intx/log";
 import { errorCode, requestErrorMetadata } from "../request-error.ts";
 import { liveAppWording } from "../config/live-app.ts";
+import type { AppRun } from "@corbits-builder/schemas/installed-workflows";
 import type { HostSource } from "./host.ts";
 import { hostReports, type HostReport } from "./host-report.ts";
 import type { createLiveAppProxy } from "./proxy.ts";
@@ -116,7 +117,7 @@ export function createLiveAppRunner(options: {
       };
   }
 
-  function spawn(projectId: string, key: string) {
+  function spawn(projectId: string, key: string, program: AppRun) {
     const workspace = resolve(
       options.dataDir,
       "live-apps",
@@ -125,7 +126,13 @@ export function createLiveAppRunner(options: {
     );
     mkdirSync(workspace, { recursive: true });
     const child = Bun.spawn(
-      [process.execPath, ...process.execArgv, HOST, workspace],
+      [
+        process.execPath,
+        ...process.execArgv,
+        HOST,
+        workspace,
+        JSON.stringify(program),
+      ],
       {
         env: hostEnv(),
         stdin: "pipe",
@@ -148,8 +155,12 @@ export function createLiveAppRunner(options: {
   }
 
   return {
-    /** The project is open: its app runs from this source, started if it is not running. */
-    async keepAlive(projectId: string, { key, source }: LiveAppSource) {
+    /** The project is open: its app runs from this source as program says, started if it is not running. */
+    async keepAlive(
+      projectId: string,
+      { key, source }: LiveAppSource,
+      program: AppRun,
+    ) {
       let run = runs.get(projectId);
       if (run && run.child.exitCode !== null) {
         stop(projectId);
@@ -159,7 +170,7 @@ export function createLiveAppRunner(options: {
         run.lastSeen = Date.now();
         if (run.key === key) return;
         run.key = key;
-      } else run = spawn(projectId, key);
+      } else run = spawn(projectId, key, program);
       run.child.stdin.write(JSON.stringify(source) + "\n");
       await run.child.stdin.flush();
     },

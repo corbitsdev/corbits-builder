@@ -32,6 +32,8 @@ function harness(
   });
   const service = {
     projectState: async () => ({ styles, stored: {} }),
+    valuesRun: async () => ({ plugin: "coder", action: "build" }),
+    saveRunValues: async () => {},
     // Stands in for the filed design's next version, through the real tweak schema.
     saveDesignTweaks: async (
       _actor: unknown,
@@ -116,6 +118,25 @@ test("saving a value that is not registered is refused", async () => {
   expect(await response.json()).toEqual({
     code: "unknown_project_value",
     key: "look.font-heading",
+  });
+});
+
+test("a run's misspelt value is refused with the names its action saves", async () => {
+  const response = await harness(undefined).request("/project-1/run-values", {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({ values: { stack_language: "TypeScript" } }),
+  });
+  expect(response.status).toBe(403);
+  expect(await response.json()).toEqual({
+    code: "run_value_not_written",
+    issues: [
+      {
+        path: "stack_language",
+        message:
+          "is not a value coder build saves; did you mean `stack.language`? It saves only `stack.language`, `stack.checks`.",
+      },
+    ],
   });
 });
 

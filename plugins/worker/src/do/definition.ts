@@ -16,6 +16,8 @@ export default defineWorkflow({
   describe: {
     summary:
       "Has an agent that can look things up on the web, read the project's documents, attached files and code, and file a document, do the task and report back. With a kind and title it files the result as a document under that kind; without them its report is the answer.",
+    when: "Nothing else fits the task: research on a company, product or library, a comparison or breakdown with facts from the web, an answer about the project or what its code does, or any other task. Give a kind and title when the result should be filed as a document; leave them out for a question, whose answer comes back in the reply.",
+    unless: "One of the other specialists' actions fits the task.",
     fields: {
       instruction: {
         about:

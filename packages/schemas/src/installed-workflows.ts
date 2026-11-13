@@ -15,6 +15,19 @@ export const InstalledWorkflows = type({
 });
 export type InstalledWorkflows = typeof InstalledWorkflows.infer;
 
+const PortVariable = type(/^[A-Z][A-Z0-9_]*$/);
+// A program that keeps running while a project is worked on: its command, a line it prints once it
+// is ready, the environment variable given the free port it answers on, and any others it needs a
+// free port in, such as an API a dev server sends requests on to.
+export const AppRun = type({
+  "+": "reject",
+  command: "string > 0",
+  "waitFor?": "string > 0",
+  port: PortVariable,
+  "extraPorts?": PortVariable.array(),
+});
+export type AppRun = typeof AppRun.infer;
+
 // Returned only to an authenticated native run. Scope comes from the protected
 // coordinator association/native deployment invoker, never a tool argument.
 export const WorkflowProjectScope = type({
@@ -28,13 +41,14 @@ export const WorkflowProjectScope = type({
   // Whether the project's build sandboxes reach any public host rather than only the npm registry.
   openNetwork: "boolean",
   // What the project's code declares of itself, from the starter it began from: the command that
-  // prepares a fresh workspace, what to do when it fails, and whether it serves a web app. Code
-  // that began from no starter declares nothing.
+  // prepares a fresh workspace, what to do when it fails, whether it serves a web app, and how it
+  // runs while it is worked on. Code that began from no starter declares nothing.
   "stack?": {
     "+": "reject",
     setup: "string > 0",
     setupFailed: "string > 0",
     serves: "boolean",
+    "run?": AppRun,
   },
   // Where the hub keeps the sandbox child and its runtime; a tool bundle runs
   // out of a package store and cannot resolve them relative to itself.

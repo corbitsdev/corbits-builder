@@ -1,0 +1,98 @@
+/* Reads as the conversation's other asks: the plain decision card an approval wears. */
+.card {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+  max-width: 36rem;
+  min-width: 0;
+  padding: var(--space-4);
+  border: 1px solid var(--wb-border);
+  border-radius: var(--radius-panel);
+  background: var(--wb-background);
+  font-size: 0.875rem;
+}
+
+.title {
+  margin: 0;
+  font-weight: 600;
+  overflow-wrap: anywhere;
+}
+
+/* A long list scrolls inside the card, so the conversation keeps its place. */
+.steps {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+  max-height: 22rem;
+  margin: 0;
+  padding: 0;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  list-style: none;
+}
+
+.step {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--space-2);
+  min-width: 0;
+}
+
+.body {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: var(--space-1);
+  min-width: 0;
+}
+
+.instruction {
+  font-weight: 500;
+  overflow-wrap: anywhere;
+  cursor: pointer;
+}
+
+.label {
+  padding: 0 var(--space-1);
+  border: 1px solid var(--wb-border);
+  border-radius: var(--radius-panel);
+  font-size: 0.75rem;
+  color: var(--wb-muted-foreground);
+}
+
+.detail {
+  margin: 0;
+  font-size: 0.8125rem;
+  line-height: 1.5;
+  color: var(--wb-muted-foreground);
+  overflow-wrap: anywhere;
+}
+
+.setting {
+  font-family: var(--wb-font-mono);
+  font-size: 0.75rem;
+  color: var(--wb-foreground);
+}
+
+.link {
+  font-size: 0.8125rem;
+  color: var(--wb-primary);
+  text-underline-offset: 2px;
+  overflow-wrap: anywhere;
+}
+
+.hint {
+  margin: 0;
+  font-size: 0.8125rem;
+  color: var(--wb-muted-foreground);
+}
+
+.settled {
+  min-width: 0;
+  margin: 0;
+  overflow: hidden;
+  font-size: 0.875rem;
+  color: var(--wb-muted-foreground);
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}

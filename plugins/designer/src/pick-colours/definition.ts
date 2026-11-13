@@ -1,10 +1,8 @@
 import {
   defineScreen,
-  refuse,
   type ProjectValues,
   type WrongField,
 } from "@corbits-builder/plugin";
-import manifest from "../../package.json";
 import { Color, Input, Output } from "./schema.ts";
 
 const FORMAT = 'a # and six hex digits, such as "#1d4ed8"';
@@ -12,8 +10,9 @@ const FORMAT = 'a # and six hex digits, such as "#1d4ed8"';
 const describe = {
   summary:
     "Shows the person the primary (brand) and background colours in use and lets them choose new ones.",
-  when: manifest.builder.actions["pick-colours"].when,
-  unless: manifest.builder.actions["pick-colours"].unless,
+  when: "The person is unhappy with the colours or unsure which colours would suit the brand or the background.",
+  unless:
+    "They already said exactly which colour they want, or they want another font, bigger or smaller text, or a whole new look.",
   fields: {
     proposed: {
       about: `Colours you suggest, each ${FORMAT}: { "primary": "#1d4ed8" }. primary is the brand colour of buttons and links, background the page behind everything; give either or both. Leave out to let the person choose.`,
@@ -52,38 +51,41 @@ const same = (a: string | undefined, b: string | undefined) =>
 export default defineScreen({
   input: Input,
   output: Output,
-  prepare: (input, _data, project) => {
+  validate: (input, _data, project) => {
     const wrong = SLOTS.flatMap((slot) =>
       wrongColor(slot, input.proposed?.[slot]),
     );
-    if (wrong.length > 0) refuse({ wrong });
-    const current = {
+    if (wrong.length > 0) return wrong;
+    const suggested = SLOTS.flatMap((slot) => {
+      const color = input.proposed?.[slot];
+      return color === undefined
+        ? []
+        : [{ color, current: inUse(project, slot) }];
+    });
+    if (
+      suggested.length === 0 ||
+      suggested.some(({ color, current }) => !same(color, current))
+    )
+      return [];
+    return [
+      {
+        field: "proposed",
+        problem: `${suggested.map(({ color }) => color).join(", ")} ${suggested.length === 1 ? "is already the colour" : "are already the colours"} in use.`,
+        otherwise:
+          "Propose a different colour, or leave proposed out to let the person choose.",
+      },
+    ];
+  },
+  prepare: (input, _data, project) => ({
+    current: {
       primary: inUse(project, "primary"),
       background: inUse(project, "background"),
-    };
-    const proposed = {
+    },
+    proposed: {
       primary: input.proposed?.primary,
       background: input.proposed?.background,
-    };
-    const suggested = SLOTS.flatMap((slot) => proposed[slot] ?? []);
-    if (
-      suggested.length > 0 &&
-      SLOTS.every(
-        (slot) =>
-          proposed[slot] === undefined || same(proposed[slot], current[slot]),
-      )
-    )
-      refuse({
-        wrong: [
-          {
-            field: "proposed",
-            problem: `${suggested.join(", ")} ${suggested.length === 1 ? "is already the colour" : "are already the colours"} in use.`,
-          },
-        ],
-        next: "Call again proposing a different colour, or with no proposal to let the person choose.",
-      });
-    return { current, proposed };
-  },
+    },
+  }),
   describe,
   writes: {
     [IN_USE.primary]: (output) => output.primary,

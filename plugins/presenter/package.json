@@ -41,10 +41,6 @@
     },
     "actions": {
       "present": {
-        "runs": "workflow",
-        "when": "The person wants a deck and approval package for an audience, once they have said who it is for, the decision they need and which approved documents it covers.",
-        "unless": "The documents it would cover are not approved yet, or the person has not said who the audience is.",
-        "input": "./src/present.ts",
         "requires": [
           [
             "approved:{kinds}"

@@ -2,7 +2,7 @@
   "name": "@corbits-builder/project",
   "version": "0.1.0",
   "private": true,
-  "description": "Settles with the person how Builder works on the whole project, such as whether it stops to ask for their approval.",
+  "description": "Settles with the person how Builder works on the whole project, such as whether it stops to ask for their approval, and shows them what they must set up outside Builder to use what was built.",
   "license": "SEE LICENSE IN ../../LICENSE.md",
   "author": "Sawyer Cutler <sawyer@dirtroad.dev>",
   "type": "module",
@@ -20,23 +20,20 @@
     "handle": "project",
     "runs": "specialist",
     "groups": [
-      "approval"
+      "approval",
+      "setup"
     ],
-    "when": "The person wants Builder to go ahead without stopping to ask them, or to start asking them again.",
+    "when": "The person wants Builder to go ahead without stopping to ask them, or to start asking them again; or something built needs set-up outside Builder before it can be used.",
     "unless": "They want a piece of work done or changed; that is the plugin for that work.",
     "actions": {
-      "hand-over": {
-        "runs": "screen",
-        "when": "The person says to just build it or to stop asking, or wants to be asked for their approval again.",
-        "unless": "They already answered this screen for what they asked, or they want only one document approved now.",
-        "screen": "./src/hand-over/screen.ts",
-        "view": "./src/hand-over/view.tsx"
-      }
+      "hand-over": {},
+      "setup": {}
     },
     "examples": [
       "just build it",
       "stop asking me and get on with it",
-      "ask me before each step again"
+      "ask me before each step again",
+      "what do I need to set up to use it"
     ]
   }
 }

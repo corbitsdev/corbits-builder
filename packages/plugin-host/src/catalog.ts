@@ -1,37 +1,40 @@
 import { join } from "node:path";
 import { type, type Type } from "arktype";
 import {
-  checkInput,
-  checkOutput,
-  checkWorkflowInput,
+  CheckActionBuilder,
   guidanceText,
   inputText,
   isCheck,
-  isScreen as isScreenModule,
+  isScreen,
   isWorkflow,
   ReadyPlanBuilder,
+  ScreenActionBuilder,
   SkillsBuilder,
   SpecialistBuilder,
+  validateInput,
+  validateOutput,
+  validateWorkflowInput,
+  WorkflowActionBuilder,
   type AgentPackage,
-  type CheckActionBuilder,
+  type Check,
   type CheckOutcome,
   type Fact,
   type ProjectValues,
   type ProjectView,
   type Refused,
-  type ScreenActionBuilder,
+  type Screen,
   type Shown,
   type ValueDeclaration,
-  type WorkflowActionBuilder,
+  type Workflow,
 } from "@corbits-builder/plugin";
 import {
   CHECK_MS,
-  checkCodeInput,
-  checkFields,
   checkMs,
   factFields,
   proofFields,
   proofText,
+  validateCodeInput,
+  validateFields,
 } from "./checks.ts";
 import {
   approvalFacts,
@@ -213,11 +216,15 @@ type ActionBase = Base & {
   action: string;
   // How the coordinator's messages name it, such as "coder change".
   name: string;
+  // When to use it, and when not, as its definition says.
+  when: string;
+  unless: string | undefined;
 };
 export type WorkflowAction = ActionBase & {
+  kind: "workflow";
   builder: WorkflowActionBuilder;
-  // The input checked for the host's starter, or the refusal when it is wrong.
-  check: (input: unknown) => { ok: true; input: unknown } | Refused;
+  // The input validated for the host's starter, or the refusal when it is wrong.
+  validate: (input: unknown) => { ok: true; input: unknown } | Refused;
   // What its finished run's report adds about the screens that show the work, or null for none.
   presents: string | null;
   // The skill packs its specialist's agent is given when this action starts it.
@@ -229,6 +236,7 @@ export type WorkflowAction = ActionBase & {
   starter: Starter;
 };
 export type ScreenAction = ActionBase & {
+  kind: "screen";
   builder: ScreenActionBuilder;
   // Why this input cannot be shown, or undefined when it can.
   refusal: (input: unknown, project: ProjectValues) => string | undefined;
@@ -247,9 +255,10 @@ export type ScreenAction = ActionBase & {
 };
 // A check the host runs against the project as saved, recording whether it holds.
 export type CheckAction = ActionBase & {
+  kind: "check";
   builder: CheckActionBuilder;
-  // The input checked for the check, or the refusal when it is wrong.
-  check: (input: unknown) => { ok: true; input: unknown } | Refused;
+  // The input validated for the check, or the refusal when it is wrong.
+  validate: (input: unknown) => { ok: true; input: unknown } | Refused;
   // Decides, from a read-only view of the project as saved and the checked input.
   run: (view: ProjectView, input: unknown) => Promise<CheckOutcome>;
   // How long one run may take: longer for a command check, which runs the app's own commands.
@@ -325,11 +334,11 @@ export const isSpecialist = (plugin: Plugin): plugin is SpecialistPlugin =>
 export const isReadyPlan = (plugin: Plugin): plugin is ReadyPlanPlugin =>
   plugin.builder.runs === "plan";
 export const isWorkflowAction = (action: Action): action is WorkflowAction =>
-  action.builder.runs === "workflow";
+  action.kind === "workflow";
 export const isScreenAction = (action: Action): action is ScreenAction =>
-  action.builder.runs === "screen";
+  action.kind === "screen";
 export const isCheckAction = (action: Action): action is CheckAction =>
-  action.builder.runs === "check";
+  action.kind === "check";
 
 const lines = (
   name: string,
@@ -356,7 +365,6 @@ function manifestOf(found: Found) {
     },
   };
 }
-type Manifested = ReturnType<typeof manifestOf>;
 
 function packOf(found: Found) {
   const manifest = PackManifest(found.manifest);
@@ -367,29 +375,141 @@ function packOf(found: Found) {
   return { found, builder: manifest.builder };
 }
 
-/** The files a manifest names: the modules the catalog imports, the texts it reads and the folders it lays out. */
-export function manifestFiles(found: Found) {
+/**
+ * The files of an action's folder, by their paths in its plugin: the definition every action has,
+ * the view that shows a screen to the person, and data a screen ships.
+ */
+export const actionFiles = (action: string) => ({
+  definition: `./src/${action}/definition.ts`,
+  view: `./src/${action}/view.tsx`,
+  data: `./src/${action}/data.json`,
+});
+
+/**
+ * The files a manifest leads to: the modules the catalog imports, the texts it reads, the folders
+ * it lays out, and which of its actions' files are there.
+ */
+export async function manifestFiles(found: Found) {
   if (RunsSkills.allows(found.manifest))
-    return { modules: [], texts: [], folders: [packOf(found).builder.skills] };
-  const { builder } = manifestOf(found);
-  if (builder.runs === "specialist")
     return {
-      modules: [
-        ...Object.values(builder.actions).flatMap((action) => {
-          if (action.runs === "workflow") return [action.input];
-          if (action.runs === "check")
-            return action.check === undefined ? [] : [action.check];
-          return action.data === undefined
-            ? [action.screen]
-            : [action.screen, action.data];
-        }),
-        ...Object.values(builder.starters ?? {}),
-      ],
-      texts: Object.values(builder.agents ?? {}).map(({ prompt }) => prompt),
-      folders: [],
+      modules: [],
+      texts: [],
+      folders: [packOf(found).builder.skills],
+      present: [],
     };
-  return { modules: [], texts: [builder.guidance], folders: [] };
+  const { builder } = manifestOf(found);
+  if (builder.runs !== "specialist")
+    return { modules: [], texts: [builder.guidance], folders: [], present: [] };
+  const files = Object.keys(builder.actions).flatMap((action) => {
+    const { definition, view, data } = actionFiles(action);
+    return [definition, view, data];
+  });
+  const present = (
+    await Promise.all(
+      files.map(async (path) => ((await found.has(path)) ? [path] : [])),
+    )
+  ).flat();
+  return {
+    // A view is the interface's to bundle, never the hub's.
+    modules: [
+      ...present.filter((path) => !path.endsWith(".tsx")),
+      ...Object.values(builder.starters ?? {}),
+    ],
+    texts: Object.values(builder.agents ?? {}).map(({ prompt }) => prompt),
+    folders: [],
+    present,
+  };
 }
+
+// An action as its folder and manifest entry declare it: its kind, its entry checked against that
+// kind's builder, its definition and, for a screen, the data it ships.
+type Declared =
+  | {
+      kind: "screen";
+      builder: ScreenActionBuilder;
+      definition: Screen<unknown, unknown, unknown, unknown>;
+      data: unknown;
+    }
+  | {
+      kind: "workflow";
+      builder: WorkflowActionBuilder;
+      definition: Workflow<unknown>;
+    }
+  | { kind: "check"; builder: CheckActionBuilder; definition: Check<unknown> };
+
+// An action with a view is shown to the person; one with check proofs, or whose definition is a
+// check's, is a check; any other starts work.
+async function declaredAction(
+  found: Found,
+  handle: string,
+  action: string,
+  entry: object,
+): Promise<Declared> {
+  const name = `${handle} ${action}`;
+  const files = actionFiles(action);
+  const where = `plugins/${found.folder}/package.json: ${name}`;
+  if (!(await found.has(files.definition)))
+    throw new Error(`${where} has no ${files.definition}`);
+  const definition = await found.module(files.definition);
+  const shipsData = await found.has(files.data);
+  if (await found.has(files.view)) {
+    const builder = ScreenActionBuilder(entry);
+    if (builder instanceof type.errors)
+      throw new Error(
+        `${where} is a screen, as its ${files.view} says: ${builder.summary}`,
+      );
+    if (!isScreen(definition))
+      throw new Error(
+        `${name}'s ${files.definition} has no screen as its default export`,
+      );
+    if (!shipsData)
+      return { kind: "screen", builder, definition, data: undefined };
+    if (!definition.data)
+      throw new Error(
+        `${name} ships ${files.data}, but its definition declares no data schema`,
+      );
+    const data = definition.data.assert(await found.module(files.data));
+    return { kind: "screen", builder, definition, data };
+  }
+  if (shipsData)
+    throw new Error(
+      `${name} ships ${files.data}, which only a screen, with a view, reads`,
+    );
+  if ("all" in entry || "any" in entry || isCheck(definition)) {
+    const builder = CheckActionBuilder(entry);
+    if (builder instanceof type.errors)
+      throw new Error(`${where} is a check: ${builder.summary}`);
+    if (!isCheck(definition))
+      throw new Error(
+        `${name}'s ${files.definition} has no check as its default export`,
+      );
+    return { kind: "check", builder, definition };
+  }
+  const builder = WorkflowActionBuilder(entry);
+  if (builder instanceof type.errors)
+    throw new Error(
+      `${where} starts work, having no view and no check proofs: ${builder.summary}`,
+    );
+  if (!isWorkflow(definition))
+    throw new Error(
+      `${name}'s ${files.definition} has no workflow action as its default export`,
+    );
+  return { kind: "workflow", builder, definition };
+}
+
+// A plugin's manifest, with each of a specialist's actions as its folder declares it.
+async function manifested(found: Found) {
+  const { version, builder, about } = manifestOf(found);
+  const actions = new Map<string, Declared>();
+  if (builder.runs === "specialist")
+    for (const [action, entry] of Object.entries(builder.actions))
+      actions.set(
+        action,
+        await declaredAction(found, builder.handle, action, entry),
+      );
+  return { found, version, builder, about, actions };
+}
+type Manifested = Awaited<ReturnType<typeof manifested>>;
 
 // A template the host fills, or one a check returns, such as "live:{address}".
 const knownTemplate = (fact: Fact, known: ReadonlySet<Fact>) =>
@@ -420,13 +540,11 @@ function checkFacts(
 // Each fact a check returns, by the name of the check that makes it true.
 function checkMade(manifests: readonly Manifested[]) {
   const made = new Map<Fact, string>();
-  for (const { builder } of manifests) {
-    if (builder.runs !== "specialist") continue;
-    for (const [action, declared] of Object.entries(builder.actions))
-      if (declared.runs === "check")
-        for (const fact of declared.returns)
+  for (const { builder, actions } of manifests)
+    for (const [action, declared] of actions)
+      if (declared.kind === "check")
+        for (const fact of declared.builder.returns)
           made.set(fact, `${builder.handle} ${action}`);
-  }
   return made;
 }
 
@@ -537,47 +655,39 @@ function declaredValues(manifests: readonly Manifested[], host: Host) {
       values.set(name, value);
       owners.set(name, builder.handle);
     }
-  for (const { builder } of manifests) {
-    if (builder.runs !== "specialist") continue;
-    for (const [action, declared] of Object.entries(builder.actions)) {
-      if (declared.runs === "check") continue;
-      const unknown = undeclared(values, declared.reads ?? []);
+  for (const { builder, actions } of manifests)
+    for (const [action, declared] of actions) {
+      if (declared.kind === "check") continue;
+      const unknown = undeclared(values, declared.builder.reads ?? []);
       if (unknown !== undefined)
         throw new Error(
           `${builder.handle} ${action} names ${unknown}, which no plugin declares as a project value`,
         );
       // A run saves only into the project's plain store, where every plugin's value lives.
       const unwritable =
-        declared.runs === "workflow"
-          ? declared.writes?.find((name) => !owners.has(name))
+        declared.kind === "workflow"
+          ? declared.builder.writes?.find((name) => !owners.has(name))
           : undefined;
       if (unwritable !== undefined)
         throw new Error(
           `${builder.handle} ${action} writes ${unwritable}, which no plugin declares as a project value`,
         );
     }
-  }
   return values;
 }
 
-async function installScreen(
-  found: Found,
+function installScreen(
   handle: string,
   action: string,
-  declared: ScreenActionBuilder,
+  { builder, definition: screen, data }: Extract<Declared, { kind: "screen" }>,
   {
     known,
     values,
     preferences,
     factText,
   }: Pick<Installing, "known" | "values" | "preferences" | "factText">,
-): Promise<ScreenAction> {
+): ScreenAction {
   const name = `${handle} ${action}`;
-  const screen = await found.module(declared.screen);
-  if (!isScreenModule(screen))
-    throw new Error(
-      `${name}'s screen ${declared.screen} has no screen as its default export`,
-    );
   const writes = Object.entries(screen.writes ?? {});
   const unknown = undeclared(
     values,
@@ -593,8 +703,8 @@ async function installScreen(
     throw new Error(
       `${name}'s screen prefers ${unpreferred}, which is not a preference Builder knows`,
     );
-  const returns = declared.returns ?? [];
-  const requires = declared.requires ?? [];
+  const returns = builder.returns ?? [];
+  const requires = builder.requires ?? [];
   checkFacts(name, [...requires.flat(), ...returns], known, (field) =>
     Object.hasOwn(screen.describe.fields, field),
   );
@@ -604,109 +714,120 @@ async function installScreen(
         ? `${name} returns facts, but its screen approves nothing`
         : `${name}'s screen approves, but its manifest returns no facts`,
     );
-  let data: unknown;
-  if (declared.data !== undefined) {
-    if (!screen.data)
-      throw new Error(
-        `${name} names data ${declared.data}, but its screen declares no data schema`,
-      );
-    data = screen.data.assert(await found.module(declared.data));
-  }
   return {
+    kind: "screen",
     plugin: handle,
     action,
     name,
-    builder: declared,
+    builder,
+    when: screen.describe.when,
+    unless: screen.describe.unless,
     description: screen.describe.summary,
     guidance: [
-      guidanceText(name, screen, declared.reads ?? []),
+      guidanceText(name, screen, builder.reads ?? []),
       ...(requires.length > 0
         ? [`Requires: ${requiresText(requires, factText)}.`]
         : []),
       screenText(handle, action),
     ].join("\n"),
     refusal(input, project) {
-      const checked = checkInput(name, screen, input, data, project);
-      return checked.ok ? undefined : checked.text;
+      const validated = validateInput(name, screen, input, data, project);
+      return validated.ok ? undefined : validated.text;
     },
     answer(raw) {
-      const checked = checkOutput(name, screen, raw);
-      if (!checked.ok) return checked;
+      const validated = validateOutput(name, screen, raw);
+      if (!validated.ok) return validated;
       return {
         ok: true,
         values: Object.fromEntries(
-          writes.map(([value, from]) => [value, from(checked.output)]),
+          writes.map(([value, from]) => [value, from(validated.output)]),
         ),
         preferences: Object.fromEntries(
-          prefers.map(([id, from]) => [id, from(checked.output)]),
+          prefers.map(([id, from]) => [id, from(validated.output)]),
         ),
-        approves: screen.approves?.(checked.output) ?? [],
+        approves: screen.approves?.(validated.output) ?? [],
       };
     },
     returns: (input) => resolveFacts(returns, input),
   };
 }
 
-// A check: its ready-made checks, or its own code, and the input it takes. A ready-made check takes
-// the fields its addresses and its facts name, each as text; its own code takes what its schema does.
-async function installCheck(
-  found: Found,
-  handle: string,
-  action: string,
-  declared: CheckActionBuilder,
-  { known, factText }: Pick<Installing, "known" | "factText">,
-): Promise<CheckAction> {
-  const name = `${handle} ${action}`;
-  const requires = declared.requires ?? [];
-  const facts = [...requires.flat(), ...declared.returns];
-  if (declared.check !== undefined) {
-    const code = await found.module(declared.check);
-    if (!isCheck(code))
+// What a check proves and how: its ready-made checks, or its definition's own code, and the input
+// it takes. A ready-made check takes the fields its addresses and its facts name, each as text; its
+// own code takes what its schema does.
+function checkProof(
+  name: string,
+  builder: CheckActionBuilder,
+  definition: Check<unknown>,
+  known: ReadonlySet<Fact>,
+) {
+  const facts = [...(builder.requires ?? []).flat(), ...builder.returns];
+  const { summary } = definition.describe;
+  const { run, input } = definition;
+  const proofs = builder.all ?? builder.any;
+  if (proofs === undefined) {
+    if (run === undefined || summary === undefined)
       throw new Error(
-        `${name}'s check ${declared.check} has no check as its default export`,
+        `${name} declares no proofs in its manifest, so its definition needs a summary and a run of its own`,
       );
     checkFacts(name, facts, known, () => true);
-    const description = `Runs its own check, ${declared.check}.`;
     return {
-      plugin: handle,
-      action,
-      name,
-      builder: declared,
-      description,
-      guidance: checkText(name, description, declared, {
-        requires: requiresText(requires, factText),
-        input: code.input
-          ? `Input: ${code.input.expression}`
-          : "It takes no input.",
-      }),
-      check: (raw) => checkCodeInput(name, code, raw),
-      run: async (view, input) => code.run(view, input),
+      description: summary,
+      input: input ? `Input: ${input.expression}` : "It takes no input.",
+      validate: (raw: unknown) => validateCodeInput(name, definition, raw),
+      run: async (view: ProjectView, given: unknown) => run(view, given),
       ms: CHECK_MS,
-      returns: (input) => resolveFacts(declared.returns, input),
     };
   }
-  const proofs = declared.all ?? declared.any ?? [];
-  const proof = declared.all ? { all: proofs } : { any: proofs };
+  if (run !== undefined || summary !== undefined)
+    throw new Error(
+      `${name} declares proofs in its manifest, which say what it proves, so its definition has no summary or run of its own`,
+    );
+  const proof = builder.all ? { all: proofs } : { any: proofs };
   const fields = [...new Set([...proofFields(proof), ...factFields(facts)])];
   checkFacts(name, facts, known, (field) => fields.includes(field));
-  const description = `Proves ${proofText(proof)}.`;
   return {
+    description: `Proves ${proofText(proof)}.`,
+    input:
+      fields.length === 0
+        ? "It takes no input."
+        : `Input: ${fields.join(", ")}, each an address as text.`,
+    validate: (raw: unknown) => validateFields(name, fields, raw),
+    run: async (view: ProjectView) => view.check(proof),
+    ms: checkMs(proof),
+  };
+}
+
+function installCheck(
+  handle: string,
+  action: string,
+  { builder, definition }: Extract<Declared, { kind: "check" }>,
+  { known, factText }: Pick<Installing, "known" | "factText">,
+): CheckAction {
+  const name = `${handle} ${action}`;
+  const { description, input, validate, run, ms } = checkProof(
+    name,
+    builder,
+    definition,
+    known,
+  );
+  return {
+    kind: "check",
     plugin: handle,
     action,
     name,
-    builder: declared,
+    builder,
+    when: definition.describe.when,
+    unless: definition.describe.unless,
     description,
-    guidance: checkText(name, description, declared, {
-      requires: requiresText(requires, factText),
-      input:
-        fields.length === 0
-          ? "It takes no input."
-          : `Input: ${fields.join(", ")}, each an address as text.`,
+    guidance: checkText(name, description, definition.describe, builder.speed, {
+      requires: requiresText(builder.requires ?? [], factText),
+      input,
     }),
-    check: (raw) => checkFields(name, fields, raw),
-    run: async (view) => view.check(proof),
-    ms: checkMs(proof),
-    returns: (input) => resolveFacts(declared.returns, input),
+    validate,
+    run,
+    ms,
+    returns: (given) => resolveFacts(builder.returns, given),
   };
 }
 
@@ -723,48 +844,45 @@ type Installing = {
 // The finished work's line about the screens that show it, each with when it fits.
 function presentsOf(
   name: string,
-  { handle, actions }: SpecialistBuilder,
+  handle: string,
+  actions: Manifested["actions"],
   presents: readonly string[] | undefined,
 ) {
   if (presents === undefined) return null;
   return presentsText(
     handle,
     presents.map((screen) => {
-      const declared = actions[screen];
-      if (declared?.runs !== "screen")
+      const declared = actions.get(screen);
+      if (declared?.kind !== "screen")
         throw new Error(
           `${name} presents ${screen}, which is not a screen of ${handle}`,
         );
-      return { action: screen, when: declared.when };
+      return { action: screen, when: declared.definition.describe.when };
     }),
   );
 }
 
-async function installAction(
-  found: Found,
+function installAction(
   specialist: SpecialistBuilder,
+  actions: Manifested["actions"],
   action: string,
-  declared: SpecialistBuilder["actions"][string],
+  declared: Declared,
   installing: Installing,
-): Promise<Action> {
+): Action {
   const { handle } = specialist;
-  if (declared.runs === "screen")
-    return installScreen(found, handle, action, declared, installing);
-  if (declared.runs === "check")
-    return installCheck(found, handle, action, declared, installing);
+  if (declared.kind === "screen")
+    return installScreen(handle, action, declared, installing);
+  if (declared.kind === "check")
+    return installCheck(handle, action, declared, installing);
+  const { builder, definition: workflow } = declared;
   const { known, factText, packs, starters } = installing;
   const name = `${handle} ${action}`;
-  const facts = [...(declared.requires ?? []).flat(), ...declared.returns];
+  const facts = [...(builder.requires ?? []).flat(), ...builder.returns];
   const requires = () =>
-    `Requires: ${requiresText(declared.requires ?? [], factText)}.`;
-  const workflow = await found.module(declared.input);
-  if (!isWorkflow(workflow))
-    throw new Error(
-      `${name}'s input ${declared.input} has no workflow as its default export`,
-    );
-  const { fields } = workflow.describe;
+    `Requires: ${requiresText(builder.requires ?? [], factText)}.`;
+  const { summary, when, unless, fields } = workflow.describe;
   checkFacts(name, facts, known, (field) => Object.hasOwn(fields, field));
-  const { start } = declared;
+  const { start } = builder;
   if (
     startsAgent(start) &&
     !Object.hasOwn(specialist.agents ?? {}, start.agent)
@@ -774,7 +892,7 @@ async function installAction(
     );
   const started = startsAgent(start) ? start.agent : start.workflow;
   const starter = startsAgent(start)
-    ? agentStarter(start.agent, declared.returns)
+    ? agentStarter(start.agent, builder.returns)
     : starters.get(start.workflow);
   if (!starter)
     throw new Error(
@@ -787,46 +905,47 @@ async function installAction(
     throw new Error(
       `${name} starts ${started}, which reads ${unread}, but its input has no ${unread}`,
     );
-  const notCheck = declared.done?.find(
-    (check) => specialist.actions[check]?.runs !== "check",
+  const notCheck = builder.done?.find(
+    (check) => actions.get(check)?.kind !== "check",
   );
   if (notCheck !== undefined)
     throw new Error(
       `${name} is done when ${notCheck} passes, which is not a check of ${handle}`,
     );
   return {
+    kind: "workflow",
     plugin: handle,
     action,
     name,
-    builder: declared,
-    description: workflow.describe.summary,
+    builder,
+    when,
+    unless,
+    description: summary,
     guidance: [
-      ...lines(name, declared, workflow.describe.summary),
+      ...lines(name, workflow.describe, summary),
       requires(),
-      ...suppliedText(declared.reads ?? []),
+      ...suppliedText(builder.reads ?? []),
       inputText(fields),
     ].join("\n"),
-    check: (raw) => checkWorkflowInput(name, workflow, raw),
-    presents: presentsOf(name, specialist, declared.presents),
+    validate: (raw) => validateWorkflowInput(name, workflow, raw),
+    presents: presentsOf(name, handle, actions, builder.presents),
     packs: packs.filter(({ serves }) => serves.includes(name)),
     workflow: started,
     starter,
   };
 }
 
-async function specialistPlugin(
-  found: Found,
+function specialistPlugin(
   builder: SpecialistBuilder,
+  declared: Manifested["actions"],
   about: Manifested["about"],
   installing: Installing,
-): Promise<SpecialistPlugin> {
+): SpecialistPlugin {
   const { handle } = builder;
   const { description } = about;
   const { packs } = installing;
-  const actions = await Promise.all(
-    Object.entries(builder.actions).map(([name, declared]) =>
-      installAction(found, builder, name, declared, installing),
-    ),
+  const actions = [...declared].map(([name, each]) =>
+    installAction(builder, declared, name, each, installing),
   );
   const own = packs
     .filter((pack) => pack.specialist === handle && pack.depth === 0)
@@ -983,10 +1102,11 @@ async function loadPacks(
         chain.push(parent);
       }
       const top = chain[chain.length - 1]!;
-      const specialist = manifests.find(
+      const extended = manifests.find(
         (manifest) => manifest.builder.handle === top.extends,
-      )?.builder;
-      if (specialist?.runs !== "specialist")
+      );
+      const specialist = extended?.builder;
+      if (extended === undefined || specialist?.runs !== "specialist")
         throw new Error(
           `${top.handle} extends ${top.extends}, which is not an installed specialist or skill pack`,
         );
@@ -1005,10 +1125,10 @@ async function loadPacks(
       return {
         builder,
         specialist: specialist.handle,
-        serves: Object.entries(specialist.actions)
+        serves: [...extended.actions]
           .filter(
             ([action, declared]) =>
-              declared.runs === "workflow" &&
+              declared.kind === "workflow" &&
               chain.every(
                 (pack) => !pack.actions || pack.actions.includes(action),
               ),
@@ -1059,9 +1179,10 @@ async function agentPackages(
   found: Found,
   version: string,
   builder: SpecialistBuilder,
+  actions: Manifested["actions"],
 ) {
-  const starting = Object.values(builder.actions).filter(
-    (action) => action.runs === "workflow",
+  const starting = [...actions.values()].flatMap((declared) =>
+    declared.kind === "workflow" ? [declared.builder] : [],
   );
   return Promise.all(
     Object.entries(builder.agents ?? {}).map(
@@ -1093,14 +1214,14 @@ async function pluginPackages(manifests: readonly Manifested[]) {
   const packages = new Map<string, PluginPackage>();
   // Two plugins with one handle may well bring a package of the same name, which only one can be.
   const owners = new Map<string, string>();
-  for (const { found, version, builder, about } of manifests) {
+  for (const { found, version, builder, about, actions } of manifests) {
     if (builder.runs !== "specialist") continue;
     for (const [name, brought] of [
       ...Object.entries(builder.packages ?? {}).map(
         ([name, { entry, role }]) =>
           [name, { entry: join(found.folder, entry), role }] as const,
       ),
-      ...(await agentPackages(found, version, builder)),
+      ...(await agentPackages(found, version, builder, actions)),
     ]) {
       const other = owners.get(name);
       if (other !== undefined)
@@ -1139,9 +1260,9 @@ export async function loadCatalog(
   found: readonly Found[],
   host: Host,
 ): Promise<Catalog> {
-  const manifests = found
-    .filter((each) => !RunsSkills.allows(each.manifest))
-    .map(manifestOf);
+  const manifests = await Promise.all(
+    found.filter((each) => !RunsSkills.allows(each.manifest)).map(manifested),
+  );
   const packs = await loadPacks(
     found.filter((each) => RunsSkills.allows(each.manifest)).map(packOf),
     manifests,
@@ -1152,18 +1273,20 @@ export async function loadCatalog(
   const values = declaredValues(manifests, host);
   const starters = await pluginStarters(manifests);
   const plugins = await Promise.all(
-    manifests.map(({ found, builder, about }): Promise<Plugin> => {
-      if (builder.runs === "specialist")
-        return specialistPlugin(found, builder, about, {
-          known,
-          factText,
-          packs,
-          values,
-          preferences: host.preferences,
-          starters,
-        });
-      return readyPlanPlugin(found, builder, about, known);
-    }),
+    manifests.map(
+      async ({ found, builder, about, actions }): Promise<Plugin> => {
+        if (builder.runs === "specialist")
+          return specialistPlugin(builder, actions, about, {
+            known,
+            factText,
+            packs,
+            values,
+            preferences: host.preferences,
+            starters,
+          });
+        return readyPlanPlugin(found, builder, about, known);
+      },
+    ),
   );
   checkCatalog(plugins);
   checkReadyPlanSteps(plugins);

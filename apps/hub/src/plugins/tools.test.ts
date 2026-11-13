@@ -103,9 +103,10 @@ test("an execute call of designer pick-fonts the screen can draw pauses on it fo
       "designer pick-fonts was not shown. One field is wrong.",
       "",
       'proposed: "Inter" is already the font in use.',
+      "  Propose a different font, or leave proposed out to let the person choose.",
       "",
       'Your other fields were fine: list "all".',
-      "Call again proposing a different font, or with no proposal to let the person choose.",
+      "Call again with the same input and proposed corrected.",
     ].join("\n"),
   );
 });

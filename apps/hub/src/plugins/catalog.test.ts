@@ -17,14 +17,15 @@ function withBuilder(folder: string, builder: unknown) {
   return {
     folder,
     manifest: { name: `@corbits-builder/${folder}`, version: "0.1.0", builder },
+    has: found.has,
     module: found.module,
     text: found.text,
     files: found.files,
   };
 }
 
-// The designer with one screen action, pick-colours, in the given groups and reading the given values.
-const colours = (groups: unknown, reads: string[]) =>
+// The designer with one screen action, pick-colours, in the given groups and with the given entry.
+const colours = (groups: unknown, entry: object) =>
   withBuilder("designer", {
     handle: "designer",
     runs: "specialist",
@@ -36,21 +37,26 @@ const colours = (groups: unknown, reads: string[]) =>
       design_chosen: "the person chose a design from the design options",
     },
     actions: {
-      "pick-colours": {
-        runs: "screen",
-        when: "The person wants other colours.",
-        unless: "They want a new look.",
-        screen: "./src/pick-colours/screen.ts",
-        view: "./src/pick-colours/view.tsx",
-        reads,
-      },
+      "pick-colours": entry,
     },
   });
 
 test("a plugin whose builder block has no groups stops the hub, naming its folder and the field", async () => {
-  const loading = loadCatalog([colours("look", [])], HOST);
+  const loading = loadCatalog([colours("look", {})], HOST);
   await expect(loading).rejects.toThrow("plugins/designer/package.json");
   await expect(loading).rejects.toThrow("groups");
+});
+
+test("an action that still says what kind it is stops the hub, naming the field to remove", async () => {
+  await expect(
+    loadCatalog(
+      [
+        ...folders.filter(({ folder }) => folder !== "designer"),
+        colours(["look"], { runs: "screen" }),
+      ],
+      HOST,
+    ),
+  ).rejects.toThrow("designer pick-colours is a screen");
 });
 
 test("a screen that reads a project value the hub does not have stops the hub", async () => {
@@ -58,7 +64,9 @@ test("a screen that reads a project value the hub does not have stops the hub", 
     loadCatalog(
       [
         ...folders.filter(({ folder }) => folder !== "designer"),
-        colours(["look"], ["look.font-primary", "look.colour-primary"]),
+        colours(["look"], {
+          reads: ["look.font-primary", "look.colour-primary"],
+        }),
       ],
       HOST,
     ),
@@ -77,11 +85,7 @@ test("a workflow action that requires a fact Builder cannot work out, or templat
           when: "The person wants the app polished.",
           unless: "They want a change of their own.",
           actions: {
-            polish: {
-              runs: "workflow",
-              when: "The person wants the app polished.",
-              unless: "They want a change of their own.",
-              input: "./src/change.ts",
+            change: {
               start: {
                 workflow: "coder",
                 correlation: "polisher",
@@ -96,12 +100,12 @@ test("a workflow action that requires a fact Builder cannot work out, or templat
       HOST,
     );
   await expect(specialist([["app_polished"]])).rejects.toThrow(
-    "polisher polish names app_polished",
+    "polisher change names app_polished",
   );
   await expect(specialist([["filed:{kind}"]])).rejects.toThrow("filed:{kind}");
   expect(
     (await specialist([["app_exists"]])).installed("polisher")?.guidance,
-  ).toContain("polisher polish");
+  ).toContain("polisher change");
 });
 
 test("a ready-made plan that names an action that is not installed stops the hub", async () => {

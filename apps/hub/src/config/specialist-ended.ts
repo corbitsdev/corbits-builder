@@ -22,17 +22,36 @@ const actionLines = (
   };
 };
 
+// After a failure the coordinator once started an eleven-minute repair the person had not asked
+// for; only the hand-over that skips approvals lets it decide that alone.
+const AFTER_FAILURE = {
+  ask: "Tell the person what failed and what fixing it involves, and ask them before starting it again.",
+  decide:
+    "The person lets you decide: start it again if that fixes it, and tell them what failed.",
+};
+
 export function specialistEndedMessage(ended: {
   runId: string;
   // The plugin action the run was started for.
   action: { plugin: string; action: string };
   status: Outcome;
   reason?: { message: string; code?: string };
+  // The run's last tool calls, each with the start of what it returned, oldest first.
+  lastCalls: readonly string[];
+  // Whether the person handed decisions over to Builder.
+  agentDecides: boolean;
 }): string {
   const how = ended.status === "failed" ? "failed" : "was stopped";
   const reason = ended.reason
     ? ` Recorded reason${ended.reason.code ? ` (${ended.reason.code})` : ""}: ${ended.reason.message}`
     : "";
   const { line, task } = actionLines(ended.action, ended.status);
-  return `${HUB_NOTE_LEAD}${line}\n\n${task} in run ${ended.runId} ${how} before finishing, so no result is coming from it.${reason}`;
+  const note = `${HUB_NOTE_LEAD}${line}\n\n${task} in run ${ended.runId} ${how} before finishing, so no result is coming from it.${reason}`;
+  if (ended.status === "cancelled") return note;
+  const calls =
+    ended.lastCalls.length > 0
+      ? `\n\nIts last calls, oldest first, show where it went wrong:\n${ended.lastCalls.join("\n")}`
+      : "";
+  const next = ended.agentDecides ? AFTER_FAILURE.decide : AFTER_FAILURE.ask;
+  return `${note}${calls}\n\n${next}`;
 }

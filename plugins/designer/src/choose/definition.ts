@@ -1,5 +1,4 @@
 import { defineScreen } from "@corbits-builder/plugin";
-import manifest from "../../package.json";
 import { Input, Output } from "./schema.ts";
 
 export default defineScreen({
@@ -10,8 +9,9 @@ export default defineScreen({
   describe: {
     summary:
       "Opens the filed design concepts side by side over the whole page, where the person tries each one, picks the one they want and may comment on any of them. Builder shows every filed concept itself; do not pass them. The answer is { concept, version, comments }, and Builder has then filed the chosen concept's option as the design; each comment names the concept it is about.",
-    when: manifest.builder.actions.choose.when,
-    unless: manifest.builder.actions.choose.unless,
+    when: "Several design concepts are filed and the person is to pick the one they want.",
+    unless:
+      "Only one design is filed, which review shows, or the person only asked a question about the designs.",
     fields: {
       note: {
         about:
