@@ -204,12 +204,16 @@ function acceptedMaterialsQuery(projectId: string) {
   });
 }
 
-// Only an active project has a coordinator whose decisions can be open.
+// Only an active project has a coordinator whose decisions can be open. The one room read never
+// shown from an earlier visit, saved or in memory: a card answered since would be offered again,
+// and the person could act on it.
 function openDecisionsQuery(projectId: string, active: boolean) {
   return queryOptions({
     queryKey: keys.openDecisions.of(projectId),
     retry: false,
     staleTime: 0,
+    gcTime: 0,
+    meta: { persist: false },
     refetchOnWindowFocus: false,
     queryFn: active ? () => openDecisions(projectId) : skipToken,
   });
@@ -411,12 +415,12 @@ export function useRoomGate({
     refetchOnWindowFocus: false,
     queryFn: () => getProject(projectId),
   });
-  // A status restored from the saved cache may predate an archive, so only a read made since
-  // opening counts. The project list learns of an archive first, so it wins while the read catches up.
-  const project = projectRead.isFetchedAfterMount
-    ? projectRead.data
-    : undefined;
+  // The saved copy paints the room at once. The project list learns of an archive first, so it
+  // wins while the read catches up.
+  const project = projectRead.data;
   const status = listedArchived ? "archived" : project?.status;
+  // A saved status may predate an archive, so only a read made since opening starts or stops work.
+  const confirmed = projectRead.isFetchedAfterMount ? status : undefined;
   const archived = status === "archived";
   const listedBefore = useRef(listedArchived);
   useEffect(() => {
@@ -455,10 +459,10 @@ export function useRoomGate({
   // Opening an active project starts its coordinator when it is not running; a running one is
   // left alone. A project archived while open drops the conversation it can no longer read.
   useEffect(() => {
-    if (status === "active") void startCoordinator();
-    else if (status === "archived" && room.data !== undefined)
+    if (confirmed === "active") void startCoordinator();
+    else if (confirmed === "archived" && room.data !== undefined)
       void room.refetch();
-  }, [projectId, status]);
+  }, [projectId, confirmed]);
   const catalog = useModelCatalog();
   const providerConnected =
     catalog.data !== undefined && !needsModelSetup(catalog.data.providers);

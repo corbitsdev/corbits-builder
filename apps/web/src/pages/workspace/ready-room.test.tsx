@@ -1,7 +1,13 @@
 import { describe, expect, test } from "bun:test";
 import { renderToStaticMarkup } from "react-dom/server";
-import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
+import {
+  dehydrate,
+  hydrate,
+  QueryClient,
+  QueryClientProvider,
+} from "@tanstack/react-query";
 import { wording } from "../../config.ts";
+import { savedReads } from "../../queries/client.ts";
 import { keys } from "../../queries/keys.ts";
 import { useRolesAtWork } from "./project-activity.ts";
 import { StageWorkspace } from "./index.tsx";
@@ -60,6 +66,91 @@ describe("project room", () => {
     const read = room(loaded);
     expect(read).not.toContain(wording.message.projectLoading);
     expect(read).toContain(wording.archivedProject.conversationTitle);
+  });
+
+  test("a project's saved reads come back for that project only, without its open cards", () => {
+    const opened = (queryClient: QueryClient, id: string) =>
+      renderToStaticMarkup(
+        <QueryClientProvider client={queryClient}>
+          <StageWorkspace
+            projectId={id}
+            projectTitle={id}
+            onChanged={() => {}}
+            onOpenSettings={() => {}}
+          />
+        </QueryClientProvider>,
+      );
+    const visited = client();
+    visited.setQueryData(keys.project.of(projectId), {
+      status: "active",
+      tenantId: "tenant-1",
+    });
+    visited.setQueryData(keys.projectRoom.of(projectId), {
+      ...emptyRoom,
+      conversation: {
+        ...emptyRoom.conversation,
+        turns: [
+          { role: "assistant", text: "Hello from the weather app", at: 1 },
+        ],
+      },
+    });
+    // The room builds its open-decisions read, so the card's own policy is the one saved.
+    opened(visited, projectId);
+    visited.setQueryData(keys.openDecisions.of(projectId), []);
+
+    const reloaded = client();
+    hydrate(reloaded, dehydrate(visited, savedReads));
+    expect(
+      reloaded.getQueryData(keys.openDecisions.of(projectId)),
+    ).toBeUndefined();
+    const same = opened(reloaded, projectId);
+    expect(same).not.toContain(wording.message.projectLoading);
+    expect(same).toContain("Hello from the weather app");
+    const other = opened(reloaded, "project-2");
+    expect(other).toContain(wording.message.projectLoading);
+    expect(other).not.toContain("Hello from the weather app");
+  });
+
+  test("every read a room makes names its project, or its project's tenant", () => {
+    const queryClient = client();
+    queryClient.setQueryData(keys.project.of(projectId), {
+      status: "active",
+      tenantId: "tenant-1",
+    });
+    queryClient.setQueryData(keys.projectRoom.of(projectId), {
+      ...emptyRoom,
+      conversation: { ...emptyRoom.conversation, runId: "run-1" },
+    });
+    queryClient.setQueryData(keys.runSteps("tenant-1", "run-1"), {
+      status: "running",
+      steps: [],
+    });
+    renderToStaticMarkup(
+      <QueryClientProvider client={queryClient}>
+        <StageWorkspace
+          projectId={projectId}
+          projectTitle="Weather"
+          onChanged={() => {}}
+          onOpenSettings={() => {}}
+        />
+      </QueryClientProvider>,
+    );
+    const shared: readonly unknown[] = [
+      keys.modelCatalog[0],
+      keys.preferences[0],
+    ];
+    const unscoped = queryClient
+      .getQueryCache()
+      .getAll()
+      .map((query) => query.queryKey)
+      .filter(
+        (key) =>
+          !shared.includes(key[0]) &&
+          !key.includes(projectId) &&
+          !key.includes("tenant-1"),
+      );
+    expect(unscoped).toEqual([]);
+    expect(queryClient.getQueryCache().getAll().length).toBeGreaterThan(10);
   });
 
   test("an approval package is a document only while stakeholder approvals are on", () => {
