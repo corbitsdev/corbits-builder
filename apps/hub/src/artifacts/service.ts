@@ -387,34 +387,16 @@ async function* everyVersion(db: ArtifactDb, artifactId: string) {
   } while (cursor !== undefined);
 }
 
-// A document name as its words, so requirements, Build-Plan and build_plan compare alike.
-function nameWords(name: string) {
-  return name
-    .toLowerCase()
-    .split(/[\s_-]+/)
-    .filter(Boolean)
-    .join(" ");
-}
-
 /**
- * The project's document of the kind an agent asked for. A kind it names loosely (requirements
- * for product_requirements, or the document's title) reads the one filed document it can only
- * mean, so a near miss costs no second call. The refusal names what is filed for the same reason;
- * a model that re-reads to confirm a miss trips the doom loop, and tool wrappers relay only the hint.
+ * The project's document of the kind an agent asked for, by its exact kind. The refusal names what
+ * is filed so the agent can choose: a model that re-reads to confirm a miss trips the doom loop,
+ * and tool wrappers relay only the hint.
  */
 async function documentOfKind(db: ArtifactDb, tenantId: string, kind: string) {
   const [exact] = (await listArtifacts(db, tenantId, { kind, limit: 1 })).rows;
   if (exact) return exact;
   const { rows } = await listArtifacts(db, tenantId, { limit: MAX_LIST_LIMIT });
   const filed = rows.filter((row) => row.contentSha256);
-  const asked = nameWords(kind);
-  const matches = filed.filter(
-    (row) =>
-      ` ${nameWords(row.kind)} `.includes(` ${asked} `) ||
-      nameWords(row.title) === asked,
-  );
-  const [only, ...others] = matches;
-  if (only && !others.length) return only;
   const listed = filed.map((row) => `${row.kind} ("${row.title}")`).join(", ");
   throw new ProjectError(404, "artifact_not_found", {
     hint: filed.length
