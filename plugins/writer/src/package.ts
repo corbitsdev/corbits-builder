@@ -15,6 +15,7 @@ import {
 import { savedResultTools } from "@corbits-builder/hub/workflows/saved-result-tools";
 import { nativePackageName } from "@corbits-builder/hub/workflows/package-name";
 import { createWriterAgent } from "./agent.ts";
+import { documentSkills } from "./skills.ts" with { type: "macro" };
 import { createWriterWorkflow } from "./workflow.ts";
 import { DOCUMENT_WRITER_PACKAGE, WRITER_PACKAGES } from "./task.ts";
 
@@ -45,13 +46,7 @@ export function writerPackage(kind?: WriterDocumentKind) {
       kind === undefined
         ? createArtifactTools(role)
         : createWriterArtifactTools(role, kind),
-      createSkillTools([
-        "problem-brief",
-        "constraints",
-        "approaches",
-        "product-requirements",
-        "build-plan",
-      ]),
+      createSkillTools(documentSkills()),
       savedResultTools,
     ],
   });

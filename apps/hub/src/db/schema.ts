@@ -43,8 +43,8 @@ export const project = pgTable(
     // The handles of the ready-made plans the project is following, each until the fact that ends
     // it holds or the coordinator leaves it.
     following: text("following").array().notNull().default([]),
-    // Each project value a plugin declares, by name, as the person saved it; the look values live
-    // in the design's tokens instead.
+    // Each project value a plugin declares, by name, as the person saved it; a value its plugin keeps
+    // in the design's styles lives there instead once a design is filed.
     values: jsonb("values")
       .$type<Record<string, unknown>>()
       .notNull()

@@ -4,6 +4,7 @@ import { type } from "arktype";
 export default defineWorkflow({
   input: type({ "+": "reject", instruction: Instruction }),
   describe: {
+    says: { doing: "Changing the code", done: "Changed the code" },
     summary:
       "Has a fresh coder make a change the person asked for to the code the project has, built here or imported, starting from the code as last saved. It starts at once, with no documents to file or approve.",
     when: "The person asks for a change to the code the project already has, built here or imported: a fix, an addition or a correction.",

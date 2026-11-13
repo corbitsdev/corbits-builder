@@ -44,7 +44,8 @@ export function withoutUnusedStarterHome(
           ),
         }
       : files;
-  if (next["designs/screens/home.html"] !== STARTER_HOME_SCREEN) return next;
+  const home = next["designs/screens/home.html"];
+  if (home === undefined || home !== STARTER_HOME_SCREEN) return next;
   const index = next["designs/index.html"];
   const hasOtherScreen =
     Object.entries(next).some(
@@ -61,7 +62,11 @@ export function withoutUnusedStarterHome(
 
 const isStarterPages = (files: Readonly<Record<string, string>>) => {
   const index = files["designs/index.html"];
-  if (index !== STARTER_INDEX && index !== STARTER_SPLICED_INDEX) return false;
+  if (
+    index === undefined ||
+    (index !== STARTER_INDEX && index !== STARTER_SPLICED_INDEX)
+  )
+    return false;
   const otherPages = Object.keys(files).filter(
     (path) =>
       path.endsWith(".html") &&

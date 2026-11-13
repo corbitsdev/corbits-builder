@@ -15,6 +15,7 @@ import { nativePackageName } from "@corbits-builder/hub/workflows/package-name";
 import { declaredRole } from "@corbits-builder/plugin";
 import manifest from "../../package.json";
 import { createPresenterAgent } from "../agent.ts";
+import { presentingSkills } from "../skills.ts" with { type: "macro" };
 import { createPresenterWorkflow } from "../workflow.ts";
 
 const role = declaredRole(manifest.builder);
@@ -37,7 +38,7 @@ const agent = createPresenterAgent<PackageToolEnv & MailToolEnv>({
   tools: [
     createPackageTools(role.name),
     mail,
-    createSkillTools(["presenting"]),
+    createSkillTools(presentingSkills()),
     savedResultTools,
   ],
 });

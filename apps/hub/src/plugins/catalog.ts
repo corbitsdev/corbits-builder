@@ -8,7 +8,6 @@ import {
   type Host,
 } from "@corbits-builder/plugin-host/catalog";
 import { readPluginFolder } from "@corbits-builder/plugin-host/folder";
-import { TOKEN_DECLARATIONS } from "../artifacts/project-values.ts";
 import { MODEL_ROLES } from "../config/models.ts";
 import { PREFERENCES } from "../config/preferences.ts";
 import { BUDGETS } from "../inference/model-limits.ts";
@@ -23,12 +22,10 @@ export {
 // From this file rather than the working directory, so every way of starting the hub finds it.
 export const PLUGINS_FOLDER = resolve(import.meta.dir, "../../../../plugins");
 
-// All the plugins need from the hub: the facts it works out, the project values it keeps in the
-// design's tokens, the preferences a screen's answer may set, and the model settings and output
-// budgets a role may run on.
+// All the plugins need from the hub: the facts it works out, the preferences a screen's answer may
+// set, and the model settings and output budgets a role may run on.
 export const HOST: Host = {
   facts: FACTS,
-  values: TOKEN_DECLARATIONS,
   preferences: new Set(PREFERENCES.map(({ id }) => id)),
   models: new Set(MODEL_ROLES.map(({ id }) => id)),
   budgets: new Set(BUDGETS),

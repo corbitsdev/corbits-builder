@@ -10,8 +10,10 @@ project is. A later change is a new run on the saved code.
 This folder is the whole coder plugin. Its `package.json` `builder` block
 names its two actions, `build` and `change`, the workflow packages the hub
 builds and installs from it (`packages`), and the starter module that starts
-its runs (`starters`). Its `coder.starters` block names what a first build can
-start from: `web-app` (`starter/`) and `bare` (`starters/bare/`). Every
+its runs (`starters`). Its `appStarters` names what a first build can start
+from: `web-app` (`starter/`) and `bare` (`starters/bare/`); `web-app` is the
+`legacyDefault`, the starter a project with code but no recorded starter, built
+before projects recorded one, is taken to have started from. Every
 coder is finished by `check-stack`, which runs the commands the project's
 `CHECKS.txt` lists; each starter ships one. `coder build` may name a
 starter; the hub then saves it as `stack.starter`, with the starter's `checks`

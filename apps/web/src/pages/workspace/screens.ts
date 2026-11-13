@@ -11,6 +11,7 @@ import {
   SpecialistBuilder,
   type ScreenViewProps,
 } from "@corbits-builder/plugin";
+import { byAction, pluginFolder } from "./roles.ts";
 import {
   screenHost,
   type HostSupplies,
@@ -37,21 +38,6 @@ let packages: ReadonlyMap<
   string,
   readonly { name: string; isDefault: boolean }[]
 > = new Map();
-
-// A bundled file's plugin folder and, for a file of an action's folder, the action.
-const PLUGIN_FILE = /plugins\/([^/]+)\/(?:package\.json|src\/([^/]+)\/[^/]+)$/;
-
-// Each bundled file of one kind, by its plugin folder and action, such as "designer pick-fonts".
-function byAction<File>(files: Record<string, File>) {
-  return new Map<string, File>(
-    Object.entries(files).flatMap(([path, file]) => {
-      const [, folder, action] = PLUGIN_FILE.exec(path) ?? [];
-      return folder !== undefined && action !== undefined
-        ? [[`${folder} ${action}`, file] as const]
-        : [];
-    }),
-  );
-}
 
 const key = (plugin: string, action: string) => `${plugin} ${action}`;
 
@@ -85,7 +71,7 @@ export function installScreens({
           builder.runs !== "specialist"
         )
           return [];
-        const folder = PLUGIN_FILE.exec(path)?.[1];
+        const folder = pluginFolder(path);
         const {
           handle,
           actions,

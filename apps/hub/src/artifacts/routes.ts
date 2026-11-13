@@ -143,11 +143,13 @@ export function mountArtifactRoutes(
   // The catalog as the project sees it, with the plugins its selections name.
   const catalogOf = async (actor: Actor, projectId: string) => {
     const state = await service.projectState(actor, projectId);
-    return projectCatalog(async (names) => readProjectValues(names, state));
+    return projectCatalog(async (names) =>
+      readProjectValues(names, state, CATALOG.values),
+    );
   };
   // The one way project values are saved, from the values route or a screen's answer: each name
-  // one the catalog declares, the look values written as design tweaks once a design is filed, the
-  // rest stored. Only a person selects which of the plugins sharing a handle the project uses.
+  // one the catalog declares, a value whose home is the design's styles written as a design token
+  // once a design is filed, the rest stored. Only a person selects which of the plugins sharing a handle the project uses.
   const saveValues = async (
     c: Context<TenantEnv>,
     projectId: string,
@@ -177,10 +179,10 @@ export function mountArtifactRoutes(
     );
     // The tokens first, so a design that cannot take them refuses before anything is stored.
     if (Object.keys(tokens).length > 0)
-      await service.saveDesignTweaks(
+      await service.saveStyleTokens(
         current,
         projectId,
-        { tokens },
+        tokens,
         (runId, content) =>
           mailRunAsCaller(c, nativeFetch, current.tenantId, runId, content),
       );
@@ -241,6 +243,7 @@ export function mountArtifactRoutes(
           : readProjectValues(
               names,
               await service.projectState(current, projectId),
+              CATALOG.values,
             );
       await saveValues(
         c,
@@ -829,6 +832,7 @@ export function mountArtifactRoutes(
         values: readProjectValues(
           Object.keys(input.values),
           await service.projectState(current, projectId),
+          CATALOG.values,
         ),
       });
     },
@@ -839,7 +843,7 @@ export function mountArtifactRoutes(
       tags: ["Artifacts"],
       operationId: "readProjectValues",
       description:
-        "The project values named in keys, comma separated, each read from its home: the look values from the filed design's styles.css once a design is filed, and before that, like every other declared value, from the project's own store. A value the project has none of yet is null.",
+        "The project values named in keys, comma separated, each read from its home: a value its plugin keeps in the design's styles from the filed design's styles.css once a design is filed, and before that, like every other declared value, from the project's own store. A value the project has none of yet is null.",
       security,
       responses: {
         200: {
@@ -858,7 +862,9 @@ export function mountArtifactRoutes(
         actorOf(c),
         c.req.param("projectId"),
       );
-      return c.json({ values: readProjectValues(names, state) });
+      return c.json({
+        values: readProjectValues(names, state, CATALOG.values),
+      });
     },
   );
   app.post(
@@ -867,7 +873,7 @@ export function mountArtifactRoutes(
       tags: ["Artifacts"],
       operationId: "saveProjectValues",
       description:
-        "Saves project values by name, each checked against its declared type and written to its home: once a design is filed, the look values become design tweaks with the stored fallbacks kept, saved as design-tweaks saves them; before that, and for every other value, they go to the project's own store. Returns the saved values read back.",
+        "Saves project values by name, each checked against its declared type and written to its home: once a design is filed, a value its plugin keeps in the design's styles becomes that design token, leading any list the token holds, written as design-tweaks writes them; before that, and for every other value, they go to the project's own store. Returns the saved values read back.",
       security,
       requestBody: {
         required: true,
@@ -897,7 +903,11 @@ export function mountArtifactRoutes(
       await saveValues(c, projectId, input.values);
       const state = await service.projectState(current, projectId);
       return c.json({
-        values: readProjectValues(Object.keys(input.values), state),
+        values: readProjectValues(
+          Object.keys(input.values),
+          state,
+          CATALOG.values,
+        ),
       });
     },
   );

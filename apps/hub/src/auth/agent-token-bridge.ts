@@ -4,8 +4,8 @@ import {
   INSTALLED_WORKFLOWS_KEY,
 } from "@corbits-builder/schemas/installed-workflows";
 import { CheckRun } from "@corbits-builder/schemas/artifact";
-import { project, projectCoordinator, runAction } from "../db/schema.ts";
-import { declaredRun, declaredStack } from "@corbits-builder/coder/contract";
+import { projectCoordinator, runAction } from "../db/schema.ts";
+import { declaredRun } from "@corbits-builder/plugin";
 import { readJson } from "../lib/json.ts";
 import { verifyAgentToken } from "@corbits/agent-token";
 import { sha256 } from "@intx/crypto";
@@ -36,6 +36,8 @@ import { buildPackageLayout } from "../builds/package-layout.ts";
 import { scopeWorkflows } from "../workflows/project-scope.ts";
 import { coordinatorUpgrading } from "@corbits-builder/schemas/conversation";
 import { opensNetwork } from "../config/preferences.ts";
+import { CATALOG } from "../plugins/catalog.ts";
+import { projectValueStore, readStoredValues } from "../projects/values.ts";
 import { loadSettings } from "../settings/policy.ts";
 
 let layoutPromise: ReturnType<typeof buildPackageLayout> | undefined;
@@ -46,6 +48,15 @@ const buildLayout = () =>
   }));
 
 const log = getLogger(["corbits-builder", "agent-callback-auth"]);
+
+// How code that began from an installed starter, by the project's stack.starter, prepares a fresh
+// workspace: the command and what to do when it fails. Code that began from none declares nothing.
+function declaredStack(values: Readonly<Record<string, unknown>>) {
+  const name = values["stack.starter"];
+  const starter =
+    typeof name === "string" ? CATALOG.appStarters.get(name) : undefined;
+  return starter && { setup: starter.setup, setupFailed: starter.setupFailed };
+}
 
 // A packaged specialist declares invoker requirements, and the coordinator that
 // deploys it is itself an invoker. The specialist gets copies of the coordinator's
@@ -382,11 +393,10 @@ export function createAgentTokenBridge(
         identity.tenantId,
         binding.projectId,
       );
-      const [projectRow] = await db
-        .select({ values: project.values })
-        .from(project)
-        .where(eq(project.id, binding.projectId));
-      let run = declaredRun(projectRow?.values);
+      const values = await readStoredValues(
+        projectValueStore(db, row.id, binding.projectId),
+      );
+      let run = declaredRun(values);
       // A stack.run that is not a run serves nothing here, so the coder still starts and can report one.
       if (run instanceof type.errors) {
         log.warn("The project's stack.run is not a run: {issues}", {
@@ -402,7 +412,7 @@ export function createAgentTokenBridge(
         role,
         workflows: scopeWorkflows(installed),
         openNetwork: opensNetwork(preferences.value),
-        stack: declaredStack(projectRow?.values["stack.starter"]),
+        stack: declaredStack(values),
         run,
         build: await buildLayout(),
       });

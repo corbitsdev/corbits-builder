@@ -1,7 +1,6 @@
 import { expect, test } from "bun:test";
 import { Hono } from "hono";
 import type { TenantEnv } from "@intx/hub-api";
-import { DesignTweaks } from "@corbits-builder/schemas/artifact";
 import { ProjectError } from "../projects/errors.ts";
 import { setThemeTokens } from "./design-tweaks.ts";
 import { mountArtifactRoutes } from "./routes.ts";
@@ -34,13 +33,12 @@ function harness(
     projectState: async () => ({ styles, stored: {} }),
     valuesRun: async () => ({ plugin: "coder", action: "build" }),
     saveRunValues: async () => {},
-    // Stands in for the filed design's next version, through the real tweak schema.
-    saveDesignTweaks: async (
+    // Stands in for the filed design's next version.
+    saveStyleTokens: async (
       _actor: unknown,
       _project: string,
-      raw: unknown,
+      tokens: Record<string, string>,
     ) => {
-      const { tokens } = DesignTweaks.assert(raw);
       saved.push(tokens);
       styles = setThemeTokens(styles ?? "", tokens);
     },

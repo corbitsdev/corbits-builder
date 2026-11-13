@@ -27,29 +27,17 @@ import {
   SKILLS_DIRECTORY,
   inputFile,
   inputPath,
+  isInputKind,
 } from "../config/inputs.ts";
 import { CATALOG } from "../plugins/catalog.ts";
-import {
-  checkModules,
-  checkScripts,
-  kitDigest,
-  watchScript,
-} from "@corbits-builder/coder/assets" with { type: "macro" };
-import { CODER_INPUTS } from "@corbits-builder/coder/contract";
 import type { WorkflowProjectScope } from "@corbits-builder/schemas/installed-workflows";
-import { DESIGNER_INPUTS } from "@corbits-builder/designer/contract";
-import { designStarterFiles } from "@corbits-builder/designer/skills" with { type: "macro" };
 
-const DESIGN_STARTER = designStarterFiles();
-export const STARTER_INDEX = DESIGN_STARTER[".builder/designs/index.html"]!;
+// The files a design workspace starts from, as the plugin that drafts designs declares them; none
+// while no installed plugin does.
+const DESIGN_STARTER = CATALOG.design?.starter ?? {};
+export const STARTER_INDEX = DESIGN_STARTER[".builder/designs/index.html"];
 export const STARTER_HOME_SCREEN =
-  DESIGN_STARTER[".builder/designs/screens/home.html"]!;
-const KIT = kitDigest();
-// Every coder's check commands by name, and the module they share.
-export const CHECKS = checkScripts();
-export const CHECK_MODULES = checkModules();
-export const CHECK_APP = CHECKS["check-app"]!;
-export const WATCH_PAGE = watchScript();
+  DESIGN_STARTER[".builder/designs/screens/home.html"];
 
 const SCREENS_PLACEHOLDER = "<!-- builder:screens -->";
 const SCREENS_START = "<!-- builder:screens:start -->";
@@ -76,7 +64,8 @@ function normalizeScreenHtml(file: string, cleaned: string): string {
 
 const isStarterHome = (file: string, html: string) =>
   file === "home.html" &&
-  (html === STARTER_HOME_SCREEN || html.trim() === STARTER_HOME_SCREEN.trim());
+  STARTER_HOME_SCREEN !== undefined &&
+  html.trim() === STARTER_HOME_SCREEN.trim();
 
 // Splices per-screen HTML files into the mockup shell's <!-- builder:screens --> marker (or
 // <main>), wrapping the spliced markup in start/end markers so repeated calls replace the
@@ -126,9 +115,10 @@ export function spliceDesignScreens(
   return `${indexHtml}\n${marked}`;
 }
 
-export const STARTER_SPLICED_INDEX = spliceDesignScreens(STARTER_INDEX, {
-  "home.html": STARTER_HOME_SCREEN,
-});
+export const STARTER_SPLICED_INDEX =
+  STARTER_INDEX === undefined || STARTER_HOME_SCREEN === undefined
+    ? undefined
+    : spliceDesignScreens(STARTER_INDEX, { "home.html": STARTER_HOME_SCREEN });
 
 // Re-splices .builder/designs/screens/*.html into .builder/designs/index.html on disk whenever
 // a design write completes, and drops the untouched starter home.html once another screen exists.
@@ -248,17 +238,13 @@ export function sharedBrowser() {
 type ReadFiled = (kind: string) => Promise<ArtifactContent | undefined>;
 type ReadBundle = () => Promise<Readonly<Record<string, string>> | undefined>;
 
-// The files of every skill pack of an action that starts a workflow whose role matches, each in its
-// pack's folder.
-const packFiles = (matches: (role: Role) => boolean) =>
+// The files of every skill pack of an action that starts a workflow of the role, each in its pack's
+// folder.
+const packFiles = (role: string) =>
   Object.fromEntries(
     CATALOG.actions
       .filter(isWorkflowAction)
-      .filter((action) => {
-        const started = CATALOG.packages.get(action.workflow);
-        const role = started && CATALOG.role(started.role);
-        return role !== undefined && matches(role);
-      })
+      .filter((action) => CATALOG.packages.get(action.workflow)?.role === role)
       .flatMap((action) => action.packs)
       .flatMap(({ path, files }) =>
         Object.entries(files).map(([file, text]) => [
@@ -268,32 +254,33 @@ const packFiles = (matches: (role: Role) => boolean) =>
       ),
   );
 
-// Every warm writes the current filed inputs afresh: the role's documents and skill packs under
-// INPUTS_DIRECTORY, and for an app the chosen design unpacked into .builder, with the component kit
-// digest beside the documents whenever a design is chosen or the code serves a web app.
+// Every warm writes the current filed inputs afresh: the documents the role builds from and its
+// skill packs under INPUTS_DIRECTORY, and for code the chosen design unpacked into .builder, with
+// the component kit digest the plugin gives beside the documents whenever a design is chosen or the
+// code serves a web app.
 async function writeInputs(
-  kind: "app" | "design",
+  role: Role,
   workspace: string,
   read: ReadFiled,
   serves: boolean,
+  kit: string | undefined,
 ) {
   await rm(join(workspace, INPUTS_DIRECTORY), { recursive: true, force: true });
-  for (const input of kind === "app" ? CODER_INPUTS : DESIGNER_INPUTS) {
+  for (const input of (role.buildsFrom ?? []).filter(isInputKind)) {
     const document = await read(input);
     if (document)
       await writeBundle(workspace, {
-        [inputPath(input)]: inputFile(document, kind === "app"),
+        [inputPath(input)]: inputFile(
+          document,
+          role.tools.includes("read_artifact"),
+        ),
       });
   }
-  await writeBundle(
-    workspace,
-    packFiles((role) =>
-      kind === "app" ? role.writesCode === true : role.designs === true,
-    ),
-  );
-  if (kind === "design") return;
+  await writeBundle(workspace, packFiles(role.name));
+  if (role.designs) return;
   const design = await read("design");
-  if (design || serves) await writeBundle(workspace, { [KIT_DIGEST]: KIT });
+  if (kit !== undefined && (design || serves))
+    await writeBundle(workspace, { [KIT_DIGEST]: kit });
   if (design) await unpackDesign(design.content, workspace);
 }
 
@@ -331,7 +318,7 @@ async function designSeed(
 // of the sandbox's reach, and is written only once setup succeeded, so a sidecar that restarts
 // mid-setup runs it again.
 export async function prepareWorkspace(
-  kind: "app" | "design",
+  role: Role,
   workspace: string,
   read: ReadFiled,
   readTheme: ReadBundle = async () => undefined,
@@ -341,16 +328,17 @@ export async function prepareWorkspace(
     signal: AbortSignal;
     stack: WorkflowProjectScope["stack"];
     serves: boolean;
+    kit: string;
   },
 ): Promise<{
   setup:
     | { command: string; advice: string; done: () => Promise<void> }
     | undefined;
 }> {
-  if (kind === "design") {
+  if (role.designs) {
     if (!(await exists(join(workspace, ".builder", "DESIGN.md"))))
       await writeBundle(workspace, await designSeed(readTheme, readPrevious));
-    await writeInputs(kind, workspace, read, false);
+    await writeInputs(role, workspace, read, false, undefined);
     return { setup: undefined };
   }
   if (!app) throw new Error("app_workspace_needs_its_repository");
@@ -363,7 +351,7 @@ export async function prepareWorkspace(
         bundleFiles(AppBundle.assert(JSON.parse(filedApp.content))),
       );
   }
-  await writeInputs(kind, workspace, read, app.serves);
+  await writeInputs(role, workspace, read, app.serves, app.kit);
   const marker = join(dirname(workspace), ".workspace-ready");
   const setup =
     !app.stack || (await exists(marker))

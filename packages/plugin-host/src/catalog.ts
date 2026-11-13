@@ -12,11 +12,13 @@ import {
   SkillsBuilder,
   SpecialistBuilder,
   declaredRole,
+  lookOf,
   validateInput,
   validateOutput,
   validateWorkflowInput,
   WorkflowActionBuilder,
   type AgentPackage,
+  type AppStarter,
   type Check,
   type CheckOutcome,
   type Fact,
@@ -25,6 +27,7 @@ import {
   type Refused,
   type Role,
   type Screen,
+  type DesignBuilder,
   type Shown,
   type ValueDeclaration,
   type Workflow,
@@ -60,9 +63,6 @@ import {
 export type Host = {
   // Every fact the host works out from what it stores.
   facts: ReadonlySet<Fact>;
-  // The project values the host keeps in a home of its own, such as design tokens; every value a
-  // plugin declares is kept in the project's plain store.
-  values: Readonly<Record<string, ValueDeclaration>>;
   // The ids of the preferences a screen's answer may set for the project, and a role's assignment
   // may carry.
   preferences: ReadonlySet<string>;
@@ -304,6 +304,23 @@ export type Choice = {
   missing?: string;
 };
 
+/** A starter a plugin declares, with every file of its folder by path there. */
+export type StarterFiles = AppStarter & {
+  files: Readonly<Record<string, string>>;
+};
+
+/**
+ * What a plugin that drafts designs declares, read: the files a design workspace starts from, each
+ * theme's sample design by its id, and the looks; and the look whose theme a concept starts from,
+ * by the concept's label.
+ */
+export type Design = {
+  starter: Readonly<Record<string, string>>;
+  themes: ReadonlyMap<string, Readonly<Record<string, string>>>;
+  looks: DesignBuilder["looks"];
+  themeOf(label: string): DesignBuilder["looks"][number] | undefined;
+};
+
 /** The project value that selects which of the plugins sharing a handle a project uses, by package name. */
 export const selectionName = (handle: string) => `plugins.${handle}`;
 
@@ -324,7 +341,8 @@ export type Catalog = {
   installed(handle: string): Plugin | undefined;
   // A fact in plain words.
   factText(fact: Fact): string;
-  // Every project value by name: the host's own and each one a plugin declares.
+  // Every project value by name: each one a plugin declares, and the selection of each handle
+  // several plugins share.
   values: ReadonlyMap<string, ValueDeclaration>;
   // Each workflow package a plugin brings, by name, with the name of the role its runs play: its
   // entry's path in the plugins folder, or the agent it declares, which the host builds.
@@ -333,6 +351,12 @@ export type Catalog = {
   // run of any of them may still be live; and one of them by name.
   roles: readonly Role[];
   role(name: string): Role | undefined;
+  // The code a first build can start from, by name, with its files, of every installed plugin;
+  // and the one a project with code but no recorded starter is taken to have started from.
+  appStarters: ReadonlyMap<string, StarterFiles>;
+  legacyStarter: { name: string; starter: AppStarter } | undefined;
+  // What design workspaces start from and the looks they offer, when a plugin drafts designs.
+  design: Design | undefined;
   // Each handle several installed plugins share, with the one this catalog uses.
   choices: readonly Choice[];
   // The catalog as a project with these values sees it; only the selection values are read.
@@ -425,7 +449,12 @@ export async function manifestFiles(found: Found) {
       ...Object.values(builder.starters ?? {}),
     ],
     texts: Object.values(builder.agents ?? {}).map(({ prompt }) => prompt),
-    folders: [],
+    folders: [
+      ...Object.values(builder.appStarters ?? {}).map(({ folder }) => folder),
+      ...(builder.design
+        ? [builder.design.starter, builder.design.themes]
+        : []),
+    ],
     present,
   };
 }
@@ -637,11 +666,35 @@ function sharedHandles<Each extends { builder: Plugin["builder"] }>(
   });
 }
 
-// Every project value by name: the host's own, the selection of each handle several plugins share,
-// then each a plugin declares. A value is declared once, so its words and type never disagree; any
-// number of actions may read it.
-function declaredValues(manifests: readonly Manifested[], host: Host) {
-  const values = new Map(Object.entries(host.values));
+// Why a value's pattern or style is wrong, or undefined when it is right: a pattern is a regular
+// expression, and only text has one or lives in the design's styles, one value to a token.
+function valueProblem(
+  value: ValueDeclaration,
+  tokens: ReadonlyMap<string, string>,
+) {
+  const text = value.type === "text";
+  if (value.pattern !== undefined) {
+    if (!text) return "has a pattern, which only a text value takes";
+    try {
+      new RegExp(value.pattern);
+    } catch (error) {
+      if (!(error instanceof SyntaxError)) throw error;
+      return `has a pattern that is not a regular expression: ${error.message}`;
+    }
+  }
+  if (value.style === undefined) return undefined;
+  if (!text) return "lives in the design's styles, where only text can";
+  const other = tokens.get(value.style.token);
+  return other === undefined
+    ? undefined
+    : `lives in the design's ${value.style.token} token, as ${other} does`;
+}
+
+// Every project value by name: the selection of each handle several plugins share, then each a
+// plugin declares. A value is declared once, so its words and type never disagree; any number of
+// actions may read it.
+function declaredValues(manifests: readonly Manifested[]) {
+  const values = new Map<string, ValueDeclaration>();
   for (const { handle, preset, sharing } of sharedHandles(
     manifests,
     ({ about }) => about.package,
@@ -651,6 +704,7 @@ function declaredValues(manifests: readonly Manifested[], host: Host) {
       type: "text",
     });
   const owners = new Map<string, string>();
+  const tokens = new Map<string, string>();
   for (const { builder } of manifests)
     for (const [name, value] of Object.entries(builder.values ?? {})) {
       if (!VALUE_NAME.test(name))
@@ -661,6 +715,10 @@ function declaredValues(manifests: readonly Manifested[], host: Host) {
         throw new Error(
           `${builder.handle} declares ${name}, which ${owners.get(name) ?? "Builder"} declares too`,
         );
+      const problem = valueProblem(value, tokens);
+      if (problem !== undefined)
+        throw new Error(`${builder.handle} declares ${name}, which ${problem}`);
+      if (value.style) tokens.set(value.style.token, name);
       values.set(name, value);
       owners.set(name, builder.handle);
     }
@@ -672,14 +730,16 @@ function declaredValues(manifests: readonly Manifested[], host: Host) {
         throw new Error(
           `${builder.handle} ${action} names ${unknown}, which no plugin declares as a project value`,
         );
-      // A run saves only into the project's plain store, where every plugin's value lives.
+      // A run saves only into the project's plain store, never into the design's styles.
       const unwritable =
         declared.kind === "workflow"
-          ? declared.builder.writes?.find((name) => !owners.has(name))
+          ? declared.builder.writes?.find(
+              (name) => !owners.has(name) || values.get(name)?.style,
+            )
           : undefined;
       if (unwritable !== undefined)
         throw new Error(
-          `${builder.handle} ${action} writes ${unwritable}, which no plugin declares as a project value`,
+          `${builder.handle} ${action} writes ${unwritable}, which no plugin declares as a project value kept in the project's store`,
         );
     }
   return values;
@@ -1271,6 +1331,76 @@ async function pluginPackages(manifests: readonly Manifested[]) {
   return packages;
 }
 
+// Every starter the specialists declare, by name, with its folder's files; no two plugins declare
+// one name, and at most one starter is the legacy default.
+async function appStarters(manifests: readonly Manifested[]) {
+  const starters = new Map<string, StarterFiles>();
+  for (const { found, builder, about } of manifests) {
+    if (builder.runs !== "specialist") continue;
+    for (const [name, starter] of Object.entries(builder.appStarters ?? {})) {
+      if (starters.has(name))
+        throw new Error(
+          `${about.package}'s starter ${name} is declared by another plugin too`,
+        );
+      starters.set(name, {
+        ...starter,
+        files: await found.files(starter.folder),
+      });
+    }
+  }
+  const legacy = [...starters].filter(([, { legacyDefault }]) => legacyDefault);
+  if (legacy.length > 1)
+    throw new Error(
+      `${legacy.map(([name]) => name).join(" and ")} are each the legacy default starter; at most one may be`,
+    );
+  return { starters, legacy: legacy[0] };
+}
+
+// A plugin's themes folder as each theme's files, by the folder each sits in, which is its id.
+function byTheme(files: Readonly<Record<string, string>>) {
+  const themes = new Map<string, Record<string, string>>();
+  for (const [path, text] of Object.entries(files)) {
+    const [id, ...rest] = path.split("/");
+    if (id === undefined || rest.length === 0) continue;
+    themes.set(id, { ...themes.get(id), [rest.join("/")]: text });
+  }
+  return themes;
+}
+
+// The design workspace the one plugin that declares it brings, read: each look starts from one of
+// its themes.
+async function declaredDesign(
+  manifests: readonly Manifested[],
+): Promise<Design | undefined> {
+  const declaring = manifests.flatMap(({ found, builder, about }) =>
+    builder.runs === "specialist" && builder.design
+      ? [{ found, design: builder.design, about }]
+      : [],
+  );
+  if (declaring.length > 1)
+    throw new Error(
+      `${declaring.map(({ about }) => about.package).join(" and ")} each declare a design workspace; at most one may`,
+    );
+  const [declared] = declaring;
+  if (declared === undefined) return undefined;
+  const { found, design, about } = declared;
+  const themes = byTheme(await found.files(design.themes));
+  const unthemed = design.looks.find(({ theme }) => !themes.has(theme));
+  if (unthemed !== undefined)
+    throw new Error(
+      `${about.package}'s look ${unthemed.id} starts from ${unthemed.theme}, which is not one of its themes`,
+    );
+  return {
+    starter: await found.files(design.starter),
+    themes,
+    looks: design.looks,
+    themeOf: (label) => {
+      const look = lookOf(design, label);
+      return look && design.looks.find(({ id }) => id === look.theme);
+    },
+  };
+}
+
 // Of each handle several plugins share, the one these project values select, else the default.
 function choose(
   shared: ReturnType<typeof sharedHandles<Plugin>>,
@@ -1306,7 +1436,7 @@ export async function loadCatalog(
   const made = checkMade(manifests);
   const known = new Set([...host.facts, ...made.keys()]);
   const factText = factWords(manifests, host.facts, made);
-  const values = declaredValues(manifests, host);
+  const values = declaredValues(manifests);
   const starters = await pluginStarters(manifests);
   const plugins = await Promise.all(
     manifests.map(
@@ -1328,6 +1458,8 @@ export async function loadCatalog(
   checkReadyPlanSteps(plugins);
   const roles = declaredRoles(manifests, host);
   const packages = await pluginPackages(manifests);
+  const code = await appStarters(manifests);
+  const design = await declaredDesign(manifests);
   const shared = sharedHandles(plugins, (plugin) => plugin.package);
   // The one place the installed plugins are narrowed to one per handle.
   const catalogOf = (choices: readonly Choice[]): Catalog => {
@@ -1351,6 +1483,12 @@ export async function loadCatalog(
       packages,
       roles: [...roles.values()],
       role: (name) => roles.get(name),
+      appStarters: code.starters,
+      legacyStarter: code.legacy && {
+        name: code.legacy[0],
+        starter: code.legacy[1],
+      },
+      design,
       choices,
       select: (selected) => catalogOf(choose(shared, selected)),
     };

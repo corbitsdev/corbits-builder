@@ -42,11 +42,8 @@
         "@anthropic-ai/sandbox-runtime": "0.0.81",
         "@corbits-builder/client": "workspace:*",
         "@corbits-builder/coordinator": "workspace:*",
-        "@corbits-builder/designer": "workspace:*",
         "@corbits-builder/hub": "workspace:*",
-        "@corbits-builder/presenter": "workspace:*",
         "@corbits-builder/schemas": "workspace:*",
-        "@corbits-builder/writer": "workspace:*",
         "@corbits/slidedeck": "workspace:*",
         "@emulators/core": "0.12.3",
         "@emulators/google": "0.12.3",
@@ -64,14 +61,10 @@
       "version": "0.1.0-rc.3",
       "dependencies": {
         "@anthropic-ai/sandbox-runtime": "0.0.81",
-        "@corbits-builder/coder": "workspace:*",
         "@corbits-builder/coordinator": "workspace:*",
-        "@corbits-builder/designer": "workspace:*",
         "@corbits-builder/plugin": "workspace:*",
         "@corbits-builder/plugin-host": "workspace:*",
-        "@corbits-builder/presenter": "workspace:*",
         "@corbits-builder/schemas": "workspace:*",
-        "@corbits-builder/writer": "workspace:*",
         "@corbits/agent-token": "0.2.2",
         "@corbits/artifacts": "0.3.0",
         "@corbits/codex-provider": "0.1.5",
@@ -123,7 +116,6 @@
       "version": "0.1.0-rc.3",
       "dependencies": {
         "@corbits-builder/client": "workspace:*",
-        "@corbits-builder/designer": "workspace:*",
         "@corbits-builder/plugin": "workspace:*",
         "@corbits-builder/plugin-ui": "workspace:*",
         "@corbits-builder/schemas": "workspace:*",
@@ -301,6 +293,8 @@
       },
       "devDependencies": {
         "@types/react": "19.3.0",
+        "@types/react-dom": "19.3.0",
+        "react-dom": "19.3.0",
       },
     },
     "plugins/desktop-app-skills": {

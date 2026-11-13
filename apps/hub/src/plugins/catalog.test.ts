@@ -65,7 +65,7 @@ test("a screen that reads a project value the hub does not have stops the hub", 
       [
         ...folders.filter(({ folder }) => folder !== "designer"),
         colours(["look"], {
-          reads: ["look.font-primary", "look.colour-primary"],
+          reads: ["brand.guidelines", "look.colour-primary"],
         }),
       ],
       HOST,

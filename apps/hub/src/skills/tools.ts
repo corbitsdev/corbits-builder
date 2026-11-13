@@ -1,12 +1,9 @@
 import { type } from "arktype";
 import { defineTool } from "@intx/agent/authoring";
-import { presentingSkills } from "@corbits-builder/presenter/skills" with { type: "macro" };
-import { documentSkills } from "@corbits-builder/writer/skills" with { type: "macro" };
 
-const SKILLS = {
-  ...documentSkills(),
-  ...presentingSkills(),
-};
+// A plugin's skills, each its files by path, SKILL.md first.
+type Skills = Readonly<Record<string, Readonly<Record<string, string>>>>;
+
 const ReadSkill = type({
   "+": "reject",
   name: "string > 0",
@@ -17,21 +14,22 @@ const ReadSkill = type({
 // fit; a designer reading back a spilled 12000-character SKILL.md never reached its end.
 const PART_CHARS = 8000;
 
-const describe = (name: string) =>
-  SKILLS[name]?.["SKILL.md"]?.match(/^description:\s*(.+)$/m)?.[1]?.trim() ??
-  "";
+const describe = (skill: Readonly<Record<string, string>>) =>
+  skill["SKILL.md"]?.match(/^description:\s*(.+)$/m)?.[1]?.trim() ?? "";
 
 // Agent Skills disclosed progressively: the tool description lists each skill's name and when to
 // use it; a call returns the skill's instructions, or one of the reference files they point to.
-export function createSkillTools(names: readonly string[]) {
-  for (const name of names)
-    if (!SKILLS[name]) throw new Error(`unknown_skill: ${name}`);
+// The plugin whose agent reads them hands its skills over, built into its package.
+export function createSkillTools(skills: Skills) {
+  const names = Object.keys(skills);
   const definitions = [
     {
       name: "read_skill",
       description: [
         "Read a skill: tested instructions for one kind of work. Pass name to get its instructions; pass file as well to read one of the reference files they name. A long file comes in numbered parts, and part reads the next one.",
-        ...names.map((name) => `- ${name}: ${describe(name)}`),
+        ...Object.entries(skills).map(
+          ([name, skill]) => `- ${name}: ${describe(skill)}`,
+        ),
       ].join("\n"),
       inputSchema: { ...ReadSkill.toJsonSchema() },
     },
@@ -48,7 +46,7 @@ export function createSkillTools(names: readonly string[]) {
         // Writers asked for problem_brief and product_requirements, the document kinds their task
         // names, 13 times in 20 eval runs; a skill is named for its kind with hyphens.
         const name = input.name.replaceAll("_", "-");
-        const skill = names.includes(name) ? SKILLS[name] : undefined;
+        const skill = Object.hasOwn(skills, name) ? skills[name] : undefined;
         if (!skill)
           return {
             callId: call.id,

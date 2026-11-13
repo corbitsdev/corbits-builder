@@ -30,12 +30,7 @@ import {
   type RepoStore,
 } from "@intx/hub-sessions";
 import type { AppBundle } from "@corbits-builder/schemas/artifact";
-import {
-  isStarterName,
-  type StarterName,
-} from "@corbits-builder/coder/contract";
 import { PACKAGE_INSTALL_TOOL } from "@corbits-builder/schemas/package-install";
-import { starterFiles } from "@corbits-builder/coder/assets" with { type: "macro" };
 import {
   outbox,
   project,
@@ -43,6 +38,7 @@ import {
   runAction,
 } from "../db/schema.ts";
 import { spawnedWorkflowRole } from "../workflows/spawn-role.ts";
+import { CATALOG } from "../plugins/catalog.ts";
 import type { Preferences } from "@corbits-builder/schemas/preferences";
 import { installsAnyPackage } from "../config/preferences.ts";
 import { loadSettings } from "../settings/policy.ts";
@@ -54,7 +50,6 @@ import {
   holdsApp,
 } from "../builds/app-snapshot.ts";
 
-const STARTER_FILES = starterFiles();
 const TOKEN_LIFETIME_MS = 4 * 60 * 60 * 1000;
 const GITIGNORE = [
   ...APP_EXCLUDED_DIRECTORIES.map((name) => `${name}/`),
@@ -232,9 +227,9 @@ export async function issueAppPushAccess(
 export async function seedStarter(
   assets: Pick<AssetService, "listAssetBlobs" | "populateAsset">,
   assetId: string,
-  starter: StarterName,
+  starter: string,
 ) {
-  const files = STARTER_FILES[starter];
+  const files = CATALOG.appStarters.get(starter)?.files;
   if (!files) throw new Error(`starter_files_missing: ${starter}`);
   if (holdsApp(await assets.listAssetBlobs({ assetId, dir: "" }))) return;
   await assets.populateAsset({
@@ -443,7 +438,11 @@ export function createAppRepositoryRoutes(
             tool,
             effect,
           );
-        if (run.firstBuild && isStarterName(run.starter))
+        if (
+          run.firstBuild &&
+          typeof run.starter === "string" &&
+          CATALOG.appStarters.has(run.starter)
+        )
           await seedStarter(
             assets,
             await ensureAppAsset(

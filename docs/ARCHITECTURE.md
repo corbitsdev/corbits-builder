@@ -52,6 +52,16 @@ one-at-a-time slot, its status wording, and what it does (writes code, drafts
 the design, files documents). The hub and the interface read roles only from
 there, and tell a run's role by the `role` tag on its agent.
 
+Everything else a plugin brings is declared the same way, once, in its folder,
+and the host names no plugin and imports none of its code: the project values
+it adds (with a value whose home is the filed design's styles saying which
+style token holds it), the code a first build can start from (`appStarters`),
+the design workspace's starter, themes and looks (`design`), and, in each
+action's `definition.ts`, what a person reads of it: a started action's
+`says.doing` and `says.done`, and a screen's map label and what an answer
+chose. A plugin's package hands the hub's tool bundles what its workspace runs,
+such as its check commands and its skills.
+
 - **Coordinator**: one per project, long-lived. Talks to the person, writes the
   problem brief, hands off work and asks for decisions.
 - **Writer**: one bounded write of one document of a named kind.
@@ -228,7 +238,9 @@ the conversation; documents carry the work.
 - **Model-agnostic.** Roles are bound to tiers, and a profile maps tiers to a
   provider's models, so any connected provider can run any role.
 - **Configuration holds wording.** User-visible names and text live in
-  configuration, so a rename is a configuration change.
+  configuration, so a rename is a configuration change. What a person reads of
+  a plugin's action lives in that action's definition; the hub's own tools are
+  worded in the interface's configuration.
 
 ## Failure handling
 

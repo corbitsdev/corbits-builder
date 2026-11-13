@@ -70,6 +70,36 @@
     "starters": {
       "coder": "./src/start.ts"
     },
+    "appStarters": {
+      "web-app": {
+        "about": "A web app people use in a browser: a React client, a Bun server and a shared package.",
+        "folder": "starter",
+        "run": {
+          "command": "bun run dev",
+          "port": "CLIENT_PORT",
+          "extraPorts": [
+            "PORT"
+          ]
+        },
+        "setup": "bun install --frozen-lockfile",
+        "checks": [
+          "bun install --frozen-lockfile",
+          "bun run build"
+        ],
+        "setupFailed": "If it says the lockfile is frozen, bring bun.lock up to date with install_packages, naming the packages the output says changed at the versions package.json gives them.",
+        "legacyDefault": true
+      },
+      "bare": {
+        "about": "A TypeScript project on Bun that is not a web app, such as a command-line tool, a library, a script or a service: one package with tests and no framework.",
+        "folder": "starters/bare",
+        "setup": "bun install --frozen-lockfile",
+        "checks": [
+          "bun install --frozen-lockfile",
+          "bun run build"
+        ],
+        "setupFailed": "If it says the lockfile is frozen, bring bun.lock up to date with install_packages, naming the packages the output says changed at the versions package.json gives them."
+      }
+    },
     "actions": {
       "build": {
         "requires": [
@@ -172,37 +202,6 @@
       "stack.run": {
         "about": "How the project's program starts so a person can open it in a browser, as { \"command\": the command that starts it, \"port\": the environment variable naming the port it answers on, \"waitFor\": a line it prints once it is ready, if any, \"extraPorts\": any other variables it needs a free port in }. A project without one serves nothing to open.",
         "type": "json"
-      }
-    }
-  },
-  "coder": {
-    "starters": {
-      "web-app": {
-        "about": "A web app people use in a browser: a React client, a Bun server and a shared package.",
-        "folder": "starter",
-        "run": {
-          "command": "bun run dev",
-          "port": "CLIENT_PORT",
-          "extraPorts": [
-            "PORT"
-          ]
-        },
-        "setup": "bun install --frozen-lockfile",
-        "checks": [
-          "bun install --frozen-lockfile",
-          "bun run build"
-        ],
-        "setupFailed": "If it says the lockfile is frozen, bring bun.lock up to date with install_packages, naming the packages the output says changed at the versions package.json gives them."
-      },
-      "bare": {
-        "about": "A TypeScript project on Bun that is not a web app, such as a command-line tool, a library, a script or a service: one package with tests and no framework.",
-        "folder": "starters/bare",
-        "setup": "bun install --frozen-lockfile",
-        "checks": [
-          "bun install --frozen-lockfile",
-          "bun run build"
-        ],
-        "setupFailed": "If it says the lockfile is frozen, bring bun.lock up to date with install_packages, naming the packages the output says changed at the versions package.json gives them."
       }
     }
   }

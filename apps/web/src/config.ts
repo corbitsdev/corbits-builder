@@ -204,12 +204,6 @@ const BROWSER_STEPS: Record<string, StepPhrase> = {
   drop: fixed("Dropping a file onto the page", "Dropped a file onto the page"),
 };
 
-/** What a started specialist does, while it works and once done; `thing` names its document or concept. */
-type WorkPhrase = {
-  readonly working: (thing?: string) => string;
-  readonly done: (thing?: string) => string;
-};
-
 export const wording = {
   builtBy: { label: "Built by Corbits.dev", href: "https://corbits.dev" },
   flourish: {
@@ -571,21 +565,6 @@ export const wording = {
     /** A map marker's accessible name, saying it jumps there, so it never shares a name with the card's own controls. */
     mapGoTo: (label: string) => `Go to: ${label}`,
     /** A plugin screen's map entry, by plugin and action, and what the person's answer chose. */
-    mapScreen: {
-      approve: (documents: string) => `Approve the ${documents}`,
-      approved: "Approved",
-      review: "Review the mockup",
-      changesAsked: "Changes asked for",
-      choose: "Choose a look",
-      chose: (look: string) => `Chose ${look}`,
-      looks: "How many looks to compare",
-      fonts: "Pick the fonts",
-      colours: "Pick the colours",
-      pair: (first: string, second: string) => `${first} and ${second}`,
-      handOver: "Who decides the approvals",
-      decides: (who: "person" | "builder") =>
-        who === "person" ? "You decide" : `${productName} decides`,
-    },
     empty: "Nothing in the conversation yet",
     emptyLead:
       "Replies show here, and each saved document opens from where it was saved.",
@@ -848,38 +827,6 @@ export const wording = {
   dispatch: {
     /** A specialist's row: who, and what it does. */
     row: (role: string, doing: string) => `${role} · ${doing}`,
-    /** What a started specialist does, by plugin and action. */
-    action: {
-      "coder build": {
-        working: () => "Building the code",
-        done: () => "Built the code",
-      },
-      "coder change": {
-        working: () => "Changing the code",
-        done: () => "Changed the code",
-      },
-      "writer write-requirements": {
-        working: () => "Writing the requirements",
-        done: () => "Wrote the requirements",
-      },
-      "writer write-build-plan": {
-        working: () => "Writing the build plan",
-        done: () => "Wrote the build plan",
-      },
-      "writer write": {
-        working: (thing) => (thing ? `Writing the ${thing}` : "Writing"),
-        done: (thing) => (thing ? `Wrote the ${thing}` : "Wrote it"),
-      },
-      "writer review": {
-        working: (thing) => (thing ? `Reviewing the ${thing}` : "Reviewing"),
-        done: (thing) => (thing ? `Reviewed the ${thing}` : "Reviewed it"),
-      },
-      "designer mockup": {
-        working: (thing) =>
-          thing ? `Making the ${thing} mockup` : "Making a mockup",
-        done: (thing) => (thing ? `Made the ${thing} mockup` : "Made a mockup"),
-      },
-    } as Record<string, WorkPhrase>,
     /** What a specialist of no known role does when no action of its own names it. */
     working: "Working",
     done: "Finished its work",

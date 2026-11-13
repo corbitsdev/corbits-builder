@@ -250,7 +250,7 @@ test("presenter workflow entry binds Medium tier inference and approval_package 
     await import("../config/models.ts");
   const { resolveRoleInference } =
     await import("../workflows/role-inference.ts");
-  const { CATALOG } = await import("../plugins/catalog.ts");
+  const { CATALOG, PLUGINS_FOLDER } = await import("../plugins/catalog.ts");
   const presenter = CATALOG.role("presenter");
   if (!presenter) throw new Error("presenter_role_missing");
   const choice = { profile: "anthropic_default" };
@@ -259,7 +259,11 @@ test("presenter workflow entry binds Medium tier inference and approval_package 
   process.env.BUILDER_ROLE_INFERENCE = JSON.stringify(
     resolveRoleInference(MODEL_PROVIDERS, presenter.limits, binding),
   );
-  const entry = await import("@corbits-builder/presenter/packages/presenter");
+  const { resolve } = await import("node:path");
+  const brought = CATALOG.packages.get("presenter");
+  if (brought === undefined || !("entry" in brought))
+    throw new Error("presenter_package_missing");
+  const entry = await import(resolve(PLUGINS_FOLDER, brought.entry));
   expect(entry.director).toBeDefined();
   expect(entry.default.steps.present).toMatchObject({ triggers: 1 });
   expect(entry.default.grantRequirements).toEqual([
@@ -284,7 +288,7 @@ test("experimental_approvals preference includes coordinator guidance when enabl
     { experimental_approvals: "yes" },
     COORDINATOR,
   ).join("\n");
-  expect(enabledGuidance).toContain("present action");
+  expect(enabledGuidance).toContain("files the next approval_package");
   expect(enabledGuidance).toContain("approval_package");
   expect(enabledGuidance).toContain("reviewer feedback (external");
 
@@ -292,7 +296,7 @@ test("experimental_approvals preference includes coordinator guidance when enabl
     { experimental_approvals: "no" },
     COORDINATOR,
   ).join("\n");
-  expect(disabledGuidance).not.toContain("present action");
+  expect(disabledGuidance).not.toContain("files the next approval_package");
   expect(disabledGuidance).not.toContain("approval_package");
   expect(disabledGuidance).not.toContain("reviewer feedback");
   expect(disabledGuidance).not.toContain("Approvals:");

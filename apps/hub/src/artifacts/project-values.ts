@@ -5,7 +5,6 @@ import {
   type ValueDeclaration,
   type ValueType,
 } from "@corbits-builder/plugin";
-import type { DesignTweaks } from "@corbits-builder/schemas/artifact";
 import { ProjectError, typeIssues } from "../projects/errors.ts";
 import { declarations } from "./design-tokens.ts";
 
@@ -18,90 +17,45 @@ export type ProjectState = {
   materials: readonly { artifactId: string; name: string }[];
 };
 
-type FontToken = Extract<keyof DesignTweaks["tokens"], `font-${string}`>;
+// A value whose home is the design's styles, as its declaration says.
+type Styled = ValueDeclaration & {
+  style: NonNullable<ValueDeclaration["style"]>;
+};
 
-// The families a :root font token lists, in order and as written, quotes kept.
-function families(state: ProjectState, token: FontToken) {
-  if (state.styles === undefined) return [];
-  const list = declarations(state.styles, ":root").get(token) ?? "";
-  return list
+const isStyled = (declaration: ValueDeclaration): declaration is Styled =>
+  declaration.style !== undefined;
+
+// What a styled value's token holds in the filed design's :root; for a token that lists several
+// values, each in order and as written, quotes kept.
+function tokenHolds(styles: string, { style }: Styled) {
+  const held = declarations(styles, ":root").get(style.token) ?? "";
+  if (!style.leads) return [held.trim()];
+  return held
     .split(",")
-    .map((family) => family.trim())
-    .filter((family) => family !== "");
+    .map((each) => each.trim())
+    .filter((each) => each !== "");
 }
 
-function fontValue(name: string, about: string, token: FontToken) {
-  return {
-    name,
-    about,
-    schema: type("string > 0"),
-    read: (state: ProjectState) =>
-      families(state, token)[0]?.replace(/^"|"$/g, ""),
-    // Saved through design-tweaks as this token.
-    token,
-    // The chosen font leads the list and the stored fallbacks stay behind it.
-    write: (value: string, state: ProjectState) =>
-      [JSON.stringify(value), ...families(state, token).slice(1)].join(", "),
-  };
+// A styled value as the filed design holds it: its token's value, or the one leading its list
+// without quotes, when its type takes it.
+function readStyled(styles: string, declaration: Styled) {
+  const [held] = tokenHolds(styles, declaration);
+  const value = declaration.style.leads ? held?.replace(/^"|"$/g, "") : held;
+  return value !== undefined && schemaOf(declaration).allows(value)
+    ? value
+    : undefined;
 }
 
-// Six hex digits, as the mockup's tweak panel reads and writes these tokens; any other colour reads as none.
-const HEX = type(/^#[0-9a-fA-F]{6}$/);
+// A value written into a design token may not end its declaration or rule.
+const TOKEN_TEXT = type(/^[^;{}<>\\]+$/);
 
-function colorValue(
-  name: string,
-  about: string,
-  token: "primary" | "background",
-) {
-  return {
-    name,
-    about,
-    schema: HEX,
-    read: (state: ProjectState) => {
-      if (state.styles === undefined) return undefined;
-      const value = declarations(state.styles, ":root").get(token);
-      return HEX.allows(value) ? value : undefined;
-    },
-    // Saved through design-tweaks as this token.
-    token,
-    write: (value: string) => value,
-  };
-}
-
-// The look values, whose home is the filed design's tokens once a design is filed. Before that
-// they live in the plain store, as every other value does, and the designer's first mockup is
-// handed them.
-export const TOKEN_VALUES = [
-  fontValue(
-    "look.font-primary",
-    "The font for headings and text.",
-    "font-sans",
-  ),
-  fontValue(
-    "look.font-secondary",
-    "The font for code and figures.",
-    "font-mono",
-  ),
-  colorValue(
-    "look.color-primary",
-    "The brand colour of buttons and links.",
-    "primary",
-  ),
-  colorValue(
-    "look.color-background",
-    "The page colour behind everything.",
-    "background",
-  ),
-] as const;
-
-/** The token values as the catalog declares them. */
-export const TOKEN_DECLARATIONS: Readonly<Record<string, ValueDeclaration>> =
-  Object.fromEntries(
-    TOKEN_VALUES.map(({ name, about }) => [name, { about, type: "text" }]),
-  );
-
-const tokenValue = (name: string) =>
-  TOKEN_VALUES.find((value) => value.name === name);
+// A styled value as its token takes it: the value, or the value leading the list it already holds.
+const writeStyled = (value: string, styles: string, declaration: Styled) =>
+  declaration.style.leads
+    ? [JSON.stringify(value), ...tokenHolds(styles, declaration).slice(1)].join(
+        ", ",
+      )
+    : value;
 
 const STORED_TYPES: Record<ValueType, Type<unknown>> = {
   text: type("string"),
@@ -109,6 +63,18 @@ const STORED_TYPES: Record<ValueType, Type<unknown>> = {
   link: LinkValue,
   file: FileValue,
 };
+
+// What a value of one type is checked against: text against its pattern, when it declares one.
+const typeOf = (each: ValueType, declaration: ValueDeclaration) =>
+  each === "text" && declaration.pattern !== undefined
+    ? type(new RegExp(declaration.pattern))
+    : STORED_TYPES[each];
+
+const schemaOf = (declaration: ValueDeclaration) =>
+  [declaration.type]
+    .flat()
+    .map((each) => typeOf(each, declaration))
+    .reduce((one, other) => one.or(other));
 
 const invalid = (key: string, issues: type.errors) =>
   new ProjectError(400, "invalid_project_value", {
@@ -137,11 +103,7 @@ function storedValue(
   const types = [declaration.type].flat();
   const shaped = types.find((each) => each === shapeOf(value));
   const schema =
-    shaped === undefined
-      ? types
-          .map((each) => STORED_TYPES[each])
-          .reduce((one, other) => one.or(other))
-      : STORED_TYPES[shaped];
+    shaped === undefined ? schemaOf(declaration) : typeOf(shaped, declaration);
   const checked = schema(value);
   if (checked instanceof type.errors) throw invalid(name, checked);
   if (!types.includes("file") || !FileValue.allows(checked)) return checked;
@@ -162,8 +124,9 @@ function storedValue(
 }
 
 /**
- * Each named value split by its home: design tokens written over the project's filed design, and
- * the plain store. Every name must be one the catalog declares.
+ * Each named value split by its home: the design tokens of the values whose home is the filed
+ * design's styles, once there is one, and the plain store. Every name must be one the catalog
+ * declares.
  */
 export function projectValueWrites(
   values: Readonly<Record<string, unknown>>,
@@ -173,18 +136,23 @@ export function projectValueWrites(
   const tokens: Record<string, string> = {};
   const stored: Record<string, unknown> = {};
   for (const [name, value] of Object.entries(values)) {
-    const token = tokenValue(name);
-    if (token) {
-      const checked = token.schema(value);
-      if (checked instanceof type.errors) throw invalid(name, checked);
-      if (state.styles === undefined) stored[name] = checked;
-      else tokens[token.token] = token.write(checked, state);
-      continue;
-    }
     const declaration = declared.get(name);
     if (!declaration)
       throw new Error(`${name} is not a declared project value`);
-    stored[name] = storedValue(name, value, declaration, state);
+    const checked = storedValue(name, value, declaration, state);
+    if (
+      state.styles === undefined ||
+      !isStyled(declaration) ||
+      typeof checked !== "string"
+    )
+      stored[name] = checked;
+    else {
+      const written = TOKEN_TEXT(
+        writeStyled(checked, state.styles, declaration),
+      );
+      if (written instanceof type.errors) throw invalid(name, written);
+      tokens[declaration.style.token] = written;
+    }
   }
   return { tokens, stored };
 }
@@ -193,13 +161,18 @@ export function projectValueWrites(
 export function readProjectValues(
   names: readonly string[],
   state: ProjectState,
+  declared: ReadonlyMap<string, ValueDeclaration>,
 ): Record<string, unknown> {
   return Object.fromEntries(
     names.map((name) => {
-      const token = state.styles === undefined ? undefined : tokenValue(name);
-      if (!token) return [name, state.stored[name] ?? null];
-      const value = token.read(state);
-      return [name, value === undefined ? null : token.schema.assert(value)];
+      const declaration = declared.get(name);
+      if (
+        state.styles === undefined ||
+        declaration === undefined ||
+        !isStyled(declaration)
+      )
+        return [name, state.stored[name] ?? null];
+      return [name, readStyled(state.styles, declaration) ?? null];
     }),
   );
 }

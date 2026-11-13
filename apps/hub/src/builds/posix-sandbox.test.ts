@@ -4,8 +4,9 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { SandboxManager } from "@anthropic-ai/sandbox-runtime";
 import { rgPath } from "@vscode/ripgrep";
-import { declaredRun, starterValues } from "@corbits-builder/coder/contract";
+import { declaredRun, starterValues } from "@corbits-builder/plugin";
 import { type } from "arktype";
+import { CATALOG } from "../plugins/catalog.ts";
 import { buildPackageLayout } from "./package-layout.ts";
 import { createPosixBuildExecutor, publicHostName } from "./posix-sandbox.ts";
 
@@ -185,7 +186,12 @@ sandboxTest(
 sandboxTest(
   "the web starter's program starts as the stack.run its first build saves declares and answers on its address",
   async () => {
-    const run = declaredRun(starterValues("web-app"));
+    const run = declaredRun(
+      starterValues({
+        name: "web-app",
+        starter: CATALOG.appStarters.get("web-app")!,
+      }),
+    );
     if (!run || run instanceof type.errors)
       throw new Error("web_starter_saves_no_run");
     await withRunner(

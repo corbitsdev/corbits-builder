@@ -139,11 +139,9 @@ import {
   warmStepWorkspace,
 } from "./design-draft.ts";
 import type { LiveApps } from "../live-app/runner.ts";
-import {
-  declaredRun,
-  isStarterName,
-  starterValues,
-} from "@corbits-builder/coder/contract";
+import { declaredRun, starterValues } from "@corbits-builder/plugin";
+import { projectValueStore, readStoredValues } from "../projects/values.ts";
+import { CATALOG } from "../plugins/catalog.ts";
 import {
   appContent,
   bundleFiles,
@@ -494,6 +492,66 @@ export function createArtifactService(
   const writesCode = (role: Role) => role.writesCode === true;
   const designs = (role: Role) => role.designs === true;
 
+  // Tokens written into the design's styles.css :root wherever the design lives: the live
+  // designer's workspace for the concept, and the filed design's next version; then the coordinator
+  // and that designer are told.
+  async function writeDesignTokens(
+    actor: Actor,
+    projectId: string,
+    tokens: Readonly<Record<string, string>>,
+    concept: string | undefined,
+    mailRun: (runId: string, content: string) => Promise<void>,
+  ): Promise<DesignTweaksReceipt> {
+    let designer: { runId: string; role: string } | undefined;
+    for (const workspace of await liveWorkspaces(actor, designs)) {
+      if ((workspace.concept ?? undefined) !== concept) continue;
+      if ((await readDesignDraft(workspace.dir)) === undefined) continue;
+      await editDesignStyles(workspace.dir, (css) =>
+        setThemeTokens(css, tokens),
+      );
+      designer = workspace;
+      break;
+    }
+    let artifact: ArtifactRef | undefined;
+    const filed = await filedDesign(actor, concept);
+    if (!filed && designer === undefined)
+      throw new ProjectError(404, "design_not_found");
+    if (filed) {
+      const bundle = await filed.files();
+      const files = {
+        ...bundle,
+        [DESIGN_STYLES]: setThemeTokens(bundle[DESIGN_STYLES] ?? "", tokens),
+      };
+      const written = await writeArtifactVersion(db, {
+        scope: actor,
+        artifactId: filed.artifactId,
+        title: filed.title,
+        content: JSON.stringify({ files }),
+      });
+      artifact = {
+        artifactId: written.artifactId,
+        kind: filed.kind,
+        version: written.version,
+        sha256: written.contentSha256!,
+      };
+    }
+    const updated: DesignTweaksReceipt["updated"] = [
+      ...(designer === undefined ? [] : ["workspace" as const]),
+      ...(artifact ? ["version" as const] : []),
+    ];
+    const notified: DesignTweaksReceipt["notified"] = [];
+    const coordinator = await activeCoordinator(projectId);
+    if (coordinator) {
+      await mailRun(coordinator.runId, coordinatorTweaksNote(tokens, updated));
+      notified.push(COORDINATOR.name);
+    }
+    if (designer) {
+      await mailRun(designer.runId, designerTweaksNote(tokens));
+      notified.push(designer.role);
+    }
+    return { updated, ...(artifact ? { artifact } : {}), notified };
+  }
+
   // The runs of the roles that match, newest first, each with its warm step, the design concept it
   // works on, if any, whether it is live and when it ended: the live runs, or with ended, every run.
   async function roleRuns(
@@ -720,11 +778,11 @@ export function createArtifactService(
     | { readonly state: "not_built" }
   > {
     await requireProject(actor, projectId, "read");
-    const [row] = await rawDB
-      .select({ values: project.values })
-      .from(project)
-      .where(eq(project.id, projectId));
-    const run = declaredRun(row?.values);
+    const run = declaredRun(
+      await readStoredValues(
+        projectValueStore(rawDB, actor.tenantId, projectId),
+      ),
+    );
     if (!run) throw new ProjectError(409, "no_web_app");
     if (run instanceof type.errors)
       throw new ProjectError(409, "invalid_stack_run", { issues: run });
@@ -1712,10 +1770,9 @@ export function createArtifactService(
     // the person saved, the project's plain store, and the files attached, which a file value names.
     async projectState(actor: Actor, projectId: string): Promise<ProjectState> {
       await requireProject(actor, projectId, "read");
-      const [row] = await rawDB
-        .select({ values: project.values })
-        .from(project)
-        .where(eq(project.id, projectId));
+      const stored = await readStoredValues(
+        projectValueStore(rawDB, actor.tenantId, projectId),
+      );
       const filed = await filedDesign(actor, undefined);
       const { rows: materials } = await listArtifacts(db, actor.tenantId, {
         kind: MATERIAL_KIND,
@@ -1723,7 +1780,7 @@ export function createArtifactService(
       });
       return {
         styles: filed && (await filed.files())[DESIGN_STYLES],
-        stored: row?.values ?? {},
+        stored,
         materials: materials.map((material) => ({
           artifactId: material.id,
           name: material.title,
@@ -1757,58 +1814,25 @@ export function createArtifactService(
           issues: input,
         });
       await requireProject(actor, projectId, "manage");
-      const tokens: Record<string, string> = input.tokens;
-      let designer: { runId: string; role: string } | undefined;
-      for (const workspace of await liveWorkspaces(actor, designs)) {
-        if ((workspace.concept ?? undefined) !== input.concept) continue;
-        if ((await readDesignDraft(workspace.dir)) === undefined) continue;
-        await editDesignStyles(workspace.dir, (css) =>
-          setThemeTokens(css, tokens),
-        );
-        designer = workspace;
-        break;
-      }
-      let artifact: ArtifactRef | undefined;
-      const filed = await filedDesign(actor, input.concept);
-      if (!filed && designer === undefined)
-        throw new ProjectError(404, "design_not_found");
-      if (filed) {
-        const bundle = await filed.files();
-        const files = {
-          ...bundle,
-          [DESIGN_STYLES]: setThemeTokens(bundle[DESIGN_STYLES] ?? "", tokens),
-        };
-        const written = await writeArtifactVersion(db, {
-          scope: actor,
-          artifactId: filed.artifactId,
-          title: filed.title,
-          content: JSON.stringify({ files }),
-        });
-        artifact = {
-          artifactId: written.artifactId,
-          kind: filed.kind,
-          version: written.version,
-          sha256: written.contentSha256!,
-        };
-      }
-      const updated: DesignTweaksReceipt["updated"] = [
-        ...(designer === undefined ? [] : ["workspace" as const]),
-        ...(artifact ? ["version" as const] : []),
-      ];
-      const notified: DesignTweaksReceipt["notified"] = [];
-      const coordinator = await activeCoordinator(projectId);
-      if (coordinator) {
-        await mailRun(
-          coordinator.runId,
-          coordinatorTweaksNote(tokens, updated),
-        );
-        notified.push(COORDINATOR.name);
-      }
-      if (designer) {
-        await mailRun(designer.runId, designerTweaksNote(tokens));
-        notified.push(designer.role);
-      }
-      return { updated, ...(artifact ? { artifact } : {}), notified };
+      return writeDesignTokens(
+        actor,
+        projectId,
+        input.tokens,
+        input.concept,
+        mailRun,
+      );
+    },
+
+    // Project values whose home is the design's styles, as their tokens, written as the person's
+    // tweaks are, to the filed design.
+    async saveStyleTokens(
+      actor: Actor,
+      projectId: string,
+      tokens: Readonly<Record<string, string>>,
+      mailRun: (runId: string, content: string) => Promise<void>,
+    ): Promise<DesignTweaksReceipt> {
+      await requireProject(actor, projectId, "manage");
+      return writeDesignTokens(actor, projectId, tokens, undefined, mailRun);
     },
 
     // What the coordinator's model reads, by the capabilities its catalog offering declares.
@@ -2638,7 +2662,15 @@ export function createArtifactService(
       const input = type({
         "+": "reject",
         runId: "string > 0",
-        starter: type("string").narrow(isStarterName).or("null"),
+        starter: type("string")
+          .narrow(
+            (name, ctx) =>
+              CATALOG.appStarters.has(name) ||
+              ctx.mustBe(
+                `an installed starter: ${[...CATALOG.appStarters.keys()].join(", ")}`,
+              ),
+          )
+          .or("null"),
       })(raw);
       if (input instanceof type.errors)
         throw new ProjectError(400, "invalid_starter", {
@@ -2662,7 +2694,18 @@ export function createArtifactService(
         throw new ProjectError(404, "coder_run_not_found", {
           runId: input.runId,
         });
-      await storeValues(projectId, starterValues(input.starter));
+      const starter =
+        input.starter === null
+          ? undefined
+          : CATALOG.appStarters.get(input.starter);
+      await storeValues(
+        projectId,
+        starterValues(
+          input.starter !== null && starter !== undefined
+            ? { name: input.starter, starter }
+            : null,
+        ),
+      );
       return input;
     },
 

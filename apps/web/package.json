@@ -17,7 +17,6 @@
   },
   "dependencies": {
     "@corbits-builder/client": "workspace:*",
-    "@corbits-builder/designer": "workspace:*",
     "@corbits-builder/plugin": "workspace:*",
     "@corbits-builder/plugin-ui": "workspace:*",
     "@corbits-builder/schemas": "workspace:*",

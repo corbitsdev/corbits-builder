@@ -8,6 +8,11 @@ import { Color, Input, Output } from "./schema.ts";
 const FORMAT = 'a # and six hex digits, such as "#1d4ed8"';
 
 const describe = {
+  says: {
+    label: () => "Pick the colours",
+    chose: (output: typeof Output.infer) =>
+      `${output.primary} and ${output.background}`,
+  },
   summary:
     "Shows the person the primary (brand) and background colours in use and lets them choose new ones.",
   when: "The person is unhappy with the colours or unsure which colours would suit the brand or the background.",

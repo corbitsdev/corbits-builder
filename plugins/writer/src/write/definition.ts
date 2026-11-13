@@ -10,6 +10,7 @@ export default defineWorkflow({
     instruction: Instruction,
   }),
   describe: {
+    says: { doing: "Writing the {thing}", done: "Wrote the {thing}" },
     summary:
       "Has a writer write any document the person asks for, or the next version of one already filed. It is filed under kind and versioned, and can be reviewed and approved like any other document.",
     when: "The person asks for any document that has no action of its own, such as a problem brief, constraints, a comparison of approaches, a competitor analysis, a security review or a user manual, or wants one revised.",

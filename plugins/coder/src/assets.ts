@@ -1,39 +1,11 @@
-import { readdirSync, readFileSync } from "node:fs";
+import { readFileSync } from "node:fs";
 import { join, relative } from "node:path";
 import manifest from "../package.json";
 
-// Bun macros: they run when the coder bundle is built, so the starters and the check scripts ship
+// Bun macros: they run when the coder bundle is built, so the check scripts and the kit digest ship
 // inside the workflow package instead of being looked up on the machine that runs it.
 
-const files = (root: string, directory = root): [string, string][] =>
-  readdirSync(directory, { withFileTypes: true })
-    .filter((entry) => entry.name !== "node_modules" && entry.name !== "dist")
-    .flatMap((entry) =>
-      entry.isDirectory()
-        ? files(root, join(directory, entry.name))
-        : [
-            [
-              relative(root, join(directory, entry.name)),
-              readFileSync(join(directory, entry.name), "utf8"),
-            ],
-          ],
-    );
-
-const STARTERS = Object.entries(manifest.coder.starters);
 const CHECK = join(import.meta.dir, "..", "check");
-
-// Each starter's files by its name.
-export const starterFiles = (): Record<string, Record<string, string>> =>
-  Object.fromEntries(
-    STARTERS.map(([name, { folder }]) => [
-      name,
-      Object.fromEntries(
-        files(join(import.meta.dir, "..", folder)).sort(([a], [b]) =>
-          a.localeCompare(b),
-        ),
-      ),
-    ]),
-  );
 
 // The check commands by name, from check/<command>.ts: check-stack, every coder's finish check,
 // and check-app, which a web app's CHECKS.txt runs and the designer's check_design runs.
@@ -87,7 +59,7 @@ export const kitDigest = (): string => {
       join(
         import.meta.dir,
         "..",
-        manifest.coder.starters["web-app"].folder,
+        manifest.builder.appStarters["web-app"].folder,
         "client",
         "package.json",
       ),

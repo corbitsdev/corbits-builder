@@ -13,6 +13,10 @@ import {
 import { nativePackageName } from "@corbits-builder/hub/workflows/package-name";
 import { presentsFor } from "@corbits-builder/hub/plugins/catalog";
 import { declaredRole } from "@corbits-builder/plugin";
+import {
+  checkModules,
+  checkScripts,
+} from "@corbits-builder/coder/assets" with { type: "macro" };
 import manifest from "../../package.json";
 import { createDesignerAgent } from "../agent.ts";
 import { createDesignerWorkflow } from "../workflow.ts";
@@ -42,7 +46,12 @@ const agent = createDesignerAgent<CodingSidecarEnv & MailToolEnv>({
     createSidecarCodingTools({
       role: role.name,
       approval: "allow",
-      workspace: "design",
+      // check_design runs the coder's check-app on the mockup.
+      workspace: {
+        kind: "design",
+        commands: { "check-app": checkScripts()["check-app"]! },
+        commandModules: checkModules(),
+      },
     }),
   ],
 });

@@ -37,14 +37,11 @@ import {
 } from "./check-detail.ts";
 import type { BrowserCatalog } from "./browser-catalog.ts";
 import {
-  CHECK_APP,
-  CHECK_MODULES,
-  CHECKS,
-  WATCH_PAGE,
   prepareWorkspace,
   sharedBrowser,
   syncDesignScreensOnDisk,
 } from "./starter.ts";
+import { CATALOG } from "../plugins/catalog.ts";
 import {
   fileApp,
   readFiledDocument,
@@ -264,17 +261,33 @@ const SETUP_PROGRESS = "installing the app's packages";
 // A source-closure-safe declaration: only explicit policy is captured. The
 // native child supplies the step workspace; the sandbox is built inside it. What the project's code
 // is, and whether a web app runs in an app workspace, the hub's project scope says when it starts,
-// to a run of the role named here.
+// to a run of the role named here. The plugin hands over what its workspace runs: its commands by
+// name and the modules they share, and for an app workspace the script that watches the app's page
+// and the digest of the component kit its code builds with.
 export function createSidecarCodingTools(policy: {
   role: string;
   approval: "ask" | "allow";
-  workspace: "app" | "design";
+  workspace:
+    | {
+        kind: "app";
+        commands: Readonly<Record<string, string>>;
+        commandModules: Readonly<Record<string, string>>;
+        pageWatcher: string;
+        kit: string;
+      }
+    | {
+        kind: "design";
+        commands: Readonly<Record<string, string>>;
+        commandModules: Readonly<Record<string, string>>;
+      };
   packageInstall?: "ask" | "allow";
   browser?: BrowserCatalog | undefined;
 }) {
   if (!["ask", "allow"].includes(policy.approval))
     throw new Error("invalid_coding_policy");
-  const design = policy.workspace === "design";
+  const design = policy.workspace.kind === "design";
+  const appWorkspace =
+    policy.workspace.kind === "app" ? policy.workspace : undefined;
   const passedCheck = (call: ToolCall, result: ToolResult) =>
     appCheckDetail(call, result)?.checkPassed === true;
   const offered = (name: string) => !design || DESIGNER_TOOLS.has(name);
@@ -305,7 +318,7 @@ export function createSidecarCodingTools(policy: {
               ? { name: APP_STATUS_TOOL, approval: "ask" as const }
               : { name: APP_STATUS_TOOL },
           ]),
-      ...(policy.workspace === "app" ? [{ name: DONE_CHECKS_TOOL }] : []),
+      ...(design ? [] : [{ name: DONE_CHECKS_TOOL }]),
       ...(design ? [{ name: CHECK_DESIGN_TOOL }] : []),
       ...(policy.browser?.definitions ?? []),
     ],
@@ -407,31 +420,34 @@ export function createSidecarCodingTools(policy: {
             signal,
           );
           const workspace = await realpath(env.toolCwd);
-          const run = design ? undefined : scope.run;
+          const role = CATALOG.role(policy.role);
+          if (!role) throw new Error(`role_unknown:${policy.role}`);
+          const run = appWorkspace && scope.run;
           declared = run && { run, page: true };
           const app =
-            policy.workspace === "app"
-              ? (opened ??= createAppRepository({
-                  workspace,
-                  access: (signal) =>
-                    requestAppPushAccess(env.capabilities, scope, signal),
-                  revoke: (signal) =>
-                    revokeAppPushAccess(env.capabilities, scope, signal),
-                  sign: signWithSidecarKey,
-                }))
-              : undefined;
+            appWorkspace &&
+            (opened ??= createAppRepository({
+              workspace,
+              access: (signal) =>
+                requestAppPushAccess(env.capabilities, scope, signal),
+              revoke: (signal) =>
+                revokeAppPushAccess(env.capabilities, scope, signal),
+              sign: signWithSidecarKey,
+            }));
           const prepared = await prepareWorkspace(
-            policy.workspace,
+            role,
             workspace,
             (kind) => readFiledDocument(env.capabilities, scope, kind, signal),
             () => readRunDesignTheme(env.capabilities, scope, signal),
             () => readPreviousDesignDraft(env.capabilities, scope, signal),
-            app && {
-              repository: app,
-              signal,
-              stack: scope.stack,
-              serves: run !== undefined,
-            },
+            app &&
+              appWorkspace && {
+                repository: app,
+                signal,
+                stack: scope.stack,
+                serves: run !== undefined,
+                kit: appWorkspace.kit,
+              },
           );
           repository = app;
           repository?.schedule("Start");
@@ -441,15 +457,17 @@ export function createSidecarCodingTools(policy: {
             scope.build,
             {
               openNetwork: scope.openNetwork,
-              commands: design ? { "check-app": CHECK_APP } : CHECKS,
-              commandModules: CHECK_MODULES,
+              commands: policy.workspace.commands,
+              commandModules: policy.workspace.commandModules,
               browser: policy.browser !== undefined,
               app: !design,
               browsers: await sharedBrowser(),
-              ...(policy.workspace === "app"
-                ? { readOnly: [".builder", INPUTS_DIRECTORY] }
-                : { readOnly: [INPUTS_DIRECTORY] }),
-              ...(run ? { pageWatcher: WATCH_PAGE } : {}),
+              ...(design
+                ? { readOnly: [INPUTS_DIRECTORY] }
+                : { readOnly: [".builder", INPUTS_DIRECTORY] }),
+              ...(run && appWorkspace
+                ? { pageWatcher: appWorkspace.pageWatcher }
+                : {}),
             },
           );
           try {
@@ -635,7 +653,7 @@ export function createSidecarCodingTools(policy: {
           }
           const ran = await (await ready).run(call, signal);
           const result =
-            policy.workspace === "app" && passedCheck(call, ran)
+            !design && passedCheck(call, ran)
               ? {
                   ...ran,
                   content: `${ran.content}\n${await fileCheckedApp(repository, () => fileWorkspace(workspace, signal), signal)}`,
@@ -808,7 +826,7 @@ export function createSidecarCodingTools(policy: {
           if (policy.packageInstall)
             notes.push(await installImports(call, path, signal));
           // After the import scan, so a package it installed resolves.
-          if (policy.workspace === "app" && executor)
+          if (!design && executor)
             notes.push(
               await typeProbe(executor, workspace, path, call.id, signal),
             );

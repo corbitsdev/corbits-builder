@@ -9,6 +9,7 @@ export default defineWorkflow({
     "starter?": type.enumerated(...STARTER_NAMES),
   }),
   describe: {
+    says: { doing: "Building the code", done: "Built the code" },
     summary:
       "Has the coder build the project's code for the first time from the filed documents and, when one is chosen, the design. The documents are the assignment.",
     when: "The project has no code yet and its requirements or build plan say what to build.",

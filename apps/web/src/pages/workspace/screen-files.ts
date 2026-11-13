@@ -10,15 +10,17 @@ const manifests = import.meta.glob<ScreenFiles["manifests"][string]>(
   { eager: true, import: "default" },
 );
 
-installRoles(manifests);
 // Only these files of a plugin are bundled: the rest of its folder is the hub's, which may not
 // run in a browser.
+const definitions = import.meta.glob("@plugins/*/src/*/definition.ts", {
+  eager: true,
+  import: "default",
+});
+
+installRoles({ manifests, definitions });
 installScreens({
   manifests,
-  definitions: import.meta.glob("@plugins/*/src/*/definition.ts", {
-    eager: true,
-    import: "default",
-  }),
+  definitions,
   data: import.meta.glob("@plugins/*/src/*/data.json", {
     eager: true,
     import: "default",

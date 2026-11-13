@@ -18,6 +18,12 @@ import {
 import { nativePackageName } from "@corbits-builder/hub/workflows/package-name";
 import { declaredRole } from "@corbits-builder/plugin";
 import manifest from "../package.json";
+import {
+  checkModules,
+  checkScripts,
+  kitDigest,
+  watchScript,
+} from "./assets.ts" with { type: "macro" };
 import { createCoderAgent } from "./agent.ts";
 import { createCoderWorkflow } from "./workflow.ts";
 
@@ -64,7 +70,13 @@ export async function coderPackage() {
     createSidecarCodingTools({
       role: role.name,
       approval: "allow",
-      workspace: "app",
+      workspace: {
+        kind: "app",
+        commands: checkScripts(),
+        commandModules: checkModules(),
+        pageWatcher: watchScript(),
+        kit: kitDigest(),
+      },
       packageInstall: "ask",
       browser,
     }),

@@ -14,11 +14,8 @@ import type {
   ToolCall,
 } from "@intx/types/runtime";
 import type { RuntimeCapabilities } from "@intx/types/runtime-capabilities";
-import {
-  designStarterFiles,
-  designThemes,
-} from "@corbits-builder/designer/skills" with { type: "macro" };
 import { createDesignTools } from "../artifacts/design-tools.ts";
+import { CATALOG } from "../plugins/catalog.ts";
 import {
   CHECK_DESIGN_TOOL,
   createDesignCheck,
@@ -618,8 +615,8 @@ test("coder director never holds a reply that follows a refused access", async (
 });
 
 test("check_design validates DESIGN.md and .dark in styles.css and auto-files the design option on pass", async () => {
-  const starter = designStarterFiles();
-  const modernSleek = designThemes()["modern-sleek"]!;
+  const starter = CATALOG.design!.starter;
+  const modernSleek = CATALOG.design!.themes.get("modern-sleek")!;
   const workspace = await realpath(
     await mkdtemp(join(tmpdir(), "sb-design-autocheck-")),
   );

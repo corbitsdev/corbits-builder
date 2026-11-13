@@ -134,7 +134,7 @@ export function savedProject({
     if (what === "document") return byKind.get(name)?.version ?? null;
     if (what === "approval") return approvedNow(name);
     if (what === "value") {
-      const stored = readProjectValues([name], state)[name];
+      const stored = readProjectValues([name], state, CATALOG.values)[name];
       return stored === null ? null : sha256(stored);
     }
     throw new Error(`A check recorded ${key}, which Builder does not read`);
@@ -177,7 +177,10 @@ export function savedProject({
         },
       },
       values: async (name) =>
-        read(`value:${name}`, readProjectValues([name], state)[name]),
+        read(
+          `value:${name}`,
+          readProjectValues([name], state, CATALOG.values)[name],
+        ),
       approvals: async (kind) => read(`approval:${kind}`, approvedNow(kind)),
       facts: async () => read("facts", base),
     };
@@ -522,7 +525,7 @@ export function createChecks(deps: {
         throw new ProjectError(400, "invalid_check_run", { issues: asked });
       const state = await artifacts.projectState(actor, projectId);
       const catalog = await projectCatalog(async (names) =>
-        readProjectValues(names, state),
+        readProjectValues(names, state, CATALOG.values),
       );
       const action = installedCheck(catalog, asked.plugin, asked.action);
       if (!action)

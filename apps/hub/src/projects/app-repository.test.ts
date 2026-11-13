@@ -9,12 +9,8 @@ import type {
   PopulateAssetParams,
 } from "@intx/hub-sessions";
 import { type } from "arktype";
-import {
-  declaredRun,
-  STARTERS,
-  starterValues,
-} from "@corbits-builder/coder/contract";
-import { WORKFLOW_PACKAGES } from "../plugins/catalog.ts";
+import { declaredRun, starterValues } from "@corbits-builder/plugin";
+import { CATALOG, WORKFLOW_PACKAGES } from "../plugins/catalog.ts";
 import {
   appRepositoryMain,
   coderToolEffects,
@@ -100,16 +96,20 @@ test("the coder is one package that knows no starter, and the hub writes a first
   expect([...built.main.keys()]).toEqual([".gitignore", "main.ts"]);
 });
 
+const started = (name: string) => ({
+  name,
+  starter: CATALOG.appStarters.get(name)!,
+});
+
 test("a project serves a web app by its stack.run, whatever it started from", () => {
   // A first build from the web starter saves the starter's run as the project's stack.run.
-  expect(starterValues("web-app")).toMatchObject({
+  const web = started("web-app");
+  expect(starterValues(web)).toMatchObject({
     "stack.starter": "web-app",
-    "stack.run": STARTERS["web-app"].run,
+    "stack.run": web.starter.run,
   });
-  expect(declaredRun(starterValues("web-app"))).toEqual(
-    STARTERS["web-app"].run,
-  );
-  expect(declaredRun(starterValues("bare"))).toBeUndefined();
+  expect(declaredRun(starterValues(web))).toEqual(web.starter.run);
+  expect(declaredRun(starterValues(started("bare")))).toBeUndefined();
   expect(declaredRun(starterValues(null))).toBeUndefined();
 
   // Code that began from no starter serves the app its coder reported.

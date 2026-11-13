@@ -147,7 +147,17 @@ describe("conversation map", () => {
               action: "approve",
               input: { kinds: ["product_requirements"] },
             },
-            answer: { output: { approved: [] } },
+            answer: {
+              output: {
+                approved: [
+                  {
+                    kind: "product_requirements",
+                    artifactId: "requirements",
+                    version: 1,
+                  },
+                ],
+              },
+            },
           },
           {
             at: 20,
@@ -157,7 +167,13 @@ describe("conversation map", () => {
               action: "approve",
               input: { kinds: ["build_plan"] },
             },
-            answer: { output: { approved: [] } },
+            answer: {
+              output: {
+                approved: [
+                  { kind: "build_plan", artifactId: "plan", version: 1 },
+                ],
+              },
+            },
           },
           {
             at: 30,
@@ -165,8 +181,12 @@ describe("conversation map", () => {
             asked: { plugin: "designer", action: "pick-fonts", input: {} },
             answer: {
               output: {
-                primary: { name: "Arial" },
-                secondary: { name: "Bitter" },
+                primary: { name: "Arial", lists: ["sans"], license: "free" },
+                secondary: {
+                  name: "Bitter",
+                  lists: ["serif"],
+                  license: "free",
+                },
               },
             },
           },

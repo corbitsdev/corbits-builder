@@ -1,4 +1,5 @@
 import { scope, type, type ArkErrors, type Type } from "arktype";
+import { AppRun } from "@corbits-builder/schemas/installed-workflows";
 import { SpecialistInstruction } from "@corbits-builder/schemas/native-specialist";
 
 // Something true of the project that Builder works out from what it stores, such as "app_exists". A
@@ -32,13 +33,97 @@ export type ValueType = typeof ValueType.infer;
 
 // A named piece of project data a plugin brings, such as "brand.guidelines": what it holds, in one
 // line, and what Builder checks a saved value against. text is a string; json is any JSON value;
-// link and file are as above. A list of types takes a value of any one of them.
+// link and file are as above. A list of types takes a value of any one of them. pattern is a
+// regular expression a text value must match.
 export const ValueDeclaration = type({
   "+": "reject",
   about: "string > 0",
   type: ValueType.or(ValueType.array().atLeastLength(2)),
+  "pattern?": "string > 0",
+  // A text value whose home, once the project has a filed design, is a token of the design's
+  // styles rather than the project's own store: the token's name and, for a token that lists
+  // several values, as a font lists its fallbacks, that the value leads the list and the rest stay.
+  "style?": {
+    "+": "reject",
+    token: /^[a-z][a-z0-9-]*$/,
+    "leads?": "true",
+  },
 });
 export type ValueDeclaration = typeof ValueDeclaration.infer;
+
+// Code a first build can start from: what it is, the plugin's folder of files written as the
+// project's first code, how its program starts so a person can open it, the command that prepares a
+// fresh workspace and what an agent can do when that fails, and the commands that prove the code.
+// A project with code but no recorded starter, built before projects recorded one, started from
+// the one starter that says legacyDefault.
+export const AppStarter = type({
+  "+": "reject",
+  about: "string > 0",
+  folder: "string > 0",
+  "run?": AppRun,
+  setup: "string > 0",
+  setupFailed: "string > 0",
+  checks: type("string > 0").array().atLeastLength(1),
+  "legacyDefault?": "true",
+});
+export type AppStarter = typeof AppStarter.infer;
+
+// The project values that record the starter a project's code began from, its checks and how its
+// program starts, each null for code that began from none.
+export const STACK_VALUES = ["stack.starter", "stack.checks", "stack.run"];
+
+/** The project values a project's code records for the starter it began from, or for none. */
+export function starterValues(
+  started: { name: string; starter: AppStarter } | null,
+): Record<string, unknown> {
+  if (started === null)
+    return Object.fromEntries(STACK_VALUES.map((name) => [name, null]));
+  const { name, starter } = started;
+  return {
+    "stack.starter": name,
+    "stack.checks": starter.checks.join("\n"),
+    "stack.run": starter.run ?? null,
+  };
+}
+
+/**
+ * How the project's program starts so a person can open it, from the project's stack.run, whatever
+ * its stack: undefined when it has none, so it serves nothing, else the run or why it is not one.
+ */
+export function declaredRun(
+  values: Readonly<Record<string, unknown>> | undefined,
+) {
+  const run = values?.["stack.run"];
+  if (run === undefined || run === null) return undefined;
+  return AppRun(run);
+}
+
+// A look a design can start from: its id, what a person calls it, the theme of the plugin's themes
+// it starts from and how its designer adjusts that theme's tokens.
+const DesignLook = type({
+  "+": "reject",
+  id: "string > 0",
+  label: "string > 0",
+  theme: "string > 0",
+  direction: "string > 0",
+});
+
+// What a plugin that drafts designs brings for the host to show and seed them with: the folder a
+// design workspace starts from, the folder of themes, one sample design per folder named for its
+// id, and the looks the coordinator draws a varied set of design concepts from.
+export const DesignBuilder = type({
+  "+": "reject",
+  starter: "string > 0",
+  themes: "string > 0",
+  looks: DesignLook.array().atLeastLength(1),
+});
+export type DesignBuilder = typeof DesignBuilder.infer;
+
+/** The look a concept, by its label, starts from, when one of the declared looks has that label. */
+export const lookOf = (design: DesignBuilder, label: string) =>
+  design.looks.find(
+    (look) => look.label.toLowerCase() === label.trim().toLowerCase(),
+  );
 
 const Common = type({
   // Several plugins may share a handle, and a project uses one of them: the one the person selects,
@@ -292,6 +377,10 @@ export const SpecialistBuilder = Common.merge({
   // The agents the host builds and installs for this plugin with no code of its own, by package
   // name; an action starts one with start: { agent }.
   "agents?": { "[string]": AgentBuilder },
+  // The code a first build of the project can start from, by name.
+  "appStarters?": { "[string]": AppStarter },
+  // What its design workspaces start from and the looks they offer.
+  "design?": DesignBuilder,
   // Each action by its folder's name; its folder says which kind it is, and so which builder its
   // entry is checked against.
   actions: { "[string]": "object" },
@@ -386,6 +475,24 @@ export type Describe<Fields extends PropertyKey> = {
   fields: { [name in Fields]-?: Field };
 };
 
+// What a person reads of a started action while it works and once done, such as "Writing the
+// build plan". {thing} stands for the document or concept its work is about; a phrase that names
+// one reads as its role's status while none is known.
+export type Says = { doing: string; done: string };
+
+// What a person reads of a screen in the conversation's map: its label from the input it was
+// opened with, naming a document by its kind in the host's words, and what an answer chose.
+export type ScreenSays<In, Out> = {
+  label: (input: In, document: (kind: string) => string) => string;
+  chose?: (output: Out) => string | undefined;
+};
+
+/** A phrase with the thing named, or without one, where it names none. */
+export function saidOf(phrase: string, thing: string | undefined) {
+  if (!phrase.includes("{thing}")) return phrase;
+  return thing === undefined ? undefined : phrase.replaceAll("{thing}", thing);
+}
+
 // A filed artifact at the version the person was shown, such as a document they approved.
 export type Shown = { artifactId: string; version: number };
 
@@ -406,7 +513,9 @@ export type Screen<In, Out, Data, Prepared> = {
     data: Type<Data>["infer"],
     project: ProjectValues,
   ) => Prepared;
-  describe: Describe<keyof Type<In>["inferIn"]>;
+  describe: Describe<keyof Type<In>["inferIn"]> & {
+    says?: ScreenSays<Type<In>["infer"], Type<Out>["infer"]>;
+  };
   // Each project value the answer saves, by its registered name, taken from the screen's output.
   writes?: Record<string, (output: Type<Out>["infer"]) => string>;
   // Each of the person's preferences the answer sets for the project, by its id, to the option
@@ -424,7 +533,7 @@ export const defineScreen = <In, Out, Data, Prepared>(
 // A workflow action's input and how the coordinator fills it.
 export type Workflow<In> = {
   input: Type<In>;
-  describe: Describe<keyof Type<In>["inferIn"]>;
+  describe: Describe<keyof Type<In>["inferIn"]> & { says?: Says };
 };
 
 export const defineWorkflow = <In>(workflow: Workflow<In>) => workflow;

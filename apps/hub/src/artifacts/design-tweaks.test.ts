@@ -1,6 +1,7 @@
 import { expect, test } from "bun:test";
 import { DesignTweaks } from "@corbits-builder/schemas/artifact";
 import { setThemeTokens } from "./design-tweaks.ts";
+import { CATALOG } from "../plugins/catalog.ts";
 import { projectValueWrites, readProjectValues } from "./project-values.ts";
 
 test("a saved primary reaches every dark rule of a shipped theme", async () => {
@@ -36,7 +37,7 @@ test("a chosen secondary font is saved as font-mono, ahead of the stylesheet's f
   const written = projectValueWrites(
     { "look.font-secondary": "JetBrains Mono" },
     { styles, stored: {}, materials: [] },
-    new Map(),
+    CATALOG.values,
   );
   const { tokens } = DesignTweaks.assert({ tokens: written.tokens });
   const saved = setThemeTokens(styles, tokens);
@@ -44,10 +45,10 @@ test("a chosen secondary font is saved as font-mono, ahead of the stylesheet's f
     '--font-mono: "JetBrains Mono", "Fira Code", Monaco, Consolas, monospace;',
   );
   expect(
-    readProjectValues(["look.font-secondary"], {
-      styles: saved,
-      stored: {},
-      materials: [],
-    }),
+    readProjectValues(
+      ["look.font-secondary"],
+      { styles: saved, stored: {}, materials: [] },
+      CATALOG.values,
+    ),
   ).toEqual({ "look.font-secondary": "JetBrains Mono" });
 });

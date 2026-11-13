@@ -7,6 +7,10 @@ export default defineScreen({
   // The host draws a screen once it is prepared; this one needs nothing past its input.
   prepare: (input) => input,
   describe: {
+    says: {
+      label: () => "How many looks to compare",
+      chose: (output) => output.looks,
+    },
     summary:
       'Asks the person how many looks they want to compare, one, two or three, with their current setting chosen. The answer is { looks: "one" }, { looks: "two" } or { looks: "three" }, and Builder has then set the project\'s Design concepts preference to match: start that many design concepts. If they write back instead, what they wrote is their answer.',
     when: "A first set of mockups is about to start and the person has not said how many looks they want to compare.",

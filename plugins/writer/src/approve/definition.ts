@@ -7,6 +7,11 @@ export default defineScreen({
   // The host draws a screen once it is prepared; this one needs nothing past its input.
   prepare: (input) => input,
   describe: {
+    says: {
+      label: (input, document) =>
+        `Approve the ${input.kinds.map(document).join(" and ")}`,
+      chose: () => "Approved",
+    },
     summary:
       "Puts filed documents in front of the person to approve, each at its current version, with a way to open each. The answer is { approved: [{ kind, artifactId, version }] }, and Builder has then recorded the approval of exactly those versions; if they write back instead, what they wrote is their answer.",
     when: "Filed documents are ready for the person to approve, with no open questions left.",

@@ -10,6 +10,10 @@ export default defineWorkflow({
     concepts: DesignConcept.array().atLeastLength(1).atMostLength(5),
   }),
   describe: {
+    says: {
+      doing: "Making the {thing} mockup",
+      done: "Made the {thing} mockup",
+    },
     summary:
       "Has a designer make a clickable, responsive HTML mockup of an interface for each concept, such as a web app, a mobile app's screens, a dashboard or a marketing page, from the instruction and whatever documents the project has filed, if any. Each is filed as a design option for the person to compare and choose from.",
     when: "The person wants to see how an interface could look: a mockup, design options to compare, or another pass on a design option.",

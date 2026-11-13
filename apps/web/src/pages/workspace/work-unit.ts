@@ -7,7 +7,8 @@
 import { isDocumentKind } from "@corbits-builder/schemas/artifact";
 import { wording } from "../../config.ts";
 import type { Dispatch, DispatchStatus } from "./dispatch-card.tsx";
-import { roleOf } from "./roles.ts";
+import { saidOf } from "@corbits-builder/plugin";
+import { actionRole, roleOf } from "./roles.ts";
 import type { SpecialistUpdate } from "./specialist-updates.ts";
 import type { PlacedDispatch } from "./transcript.tsx";
 
@@ -70,18 +71,16 @@ export function workUnits(
 
 /**
  * What a hand-off does, from the action it started: "Building the code", then "Built the code". A
- * run started by no call in view, or by an action with no words of its own, reads as its role says.
+ * run started by no call in view, by an action with no words of its own, or by one whose words name
+ * a document or concept the run has not named, reads as its role says.
  */
 export function workPhrase(dispatch: Dispatch, status: DispatchStatus): string {
   const done = status.state === "ready" || status.state === "finished";
-  const phrase = text.action[dispatch.action ?? ""];
-  if (phrase === undefined) {
-    const own = roleOf(dispatch.role)?.status ?? {
-      working: text.working,
-      done: text.done,
-    };
-    return done ? own.done : own.working;
-  }
+  const own = roleOf(dispatch.role)?.status ?? {
+    working: text.working,
+    done: text.done,
+  };
+  const says = actionRole(dispatch.action ?? "")?.says;
   // A document the run filed names it once the call did not; a design or an app names nothing.
   const kind =
     dispatch.kind ??
@@ -93,5 +92,6 @@ export function workPhrase(dispatch: Dispatch, status: DispatchStatus): string {
     (kind === undefined
       ? undefined
       : (wording.documentTab[kind] ?? kind.replaceAll("_", " ")).toLowerCase());
-  return done ? phrase.done(thing) : phrase.working(thing);
+  const said = says && saidOf(done ? says.done : says.doing, thing);
+  return said ?? (done ? own.done : own.working);
 }

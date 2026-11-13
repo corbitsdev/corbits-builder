@@ -6,6 +6,11 @@ import {
 import { Fonts, Input, Output, lists, type Font } from "./schema.ts";
 
 const describe = {
+  says: {
+    label: () => "Pick the fonts",
+    chose: (output: typeof Output.infer) =>
+      `${output.primary.name} and ${output.secondary.name}`,
+  },
   summary:
     "Shows the person the fonts in use and fonts to choose a primary and a secondary font from.",
   when: "The person is unhappy with the typeface or unsure which font would suit.",

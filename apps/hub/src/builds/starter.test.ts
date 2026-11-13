@@ -2,15 +2,12 @@ import { describe, expect, test } from "bun:test";
 import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
-import { designStarterFiles } from "@corbits-builder/designer/skills" with { type: "macro" };
-import {
-  spliceDesignScreens,
-  STARTER_HOME_SCREEN,
-  STARTER_INDEX,
-  syncDesignScreensOnDisk,
-} from "./starter.ts";
+import { CATALOG } from "../plugins/catalog.ts";
+import { spliceDesignScreens, syncDesignScreensOnDisk } from "./starter.ts";
 
-const STARTER = designStarterFiles();
+const STARTER = CATALOG.design!.starter;
+const STARTER_INDEX = STARTER[".builder/designs/index.html"]!;
+const STARTER_HOME_SCREEN = STARTER[".builder/designs/screens/home.html"]!;
 
 describe("spliceDesignScreens", () => {
   test("is idempotent across repeated splices and replaces the marked block in place", () => {

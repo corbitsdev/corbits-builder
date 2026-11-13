@@ -1,6 +1,7 @@
 import { coderTaskMessage } from "@corbits-builder/coder/contract";
-import { themeOf } from "@corbits-builder/hub/config/design";
+import { lookOf } from "@corbits-builder/plugin";
 import { Refusal } from "@corbits-builder/plugin-host/coordinator";
+import manifest from "../package.json";
 
 // The filed documents a designer works from, read-only in its workspace.
 export const DESIGNER_INPUTS = [
@@ -13,8 +14,10 @@ export const DESIGNER_INPUTS = [
 // A theme taken as it is is the concept's look; any other concept names the token changes it makes
 // to the theme it starts from. It names the look, not what the workspace starts from, since a later
 // pass continues the draft an earlier one left.
-const lookOf = (concept: { label: string; direction: string }) => {
-  const theme = themeOf(concept.label);
+const look = (concept: { label: string; direction: string }) => {
+  const { design } = manifest.builder;
+  const started = lookOf(design, concept.label);
+  const theme = started && design.looks.find(({ id }) => id === started.theme);
   if (
     theme?.label === concept.label &&
     theme.direction === concept.direction.trim()
@@ -32,7 +35,7 @@ export const conceptAssignment = (
   lookIdeas: string,
   instruction: string,
 ) =>
-  `Design concept: ${concept.label}. ${lookOf(concept)}\nThe person compares this concept with any others before they pick one. file_design_option files it as this concept's option.\n\n` +
+  `Design concept: ${concept.label}. ${look(concept)}\nThe person compares this concept with any others before they pick one. file_design_option files it as this concept's option.\n\n` +
   `The person's ideas for the look, in their words: ${lookIdeas.trim()}\n\n` +
   coderTaskMessage(instruction);
 

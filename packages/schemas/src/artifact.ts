@@ -12,7 +12,7 @@ export const WriterDocumentKind = type("'product_requirements' | 'build_plan'");
 export type WriterDocumentKind = typeof WriterDocumentKind.infer;
 // What no model writes as text. A design concept's option is filed from the designer's workspace
 // by file_design_option, the design by the person's choice among the options, the app from the
-// coder's workspace each time check-app passes, and the approval package by the presenter.
+// coder's workspace each time check-app passes, and the approval package by file_package.
 const BUNDLE_KINDS = [
   "design",
   "design_option",

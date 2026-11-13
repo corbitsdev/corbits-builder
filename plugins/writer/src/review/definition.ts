@@ -9,6 +9,7 @@ export default defineWorkflow({
     instruction: Instruction,
   }),
   describe: {
+    says: { doing: "Reviewing the {thing}", done: "Reviewed the {thing}" },
     summary:
       "Has a reviewer give a second opinion on one filed document. The review arrives later as a message; it is advice for you to weigh, and approval stays with the person.",
     when: "You want a second opinion on a filed document before you rely on it or put it to the person.",

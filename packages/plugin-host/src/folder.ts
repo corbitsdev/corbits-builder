@@ -15,6 +15,9 @@ export type Found = {
   files(path: string): Promise<Record<string, string>>;
 };
 
+// Installed packages and build output inside a folder a manifest names, which are never its files.
+const BUILT = /(^|\/)(node_modules|dist)\//;
+
 const hasBuilder = (manifest: unknown) =>
   typeof manifest === "object" && manifest !== null && "builder" in manifest;
 
@@ -40,7 +43,9 @@ export async function readPluginFolder(plugins: string): Promise<Found[]> {
         text: (named: string) => Bun.file(resolve(root, named)).text(),
         files: async (named: string) => {
           const cwd = resolve(root, named);
-          const paths = [...new Bun.Glob("**/*").scanSync({ cwd })].sort();
+          const paths = [...new Bun.Glob("**/*").scanSync({ cwd, dot: true })]
+            .filter((path) => !BUILT.test(path))
+            .sort();
           return Object.fromEntries(
             await Promise.all(
               paths.map(async (path) => [

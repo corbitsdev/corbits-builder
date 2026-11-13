@@ -4,6 +4,10 @@ import { type } from "arktype";
 export default defineWorkflow({
   input: type({ "+": "reject", instruction: Instruction }),
   describe: {
+    says: {
+      doing: "Writing the requirements",
+      done: "Wrote the requirements",
+    },
     summary:
       "Has a writer write the product requirements, or the next version of them, for whatever is being built: what it does, for whom, and how anyone will know it is done.",
     when: "Something is to be built, of any kind, and what it must do should be written down or revised with what the person said.",

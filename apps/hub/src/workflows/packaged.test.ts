@@ -5,7 +5,21 @@ import { projectLiveToInert } from "@intx/workflow/projection";
 import { nativePackageName } from "./package-name.ts";
 import { resolveRoleInference, type RoleInference } from "./role-inference.ts";
 import { spawnedWorkflowRole } from "./spawn-role.ts";
-import { runRole, WORKFLOW_PACKAGES } from "../plugins/catalog.ts";
+import { resolve } from "node:path";
+import {
+  CATALOG,
+  PLUGINS_FOLDER,
+  runRole,
+  WORKFLOW_PACKAGES,
+} from "../plugins/catalog.ts";
+
+// An installed plugin's workflow package by name, loaded from the entry its plugin names for it.
+async function installed(name: string) {
+  const brought = CATALOG.packages.get(name);
+  if (brought === undefined || !("entry" in brought))
+    throw new Error(`no installed package ${name} with an entry`);
+  return (await import(resolve(PLUGINS_FOLDER, brought.entry))).default;
+}
 
 // What each role an installed package plays resolves to on the shipped Anthropic profile.
 const inference: Record<string, RoleInference> = Object.fromEntries(
@@ -44,25 +58,21 @@ test("native specialist accepts installed tarballs only with an exact package pi
   ).toThrow();
 });
 
+// What these tests read of an agent's tool bundles.
+type Factories = { definitions?: { name: string; approval?: string }[] }[];
+
 test("production entries expose concrete native workflows without callback credentials", async () => {
   process.env.BUILDER_ROLE_INFERENCE = JSON.stringify(inference.coordinator);
   const coordinator = (await import("./entries/coordinator.ts")).default;
-  const writers = [
-    (
-      await import("@corbits-builder/writer/packages/writer-product-requirements")
-    ).default,
-    (await import("@corbits-builder/writer/packages/writer-build-plan"))
-      .default,
-    (await import("@corbits-builder/writer/packages/writer-document")).default,
-  ];
-  const reviewer = (await import("@corbits-builder/writer/packages/reviewer"))
-    .default;
-  const coder = (await import("@corbits-builder/coder/packages/coder")).default;
-  const designer = (await import("@corbits-builder/designer/packages/designer"))
-    .default;
-  const presenter = (
-    await import("@corbits-builder/presenter/packages/presenter")
-  ).default;
+  const writers = await Promise.all(
+    ["writer-product-requirements", "writer-build-plan", "writer-document"].map(
+      installed,
+    ),
+  );
+  const reviewer = await installed("reviewer");
+  const coder = await installed("coder");
+  const designer = await installed("designer");
+  const presenter = await installed("presenter");
   expect(coordinator.steps.coordinate).toMatchObject({ triggers: "unbounded" });
   for (const writer of writers)
     expect(writer.steps.write).toMatchObject({ triggers: 1 });
@@ -71,11 +81,9 @@ test("production entries expose concrete native workflows without callback crede
   expect(designer.steps.design).toMatchObject({ triggers: 1 });
   expect(presenter.steps.present).toMatchObject({ triggers: 1 });
   // Secure by default: the coder declares install_packages as a tool that asks.
-  const coderBuild = coder.steps.build;
-  if (!coderBuild || !("agent" in coderBuild))
-    throw new Error("coder_build_step_missing");
+  const factories: Factories = coder.steps.build.agent.toolFactories;
   expect(
-    coderBuild.agent.toolFactories
+    factories
       .flatMap((factory) => factory.definitions ?? [])
       .find((definition) => definition.name === "install_packages"),
   ).toEqual({ name: "install_packages", approval: "ask" });
@@ -89,12 +97,13 @@ test("production entries expose concrete native workflows without callback crede
   ]) {
     expect(workflow.credentialBindings ?? []).toEqual([]);
     // A trimmed result's note names read_file, so every agent needs one.
-    const tools = Object.values(workflow.steps).flatMap((step) =>
-      "agent" in step
-        ? step.agent.toolFactories.flatMap(
-            (factory) => factory.definitions ?? [],
-          )
-        : [],
+    const steps: { agent?: { toolFactories: Factories } }[] = Object.values(
+      workflow.steps,
+    );
+    const tools = steps.flatMap((step) =>
+      (step.agent?.toolFactories ?? []).flatMap(
+        (factory) => factory.definitions ?? [],
+      ),
     );
     expect(tools.map((tool) => tool.name)).toContain("read_file");
   }

@@ -310,7 +310,7 @@ const filed = (call: TaskCall) =>
 
 // A writer on 2026-10-30 replied with the whole approaches document as text and never filed it;
 // the coordinator waited on a writer that had already answered. A designer's reply also waits for a
-// filed design option after the last file change. A presenter files the approval package with
+// filed design option after the last file change. The approval package is filed with
 // file_package. The call that filed the task's work, unless a file changed after it.
 function lastFiling(turns: readonly ConversationTurn[]): TaskCall | undefined {
   for (const call of taskCalls(turns)) {

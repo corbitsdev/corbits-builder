@@ -2,10 +2,10 @@ import { useState, type ComponentProps } from "react";
 import type { Meta, StoryObj } from "@storybook/react-vite";
 import { expect, fn } from "storybook/test";
 import { validateInput } from "@corbits-builder/plugin";
-import pickFonts from "@corbits-builder/designer/pick-fonts";
-import fonts from "@corbits-builder/designer/pick-fonts/data";
-import { Fonts } from "@corbits-builder/designer/pick-fonts/schema";
-import { FontPicker, text } from "@corbits-builder/designer/pick-fonts/view";
+import pickFonts from "@plugins/designer/src/pick-fonts/definition.ts";
+import fonts from "@plugins/designer/src/pick-fonts/data.json";
+import { Fonts } from "@plugins/designer/src/pick-fonts/schema.ts";
+import { FontPicker, text } from "@plugins/designer/src/pick-fonts/view.tsx";
 
 const prepare = (
   input: Record<string, unknown>,
