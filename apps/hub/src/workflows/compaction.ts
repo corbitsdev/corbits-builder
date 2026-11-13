@@ -172,7 +172,7 @@ const heldNote = (trigger: string) => {
 };
 
 // Anthropic refuses to continue from an assistant turn ("does not support assistant message
-// prefill", run_58cf9e8d on 2026-10-30), so a turn the director will not accept is dropped first.
+// prefill"), so a turn the director will not accept is dropped first.
 // A held reply stays instead, answered by the director's note, so the agent continues the same
 // conversation knowing why and is not handed its assignment again as if new.
 /**

@@ -8,6 +8,7 @@
  * shows live, in the activity strip. The task a specialist was handed is the coordinator's hand-off
  * call, so it never becomes an update.
  */
+import { COORDINATOR_NOTE_LEAD } from "@corbits-builder/schemas/native-specialist";
 import { wording } from "../../config.ts";
 import type { ConversationThread } from "../../api/conversation.ts";
 import { roleLabel, roleOf } from "./roles.ts";
@@ -40,13 +41,19 @@ function mailProse(text: string): string {
   return result instanceof type.errors ? "" : result.result.summary;
 }
 
+// A specialist's words without Builder's note to the coordinator after them.
+function ownWords(text: string): string {
+  const note = text.indexOf(COORDINATOR_NOTE_LEAD);
+  return note === -1 ? text : text.slice(0, note);
+}
+
 /** One specialist turn as an update, or null when nothing in it is for a person. */
 export function specialistUpdate(
   sender: string,
   text: string,
   at: number,
 ): SpecialistUpdate | null {
-  const shown = visibleChatText(mailProse(text));
+  const shown = visibleChatText(ownWords(mailProse(text)));
   return shown.length === 0 ? null : { sender, text: shown, at };
 }
 

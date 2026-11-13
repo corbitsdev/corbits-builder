@@ -25,14 +25,15 @@ function watchOf(dispatch: Dispatch) {
   return undefined;
 }
 
-// A run that ended returned from every call it made, though its stream closed before saying so.
-const settled = (step: PartTool): PartTool =>
+// A run that finished returned from every call it made, though its stream closed before saying so.
+// A call with no result in a run that was stopped or failed never returned: it stopped with its run.
+const settled = (step: PartTool, finished: boolean): PartTool =>
   step.status === "running"
     ? {
         kind: "tool-trace",
         toolCallId: step.toolCallId,
         name: step.name,
-        status: "output-available",
+        status: finished ? "output-available" : "output-denied",
         input: step.input,
       }
     : step;
@@ -59,7 +60,7 @@ export function workUnitStanding(
     unitKey: unit.key,
     status,
     label: text.row(role, workPhrase(dispatch, status)),
-    steps: ended ? steps.map(settled) : steps,
+    steps: ended ? steps.map((step) => settled(step, done)) : steps,
     preview:
       status.state === "working" && dispatch.runId !== undefined
         ? room.previews?.get(dispatch.runId)

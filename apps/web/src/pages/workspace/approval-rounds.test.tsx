@@ -638,25 +638,25 @@ describe("approval rounds panel", () => {
     expect(html).toContain("Dana Reviewer");
     expect(html).toContain("Finance VP");
     expect(html).toContain(
-      'aria-label="Download Approval Package for Dana Reviewer"',
+      'aria-label="Download approval package for Dana Reviewer"',
     );
     expect(html).toContain("Download package");
     expect(html).toContain("View slide deck");
     expect(html).toMatch(
-      /data-cell="status"><span [^>]*data-slot="quiet-state" data-tone="warning" data-words="">Pending Feedback<\/span><\/span>/,
+      /data-cell="status"><span [^>]*data-slot="quiet-state" data-tone="warning" data-words="">Pending feedback<\/span><\/span>/,
     );
     expect(html).not.toContain("Request changes");
     expect(html).toContain("Clarify Q3 staffing assumptions.");
     expect(html).not.toContain(
       'data-slot="quiet-state" data-tone="info" data-words="">Pending</span>',
     );
-    expect(html).toContain('aria-label="Incorporate"');
+    expect(html).toContain('aria-label="Add to prompt"');
     expect(html).toContain('aria-label="Dismiss"');
     expect(html).toContain('data-slot="reviewer-drawer"');
     expect(html).toContain('aria-label="Dana Reviewer Reviewer name"');
     expect(html).toContain('aria-label="Dana Reviewer Persona"');
     expect(html).toContain(
-      'aria-label="Dana Reviewer Goal / decision focus (optional)"',
+      'aria-label="Dana Reviewer Goal or decision focus (optional)"',
     );
     expect(html).toContain('aria-label="Dana Reviewer Decision"');
     expect(html).toContain('aria-label="Dana Reviewer Feedback notes"');
@@ -665,7 +665,7 @@ describe("approval rounds panel", () => {
     expect(html).toContain("Security Lead");
     expect(html).toContain("Generate slide deck");
     expect(html).not.toContain(
-      'aria-label="Download Approval Package for Eli Security"',
+      'aria-label="Download approval package for Eli Security"',
     );
     expect(html).toMatch(
       /data-cell="status"><span [^>]*data-slot="quiet-state" data-tone="info" data-words="">Sent<\/span><\/span>/,
@@ -748,7 +748,7 @@ describe("approval rounds panel", () => {
     expect(generateButtons).toHaveLength(1);
     expect(
       singleDeckHarness.findButtons(
-        "Download Approval Package for Marcus Vance",
+        "Download approval package for Marcus Vance",
       ),
     ).toHaveLength(0);
 
@@ -912,7 +912,7 @@ describe("approval rounds panel", () => {
     ));
 
     const downloadTrigger = harness.findButton(
-      "Download Approval Package for Dana Reviewer",
+      "Download approval package for Dana Reviewer",
     );
     (downloadTrigger.props["onClick"] as () => void)();
 
@@ -970,7 +970,7 @@ describe("approval rounds panel", () => {
     expect(harness.html()).not.toContain('data-slot="pane-slide-deck"');
   });
 
-  test("clicking Incorporate synchronously populates onAddToPrompt and optimistically marks the item Incorporated", () => {
+  test("adding a feedback item to the prompt populates onAddToPrompt at once and optimistically marks the item added", () => {
     const quotes: { title: string; version: number; quote: string }[] = [];
     const harness = createStatefulHarness(() => (
       <ApprovalRoundsPanel
@@ -994,7 +994,7 @@ describe("approval rounds panel", () => {
       },
     ]);
     expect(harness.html()).toContain(
-      'data-slot="quiet-state" data-tone="success" data-words="">Incorporated</span>',
+      `data-slot="quiet-state" data-tone="success" data-words="">${wording.approvalRound.triageStatus.incorporated}</span>`,
     );
   });
 
@@ -1165,7 +1165,7 @@ describe("approval rounds panel", () => {
     expect(approvalsHtml).toContain("Enable in Settings");
   });
 
-  test("opens Settings directly to the Preferences tab and renders Approvals (Experimental) off by default", () => {
+  test("opens Settings directly to the Preferences tab and renders Approvals (experimental) off by default", () => {
     const html = renderToStaticMarkup(
       <ThemeProvider>
         <QueryClientProvider client={queryClient}>
@@ -1179,7 +1179,7 @@ describe("approval rounds panel", () => {
     );
     expect(html).toContain("How Builder works with you");
     expect(html).not.toContain("Slide Decks");
-    expect(html).toContain("Approvals (Experimental)");
+    expect(html).toContain("Approvals (experimental)");
     expect(html).toContain('id="preference-experimental_approvals"');
     expect(html).not.toContain('id="preference-experimental_slide_decks"');
     expect(html).toContain('data-highlighted=""');

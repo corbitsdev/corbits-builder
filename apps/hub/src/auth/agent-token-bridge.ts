@@ -493,7 +493,7 @@ export function createAgentTokenBridge(
           suffix,
         )) ||
         (c.req.method === "POST" &&
-          /^(\/mutations|\/artifacts|\/artifact-approvals|\/run-records|\/following|\/run-actions|\/check-runs|\/runs\/[^/]+\/stop)$/.test(
+          /^(\/mutations|\/artifacts|\/artifact-approvals|\/run-concepts|\/following|\/run-actions|\/check-runs|\/runs\/[^/]+\/stop)$/.test(
             suffix,
           )) ||
         (c.req.method === "PUT" && suffix === "/plan"));

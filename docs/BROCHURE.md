@@ -105,7 +105,8 @@ folders, and imports again later.
 Define who the application serves, what it needs to do and what the prototype
 should demonstrate. Review the approaches and the editable designs before
 committing to the build. Nothing moves to the next step until you approve it,
-and a changed document needs approval again.
+and a changed document needs approval again, unless you let the agent decide
+approvals in Settings.
 
 **Give clients something they can try.**
 Use a working prototype to gather feedback, test the proposed workflow and

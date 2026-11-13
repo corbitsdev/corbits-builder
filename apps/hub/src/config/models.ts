@@ -4,7 +4,6 @@ import type {
   CustomProfile,
   Effort,
   ModelChoice,
-  ModelRole,
   RoleBinding,
   Tier,
   Tiers,
@@ -229,52 +228,6 @@ export function bindingLimits(
   const offered = entry.models.find((candidate) => candidate.id === model);
   return offered && customModelLimits(offered);
 }
-
-// Each model setting a profile binds and the tier it runs on; a role names the setting it runs on, and
-// roles may share one. A person picks only a profile; the tier of each setting is config.
-export const MODEL_ROLES: readonly Readonly<{
-  id: ModelRole;
-  label: string;
-  hint: string;
-  tier: Tier;
-}>[] = [
-  {
-    id: "coordinator",
-    label: "Coordinator",
-    hint: "Talks with you and plans the work.",
-    tier: "medium",
-  },
-  {
-    id: "writer",
-    label: "Writer",
-    hint: "Writes the documents.",
-    tier: "medium",
-  },
-  {
-    id: "designer",
-    label: "Designer",
-    hint: "Designs the screens.",
-    tier: "high",
-  },
-  {
-    id: "builder",
-    label: "App builder",
-    hint: "Builds the app.",
-    tier: "high",
-  },
-  {
-    id: "reviewer",
-    label: "Reviewer",
-    hint: "Reviews documents before you approve them.",
-    tier: "low",
-  },
-  {
-    id: "presenter",
-    label: "Presenter",
-    hint: "Builds slide decks and approval packages for an audience.",
-    tier: "medium",
-  },
-];
 
 export const EFFORTS: readonly Readonly<{ id: Effort; label: string }>[] = [
   { id: "low", label: "Low" },
@@ -539,16 +492,14 @@ export function frozenModelChoice(
   return profile ? frozen(profile) : null;
 }
 
-/** The binding a model setting runs on, from a choice this server can run. */
-export function settingBinding(
+/** The binding a tier runs on, from a choice this server can run; a model setting names its tier. */
+export function tierBinding(
   directory: ModelDirectory,
   choice: ModelChoice,
-  setting: string,
+  tier: Tier,
 ): RoleBinding {
   const profile = chosenProfile(directory, choice);
   if (!profile)
     throw new Error(`model_choice_unrunnable:${choice.profile ?? ""}`);
-  const tier = MODEL_ROLES.find(({ id }) => id === setting)?.tier;
-  if (tier === undefined) throw new Error(`model_setting_unknown:${setting}`);
   return profile.tiers[tier];
 }

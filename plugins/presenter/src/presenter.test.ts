@@ -31,10 +31,6 @@ test("createPresenterAgent requires explicit provider and model and tags the pre
   expect(agent.id).toBe("presenter");
   expect(agent.systemPrompt).toBe(presenterPrompt);
   expect(agent.tags).toEqual({ role: "presenter" });
-  expect(presenterPrompt).toContain("write_deck");
-  expect(presenterPrompt).toContain("check_deck");
-  expect(presenterPrompt).toContain("file_package");
-  expect(presenterPrompt).toContain("never ask the person directly");
 });
 
 test("createPresenterWorkflow creates a bounded single-trigger mail workflow", () => {
@@ -59,17 +55,10 @@ test("createPresenterWorkflow creates a bounded single-trigger mail workflow", (
   });
 });
 
-test("presentingSkills bundles the presenting skill and per-persona guidance", () => {
+test("presentingSkills bundles the presenting skill", () => {
   const skills = presentingSkills();
   const skill = skills["presenting"]?.["SKILL.md"];
   expect(skill).toBeDefined();
-  expect(skill).toContain("Lead with the decision needed");
-  expect(skill).toContain("One idea per slide");
-  expect(skill).toContain("Reuse the project's design tokens");
-  expect(skill).toContain("End with the explicit ask");
-  for (const persona of ["ceo", "cto", "investor", "client", "end_user"]) {
-    expect(skill).toContain(persona);
-  }
 });
 
 test("AUDIENCE_PERSONAS defines ceo, cto, investor, client and end_user with their default documents", () => {

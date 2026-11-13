@@ -40,7 +40,7 @@ The hub is the server and the system of record. It:
 - answers the interface's API and streams run progress to it.
 
 It embeds the runtime's control plane in the same process and composes it
-directly. There is no separate embedding layer.
+directly.
 
 ### Agents and roles
 

@@ -15,7 +15,8 @@ const RESUME_CONTEXT_LEAD =
   "Background: this project's conversation continues from an earlier session. This is where it stood, not a new request.";
 const RESUME_CONTEXT_END = "\n\nThe person's new message:\n\n";
 
-// Hubs before the held resume context mailed this opening on the person's behalf.
+// An opening the hub mailed on the person's behalf, which conversations kept from before the held
+// resume context still hold; it is never the person's own words.
 const LEGACY_RESUME_OPENING = "I'm picking this project back up.";
 
 // Every note the hub mails a run on the person's behalf starts with this, so neither the coordinator

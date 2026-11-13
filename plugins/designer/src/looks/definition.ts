@@ -1,5 +1,5 @@
 import { defineScreen } from "@corbits-builder/plugin";
-import { Input, Output } from "./schema.ts";
+import { Input, LOOKS_LABEL, Output } from "./schema.ts";
 
 export default defineScreen({
   input: Input,
@@ -9,7 +9,7 @@ export default defineScreen({
   describe: {
     says: {
       label: () => "How many looks to compare",
-      chose: (output) => output.looks,
+      chose: (output) => LOOKS_LABEL[output.looks],
     },
     summary:
       'Asks the person how many looks they want to compare, one, two or three, with their current setting chosen. The answer is { looks: "one" }, { looks: "two" } or { looks: "three" }, and Builder has then set the project\'s Design concepts preference to match: start that many design concepts. If they write back instead, what they wrote is their answer.',

@@ -38,7 +38,7 @@ function Section(args: WorkingPreferencesViewProps) {
 
 const approvals: PreferenceRow = {
   id: "experimental_approvals",
-  label: "Approvals (Experimental)",
+  label: "Approvals (experimental)",
   hint: "On, share tailored approval packages with stakeholders.",
   kind: "switch",
   on: false,

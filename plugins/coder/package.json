@@ -62,6 +62,18 @@
         "writesCode": true
       }
     ],
+    "settings": {
+      "builder": {
+        "label": "App builder",
+        "hint": "Builds the app.",
+        "tier": "high"
+      }
+    },
+    "budgets": {
+      "coding": {
+        "maxOutputTokens": 65536
+      }
+    },
     "packages": {
       "coder": {
         "entry": "./src/packages/coder.ts"
@@ -117,6 +129,7 @@
         ],
         "writes": [
           "stack.language",
+          "stack.starter",
           "stack.checks",
           "stack.run"
         ],

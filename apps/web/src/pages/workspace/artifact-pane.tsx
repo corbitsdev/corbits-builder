@@ -499,7 +499,7 @@ export function ArtifactPane({
       ref={paneRef}
       className={styles.pane}
       data-slot="artifact-pane"
-      aria-label="Artifacts"
+      aria-label="Documents"
     >
       {hasTabs ? (
         <PanelHeader

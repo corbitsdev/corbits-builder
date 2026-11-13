@@ -14,7 +14,7 @@ import {
   DesignBundle,
   type DesignConcept,
 } from "@corbits-builder/schemas/artifact";
-import { Refusal } from "@corbits-builder/plugin-host/coordinator";
+import { Refusal, type Kept } from "@corbits-builder/plugin-host/coordinator";
 import { Preferences } from "@corbits-builder/schemas/preferences";
 import type { InputKind } from "../config/inputs.ts";
 import {
@@ -240,15 +240,24 @@ export function projectSession(
     });
   // Mail to a fresh deployment lands in its durable inbox and fires the run, so the deploy
   // response is enough to send the assignment, which carries the person's preferences that
-  // apply to the receiving role.
+  // apply to the receiving role. Before it is sent, the run keeps what its action's start kept
+  // and beforeAssign records anything else against it.
   const deploy = async (
     role: Role,
     workflowSpec: NativeSpecialistDeployment | undefined,
     preferences: Preferences,
     correlationId: string,
     content: string,
-    beforeAssign?: (runId: string) => Promise<unknown>,
+    {
+      kept,
+      beforeAssign,
+    }: {
+      kept?: Kept | undefined;
+      beforeAssign?: (runId: string) => Promise<unknown>;
+    } = {},
   ) => {
+    if (kept && !assigned)
+      throw new Error("a run keeps a record or values only for its action");
     if (!workflowSpec)
       throw new Refusal(
         role.name + "_unavailable: no " + role.name + " workflow is installed",
@@ -268,6 +277,8 @@ export function projectSession(
         plugin: assigned.plugin,
         action: assigned.action,
         step: assigned.step,
+        record: kept?.record,
+        values: kept?.values,
       });
     await beforeAssign?.(deployment.id);
     await env.capabilities.resolve("mail.transport").send(
@@ -316,16 +327,15 @@ export function projectSession(
   // The one-at-a-time slot a role takes: its own, unless it declares it shares another's.
   const slotOf = (name: string) => CATALOG.role(name)?.slot ?? name;
   // One run in the workflow's role's slot at a time; a start waits for the last one to end. task builds
-  // the assignment from the project as it then stands, and what to store against the run before
-  // it is assigned, or refuses; busy says why none started, with the live run when one is still
+  // the assignment from the project as it then stands, and what to keep for the run before it is
+  // assigned, or refuses; busy says why none started, with the live run when one is still
   // working and none while another is starting.
   const startAlone = (
     workflow: string,
     correlationId: string,
-    task: (state: Listed) => Promise<{
-      content: string;
-      beforeAssign?: (runId: string) => Promise<unknown>;
-    }>,
+    task: (
+      state: Listed,
+    ) => Promise<{ content: string; kept?: Kept | undefined }>,
     busy: (live?: Listed["inFlight"][number]) => Error,
   ) => {
     const { role, spec } = installed(workflow);
@@ -333,15 +343,10 @@ export function projectSession(
     return startOnce(options.projectId + ":" + slot, busy, async () => {
       const { state, live } = await ended((run) => slotOf(run.role) === slot);
       if (live) throw busy(live);
-      const { content, beforeAssign } = await task(state);
-      return deploy(
-        role,
-        spec,
-        state.preferences,
-        correlationId,
-        content,
-        beforeAssign,
-      );
+      const { content, kept } = await task(state);
+      return deploy(role, spec, state.preferences, correlationId, content, {
+        kept,
+      });
     });
   };
   // A run of the workflow for each concept, each concept one run's at a time and recorded as that
@@ -393,12 +398,10 @@ export function projectSession(
             state.preferences,
             correlationId,
             content,
-            (runId) =>
-              hub(projectPath + "/run-records", {
-                runId,
-                name: "concept",
-                data: concept,
-              }),
+            {
+              beforeAssign: (runId) =>
+                hub(projectPath + "/run-concepts", { runId, concept }),
+            },
           );
           return { ...started, concept: concept.label };
         },

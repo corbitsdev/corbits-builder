@@ -8,10 +8,13 @@ import {
   type Host,
 } from "@corbits-builder/plugin-host/catalog";
 import { readPluginFolder } from "@corbits-builder/plugin-host/folder";
-import { MODEL_ROLES } from "../config/models.ts";
+import type { Role } from "@corbits-builder/plugin";
 import { PREFERENCES } from "../config/preferences.ts";
-import { BUDGETS } from "../inference/model-limits.ts";
-import { COORDINATOR } from "../workflows/coordinator-role.ts";
+import {
+  COORDINATOR,
+  COORDINATOR_BUDGET,
+  COORDINATOR_SETTING,
+} from "../workflows/coordinator-role.ts";
 import { FACTS } from "./facts.ts";
 
 export {
@@ -23,12 +26,12 @@ export {
 export const PLUGINS_FOLDER = resolve(import.meta.dir, "../../../../plugins");
 
 // All the plugins need from the hub: the facts it works out, the preferences a screen's answer may
-// set, and the model settings and output budgets a role may run on.
+// set, and the model setting and output budget of its own coordinator.
 export const HOST: Host = {
   facts: FACTS,
   preferences: new Set(PREFERENCES.map(({ id }) => id)),
-  models: new Set(MODEL_ROLES.map(({ id }) => id)),
-  budgets: new Set(BUDGETS),
+  settings: new Map([[COORDINATOR.model, COORDINATOR_SETTING]]),
+  budgets: new Map([[COORDINATOR.limits, COORDINATOR_BUDGET]]),
 };
 
 // Every plugin in the folder, checked once when the hub loads; a wrong one stops the hub.
@@ -83,6 +86,15 @@ export function runRole(name: string) {
   const role = name === COORDINATOR.name ? COORDINATOR : CATALOG.role(name);
   if (!role) throw new Error(`role_unknown:${name}`);
   return role;
+}
+
+/** The tier a role's model setting runs on and the output budget it runs with, as declared. */
+export function roleModel(role: Pick<Role, "model" | "limits">) {
+  const setting = CATALOG.settings.get(role.model);
+  if (!setting) throw new Error(`model_setting_unknown:${role.model}`);
+  const budget = CATALOG.budgets.get(role.limits);
+  if (!budget) throw new Error(`model_budget_unknown:${role.limits}`);
+  return { tier: setting.tier, budget };
 }
 
 // Every workflow package Builder installs and the name of the role its runs play: the hub's

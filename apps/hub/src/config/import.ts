@@ -15,10 +15,10 @@ export const PLANNED_DOCUMENT_KINDS = [
   "build_plan",
 ] as const;
 
-// The importing person's opening message to a newly imported project's coordinator, naming the
-// imported documents with no kind of their own so it reads them as the project's materials, and,
-// when the app came in without some of its documents (a person's own repository), which ones
-// the coordinator reads the code to learn the app.
+// The importing person's opening message to a newly imported project's coordinator. It names the
+// imported documents with no kind of their own, so the coordinator reads them as the project's
+// materials. When the app came in without some of its documents (a person's own repository), it
+// names those and tells the coordinator to read the code to learn the app.
 export function importedProjectMessage(
   materials: readonly string[],
   withApp: boolean,

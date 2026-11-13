@@ -217,7 +217,7 @@ describe("conversation map", () => {
     ].map((match) => match[1]);
     expect(ticks).toEqual([
       "Go to: Make a todo app",
-      "Go to: Approve the requirements · Approved",
+      "Go to: Approve the product requirements · Approved",
       "Go to: Approve the build plan · Approved",
       "Go to: Pick the fonts · Arial and Bitter",
       "Go to: How many looks? · Answered",
@@ -256,13 +256,15 @@ describe("conversation map", () => {
         /<button[^>]*?(?:aria-label="([^"]*)"[^>]*)?>(?:<(?!\/?button)[^>]*>)*([^<]*)/g,
       ),
     ].map((match) => match[1] ?? match[2]);
-    expect(names).toContain("Go to: Approve the requirements");
+    expect(names).toContain("Go to: Approve the product requirements");
     expect(names).toContain(
       "Go to: Let the specialist use run shell on bun run build?",
     );
     expect(
-      names.filter((name) => name?.includes("Approve the requirements")),
-    ).toEqual(["Go to: Approve the requirements"]);
+      names.filter((name) =>
+        name?.includes("Approve the product requirements"),
+      ),
+    ).toEqual(["Go to: Approve the product requirements"]);
     expect(new Set(names).size).toBe(names.length);
   });
 });

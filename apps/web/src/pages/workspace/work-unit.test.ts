@@ -4,6 +4,7 @@ import { createElement } from "react";
 import { QueryClient } from "@tanstack/react-query";
 import { renderToStaticMarkup } from "react-dom/server";
 import type { RunStep } from "@corbits-builder/schemas/activity";
+import { COORDINATOR_NOTE_LEAD } from "@corbits-builder/schemas/native-specialist";
 import { wording } from "../../config.ts";
 import {
   dispatchesOf,
@@ -20,8 +21,15 @@ import {
   savedTurnSteps,
   streamedRuns,
 } from "./run-preview.ts";
-import { WorkUnitStepView, watchClipping } from "./work-unit-step.view.tsx";
-import { specialistUpdate } from "./specialist-updates.ts";
+import {
+  STEP_STATUS,
+  WorkUnitStepView,
+  watchClipping,
+} from "./work-unit-step.view.tsx";
+import {
+  specialistUpdate,
+  type SpecialistUpdate,
+} from "./specialist-updates.ts";
 import { workUnitStanding } from "./work-unit-step.model.ts";
 import { workUnits } from "./work-unit.ts";
 
@@ -508,4 +516,95 @@ test("a report says More only while its text overflows, measured again whenever 
   box.scrollHeight = 21;
   resize();
   expect(seen).toEqual([true, false]);
+});
+
+test("a specialist's row shows its own words, and not Builder's note to the coordinator its hand-back carries", () => {
+  const unit = buildUnit();
+  const handBack = specialistUpdate(
+    "coder",
+    `The app is built and its checks pass.${COORDINATOR_NOTE_LEAD}To show this to the person, open the coder's screen that fits.`,
+    50,
+  );
+  if (handBack === null) throw new Error("no hand-back");
+  const [answered] = workUnits(
+    [{ at: 10, dispatch: unit.dispatch }],
+    [handBack],
+  ).units;
+  if (answered === undefined) throw new Error("no work");
+  const { report } = workUnitStanding(answered, {
+    ...emptyRoom,
+    ended: new Map([["run-build", { status: "completed" }]]),
+  });
+  expect(report).toBe("The app is built and its checks pass.");
+});
+
+test("a step a stopped run had not returned from reads as stopped, and one it had returned from stays done", () => {
+  const steps = joinedSteps(
+    [
+      {
+        callId: "call-test",
+        name: "run_shell",
+        arguments: { command: "bun test" },
+        at: 20,
+        result: { content: "3 pass", isError: false },
+      },
+      {
+        callId: "call-sleep",
+        name: "run_shell",
+        arguments: { command: "sleep 170" },
+        at: 30,
+      },
+    ],
+    [],
+  );
+  const shown = (status: string) =>
+    workUnitStanding(buildUnit(), {
+      ...emptyRoom,
+      ended: new Map([["run-build", { status }]]),
+      steps: new Map([["run-build", steps]]),
+    }).steps.map((step) => step.status);
+  expect(shown("cancelled")).toEqual(["output-available", STEP_STATUS.stopped]);
+  expect(shown("failed")).toEqual(["output-available", STEP_STATUS.stopped]);
+  expect(shown("completed")).toEqual(["output-available", "output-available"]);
+});
+
+test("a run that filed its work reads done once it has ended, with its hand-back, and not before", () => {
+  const [change] = changeCall("run-change");
+  if (change === undefined) throw new Error("no hand-off");
+  const seen: DispatchRoom["seen"] = new Map();
+  const working = {
+    runId: "run-change",
+    role: "coder" as const,
+    startedAt: new Date(10).toISOString(),
+    status: "running" as const,
+    state: "working" as const,
+    since: new Date(10).toISOString(),
+  };
+  const handBack = specialistUpdate("coder", "Arial is in.", 60);
+  if (handBack === null) throw new Error("no hand-back");
+  const standing = (room: DispatchRoom, updates: SpecialistUpdate[]) => {
+    const [unit] = workUnits([{ at: 10, dispatch: change }], updates).units;
+    if (unit === undefined) throw new Error("no work");
+    return workUnitStanding(unit, room);
+  };
+  standing({ ...emptyRoom, seen, inFlight: [working] }, []);
+  // The app is filed while the coder is still writing its hand-back.
+  const filing = standing(
+    { ...emptyRoom, seen, artifacts: [app], inFlight: [working] },
+    [],
+  );
+  expect(filing.status.state).toBe("working");
+  expect(filing.report).toBeUndefined();
+  // Its run ends with its hand-back in the conversation, read in the same room update.
+  const ended = standing(
+    {
+      ...emptyRoom,
+      seen,
+      artifacts: [app],
+      ended: new Map([["run-change", { status: "completed" }]]),
+    },
+    [handBack],
+  );
+  expect(ended.status.state).toBe("ready");
+  expect(ended.report).toBe("Arial is in.");
 });

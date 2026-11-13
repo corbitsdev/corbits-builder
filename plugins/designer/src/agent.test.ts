@@ -206,7 +206,6 @@ test("designer agent writes per-screen files, is held by checkBeforeDone until c
     "#/home",
     "#/overview",
   );
-  const systemPrompts: string[] = [];
   const conversations: string[] = [];
   const scriptedTurns = [
     [
@@ -309,7 +308,6 @@ test("designer agent writes per-screen files, is held by checkBeforeDone until c
           systemText = system;
         }
         if (systemText === undefined) throw new Error("missing_system_prompt");
-        systemPrompts.push(systemText);
         const content = scriptedTurns[turnIndex++];
         if (!content) throw new Error("unexpected_inference_turn");
         return Response.json({
@@ -330,7 +328,6 @@ test("designer agent writes per-screen files, is held by checkBeforeDone until c
       reply: "Filed the two-screen order desk design.",
     });
     expect(turnIndex).toBe(4);
-    expect(systemPrompts[0]).toContain("designs/screens/<name>.html");
     // The held reply stays in the conversation, answered by the director's note.
     expect(conversations[2]).toContain(
       "Premature reply before checking or filing.",

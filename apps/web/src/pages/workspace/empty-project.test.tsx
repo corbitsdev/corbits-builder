@@ -101,10 +101,10 @@ describe("empty project room", () => {
     expect(html).toContain("The page.");
     expect(html).not.toContain("Weather App Problem Brief");
     expect(html).not.toContain("Bad Request");
-    expect(html).not.toContain("Retry");
+    expect(html).not.toContain(`>${wording.action.retry}<`);
   });
 
-  test("a transient read of an existing document keeps Retry", () => {
+  test("a transient read of an existing document keeps Try again", () => {
     const state: DeliverableState = {
       status: "error",
       message: "The project could not be reached. Try again.",
@@ -128,7 +128,7 @@ describe("empty project room", () => {
     );
     expect(html).toContain("Weather design");
     expect(html).toContain("The project could not be reached. Try again.");
-    expect(html).toContain("Retry");
+    expect(html).toContain(`>${wording.action.retry}<`);
     expect(html).not.toContain("Service Unavailable");
     expect(html).not.toContain("Bad Request");
   });

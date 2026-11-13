@@ -55,10 +55,6 @@ export function byAction<File>(files: Readonly<Record<string, File>>) {
   );
 }
 
-// A document named by its kind as the interface words it.
-const documentWords = (kind: string) =>
-  (wording.documentTab[kind] ?? kind.replaceAll("_", " ")).toLowerCase();
-
 /**
  * Makes the roles in the given manifests known, with the actions that start them and what a person
  * reads of each action, from its definition.
@@ -116,9 +112,7 @@ export function installRoles({
         const words: ScreenWords = {
           label: (raw) => {
             const input = screen.input(raw);
-            return input instanceof type.errors
-              ? undefined
-              : label(input, documentWords);
+            return input instanceof type.errors ? undefined : label(input);
           },
           chose: (raw) => {
             const output = screen.output(raw);

@@ -72,7 +72,7 @@ function render(selected: PaneDocument | null, state?: DeliverableState) {
 describe("persistent artifact pane", () => {
   test("exists before artifacts without modal or Expand controls", () => {
     const html = render(null);
-    expect(html).toContain('aria-label="Artifacts"');
+    expect(html).toContain('aria-label="Documents"');
     expect(html).toContain("What you make appears here");
     expect(html).not.toContain(">Artifacts<");
     expect(html).not.toContain(">Output<");

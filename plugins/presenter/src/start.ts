@@ -8,6 +8,7 @@ import {
 import {
   buildPackageAssignment,
   presenterAssignmentMessage,
+  type PackageAssignment,
   type PresenterAssignmentInput,
 } from "./personas.ts";
 
@@ -61,14 +62,31 @@ async function presented(
   };
 }
 
+// A package is filed only from sources at the version the person approved, the chosen design's
+// included, unless they leave document approvals to Builder.
+function approvedOnly(
+  { sources }: PackageAssignment,
+  filed: Filed,
+  asksApprovals: boolean,
+) {
+  const unapproved = sources.find(
+    ({ kind, version }) =>
+      (kind === "design" || asksApprovals) && filed.approved(kind) !== version,
+  );
+  if (unapproved)
+    throw new Refusal(
+      `${unapproved.kind}_not_approved: the person approves the current ${unapproved.kind} before a deck shows it`,
+    );
+}
+
 // One presenter per audience. The manifest holds the deck back until each document it covers is
-// approved; a design is in the deck only once the person chose it, and the hub pins every source
-// the assignment names before the run is told about it.
+// approved; a design is in the deck only once the person chose it. The run keeps the assignment,
+// its sources pinned, as its record before it is told about it.
 export default defineStarter(
   type({ "+": "reject", workflow: "'presenter'" }),
   Present,
   async ({ workflow }, input, project: Project) => {
-    const { facts } = await project.state();
+    const { facts, asksApprovals } = await project.state();
     return {
       runs: [
         await project.deploy({
@@ -81,10 +99,12 @@ export default defineStarter(
               );
             return presenterAssignmentMessage(await presented(input, filed));
           },
-          record: {
-            name: "presentation",
-            data: async (filed) =>
-              buildPackageAssignment(await presented(input, filed)),
+          keep: async (filed) => {
+            const assignment = buildPackageAssignment(
+              await presented(input, filed),
+            );
+            approvedOnly(assignment, filed, asksApprovals);
+            return { record: { assignment } };
           },
         }),
       ],

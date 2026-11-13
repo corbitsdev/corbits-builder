@@ -25,7 +25,9 @@
     "react": "19.3.0"
   },
   "devDependencies": {
-    "@types/react": "19.3.0"
+    "@types/react": "19.3.0",
+    "@types/react-dom": "19.3.0",
+    "react-dom": "19.3.0"
   },
   "builder": {
     "handle": "writer",
@@ -73,6 +75,23 @@
         ]
       }
     ],
+    "settings": {
+      "writer": {
+        "label": "Writer",
+        "hint": "Writes the documents.",
+        "tier": "medium"
+      },
+      "reviewer": {
+        "label": "Reviewer",
+        "hint": "Reviews documents before you approve them.",
+        "tier": "low"
+      }
+    },
+    "budgets": {
+      "document": {
+        "maxOutputTokens": 32768
+      }
+    },
     "packages": {
       "writer-product-requirements": {
         "entry": "./src/packages/writer-product-requirements.ts"

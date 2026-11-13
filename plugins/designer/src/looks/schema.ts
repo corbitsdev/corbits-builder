@@ -3,6 +3,13 @@ import { type } from "arktype";
 // How many looks the person may choose to compare: the first three of the design concepts preference.
 export const Looks = type("'one' | 'two' | 'three'");
 
+// Each answer as the person reads it, on the card and in the conversation's map.
+export const LOOKS_LABEL = {
+  one: "One",
+  two: "Two",
+  three: "Three",
+} satisfies Record<typeof Looks.infer, string>;
+
 // The person's design concepts setting now, which the screen offers first; a plan holds the step
 // without it, since only the project's settings say it.
 export const Input = type({

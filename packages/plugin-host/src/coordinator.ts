@@ -101,6 +101,8 @@ export type FiledVersion = {
 export type Filed = {
   // The current version of each filed document, by kind.
   versions: ReadonlyMap<string, FiledVersion>;
+  // The version of the filed document of a kind the person approved, or undefined for none.
+  approved(kind: string): number | undefined;
   // A filed document at a version, as an assignment carries it: a design is its DESIGN.md and the
   // names of its screens.
   read(
@@ -191,6 +193,16 @@ export type PlanStepWrite = PlanChildWrite | PlanGroupWrite;
 const actionSteps = (steps: readonly SavedPlanStep[]) =>
   steps.flatMap((step) => ("steps" in step ? step.steps : [step]));
 
+/**
+ * What a start keeps for a run before its assignment: a record of the run, of the shape the action's
+ * definition declares, stored against the run for whatever reads it back by the run; and project
+ * values the action writes, saved as the run's own report_values would save them.
+ */
+export type Kept = {
+  record?: unknown;
+  values?: Readonly<Record<string, unknown>>;
+};
+
 /** What the coordinator's tools need from the project they act on, which only the host can do. */
 export type Project = {
   // What is true of the project, from what the host stores; the go-ahead facts that the person's own
@@ -232,23 +244,23 @@ export type Project = {
   // Deploys the installed workflow, one run of its role at a time: busy refuses while another is
   // starting, or is still at work once a replied one had time to end. assignment writes the run's
   // first message from the project as it then stands; the host adds the values block and the
-  // person's preferences. record, when given, is stored against the run as deploy stores it.
+  // person's preferences. keep, when given, is kept for the run as deploy keeps it.
   startAlone(run: {
     workflow: string;
     correlation: string;
     assignment(filed: Filed): string | Promise<string>;
     busy(live?: Working): Error;
-    record?: { name: string; data(filed: Filed): unknown } | undefined;
+    keep?: ((filed: Filed) => Kept | Promise<Kept>) | undefined;
   }): Promise<{ runId: string }>;
   // Deploys the installed workflow, as many runs at a time as are started; assignment writes the
   // run's first message from the project as it then stands, and the host adds the values block and
-  // the person's preferences. record, when given, is stored against the run under its name before
-  // the run gets its assignment, from the same project as the assignment saw it.
+  // the person's preferences. keep, when given, says what the host keeps for the run before the run
+  // gets its assignment, from the same project as the assignment saw it.
   deploy(run: {
     workflow: string;
     correlation: string;
     assignment(filed: Filed): string | Promise<string>;
-    record?: { name: string; data(filed: Filed): unknown };
+    keep?: (filed: Filed) => Kept | Promise<Kept>;
   }): Promise<{ runId: string }>;
   // Deploys the installed workflow once for each concept, each concept one run's at a time and
   // recorded as that run's, within the host's ceiling on concepts at work. A concept's run starts

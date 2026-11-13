@@ -134,7 +134,7 @@ scenario({
         assignedWith: "Plan the build of the approved requirements",
         kind: "build_plan",
         content:
-          "## Stack\nTypeScript on Bun, one package, no framework.\n\n## Acceptance checklist\n- [ ] R-1: the words given are printed back, joined by spaces.\n- [ ] R-2: no words print an empty line.\n- [ ] The tests and check-stack pass.",
+          "## In short\n- Built with **TypeScript on Bun**, nothing to install or pay for.\n\n## Stack\nTypeScript on Bun, one package, no framework.\n\n## Acceptance checklist\n- [ ] R-1: the words given are printed back, joined by spaces.\n- [ ] R-2: no words print an empty line.\n- [ ] The tests and check-stack pass.",
         report: planFiled,
       }),
     },

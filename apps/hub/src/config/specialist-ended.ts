@@ -22,8 +22,8 @@ const actionLines = (
   };
 };
 
-// After a failure the coordinator once started an eleven-minute repair the person had not asked
-// for; only the hand-over that skips approvals lets it decide that alone.
+// A repair after a failure can be long work the person has not asked for, so the coordinator asks
+// first; only the hand-over that skips approvals lets it decide that alone.
 const AFTER_FAILURE = {
   ask: "Tell the person what failed and what fixing it involves, and ask them before starting it again.",
   decide:

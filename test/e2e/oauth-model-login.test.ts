@@ -36,7 +36,7 @@ const jwt = (claims: object) =>
     .map((part) => Buffer.from(JSON.stringify(part)).toString("base64url"))
     .join(".") + ".signature";
 
-// Everything a "Login with ChatGPT" / "Login with xAI" does after the person approves on the
+// Everything a "Sign in with ChatGPT" / "Sign in with xAI" does after the person approves on the
 // provider's consent screen, through the real hub API on real Postgres. Only the two token
 // endpoints are faked; the redirect is the request the browser makes to the loopback callback.
 test("ChatGPT and xAI logins are providers a profile binds roles to, and installs resolve them", async () => {

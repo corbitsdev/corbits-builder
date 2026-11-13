@@ -1,5 +1,5 @@
 /**
- * The mockup review as the page draws it: the design's mockup in the host's sandboxed frame, the
+ * The mockup review: the design's mockup in the host's sandboxed frame, the
  * person's comments beside it, and a bar to move between screens, tag a place, approve or send.
  * Settles to one line in the conversation once answered.
  */

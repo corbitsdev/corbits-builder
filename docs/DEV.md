@@ -106,9 +106,6 @@ whose journal `when` is not later than the newest one a database has applied,
 and `apps/hub/src/db/migrate.test.ts` fails when the journal is out of order.
 Never move a `when` that has merged: databases keep the value they applied.
 
-Until 8 November 2026 01:06:40 UTC, a generated `when` sorts before 0038's; set
-it to one more than the previous entry's. Delete this paragraph after that date.
-
 ## Seeding dummy projects
 
 `bun run dev:seed` populates a workspace tenant (defaulting to the first

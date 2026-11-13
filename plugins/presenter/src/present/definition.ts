@@ -1,9 +1,14 @@
 import { defineWorkflow, Instruction } from "@corbits-builder/plugin";
-import { DocumentKind } from "@corbits-builder/schemas/artifact";
+import {
+  DocumentKind,
+  PackageAssignmentRecord,
+} from "@corbits-builder/schemas/artifact";
 import { type } from "arktype";
 import { AUDIENCE_PERSONAS } from "../personas.ts";
 
 export default defineWorkflow({
+  // Each presenter keeps the assignment it was given, so every package it files must match it.
+  record: PackageAssignmentRecord,
   input: type({
     "+": "reject",
     audience: "string > 0",
@@ -15,7 +20,7 @@ export default defineWorkflow({
   }),
   describe: {
     summary:
-      "Has a presenter build a slide deck (.pptx and .pdf) for one audience and file it as the project's next approval package, from the approved documents named in kinds and, when one is chosen, the design's tokens. Ask the person first, with the question tool, who the audience is, the decision they need from it, which documents to include and the tone and length.",
+      "Has a presenter build a slide deck (.pptx and .pdf) for one audience and file it as the project's next approval package. The presenter works from the approved documents named in kinds and, when one is chosen, the design's tokens. Ask the person first, with the question tool, who the audience is, the decision they need from it, which documents to include and the tone and length.",
     when: "The person wants a deck and approval package for an audience, once they have said who it is for, the decision they need and which approved documents it covers.",
     unless:
       "The documents it would cover are not approved yet, or the person has not said who the audience is.",

@@ -17,6 +17,7 @@
     "./project": "./src/project.ts",
     "./project-import": "./src/project-import.ts",
     "./project-status": "./src/project-status.ts",
+    "./in-short": "./src/in-short.ts",
     "./invitation": "./src/invitation.ts",
     "./settings": "./src/settings.ts",
     "./preferences": "./src/preferences.ts",

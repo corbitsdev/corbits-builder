@@ -1,6 +1,6 @@
 // A warmed designer or coder workspace holds the filed documents it works from as read-only files,
-// and its hub-built assignment opens by naming them, so it starts from them instead of fetching
-// each one (a kept trace's coder made 54 document reads in 107 turns).
+// and its hub-built assignment opens by naming them, so it starts from them instead of spending
+// turns fetching each one.
 import type { SkillPack } from "@corbits-builder/plugin-host/catalog";
 import { INPUTS_DIRECTORY } from "@corbits-builder/schemas/app-files";
 export { INPUTS_DIRECTORY };
@@ -36,7 +36,7 @@ export const inputPath = (kind: InputKind) =>
 
 export const KIT_DIGEST = `${INPUTS_DIRECTORY}/react-ui.md`;
 
-// Only the coder has read_artifact; the designer's documents are these files.
+// A role whose plugin grants read_artifact is told it can fetch a newer version; the designer has only these files.
 export const inputFile = (
   document: { kind: string; version: number; content: string },
   readable: boolean,

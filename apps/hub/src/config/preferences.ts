@@ -245,8 +245,8 @@ export const PREFERENCES: readonly PreferenceEntry[] = [
   },
   {
     id: "experimental_approvals",
-    label: "Approvals (Experimental)",
-    hint: "On, share approval packages with reviewers, track their decisions, and triage feedback into revisions.",
+    label: "Approvals (experimental)",
+    hint: "On, share approval packages with reviewers, track their decisions, and turn their feedback into revisions.",
     topic: "Approvals",
     options: [
       { id: "no", label: "Off", guidance: "" },

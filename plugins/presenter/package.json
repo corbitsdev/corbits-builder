@@ -55,6 +55,18 @@
         "files": "approval_package"
       }
     ],
+    "settings": {
+      "presenter": {
+        "label": "Presenter",
+        "hint": "Builds slide decks and approval packages for an audience.",
+        "tier": "medium"
+      }
+    },
+    "budgets": {
+      "presenter": {
+        "maxOutputTokens": 32768
+      }
+    },
     "packages": {
       "presenter": {
         "entry": "./src/packages/presenter.ts"

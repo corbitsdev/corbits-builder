@@ -1,5 +1,5 @@
 /**
- * The choice between the filed design concepts as the page draws it: every concept's mockup side
+ * The choice between the filed design concepts: every concept's mockup side
  * by side in the host's sandboxed frame, one picked, a comment on any. The answer names the picked
  * concept's design option, which Builder files as the design. Settles to one line in the
  * conversation once answered.

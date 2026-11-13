@@ -20,6 +20,7 @@ import {
   CHECK_DESIGN_TOOL,
   createDesignCheck,
 } from "../builds/design-check.ts";
+import { COORDINATOR_NOTE_LEAD } from "@corbits-builder/schemas/native-specialist";
 import { REPETITION_ABORT } from "../inference/repetition.ts";
 import { trimHistory } from "./compaction.ts";
 import { compactingDirector } from "./director.ts";
@@ -411,6 +412,39 @@ test("designer director holds replies until the latest edits pass check_design a
     source: cycleSource,
   });
   expect(accepted.some((action) => action.type === "reply")).toBe(true);
+
+  // 4. Filed work's reply carries the screens that show it, as Builder's note after the designer's words.
+  const presenting = compactingDirector(
+    "@corbits-builder/designer-test",
+  ).factory(
+    {
+      contextWindow: 200_000,
+      compactAt: 0.8,
+      checkBeforeDone: true,
+      fileBeforeDone: true,
+      presents: "Open the choose screen.",
+    },
+    {} as never,
+    { systemPrompt: "Base prompt.", toolDefinitions: [], compactorNames: [] },
+  ) as ReactorDirector;
+  const presented = await presenting.decide(
+    {
+      type: "inference.done",
+      turn: replyTurn,
+      usage: state.tokenUsage,
+      source: cycleSource,
+    },
+    { ...state, turns: autoFiledTurns },
+    createCapabilities(),
+  );
+  const reply = (Array.isArray(presented) ? presented : [presented]).find(
+    (action) => action.type === "reply",
+  );
+  const [own, note] = (reply?.type === "reply" ? reply.content : "").split(
+    COORDINATOR_NOTE_LEAD,
+  );
+  expect(own).toBe("Done.");
+  expect(note).toBe("Open the choose screen.");
 });
 
 test("coder director takes a check-app verdict from the result's detail after trimming drops its text", async () => {

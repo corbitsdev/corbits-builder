@@ -1,50 +1,27 @@
 // One record per provider entry (config/models.ts) and model. Adding a model is a record here.
-// The window includes the reserved completion. Role budgets stay below the window so the prompt
-// still fits. A missing record fails closed. How hard each role reasons is the profile's choice
-// (config/models.ts), not the model's.
+// The window includes the reserved completion. The output budget a role runs with is its plugin's
+// (an OutputBudget), and stays below the window so the prompt still fits. A missing record fails
+// closed. How hard each role reasons is the profile's choice (config/models.ts), not the model's.
+// A model counts its reasoning against a budget's cap. The Codex and xAI backends accept neither
+// max_output_tokens nor temperature, and @corbits/codex-provider and @corbits/xai-provider omit
+// both, so there the caps are not sent.
 
+import type { OutputBudget } from "@corbits-builder/plugin";
 import type { CustomModel } from "@corbits-builder/schemas/models";
 
-// The output budgets a role may name as its limits.
-export const BUDGETS = [
-  "coordinator",
-  "document",
-  "coding",
-  "design",
-  "presenter",
-] as const;
-export type AgentRole = (typeof BUDGETS)[number];
-export const isBudget = (name: string): name is AgentRole =>
-  BUDGETS.some((budget) => budget === name);
-
 type Effort = "low" | "medium" | "high" | "max";
-
-type RoleBudget = {
-  maxOutputTokens: number;
-  temperature?: number;
-};
 
 export type ModelLimits = {
   contextWindow: number;
   /** The efforts the provider's adapter puts on the wire for this model; empty sends none. */
   efforts: readonly Effort[];
-  roles: Record<AgentRole, RoleBudget>;
+  // It may spend a whole output cap thinking, so a budget's thinking cap is the one it runs with.
+  thinksLong?: true;
+  // A person's own model runs every budget on the one output cap they set.
+  maxOutputTokens?: number;
 };
 
 const allEfforts: readonly Effort[] = ["low", "medium", "high", "max"];
-
-// The per-role output reservation every source shares. A model counts its reasoning against it,
-// so each holds reasoning plus the turn's longest write: a coder turn of six file writes was about
-// 30000 tokens plus reasoning, and a degenerate turn runs to the cap, so coding is twice that. The
-// Codex and xAI backends accept neither max_output_tokens nor temperature, and
-// @corbits/codex-provider and @corbits/xai-provider omit both, so there these caps are not sent.
-const sharedRoles: Record<AgentRole, RoleBudget> = {
-  coordinator: { maxOutputTokens: 24576 },
-  document: { maxOutputTokens: 32768 },
-  coding: { maxOutputTokens: 65536 },
-  design: { maxOutputTokens: 32768 },
-  presenter: { maxOutputTokens: 32768 },
-};
 
 // context_window of each model in the Codex CLI catalog, openai/codex@b1e72963c3
 // codex-rs/models-manager/models.json (the catalog @corbits/codex-provider cites for
@@ -54,31 +31,28 @@ const sharedRoles: Record<AgentRole, RoleBudget> = {
 const codex = (contextWindow: number): ModelLimits => ({
   contextWindow,
   efforts: allEfforts,
-  roles: sharedRoles,
 });
 
 // Grok takes a 500K window with up to 64K output, on the login proxy and the xAI API alike.
 const xai: ModelLimits = {
   contextWindow: 500000,
   efforts: allEfforts,
-  roles: sharedRoles,
 };
 
-// No role turn is measured on these models yet, so they take the shared reservations, here sent
-// as max output, with no temperature. Claude: 1M window, 128K output including thinking
+// No role turn is measured on these models yet, so they take the budgets' caps, here sent as max
+// output, with no temperature. Claude: 1M window, 128K output including thinking
 // (platform.claude.com models overview). Gemini: 1048576 input (Argon: input and output together)
 // and 65536 output (ai.google.dev model pages). Both adapters put every effort on the wire.
-// Claude's thinking counts against max_tokens. On 2026-10-30 an Opus designer spent the whole
-// 32768 budget thinking through a mockup and wrote nothing, so its design turn gets twice that.
+// Claude's thinking counts against max_tokens, and a designer can spend a whole budget thinking
+// through a mockup and write nothing, so it runs a budget's thinking cap.
 const claude: ModelLimits = {
   contextWindow: 1_000_000,
   efforts: allEfforts,
-  roles: { ...sharedRoles, design: { maxOutputTokens: 65536 } },
+  thinksLong: true,
 };
 const gemini: ModelLimits = {
   contextWindow: 1_048_576,
   efforts: allEfforts,
-  roles: sharedRoles,
 };
 
 // The OpenAI API window is 1050000 with 128000 output, but input above 272000 is billed at twice
@@ -88,7 +62,6 @@ const gemini: ModelLimits = {
 const openai: ModelLimits = {
   contextWindow: 272000,
   efforts: allEfforts,
-  roles: sharedRoles,
 };
 
 const bySource: Record<string, ModelLimits> = {
@@ -125,30 +98,29 @@ export function modelLimits(
   provider: string,
   model: string,
 ): ModelLimits | undefined {
-  const found = bySource[`${provider}\u0000${model}`];
-  if (!found) return undefined;
-  for (const role of Object.values(found.roles)) {
-    if (
-      role.maxOutputTokens <= 0 ||
-      role.maxOutputTokens >= found.contextWindow
-    )
-      return undefined;
-  }
-  return found;
+  return bySource[`${provider}\u0000${model}`];
 }
 
-// A person's own model runs every role on the one output cap they set, and is sent no effort.
+// A person's own model runs every budget on the one output cap they set, and is sent no effort.
 export function customModelLimits(model: CustomModel): ModelLimits {
-  const budget: RoleBudget = { maxOutputTokens: model.maxOutputTokens };
   return {
     contextWindow: model.contextWindow,
     efforts: [],
-    roles: {
-      coordinator: budget,
-      document: budget,
-      coding: budget,
-      design: budget,
-      presenter: budget,
-    },
+    maxOutputTokens: model.maxOutputTokens,
   };
+}
+
+/** The output cap and temperature a budget runs with on a model. */
+export function budgetOn(
+  limits: ModelLimits,
+  budget: OutputBudget,
+): { maxOutputTokens: number; temperature?: number } {
+  if (limits.maxOutputTokens !== undefined)
+    return { maxOutputTokens: limits.maxOutputTokens };
+  const maxOutputTokens =
+    limits.thinksLong && budget.thinking !== undefined
+      ? budget.thinking
+      : budget.maxOutputTokens;
+  if (budget.temperature === undefined) return { maxOutputTokens };
+  return { maxOutputTokens, temperature: budget.temperature };
 }

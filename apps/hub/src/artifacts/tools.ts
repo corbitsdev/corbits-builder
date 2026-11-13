@@ -16,6 +16,7 @@ import {
   type DocumentWrite,
   type WriterDocumentKind,
 } from "@corbits-builder/schemas/artifact";
+import { inShort } from "@corbits-builder/schemas/in-short";
 import type { Role } from "@corbits-builder/plugin";
 import { COORDINATOR } from "../workflows/coordinator-role.ts";
 import { stripApprovalPackageBinaries } from "./approval-package.ts";
@@ -49,9 +50,14 @@ const ToolRead = ArtifactRead.merge({ "part?": "number.integer > 0" });
 const readDefinition = {
   name: "read_artifact",
   description:
-    "See which project documents exist, or read one.\nWith no arguments it lists: each document's artifactId, kind, title, current version, sha256, approvedVersion, the version a person approved, and openQuestionCount, the questions its current version leaves open for the person; inFlight, the specialists' runs still open, each with its status, deployed until its first assignment arrives and running after, and each working (mid-turn) or waiting (between turns), with progress once it has acted: its turns so far, its latest tool calls as tool and target, the files it has written, and lastActivityAt; failed, the latest runs that stopped on an error, with when and why, which deliver nothing more; awaitingApproval, the kinds of filed documents whose current version waits on the person's approval; appBuilt, whether the project's code (the document of kind app) has had its first build, a version filed after a passing check or brought in by import; and preferenceGuidance, the person's standing settings for how they want to work, which apply until they say otherwise: what they tell you in the conversation overrides a setting; what they say in the conversation wins over it.\nWith a kind, as that list names it, or an artifactId it returns that document's content at its current version, or at the given version, with the openQuestions that version leaves for the person; a long document comes in numbered parts, and part reads the next one.",
+    "See which project documents exist, or read one.\nWith no arguments it lists:\n- each document's artifactId, kind, title, current version, sha256, approvedVersion (the version a person approved) and openQuestionCount (the questions its current version leaves open for the person);\n- inFlight, the specialists' runs still open. Each has its status, deployed until its first assignment arrives and running after, and is working (mid-turn) or waiting (between turns). Once it has acted it has progress: its turns so far, its latest tool calls as tool and target, the files it has written, and lastActivityAt;\n- failed, the latest runs that stopped on an error, with when and why. They deliver nothing more;\n- awaitingApproval, the kinds of filed documents whose current version waits on the person's approval;\n- appBuilt, whether the project's code (the document of kind app) has had its first build: a version filed after a passing check or brought in by import;\n- preferenceGuidance, the person's standing settings for how they want to work. They apply until the person says otherwise: what they tell you in the conversation overrides a setting.\nWith a kind, as that list names it, or an artifactId it returns that document's content at its current version, or at the given version, with the openQuestions that version leaves for the person. A long document comes in numbered parts, and part reads the next one.",
   inputSchema: { ...ToolRead.toJsonSchema() },
 };
+// The person asked to approve a document decides from its summary on the card, so none is filed
+// without one.
+const IN_SHORT =
+  "content opens with ## In short: two to four one-line bullets written for the person deciding whether to approve it, who may read nothing else: what it concludes, decides or leaves out, specific to this document, with no counts and nothing about the document itself.";
+
 // Each writer's document by name, and what its write_artifact says about the fields only it has.
 const WRITER_DOCUMENTS: Record<
   WriterDocumentKind,
@@ -68,6 +74,7 @@ function writerWriteDefinition(kind: WriterDocumentKind) {
     description: [
       `Write the next version of the ${name}. The hub assigns its id, version and sha256 and returns them. Writing a version is not approval.`,
       "openQuestions lists each question the document leaves for the person to answer, as its Open questions section asks them: a short id, the question as they would read it, whyItBlocks, and suggestedAnswers, your recommendation first. A version written without openQuestions leaves none open.",
+      IN_SHORT,
       ...fieldNotes,
     ].join("\n"),
     inputSchema: { ...WriterDocumentFields[kind].toJsonSchema() },
@@ -77,8 +84,9 @@ function writerWriteDefinition(kind: WriterDocumentKind) {
 const documentWriteDefinition = {
   name: "write_artifact",
   description: [
-    "Write the next version of the document your task names. kind is the kind your task names, a short lowercase slug such as competitor_analysis, the same for every version; title is its title; content is the document itself as markdown sections. The hub assigns its id, version and sha256 and returns them. Writing a version is not approval.",
+    "Write the next version of the document your task names. kind is the kind your task names: a short lowercase slug such as competitor_analysis, the same for every version. title is its title, and content is the document itself as markdown sections. The hub assigns its id, version and sha256 and returns them. Writing a version is not approval.",
     "openQuestions lists each question the document leaves for the person to answer, as its Open questions section asks them: a short id, the question as they would read it, whyItBlocks, and suggestedAnswers, your recommendation first. A version written without openQuestions leaves none open.",
+    IN_SHORT,
   ].join("\n"),
   inputSchema: { ...AnyDocumentFields.toJsonSchema() },
 };
@@ -249,6 +257,12 @@ function artifactTools(
                 return {
                   callId: call.id,
                   content: "invalid_arguments: " + input.summary,
+                  isError: true,
+                };
+              if (inShort(input.content) === undefined)
+                return {
+                  callId: call.id,
+                  content: `not_filed: nothing was filed, as the document has no summary. A document's ${IN_SHORT} Call write_artifact again with it.`,
                   isError: true,
                 };
               const body = JSON.stringify(input);

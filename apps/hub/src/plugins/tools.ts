@@ -93,10 +93,14 @@ const discoverDefinition = (description: string) => ({
 // The project as it stands when a run's assignment is written, from the documents filed in it.
 function filed(
   session: ProjectSession,
-  { byKind }: Pick<ProjectListing, "byKind">,
+  { byKind, artifacts }: Pick<ProjectListing, "byKind" | "artifacts">,
 ): Filed {
   return {
     versions: byKind,
+    approved: (kind) =>
+      artifacts.find(
+        (artifact) => artifact.artifactId === byKind.get(kind)?.artifactId,
+      )?.approvedVersion,
     read: session.readSource,
     design: session.readDesign,
     startHere: (kinds, design) => {
@@ -180,46 +184,28 @@ function project(session: ProjectSession): Project {
     savePlan: (steps) =>
       session.hub(session.projectPath + "/plan", { steps }, undefined, "PUT"),
     working: async () => (await session.listed()).inFlight,
-    startAlone: ({ workflow, correlation, assignment, busy, record }) =>
+    startAlone: ({ workflow, correlation, assignment, busy, keep }) =>
       session.startAlone(
         workflow,
         correlation,
         async (state) => {
           const now = filed(session, state);
-          const content = await assignment(now);
-          if (!record) return { content };
-          const data = await record.data(now);
-          return {
-            content,
-            beforeAssign: (runId: string) =>
-              session.hub(session.projectPath + "/run-records", {
-                runId,
-                name: record.name,
-                data,
-              }),
-          };
+          return { content: await assignment(now), kept: await keep?.(now) };
         },
         busy,
       ),
-    deploy: async ({ workflow, correlation, assignment, record }) => {
+    deploy: async ({ workflow, correlation, assignment, keep }) => {
       const { role, spec } = session.installed(workflow);
       const state = await session.listed();
       const now = filed(session, state);
       const content = await assignment(now);
-      const data = await record?.data(now);
       return session.deploy(
         role,
         spec,
         state.preferences,
         correlation,
         content,
-        record &&
-          ((runId) =>
-            session.hub(session.projectPath + "/run-records", {
-              runId,
-              name: record.name,
-              data,
-            })),
+        { kept: await keep?.(now) },
       );
     },
     startConcepts: ({ workflow, correlation, concepts, assignment, busy }) =>

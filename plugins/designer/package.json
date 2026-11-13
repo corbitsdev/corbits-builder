@@ -85,6 +85,19 @@
         "designs": true
       }
     ],
+    "settings": {
+      "designer": {
+        "label": "Designer",
+        "hint": "Designs the screens.",
+        "tier": "high"
+      }
+    },
+    "budgets": {
+      "design": {
+        "maxOutputTokens": 32768,
+        "thinking": 65536
+      }
+    },
     "packages": {
       "designer": {
         "entry": "./src/packages/designer.ts"

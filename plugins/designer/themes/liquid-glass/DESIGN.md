@@ -4,7 +4,7 @@
 
 A sample app in the Liquid glass look: a small coffee roaster's wholesale
 desk, where the owner sees what needs attention today and works through
-café orders. It should feel light, fluid and native to an iPhone or a Mac,
+café orders. It should feel light and native to an iPhone or a Mac,
 with depth coming from layers of frosted glass rather than lines.
 
 Mockup: `.builder/designs/index.html`. Open it from disk.

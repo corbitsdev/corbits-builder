@@ -1,3 +1,4 @@
+import { join } from "node:path";
 import { expect, test } from "bun:test";
 import { loadCatalog } from "@corbits-builder/plugin-host/catalog";
 import { readPluginFolder } from "@corbits-builder/plugin-host/folder";
@@ -147,4 +148,24 @@ test("a designer's finished report names its screens in plain words, with no too
   expect(ending).toContain("The choose screen, when:");
   expect(ending).toContain("The review screen, when:");
   expect(ending).not.toMatch(/execute|[{}()]/);
+});
+
+test("a design plugin that declares no starter and no themes loads with an empty theme list", async () => {
+  const { builder } = await Bun.file(
+    join(PLUGINS_FOLDER, "designer", "package.json"),
+  ).json();
+  const catalog = await loadCatalog(
+    [
+      ...folders.filter(({ folder }) => folder !== "designer"),
+      withBuilder("designer", {
+        ...builder,
+        design: {
+          looks: [{ id: "plain", label: "Plain", direction: "Plain type." }],
+        },
+      }),
+    ],
+    HOST,
+  );
+  expect(catalog.design?.themes.size).toBe(0);
+  expect(catalog.design?.themeOf("Plain")).toBeUndefined();
 });

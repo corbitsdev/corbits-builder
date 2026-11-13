@@ -1,5 +1,6 @@
 import { scope, type, type ArkErrors, type Type } from "arktype";
 import { AppRun } from "@corbits-builder/schemas/installed-workflows";
+import { Tier } from "@corbits-builder/schemas/models";
 import { SpecialistInstruction } from "@corbits-builder/schemas/native-specialist";
 
 // Something true of the project that Builder works out from what it stores, such as "app_exists". A
@@ -99,22 +100,23 @@ export function declaredRun(
 }
 
 // A look a design can start from: its id, what a person calls it, the theme of the plugin's themes
-// it starts from and how its designer adjusts that theme's tokens.
+// it starts from, when it starts from one, and how its designer adjusts that theme's tokens.
 const DesignLook = type({
   "+": "reject",
   id: "string > 0",
   label: "string > 0",
-  theme: "string > 0",
+  "theme?": "string > 0",
   direction: "string > 0",
 });
 
 // What a plugin that drafts designs brings for the host to show and seed them with: the folder a
 // design workspace starts from, the folder of themes, one sample design per folder named for its
-// id, and the looks the coordinator draws a varied set of design concepts from.
+// id, and the looks the coordinator draws a varied set of design concepts from. Starter and themes
+// are optional: with neither, a designer writes from scratch.
 export const DesignBuilder = type({
   "+": "reject",
-  starter: "string > 0",
-  themes: "string > 0",
+  "starter?": "string > 0",
+  "themes?": "string > 0",
   looks: DesignLook.array().atLeastLength(1),
 });
 export type DesignBuilder = typeof DesignBuilder.infer;
@@ -293,6 +295,28 @@ export type CheckActionBuilder = typeof CheckActionBuilder.infer;
 export const AgentTool = type("'read_artifact' | 'write_artifact' | 'web'");
 export type AgentTool = typeof AgentTool.infer;
 
+// A model setting a role runs on: what a person reads of it in Settings, and the tier of the
+// person's profile it runs on. Roles share a setting by naming the same one; each plugin whose role
+// runs on it declares it, alike, so none depends on another being installed.
+export const ModelSetting = type({
+  "+": "reject",
+  label: "string > 0",
+  hint: "string > 0",
+  tier: Tier,
+});
+export type ModelSetting = typeof ModelSetting.infer;
+
+// An output budget a role runs with: the tokens one turn may write and the temperature it samples
+// at, when it sets one. thinking is its cap on a model that spends long thinking from the same cap,
+// for turns that think through a lot before they write. Plugins share one as they share a setting.
+export const OutputBudget = type({
+  "+": "reject",
+  maxOutputTokens: "number.integer > 0",
+  "temperature?": "number >= 0",
+  "thinking?": "number.integer > 0",
+});
+export type OutputBudget = typeof OutputBudget.infer;
+
 // A specialist's role, declared once by its plugin; whatever needs to know about a run's role reads
 // it from here, never from the role's name. label is what a person reads; model names the model
 // setting it runs on, which roles may share; limits names the output budget it runs with; tools are
@@ -365,6 +389,9 @@ export const SpecialistBuilder = Common.merge({
   runs: "'specialist'",
   // The roles this plugin's runs play; no other plugin may declare one of the same name.
   "roles?": Role.array(),
+  // The model settings and output budgets its roles name, by name.
+  "settings?": { "[string]": ModelSetting },
+  "budgets?": { "[string]": OutputBudget },
   // The workflow packages the host builds and installs from this plugin, by package name: entry is
   // the module whose default export is the workflow and whose named exports are its directors, and
   // role the one of the plugin's roles its runs play, its handle's unless stated.
@@ -481,9 +508,9 @@ export type Describe<Fields extends PropertyKey> = {
 export type Says = { doing: string; done: string };
 
 // What a person reads of a screen in the conversation's map: its label from the input it was
-// opened with, naming a document by its kind in the host's words, and what an answer chose.
+// opened with, and what an answer chose.
 export type ScreenSays<In, Out> = {
-  label: (input: In, document: (kind: string) => string) => string;
+  label: (input: In) => string;
   chose?: (output: Out) => string | undefined;
 };
 
@@ -530,10 +557,12 @@ export const defineScreen = <In, Out, Data, Prepared>(
   screen: Screen<In, Out, Data, Prepared>,
 ) => screen;
 
-// A workflow action's input and how the coordinator fills it.
+// A workflow action's input and how the coordinator fills it, and the record its start may keep
+// for each run, which the host stores against the run when this schema takes it.
 export type Workflow<In> = {
   input: Type<In>;
   describe: Describe<keyof Type<In>["inferIn"]> & { says?: Says };
+  record?: Type;
 };
 
 export const defineWorkflow = <In>(workflow: Workflow<In>) => workflow;

@@ -1,6 +1,6 @@
 import { expect, test } from "bun:test";
 import { NativeSpecialistDeployment } from "@corbits-builder/schemas/native-specialist";
-import { MODEL_PROVIDERS, settingBinding } from "../config/models.ts";
+import { MODEL_PROVIDERS, tierBinding } from "../config/models.ts";
 import { projectLiveToInert } from "@intx/workflow/projection";
 import { nativePackageName } from "./package-name.ts";
 import { resolveRoleInference, type RoleInference } from "./role-inference.ts";
@@ -9,6 +9,7 @@ import { resolve } from "node:path";
 import {
   CATALOG,
   PLUGINS_FOLDER,
+  roleModel,
   runRole,
   WORKFLOW_PACKAGES,
 } from "../plugins/catalog.ts";
@@ -24,17 +25,13 @@ async function installed(name: string) {
 // What each role an installed package plays resolves to on the shipped Anthropic profile.
 const inference: Record<string, RoleInference> = Object.fromEntries(
   [...new Set(WORKFLOW_PACKAGES.values())].map((name) => {
-    const { model, limits } = runRole(name);
+    const { tier, budget } = roleModel(runRole(name));
     return [
       name,
       resolveRoleInference(
         MODEL_PROVIDERS,
-        limits,
-        settingBinding(
-          MODEL_PROVIDERS,
-          { profile: "anthropic_default" },
-          model,
-        ),
+        budget,
+        tierBinding(MODEL_PROVIDERS, { profile: "anthropic_default" }, tier),
       ),
     ];
   }),

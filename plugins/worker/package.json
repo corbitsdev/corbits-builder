@@ -20,7 +20,7 @@
       "documents"
     ],
     "when": "The person asks for something no other specialist's action does: research that needs looking things up on the web, a question about the project or its code, or a document such as a competitor analysis, a product comparison or a profit breakdown that needs facts from outside the project.",
-    "unless": "Another specialist's action fits: a document written only from the project's own documents, the product requirements or the build plan (writer), a second opinion or approval of a filed document (writer), building or changing code (coder), a look, mockup, fonts or colours (designer), or a deck for an audience (presenter).",
+    "unless": "Another specialist has an action made for the request, such as one that writes a particular document from the project's own documents, reviews a filed document, builds or changes code, designs a look, or presents the project to an audience.",
     "roles": [
       {
         "name": "worker",
@@ -42,6 +42,18 @@
         "filesDocuments": true
       }
     ],
+    "settings": {
+      "writer": {
+        "label": "Writer",
+        "hint": "Writes the documents.",
+        "tier": "medium"
+      }
+    },
+    "budgets": {
+      "document": {
+        "maxOutputTokens": 32768
+      }
+    },
     "agents": {
       "worker": {
         "prompt": "./prompt.md"

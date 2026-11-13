@@ -265,6 +265,8 @@ export const runAction = pgTable(
     action: text("action").notNull(),
     // The id of the plan step the run does, when execute could tell which; null when it could not.
     planStep: text("plan_step"),
+    // What the action's start kept as the run's record, as the action declares it; null for none.
+    record: jsonb("record"),
     createdAt: timestamp("created_at", { withTimezone: true })
       .notNull()
       .defaultNow(),

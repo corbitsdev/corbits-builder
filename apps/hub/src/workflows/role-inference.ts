@@ -1,11 +1,12 @@
 import { type } from "arktype";
+import type { OutputBudget } from "@corbits-builder/plugin";
 import { Effort, type RoleBinding } from "@corbits-builder/schemas/models";
 import {
   bindingLimits,
   modelProvider,
   type ModelDirectory,
 } from "../config/models.ts";
-import { isBudget } from "../inference/model-limits.ts";
+import { budgetOn } from "../inference/model-limits.ts";
 
 export const RoleInference = type({
   "+": "reject",
@@ -24,11 +25,11 @@ export type RoleInference = typeof RoleInference.infer;
 
 /**
  * The model source, its window and the per-call parameters one role's package runs with, by the
- * output budget the role names. Resolved on the hub, where a workspace's custom models are known.
+ * output budget the role runs with. Resolved on the hub, where a workspace's custom models are known.
  */
 export function resolveRoleInference(
   directory: ModelDirectory,
-  limitsName: string,
+  output: OutputBudget,
   bound: RoleBinding,
 ): RoleInference {
   const provider = modelProvider(directory, bound.provider);
@@ -37,9 +38,11 @@ export function resolveRoleInference(
   const limits = bindingLimits(directory, bound.provider, bound.model);
   if (!limits)
     throw new Error(`model_limits_required:${bound.provider}:${bound.model}`);
-  if (!isBudget(limitsName))
-    throw new Error(`model_budget_unknown:${limitsName}`);
-  const budget = limits.roles[limitsName];
+  const budget = budgetOn(limits, output);
+  if (budget.maxOutputTokens >= limits.contextWindow)
+    throw new Error(
+      `model_budget_exceeds_window:${bound.provider}:${bound.model}`,
+    );
   return {
     source: { provider: plugin, model: bound.model },
     contextWindow: limits.contextWindow,

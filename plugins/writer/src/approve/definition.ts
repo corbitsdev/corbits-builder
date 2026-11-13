@@ -8,8 +8,9 @@ export default defineScreen({
   prepare: (input) => input,
   describe: {
     says: {
-      label: (input, document) =>
-        `Approve the ${input.kinds.map(document).join(" and ")}`,
+      // Each document by its own kind, so any document reads by name, such as the user manual.
+      label: (input) =>
+        `Approve the ${input.kinds.map((kind) => kind.replaceAll("_", " ")).join(" and ")}`,
       chose: () => "Approved",
     },
     summary:

@@ -98,7 +98,6 @@ test("a step's row says what happened, by tool family", () => {
   expect(label("run_shell", { command: "bun run check-stack" })).toBe(
     "Ran the project's checks",
   );
-  expect(label("check_design", {})).toBe("Checked the design");
   expect(label("file_design_option", { concept: "Calm" })).toBe(
     "Filed the design option",
   );

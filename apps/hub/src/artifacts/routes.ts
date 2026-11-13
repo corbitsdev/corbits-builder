@@ -33,7 +33,8 @@ import {
   ProjectValues,
   ProjectValuesWrite,
   RunAction,
-  RunRecord,
+  RunActionStart,
+  DesignConceptRecord,
 } from "@corbits-builder/schemas/artifact";
 import { ProjectActivity } from "@corbits-builder/schemas/activity";
 import {
@@ -100,14 +101,10 @@ const AnswerPost = type({
   answer: QuestionAnswer,
 });
 
-// The question that puts filed documents in front of the person to approve, by their kinds.
-const ApproveAsked = type({
-  plugin: "'writer'",
-  action: "'approve'",
-  input: { kinds: "string[]" },
-});
-
 const AskFirst = type({ "+": "reject", askFirst: "boolean" });
+
+// The fact a document's approval makes true, followed by its kind.
+const APPROVED = "approved:";
 
 const security = [
   { sessionCookie: [] },
@@ -420,7 +417,7 @@ export function mountArtifactRoutes(
       tags: ["Artifacts"],
       operationId: "readPreviousDesignDraft",
       description:
-        "For the calling designer run: the draft the design continues from, with its DESIGN.md. The newest earlier designer run of this project for the same design concept decides: its workspace while it runs, or once it ended unless the concept's design option, or the design without a concept, was filed since; else that filed design at its latest version, with the look the person saved.",
+        "For the calling designer run: the draft the design continues from, with its DESIGN.md. The newest earlier designer run of this project for the same design concept decides. It is that run's workspace while it runs, or once it ended unless the concept's design option, or the design without a concept, was filed since. Else it is that filed design at its latest version, with the look the person saved.",
       security,
       responses: {
         200: {
@@ -696,28 +693,74 @@ export function mountArtifactRoutes(
       tags: ["Artifacts"],
       operationId: "recordRunAction",
       description:
-        "Records the plugin action the coordinator just started a specialist run for, before the run's assignment reaches it, and the id of the plan step it does when the coordinator could tell which. The run is then listed among the coordinator's runs, the plan shows it on that step, the coordinator may stop it, and it may save the project values that action writes.",
+        "Records the plugin action the coordinator just started a specialist run for, before the run's assignment reaches it, and the id of the plan step it does when the coordinator could tell which. The run is then listed among the coordinator's runs, the plan shows it on that step, the coordinator may stop it, and it may save the project values that action writes. What the action's start keeps for the run comes with it: a record, checked against the record the action's definition declares and stored against the run, and project values, each one the action writes, checked against its declared type and stored as the values route stores it.",
       security,
       requestBody: {
         required: true,
-        content: { "application/json": { schema: resolver(RunAction) } },
+        content: { "application/json": { schema: resolver(RunActionStart) } },
       },
       responses: {
         200: {
           description: "The recorded run and action",
           content: { "application/json": { schema: resolver(RunAction) } },
         },
-        404: { description: "No specialist run by that id in the project" },
+        400: {
+          description:
+            "A record the action does not declare, or a value it does not write or its type refuses",
+        },
+        404: {
+          description:
+            "No specialist run by that id in the project, or no installed action by that name",
+        },
       },
     }),
-    async (c) =>
-      c.json(
-        await service.recordRunAction(
-          actorOf(c),
-          c.req.param("projectId"),
-          await body(c),
+    async (c) => {
+      const current = actorOf(c);
+      const projectId = c.req.param("projectId");
+      const input = RunActionStart(await body(c));
+      if (input instanceof type.errors)
+        throw new ProjectError(400, "invalid_run_action", { issues: input });
+      const action = (await catalogOf(current, projectId)).actions
+        .filter(isWorkflowAction)
+        .find(
+          (installed) =>
+            installed.plugin === input.plugin &&
+            installed.action === input.action,
+        );
+      if (!action)
+        throw new ProjectError(404, "action_not_installed", {
+          plugin: input.plugin,
+          action: input.action,
+        });
+      const kept = action.keep(input);
+      if (!kept.ok)
+        throw new ProjectError(400, "invalid_run_keep", {
+          text: kept.problem,
+        });
+      const values = input.values ?? {};
+      // A start clears a value it writes with null, as a first build that names no starter does.
+      projectValueWrites(
+        Object.fromEntries(
+          Object.entries(values).filter(([, value]) => value !== null),
         ),
-      ),
+        await service.projectState(current, projectId),
+        CATALOG.values,
+      );
+      return c.json(
+        await service.recordRunAction(
+          current,
+          projectId,
+          {
+            runId: input.runId,
+            plugin: input.plugin,
+            action: input.action,
+            step: input.step,
+            record: kept.record,
+          },
+          values,
+        ),
+      );
+    },
   );
   app.get(
     "/:projectId/runs",
@@ -873,7 +916,7 @@ export function mountArtifactRoutes(
       tags: ["Artifacts"],
       operationId: "saveProjectValues",
       description:
-        "Saves project values by name, each checked against its declared type and written to its home: once a design is filed, a value its plugin keeps in the design's styles becomes that design token, leading any list the token holds, written as design-tweaks writes them; before that, and for every other value, they go to the project's own store. Returns the saved values read back.",
+        "Saves project values by name, each checked against its declared type and written to its home. Once a design is filed, a value its plugin keeps in the design's styles becomes that design token, leading any list the token holds, written as design-tweaks writes them. Before that, and for every other value, they go to the project's own store. Returns the saved values read back.",
       security,
       requestBody: {
         required: true,
@@ -917,7 +960,7 @@ export function mountArtifactRoutes(
       tags: ["Artifacts"],
       operationId: "answerQuestion",
       description:
-        "The signed-in person answers the question the project's coordinator is waiting on, by its signal name: a question card's answers, a screen's output, or a reply they typed instead. For a screen's output the hub checks it against the screen's output schema, saves the project values the screen writes from it where they changed, and records what it approves: a document's approval at the version shown, or the design option chosen as the design, each only among the facts the question allows; and sets the project preferences the screen sets from it, such as leaving approvals to Builder. Then it delivers the answer to the run through Interchange's signal route as the person. A reply is delivered as it is.",
+        "The signed-in person answers the question the project's coordinator is waiting on, by its signal name: a question card's answers, a screen's output, or a reply they typed instead. For a screen's output the hub checks it against the screen's output schema and saves the project values the screen writes from it where they changed. It records what it approves: a document's approval at the version shown, or the design option chosen as the design, each only among the facts the question allows. It also sets the project preferences the screen sets from it, such as leaving approvals to Builder. Then it delivers the answer to the run through Interchange's signal route as the person. A reply is delivered as it is.",
       security: [{ sessionCookie: [] }, { deviceBearer: [] }],
       requestBody: {
         required: true,
@@ -951,7 +994,7 @@ export function mountArtifactRoutes(
       tags: ["Artifacts"],
       operationId: "approveDocument",
       description:
-        "The signed-in person approves a filed document at the version they read, with no question asking for it. The hub records the approval of exactly that version as an approve screen's answer records it. When the coordinator is waiting on an approve question whose documents this approval now completes, the hub answers that question as the approve screen would, at each document's current version; otherwise it leaves any such question open and sends the coordinator a hub note naming the document and version.",
+        "The signed-in person approves a filed document at the version they read, with no question asking for it. The hub records the approval of exactly that version as an approve screen's answer records it. When the coordinator is waiting on an approve question whose documents this approval now completes, the hub answers that question as the approve screen would, at each document's current version. Otherwise it leaves any such question open and sends the coordinator a hub note naming the document and version.",
       security: [{ sessionCookie: [] }, { deviceBearer: [] }],
       requestBody: {
         required: true,
@@ -994,7 +1037,7 @@ export function mountArtifactRoutes(
         current,
         projectId,
         [{ artifactId, version: input.version }],
-        [`approved:${kind}`],
+        [APPROVED + kind],
         (coordinator, content) =>
           mailRunAsCaller(
             c,
@@ -1004,14 +1047,18 @@ export function mountArtifactRoutes(
             content,
           ),
       );
-      // The open approve question that asks for this document too, with every kind it asks for.
+      // The open question whose answer approves this document too, with every kind it approves.
+      const { screens } = await catalogOf(current, projectId);
       const [asking] = questions.flatMap(({ signalName, asked, answer }) => {
-        const approve = ApproveAsked(asked);
-        return answer === undefined &&
-          !(approve instanceof type.errors) &&
-          approve.input.kinds.includes(kind)
-          ? [{ signalName, kinds: approve.input.kinds }]
-          : [];
+        if (answer !== undefined || !("plugin" in asked)) return [];
+        const screen = screens.find(
+          ({ plugin, action }) =>
+            plugin === asked.plugin && action === asked.action,
+        );
+        const kinds = (screen?.returns(asked.input) ?? []).flatMap((fact) =>
+          fact.startsWith(APPROVED) ? [fact.slice(APPROVED.length)] : [],
+        );
+        return kinds.includes(kind) ? [{ signalName, kinds }] : [];
       });
       if (asking !== undefined) {
         const shown = (await service.list(current, projectId)).artifacts.filter(
@@ -1237,7 +1284,7 @@ export function mountArtifactRoutes(
       tags: ["Artifacts"],
       operationId: "removeMaterial",
       description:
-        "Takes an attached file back. The coordinator, when one runs, is told the file is withdrawn first, so a note that cannot be sent leaves the material in place for another try; then the material is archived, so it leaves the project's documents and the coordinator's filed materials while its versions stay. The message it was sent with keeps showing it. `told` says whether a coordinator was mailed.",
+        "Takes an attached file back. The coordinator, when one runs, is told the file is withdrawn first, so a note that cannot be sent leaves the material in place for another try. Then the material is archived, so it leaves the project's documents and the coordinator's filed materials while its versions stay. The message it was sent with keeps showing it. `told` says whether a coordinator was mailed.",
       security,
       responses: {
         200: {
@@ -1263,47 +1310,29 @@ export function mountArtifactRoutes(
     },
   );
   app.post(
-    "/:projectId/run-records",
+    "/:projectId/run-concepts",
     describeRoute({
       tags: ["Artifacts"],
-      operationId: "recordRun",
+      operationId: "recordRunConcept",
       description:
-        "Records data against a run a plugin's starter just deployed, before its assignment: the concept it works on (its design is filed as that concept's design_option), the sources a presentation pins, or the starter a first build's coder begins from, or null for none (saved as the project's stack.starter, stack.checks and stack.run, and written onto the app repository when the coder first asks for push access).",
+        "Records the design concept a run the coordinator just deployed works on, before its assignment; the design it files is filed as that concept's design_option.",
       security,
       requestBody: {
         required: true,
-        content: { "application/json": { schema: resolver(RunRecord) } },
+        content: {
+          "application/json": { schema: resolver(DesignConceptRecord) },
+        },
       },
-      responses: { 200: { description: "The record as stored" } },
+      responses: { 200: { description: "The concept as stored" } },
     }),
-    async (c) => {
-      const input = RunRecord(await body(c));
-      if (input instanceof type.errors)
-        throw new ProjectError(400, "invalid_run_record", {
-          issues: input.summary,
-        });
-      const projectId = c.req.param("projectId");
-      if (input.name === "concept")
-        return c.json(
-          await service.recordDesignConcept(actorOf(c), projectId, {
-            runId: input.runId,
-            concept: input.data,
-          }),
-        );
-      if (input.name === "starter")
-        return c.json(
-          await service.recordStarter(actorOf(c), projectId, {
-            runId: input.runId,
-            starter: input.data,
-          }),
-        );
-      return c.json(
-        await service.recordPresenterAssignment(actorOf(c), projectId, {
-          runId: input.runId,
-          assignment: input.data,
-        }),
-      );
-    },
+    async (c) =>
+      c.json(
+        await service.recordDesignConcept(
+          actorOf(c),
+          c.req.param("projectId"),
+          await body(c),
+        ),
+      ),
   );
   app.get(
     "/:projectId/manual",
@@ -1396,7 +1425,7 @@ export function mountArtifactRoutes(
       tags: ["Artifacts"],
       operationId: "keepLiveApp",
       description:
-        "Says the project is open. The hub runs one app per project from its current files, in the coder's sandbox on ports it picks, with the app's own dev script, so every change to those files shows at once; packages are installed again when they change and a crashed app restarts. It stops once this route has not been called for a minute and starts again on the next call.",
+        "Says the project is open. The hub runs one app per project from its current files, in the coder's sandbox on ports it picks, with the app's own dev script, so every change to those files shows at once. Packages are installed again when they change and a crashed app restarts. It stops once this route has not been called for a minute and starts again on the next call.",
       security,
       responses: {
         200: {

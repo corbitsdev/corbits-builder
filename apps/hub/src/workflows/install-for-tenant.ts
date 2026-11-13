@@ -25,7 +25,7 @@ import type { RoleBinding } from "@corbits-builder/schemas/models";
 import {
   modelProvider,
   providerOfRow,
-  settingBinding,
+  tierBinding,
   type ModelDirectory,
 } from "../config/models.ts";
 import { modelDirectory } from "../settings/custom-providers.ts";
@@ -36,7 +36,7 @@ import {
 import { projectModelChoice } from "../projects/model-choice.ts";
 import { ProjectError } from "../projects/errors.ts";
 import { buildWorkflowPackages } from "./build-packages.ts";
-import { runRole, WORKFLOW_PACKAGES } from "../plugins/catalog.ts";
+import { roleModel, runRole, WORKFLOW_PACKAGES } from "../plugins/catalog.ts";
 import { nativePackageName } from "./package-name.ts";
 import { resolveRoleInference, type RoleInference } from "./role-inference.ts";
 import type { Actor } from "../lib/actor.ts";
@@ -429,12 +429,16 @@ export async function installForTenant(
   );
   // Each role runs on the model setting it names, with its output budget.
   const bindings: Bindings = (role) =>
-    settingBinding(directory, choice, runRole(role).model);
+    tierBinding(directory, choice, roleModel(runRole(role)).tier);
   const built = await builtPackages(
     Object.fromEntries(
       ROLES.map((role) => [
         role,
-        resolveRoleInference(directory, runRole(role).limits, bindings(role)),
+        resolveRoleInference(
+          directory,
+          roleModel(runRole(role)).budget,
+          bindings(role),
+        ),
       ]),
     ),
   );

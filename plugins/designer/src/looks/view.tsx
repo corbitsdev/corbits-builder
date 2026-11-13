@@ -9,7 +9,7 @@ import {
   ScreenCard,
   ScreenSettled,
 } from "@corbits-builder/plugin-ui/screen-card";
-import type { Input, Output } from "./schema.ts";
+import { LOOKS_LABEL, type Input, type Output } from "./schema.ts";
 import styles from "./view.module.css";
 
 type Looks = (typeof Output.infer)["looks"];
@@ -23,10 +23,7 @@ const LOOKS: readonly Looks[] = ["one", "two", "three"];
 
 export const text = {
   ask: "How many looks do you want to compare?",
-  label: { one: "One", two: "Two", three: "Three" } satisfies Record<
-    Looks,
-    string
-  >,
+  label: LOOKS_LABEL,
   go: (looks: Looks) =>
     looks === "one" ? "Make one look" : `Compare ${looks} looks`,
   orWrite: "Or write below what you have in mind.",

@@ -25,6 +25,7 @@ const WRITER_FIELDS: Record<WriterDocumentKind, string[]> = {
   product_requirements: ["content", "kind", "openQuestions", "title"],
   build_plan: ["content", "kind", "openQuestions", "title"],
 };
+const DOC = "## In short\n\n- **Three apps** serve our area.";
 const WRITER_KINDS = Object.keys(WRITER_FIELDS).map((kind) =>
   WriterDocumentKind.assert(kind),
 );
@@ -131,18 +132,38 @@ test("a writer files under the kind it was deployed for, with or without naming 
     const otherKind = await filing.write({
       kind: WRITER_KINDS.find((other) => other !== kind),
       title: "Doc",
-      content: "# Doc",
+      content: DOC,
     });
     expect(otherKind.content).toStartWith("invalid_arguments:");
     const empty = await filing.write({ title: "Doc", content: "" });
     expect(empty.content).toStartWith("invalid_arguments:");
     expect(filing.written).toHaveLength(0);
 
-    await filing.write({ title: "Unnamed", content: "# Doc" });
-    await filing.write({ kind, title: "Named", content: "# Doc" });
+    await filing.write({ title: "Unnamed", content: DOC });
+    await filing.write({ kind, title: "Named", content: DOC });
     expect(filing.written).toEqual([
-      { kind, title: "Unnamed", content: "# Doc" },
-      { kind, title: "Named", content: "# Doc" },
+      { kind, title: "Unnamed", content: DOC },
+      { kind, title: "Named", content: DOC },
     ]);
   }
+});
+
+test("a document of any kind is filed only with a summary, and the writer is told how to add one", async () => {
+  const filing = harness(writer.name, createArtifactTools(writer));
+  const bare = await filing.write({
+    kind: "user_manual",
+    title: "Tonight user manual",
+    content: "## Getting started\n\nOpen the app.",
+  });
+  expect(bare.isError).toBe(true);
+  expect(bare.content).toContain("## In short");
+  expect(filing.written).toHaveLength(0);
+
+  const summarised = {
+    kind: "user_manual",
+    title: "Tonight user manual",
+    content: `${DOC}\n\n## Getting started\n\nOpen the app.`,
+  };
+  await filing.write(summarised);
+  expect(filing.written).toEqual([summarised]);
 });

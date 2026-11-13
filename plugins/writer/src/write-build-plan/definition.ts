@@ -9,7 +9,7 @@ export default defineWorkflow({
       done: "Wrote the build plan",
     },
     summary:
-      "Has a writer write the build plan, or the next version of it, for whatever is being built: the stack, the phases of work and the acceptance checks, from the filed documents and, when there is one, the chosen design.",
+      "Has a writer write the build plan, or the next version of it, for whatever is being built: the stack, the phases of work and the acceptance checks. The writer works from the filed documents and, when there is one, the chosen design.",
     when: "Something is to be built and needs a build plan, or its plan revised: the stack, the phases of work and the checks.",
     unless: "What it must do is still being settled with the person.",
     fields: {

@@ -1,5 +1,5 @@
 /**
- * The font picker as the conversation draws it. The fonts in use are the controls: pressing one
+ * The font picker. The fonts in use are the controls: pressing one
  * points the searchable list beneath at it, and a proposed font is one press. The main action keeps
  * the fonts until one differs, then changes them. Settles to one line once answered.
  */

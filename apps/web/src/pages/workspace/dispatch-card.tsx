@@ -279,12 +279,12 @@ export function dispatchStatus(
   dispatch: Dispatch,
   room: DispatchRoom,
 ): DispatchStatus {
+  // A run that filed its work may still be at work on its report, which its row shows once done.
+  const atWork = room.inFlight.some(
+    (run) => run.runId === dispatch.runId && run.state !== "waiting",
+  );
   if (dispatch.filed === true) {
     const filed = target(dispatch, room.artifacts);
-    // A run named by what it filed may still be at work on its report.
-    const atWork = room.inFlight.some(
-      (run) => run.runId === dispatch.runId && run.state !== "waiting",
-    );
     if (filed !== undefined && !atWork) return readyOf(filed);
   }
   if (dispatch.pending) return { state: "starting" };
@@ -300,7 +300,8 @@ export function dispatchStatus(
   const filed =
     target(dispatch, room.artifacts) ??
     (writes.length === 1 ? writes[0] : undefined);
-  if (filed !== undefined && moved.includes(filed)) return readyOf(filed);
+  if (filed !== undefined && moved.includes(filed) && !atWork)
+    return readyOf(filed);
   const after = (iso: string) =>
     seen === undefined || Date.parse(iso) >= seen.at - 60_000;
   const failure = room.failed.find((run) =>

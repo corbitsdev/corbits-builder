@@ -68,7 +68,6 @@ import {
   type FailedRun,
   type InFlightRun,
   type ProjectRun,
-  RunAction,
   type ArtifactRef,
   type AppSnapshotReceipt,
   type AppSnapshotState,
@@ -108,7 +107,6 @@ import {
   project,
   projectCoordinator,
   runAction,
-  settingsRecord,
 } from "../db/schema.ts";
 import type { AgentActivityTracker } from "./activity.ts";
 import type { Actor } from "../lib/actor.ts";
@@ -139,9 +137,9 @@ import {
   warmStepWorkspace,
 } from "./design-draft.ts";
 import type { LiveApps } from "../live-app/runner.ts";
-import { declaredRun, starterValues } from "@corbits-builder/plugin";
+import { declaredRun } from "@corbits-builder/plugin";
 import { projectValueStore, readStoredValues } from "../projects/values.ts";
-import { CATALOG } from "../plugins/catalog.ts";
+import { roleModel } from "../plugins/catalog.ts";
 import {
   appContent,
   bundleFiles,
@@ -162,7 +160,7 @@ import {
   preferenceGuidance,
   resolvePreferences,
 } from "../config/preferences.ts";
-import { frozenModelChoice, settingBinding } from "../config/models.ts";
+import { frozenModelChoice, tierBinding } from "../config/models.ts";
 import { COORDINATOR } from "../workflows/coordinator-role.ts";
 import { modelDirectory } from "../settings/custom-providers.ts";
 import { materialRemovedNote, materialsNote } from "../config/materials.ts";
@@ -183,8 +181,8 @@ import {
 import {
   parseApprovalPackageBundle,
   readProjectPackageSource,
+  sealedAssignment,
   validateApprovalPackage,
-  verifySourcePin,
 } from "./approval-package.ts";
 import {
   createApprovalRoundService,
@@ -1012,6 +1010,15 @@ export function createArtifactService(
     return row.createdAt;
   }
 
+  // What a run's start kept as the run's record; undefined for a run that kept none.
+  async function runRecord(tenantId: string, runId: string) {
+    const [row] = await rawDB
+      .select({ record: runAction.record })
+      .from(runAction)
+      .where(and(eq(runAction.runId, runId), eq(runAction.tenantId, tenantId)));
+    return row?.record ?? undefined;
+  }
+
   async function approvedVersion(tenantId: string, artifactId: string) {
     const deployed = await rawDB
       .select({
@@ -1587,11 +1594,20 @@ export function createArtifactService(
     },
 
     // Records the plugin action the coordinator just started a specialist run for, before the
-    // run's assignment reaches it.
-    async recordRunAction(actor: Actor, projectId: string, raw: unknown) {
-      const input = RunAction(raw);
-      if (input instanceof type.errors)
-        throw new ProjectError(400, "invalid_run_action", { issues: input });
+    // run's assignment reaches it, with the record its start keeps for the run and the values it
+    // saves, both already checked against the action.
+    async recordRunAction(
+      actor: Actor,
+      projectId: string,
+      input: {
+        runId: string;
+        plugin: string;
+        action: string;
+        step: string | undefined;
+        record: unknown;
+      },
+      values: Record<string, unknown>,
+    ) {
       await requireProject(actor, projectId, "manage");
       const [run] = await rawDB
         .select({ bundle: workflowRunLaunchSpec.frozenApprovalBundle })
@@ -1619,9 +1635,16 @@ export function createArtifactService(
           plugin: input.plugin,
           action: input.action,
           planStep: input.step ?? null,
+          record: input.record ?? null,
         })
         .onConflictDoNothing();
-      return input;
+      await storeValues(projectId, values);
+      return {
+        runId: input.runId,
+        plugin: input.plugin,
+        action: input.action,
+        step: input.step,
+      };
     },
 
     // The runs the coordinator started in the project: every one still at work, and the latest
@@ -1850,7 +1873,7 @@ export function createArtifactService(
           rawDB,
           directory,
           actor.tenantId,
-          settingBinding(directory, choice, COORDINATOR.model),
+          tierBinding(directory, choice, roleModel(COORDINATOR).tier),
         ));
       return acceptedMaterials(offering?.capabilities ?? []);
     },
@@ -2150,61 +2173,14 @@ export function createArtifactService(
       if (input.kind === "approval_package") {
         const settings = await loadSettings(rawDB, actor.tenantId, projectId);
         const preferences = resolvePreferences(settings.preferences.value);
-        let sealed:
-          | {
-              audience: string;
-              decisionNeeded?: string;
-              sources: {
-                artifactId: string;
-                kind: string;
-                version: number;
-                sha256: string;
-              }[];
-            }
-          | undefined;
-        if (active?.kind === "workflow" && active.refId) {
-          const [row] = await rawDB
-            .select({ fields: settingsRecord.fields })
-            .from(settingsRecord)
-            .where(
-              and(
-                eq(settingsRecord.tenantId, actor.tenantId),
-                eq(settingsRecord.scopeKey, `presenter:${active.refId}`),
-              ),
-            );
-          const rawAssignment =
-            row && typeof row.fields === "object" && row.fields !== null
-              ? (row.fields as unknown as Record<string, unknown>)["assignment"]
-              : undefined;
-          if (
-            typeof rawAssignment === "object" &&
-            rawAssignment !== null &&
-            "audience" in rawAssignment &&
-            typeof rawAssignment.audience === "string" &&
-            "sources" in rawAssignment &&
-            Array.isArray(rawAssignment.sources)
-          ) {
-            sealed = {
-              audience: rawAssignment.audience,
-              ...("decisionNeeded" in rawAssignment &&
-              typeof rawAssignment.decisionNeeded === "string"
-                ? { decisionNeeded: rawAssignment.decisionNeeded }
-                : {}),
-              sources: rawAssignment.sources as {
-                artifactId: string;
-                kind: string;
-                version: number;
-                sha256: string;
-              }[],
-            };
-          } else {
-            throw new ProjectError(
-              403,
-              "approval_package_assignment_mismatch",
-              { runId: active.refId },
-            );
-          }
-        }
+        // A run files packages only for the assignment its start kept as the run's record.
+        const sealed =
+          active?.kind === "workflow" && active.refId
+            ? sealedAssignment(
+                active.refId,
+                await runRecord(actor.tenantId, active.refId),
+              )
+            : undefined;
         await validateApprovalPackage(
           input.content,
           readProjectPackageSource(
@@ -2655,61 +2631,7 @@ export function createArtifactService(
       });
     },
 
-    // A first build's coder, just deployed, begins from the starter it names, or from none: the
-    // project's stack.starter, stack.checks and stack.run are saved as that starter's, or cleared,
-    // before its assignment. Its first push access writes the starter's files onto the app repository.
-    async recordStarter(actor: Actor, projectId: string, raw: unknown) {
-      const input = type({
-        "+": "reject",
-        runId: "string > 0",
-        starter: type("string")
-          .narrow(
-            (name, ctx) =>
-              CATALOG.appStarters.has(name) ||
-              ctx.mustBe(
-                `an installed starter: ${[...CATALOG.appStarters.keys()].join(", ")}`,
-              ),
-          )
-          .or("null"),
-      })(raw);
-      if (input instanceof type.errors)
-        throw new ProjectError(400, "invalid_starter", {
-          issues: input.summary,
-        });
-      await requireProject(actor, projectId, "manage");
-      const [run] = await rawDB
-        .select({ bundle: workflowRunLaunchSpec.frozenApprovalBundle })
-        .from(workflowRun)
-        .innerJoin(
-          workflowRunLaunchSpec,
-          eq(workflowRunLaunchSpec.anchorRunId, workflowRun.id),
-        )
-        .where(
-          and(
-            eq(workflowRun.id, input.runId),
-            eq(workflowRun.tenantId, actor.tenantId),
-          ),
-        );
-      if (!spawnedWorkflowRole(run?.bundle)?.writesCode)
-        throw new ProjectError(404, "coder_run_not_found", {
-          runId: input.runId,
-        });
-      const starter =
-        input.starter === null
-          ? undefined
-          : CATALOG.appStarters.get(input.starter);
-      await storeValues(
-        projectId,
-        starterValues(
-          input.starter !== null && starter !== undefined
-            ? { name: input.starter, starter }
-            : null,
-        ),
-      );
-      return input;
-    },
-
-    // A plugin's starter names the concept of a run it just deployed, before its assignment.
+    // The coordinator names the concept of a run it just deployed, before its assignment.
     async recordDesignConcept(actor: Actor, projectId: string, raw: unknown) {
       const input = DesignConceptRecord(raw);
       if (input instanceof type.errors)
@@ -2780,78 +2702,6 @@ export function createArtifactService(
         runId: input.runId,
         concept: { label: stored.label, direction: stored.direction },
       };
-    },
-
-    async recordPresenterAssignment(
-      actor: Actor,
-      projectId: string,
-      raw: unknown,
-    ) {
-      const PresenterAssignmentRecord = type({
-        "+": "ignore",
-        runId: "string > 0",
-        assignment: {
-          "+": "ignore",
-          audience: "string > 0",
-          decisionNeeded: "string > 0",
-          "tone?": "string",
-          "length?": "string",
-          sources: type({
-            "+": "ignore",
-            artifactId: "string > 0",
-            kind: "string > 0",
-            title: "string > 0",
-            version: "number.integer > 0",
-            sha256: /^[a-f0-9]{64}$/,
-          })
-            .array()
-            .atLeastLength(1),
-        },
-      });
-      const input = PresenterAssignmentRecord(raw);
-      if (input instanceof type.errors)
-        throw new ProjectError(400, "invalid_presenter_assignment", {
-          issues: input.summary,
-        });
-      await requireProject(actor, projectId, "manage");
-      const settings = await loadSettings(rawDB, actor.tenantId, projectId);
-      const preferences = resolvePreferences(settings.preferences.value);
-      const readSource = readProjectPackageSource(
-        db,
-        actor.tenantId,
-        async (artifactId, kind, version) => {
-          if (kind !== "design" && agentDecidesApprovals(preferences))
-            return true;
-          return (
-            (await approvedVersion(actor.tenantId, artifactId)) === version
-          );
-        },
-      );
-      for (const source of input.assignment.sources)
-        await verifySourcePin(source, readSource, "assignment.sources");
-      const sealedAssignment = {
-        ...input.assignment,
-        sealed: true as const,
-      };
-      await rawDB
-        .insert(settingsRecord)
-        .values({
-          tenantId: actor.tenantId,
-          scopeKey: `presenter:${input.runId}`,
-          projectId,
-          fields: {
-            assignment: sealedAssignment,
-          } as unknown as typeof settingsRecord.$inferInsert.fields,
-        })
-        .onConflictDoUpdate({
-          target: [settingsRecord.tenantId, settingsRecord.scopeKey],
-          set: {
-            fields: {
-              assignment: sealedAssignment,
-            } as unknown as typeof settingsRecord.$inferInsert.fields,
-          },
-        });
-      return { runId: input.runId, assignment: sealedAssignment };
     },
 
     // Called by an asking tool after its native approval resolved. The hub

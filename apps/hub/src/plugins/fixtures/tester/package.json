@@ -15,8 +15,8 @@
       {
         "name": "tester",
         "label": "Tester",
-        "model": "builder",
-        "limits": "coding",
+        "model": "tester",
+        "limits": "testing",
         "tools": [
           "read_artifact"
         ],
@@ -30,10 +30,25 @@
         "writesCode": true
       }
     ],
+    "settings": {
+      "tester": {
+        "label": "Tester",
+        "hint": "Tries out the code.",
+        "tier": "medium"
+      }
+    },
+    "budgets": {
+      "testing": {
+        "maxOutputTokens": 16384
+      }
+    },
     "agents": {
       "tester": {
         "prompt": "./prompt.md"
       }
+    },
+    "starters": {
+      "tester-probe": "./src/start.ts"
     },
     "actions": {
       "test": {
@@ -41,6 +56,21 @@
         "start": {
           "agent": "tester"
         }
+      },
+      "probe": {
+        "returns": [],
+        "writes": [
+          "tester.notes"
+        ],
+        "start": {
+          "workflow": "tester-probe"
+        }
+      }
+    },
+    "values": {
+      "tester.notes": {
+        "about": "What the person asked the tester to look into last.",
+        "type": "text"
       }
     }
   }

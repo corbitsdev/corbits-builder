@@ -231,7 +231,7 @@ export const wording = {
     signUp: {
       failed: "Could not create the account.",
       noUser:
-        "The hub accepted the create the account but did not return a user.",
+        "The hub accepted the request to create the account but did not return a user.",
     },
     signOutFailed: "Could not sign out.",
     noWorkspace: "You are not a member of any workspace yet.",
@@ -250,7 +250,7 @@ export const wording = {
     archive: "Archive",
     cancel: "Cancel",
     skipForNow: "Skip for now",
-    retry: "Retry",
+    retry: "Try again",
     save: "Save",
     saving: "Saving…",
     signIn: "Sign in",
@@ -258,7 +258,7 @@ export const wording = {
     tryAgain: "Try again",
     openSettings: "Open Settings",
     enableAi: "Enable AI",
-    unarchive: "Unarchive",
+    unarchive: "Restore",
     markShipped: "Mark as shipped",
     reopen: "Reopen",
   },
@@ -275,11 +275,11 @@ export const wording = {
     constraints: "Constraints",
     approaches: "Approaches",
     product_requirements: "Requirements",
-    build_plan: "Build Plan",
-    design: "Design Plan",
+    build_plan: "Build plan",
+    design: "Design plan",
     approval_package: "Approval",
     app: "App",
-    user_manual: "User Manual",
+    user_manual: "User manual",
   } as Record<string, string>,
   documentUnread: "new version",
   documentRetryFailed: "The project could not be read. Try again.",
@@ -296,7 +296,7 @@ export const wording = {
     ],
   },
   liveApp: {
-    tab: "Live Preview",
+    tab: "Live preview",
     title: "What the coder is building, as it runs",
     manualTitle: "How to use it, with pictures of it as built",
     frameTitle: "The running preview",
@@ -365,12 +365,8 @@ export const wording = {
     shareDocument: "Share as Markdown",
     downloadDesign: "Download the design",
     shareDesign: "Share the design",
-    downloadPackagePdf: "Download the package PDF",
-    sharePackagePdf: "Share the package PDF",
     downloadSheet: "Download as CSV",
     shareSheet: "Share as CSV",
-    downloadPackage: "Download package",
-    sharePackage: "Share package",
     downloaded: (name: string) => `Downloaded ${name}.`,
     shareReady: (name: string) => `${name} is ready to share.`,
     shareNow: "Share now",
@@ -405,9 +401,9 @@ export const wording = {
     elsewhere:
       "Downloaded the saved code. The coder's working copy cannot be read from here, so its current code is not in it.",
     failed: (status: number, code: string) =>
-      `Saving the coder's current code failed (HTTP ${String(status)}, ${code}), so this is the saved code without it.`,
+      `Saving the coder's current code failed (status ${String(status)}, ${code}), so this is the saved code without it.`,
     refused: (status: number, code: string) =>
-      `The hub refused the request: HTTP ${String(status)}, ${code}.`,
+      `The hub refused the request: status ${String(status)}, ${code}.`,
     // Refusals a person reads in plain words instead of by status and code.
     refusals: {
       app_repository_unreadable: `${productName} cannot read this project's saved code right now.`,
@@ -464,7 +460,7 @@ export const wording = {
     untitledProject: "Project",
     noProjectTitle: "No project open",
     noProjectLead:
-      "Choose a project from the list. Its outputs open from the conversation.",
+      "Pick a project from the list. Its outputs open from the conversation.",
   },
   whatsNew: {
     title: "What's new",
@@ -493,7 +489,7 @@ export const wording = {
     },
   },
   projectLoadFailure: {
-    title: "This project couldn't be opened",
+    title: "This project could not be opened",
     lead: "Something went wrong while opening it. You can try again, or go back and pick another project.",
     back: "Back to projects",
     details: "Technical details",
@@ -564,7 +560,6 @@ export const wording = {
     mapMarked: (label: string, mark: string) => `${label} · ${mark}`,
     /** A map marker's accessible name, saying it jumps there, so it never shares a name with the card's own controls. */
     mapGoTo: (label: string) => `Go to: ${label}`,
-    /** A plugin screen's map entry, by plugin and action, and what the person's answer chose. */
     empty: "Nothing in the conversation yet",
     emptyLead:
       "Replies show here, and each saved document opens from where it was saved.",
@@ -574,7 +569,6 @@ export const wording = {
     noCoordinator: "This project has no running coordinator.",
     /** Opens everything the project has, its documents, design and preview, over the conversation. */
     openProject: "Project",
-    /** The project button's hint, saying what it opens. */
     openProjectHint: "Open the project's documents, design and preview",
     /** Takes the person from the project view back to the conversation. */
     closeProject: "Back to the conversation",
@@ -677,7 +671,8 @@ export const wording = {
       running: "Working",
       "output-available": "Done",
       "approval-requested": "Waiting for you",
-      "output-denied": "Not done",
+      // A call its run was stopped, or failed, before it returned from.
+      "output-denied": "Stopped",
     },
     /** A list's header: how many steps it holds, which no one of its rows says. */
     run: (count: number) => (count === 1 ? "1 step" : `${String(count)} steps`),
@@ -685,7 +680,6 @@ export const wording = {
     trigger: {
       thinking: "Thinking",
       working: "Working",
-      runningMany: (count: number) => `Doing ${String(count)} things at once`,
       failed: (count: number) => `${String(count)} did not finish`,
     },
     /** A step's row by tool name; a tool with none reads as its name in words. */
@@ -729,13 +723,13 @@ export const wording = {
       checksNotRun: (why: string) => `The checks did not run: ${why}`,
       filed: (version: number) => `Filed as version ${String(version)}`,
       rewritten:
-        "The assistant wrote this step in a form Builder can't run, so it was asked to write it again.",
+        "The coordinator wrote this step in a form Builder cannot run, so it was asked to write it again.",
     },
     elapsed: (minutes: number, seconds: number) =>
       minutes === 0 ? `${seconds}s` : `${minutes}m`,
   },
   design: {
-    mockupTab: "Design Mockup",
+    mockupTab: "Design mockup",
     noPlan: "This design has no written plan.",
     draftBadge: "Draft",
     draftInProgress:
@@ -804,7 +798,7 @@ export const wording = {
     pros: "Pros",
     cons: "Cons",
     risks: "Risks",
-    choose: "Choose this one",
+    choose: "Pick this one",
     choosing: "Sending…",
     chosen: "Your choice",
     /** The message the person sends the coordinator when they pick one. */
@@ -829,14 +823,14 @@ export const wording = {
     row: (role: string, doing: string) => `${role} · ${doing}`,
     /** What a specialist of no known role does when no action of its own names it. */
     working: "Working",
-    done: "Finished its work",
+    done: "Done",
     /** Where the work stands, at the end of its row. */
     status: {
       pending: "Starting…",
       running: "Working",
       "output-available": "Done",
       error: "Did not finish",
-      "approval-requested": "Paused for your approval",
+      "approval-requested": "Waiting for you",
       "output-denied": "Not done",
     },
     /** Opens the document the run filed; named in full for a screen reader and on hover. */
@@ -852,7 +846,6 @@ export const wording = {
     thinkingThrough: "Thinking it through",
     /** A working run with nothing streaming in right now: a tool running, or a model call not yet in. */
     waitingForStep: "Working. Each step shows here as it happens.",
-    /** Labels what the coordinator asked a specialist to do. */
     askedTo: "Asked to",
     /** Shows the rest of a finished specialist's report, and folds it again. */
     more: "More",
@@ -888,7 +881,7 @@ export const wording = {
       material_type_not_accepted:
         "The coordinator cannot read that kind of file.",
       disallowed_mime_type: "The coordinator cannot read that kind of file.",
-      material_missing: "Choose a file to attach.",
+      material_missing: "Pick a file to attach.",
       invalid_form: "Those files could not be read. Try attaching them again.",
       too_many_attachments: "That is too many files for one message.",
       oversize_attachment: "One of those files is too large.",
@@ -985,7 +978,7 @@ export const wording = {
     failed: "The attachment could not be removed.",
   },
   versions: {
-    menu: (version: number) => `Version ${String(version)}, choose a version`,
+    menu: (version: number) => `Version ${String(version)}, pick a version`,
     comparePrevious: "Compare with previous",
     comparing: (older: number, newer: number) =>
       `Comparing v${String(older)} → v${String(newer)}`,
@@ -1022,7 +1015,7 @@ export const wording = {
     save: "Save these",
     /** Where a save landed; it never approves the design. */
     saved: (updated: readonly ("workspace" | "version")[]) =>
-      `${updated.includes("version") ? "Saved as a new version of the design" : "Saved to the designer's draft"}${updated.length > 1 ? " and the designer's draft" : ""}. Saving doesn't approve it.`,
+      `${updated.includes("version") ? "Saved as a new version of the design" : "Saved to the designer's draft"}${updated.length > 1 ? " and the designer's draft" : ""}. Saving does not approve it.`,
     saveFailed: "The look could not be saved.",
   },
   message: {
@@ -1081,7 +1074,7 @@ export const wording = {
     answeredInWords: "Answered in your own words",
     /** In place of a plugin's screen the interface has no view for, or whose input it refuses. */
     screenUnavailable:
-      "This question can't be shown here. Answer it in your own words below.",
+      "This question cannot be shown here. Answer it in your own words below.",
     screenLoading: "Loading…",
     /** In the conversation while a screen placed over the room is open but closed for now. */
     pageScreenOpen: "Waiting for your review.",
@@ -1112,12 +1105,12 @@ export const wording = {
     none: "No model provider connected",
     noneHint: `${productName} needs one before a project can start.`,
     addLater: "You can add one later in Settings → Providers.",
-    login: (label: string) => `Login with ${label} (Subscription)`,
-    loginConnection: (label: string) => `${productName} ${label} login`,
+    login: (label: string) => `Sign in with ${label} (subscription)`,
+    loginConnection: (label: string) => `${productName} ${label} sign-in`,
     loginUnsupported: (label: string) =>
       `${productName} cannot sign in to ${label} yet.`,
-    signIn: "Log in",
-    signInAgain: "Log in again",
+    signIn: "Sign in",
+    signInAgain: "Sign in again",
     waiting: "Waiting for sign-in…",
     timedOut: "The sign-in timed out.",
     notConnected: "Not connected",
@@ -1132,14 +1125,13 @@ export const wording = {
     baseUrl: "Base URL",
     key: "API key",
     keyless: "Keyless",
-    keylessAbout: "About Keyless",
     keylessHint: `For servers that need no API key; ${productName} sends a placeholder.`,
     custom: {
-      tile: "Custom endpoint",
+      tile: "Custom server",
       modelsUnreadable:
         "This provider's models could not be read, so nothing was saved.",
       tileHint: "Your own server, on the API it speaks.",
-      addTitle: "Add a custom endpoint",
+      addTitle: "Add a custom server",
       addLead: "Connect your own server. It is saved once the test passes.",
       name: "Name",
       api: "API type",
@@ -1164,9 +1156,9 @@ export const wording = {
         key: "The key your server asks for. Kept encrypted and never shown again.",
         modelId: "The exact model name your server expects.",
         modelName: "How the model is shown. Empty shows its model ID.",
-        contextWindow: "How many tokens the model can read at once.",
+        contextWindow: "How much text the model can read at once.",
         maxOutputTokens:
-          "The most tokens it writes in one reply. Below the context window.",
+          "The most text it writes in one reply. Below the context window.",
       },
       about: (label: string) => `About ${label}`,
       models: "Models",
@@ -1178,7 +1170,7 @@ export const wording = {
       optional: "Optional",
       contextWindow: "Context window",
       maxOutputTokens: "Output cap",
-      addModel: "+ Add model",
+      addModel: "Add model",
       removeModel: (id: string) => `Remove ${id}`,
       keyAgain: "A new API type or base URL needs its key again, or Keyless.",
       editTitle: (label: string) => `Edit ${label}`,
@@ -1217,12 +1209,12 @@ export const wording = {
     lead: "A profile sets the model and effort of four tiers, and each role runs on one of them. Each project keeps the profile it started with.",
     newProfile: "New profile",
     editProfile: "Edit profile",
-    editorLead: "Choose the provider, model and effort for each tier.",
+    editorLead: "Pick the provider, model and effort for each tier.",
     startFrom: "Start from",
     blank: "Blank",
     copyName: (label: string) => `${label} copy`,
     name: "Name",
-    choose: "Choose…",
+    choose: "Pick…",
     save: "Save profile",
     yours: "Made by you.",
     active: "Active",
@@ -1259,16 +1251,16 @@ export const wording = {
     },
     about: {
       section: `About ${productName}`,
-      lead: "One assistant that brings in specialists to build, edit, improve or write anything.",
+      lead: "One coordinator that brings in specialists to build, edit, improve or write anything.",
       openSource: "Open source",
       openSourceLead:
         "Work from others this product carries beyond its npm packages, whose licenses ship with them.",
       kind: {
-        vendored: "Vendored",
+        vendored: "Copied in",
         binary: "Binary",
         patched: "Patched",
       },
-      unconfirmed: "License: see upstream",
+      unconfirmed: "License: see the original project",
     },
     preferences: {
       section: `How ${productName} works with you`,
@@ -1279,8 +1271,8 @@ export const wording = {
       experimental: [
         {
           id: "experimental_approvals",
-          label: "Approvals (Experimental)",
-          hint: "On, share tailored approval packages with stakeholders, track reviewer status (Pending Feedback, Approve), and incorporate feedback directly into your prompt.",
+          label: "Approvals (experimental)",
+          hint: "On, share tailored approval packages with stakeholders, track reviewer status (Pending feedback, Approve), and add feedback to your prompt.",
           options: [
             { id: "no", label: "Off" },
             { id: "yes", label: "On" },
@@ -1297,7 +1289,7 @@ export const wording = {
         "When off, stakeholder approval packages are bypassed and the Approval tab is hidden in projects.",
       reviewersSubhead: "Workspace reviewers",
       reviewersLead:
-        "Saved reviewers can be selected with one click when sharing an approval package in any project.",
+        "Saved reviewers can be picked with one click when sharing an approval package in any project.",
       reviewerName: "Reviewer name",
       reviewerPersona: "Persona",
       reviewerEmail: "Email (optional)",
@@ -1335,7 +1327,7 @@ export const wording = {
   },
   approvalRound: {
     heading: "Share for sign-off",
-    lead: "Add each person reviewing this package to download their personalized .zip (slide deck, PDF, README and pinned source documents) and track their sign-off or feedback.",
+    lead: "Add each person reviewing this package to download their personalised .zip (slide deck, PDF, README and pinned source documents) and track their sign-off or feedback.",
     shareButton: "Add new reviewer",
     shareSubmitButton: "Add reviewer",
     shareFormLegend: "Add new reviewer",
@@ -1353,7 +1345,7 @@ export const wording = {
     reviewerName: "Reviewer name",
     reviewerNamePlaceholder: "Reviewer name",
     reviewerPersona: "Persona",
-    reviewerPersonaPlaceholder: "Select role or persona…",
+    reviewerPersonaPlaceholder: "Pick a role or persona…",
     reviewerPersonas: [
       "Project owner",
       "Budget approver",
@@ -1373,7 +1365,7 @@ export const wording = {
     customPersonaPlaceholder: "Type custom role or persona…",
     addCustomPersona: "Add",
     workspaceReviewerLabel: "Pick from workspace",
-    workspaceReviewerPlaceholder: "Choose saved reviewer…",
+    workspaceReviewerPlaceholder: "Pick a saved reviewer…",
     workspaceReviewerOption: (name: string, persona: string) =>
       `${name} (${persona})`,
     saveToWorkspaceLabel: (name: string) =>
@@ -1383,7 +1375,7 @@ export const wording = {
       "Saves this reviewer to the workspace so you can pick them in any project without retyping their details.",
     reviewerEmail: "Email (optional)",
     reviewerEmailPlaceholder: "Optional",
-    reviewerGoal: "Goal / decision focus (optional)",
+    reviewerGoal: "Goal or decision focus (optional)",
     reviewerGoalPlaceholder:
       "What decision or sign-off does this person focus on?",
     defaultGoal: (persona: string) =>
@@ -1406,11 +1398,9 @@ export const wording = {
       feedback: "Feedback",
     },
     pendingOutcome: "Pending",
-    inlineFeedbackPlaceholder: "Add feedback note...",
+    inlineFeedbackPlaceholder: "Add feedback note…",
     saveField: "Save",
     savingField: "Saving…",
-    saveReviewerDetails: "Save details",
-    savingReviewerDetails: "Saving details…",
     reviewerDetailsSaved: (name: string) => `Saved details for ${name}.`,
     tailorPrompt: (name: string, persona: string, goal: string) =>
       `Generate a slide deck for ${name} (${persona}) focused on: ${goal}.`,
@@ -1432,14 +1422,8 @@ export const wording = {
     packageItemPdf: "Printable handout (.pdf)",
     packageItemSource: (kindLabel: string, title: string, version: number) =>
       `${kindLabel} — ${title} (v${String(version)})`,
-    packageSummaryNote: (name: string, persona: string) =>
-      `Includes personalized README for ${name} (${persona}), slide deck (.pptx), printable PDF (.pdf), and pinned source documents.`,
-    feedbackSection: "Feedback",
-    noFeedbackYet: "No feedback recorded yet.",
-    docsSection: "Package & documents",
     addReviewer: "Add reviewer",
     removeReviewer: "Remove",
-    startRound: "Add reviewer",
     startingRound: "Adding…",
     roundHeading: (version: number) => `Package v${String(version)} reviewers`,
     roundStatus: {
@@ -1453,26 +1437,16 @@ export const wording = {
       expired: "Expired",
     },
     downloadReviewerZip: (name: string) =>
-      `Download Approval Package for ${name}`,
+      `Download approval package for ${name}`,
     downloadZipShort: "Download package",
     downloadingZipShort: "Downloading…",
-    shareReviewerZip: (name: string) => `Share .zip for ${name}`,
     outcomeLabel: "Decision",
     outcome: {
       approve: "Approve",
-      request_changes: "Pending Feedback",
+      request_changes: "Pending feedback",
       comment: "Comment",
     },
-    recordDecision: "Record decision",
-    amendDecision: "Amend decision",
     noteLabel: "Feedback notes",
-    notePlaceholder:
-      "Paste reviewer feedback or attach a .md, .txt, or .csv file…",
-    attachFeedbackFile: "Attach feedback file",
-    attachFeedbackHint: "Drop or attach .md, .txt, .csv, or .json files",
-    removeAttachedFile: (name: string) => `Remove ${name}`,
-    saveDecision: "Save decision",
-    savingDecision: "Saving…",
     settleRound: "Mark settled",
     settlingRound: "Settling…",
     loading: "Reading reviewers…",
@@ -1480,21 +1454,16 @@ export const wording = {
       "No reviewers added yet. Add the people reviewing this package to download a .zip for each person and record their sign-off.",
     failed: "That sign-off action did not go through.",
     slidePrefix: (slide: number) => `Slide ${String(slide)}`,
-    triageHeading: "Feedback triage",
-    triageLead:
-      "Reviewer notes stay here until you incorporate, dismiss, or reply to each item.",
+    triageHeading: "Feedback to review",
     triageStatus: {
       pending: "Pending",
-      incorporated: "Incorporated",
+      incorporated: "Added to prompt",
       dismissed: "Dismissed",
       replied: "Replied",
     },
-    incorporate: "Incorporate",
+    incorporate: "Add to prompt",
     dismiss: "Dismiss",
     reply: "Reply",
-    replyPlaceholder: "Write a reply…",
-    sendReply: "Save reply",
     overallScope: "Overall",
-    ownerReplyLabel: (reply: string) => `Reply: ${reply}`,
   },
 } as const;

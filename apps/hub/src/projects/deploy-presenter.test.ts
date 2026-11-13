@@ -246,18 +246,19 @@ test("file_package refuses until check_deck passes on the current deck, then fil
 });
 
 test("presenter workflow entry binds Medium tier inference and approval_package write grant", async () => {
-  const { MODEL_PROVIDERS, settingBinding } =
-    await import("../config/models.ts");
+  const { MODEL_PROVIDERS, tierBinding } = await import("../config/models.ts");
   const { resolveRoleInference } =
     await import("../workflows/role-inference.ts");
-  const { CATALOG, PLUGINS_FOLDER } = await import("../plugins/catalog.ts");
+  const { CATALOG, PLUGINS_FOLDER, roleModel } =
+    await import("../plugins/catalog.ts");
   const presenter = CATALOG.role("presenter");
   if (!presenter) throw new Error("presenter_role_missing");
   const choice = { profile: "anthropic_default" };
-  const binding = settingBinding(MODEL_PROVIDERS, choice, presenter.model);
-  expect(binding).toEqual(settingBinding(MODEL_PROVIDERS, choice, "writer"));
+  const { tier, budget } = roleModel(presenter);
+  expect(tier).toBe("medium");
+  const binding = tierBinding(MODEL_PROVIDERS, choice, tier);
   process.env.BUILDER_ROLE_INFERENCE = JSON.stringify(
-    resolveRoleInference(MODEL_PROVIDERS, presenter.limits, binding),
+    resolveRoleInference(MODEL_PROVIDERS, budget, binding),
   );
   const { resolve } = await import("node:path");
   const brought = CATALOG.packages.get("presenter");

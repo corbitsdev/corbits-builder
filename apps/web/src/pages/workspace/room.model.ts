@@ -174,7 +174,7 @@ import type {
   ScreenQuestionProps,
   ShownDocument,
 } from "./screen-question.tsx";
-import { inShort } from "./in-short.ts";
+import { inShort } from "@corbits-builder/schemas/in-short";
 import { roleLabel, roleOf } from "./roles.ts";
 import { screensFor, selectionNames } from "./screens.ts";
 

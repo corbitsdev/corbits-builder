@@ -1,7 +1,7 @@
 /**
  * The ask to approve the documents, as one card in the conversation: what is asked, each document
- * at its current version with a way to open it, and one Approve for them all. Settles to one line
- * once answered.
+ * at its current version with its summary and a way to open it, and one Approve for them all.
+ * Settles to one line once answered.
  */
 import { Button } from "@corbits/react-ui";
 import type { ScreenViewProps } from "@corbits-builder/plugin";
@@ -36,24 +36,20 @@ type Props = ScreenViewProps<
   Host
 >;
 
-// How the ask names a lone document by its kind; any other kind is "this document".
-const NAMED: Record<string, string> = {
-  problem_brief: "the problem brief",
-  constraints: "the constraints",
-  approaches: "the approaches",
-  product_requirements: "the requirements",
-  build_plan: "the build plan",
-};
+// A lone document is named by its own kind, so any document reads by name, such as the user manual.
+const named = (kind: string) => `the ${kind.replaceAll("_", " ")}`;
 
 export const text = {
   title: "Approve the documents",
   ask: ([only, ...others]: readonly string[]) =>
     only !== undefined && others.length === 0
-      ? `Approve ${NAMED[only] ?? "this document"}?`
+      ? `Approve ${named(only)}?`
       : `Approve these ${String(others.length + 1)} documents?`,
   version: (version: number) => `v${String(version)}`,
   approved: "already approved",
   open: "Open",
+  noSummary: "It has no summary.",
+  readFirst: "Read it first",
   notFiled: (kind: string) => `${kind} is not filed yet.`,
   approve: "Approve",
   orWrite: "Or write below what should change.",
@@ -126,9 +122,14 @@ export function ApproveDocuments({
         {filed.map((document) => (
           <li key={document.kind} className={styles.document}>
             <div className={styles.row}>
-              <span className={styles.title} title={document.title}>
+              <button
+                type="button"
+                className={styles.title}
+                title={document.title}
+                onClick={() => open(document.kind)}
+              >
                 {document.title}
-              </span>
+              </button>
               <span className={styles.meta}>
                 {text.version(document.version)}
                 {document.approvedVersion === document.version
@@ -145,7 +146,20 @@ export function ApproveDocuments({
                 {text.open}
               </Button>
             </div>
-            {document.summary === undefined ? null : (
+            {document.summary === undefined ? (
+              <p className={styles.noSummary}>
+                {text.noSummary}{" "}
+                <Button
+                  type="button"
+                  size="sm"
+                  variant="link"
+                  className={styles.readFirst}
+                  onClick={() => open(document.kind)}
+                >
+                  {text.readFirst}
+                </Button>
+              </p>
+            ) : (
               <div className={styles.summary}>
                 <Markdown source={document.summary} />
               </div>

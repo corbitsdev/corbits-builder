@@ -10,6 +10,7 @@ import type {
   RetryPolicy,
   ToolCall,
 } from "@intx/types/runtime";
+import { COORDINATOR_NOTE_LEAD } from "@corbits-builder/schemas/native-specialist";
 import { REPETITION_ABORT } from "../inference/repetition.ts";
 import {
   DONE_CHECKS_TOOL,
@@ -72,7 +73,7 @@ function isDegenerate(turn: ConversationTurn): boolean {
 }
 
 // A turn cut off while reasoning ends in a thinking block, which Anthropic refuses to take back
-// (400 "The final block in an assistant message cannot be thinking", run_517bbd62 on 2026-10-30).
+// (400 "The final block in an assistant message cannot be thinking").
 const isCutOff = (turn: ConversationTurn) =>
   turn.role === "assistant" &&
   !turn.content.some(
@@ -308,10 +309,10 @@ const filed = (call: TaskCall) =>
     call.name === "file_design_option" ||
     call.check?.filed === true);
 
-// A writer on 2026-10-30 replied with the whole approaches document as text and never filed it;
-// the coordinator waited on a writer that had already answered. A designer's reply also waits for a
-// filed design option after the last file change. The approval package is filed with
-// file_package. The call that filed the task's work, unless a file changed after it.
+// The call that filed the task's work, unless a file changed after it. A writer can reply with its
+// whole document as text and never file it, leaving the coordinator waiting on a writer that has
+// already answered. A designer's reply also waits for a filed design option after the last file
+// change. The approval package is filed with file_package.
 function lastFiling(turns: readonly ConversationTurn[]): TaskCall | undefined {
   for (const call of taskCalls(turns)) {
     if (filed(call)) return call;
@@ -602,7 +603,9 @@ export const compactingDirector = (packageName: string) =>
           const actions = ending
             ? list.map((action) =>
                 action.type === "reply"
-                  ? caps.reply(`${action.content}\n\n${ending}`)
+                  ? caps.reply(
+                      `${action.content}${COORDINATOR_NOTE_LEAD}${ending}`,
+                    )
                   : action,
               )
             : decided;

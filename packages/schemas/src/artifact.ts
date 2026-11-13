@@ -103,6 +103,23 @@ export const ApprovalPackageManifest = type({
 });
 export type ApprovalPackageManifest = typeof ApprovalPackageManifest.infer;
 
+// The record a run that files approval packages keeps: the assignment it was given, whose audience,
+// decision and pinned sources every package it files must match; whatever else it holds stays.
+export const PackageAssignmentRecord = type({
+  "+": "ignore",
+  assignment: {
+    "+": "ignore",
+    audience: "string > 0",
+    decisionNeeded: "string > 0",
+    "tone?": "string",
+    "length?": "string",
+    sources: ApprovalPackageSource.onUndeclaredKey("ignore")
+      .array()
+      .atLeastLength(1),
+  },
+});
+export type PackageAssignmentRecord = typeof PackageAssignmentRecord.infer;
+
 export const ApprovalPackageBundle = type({
   "+": "reject",
   manifest: ApprovalPackageManifest,
@@ -140,17 +157,6 @@ export const DesignConceptRecord = type({
   concept: DesignConcept,
 });
 export type DesignConceptRecord = typeof DesignConceptRecord.infer;
-
-// What a plugin's starter records against a run it just deployed, before the run's assignment: a
-// concept the run works on, the sources a presentation pins, or the starter a first build begins
-// from.
-export const RunRecord = type({
-  "+": "reject",
-  runId: "string > 0",
-  name: "'concept' | 'presentation' | 'starter'",
-  data: "unknown",
-});
-export type RunRecord = typeof RunRecord.infer;
 
 // The live designer's .builder/designs before it files: unfiled, unversioned and unapproved.
 export const DesignDraft = type({
@@ -448,6 +454,13 @@ export const RunAction = type({
   plugin: "string > 0",
   action: "string > 0",
   "step?": "string > 0",
+});
+// A run's action as the coordinator records it on starting the run, with what the action's start
+// keeps for the run: a record, as the action's definition declares one, and project values the
+// action writes.
+export const RunActionStart = RunAction.merge({
+  "record?": "unknown",
+  "values?": { "[string]": "unknown" },
 });
 // A run the coordinator started in the project, at work or ended lately.
 export const ProjectRun = RunAction.merge({

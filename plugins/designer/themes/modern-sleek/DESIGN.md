@@ -4,7 +4,7 @@
 
 A sample app in the Modern and sleek look: a small coffee roaster's
 wholesale desk, where the owner sees what needs attention today and works
-through café orders. It should feel quiet, fast and exact, like a tool a
+through café orders. It should feel quiet and exact, like a tool a
 careful person keeps open all day.
 
 Mockup: `.builder/designs/index.html`. Open it from disk.

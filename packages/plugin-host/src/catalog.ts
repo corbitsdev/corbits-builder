@@ -24,6 +24,8 @@ import {
   type Fact,
   type ProjectValues,
   type ProjectView,
+  type ModelSetting,
+  type OutputBudget,
   type Refused,
   type Role,
   type Screen,
@@ -49,7 +51,7 @@ import {
   resolveFacts,
   templateField,
 } from "./facts.ts";
-import type { FiledVersion, Project, Started } from "./coordinator.ts";
+import type { FiledVersion, Kept, Project, Started } from "./coordinator.ts";
 import type { Found } from "./folder.ts";
 import {
   presentsText,
@@ -66,9 +68,10 @@ export type Host = {
   // The ids of the preferences a screen's answer may set for the project, and a role's assignment
   // may carry.
   preferences: ReadonlySet<string>;
-  // The model settings a role may run on, and the output budgets it may run with.
-  models: ReadonlySet<string>;
-  budgets: ReadonlySet<string>;
+  // The model settings and output budgets of the host's own roles, by name; a plugin's role may
+  // name them as well as its plugin's.
+  settings: ReadonlyMap<string, ModelSetting>;
+  budgets: ReadonlyMap<string, OutputBudget>;
 };
 
 /** A starter a plugin brings, which starts its run in the project with the action's skill packs. */
@@ -240,7 +243,11 @@ export type WorkflowAction = ActionBase & {
   // The starter a plugin brings for the workflow its start block names, or the default one for an
   // agent it declares.
   starter: Starter;
+  // What its start keeps for a run, checked: the record as its definition's record schema takes
+  // it, with every value one the action writes; or what is wrong, in a line.
+  keep: (kept: Kept) => KeptCheck;
 };
+type KeptCheck = { ok: true; record: unknown } | { ok: false; problem: string };
 export type ScreenAction = ActionBase & {
   kind: "screen";
   builder: ScreenActionBuilder;
@@ -351,6 +358,10 @@ export type Catalog = {
   // run of any of them may still be live; and one of them by name.
   roles: readonly Role[];
   role(name: string): Role | undefined;
+  // Every model setting and output budget a role may name, by name: the host's and each installed
+  // plugin's.
+  settings: ReadonlyMap<string, ModelSetting>;
+  budgets: ReadonlyMap<string, OutputBudget>;
   // The code a first build can start from, by name, with its files, of every installed plugin;
   // and the one a project with code but no recorded starter is taken to have started from.
   appStarters: ReadonlyMap<string, StarterFiles>;
@@ -451,9 +462,8 @@ export async function manifestFiles(found: Found) {
     texts: Object.values(builder.agents ?? {}).map(({ prompt }) => prompt),
     folders: [
       ...Object.values(builder.appStarters ?? {}).map(({ folder }) => folder),
-      ...(builder.design
-        ? [builder.design.starter, builder.design.themes]
-        : []),
+      ...(builder.design?.starter ? [builder.design.starter] : []),
+      ...(builder.design?.themes ? [builder.design.themes] : []),
     ],
     present,
   };
@@ -1001,7 +1011,28 @@ function installAction(
     packs: packs.filter(({ serves }) => serves.includes(name)),
     workflow: started,
     starter,
+    keep: (kept) => keptFor(name, workflow.record, builder.writes ?? [], kept),
   };
+}
+
+function keptFor(
+  name: string,
+  schema: Type | undefined,
+  writes: readonly string[],
+  { record, values }: Kept,
+): KeptCheck {
+  const unwritten = Object.keys(values ?? {}).find(
+    (value) => !writes.includes(value),
+  );
+  if (unwritten !== undefined)
+    return { ok: false, problem: `${name} does not write ${unwritten}` };
+  if (record === undefined) return { ok: true, record };
+  if (schema === undefined)
+    return { ok: false, problem: `${name} declares no record` };
+  const checked = schema(record);
+  if (checked instanceof type.errors)
+    return { ok: false, problem: `${name} record ${checked.summary}` };
+  return { ok: true, record: checked };
 }
 
 function specialistPlugin(
@@ -1272,10 +1303,49 @@ async function agentPackages(
   );
 }
 
+// The host's model settings and output budgets with every one the specialists declare. Plugins may
+// declare one name alike, so each runs without the others; told apart, a name would run differently
+// by which plugin is installed.
+function declaredModels(manifests: readonly Manifested[], host: Host) {
+  const settings = new Map(host.settings);
+  const budgets = new Map(host.budgets);
+  const declare = <T extends object>(
+    into: Map<string, T>,
+    what: string,
+    where: string,
+    declared: Readonly<Record<string, T>> | undefined,
+  ) => {
+    for (const [name, declaration] of Object.entries(declared ?? {})) {
+      const known = into.get(name);
+      if (known && !alike(known, declaration))
+        throw new Error(`${where} declares ${what} ${name} unlike another`);
+      into.set(name, declaration);
+    }
+  };
+  for (const { builder, about } of manifests) {
+    if (builder.runs !== "specialist") continue;
+    declare(settings, "model setting", about.package, builder.settings);
+    declare(budgets, "output budget", about.package, builder.budgets);
+  }
+  return { settings, budgets };
+}
+
+const alike = (one: object, other: object) => {
+  const entries = Object.entries(one);
+  return (
+    entries.length === Object.keys(other).length &&
+    entries.every(([key, value]) => Reflect.get(other, key) === value)
+  );
+};
+
 // Every role the specialists declare, each checked against what the host runs: a model setting, an
 // output budget and preferences it has. No two plugins declare one name, whose runs would be
 // indistinguishable.
-function declaredRoles(manifests: readonly Manifested[], host: Host) {
+function declaredRoles(
+  manifests: readonly Manifested[],
+  host: Host,
+  models: ReturnType<typeof declaredModels>,
+) {
   const roles = new Map<string, Role>();
   for (const { builder, about } of manifests) {
     if (builder.runs !== "specialist") continue;
@@ -1283,9 +1353,9 @@ function declaredRoles(manifests: readonly Manifested[], host: Host) {
       const where = `${about.package}'s role ${role.name}`;
       if (roles.has(role.name))
         throw new Error(`${where} is declared by another plugin too`);
-      if (!host.models.has(role.model))
+      if (!models.settings.has(role.model))
         throw new Error(`${where} runs on ${role.model}, no model setting`);
-      if (!host.budgets.has(role.limits))
+      if (!models.budgets.has(role.limits))
         throw new Error(`${where} has limits ${role.limits}, no output budget`);
       const unknown = (role.preferences ?? []).find(
         (id) => !host.preferences.has(id),
@@ -1384,14 +1454,19 @@ async function declaredDesign(
   const [declared] = declaring;
   if (declared === undefined) return undefined;
   const { found, design, about } = declared;
-  const themes = byTheme(await found.files(design.themes));
-  const unthemed = design.looks.find(({ theme }) => !themes.has(theme));
+  const themes = byTheme(
+    design.themes === undefined ? {} : await found.files(design.themes),
+  );
+  const unthemed = design.looks.find(
+    ({ theme }) => theme !== undefined && !themes.has(theme),
+  );
   if (unthemed !== undefined)
     throw new Error(
       `${about.package}'s look ${unthemed.id} starts from ${unthemed.theme}, which is not one of its themes`,
     );
   return {
-    starter: await found.files(design.starter),
+    starter:
+      design.starter === undefined ? {} : await found.files(design.starter),
     themes,
     looks: design.looks,
     themeOf: (label) => {
@@ -1456,7 +1531,8 @@ export async function loadCatalog(
   );
   checkCatalog(plugins);
   checkReadyPlanSteps(plugins);
-  const roles = declaredRoles(manifests, host);
+  const models = declaredModels(manifests, host);
+  const roles = declaredRoles(manifests, host, models);
   const packages = await pluginPackages(manifests);
   const code = await appStarters(manifests);
   const design = await declaredDesign(manifests);
@@ -1483,6 +1559,8 @@ export async function loadCatalog(
       packages,
       roles: [...roles.values()],
       role: (name) => roles.get(name),
+      settings: models.settings,
+      budgets: models.budgets,
       appStarters: code.starters,
       legacyStarter: code.legacy && {
         name: code.legacy[0],

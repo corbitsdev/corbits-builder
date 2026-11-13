@@ -1,5 +1,5 @@
 /**
- * The colour picker as the conversation draws it. Each colour in use is its own control: the swatch
+ * The colour picker. Each colour in use is its own control: the swatch
  * opens the system's colour input and the field beside it takes a value typed or pasted. A proposed
  * colour is one press beside it. The main action keeps the colours until one differs, then changes
  * them. Settles to one line once answered.
