@@ -445,7 +445,9 @@ function renderStep(step: ActivityStep): ReactNode {
 
 /**
  * A run of the coordinator's work, the specialists it started among its steps. It opens once and
- * stays as the person leaves it: the end of the work never folds it, so the page does not move.
+ * stays as the person leaves it: the end of the work never folds it, so the page does not move. Its
+ * header counts its steps, so it never repeats a lone row; a thought that has already settled alone
+ * is one quiet line with no header.
  */
 function Run({
   steps,
@@ -456,14 +458,20 @@ function Run({
   live: boolean;
   renderStep: (step: ActivityStep) => ReactNode;
 }) {
-  const label = live ? undefined : runLabel(steps);
+  // Fixed when the list first shows, so its header line never comes or goes as steps arrive or end.
+  const [headed] = useState(
+    live || steps.length !== 1 || steps[0]?.kind !== "reasoning",
+  );
+  const count = shownSteps(steps, live);
   return (
     <Activity steps={steps} streaming={live} defaultOpen>
-      <ActivityTrigger
-        {...(label === undefined ? {} : { label })}
-        labels={wording.activity.trigger}
-        className={styles.run}
-      />
+      {headed ? (
+        <ActivityTrigger
+          {...(count === 0 ? {} : { label: wording.activity.run(count) })}
+          labels={wording.activity.trigger}
+          className={styles.run}
+        />
+      ) : null}
       <ActivityContent renderStep={renderStep} />
     </Activity>
   );
@@ -503,19 +511,17 @@ const wordsOf = (parts: readonly ConversationPart[]) =>
     .join("\n\n")
     .trim();
 
-/** A finished run's one line: thought keeps the library's summary, tool work alone is named in words. */
-function runLabel(steps: readonly ActivityStep[]): string | undefined {
-  if (steps.some((step) => step.kind === "reasoning")) return undefined;
-  const tools = steps.flatMap((step) =>
-    step.kind === "tool-trace" ? [step] : [],
-  );
-  const only = tools.length === 1 ? tools[0]?.name : undefined;
-  return wording.activity.run(
-    tools.length,
-    only === undefined || only === ""
-      ? undefined
-      : only.charAt(0).toUpperCase() + only.slice(1),
-  );
+/**
+ * How many rows a list shows. A settled thought with no text shows nothing, as `ActivityContent`
+ * leaves it out; with none left the library's own summary names the run.
+ */
+function shownSteps(steps: readonly ActivityStep[], live: boolean): number {
+  return steps.filter(
+    (step, index) =>
+      step.kind !== "reasoning" ||
+      step.text.trim() !== "" ||
+      (live && index === steps.length - 1),
+  ).length;
 }
 
 /** The quiet line for a note the hub mailed as the person, or undefined for the person's own words. */

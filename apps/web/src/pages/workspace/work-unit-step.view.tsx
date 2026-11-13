@@ -115,16 +115,21 @@ function RowAction({
 // Within this many pixels of the end, the preview follows new text; scrolled further up, it stays put.
 const FOLLOW_PX = 24;
 
-/** What the run is writing as it arrives, about eight lines tall, the newest kept in view. */
-function Preview({ preview }: { preview: RunPreview }) {
+/**
+ * What the run is writing as it arrives, about eight lines tall, the newest kept in view; else that
+ * it is thinking, or waiting with nothing streaming in, so a working row never opens onto nothing.
+ */
+function Preview({ preview }: { preview: RunPreview | undefined }) {
   const box = useRef<HTMLDivElement>(null);
   const following = useRef(true);
-  const shown = preview.kind === "writing" ? preview.text : "";
+  const shown = preview?.kind === "writing" ? preview.text : "";
   useLayoutEffect(() => {
     const element = box.current;
     if (element !== null && following.current)
       element.scrollTop = element.scrollHeight;
   }, [shown]);
+  if (preview === undefined)
+    return <p className={styles.thinking}>{text.waitingForStep}</p>;
   if (preview.kind === "thinking")
     return <p className={styles.thinking}>{text.thinkingThrough}</p>;
   return (
@@ -221,9 +226,7 @@ export function WorkUnitStepView({
       {open ? (
         <div className={styles.work}>
           {run(steps)}
-          {status.state === "working" && preview !== undefined ? (
-            <Preview preview={preview} />
-          ) : null}
+          {status.state === "working" ? <Preview preview={preview} /> : null}
           {status.state === "failed" ? (
             <p className={styles.failed} title={status.reason}>
               {status.reason}

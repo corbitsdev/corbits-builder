@@ -375,7 +375,9 @@ describe("conversation transcript", () => {
       wording.activity.role.writer,
       "Writing the constraints",
     );
-    expect(html).toContain(row);
+    // The list's header counts its one row rather than saying it again.
+    expect(html.split(row)).toHaveLength(2);
+    expect(html).toContain(wording.activity.run(1));
     expect(html.indexOf('data-slot="activity-content"')).toBeLessThan(
       html.indexOf(row),
     );

@@ -537,9 +537,8 @@ export const wording = {
       "approval-requested": "Waiting for you",
       "output-denied": "Not done",
     },
-    /** A finished run of tool work with no thinking: its one step by name, else how many. */
-    run: (count: number, only?: string) =>
-      only === undefined ? `${String(count)} steps` : only,
+    /** A list's header: how many steps it holds, which no one of its rows says. */
+    run: (count: number) => (count === 1 ? "1 step" : `${String(count)} steps`),
     /** A run's live line and failure count. */
     trigger: {
       thinking: "Thinking",
@@ -747,6 +746,8 @@ export const wording = {
     preview: "What it is writing",
     /** A working run's model is thinking and has written nothing yet. */
     thinkingThrough: "Thinking it through",
+    /** A working run with nothing streaming in right now: a tool running, or a model call not yet in. */
+    waitingForStep: "Waiting for its next step",
     /** Shows the rest of a finished specialist's report, and folds it again. */
     more: "More",
     less: "Less",
