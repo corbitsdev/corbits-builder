@@ -18,6 +18,7 @@ const workflow = createWriterWorkflow({
   address: "writer",
   agent: createWriterAgent({
     id: "writer",
+    role: "writer",
     inference: { provider: "provider", model: "model" },
     tools: [],
     capabilities: [],

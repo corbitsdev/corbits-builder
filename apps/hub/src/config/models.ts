@@ -9,11 +9,9 @@ import type {
   Tier,
   Tiers,
 } from "@corbits-builder/schemas/models";
-import type { WorkflowRole } from "@corbits-builder/schemas/installed-workflows";
 import {
   customModelLimits,
   modelLimits,
-  type AgentRole,
   type ModelLimits,
 } from "../inference/model-limits.ts";
 
@@ -232,63 +230,49 @@ export function bindingLimits(
   return offered && customModelLimits(offered);
 }
 
-// Each role a profile binds, the tier it runs on, the workflows that run on it, and the limits record
-// it budgets by. A person picks only a profile; the tier of each role is config.
+// Each model setting a profile binds and the tier it runs on; a role names the setting it runs on, and
+// roles may share one. A person picks only a profile; the tier of each setting is config.
 export const MODEL_ROLES: readonly Readonly<{
   id: ModelRole;
   label: string;
   hint: string;
   tier: Tier;
-  workflows: readonly WorkflowRole[];
-  limits: AgentRole;
 }>[] = [
   {
     id: "coordinator",
     label: "Coordinator",
     hint: "Talks with you and plans the work.",
     tier: "medium",
-    workflows: ["coordinator"],
-    limits: "coordinator",
   },
   {
     id: "writer",
     label: "Writer",
     hint: "Writes the documents.",
     tier: "medium",
-    workflows: ["writer", "worker"],
-    limits: "document",
   },
   {
     id: "designer",
     label: "Designer",
     hint: "Designs the screens.",
     tier: "high",
-    workflows: ["designer"],
-    limits: "design",
   },
   {
     id: "builder",
     label: "App builder",
     hint: "Builds the app.",
     tier: "high",
-    workflows: ["coder"],
-    limits: "coding",
   },
   {
     id: "reviewer",
     label: "Reviewer",
     hint: "Reviews documents before you approve them.",
     tier: "low",
-    workflows: ["reviewer"],
-    limits: "document",
   },
   {
     id: "presenter",
     label: "Presenter",
     hint: "Builds slide decks and approval packages for an audience.",
     tier: "medium",
-    workflows: ["presenter"],
-    limits: "presenter",
   },
 ];
 
@@ -555,21 +539,16 @@ export function frozenModelChoice(
   return profile ? frozen(profile) : null;
 }
 
-/** The binding each workflow runs on, from a choice this server can run. */
-export function workflowBindings(
+/** The binding a model setting runs on, from a choice this server can run. */
+export function settingBinding(
   directory: ModelDirectory,
   choice: ModelChoice,
-): Record<WorkflowRole, RoleBinding> {
+  setting: string,
+): RoleBinding {
   const profile = chosenProfile(directory, choice);
   if (!profile)
     throw new Error(`model_choice_unrunnable:${choice.profile ?? ""}`);
-  return Object.fromEntries(
-    MODEL_ROLES.flatMap((role) =>
-      role.workflows.map((workflow) => [workflow, profile.tiers[role.tier]]),
-    ),
-  ) as Record<WorkflowRole, RoleBinding>;
-}
-
-export function limitsRole(workflow: WorkflowRole): AgentRole {
-  return MODEL_ROLES.find((role) => role.workflows.includes(workflow))!.limits;
+  const tier = MODEL_ROLES.find(({ id }) => id === setting)?.tier;
+  if (tier === undefined) throw new Error(`model_setting_unknown:${setting}`);
+  return profile.tiers[tier];
 }

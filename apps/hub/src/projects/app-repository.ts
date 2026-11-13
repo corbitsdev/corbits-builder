@@ -392,7 +392,7 @@ export function createAppRepositoryRoutes(
         ),
       )
       .limit(1);
-    if (!run || spawnedWorkflowRole(run.bundle) !== "coder")
+    if (!run || !spawnedWorkflowRole(run.bundle)?.writesCode)
       throw new AppRepositoryError(403, "forbidden");
     return {
       tenantId: tenant.id,

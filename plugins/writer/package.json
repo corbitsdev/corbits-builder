@@ -38,18 +38,50 @@
     ],
     "when": "A document needs writing or revising, of any kind: requirements, a build plan, a brief, an analysis, a manual or anything else; or a filed document needs a second opinion or the person's approval.",
     "unless": "The person wants the thing itself built or changed, or only a mockup.",
+    "roles": [
+      {
+        "name": "writer",
+        "label": "Writer",
+        "model": "writer",
+        "limits": "document",
+        "tools": [
+          "read_artifact",
+          "write_artifact"
+        ],
+        "status": {
+          "working": "Writing",
+          "done": "Wrote it"
+        },
+        "preferences": [
+          "technical"
+        ],
+        "filesDocuments": true
+      },
+      {
+        "name": "reviewer",
+        "label": "Reviewer",
+        "model": "reviewer",
+        "limits": "document",
+        "tools": [],
+        "status": {
+          "working": "Reviewing",
+          "done": "Reviewed it"
+        },
+        "preferences": [
+          "technical",
+          "nitpicky"
+        ]
+      }
+    ],
     "packages": {
       "writer-product-requirements": {
-        "entry": "./src/packages/writer-product-requirements.ts",
-        "role": "writer"
+        "entry": "./src/packages/writer-product-requirements.ts"
       },
       "writer-build-plan": {
-        "entry": "./src/packages/writer-build-plan.ts",
-        "role": "writer"
+        "entry": "./src/packages/writer-build-plan.ts"
       },
       "writer-document": {
-        "entry": "./src/packages/writer-document.ts",
-        "role": "writer"
+        "entry": "./src/packages/writer-document.ts"
       },
       "reviewer": {
         "entry": "./src/packages/reviewer.ts",

@@ -1,0 +1,47 @@
+{
+  "name": "@corbits-builder/tester",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "builder": {
+    "handle": "tester",
+    "runs": "specialist",
+    "groups": [
+      "test"
+    ],
+    "when": "The person wants the project's code tried out.",
+    "unless": "They want the code changed.",
+    "roles": [
+      {
+        "name": "tester",
+        "label": "Tester",
+        "model": "builder",
+        "limits": "coding",
+        "tools": [
+          "read_artifact"
+        ],
+        "status": {
+          "working": "Testing the code",
+          "done": "Tested the code"
+        },
+        "preferences": [
+          "technical"
+        ],
+        "writesCode": true
+      }
+    ],
+    "agents": {
+      "tester": {
+        "prompt": "./prompt.md"
+      }
+    },
+    "actions": {
+      "test": {
+        "returns": [],
+        "start": {
+          "agent": "tester"
+        }
+      }
+    }
+  }
+}

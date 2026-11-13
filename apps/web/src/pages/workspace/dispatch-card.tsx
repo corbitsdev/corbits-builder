@@ -15,34 +15,15 @@ import {
 import { wording } from "../../config.ts";
 import type { CallResult } from "./live-run.ts";
 import type { RunPreview } from "./run-preview.ts";
+import { actionRole, roleOf, startingActions } from "./roles.ts";
 import type { PlacedDispatch } from "./transcript.tsx";
 
 const text = wording.dispatch;
 
-type Role = InFlightRun["role"];
-
-// The roles that file a document of whatever kind their task names.
-const writesDocuments = (role: Role) => role === "writer" || role === "worker";
+// Whether a role files a document of whatever kind its task names.
+const writesDocuments = (role: string) => roleOf(role)?.filesDocuments === true;
 
 const EXECUTE = "execute";
-
-// The specialist actions an execute call starts, by plugin and action, with the document a writer
-// action always writes.
-const ACTION_ROLE: Record<
-  string,
-  { readonly role: Role; readonly kind?: string }
-> = {
-  "coder build": { role: "coder" },
-  "coder change": { role: "coder" },
-  "writer write-requirements": {
-    role: "writer",
-    kind: "product_requirements",
-  },
-  "writer write-build-plan": { role: "writer", kind: "build_plan" },
-  "writer write": { role: "writer" },
-  "writer review": { role: "reviewer" },
-  "designer mockup": { role: "designer" },
-};
 
 /** One run a hand-off started or instructed. A design call with concepts is one per concept. */
 export type Dispatch = {
@@ -52,7 +33,7 @@ export type Dispatch = {
   readonly tool: string;
   /** The plugin action an execute call started, such as "coder change". */
   readonly action?: string;
-  readonly role: Role;
+  readonly role: string;
   /** The document kind a writer or reviewer works on. */
   readonly kind?: string;
   readonly concept?: string;
@@ -92,7 +73,7 @@ function parsed(content: unknown): unknown {
 function actionOf(plugin: string | undefined, action: string | undefined) {
   if (action === undefined) return undefined;
   if (plugin !== undefined) return `${plugin} ${action}`;
-  const [only, ...others] = Object.keys(ACTION_ROLE).filter((key) =>
+  const [only, ...others] = startingActions().filter((key) =>
     key.endsWith(` ${action}`),
   );
   return others.length === 0 ? only : undefined;
@@ -106,7 +87,7 @@ function handoffOf(part: PartTool) {
   if (part.name !== EXECUTE) return undefined;
   const args = record(part.input);
   const action = actionOf(str(args?.["plugin"]), str(args?.["action"]));
-  const started = action === undefined ? undefined : ACTION_ROLE[action];
+  const started = action === undefined ? undefined : actionRole(action);
   if (action === undefined || started === undefined) return undefined;
   const input = record(args?.["input"]);
   return {
@@ -226,11 +207,9 @@ export type RunEnd = { readonly status: string; readonly error?: string };
 /** The artifact a hand-off files, by kind. */
 export function targetKind(dispatch: Dispatch): string | undefined {
   if (writesDocuments(dispatch.role)) return dispatch.kind;
-  if (dispatch.role === "designer")
-    return dispatch.concept === undefined ? "design" : undefined;
-  if (dispatch.role === "coder") return "app";
-  if (dispatch.role === "presenter") return "approval_package";
-  return undefined;
+  // A concept's run files an option of the design, found by its title.
+  if (dispatch.concept !== undefined) return undefined;
+  return roleOf(dispatch.role)?.files;
 }
 
 function target(dispatch: Dispatch, artifacts: readonly ProjectArtifact[]) {

@@ -8,12 +8,11 @@ import {
   type Host,
 } from "@corbits-builder/plugin-host/catalog";
 import { readPluginFolder } from "@corbits-builder/plugin-host/folder";
-import {
-  SpawnedRole,
-  type WorkflowRole,
-} from "@corbits-builder/schemas/installed-workflows";
 import { TOKEN_DECLARATIONS } from "../artifacts/project-values.ts";
+import { MODEL_ROLES } from "../config/models.ts";
 import { PREFERENCES } from "../config/preferences.ts";
+import { BUDGETS } from "../inference/model-limits.ts";
+import { COORDINATOR } from "../workflows/coordinator-role.ts";
 import { FACTS } from "./facts.ts";
 
 export {
@@ -25,11 +24,14 @@ export {
 export const PLUGINS_FOLDER = resolve(import.meta.dir, "../../../../plugins");
 
 // All the plugins need from the hub: the facts it works out, the project values it keeps in the
-// design's tokens and the preferences a screen's answer may set.
+// design's tokens, the preferences a screen's answer may set, and the model settings and output
+// budgets a role may run on.
 export const HOST: Host = {
   facts: FACTS,
   values: TOKEN_DECLARATIONS,
   preferences: new Set(PREFERENCES.map(({ id }) => id)),
+  models: new Set(MODEL_ROLES.map(({ id }) => id)),
+  budgets: new Set(BUDGETS),
 };
 
 // Every plugin in the folder, checked once when the hub loads; a wrong one stops the hub.
@@ -75,15 +77,22 @@ export function selectionRefusal(name: string, value: unknown) {
     ? undefined
     : `is not an installed ${choice.handle} plugin: ${packages.join(" or ")}`;
 }
-// Every workflow package Builder installs and the role its runs play: the hub's coordinator and each
-// package a plugin brings. A role is what picks a run's model, guidance and wording, so a plugin
-// naming one Builder does not know stops the hub.
-export const WORKFLOW_PACKAGES: ReadonlyMap<string, WorkflowRole> = new Map([
-  ["coordinator", "coordinator"],
-  ["presenter", "presenter"],
-  ...[...CATALOG.packages].map(
-    ([name, { role }]) => [name, SpawnedRole.assert(role)] as const,
-  ),
+
+/**
+ * The role a run plays, by name: the coordinator's, else the one an installed plugin declares. Only
+ * names a run was recognised by, or an installed package plays, are asked for.
+ */
+export function runRole(name: string) {
+  const role = name === COORDINATOR.name ? COORDINATOR : CATALOG.role(name);
+  if (!role) throw new Error(`role_unknown:${name}`);
+  return role;
+}
+
+// Every workflow package Builder installs and the name of the role its runs play: the hub's
+// coordinator and each package a plugin brings.
+export const WORKFLOW_PACKAGES: ReadonlyMap<string, string> = new Map([
+  [COORDINATOR.name, COORDINATOR.name],
+  ...[...CATALOG.packages].map(([name, { role }]) => [name, role] as const),
 ]);
 export const SCREENS = CATALOG.screens;
 // The specialists that have screens, which the hub's plugin hint names.

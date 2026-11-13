@@ -16,8 +16,8 @@ import {
   type DocumentWrite,
   type WriterDocumentKind,
 } from "@corbits-builder/schemas/artifact";
-import type { AgentPackage } from "@corbits-builder/plugin";
-import type { WorkflowRole } from "@corbits-builder/schemas/installed-workflows";
+import type { Role } from "@corbits-builder/plugin";
+import { COORDINATOR } from "../workflows/coordinator-role.ts";
 import { stripApprovalPackageBinaries } from "./approval-package.ts";
 import { unpackDesign } from "./design-tools.ts";
 import {
@@ -141,46 +141,12 @@ const savesAs =
     return fields instanceof type.errors ? fields : { ...fields, kind };
   };
 
-// A reviewer's task carries every document it needs in full. A writer's does too, but a writer
-// reads the file a project value points at, so it has a read tool.
-const TOOLS_BY_ROLE: Record<
-  Exclude<WorkflowRole, "writer" | "coordinator">,
-  ArtifactToolSet
-> = {
-  reviewer: { definitions: [readDefinition] },
-  coder: { definitions: [readDefinition] },
-  designer: { definitions: [readDefinition] },
-  presenter: { definitions: [readDefinition] },
-  worker: { definitions: [readDefinition] },
-};
-
-export function createArtifactTools(
-  role: Exclude<WorkflowRole, "writer" | "coordinator">,
-) {
-  return artifactTools(role, TOOLS_BY_ROLE[role]);
-}
-
-// The coordinator reads the project; specialists write every document.
-export const createReadArtifactTools = () =>
-  artifactTools("coordinator", { definitions: [readDefinition] });
-
-// A writer of a known kind is deployed for it and saves only that kind.
-export function createWriterArtifactTools(kind: WriterDocumentKind) {
-  return artifactTools("writer", {
-    definitions: [writerWriteDefinition(kind), readDefinition],
-    save: savesAs(kind, WriterDocumentFields[kind]),
-  });
-}
-
-// An agent a plugin declares reads the project's documents as the role it runs as, and with write
-// files a document of any kind.
-export const createAgentArtifactTools = (
-  role: AgentPackage["role"],
-  write: boolean,
-) =>
+// A role's artifact tools, as its tools name them: reading the project's documents, and with
+// write_artifact filing a document of any kind, saved under the kind it names.
+export const createArtifactTools = (role: Role) =>
   artifactTools(
     role,
-    write
+    role.tools.includes("write_artifact")
       ? {
           definitions: [documentWriteDefinition, readDefinition],
           save: AnyDocumentFields,
@@ -188,22 +154,33 @@ export const createAgentArtifactTools = (
       : { definitions: [readDefinition] },
   );
 
-// The writer of any document saves it under the kind it names.
-export const createDocumentWriterArtifactTools = () =>
-  createAgentArtifactTools("writer", true);
+// The coordinator reads the project; specialists write every document.
+export const createReadArtifactTools = () =>
+  artifactTools(COORDINATOR, { definitions: [readDefinition] });
+
+// A writer of a known kind is deployed for it and saves only that kind.
+export function createWriterArtifactTools(
+  role: Role,
+  kind: WriterDocumentKind,
+) {
+  return artifactTools(role, {
+    definitions: [writerWriteDefinition(kind), readDefinition],
+    save: savesAs(kind, WriterDocumentFields[kind]),
+  });
+}
 
 function artifactTools(
-  role: WorkflowRole,
+  role: Pick<Role, "name" | "writesCode">,
   { definitions: own, save }: ArtifactToolSet,
 ): AnnotatedToolFactory<ArtifactToolEnv> {
   // Every specialist may save the project values its plugin action writes.
   const definitions =
-    role === "coordinator" ? own : [...own, reportValuesDefinition];
+    role.name === COORDINATOR.name ? own : [...own, reportValuesDefinition];
   return defineTool<ArtifactToolEnv>({
     id: "@corbits-builder/artifacts/tools",
     credentials: [{ handle: HUB_CREDENTIAL_HANDLE }],
-    // The coder's read of the design unpacks it into its workspace.
-    requires: role === "coder" ? ["capabilities", "toolCwd"] : ["capabilities"],
+    // A code writer's read of the design unpacks it into its workspace.
+    requires: role.writesCode ? ["capabilities", "toolCwd"] : ["capabilities"],
     definitions: definitions.map(({ name }) => ({ name })),
     factory: (env) => {
       // Filing the same document again makes a new identical version each time until the doom
@@ -222,7 +199,7 @@ function artifactTools(
           try {
             const scope = await resolveWorkflowProjectScope(
               env.capabilities,
-              role,
+              role.name,
               signal,
             );
             const projectPath =
@@ -321,7 +298,7 @@ function artifactTools(
               "toolCwd" in env && typeof env.toolCwd === "string"
                 ? env.toolCwd
                 : undefined;
-            if (role === "coder" && document.kind === "design" && workspace) {
+            if (role.writesCode && document.kind === "design" && workspace) {
               const files = await unpackDesign(document.content, workspace);
               // DESIGN.md runs past the host's tool-output cap, and a cut copy sends the coder
               // re-reading until the doom guard fails the run; read_file pages through it.

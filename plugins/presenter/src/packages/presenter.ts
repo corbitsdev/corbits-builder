@@ -12,13 +12,17 @@ import {
 } from "@corbits-builder/hub/workflows/compaction";
 import { savedResultTools } from "@corbits-builder/hub/workflows/saved-result-tools";
 import { nativePackageName } from "@corbits-builder/hub/workflows/package-name";
+import { declaredRole } from "@corbits-builder/plugin";
+import manifest from "../../package.json";
 import { createPresenterAgent } from "../agent.ts";
 import { createPresenterWorkflow } from "../workflow.ts";
 
+const role = declaredRole(manifest.builder);
 const compacting = compactingDirector(nativePackageName("presenter"));
 
-const { source, contextWindow, timeouts, parameters } =
-  roleInference("presenter");
+const { source, contextWindow, timeouts, parameters } = roleInference(
+  role.name,
+);
 const agent = createPresenterAgent<PackageToolEnv & MailToolEnv>({
   director: compacting.build({
     contextWindow,
@@ -27,10 +31,11 @@ const agent = createPresenterAgent<PackageToolEnv & MailToolEnv>({
     fileBeforeDone: true,
   }),
   id: "presenter",
+  role: role.name,
   capabilities: [],
   inference: { ...source, parameters },
   tools: [
-    createPackageTools(),
+    createPackageTools(role.name),
     mail,
     createSkillTools(["presenting"]),
     savedResultTools,

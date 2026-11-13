@@ -1,5 +1,5 @@
 import { type } from "arktype";
-import { SpawnedRole } from "./roles.ts";
+import { RoleName } from "./roles.ts";
 import { Preferences } from "./preferences.ts";
 import { OpenQuestions } from "./questions.ts";
 import { ApproachesMeta } from "./approaches.ts";
@@ -327,12 +327,12 @@ export const AppSnapshotReceipt = type({
 export type AppSnapshotReceipt = typeof AppSnapshotReceipt.infer;
 
 // Where saved look tokens landed: the live designer's workspace, the filed design's next
-// version, or both; and which runs were told.
+// version, or both; and which runs were told, by the role each plays.
 export const DesignTweaksReceipt = type({
   "+": "reject",
   updated: type("'workspace' | 'version'").array().atLeastLength(1),
   "artifact?": ArtifactRef,
-  notified: "('coordinator' | 'designer')[]",
+  notified: RoleName.array(),
 });
 export type DesignTweaksReceipt = typeof DesignTweaksReceipt.infer;
 
@@ -417,7 +417,7 @@ export type RunProgress = typeof RunProgress.infer;
 export const InFlightRun = type({
   "+": "reject",
   runId: "string > 0",
-  role: SpawnedRole,
+  role: RoleName,
   startedAt: "string > 0",
   // Interchange's run status: deployed until its first assignment arrives, then running.
   status: "'deployed' | 'running'",
@@ -435,7 +435,7 @@ export type InFlightRun = typeof InFlightRun.infer;
 export const FailedRun = type({
   "+": "reject",
   runId: "string > 0",
-  role: SpawnedRole,
+  role: RoleName,
   endedAt: "string > 0",
   "error?": { "+": "reject", message: "string", "code?": "string" },
 });

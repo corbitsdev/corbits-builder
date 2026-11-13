@@ -263,8 +263,10 @@ const SETUP_PROGRESS = "installing the app's packages";
 
 // A source-closure-safe declaration: only explicit policy is captured. The
 // native child supplies the step workspace; the sandbox is built inside it. What the project's code
-// is, and whether a web app runs in an app workspace, the hub's project scope says when it starts.
+// is, and whether a web app runs in an app workspace, the hub's project scope says when it starts,
+// to a run of the role named here.
 export function createSidecarCodingTools(policy: {
+  role: string;
   approval: "ask" | "allow";
   workspace: "app" | "design";
   packageInstall?: "ask" | "allow";
@@ -313,7 +315,11 @@ export function createSidecarCodingTools(policy: {
       const fileWorkspace = async (workspace: string, signal: AbortSignal) =>
         fileApp(
           env.capabilities,
-          await resolveWorkflowProjectScope(env.capabilities, "coder", signal),
+          await resolveWorkflowProjectScope(
+            env.capabilities,
+            policy.role,
+            signal,
+          ),
           workspace,
           signal,
         );
@@ -337,7 +343,7 @@ export function createSidecarCodingTools(policy: {
         try {
           const scope = await resolveWorkflowProjectScope(
             env.capabilities,
-            "coder",
+            policy.role,
             signal,
           );
           const results = [];
@@ -395,10 +401,9 @@ export function createSidecarCodingTools(policy: {
         | undefined;
       async function startSandbox(signal: AbortSignal) {
         try {
-          const role = policy.workspace === "app" ? "coder" : "designer";
           const scope = await resolveWorkflowProjectScope(
             env.capabilities,
-            role,
+            policy.role,
             signal,
           );
           const workspace = await realpath(env.toolCwd);

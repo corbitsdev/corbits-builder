@@ -129,7 +129,7 @@ import type { DeliverableState } from "./deliverable-block.tsx";
 import { formatPassageQuote, type PassageQuote } from "./passage-note.tsx";
 import { humanFault, humanFaultWithCode, responseCode } from "./human-fault.ts";
 import { suggestedReplies } from "./suggested-replies.ts";
-import { participantLabel, visibleChatText } from "./visible-chat.ts";
+import { visibleChatText } from "./visible-chat.ts";
 import {
   loadProjectRoom,
   reloadProjectDocument,
@@ -175,6 +175,7 @@ import type {
   ShownDocument,
 } from "./screen-question.tsx";
 import { inShort } from "./in-short.ts";
+import { roleLabel, roleOf } from "./roles.ts";
 import { screensFor, selectionNames } from "./screens.ts";
 
 // The stream says when the room moved. This read covers what it cannot see,
@@ -183,6 +184,9 @@ const FALLBACK_RELOAD_MS = 30_000;
 // A coder at work can report how the project's program starts at any time.
 const RUN_POLL_MS = 5_000;
 const RUN_VALUE = "stack.run";
+// A run whose role writes the project's code, whose app the room previews.
+const writesCode = (run: { readonly role: string }) =>
+  roleOf(run.role)?.writesCode === true;
 // No coordinator's stream announces the next one binding, so an unbound room reads again until it does.
 const BIND_POLL_MS = 1_000;
 // A handoff binds within seconds; past this the room starts the coordinator itself, so a start the
@@ -1462,14 +1466,14 @@ export function useRoom({
       ]),
     ]),
     onOpenDocument: (kind) => {
-      // A coder files the app's source, which is read as the running app.
+      // The app's source is read as the running app.
       if (kind === "app") return openProject(LIVE_TAB);
       openDocument(
         kind.startsWith("concept:") ? conceptTab(kind.slice(8)) : kind,
       );
     },
     onWatch: (dispatch) => {
-      if (dispatch.role === "coder") return openProject(LIVE_TAB);
+      if (roleOf(dispatch.role)?.writesCode) return openProject(LIVE_TAB);
       openProject(
         dispatch.concept === undefined
           ? DRAFT_TAB
@@ -1619,9 +1623,7 @@ export function useRoom({
     close: () => setClosedPage(pageQuestion?.signalName ?? null),
   };
   const appFiled = snapshot.artifacts.some((item) => item.kind === "app");
-  const firstBuilder = appFiled
-    ? undefined
-    : inFlight.find((run) => run.role === "coder");
+  const firstBuilder = appFiled ? undefined : inFlight.find(writesCode);
   // There is an app to preview once one is filed, built here or imported, or a coder is building
   // it; a filed build plan shows where it will appear.
   const appComing =
@@ -1634,9 +1636,7 @@ export function useRoom({
     queryKey: keys.projectValues.run(projectId),
     retry: false,
     refetchOnWindowFocus: false,
-    refetchInterval: inFlight.some((each) => each.role === "coder")
-      ? RUN_POLL_MS
-      : false,
+    refetchInterval: inFlight.some(writesCode) ? RUN_POLL_MS : false,
     queryFn: appComing
       ? ({ signal }) => readProjectValues(projectId, [RUN_VALUE], signal)
       : skipToken,
@@ -1648,7 +1648,8 @@ export function useRoom({
   const userManual = useUserManual(
     projectId,
     liveApp !== null,
-    rolesAtWork?.has("coder") === true,
+    rolesAtWork !== undefined &&
+      [...rolesAtWork].some((role) => writesCode({ role })),
   );
   const filed = useFiledVersions({
     projectId,
@@ -1744,7 +1745,7 @@ export function useRoom({
           setFiles((current) => current.filter((held) => held.id !== id)),
       },
       sendFault: sendFailed && sendFault ? sendFault : null,
-      caution: caution === null ? null : participantLabel(caution),
+      caution: caution === null ? null : roleLabel(caution),
       onSendAnyway: sendNow,
       onCancelCaution: () => {
         setCaution(null);

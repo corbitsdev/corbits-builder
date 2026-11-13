@@ -10,7 +10,8 @@
  */
 import { wording } from "../../config.ts";
 import type { ConversationThread } from "../../api/conversation.ts";
-import { participantLabel, visibleChatText } from "./visible-chat.ts";
+import { roleLabel, roleOf } from "./roles.ts";
+import { visibleChatText } from "./visible-chat.ts";
 import { type } from "arktype";
 import { readJson } from "../../json.ts";
 import type { UpdatesRow } from "./specialist-updates.view.tsx";
@@ -107,9 +108,9 @@ export function summaryLine(text: string): string {
     .trim();
 }
 
-/** What a lone specialist's reports were about: the coder only ever builds the whole app. */
+/** What a lone specialist's reports were about: a role that writes code only ever builds the app. */
 export function updateSubject(sender: string): string | undefined {
-  return sender === "coder" ? wording.buildSubject : undefined;
+  return roleOf(sender)?.writesCode ? wording.buildSubject : undefined;
 }
 
 /** A group as the row the thread draws for it, named by its subject, else by who reported. */
@@ -121,7 +122,7 @@ export function updatesRow(
   return {
     key: group.key,
     title: wording.updates(
-      subject ?? participantLabel(group.sender),
+      subject ?? roleLabel(group.sender),
       group.updates.length,
     ),
     summary: latest === undefined ? null : summaryLine(latest.text),

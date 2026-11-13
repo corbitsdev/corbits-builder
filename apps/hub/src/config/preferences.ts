@@ -1,5 +1,4 @@
 import { isDocumentKind } from "@corbits-builder/schemas/artifact";
-import type { WorkflowRole } from "@corbits-builder/schemas/installed-workflows";
 import type {
   PreferenceRegistry,
   Preferences,
@@ -14,23 +13,12 @@ type PreferenceEntry = Readonly<{
   topic: string;
   options: readonly Readonly<{ id: string; label: string; guidance: string }>[];
   default: string;
-  // The roles whose hub-built context carries this preference.
-  roles: readonly WorkflowRole[];
 }>;
 
-const ALL_ROLES = [
-  "coordinator",
-  "writer",
-  "designer",
-  "coder",
-  "reviewer",
-  "presenter",
-  "worker",
-] as const;
-
 // How Builder works with a person. Each entry is one setting in Settings, copied onto a
-// project when it starts, and delivered as guidance to the roles it names; what the person
-// says in the conversation wins over it. Adding a preference is one entry here.
+// project when it starts, and delivered as guidance to each role that names it among its
+// preferences; what the person says in the conversation wins over it. Adding a preference is one
+// entry here.
 export const PREFERENCES: readonly PreferenceEntry[] = [
   {
     id: "questions",
@@ -57,7 +45,6 @@ export const PREFERENCES: readonly PreferenceEntry[] = [
       },
     ],
     default: "essentials",
-    roles: ["coordinator"],
   },
   {
     id: "replies",
@@ -78,7 +65,6 @@ export const PREFERENCES: readonly PreferenceEntry[] = [
       },
     ],
     default: "concise",
-    roles: ["coordinator", "designer", "coder"],
   },
   {
     id: "technical",
@@ -100,7 +86,6 @@ export const PREFERENCES: readonly PreferenceEntry[] = [
       },
     ],
     default: "no",
-    roles: ALL_ROLES,
   },
   {
     id: "design_concepts",
@@ -139,7 +124,6 @@ export const PREFERENCES: readonly PreferenceEntry[] = [
       },
     ],
     default: "three",
-    roles: ["coordinator"],
   },
   {
     id: "nitpicky",
@@ -160,7 +144,6 @@ export const PREFERENCES: readonly PreferenceEntry[] = [
       },
     ],
     default: "no",
-    roles: ["coordinator", "reviewer"],
   },
   {
     id: "agent_decides_approvals",
@@ -182,7 +165,6 @@ export const PREFERENCES: readonly PreferenceEntry[] = [
       },
     ],
     default: "no",
-    roles: ["coordinator"],
   },
   {
     id: "ask_open_questions",
@@ -204,7 +186,6 @@ export const PREFERENCES: readonly PreferenceEntry[] = [
       },
     ],
     default: "yes",
-    roles: ["coordinator"],
   },
   {
     id: "install_any_package",
@@ -225,7 +206,6 @@ export const PREFERENCES: readonly PreferenceEntry[] = [
     ],
     default: "no",
     // Delivered as the coder deployment the coder plugin starts, not as guidance.
-    roles: [],
   },
   {
     id: "internet_while_building",
@@ -246,7 +226,6 @@ export const PREFERENCES: readonly PreferenceEntry[] = [
     ],
     default: "yes",
     // Delivered as the sandbox's network policy when it opens, not as guidance.
-    roles: [],
   },
   {
     id: "next_step_line",
@@ -263,7 +242,6 @@ export const PREFERENCES: readonly PreferenceEntry[] = [
     ],
     default: "no",
     // Read by the interface only.
-    roles: [],
   },
   {
     id: "experimental_approvals",
@@ -280,7 +258,6 @@ export const PREFERENCES: readonly PreferenceEntry[] = [
       },
     ],
     default: "no",
-    roles: ["coordinator"],
   },
 ];
 
@@ -329,7 +306,7 @@ export function resolvePreferences(chosen: Preferences | null): Preferences {
 /** The block a specialist's hub-built assignment carries, empty when no preference applies. */
 export function preferenceBlock(
   choices: Preferences,
-  role: WorkflowRole,
+  role: { preferences?: readonly string[] },
 ): string {
   const lines = preferenceGuidance(choices, role);
   return lines.length
@@ -338,12 +315,12 @@ export function preferenceBlock(
     : "";
 }
 
-/** The guidance lines one role works by. */
+/** The guidance lines one role works by: those of the preferences it names. */
 export function preferenceGuidance(
   choices: Preferences,
-  role: WorkflowRole,
+  { preferences = [] }: { preferences?: readonly string[] },
 ): string[] {
-  return PREFERENCES.filter((entry) => entry.roles.includes(role)).flatMap(
+  return PREFERENCES.filter((entry) => preferences.includes(entry.id)).flatMap(
     (entry) => {
       const option =
         entry.options.find((candidate) => candidate.id === choices[entry.id]) ??

@@ -41,7 +41,7 @@ import {
   userPrincipalIn,
   type Allowed,
 } from "./authorization.ts";
-import { workflowRoleSql } from "../workflows/spawn-role.ts";
+import { workflowRoleMatchesSql } from "../workflows/spawn-role.ts";
 
 export { ProjectError, projectResource } from "./errors.ts";
 import { ProjectError, projectResource } from "./errors.ts";
@@ -240,14 +240,14 @@ export function createProjectService(db: DB["db"]) {
         eq(principal.refId, userId),
         eq(principal.status, "active"),
       );
-      // The runs of the projects the user is a member of: whether any was a coder's, and the latest
+      // The runs of the projects the user is a member of: whether any wrote code, and the latest
       // a run started or ended. Interchange keeps run times as UTC without a zone.
       const runs = db
         .select({
           tenantId: workflowRun.tenantId,
           coderRan: sql<
             boolean | null
-          >`bool_or(${workflowRoleSql(workflowRunLaunchSpec.frozenApprovalBundle)} = 'coder')`.as(
+          >`bool_or(${workflowRoleMatchesSql(workflowRunLaunchSpec.frozenApprovalBundle, (role) => role.writesCode === true)})`.as(
             "coder_ran",
           ),
           lastRunAt:

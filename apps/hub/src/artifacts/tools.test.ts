@@ -2,8 +2,11 @@ import { expect, test } from "bun:test";
 import { type } from "arktype";
 import type { RuntimeCapabilities } from "@intx/types/runtime-capabilities";
 import { WriterDocumentKind } from "@corbits-builder/schemas/artifact";
-import type { WorkflowRole } from "@corbits-builder/schemas/installed-workflows";
+import { CATALOG } from "../plugins/catalog.ts";
 import { createArtifactTools, createWriterArtifactTools } from "./tools.ts";
+
+const writer = CATALOG.role("writer");
+if (!writer) throw new Error("writer_role_missing");
 
 const deployment = {
   source: {
@@ -33,10 +36,7 @@ const FlatToolSchema = type({
   "anyOf?": "never",
 });
 
-function harness(
-  role: WorkflowRole,
-  tools: ReturnType<typeof createArtifactTools>,
-) {
+function harness(role: string, tools: ReturnType<typeof createArtifactTools>) {
   const written: unknown[] = [];
   const fetch = async (path: string, init: RequestInit) => {
     if (path === "/api/workflow-project-scope")
@@ -94,11 +94,11 @@ function harness(
 
 test("every role's artifact tool definitions declare top-level type: object", () => {
   const tools = [
-    ...(["reviewer", "coder", "designer"] as const).map((role) =>
-      harness(role, createArtifactTools(role)),
+    ...CATALOG.roles.map((role) =>
+      harness(role.name, createArtifactTools(role)),
     ),
     ...WRITER_KINDS.map((kind) =>
-      harness("writer", createWriterArtifactTools(kind)),
+      harness(writer.name, createWriterArtifactTools(writer, kind)),
     ),
   ];
   for (const tool of tools) {
@@ -113,8 +113,8 @@ test("every role's artifact tool definitions declare top-level type: object", ()
 test("each writer's write_artifact lists only its own fields, at the top level", () => {
   for (const [kind, fields] of Object.entries(WRITER_FIELDS)) {
     const tools = harness(
-      "writer",
-      createWriterArtifactTools(WriterDocumentKind.assert(kind)),
+      writer.name,
+      createWriterArtifactTools(writer, WriterDocumentKind.assert(kind)),
     );
     const [definition] = tools.definitions;
     const schema = FlatToolSchema.assert(definition?.inputSchema);
@@ -124,20 +124,23 @@ test("each writer's write_artifact lists only its own fields, at the top level",
 
 test("a writer files under the kind it was deployed for, with or without naming it", async () => {
   for (const kind of WRITER_KINDS) {
-    const writer = harness("writer", createWriterArtifactTools(kind));
-    const otherKind = await writer.write({
+    const filing = harness(
+      writer.name,
+      createWriterArtifactTools(writer, kind),
+    );
+    const otherKind = await filing.write({
       kind: WRITER_KINDS.find((other) => other !== kind),
       title: "Doc",
       content: "# Doc",
     });
     expect(otherKind.content).toStartWith("invalid_arguments:");
-    const empty = await writer.write({ title: "Doc", content: "" });
+    const empty = await filing.write({ title: "Doc", content: "" });
     expect(empty.content).toStartWith("invalid_arguments:");
-    expect(writer.written).toHaveLength(0);
+    expect(filing.written).toHaveLength(0);
 
-    await writer.write({ title: "Unnamed", content: "# Doc" });
-    await writer.write({ kind, title: "Named", content: "# Doc" });
-    expect(writer.written).toEqual([
+    await filing.write({ title: "Unnamed", content: "# Doc" });
+    await filing.write({ kind, title: "Named", content: "# Doc" });
+    expect(filing.written).toEqual([
       { kind, title: "Unnamed", content: "# Doc" },
       { kind, title: "Named", content: "# Doc" },
     ]);

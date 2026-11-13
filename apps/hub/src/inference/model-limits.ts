@@ -5,12 +5,17 @@
 
 import type { CustomModel } from "@corbits-builder/schemas/models";
 
-export type AgentRole =
-  | "coordinator"
-  | "document"
-  | "coding"
-  | "design"
-  | "presenter";
+// The output budgets a role may name as its limits.
+export const BUDGETS = [
+  "coordinator",
+  "document",
+  "coding",
+  "design",
+  "presenter",
+] as const;
+export type AgentRole = (typeof BUDGETS)[number];
+export const isBudget = (name: string): name is AgentRole =>
+  BUDGETS.some((budget) => budget === name);
 
 type Effort = "low" | "medium" | "high" | "max";
 

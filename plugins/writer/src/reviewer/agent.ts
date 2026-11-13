@@ -5,11 +5,13 @@ import {
   type DirectorRef,
   type InferencePreference,
 } from "@intx/agent/authoring";
+import { ROLE_TAG } from "@corbits-builder/plugin";
 import { reviewerPrompt } from "./prompt.ts";
-import { version } from "../../package.json";
 
 export function createReviewerAgent<Env extends BaseEnv>(options: {
   readonly id: string;
+  // The role it plays, which the hub tells its runs by.
+  readonly role: string;
   readonly inference: InferencePreference;
   readonly tools: readonly AnnotatedToolFactory<Env>[];
   readonly director?: DirectorRef;
@@ -24,6 +26,6 @@ export function createReviewerAgent<Env extends BaseEnv>(options: {
     ...(options.director ? { director: options.director } : {}),
     capabilities: options.capabilities,
     inference: { sources: [options.inference] },
-    tags: { "reviewer.version": version },
+    tags: { [ROLE_TAG]: options.role },
   });
 }

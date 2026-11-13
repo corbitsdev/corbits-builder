@@ -94,15 +94,17 @@ export type LiveAppViewProps = {
 };
 
 export type BuilderStatusViewProps = {
+  /** Who is building the app, by the label of its role. */
+  role: string;
   /** What the app builder is doing, in the activity strip's words. */
   phrase: string;
 };
 
-export function BuilderStatusView({ phrase }: BuilderStatusViewProps) {
+export function BuilderStatusView({ role, phrase }: BuilderStatusViewProps) {
   return (
     <p className={styles.status} role="status">
       <StatusDot label="" live tone="emphasis" size="xs" />
-      {wording.activity.role.coder}: {phrase}
+      {role}: {phrase}
     </p>
   );
 }

@@ -1,8 +1,10 @@
 import type { WriterDocumentKind } from "@corbits-builder/schemas/artifact";
 import {
-  createDocumentWriterArtifactTools,
+  createArtifactTools,
   createWriterArtifactTools,
 } from "@corbits-builder/hub/artifacts/tools";
+import { declaredRole } from "@corbits-builder/plugin";
+import manifest from "../package.json";
 import { createSkillTools } from "@corbits-builder/hub/skills/tools";
 import { roleInference } from "@corbits-builder/hub/workflows/role-inference";
 import { compactingDirector } from "@corbits-builder/hub/workflows/director";
@@ -23,9 +25,11 @@ import { DOCUMENT_WRITER_PACKAGE, WRITER_PACKAGES } from "./task.ts";
 export function writerPackage(kind?: WriterDocumentKind) {
   const name =
     kind === undefined ? DOCUMENT_WRITER_PACKAGE : WRITER_PACKAGES[kind];
+  const role = declaredRole(manifest.builder);
   const compacting = compactingDirector(nativePackageName(name));
-  const { source, contextWindow, timeouts, parameters } =
-    roleInference("writer");
+  const { source, contextWindow, timeouts, parameters } = roleInference(
+    role.name,
+  );
   const agent = createWriterAgent({
     director: compacting.build({
       contextWindow,
@@ -34,12 +38,13 @@ export function writerPackage(kind?: WriterDocumentKind) {
       fileBeforeDone: true,
     }),
     id: "document-writer",
+    role: role.name,
     capabilities: [],
     inference: { ...source, parameters },
     tools: [
       kind === undefined
-        ? createDocumentWriterArtifactTools()
-        : createWriterArtifactTools(kind),
+        ? createArtifactTools(role)
+        : createWriterArtifactTools(role, kind),
       createSkillTools([
         "problem-brief",
         "constraints",

@@ -58,10 +58,34 @@
     ],
     "when": "The person wants to see how something they are making could look, to try or approve a design, or to choose its fonts or colours.",
     "unless": "They want something already built changed in a way they already stated exactly.",
+    "roles": [
+      {
+        "name": "designer",
+        "label": "Designer",
+        "model": "designer",
+        "limits": "design",
+        "tools": [],
+        "status": {
+          "working": "Making a mockup",
+          "done": "Made a mockup"
+        },
+        "preferences": [
+          "replies",
+          "technical"
+        ],
+        "buildsFrom": [
+          "problem_brief",
+          "constraints",
+          "approaches",
+          "product_requirements"
+        ],
+        "files": "design",
+        "designs": true
+      }
+    ],
     "packages": {
       "designer": {
-        "entry": "./src/packages/designer.ts",
-        "role": "designer"
+        "entry": "./src/packages/designer.ts"
       }
     },
     "starters": {

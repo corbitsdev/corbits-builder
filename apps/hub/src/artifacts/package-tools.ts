@@ -467,7 +467,8 @@ function deriveDeckTitle(
   return `Approval package for ${assignment.personaLabel ?? assignment.audience}`;
 }
 
-export function createPackageTools() {
+// The deck and approval package tools of a run of the named role.
+export function createPackageTools(role: string) {
   const definitions = [
     {
       name: "write_deck",
@@ -541,7 +542,7 @@ export function createPackageTools() {
           }
           const scope = await resolveWorkflowProjectScope(
             env.capabilities,
-            "presenter",
+            role,
             signal,
           );
           const deckText = await readTextIfPresent(join(workspace, DECK_JSON));

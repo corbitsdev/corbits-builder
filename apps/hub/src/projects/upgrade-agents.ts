@@ -8,10 +8,7 @@ import {
   type WorkflowRunReader,
 } from "@intx/hub-sessions";
 import { getLogger } from "@intx/log";
-import type {
-  InstalledWorkflows,
-  WorkflowRole,
-} from "@corbits-builder/schemas/installed-workflows";
+import type { InstalledWorkflows } from "@corbits-builder/schemas/installed-workflows";
 import { spawnedWorkflowRole } from "../workflows/spawn-role.ts";
 import { WORKFLOW_PACKAGES } from "../plugins/catalog.ts";
 import { MODEL_CHOICE_REFUSALS } from "../config/models.ts";
@@ -44,7 +41,7 @@ const pinOf = (bundle: unknown) => {
 };
 
 /** The runs whose frozen package is not the one installed for their role, or has no readable pin. */
-export function staleRuns<T extends { role: WorkflowRole; bundle: unknown }>(
+export function staleRuns<T extends { role: string; bundle: unknown }>(
   runs: readonly T[],
   installed: InstalledWorkflows,
 ): T[] {
@@ -183,7 +180,7 @@ export function createAgentUpgrades(deps: {
       );
     const specialists = live.flatMap((run) => {
       const role = spawnedWorkflowRole(run.bundle);
-      return role ? [{ ...run, role }] : [];
+      return role ? [{ ...run, role: role.name }] : [];
     });
     return {
       coordinator: coordinator && {

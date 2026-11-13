@@ -3,23 +3,13 @@ import { type } from "arktype";
 import { PerCallInferenceOptions } from "@intx/types/runtime-core";
 import { MODEL_PROVIDERS } from "../config/models.ts";
 import { RoleInference, resolveRoleInference } from "./role-inference.ts";
-import type { WorkflowRole } from "@corbits-builder/schemas/installed-workflows";
+import { BUDGETS } from "../inference/model-limits.ts";
 
-const roles: WorkflowRole[] = [
-  "coordinator",
-  "writer",
-  "reviewer",
-  "designer",
-  "coder",
-  "presenter",
-  "worker",
-];
-
-test("every role gives both xAI connections 15 minutes and keeps per-call parameters Interchange accepts", () => {
+test("every output budget gives both xAI connections 15 minutes and keeps per-call parameters Interchange accepts", () => {
   for (const provider of MODEL_PROVIDERS) {
     for (const model of provider.models) {
-      for (const role of roles) {
-        const inference = resolveRoleInference(MODEL_PROVIDERS, role, {
+      for (const budget of BUDGETS) {
+        const inference = resolveRoleInference(MODEL_PROVIDERS, budget, {
           provider: provider.id,
           model: model.id,
           effort: "high",

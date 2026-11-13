@@ -1,4 +1,5 @@
 import { expect, test } from "bun:test";
+import "./plugin-roles.testing.ts";
 import { createElement } from "react";
 import { QueryClient } from "@tanstack/react-query";
 import { renderToStaticMarkup } from "react-dom/server";

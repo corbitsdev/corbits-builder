@@ -7,10 +7,8 @@ import { setTimeout as sleep } from "node:timers/promises";
 import { type } from "arktype";
 import { NativeSpecialistDeployment } from "@corbits-builder/schemas/native-specialist";
 import { SourceRef } from "@corbits-builder/schemas";
-import type {
-  SpawnedRole,
-  WorkflowProjectScope,
-} from "@corbits-builder/schemas/installed-workflows";
+import type { WorkflowProjectScope } from "@corbits-builder/schemas/installed-workflows";
+import type { Role } from "@corbits-builder/plugin";
 import {
   ArtifactContent,
   DesignBundle,
@@ -24,7 +22,7 @@ import {
   preferenceBlock,
 } from "../config/preferences.ts";
 import { resolveWorkflowProjectScope } from "../workflows/project-scope.ts";
-import { WORKFLOW_PACKAGES } from "../plugins/catalog.ts";
+import { CATALOG, WORKFLOW_PACKAGES } from "../plugins/catalog.ts";
 import { workflowHttpJson, WorkflowHttpError } from "../workflows/http-json.ts";
 import { DESIGN_STYLES } from "../artifacts/design-tweaks.ts";
 
@@ -244,7 +242,7 @@ export function projectSession(
   // response is enough to send the assignment, which carries the person's preferences that
   // apply to the receiving role.
   const deploy = async (
-    role: SpawnedRole,
+    role: Role,
     workflowSpec: NativeSpecialistDeployment | undefined,
     preferences: Preferences,
     correlationId: string,
@@ -253,7 +251,7 @@ export function projectSession(
   ) => {
     if (!workflowSpec)
       throw new Refusal(
-        role + "_unavailable: no " + role + " workflow is installed",
+        role.name + "_unavailable: no " + role.name + " workflow is installed",
       );
     const deployment = WorkflowDeploymentResponse.assert(
       await hub(
@@ -286,7 +284,7 @@ export function projectSession(
       },
       signal,
     );
-    return { runId: deployment.id, role, status: deployment.status };
+    return { runId: deployment.id, role: role.name, status: deployment.status };
   };
   // A run that replied is between turns while teardown versions its last files and gives up its
   // access, VERSION_CLOSE_MS in the sidecar's tools, before it ends. A start for the same
@@ -309,12 +307,15 @@ export function projectSession(
   };
   // The role and installed deployment of a workflow a project starts.
   const installed = (workflow: string) => {
-    const role = WORKFLOW_PACKAGES.get(workflow);
-    if (role === undefined || role === "coordinator")
+    const name = WORKFLOW_PACKAGES.get(workflow);
+    const role = name === undefined ? undefined : CATALOG.role(name);
+    if (role === undefined)
       throw new Error(`${workflow} is not a workflow a project starts`);
     return { role, spec: options.workflows[workflow] };
   };
-  // One run of the workflow's role at a time; a start waits for the last one to end. task builds
+  // The one-at-a-time slot a role takes: its own, unless it declares it shares another's.
+  const slotOf = (name: string) => CATALOG.role(name)?.slot ?? name;
+  // One run in the workflow's role's slot at a time; a start waits for the last one to end. task builds
   // the assignment from the project as it then stands, and what to store against the run before
   // it is assigned, or refuses; busy says why none started, with the live run when one is still
   // working and none while another is starting.
@@ -328,8 +329,9 @@ export function projectSession(
     busy: (live?: Listed["inFlight"][number]) => Error,
   ) => {
     const { role, spec } = installed(workflow);
-    return startOnce(options.projectId + ":" + role, busy, async () => {
-      const { state, live } = await ended((run) => run.role === role);
+    const slot = slotOf(role.name);
+    return startOnce(options.projectId + ":" + slot, busy, async () => {
+      const { state, live } = await ended((run) => slotOf(run.role) === slot);
       if (live) throw busy(live);
       const { content, beforeAssign } = await task(state);
       return deploy(
@@ -361,7 +363,7 @@ export function projectSession(
     // A requested concept already at work is refused below but still counts toward the limit.
     const labels = new Set(
       inFlight.flatMap((run) =>
-        run.role === role && run.concept ? [run.concept] : [],
+        run.role === role.name && run.concept ? [run.concept] : [],
       ),
     );
     for (const concept of concepts) labels.add(concept.label);
@@ -373,13 +375,13 @@ export function projectSession(
       );
     const start = (concept: DesignConcept) =>
       startOnce(
-        options.projectId + ":" + role + ":" + concept.label,
+        options.projectId + ":" + role.name + ":" + concept.label,
         () => busy(concept.label),
         async () => {
           // A run still "deployed" never received its assignment, so it does not hold the concept.
           const { state, live } = await ended(
             (run) =>
-              run.role === role &&
+              run.role === role.name &&
               run.status === "running" &&
               run.concept === concept.label,
           );

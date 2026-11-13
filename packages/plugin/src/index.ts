@@ -201,38 +201,76 @@ export const CheckActionBuilder = type({
 );
 export type CheckActionBuilder = typeof CheckActionBuilder.infer;
 
-// The tools the host hands an agent a plugin declares, by name. read_artifact lists and reads the
-// project's documents, with report_values, which saves the project values the starting action
-// writes; write_artifact adds filing a document of any kind; web is Exa's web search and page fetch.
-// Every such agent also has read_file, for reading back a trimmed tool result.
+// The hub's tools a role's agent gets, by name. read_artifact lists and reads the project's
+// documents, with report_values, which saves the project values the starting action writes;
+// write_artifact adds filing a document of any kind; web is Exa's web search and page fetch. An
+// agent a plugin declares also has read_file, for reading back a trimmed tool result.
 export const AgentTool = type("'read_artifact' | 'write_artifact' | 'web'");
 export type AgentTool = typeof AgentTool.infer;
 
-// A role whose run needs no workspace, whose model settings a declared agent runs with.
-export const AgentModel = type(
-  "'writer' | 'reviewer' | 'presenter' | 'worker'",
-);
+// A specialist's role, declared once by its plugin; whatever needs to know about a run's role reads
+// it from here, never from the role's name. label is what a person reads; model names the model
+// setting it runs on, which roles may share; limits names the output budget it runs with; tools are
+// the hub's tools its agent gets; slot is the one-run-at-a-time slot it takes, its own name unless it
+// shares another's; status says what it does when the action it runs says nothing better; and
+// preferences are the ids of the person's preferences its assignment carries. The rest are what the
+// hub and the interface ask of a role.
+export const Role = type({
+  "+": "reject",
+  name: "string > 0",
+  label: "string > 0",
+  model: "string > 0",
+  limits: "string > 0",
+  tools: AgentTool.array(),
+  "slot?": "string > 0",
+  status: { "+": "reject", working: "string > 0", done: "string > 0" },
+  "preferences?": "string[]",
+  // The document kinds its work builds from, so a message naming one is passed along to it.
+  "buildsFrom?": "string[]",
+  // The kind its finished work is filed as, when that is always the same.
+  "files?": "string > 0",
+  // It files a document of whatever kind its task names.
+  "filesDocuments?": "boolean",
+  // It writes the project's code, in a workspace that holds the app.
+  "writesCode?": "boolean",
+  // It drafts the project's design in its workspace.
+  "designs?": "boolean",
+});
+export type Role = typeof Role.infer;
 
-// An agent the host builds from its prompt and tools alone: prompt is a markdown file in the plugin,
-// model the role whose model settings it runs with, the writer's unless stated.
+// The agent tag every specialist's agent carries, naming its role, by which the hub tells its runs.
+export const ROLE_TAG = "role";
+
+/** A role a plugin's manifest declares, by name, its handle's unless stated. */
+export function declaredRole(
+  builder: { handle: string; roles?: readonly unknown[] },
+  name = builder.handle,
+): Role {
+  const declared = (builder.roles ?? [])
+    .map((each) => Role.assert(each))
+    .find((role) => role.name === name);
+  if (!declared) throw new Error(`${builder.handle} declares no role ${name}`);
+  return declared;
+}
+
+// An agent the host builds from its prompt and its role alone: prompt is a markdown file in the
+// plugin, role the one of the plugin's roles it plays, its handle's unless stated, whose tools and
+// model it runs with.
 export const AgentBuilder = type({
   "+": "reject",
   prompt: "string > 0",
-  tools: AgentTool.array(),
-  "model?": AgentModel,
+  "role?": "string > 0",
 });
 export type AgentBuilder = typeof AgentBuilder.infer;
 
-// A declared agent as the host builds its workflow package: its plugin's version, the prompt's text,
-// the role it runs as, and whether its reply waits for a filed document, which it does when every
+// A declared agent as the host builds its workflow package: the prompt's text, the role it plays,
+// and whether its reply waits for a filed document, which it does when every
 // action starting it returns a filed fact.
 export const AgentPackage = type({
   "+": "reject",
   name: "string > 0",
-  version: "string > 0",
   prompt: "string > 0",
-  tools: AgentTool.array(),
-  role: AgentModel,
+  role: Role,
   fileBeforeDone: "boolean",
 });
 export type AgentPackage = typeof AgentPackage.infer;
@@ -240,11 +278,13 @@ export type AgentPackage = typeof AgentPackage.infer;
 // A specialist the coordinator composes into its plan, and the actions it can be started on.
 export const SpecialistBuilder = Common.merge({
   runs: "'specialist'",
+  // The roles this plugin's runs play; no other plugin may declare one of the same name.
+  "roles?": Role.array(),
   // The workflow packages the host builds and installs from this plugin, by package name: entry is
   // the module whose default export is the workflow and whose named exports are its directors, and
-  // role the role its runs play, which picks their model, guidance and one-at-a-time rule.
+  // role the one of the plugin's roles its runs play, its handle's unless stated.
   "packages?": {
-    "[string]": { "+": "reject", entry: "string > 0", role: "string > 0" },
+    "[string]": { "+": "reject", entry: "string > 0", "role?": "string > 0" },
   },
   // The module that starts each workflow its actions' start blocks name, by that name; its default
   // export is a starter, as plugin-host's defineStarter makes one.

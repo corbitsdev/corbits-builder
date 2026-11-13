@@ -11,6 +11,7 @@ import {
   ScreenActionBuilder,
   SkillsBuilder,
   SpecialistBuilder,
+  declaredRole,
   validateInput,
   validateOutput,
   validateWorkflowInput,
@@ -22,6 +23,7 @@ import {
   type ProjectValues,
   type ProjectView,
   type Refused,
+  type Role,
   type Screen,
   type Shown,
   type ValueDeclaration,
@@ -61,8 +63,12 @@ export type Host = {
   // The project values the host keeps in a home of its own, such as design tokens; every value a
   // plugin declares is kept in the project's plain store.
   values: Readonly<Record<string, ValueDeclaration>>;
-  // The ids of the preferences a screen's answer may set for the project.
+  // The ids of the preferences a screen's answer may set for the project, and a role's assignment
+  // may carry.
   preferences: ReadonlySet<string>;
+  // The model settings a role may run on, and the output budgets it may run with.
+  models: ReadonlySet<string>;
+  budgets: ReadonlySet<string>;
 };
 
 /** A starter a plugin brings, which starts its run in the project with the action's skill packs. */
@@ -320,9 +326,13 @@ export type Catalog = {
   factText(fact: Fact): string;
   // Every project value by name: the host's own and each one a plugin declares.
   values: ReadonlyMap<string, ValueDeclaration>;
-  // Each workflow package a plugin brings, by name, with the role its runs play: its entry's path in
-  // the plugins folder, or the agent it declares, which the host builds.
+  // Each workflow package a plugin brings, by name, with the name of the role its runs play: its
+  // entry's path in the plugins folder, or the agent it declares, which the host builds.
   packages: ReadonlyMap<string, PluginPackage>;
+  // Every role the installed plugins declare, whichever of a shared handle a project uses, since a
+  // run of any of them may still be live; and one of them by name.
+  roles: readonly Role[];
+  role(name: string): Role | undefined;
   // Each handle several installed plugins share, with the one this catalog uses.
   choices: readonly Choice[];
   // The catalog as a project with these values sees it; only the selection values are read.
@@ -353,10 +363,9 @@ function manifestOf(found: Found) {
     throw new Error(
       `plugins/${found.folder}/package.json: ${manifest.summary}`,
     );
-  const { name, version, builder, description = "" } = manifest;
+  const { name, builder, description = "" } = manifest;
   return {
     found,
-    version,
     builder,
     about: {
       package: name,
@@ -499,7 +508,7 @@ async function declaredAction(
 
 // A plugin's manifest, with each of a specialist's actions as its folder declares it.
 async function manifested(found: Found) {
-  const { version, builder, about } = manifestOf(found);
+  const { builder, about } = manifestOf(found);
   const actions = new Map<string, Declared>();
   if (builder.runs === "specialist")
     for (const [action, entry] of Object.entries(builder.actions))
@@ -507,7 +516,7 @@ async function manifested(found: Found) {
         action,
         await declaredAction(found, builder.handle, action, entry),
       );
-  return { found, version, builder, about, actions };
+  return { found, builder, about, actions };
 }
 type Manifested = Awaited<ReturnType<typeof manifested>>;
 
@@ -1172,12 +1181,10 @@ async function pluginStarters(manifests: readonly Manifested[]) {
   return starters;
 }
 
-// Each declared agent's package: its plugin's version, its prompt's text, run as the role whose model
-// it names, the writer's unless stated, its reply waiting for a filed document when every action
-// starting it files one.
+// Each declared agent's package: its prompt's text and the role it plays, its reply waiting for a
+// filed document when every action starting it files one.
 async function agentPackages(
   found: Found,
-  version: string,
   builder: SpecialistBuilder,
   actions: Manifested["actions"],
 ) {
@@ -1185,27 +1192,50 @@ async function agentPackages(
     declared.kind === "workflow" ? [declared.builder] : [],
   );
   return Promise.all(
-    Object.entries(builder.agents ?? {}).map(
-      async ([name, { prompt, tools, model = "writer" }]) => {
-        const actions = starting.filter(
-          ({ start }) => startsAgent(start) && start.agent === name,
-        );
-        const agent: AgentPackage = {
-          name,
-          version,
-          prompt: (await found.text(prompt)).trim(),
-          tools,
-          role: model,
-          fileBeforeDone:
-            actions.length > 0 &&
-            actions.every(({ returns }) =>
-              returns.some((fact) => fact.startsWith("filed:")),
-            ),
-        };
-        return [name, { role: model, agent }] as const;
-      },
-    ),
+    Object.entries(builder.agents ?? {}).map(async ([name, declared]) => {
+      const actions = starting.filter(
+        ({ start }) => startsAgent(start) && start.agent === name,
+      );
+      const role = declaredRole(builder, declared.role);
+      const agent: AgentPackage = {
+        name,
+        prompt: (await found.text(declared.prompt)).trim(),
+        role,
+        fileBeforeDone:
+          actions.length > 0 &&
+          actions.every(({ returns }) =>
+            returns.some((fact) => fact.startsWith("filed:")),
+          ),
+      };
+      return [name, { role: role.name, agent }] as const;
+    }),
   );
+}
+
+// Every role the specialists declare, each checked against what the host runs: a model setting, an
+// output budget and preferences it has. No two plugins declare one name, whose runs would be
+// indistinguishable.
+function declaredRoles(manifests: readonly Manifested[], host: Host) {
+  const roles = new Map<string, Role>();
+  for (const { builder, about } of manifests) {
+    if (builder.runs !== "specialist") continue;
+    for (const role of builder.roles ?? []) {
+      const where = `${about.package}'s role ${role.name}`;
+      if (roles.has(role.name))
+        throw new Error(`${where} is declared by another plugin too`);
+      if (!host.models.has(role.model))
+        throw new Error(`${where} runs on ${role.model}, no model setting`);
+      if (!host.budgets.has(role.limits))
+        throw new Error(`${where} has limits ${role.limits}, no output budget`);
+      const unknown = (role.preferences ?? []).find(
+        (id) => !host.preferences.has(id),
+      );
+      if (unknown !== undefined)
+        throw new Error(`${where} reads ${unknown}, no preference`);
+      roles.set(role.name, role);
+    }
+  }
+  return roles;
 }
 
 // Each workflow package a plugin brings, by name: at its entry's path in the plugins folder, or the
@@ -1214,14 +1244,20 @@ async function pluginPackages(manifests: readonly Manifested[]) {
   const packages = new Map<string, PluginPackage>();
   // Two plugins with one handle may well bring a package of the same name, which only one can be.
   const owners = new Map<string, string>();
-  for (const { found, version, builder, about, actions } of manifests) {
+  for (const { found, builder, about, actions } of manifests) {
     if (builder.runs !== "specialist") continue;
     for (const [name, brought] of [
       ...Object.entries(builder.packages ?? {}).map(
         ([name, { entry, role }]) =>
-          [name, { entry: join(found.folder, entry), role }] as const,
+          [
+            name,
+            {
+              entry: join(found.folder, entry),
+              role: declaredRole(builder, role).name,
+            },
+          ] as const,
       ),
-      ...(await agentPackages(found, version, builder, actions)),
+      ...(await agentPackages(found, builder, actions)),
     ]) {
       const other = owners.get(name);
       if (other !== undefined)
@@ -1290,6 +1326,7 @@ export async function loadCatalog(
   );
   checkCatalog(plugins);
   checkReadyPlanSteps(plugins);
+  const roles = declaredRoles(manifests, host);
   const packages = await pluginPackages(manifests);
   const shared = sharedHandles(plugins, (plugin) => plugin.package);
   // The one place the installed plugins are narrowed to one per handle.
@@ -1312,6 +1349,8 @@ export async function loadCatalog(
       factText,
       values,
       packages,
+      roles: [...roles.values()],
+      role: (name) => roles.get(name),
       choices,
       select: (selected) => catalogOf(choose(shared, selected)),
     };

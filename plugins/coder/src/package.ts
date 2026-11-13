@@ -16,6 +16,7 @@ import {
   trimHistory,
 } from "@corbits-builder/hub/workflows/compaction";
 import { nativePackageName } from "@corbits-builder/hub/workflows/package-name";
+import { declaredRole } from "@corbits-builder/plugin";
 import manifest from "../package.json";
 import { createCoderAgent } from "./agent.ts";
 import { createCoderWorkflow } from "./workflow.ts";
@@ -46,19 +47,22 @@ const CODER_MCP: McpToolsOptions = {
  * install_packages asks the person before it installs.
  */
 export async function coderPackage() {
+  const role = declaredRole(manifest.builder);
   const compacting = compactingDirector(nativePackageName("coder"));
-  const { source, contextWindow, timeouts, parameters } =
-    roleInference("coder");
+  const { source, contextWindow, timeouts, parameters } = roleInference(
+    role.name,
+  );
   // Discovered at load so the frozen definition carries the remote tool names.
   const search = await mcpTools(CODER_MCP);
   // The deployment starts its own browser on first use, so its tools are listed when the bundle is built.
   const browser = await browserCatalog();
   // The project role child supplies the sandboxed workspace and executor.
   const tools = [
-    createArtifactTools("coder"),
+    createArtifactTools(role),
     mail,
     search,
     createSidecarCodingTools({
+      role: role.name,
       approval: "allow",
       workspace: "app",
       packageInstall: "ask",
@@ -79,6 +83,7 @@ export async function coderPackage() {
       ),
     }),
     id: "coder",
+    role: role.name,
     capabilities: [],
     inference: { ...source, parameters },
     tools,

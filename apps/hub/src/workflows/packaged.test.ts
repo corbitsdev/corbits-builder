@@ -1,21 +1,30 @@
 import { expect, test } from "bun:test";
 import { NativeSpecialistDeployment } from "@corbits-builder/schemas/native-specialist";
-import { MODEL_PROVIDERS, workflowBindings } from "../config/models.ts";
+import { MODEL_PROVIDERS, settingBinding } from "../config/models.ts";
 import { projectLiveToInert } from "@intx/workflow/projection";
 import { nativePackageName } from "./package-name.ts";
 import { resolveRoleInference, type RoleInference } from "./role-inference.ts";
 import { spawnedWorkflowRole } from "./spawn-role.ts";
-import type { WorkflowRole } from "@corbits-builder/schemas/installed-workflows";
+import { runRole, WORKFLOW_PACKAGES } from "../plugins/catalog.ts";
 
-const bindings = workflowBindings(MODEL_PROVIDERS, {
-  profile: "anthropic_default",
-});
-const inference = Object.fromEntries(
-  Object.entries(bindings).map(([role, binding]) => [
-    role,
-    resolveRoleInference(MODEL_PROVIDERS, role as WorkflowRole, binding),
-  ]),
-) as Record<WorkflowRole, RoleInference>;
+// What each role an installed package plays resolves to on the shipped Anthropic profile.
+const inference: Record<string, RoleInference> = Object.fromEntries(
+  [...new Set(WORKFLOW_PACKAGES.values())].map((name) => {
+    const { model, limits } = runRole(name);
+    return [
+      name,
+      resolveRoleInference(
+        MODEL_PROVIDERS,
+        limits,
+        settingBinding(
+          MODEL_PROVIDERS,
+          { profile: "anthropic_default" },
+          model,
+        ),
+      ),
+    ];
+  }),
+);
 
 test("native specialist accepts installed tarballs only with an exact package pin", () => {
   const deployment: NativeSpecialistDeployment = {

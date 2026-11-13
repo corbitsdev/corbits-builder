@@ -1,4 +1,5 @@
 import { expect, test } from "bun:test";
+import "./plugin-roles.testing.ts";
 import {
   dispatchLive,
   dispatchStatus,

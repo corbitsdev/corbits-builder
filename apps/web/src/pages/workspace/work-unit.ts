@@ -7,6 +7,7 @@
 import { isDocumentKind } from "@corbits-builder/schemas/artifact";
 import { wording } from "../../config.ts";
 import type { Dispatch, DispatchStatus } from "./dispatch-card.tsx";
+import { roleOf } from "./roles.ts";
 import type { SpecialistUpdate } from "./specialist-updates.ts";
 import type { PlacedDispatch } from "./transcript.tsx";
 
@@ -67,20 +68,20 @@ export function workUnits(
   return { units, updates: loneUpdates };
 }
 
-// A run started by no call in view still reads by what its role files: a writer writes a document,
-// a designer makes a mockup, of its concept when it has one, and a worker does its one action.
-const fileAction = (dispatch: Dispatch) => {
-  if (dispatch.role === "writer") return "writer write";
-  if (dispatch.role === "designer") return "designer mockup";
-  if (dispatch.role === "worker") return "worker do";
-  return undefined;
-};
-
-/** What a hand-off does, from the action it started: "Building the code", then "Built the code". */
+/**
+ * What a hand-off does, from the action it started: "Building the code", then "Built the code". A
+ * run started by no call in view, or by an action with no words of its own, reads as its role says.
+ */
 export function workPhrase(dispatch: Dispatch, status: DispatchStatus): string {
   const done = status.state === "ready" || status.state === "finished";
-  const phrase = text.action[dispatch.action ?? fileAction(dispatch) ?? ""];
-  if (phrase === undefined) return done ? text.done : text.working;
+  const phrase = text.action[dispatch.action ?? ""];
+  if (phrase === undefined) {
+    const own = roleOf(dispatch.role)?.status ?? {
+      working: text.working,
+      done: text.done,
+    };
+    return done ? own.done : own.working;
+  }
   // A document the run filed names it once the call did not; a design or an app names nothing.
   const kind =
     dispatch.kind ??

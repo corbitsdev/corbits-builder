@@ -1,4 +1,6 @@
 import { describe, expect, test } from "bun:test";
+import "./plugin-roles.testing.ts";
+import { roleLabel } from "./roles.ts";
 import { isValidElement, type ReactNode } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import {
@@ -428,7 +430,7 @@ describe("conversation transcript", () => {
       html.indexOf('data-slot="activity-content"'),
     );
     const row = wording.dispatch.row(
-      wording.activity.role.writer,
+      roleLabel("writer"),
       "Writing the constraints",
     );
     // The list's header counts its one row rather than saying it again.

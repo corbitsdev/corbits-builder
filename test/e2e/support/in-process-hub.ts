@@ -160,7 +160,17 @@ export async function startInProcessHub() {
         sourceAuthorityPrincipalId: person.principalId,
         frozenApprovalBundle: {
           projection: {
-            steps: { work: { agent: { tags: { [`${role}.version`]: "1" } } } },
+            steps: {
+              work: {
+                agent: {
+                  // The coordinator's agent carries its version; a specialist's, its role.
+                  tags:
+                    role === "coordinator"
+                      ? { "coordinator.version": "1" }
+                      : { role },
+                },
+              },
+            },
           },
         },
         sourceOfferingIds: [],

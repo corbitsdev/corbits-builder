@@ -59,9 +59,10 @@ async function readDesignFolder(workspace: string) {
   return withoutUnusedStarterHome(files);
 }
 
-// Files the designer's .builder folder as its design concept's option. The person decides on the
-// design once, by choosing among the filed options, never while a designer is still working.
-export function createDesignTools() {
+// Files the designer's .builder folder as its design concept's option, as a run of the named role.
+// The person decides on the design once, by choosing among the filed options, never while a
+// designer is still working.
+export function createDesignTools(role: string) {
   const definitions = [
     {
       name: "file_design_option",
@@ -112,7 +113,7 @@ export function createDesignTools() {
         if (lastFiled?.content === content) return lastFiled.artifact;
         const scope = await resolveWorkflowProjectScope(
           env.capabilities,
-          "designer",
+          role,
           signal,
         );
         const projectPath =

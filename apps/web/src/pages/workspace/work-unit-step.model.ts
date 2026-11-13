@@ -11,15 +11,19 @@ import {
   type DispatchRoom,
 } from "./dispatch-card.tsx";
 import type { WorkUnitStanding } from "./work-unit-step.view.tsx";
+import { roleLabel, roleOf } from "./roles.ts";
 import { workPhrase, type WorkUnit } from "./work-unit.ts";
 
 const text = wording.dispatch;
 
-// The specialists whose work shows as it happens: the designer's draft and the coder's running app.
-const WATCH: Partial<Record<Dispatch["role"], string>> = {
-  designer: text.watchDraft,
-  coder: text.watchApp,
-};
+// The roles whose work shows as it happens: the running app of one that writes code, and the draft
+// of one that designs.
+function watchOf(dispatch: Dispatch) {
+  const role = roleOf(dispatch.role);
+  if (role?.writesCode) return text.watchApp;
+  if (role?.designs) return text.watchDraft;
+  return undefined;
+}
 
 // A run that ended returned from every call it made, though its stream closed before saying so.
 const settled = (step: PartTool): PartTool =>
@@ -49,8 +53,8 @@ export function workUnitStanding(
       : room.steps?.get(dispatch.runId)) ?? [];
   const { onWatch, onStop } = room;
   const { runId } = dispatch;
-  const role = wording.activity.role[dispatch.role];
-  const watchLabel = WATCH[dispatch.role];
+  const role = roleLabel(dispatch.role);
+  const watchLabel = watchOf(dispatch);
   return {
     unitKey: unit.key,
     status,

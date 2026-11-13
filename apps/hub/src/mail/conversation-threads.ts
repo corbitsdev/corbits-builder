@@ -148,7 +148,7 @@ export async function readCoordinatorMailThreads(input: {
       );
     for (const row of rows) {
       const role = spawnedWorkflowRole(row.bundle);
-      if (row.address && role) roles.set(row.address.toLowerCase(), role);
+      if (row.address && role) roles.set(row.address.toLowerCase(), role.name);
     }
   }
   const label = (participant: string) =>

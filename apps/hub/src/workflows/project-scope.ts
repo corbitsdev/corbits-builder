@@ -3,7 +3,6 @@ import type { RuntimeCapabilities } from "@intx/types/runtime-capabilities";
 import {
   WorkflowProjectScope,
   type InstalledWorkflows,
-  type WorkflowRole,
 } from "@corbits-builder/schemas/installed-workflows";
 import { getLogger } from "@intx/log";
 import { requestErrorMetadata } from "../request-error.ts";
@@ -46,7 +45,7 @@ export function projectScopeFailure(callId: string, error: unknown) {
 
 export async function resolveWorkflowProjectScope(
   capabilities: RuntimeCapabilities,
-  role: WorkflowRole,
+  role: string,
   signal: AbortSignal,
 ) {
   const scope = HubProjectScope.assert(

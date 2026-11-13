@@ -1,8 +1,8 @@
 import { type } from "arktype";
 import { NativeSpecialistDeployment } from "./native-specialist.ts";
 import { ProjectId } from "./project.ts";
-import { WorkflowRole } from "./roles.ts";
-export { SpawnedRole, WorkflowRole } from "./roles.ts";
+import { RoleName } from "./roles.ts";
+export { RoleName } from "./roles.ts";
 
 export const INSTALLED_WORKFLOWS_KEY = "sb.installedWorkflows";
 
@@ -36,7 +36,7 @@ export const WorkflowProjectScope = type({
   tenantId: "string > 0",
   projectId: ProjectId,
   domain: "string > 0",
-  role: WorkflowRole,
+  role: RoleName,
   // Every installed package a run in the project may deploy, by name.
   workflows: { "[string]": NativeSpecialistDeployment },
   // Whether the project's build sandboxes reach any public host rather than only the npm registry.

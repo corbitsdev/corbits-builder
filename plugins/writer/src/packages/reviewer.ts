@@ -7,13 +7,17 @@ import {
 } from "@corbits-builder/hub/workflows/compaction";
 import { savedResultTools } from "@corbits-builder/hub/workflows/saved-result-tools";
 import { nativePackageName } from "@corbits-builder/hub/workflows/package-name";
+import { declaredRole } from "@corbits-builder/plugin";
+import manifest from "../../package.json";
 import { createReviewerAgent } from "../reviewer/agent.ts";
 import { createReviewerWorkflow } from "../reviewer/workflow.ts";
 
+const role = declaredRole(manifest.builder, "reviewer");
 const compacting = compactingDirector(nativePackageName("reviewer"));
 
-const { source, contextWindow, timeouts, parameters } =
-  roleInference("reviewer");
+const { source, contextWindow, timeouts, parameters } = roleInference(
+  role.name,
+);
 const agent = createReviewerAgent({
   director: compacting.build({
     contextWindow,
@@ -21,6 +25,7 @@ const agent = createReviewerAgent({
     compactAt: 0.6,
   }),
   id: "reviewer",
+  role: role.name,
   capabilities: [],
   inference: { ...source, parameters },
   tools: [mail, savedResultTools],

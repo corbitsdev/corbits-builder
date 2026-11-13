@@ -13,6 +13,7 @@ import {
   readLiveApp,
 } from "../../api/artifacts.ts";
 import { ApiFailure } from "../../api/types.ts";
+import { roleLabel, roleOf } from "./roles.ts";
 import { keys } from "../../queries/keys.ts";
 import { wording } from "../../config.ts";
 import { activityPhrase } from "./agent-activity.tsx";
@@ -125,7 +126,7 @@ export function useLiveApp({
     retry: false,
   });
   const coder = useProjectActivity(projectId).data?.agents.find(
-    (agent) => agent.role === "coder",
+    (agent) => roleOf(agent.role)?.writesCode === true,
   );
   const refusal = app.error instanceof ApiFailure ? app.error : undefined;
   const unavailable = refusal?.detail.code === "live_app_unavailable";
@@ -206,7 +207,9 @@ export function useLiveApp({
   return {
     app: state(),
     builderStatus:
-      coder === undefined ? null : { phrase: activityPhrase(coder) },
+      coder === undefined
+        ? null
+        : { role: roleLabel(coder.role), phrase: activityPhrase(coder) },
     demoLogin: data?.demoLogin,
     checklist: checklist.data ?? null,
     files,

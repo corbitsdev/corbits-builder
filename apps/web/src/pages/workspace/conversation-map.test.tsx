@@ -1,4 +1,5 @@
 import { describe, expect, test } from "bun:test";
+import "./plugin-roles.testing.ts";
 import { renderToStaticMarkup } from "react-dom/server";
 import {
   filedDispatches,

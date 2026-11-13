@@ -12,13 +12,17 @@ import {
 } from "@corbits-builder/hub/workflows/compaction";
 import { nativePackageName } from "@corbits-builder/hub/workflows/package-name";
 import { presentsFor } from "@corbits-builder/hub/plugins/catalog";
+import { declaredRole } from "@corbits-builder/plugin";
+import manifest from "../../package.json";
 import { createDesignerAgent } from "../agent.ts";
 import { createDesignerWorkflow } from "../workflow.ts";
 
+const role = declaredRole(manifest.builder);
 const compacting = compactingDirector(nativePackageName("designer"));
 
-const { source, contextWindow, timeouts, parameters } =
-  roleInference("designer");
+const { source, contextWindow, timeouts, parameters } = roleInference(
+  role.name,
+);
 const agent = createDesignerAgent<CodingSidecarEnv & MailToolEnv>({
   director: compacting.build({
     contextWindow,
@@ -29,12 +33,17 @@ const agent = createDesignerAgent<CodingSidecarEnv & MailToolEnv>({
     presents: presentsFor("designer"),
   }),
   id: "designer",
+  role: role.name,
   standards: [],
   inference: { ...source, parameters },
   tools: [
-    createDesignTools(),
+    createDesignTools(role.name),
     mail,
-    createSidecarCodingTools({ approval: "allow", workspace: "design" }),
+    createSidecarCodingTools({
+      role: role.name,
+      approval: "allow",
+      workspace: "design",
+    }),
   ],
 });
 const workflow = createDesignerWorkflow({

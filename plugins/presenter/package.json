@@ -30,10 +30,34 @@
     ],
     "when": "The person wants to share or present the project to an audience, such as their CEO, an investor or a client, as a slide deck and an approval package.",
     "unless": "They want a document written, or the thing itself built or changed.",
+    "roles": [
+      {
+        "name": "presenter",
+        "label": "Presenter",
+        "model": "presenter",
+        "limits": "presenter",
+        "tools": [],
+        "status": {
+          "working": "Making the presentation",
+          "done": "Made the presentation"
+        },
+        "preferences": [
+          "technical"
+        ],
+        "buildsFrom": [
+          "problem_brief",
+          "constraints",
+          "approaches",
+          "product_requirements",
+          "build_plan",
+          "design"
+        ],
+        "files": "approval_package"
+      }
+    ],
     "packages": {
       "presenter": {
-        "entry": "./src/packages/presenter.ts",
-        "role": "presenter"
+        "entry": "./src/packages/presenter.ts"
       }
     },
     "starters": {

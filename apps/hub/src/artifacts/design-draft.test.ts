@@ -213,7 +213,7 @@ test("file_design_option packs per-screen files and drops the untouched starter 
     const capabilities = {
       resolve: () => ({ resolve: async () => ({ kind: "http", fetch }) }),
     } as unknown as RuntimeCapabilities;
-    const tools = createDesignTools()({
+    const tools = createDesignTools("designer")({
       toolCwd: workspace,
       capabilities,
     } as never);
@@ -503,6 +503,7 @@ test("designer agent writes per-screen files, is held by checkBeforeDone until c
   const historyCompactor = trimHistory(160_000);
   const definition = createDesignerAgent<CodingSidecarEnv>({
     id: "designer",
+    role: "designer",
     director: compacting.build({
       contextWindow: 200_000,
       compactAt: 0.6,
@@ -511,7 +512,7 @@ test("designer agent writes per-screen files, is held by checkBeforeDone until c
     }),
     standards: [],
     inference: { provider: "anthropic", model: "claude-sonnet-4-6" },
-    tools: [createDesignTools(), designCodingTools],
+    tools: [createDesignTools("designer"), designCodingTools],
   });
 
   const shell = STARTER[".builder/designs/index.html"]!.replaceAll(

@@ -635,15 +635,6 @@ export const wording = {
   /** The composer's placeholder when no approval is open. An open approval keeps approval.composerPlaceholder. */
   composer: {
     passAlong: (role: string) => `Ask the ${role}…`,
-    role: {
-      coordinator: "coordinator",
-      writer: "writer",
-      reviewer: "reviewer",
-      designer: "designer",
-      coder: "coder",
-      presenter: "presenter",
-      worker: "worker",
-    },
     change: "What needs to change…",
     fix: "What needs fixing…",
     making: "What are you making…",
@@ -670,15 +661,6 @@ export const wording = {
   activity: {
     label: "Who is working",
     notRead: "Who is working could not be read.",
-    role: {
-      coordinator: "Coordinator",
-      writer: "Writer",
-      reviewer: "Reviewer",
-      designer: "Designer",
-      coder: "Coder",
-      presenter: "Presenter",
-      worker: "Worker",
-    },
     /** Before the run's first tool call: the hub has seen nothing from it yet. */
     starting: "getting started",
     /** How files and commands read in a status line: plain names, never paths or ids. */
@@ -897,12 +879,8 @@ export const wording = {
           thing ? `Making the ${thing} mockup` : "Making a mockup",
         done: (thing) => (thing ? `Made the ${thing} mockup` : "Made a mockup"),
       },
-      "worker do": {
-        working: () => "Working on it",
-        done: () => "Finished",
-      },
     } as Record<string, WorkPhrase>,
-    /** What a specialist does when no known action names it; its state stays at the row's end. */
+    /** What a specialist of no known role does when no action of its own names it. */
     working: "Working",
     done: "Finished its work",
     /** Where the work stands, at the end of its row. */

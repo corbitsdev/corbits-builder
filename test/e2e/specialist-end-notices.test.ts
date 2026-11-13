@@ -27,7 +27,7 @@ function required(name: string): string {
 
 const writer = {
   projection: {
-    steps: { write: { agent: { tags: { "writer.version": "1" } } } },
+    steps: { write: { agent: { tags: { role: "writer" } } } },
   },
 };
 

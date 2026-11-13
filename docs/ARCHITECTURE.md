@@ -46,6 +46,11 @@ directly. There is no separate embedding layer.
 
 Each role is a workflow package: an agent definition (prompt, tools,
 capabilities, model tier) and a workflow definition (trigger, steps, lifetime).
+A specialist's role is declared once, in its plugin's manifest under `roles`:
+its label, the model setting and output budget it runs on, its hub tools, its
+one-at-a-time slot, its status wording, and what it does (writes code, drafts
+the design, files documents). The hub and the interface read roles only from
+there, and tell a run's role by the `role` tag on its agent.
 
 - **Coordinator**: one per project, long-lived. Talks to the person, writes the
   problem brief, hands off work and asks for decisions.

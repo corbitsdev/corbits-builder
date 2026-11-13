@@ -33,10 +33,38 @@
     ],
     "when": "The project's code needs building for the first time, or the person asks for a change to the code the project has.",
     "unless": "The person is still unsure what they want and would rather compare options or see a mockup first.",
+    "roles": [
+      {
+        "name": "coder",
+        "label": "Coder",
+        "model": "builder",
+        "limits": "coding",
+        "tools": [
+          "read_artifact"
+        ],
+        "status": {
+          "working": "Working on the code",
+          "done": "Worked on the code"
+        },
+        "preferences": [
+          "replies",
+          "technical"
+        ],
+        "buildsFrom": [
+          "problem_brief",
+          "constraints",
+          "approaches",
+          "product_requirements",
+          "build_plan",
+          "design"
+        ],
+        "files": "app",
+        "writesCode": true
+      }
+    ],
     "packages": {
       "coder": {
-        "entry": "./src/packages/coder.ts",
-        "role": "coder"
+        "entry": "./src/packages/coder.ts"
       }
     },
     "starters": {

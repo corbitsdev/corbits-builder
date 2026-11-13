@@ -8,6 +8,7 @@ import {
   preferenceGuidance,
   preferenceRegistry,
 } from "../config/preferences.ts";
+import { COORDINATOR } from "../workflows/coordinator-role.ts";
 import {
   createPackageTools,
   DECK_CHECK,
@@ -75,7 +76,7 @@ test("file_package refuses until check_deck passes on the current deck, then fil
   const capabilities = {
     resolve: () => ({ resolve: async () => ({ kind: "http", fetch }) }),
   } as unknown as RuntimeCapabilities;
-  const runner = createPackageTools()({
+  const runner = createPackageTools("presenter")({
     toolCwd: workspace,
     capabilities,
   } as never);
@@ -245,16 +246,18 @@ test("file_package refuses until check_deck passes on the current deck, then fil
 });
 
 test("presenter workflow entry binds Medium tier inference and approval_package write grant", async () => {
-  const { MODEL_PROVIDERS, workflowBindings } =
+  const { MODEL_PROVIDERS, settingBinding } =
     await import("../config/models.ts");
   const { resolveRoleInference } =
     await import("../workflows/role-inference.ts");
-  const bindings = workflowBindings(MODEL_PROVIDERS, {
-    profile: "anthropic_default",
-  });
-  expect(bindings.presenter).toEqual(bindings.writer);
+  const { CATALOG } = await import("../plugins/catalog.ts");
+  const presenter = CATALOG.role("presenter");
+  if (!presenter) throw new Error("presenter_role_missing");
+  const choice = { profile: "anthropic_default" };
+  const binding = settingBinding(MODEL_PROVIDERS, choice, presenter.model);
+  expect(binding).toEqual(settingBinding(MODEL_PROVIDERS, choice, "writer"));
   process.env.BUILDER_ROLE_INFERENCE = JSON.stringify(
-    resolveRoleInference(MODEL_PROVIDERS, "presenter", bindings.presenter),
+    resolveRoleInference(MODEL_PROVIDERS, presenter.limits, binding),
   );
   const entry = await import("@corbits-builder/presenter/packages/presenter");
   expect(entry.director).toBeDefined();
@@ -279,7 +282,7 @@ test("experimental_approvals preference includes coordinator guidance when enabl
 
   const enabledGuidance = preferenceGuidance(
     { experimental_approvals: "yes" },
-    "coordinator",
+    COORDINATOR,
   ).join("\n");
   expect(enabledGuidance).toContain("present action");
   expect(enabledGuidance).toContain("approval_package");
@@ -287,7 +290,7 @@ test("experimental_approvals preference includes coordinator guidance when enabl
 
   const disabledGuidance = preferenceGuidance(
     { experimental_approvals: "no" },
-    "coordinator",
+    COORDINATOR,
   ).join("\n");
   expect(disabledGuidance).not.toContain("present action");
   expect(disabledGuidance).not.toContain("approval_package");

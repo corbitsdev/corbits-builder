@@ -13,6 +13,7 @@ import { homedir } from "node:os";
 import { basename, dirname, join } from "node:path";
 import { hasCode } from "@intx/types";
 import { isWorkflowAction } from "@corbits-builder/plugin-host/catalog";
+import type { Role } from "@corbits-builder/plugin";
 import {
   AppBundle,
   type ArtifactContent,
@@ -247,12 +248,17 @@ export function sharedBrowser() {
 type ReadFiled = (kind: string) => Promise<ArtifactContent | undefined>;
 type ReadBundle = () => Promise<Readonly<Record<string, string>> | undefined>;
 
-// The files of every skill pack of an action that starts this workflow, each in its pack's folder.
-const packFiles = (workflow: string) =>
+// The files of every skill pack of an action that starts a workflow whose role matches, each in its
+// pack's folder.
+const packFiles = (matches: (role: Role) => boolean) =>
   Object.fromEntries(
     CATALOG.actions
       .filter(isWorkflowAction)
-      .filter((action) => action.workflow === workflow)
+      .filter((action) => {
+        const started = CATALOG.packages.get(action.workflow);
+        const role = started && CATALOG.role(started.role);
+        return role !== undefined && matches(role);
+      })
       .flatMap((action) => action.packs)
       .flatMap(({ path, files }) =>
         Object.entries(files).map(([file, text]) => [
@@ -281,7 +287,9 @@ async function writeInputs(
   }
   await writeBundle(
     workspace,
-    packFiles(kind === "app" ? "coder" : "designer"),
+    packFiles((role) =>
+      kind === "app" ? role.writesCode === true : role.designs === true,
+    ),
   );
   if (kind === "design") return;
   const design = await read("design");

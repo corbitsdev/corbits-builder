@@ -1,5 +1,5 @@
 import { type } from "arktype";
-import { WorkflowRole } from "./roles.ts";
+import { RoleName } from "./roles.ts";
 
 // A live run by its latest committed event. idle: parked on input, waiting for mail. approval:
 // parked on an approval, waiting on the person. starting: no address or no event yet. unknown: its
@@ -14,7 +14,7 @@ export const LiveRunStates = type({
   runs: type({
     "+": "reject",
     runId: "string > 0",
-    role: WorkflowRole,
+    role: RoleName,
     state: RunState,
   }).array(),
 });
@@ -23,7 +23,7 @@ export type LiveRunStates = typeof LiveRunStates.infer;
 // A run at work or whose state cannot be told; none listed is nobody at work.
 export const ProjectWorker = type({
   "+": "reject",
-  role: WorkflowRole,
+  role: RoleName,
   state: "'working' | 'starting' | 'unknown'",
 });
 export type ProjectWorker = typeof ProjectWorker.infer;
@@ -60,6 +60,6 @@ export const ProjectStatus = type({
   next: { "+": "reject", text: "string > 0", "action?": ProjectNextAction },
   // Which specialist's newest run failed. The workspace must not infer this from
   // next-step prose. Absent when no specialist's newest run failed.
-  "failedSpecialist?": WorkflowRole,
+  "failedSpecialist?": RoleName,
 });
 export type ProjectStatus = typeof ProjectStatus.infer;

@@ -18,7 +18,6 @@ import {
   workflowRunRepoIdForAddress,
   type WorkflowRunReader,
 } from "@intx/hub-sessions";
-import type { WorkflowRole } from "@corbits-builder/schemas/installed-workflows";
 import {
   LiveRunStates,
   ProjectStatus,
@@ -32,6 +31,8 @@ import type { LiveApps } from "../live-app/runner.ts";
 import { errorCode, requestErrorMetadata } from "../request-error.ts";
 import { actorOf, authorizeProject } from "./authorization.ts";
 import { workflowRoleSql } from "../workflows/spawn-role.ts";
+import { COORDINATOR } from "../workflows/coordinator-role.ts";
+import { CATALOG } from "../plugins/catalog.ts";
 
 const LIVE = [...liveWorkflowRunStatuses];
 const log = getLogger(["corbits-builder", "hub", "next-step"]);
@@ -41,7 +42,7 @@ const UNREADABLE_LOG_MS = 5 * 60 * 1000;
 
 type ProjectRun = {
   runId: string;
-  role: WorkflowRole;
+  role: string;
   status: string;
   address: string | null;
   createdAt: Date;
@@ -53,10 +54,10 @@ type ProjectRun = {
 function newestFailedSpecialist(
   runs: readonly ProjectRun[],
 ): ProjectRun | undefined {
-  const newest = new Map<WorkflowRole, ProjectRun>();
+  const newest = new Map<string, ProjectRun>();
   for (const run of runs) if (!newest.has(run.role)) newest.set(run.role, run);
   return [...newest.values()].find(
-    (run) => run.role !== "coordinator" && run.status === "failed",
+    (run) => run.role !== COORDINATOR.name && run.status === "failed",
   );
 }
 
@@ -233,8 +234,10 @@ export function createProjectNextStep(
           limit: 1,
         })
       ).rows;
-      const coderRan = all.some((run) => run.role === "coder");
-      const coderLive = states.some((run) => run.role === "coder");
+      const writesCode = (run: { role: string }) =>
+        CATALOG.role(run.role)?.writesCode === true;
+      const coderRan = all.some(writesCode);
+      const coderLive = states.some(writesCode);
       const app = appStatus(
         projectId,
         coderLive || filed !== undefined,
@@ -293,10 +296,10 @@ export function createProjectNextStep(
           },
         });
       }
-      if (!states.some((run) => run.role === "coordinator"))
+      if (!states.some((run) => run.role === COORDINATOR.name))
         return note({
           working,
-          now: now(text.stopped("coordinator", undefined)),
+          now: now(text.stopped(COORDINATOR.name, undefined)),
           app,
           next: {
             text: text.next.resumeCoordinator,

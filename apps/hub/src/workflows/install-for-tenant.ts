@@ -22,11 +22,10 @@ import {
   INSTALLED_WORKFLOWS_KEY,
 } from "@corbits-builder/schemas/installed-workflows";
 import type { RoleBinding } from "@corbits-builder/schemas/models";
-import type { WorkflowRole } from "@corbits-builder/schemas/installed-workflows";
 import {
   modelProvider,
   providerOfRow,
-  workflowBindings,
+  settingBinding,
   type ModelDirectory,
 } from "../config/models.ts";
 import { modelDirectory } from "../settings/custom-providers.ts";
@@ -37,7 +36,7 @@ import {
 import { projectModelChoice } from "../projects/model-choice.ts";
 import { ProjectError } from "../projects/errors.ts";
 import { buildWorkflowPackages } from "./build-packages.ts";
-import { WORKFLOW_PACKAGES } from "../plugins/catalog.ts";
+import { runRole, WORKFLOW_PACKAGES } from "../plugins/catalog.ts";
 import { nativePackageName } from "./package-name.ts";
 import { resolveRoleInference, type RoleInference } from "./role-inference.ts";
 import type { Actor } from "../lib/actor.ts";
@@ -53,8 +52,9 @@ type InstallForTenantPorts = {
   >;
 };
 
-type Bindings = Record<WorkflowRole, RoleBinding>;
-type Inference = Partial<Record<WorkflowRole, RoleInference>>;
+// The model binding a role runs on, by the role's name.
+type Bindings = (role: string) => RoleBinding;
+type Inference = Record<string, RoleInference>;
 type Source = Pick<RoleBinding, "provider" | "model">;
 
 // One build per set of resolved role inference: it is inlined, so it is part of the bundle.
@@ -346,7 +346,7 @@ async function isCurrent(
         candidate.offering.id ===
         installed.packages[name]?.defaultSourceOfferingId,
     );
-    if (!row || !(await servesSource(db, directory, row, bindings[role])))
+    if (!row || !(await servesSource(db, directory, row, bindings(role))))
       return false;
   }
   return true;
@@ -421,15 +421,20 @@ export async function installForTenant(
     .from(tenant)
     .where(eq(tenant.id, actor.tenantId));
   const directory = await modelDirectory(ports.db, actor.tenantId);
-  const bindings = workflowBindings(
+  const choice = await projectModelChoice(
+    ports.db,
+    actor,
+    projectId,
     directory,
-    await projectModelChoice(ports.db, actor, projectId, directory),
   );
+  // Each role runs on the model setting it names, with its output budget.
+  const bindings: Bindings = (role) =>
+    settingBinding(directory, choice, runRole(role).model);
   const built = await builtPackages(
     Object.fromEntries(
       ROLES.map((role) => [
         role,
-        resolveRoleInference(directory, role, bindings[role]),
+        resolveRoleInference(directory, runRole(role).limits, bindings(role)),
       ]),
     ),
   );
@@ -448,15 +453,18 @@ export async function installForTenant(
     return existing;
   const offerings = new Map<string, string>();
   for (const role of ROLES) {
-    const key = bindings[role].provider + "\u0000" + bindings[role].model;
+    const binding = bindings(role);
+    const key = binding.provider + "\u0000" + binding.model;
     if (!offerings.has(key))
       offerings.set(
         key,
-        await offeringId(ports.db, directory, actor.tenantId, bindings[role]),
+        await offeringId(ports.db, directory, actor.tenantId, binding),
       );
   }
-  const offeringFor = (role: WorkflowRole) =>
-    offerings.get(bindings[role].provider + "\u0000" + bindings[role].model)!;
+  const offeringFor = (role: string) => {
+    const binding = bindings(role);
+    return offerings.get(binding.provider + "\u0000" + binding.model)!;
+  };
   const published: { assetId: string; entry: string; pin: string }[] = [];
   for (const item of built) {
     const assetId = await registryAsset(ports, actor, item.assetName);
@@ -480,7 +488,7 @@ export async function installForTenant(
       pin: item.packageName + "@" + item.version,
     });
   }
-  const deployment = (name: string, role: WorkflowRole) => {
+  const deployment = (name: string, role: string) => {
     const receipt = published.find((item) => item.pin.startsWith(name + "@"));
     if (!receipt) throw new Error("required_workflow_package_missing");
     return {

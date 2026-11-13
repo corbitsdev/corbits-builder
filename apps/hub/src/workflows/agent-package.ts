@@ -1,10 +1,10 @@
 // The workflow package of an agent a plugin declares in its manifest: one agent step, its prompt and
-// tools from the manifest, which build-packages.ts inlines, and the model of the role it runs as.
+// the role it plays from the manifest, which build-packages.ts inlines: the role's tools and model.
 import { mcpTools } from "@corbits/mcp/interchange/client";
-import { AgentPackage } from "@corbits-builder/plugin";
+import { AgentPackage, ROLE_TAG } from "@corbits-builder/plugin";
 import { defineAgent } from "@intx/agent/authoring";
 import { defineWorkflow, step } from "@intx/workflow/definition";
-import { createAgentArtifactTools } from "../artifacts/tools.ts";
+import { createArtifactTools } from "../artifacts/tools.ts";
 import { dropDegenerateTurn, trimHistory } from "./compaction.ts";
 import { compactingDirector } from "./director.ts";
 import { nativePackageName } from "./package-name.ts";
@@ -16,18 +16,20 @@ const STEP_TIMEOUT_MS = 600_000;
 
 const inlined = process.env.BUILDER_AGENT;
 if (!inlined) throw new Error("agent_package_required");
-const { name, version, prompt, tools, role, fileBeforeDone } =
-  AgentPackage.assert(JSON.parse(inlined));
+const { name, prompt, role, fileBeforeDone } = AgentPackage.assert(
+  JSON.parse(inlined),
+);
+const { tools } = role;
 const compacting = compactingDirector(nativePackageName(name));
-const { source, contextWindow, timeouts, parameters } = roleInference(role);
+const { source, contextWindow, timeouts, parameters } = roleInference(
+  role.name,
+);
 if (!source.provider.trim() || !source.model.trim())
   throw new Error(`${name} requires an explicit provider and model`);
 
 const factories = [];
 if (tools.includes("read_artifact") || tools.includes("write_artifact"))
-  factories.push(
-    createAgentArtifactTools(role, tools.includes("write_artifact")),
-  );
+  factories.push(createArtifactTools(role));
 // Exa's remote MCP server, keyless, its read-only tools without an ask.
 if (tools.includes("web"))
   factories.push(
@@ -51,8 +53,8 @@ const agent = defineAgent({
   }),
   capabilities: [],
   inference: { sources: [{ ...source, parameters }] },
-  // The hub tells a specialist's run by its role's tag, and this agent plays the role it runs as.
-  tags: { [`${role}.version`]: version },
+  // The hub tells a specialist's run by its role's tag.
+  tags: { [ROLE_TAG]: role.name },
 });
 
 export default defineWorkflow({

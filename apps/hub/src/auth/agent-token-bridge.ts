@@ -2,7 +2,6 @@ import { type } from "arktype";
 import {
   InstalledWorkflows,
   INSTALLED_WORKFLOWS_KEY,
-  type WorkflowRole,
 } from "@corbits-builder/schemas/installed-workflows";
 import { CheckRun } from "@corbits-builder/schemas/artifact";
 import { project, projectCoordinator, runAction } from "../db/schema.ts";
@@ -32,6 +31,7 @@ import type { Actor } from "../lib/actor.ts";
 import { createCoordinatorRegistry } from "./coordinator-registry.ts";
 import { projectResource } from "../projects/errors.ts";
 import { spawnedWorkflowRole } from "../workflows/spawn-role.ts";
+import { COORDINATOR } from "../workflows/coordinator-role.ts";
 import { buildPackageLayout } from "../builds/package-layout.ts";
 import { scopeWorkflows } from "../workflows/project-scope.ts";
 import { coordinatorUpgrading } from "@corbits-builder/schemas/conversation";
@@ -337,14 +337,14 @@ export function createAgentTokenBridge(
     if (runtimeScope) {
       if (!nativeBearer || c.req.method !== "GET") return denied();
       let binding = await registry.boundRun(identity.runId);
-      let role: WorkflowRole = "coordinator";
+      let role = COORDINATOR.name;
       if (!binding) {
         const launch = await db.query.workflowRunLaunchSpec.findFirst({
           where: eq(workflowRunLaunchSpec.anchorRunId, identity.runId),
         });
         const spawned = spawnedWorkflowRole(launch?.frozenApprovalBundle);
         if (!launch || !spawned) return denied();
-        role = spawned;
+        role = spawned.name;
         const [invoker] = await db
           .select({ runId: projectCoordinator.runId })
           .from(projectCoordinator)

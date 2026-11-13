@@ -10,7 +10,6 @@ import {
 } from "../plugins/catalog.ts";
 import { nativePackageName } from "./package-name.ts";
 import type { RoleInference } from "./role-inference.ts";
-import type { WorkflowRole } from "@corbits-builder/schemas/installed-workflows";
 
 // The version follows the bundle bytes, so a rebuilt workflow publishes beside the old one instead of
 // colliding with a tarball the registry already holds.
@@ -39,7 +38,7 @@ const PACKAGES = [...WORKFLOW_PACKAGES].map(([name, role]) => {
 export async function buildWorkflowPackages(
   destination: string,
   base: string,
-  inference: Partial<Record<WorkflowRole, RoleInference>>,
+  inference: Readonly<Record<string, RoleInference>>,
 ) {
   if (!/^\d+\.\d+\.\d+$/.test(base)) throw new Error("invalid_package_version");
   const output = resolve(destination);

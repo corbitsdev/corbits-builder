@@ -10,10 +10,11 @@ import { presenterPrompt } from "./prompt.ts";
 import { presentingSkills } from "./skills.ts";
 import { createPresenterWorkflow } from "./workflow.ts";
 
-test("createPresenterAgent requires explicit provider and model and sets presenter tags", () => {
+test("createPresenterAgent requires explicit provider and model and tags the presenter role", () => {
   expect(() =>
     createPresenterAgent({
       id: "presenter",
+      role: "presenter",
       inference: { provider: "", model: "claude-sonnet-5-5" },
       tools: [],
       capabilities: [],
@@ -22,13 +23,14 @@ test("createPresenterAgent requires explicit provider and model and sets present
 
   const agent = createPresenterAgent({
     id: "presenter",
+    role: "presenter",
     inference: { provider: "anthropic", model: "claude-sonnet-5-5" },
     tools: [],
     capabilities: [],
   });
   expect(agent.id).toBe("presenter");
   expect(agent.systemPrompt).toBe(presenterPrompt);
-  expect(agent.tags).toEqual({ "presenter.version": "0.2.0" });
+  expect(agent.tags).toEqual({ role: "presenter" });
   expect(presenterPrompt).toContain("write_deck");
   expect(presenterPrompt).toContain("check_deck");
   expect(presenterPrompt).toContain("file_package");
@@ -38,6 +40,7 @@ test("createPresenterAgent requires explicit provider and model and sets present
 test("createPresenterWorkflow creates a bounded single-trigger mail workflow", () => {
   const agent = createPresenterAgent({
     id: "presenter",
+    role: "presenter",
     inference: { provider: "anthropic", model: "claude-sonnet-5-5" },
     tools: [],
     capabilities: [],

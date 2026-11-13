@@ -7,6 +7,7 @@
  * coordinator's bookkeeping.
  */
 import { wording } from "../../config.ts";
+import { roleLabel } from "./roles.ts";
 import type { ConversationPart } from "@corbits/react-ui";
 
 const SNAKE = /\b[a-z][a-z0-9]*(?:_[a-z0-9]+){1,}\b/;
@@ -275,20 +276,13 @@ export function visibleChatText(text: string): string {
   return prose.length > 0 ? prose : plainFallback(text);
 }
 
-const roleLabels: Readonly<Record<string, string>> = wording.activity.role;
-
-/** A workflow run on a mail thread, named as the activity strip names its role. */
-export function participantLabel(sender: string): string {
-  return roleLabels[sender] ?? sender.charAt(0).toUpperCase() + sender.slice(1);
-}
-
 export function turnLabel(turn: {
   readonly role: "person" | "assistant" | "participant";
   readonly sender?: string;
 }): string {
   if (turn.role === "person") return wording.speaker.you;
   if (turn.role === "assistant") return wording.speaker.coordinator;
-  return participantLabel(turn.sender ?? wording.speaker.specialist);
+  return roleLabel(turn.sender ?? wording.speaker.specialist);
 }
 
 /** Parts the transcript may render. Tool and reasoning frames stay on the turn for devtools; their text is not copied into the body. */

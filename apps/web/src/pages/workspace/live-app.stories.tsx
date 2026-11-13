@@ -41,7 +41,7 @@ const files: PaneBarGroup = [
 
 const args: LiveAppViewProps = {
   app: { state: "running", url: APP_URL },
-  builderStatus: { phrase: "Writing the order list" },
+  builderStatus: { role: "Coder", phrase: "Writing the order list" },
   demoLogin: undefined,
   checklist: null,
   files,

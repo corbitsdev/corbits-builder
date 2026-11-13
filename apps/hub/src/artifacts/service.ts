@@ -75,11 +75,8 @@ import {
   type AppVersion,
   type AppVersionList,
 } from "@corbits-builder/schemas/artifact";
-import type {
-  AppRun,
-  SpawnedRole,
-} from "@corbits-builder/schemas/installed-workflows";
-import type { Fact, Shown } from "@corbits-builder/plugin";
+import type { AppRun } from "@corbits-builder/schemas/installed-workflows";
+import type { Fact, Role, Shown } from "@corbits-builder/plugin";
 import { OpenQuestions } from "@corbits-builder/schemas/questions";
 import {
   ApproachesMeta,
@@ -167,7 +164,8 @@ import {
   preferenceGuidance,
   resolvePreferences,
 } from "../config/preferences.ts";
-import { frozenModelChoice, workflowBindings } from "../config/models.ts";
+import { frozenModelChoice, settingBinding } from "../config/models.ts";
+import { COORDINATOR } from "../workflows/coordinator-role.ts";
 import { modelDirectory } from "../settings/custom-providers.ts";
 import { materialRemovedNote, materialsNote } from "../config/materials.ts";
 import {
@@ -493,9 +491,16 @@ export function createArtifactService(
       })
       .where(eq(project.id, projectId));
 
-  // The role's runs, newest first, each with its warm step, the design concept it works on, if
-  // any, whether it is live and when it ended: the live runs, or with ended, every run.
-  async function roleRuns(actor: Actor, role: SpawnedRole, ended: boolean) {
+  const writesCode = (role: Role) => role.writesCode === true;
+  const designs = (role: Role) => role.designs === true;
+
+  // The runs of the roles that match, newest first, each with its warm step, the design concept it
+  // works on, if any, whether it is live and when it ended: the live runs, or with ended, every run.
+  async function roleRuns(
+    actor: Actor,
+    matches: (role: Role) => boolean,
+    ended: boolean,
+  ) {
     const runs = await rawDB
       .select({
         runId: workflowRun.id,
@@ -522,10 +527,11 @@ export function createArtifactService(
       .orderBy(desc(workflowRun.createdAt));
     return runs.flatMap((run) => {
       const step = spawnedWorkflowStep(run.bundle);
-      return step?.role === role
+      return step && matches(step.role)
         ? [
             {
               runId: run.runId,
+              role: step.role.name,
               address: run.address,
               stepId: step.stepId,
               concept: run.concept,
@@ -537,17 +543,21 @@ export function createArtifactService(
     });
   }
 
-  // The workspaces of the role's live runs that the hub deployed on its local sidecar, newest
-  // first, each with the design concept its run works on, if any.
-  async function liveWorkspaces(actor: Actor, role: SpawnedRole) {
+  // The workspaces of the matching roles' live runs that the hub deployed on its local sidecar,
+  // newest first, each with the design concept its run works on, if any.
+  async function liveWorkspaces(
+    actor: Actor,
+    matches: (role: Role) => boolean,
+  ) {
     if (!sidecarDataDir) return [];
-    return (await roleRuns(actor, role, false)).flatMap(
-      ({ runId, address, stepId, concept }) =>
+    return (await roleRuns(actor, matches, false)).flatMap(
+      ({ runId, role, address, stepId, concept }) =>
         address === null
           ? []
           : [
               {
                 runId,
+                role,
                 dir: warmStepWorkspace(sidecarDataDir, address, stepId),
                 concept,
               },
@@ -562,7 +572,7 @@ export function createArtifactService(
   ): Promise<
     { runId: string; dir: string } | Exclude<AppSnapshotState, { ready: true }>
   > {
-    const [run] = await roleRuns(actor, "coder", true);
+    const [run] = await roleRuns(actor, writesCode, true);
     if (!run) return { ready: false, code: "coder_run_not_found" };
     const unavailable = (
       reason: NonNullable<
@@ -673,7 +683,7 @@ export function createArtifactService(
   // The project's current files: a coder's workspace while it builds, read where it lies, else
   // the saved app; undefined while the project has no app files at all.
   async function appSource(actor: Actor, projectId: string) {
-    for (const { dir } of await liveWorkspaces(actor, "coder"))
+    for (const { dir } of await liveWorkspaces(actor, writesCode))
       if (await workspaceHoldsApp(dir)) {
         const login = await readDemoLogin(dir);
         return {
@@ -789,7 +799,7 @@ export function createArtifactService(
     read: (workspace: string) => Promise<Record<string, string> | undefined>,
     skip?: string,
   ) {
-    const [newest] = (await roleRuns(actor, "designer", true)).filter(
+    const [newest] = (await roleRuns(actor, designs, true)).filter(
       (run) => run.runId !== skip && (run.concept ?? undefined) === concept,
     );
     if (!newest || !sidecarDataDir || newest.address === null) return undefined;
@@ -919,7 +929,7 @@ export function createArtifactService(
       .select({ bundle: workflowRunLaunchSpec.frozenApprovalBundle })
       .from(workflowRunLaunchSpec)
       .where(eq(workflowRunLaunchSpec.anchorRunId, writer.refId));
-    if (!run || spawnedWorkflowRole(run.bundle) !== "coder")
+    if (!run || !spawnedWorkflowRole(run.bundle)?.writesCode)
       throw new ProjectError(403, "app_write_not_coder");
     return AppVersionMetadata.assert({
       source: "check",
@@ -1032,7 +1042,7 @@ export function createArtifactService(
           const progress = tracker?.progress(run.runId);
           inFlight.push({
             runId: run.runId,
-            role,
+            role: role.name,
             startedAt: run.startedAt.toISOString(),
             status: run.status,
             state: inFlightState(heldOnApproval.has(run.runId), seen?.working),
@@ -1044,7 +1054,7 @@ export function createArtifactService(
           const error = await runFailure(runs, run);
           failed.push({
             runId: run.runId,
-            role,
+            role: role.name,
             endedAt: run.endedAt.toISOString(),
             ...(error ? { error } : {}),
           });
@@ -1096,7 +1106,7 @@ export function createArtifactService(
         ),
         appBuilt: await appBuilt(db, actor.tenantId),
         preferences,
-        preferenceGuidance: preferenceGuidance(preferences, "coordinator"),
+        preferenceGuidance: preferenceGuidance(preferences, COORDINATOR),
       };
     },
 
@@ -1173,7 +1183,7 @@ export function createArtifactService(
         const command = await commandProgress(run.address, run.bundle);
         agents.push({
           runId: run.runId,
-          role,
+          role: role.name,
           since: shown.since,
           tools: shown.tools,
           ...(shown.said ? { said: shown.said } : {}),
@@ -1748,19 +1758,19 @@ export function createArtifactService(
         });
       await requireProject(actor, projectId, "manage");
       const tokens: Record<string, string> = input.tokens;
-      let designerRunId: string | undefined;
-      for (const workspace of await liveWorkspaces(actor, "designer")) {
+      let designer: { runId: string; role: string } | undefined;
+      for (const workspace of await liveWorkspaces(actor, designs)) {
         if ((workspace.concept ?? undefined) !== input.concept) continue;
         if ((await readDesignDraft(workspace.dir)) === undefined) continue;
         await editDesignStyles(workspace.dir, (css) =>
           setThemeTokens(css, tokens),
         );
-        designerRunId = workspace.runId;
+        designer = workspace;
         break;
       }
       let artifact: ArtifactRef | undefined;
       const filed = await filedDesign(actor, input.concept);
-      if (!filed && designerRunId === undefined)
+      if (!filed && designer === undefined)
         throw new ProjectError(404, "design_not_found");
       if (filed) {
         const bundle = await filed.files();
@@ -1782,7 +1792,7 @@ export function createArtifactService(
         };
       }
       const updated: DesignTweaksReceipt["updated"] = [
-        ...(designerRunId === undefined ? [] : ["workspace" as const]),
+        ...(designer === undefined ? [] : ["workspace" as const]),
         ...(artifact ? ["version" as const] : []),
       ];
       const notified: DesignTweaksReceipt["notified"] = [];
@@ -1792,11 +1802,11 @@ export function createArtifactService(
           coordinator.runId,
           coordinatorTweaksNote(tokens, updated),
         );
-        notified.push("coordinator");
+        notified.push(COORDINATOR.name);
       }
-      if (designerRunId) {
-        await mailRun(designerRunId, designerTweaksNote(tokens));
-        notified.push("designer");
+      if (designer) {
+        await mailRun(designer.runId, designerTweaksNote(tokens));
+        notified.push(designer.role);
       }
       return { updated, ...(artifact ? { artifact } : {}), notified };
     },
@@ -1816,7 +1826,7 @@ export function createArtifactService(
           rawDB,
           directory,
           actor.tenantId,
-          workflowBindings(directory, choice).coordinator,
+          settingBinding(directory, choice, COORDINATOR.model),
         ));
       return acceptedMaterials(offering?.capabilities ?? []);
     },
@@ -1990,7 +2000,7 @@ export function createArtifactService(
       projectId: string,
     ): Promise<AcceptanceChecklist> {
       await requireProject(actor, projectId, "read");
-      for (const { dir } of await liveWorkspaces(actor, "coder")) {
+      for (const { dir } of await liveWorkspaces(actor, writesCode)) {
         const markdown = await readAcceptance(dir);
         if (markdown !== undefined) return { markdown };
       }
@@ -2005,7 +2015,7 @@ export function createArtifactService(
     // ends, the one saved with the app, whose pictures the bundle carries as binaries.
     async manual(actor: Actor, projectId: string): Promise<UserManual> {
       await requireProject(actor, projectId, "read");
-      for (const { dir } of await liveWorkspaces(actor, "coder")) {
+      for (const { dir } of await liveWorkspaces(actor, writesCode)) {
         const manual = await readUserManual(dir);
         if (manual !== undefined) return manual;
       }
@@ -2648,7 +2658,7 @@ export function createArtifactService(
             eq(workflowRun.tenantId, actor.tenantId),
           ),
         );
-      if (spawnedWorkflowRole(run?.bundle) !== "coder")
+      if (!spawnedWorkflowRole(run?.bundle)?.writesCode)
         throw new ProjectError(404, "coder_run_not_found", {
           runId: input.runId,
         });

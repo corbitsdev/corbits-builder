@@ -689,7 +689,7 @@ test("check_design validates DESIGN.md and .dark in styles.css and auto-files th
     const capabilities = {
       resolve: () => ({ resolve: async () => ({ kind: "http", fetch }) }),
     } as unknown as RuntimeCapabilities;
-    const tools = createDesignTools()({
+    const tools = createDesignTools("designer")({
       toolCwd: workspace,
       capabilities,
     } as never);
