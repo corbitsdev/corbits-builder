@@ -8,28 +8,13 @@
 /* One run of text, so the version follows the last word of a title that wraps. */
 .row {
   min-width: 0;
+  margin: 0;
 }
 
-/* The title is the one way into the document, so it is underlined at rest: a phone has no hover to
-   reveal it. Inline padding makes the target taller without moving the lines. */
 .title {
-  display: inline;
-  padding: var(--space-1) 0;
-  border: 0;
-  background: none;
-  font: inherit;
   font-weight: 500;
   color: var(--wb-foreground);
-  text-align: start;
-  text-decoration: underline;
-  text-decoration-color: var(--wb-border);
-  text-underline-offset: 4px;
   overflow-wrap: anywhere;
-  cursor: pointer;
-}
-
-.title:hover {
-  text-decoration-color: currentColor;
 }
 
 .meta {
@@ -54,8 +39,7 @@
   color: var(--wb-foreground);
 }
 
-.noSummary {
-  margin: 0;
-  font-size: 0.9375rem;
-  color: var(--wb-muted-foreground);
+/* Sits at the start of the column rather than stretched across it, so only its words take a press. */
+.open {
+  align-self: flex-start;
 }

@@ -512,6 +512,8 @@ export type Says = { doing: string; done: string };
 export type ScreenSays<In, Out> = {
   label: (input: In) => string;
   chose?: (output: Out) => string | undefined;
+  // What the prompt box asks while the screen waits, where what the person types answers it in words.
+  reply?: string;
 };
 
 /** A phrase with the thing named, or without one, where it names none. */

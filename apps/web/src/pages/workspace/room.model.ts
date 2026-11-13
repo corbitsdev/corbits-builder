@@ -175,7 +175,7 @@ import type {
   ShownDocument,
 } from "./screen-question.tsx";
 import { inShort } from "@corbits-builder/schemas/in-short";
-import { roleLabel, roleOf } from "./roles.ts";
+import { roleLabel, roleOf, screenWords } from "./roles.ts";
 import { screensFor, selectionNames } from "./screens.ts";
 
 // The stream says when the room moved. This read covers what it cannot see,
@@ -1620,6 +1620,7 @@ export function useRoom({
       list: shownDocuments,
       open: openDocument,
     },
+    focusReply: () => composerRef.current?.focus(),
   };
   const pageHost: PageHost = {
     stage: (staged) => {
@@ -1730,6 +1731,13 @@ export function useRoom({
       placeholder: composerPlaceholder({
         approvalOpen: openApproval !== undefined,
         questionsOpen: openQuestion !== undefined,
+        screenReply:
+          openQuestion !== undefined && "plugin" in openQuestion.asked
+            ? screenWords(
+                openQuestion.asked.plugin,
+                openQuestion.asked.action ?? "",
+              )?.reply
+            : undefined,
         status: projectStatus.data,
         nothingFiled: nothingYet,
       }),

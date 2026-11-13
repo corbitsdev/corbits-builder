@@ -1,7 +1,6 @@
 import { describe, expect, test } from "bun:test";
 import { isValidElement, type ReactNode } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
-import { documentBlockText } from "@corbits-builder/plugin-ui/document-block";
 import { ApproveDocuments, text, type ShownDocument } from "./view.tsx";
 
 // A kind no list in Builder knows, as a writer may file any document.
@@ -17,6 +16,7 @@ type Submit = Parameters<typeof ApproveDocuments>[0]["submit"];
 const props = (
   document: ShownDocument,
   submit: Submit = async () => undefined,
+  focusReply: () => void = () => undefined,
 ) => ({
   input: { kinds: [document.kind] },
   project: {},
@@ -27,7 +27,10 @@ const props = (
   submit,
   submitting: false,
   answer: undefined,
-  host: { documents: { list: [document], open: () => undefined } },
+  host: {
+    documents: { list: [document], open: () => undefined },
+    focusReply,
+  },
 });
 
 const card = (document: ShownDocument) =>
@@ -52,11 +55,6 @@ function control(node: ReactNode, label: string): Pressable | undefined {
   );
 }
 
-const buttons = (html: string) =>
-  [...html.matchAll(/<button[^>]*>([^<]*)<\/button>/g)].map(
-    ([, label]) => label,
-  );
-
 describe("approving a document of any kind", () => {
   test("the card names the document from the document itself", () => {
     const asked = text.ask([manual.kind]);
@@ -64,16 +62,10 @@ describe("approving a document of any kind", () => {
     expect(card(manual)).toContain(asked);
   });
 
-  test("the title opens the document, and its summary sits under it", () => {
-    const html = card({ ...manual, summary: "- **High water** at dusk." });
-    expect(buttons(html)).toContain(manual.title);
-    expect(html).toContain("<strong>High water</strong>");
-  });
-
-  test("a document with no summary says so, and its title still opens it", () => {
-    const html = card(manual);
-    expect(html).toContain(documentBlockText.noSummary);
-    expect(buttons(html)).toContain(manual.title);
+  test("each document shows its own summary", () => {
+    expect(card({ ...manual, summary: "- **High water** at dusk." })).toContain(
+      "<strong>High water</strong>",
+    );
   });
 
   test("approving answers with the document at the version shown", () => {
@@ -91,5 +83,24 @@ describe("approving a document of any kind", () => {
         ],
       },
     ]);
+  });
+
+  test("asking for changes puts the person in the prompt box and answers nothing", () => {
+    const answers: unknown[] = [];
+    let focused = 0;
+    const view = ApproveDocuments(
+      props(
+        manual,
+        async (answer) => {
+          answers.push(answer);
+        },
+        () => {
+          focused += 1;
+        },
+      ),
+    );
+    control(view, text.askForChanges)?.onClick?.();
+    expect(focused).toBe(1);
+    expect(answers).toEqual([]);
   });
 });

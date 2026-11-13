@@ -1,7 +1,7 @@
 /**
  * The ask to approve the documents, as one card in the conversation: what is asked, each document
- * as the shared document block shows any filed document, and one Approve for them all.
- * Settles to one line once answered.
+ * as the shared document block shows any filed document, one Approve for them all, and a way to
+ * ask for changes instead, which is the prompt box. Settles to one line once answered.
  */
 import { Button } from "@corbits/react-ui";
 import type { ScreenViewProps } from "@corbits-builder/plugin";
@@ -30,6 +30,7 @@ export type ShownDocument = {
 
 export type Host = {
   documents: { list: readonly ShownDocument[]; open(kind: string): void };
+  focusReply: () => void;
 };
 
 type Props = ScreenViewProps<
@@ -51,7 +52,8 @@ export const text = {
   approved: "already approved",
   notFiled: (kind: string) => `${kind} is not filed yet.`,
   approve: "Approve",
-  orWrite: "Or write below what should change.",
+  askForChanges: "Ask for changes",
+  orType: "Or type what should change in the message box below.",
   noDocuments: "The documents cannot be shown here.",
   settled: (approved: readonly { title: string; version: number }[]) => {
     const [only, ...others] = approved;
@@ -100,7 +102,7 @@ export function ApproveDocuments({
     <ScreenCard
       title={text.ask(input.kinds)}
       actions={
-        <ScreenActions note={text.orWrite}>
+        <ScreenActions note={text.orType}>
           <Button
             type="button"
             size="sm"
@@ -116,6 +118,15 @@ export function ApproveDocuments({
             }
           >
             {text.approve}
+          </Button>
+          <Button
+            type="button"
+            size="sm"
+            variant="outline"
+            disabled={submitting}
+            onClick={host.focusReply}
+          >
+            {text.askForChanges}
           </Button>
         </ScreenActions>
       }

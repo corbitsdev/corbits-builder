@@ -5,6 +5,7 @@ import { QueryClient } from "@tanstack/react-query";
 import { renderToStaticMarkup } from "react-dom/server";
 import type { RunStep } from "@corbits-builder/schemas/activity";
 import { COORDINATOR_NOTE_LEAD } from "@corbits-builder/schemas/native-specialist";
+import { documentBlockText } from "@corbits-builder/plugin-ui/document-block";
 import { wording } from "../../config.ts";
 import {
   dispatchesOf,
@@ -391,11 +392,13 @@ test("after a reload a finished writer's row still opens what it filed", () => {
     onOpenDocument: () => {},
   });
   expect(standing.status.state).toBe("ready");
-  expect(
-    renderToStaticMarkup(
-      createElement(WorkUnitStepView, { ...standing, run: () => null }),
-    ),
-  ).toContain('<button type="button">Echo Requirements</button>');
+  const html = renderToStaticMarkup(
+    createElement(WorkUnitStepView, { ...standing, run: () => null }),
+  );
+  // The block's one way in names the document it opens.
+  expect(html).toContain(
+    `aria-label="${documentBlockText.openNamed("Echo Requirements")}"`,
+  );
 });
 
 test("a coder whose call returned is starting until its own run says otherwise, whatever is already filed", () => {

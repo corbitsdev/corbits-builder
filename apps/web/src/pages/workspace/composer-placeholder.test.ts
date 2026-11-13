@@ -22,12 +22,14 @@ function standing(input: {
 function placeholder(input: {
   approvalOpen?: boolean;
   questionsOpen?: boolean;
+  screenReply?: string;
   nothingFiled?: boolean;
   status?: ProjectStatus;
 }): string {
   return composerPlaceholder({
     approvalOpen: input.approvalOpen ?? false,
     questionsOpen: input.questionsOpen ?? false,
+    screenReply: input.screenReply,
     nothingFiled: input.nothingFiled ?? false,
     status: input.status,
   });
@@ -165,5 +167,13 @@ describe("composer placeholder", () => {
     expect(
       placeholder({ approvalOpen: true, questionsOpen: true, status }),
     ).toBe(wording.approval.composerPlaceholder);
+  });
+
+  test("an open screen that says what a reply is for asks that instead", () => {
+    const reply = "What should change in the tide table guide?";
+    expect(placeholder({ questionsOpen: true, screenReply: reply })).toBe(
+      reply,
+    );
+    expect(placeholder({ screenReply: reply })).not.toBe(reply);
   });
 });

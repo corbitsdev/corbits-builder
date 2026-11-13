@@ -22,13 +22,16 @@ export function composerPlaceholder(input: {
   approvalOpen: boolean;
   /** The coordinator's questions wait on the person; a message sent instead answers them in its own words. */
   questionsOpen: boolean;
+  /** What the open question's screen asks of the prompt box, when it says. */
+  screenReply: string | undefined;
   /** Absent until project status has loaded. */
   status: ProjectStatus | undefined;
   /** No pane deliverables, design draft, or concepts yet. */
   nothingFiled: boolean;
 }): string {
   if (input.approvalOpen) return wording.approval.composerPlaceholder;
-  if (input.questionsOpen) return wording.questions.composerPlaceholder;
+  if (input.questionsOpen)
+    return input.screenReply ?? wording.questions.composerPlaceholder;
   const status = input.status;
   if (status === undefined) return copy.reply;
   const role = passAlongRole(status.working);

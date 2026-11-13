@@ -1,14 +1,17 @@
 /**
- * A filed document as the person meets it wherever it is shown: its title, which opens it, its
- * version quietly beside it, and its own summary under it, so a document reads the same whether it
- * is put to them for approval or simply handed back finished. With no summary it says so.
+ * A filed document as the person meets it wherever it is shown: its title with its version quietly
+ * beside it, its own summary under it, and one link that opens the whole document, so a document
+ * reads the same whether it is put to them for approval or simply handed back finished.
  */
+import { Button } from "@corbits/react-ui";
 import { Markdown } from "./markdown.tsx";
 import styles from "./document-block.module.css";
 
 export const documentBlockText = {
   version: (version: number) => `v${String(version)}`,
-  noSummary: "It has no summary.",
+  open: "Read the full document",
+  // Several blocks can share a card, so each link's name says which document it opens.
+  openNamed: (title: string) => `Read the full document: ${title}`,
 };
 
 export type DocumentBlockProps = {
@@ -33,26 +36,28 @@ export function DocumentBlock({
 }: DocumentBlockProps) {
   return (
     <div className={styles.block} data-slot="document-block">
-      <div className={styles.row}>
-        <button
-          type="button"
-          className={styles.title}
-          onClick={() => onOpen(kind)}
-        >
-          {title}
-        </button>
+      <p className={styles.row}>
+        <span className={styles.title}>{title}</span>
         <span className={styles.meta}>
           {documentBlockText.version(version)}
           {note === undefined ? null : ` · ${note}`}
         </span>
-      </div>
-      {summary === undefined ? (
-        <p className={styles.noSummary}>{documentBlockText.noSummary}</p>
-      ) : (
+      </p>
+      {summary === undefined ? null : (
         <div className={styles.summary}>
           <Markdown source={summary} />
         </div>
       )}
+      <Button
+        type="button"
+        variant="link"
+        size="sm"
+        className={styles.open}
+        aria-label={documentBlockText.openNamed(title)}
+        onClick={() => onOpen(kind)}
+      >
+        {documentBlockText.open}
+      </Button>
     </div>
   );
 }

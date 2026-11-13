@@ -34,6 +34,7 @@ let actions: ReadonlyMap<
 export type ScreenWords = {
   label: (input: unknown) => string | undefined;
   chose: (output: unknown) => string | undefined;
+  reply: string | undefined;
 };
 let screens: ReadonlyMap<string, ScreenWords> = new Map();
 
@@ -108,7 +109,7 @@ export function installRoles({
       Object.keys(builder.actions).flatMap((action) => {
         const screen = definitionOf.get(`${folder} ${action}`);
         if (!isScreen(screen) || screen.describe.says === undefined) return [];
-        const { label, chose } = screen.describe.says;
+        const { label, chose, reply } = screen.describe.says;
         const words: ScreenWords = {
           label: (raw) => {
             const input = screen.input(raw);
@@ -120,6 +121,7 @@ export function installRoles({
               ? undefined
               : chose(output);
           },
+          reply,
         };
         return [[`${builder.handle} ${action}`, words] as const];
       }),

@@ -177,7 +177,8 @@
           "approved:{kinds}"
         ],
         "host": [
-          "documents"
+          "documents",
+          "focusReply"
         ]
       }
     },

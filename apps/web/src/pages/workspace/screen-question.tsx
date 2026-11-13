@@ -60,6 +60,8 @@ export type HostSupplies = {
   earlierAnswer: unknown;
   /** The project's filed documents, and a way to open one over the room by its kind. */
   documents: { list: readonly ShownDocument[]; open(kind: string): void };
+  /** Puts the person in the prompt box, where what they type answers the open question in words. */
+  focusReply: () => void;
   /** The filed design concepts the person has yet to choose between, in the order they were asked about. */
   designConcepts: readonly ChoosableConcept[];
 };
@@ -78,6 +80,7 @@ const SUPPLIED: ReadonlySet<string> = new Set<keyof HostSupplies>([
   "mockupFrame",
   "earlierAnswer",
   "documents",
+  "focusReply",
   "designConcepts",
 ]);
 
