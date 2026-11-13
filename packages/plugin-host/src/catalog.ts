@@ -882,8 +882,8 @@ async function readyPlanPlugin(
   };
 }
 
-// Every action a ready-made plan names is a workflow or check action of each installed specialist with its
-// handle, so whichever of them a project uses has it.
+// Every action a ready-made plan names is an action of each installed specialist with its handle, so
+// whichever of them a project uses has it. A screen is a step too: asking the person is work.
 function checkCatalog(plugins: readonly Plugin[]) {
   const specialists = plugins.filter(isSpecialist);
   const offered = (handle: string, name: string) => {
@@ -893,9 +893,7 @@ function checkCatalog(plugins: readonly Plugin[]) {
     return (
       sharing.length > 0 &&
       sharing.every(({ actions }) =>
-        actions.some(
-          (action) => action.action === name && !isScreenAction(action),
-        ),
+        actions.some((action) => action.action === name),
       )
     );
   };
@@ -904,7 +902,7 @@ function checkCatalog(plugins: readonly Plugin[]) {
       for (const step of builder.steps)
         if (!offered(step.plugin, step.action))
           throw new Error(
-            `${builder.handle} names ${step.plugin} ${step.action}, which is not an installed workflow or check action of every plugin with that handle`,
+            `${builder.handle} names ${step.plugin} ${step.action}, which is not an installed action of every plugin with that handle`,
           );
 }
 

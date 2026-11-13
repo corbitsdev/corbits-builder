@@ -24,6 +24,9 @@
     "./choose": "./src/choose/screen.ts",
     "./choose/schema": "./src/choose/schema.ts",
     "./choose/view": "./src/choose/view.tsx",
+    "./looks": "./src/looks/screen.ts",
+    "./looks/schema": "./src/looks/schema.ts",
+    "./looks/view": "./src/looks/view.tsx",
     "./packages/*": "./src/packages/*.ts"
   },
   "dependencies": {
@@ -87,6 +90,13 @@
           "choose",
           "review"
         ]
+      },
+      "looks": {
+        "runs": "screen",
+        "when": "A first set of mockups is about to start and the person has not said how many looks they want to compare.",
+        "unless": "They already said how many looks they want, mockups were made already, or they have handed their approvals over to Builder.",
+        "screen": "./src/looks/screen.ts",
+        "view": "./src/looks/view.tsx"
       },
       "review": {
         "runs": "screen",

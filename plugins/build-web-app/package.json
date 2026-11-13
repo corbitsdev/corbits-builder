@@ -26,6 +26,13 @@
       },
       {
         "plugin": "designer",
+        "action": "looks",
+        "title": "Choose how many looks",
+        "optional": true,
+        "requires": []
+      },
+      {
+        "plugin": "designer",
         "action": "mockup",
         "title": "Design the look",
         "requires": [],

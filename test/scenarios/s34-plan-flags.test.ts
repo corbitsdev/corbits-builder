@@ -129,6 +129,7 @@ scenario({
     expect(userManual.optional).toBe(true);
     const requirements = byTitle("Write the requirements");
     expect(requirements.optional).toBeUndefined();
+    expect(byTitle("Choose how many looks").optional).toBe(true);
     expect(byTitle("Design the look").approval).toEqual({
       of: ["product_requirements"],
       when: "optional",

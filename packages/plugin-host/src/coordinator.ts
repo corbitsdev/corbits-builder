@@ -502,7 +502,7 @@ const stepsOf = (
 ) =>
   readyPlanStep(readyPlan).steps.map((step) => {
     const action = installedAction(catalog, step.plugin, step.action);
-    if (!action || isScreenAction(action))
+    if (!action)
       throw new Error(
         `${readyPlan.builder.handle} names ${step.plugin} ${step.action}`,
       );

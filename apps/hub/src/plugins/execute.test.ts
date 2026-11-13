@@ -1,5 +1,7 @@
 import { expect, test } from "bun:test";
 import type { RuntimeCapabilities } from "@intx/types/runtime-capabilities";
+import { planState } from "@corbits-builder/plugin-host/plan";
+import { CATALOG } from "./catalog.ts";
 import { createExecuteTools } from "./tools.ts";
 
 const deployment = {
@@ -356,7 +358,7 @@ test("execute on build-web-app is turned to plan add, which puts the plan's step
   expect(added.isError).toBeUndefined();
   expect(idea.state.following).toEqual(["build-web-app"]);
   expect(idea.state.plan).toHaveLength(1);
-  expect(idea.state.plan[0]?.steps).toHaveLength(5);
+  expect(idea.state.plan[0]?.steps).toHaveLength(6);
   expect(added.content).toContain(
     "The project is now following the build-web-app plan.",
   );
@@ -365,6 +367,7 @@ test("execute on build-web-app is turned to plan add, which puts the plan's step
     [
       "Where each step stands now:",
       "  writer write-requirements: can start now",
+      "  designer looks (optional, the person may decline it): can start now",
       "  designer mockup: can start now",
       '  writer write-build-plan: needs the person\'s go-ahead, which the step "Write the build plan" asks for: the person chose a design from the design options',
       '  coder build: needs the person\'s go-ahead, which the step "Build the app" asks for: the person approved the current version of the build plan, or leaves approvals to you and the person chose a design from the design options',
@@ -386,6 +389,57 @@ test("execute on build-web-app is turned to plan add, which puts the plan's step
   expect(guidance.content).toContain(
     'Now: needs the person\'s go-ahead, which the step "Build the app" asks for: the person approved',
   );
+});
+
+test("build-web-app asks how many looks before the mockup step; the answer sets the preference and does the step, and handing approvals over skips it", async () => {
+  const idea = project([]);
+  await idea.plan({ operation: "add", plan: "build-web-app" });
+  const titles = (idea.state.plan[0]?.steps ?? []).map(
+    (step) => "title" in step && step.title,
+  );
+  expect(titles.indexOf("Choose how many looks")).toBe(
+    titles.indexOf("Design the look") - 1,
+  );
+
+  const looks = CATALOG.screens.find(
+    ({ plugin, action }) => plugin === "designer" && action === "looks",
+  );
+  const answered = looks?.answer({ looks: "two" });
+  expect(answered?.ok && answered.preferences).toEqual({
+    design_concepts: "two",
+  });
+
+  const step = {
+    id: "looks",
+    title: "Choose how many looks",
+    plugin: "designer",
+    action: "looks",
+    input: {},
+    askFirst: false,
+    optional: true,
+  };
+  const answeredStep = {
+    id: "looks",
+    title: "Choose how many looks",
+    plugin: "designer",
+    action: "looks",
+    input: {},
+    askFirst: false,
+    optional: true,
+    answered: { by: "person", at: new Date(0).toISOString() },
+  };
+  const stateOf = (saved: typeof step, asksApprovals: boolean) =>
+    planState(CATALOG, [saved], {
+      facts: new Set(),
+      personFacts: new Set(),
+      asksApprovals,
+      checks: [],
+      runs: [],
+      questions: [],
+    })[0]?.state;
+  expect(stateOf(step, true)).toBe("not_started");
+  expect(stateOf(answeredStep, true)).toBe("done");
+  expect(stateOf(step, false)).toBe("skipped");
 });
 
 test("taking the plan's group out stops the project following it, and so does the app existing", async () => {

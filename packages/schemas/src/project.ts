@@ -124,6 +124,8 @@ const PlanStepBody = type({
   "requires?": type("string > 0").array(),
   // The person said no to an optional step; it stays declined until they restore it.
   "declined?": PlanMark,
+  // The person answered the step's screen, which does a screen step.
+  "answered?": PlanMark,
 });
 const StoredPlanChild = PlanStepBody.merge({ "+": "reject", id: PlanStepId });
 export type StoredPlanChild = typeof StoredPlanChild.infer;

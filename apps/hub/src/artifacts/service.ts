@@ -214,8 +214,8 @@ const inFlightState = (
   if (heldOnApproval) return "approval";
   return working ? "working" : "waiting";
 };
-// A plan step as stored, under the id it came with or a short new one, with the go-ahead, cancel
-// and decline that marksOf says it keeps; only an optional step keeps a decline.
+// A plan step as stored, under the id it came with or a short new one, with the go-ahead, cancel,
+// decline and answer that marksOf says it keeps; only an optional step keeps a decline.
 function savedPlanStep(
   step: PlanChildWrite,
   marksOf: (step: PlanChildWrite, id: string) => PlanChildWrite | undefined,
@@ -239,6 +239,7 @@ function savedPlanStep(
   if (marks?.goAhead) saved.goAhead = marks.goAhead;
   if (marks?.cancelled) saved.cancelled = marks.cancelled;
   if (marks?.declined && saved.optional) saved.declined = marks.declined;
+  if (marks?.answered) saved.answered = marks.answered;
   return saved;
 }
 // The plan's action steps, those its groups hold among them.
@@ -1417,6 +1418,37 @@ export function createArtifactService(
           stepDeclinedNote(step.title, change.declined),
         );
       return plan;
+    },
+
+    // The person answered a screen, which does the plan's first open step for that screen. The
+    // answer cannot name its step, since a parked question carries only the screen and its input.
+    async answerPlanStep(
+      actor: Actor,
+      projectId: string,
+      screen: { plugin: string; action: string },
+    ) {
+      await requireProject(actor, projectId, "manage");
+      const [row] = await rawDB
+        .select({ plan: project.plan })
+        .from(project)
+        .where(eq(project.id, projectId));
+      const plan = row?.plan;
+      const step = planActionSteps(plan?.steps ?? []).find(
+        (each) =>
+          each.plugin === screen.plugin &&
+          each.action === screen.action &&
+          !each.answered &&
+          !each.declined &&
+          !each.cancelled,
+      );
+      if (!plan || !step) return;
+      const at = new Date().toISOString();
+      step.answered = { by: actor.principalId, at };
+      plan.updatedAt = at;
+      await rawDB
+        .update(project)
+        .set({ plan })
+        .where(eq(project.id, projectId));
     },
 
     // The person gives the go-ahead on a step they asked to be consulted on, or turns "ask me

@@ -199,7 +199,8 @@ export function mountArtifactRoutes(
   };
   // The one way the person answers the coordinator's open question, from the answers route or an
   // approval that covers what the question asked: a screen's output saves the values it writes,
-  // records what it approves and sets the preferences it names before the answer reaches the run.
+  // records what it approves, sets the preferences it names and marks the plan step it does before
+  // the answer reaches the run.
   const answer = async (
     c: Context<TenantEnv>,
     projectId: string,
@@ -254,6 +255,7 @@ export function mountArtifactRoutes(
         );
       if (Object.keys(answered.preferences).length > 0)
         await prefer(c, projectId, answered.preferences);
+      await service.answerPlanStep(current, projectId, screen);
     }
     await answerQuestionAsCaller(
       c,

@@ -21,6 +21,8 @@ export type PlanStep = {
   approval?: Approval;
   requires?: Fact[];
   declined?: Mark;
+  // The person answered the step's screen, which is what doing a screen step is.
+  answered?: Mark;
 };
 
 /** A step that only groups the steps it holds: it names no action and starts nothing. */
@@ -145,6 +147,7 @@ export function planState(
     if (step.approval) view.approval = step.approval;
     if (step.requires) view.requires = step.requires;
     if (step.declined) view.declined = step.declined;
+    if (step.answered) view.answered = step.answered;
     const run = records.runs.find((each) =>
       each.step === undefined
         ? each.plugin === step.plugin && each.action === step.action
@@ -192,6 +195,10 @@ export function planState(
     const state = (): StepState => {
       if (step.cancelled) return "cancelled";
       if (step.declined) return "skipped";
+      if (step.answered) return "done";
+      // A question the person may decline is not put to them once they leave the decisions to Builder.
+      if (isScreenAction(action) && step.optional && !records.asksApprovals)
+        return "skipped";
       if (record?.result === "skipped" && record.current) return "skipped";
       if (record?.result === "fail") return "failed";
       if (record?.result === "pass" && record.current) return "done";
