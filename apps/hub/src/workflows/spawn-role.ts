@@ -12,6 +12,7 @@ const ROLE_TAGS: readonly (readonly [tag: string, role: WorkflowRole])[] = [
   ["coder.version", "coder"],
   ["designer.version", "designer"],
   ["presenter.version", "presenter"],
+  ["worker.version", "worker"],
   ["coordinator.version", "coordinator"],
 ];
 

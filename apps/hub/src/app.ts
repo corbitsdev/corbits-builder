@@ -462,16 +462,18 @@ export async function createHubRuntime(
       ),
     );
     app.all("/api/auth/*", (c) => auth.handler(c.req.raw));
-    app.use(
-      "/api/tenants/:tenantId/workflows/runs/:runId/stream",
-      createResolveTenant({ db: handle.db }),
-    );
+    for (const path of ["stream", "steps"])
+      app.use(
+        `/api/tenants/:tenantId/workflows/runs/:runId/${path}`,
+        createResolveTenant({ db: handle.db }),
+      );
     app.route(
       "/api/tenants/:tenantId",
       createWorkflowRunStreamRoutes({
         db: handle.db,
         sidecarRouter,
         requireGrant,
+        repoStore: agentRepoStore.repoStore,
       }),
     );
     app.use(

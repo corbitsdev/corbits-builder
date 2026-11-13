@@ -44,6 +44,11 @@ function appFor(findRun: typeof findRoutableById) {
       db: {} as DB["db"],
       sidecarRouter,
       requireGrant,
+      repoStore: {
+        getRepoDir: () => {
+          throw new Error("The stream reads no saved conversation.");
+        },
+      },
       findRun,
     }),
   );

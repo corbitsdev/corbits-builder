@@ -297,15 +297,6 @@
         "@types/react": "19.3.0",
       },
     },
-    "plugins/generalist": {
-      "name": "@corbits-builder/generalist",
-      "version": "0.1.0",
-      "dependencies": {
-        "@corbits-builder/plugin": "workspace:*",
-        "@corbits-builder/schemas": "workspace:*",
-        "arktype": "catalog:",
-      },
-    },
     "plugins/presenter": {
       "name": "@corbits-builder/presenter",
       "version": "0.2.0",
@@ -353,6 +344,15 @@
     "plugins/web-app-starter-skills": {
       "name": "@corbits-builder/web-app-starter-skills",
       "version": "0.1.0-rc.3",
+    },
+    "plugins/worker": {
+      "name": "@corbits-builder/worker",
+      "version": "0.1.0",
+      "dependencies": {
+        "@corbits-builder/plugin": "workspace:*",
+        "@corbits-builder/schemas": "workspace:*",
+        "arktype": "catalog:",
+      },
     },
     "plugins/writer": {
       "name": "@corbits-builder/writer",
@@ -924,8 +924,6 @@
 
     "@corbits-builder/designer": ["@corbits-builder/designer@workspace:plugins/designer"],
 
-    "@corbits-builder/generalist": ["@corbits-builder/generalist@workspace:plugins/generalist"],
-
     "@corbits-builder/hub": ["@corbits-builder/hub@workspace:apps/hub"],
 
     "@corbits-builder/plugin": ["@corbits-builder/plugin@workspace:packages/plugin"],
@@ -951,6 +949,8 @@
     "@corbits-builder/web-app-skills": ["@corbits-builder/web-app-skills@workspace:plugins/web-app-skills"],
 
     "@corbits-builder/web-app-starter-skills": ["@corbits-builder/web-app-starter-skills@workspace:plugins/web-app-starter-skills"],
+
+    "@corbits-builder/worker": ["@corbits-builder/worker@workspace:plugins/worker"],
 
     "@corbits-builder/writer": ["@corbits-builder/writer@workspace:plugins/writer"],
 

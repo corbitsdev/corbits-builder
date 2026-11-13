@@ -3,15 +3,20 @@
  * what it is producing right now, the long text a tool call is writing, else the model's words,
  * else that it is thinking. Each frame repeats the whole snapshot so far, so a late subscriber
  * catches up on the preview on its first frame; the stream does not replay calls made before it
- * opened. Both are read a few times a second rather than on every frame.
+ * opened, so those are read once from the run's saved conversation. Both are read a few times a
+ * second rather than on every frame.
  */
 import { useEffect, useRef, useState } from "react";
+import { useQueries } from "@tanstack/react-query";
 import type { PartTool } from "@corbits/react-ui";
+import type { RunStep } from "@corbits-builder/schemas/activity";
+import { readRunSteps } from "../../api/activity.ts";
 import {
   partialOf,
   subscribeWorkflowRun,
   type RunStreamEvent,
 } from "../../api/run-stream.ts";
+import { keys } from "../../queries/keys.ts";
 import { finishedCallOf } from "./conversation-parts.ts";
 
 export type RunPreview =
@@ -171,13 +176,41 @@ function nextSteps(
 }
 
 /**
- * The preview of each named run, streamed while it is named, and every call each run made while
- * this room watched it, kept after its stream closes so finished work still lists its steps. A
- * stream the hub refuses or drops shows no preview for that run.
+ * A run's calls: those it saved, in the order it made them, then those its stream added since. A
+ * call in both stands where it was saved, as the stream last showed it once it returned.
+ */
+export function joinedSteps(
+  saved: readonly RunStep[],
+  live: readonly PartTool[],
+): PartTool[] {
+  const streamed = new Map(live.map((step) => [step.toolCallId, step]));
+  const known = new Set(saved.map((step) => step.callId));
+  return [
+    ...saved.map((step): PartTool => {
+      const seen = streamed.get(step.callId);
+      if (seen !== undefined && seen.status !== "running") return seen;
+      return {
+        kind: "tool-trace",
+        toolCallId: step.callId,
+        name: step.name,
+        status: step.returned ? "output-available" : "running",
+        input: step.arguments,
+      };
+    }),
+    ...live.filter((step) => !known.has(step.toolCallId)),
+  ];
+}
+
+/**
+ * The preview of each streamed run while it is named, and the calls of every shown run: those it
+ * saved before this room saw it, read once when its card is first shown, then every call its
+ * stream added, kept after the stream closes so finished work still lists its steps. A stream the
+ * hub refuses or drops shows no preview for that run.
  */
 export function useRunStreams(
   tenantId: string | undefined,
   runIds: readonly string[],
+  shownRunIds: readonly string[],
 ): {
   previews: ReadonlyMap<string, RunPreview>;
   steps: ReadonlyMap<string, readonly PartTool[]>;
@@ -197,6 +230,19 @@ export function useRunStreams(
   );
   const timer = useRef<number | null>(null);
   const named = runIds.join("\n");
+  const stepsOf = (tenant: string) =>
+    shownRunIds.map((runId) => ({
+      queryKey: keys.runSteps(tenant, runId),
+      queryFn: ({ signal }: { signal: AbortSignal }) =>
+        readRunSteps(tenant, runId, signal),
+      // A run's calls only grow, and its stream adds them while it works.
+      refetchOnWindowFocus: false,
+      // Arguments can carry whole files, so they are not kept across reloads.
+      meta: { persist: false },
+    }));
+  const saved = useQueries({
+    queries: tenantId === undefined ? [] : stepsOf(tenantId),
+  });
 
   useEffect(() => {
     const open = streams.current;
@@ -264,5 +310,11 @@ export function useRunStreams(
     };
   }, []);
 
-  return { previews, steps };
+  const joined = new Map(steps);
+  shownRunIds.forEach((runId, index) => {
+    const recorded = saved[index]?.data?.steps;
+    if (recorded !== undefined)
+      joined.set(runId, joinedSteps(recorded, steps.get(runId) ?? []));
+  });
+  return { previews, steps: joined };
 }

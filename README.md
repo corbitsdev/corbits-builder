@@ -22,7 +22,7 @@
    analysis, or a small change to something that exists. It asks what a
    careful colleague would.
 2. **It brings in the help.** The coordinator composes specialists (a writer, a
-   designer, a coder, a presenter, a generalist, an analyst and any others
+   designer, a coder, a presenter, a worker, an analyst and any others
    installed) and ready-made plans to fit the work. There is no fixed path.
 3. **Steer it.** Approve what needs your approval, answer questions on question
    cards, and ask for changes in plain words at any point, including while

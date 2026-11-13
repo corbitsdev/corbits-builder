@@ -1,7 +1,7 @@
 import { type } from "arktype";
 
 export const SpawnedRole = type(
-  "'writer' | 'reviewer' | 'coder' | 'designer' | 'presenter'",
+  "'writer' | 'reviewer' | 'coder' | 'designer' | 'presenter' | 'worker'",
 );
 export type SpawnedRole = typeof SpawnedRole.infer;
 export const WorkflowRole = SpawnedRole.or("'coordinator'");

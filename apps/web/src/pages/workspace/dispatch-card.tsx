@@ -21,6 +21,9 @@ const text = wording.dispatch;
 
 type Role = InFlightRun["role"];
 
+// The roles that file a document of whatever kind their task names.
+const writesDocuments = (role: Role) => role === "writer" || role === "worker";
+
 const EXECUTE = "execute";
 
 // The specialist actions an execute call starts, by plugin and action, with the document a writer
@@ -215,7 +218,7 @@ export type DispatchRoom = {
 
 /** The artifact a hand-off files, by kind. */
 export function targetKind(dispatch: Dispatch): string | undefined {
-  if (dispatch.role === "writer") return dispatch.kind;
+  if (writesDocuments(dispatch.role)) return dispatch.kind;
   if (dispatch.role === "designer")
     return dispatch.concept === undefined ? "design" : undefined;
   if (dispatch.role === "coder") return "app";
@@ -303,7 +306,7 @@ export function dispatchStatus(
   );
   // A writer named by no call is known by the one document that moved since it was seen.
   const writes =
-    dispatch.role === "writer" && dispatch.kind === undefined
+    writesDocuments(dispatch.role) && dispatch.kind === undefined
       ? moved.filter((item) => WRITTEN.has(item.kind))
       : [];
   const filed =
@@ -391,7 +394,7 @@ export function filedDispatches(
     const writer = writes
       ? started.findLast(
           ({ at, dispatch }) =>
-            dispatch.role === "writer" &&
+            writesDocuments(dispatch.role) &&
             dispatch.kind === undefined &&
             !named.has(dispatch.key) &&
             at <= Date.parse(item.filedAt),

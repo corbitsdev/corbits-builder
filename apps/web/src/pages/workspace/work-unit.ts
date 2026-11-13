@@ -68,10 +68,11 @@ export function workUnits(
 }
 
 // A run started by no call in view still reads by what its role files: a writer writes a document,
-// a designer makes a mockup, of its concept when it has one.
+// a designer makes a mockup, of its concept when it has one, and a worker does its one action.
 const fileAction = (dispatch: Dispatch) => {
   if (dispatch.role === "writer") return "writer write";
   if (dispatch.role === "designer") return "designer mockup";
+  if (dispatch.role === "worker") return "worker do";
   return undefined;
 };
 

@@ -1,6 +1,8 @@
 import { expect, test } from "bun:test";
-import { dispatchesOf } from "./dispatch-card.tsx";
+import { dispatchesOf, runDispatch } from "./dispatch-card.tsx";
+import { joinedSteps } from "./run-preview.ts";
 import { specialistUpdate } from "./specialist-updates.ts";
+import { workUnitStanding } from "./work-unit-step.model.ts";
 import { workUnits } from "./work-unit.ts";
 
 test("a hand-off and its reports join as one piece of work", () => {
@@ -82,4 +84,55 @@ test("a hand-off and its reports join as one piece of work", () => {
   expect(unit?.at).toBe(200);
   // Two designers started together, so this answers no one hand-off.
   expect(work.updates).toEqual([designerReport]);
+});
+
+test("a run's saved calls are its steps before its stream says anything", () => {
+  const run = {
+    runId: "run-coder",
+    role: "coder" as const,
+    startedAt: "2026-01-01T00:00:00.000Z",
+    status: "running" as const,
+    state: "working" as const,
+  };
+  const recorded = [
+    {
+      callId: "call-read",
+      name: "read_file",
+      arguments: { path: "docs/brief.md" },
+      returned: true,
+    },
+    {
+      callId: "call-write",
+      name: "write_file",
+      arguments: { path: "src/app.tsx" },
+      returned: true,
+    },
+  ];
+  const [unit] = workUnits([{ at: 100, dispatch: runDispatch(run) }], []).units;
+  if (unit === undefined) throw new Error("no work");
+
+  const { steps } = workUnitStanding(unit, {
+    artifacts: [],
+    inFlight: [run],
+    failed: [],
+    seen: new Map(),
+    steps: new Map([[run.runId, joinedSteps(recorded, [])]]),
+  });
+
+  expect(steps).toEqual([
+    {
+      kind: "tool-trace",
+      toolCallId: "call-read",
+      name: "read_file",
+      status: "output-available",
+      input: { path: "docs/brief.md" },
+    },
+    {
+      kind: "tool-trace",
+      toolCallId: "call-write",
+      name: "write_file",
+      status: "output-available",
+      input: { path: "src/app.tsx" },
+    },
+  ]);
 });

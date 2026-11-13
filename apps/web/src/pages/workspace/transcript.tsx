@@ -44,7 +44,16 @@ import {
   type PartTool,
   type ToolApprovalStatus,
 } from "@corbits/react-ui";
-import { toolPhrase, toolResult, toolSubject } from "./agent-activity.tsx";
+import {
+  commandLine,
+  commandOf,
+  descriptionOf,
+  filePhrase,
+  fileResult,
+  toolPhrase,
+  toolResult,
+  toolSubject,
+} from "./agent-activity.tsx";
 import { DOCUMENT_LINK, Markdown } from "@corbits-builder/plugin-ui/markdown";
 import { toast } from "sonner";
 import styles from "./transcript.module.css";
@@ -73,6 +82,12 @@ import {
   type WorkUnitStanding,
 } from "./work-unit-step.view.tsx";
 import type { CallResult } from "./live-run.ts";
+import {
+  approvalEntry,
+  distinctEntries,
+  questionEntry,
+  workEntry,
+} from "./conversation-map.ts";
 import { QuestionsCard, type QuestionsState } from "./questions-card.tsx";
 import {
   PageScreenCard,
@@ -156,16 +171,47 @@ function instructionOf(input: unknown): string | undefined {
     : undefined;
 }
 
+/** A step that ran a command, or touched a file, opens onto that rather than the call's arguments. */
+type ReadableTool = PartTool & { readonly step?: "command" | "file" };
+
 /**
- * A call named in plain words, so the activity's live line and steps read like
- * a person at work. Opened, it shows its instruction, else its arguments, and
- * what the call returned; with neither, the row has no toggle.
+ * A call named by what it did, so the activity's live line and steps read like
+ * a person at work. A command reads as itself, or as its own description, and
+ * opens onto its output; a file call names the file's path and opens onto it
+ * and what was done to it. Any other call opens onto its instruction, else its
+ * arguments, and what it returned. With nothing to show, the row has no toggle.
  */
 function readableTool(
   part: PartTool,
   result: CallResult | undefined,
-): PartTool {
+): ReadableTool {
   const { input, output: _output, ...call } = part;
+  const command = commandOf(input);
+  if (command !== undefined) {
+    const output = result?.content;
+    return {
+      ...call,
+      name: descriptionOf(input) ?? commandLine(command),
+      step: "command",
+      input: command,
+      ...(typeof output !== "string" || isBlank(output) ? {} : { output }),
+    };
+  }
+  const path = toolSubject(input);
+  const settled = part.status === "output-available" || part.status === "error";
+  const file =
+    path === undefined ? undefined : filePhrase(part.name, path, settled);
+  if (file !== undefined) {
+    const summary =
+      result === undefined ? undefined : fileResult(result.content);
+    return {
+      ...call,
+      name: file,
+      step: "file",
+      input: path,
+      ...(summary === undefined ? {} : { output: summary }),
+    };
+  }
   const output =
     result === undefined ? undefined : toolResult(part.name, result.content);
   return {
@@ -427,19 +473,50 @@ function readableParts(
   });
 }
 
+/** A command step: the command as its row, in its own type, and its output once it has one. */
+function CommandLine({ part }: { part: PartTool }) {
+  const command = typeof part.input === "string" ? part.input : "";
+  const label =
+    part.name === commandLine(command) ? (
+      <code className={styles.command} title={command}>
+        {part.name}
+      </code>
+    ) : (
+      <span title={command}>{part.name}</span>
+    );
+  return (
+    <Tool part={{ ...part, name: "" }}>
+      <ToolHeader label={label} statusLabels={wording.activity.status} />
+      {part.output === undefined ? (
+        <ToolInput title={wording.activity.command} />
+      ) : null}
+      <ToolOutput title={wording.activity.commandOutput} />
+    </Tool>
+  );
+}
+
+/** What an opened step was given: a file's path, an instruction in words, else the arguments. */
+function StepInput({ part }: { part: PartTool }) {
+  if ("step" in part && part.step === "file")
+    return <ToolInput title={wording.activity.file} />;
+  if (typeof part.input === "string")
+    return (
+      <ToolInput
+        title={wording.activity.instruction}
+        render={(value) => <Markdown source={String(value)} />}
+      />
+    );
+  return <ToolInput title={wording.activity.input} />;
+}
+
 /** The library's tool call, labelled in words rather than by its raw name. */
 function ToolLine({ part }: { part: PartTool }) {
+  if ("step" in part && part.step === "command")
+    return <CommandLine part={part} />;
   return (
     <Tool part={{ ...part, name: "" }}>
       <ToolHeader label={part.name} statusLabels={wording.activity.status} />
-      {typeof part.input === "string" ? (
-        <ToolInput
-          title={wording.activity.instruction}
-          render={(value) => <Markdown source={String(value)} />}
-        />
-      ) : (
-        <ToolInput title={wording.activity.input} />
-      )}
+      <StepInput part={part} />
       <ToolOutput title={wording.activity.output} />
     </Tool>
   );
@@ -912,10 +989,57 @@ export function RoomThread({
       last.turns.some(({ turn }) => turn.streaming === true) &&
       groupActivity(words).at(-1)?.kind === "activity";
   }
-  const mapTurns = sections.flatMap(
+  // The person's messages, and what the agents produced at the item that shows it.
+  const agentEntries = (
+    section: Extract<Section, { kind: "coordinator" }>,
+    position: number,
+  ): ConversationMapTurn[] => {
+    const first = section.turns[0];
+    const handed = section.turns
+      .flatMap(({ turn }) => readableParts(visibleTurnParts(turn), results))
+      .flatMap((part) =>
+        part.kind === "tool-trace"
+          ? (specialists.get(part.toolCallId) ?? [])
+          : [],
+      );
+    return [
+      ...(first === undefined
+        ? []
+        : handed.flatMap((unit) =>
+            workEntry(
+              turnItemId(first.turn, first.index),
+              unit,
+              standing(unit),
+            ),
+          )),
+      ...foldUpdates(liveLast(section.cards, live)).flatMap((card, at) => {
+        if (card.kind === "units")
+          return card.units.flatMap((unit) =>
+            workEntry(
+              `work:${card.units[0]?.key ?? `${String(position)}:${String(at)}`}`,
+              unit,
+              standing(unit),
+            ),
+          );
+        if (card.kind === "questions")
+          return questionEntry(
+            `questions:${card.question.signalName}`,
+            card.question,
+          );
+        if (card.kind === "approval")
+          return approvalEntry(
+            `document-decision:${card.approval.at === undefined ? `${String(position)}:${String(at)}` : String(card.approval.at)}`,
+            card.approval,
+          );
+        return [];
+      }),
+    ];
+  };
+  const mapEntries = sections.flatMap(
     (section, position): ConversationMapTurn[] => {
+      if (section.kind === "coordinator")
+        return agentEntries(section, position);
       if (
-        section.kind !== "person" ||
         section.turn.text.trim() === "" ||
         hubNoteLine(section.turn.text) !== undefined
       )
@@ -940,6 +1064,7 @@ export function RoomThread({
       ];
     },
   );
+  const mapTurns = distinctEntries(mapEntries);
   return (
     // The view follows the reply to its end once the person sends, and stays put when they scroll
     // away, so a long answer is read without chasing it.

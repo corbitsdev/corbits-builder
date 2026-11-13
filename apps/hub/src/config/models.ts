@@ -232,14 +232,14 @@ export function bindingLimits(
   return offered && customModelLimits(offered);
 }
 
-// Each role a profile binds, the tier it runs on, the workflow that runs it, and the limits record
+// Each role a profile binds, the tier it runs on, the workflows that run on it, and the limits record
 // it budgets by. A person picks only a profile; the tier of each role is config.
 export const MODEL_ROLES: readonly Readonly<{
   id: ModelRole;
   label: string;
   hint: string;
   tier: Tier;
-  workflow: WorkflowRole;
+  workflows: readonly WorkflowRole[];
   limits: AgentRole;
 }>[] = [
   {
@@ -247,7 +247,7 @@ export const MODEL_ROLES: readonly Readonly<{
     label: "Coordinator",
     hint: "Talks with you and plans the work.",
     tier: "medium",
-    workflow: "coordinator",
+    workflows: ["coordinator"],
     limits: "coordinator",
   },
   {
@@ -255,7 +255,7 @@ export const MODEL_ROLES: readonly Readonly<{
     label: "Writer",
     hint: "Writes the documents.",
     tier: "medium",
-    workflow: "writer",
+    workflows: ["writer", "worker"],
     limits: "document",
   },
   {
@@ -263,7 +263,7 @@ export const MODEL_ROLES: readonly Readonly<{
     label: "Designer",
     hint: "Designs the screens.",
     tier: "high",
-    workflow: "designer",
+    workflows: ["designer"],
     limits: "design",
   },
   {
@@ -271,7 +271,7 @@ export const MODEL_ROLES: readonly Readonly<{
     label: "App builder",
     hint: "Builds the app.",
     tier: "high",
-    workflow: "coder",
+    workflows: ["coder"],
     limits: "coding",
   },
   {
@@ -279,7 +279,7 @@ export const MODEL_ROLES: readonly Readonly<{
     label: "Reviewer",
     hint: "Reviews documents before you approve them.",
     tier: "low",
-    workflow: "reviewer",
+    workflows: ["reviewer"],
     limits: "document",
   },
   {
@@ -287,7 +287,7 @@ export const MODEL_ROLES: readonly Readonly<{
     label: "Presenter",
     hint: "Builds slide decks and approval packages for an audience.",
     tier: "medium",
-    workflow: "presenter",
+    workflows: ["presenter"],
     limits: "presenter",
   },
 ];
@@ -564,10 +564,12 @@ export function workflowBindings(
   if (!profile)
     throw new Error(`model_choice_unrunnable:${choice.profile ?? ""}`);
   return Object.fromEntries(
-    MODEL_ROLES.map((role) => [role.workflow, profile.tiers[role.tier]]),
+    MODEL_ROLES.flatMap((role) =>
+      role.workflows.map((workflow) => [workflow, profile.tiers[role.tier]]),
+    ),
   ) as Record<WorkflowRole, RoleBinding>;
 }
 
 export function limitsRole(workflow: WorkflowRole): AgentRole {
-  return MODEL_ROLES.find((role) => role.workflow === workflow)!.limits;
+  return MODEL_ROLES.find((role) => role.workflows.includes(workflow))!.limits;
 }

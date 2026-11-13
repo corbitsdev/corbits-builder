@@ -10,7 +10,7 @@ export function buildConversationMethods(
   deps: ClientDeps,
 ): Pick<
   ProductApiClient,
-  "sendMessage" | "conversationEvents" | "answerQuestion"
+  "sendMessage" | "conversationEvents" | "runSteps" | "answerQuestion"
 > {
   const { request } = deps;
   return {
@@ -34,6 +34,12 @@ export function buildConversationMethods(
     conversationEvents(tenantId, projectId, signal) {
       return request(
         `${projectPath(tenantId, projectId)}/conversation/events`,
+        signal,
+      );
+    },
+    runSteps(tenantId, runId, signal) {
+      return request(
+        `${tenantPath(tenantId)}/workflows/runs/${encodeURIComponent(runId)}/steps`,
         signal,
       );
     },

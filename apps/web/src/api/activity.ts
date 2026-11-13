@@ -32,3 +32,12 @@ export async function readProjectRunStates(
   const tenantId = await workspaceTenantId();
   return productClient().projectRunStates(tenantId, projectId, signal);
 }
+
+/** Every call a run made so far, from its saved conversation. */
+export function readRunSteps(
+  tenantId: string,
+  runId: string,
+  signal?: AbortSignal,
+) {
+  return productClient().runSteps(tenantId, runId, signal);
+}

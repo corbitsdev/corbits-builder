@@ -1,5 +1,5 @@
 {
-  "name": "@corbits-builder/generalist",
+  "name": "@corbits-builder/worker",
   "version": "0.1.0",
   "private": true,
   "description": "Does any task no other specialist fits: looks things up, reads the project's documents and code, answers or files a document.",
@@ -12,7 +12,7 @@
     "arktype": "catalog:"
   },
   "builder": {
-    "handle": "generalist",
+    "handle": "worker",
     "runs": "specialist",
     "groups": [
       "research",
@@ -22,13 +22,14 @@
     "when": "The person asks for something no other specialist's action does: research that needs looking things up on the web, a question about the project or its code, or a document such as a competitor analysis, a product comparison or a profit breakdown that needs facts from outside the project.",
     "unless": "Another specialist's action fits: a document written only from the project's own documents, the product requirements or the build plan (writer), a second opinion or approval of a filed document (writer), building or changing code (coder), a look, mockup, fonts or colours (designer), or a deck for an audience (presenter).",
     "agents": {
-      "generalist": {
+      "worker": {
         "prompt": "./prompt.md",
         "tools": [
           "read_artifact",
           "write_artifact",
           "web"
-        ]
+        ],
+        "model": "worker"
       }
     },
     "actions": {
@@ -46,7 +47,7 @@
         ],
         "returns": [],
         "start": {
-          "agent": "generalist"
+          "agent": "worker"
         }
       }
     },

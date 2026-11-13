@@ -12,6 +12,7 @@ const roles: WorkflowRole[] = [
   "designer",
   "coder",
   "presenter",
+  "worker",
 ];
 
 test("every role gives both xAI connections 15 minutes and keeps per-call parameters Interchange accepts", () => {

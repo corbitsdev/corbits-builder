@@ -1356,8 +1356,29 @@ export function useRoom({
     ),
   );
   const inFlight = snapshot.inFlight;
+  const dispatches = shownTurns.flatMap((turn) =>
+    turn.role === "assistant" && turn.parts !== undefined
+      ? partsDispatches(turn.parts, liveRun.results)
+      : [],
+  );
+  // A run with no hand-off in this session's view, such as after a reload, still gets its card.
+  for (const run of inFlight)
+    if (!runCards.current.has(run.runId)) runCards.current.set(run.runId, run);
+  const unseenRuns = [...runCards.current.values()]
+    .filter(
+      (run) =>
+        !dispatches.some((dispatch) =>
+          dispatch.runId === undefined
+            ? dispatch.role === run.role
+            : dispatch.runId === run.runId,
+        ),
+    )
+    .map((run) => ({
+      at: Date.parse(run.startedAt),
+      dispatch: runDispatch(run),
+    }));
   // Each run at work streams its steps and what it is producing into its card; past a handful, the
-  // newest only.
+  // newest only. Every card with a run loads the steps that run saved before this page saw it.
   const { previews, steps: runSteps } = useRunStreams(
     runTenantId,
     inFlight
@@ -1365,6 +1386,9 @@ export function useRoom({
       .toSorted((a, b) => Date.parse(b.startedAt) - Date.parse(a.startedAt))
       .slice(0, STREAMED_RUNS)
       .map((run) => run.runId),
+    [...dispatches, ...unseenRuns.map(({ dispatch }) => dispatch)].flatMap(
+      (dispatch) => (dispatch.runId === undefined ? [] : [dispatch.runId]),
+    ),
   );
   const dispatchRoom: DispatchRoom = {
     artifacts: snapshot.artifacts,
@@ -1389,28 +1413,7 @@ export function useRoom({
       );
     },
   };
-  const dispatches = shownTurns.flatMap((turn) =>
-    turn.role === "assistant" && turn.parts !== undefined
-      ? partsDispatches(turn.parts, liveRun.results)
-      : [],
-  );
   for (const dispatch of dispatches) noteDispatch(dispatchRoom, dispatch);
-  // A run with no hand-off in this session's view, such as after a reload, still gets its card.
-  for (const run of inFlight)
-    if (!runCards.current.has(run.runId)) runCards.current.set(run.runId, run);
-  const unseenRuns = [...runCards.current.values()]
-    .filter(
-      (run) =>
-        !dispatches.some((dispatch) =>
-          dispatch.runId === undefined
-            ? dispatch.role === run.role
-            : dispatch.runId === run.runId,
-        ),
-    )
-    .map((run) => ({
-      at: Date.parse(run.startedAt),
-      dispatch: runDispatch(run),
-    }));
   for (const { dispatch } of unseenRuns) noteDispatch(dispatchRoom, dispatch);
   const cards = filedDispatches(dispatchRoom, dispatches, unseenRuns);
   const design = artifacts.find((item) => item.kind === "design");

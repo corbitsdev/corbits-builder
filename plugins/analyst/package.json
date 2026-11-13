@@ -19,7 +19,7 @@
       "documents"
     ],
     "when": "The person asks for an analysis that comes down to numbers: market size, unit economics, pricing or a funnel, worked through and filed as a document.",
-    "unless": "Research or a comparison without figures to work through, or a question to answer in the reply (generalist), a document written only from the project's own documents (writer), or building or changing code (coder).",
+    "unless": "Research or a comparison without figures to work through, or a question to answer in the reply (worker), a document written only from the project's own documents (writer), or building or changing code (coder).",
     "agents": {
       "analyst": {
         "prompt": "./prompt.md",

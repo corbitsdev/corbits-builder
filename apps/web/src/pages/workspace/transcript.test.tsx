@@ -267,6 +267,47 @@ describe("conversation transcript", () => {
     expect(streaming([])).toBe(true);
   });
 
+  test("a command step reads as its command and a file step as its path", () => {
+    const html = renderToStaticMarkup(
+      <RoomThread
+        standing={standing}
+        turns={[
+          { role: "person", text: "Build it", at: 1 },
+          {
+            role: "assistant",
+            text: "Done.",
+            at: 2,
+            parts: [
+              {
+                kind: "tool-trace",
+                toolCallId: "call-shell",
+                name: "run_shell",
+                status: "output-available",
+                input: {
+                  command: "sed -n 5p .scratch/try-local.ts; ls .scratch\nls",
+                  timeout: 30000,
+                },
+              },
+              {
+                kind: "tool-trace",
+                toolCallId: "call-write",
+                name: "write_file",
+                status: "running",
+                input: { path: ".scratch/try-local.ts", content: "x" },
+              },
+            ],
+          },
+        ]}
+      />,
+    );
+    expect(html).toContain(
+      ">sed -n 5p .scratch/try-local.ts; ls .scratch</code>",
+    );
+    expect(html).toContain("Writing .scratch/try-local.ts");
+    expect(html).not.toContain(wording.activity.files.command);
+    expect(html).not.toContain("timeout");
+  });
+
   test("a coordinator turn shows one live line, at the bottom", () => {
     const live = {
       role: "assistant",

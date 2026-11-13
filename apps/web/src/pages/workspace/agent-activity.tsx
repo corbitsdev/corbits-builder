@@ -73,6 +73,59 @@ export function toolPhrase(name: string, subject: string | undefined): string {
   return phrase.charAt(0).toUpperCase() + phrase.slice(1);
 }
 
+/** The command a call runs, whatever the tool; undefined for a call that runs none. */
+export function commandOf(input: unknown): string | undefined {
+  if (typeof input !== "object" || input === null || !("command" in input))
+    return undefined;
+  const { command } = input;
+  return typeof command === "string" && command.trim() !== ""
+    ? command
+    : undefined;
+}
+
+/** The call's own word on what it does, when it carries one. */
+export function descriptionOf(input: unknown): string | undefined {
+  if (typeof input !== "object" || input === null || !("description" in input))
+    return undefined;
+  const { description } = input;
+  return typeof description === "string" && description.trim() !== ""
+    ? description.trim()
+    : undefined;
+}
+
+/** A command as one line: its first, so a heredoc reads by how it starts. */
+export function commandLine(command: string): string {
+  return command.trim().split("\n", 1)[0]?.trimEnd() ?? "";
+}
+
+/**
+ * A file call by the path it touches, as it works and once it has: "Writing src/app.ts", then
+ * "Wrote src/app.ts". Undefined for a call that is not a file call.
+ */
+export function filePhrase(
+  name: string,
+  path: string,
+  done: boolean,
+): string | undefined {
+  const phrase = text.fileStep[name];
+  if (phrase === undefined) return undefined;
+  const shown = path.startsWith("tool-output:") ? fileLabel(path) : path;
+  return done ? phrase.done(shown) : phrase.working(shown);
+}
+
+const WROTE = /^wrote (\d+) bytes/;
+const REPLACED = /^replaced (\d+) occurrence/;
+
+/** What a file call's result says it did: bytes written, occurrences replaced, or what it read. */
+export function fileResult(content: unknown): string | undefined {
+  if (typeof content !== "string" || content.trim() === "") return undefined;
+  const wrote = WROTE.exec(content);
+  if (wrote !== null) return text.fileResult.wrote(Number(wrote[1]));
+  const replaced = REPLACED.exec(content);
+  if (replaced !== null) return text.fileResult.replaced(Number(replaced[1]));
+  return content;
+}
+
 /** What a call returned, in plain words when its raw result means nothing to a person. */
 export function toolResult(name: string, content: unknown): unknown {
   const plain = text.toolResult[name];

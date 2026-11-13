@@ -15,6 +15,15 @@
   padding-inline-start: 2.5rem;
 }
 
+/* What the agents produced reads as an indented entry under the person's message that led to it:
+   its tick starts further in, and keeps the rail's own states and colours. */
+.thread
+  [data-slot="conversation-map-tick"]:not([data-turn-id^="person:"])
+  > span {
+  margin-inline-start: 0.5rem;
+  width: 1rem;
+}
+
 /* The log scrolls inside the room. flex-shrink 0 made its height follow the
    settle spacer, and the spacer then grew from that new height. */
 .log {
@@ -103,6 +112,12 @@
     background: none;
     color: inherit;
   }
+}
+
+/* A command as a step's row: its own text in the code face, held to the row's one line. */
+.command {
+  font-family: var(--wb-font-mono);
+  font-size: 0.8125rem;
 }
 
 .endedDetails summary {

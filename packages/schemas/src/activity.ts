@@ -37,6 +37,21 @@ export const AgentActivity = type({
 });
 export type AgentActivity = typeof AgentActivity.infer;
 
+// A call a run made, as the run's saved conversation keeps it: the tool, the arguments it was
+// given, and whether its result came back.
+export const RunStep = type({
+  "+": "reject",
+  callId: "string > 0",
+  name: "string > 0",
+  arguments: "Record<string, unknown>",
+  returned: "boolean",
+});
+export type RunStep = typeof RunStep.infer;
+
+// Every call a run made, in the order it made them.
+export const RunSteps = type({ "+": "reject", steps: RunStep.array() });
+export type RunSteps = typeof RunSteps.infer;
+
 export const ProjectActivity = type({
   "+": "reject",
   agents: AgentActivity.array(),

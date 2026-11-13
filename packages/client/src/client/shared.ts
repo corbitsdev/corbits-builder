@@ -72,7 +72,10 @@ import type {
   StartApprovalRound,
   TriageDecisionInput,
 } from "@corbits-builder/schemas/approval-round";
-import type { ProjectActivity } from "@corbits-builder/schemas/activity";
+import type {
+  ProjectActivity,
+  RunSteps,
+} from "@corbits-builder/schemas/activity";
 import type { PlanView, StoredPlan } from "@corbits-builder/schemas/project";
 import type {
   LiveRunStates,
@@ -318,6 +321,12 @@ export type ProductApiClient = Readonly<{
     projectId: string,
     signal?: AbortSignal,
   ): Promise<ConversationEvents>;
+  /** Every call a workflow run made, from its saved conversation. */
+  runSteps(
+    tenantId: string,
+    runId: string,
+    signal?: AbortSignal,
+  ): Promise<RunSteps>;
   /** Answers the coordinator's open question in the project, by the ids the run gave its prompts. */
   answerQuestion(
     tenantId: string,

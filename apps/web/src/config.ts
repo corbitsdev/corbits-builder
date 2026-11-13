@@ -403,6 +403,11 @@ export const wording = {
   conversation: {
     label: "Conversation",
     map: "Conversation map",
+    /** A map entry for a filed document: "Requirements v1". */
+    mapDocument: (name: string, version: number) =>
+      `${name} v${String(version)}`,
+    /** A map entry with where it ended: "Pick a font · Answered". */
+    mapMarked: (label: string, mark: string) => `${label} · ${mark}`,
     empty: "Nothing in the conversation yet",
     emptyLead:
       "Replies show here, and each saved document opens from where it was saved.",
@@ -459,6 +464,7 @@ export const wording = {
       designer: "designer",
       coder: "coder",
       presenter: "presenter",
+      worker: "worker",
     },
     change: "What needs to change…",
     fix: "What needs fixing…",
@@ -493,6 +499,7 @@ export const wording = {
       designer: "Designer",
       coder: "Coder",
       presenter: "Presenter",
+      worker: "Worker",
     },
     /** Before the run's first tool call: the hub has seen nothing from it yet. */
     starting: "getting started",
@@ -590,6 +597,36 @@ export const wording = {
       plan: (operation?: string) =>
         PLAN_OPERATION[operation ?? ""] ?? "working on the plan",
     } as Record<string, (subject?: string) => string>,
+    /** A file step's row by the file's real path, as it works and once done. */
+    fileStep: {
+      read_file: {
+        working: (path: string) => `Reading ${path}`,
+        done: (path: string) => `Read ${path}`,
+      },
+      write_file: {
+        working: (path: string) => `Writing ${path}`,
+        done: (path: string) => `Wrote ${path}`,
+      },
+      edit_file: {
+        working: (path: string) => `Editing ${path}`,
+        done: (path: string) => `Edited ${path}`,
+      },
+    } as Record<
+      string,
+      { working: (path: string) => string; done: (path: string) => string }
+    >,
+    /** What a file step's result says it did. */
+    fileResult: {
+      wrote: (bytes: number) => `${bytes.toLocaleString("en")} bytes written`,
+      replaced: (count: number) =>
+        count === 1
+          ? "1 occurrence replaced"
+          : `${String(count)} occurrences replaced`,
+    },
+    /** An opened command or file step: what it ran or touched, and what came of it. */
+    command: "Command",
+    commandOutput: "Output",
+    file: "File",
     /** What a call returned, in plain words, for a tool whose raw result means nothing to a person. */
     toolResult: {
       exec: "The assistant wrote this step in a form Builder can't run, so it was asked to write it again.",
@@ -721,6 +758,10 @@ export const wording = {
         working: (thing) =>
           thing ? `Making the ${thing} mockup` : "Making a mockup",
         done: (thing) => (thing ? `Made the ${thing} mockup` : "Made a mockup"),
+      },
+      "worker do": {
+        working: () => "Working on it",
+        done: () => "Finished",
       },
     } as Record<string, WorkPhrase>,
     /** What a specialist does when no known action names it; its state stays at the row's end. */
