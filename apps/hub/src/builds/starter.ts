@@ -320,12 +320,13 @@ async function designSeed(
 // Seeds a fresh workspace and returns the setup command the sandbox must still run, if any, and the
 // starter it began from when it began from one: an app is a checkout of its repository's main once
 // main holds a version; before then, or while the repository is unavailable, it starts from the
-// project's filed app when there is one, else from the run's starter; a seed made while the repository is unavailable becomes a version on top of main
-// once it is reachable. A design starts from the draft an earlier designer left for its concept, else
-// from the design starter in the stylesheet of the theme its concept starts from; the theme's sample
-// screens and DESIGN.md only preview it. The marker sits beside the workspace, out of the sandbox's
-// reach, and is written only once setup succeeded, so a sidecar that restarts mid-setup runs it
-// again.
+// project's filed app when there is one, else from the run's starter, else empty; a seed made while
+// the repository is unavailable becomes a version on top of main once it is reachable. Code with
+// no starter has no setup command. A design starts from the draft an earlier designer left for its
+// concept, else from the design starter in the stylesheet of the theme its concept starts from; the
+// theme's sample screens and DESIGN.md only preview it. The marker sits beside the workspace, out
+// of the sandbox's reach, and is written only once setup succeeded, so a sidecar that restarts
+// mid-setup runs it again.
 export async function prepareWorkspace(
   kind: "app" | "design",
   workspace: string,
@@ -335,7 +336,7 @@ export async function prepareWorkspace(
   app?: {
     repository: AppRepository;
     signal: AbortSignal;
-    starter: StarterName;
+    starter: StarterName | undefined;
   },
 ): Promise<{
   setup:
@@ -359,20 +360,21 @@ export async function prepareWorkspace(
         workspace,
         bundleFiles(AppBundle.assert(JSON.parse(filedApp.content))),
       );
-    else {
+    else if (app.starter !== undefined) {
       await writeBundle(workspace, STARTER_FILES[app.starter]!);
       started = app.starter;
     }
   }
-  const declared = STARTERS[app.starter];
-  await writeInputs(kind, workspace, read, declared.serves);
+  const declared = app.starter && STARTERS[app.starter];
+  await writeInputs(kind, workspace, read, declared?.serves === true);
   const marker = join(dirname(workspace), ".workspace-ready");
-  const setup = (await exists(marker))
-    ? undefined
-    : {
-        command: declared.setup,
-        advice: declared.setupFailed,
-        done: () => writeFile(marker, ""),
-      };
+  const setup =
+    !declared || (await exists(marker))
+      ? undefined
+      : {
+          command: declared.setup,
+          advice: declared.setupFailed,
+          done: () => writeFile(marker, ""),
+        };
   return { setup, started };
 }

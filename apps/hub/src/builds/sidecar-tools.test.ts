@@ -1,4 +1,7 @@
 import { expect, test } from "bun:test";
+import { mkdtemp, rm, writeFile } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import { appCheckDetail, fileCheckedApp } from "./sidecar-tools.ts";
 
 const PASSED =
@@ -63,6 +66,47 @@ test("only an app check-app pass of a command that succeeded counts as passed", 
       "check-app",
     ),
   ).toEqual({ checkPassed: false });
+});
+
+test("check-stack passes only when every command in CHECKS.txt succeeds, and the coder's tools read its verdict", async () => {
+  const workspace = await mkdtemp(join(tmpdir(), "check-stack-"));
+  const script = join(
+    import.meta.dir,
+    "../../../../plugins/coder/check/check-stack.ts",
+  );
+  const run = async (checks: string) => {
+    await writeFile(join(workspace, "CHECKS.txt"), checks);
+    const child = Bun.spawn(["bun", script], {
+      cwd: workspace,
+      stdout: "pipe",
+    });
+    const content = await new Response(child.stdout).text();
+    const code = await child.exited;
+    return code === 0
+      ? output(content)
+      : output(`exit code ${code}\n${content}`);
+  };
+  try {
+    expect(
+      appCheckDetail(
+        shell("check-stack"),
+        await run("echo one\n\necho two\n"),
+        "check-stack",
+      ),
+    ).toEqual({ checkPassed: true });
+    expect(
+      appCheckDetail(
+        shell("check-stack"),
+        await run("echo one\nfalse\necho three\n"),
+        "check-stack",
+      ),
+    ).toEqual({ checkPassed: false });
+    expect(
+      appCheckDetail(shell("check-stack"), await run(""), "check-stack"),
+    ).toEqual({ checkPassed: false });
+  } finally {
+    await rm(workspace, { recursive: true, force: true });
+  }
 });
 
 test("a command that only names check-app records no verdict", () => {

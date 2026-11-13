@@ -10,10 +10,9 @@ import {
   APP_CHANGE_NOTE,
   CODER_INPUTS,
   coderTaskMessage,
-  DEFAULT_STARTER,
   isStarterName,
   NO_DOCUMENTS_NOTE,
-  STARTERS,
+  startFrom,
 } from "./contract.ts";
 
 // One coder works on the code at a time: the project has one app repository, and a second coder
@@ -33,9 +32,9 @@ function coderBusy(live?: Working) {
   );
 }
 
-// What the run starts from: a first build's chosen starter, which its workspace is seeded from and
-// records as stack.starter; a change, the starter the project's code was built from. Code that
-// records none was built before starters could be chosen, when every build was a web app.
+// What the run starts from: a first build's starter when the coordinator named one, which its
+// workspace is seeded from and records as stack.starter; a change, the starter the project's code
+// was built from. Without one, the code starts from an empty project, or is code that did.
 async function starterOf(
   app: "new" | "existing",
   input: Readonly<Record<string, unknown>>,
@@ -45,14 +44,14 @@ async function starterOf(
     app === "new"
       ? input["starter"]
       : (await project.values(["stack.starter"]))["stack.starter"];
-  return isStarterName(chosen) ? chosen : DEFAULT_STARTER;
+  return isStarterName(chosen) ? chosen : undefined;
 }
 
 // A change starts from the code as last saved; a first build's manifest requires that there is
-// none. A coder still on the code refuses at once rather than wait for it. Each starter has its own
-// coder package, whose prompt, tools and finish check fit what it builds; a project whose person
-// lets packages install without asking gets that package's coder whose install_packages does not
-// ask. A running coder keeps the definition it was deployed with.
+// none. A coder still on the code refuses at once rather than wait for it. Each starter, and code
+// with none, has its own coder package, whose prompt, tools and finish check fit what it builds; a
+// project whose person lets packages install without asking gets that package's coder whose
+// install_packages does not ask. A running coder keeps the definition it was deployed with.
 export default defineStarter(
   type({
     "+": "reject",
@@ -60,13 +59,13 @@ export default defineStarter(
     correlation: "string > 0",
     app: "'new' | 'existing'",
   }),
-  // The build action also takes the starter, which a change does not.
+  // The build action may also name a starter, which a change does not.
   type({ instruction: "string", "[string]": "unknown" }),
   async ({ correlation, app }, input, project: Project, skills) => {
     const live = (await project.working()).find((run) => run.role === "coder");
     if (live) throw coderBusy(live);
     const { preferences } = await project.state();
-    const starter = STARTERS[await starterOf(app, input, project)];
+    const starter = startFrom(await starterOf(app, input, project));
     const { runId } = await project.startAlone({
       workflow:
         preferences["install_any_package"] === "yes"

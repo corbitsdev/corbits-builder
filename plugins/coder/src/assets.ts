@@ -35,13 +35,13 @@ export const starterFiles = (): Record<string, Record<string, string>> =>
     ]),
   );
 
-// Each starter's finish check by its command name, from check/<command>.ts.
+// Each starter's finish check, and that of code with none, by its command name, from
+// check/<command>.ts.
 export const checkScripts = (): Record<string, string> =>
   Object.fromEntries(
-    STARTERS.map(([, { check }]) => [
-      check,
-      readFileSync(join(CHECK, `${check}.ts`), "utf8"),
-    ]),
+    [...STARTERS.map(([, { check }]) => check), manifest.coder.empty.check].map(
+      (check) => [check, readFileSync(join(CHECK, `${check}.ts`), "utf8")],
+    ),
   );
 
 // The module the checks share, by the path they import it from once each is compiled on its own.

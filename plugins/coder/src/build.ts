@@ -6,7 +6,7 @@ export default defineWorkflow({
   input: type({
     "+": "reject",
     instruction: Instruction,
-    starter: type.enumerated(...STARTER_NAMES),
+    "starter?": type.enumerated(...STARTER_NAMES),
   }),
   describe: {
     summary:
@@ -18,7 +18,7 @@ export default defineWorkflow({
       },
       starter: {
         about:
-          "What the code starts from. Choose by what the person asked for: a web app only when they want something used in a browser.",
+          "Name a starter only when the project is the kind of thing that starter is for and neither the person nor the build plan names a different stack; otherwise leave it out, and the code starts from an empty project in the stack the person and the build plan name.",
         choices: Object.fromEntries(
           STARTER_NAMES.map((name) => [name, STARTERS[name].about]),
         ),

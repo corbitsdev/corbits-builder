@@ -16,7 +16,7 @@ export function createCoderAgent<Env extends BaseEnv>(options: {
   readonly director?: DirectorRef;
   readonly capabilities: readonly string[];
   readonly standards: readonly string[];
-  readonly starter: StarterName;
+  readonly starter: StarterName | undefined;
 }) {
   if (!options.inference.provider.trim() || !options.inference.model.trim())
     throw new Error("Coder requires an explicit provider and model");

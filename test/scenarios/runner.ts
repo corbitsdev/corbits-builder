@@ -795,6 +795,18 @@ async function runScenario(
       return reply;
     };
 
+    // An export carries no project values, so the imported weather app is told again that it is the
+    // web app its first build started from, and the commands its builds check runs.
+    if (scenario.start === "weather-app") {
+      const stack = await callAs("POST", `${path}/values`, {
+        values: {
+          "stack.starter": "web-app",
+          "stack.checks": "bun install --frozen-lockfile\nbun run build",
+        },
+      });
+      expect(stack.status).toBe(200);
+    }
+
     const openQuestion = () =>
       until("an open question", async () => {
         const { events } = await client.conversationEvents(tenantId, projectId);

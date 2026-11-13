@@ -1,6 +1,8 @@
 // A command's output when it failed, cut to the end where the failure is, or undefined when it
 // passed.
-async function failedCommand(command: string[]): Promise<string | undefined> {
+export async function failedCommand(
+  command: string[],
+): Promise<string | undefined> {
   const step = Bun.spawn(command, { stdout: "pipe", stderr: "pipe" });
   const output =
     (await new Response(step.stdout).text()) +

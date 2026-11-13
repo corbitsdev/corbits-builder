@@ -49,6 +49,14 @@
       "coder-bare-any-package": {
         "entry": "./src/packages/coder-bare-any-package.ts",
         "role": "coder"
+      },
+      "coder-empty": {
+        "entry": "./src/packages/coder-empty.ts",
+        "role": "coder"
+      },
+      "coder-empty-any-package": {
+        "entry": "./src/packages/coder-empty-any-package.ts",
+        "role": "coder"
       }
     },
     "starters": {
@@ -156,7 +164,7 @@
         "type": "text"
       },
       "stack.starter": {
-        "about": "What the project's code started from: web-app for a web app with a browser client and a server, bare for anything else. Builder saves it when the first build starts.",
+        "about": "The starter the project's code started from, when it started from one: web-app for a web app with a browser client and a server, bare for a TypeScript project on Bun that is not a web app. Builder saves it when a first build starts from a starter; code that started from an empty project has none.",
         "type": "text"
       },
       "stack.checks": {
@@ -181,7 +189,7 @@
         "setupFailed": "If it says the lockfile is frozen, bring bun.lock up to date with install_packages, naming the packages the output says changed at the versions package.json gives them."
       },
       "bare": {
-        "about": "Anything that is not a web app, such as a command-line tool, a library, a script or a service: one TypeScript package on Bun with tests and no framework, finished when check-project passes.",
+        "about": "A TypeScript project on Bun that is not a web app, such as a command-line tool, a library, a script or a service: one package with tests and no framework, finished when check-project passes.",
         "folder": "starters/bare",
         "package": "coder-bare",
         "check": "check-project",
@@ -193,6 +201,11 @@
         ],
         "setupFailed": "If it says the lockfile is frozen, bring bun.lock up to date with install_packages, naming the packages the output says changed at the versions package.json gives them."
       }
+    },
+    "empty": {
+      "package": "coder-empty",
+      "check": "check-stack",
+      "serves": false
     }
   }
 }

@@ -2,8 +2,8 @@
 
 The coder: builds the project's code from its approved documents (and, for a
 web app, its design) in a sandboxed workspace that starts as a working
-starter project, whatever kind of thing the project is. A later change is a
-new run on the saved code.
+starter project or, when no starter fits, empty, whatever kind of thing the
+project is. A later change is a new run on the saved code.
 
 ## Where it fits
 
@@ -12,14 +12,18 @@ names its two actions, `build` and `change`, the workflow packages the hub
 builds and installs from it (`packages`), and the starter module that starts
 its runs (`starters`). Its `coder.starters` block names what a first build can
 start from: `web-app` (`starter/`, finished by `check-app`) and `bare`
-(`starters/bare/`, finished by `check-project`). `coder build` takes the
-starter's name, the first build records it as `stack.starter`, and a later
+(`starters/bare/`, finished by `check-project`). `coder build` may name a
+starter; the first build records it as `stack.starter`, and a later
 `coder change` starts the coder that fits it. The first build also records the
 starter's `checks` as `stack.checks`, the commands the `builds` check runs in
-order; `build` and `change` may correct them. Each starter has two packages,
-one that asks the person before installing a package and one (`-any-package`)
-that does not: `coder`, `coder-any-package`, `coder-bare` and
-`coder-bare-any-package`. The
+order; `build` and `change` may correct them. Without a starter (`coder.empty`)
+the workspace starts empty, the coder builds in whatever stack the task names,
+keeps its checks in `CHECKS.txt`, is finished by `check-stack` and reports
+them as `stack.checks` itself; a change to code with no `stack.starter` gets
+this coder too. Each starter, and code with none, has two packages, one that
+asks the person before installing a package and one (`-any-package`) that does
+not: `coder`, `coder-any-package`, `coder-bare`, `coder-bare-any-package`,
+`coder-empty` and `coder-empty-any-package`. The
 [coordinator][coordinator] starts them with `execute`. Its tools are file edits and `run_shell`
 in the workspace, `install_packages`, Exa search, `read_artifact`,
 `read_skill` and `mail`, and for a web app `app_status` and a headless browser.
@@ -51,7 +55,8 @@ in the workspace, `install_packages`, Exa search, `read_artifact`,
   TypeScript package on Bun with a test and no framework.
 - `check/`: `check-app.ts`, which builds, starts and browses a web app (or a
   design mockup); `check-project.ts`, which runs a project's typecheck, test
-  and build scripts; `steps.ts`, the step both share; and `watch-page.ts`,
+  and build scripts; `check-stack.ts`, which runs the commands in a
+  project's `CHECKS.txt`; `steps.ts`, the steps they share; and `watch-page.ts`,
   which reports page errors during a web app's build. They are shipped into
   the workspace.
 - `src/assets.ts`: Bun macros that inline the starters, the check scripts and

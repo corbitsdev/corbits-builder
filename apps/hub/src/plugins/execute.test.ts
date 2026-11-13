@@ -19,6 +19,7 @@ const workflows = {
   "writer-document": deployment,
   reviewer: deployment,
   coder: deployment,
+  "coder-empty": deployment,
   designer: deployment,
 };
 

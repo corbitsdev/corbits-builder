@@ -44,7 +44,7 @@ import {
   readRunDesignTheme,
   recordStarter,
 } from "./app-snapshot.ts";
-import { STARTERS, type StarterName } from "@corbits-builder/coder/contract";
+import { startFrom, type StarterName } from "@corbits-builder/coder/contract";
 import { INPUTS_DIRECTORY } from "../config/inputs.ts";
 import {
   createAppRepository,
@@ -194,6 +194,7 @@ const CHECK_VERDICT = /^check (?:passed|failed):/m;
 const CHECK_PASSED: Readonly<Record<string, RegExp>> = {
   "check-app": /^check passed: built, started,/m,
   "check-project": /^check passed: typechecked, tested and built/m,
+  "check-stack": /^check passed: every command in CHECKS\.txt succeeded/m,
 };
 
 /**
@@ -238,24 +239,26 @@ const SETUP_PROGRESS = "installing the app's packages";
 
 // A source-closure-safe declaration: only explicit policy is captured. The
 // native child supplies the step workspace; the sandbox is built inside it. An app workspace names
-// the starter its code begins from, which picks its finish check and whether a web app runs in it.
+// the starter its code begins from, or none, which picks its finish check and whether a web app
+// runs in it.
 export function createSidecarCodingTools(policy: {
   approval: "ask" | "allow";
   workspace: "app" | "design";
   packageInstall?: "ask" | "allow";
-  starter?: StarterName;
+  starter?: StarterName | undefined;
   browser?: BrowserCatalog | undefined;
 }) {
   if (!["ask", "allow"].includes(policy.approval))
     throw new Error("invalid_coding_policy");
-  if ((policy.workspace === "app") !== (policy.starter !== undefined))
-    throw new Error("invalid_coding_policy");
   const design = policy.workspace === "design";
-  const starter = policy.starter && STARTERS[policy.starter];
-  // The finish check the starter names; a designer's check-app runs through check_design instead.
-  const check = starter?.check ?? "check-app";
+  if (design && policy.starter !== undefined)
+    throw new Error("invalid_coding_policy");
+  const code = startFrom(policy.starter);
+  // The finish check the code's start names; a designer's check-app runs through check_design
+  // instead.
+  const check = design ? "check-app" : code.check;
   // Whether a web app runs in the workspace for the agent to open, check and report on.
-  const serves = starter?.serves === true;
+  const serves = !design && code.serves;
   const passedCheck = (call: ToolCall, result: ToolResult) =>
     appCheckDetail(call, result, check)?.checkPassed === true;
   const offered = (name: string) => !design || DESIGNER_TOOLS.has(name);
@@ -392,12 +395,7 @@ export function createSidecarCodingTools(policy: {
             (kind) => readFiledDocument(env.capabilities, scope, kind, signal),
             () => readRunDesignTheme(env.capabilities, scope, signal),
             () => readPreviousDesignDraft(env.capabilities, scope, signal),
-            app &&
-              policy.starter && {
-                repository: app,
-                signal,
-                starter: policy.starter,
-              },
+            app && { repository: app, signal, starter: policy.starter },
           );
           repository = app;
           repository?.schedule("Start");

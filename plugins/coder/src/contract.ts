@@ -9,14 +9,20 @@ export const CODER_INPUTS = [
   "build_plan",
 ] as const;
 
-// What a first build starts from, by name: the folder of files the workspace begins as, the coder
-// package that builds on it, the check that says it is finished, whether it serves a web app to
-// preview, the command that prepares a fresh workspace, and what an agent can do when that command
-// fails, and the commands a first build saves as the project's stack.checks. A project whose starter was never recorded, built or imported before starters had
-// names, is a web app.
+// What a first build can start from, by name: the folder of files the workspace begins as, the
+// coder package that builds on it, the check that says it is finished, whether it serves a web app
+// to preview, the command that prepares a fresh workspace, what an agent can do when that command
+// fails, and the commands a first build saves as the project's stack.checks.
 export const STARTERS = manifest.coder.starters;
 export type StarterName = keyof typeof STARTERS;
-export const DEFAULT_STARTER: StarterName = "web-app";
+
+// Code with no starter, built or imported, starts from an empty project in whatever stack its task
+// names: its own coder package, and a check that runs the commands the coder declared.
+export const EMPTY = manifest.coder.empty;
+
+/** The coder package, finish check and web app serving of code from the starter, or of code without one. */
+export const startFrom = (starter: StarterName | undefined) =>
+  starter === undefined ? EMPTY : STARTERS[starter];
 
 export const isStarterName = (name: unknown): name is StarterName =>
   typeof name === "string" && Object.hasOwn(STARTERS, name);
