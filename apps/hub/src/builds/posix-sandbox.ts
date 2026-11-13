@@ -1,4 +1,3 @@
-import { watch, type FSWatcher } from "node:fs";
 import {
   chmod,
   mkdir,
@@ -108,12 +107,14 @@ async function relayStderr(
 }
 
 export type BuildPackageLayout = Awaited<ReturnType<typeof buildPackageLayout>>;
-// The program running in the workspace: its command, the address its last port answers on, whether
-// it runs, whether it printed its waitFor line, and its recent output. stopped names the workspace
-// whose script exited while the rest kept running, as `bun --filter` names it.
+// The program running in the workspace: its command, the address its port answers on, the port each
+// variable was given, whether it runs, whether it printed its waitFor line, and its recent output.
+// stopped names the workspace whose script failed while the rest kept running, as `bun --filter`
+// names it; a script that finished cleanly, such as a build step, stopped nothing.
 export type DevApp = {
   command: string;
   url: string;
+  ports: Record<string, number>;
   running: boolean;
   ready: boolean;
   log: string[];
@@ -128,8 +129,8 @@ export interface BuildExecutionPolicy {
 }
 export class BuildExecutionError extends Error {}
 export const quote = (value: string) => `'${value.replaceAll("'", "'\\''")}'`;
-// `bun --filter`'s line when one workspace's script ends: "@app/server dev: Exited with code 1".
-const PART_EXITED = /^(\S+) \S+: Exited with code \d+$/;
+// `bun --filter`'s line when one workspace's script fails: "@app/server dev: Exited with code 1".
+const PART_EXITED = /^(\S+) \S+: Exited with code [1-9]\d*$/;
 const PART_LINE = /^(\S+) \S+: (.*)$/;
 // Changes the app makes itself, or that a restart would not pick up.
 export const IGNORED_CHANGES =
@@ -351,6 +352,25 @@ async function freePort(): Promise<number> {
   if (port === undefined)
     throw new BuildExecutionError("sandbox_port_unavailable");
   return port;
+}
+
+// A stopped app's sockets close as its processes die, a moment after its wrapper exits.
+async function becomesFree(port: number): Promise<boolean> {
+  for (let tries = 0; tries < 10; tries++) {
+    try {
+      const probe = Bun.serve({
+        hostname: "127.0.0.1",
+        port,
+        fetch: () => new Response(),
+      });
+      await probe.stop(true);
+      return true;
+    } catch (error) {
+      if (!hasCode(error) || error.code !== "EADDRINUSE") throw error;
+    }
+    await Bun.sleep(100);
+  }
+  return false;
 }
 
 async function isReachable(url: string): Promise<boolean> {
@@ -620,10 +640,21 @@ export async function createPosixBuildExecutor(
           running: Running;
           process: Bun.Subprocess<"ignore", "pipe", "pipe">;
           view: () => DevApp;
-          watcher?: FSWatcher;
           page?: Bun.Subprocess<"pipe", "pipe", "ignore">;
         }
       | undefined;
+    // The port each variable was given, kept for every later start so the app's address, the
+    // preview and anything the agent wrote down stay right; a port taken meanwhile is replaced.
+    const ports = new Map<string, number>();
+    const portFor = async (name: string) => {
+      const kept = ports.get(name);
+      if (kept !== undefined && (await becomesFree(kept))) return kept;
+      const taken = new Set(ports.values());
+      let port = await freePort();
+      while (taken.has(port)) port = await freePort();
+      ports.set(name, port);
+      return port;
+    };
     // What the running app complained of since the agent last heard, each once and newest last.
     const complaints = new Set<string>();
     const complain = (text: string) => {
@@ -761,8 +792,7 @@ export async function createPosixBuildExecutor(
     };
     const stopApp = async () => {
       if (!devApp) return;
-      const { process: child, watcher, page } = devApp;
-      watcher?.close();
+      const { process: child, page } = devApp;
       devApp = undefined;
       kill(child);
       if (page) kill(page);
@@ -786,13 +816,10 @@ export async function createPosixBuildExecutor(
       const launchDevApp = async () => {
         try {
           await stopApp();
-          const address = await freePort();
-          const extraPorts = await Promise.all(
-            (run.extraPorts ?? []).map(async (name) => [
-              name,
-              String(await freePort()),
-            ]),
-          );
+          const given: Record<string, number> = {};
+          for (const name of [run.port, ...(run.extraPorts ?? [])])
+            given[name] = await portFor(name);
+          const address = given[run.port]!;
           await appRelay.reserve();
           const command = await wrapShell(
             `${appRelay.serve(address)}exec /bin/sh -c ${quote(run.command)}`,
@@ -801,8 +828,12 @@ export async function createPosixBuildExecutor(
             cwd,
             env: {
               ...childEnv,
-              ...Object.fromEntries(extraPorts),
-              [run.port]: String(address),
+              ...Object.fromEntries(
+                Object.entries(given).map(([name, port]) => [
+                  name,
+                  String(port),
+                ]),
+              ),
               ...(process.platform === "darwin" ? MACOS_WATCH_POLLING : {}),
             },
             stdin: "ignore",
@@ -814,27 +845,6 @@ export async function createPosixBuildExecutor(
           let stopped: string | undefined;
           let seen = run.waitFor === undefined;
           const current = () => !disposed && devApp?.process === child;
-          // `bun --filter` keeps the other half running when one exits, so the dev server still
-          // answers while its API is gone. The next file change starts the whole app again.
-          const restartAfterChange = async () => {
-            try {
-              await startApp();
-            } catch (error) {
-              log.warn(
-                "Restarting the dev app after a file change failed",
-                requestErrorMetadata(error),
-              );
-            }
-          };
-          const partStopped = (name: string) => {
-            stopped = name;
-            if (!devApp || !current()) return;
-            devApp.watcher = watch(cwd, { recursive: true }, (_event, file) => {
-              if (file === null || IGNORED_CHANGES.test(file) || !current())
-                return;
-              void restartAfterChange();
-            });
-          };
           const collect = async (stream: ReadableStream<Uint8Array>) => {
             const decoder = new TextDecoder();
             // The last complaint on this stream, which the frame on the next line locates.
@@ -847,8 +857,10 @@ export async function createPosixBuildExecutor(
                 if (lines.push(line) > 200) lines.shift();
                 if (run.waitFor !== undefined && line.includes(run.waitFor))
                   seen = true;
+                // `bun --filter` keeps the other half running when one fails, so the dev server still
+                // answers while its API is gone; the next app() call starts the whole app again.
                 const exited = PART_EXITED.exec(line);
-                if (exited && stopped === undefined) partStopped(exited[1]!);
+                if (exited) stopped ??= exited[1];
                 if (!current()) continue;
                 const match = PART_LINE.exec(line);
                 const part = match?.[1] ?? "app";
@@ -876,6 +888,7 @@ export async function createPosixBuildExecutor(
           const view = (): DevApp => ({
             command: run.command,
             url,
+            ports: given,
             running: child.exitCode === null,
             ready: child.exitCode === null && seen,
             log: lines.slice(-40),
@@ -1177,7 +1190,7 @@ export async function createPosixBuildExecutor(
        * Starts a program that keeps running in the workspace under the same sandbox and keeps it
        * running until dispose or until another is started, which stops it first. Called with
        * nothing to run, it returns the last program started, restarted when it or one of its
-       * halves has exited.
+       * halves has failed.
        */
       app: startApp,
       /** The coder's browser server's URL, started on first use and again whenever it has exited. */

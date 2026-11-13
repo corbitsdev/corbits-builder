@@ -2,7 +2,11 @@ import { expect, test } from "bun:test";
 import { mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { appCheckDetail, fileCheckedApp } from "./sidecar-tools.ts";
+import {
+  appCheckDetail,
+  fileCheckedApp,
+  loadedByApp,
+} from "./sidecar-tools.ts";
 
 const PASSED = "check passed: every command in CHECKS.txt succeeded";
 
@@ -128,4 +132,21 @@ test("a passing check whose push did not reach the app repository is not filed, 
     told: "The app was not filed: it did not reach the project's app repository (refused). The next passing check files it.",
     filed: false,
   });
+});
+
+test("a package installed for a scratch file or a test leaves the running app alone, and one for the app's own source restarts it", () => {
+  const workspace = "/work/space";
+  for (const path of [
+    ".scratch/try-export.ts",
+    "/work/space/.scratch/deep/probe.tsx",
+    "server/src/export.test.ts",
+    "client/src/app.spec.tsx",
+  ])
+    expect([path, loadedByApp(workspace, path)]).toEqual([path, false]);
+  for (const path of [
+    "server/src/index.ts",
+    "/work/space/client/src/app.tsx",
+    "packages/shared/src/testing.ts",
+  ])
+    expect([path, loadedByApp(workspace, path)]).toEqual([path, true]);
 });

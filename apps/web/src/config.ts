@@ -834,6 +834,14 @@ export const wording = {
       "approval-requested": "Waiting for you",
       "output-denied": "Not done",
     },
+    /** A row whose run is held on the person, with what it asked: "Waiting for you to approve installing zod". */
+    waitingFor: (asked: string) => `Waiting for you to approve ${asked}`,
+    /** What a held run asked, as `waitingFor` ends: its packages, else its tool. */
+    asked: {
+      install: (packages: readonly string[]) =>
+        `installing ${packages.join(", ")}`,
+      tool: (tool: string) => `its use of ${tool}`,
+    },
     /** Opens the document the run filed; named in full for a screen reader and on hover. */
     open: "Open",
     openNamed: (document: string, version: number) =>

@@ -97,6 +97,8 @@ export type PlanRecords = {
     action: string;
     step?: string;
     status: Run["status"];
+    // A live run's state: "approval" while it is held on an approval only the person can give.
+    state?: string;
     startedAt: string;
     endedAt?: string;
     lastActivity?: string;
@@ -206,7 +208,7 @@ export function planState(
       if (record?.result === "fail") return "failed";
       if (record?.result === "pass" && record.current) return "done";
       if (run?.status === "deployed" || run?.status === "running")
-        return "running";
+        return run.state === "approval" ? "needs_you" : "running";
       // A blocked run did not fail at the work: the step waits for its cause to be dealt with.
       if (run?.blocked && !done) return "waiting";
       if (run && !done) return "failed";
@@ -242,8 +244,8 @@ export function planState(
       children.some((child) => child.state === state);
     const next = children.find((child) => !settled(child));
     if (any("failed")) view.state = "failed";
-    else if (any("running")) view.state = "running";
     else if (any("needs_you")) view.state = "needs_you";
+    else if (any("running")) view.state = "running";
     else if (next === undefined) view.state = "done";
     else {
       view.state = next.state;

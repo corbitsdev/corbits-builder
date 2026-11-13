@@ -118,6 +118,11 @@ const backgrounds = (command: string) =>
   BACKGROUND.test(command.replace(/'[^']*'|"(?:\\.|[^"\\])*"/g, "''"));
 
 const WRITES = new Set(["write_file", "edit_file"]);
+// Throwaway files and tests, which the running app does not load.
+const OUTSIDE_APP = /(^|\/)\.scratch\/|\.(test|spec)\.[cm]?[jt]sx?$/;
+/** Whether the running app loads a workspace file, so a package installed for it restarts the app. */
+export const loadedByApp = (workspace: string, path: string) =>
+  !OUTSIDE_APP.test(relative(workspace, resolve(workspace, path)));
 
 // The underlying error's code and message, or what the hub said when it refused.
 function filingFailure(error: unknown) {
@@ -243,6 +248,28 @@ async function startUntilReady(
     app = executor.appState() ?? app;
   }
   return app;
+}
+
+/**
+ * What an app_status call starts: nothing named keeps what runs, or starts the project's own
+ * program when nothing does; the project's own command is its program, and any other command runs
+ * with its port variables.
+ */
+function nextRun(
+  input: typeof AppStatusInput.infer,
+  declared: Running | undefined,
+  running: boolean,
+): Running | undefined {
+  if (input.command === undefined) return running ? undefined : declared;
+  if (
+    input.command === declared?.run.command &&
+    (input.port === undefined || input.port === declared.run.port)
+  )
+    return declared;
+  return {
+    run: startedRun(input.command, input, declared?.run),
+    page: false,
+  };
 }
 
 // A cold install; under the executor's own ceiling.
@@ -496,9 +523,6 @@ export function createSidecarCodingTools(policy: {
                 setupFailure = `workspace_setup_failed: setup ran ${setup.command} and it did not finish. The files are as saved and every tool works on them. Its output:\n${String(result.content).slice(-2000)}\n${setup.advice}`;
               }
             }
-            // The project's own program is live from the coder's first call, so it can open it
-            // whenever it wants.
-            if (declared) await executor.app(declared);
           } catch (error) {
             await executor.dispose();
             throw error;
@@ -548,16 +572,11 @@ export function createSidecarCodingTools(policy: {
                 content: `invalid_input: ${input.summary}`,
                 isError: true,
               };
-            // Nothing named keeps what runs, or starts the project's own program when nothing does.
-            let next: Running | undefined;
-            if (input.command === undefined)
-              next = executor.appState() ? undefined : declared;
-            else if (input.command === declared?.run.command) next = declared;
-            else
-              next = {
-                run: startedRun(input.command, input.waitFor),
-                page: false,
-              };
+            const next = nextRun(
+              input,
+              declared,
+              executor.appState() !== undefined,
+            );
             if (!next && !executor.appState())
               return {
                 callId: call.id,
@@ -668,17 +687,20 @@ export function createSidecarCodingTools(policy: {
       };
       // A written file's imports of packages its package.json lacks: those another package of the
       // workspace already installed are added here, and the rest named with the call that adds them.
-      // The app loads packages only when it starts.
+      // The app loads packages only when it starts, so a running app is restarted once for them.
       const restartForPackages = async () => {
         const restart = (await sandbox)?.restartApp();
         if (!restart) return "";
-        void restart.catch((error: unknown) =>
+        try {
+          const app = await restart;
+          return `The app restarted to load the new packages; it answers at ${app.url}.`;
+        } catch (error) {
           log.warn(
             "Restarting the app for new packages failed",
             requestErrorMetadata(error),
-          ),
-        );
-        return "The app restarts to load the new packages.";
+          );
+          return `The app did not restart for the new packages; ${APP_STATUS_TOOL} starts it again.`;
+        }
       };
       const installImports = async (
         call: ToolCall,
@@ -707,9 +729,13 @@ export function createSidecarCodingTools(policy: {
             },
             signal,
           );
+          const restarted =
+            succeeded(installed) && loadedByApp(workspace, path)
+              ? await restartForPackages()
+              : "";
           notes.push(
             succeeded(installed)
-              ? `${path} imports ${auto.join(", ")}, which ${manifest} did not list, so ${auto.length === 1 ? "it was" : "they were"} installed into ${directory}. ${await restartForPackages()}`.trim()
+              ? `${path} imports ${auto.join(", ")}, which ${manifest} did not list, so ${auto.length === 1 ? "it was" : "they were"} installed into ${directory}. ${restarted}`.trim()
               : `Installing ${auto.join(", ")} into ${directory}, which ${path} imports, failed:\n${String(installed.content).slice(-1500)}`,
           );
         }

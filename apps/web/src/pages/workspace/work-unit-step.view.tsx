@@ -6,6 +6,7 @@
  * page.
  */
 import { useLayoutEffect, useRef, useState, type ReactNode } from "react";
+import { clsx } from "clsx";
 import {
   Button,
   Tool,
@@ -44,6 +45,8 @@ function statusLabels(status: DispatchStatus) {
   if (status.state === "stopped") return { "output-denied": text.stopped };
   if (status.state === "blocked") return { "output-denied": text.blocked };
   if (status.state === "failed") return { "output-denied": text.status.error };
+  if (status.state === "approval" && status.asked !== undefined)
+    return { "approval-requested": text.waitingFor(status.asked) };
   return text.status;
 }
 
@@ -369,7 +372,10 @@ export function WorkUnitStepView({
           <ToolHeader
             label={label}
             statusLabels={statusLabels(status)}
-            className={styles.row}
+            className={clsx(
+              styles.row,
+              status.state === "approval" && styles.waiting,
+            )}
           />
         )}
         <RowAction

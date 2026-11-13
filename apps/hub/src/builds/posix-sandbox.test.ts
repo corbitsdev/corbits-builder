@@ -7,6 +7,7 @@ import { rgPath } from "@vscode/ripgrep";
 import { declaredRun, starterValues } from "@corbits-builder/plugin";
 import { type } from "arktype";
 import { CATALOG } from "../plugins/catalog.ts";
+import { startedRun } from "./coding-tools.ts";
 import { buildPackageLayout } from "./package-layout.ts";
 import { createPosixBuildExecutor, publicHostName } from "./posix-sandbox.ts";
 
@@ -224,6 +225,70 @@ sandboxTest(
         });
       },
     );
+  },
+  60_000,
+);
+
+sandboxTest(
+  "a part that finishes cleanly stops nothing, and one that fails marks its part stopped",
+  async () => {
+    // `bun --filter`'s own words as each workspace's script ends.
+    await withRunner({}, async (executor) => {
+      await executor.app({
+        run: {
+          command:
+            "echo '@app/shared build: Exited with code 0'; echo listening; exec sleep 300",
+          port: "PORT",
+          waitFor: "listening",
+        },
+        page: false,
+      });
+      const built = await untilReady(executor);
+      expect(built?.stopped).toBeUndefined();
+      expect(built?.running).toBe(true);
+      await executor.app({
+        run: {
+          command:
+            "echo '@app/server dev: Exited with code 1'; echo listening; exec sleep 300",
+          port: "PORT",
+          waitFor: "listening",
+        },
+        page: false,
+      });
+      expect((await untilReady(executor))?.stopped).toBe("@app/server");
+    });
+  },
+  60_000,
+);
+
+sandboxTest(
+  "a restart keeps every port the program was given, and a command of the agent's own gets the project's port variables",
+  async () => {
+    const declared = {
+      command: "bun run dev",
+      port: "CLIENT_PORT",
+      extraPorts: ["PORT"],
+    };
+    await withRunner({}, async (executor) => {
+      const own = startedRun(
+        "echo client=$CLIENT_PORT api=$PORT; exec sleep 300",
+        { waitFor: "client=" },
+        declared,
+      );
+      await executor.app({ run: own, page: false });
+      const first = await untilReady(executor);
+      if (!first) throw new Error("program_never_started");
+      const said = /client=(\d+) api=(\d+)/.exec(first.log.join("\n"));
+      expect(said?.slice(1)).toEqual([
+        String(first.ports["CLIENT_PORT"]),
+        String(first.ports["PORT"]),
+      ]);
+      // The address is served from the declared page port.
+      expect(first.url).toEndWith(`:${String(first.ports["CLIENT_PORT"])}`);
+      const restarted = await executor.restartApp();
+      expect(restarted?.ports).toEqual(first.ports);
+      expect(restarted?.url).toBe(first.url);
+    });
   },
   60_000,
 );

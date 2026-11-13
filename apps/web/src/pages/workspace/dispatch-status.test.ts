@@ -60,6 +60,17 @@ test("a run held on an approval reads as paused for the person, not as at work",
   expect(dispatchLive(coder, room("approval"))).toBe(true);
 });
 
+test("a run with an open approval reads as waiting for the person, with what it asked, before its own state catches up", () => {
+  const waiting: DispatchRoom = {
+    ...room("working"),
+    asked: new Map([["run-coder", "installing zod, exceljs"]]),
+  };
+  expect(dispatchStatus(coder, waiting)).toEqual({
+    state: "approval",
+    asked: "installing zod, exceljs",
+  });
+});
+
 test("a run that ended on a block reads as blocked with its reason, not as stopped or failed", () => {
   const ended = (end: RunEnd): DispatchRoom => ({
     artifacts: [],

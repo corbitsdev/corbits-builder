@@ -201,6 +201,8 @@ export type DispatchRoom = {
   readonly onWatch?: (dispatch: Dispatch) => void;
   /** Stops a working specialist's run as the person. */
   readonly onStop?: (runId: string) => Promise<void>;
+  /** What each run held on an open approval asked the person, by run id. */
+  readonly asked?: ReadonlyMap<string, string>;
 };
 
 /** A run's status as Interchange reports it, with why when it failed and what blocked it. */
@@ -233,8 +235,8 @@ function target(dispatch: Dispatch, artifacts: readonly ProjectArtifact[]) {
 export type DispatchStatus =
   | { readonly state: "starting" }
   | { readonly state: "working"; readonly since: string }
-  /** Mid-turn but held on an approval only the person can give. */
-  | { readonly state: "approval" }
+  /** Mid-turn but held on an approval only the person can give, with what it asked once known. */
+  | { readonly state: "approval"; readonly asked?: string }
   | {
       readonly state: "ready";
       readonly title: string;
@@ -344,6 +346,9 @@ export function dispatchStatus(
     if (ended?.status !== "completed") return { state: "starting" };
     return filed === undefined ? { state: "finished" } : readyOf(filed);
   }
+  // The open approval is read sooner than the run's own state says it is held.
+  const asked = room.asked?.get(run.runId);
+  if (asked !== undefined) return { state: "approval", asked };
   if (run.state === "approval") return { state: "approval" };
   if (run.state === "working")
     return { state: "working", since: run.since ?? run.startedAt };

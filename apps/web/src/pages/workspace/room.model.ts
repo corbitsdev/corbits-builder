@@ -236,6 +236,26 @@ function documentApprovalsFrom(waits: readonly Wait[]): OpenApproval[] {
   });
 }
 
+/** What each run held on an open approval asked the person, by run id: its packages, else its tool. */
+function askedOf(waits: readonly Wait[] | undefined): Map<string, string> {
+  const asked = new Map<string, string>();
+  for (const wait of waits ?? []) {
+    if (wait.approvalId === undefined) continue;
+    if (wait.packages !== undefined)
+      asked.set(wait.runId, wording.dispatch.asked.install(wait.packages));
+    else if (wait.toolName !== undefined)
+      asked.set(
+        wait.runId,
+        wording.dispatch.asked.tool(
+          wait.toolName
+            .slice(wait.toolName.lastIndexOf(".") + 1)
+            .replaceAll("_", " "),
+        ),
+      );
+  }
+  return asked;
+}
+
 function openingDraft(
   projectId: string,
   openingMessage: string | undefined,
@@ -780,6 +800,11 @@ export function useRoom({
       queryKey: keys.openDecisions.of(projectId),
     });
   }, [projectId, queryClient, snapshot, gateDone, awaitingApproval]);
+  // The plan and who is at work are read with the room, so a run parking on an approval, or
+  // leaving one, reads the room again for its step to say so.
+  useEffect(() => {
+    reloadRef.current();
+  }, [awaitingApproval]);
 
   const settling = awaitingCommit(liveRun, mirror);
   useEffect(() => {
@@ -1475,6 +1500,7 @@ export function useRoom({
     ),
     previews,
     steps: runSteps,
+    asked: askedOf(waits),
     ended: new Map([
       ...runsEnded,
       ...[...stoppedHere].map((stopped): [string, RunEnd] => [

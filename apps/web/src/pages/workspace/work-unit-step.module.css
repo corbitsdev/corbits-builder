@@ -18,6 +18,14 @@
   overflow-wrap: anywhere;
 }
 
+/* A run held on the person reads in the attention colour, and what it asked wraps rather than
+   pushing the row's words aside. */
+.waiting > span:last-of-type {
+  flex-shrink: 1;
+  color: var(--wb-primary);
+  text-align: end;
+}
+
 .action {
   flex: none;
   height: auto;

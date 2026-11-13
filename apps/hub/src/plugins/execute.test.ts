@@ -534,3 +534,41 @@ test("a step whose run ended blocked waits again rather than failing", () => {
     "The hub refused every file write.",
   );
 });
+
+test("a step whose run is held on the person's approval needs them, and its group says so", () => {
+  const step = {
+    id: "build",
+    title: "Build the app",
+    plugin: "designer",
+    action: "mockup",
+    input: {},
+    askFirst: false,
+  };
+  const stateOf = (state: string) =>
+    planState(CATALOG, [{ id: "group", title: "Build", steps: [step] }], {
+      facts: new Set(),
+      personFacts: new Set(),
+      asksApprovals: true,
+      checks: [],
+      runs: [
+        {
+          runId: "run-designer",
+          plugin: "designer",
+          action: "mockup",
+          step: "build",
+          status: "running",
+          state,
+          startedAt: new Date(0).toISOString(),
+        },
+      ],
+      questions: [],
+    })[0];
+  expect(stateOf("working")).toMatchObject({
+    state: "running",
+    steps: [{ state: "running" }],
+  });
+  expect(stateOf("approval")).toMatchObject({
+    state: "needs_you",
+    steps: [{ state: "needs_you" }],
+  });
+});

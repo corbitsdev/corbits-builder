@@ -78,7 +78,10 @@ export const WatchingADesigner: Story = {
 
 /** The run is held on a request only the person can approve. */
 export const PausedForApproval: Story = {
-  args: { status: { state: "approval" }, steps: STEPS },
+  args: {
+    status: { state: "approval", asked: "installing zod, exceljs" },
+    steps: STEPS,
+  },
 };
 
 /** The work filed its document, shown first under the row with its summary, then how it went. */

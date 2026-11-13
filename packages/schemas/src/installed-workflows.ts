@@ -15,7 +15,7 @@ export const InstalledWorkflows = type({
 });
 export type InstalledWorkflows = typeof InstalledWorkflows.infer;
 
-const PortVariable = type(/^[A-Z][A-Z0-9_]*$/);
+export const PortVariable = type(/^[A-Z][A-Z0-9_]*$/);
 // A program that keeps running while a project is worked on, as a starter's run and a project's
 // stack.run declare it: its command, a line it prints once it is ready, the environment variable
 // given the free port it answers on, and any others it needs a free port in, such as an API a dev
