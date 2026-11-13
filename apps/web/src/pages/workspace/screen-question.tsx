@@ -86,8 +86,11 @@ const SUPPLIED: ReadonlySet<string> = new Set<keyof HostSupplies>([
 
 /** How a screen placed on the page reaches the room's prompt box. */
 export type PageHost = {
-  /** What Send in the prompt box does in place of a reply, given the typed text. */
-  stage(send: ((message: string | undefined) => Promise<boolean>) | null): void;
+  /** What Send in the prompt box does in place of a reply, given the typed text, and what the box asks meanwhile. */
+  stage(
+    send: ((message: string | undefined) => Promise<boolean>) | null,
+    reply?: string,
+  ): void;
   sendStaged(): void;
   close(): void;
 };
@@ -220,11 +223,12 @@ export function screenHost<In, Out, Data, Prepared>(
               : {
                   close: page.close,
                   sendStaged: page.sendStaged,
-                  stage: (compose) =>
+                  stage: (compose, reply) =>
                     page.stage(
                       compose === null
                         ? null
                         : (message) => answerWith(compose(message)),
+                      reply,
                     ),
                 }
           }

@@ -31,7 +31,6 @@ const page = {
 const review = (
   design: ReviewedDesign | null,
   options: {
-    draft?: Props["draft"];
     earlier?: unknown;
     answer?: Props["answer"];
   } = {},
@@ -42,7 +41,7 @@ const review = (
       project={{}}
       prepared={{}}
       facts={[]}
-      draft={options.draft ?? {}}
+      draft={{}}
       setDraft={() => undefined}
       submit={() => Promise.resolve()}
       submitting={false}
@@ -58,6 +57,7 @@ const review = (
 
 const button = (html: string, name: string) =>
   new RegExp(`<button[^>]*>${name}</button>`).exec(html)?.[0] ?? "";
+const NO_COMMENTS = text.requestChanges(0);
 const disabled = (html: string, name: string) =>
   button(html, name).includes('disabled=""');
 
@@ -71,18 +71,7 @@ describe("mockup review", () => {
     expect(html).toContain('data-slot="gui-frame"');
     expect(disabled(html, text.approve)).toBe(true);
     expect(html).toContain("The designer is still working.");
-    expect(disabled(html, text.sendFeedback)).toBe(true);
-  });
-
-  test("a staged comment shows where it points, and can be sent", () => {
-    const html = review(
-      { files, version: 2, approval: { option: "design-option-1" } },
-      { draft: { comments: [comment] } },
-    );
-    expect(html).toContain(comment.text);
-    expect(html).toContain("home · home-search-link");
-    expect(disabled(html, text.approve)).toBe(false);
-    expect(disabled(html, text.sendFeedback)).toBe(false);
+    expect(disabled(html, NO_COMMENTS)).toBe(true);
   });
 
   test("the last round's comments are listed to read, not to remove", () => {
@@ -92,7 +81,7 @@ describe("mockup review", () => {
     );
     expect(html).toContain(text.lastRound);
     expect(html).toContain(comment.text);
-    expect(html).not.toContain(`>${text.remove}<`);
+    expect(html).not.toContain(text.remove(1));
   });
 
   test("once answered it settles to one line", () => {

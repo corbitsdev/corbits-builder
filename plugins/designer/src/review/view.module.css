@@ -20,10 +20,12 @@
   min-height: 0;
 }
 
+/* A fixed width, so what it holds grows down and never moves the mockup. */
 .sidebar {
   display: flex;
+  flex: none;
   flex-direction: column;
-  gap: var(--space-2);
+  gap: var(--space-3);
   width: 18rem;
   padding: var(--space-3);
   border-inline-start: 1px solid var(--border);
@@ -32,7 +34,7 @@
 }
 
 .heading {
-  margin: 0;
+  margin: var(--space-2) 0 0;
   font-size: 0.8125rem;
   font-weight: 600;
 }
@@ -50,43 +52,115 @@
   gap: var(--space-2);
 }
 
-.compose textarea {
-  min-height: 4rem;
-  font: inherit;
-}
-
-.where {
-  font-size: 0.75rem;
-  color: var(--muted-foreground);
-  overflow-wrap: anywhere;
-}
-
-.list {
+.label {
   display: flex;
-  flex-direction: column;
+  align-items: center;
   gap: var(--space-2);
-  margin: 0;
-  padding: 0;
-  list-style: none;
+  min-width: 0;
+  font-weight: 600;
 }
 
-.list p {
-  margin: 0;
+/* The place's own short name, as quiet context beside the pin's number. */
+.name {
+  overflow: hidden;
+  font-weight: 400;
+  color: var(--muted-foreground);
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+/* Matches the pin the frame draws, so a number reads as the same mark in both places. */
+.badge {
+  display: inline-grid;
+  flex: none;
+  place-items: center;
+  min-width: 1.25rem;
+  height: 1.25rem;
+  padding-inline: var(--space-1);
+  border-radius: 999px;
+  background: var(--foreground);
+  color: var(--background);
+  font-size: 0.6875rem;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+  line-height: 1;
 }
 
 .row {
   display: flex;
-  flex-wrap: wrap;
   align-items: center;
   justify-content: flex-end;
   gap: var(--space-2);
 }
 
-/* The view controls, then the decision; on a phone each takes the bar's full width. */
+.list {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.item {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--space-1);
+  border-radius: var(--radius-md);
+}
+
+.item[data-selected] {
+  background: var(--muted);
+}
+
+.said {
+  display: flex;
+  flex: 1;
+  align-items: flex-start;
+  gap: var(--space-2);
+  min-width: 0;
+  padding: var(--space-1) var(--space-2);
+  border: 0;
+  border-radius: var(--radius-md);
+  background: none;
+  color: inherit;
+  font: inherit;
+  text-align: start;
+  overflow-wrap: anywhere;
+  cursor: pointer;
+}
+
+.said > .badge {
+  margin-block-start: 0.0625rem;
+}
+
+.said:focus-visible {
+  outline: 2px solid var(--wb-ring);
+  outline-offset: -2px;
+}
+
+.remove {
+  width: 1.75rem;
+  height: 1.75rem;
+  color: var(--muted-foreground);
+}
+
+.remove svg {
+  width: 0.875rem;
+  height: 0.875rem;
+}
+
+.past {
+  padding-inline: var(--space-2);
+  color: var(--muted-foreground);
+  overflow-wrap: anywhere;
+}
+
+/* The view controls, then the two outcomes; on a narrow page the outcomes keep a row together. */
 .bar {
   display: flex;
   flex-wrap: wrap;
-  align-items: flex-start;
+  align-items: center;
   justify-content: space-between;
   gap: var(--space-2) var(--space-4);
   padding: var(--space-2) var(--space-3);
@@ -103,7 +177,71 @@
 
 .controls > select {
   min-width: 0;
-  max-width: 100%;
+  max-width: 14rem;
+  height: 2rem;
+  font: inherit;
+  font-size: 0.875rem;
+}
+
+/* Desktop and Phone as one control, the one shown filled. */
+.segments {
+  display: flex;
+  gap: 2px;
+  padding: 2px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+}
+
+.segments > button,
+.toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-1);
+  height: 1.75rem;
+  padding-inline: var(--space-2);
+  border: 0;
+  border-radius: var(--radius-sm);
+  background: none;
+  color: var(--muted-foreground);
+  font: inherit;
+  font-size: 0.8125rem;
+  cursor: pointer;
+}
+
+.segments > button:hover,
+.toggle:hover {
+  color: var(--foreground);
+}
+
+.segments > button[aria-pressed="true"] {
+  background: var(--muted);
+  color: var(--foreground);
+}
+
+.segments svg,
+.toggle svg {
+  width: 0.875rem;
+  height: 0.875rem;
+}
+
+.segments > button:focus-visible,
+.toggle:focus-visible {
+  outline: 2px solid var(--wb-ring);
+  outline-offset: 1px;
+}
+
+/* Off it reads as an outlined control; on, as filled with the brand, since clicks then pin. */
+.toggle {
+  height: 2rem;
+  padding-inline: var(--space-3);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+}
+
+.toggle[aria-pressed="true"] {
+  border-color: var(--wb-primary);
+  background: color-mix(in srgb, var(--wb-primary) 14%, transparent);
+  color: var(--primary-emphasis);
 }
 
 .bar > [data-slot="screen-actions"] {

@@ -610,6 +610,8 @@ export function useRoom({
   const pageSend = useRef<
     ((message: string | undefined) => Promise<boolean>) | null
   >(null);
+  // What the prompt box asks while the page screen has something staged, when the screen says.
+  const [pageReply, setPageReply] = useState<string>();
   // The coder's filed app source is the resume point for a later coder, not a document to read.
   const artifacts = snapshot.artifacts
     .filter((item) => item.kind !== "app")
@@ -1627,8 +1629,9 @@ export function useRoom({
     focusReply: () => composerRef.current?.focus(),
   };
   const pageHost: PageHost = {
-    stage: (staged) => {
+    stage: (staged, reply) => {
       pageSend.current = staged;
+      setPageReply(staged === null ? undefined : reply);
     },
     sendStaged: () => void sendThroughPage(),
     close: () => setClosedPage(pageQuestion?.signalName ?? null),
@@ -1736,12 +1739,13 @@ export function useRoom({
         approvalOpen: openApproval !== undefined,
         questionsOpen: openQuestion !== undefined,
         screenReply:
-          openQuestion !== undefined && "plugin" in openQuestion.asked
+          pageReply ??
+          (openQuestion !== undefined && "plugin" in openQuestion.asked
             ? screenWords(
                 openQuestion.asked.plugin,
                 openQuestion.asked.action ?? "",
               )?.reply
-            : undefined,
+            : undefined),
         status: projectStatus.data,
         nothingFiled: nothingYet,
       }),
