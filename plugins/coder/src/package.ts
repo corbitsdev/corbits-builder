@@ -19,7 +19,6 @@ import {
 import { nativePackageName } from "@corbits-builder/hub/workflows/package-name";
 import manifest from "../package.json";
 import { createCoderAgent } from "./agent.ts";
-import { startFrom, type StarterName } from "./contract.ts";
 import { createCoderWorkflow } from "./workflow.ts";
 
 // Build and change both start this one workflow, and a run is not told which action started it, so
@@ -43,38 +42,28 @@ const CODER_MCP: McpToolsOptions = {
 };
 
 /**
- * The coder's workflow package for code that starts from one starter, or from none.
- * `packageApproval` is frozen into the definition: "ask" declares install_packages as an ask tool,
- * "allow" declares it plain (AUTH.md, Grant Requirements on Definitions; the definition hash
- * differs, so each is its own approved definition). The starter is frozen in too: its tools and
- * the check that finishes it. Only the coder of a web app, whose starter serves one, gets the
- * component kit's skill and a browser to try the app in.
+ * The coder's workflow package, the same for every project: what the project's code is, and
+ * whether it serves a web app to try, the hub tells its workspace when the run starts.
+ * install_packages asks the person before it installs.
  */
-export async function coderPackage(
-  name: string,
-  packageApproval: "ask" | "allow",
-  starter: StarterName | undefined,
-) {
-  const { serves } = startFrom(starter);
-  const skills = serves ? ["react-ui", "stack-docs"] : ["stack-docs"];
-  const compacting = compactingDirector(nativePackageName(name));
+export async function coderPackage() {
+  const compacting = compactingDirector(nativePackageName("coder"));
   const { source, contextWindow, timeouts, parameters } =
     roleInference("coder");
   // Discovered at load so the frozen definition carries the remote tool names.
   const search = await mcpTools(CODER_MCP);
   // The deployment starts its own browser on first use, so its tools are listed when the bundle is built.
-  const browser = serves ? await browserCatalog() : undefined;
+  const browser = await browserCatalog();
   // The project role child supplies the sandboxed workspace and executor.
   const tools = [
     createArtifactTools("coder"),
     mail,
-    createSkillTools(skills),
+    createSkillTools(["react-ui", "stack-docs"]),
     search,
     createSidecarCodingTools({
       approval: "allow",
       workspace: "app",
-      packageInstall: packageApproval,
-      starter,
+      packageInstall: "ask",
       browser,
     }),
   ];
@@ -98,7 +87,7 @@ export async function coderPackage(
   });
   return {
     workflow: createCoderWorkflow({
-      id: "corbits-builder-" + name,
+      id: "corbits-builder-coder",
       address: "coder",
       agent,
       inference: { literal: parameters },

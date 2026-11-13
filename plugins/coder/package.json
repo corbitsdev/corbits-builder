@@ -37,26 +37,6 @@
       "coder": {
         "entry": "./src/packages/coder.ts",
         "role": "coder"
-      },
-      "coder-any-package": {
-        "entry": "./src/packages/coder-any-package.ts",
-        "role": "coder"
-      },
-      "coder-bare": {
-        "entry": "./src/packages/coder-bare.ts",
-        "role": "coder"
-      },
-      "coder-bare-any-package": {
-        "entry": "./src/packages/coder-bare-any-package.ts",
-        "role": "coder"
-      },
-      "coder-empty": {
-        "entry": "./src/packages/coder-empty.ts",
-        "role": "coder"
-      },
-      "coder-empty-any-package": {
-        "entry": "./src/packages/coder-empty-any-package.ts",
-        "role": "coder"
       }
     },
     "starters": {
@@ -83,7 +63,6 @@
         ],
         "writes": [
           "stack.language",
-          "stack.starter",
           "stack.checks"
         ],
         "start": {
@@ -108,8 +87,7 @@
         "returns": [],
         "reads": [
           "brand.guidelines",
-          "stack.language",
-          "stack.starter"
+          "stack.language"
         ],
         "writes": [
           "stack.language",
@@ -164,7 +142,7 @@
         "type": "text"
       },
       "stack.starter": {
-        "about": "The starter the project's code started from, when it started from one: web-app for a web app with a browser client and a server, bare for a TypeScript project on Bun that is not a web app. Builder saves it when a first build starts from a starter; code that started from an empty project has none.",
+        "about": "The starter the project's code started from, when it started from one: web-app for a web app with a browser client and a server, bare for a TypeScript project on Bun that is not a web app. Builder saves it, with the starter's checks as stack.checks, when a first build names a starter, and writes the starter's files as the project's first code before the coder starts; code that started from an empty project has none.",
         "type": "text"
       },
       "stack.checks": {
@@ -178,7 +156,6 @@
       "web-app": {
         "about": "A web app people use in a browser: a React client, a Bun server and a shared package.",
         "folder": "starter",
-        "package": "coder",
         "serves": true,
         "setup": "bun install --frozen-lockfile",
         "checks": [
@@ -190,7 +167,6 @@
       "bare": {
         "about": "A TypeScript project on Bun that is not a web app, such as a command-line tool, a library, a script or a service: one package with tests and no framework.",
         "folder": "starters/bare",
-        "package": "coder-bare",
         "serves": false,
         "setup": "bun install --frozen-lockfile",
         "checks": [
@@ -199,10 +175,6 @@
         ],
         "setupFailed": "If it says the lockfile is frozen, bring bun.lock up to date with install_packages, naming the packages the output says changed at the versions package.json gives them."
       }
-    },
-    "empty": {
-      "package": "coder-empty",
-      "serves": false
     }
   }
 }

@@ -14,30 +14,32 @@ its runs (`starters`). Its `coder.starters` block names what a first build can
 start from: `web-app` (`starter/`) and `bare` (`starters/bare/`). Every
 coder is finished by `check-stack`, which runs the commands the project's
 `CHECKS.txt` lists; each starter ships one. `coder build` may name a
-starter; the first build records it as `stack.starter`, and a later
-`coder change` starts the coder that fits it. The first build also records the
-starter's `checks` as `stack.checks`, the commands the `builds` check runs in
-order; `build` and `change` may correct them. Without a starter (`coder.empty`)
-the workspace starts empty, the coder builds in whatever stack the task names,
-writes its own `CHECKS.txt` and reports its lines as `stack.checks` itself; a change to code with no `stack.starter` gets
-this coder too. Each starter, and code with none, has two packages, one that
-asks the person before installing a package and one (`-any-package`) that does
-not: `coder`, `coder-any-package`, `coder-bare`, `coder-bare-any-package`,
-`coder-empty` and `coder-empty-any-package`. The
-[coordinator][coordinator] starts them with `execute`. Its tools are file edits and `run_shell`
+starter; the hub then saves it as `stack.starter`, with the starter's `checks`
+as `stack.checks` (the commands the `builds` check runs, which `build` and
+`change` may correct), and writes the starter's files onto the project's app
+repository before the coder clones it. Without a starter the workspace starts
+empty, the coder builds in whatever stack the task names, writes its own
+`CHECKS.txt` and reports its lines as `stack.checks` itself. There is one
+package, `coder`, and it knows no starter: what the project's code declares
+(its setup command, and whether it serves a web app) reaches its workspace
+through the hub's project scope, and its `install_packages` asks the person
+unless they turned on installing any package without asking, which the hub
+grants the run when its workspace starts. The
+[coordinator][coordinator] starts it with `execute`. Its tools are file edits and `run_shell`
 in the workspace, `install_packages`, Exa search, `read_artifact`,
-`read_skill` and `mail`, and for a web app `app_status` and a headless browser.
+`read_skill`, `mail`, `app_status` and a headless browser.
 
 ## Layout
 
 - `src/build.ts`, `src/change.ts`: each action's input and how the
   coordinator fills it.
 - `src/start.ts`: the starter module. It refuses while another coder works on
-  the code, picks the package for the run's starter, and writes the run's
-  assignment from the filed documents, the chosen design and the instruction.
+  the code, records a first build's starter for the hub to apply, and writes
+  the run's assignment from the filed documents, the chosen design and the
+  instruction.
 - `src/package.ts`: `coderPackage`, which assembles the agent from the hub's
-  model, director and tools for one starter, and asks the director to hold a
-  reply until `check-stack` passes. `src/packages/` holds one entry per installed package.
+  model, director and tools, and asks the director to hold a reply until
+  `check-stack` passes. `src/packages/coder.ts` is the installed package.
 - `src/prompt.ts`: the system prompt, the same for every project. What a
   starter adds is in its `AGENTS.md` and, for the web-app starter, the
   `web-app-starter-skills` pack.

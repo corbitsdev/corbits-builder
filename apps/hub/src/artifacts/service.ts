@@ -2608,6 +2608,47 @@ export function createArtifactService(
       });
     },
 
+    // A first build's coder, just deployed, begins from the starter it names, or from none: the
+    // project's stack.starter and stack.checks are saved as that starter's, or cleared, before its
+    // assignment. Its first push access writes the starter's files onto the app repository.
+    async recordStarter(actor: Actor, projectId: string, raw: unknown) {
+      const input = type({
+        "+": "reject",
+        runId: "string > 0",
+        starter: type("string").narrow(isStarterName).or("null"),
+      })(raw);
+      if (input instanceof type.errors)
+        throw new ProjectError(400, "invalid_starter", {
+          issues: input.summary,
+        });
+      await requireProject(actor, projectId, "manage");
+      const [run] = await rawDB
+        .select({ bundle: workflowRunLaunchSpec.frozenApprovalBundle })
+        .from(workflowRun)
+        .innerJoin(
+          workflowRunLaunchSpec,
+          eq(workflowRunLaunchSpec.anchorRunId, workflowRun.id),
+        )
+        .where(
+          and(
+            eq(workflowRun.id, input.runId),
+            eq(workflowRun.tenantId, actor.tenantId),
+          ),
+        );
+      if (spawnedWorkflowRole(run?.bundle) !== "coder")
+        throw new ProjectError(404, "coder_run_not_found", {
+          runId: input.runId,
+        });
+      await storeValues(projectId, {
+        "stack.starter": input.starter,
+        "stack.checks":
+          input.starter === null
+            ? null
+            : STARTERS[input.starter].checks.join("\n"),
+      });
+      return input;
+    },
+
     // A plugin's starter names the concept of a run it just deployed, before its assignment.
     async recordDesignConcept(actor: Actor, projectId: string, raw: unknown) {
       const input = DesignConceptRecord(raw);

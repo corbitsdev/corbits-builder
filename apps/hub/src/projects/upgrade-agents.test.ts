@@ -30,9 +30,6 @@ const installed: InstalledWorkflows = {
     ),
     reviewer: deployment("@corbits-builder/reviewer-native@1.0.0-sha-new"),
     coder: deployment("@corbits-builder/coder-native@1.0.0-sha-new"),
-    "coder-any-package": deployment(
-      "@corbits-builder/coder-native@1.0.0-sha-any",
-    ),
     designer: deployment("@corbits-builder/designer-native@1.0.0-sha-new"),
     presenter: deployment("@corbits-builder/presenter-native@1.0.0-sha-new"),
   },
@@ -52,11 +49,6 @@ test("a run is stale when its frozen pin is not one installed for its role", () 
       runId: "coder",
       role: "coder" as const,
       bundle: frozen("@corbits-builder/coder-native", "1.0.0-sha-new"),
-    },
-    {
-      runId: "any-coder",
-      role: "coder" as const,
-      bundle: frozen("@corbits-builder/coder-native", "1.0.0-sha-any"),
     },
     {
       runId: "designer",

@@ -151,6 +151,7 @@ const TOOLS_BY_ROLE: Record<
   coder: { definitions: [readDefinition] },
   designer: { definitions: [readDefinition] },
   presenter: { definitions: [readDefinition] },
+  worker: { definitions: [readDefinition] },
 };
 
 export function createArtifactTools(

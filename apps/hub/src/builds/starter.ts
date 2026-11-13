@@ -32,18 +32,13 @@ import {
   checkModules,
   checkScripts,
   kitDigest,
-  starterFiles,
   watchScript,
 } from "@corbits-builder/coder/assets" with { type: "macro" };
-import {
-  CODER_INPUTS,
-  STARTERS,
-  type StarterName,
-} from "@corbits-builder/coder/contract";
+import { CODER_INPUTS } from "@corbits-builder/coder/contract";
+import type { WorkflowProjectScope } from "@corbits-builder/schemas/installed-workflows";
 import { DESIGNER_INPUTS } from "@corbits-builder/designer/contract";
 import { designStarterFiles } from "@corbits-builder/designer/skills" with { type: "macro" };
 
-const STARTER_FILES = starterFiles();
 const DESIGN_STARTER = designStarterFiles();
 export const STARTER_INDEX = DESIGN_STARTER[".builder/designs/index.html"]!;
 export const STARTER_HOME_SCREEN =
@@ -268,8 +263,8 @@ const packFiles = (workflow: string) =>
   );
 
 // Every warm writes the current filed inputs afresh: the role's documents and skill packs under
-// INPUTS_DIRECTORY, and for a web app the component kit digest beside them and the design unpacked
-// into .builder.
+// INPUTS_DIRECTORY, and for an app the chosen design unpacked into .builder, with the component kit
+// digest beside the documents whenever a design is chosen or the code serves a web app.
 async function writeInputs(
   kind: "app" | "design",
   workspace: string,
@@ -288,9 +283,9 @@ async function writeInputs(
     workspace,
     packFiles(kind === "app" ? "coder" : "designer"),
   );
-  if (!serves) return;
-  await writeBundle(workspace, { [KIT_DIGEST]: KIT });
+  if (kind === "design") return;
   const design = await read("design");
+  if (design || serves) await writeBundle(workspace, { [KIT_DIGEST]: KIT });
   if (design) await unpackDesign(design.content, workspace);
 }
 
@@ -317,12 +312,12 @@ async function designSeed(
     : DESIGN_STARTER;
 }
 
-// Seeds a fresh workspace and returns the setup command the sandbox must still run, if any, and the
-// starter it began from when it began from one: an app is a checkout of its repository's main once
-// main holds a version; before then, or while the repository is unavailable, it starts from the
-// project's filed app when there is one, else from the run's starter, else empty; a seed made while
-// the repository is unavailable becomes a version on top of main once it is reachable. Code with
-// no starter has no setup command. A design starts from the draft an earlier designer left for its
+// Seeds a fresh workspace and returns the setup command the sandbox must still run, if any: an app
+// is a checkout of its repository's main, where the hub wrote a first build's starter; while main
+// holds no version, or the repository is unavailable, it starts from the project's filed app when
+// there is one, else empty; a seed made while the repository is unavailable becomes a version on
+// top of main once it is reachable. The setup command is the one the project's stack declares;
+// code that declares none has none. A design starts from the draft an earlier designer left for its
 // concept, else from the design starter in the stylesheet of the theme its concept starts from; the
 // theme's sample screens and DESIGN.md only preview it. The marker sits beside the workspace, out
 // of the sandbox's reach, and is written only once setup succeeded, so a sidecar that restarts
@@ -336,23 +331,21 @@ export async function prepareWorkspace(
   app?: {
     repository: AppRepository;
     signal: AbortSignal;
-    starter: StarterName | undefined;
+    stack: WorkflowProjectScope["stack"];
   },
 ): Promise<{
   setup:
     | { command: string; advice: string; done: () => Promise<void> }
     | undefined;
-  started: StarterName | undefined;
 }> {
   if (kind === "design") {
     if (!(await exists(join(workspace, ".builder", "DESIGN.md"))))
       await writeBundle(workspace, await designSeed(readTheme, readPrevious));
     await writeInputs(kind, workspace, read, false);
-    return { setup: undefined, started: undefined };
+    return { setup: undefined };
   }
   if (!app) throw new Error("app_workspace_needs_its_repository");
   await app.repository.prepare(app.signal);
-  let started: StarterName | undefined;
   if (!(await workspaceHoldsApp(workspace))) {
     const filedApp = await read("app");
     if (filedApp)
@@ -360,21 +353,16 @@ export async function prepareWorkspace(
         workspace,
         bundleFiles(AppBundle.assert(JSON.parse(filedApp.content))),
       );
-    else if (app.starter !== undefined) {
-      await writeBundle(workspace, STARTER_FILES[app.starter]!);
-      started = app.starter;
-    }
   }
-  const declared = app.starter && STARTERS[app.starter];
-  await writeInputs(kind, workspace, read, declared?.serves === true);
+  await writeInputs(kind, workspace, read, app.stack?.serves === true);
   const marker = join(dirname(workspace), ".workspace-ready");
   const setup =
-    !declared || (await exists(marker))
+    !app.stack || (await exists(marker))
       ? undefined
       : {
-          command: declared.setup,
-          advice: declared.setupFailed,
+          command: app.stack.setup,
+          advice: app.stack.setupFailed,
           done: () => writeFile(marker, ""),
         };
-  return { setup, started };
+  return { setup };
 }

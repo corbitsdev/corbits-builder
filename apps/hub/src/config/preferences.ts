@@ -25,6 +25,7 @@ const ALL_ROLES = [
   "coder",
   "reviewer",
   "presenter",
+  "worker",
 ] as const;
 
 // How Builder works with a person. Each entry is one setting in Settings, copied onto a
@@ -366,6 +367,11 @@ export function designConceptCeiling(): number {
 /** Whether the project's build sandboxes reach any public host rather than only the npm registry. */
 export function opensNetwork(choices: Preferences | null): boolean {
   return resolvePreferences(choices)["internet_while_building"] === "yes";
+}
+
+/** Whether the coder installs packages without asking the person first. */
+export function installsAnyPackage(choices: Preferences | null): boolean {
+  return resolvePreferences(choices)["install_any_package"] === "yes";
 }
 
 /** Whether a filed document lets the next writer start without the person's approval. */

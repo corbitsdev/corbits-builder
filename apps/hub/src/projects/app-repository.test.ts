@@ -4,7 +4,16 @@ import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import git from "isomorphic-git";
-import { appRepositoryMain } from "./app-repository.ts";
+import type {
+  ListAssetBlobsParams,
+  PopulateAssetParams,
+} from "@intx/hub-sessions";
+import { WORKFLOW_PACKAGES } from "../plugins/catalog.ts";
+import {
+  appRepositoryMain,
+  coderToolEffects,
+  seedStarter,
+} from "./app-repository.ts";
 
 const author = { name: "Builder", email: "builder@example.com" };
 
@@ -46,4 +55,49 @@ test("an app repository's main reads as the app a snapshot would file, once it h
   } finally {
     await rm(dir, { recursive: true, force: true });
   }
+});
+
+// An app repository's main as Interchange's asset service reads and writes it, from its genesis.
+function appAsset() {
+  const main = new Map<string, string | Uint8Array>([[".gitignore", ""]]);
+  return {
+    main,
+    listAssetBlobs: async ({ dir }: ListAssetBlobsParams) =>
+      [...main.keys()].filter((path) => dir === "" && !path.includes("/")),
+    populateAsset: async ({ tree }: PopulateAssetParams) => {
+      for (const [path, content] of Object.entries(tree.files))
+        main.set(path, content);
+      return { commitSha: "seeded" };
+    },
+  };
+}
+
+test("the coder is one package that knows no starter, and the hub writes a first build's starter onto main", async () => {
+  expect(
+    [...WORKFLOW_PACKAGES]
+      .filter(([, role]) => role === "coder")
+      .map(([name]) => name),
+  ).toEqual(["coder"]);
+
+  const fresh = appAsset();
+  await seedStarter(fresh, "asset", "web-app");
+  expect([...fresh.main.keys()]).toEqual(
+    expect.arrayContaining(["AGENTS.md", "CHECKS.txt", "package.json"]),
+  );
+  expect(
+    [...fresh.main.keys()].some((path) => path.startsWith("client/")),
+  ).toBe(true);
+
+  const built = appAsset();
+  built.main.set("main.ts", "export {};\n");
+  await seedStarter(built, "asset", "bare");
+  expect([...built.main.keys()]).toEqual([".gitignore", "main.ts"]);
+});
+
+test("a coder run installs any package without asking only when its person turned that on", () => {
+  expect(coderToolEffects({ install_any_package: "yes" })).toEqual([
+    { tool: "install_packages", effect: "allow" },
+  ]);
+  expect(coderToolEffects({ install_any_package: "no" })).toEqual([]);
+  expect(coderToolEffects(null)).toEqual([]);
 });

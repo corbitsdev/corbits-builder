@@ -142,11 +142,12 @@ export const DesignConceptRecord = type({
 export type DesignConceptRecord = typeof DesignConceptRecord.infer;
 
 // What a plugin's starter records against a run it just deployed, before the run's assignment: a
-// concept the run works on, or the sources a presentation pins.
+// concept the run works on, the sources a presentation pins, or the starter a first build begins
+// from.
 export const RunRecord = type({
   "+": "reject",
   runId: "string > 0",
-  name: "'concept' | 'presentation'",
+  name: "'concept' | 'presentation' | 'starter'",
   data: "unknown",
 });
 export type RunRecord = typeof RunRecord.infer;

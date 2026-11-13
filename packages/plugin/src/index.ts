@@ -219,7 +219,9 @@ export const AgentTool = type("'read_artifact' | 'write_artifact' | 'web'");
 export type AgentTool = typeof AgentTool.infer;
 
 // A role whose run needs no workspace, whose model settings a declared agent runs with.
-export const AgentModel = type("'writer' | 'reviewer' | 'presenter'");
+export const AgentModel = type(
+  "'writer' | 'reviewer' | 'presenter' | 'worker'",
+);
 
 // An agent the host builds from its prompt and tools alone: prompt is a markdown file in the plugin,
 // model the role whose model settings it runs with, the writer's unless stated.

@@ -10,9 +10,7 @@ import {
   APP_CHANGE_NOTE,
   CODER_INPUTS,
   coderTaskMessage,
-  isStarterName,
   NO_DOCUMENTS_NOTE,
-  startFrom,
 } from "./contract.ts";
 
 // One coder works on the code at a time: the project has one app repository, and a second coder
@@ -32,26 +30,10 @@ function coderBusy(live?: Working) {
   );
 }
 
-// What the run starts from: a first build's starter when the coordinator named one, which its
-// workspace is seeded from and records as stack.starter; a change, the starter the project's code
-// was built from. Without one, the code starts from an empty project, or is code that did.
-async function starterOf(
-  app: "new" | "existing",
-  input: Readonly<Record<string, unknown>>,
-  project: Project,
-) {
-  const chosen =
-    app === "new"
-      ? input["starter"]
-      : (await project.values(["stack.starter"]))["stack.starter"];
-  return isStarterName(chosen) ? chosen : undefined;
-}
-
 // A change starts from the code as last saved; a first build's manifest requires that there is
-// none. A coder still on the code refuses at once rather than wait for it. Each starter, and code
-// with none, has its own coder package, whose prompt, tools and finish check fit what it builds; a
-// project whose person lets packages install without asking gets that package's coder whose
-// install_packages does not ask. A running coder keeps the definition it was deployed with.
+// none. A coder still on the code refuses at once rather than wait for it. A first build records
+// the starter it names, or that it names none, against its run before the run is assigned: the hub
+// saves it as the project's stack and writes the starter's files as the project's first code.
 export default defineStarter(
   type({
     "+": "reject",
@@ -64,22 +46,21 @@ export default defineStarter(
   async ({ correlation, app }, input, project: Project, skills) => {
     const live = (await project.working()).find((run) => run.role === "coder");
     if (live) throw coderBusy(live);
-    const { preferences } = await project.state();
-    const starter = startFrom(await starterOf(app, input, project));
     const { runId } = await project.startAlone({
-      workflow:
-        preferences["install_any_package"] === "yes"
-          ? `${starter.package}-any-package`
-          : starter.package,
+      workflow: "coder",
       correlation,
-      // The filed documents a coder works from and, for a web app, the chosen design; with none,
-      // the note that the instruction is the whole assignment.
+      // The filed documents a coder works from and the chosen design; with none, the note that the
+      // instruction is the whole assignment.
       assignment: (filed) =>
-        (filed.startHere(CODER_INPUTS, starter.serves) ?? NO_DOCUMENTS_NOTE) +
+        (filed.startHere(CODER_INPUTS, true) ?? NO_DOCUMENTS_NOTE) +
         skills +
         (app === "existing" ? APP_CHANGE_NOTE : "") +
         coderTaskMessage(input.instruction),
       busy: coderBusy,
+      record:
+        app === "new"
+          ? { name: "starter", data: () => input["starter"] ?? null }
+          : undefined,
     });
     return { runs: [{ runId }], notStarted: [] };
   },

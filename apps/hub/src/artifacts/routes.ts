@@ -1244,7 +1244,7 @@ export function mountArtifactRoutes(
       tags: ["Artifacts"],
       operationId: "recordRun",
       description:
-        "Records data against a run a plugin's starter just deployed, before its assignment: the concept it works on (its design is filed as that concept's design_option), or the sources a presentation pins.",
+        "Records data against a run a plugin's starter just deployed, before its assignment: the concept it works on (its design is filed as that concept's design_option), the sources a presentation pins, or the starter a first build's coder begins from, or null for none (saved as the project's stack.starter and stack.checks, and written onto the app repository when the coder first asks for push access).",
       security,
       requestBody: {
         required: true,
@@ -1264,6 +1264,13 @@ export function mountArtifactRoutes(
           await service.recordDesignConcept(actorOf(c), projectId, {
             runId: input.runId,
             concept: input.data,
+          }),
+        );
+      if (input.name === "starter")
+        return c.json(
+          await service.recordStarter(actorOf(c), projectId, {
+            runId: input.runId,
+            starter: input.data,
           }),
         );
       return c.json(

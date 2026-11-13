@@ -49,9 +49,6 @@ test("production entries expose concrete native workflows without callback crede
   const reviewer = (await import("@corbits-builder/writer/packages/reviewer"))
     .default;
   const coder = (await import("@corbits-builder/coder/packages/coder")).default;
-  const coderAnyPackage = (
-    await import("@corbits-builder/coder/packages/coder-any-package")
-  ).default;
   const designer = (await import("@corbits-builder/designer/packages/designer"))
     .default;
   const presenter = (
@@ -62,29 +59,22 @@ test("production entries expose concrete native workflows without callback crede
     expect(writer.steps.write).toMatchObject({ triggers: 1 });
   expect(reviewer.steps.review).toMatchObject({ triggers: 1 });
   expect(coder.steps.build).toMatchObject({ triggers: 1 });
-  expect(coderAnyPackage.steps.build).toMatchObject({ triggers: 1 });
   expect(designer.steps.design).toMatchObject({ triggers: 1 });
   expect(presenter.steps.present).toMatchObject({ triggers: 1 });
-  // Secure by default: only the coder a person opted into declares install_packages without an ask.
-  const installTool = (workflow: typeof coder) => {
-    const step = workflow.steps.build;
-    if (!step || !("agent" in step))
-      throw new Error("coder_build_step_missing");
-    return step.agent.toolFactories
+  // Secure by default: the coder declares install_packages as a tool that asks.
+  const coderBuild = coder.steps.build;
+  if (!coderBuild || !("agent" in coderBuild))
+    throw new Error("coder_build_step_missing");
+  expect(
+    coderBuild.agent.toolFactories
       .flatMap((factory) => factory.definitions ?? [])
-      .find((definition) => definition.name === "install_packages");
-  };
-  expect(installTool(coder)).toEqual({
-    name: "install_packages",
-    approval: "ask",
-  });
-  expect(installTool(coderAnyPackage)).toEqual({ name: "install_packages" });
+      .find((definition) => definition.name === "install_packages"),
+  ).toEqual({ name: "install_packages", approval: "ask" });
   for (const workflow of [
     coordinator,
     ...writers,
     reviewer,
     coder,
-    coderAnyPackage,
     designer,
     presenter,
   ]) {
@@ -105,7 +95,6 @@ test("production entries expose concrete native workflows without callback crede
       ...writers,
       reviewer,
       coder,
-      coderAnyPackage,
       designer,
       presenter,
     ]),
@@ -153,7 +142,7 @@ test("built npm tarballs contain importable production workflow metadata and def
           }),
         ).toBeDefined();
     }
-    expect(manifest).toHaveLength(13);
+    expect(manifest).toHaveLength(10);
   } finally {
     await rm(directory, { recursive: true, force: true });
   }

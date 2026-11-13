@@ -181,11 +181,25 @@ function project(session: ProjectSession): Project {
     savePlan: (steps) =>
       session.hub(session.projectPath + "/plan", { steps }, undefined, "PUT"),
     working: async () => (await session.listed()).inFlight,
-    startAlone: ({ workflow, correlation, assignment, busy }) =>
+    startAlone: ({ workflow, correlation, assignment, busy, record }) =>
       session.startAlone(
         workflow,
         correlation,
-        (state) => assignment(filed(session, state)),
+        async (state) => {
+          const now = filed(session, state);
+          const content = await assignment(now);
+          if (!record) return { content };
+          const data = await record.data(now);
+          return {
+            content,
+            beforeAssign: (runId: string) =>
+              session.hub(session.projectPath + "/run-records", {
+                runId,
+                name: record.name,
+                data,
+              }),
+          };
+        },
         busy,
       ),
     deploy: async ({ workflow, correlation, assignment, record }) => {

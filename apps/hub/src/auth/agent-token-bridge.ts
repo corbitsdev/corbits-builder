@@ -5,7 +5,8 @@ import {
   type WorkflowRole,
 } from "@corbits-builder/schemas/installed-workflows";
 import { CheckRun } from "@corbits-builder/schemas/artifact";
-import { projectCoordinator, runAction } from "../db/schema.ts";
+import { project, projectCoordinator, runAction } from "../db/schema.ts";
+import { declaredStack } from "@corbits-builder/coder/contract";
 import { readJson } from "../lib/json.ts";
 import { verifyAgentToken } from "@corbits/agent-token";
 import { sha256 } from "@intx/crypto";
@@ -381,6 +382,10 @@ export function createAgentTokenBridge(
         identity.tenantId,
         binding.projectId,
       );
+      const [projectRow] = await db
+        .select({ values: project.values })
+        .from(project)
+        .where(eq(project.id, binding.projectId));
       return c.json({
         tenantId: row.id,
         domain: row.domain,
@@ -388,6 +393,7 @@ export function createAgentTokenBridge(
         role,
         workflows: scopeWorkflows(installed),
         openNetwork: opensNetwork(preferences.value),
+        stack: declaredStack(projectRow?.values["stack.starter"]),
         build: await buildLayout(),
       });
     }

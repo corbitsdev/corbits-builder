@@ -42,9 +42,7 @@ import {
   readFiledDocument,
   readPreviousDesignDraft,
   readRunDesignTheme,
-  recordStarter,
 } from "./app-snapshot.ts";
-import { startFrom, type StarterName } from "@corbits-builder/coder/contract";
 import { INPUTS_DIRECTORY } from "../config/inputs.ts";
 import {
   createAppRepository,
@@ -231,22 +229,17 @@ const SETUP_TIMEOUT_MS = 115_000;
 const SETUP_PROGRESS = "installing the app's packages";
 
 // A source-closure-safe declaration: only explicit policy is captured. The
-// native child supplies the step workspace; the sandbox is built inside it. An app workspace names
-// the starter its code begins from, or none, which picks whether a web app runs in it.
+// native child supplies the step workspace; the sandbox is built inside it. What the project's code
+// is, and whether a web app runs in an app workspace, the hub's project scope says when it starts.
 export function createSidecarCodingTools(policy: {
   approval: "ask" | "allow";
   workspace: "app" | "design";
   packageInstall?: "ask" | "allow";
-  starter?: StarterName | undefined;
   browser?: BrowserCatalog | undefined;
 }) {
   if (!["ask", "allow"].includes(policy.approval))
     throw new Error("invalid_coding_policy");
   const design = policy.workspace === "design";
-  if (design && policy.starter !== undefined)
-    throw new Error("invalid_coding_policy");
-  // Whether a web app runs in the workspace for the agent to open, check and report on.
-  const serves = !design && startFrom(policy.starter).serves;
   const passedCheck = (call: ToolCall, result: ToolResult) =>
     appCheckDetail(call, result)?.checkPassed === true;
   const offered = (name: string) => !design || DESIGNER_TOOLS.has(name);
@@ -269,7 +262,7 @@ export function createSidecarCodingTools(policy: {
               : { name: PACKAGE_INSTALL_TOOL },
           ]
         : []),
-      ...(serves ? [{ name: APP_STATUS_TOOL }] : []),
+      ...(design ? [] : [{ name: APP_STATUS_TOOL }]),
       ...(policy.workspace === "app" ? [{ name: DONE_CHECKS_TOOL }] : []),
       ...(design ? [{ name: CHECK_DESIGN_TOOL }] : []),
       ...(policy.browser?.definitions ?? []),
@@ -349,6 +342,9 @@ export function createSidecarCodingTools(policy: {
       let setupFailure: string | undefined;
       // Writes the ready marker while setup has not yet succeeded.
       let markReady: (() => Promise<void>) | undefined;
+      // Whether the project's code serves a web app that runs in the workspace for the agent to
+      // open, check and report on, as the hub said when the workspace started.
+      let serves = false;
       let browser:
         | {
             url: string;
@@ -366,6 +362,7 @@ export function createSidecarCodingTools(policy: {
             signal,
           );
           const workspace = await realpath(env.toolCwd);
+          serves = !design && scope.stack?.serves === true;
           const app =
             policy.workspace === "app"
               ? (opened ??= createAppRepository({
@@ -383,7 +380,7 @@ export function createSidecarCodingTools(policy: {
             (kind) => readFiledDocument(env.capabilities, scope, kind, signal),
             () => readRunDesignTheme(env.capabilities, scope, signal),
             () => readPreviousDesignDraft(env.capabilities, scope, signal),
-            app && { repository: app, signal, starter: policy.starter },
+            app && { repository: app, signal, stack: scope.stack },
           );
           repository = app;
           repository?.schedule("Start");
@@ -405,7 +402,7 @@ export function createSidecarCodingTools(policy: {
             },
           );
           try {
-            const { setup, started } = prepared;
+            const { setup } = prepared;
             if (setup) {
               // The install says nothing the hub can relay until it ends, so the person is told what
               // is running for its whole length.
@@ -438,8 +435,6 @@ export function createSidecarCodingTools(policy: {
                 setupFailure = `workspace_setup_failed: setup ran ${setup.command} and it did not finish. The files are as saved and every tool works on them. Its output:\n${String(result.content).slice(-2000)}\n${setup.advice}`;
               }
             }
-            if (started !== undefined)
-              await recordStarter(env.capabilities, scope, started, signal);
             // A web app is live from the coder's first call, so it can open it whenever it wants.
             if (serves) await executor.app();
           } catch (error) {
@@ -462,7 +457,14 @@ export function createSidecarCodingTools(policy: {
         run: async (call, signal) => {
           const ready = open(signal);
           if (call.name === APP_STATUS_TOOL) {
-            const app = await (await ready).app();
+            const executor = await ready;
+            if (!serves)
+              return {
+                callId: call.id,
+                content:
+                  "nothing to open: the project's code serves no web app, so none runs here. Try the program the way its README says.",
+              };
+            const app = await executor.app();
             const answers = await fetch(app.url, {
               signal: AbortSignal.timeout(3000),
             }).then(
@@ -653,7 +655,7 @@ export function createSidecarCodingTools(policy: {
         executor: lazySandbox,
         approval: policy.approval,
         ...(policy.packageInstall ? { packageInstall: true } : {}),
-        app: serves,
+        app: !design,
       }).factory(env);
       const runCall = async (
         rawCall: ToolCall,

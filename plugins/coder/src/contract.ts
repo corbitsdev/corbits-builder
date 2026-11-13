@@ -9,25 +9,28 @@ export const CODER_INPUTS = [
   "build_plan",
 ] as const;
 
-// What a first build can start from, by name: the folder of files the workspace begins as, the
-// coder package that builds on it, whether it serves a web app to preview, the command that
-// prepares a fresh workspace, what an agent can do when that command fails, and the commands a
-// first build saves as the project's stack.checks.
+// What a first build can start from, by name: the folder of files the hub writes onto the
+// project's repository before the coder starts, whether that code serves a web app, the command
+// that prepares a fresh workspace, what an agent can do when that command fails, and the commands
+// the hub saves as the project's stack.checks.
 export const STARTERS = manifest.coder.starters;
 export type StarterName = keyof typeof STARTERS;
-
-// Code with no starter, built or imported, starts from an empty project in whatever stack its task
-// names, with its own coder package.
-export const EMPTY = manifest.coder.empty;
-
-/** The coder package and web app serving of code from the starter, or of code without one. */
-export const startFrom = (starter: StarterName | undefined) =>
-  starter === undefined ? EMPTY : STARTERS[starter];
 
 export const isStarterName = (name: unknown): name is StarterName =>
   typeof name === "string" && Object.hasOwn(STARTERS, name);
 
 export const STARTER_NAMES = Object.keys(STARTERS).filter(isStarterName);
+
+/**
+ * What code that began from a starter declares of itself, by the project's stack.starter: the
+ * command that prepares a fresh workspace, what to do when it fails, and whether it serves a web
+ * app. Code that began from none declares nothing.
+ */
+export function declaredStack(starter: unknown) {
+  if (!isStarterName(starter)) return undefined;
+  const { setup, setupFailed, serves } = STARTERS[starter];
+  return { setup, setupFailed, serves };
+}
 
 // A coder started from the person's words alone: a change to an imported project that has filed no
 // documents. A first build always has documents, as its manifest requires.

@@ -231,12 +231,13 @@ export type Project = {
   // Deploys the installed workflow, one run of its role at a time: busy refuses while another is
   // starting, or is still at work once a replied one had time to end. assignment writes the run's
   // first message from the project as it then stands; the host adds the values block and the
-  // person's preferences.
+  // person's preferences. record, when given, is stored against the run as deploy stores it.
   startAlone(run: {
     workflow: string;
     correlation: string;
     assignment(filed: Filed): string | Promise<string>;
     busy(live?: Working): Error;
+    record?: { name: string; data(filed: Filed): unknown } | undefined;
   }): Promise<{ runId: string }>;
   // Deploys the installed workflow, as many runs at a time as are started; assignment writes the
   // run's first message from the project as it then stands, and the host adds the values block and

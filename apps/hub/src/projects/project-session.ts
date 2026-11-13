@@ -315,24 +315,30 @@ export function projectSession(
     return { role, spec: options.workflows[workflow] };
   };
   // One run of the workflow's role at a time; a start waits for the last one to end. task builds
-  // the assignment from the project as it then stands, or refuses; busy says why none started,
-  // with the live run when one is still working and none while another is starting.
+  // the assignment from the project as it then stands, and what to store against the run before
+  // it is assigned, or refuses; busy says why none started, with the live run when one is still
+  // working and none while another is starting.
   const startAlone = (
     workflow: string,
     correlationId: string,
-    task: (state: Listed) => string | Promise<string>,
+    task: (state: Listed) => Promise<{
+      content: string;
+      beforeAssign?: (runId: string) => Promise<unknown>;
+    }>,
     busy: (live?: Listed["inFlight"][number]) => Error,
   ) => {
     const { role, spec } = installed(workflow);
     return startOnce(options.projectId + ":" + role, busy, async () => {
       const { state, live } = await ended((run) => run.role === role);
       if (live) throw busy(live);
+      const { content, beforeAssign } = await task(state);
       return deploy(
         role,
         spec,
         state.preferences,
         correlationId,
-        await task(state),
+        content,
+        beforeAssign,
       );
     });
   };

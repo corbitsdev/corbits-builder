@@ -21,7 +21,6 @@ const workflows = {
   "writer-document": deployment,
   reviewer: deployment,
   coder: deployment,
-  "coder-empty": deployment,
   designer: deployment,
 };
 
@@ -85,7 +84,10 @@ function project(
       if (body) state.plan = body.steps.map(stored);
       return Response.json({ steps: state.plan, updatedAt: null });
     }
-    if (path.endsWith("/run-records")) return Response.json(body);
+    if (path.endsWith("/run-records")) {
+      recorded.push(body);
+      return Response.json(body);
+    }
     if (path.endsWith("/artifact-approvals")) {
       approvals.push(body);
       return Response.json({ approvalId: "approval", artifacts: [] });
@@ -310,6 +312,12 @@ test("on build-web-app's steps, coder build waits for the person's go-ahead whil
     'The plan step "Build the app" suggests doing this first: the person chose a design from the design options (designer review or designer choose makes this true). The plan orders the work so each step builds on what the one before made; this started without it.',
   );
   expect(leftToBuilder.deployed).toHaveLength(1);
+  // The one coder is started, and the starter is the project's: recorded for the hub to apply.
+  expect(leftToBuilder.recorded).toContainEqual({
+    runId: "run-1",
+    name: "starter",
+    data: "web-app",
+  });
 });
 
 test("designer mockup starts a designer with nothing filed, unless its build-web-app step waits on the requirements being approved", async () => {
