@@ -231,12 +231,13 @@ export const AgentBuilder = type({
 });
 export type AgentBuilder = typeof AgentBuilder.infer;
 
-// A declared agent as the host builds its workflow package: the prompt's text, the role it runs as,
-// and whether its reply waits for a filed document, which it does when every action starting it
-// returns a filed fact.
+// A declared agent as the host builds its workflow package: its plugin's version, the prompt's text,
+// the role it runs as, and whether its reply waits for a filed document, which it does when every
+// action starting it returns a filed fact.
 export const AgentPackage = type({
   "+": "reject",
   name: "string > 0",
+  version: "string > 0",
   prompt: "string > 0",
   tools: AgentTool.array(),
   role: AgentModel,

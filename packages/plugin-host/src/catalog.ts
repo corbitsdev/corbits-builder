@@ -189,6 +189,7 @@ const isStarter = (value: unknown): value is Starter =>
 // The builder block of whichever kind the manifest says it runs.
 const Manifest = type({
   name: "string > 0",
+  version: "string > 0",
   "description?": "string",
   builder: SpecialistBuilder.or(ReadyPlanBuilder),
 });
@@ -343,9 +344,10 @@ function manifestOf(found: Found) {
     throw new Error(
       `plugins/${found.folder}/package.json: ${manifest.summary}`,
     );
-  const { name, builder, description = "" } = manifest;
+  const { name, version, builder, description = "" } = manifest;
   return {
     found,
+    version,
     builder,
     about: {
       package: name,
@@ -1052,10 +1054,14 @@ async function pluginStarters(manifests: readonly Manifested[]) {
   return starters;
 }
 
-// Each declared agent's package: its prompt's text, run as the role whose model it names, the
-// writer's unless stated, its reply waiting for a filed document when every action starting it
-// files one.
-async function agentPackages(found: Found, builder: SpecialistBuilder) {
+// Each declared agent's package: its plugin's version, its prompt's text, run as the role whose model
+// it names, the writer's unless stated, its reply waiting for a filed document when every action
+// starting it files one.
+async function agentPackages(
+  found: Found,
+  version: string,
+  builder: SpecialistBuilder,
+) {
   const starting = Object.values(builder.actions).filter(
     (action) => action.runs === "workflow",
   );
@@ -1067,6 +1073,7 @@ async function agentPackages(found: Found, builder: SpecialistBuilder) {
         );
         const agent: AgentPackage = {
           name,
+          version,
           prompt: (await found.text(prompt)).trim(),
           tools,
           role: model,
@@ -1088,14 +1095,14 @@ async function pluginPackages(manifests: readonly Manifested[]) {
   const packages = new Map<string, PluginPackage>();
   // Two plugins with one handle may well bring a package of the same name, which only one can be.
   const owners = new Map<string, string>();
-  for (const { found, builder, about } of manifests) {
+  for (const { found, version, builder, about } of manifests) {
     if (builder.runs !== "specialist") continue;
     for (const [name, brought] of [
       ...Object.entries(builder.packages ?? {}).map(
         ([name, { entry, role }]) =>
           [name, { entry: join(found.folder, entry), role }] as const,
       ),
-      ...(await agentPackages(found, builder)),
+      ...(await agentPackages(found, version, builder)),
     ]) {
       const other = owners.get(name);
       if (other !== undefined)

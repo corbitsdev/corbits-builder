@@ -1,7 +1,10 @@
 import { expect, test } from "bun:test";
 import { NativeSpecialistDeployment } from "@corbits-builder/schemas/native-specialist";
 import { MODEL_PROVIDERS, workflowBindings } from "../config/models.ts";
+import { projectLiveToInert } from "@intx/workflow/projection";
+import { nativePackageName } from "./package-name.ts";
 import { resolveRoleInference, type RoleInference } from "./role-inference.ts";
+import { spawnedWorkflowRole } from "./spawn-role.ts";
 import type { WorkflowRole } from "@corbits-builder/schemas/installed-workflows";
 
 const bindings = workflowBindings(MODEL_PROVIDERS, {
@@ -120,7 +123,6 @@ test("built npm tarballs contain importable production workflow metadata and def
   );
   try {
     const manifest = await buildWorkflowPackages(directory, "1.0.0", inference);
-    expect(manifest).toHaveLength(13);
     for (const metadata of manifest) {
       const extracted = join(directory, metadata.assetName);
       await mkdir(extracted);
@@ -143,7 +145,15 @@ test("built npm tarballs contain importable production workflow metadata and def
       expect(entry.director).toBeDefined();
       expect(Object.keys(entry.default.steps)).toHaveLength(1);
       expect(entry.default.credentialBindings ?? []).toEqual([]);
+      // The hub accepts a run as a specialist's only when its launch bundle yields a role.
+      if (metadata.packageName !== nativePackageName("coordinator"))
+        expect(
+          spawnedWorkflowRole({
+            projection: projectLiveToInert(entry.default),
+          }),
+        ).toBeDefined();
     }
+    expect(manifest).toHaveLength(13);
   } finally {
     await rm(directory, { recursive: true, force: true });
   }

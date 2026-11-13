@@ -16,7 +16,7 @@ function withBuilder(folder: string, builder: unknown) {
   if (!found) throw new Error(`plugins/${folder} is not installed`);
   return {
     folder,
-    manifest: { name: `@corbits-builder/${folder}`, builder },
+    manifest: { name: `@corbits-builder/${folder}`, version: "0.1.0", builder },
     module: found.module,
     text: found.text,
     files: found.files,

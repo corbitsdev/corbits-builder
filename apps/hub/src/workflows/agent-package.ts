@@ -16,9 +16,8 @@ const STEP_TIMEOUT_MS = 600_000;
 
 const inlined = process.env.BUILDER_AGENT;
 if (!inlined) throw new Error("agent_package_required");
-const { name, prompt, tools, role, fileBeforeDone } = AgentPackage.assert(
-  JSON.parse(inlined),
-);
+const { name, version, prompt, tools, role, fileBeforeDone } =
+  AgentPackage.assert(JSON.parse(inlined));
 const compacting = compactingDirector(nativePackageName(name));
 const { source, contextWindow, timeouts, parameters } = roleInference(role);
 if (!source.provider.trim() || !source.model.trim())
@@ -52,6 +51,8 @@ const agent = defineAgent({
   }),
   capabilities: [],
   inference: { sources: [{ ...source, parameters }] },
+  // The hub tells a specialist's run by its role's tag, and this agent plays the role it runs as.
+  tags: { [`${role}.version`]: version },
 });
 
 export default defineWorkflow({
