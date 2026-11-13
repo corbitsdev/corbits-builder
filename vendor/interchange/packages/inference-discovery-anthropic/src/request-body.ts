@@ -128,6 +128,10 @@ export interface AnthropicRequestBody {
 // must match the runtime adapter's ADAPTIVE_THINKING_MODELS, or a captured
 // fixture would stop proving the production wire; a guard test pins them equal.
 export const ADAPTIVE_THINKING_MODELS: ReadonlySet<string> = new Set([
+  "claude-opus-5-5",
+  "claude-sonnet-5-5",
+  "claude-haiku-5-5",
+  "claude-fable-5-1",
   "claude-sonnet-5",
   "claude-opus-5",
   "claude-fable-5",
