@@ -9,7 +9,8 @@ project's own documents.
 
 - The first version lets **members book, cancel and see their classes**,
   and **staff run rosters and check-in**.
-- **14 must requirements**, each with an acceptance criterion.
+- **Payments stay at the front desk**; nobody pays in the app in this
+  version.
 - I decided **cancellation closes two hours before class**; correct it if
   your rule differs.
 

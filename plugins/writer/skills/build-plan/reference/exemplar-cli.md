@@ -10,7 +10,8 @@ project's own documents.
 
 - **One Go binary**, chosen because it runs on macOS and Linux with nothing
   else installed (NFR-2); confirm it if you would rather have Python.
-- **Four phases**; a dry run on a real folder works from phase 1.
+- The first thing you can try is **a dry run on a real folder**, which
+  lists every rename and changes nothing.
 - The riskiest part is **reading dates from HEIC photos**; the fallback is
   listing those photos as skipped.
 

@@ -8,9 +8,11 @@ the project uses, the person asked for or you chose.
 ```markdown
 ## In short
 
-- **The suggested web stack**: one server with its own database and a React
-  client.
-- **Six phases**; the designed screens show in the preview from phase 2, on labelled sample data until phase 5.
+- It runs on **one small server with its own database**, inside the budget
+  you gave; it needs **the gym's email service account** to send
+  confirmations.
+- You can **click through the designed screens in the preview early**, on
+  labelled sample data, before bookings are real.
 - The riskiest part is **the timetable import**; the fallback is entering
   classes by hand on the timetable screen.
 

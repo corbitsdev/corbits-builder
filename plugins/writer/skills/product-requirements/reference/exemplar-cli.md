@@ -9,7 +9,8 @@ take every fact from the project's own documents.
 
 - The first version **renames every photo in a folder to the date it was
   taken**, and **shows the plan before changing anything**.
-- **9 must requirements**, each with an acceptance criterion.
+- It works on **JPEG and HEIC photos only**; videos and other files are
+  left alone.
 - I decided **photos with no date keep their name and are listed**; correct
   it if you would rather skip the folder.
 

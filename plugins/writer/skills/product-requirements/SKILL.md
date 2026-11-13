@@ -17,9 +17,14 @@ states, errors and details they would miss if absent.
 
 ## Sections, in order
 
-1. `## In short`: two to four one-line bullets: what the first version does,
-   the count of must requirements, the decisions you made that the person
-   should check. **Bold the words that carry the meaning.**
+1. `## In short`: two to four one-line bullets, written for the person
+   deciding whether to approve, who may read nothing else: what they will
+   be able to do with the first version, in their own terms; what it leaves
+   out that they might expect; and each decision you made for them that
+   they could disagree with. Every bullet is specific to this project: no
+   counts of requirements or sections, nothing about the document itself,
+   nothing that would be true of any project. **Bold the words that carry
+   the meaning.**
 2. `## Problem`: the problem in one tight paragraph in the person's words,
    what they do about it today and where that fails, and what a fix is
    worth to them, with their numbers where they gave any.

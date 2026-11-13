@@ -33,9 +33,13 @@ in the requirements; the reader opens them by the id.
 
 ## Sections, in order
 
-1. `## In short`: two to four one-line bullets: the stack, the number of
-   phases, the riskiest part and its fallback. **Bold the words that carry
-   the meaning.**
+1. `## In short`: two to four one-line bullets, written for the person
+   deciding whether to approve, who may read nothing else: what it is built
+   with and what that means for them; anything they must supply or pay for,
+   such as an account, a key or a server; the first thing they will be able
+   to try; and the riskiest part with its fallback. Every bullet is specific
+   to this project: no counts of phases or files, nothing about the document
+   itself. **Bold the words that carry the meaning.**
 2. `## Stack`: the stack and why it fits the approach and the constraints.
    Name the approach by where the requirements chose it, in one clause;
    describe it only when no requirements are filed.
