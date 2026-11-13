@@ -1,16 +1,7 @@
 import { expect } from "bun:test";
 import { WEATHER_CONCEPT, WEATHER_MOCKUP } from "./concept.ts";
 import { designerFor } from "./specialists.ts";
-import {
-  execute,
-  ok,
-  question,
-  results,
-  say,
-  scenario,
-  turn,
-  user,
-} from "./runner.ts";
+import { execute, ok, results, say, scenario, turn, user } from "./runner.ts";
 
 const paper = {
   label: "Calm paper",
@@ -44,12 +35,12 @@ scenario({
     turn(user(), say("Two concepts are in.")),
     turn(
       user(),
-      question("c_choose", "designer", "choose", {
+      execute("c_choose", "designer", "choose", {
         note: "Three looks to compare. Pick the one you want.",
       }),
     ),
     turn(
-      results(ok("c_choose", "question", COMMENT)),
+      results(ok("c_choose", "execute", COMMENT)),
       say("You chose a design."),
     ),
     turn(user("The person chose"), say("The design is chosen.")),

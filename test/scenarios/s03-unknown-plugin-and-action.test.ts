@@ -1,7 +1,6 @@
 import { expect } from "bun:test";
 import {
   execute,
-  question,
   refused,
   results,
   say,
@@ -26,10 +25,10 @@ scenario({
     ),
     turn(
       results(refused("c_action", "execute")),
-      question("c_screen", "designer", "pick-logo", {}),
+      execute("c_screen", "designer", "pick-logo", {}),
     ),
     turn(
-      results(refused("c_screen", "question")),
+      results(refused("c_screen", "execute")),
       say("I cannot paint logos yet."),
     ),
   ],

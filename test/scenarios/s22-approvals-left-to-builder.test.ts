@@ -4,7 +4,6 @@ import {
   call,
   execute,
   ok,
-  question,
   recorded,
   results,
   say,
@@ -51,12 +50,12 @@ scenario({
     ),
     turn(
       results(ok("c_plan", "execute")),
-      question("c_choose", "designer", "review", {
+      execute("c_choose", "designer", "review", {
         note: "The weather-driven design. Approve it to build from it.",
       }),
     ),
     turn(
-      results(ok("c_choose", "question", '"approved"')),
+      results(ok("c_choose", "execute", '"approved"')),
       say("You chose the design."),
     ),
     // The plan's report and the note of the person's choice, in either order.

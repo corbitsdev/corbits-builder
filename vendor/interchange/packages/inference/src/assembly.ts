@@ -31,7 +31,7 @@ import {
   type AuthzExtensionOptions,
 } from "./authz-extension";
 import type { CorrelationValidator } from "./correlation";
-import { createQuestionExtension, type QuestionCheck } from "./question";
+import { createQuestionExtension, type CallCheck } from "./question";
 import type { Dependencies } from "./harness";
 import {
   createReactor,
@@ -87,8 +87,8 @@ export type ReactorAssemblyConfig = {
    */
   toolDefinitions?: readonly ToolDefinition[];
   auditStore?: AuditStore;
-  /** Checks a plugin question before it is parked; see `QuestionCheck`. */
-  checkQuestion?: QuestionCheck | undefined;
+  /** Asks the host about a call before it runs; see `CallCheck`. */
+  checkCall?: CallCheck | undefined;
   beforeToolExtensions?: BeforeToolExtension[];
   toolResultTransforms?: ToolResultTransform[];
   contextTransforms?: ContextTransform[];
@@ -143,7 +143,7 @@ export function createReactorAssembly(
     authorize,
     toolDefinitions,
     auditStore,
-    checkQuestion,
+    checkCall,
     beforeToolExtensions: callerBeforeToolExtensions,
     toolResultTransforms: callerToolResultTransforms,
     contextTransforms,
@@ -194,12 +194,15 @@ export function createReactorAssembly(
       : undefined;
 
   // A question asks the person rather than acting, so it pauses ahead of authz
-  // and needs no grant. A question it blocks never reaches authz, so it is
+  // and needs no grant. A call it blocks never reaches authz, so it is
   // reported to the audit collector here; otherwise its record would lose the
   // tool and arguments.
-  const questionExtension = createQuestionExtension(checkQuestion);
+  const questionExtension = createQuestionExtension(checkCall);
   const composedBeforeToolExtensions: BeforeToolExtension[] = [
     {
+      grantOneShot(id) {
+        questionExtension.grantOneShot?.(id);
+      },
       async beforeTool(call, state, signal) {
         const decision = await questionExtension.beforeTool(
           call,

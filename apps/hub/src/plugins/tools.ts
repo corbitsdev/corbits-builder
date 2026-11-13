@@ -1,6 +1,7 @@
 import { defineTool, type AnnotatedToolFactory } from "@intx/agent/authoring";
 import { questionTool } from "@intx/inference";
 import { HUB_CREDENTIAL_HANDLE } from "@intx/types/credential-delivery";
+import type { ToolCall } from "@intx/types/runtime-core";
 import {
   CheckList,
   CheckRan,
@@ -13,6 +14,7 @@ import {
   discoverFor,
   execute,
   Execute,
+  executePause,
   managePlan,
   manageRuns,
   Plan,
@@ -52,7 +54,6 @@ import {
   WITH_SCREENS,
 } from "./catalog.ts";
 import { personFacts, projectFacts } from "./facts.ts";
-import { checkPluginQuestion } from "./question.ts";
 
 // The least score a plugin needs to be hinted. One trigger word is all triggers can score. For fields,
 // a word found in the handle, when, examples and summary ("font") scores 10, while common words
@@ -219,25 +220,33 @@ function project(session: ProjectSession): Project {
   };
 }
 
-/** The coordinator's project, as a screen its question opens is checked against. */
-export async function screenProject(
+// What the person answers before an execute call goes on, checked against the project as it is
+// before the call runs, so a failed read is thrown.
+async function executeCheck(
   env: DeployEnv,
   options: ProjectOptions | undefined,
+  call: ToolCall,
 ) {
+  if (call.name !== "execute") return undefined;
   const signal = new AbortController().signal;
-  return project(
+  const coordinated = project(
     projectSession(
       env,
       options ?? (await resolveProjectOptions(env.capabilities, signal)),
       signal,
     ),
   );
+  return executePause(
+    await projectCatalog(coordinated.values),
+    coordinated,
+    call.arguments,
+  );
 }
 
 /**
- * The coordinator's way to act: discover finds a plugin, execute starts a specialist's
- * action or a ready-made plan, runs lists, waits on and stops the runs it started, plan keeps the project's
- * plan, and question opens a screen, whose answer records what it approves.
+ * The coordinator's way to act: discover finds a plugin, execute starts a specialist's action,
+ * runs a check or opens a screen, whose answer records what it approves, runs lists, waits on and
+ * stops the runs it started, plan keeps the project's plan, and question asks the person in words.
  */
 export function createExecuteTools(
   options?: ProjectOptions,
@@ -274,8 +283,7 @@ export function createExecuteTools(
     ],
     factory: (env) => ({
       definitions,
-      checkQuestion: async (question) =>
-        checkPluginQuestion(question, await screenProject(env, options)),
+      checkCall: (call) => executeCheck(env, options, call),
       run: async (call, signal) => {
         if (!options) {
           try {

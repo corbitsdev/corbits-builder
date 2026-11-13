@@ -80,7 +80,7 @@ import {
   type HostSupplies,
   type ProjectValuesStore,
 } from "./screen-question.tsx";
-import type { ScreenLookup } from "./screens.ts";
+import { namesScreen, type ScreenLookup } from "./screens.ts";
 import type { ParkedQuestion } from "@corbits-builder/schemas/conversation";
 import { QUESTION_TOOL_NAME } from "@intx/types/runtime-core";
 import type { QuestionAnswer } from "@intx/types/signals";
@@ -412,6 +412,8 @@ function readableParts(
   return parts.flatMap((part): ConversationPart[] => {
     if (part.kind !== "tool-trace") return [part];
     if (part.name === QUESTION_TOOL_NAME) return [];
+    // An execute call that opens a screen is represented by the screen's card, as a question is.
+    if (part.name === "execute" && namesScreen(part.input)) return [];
     const result = results.get(part.toolCallId);
     return [readableTool(part, result?.isError === true ? undefined : result)];
   });

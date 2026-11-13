@@ -1,5 +1,6 @@
 import { type } from "arktype";
 import type { NativeApproval, ProductApiClient } from "@corbits-builder/client";
+import { CATALOG } from "@corbits-builder/hub/plugins/catalog";
 import type { ConversationEvents } from "@corbits-builder/schemas/conversation";
 import {
   readRunConversation,
@@ -70,14 +71,15 @@ export type Observation = Readonly<{
 // screen opened open:<plugin>.<action>.
 function moveOf(tool: string, args: Record<string, unknown>): string {
   if (tool === "discover") return tool;
-  if (tool === "execute")
-    return typeof args["action"] === "string"
-      ? `execute:${String(args["plugin"])}.${args["action"]}`
-      : `execute:${String(args["plugin"])}`;
-  if (tool === "question")
-    return typeof args["plugin"] === "string"
-      ? `open:${args["plugin"]}.${String(args["action"])}`
-      : "ask";
+  if (tool === "execute") {
+    const { plugin, action } = args;
+    if (typeof action !== "string") return `execute:${String(plugin)}`;
+    const screen = CATALOG.screens.some(
+      (each) => each.plugin === plugin && each.action === action,
+    );
+    return `${screen ? "open" : "execute"}:${String(plugin)}.${action}`;
+  }
+  if (tool === "question") return "ask";
   if (PROJECT_READS.has(tool)) return "read";
   return `tool:${tool}`;
 }
@@ -173,8 +175,11 @@ export async function observe(
     inFlight(String(approval.toolDefinition["name"]), approval.toolArguments),
   );
   const question = type({ "[string]": "unknown" })(park?.body["question"]);
+  // A screen is shown by the execute call parked on it; anything else was asked in words.
   if (park && !(question instanceof type.errors))
-    waiting.unshift(inFlight("question", question));
+    waiting.unshift(
+      inFlight("plugin" in question ? "execute" : "question", question),
+    );
   // A call still running that neither parked nor waits on an approval.
   const unfinished = calls.flatMap((call) =>
     call.result ? [] : [inFlight(call.name, call.arguments)],

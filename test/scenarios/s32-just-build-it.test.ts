@@ -4,7 +4,6 @@ import {
   call,
   execute,
   ok,
-  question,
   recorded,
   refused,
   results,
@@ -35,10 +34,10 @@ scenario({
     ),
     turn(
       results(refused("c_build_early", "execute", "product requirements")),
-      question("c_hand_over", "project", "hand-over", { decides: "person" }),
+      execute("c_hand_over", "project", "hand-over", { decides: "person" }),
     ),
     turn(
-      results(ok("c_hand_over", "question", '"builder"')),
+      results(ok("c_hand_over", "execute", '"builder"')),
       call("c_follow", "plan", { operation: "add", plan: "build-web-app" }),
     ),
     turn(

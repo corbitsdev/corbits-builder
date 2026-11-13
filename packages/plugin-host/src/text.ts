@@ -15,7 +15,7 @@ type FactText = (fact: Fact) => string;
 // What the coordinator reads about execute, the facts an action requires, and why nothing started.
 
 export const EXECUTE_DESCRIPTION =
-  "Start a specialist plugin's action by the plugin's handle and the action's name, with the input that action's guidance from discover describes, such as { plugin: \"coder\", action: \"change\", input }. A workflow action starts its specialist and returns at once with { started, plugin, action, runs: [{ runId }], presents, advice }; each run's report arrives later as a message that begins with its run id. Independent pieces of work can start in the same turn, each with its own execute. When the start does a step of the plan, pass that step's id as step so the plan shows this run on it. Nothing starts when the action lacks what it cannot work without, the person's go-ahead that the plan step it does asks for, or when the person declined that step on the plan; the refusal names what is missing and which plugin action makes it true. Anything else that step suggests doing first comes back as advice with the started run. A ready-made plan is not started with execute: take it up with plan({ operation: \"add\", plan: handle }). A screen action is opened with question({ plugin, action, input }).";
+  "Start a specialist plugin's action, or open its screen, by the plugin's handle and the action's name, with the input that action's guidance from discover describes, such as { plugin: \"coder\", action: \"change\", input }. A workflow action starts its specialist and returns at once with { started, plugin, action, runs: [{ runId }], presents, advice }; each run's report arrives later as a message that begins with its run id. Independent pieces of work can start in the same turn, each with its own execute. When the start does a step of the plan, pass that step's id as step so the plan shows this run on it. Nothing starts when the action lacks what it cannot work without, the person's go-ahead that the plan step it does asks for, or when the person declined that step on the plan; the refusal names what is missing and which plugin action makes it true. Anything else that step suggests doing first comes back as advice with the started run. A ready-made plan is not started with execute: take it up with plan({ operation: \"add\", plan: handle }). A screen action shows the person its screen and waits: the result is { output } from the screen, or { reply } when the person wrote back instead. When the person's approval is all that holds a start back and one screen gives it, execute shows that screen and starts the action once they answer it; if they write back instead, the result is { reply } and nothing started.";
 
 export const RUNS_DESCRIPTION =
   'See and steer the runs you started with execute. operation "list" lists each run you started in this project that is at work or ended lately: its plugin and action, status, state while it runs, when it started, its last activity, and why a failed run stopped. "wait" waits up to seconds (60 unless given, at most 120) for the first of runIds to end and says which ended; a run\'s report still reaches you as a message after your turn. "stop" stops each of runIds; what a stopped run filed or pushed is kept.';
@@ -60,7 +60,7 @@ export const writesText = (values: Values, writes: readonly string[]) =>
   ].join("\n");
 
 export const DISCOVER_DYNAMIC_DESCRIPTION =
-  'Find what you can do for the person: every piece of work you can start is a plugin. Pass query with what they asked for, in their words, or group to list every plugin in that group: each comes in a line, with a line for each action saying what it is for and whether it can start or open now, or what it needs first, and then the project\'s values. Pass plugin, and action, for that action\'s full guidance and the input it takes; read it before you first start or open an action. Specialist actions are started with execute. A ready-made plan is taken up with plan({ operation: "add", plan: handle }), which puts its steps on the project\'s plan; when none fits, write the plan yourself with plan({ operation: "set", steps }) from the actions that do. A screen action is shown to the person with question({ plugin, action, input }).';
+  'Find what you can do for the person: every piece of work you can start is a plugin. Pass query with what they asked for, in their words, or group to list every plugin in that group: each comes in a line, with a line for each action saying what it is for and whether it can start or open now, or what it needs first, and then the project\'s values. Pass plugin, and action, for that action\'s full guidance and the input it takes; read it before you first start or open an action. Specialist actions are started with execute. A ready-made plan is taken up with plan({ operation: "add", plan: handle }), which puts its steps on the project\'s plan; when none fits, write the plan yourself with plan({ operation: "set", steps }) from the actions that do. A screen action is shown to the person with execute({ plugin, action, input }).';
 
 /** Missing facts that together make one alternative, with the installed actions that make them true. */
 const missingText = (
@@ -201,18 +201,18 @@ export function readinessText(
 }
 
 /**
- * Why a workflow action was not started with execute, or a screen not shown with question, naming
- * each missing fact and what makes it true.
+ * Why execute did not start a workflow action or show a screen, naming each missing fact and what
+ * makes it true.
  */
 export function unmetRequirement(
   handle: string,
   { own, steps }: Readiness,
   makers: (fact: Fact) => string[],
   factText: FactText,
-  tool: "execute" | "question",
+  not: "started" | "shown",
 ) {
   const lines = [
-    `${handle} was not ${tool === "execute" ? "started" : "shown"}. The project does not have what it needs yet.`,
+    `${handle} was not ${not}. The project does not have what it needs yet.`,
     "",
   ];
   if (own.length > 0)
@@ -230,7 +230,7 @@ export function unmetRequirement(
   }
   lines.push(
     "",
-    `Start what makes these true first, or ask the person, then call ${tool} again.`,
+    "Start what makes these true first, or ask the person, then call execute again.",
   );
   for (const { step } of holding)
     lines.push(
@@ -334,8 +334,8 @@ export function planLine(
 export const readyPlanIsAdded = (handle: string) =>
   `${handle} is a ready-made plan, not an action, so it is neither started nor held as one step. Take it up with plan({ operation: "add", plan: "${handle}" }), which puts its steps on the project's plan as a group and has the project follow it.`;
 
-const questionCall = (plugin: string, action: string) =>
-  `question({ plugin: "${plugin}", action: "${action}", input })`;
+const screenCall = (plugin: string, action: string) =>
+  `execute({ plugin: "${plugin}", action: "${action}", input })`;
 
 /** A check's guidance: what it proves, when to run it, how long it runs and what it takes. */
 export function checkText(
@@ -410,10 +410,7 @@ export function checkStandingText(
 
 /** How a screen action is opened, as its guidance ends. */
 export const screenText = (plugin: string, action: string) =>
-  `Open it with ${questionCall(plugin, action)}.`;
-
-export const screenNotExecuted = ({ name, plugin, action }: ScreenAction) =>
-  `${name} is a screen, so nothing was started. A screen is opened with ${questionCall(plugin, action)}.`;
+  `Open it with ${screenCall(plugin, action)}.`;
 
 /** What a finished run's report says about the screens that can show its work to the person. */
 export const presentsText = (
@@ -424,7 +421,7 @@ export const presentsText = (
     "To show this to the person, open the screen that fits; Builder fills in the newest version itself:",
     ...screens.map(
       ({ action, when }) =>
-        `- question({ plugin: "${plugin}", action: "${action}", input: {} }) when: ${when}`,
+        `- execute({ plugin: "${plugin}", action: "${action}", input: {} }) when: ${when}`,
     ),
   ].join("\n");
 
@@ -451,28 +448,6 @@ export const readyPlanFollowed = (
     "Where each step stands now:",
     ...steps.map(({ name, readiness }) => `  ${name}: ${readiness}`),
   ].join("\n");
-
-// What the coordinator reads when its question names a screen the hub does not have.
-export function unknownScreen(
-  asked: { plugin: string; action?: string },
-  installed: readonly ScreenAction[],
-): string {
-  const named =
-    asked.action === undefined
-      ? `${asked.plugin}, with no action,`
-      : `${asked.plugin} ${asked.action}`;
-  return [
-    `${named} is not an installed screen, so nothing was shown.`,
-    "",
-    "Installed screens, as plugin and action:",
-    ...installed.map(
-      ({ plugin, action, description }) =>
-        `  ${plugin} ${action}: ${description}`,
-    ),
-    "",
-    "Call again with plugin and action set to one of them, or ask a plain question with questions instead.",
-  ].join("\n");
-}
 
 export const DISCOVER_NEEDS_ONE =
   "Pass one of query, with what the person asked for, group, or plugin.";
@@ -591,7 +566,7 @@ export const pluginHint = (screens: readonly ScreenAction[]) =>
     PLUGIN_HINT_LEAD,
     ...screens.map(
       ({ name, plugin, action, description }) =>
-        `- ${name}: ${description} Open it with question({ plugin: "${plugin}", action: "${action}" }); Builder supplies the values it reads.`,
+        `- ${name}: ${description} Open it with execute({ plugin: "${plugin}", action: "${action}" }); Builder supplies the values it reads.`,
     ),
     PLUGIN_HINT_END,
   ].join("\n");

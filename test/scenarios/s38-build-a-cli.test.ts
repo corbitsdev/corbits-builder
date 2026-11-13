@@ -6,7 +6,6 @@ import {
   calls,
   execute,
   ok,
-  question,
   results,
   say,
   scenario,
@@ -89,12 +88,12 @@ scenario({
     turn(results(ok("c_requirements", "execute")), say("A writer is on it.")),
     turn(
       user(requirementsFiled),
-      question("c_approve_requirements", "writer", "approve", {
+      execute("c_approve_requirements", "writer", "approve", {
         kinds: ["product_requirements"],
       }),
     ),
     turn(
-      results(ok("c_approve_requirements", "question", '"approved"')),
+      results(ok("c_approve_requirements", "execute", '"approved"')),
       execute("c_plan", "writer", "write-build-plan", {
         instruction:
           "Plan the build of the approved requirements: a TypeScript command-line tool on Bun, with tests.",
@@ -103,12 +102,12 @@ scenario({
     turn(results(ok("c_plan", "execute")), say("A writer is planning it.")),
     turn(
       user(planFiled),
-      question("c_approve_plan", "writer", "approve", {
+      execute("c_approve_plan", "writer", "approve", {
         kinds: ["build_plan"],
       }),
     ),
     turn(
-      results(ok("c_approve_plan", "question", '"approved"')),
+      results(ok("c_approve_plan", "execute", '"approved"')),
       execute("c_build", "coder", "build", {
         starter: "bare",
         instruction:

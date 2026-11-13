@@ -132,3 +132,14 @@ export const screensFor =
   };
 
 export type ScreenLookup = ReturnType<typeof screensFor>;
+
+/** Whether a call's plugin and action name a screen of any package with that handle. */
+export function namesScreen(input: unknown) {
+  if (typeof input !== "object" || input === null) return false;
+  if (!("plugin" in input) || !("action" in input)) return false;
+  const { plugin, action } = input;
+  if (typeof plugin !== "string" || typeof action !== "string") return false;
+  return (packages.get(plugin) ?? []).some(({ name }) =>
+    installed.has(key(name, action)),
+  );
+}

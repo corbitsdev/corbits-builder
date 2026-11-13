@@ -21,7 +21,14 @@ import {
   type ScreenAction,
   type WorkflowAction,
 } from "./catalog.ts";
-import { approvalFacts, holds, makes, resolveFacts, unmet } from "./facts.ts";
+import {
+  approvalFacts,
+  holds,
+  makes,
+  resolveFacts,
+  templateField,
+  unmet,
+} from "./facts.ts";
 import { fields } from "./search/fields.ts";
 import type { Strategy } from "./search/words.ts";
 import {
@@ -43,7 +50,6 @@ import {
   readyPlanFollowed,
   readyPlanIsAdded,
   planLine,
-  screenNotExecuted,
   PLAN_STEP_REMINDER,
   stepAwaitsGoAhead,
   stepDeclined,
@@ -278,7 +284,7 @@ export const Execute = type({
   "+": "reject",
   plugin: "string > 0",
   "action?": "string > 0",
-  "input?": "object",
+  "input?": "Record<string, unknown>",
   "step?": "string > 0",
 });
 export const Runs = type({
@@ -653,13 +659,13 @@ export async function screenRefusal(
     ready,
     makersIn(catalog),
     catalog.factText,
-    "question",
+    "shown",
   );
 }
 
 /**
  * Why a plan cannot hold this step, or undefined when it can: its plugin and action must be
- * installed and its input must fit, refused in the words execute and question use. What the action
+ * installed and its input must fit, refused in the words execute uses. What the action
  * requires is not asked, since a plan holds steps for later; a screen's input is checked without
  * the project's values, which it reads only when it is shown.
  */
@@ -749,7 +755,8 @@ function heldStep(
 // What execute takes, with every plugin it can start.
 const executeFields = (catalog: Catalog): Record<string, Field> => ({
   plugin: {
-    about: "The handle of the specialist to start.",
+    about:
+      "The handle of the specialist whose action to start or screen to open.",
     choices: Object.fromEntries(
       catalog.plugins
         .filter(isSpecialist)
@@ -758,7 +765,7 @@ const executeFields = (catalog: Catalog): Record<string, Field> => ({
   },
   action: {
     about:
-      "The name of the specialist's action to start, as discover lists it.",
+      "The name of the specialist's action to start or screen to open, as discover lists it.",
   },
   input: {
     about: "The input that action's guidance describes.",
@@ -799,54 +806,57 @@ type Result = {
   advice?: string;
 };
 
-/**
- * Starts a specialist's workflow action once its input, what it cannot work without and the
- * person's go-ahead hold. A ready-made plan is taken up with plan add, never here.
- */
-export async function execute(
+// What an execute call acts on: the screen it opens, or the action it starts with its checked input,
+// the project as it stands, the plan step the start does and where the action stands for that step;
+// or why nothing starts.
+async function executing(
   catalog: Catalog,
   project: Project,
   raw: unknown,
-): Promise<Outcome> {
+): Promise<
+  | { refused: string }
+  | { screen: ScreenAction; input: Record<string, unknown> }
+  | {
+      action: WorkflowAction | CheckAction;
+      checked: unknown;
+      stepId: string | undefined;
+      ready: Readiness;
+    }
+> {
   const asked = Execute(raw);
   if (asked instanceof type.errors)
     return {
-      content: wrongCall(
+      refused: wrongCall(
         "execute",
         "nothing was started",
         wrongFields(asked),
         executeFields(catalog),
       ),
-      isError: true,
     };
   const plugin = catalog.installed(asked.plugin);
   if (!plugin)
     return {
-      content: unknownPlugin(
+      refused: unknownPlugin(
         asked.plugin,
-        catalog.actions
-          .filter((action) => !isScreenAction(action))
-          .map(({ name }) => name),
+        catalog.actions.map(({ name }) => name),
       ),
-      isError: true,
     };
   if (isReadyPlan(plugin))
-    return { content: readyPlanIsAdded(plugin.builder.handle), isError: true };
+    return { refused: readyPlanIsAdded(plugin.builder.handle) };
   const action = installedAction(catalog, plugin.builder.handle, asked.action);
   if (!action)
     return {
-      content: unknownAction(
+      refused: unknownAction(
         plugin.builder.handle,
         asked.action,
         plugin.actions,
       ),
-      isError: true,
     };
   if (isScreenAction(action))
-    return { content: screenNotExecuted(action), isError: true };
+    return { screen: action, input: asked.input ?? {} };
   const state = await projectState(catalog, project);
   const checked = action.check(asked.input ?? {});
-  if (!checked.ok) return { content: checked.text, isError: true };
+  if (!checked.ok) return { refused: checked.text };
   const { plan } = state;
   const declined = heldStep(
     action,
@@ -854,22 +864,14 @@ export async function execute(
     plan,
     (step) => step.declined !== undefined,
   );
-  if (declined)
-    return {
-      content: stepDeclined(action.name, declined.title),
-      isError: true,
-    };
+  if (declined) return { refused: stepDeclined(action.name, declined.title) };
   const asking = heldStep(
     action,
     checked.input,
     plan,
     (step) => step.askFirst && step.goAhead === undefined,
   );
-  if (asking)
-    return {
-      content: stepAwaitsGoAhead(action.name, asking.title),
-      isError: true,
-    };
+  if (asking) return { refused: stepAwaitsGoAhead(action.name, asking.title) };
   // A step id is a hint for tying the run to the plan, never a reason to hold work back: one that
   // names no step for this action falls back to the step the action and input point at. The step
   // the start does is the one whose gate holds it.
@@ -888,6 +890,95 @@ export async function execute(
     gatingSteps(action, plan.steps).filter(({ id }) => id === stepId),
     checked.input,
   );
+  return { action, checked: checked.input, stepId, ready };
+}
+
+/** A screen an execute call waits on: its answer is the call's result, or the call then runs. */
+export type ExecutePause = {
+  plugin: string;
+  action: string;
+  input: Record<string, unknown>;
+  resume: "result" | "rerun";
+};
+
+// The input a screen takes to make these facts true: each templated fact it returns, such as
+// "approved:{kinds}", fills its field with what each fact it makes names, as { kinds: ["build_plan"] }.
+const inputMaking = (screen: ScreenAction, facts: readonly Fact[]) =>
+  Object.fromEntries(
+    (screen.builder.returns ?? []).flatMap((made) => {
+      const field = templateField(made);
+      if (field === undefined) return [];
+      const named = facts
+        .filter((fact) => makes(made, fact))
+        .map((fact) => fact.slice(fact.indexOf(":") + 1));
+      return [[field, named]];
+    }),
+  );
+
+/**
+ * What the person answers before an execute call goes on, or undefined when it runs as it is. A
+ * screen opens, and the person's answer is the call's result; refusal text when it cannot be shown
+ * for this input. A workflow action held only by its plan step's wait on the person's approval
+ * opens the one screen that gives that approval, and starts once they answer it. When several
+ * screens could give it, or its input cannot be told, execute refuses as it would.
+ */
+export async function executePause(
+  catalog: Catalog,
+  project: Project,
+  raw: unknown,
+): Promise<ExecutePause | string | undefined> {
+  const call = await executing(catalog, project, raw);
+  if ("refused" in call) return undefined;
+  if ("screen" in call) {
+    const { screen, input } = call;
+    return (
+      (await screenRefusal(catalog, project, screen, input)) ?? {
+        plugin: screen.plugin,
+        action: screen.action,
+        input,
+        resume: "result",
+      }
+    );
+  }
+  const { action, ready } = call;
+  if (!isWorkflowAction(action) || ready.own.length > 0) return undefined;
+  const awaited = ready.steps.flatMap(({ goAhead }) => goAhead);
+  if (awaited.length === 0) return undefined;
+  const approving = catalog.screens.filter((screen) =>
+    awaited.every((fact) =>
+      (screen.builder.returns ?? []).some((made) => makes(made, fact)),
+    ),
+  );
+  const [screen] = approving;
+  if (approving.length !== 1 || !screen) return undefined;
+  const input = inputMaking(screen, awaited);
+  if ((await screenRefusal(catalog, project, screen, input)) !== undefined)
+    return undefined;
+  return {
+    plugin: screen.plugin,
+    action: screen.action,
+    input,
+    resume: "rerun",
+  };
+}
+
+/**
+ * Starts a specialist's workflow action, or runs a check, once its input, what it cannot work
+ * without and the person's go-ahead hold. A screen never reaches here: the call pauses on it before
+ * it runs. A ready-made plan is taken up with plan add, never here.
+ */
+export async function execute(
+  catalog: Catalog,
+  project: Project,
+  raw: unknown,
+): Promise<Outcome> {
+  const call = await executing(catalog, project, raw);
+  if ("refused" in call) return { content: call.refused, isError: true };
+  if ("screen" in call)
+    throw new Error(
+      `${call.screen.name} is a screen, which the call pauses on before it runs`,
+    );
+  const { action, stepId, ready } = call;
   if (!isReady(ready))
     return {
       content: unmetRequirement(
@@ -895,13 +986,13 @@ export async function execute(
         ready,
         makersIn(catalog),
         catalog.factText,
-        "execute",
+        "started",
       ),
       isError: true,
     };
   if (isCheckAction(action))
     return {
-      content: JSON.stringify(await project.check(action, checked.input)),
+      content: JSON.stringify(await project.check(action, call.checked)),
     };
   // The hub refuses a read of no names.
   const { reads = [], writes = [], presents } = action.builder;
@@ -910,7 +1001,7 @@ export async function execute(
       ? ""
       : assignedValuesText(catalog.values, await project.values(reads));
   if (writes.length > 0) values += writesText(catalog.values, writes);
-  const started = await project.start(action, checked.input, values, stepId);
+  const started = await project.start(action, call.checked, values, stepId);
   const result: Result = {
     started: true,
     plugin: action.plugin,

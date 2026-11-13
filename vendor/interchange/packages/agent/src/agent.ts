@@ -43,8 +43,8 @@
 
 import {
   createReactorAssembly,
+  type CallCheck,
   type Dependencies,
-  type QuestionCheck,
   type ReactorEmittedEvent,
 } from "@intx/inference";
 import { createDefaultDependencies } from "@intx/inference/providers";
@@ -253,8 +253,8 @@ interface ResolvedTools {
   readonly runner: ToolRunner & {
     readonly definitions: readonly ToolDefinition[];
   };
-  /** The plugin-question check of the bundle that defines `question`. */
-  readonly checkQuestion: QuestionCheck | undefined;
+  /** The call check of the bundle that defines `question`. */
+  readonly checkCall: CallCheck | undefined;
   /**
    * The bundles `resolveTools` constructed in order. Returned so the
    * surrounding `createAgent` can dispose them on construction
@@ -367,7 +367,7 @@ function resolveTools<EnvReq extends BaseEnv>(
   return {
     definitions,
     runner,
-    checkQuestion: byName.get(QUESTION_TOOL_NAME)?.checkQuestion,
+    checkCall: byName.get(QUESTION_TOOL_NAME)?.checkCall,
     bundles: constructed,
   };
 }
@@ -724,7 +724,7 @@ export async function createAgent<EnvReq extends BaseEnv>(
       auditStore,
       authorize,
       toolDefinitions: resolvedTools.definitions,
-      checkQuestion: resolvedTools.checkQuestion,
+      checkCall: resolvedTools.checkCall,
       onShutdown: async () => {
         try {
           await flushErrors();

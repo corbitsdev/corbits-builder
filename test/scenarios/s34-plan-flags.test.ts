@@ -12,7 +12,6 @@ import {
   call,
   execute,
   ok,
-  question,
   recorded,
   refused,
   results,
@@ -92,10 +91,10 @@ scenario({
     ),
     turn(
       results(refused("c_manual", "execute", "the person declined this step")),
-      question("c_hand_over", "project", "hand-over", { decides: "person" }),
+      execute("c_hand_over", "project", "hand-over", { decides: "person" }),
     ),
     turn(
-      results(ok("c_hand_over", "question", '"builder"')),
+      results(ok("c_hand_over", "execute", '"builder"')),
       execute("c_requirements", "writer", "write-requirements", {
         instruction:
           "An animated weather web app: current conditions, 24-hour and 7-day forecasts, saved cities and a compare view, using Open-Meteo.",

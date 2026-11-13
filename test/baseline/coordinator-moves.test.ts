@@ -101,7 +101,7 @@ const SCRIPTS: readonly Readonly<{
   {
     turns: [
       {
-        reply: call("open", "question", {
+        reply: call("open", "execute", {
           plugin: "designer",
           action: "pick-fonts",
           input: {},
@@ -115,7 +115,7 @@ const SCRIPTS: readonly Readonly<{
   {
     turns: [
       {
-        reply: call("open_bad", "question", {
+        reply: call("open_bad", "execute", {
           plugin: "designer",
           action: "pick-fonts",
           input: { list: "fancy" },
@@ -123,7 +123,7 @@ const SCRIPTS: readonly Readonly<{
         refused: true,
       },
       {
-        reply: call("open_again", "question", {
+        reply: call("open_again", "execute", {
           plugin: "designer",
           action: "pick-fonts",
           input: {},

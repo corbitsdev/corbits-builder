@@ -245,7 +245,7 @@ describe("conversation transcript", () => {
         type: "inference.tool_call.end",
         data: {
           callId: "call-1",
-          name: "question",
+          name: "execute",
           arguments: { plugin: "designer", action: "pick-fonts" },
         },
       },

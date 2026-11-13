@@ -7,16 +7,7 @@ import { hexDecode } from "@intx/types";
 import { CREDENTIAL_KEY } from "../e2e/support/hub.ts";
 import { NonEmptyString } from "../e2e/support/pipeline-driver.ts";
 import { writerFiles } from "./specialists.ts";
-import {
-  execute,
-  ok,
-  question,
-  results,
-  say,
-  scenario,
-  turn,
-  user,
-} from "./runner.ts";
+import { execute, ok, results, say, scenario, turn, user } from "./runner.ts";
 
 const first = "The competitor analysis is filed.";
 const revised = "The competitor analysis now has prices.";
@@ -52,13 +43,13 @@ scenario({
     turn(results(ok("c_revise", "execute")), say("A writer is adding prices.")),
     turn(
       user(revised),
-      question("c_approve", "writer", "approve", {
+      execute("c_approve", "writer", "approve", {
         kinds: ["competitor_analysis"],
       }),
     ),
     // The approval from the document answers the open question, so it comes back as its result.
     turn(
-      results(ok("c_approve", "question", '"approved"')),
+      results(ok("c_approve", "execute", '"approved"')),
       say("The revision is approved."),
     ),
   ],

@@ -2,16 +2,7 @@ import { expect } from "bun:test";
 import { type } from "arktype";
 import { DESIGNER_REPORT, WEATHER_CONCEPT, WEATHER_MOCKUP } from "./concept.ts";
 import { designerFor, redesigner } from "./specialists.ts";
-import {
-  execute,
-  ok,
-  question,
-  results,
-  say,
-  scenario,
-  turn,
-  user,
-} from "./runner.ts";
+import { execute, ok, results, say, scenario, turn, user } from "./runner.ts";
 
 const WAIT_MS = 180_000;
 const COMMENT = "Make the add city link a button.";
@@ -50,12 +41,12 @@ scenario({
     ),
     turn(
       user(DESIGNER_REPORT),
-      question("c_review_1", "designer", "review", {
+      execute("c_review_1", "designer", "review", {
         note: "The first weather design. Try it, tag what should change, or approve it.",
       }),
     ),
     turn(
-      results(ok("c_review_1", "question", `"testid":"${TAGGED}"`)),
+      results(ok("c_review_1", "execute", `"testid":"${TAGGED}"`)),
       execute("c_redesign", "designer", "mockup", {
         instruction: redesign,
         lookIdeas: WEATHER_MOCKUP.lookIdeas,
@@ -68,12 +59,12 @@ scenario({
     ),
     turn(
       user(redesignReport),
-      question("c_review_2", "designer", "review", {
+      execute("c_review_2", "designer", "review", {
         note: "The add city link is a button now.",
       }),
     ),
     turn(
-      results(ok("c_review_2", "question", '"decision":"approved"')),
+      results(ok("c_review_2", "execute", '"decision":"approved"')),
       say("The design is approved."),
     ),
     turn(

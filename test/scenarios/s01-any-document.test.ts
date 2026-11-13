@@ -3,7 +3,6 @@ import {
   call,
   execute,
   ok,
-  question,
   results,
   say,
   scenario,
@@ -31,12 +30,12 @@ scenario({
     turn(results(ok("c_write", "execute")), say("A writer is on it.")),
     turn(
       user(report),
-      question("c_approve", "writer", "approve", {
+      execute("c_approve", "writer", "approve", {
         kinds: ["competitor_analysis"],
       }),
     ),
     turn(
-      results(ok("c_approve", "question", '"approved"')),
+      results(ok("c_approve", "execute", '"approved"')),
       say("The competitor analysis is approved."),
     ),
   ],

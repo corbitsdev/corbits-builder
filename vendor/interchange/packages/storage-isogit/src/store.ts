@@ -81,6 +81,7 @@ const PendingOperationSchema = type({
   "suspendedCall?": ToolCall,
   "approvalSnapshot?": ApprovalSnapshot,
   "question?": AskedQuestion,
+  "rerun?": "true",
 });
 
 // The persisted schema and the in-memory PendingOperation type are two
@@ -107,6 +108,11 @@ const _persistedQuestion = (
   op: typeof PendingOperationSchema.infer,
 ): AskedQuestion | undefined => op.question;
 void _persistedQuestion;
+
+const _persistedRerun = (
+  op: typeof PendingOperationSchema.infer,
+): true | undefined => op.rerun;
+void _persistedRerun;
 
 const MetadataSchema = type({
   pendingOperations: PendingOperationSchema.array(),

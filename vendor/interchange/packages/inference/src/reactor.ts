@@ -526,8 +526,8 @@ export function createReactor(config: ReactorConfig): Reactor {
 
   // How the reactor resumes a correlated pending operation.
   //
-  //   redispatch — an approved approval re-runs its parked tool call. The
-  //     reactor grants a one-shot bypass for the call and re-dispatches it;
+  //   redispatch — an approved approval, or the answered screen of a call
+  //     parked to run after it, re-runs its parked tool call. The reactor grants a one-shot bypass for the call and re-dispatches it;
   //     the resumed run answers the parked call with a real tool result. The
   //     correlated message body is the decision, not conversation content, so
   //     it is NOT appended to history.
@@ -613,7 +613,8 @@ export function createReactor(config: ReactorConfig): Reactor {
         }
       }
       case "question": {
-        // The person's answer is the question call's result; the call never runs.
+        // The person's answer is the call's result and the call never runs,
+        // unless it was parked to run once its screen is answered.
         const answer = QuestionAnswer(raw);
         if (answer instanceof type.errors) {
           throw new Error(
@@ -640,6 +641,14 @@ export function createReactor(config: ReactorConfig): Reactor {
             throw new Error(
               `Question ${op.correlationId} shows plugin ${op.question.plugin} but was answered without its output`,
             );
+          }
+          if (op.rerun === true) {
+            // The screen gave what the call waited on: run it once, past the
+            // pause it would otherwise raise again.
+            for (const ext of beforeToolExtensions) {
+              ext.grantOneShot?.(suspendedCall.id);
+            }
+            return { mode: "redispatch", calls: [suspendedCall] };
           }
           return {
             mode: "tool_result",

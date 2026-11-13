@@ -4,7 +4,6 @@ import {
   CHECK_APP_MS,
   execute,
   ok,
-  question,
   results,
   say,
   scenario,
@@ -29,12 +28,12 @@ scenario({
   coordinator: [
     turn(
       user("the font is ugly"),
-      question("c_fonts", "designer", "pick-fonts", {
+      execute("c_fonts", "designer", "pick-fonts", {
         proposed: { primary: "Arial" },
       }),
     ),
     turn(
-      results(ok("c_fonts", "question", "Bitter")),
+      results(ok("c_fonts", "execute", "Bitter")),
       execute("c_change", "coder", "change", { instruction }),
     ),
     turn(

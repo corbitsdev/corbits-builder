@@ -60,7 +60,7 @@ export { DefaultDirector, createDefaultDirector } from "./default-director";
 export type { DefaultDirectorPolicy } from "./default-director";
 export { createAuthzExtension } from "./authz-extension";
 export { questionTool } from "./question";
-export type { QuestionCheck } from "./question";
+export type { CallCheck, CallPause } from "./question";
 export type {
   AuthzCallResult,
   AuthzDecision,

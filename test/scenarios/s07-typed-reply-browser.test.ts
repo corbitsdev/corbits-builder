@@ -1,5 +1,5 @@
 import { expect } from "bun:test";
-import { ok, question, results, say, scenario, turn, user } from "./runner.ts";
+import { execute, ok, results, say, scenario, turn, user } from "./runner.ts";
 
 const SENTENCE = "Honestly I just want it to feel friendlier, not a new font.";
 const FONTS = ["look.font-primary", "look.font-secondary"];
@@ -13,12 +13,12 @@ scenario({
   coordinator: [
     turn(
       user("the font is ugly"),
-      question("c_fonts", "designer", "pick-fonts", {
+      execute("c_fonts", "designer", "pick-fonts", {
         proposed: { primary: "Arial" },
       }),
     ),
     turn(
-      results(ok("c_fonts", "question", SENTENCE)),
+      results(ok("c_fonts", "execute", SENTENCE)),
       say("Friendlier it is; tell me what feels unfriendly now."),
     ),
   ],

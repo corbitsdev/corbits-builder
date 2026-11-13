@@ -126,12 +126,6 @@ export const execute = (
     "execute",
     action === undefined ? { plugin, input } : { plugin, action, input },
   );
-export const question = (
-  id: string,
-  plugin: string,
-  action: string,
-  input: Record<string, unknown>,
-) => call(id, "question", { plugin, action, input });
 
 /** The first run an execute result says it started. */
 export function startedRun(result: string): string {
@@ -230,14 +224,14 @@ export const WEATHER_REQUIREMENTS: readonly Turn[] = [
   turn(results(ok("c_requirements", "execute")), say("A writer is on it.")),
   turn(
     user("written the requirements"),
-    question("c_approve_requirements", "writer", "approve", {
+    execute("c_approve_requirements", "writer", "approve", {
       kinds: ["product_requirements"],
     }),
   ),
 ];
 
 const requirementsApproved = results(
-  ok("c_approve_requirements", "question", '"approved"'),
+  ok("c_approve_requirements", "execute", '"approved"'),
 );
 
 /** The coordinator's turns from the approved requirements to the built app. */
@@ -249,12 +243,12 @@ export const WEATHER_BUILD: readonly Turn[] = [
   turn(results(ok("c_mockup", "execute")), say("A designer is on it.")),
   turn(
     user(DESIGNER_REPORT),
-    question("c_choose", "designer", "review", {
+    execute("c_choose", "designer", "review", {
       note: "The weather-driven design. Approve it to build from it.",
     }),
   ),
   turn(
-    results(ok("c_choose", "question", '"approved"')),
+    results(ok("c_choose", "execute", '"approved"')),
     execute("c_plan", "writer", "write-build-plan", {
       instruction: "Plan the build of the approved requirements and design.",
     }),
@@ -266,12 +260,12 @@ export const WEATHER_BUILD: readonly Turn[] = [
   turn(user(`The person chose the ${WEATHER_CONCEPT.label}`), say("Noted.")),
   turn(
     user("written the build plan"),
-    question("c_approve_plan", "writer", "approve", {
+    execute("c_approve_plan", "writer", "approve", {
       kinds: ["build_plan"],
     }),
   ),
   turn(
-    results(ok("c_approve_plan", "question", '"approved"')),
+    results(ok("c_approve_plan", "execute", '"approved"')),
     execute("c_build", "coder", "build", {
       starter: "web-app",
       instruction: "Build the whole app from the plan and the chosen design.",

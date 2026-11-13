@@ -1,14 +1,13 @@
 import { expect, test } from "bun:test";
 import { withoutResumeContext } from "../config/resume.ts";
 import type { RuntimeCapabilities } from "@intx/types/runtime-capabilities";
-import { CATALOG } from "./catalog.ts";
 import { createExecuteTools, withPluginHint } from "./tools.ts";
 
 test("a field-matched hint names the font picker alone after the person's words and strips back to them", () => {
   const hinted = withPluginHint("fields", "the font is ugly");
   expect(hinted).toStartWith("the font is ugly\n\nBuilder's note");
   expect(hinted).toContain(
-    'question({ plugin: "designer", action: "pick-fonts" })',
+    'execute({ plugin: "designer", action: "pick-fonts" })',
   );
   expect(hinted).not.toContain("pick-colours");
   expect(withoutResumeContext(hinted)).toBe("the font is ugly");
@@ -50,8 +49,9 @@ const workflows = {
   designer: deployment,
 };
 
-// The coordinator's question check, reading project values from a hub that answers with response.
-function questionCheck(response: () => Response) {
+// The coordinator's check of an execute call before it runs, reading project values from a hub that
+// answers with response.
+function executeCheck(response: () => Response) {
   const asked: string[] = [];
   const fetch = async (path: string) => {
     asked.push(path);
@@ -60,18 +60,22 @@ function questionCheck(response: () => Response) {
   const capabilities = {
     resolve: () => ({ resolve: async () => ({ kind: "http", fetch }) }),
   } as unknown as RuntimeCapabilities;
-  const { checkQuestion } = createExecuteTools({
+  const { checkCall } = createExecuteTools({
     tenantId: "tenant",
     projectId: "project",
     domain: "example.invalid",
     workflows,
     maxResultBytes: 16384,
   })({ capabilities } as never);
-  if (!checkQuestion) throw new Error("the execute tools check no questions");
+  if (!checkCall) throw new Error("the execute tools check no calls");
   return {
     asked,
     check: (action: string, input: Record<string, unknown>) =>
-      checkQuestion({ plugin: "designer", action, input }),
+      checkCall({
+        id: "call",
+        name: "execute",
+        arguments: { plugin: "designer", action, input },
+      }),
   };
 }
 
@@ -80,11 +84,16 @@ const fontsInUse = () =>
     values: { "look.font-primary": "Inter", "look.font-secondary": null },
   });
 
-test("a designer pick-fonts question the screen can draw is let through, checked against the project's fonts", async () => {
-  const { asked, check } = questionCheck(fontsInUse);
+test("an execute call of designer pick-fonts the screen can draw pauses on it for its answer, checked against the project's fonts", async () => {
+  const { asked, check } = executeCheck(fontsInUse);
   expect(
     await check("pick-fonts", { proposed: { primary: "Fraunces" } }),
-  ).toBeUndefined();
+  ).toEqual({
+    plugin: "designer",
+    action: "pick-fonts",
+    input: { proposed: { primary: "Fraunces" } },
+    resume: "result",
+  });
   expect(asked).toEqual([
     "/api/tenants/tenant/projects/project/values?keys=plugins.build-web-app",
     "/api/tenants/tenant/projects/project/values?keys=look.font-primary%2Clook.font-secondary",
@@ -101,8 +110,8 @@ test("a designer pick-fonts question the screen can draw is let through, checked
   );
 });
 
-test("a designer pick-fonts question is not let through when the project's fonts cannot be read", async () => {
-  const { check } = questionCheck(() =>
+test("an execute call of designer pick-fonts does not pause when the project's fonts cannot be read", async () => {
+  const { check } = executeCheck(() =>
     Response.json({ code: "forbidden" }, { status: 403 }),
   );
   await expect(check("pick-fonts", {})).rejects.toThrow(
@@ -110,8 +119,8 @@ test("a designer pick-fonts question is not let through when the project's fonts
   );
 });
 
-test("a designer pick-fonts question with an unknown list is refused with every list and how to fix it", async () => {
-  const { check } = questionCheck(fontsInUse);
+test("an execute call of designer pick-fonts with an unknown list is refused with every list and how to fix it", async () => {
+  const { check } = executeCheck(fontsInUse);
   expect(
     await check("pick-fonts", {
       proposed: { primary: "Fraunces" },
@@ -136,21 +145,7 @@ test("a designer pick-fonts question with an unknown list is refused with every 
   );
 });
 
-test("a question for a screen the hub does not have is refused with the installed screens", async () => {
-  const { check } = questionCheck(fontsInUse);
-  expect(await check("pick-colors", {})).toBe(
-    [
-      "designer pick-colors is not an installed screen, so nothing was shown.",
-      "",
-      "Installed screens, as plugin and action:",
-      `  designer review: ${CATALOG.screens[0]?.description}`,
-      `  designer choose: ${CATALOG.screens[1]?.description}`,
-      "  designer pick-fonts: Shows the person the fonts in use and fonts to choose a primary and a secondary font from.",
-      "  designer pick-colours: Shows the person the primary (brand) and background colours in use and lets them choose new ones.",
-      `  project hand-over: ${CATALOG.screens[4]?.description}`,
-      `  writer approve: ${CATALOG.screens[5]?.description}`,
-      "",
-      "Call again with plugin and action set to one of them, or ask a plain question with questions instead.",
-    ].join("\n"),
-  );
+test("an execute call naming no installed screen is left to execute, which refuses it", async () => {
+  const { check } = executeCheck(fontsInUse);
+  expect(await check("pick-colors", {})).toBeUndefined();
 });

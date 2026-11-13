@@ -4,7 +4,6 @@ import {
   calls,
   execute,
   ok,
-  question,
   results,
   say,
   scenario,
@@ -38,13 +37,13 @@ scenario({
           title: "Competitor analysis",
           instruction: "Add the price of a walk to every app compared.",
         }),
-        question("c_approve", "writer", "approve", {
+        execute("c_approve", "writer", "approve", {
           kinds: ["competitor_analysis"],
         }),
       ),
     ),
     turn(
-      results(ok("c_revise", "execute"), ok("c_approve", "question")),
+      results(ok("c_revise", "execute"), ok("c_approve", "execute")),
       say("The competitor analysis is approved."),
     ),
     turn(user(revised), say("The revision with prices is in.")),

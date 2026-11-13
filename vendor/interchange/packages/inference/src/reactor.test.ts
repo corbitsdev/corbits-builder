@@ -7,7 +7,7 @@ import { createCorrelationRegistry } from "./correlation";
 import { createReactor, mergeInferenceOptions } from "./reactor";
 import { createDefaultDependencies } from "./providers";
 import { createDefaultDirector } from "./default-director";
-import { createQuestionExtension, type QuestionCheck } from "./question";
+import { createQuestionExtension, type CallCheck } from "./question";
 import { assertWellFormedToolSequence } from "./turns";
 import { createInboundMessage } from "@intx/mime";
 import { waitUntil } from "@intx/types/testing";
@@ -5056,14 +5056,17 @@ describe("createReactor — approval resume error result", () => {
 });
 
 // ---------------------------------------------------------------------------
-// A `question` call that shows a screen parks with its plugin and input, and
-// the screen's output becomes the call's result
+// The host parks a call that is not a question on a screen: the screen's
+// output becomes the call's result, or the call runs once it is answered
 // ---------------------------------------------------------------------------
 
-describe("createReactor — question screen", () => {
+describe("createReactor — call paused on a screen", () => {
   const screen = { plugin: "font-picker", input: { current: "Inter" } };
+  const pickFont = { name: "pick_font", arguments: { current: "Inter" } };
 
-  function questionRunner(args: Record<string, unknown>) {
+  type ToolCallInput = { name: string; arguments: Record<string, unknown> };
+
+  function callRunner(name: string, args: Record<string, unknown>) {
     let call = 0;
     return async function* (
       opts: InferenceHarnessOptions,
@@ -5076,8 +5079,8 @@ describe("createReactor — question screen", () => {
               content: [
                 {
                   type: "tool_call",
-                  id: "call-question",
-                  name: QUESTION_TOOL_NAME,
+                  id: "call-paused",
+                  name,
                   arguments: args,
                 },
               ],
@@ -5098,24 +5101,29 @@ describe("createReactor — question screen", () => {
     };
   }
 
-  function startQuestion(
-    args: Record<string, unknown>,
-    checkQuestion?: QuestionCheck,
+  function startCall(
+    { name, arguments: args }: ToolCallInput,
+    checkCall?: CallCheck,
   ) {
     const cell: PersistedCell = {
       turns: [],
       pendingOperations: [],
       tokenUsage: emptyUsage(),
     };
+    const ran: string[] = [];
     const handle = createTestReactor({
       contextStore: makePersistingContextStore(cell),
       director: createDefaultDirector("test agent", []),
-      inferenceRunner: questionRunner(args),
-      beforeToolExtensions: [createQuestionExtension(checkQuestion)],
+      inferenceRunner: callRunner(name, args),
+      toolRunner: makeToolRunner(async (call) => {
+        ran.push(call.name);
+        return { callId: call.id, content: JSON.stringify({ ran: true }) };
+      }),
+      beforeToolExtensions: [createQuestionExtension(checkCall)],
     });
     handle.reactor.start();
     handle.reactor.deliver(makeInboundMessage());
-    return { ...handle, cell };
+    return { ...handle, cell, ran };
   }
 
   async function parked(waitFor: TestReactorHandle["waitFor"]) {
@@ -5135,14 +5143,14 @@ describe("createReactor — question screen", () => {
     });
   }
 
-  function questionResult(cell: PersistedCell): unknown {
+  function callResult(cell: PersistedCell): unknown {
     const block = cell.turns
       .flatMap((t) => t.content)
-      .find((b) => b.type === "tool_result" && b.callId === "call-question");
+      .find((b) => b.type === "tool_result" && b.callId === "call-paused");
     if (block === undefined || block.type !== "tool_result") {
-      throw new Error("expected a tool_result for the question call");
+      throw new Error("expected a tool_result for the paused call");
     }
-    expect(block.isError).toBe(false);
+    expect(block.isError).toBeFalsy();
     return JSON.parse(
       block.content
         .filter((c) => c.type === "text")
@@ -5151,53 +5159,89 @@ describe("createReactor — question screen", () => {
     );
   }
 
-  test("a plugin question parks with its plugin and input untouched", async () => {
-    const { cell, waitFor } = startQuestion(screen);
+  test("a call paused for its result parks with the screen untouched", async () => {
+    const { cell, ran, waitFor } = startCall(pickFont, () => ({
+      ...screen,
+      resume: "result",
+    }));
     await parked(waitFor);
 
     expect(cell.pendingOperations).toHaveLength(1);
     expect(cell.pendingOperations[0]?.question).toEqual(screen);
+    expect(cell.pendingOperations[0]?.suspendedCall?.name).toBe("pick_font");
+    expect(cell.pendingOperations[0]?.rerun).toBeUndefined();
+    expect(ran).toEqual([]);
   });
 
-  test("the screen's output becomes the call's result", async () => {
-    const { reactor, cell, events, waitFor } = startQuestion(screen);
+  test("the screen's output becomes the paused call's result", async () => {
+    const { reactor, cell, ran, events, waitFor } = startCall(pickFont, () => ({
+      ...screen,
+      resume: "result",
+    }));
     const correlationId = await parked(waitFor);
 
     reactor.deliver(answer(correlationId, { output: { font: "Lora" } }));
     await waitForEvent(events, (e) => e.type === "connector.reply");
 
-    expect(questionResult(cell)).toEqual({ output: { font: "Lora" } });
+    expect(callResult(cell)).toEqual({ output: { font: "Lora" } });
     expect(cell.pendingOperations).toHaveLength(0);
+    expect(ran).toEqual([]);
   });
 
-  test("a reply answers a plugin question", async () => {
-    const { reactor, cell, events, waitFor } = startQuestion(screen);
+  test("a reply answers a call paused for its result", async () => {
+    const { reactor, cell, events, waitFor } = startCall(pickFont, () => ({
+      ...screen,
+      resume: "result",
+    }));
     const correlationId = await parked(waitFor);
 
     reactor.deliver(answer(correlationId, { reply: "use the old font" }));
     await waitForEvent(events, (e) => e.type === "connector.reply");
 
-    expect(questionResult(cell)).toEqual({ reply: "use the old font" });
+    expect(callResult(cell)).toEqual({ reply: "use the old font" });
   });
 
-  test("a call with both questions and a plugin is blocked", async () => {
-    const { events, waitFor } = startQuestion({
-      ...screen,
-      questions: [{ question: "Which font?", header: "Font", options: [] }],
-    });
-    await waitFor("tool.done");
-
-    expect(events.some((e) => e.type === "reactor.gate.blocked")).toBe(false);
-    const done = getEvent(events, "tool.done");
-    expect(done.data.result.isError).toBe(true);
-    expect(done.data.result.content).toBe(
-      "Invalid question: pass questions or a plugin, not both",
+  test("a call paused to rerun runs once its screen is answered, without pausing again", async () => {
+    const checked: string[] = [];
+    const { reactor, cell, ran, events, waitFor } = startCall(
+      pickFont,
+      (call) => {
+        checked.push(call.id);
+        return { ...screen, resume: "rerun" };
+      },
     );
+    const correlationId = await parked(waitFor);
+    expect(cell.pendingOperations[0]?.rerun).toBe(true);
+
+    reactor.deliver(answer(correlationId, { output: { font: "Lora" } }));
+    await waitForEvent(events, (e) => e.type === "connector.reply");
+
+    expect(ran).toEqual(["pick_font"]);
+    expect(checked).toEqual(["call-paused"]);
+    expect(
+      events.filter((e) => e.type === "reactor.gate.blocked"),
+    ).toHaveLength(1);
+    expect(callResult(cell)).toEqual({ ran: true });
+    expect(cell.pendingOperations).toHaveLength(0);
   });
 
-  test("a plugin question its check refuses is blocked with the refusal", async () => {
-    const { cell, events, waitFor } = startQuestion(
-      screen,
+  test("a reply to a call paused to rerun is its result and the call never runs", async () => {
+    const { reactor, cell, ran, events, waitFor } = startCall(pickFont, () => ({
+      ...screen,
+      resume: "rerun",
+    }));
+    const correlationId = await parked(waitFor);
+
+    reactor.deliver(answer(correlationId, { reply: "not yet" }));
+    await waitForEvent(events, (e) => e.type === "connector.reply");
+
+    expect(callResult(cell)).toEqual({ reply: "not yet" });
+    expect(ran).toEqual([]);
+  });
+
+  test("a call its check refuses is blocked with the refusal", async () => {
+    const { cell, ran, events, waitFor } = startCall(
+      pickFont,
       () => "Unknown font list",
     );
     await waitFor("tool.done");
@@ -5207,32 +5251,50 @@ describe("createReactor — question screen", () => {
     const done = getEvent(events, "tool.done");
     expect(done.data.result.isError).toBe(true);
     expect(done.data.result.content).toBe("Unknown font list");
+    expect(ran).toEqual([]);
   });
 
-  test("a plugin question its check allows parks", async () => {
-    const checked: unknown[] = [];
-    const { cell, waitFor } = startQuestion(screen, async (question) => {
-      checked.push(question);
-      return undefined;
-    });
-    await parked(waitFor);
+  test("a call its check lets through runs", async () => {
+    const { ran, events, waitFor } = startCall(pickFont, async () => undefined);
+    await waitFor("tool.done");
 
-    expect(checked).toEqual([screen]);
-    expect(cell.pendingOperations[0]?.question).toEqual(screen);
+    expect(events.some((e) => e.type === "reactor.gate.blocked")).toBe(false);
+    expect(ran).toEqual(["pick_font"]);
   });
 
-  test("a prompts question is not checked", async () => {
-    const { waitFor } = startQuestion(
-      { questions: [{ question: "Which font?", header: "Font", options: [] }] },
+  test("a question is not checked", async () => {
+    const { waitFor } = startCall(
+      {
+        name: QUESTION_TOOL_NAME,
+        arguments: {
+          questions: [{ question: "Which font?", header: "Font", options: [] }],
+        },
+      },
       () => {
-        throw new Error("a prompts question was checked");
+        throw new Error("a question was checked");
       },
     );
     await parked(waitFor);
   });
 
-  test("answers by prompt id to a plugin question halt the run", async () => {
-    const { reactor, waitFor } = startQuestion(screen);
+  test("a question naming a plugin is blocked", async () => {
+    const { cell, events, waitFor } = startCall({
+      name: QUESTION_TOOL_NAME,
+      arguments: screen,
+    });
+    await waitFor("tool.done");
+
+    expect(cell.pendingOperations).toHaveLength(0);
+    const done = getEvent(events, "tool.done");
+    expect(done.data.result.isError).toBe(true);
+    expect(String(done.data.result.content)).toContain("Invalid question");
+  });
+
+  test("answers by prompt id to a screen halt the run", async () => {
+    const { reactor, waitFor } = startCall(pickFont, () => ({
+      ...screen,
+      resume: "result",
+    }));
     const correlationId = await parked(waitFor);
 
     reactor.deliver(answer(correlationId, { answers: { a: ["Lora"] } }));
@@ -5244,8 +5306,11 @@ describe("createReactor — question screen", () => {
   });
 
   test("a screen output to a prompts question halts the run", async () => {
-    const { reactor, waitFor } = startQuestion({
-      questions: [{ question: "Which font?", header: "Font", options: [] }],
+    const { reactor, waitFor } = startCall({
+      name: QUESTION_TOOL_NAME,
+      arguments: {
+        questions: [{ question: "Which font?", header: "Font", options: [] }],
+      },
     });
     const correlationId = await parked(waitFor);
 

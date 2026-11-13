@@ -301,9 +301,9 @@ export type PluginPackage =
  */
 export type Catalog = {
   plugins: readonly Plugin[];
-  // The screens a question can show.
+  // The screens an execute call can show.
   screens: readonly ScreenAction[];
-  // Every action of every specialist: started with execute, or opened with question.
+  // Every action of every specialist: started, run or opened with execute.
   actions: readonly Action[];
   installed(handle: string): Plugin | undefined;
   // A fact in plain words.
@@ -837,7 +837,7 @@ async function specialistPlugin(
     actions,
     guidance: [
       ...lines(handle, builder, description),
-      `Start one of its actions with execute({ plugin: "${handle}", action, input }), with the input that action describes; a screen opened with question says so.`,
+      `Start one of its actions with execute({ plugin: "${handle}", action, input }), with the input that action describes; a screen opens the same way.`,
       ...(own.length > 0
         ? [
             `Its agent has skill packs it opens as the work calls for them, which are not started: ${own.join(", ")}.`,

@@ -119,6 +119,9 @@ function project(
     recorded,
     definitions: tools.definitions.map(({ name }) => name),
     execute: (asked: Record<string, unknown>) => call("execute", asked),
+    // What the person answers before this execute call goes on, as Interchange asks before it runs.
+    pause: (asked: Record<string, unknown>) =>
+      tools.checkCall?.({ id: "call", name: "execute", arguments: asked }),
     discover: (args: Record<string, unknown>) => call("discover", args),
     plan: (args: Record<string, unknown>) => call("plan", args),
   };
@@ -172,7 +175,7 @@ test("the dynamic coordinator starts work with execute and offers no staged tool
   ]);
 });
 
-test("execute refuses an unknown plugin, a bad input and a screen, and starts nothing", async () => {
+test("execute refuses an unknown plugin and a bad input, pauses on a screen, and starts nothing", async () => {
   const empty = project([filed("app")]);
   const unknown = await empty.execute({
     plugin: "polish-app",
@@ -203,9 +206,15 @@ test("execute refuses an unknown plugin, a bad input and a screen, and starts no
   );
 
   expect(
-    (await empty.execute({ plugin: "designer", action: "pick-fonts" })).content,
-  ).toBe(
-    'designer pick-fonts is a screen, so nothing was started. A screen is opened with question({ plugin: "designer", action: "pick-fonts", input }).',
+    await empty.pause({ plugin: "designer", action: "pick-fonts" }),
+  ).toEqual({
+    plugin: "designer",
+    action: "pick-fonts",
+    input: {},
+    resume: "result",
+  });
+  expect(await empty.pause({ plugin: "coder", action: "change" })).toBe(
+    undefined,
   );
   expect(empty.deployed).toEqual([]);
 });
@@ -270,6 +279,8 @@ test("coder build is refused without the filed requirements or build plan, and o
 test("on build-web-app's steps, coder build waits for the person's go-ahead while they decide approvals, and otherwise starts with the step's advice", async () => {
   const following = project([filed("build_plan")]);
   await following.plan({ operation: "add", plan: "build-web-app" });
+  // No one screen gives both the approval and the design choice, so execute refuses.
+  expect(await following.pause(coderBuild)).toBeUndefined();
   const refused = await following.execute(coderBuild);
   expect(refused.content).toBe(
     [
@@ -313,6 +324,12 @@ test("designer mockup starts a designer with nothing filed, unless its build-web
 
   const following = project([filed("product_requirements")]);
   await following.plan({ operation: "add", plan: "build-web-app" });
+  expect(await following.pause(designerMockup)).toEqual({
+    plugin: "writer",
+    action: "approve",
+    input: { kinds: ["product_requirements"] },
+    resume: "rerun",
+  });
   const refused = await following.execute(designerMockup);
   expect(refused.isError).toBe(true);
   expect(refused.content).toContain(

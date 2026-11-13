@@ -1,15 +1,6 @@
 import { expect } from "bun:test";
 import { writerFiles } from "./specialists.ts";
-import {
-  execute,
-  ok,
-  question,
-  results,
-  say,
-  scenario,
-  turn,
-  user,
-} from "./runner.ts";
+import { execute, ok, results, say, scenario, turn, user } from "./runner.ts";
 
 const first = "The competitor analysis is filed.";
 const revised = "The competitor analysis now has prices.";
@@ -42,12 +33,12 @@ scenario({
     ),
     turn(
       results(ok("c_revise", "execute")),
-      question("c_approve", "writer", "approve", {
+      execute("c_approve", "writer", "approve", {
         kinds: ["competitor_analysis"],
       }),
     ),
     turn(
-      results(ok("c_approve", "question")),
+      results(ok("c_approve", "execute")),
       say("The competitor analysis is approved."),
     ),
     turn(user(revised), say("The revision with prices is in.")),

@@ -404,7 +404,7 @@ export function createChecks(deps: {
           { own, steps: [] },
           makersIn(CATALOG),
           CATALOG.factText,
-          "execute",
+          "started",
         ),
       });
     const row = {

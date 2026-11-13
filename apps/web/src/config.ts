@@ -605,7 +605,7 @@ export const wording = {
       exec: () => "rewriting a tool call",
       discover: () => "choosing how to do this",
       execute: () => "handing work to a specialist",
-      question: () => "showing you a screen",
+      question: () => "asking you a question",
       runs: (operation?: string) =>
         RUNS_OPERATION[operation ?? ""] ?? "checking on the work in progress",
       plan: (operation?: string) =>

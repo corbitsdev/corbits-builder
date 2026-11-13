@@ -421,11 +421,87 @@ describe("createReactorAssembly", () => {
     expect(record.authz.effect).toBe("deny");
   });
 
+  test("a call paused to rerun runs once its screen is answered, past authz's ask", async () => {
+    const events = collectEvents();
+    const ran: string[] = [];
+    const director: ReactorDirector = {
+      async decide(event, _state, caps) {
+        if (event.type === "message.received") {
+          return caps.executeTools([
+            { id: "c-rerun", name: "build", arguments: {} },
+          ]);
+        }
+        if (event.type === "resume.execute_tools") {
+          return caps.executeTools(event.calls, false, true);
+        }
+        return caps.done();
+      },
+    };
+
+    const { reactor } = createReactorAssembly({
+      deps: defaultDeps,
+      sessionId: "s-rerun",
+      director,
+      source: source(),
+      toolRunner: {
+        async run(call) {
+          ran.push(call.name);
+          return { callId: call.id, content: "built" };
+        },
+      },
+      contextStore: makeContextStore(),
+      onEvent: events.onEvent,
+      authorize: () =>
+        Promise.resolve({
+          effect: "ask" as const,
+          matchingGrants: [],
+          resolvedBy: null,
+        }),
+      checkCall: () => ({
+        plugin: "writer",
+        action: "approve",
+        input: { kinds: ["build_plan"] },
+        resume: "rerun",
+      }),
+      shutdownTimeoutMs: 100,
+    });
+
+    reactor.start();
+    reactor.deliver(makeInboundMessage());
+    const correlationId = await new Promise<string>((resolve) => {
+      const check = () => {
+        const blocked = events.events.find(
+          (e) => e.type === "reactor.gate.blocked",
+        );
+        if (blocked?.type === "reactor.gate.blocked") {
+          resolve(blocked.data.correlationId ?? "");
+          return;
+        }
+        setTimeout(check, 10);
+      };
+      check();
+    });
+    reactor.deliver(
+      createInboundMessage({
+        from: "signal@local",
+        to: "agent@example.com",
+        content: JSON.stringify({ output: { approved: [] } }),
+        correlationId,
+      }),
+    );
+    await waitForDone(events.events);
+
+    expect(ran).toEqual(["build"]);
+    expect(
+      events.events.filter((e) => e.type === "reactor.gate.blocked"),
+    ).toHaveLength(1);
+  });
+
   test("a question blocked ahead of authz is audited with its tool and arguments and no authz", async () => {
     const contextStore = makeContextStore();
     const events = collectEvents();
     const auditStore = makeRecordingAuditStore();
-    const args = { questions: [], plugin: "picker" };
+    const args = { plugin: "picker" };
 
     const { reactor } = createReactorAssembly({
       deps: defaultDeps,
@@ -451,10 +527,8 @@ describe("createReactorAssembly", () => {
     expect(record.tool).toBe("question");
     expect(record.arguments).toEqual(args);
     expect(record.authz).toBeNull();
-    expect(record.result).toEqual({
-      content: "Invalid question: pass questions or a plugin, not both",
-      isError: true,
-    });
+    expect(record.result?.isError).toBe(true);
+    expect(String(record.result?.content)).toStartWith("Invalid question");
   });
 
   test("with authorize + caller's beforeToolExtensions, authz runs first; caller's extensions follow in order", async () => {

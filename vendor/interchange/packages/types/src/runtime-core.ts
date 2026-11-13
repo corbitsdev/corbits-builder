@@ -736,10 +736,11 @@ const QuestionPrompt = type({
 });
 
 /**
- * A screen the person's interface draws instead of prompts: a plugin name,
- * optionally one of its actions, and its input. The runtime carries the input
- * without reading it. `questions` is ruled out so the union with prompts,
- * whose defaults are morphs, can tell the two apart.
+ * A screen the person's interface draws instead of prompts, which the host
+ * pauses a call on: a plugin name, optionally one of its actions, and its
+ * input. The runtime carries the input without reading it. `questions` is
+ * ruled out so the union with prompts, whose defaults are morphs, can tell
+ * the two apart.
  */
 const QuestionScreen = type({
   plugin: "string > 0",
@@ -754,19 +755,8 @@ export const QUESTION_TOOL_NAME = "question";
 /** The arguments of a `question` call, as the model writes them. */
 export const QuestionArguments = type({
   questions: QuestionPrompt.array().atLeastLength(1),
-}).or(QuestionScreen);
-export type QuestionArguments = typeof QuestionArguments.infer;
-
-/**
- * The `question` arguments as one object, for the model's tool schema:
- * providers reject a schema that is a union at the top level.
- */
-export const QuestionToolInput = type({
-  "questions?": QuestionPrompt.array().atLeastLength(1),
-  "plugin?": "string > 0",
-  "action?": "string > 0",
-  "input?": "Record<string, unknown>",
 });
+export type QuestionArguments = typeof QuestionArguments.infer;
 
 /**
  * A paused `question` call as people see it: each prompt carries the id the
@@ -1429,6 +1419,11 @@ export type PendingOperation = {
   approvalSnapshot?: ApprovalSnapshot;
   /** The prompts of a `kind: "question"` operation, for the person who answers. */
   question?: AskedQuestion;
+  /**
+   * The parked call runs once the person answers its screen, rather than
+   * taking the answer as its result.
+   */
+  rerun?: true;
 };
 
 /**

@@ -1,37 +1,14 @@
 import type { Context } from "hono";
 import type { TenantEnv } from "@intx/hub-api";
-import type { QuestionCheck } from "@intx/inference";
 import type { AskedQuestion } from "@intx/types/runtime-core";
 import {
   ConversationEvents,
   parkedQuestions,
 } from "@corbits-builder/schemas/conversation";
 import type { Catalog } from "@corbits-builder/plugin-host/catalog";
-import {
-  screenRefusal,
-  type Project,
-} from "@corbits-builder/plugin-host/coordinator";
-import { unknownScreen } from "@corbits-builder/plugin-host/text";
 import { callerHeaders } from "../mail/caller-mail.ts";
 import { readJson } from "../lib/json.ts";
 import { ProjectError } from "../projects/errors.ts";
-import { projectCatalog } from "./catalog.ts";
-
-// Refuses a screen's input, or a project without what the screen needs, before the question parks,
-// so the person never sees a screen that cannot draw. A screen is checked against the project as it
-// is, so a failed read is thrown.
-export async function checkPluginQuestion(
-  question: Parameters<QuestionCheck>[0],
-  project: Project,
-) {
-  const catalog = await projectCatalog(project.values);
-  const installed = catalog.screens.find(
-    ({ plugin, action }) =>
-      plugin === question.plugin && action === question.action,
-  );
-  if (!installed) return unknownScreen(question, catalog.screens);
-  return screenRefusal(catalog, project, installed, question.input);
-}
 
 /**
  * The coordinator run and every question it parked on, from the conversation the person reads: the
