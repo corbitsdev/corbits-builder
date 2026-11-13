@@ -48,7 +48,7 @@ scenario({
     turn(user("text bigger"), execute("c_busy", "coder", "change", bigger)),
     turn(
       results(
-        refused("c_busy", "execute", "one coder works on the app at a time"),
+        refused("c_busy", "execute", "one coder works on the code at a time"),
       ),
       say("One coder works at a time; I will start that next."),
     ),

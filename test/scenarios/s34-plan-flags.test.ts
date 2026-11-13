@@ -143,7 +143,8 @@ scenario({
       await coordinatorBearer(p),
     );
     p.note("the coordinator's token declining the manual", byToken);
-    expect(byToken.status).toBe(403);
+    // A run token reaches only the routes its bridge allows; declining is not one of them.
+    expect(byToken.status).toBe(401);
 
     const required = await p.call("POST", decline(requirements.id));
     p.note("declining a required step", required);

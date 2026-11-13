@@ -796,13 +796,19 @@ async function runScenario(
       return reply;
     };
 
-    // An export carries no project values, so the imported weather app is told again that it is the
-    // web app its first build started from, and the commands its builds check runs.
+    // An export carries no project values, so the imported weather app is told again what the hub
+    // saved when its first build applied the web-app starter: the starter, the commands its builds
+    // check runs, and how its preview starts.
     if (scenario.start === "weather-app") {
       const stack = await callAs("POST", `${path}/values`, {
         values: {
           "stack.starter": "web-app",
           "stack.checks": "bun install --frozen-lockfile\nbun run build",
+          "stack.run": {
+            command: "bun run dev",
+            port: "CLIENT_PORT",
+            extraPorts: ["PORT"],
+          },
         },
       });
       expect(stack.status).toBe(200);

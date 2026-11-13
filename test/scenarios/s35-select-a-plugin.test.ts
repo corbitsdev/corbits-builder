@@ -128,7 +128,8 @@ scenario({
       },
     );
     p.note("the coordinator's run token switching back", write);
-    expect(write.status).toBe(403);
+    // A run token reaches only the routes its bridge allows; saving values is not one of them.
+    expect(write.status).toBe(401);
     const after = await p.call("GET", `${p.path}/values?keys=${SELECTION}`);
     expect(after.body).toEqual({ values: { [SELECTION]: EXPRESS } });
   },

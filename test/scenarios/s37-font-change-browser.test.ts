@@ -40,6 +40,8 @@ scenario({
       results(ok("c_change", "execute")),
       say("The coder is switching the fonts to Arial and Bitter."),
     ),
+    // The fonts are look values, saved onto the filed design, and the hub notes that save too.
+    turn(user("Look saved to the design"), say("The design has your fonts.")),
     turn(user(report), say("Your app now uses Arial and Bitter.")),
   ],
   specialists: {
