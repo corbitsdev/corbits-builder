@@ -4,16 +4,26 @@ import { type } from "arktype";
 import { hasCode } from "@intx/types/has-code";
 import type { ToolCall, ToolResult, ToolRunner } from "@intx/types/runtime";
 import {
+  type ApprovedPackages,
   PACKAGE_INSTALL_TOOL,
   PackageInstallInput,
+  packageName,
+  PLANNED_INSTALL_TOOL,
+  plannedInstall,
 } from "@corbits-builder/schemas/package-install";
 
 const inputSchema = { ...PackageInstallInput.toJsonSchema() };
+const WHERE =
+  "into the one package of the project that imports them: . for the project itself, or in a web app's workspace client, server or packages/<name>";
 export const packageInstallDefinitions = [
   {
     name: PACKAGE_INSTALL_TOOL,
-    description:
-      "Install npm packages with bun add into the one package of the project that imports them: . for the project itself, or in a web app's workspace client, server or packages/<name>. When an install is declined, build without those packages.",
+    description: `Install npm packages with bun add ${WHERE}. The person approves each install first, so install a package the approved build plan names with ${PLANNED_INSTALL_TOOL} instead. When an install is declined, build without those packages.`,
+    inputSchema,
+  },
+  {
+    name: PLANNED_INSTALL_TOOL,
+    description: `Install npm packages the approved build plan names with bun add ${WHERE}, without waiting for the person. A package the plan names without a version installs as given; one it pins installs at that version, so give it bare or at that version. Any other package, or another version, is not installed and waits for the person through ${PACKAGE_INSTALL_TOOL}.`,
     inputSchema,
   },
 ];
@@ -64,15 +74,38 @@ export async function installedPackages(workspace: string) {
   return names;
 }
 
-export function createPackageGate(workspace: string, executor: ToolRunner) {
+export function createPackageGate(
+  workspace: string,
+  executor: ToolRunner,
+  approved: (signal: AbortSignal) => Promise<ApprovedPackages>,
+) {
   const refuse = (call: ToolCall, content: unknown): ToolResult => ({
     callId: call.id,
     content: JSON.stringify(content),
     isError: true,
   });
 
+  const install = async (
+    call: ToolCall,
+    input: PackageInstallInput,
+    signal: AbortSignal,
+  ): Promise<ToolResult> => {
+    const result = await executor.run(
+      {
+        id: call.id,
+        name: "run_shell",
+        arguments: {
+          command: `bun add --exact --cwd ${quote(input.workspace)} ${input.packages.map(quote).join(" ")}`,
+        },
+      },
+      signal,
+    );
+    return { ...result, callId: call.id };
+  };
+
   return {
-    handles: (name: string) => name === PACKAGE_INSTALL_TOOL,
+    handles: (name: string) =>
+      name === PACKAGE_INSTALL_TOOL || name === PLANNED_INSTALL_TOOL,
     /** Refuses a command line that fetches packages around the gate. */
     async refuseShell(call: ToolCall): Promise<ToolResult | undefined> {
       const command = call.arguments["command"];
@@ -142,17 +175,41 @@ export function createPackageGate(workspace: string, executor: ToolRunner) {
           code: "invalid_package_input",
           summary: input.summary,
         });
-      const result = await executor.run(
-        {
-          id: call.id,
-          name: "run_shell",
-          arguments: {
-            command: `bun add --exact --cwd ${quote(input.workspace)} ${input.packages.map(quote).join(" ")}`,
-          },
-        },
+      if (call.name === PACKAGE_INSTALL_TOOL)
+        return install(call, input, signal);
+      const { documents } = await approved(signal);
+      const { install: covered, asks } = plannedInstall(
+        input.packages,
+        documents.flatMap((document) => document.packages),
+      );
+      if (!covered.length)
+        return refuse(call, {
+          code: "package_not_planned",
+          packages: asks,
+          summary: `No approved document names these at this version, so nothing was installed. ${PACKAGE_INSTALL_TOOL} asks the person for them.`,
+        });
+      const allowedBy = [
+        ...new Set(
+          documents
+            .filter((document) =>
+              document.packages.some((spec) =>
+                covered.some((name) => packageName(name) === packageName(spec)),
+              ),
+            )
+            .map((document) => document.kind.replaceAll("_", " ")),
+        ),
+      ].join(" and ");
+      const result = await install(
+        call,
+        { workspace: input.workspace, packages: covered },
         signal,
       );
-      return { ...result, callId: call.id };
+      // After the output, which a failed install opens with its exit code.
+      const allowed = `${covered.join(", ")}: allowed by the approved ${allowedBy}, without asking the person.`;
+      const left = asks.length
+        ? `\nNot installed: ${asks.join(", ")}, which the approved ${allowedBy} does not name at that version; ${PACKAGE_INSTALL_TOOL} asks the person for them.`
+        : "";
+      return { ...result, content: `${result.content}\n\n${allowed}${left}` };
     },
   };
 }

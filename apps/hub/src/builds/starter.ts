@@ -115,6 +115,20 @@ export function spliceDesignScreens(
   return `${indexHtml}\n${marked}`;
 }
 
+/**
+ * A read of the mockup shell with the block Builder splices in left out: one line says what it
+ * holds, so a reader opens the screen it needs in its own file instead of a copy of every screen.
+ * A read that starts or ends inside the block leaves out the part it holds.
+ */
+export function withoutSplicedScreens(read: string): string {
+  const start = read.indexOf(SCREENS_START);
+  const end = read.indexOf(SCREENS_END);
+  if (start === -1 && end === -1) return read;
+  const from = Math.max(start, 0);
+  const to = end < from ? read.length : end + SCREENS_END.length;
+  return `${read.slice(0, from)}<!-- builder:screens: Builder writes a copy of every file in designs/screens/ here each time one is saved; read and edit each screen in its own file -->${read.slice(to)}`;
+}
+
 export const STARTER_SPLICED_INDEX =
   STARTER_INDEX === undefined || STARTER_HOME_SCREEN === undefined
     ? undefined

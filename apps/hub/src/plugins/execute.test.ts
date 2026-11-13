@@ -393,7 +393,7 @@ test("execute on build-web-app is turned to plan add, which puts the plan's step
       "  writer write-requirements: can start now",
       "  designer looks (optional, the person may decline it): can start now",
       "  designer mockup: can start now",
-      '  writer write-build-plan: needs the person\'s go-ahead, which the step "Write the build plan" asks for: the person chose a design from the design options',
+      '  writer write-build-plan: can start now; the step "Write the build plan" suggests first: a design option is filed',
       '  coder build: needs the person\'s go-ahead, which the step "Build the app" asks for: the person approved the current version of the build plan, or leaves approvals to you and the person chose a design from the design options',
       '  writer write (optional, the person may decline it): can start now; the step "Write the user manual" suggests first: the project has code, built or imported',
     ].join("\n"),
@@ -413,6 +413,34 @@ test("execute on build-web-app is turned to plan add, which puts the plan's step
   expect(guidance.content).toContain(
     'Now: needs the person\'s go-ahead, which the step "Build the app" asks for: the person approved',
   );
+});
+
+test("on build-web-app, the build plan is drafted while the person reviews a filed design, and the build still waits for their choice and the approved plan", async () => {
+  const reviewing = project([
+    filed("product_requirements", true),
+    filed("design_option"),
+  ]);
+  const added = await reviewing.plan({
+    operation: "add",
+    plan: "build-web-app",
+  });
+  expect(added.content).toContain("  writer write-build-plan: can start now\n");
+  expect(added.content).toContain(
+    '  coder build: needs the person\'s go-ahead, which the step "Build the app" asks for: the person approved the current version of the build plan, or leaves approvals to you and the person chose a design from the design options',
+  );
+
+  // A plan revised after the design changed is a new version, which the build waits on again.
+  reviewing.state.artifacts = [
+    filed("product_requirements", true),
+    filed("design", true),
+    { kind: "build_plan", version: 2, approvedVersion: 1 },
+  ];
+  const revised = await reviewing.execute(coderBuild);
+  expect(revised.isError).toBe(true);
+  expect(revised.content).toContain(
+    "  - the person approved the current version of the build plan",
+  );
+  expect(reviewing.deployed).toEqual([]);
 });
 
 test("build-web-app asks how many looks before the mockup step; the answer sets the preference and does the step, and handing approvals over skips it", async () => {

@@ -22,6 +22,7 @@ import { getLogger } from "@intx/log";
 import { HUB_CREDENTIAL_HANDLE } from "@intx/types/credential-delivery";
 import { hexDecode } from "@intx/types/hex";
 import type { RuntimeCapabilities } from "@intx/types/runtime-capabilities";
+import { ApprovedPackages } from "@corbits-builder/schemas/package-install";
 import { INPUTS_DIRECTORY } from "../config/inputs.ts";
 import { errorCode, requestErrorMetadata } from "../request-error.ts";
 import {
@@ -204,6 +205,24 @@ export async function revokeAppPushAccess(
     if (error instanceof WorkflowHttpError && error.status === 401) return;
     throw error;
   }
+}
+
+/** The packages this run installs without asking, as the hub reads them from approved documents. */
+export async function readApprovedPackages(
+  capabilities: RuntimeCapabilities,
+  scope: { tenantId: string; projectId: string },
+  signal: AbortSignal,
+) {
+  return ApprovedPackages.assert(
+    await workflowHttpJson({
+      capabilities,
+      handle: HUB_CREDENTIAL_HANDLE,
+      path: appRepositoryPath(scope) + "/approved-packages",
+      body: {},
+      maxResponseBytes: 65_536,
+      signal,
+    }),
+  );
 }
 
 /**

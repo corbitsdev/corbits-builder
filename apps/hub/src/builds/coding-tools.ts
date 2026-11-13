@@ -2,6 +2,7 @@ import { defineTool } from "@intx/agent/authoring";
 import { posix } from "@intx/tools-posix/sidecar-bundle";
 import type { ToolRunner } from "@intx/types/runtime";
 import { type } from "arktype";
+import type { ApprovedPackages } from "@corbits-builder/schemas/package-install";
 import {
   PortVariable,
   type AppRun,
@@ -54,7 +55,7 @@ export function createCodingTools(options: {
   workspace: string;
   executor: ToolRunner;
   approval: "ask" | "allow";
-  packageInstall?: boolean;
+  approvedPackages?: (signal: AbortSignal) => Promise<ApprovedPackages>;
   app?: boolean;
 }) {
   if (!["ask", "allow"].includes(options.approval))
@@ -71,8 +72,12 @@ export function createCodingTools(options: {
     ),
     factory: (env) => {
       const native = posix({ ...env, toolCwd: options.workspace });
-      const gate = options.packageInstall
-        ? createPackageGate(options.workspace, options.executor)
+      const gate = options.approvedPackages
+        ? createPackageGate(
+            options.workspace,
+            options.executor,
+            options.approvedPackages,
+          )
         : undefined;
       return {
         definitions: [

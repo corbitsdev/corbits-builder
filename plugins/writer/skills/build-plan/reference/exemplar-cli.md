@@ -21,6 +21,11 @@ A single Go program using the standard library and one EXIF reader, for the
 approach chosen in the product requirements (Approach). One file to copy
 onto either laptop meets NFR-2, and Go meets NFR-1 with room to spare.
 
+## Packages
+
+None. The EXIF reader is the Go module `github.com/rwcarlsen/goexif`,
+added with `go get`.
+
 ## Components and interfaces
 
 - `main.go`: parses the commands and flags in IR-1.

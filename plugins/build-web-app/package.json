@@ -49,11 +49,12 @@
         "plugin": "writer",
         "action": "write-build-plan",
         "title": "Write the build plan",
-        "requires": [],
+        "requires": [
+          "filed:design_option"
+        ],
         "approval": {
           "of": [
-            "product_requirements",
-            "design"
+            "product_requirements"
           ],
           "when": "optional"
         }

@@ -111,6 +111,7 @@ import {
   runAction,
 } from "../db/schema.ts";
 import type { AgentActivityTracker } from "./activity.ts";
+import { approvedVersion } from "./approvals.ts";
 import type { Actor } from "../lib/actor.ts";
 import { parseJson } from "../lib/json.ts";
 import { authorizeProject } from "../projects/authorization.ts";
@@ -1046,41 +1047,6 @@ export function createArtifactService(
     return row?.record ?? undefined;
   }
 
-  async function approvedVersion(tenantId: string, artifactId: string) {
-    const deployed = await rawDB
-      .select({
-        version: artifactApproval.version,
-        sha256: artifactApproval.sha256,
-      })
-      .from(artifactApproval)
-      .where(
-        and(
-          eq(artifactApproval.tenantId, tenantId),
-          eq(artifactApproval.artifactId, artifactId),
-        ),
-      );
-    const imported = await rawDB
-      .select({
-        version: artifactImportApproval.version,
-        sha256: artifactImportApproval.sha256,
-      })
-      .from(artifactImportApproval)
-      .where(
-        and(
-          eq(artifactImportApproval.tenantId, tenantId),
-          eq(artifactImportApproval.artifactId, artifactId),
-        ),
-      );
-    const covered = [...deployed, ...imported].sort(
-      (a, b) => b.version - a.version,
-    );
-    for (const row of covered) {
-      const stored = await getArtifactVersion(db, artifactId, row.version);
-      if (stored?.contentSha256 === row.sha256) return row.version;
-    }
-    return undefined;
-  }
-
   return {
     async list(actor: Actor, projectId: string): Promise<ArtifactList> {
       await requireProject(actor, projectId, "read");
@@ -1158,7 +1124,7 @@ export function createArtifactService(
       const artifacts: ArtifactListItem[] = [];
       for (const row of rows) {
         if (!row.contentSha256) continue;
-        const approved = await approvedVersion(actor.tenantId, row.id);
+        const approved = await approvedVersion(db, actor.tenantId, row.id);
         // When the person recorded it; an approval given through a deploy's ask has no such record.
         const [record] =
           approved === undefined
@@ -2244,7 +2210,8 @@ export function createArtifactService(
               if (kind !== "design" && agentDecidesApprovals(preferences))
                 return true;
               return (
-                (await approvedVersion(actor.tenantId, artifactId)) === version
+                (await approvedVersion(db, actor.tenantId, artifactId)) ===
+                version
               );
             },
           ),
@@ -2377,7 +2344,7 @@ export function createArtifactService(
           title: stored.title,
           content: stored.content,
           approved:
-            (await approvedVersion(actor.tenantId, artifact.id)) ===
+            (await approvedVersion(db, actor.tenantId, artifact.id)) ===
             stored.version,
         });
       }
@@ -2656,7 +2623,7 @@ export function createArtifactService(
             mailRun,
           );
         else if (
-          (await approvedVersion(actor.tenantId, ref.artifactId)) !==
+          (await approvedVersion(db, actor.tenantId, ref.artifactId)) !==
           ref.version
         )
           await this.recordImportApproval(actor, projectId, ref);

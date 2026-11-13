@@ -3,7 +3,11 @@ import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { CATALOG } from "../plugins/catalog.ts";
-import { spliceDesignScreens, syncDesignScreensOnDisk } from "./starter.ts";
+import {
+  spliceDesignScreens,
+  syncDesignScreensOnDisk,
+  withoutSplicedScreens,
+} from "./starter.ts";
 
 const STARTER = CATALOG.design!.starter;
 const STARTER_INDEX = STARTER[".builder/designs/index.html"]!;
@@ -133,4 +137,23 @@ describe("syncDesignScreensOnDisk", () => {
       await rm(workspace, { recursive: true, force: true });
     }
   });
+});
+
+test("a read of the mockup shell leaves out the screens Builder spliced in, whole or in part", () => {
+  const spliced = spliceDesignScreens(STARTER_INDEX, {
+    "place.html": '<section data-screen="place"><h1>Places</h1></section>',
+  });
+  const read = withoutSplicedScreens(spliced);
+  expect(read).not.toContain("<h1>Places</h1>");
+  expect(read).toContain("read and edit each screen in its own file");
+  expect(read).toContain('<main class="app-main">');
+  expect(read).toContain("</script>");
+
+  const lines = spliced.split("\n");
+  const end = lines.findIndex((line) =>
+    line.includes("<!-- builder:screens:end -->"),
+  );
+  const tail = lines.slice(end - 1).join("\n");
+  expect(withoutSplicedScreens(tail)).not.toContain("<h1>Places</h1>");
+  expect(withoutSplicedScreens(STARTER_INDEX)).toBe(STARTER_INDEX);
 });

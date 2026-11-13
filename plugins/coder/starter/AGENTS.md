@@ -6,6 +6,15 @@ A Bun workspace with three packages. Keep each kind of code in its place:
 - `server/`: the API. Hono on Bun. Every route lives under `/api`. Static data the app ships with goes in `server/src/data/*.json`; data people create goes through `createStore`.
 - `packages/shared/`: zod schemas for what crosses the wire. The server builds a response from a schema and the client parses it with the same one (see `Health` and `getJson`). Nothing else goes here.
 
+## Where things are
+
+The starter is small, so this map stands in for reading it:
+
+- `client/src/routes.tsx` lists every route inside `components/layout.tsx`, the header and navigation. `pages/home.tsx` is a placeholder to replace; `pages/not-found.tsx` and `pages/error.tsx` stay. `client/src/api.ts` holds `getJson`, `sendJson` and the queries; `client/src/styles.css` imports Tailwind and the kit's theme.
+- `server/src/index.ts` is the Hono app and its routes; `server/src/store.ts` is `createStore`; `server/src/client.ts` serves the built client.
+- `packages/shared/src/index.ts` holds the wire schemas, `Health` among them.
+- `.builder/DESIGN.md` names each screen with its mockup page in `.builder/designs/screens/`; `.builder/designs/styles.css` opens with the design's `:root` and `.dark` tokens.
+
 ## How screens are built
 
 - Data: one `useQuery` per resource in `client/src/api.ts`, fetching with `getJson` and the shared schema.

@@ -23,6 +23,11 @@ for the approach chosen in the product requirements (Approach). It holds
 bookings in one place, which FR-2 needs, and runs on one small server
 inside the budget (Bounds).
 
+## Packages
+
+- `xlsx@0.18.5` in server: reads the gym's timetable export (IR-3).
+- `nodemailer@6.9.16` in server: sends the booking confirmation (IR-2).
+
 ## Components and interfaces
 
 - Server: classes, members and bookings tables; routes `GET /api/classes`,

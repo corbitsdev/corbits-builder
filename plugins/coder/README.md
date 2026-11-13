@@ -26,9 +26,11 @@ package, `coder`, and it knows no starter: what the project's code declares
 (its setup command, and whether it serves a web app) reaches its workspace
 through the hub's project scope, and its `install_packages` asks the person
 unless they turned on installing any package without asking, which the hub
-grants the run when its workspace starts. The
+grants the run when its workspace starts; `install_planned_packages` installs
+without asking only the packages an approved document's `## Packages` section
+names, which the hub reads from the approved version for each call. The
 [coordinator][coordinator] starts it with `execute`. Its tools are file edits and `run_shell`
-in the workspace, `install_packages`, Exa search, `read_artifact`, `mail`,
+in the workspace, `install_packages`, `install_planned_packages`, Exa search, `read_artifact`, `mail`,
 `app_status` and a headless browser.
 
 ## Layout

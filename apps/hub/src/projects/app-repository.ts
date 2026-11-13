@@ -5,6 +5,7 @@ import { Hono, type Context, type MiddlewareHandler } from "hono";
 import { describeRoute, resolver } from "hono-openapi";
 import { and, eq, inArray, isNull, sql } from "drizzle-orm";
 import { alias } from "drizzle-orm/pg-core";
+import { PostgresJsDatabase } from "drizzle-orm/postgres-js";
 import {
   mintGitToken,
   setRunToolGrantEffect,
@@ -30,7 +31,11 @@ import {
   type RepoStore,
 } from "@intx/hub-sessions";
 import type { AppBundle } from "@corbits-builder/schemas/artifact";
-import { PACKAGE_INSTALL_TOOL } from "@corbits-builder/schemas/package-install";
+import {
+  ApprovedPackages,
+  PACKAGE_INSTALL_TOOL,
+} from "@corbits-builder/schemas/package-install";
+import { approvedPackages } from "../artifacts/approvals.ts";
 import {
   outbox,
   project,
@@ -476,6 +481,48 @@ export function createAppRepositoryRoutes(
       try {
         await revokeAppPushAccess(db, await coderRun(c));
         return c.json({ ok: true });
+      } catch (error) {
+        if (error instanceof AppRepositoryError)
+          return c.json({ code: error.code }, error.status);
+        throw error;
+      }
+    },
+  );
+  app.post(
+    "/:projectId/app-repository/approved-packages",
+    describeRoute({
+      tags: ["Projects"],
+      operationId: "readApprovedPackages",
+      description:
+        "The packages the calling coder run installs without asking: those the approved version of each of the project's documents declares, and none while the run's install_packages is denied.",
+      security: [{ coordinatorBearer: [] }],
+      responses: {
+        200: {
+          description: "The declared packages, by document kind",
+          content: {
+            "application/json": { schema: resolver(ApprovedPackages) },
+          },
+        },
+      },
+    }),
+    async (c) => {
+      if (!(db instanceof PostgresJsDatabase))
+        throw new Error("Artifacts require postgres-js");
+      try {
+        const run = await coderRun(c);
+        // Read, never written: the effect Interchange holds for the run's install_packages.
+        const [installs] = await db
+          .select({ effect: grant.effect })
+          .from(grant)
+          .where(
+            and(
+              eq(grant.principalId, run.runPrincipalId),
+              eq(grant.resource, `tool:${PACKAGE_INSTALL_TOOL}`),
+            ),
+          );
+        return c.json(
+          await approvedPackages(db, run.tenantId, installs?.effect),
+        );
       } catch (error) {
         if (error instanceof AppRepositoryError)
           return c.json({ code: error.code }, error.status);

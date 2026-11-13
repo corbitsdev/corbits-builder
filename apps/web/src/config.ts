@@ -968,7 +968,8 @@ export const wording = {
     /** A declined card's one line. */
     declined: "Not yet",
     packages: (list: string) => `Install ${list} into your project?`,
-    packagesDetail: "The coder needs these to do the work.",
+    packagesDetail:
+      "The coder needs these to do the work. They are not in an approved build plan, so they wait for you.",
     packagesAllowed: (list: string) => `Allowed · ${list}`,
     /** Allows every later install in this build or change without asking; the next one asks again. */
     packagesAlways: "Always allow",

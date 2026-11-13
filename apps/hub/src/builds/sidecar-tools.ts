@@ -40,6 +40,7 @@ import {
   prepareWorkspace,
   sharedBrowser,
   syncDesignScreensOnDisk,
+  withoutSplicedScreens,
 } from "./starter.ts";
 import { CATALOG } from "../plugins/catalog.ts";
 import {
@@ -52,6 +53,7 @@ import { INPUTS_DIRECTORY } from "../config/inputs.ts";
 import {
   createAppRepository,
   EDIT,
+  readApprovedPackages,
   requestAppPushAccess,
   revokeAppPushAccess,
   signWithSidecarKey,
@@ -62,6 +64,7 @@ import { hasCode } from "@intx/types/has-code";
 import { errorCode, requestErrorMetadata } from "../request-error.ts";
 import {
   PACKAGE_INSTALL_TOOL,
+  PLANNED_INSTALL_TOOL,
   WorkspacePath,
 } from "@corbits-builder/schemas/package-install";
 import { installedPackages } from "./package-install.ts";
@@ -177,7 +180,8 @@ export const designPath = (raw: string) => {
 };
 
 // The calls after which the agent hears what its running app complained of since the last one.
-const REPORTING = new Set([...WRITES, PACKAGE_INSTALL_TOOL]);
+const INSTALLS = new Set([PACKAGE_INSTALL_TOOL, PLANNED_INSTALL_TOOL]);
+const REPORTING = new Set([...WRITES, ...INSTALLS]);
 // run_shell reports a failed command as its output, headed by its exit code.
 const succeeded = (result: ToolResult) =>
   !result.isError && !String(result.content).startsWith("exit code ");
@@ -187,7 +191,7 @@ const VERSIONED = new Set([
   ...WRITES,
   "run_shell",
   APP_STATUS_TOOL,
-  PACKAGE_INSTALL_TOOL,
+  ...INSTALLS,
 ]);
 // Bounds teardown: the wait for the last version, then the revoke.
 const VERSION_CLOSE_MS = 15_000;
@@ -322,11 +326,14 @@ export function createSidecarCodingTools(policy: {
             ? { name: tool.name, approval: "ask" as const }
             : { name: tool.name },
         ),
+      // Installs only what an approved document names, without asking, from the list the hub
+      // reads for each call.
       ...(policy.packageInstall
         ? [
             policy.packageInstall === "ask"
               ? { name: PACKAGE_INSTALL_TOOL, approval: "ask" as const }
               : { name: PACKAGE_INSTALL_TOOL },
+            { name: PLANNED_INSTALL_TOOL },
           ]
         : []),
       // It runs the command it is given, so it asks as the shell does.
@@ -768,7 +775,20 @@ export function createSidecarCodingTools(policy: {
         workspace: env.toolCwd,
         executor: lazySandbox,
         approval: policy.approval,
-        ...(policy.packageInstall ? { packageInstall: true } : {}),
+        ...(policy.packageInstall
+          ? {
+              approvedPackages: async (signal: AbortSignal) =>
+                readApprovedPackages(
+                  env.capabilities,
+                  await resolveWorkflowProjectScope(
+                    env.capabilities,
+                    policy.role,
+                    signal,
+                  ),
+                  signal,
+                ),
+            }
+          : {}),
         app: !design,
       }).factory(env);
       const runCall = async (
@@ -817,7 +837,11 @@ export function createSidecarCodingTools(policy: {
             content: `unknown_tool: ${call.name}`,
             isError: true,
           };
-        const ran = await native.run(call, signal);
+        const output = await native.run(call, signal);
+        const ran =
+          call.name === "read_file" && typeof output.content === "string"
+            ? { ...output, content: withoutSplicedScreens(output.content) }
+            : output;
         const detail = appCheckDetail(call, ran);
         const result = detail ? { ...ran, detail } : ran;
         // A passing check was versioned before it was filed.
@@ -857,7 +881,7 @@ export function createSidecarCodingTools(policy: {
           if (touchesDesigns(workspace, path))
             await syncDesignScreensOnDisk(workspace);
         }
-        if (call.name === PACKAGE_INSTALL_TOOL && succeeded(result)) {
+        if (INSTALLS.has(call.name) && succeeded(result)) {
           // The install rewrote the lockfile to match every package.json, so setup is done.
           await markReady?.();
           markReady = undefined;

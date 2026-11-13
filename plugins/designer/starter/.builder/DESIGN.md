@@ -16,6 +16,10 @@ browser screen.>
 
 ## Screens
 
+- <screen name>: `designs/screens/<name>.html`, `/<path>`, <what it is
+  for, in a few words>
+- <one line for every screen, in the navigation's order>
+
 ### <screen name>
 
 - Route: `/<path>` (mockup `#/<screen>`)
