@@ -159,21 +159,29 @@ function instructionOf(input: unknown): string | undefined {
 /**
  * A call named in plain words, so the activity's live line and steps read like
  * a person at work. Opened, it shows its instruction, else its arguments, and
- * what the call returned.
+ * what the call returned; with neither, the row has no toggle.
  */
 function readableTool(
   part: PartTool,
   result: CallResult | undefined,
 ): PartTool {
   const { input, output: _output, ...call } = part;
+  const output =
+    result === undefined ? undefined : toolResult(part.name, result.content);
   return {
     ...call,
     name: toolPhrase(part.name, toolSubject(input)),
-    ...(input === undefined ? {} : { input: instructionOf(input) ?? input }),
-    ...(result === undefined
-      ? {}
-      : { output: toolResult(part.name, result.content) }),
+    ...(isBlank(input) ? {} : { input: instructionOf(input) ?? input }),
+    ...(isBlank(output) ? {} : { output }),
   };
+}
+
+/** Nothing to show: a call with no arguments or no result gets no row to open. */
+function isBlank(value: unknown): boolean {
+  if (value === undefined || value === null) return true;
+  if (typeof value === "string") return value.trim() === "";
+  if (typeof value !== "object") return false;
+  return Object.keys(value).length === 0;
 }
 
 /** A run or filed thing with no hand-off in this session's view, placed at its start or filing. */

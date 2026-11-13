@@ -198,15 +198,21 @@ export function WorkUnitStepView({
   run,
 }: WorkUnitStepViewProps) {
   const [open, setOpen] = useState(true);
+  // The library shows a toggle only for a row with input, so a row with nothing to open has none.
+  const hasWork =
+    steps.length > 0 ||
+    report !== undefined ||
+    status.state === "failed" ||
+    preview?.kind === "writing";
   return (
     <Tool
-      // The row always opens onto its work, so its steps stand as its detail.
+      // The row opens onto its work, so its steps stand as its detail.
       part={{
         kind: "tool-trace",
         toolCallId: unitKey,
         name: "",
         status: STEP_STATUS[status.state],
-        input: steps,
+        ...(hasWork ? { input: steps } : {}),
       }}
       open={open}
       onOpenChange={setOpen}
