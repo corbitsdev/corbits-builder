@@ -6,6 +6,7 @@ import {
   type PersistQueryClientOptions,
 } from "@tanstack/react-query-persist-client";
 import { del, get, set } from "idb-keyval";
+import { keys } from "./keys.ts";
 
 // A persisted query that is garbage collected drops out of the next save, so
 // the cache and the persisted copy share one lifetime.
@@ -29,6 +30,20 @@ export const queryClient = new QueryClient({
   },
 });
 
+// What a project's room shows is true only now: its conversation, what is open, what is running.
+// Shown from a saved copy, a reload paints the last visit and then swaps it for the present, so
+// these reads are never saved and the room waits for the hub.
+const LIVE_READS: ReadonlySet<unknown> = new Set([
+  keys.projectRoom.all[0],
+  keys.projectActivity.all[0],
+  keys.openDecisions.all[0],
+  keys.decidedApprovals.all[0],
+  keys.projectNextStep.all[0],
+  keys.projectRunStates.all[0],
+  keys.liveApp.all[0],
+  keys.acceptance.all[0],
+]);
+
 const persistOptions: PersistQueryClientOptions = {
   queryClient,
   persister: createAsyncStoragePersister({
@@ -38,12 +53,14 @@ const persistOptions: PersistQueryClientOptions = {
   maxAge: CACHE_LIFETIME_MS,
   // Saved data is read back without checking its shape, so a change to what a cached read
   // holds needs a new value here, or pages render the old shape and break.
-  buster: "open-decisions-unsaved",
+  buster: "room-reads-unsaved",
   // A query that still has data is kept after a failed refetch. One marked
   // `meta: { persist: false }` only matters while this page waits on it.
   dehydrateOptions: {
     shouldDehydrateQuery: (query) =>
-      query.state.data !== undefined && query.meta?.["persist"] !== false,
+      query.state.data !== undefined &&
+      query.meta?.["persist"] !== false &&
+      !LIVE_READS.has(query.queryKey[0]),
   },
 };
 

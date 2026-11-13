@@ -204,15 +204,12 @@ function acceptedMaterialsQuery(projectId: string) {
   });
 }
 
-// Only an active project has a coordinator whose decisions can be open. What waits on the person
-// is true only now, so it is never shown from the saved cache: a card answered since the last
-// visit would appear and then be replaced by the one that is really open.
+// Only an active project has a coordinator whose decisions can be open.
 function openDecisionsQuery(projectId: string, active: boolean) {
   return queryOptions({
     queryKey: keys.openDecisions.of(projectId),
     retry: false,
     staleTime: 0,
-    meta: { persist: false },
     refetchOnWindowFocus: false,
     queryFn: active ? () => openDecisions(projectId) : skipToken,
   });
