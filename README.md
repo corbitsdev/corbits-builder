@@ -32,7 +32,12 @@ question cards, and can ask for changes while the app is being built.
 ## Quick start
 
 **With your coding agent.** In the folder where you want Builder, run
-`npx skills add corbitsdev/corbits-builder`, then tell your agent:
+
+```bash
+npx skills add corbitsdev/corbits-builder
+```
+
+then tell your agent:
 
 ```text
 Set up Builder on this machine with the corbits-builder-install skill. Use Docker if I have it, otherwise my own Postgres. Tell me when you need me to do something.
