@@ -8,6 +8,7 @@ import type {
   ReactorDirector,
   ReactorInboundEvent,
   RetryPolicy,
+  ToolCall,
 } from "@intx/types/runtime";
 import { REPETITION_ABORT } from "../inference/repetition.ts";
 import {
@@ -79,6 +80,43 @@ const isCutOff = (turn: ConversationTurn) =>
       block.type === "tool_call" ||
       (block.type === "text" && block.text.trim()),
   );
+
+// A turn with two or more calls that ask the person runs its calls one at a time, the next once the
+// one before has its result. A call that asks parks the run, and the run reports only the first call
+// parked, so a second parked in the same batch was never asked about nor answered and the next
+// inference failed on its unanswered call. The default director never sees such a batch, so every
+// tool.done of it that reaches the default director infers.
+function nextCall(
+  event: ReactorInboundEvent,
+  turns: ConversationTurn[],
+  asks: ReadonlySet<string>,
+): ToolCall | undefined {
+  if (
+    event.type !== "inference.done" &&
+    event.type !== "tool.done" &&
+    event.type !== "resume.tool_result"
+  )
+    return undefined;
+  const at = turns.findLastIndex((turn) => turn.role === "assistant");
+  const asking = turns[at]?.content.filter(
+    (block) => block.type === "tool_call" && asks.has(block.name),
+  );
+  if (asking === undefined || asking.length < 2) return undefined;
+  const answered = new Set(
+    turns
+      .slice(at + 1)
+      .flatMap((turn) =>
+        turn.content.flatMap((block) =>
+          block.type === "tool_result" ? [block.callId] : [],
+        ),
+      ),
+  );
+  const call = turns[at]?.content.find(
+    (block) => block.type === "tool_call" && !answered.has(block.id),
+  );
+  if (call?.type !== "tool_call") return undefined;
+  return { id: call.id, name: call.name, arguments: call.arguments };
+}
 
 // A turn that spends the whole output budget reasoning ends with neither text nor a tool call, which
 // left the designer parked, so the turn is dropped and sampled again, a few times.
@@ -352,6 +390,8 @@ export const compactingDirector = (packageName: string) =>
     replyOnFailure?: boolean;
     // What a reply after filed work ends with: the screen that shows the work to the person.
     presents?: string | null;
+    // The tools offered with approval "ask", by the same policy that offers them.
+    asks?: string[];
     // Timeouts every inference carries, where the source overrides Interchange's defaults.
     timeouts: Timeouts;
   }>({
@@ -368,6 +408,7 @@ export const compactingDirector = (packageName: string) =>
       },
       "replyOnFailure?": "boolean",
       "presents?": "string | null",
+      "asks?": "string[]",
       timeouts: { "+": "reject", "totalTimeoutMs?": "number.integer > 0" },
     }),
     factory: (config, env, agent) => {
@@ -380,6 +421,7 @@ export const compactingDirector = (packageName: string) =>
         toolDefinitions: offered,
         compactorNames: agent.compactorNames,
       }) as ReactorDirector;
+      const asks = new Set(config.asks);
       const limit = Math.floor(config.contextWindow * config.compactAt);
       let compactedSinceInference = false;
       let emptyTurns = 0;
@@ -546,6 +588,12 @@ export const compactingDirector = (packageName: string) =>
               caps.compact(COMPACTOR, "context_overflow"),
             ];
           }
+          const next = nextCall(event, state.turns, asks);
+          if (next)
+            return [
+              caps.checkpoint("tool-execution"),
+              caps.executeTools([next], false),
+            ];
           const decided = await inner.decide(event, state, caps);
           const list = Array.isArray(decided) ? decided : [decided];
           const ending = config.presents

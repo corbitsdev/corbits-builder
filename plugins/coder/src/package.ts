@@ -64,6 +64,20 @@ export async function coderPackage(
   const search = await mcpTools(CODER_MCP);
   // The deployment starts its own browser on first use, so its tools are listed when the bundle is built.
   const browser = serves ? await browserCatalog() : undefined;
+  // The project role child supplies the sandboxed workspace and executor.
+  const tools = [
+    createArtifactTools("coder"),
+    mail,
+    createSkillTools(skills),
+    search,
+    createSidecarCodingTools({
+      approval: "allow",
+      workspace: "app",
+      packageInstall: packageApproval,
+      starter,
+      browser,
+    }),
+  ];
   const agent = createCoderAgent<CodingSidecarEnv & MailToolEnv>({
     director: compacting.build({
       contextWindow,
@@ -71,24 +85,16 @@ export async function coderPackage(
       compactAt: 0.6,
       checkBeforeDone: true,
       done: DONE,
+      asks: tools.flatMap((tool) =>
+        tool.definitions
+          .filter((definition) => definition.approval === "ask")
+          .map((definition) => definition.name),
+      ),
     }),
     id: "coder",
     capabilities: [],
     inference: { ...source, parameters },
-    // The project role child supplies the sandboxed workspace and executor.
-    tools: [
-      createArtifactTools("coder"),
-      mail,
-      createSkillTools(skills),
-      search,
-      createSidecarCodingTools({
-        approval: "allow",
-        workspace: "app",
-        packageInstall: packageApproval,
-        starter,
-        browser,
-      }),
-    ],
+    tools,
   });
   return {
     workflow: createCoderWorkflow({

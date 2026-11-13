@@ -11,6 +11,7 @@ import type {
   ReactorInboundEvent,
   ReactorState,
   RetryPolicy,
+  ToolCall,
 } from "@intx/types/runtime";
 import type { RuntimeCapabilities } from "@intx/types/runtime-capabilities";
 import {
@@ -161,6 +162,117 @@ test("a model error that outlasts the retries fails a specialist and is the coor
     (action) => action.type === "reply",
   );
   expect(reply?.type === "reply" ? reply.content : "").toContain("overloaded");
+});
+
+test("a turn with two calls that wait on the person ends with a result for each", async () => {
+  const subject = compactingDirector("@corbits-builder/test").factory(
+    {
+      contextWindow: 200_000,
+      compactAt: 0.8,
+      asks: ["install_packages"],
+      timeouts: {},
+    },
+    {} as never,
+    { systemPrompt: "", toolDefinitions: [], compactorNames: [] },
+  ) as ReactorDirector;
+  const installHono = {
+    id: "a",
+    name: "install_packages",
+    arguments: { packages: ["hono"] },
+  };
+  const installZod = {
+    id: "b",
+    name: "install_packages",
+    arguments: { packages: ["zod"] },
+  };
+  const report = { id: "c", name: "report_values", arguments: {} };
+  const turnOf = (calls: ToolCall[]) => ({
+    role: "assistant" as const,
+    model: "gpt-5",
+    content: calls.map((call) => ({
+      type: "tool_call" as const,
+      id: call.id,
+      name: call.name,
+      arguments: call.arguments,
+    })),
+    timestamp: 1,
+  });
+  const inferred = (turn: ReturnType<typeof turnOf>): ReactorInboundEvent => ({
+    type: "inference.done",
+    turn,
+    usage: state.tokenUsage,
+    source: { sourceId: "openai", provider: "openai", model: "gpt-5" },
+  });
+  // A turn with at most one call that asks runs all its calls together, as before.
+  const single = turnOf([installHono, report]);
+  const together = await subject.decide(
+    inferred(single),
+    { ...state, turns: [single] },
+    createCapabilities(),
+  );
+  expect(
+    (Array.isArray(together) ? together : [together]).flatMap((action) =>
+      action.type === "execute_tools" ? action.calls : [],
+    ),
+  ).toEqual([installHono, report]);
+
+  const turn = turnOf([installHono, installZod, report]);
+  const turns: ConversationTurn[] = [
+    {
+      role: "user",
+      content: [{ type: "text", text: "Build it." }],
+      timestamp: 0,
+    },
+    turn,
+  ];
+  const decideOn = async (event: ReactorInboundEvent) => {
+    const actions = await subject.decide(
+      event,
+      { ...state, turns },
+      createCapabilities(),
+    );
+    return (Array.isArray(actions) ? actions : [actions]) as ReactorAction[];
+  };
+  const dispatched = (actions: ReactorAction[]) =>
+    actions.flatMap((action) =>
+      action.type === "execute_tools" ? action.calls : [],
+    );
+  const answer = (id: string) => {
+    turns.push({
+      role: "user",
+      content: [
+        {
+          type: "tool_result",
+          callId: id,
+          content: [{ type: "text", text: "ok" }],
+        },
+      ],
+      timestamp: 2,
+    });
+    return decideOn({
+      type: "tool.done",
+      result: { callId: id, content: "ok" },
+    });
+  };
+
+  // Each install parks the run on its own approval, so each is dispatched alone and the next only
+  // once the one before it has its result.
+  expect(dispatched(await decideOn(inferred(turn)))).toEqual([installHono]);
+  expect(
+    dispatched(
+      await decideOn({ type: "resume.execute_tools", calls: [installHono] }),
+    ),
+  ).toEqual([installHono]);
+  expect(dispatched(await answer("a"))).toEqual([installZod]);
+  expect(
+    dispatched(
+      await decideOn({ type: "resume.execute_tools", calls: [installZod] }),
+    ),
+  ).toEqual([installZod]);
+  expect(dispatched(await answer("b"))).toEqual([report]);
+  const last = await answer("c");
+  expect(dispatched(last)).toEqual([]);
+  expect(last.some((action) => action.type === "infer")).toBe(true);
 });
 
 test("designer director holds replies until the latest edits pass check_design and file a design option", async () => {
