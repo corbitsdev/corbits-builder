@@ -94,13 +94,17 @@
 .reportText {
   align-self: stretch;
   overflow-wrap: anywhere;
-  max-height: calc(2 * 1.5em);
+  /* The box takes the type of the prose it holds, so lh is one line of that text and the clamp cuts
+     only text that runs past whole lines. */
+  font-size: 0.9375rem;
+  line-height: 1.7;
+  max-height: 2lh;
   overflow: hidden;
   color: var(--wb-muted-foreground);
 }
 
 .goal .reportText {
-  max-height: calc(3 * 1.5em);
+  max-height: 3lh;
 }
 
 .reportText[data-open] {

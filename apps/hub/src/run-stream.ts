@@ -1,7 +1,9 @@
 // Live SSE stream of a workflow run's InferenceEvent frames from
 // `sidecarRouter.subscribeAgent`. Mail the router delivers for the run's address and the loss of its sidecar route
 // ride along as `mail` and `status` frames, carrying no mail content. The stream does not replay
-// calls made before it opened, so the calls a run made so far are read from its saved conversation.
+// calls made before it opened, so the calls a run made so far are read from its saved conversation,
+// and those of the message it is on, which it saves only once that message is done, from what the
+// hub has seen of its events.
 
 import { type } from "arktype";
 import { Hono } from "hono";
@@ -13,6 +15,7 @@ import { getLogger } from "@intx/log";
 import { parseInferenceEvent } from "@intx/types/runtime";
 import { ContentBlock } from "@intx/types/runtime-core";
 import type { RunStep, RunSteps } from "@corbits-builder/schemas/activity";
+import type { AgentActivityTracker } from "./artifacts/activity.ts";
 import type { CoordinatorRepoDirSource } from "./mail/coordinator-question.ts";
 import { isRecord, readCommittedTurns } from "./mail/conversation-turns.ts";
 import { errorCode, requestErrorMetadata } from "./request-error.ts";
@@ -67,6 +70,7 @@ export function createWorkflowRunStreamRoutes(deps: {
   readonly sidecarRouter: Pick<SidecarRouter, "subscribeAgent" | "events">;
   readonly requireGrant: RequireGrant;
   readonly repoStore: CoordinatorRepoDirSource;
+  readonly activity: Pick<AgentActivityTracker, "unsaved">;
   readonly findRun?: typeof findRoutableById;
 }): Hono<TenantEnv> {
   const findRun = deps.findRun ?? findRoutableById;
@@ -151,11 +155,8 @@ export function createWorkflowRunStreamRoutes(deps: {
     "/workflows/runs/:runId/steps",
     deps.requireGrant(idResource("workflow-run", "runId"), "read"),
     async (c) => {
-      const record = await findRun(
-        deps.db,
-        c.req.param("runId"),
-        c.get("tenant").id,
-      );
+      const runId = c.req.param("runId");
+      const record = await findRun(deps.db, runId, c.get("tenant").id);
       if (record === undefined) {
         return c.json(
           { error: { code: "not_found", message: "Run not found" } },
@@ -163,9 +164,15 @@ export function createWorkflowRunStreamRoutes(deps: {
         );
       }
       const turns = await readCommittedTurns(deps.repoStore, record.address);
+      const steps = runSteps(turns ?? []);
+      const known = new Set(steps.map((step) => step.callId));
+      // A message just done can be in both until the run starts its next one.
+      const current = runSteps(deps.activity.unsaved(runId)).filter(
+        (step) => !known.has(step.callId),
+      );
       const saved: RunSteps = {
         status: record.status,
-        steps: runSteps(turns ?? []),
+        steps: [...steps, ...current],
       };
       if (record.failureMessage !== null) saved.error = record.failureMessage;
       return c.json(saved);

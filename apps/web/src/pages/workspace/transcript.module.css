@@ -70,9 +70,11 @@
   }
 }
 
+/* At phone width the column's own inline padding is the whole gutter; the log's would double it. */
 @media (max-width: 640px) {
   .log {
-    padding: var(--space-4);
+    padding-block: var(--space-4);
+    padding-inline: 0;
   }
 }
 

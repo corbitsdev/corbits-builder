@@ -1,6 +1,11 @@
 import { describe, expect, test } from "bun:test";
 import { renderToStaticMarkup } from "react-dom/server";
-import { filedDispatches, type DispatchRoom } from "./dispatch-card.tsx";
+import {
+  filedDispatches,
+  noteDispatch,
+  runDispatch,
+  type DispatchRoom,
+} from "./dispatch-card.tsx";
 import { RoomThread } from "./transcript.tsx";
 import { workUnitStanding } from "./work-unit-step.model.ts";
 
@@ -22,11 +27,19 @@ const room: DispatchRoom = {
 
 describe("conversation map", () => {
   test("a filed document and an answered approval follow the person's message", () => {
+    const writer = runDispatch({
+      runId: "run-writer",
+      role: "writer",
+      startedAt: new Date(10).toISOString(),
+      status: "running",
+      state: "waiting",
+    });
+    noteDispatch(room, writer);
     const html = renderToStaticMarkup(
       <RoomThread
         standing={(unit) => workUnitStanding(unit, room)}
         turns={[{ role: "person", text: "Make a todo app", at: 1 }]}
-        runs={filedDispatches(room, [], [])}
+        runs={filedDispatches(room, [], [{ at: 10, dispatch: writer }])}
         approvals={[
           {
             approvalId: "appr-1",
@@ -44,9 +57,9 @@ describe("conversation map", () => {
       ),
     ].map((match) => match[1]);
     expect(ticks).toEqual([
-      "Make a todo app",
-      "Requirements v1",
-      "Let the specialist use run shell on bun run build? · Answered",
+      "Go to: Make a todo app",
+      "Go to: Requirements v1",
+      "Go to: Let the specialist use run shell on bun run build? · Answered",
     ]);
   });
 
@@ -182,11 +195,53 @@ describe("conversation map", () => {
       ),
     ].map((match) => match[1]);
     expect(ticks).toEqual([
-      "Make a todo app",
-      "Approve the requirements · Approved",
-      "Approve the build plan · Approved",
-      "Pick the fonts · Arial and Bitter",
-      "How many looks? · Answered",
+      "Go to: Make a todo app",
+      "Go to: Approve the requirements · Approved",
+      "Go to: Approve the build plan · Approved",
+      "Go to: Pick the fonts · Arial and Bitter",
+      "Go to: How many looks? · Answered",
     ]);
+  });
+
+  test("an open approval's marker is named for the jump, not for the card's question", () => {
+    const html = renderToStaticMarkup(
+      <RoomThread
+        standing={(unit) => workUnitStanding(unit, room)}
+        turns={[{ role: "person", text: "Make a todo app", at: 1 }]}
+        questions={[
+          {
+            at: 10,
+            signalName: "approve-requirements",
+            asked: {
+              plugin: "writer",
+              action: "approve",
+              input: { kinds: ["product_requirements"] },
+            },
+          },
+        ]}
+        approvals={[
+          {
+            approvalId: "appr-1",
+            toolName: "run_shell",
+            subject: "bun run build",
+            at: 30,
+          },
+        ]}
+      />,
+    );
+    // Each control's accessible name: its aria-label, else its text.
+    const names = [
+      ...html.matchAll(
+        /<button[^>]*?(?:aria-label="([^"]*)"[^>]*)?>(?:<(?!\/?button)[^>]*>)*([^<]*)/g,
+      ),
+    ].map((match) => match[1] ?? match[2]);
+    expect(names).toContain("Go to: Approve the requirements");
+    expect(names).toContain(
+      "Go to: Let the specialist use run shell on bun run build?",
+    );
+    expect(
+      names.filter((name) => name?.includes("Approve the requirements")),
+    ).toEqual(["Go to: Approve the requirements"]);
+    expect(new Set(names).size).toBe(names.length);
   });
 });

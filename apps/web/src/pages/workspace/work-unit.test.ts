@@ -440,27 +440,56 @@ test("a call that started a specialist stays with the words it led to when the n
   expect(steps.get(50)?.map((part) => part.kind)).toEqual(["tool-trace"]);
 });
 
-test("a design saved from the font screen reads as the fonts picked, not as a mockup", () => {
+test("a design the person chose after a designer's concept is no second designer row", () => {
+  const [concept] = dispatchesOf(
+    {
+      kind: "tool-trace",
+      toolCallId: "call-mockup",
+      name: "execute",
+      status: "output-available",
+      input: {
+        plugin: "designer",
+        action: "mockup",
+        input: { concepts: [{ label: "Adaptive", direction: "Weather." }] },
+      },
+    },
+    {
+      content: JSON.stringify({
+        runs: [{ runId: "run-design", concept: "Adaptive" }],
+      }),
+      isError: false,
+    },
+  );
+  if (concept === undefined) throw new Error("no hand-off");
   const room: DispatchRoom = {
     ...emptyRoom,
     artifacts: [
+      { ...app, kind: "design_option", title: "Adaptive" },
       {
         ...app,
+        artifactId: "33333333-3333-4333-8333-333333333333",
         kind: "design",
-        title: "Weather design",
-        version: 2,
+        title: "Adaptive",
         filedAt: new Date(40).toISOString(),
       },
     ],
-    screens: [{ at: 30, action: "designer pick-fonts" }],
+    ended: new Map([["run-design", { status: "completed" }]]),
   };
-  const [filed] = filedDispatches(room, [], []);
-  if (filed === undefined) throw new Error("no row");
-  const [unit] = workUnits([filed], []).units;
-  if (unit === undefined) throw new Error("no work");
-  expect(workUnitStanding(unit, room).label).toBe(
-    "Designer · Picked the fonts",
-  );
+  expect(filedDispatches(room, [concept], [])).toEqual([]);
+});
+
+test("what an imported project filed before this conversation stands as no specialist's row", () => {
+  const room: DispatchRoom = {
+    ...emptyRoom,
+    artifacts: ["app", "design", "product_requirements", "build_plan"].map(
+      (kind, index) => ({
+        ...app,
+        artifactId: `2222222${String(index)}-2222-4222-8222-222222222222`,
+        kind,
+      }),
+    ),
+  };
+  expect(filedDispatches(room, [], [])).toEqual([]);
 });
 
 test("a report says More only while its text overflows, measured again whenever its box changes size", () => {

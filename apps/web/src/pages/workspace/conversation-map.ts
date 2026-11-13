@@ -25,7 +25,9 @@ export function workEntry(
 ): ConversationMapTurn[] {
   const { status } = standing;
   const phrase = workPhrase(unit.dispatch, status);
-  const entry = (label: string) => [{ id, label, preview: standing.label }];
+  const entry = (label: string) => [
+    { id, label, name: text.mapGoTo(label), preview: standing.label },
+  ];
   if (status.state === "ready" && isDocumentKind(status.kind))
     return entry(
       text.mapDocument(
@@ -149,7 +151,7 @@ export function questionEntry(
 ): ConversationMapTurn[] {
   const { asked, answer } = question;
   const label = askedLabel(asked);
-  if (answer === undefined) return [{ id, label }];
+  if (answer === undefined) return [{ id, label, name: text.mapGoTo(label) }];
   const entry =
     "plugin" in asked
       ? SCREENS[`${asked.plugin} ${asked.action ?? ""}`]
@@ -158,12 +160,8 @@ export function questionEntry(
     entry !== undefined && "output" in answer
       ? entry.chose(answer.output)
       : undefined;
-  return [
-    {
-      id,
-      label: text.mapMarked(label, chosen ?? wording.questions.answered),
-    },
-  ];
+  const marked = text.mapMarked(label, chosen ?? wording.questions.answered);
+  return [{ id, label: marked, name: text.mapGoTo(marked) }];
 }
 
 /** An approval card's entry, by the question it asks, marked once decided. */
@@ -175,7 +173,8 @@ export function approvalEntry(
     approval.packages === undefined
       ? approvalQuestion(approval.toolName, approval.subject)
       : wording.approval.packages(approval.packages.join(", "));
-  return [{ id, label: answered(label, approval.outcome !== undefined) }];
+  const marked = answered(label, approval.outcome !== undefined);
+  return [{ id, label: marked, name: text.mapGoTo(marked) }];
 }
 
 const answered = (label: string, settled: boolean) =>

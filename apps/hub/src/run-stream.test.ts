@@ -1,10 +1,13 @@
 import { expect, test } from "bun:test";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import { Hono } from "hono";
 import type { DB } from "@intx/db";
 import { createMiddleware } from "hono/factory";
 import type { RequireGrant, TenantEnv } from "@intx/hub-api";
 import { createSidecarRouter, findRoutableById } from "@intx/hub-sessions";
 import type { InferenceEvent } from "@intx/types/runtime";
+import { createAgentActivity } from "./artifacts/activity.ts";
 import { createWorkflowRunStreamRoutes, runSteps } from "./run-stream.ts";
 
 type Routable = Awaited<ReturnType<typeof findRoutableById>>;
@@ -18,6 +21,7 @@ const sidecarRouter = createSidecarRouter({
   withExecutableWorkflowRun: async () => false,
   resolveSidecarBindings: async () => [],
 });
+const activity = createAgentActivity(sidecarRouter.events);
 
 const requireGrant: RequireGrant = () =>
   createMiddleware<TenantEnv>(async (c, next) => {
@@ -28,7 +32,12 @@ const requireGrant: RequireGrant = () =>
     await next();
   });
 
-function appFor(findRun: typeof findRoutableById) {
+function appFor(
+  findRun: typeof findRoutableById,
+  repoDir: () => string = () => {
+    throw new Error("The stream reads no saved conversation.");
+  },
+) {
   const app = new Hono<TenantEnv>();
   app.use("/api/tenants/:tenantId/*", async (c, next) => {
     const authUser = c.req.header("x-test-user-id");
@@ -44,11 +53,8 @@ function appFor(findRun: typeof findRoutableById) {
       db: {} as DB["db"],
       sidecarRouter,
       requireGrant,
-      repoStore: {
-        getRepoDir: () => {
-          throw new Error("The stream reads no saved conversation.");
-        },
-      },
+      repoStore: { getRepoDir: repoDir },
+      activity,
       findRun,
     }),
   );
@@ -57,7 +63,11 @@ function appFor(findRun: typeof findRoutableById) {
 
 const findRun: typeof findRoutableById = async (_db, id, tenant) => {
   if (id === runId && tenant === tenantId)
-    return { address: runAddress } as NonNullable<Routable>;
+    return {
+      address: runAddress,
+      status: "running",
+      failureMessage: null,
+    } as NonNullable<Routable>;
   return undefined;
 };
 
@@ -245,4 +255,79 @@ test("a saved step carries when it was made and the end of its result", () => {
       at: 100,
     },
   ]);
+});
+
+test("a working run's calls in the message it has not saved yet are its steps", async () => {
+  const app = appFor(findRun, () => join(tmpdir(), "no-saved-run-repo"));
+  const emit = (event: InferenceEvent) =>
+    sidecarRouter.events.emit("agent.event", {
+      agentAddress: runAddress,
+      sessionId: "session-a",
+      event,
+    });
+  emit({
+    type: "message.run.started",
+    seq: 1,
+    data: { messageRunId: "message-run-1", receivedAt: 50 },
+  });
+  emit({
+    type: "inference.done",
+    seq: 2,
+    data: {
+      turn: {
+        role: "assistant",
+        model: "fixture-model",
+        timestamp: 100,
+        content: [
+          {
+            type: "tool_call",
+            id: "call-write",
+            name: "write_file",
+            arguments: { path: "styles.css", content: "body {}" },
+          },
+          {
+            type: "tool_call",
+            id: "call-check",
+            name: "run_shell",
+            arguments: { command: "bun test" },
+          },
+        ],
+      },
+      usage: { input: 1, output: 1, cacheRead: 0, cacheWrite: 0, thinking: 0 },
+      source: {
+        sourceId: "fixture",
+        provider: "fixture",
+        model: "fixture-model",
+      },
+    },
+  });
+  emit({
+    type: "tool.done",
+    seq: 3,
+    data: { result: { callId: "call-write", content: "Wrote styles.css" } },
+  });
+
+  const res = await app.request(
+    `/api/tenants/${tenantId}/workflows/runs/${runId}/steps`,
+    { headers: { "x-test-user-id": "user-a" } },
+  );
+  const read: unknown = await res.json();
+  expect(read).toEqual({
+    status: "running",
+    steps: [
+      {
+        callId: "call-write",
+        name: "write_file",
+        arguments: { path: "styles.css", content: "body {}" },
+        at: 100,
+        result: { content: "Wrote styles.css", isError: false },
+      },
+      {
+        callId: "call-check",
+        name: "run_shell",
+        arguments: { command: "bun test" },
+        at: 100,
+      },
+    ],
+  });
 });

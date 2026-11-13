@@ -63,7 +63,7 @@ export type Dispatch = {
   readonly runId?: string;
   /** The call is still being made. */
   readonly pending: boolean;
-  /** Stands for a filed thing whose hand-off is not in view, such as one from an earlier session. */
+  /** A run with no hand-off in view, named by the document it filed. */
   readonly filed?: boolean;
 };
 
@@ -213,11 +213,6 @@ export type DispatchRoom = {
   readonly steps?: ReadonlyMap<string, readonly PartTool[]>;
   /** How each shown run ended, as its saved record or a stop made here says, by run id. */
   readonly ended?: ReadonlyMap<string, RunEnd>;
-  /** Each screen the coordinator opened and the person answered, by its plugin action. */
-  readonly screens?: readonly {
-    readonly at: number;
-    readonly action: string;
-  }[];
   readonly onOpenDocument?: (kind: string) => void;
   /** Opens the project view on what a working designer or coder is making. */
   readonly onWatch?: (dispatch: Dispatch) => void;
@@ -374,20 +369,11 @@ export function dispatchLive(dispatch: Dispatch, room: DispatchRoom): boolean {
   return state === "starting" || state === "working" || state === "approval";
 }
 
-// Who files each thing that is not a document; the coordinator files the brief, so it has no card.
-const FILED_BY: Record<string, Role> = {
-  design: "designer",
-  design_option: "designer",
-  app: "coder",
-  approval_package: "presenter",
-};
-
 /**
- * The runs with no hand-off in view, and each filed thing no hand-off or run covers. A writer run
- * named by no call is named by the document it filed after it started, so that document is its
- * result rather than a second row. Anything else, such as one filed in an earlier session, stands as
- * a finished hand-off placed when its current version was filed. A card covers what its action
- * files, and what it already reports as its result.
+ * The runs with no hand-off in view, in the order they started. A writer run named by no call is
+ * named by the document it filed after it started, so that document is its result rather than a row
+ * of its own. A filed thing with no run in view gets no row: a specialist's row is a run of this
+ * conversation, and what the person chose or brought shows on its own card.
  */
 export function filedDispatches(
   room: DispatchRoom,
@@ -395,73 +381,43 @@ export function filedDispatches(
   runs: readonly PlacedDispatch[],
 ): PlacedDispatch[] {
   const started = runs.toSorted((left, right) => left.at - right.at);
-  const named = new Map<string, Dispatch>();
   const covered = new Set(
     [...handoffs, ...started.map(({ dispatch }) => dispatch)].flatMap(
       (dispatch) => {
-        const kind =
-          dispatch.concept === undefined
-            ? targetKind(dispatch)
-            : `concept:${dispatch.concept}`;
         const status = dispatchStatus(dispatch, room);
-        return [kind, status.state === "ready" ? status.kind : undefined];
+        return [
+          targetKind(dispatch),
+          status.state === "ready" ? status.kind : undefined,
+        ];
       },
     ),
   );
-  const filed = room.artifacts.flatMap((item): PlacedDispatch[] => {
-    const writes = isDocumentKind(item.kind) && item.kind !== "problem_brief";
-    const role = writes ? "writer" : FILED_BY[item.kind];
-    if (role === undefined || covered.has(openedKind(item))) return [];
-    const writer = writes
-      ? started.findLast(
-          ({ at, dispatch }) =>
-            writesDocuments(dispatch.role) &&
-            dispatch.kind === undefined &&
-            !named.has(dispatch.key) &&
-            at <= Date.parse(item.filedAt),
-        )
-      : undefined;
-    if (writer !== undefined) {
+  const named = new Map<string, Dispatch>();
+  for (const item of room.artifacts) {
+    if (
+      !isDocumentKind(item.kind) ||
+      item.kind === "problem_brief" ||
+      covered.has(item.kind)
+    )
+      continue;
+    const writer = started.findLast(
+      ({ at, dispatch }) =>
+        writesDocuments(dispatch.role) &&
+        dispatch.kind === undefined &&
+        !named.has(dispatch.key) &&
+        at <= Date.parse(item.filedAt),
+    );
+    if (writer !== undefined)
       named.set(writer.dispatch.key, {
         ...writer.dispatch,
         kind: item.kind,
         filed: true,
       });
-      return [];
-    }
-    const key = `filed:${item.artifactId}`;
-    const at = Date.parse(item.filedAt);
-    // With no run to name it, a thing filed from a screen's answer is that screen's action.
-    const screen = room.screens?.findLast(
-      (opened) =>
-        opened.at <= at &&
-        opened.action.startsWith(`${role} `) &&
-        text.action[opened.action] !== undefined,
-    );
-    return [
-      {
-        at,
-        dispatch: {
-          key,
-          call: key,
-          tool: "write_artifact",
-          role,
-          pending: false,
-          filed: true,
-          ...(screen === undefined ? {} : { action: screen.action }),
-          ...(writes ? { kind: item.kind } : {}),
-          ...(item.kind === "design_option" ? { concept: item.title } : {}),
-        },
-      },
-    ];
-  });
-  return [
-    ...started.map(({ at, dispatch }) => ({
-      at,
-      dispatch: named.get(dispatch.key) ?? dispatch,
-    })),
-    ...filed,
-  ];
+  }
+  return started.map(({ at, dispatch }) => ({
+    at,
+    dispatch: named.get(dispatch.key) ?? dispatch,
+  }));
 }
 
 /** A run at work the conversation has no hand-off for, such as one started before a reload. */

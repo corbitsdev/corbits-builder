@@ -568,6 +568,8 @@ export const wording = {
       `${name} v${String(version)}`,
     /** A map entry with where it ended: "Pick a font · Answered". */
     mapMarked: (label: string, mark: string) => `${label} · ${mark}`,
+    /** A map marker's accessible name, saying it jumps there, so it never shares a name with the card's own controls. */
+    mapGoTo: (label: string) => `Go to: ${label}`,
     /** A plugin screen's map entry, by plugin and action, and what the person's answer chose. */
     mapScreen: {
       approve: (documents: string) => `Approve the ${documents}`,
@@ -894,14 +896,6 @@ export const wording = {
         working: (thing) =>
           thing ? `Making the ${thing} mockup` : "Making a mockup",
         done: (thing) => (thing ? `Made the ${thing} mockup` : "Made a mockup"),
-      },
-      "designer pick-fonts": {
-        working: () => "Picking the fonts",
-        done: () => "Picked the fonts",
-      },
-      "designer pick-colours": {
-        working: () => "Picking the colours",
-        done: () => "Picked the colours",
       },
       "worker do": {
         working: () => "Working on it",

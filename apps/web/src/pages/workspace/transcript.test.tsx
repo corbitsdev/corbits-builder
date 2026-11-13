@@ -43,7 +43,7 @@ function findElement(
 
 const briefId = "problem_brief";
 
-/** The labels the conversation map's ticks carry, in order. */
+/** The accessible names the conversation map's ticks carry, in order. */
 function mapLabels(html: string): string[] {
   return [
     ...html.matchAll(
@@ -584,7 +584,10 @@ describe("conversation transcript", () => {
         ]}
       />,
     );
-    expect(mapLabels(html)).toEqual(["What is the weather?", "Thanks."]);
+    expect(mapLabels(html)).toEqual([
+      "Go to: What is the weather?",
+      "Go to: Thanks.",
+    ]);
   });
 
   test("an imported project's opening is a divider, not a turn in the map", () => {
@@ -605,8 +608,8 @@ describe("conversation transcript", () => {
     );
     expect(html).toContain(wording.projectImported);
     expect(mapLabels(html)).toEqual([
-      "What should we do first?",
-      "Go ahead and draft it.",
+      "Go to: What should we do first?",
+      "Go to: Go ahead and draft it.",
     ]);
   });
 });

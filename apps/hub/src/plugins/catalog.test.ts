@@ -3,7 +3,7 @@ import { loadCatalog } from "@corbits-builder/plugin-host/catalog";
 import { readPluginFolder } from "@corbits-builder/plugin-host/folder";
 import { fields } from "@corbits-builder/plugin-host/search/fields";
 import { triggers } from "@corbits-builder/plugin-host/search/triggers";
-import { HOST, PLUGINS, PLUGINS_FOLDER } from "./catalog.ts";
+import { HOST, PLUGINS, PLUGINS_FOLDER, presentsFor } from "./catalog.ts";
 
 const handles = (ranked: { handle: string }[]) =>
   ranked.map(({ handle }) => handle);
@@ -139,4 +139,12 @@ test("fields finds the designer first from how a person complains about type", (
 test("triggers matches font as a whole word, not inside confront", () => {
   expect(handles(triggers("change the font", PLUGINS))).toEqual(["designer"]);
   expect(triggers("I want to confront the problem", PLUGINS)).toEqual([]);
+});
+
+// The ending goes into the designer's report, which the page shows the person as it is.
+test("a designer's finished report names its screens in plain words, with no tool call", () => {
+  const ending = presentsFor("designer");
+  expect(ending).toContain("The choose screen, when:");
+  expect(ending).toContain("The review screen, when:");
+  expect(ending).not.toMatch(/execute|[{}()]/);
 });

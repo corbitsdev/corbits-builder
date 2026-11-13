@@ -417,16 +417,18 @@ export function checkStandingText(
 export const screenText = (plugin: string, action: string) =>
   `Open it with ${screenCall(plugin, action)}.`;
 
-/** What a finished run's report says about the screens that can show its work to the person. */
+/**
+ * What a finished run's report says about the screens that can show its work to the person. The
+ * report is the specialist's mail, which the page shows whole, so it is plain words with no call.
+ */
 export const presentsText = (
   plugin: string,
   screens: readonly { action: string; when: string }[],
 ) =>
   [
-    "To show this to the person, open the screen that fits; Builder fills in the newest version itself:",
+    `To show this to the person, open the ${plugin}'s screen that fits; Builder fills in the newest version itself:`,
     ...screens.map(
-      ({ action, when }) =>
-        `- execute({ plugin: "${plugin}", action: "${action}", input: {} }) when: ${when}`,
+      ({ action, when }) => `- The ${action} screen, when: ${when}`,
     ),
   ].join("\n");
 

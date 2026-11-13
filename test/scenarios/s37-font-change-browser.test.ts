@@ -15,9 +15,9 @@ import { CODER_TOOLS } from "./specialists.ts";
 const FONTS = ["look.font-primary", "look.font-secondary"];
 const themeImport = '@import "@corbits/react-ui/theme.css";\n';
 const instruction =
-  "Set the app's body text in Arial and its headings in Bitter, the fonts the person picked. Change nothing else.";
+  "Set the app's headings and body text in Arial and its code and figures in Bitter, the fonts the person picked. Change nothing else.";
 const report =
-  "Body text is now Arial and headings are Bitter; check-app passed.";
+  "Headings and body text are now Arial, and code and figures are Bitter; check-app passed.";
 
 scenario({
   name: "s37-font-change-browser",
@@ -49,13 +49,13 @@ scenario({
       role: "coder",
       turns: [
         turn(
-          user("Arial and its headings in Bitter"),
+          user("code and figures in Bitter"),
           call("coder_fonts", "edit_file", {
             path: "client/src/styles.css",
             old_string: themeImport,
             new_string:
               themeImport +
-              '\nbody {\n  font-family: "Arial", sans-serif;\n}\n\nh1,\nh2,\nh3 {\n  font-family: "Bitter", serif;\n}\n',
+              '\nbody {\n  font-family: "Arial", sans-serif;\n}\n\ncode,\npre,\nfigure {\n  font-family: "Bitter", serif;\n}\n',
           }),
           CODER_TOOLS,
         ),

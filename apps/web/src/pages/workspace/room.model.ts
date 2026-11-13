@@ -1461,12 +1461,6 @@ export function useRoom({
         { status: "cancelled" },
       ]),
     ]),
-    screens: [...snapshot.conversation.earlierQuestions, ...questions].flatMap(
-      ({ at, asked, answer }) =>
-        answer !== undefined && "plugin" in asked && asked.action !== undefined
-          ? [{ at, action: `${asked.plugin} ${asked.action}` }]
-          : [],
-    ),
     onOpenDocument: (kind) => {
       // A coder files the app's source, which is read as the running app.
       if (kind === "app") return openProject(LIVE_TAB);

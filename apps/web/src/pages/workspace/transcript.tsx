@@ -989,13 +989,15 @@ export function RoomThread({
               .join(" ")
               .trim()
           : "";
+      const label =
+        section.turn.text.length > MAP_LABEL_CHARS
+          ? `${section.turn.text.slice(0, MAP_LABEL_CHARS).trimEnd()}…`
+          : section.turn.text;
       return [
         {
           id: turnItemId(section.turn, section.index),
-          label:
-            section.turn.text.length > MAP_LABEL_CHARS
-              ? `${section.turn.text.slice(0, MAP_LABEL_CHARS).trimEnd()}…`
-              : section.turn.text,
+          label,
+          name: wording.conversation.mapGoTo(label),
           ...(reply === "" ? {} : { preview: reply }),
         },
       ];

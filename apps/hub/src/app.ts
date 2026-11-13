@@ -474,6 +474,7 @@ export async function createHubRuntime(
         sidecarRouter,
         requireGrant,
         repoStore: agentRepoStore.repoStore,
+        activity: agentActivity,
       }),
     );
     app.use(
