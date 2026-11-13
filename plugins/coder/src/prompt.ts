@@ -24,7 +24,7 @@ When the design and the build plan disagree, follow the design for how it looks 
 
 const BARE: StarterPrompt = {
   workspace: `The project is not a web app: build it as the command-line tool, library, script or service the task and documents ask for. The starter is one TypeScript package on Bun with no framework: src/ for the code, each test beside the code it tests.`,
-  build: `Build in small steps. For each thing the project does, write it with a test that fails when it breaks, run the tests, and only then go on to the next.`,
+  build: `Build in small steps and run each one before going on to the next. Write a test only where it stops a regression that matters: prefer a few tests that drive the program end to end the way a person or another system uses it, and add a unit test only for logic that is easy to get wrong and costly when it is. Do not write a test to have one.`,
   trying: `check-project runs the project's typecheck, test and build scripts and lists what failed; run it after each step. It does not try the program, so also run it yourself the way its README says and see that it does what the task asks.`,
   tried: "by running it",
 };

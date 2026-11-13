@@ -66,8 +66,11 @@ in the requirements; the reader opens them by the id.
    check-app builds and starts the app and opens every page at desktop and
    phone widths, failing on errors, failed requests, blank pages and
    sideways scrolling, so the plan relies on it and the acceptance checks
-   and adds no test files. Otherwise name the tests the build adds and the
-   command that runs them, kept to what proves the acceptance criteria.
+   and adds no test files. Otherwise name the few tests the build adds and
+   the command that runs them. A test earns its place by stopping a
+   regression that matters: prefer tests that drive the thing end to end
+   the way it is used, and name a unit test only for logic that is easy to
+   get wrong and costly when it is.
 8. `## Risks and unknowns`: what could make a phase fail, what the
    documents leave open, and the fallback for each. Name here any
    requirement the plan does not reach or believes is wrong.
