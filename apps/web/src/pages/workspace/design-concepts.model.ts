@@ -4,13 +4,15 @@
  * concept named after a design theme starts from that theme's sample app, so its draft shows only
  * once the designer has changed a page of it.
  */
+import { skipToken, useQuery } from "@tanstack/react-query";
 import type { ProjectArtifact } from "@corbits-builder/client";
 import type { InFlightRun } from "@corbits-builder/schemas/artifact";
+import { listDesignThemes, readDesignTheme } from "../../api/design-themes.ts";
+import { keys } from "../../queries/keys.ts";
 import type { DesignConcept } from "./design-concept.ts";
 import { parseBundle, type DesignFiles } from "./design-bundle.ts";
 import type { ConceptMockupViewProps } from "./design-concepts.view.tsx";
 import { useDesignDraft } from "./design-preview.model.ts";
-import { useDesignThemes, useThemeFiles } from "./design-themes.model.ts";
 import type { PreviewDevice } from "./device-preview.tsx";
 import { mockupLook } from "./mockup-look.ts";
 
@@ -94,14 +96,26 @@ const showsSeed = (draft: DesignFiles, seed: DesignFiles) =>
  */
 function useConceptSeed(projectId: string, concept: DesignConcept) {
   const drafting = concept.content === undefined;
-  const themes = useDesignThemes(projectId);
+  const themes = useQuery({
+    queryKey: keys.designThemes.of(projectId),
+    queryFn: () => listDesignThemes(projectId),
+    staleTime: Infinity,
+  });
   const theme = drafting
     ? themes.data?.find(
         (item) =>
           item.label.toLowerCase() === concept.label.trim().toLowerCase(),
       )
     : undefined;
-  const files = useThemeFiles(projectId, theme?.id);
+  const themeId = theme?.id;
+  const files = useQuery({
+    queryKey: keys.designThemes.theme(projectId, themeId),
+    queryFn:
+      themeId === undefined
+        ? skipToken
+        : () => readDesignTheme(projectId, themeId),
+    staleTime: Infinity,
+  });
   return {
     pending:
       drafting &&

@@ -19,8 +19,8 @@ export type TweakPanelProps = {
 };
 
 export type TweakPanelViewProps = TweakPanelProps & {
-  /** Saves the tweaks into the design; null where there is no design to save them into. */
-  onSave: (() => void) | null;
+  /** Saves the tweaks into the design. */
+  onSave: () => void;
   /** A save is under way, so Save waits. */
   saving: boolean;
 };
@@ -203,16 +203,14 @@ export function TweakPanelView({
         >
           {wording.tweak.reset}
         </Button>
-        {onSave === null ? null : (
-          <Button
-            type="button"
-            size="sm"
-            disabled={!changed || saving}
-            onClick={onSave}
-          >
-            {wording.tweak.save}
-          </Button>
-        )}
+        <Button
+          type="button"
+          size="sm"
+          disabled={!changed || saving}
+          onClick={onSave}
+        >
+          {wording.tweak.save}
+        </Button>
       </TweakActions>
     </div>
   );

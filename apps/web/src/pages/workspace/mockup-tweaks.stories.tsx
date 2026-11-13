@@ -46,8 +46,3 @@ export const Changed: Story = {
 export const Saving: Story = {
   args: { tweaks: { primary: "#2563eb", radius: 1 }, saving: true },
 };
-
-/** A design theme's example has no design to save into, so the panel only tries looks on. */
-export const NothingToSaveInto: Story = {
-  args: { tweaks: { background: "#f5f7fa" }, onSave: null },
-};

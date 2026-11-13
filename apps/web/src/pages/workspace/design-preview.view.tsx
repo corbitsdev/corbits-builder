@@ -67,8 +67,6 @@ export type MockupFrameViewProps = {
   /** Pane bar groups before the mockup's own screens (the draft's badge). */
   leading?: readonly PaneBarGroup[];
   trailing?: readonly PaneBarGroup[];
-  /** Hears the live look tweaks as the person changes them. */
-  onTweaks?: (tweaks: LookTweaks) => void;
   /** Fills its container edge to edge, as a pane's whole page. */
   fill?: boolean;
   /** The look panel the bar's palette opens over the page, drawn around the frame's live tweaks. */
@@ -85,7 +83,6 @@ export function MockupFrameView({
   onDevice,
   leading = [],
   trailing = [],
-  onTweaks,
   fill = false,
   tweakPanel,
 }: MockupFrameViewProps) {
@@ -105,7 +102,6 @@ export function MockupFrameView({
     const message = { designTweaks: tweakSheet.current };
     frame.current?.contentWindow?.postMessage(message, "*");
     expandedFrame.current?.contentWindow?.postMessage(message, "*");
-    onTweaks?.(tweaks);
   }, [tweaks]);
   // Every load is a fresh page (another screen, a refreshed draft, the expanded view), so the
   // tweaks go in again as soon as it reports its screens.

@@ -85,10 +85,9 @@ const NO_TAB = "";
 const draftIds = panelTabIds(TAB_PREFIX, DRAFT_TAB);
 const MANUAL_TAB = "user-manual";
 const manualIds = panelTabIds(TAB_PREFIX, MANUAL_TAB);
-// The tabs that are not filed documents: open while what they show is there. Read at call time,
-// as some of these tabs are named further down.
+// The tabs that are not filed documents: open while what they show is there.
 const isSideOnly = (id: string) =>
-  id === DRAFT_TAB || id === LIVE_TAB || id === MANUAL_TAB || id === THEMES_TAB;
+  id === DRAFT_TAB || id === LIVE_TAB || id === MANUAL_TAB;
 const isSideTab = (id: string) =>
   isSideOnly(id) || conceptOfTab(id) !== undefined;
 
@@ -99,7 +98,6 @@ function selectTab(input: {
   conceptShown: boolean;
   liveApp: boolean;
   manual: boolean;
-  themes: boolean;
   selectedId: string | null;
   designPart: DesignPart;
 }): string | null {
@@ -108,7 +106,6 @@ function selectTab(input: {
   if (input.conceptShown) return side;
   if (side === LIVE_TAB && input.liveApp) return LIVE_TAB;
   if (side === MANUAL_TAB && input.manual) return MANUAL_TAB;
-  if (side === THEMES_TAB && input.themes) return THEMES_TAB;
   if (input.selectedId === "design" && input.designPart === "mockup")
     return MOCKUP_TAB;
   return input.selectedId;
@@ -159,7 +156,6 @@ export function availableTab(
   have: {
     liveApp: boolean;
     manual: boolean;
-    themes: boolean;
     draft: boolean;
     concepts: readonly string[];
     documents: readonly PaneDocument[];
@@ -168,7 +164,6 @@ export function availableTab(
   if (id === null) return null;
   if (id === LIVE_TAB) return have.liveApp ? id : null;
   if (id === MANUAL_TAB) return have.manual ? id : null;
-  if (id === THEMES_TAB) return have.themes ? id : null;
   if (id === DRAFT_TAB) return have.draft ? id : null;
   const concept = conceptOfTab(id);
   if (concept !== undefined) return have.concepts.includes(concept) ? id : null;
@@ -176,8 +171,6 @@ export function availableTab(
   return have.documents.some((item) => item.id === document) ? id : null;
 }
 const liveIds = panelTabIds(TAB_PREFIX, LIVE_TAB);
-const THEMES_TAB = "design-themes";
-const themesIds = panelTabIds(TAB_PREFIX, THEMES_TAB);
 // A pane whose page fills it edge to edge: the app, a mockup, a spreadsheet or the design draft.
 const FILL_PANE = styles.fill;
 const POINTER_TABS = "data-pointer-tabs";
@@ -221,8 +214,6 @@ const flowRank = (kind: string) => {
 export type ArtifactPaneSlots = DeliverableSlots & {
   /** Once there is an app, filed or being built, or a build plan for one, a tab for it. */
   liveApp?: ReactElement | null;
-  /** Before a design exists, prebuilt themes to preview, tweak and use through the composer. */
-  themes?: ReactElement | null;
   /** One concept's mockup, at the device the pane keeps for the concepts. */
   conceptMockup: (
     concept: DesignConcept,
@@ -291,7 +282,6 @@ export function ArtifactPane({
   concepts,
   openTab = null,
   liveApp = null,
-  themes = null,
   conceptMockup,
   documents,
   selectedId,
@@ -339,7 +329,6 @@ export function ArtifactPane({
   const restorable = availableTab(memory.id, {
     liveApp: liveApp !== null,
     manual: manual !== null,
-    themes: themes !== null,
     draft: draftShown,
     concepts: concepts.map((concept) => concept.label),
     documents,
@@ -391,7 +380,6 @@ export function ArtifactPane({
     conceptShown,
     liveApp: liveApp !== null,
     manual: manual !== null,
-    themes: themes !== null,
     selectedId,
     designPart,
   });
@@ -502,8 +490,7 @@ export function ArtifactPane({
     );
   };
   const outputs = documents.length > 0 || draftShown || concepts.length > 0;
-  const hasTabs =
-    outputs || themes !== null || liveApp !== null || manual !== null;
+  const hasTabs = outputs || liveApp !== null || manual !== null;
   useEffect(() => {
     if (open && shown?.unread) onSeen(shown.id);
   }, [open, shown?.id, shown?.unread]);
@@ -611,22 +598,6 @@ export function ArtifactPane({
                           }
                         >
                           {wording.design.mockupTab}
-                        </PanelTab>,
-                      ],
-                    },
-                  ]
-                : []),
-              ...(themes !== null
-                ? [
-                    {
-                      rank: flowRank("design"),
-                      tabs: [
-                        <PanelTab
-                          key={THEMES_TAB}
-                          value={THEMES_TAB}
-                          title={wording.themes.title}
-                        >
-                          {wording.themes.tab}
                         </PanelTab>,
                       ],
                     },
@@ -799,17 +770,6 @@ export function ArtifactPane({
               aria-labelledby={liveIds.tab}
             >
               {liveApp}
-            </PanelPane>
-          ) : null}
-          {themes !== null ? (
-            <PanelPane
-              value={THEMES_TAB}
-              className={FILL_PANE}
-              id={themesIds.pane}
-              role="tabpanel"
-              aria-labelledby={themesIds.tab}
-            >
-              {themes}
             </PanelPane>
           ) : null}
           {concepts.map((concept) => {

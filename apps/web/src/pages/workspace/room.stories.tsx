@@ -9,8 +9,6 @@ import documentPane, {
   Loading as loadingDocument,
   ReadError as failedDocument,
 } from "./artifact-pane.stories.tsx";
-import designThemes from "./design-themes.stories.tsx";
-import { DesignThemesView } from "./design-themes.view.tsx";
 import nextStep, { YourTurn as yourTurn } from "./next-step.stories.tsx";
 import { NextStepLineView } from "./next-step.view.tsx";
 import { LIVE_TAB } from "./tab-follow.ts";
@@ -97,13 +95,11 @@ const layout: RoomViewProps["layout"] = {
   pageOpen: false,
 };
 
-const themes = <DesignThemesView {...designThemes.args} />;
-
 // The room once the first documents are filed: the conversation still fills the room, and the
-// project control opens them over it, with the themes to browse before a design exists.
+// project control opens them over it.
 const withDocuments = {
   layout: { ...layout, projectReady: true },
-  ...paneOf({ themes }),
+  ...paneOf(),
 } satisfies Partial<RoomViewProps>;
 
 const meta = {
@@ -338,14 +334,14 @@ export const ProjectOpen: Story = {
 export const DocumentLoading: Story = {
   args: {
     ...withDocuments,
-    ...paneOf({ themes, ...loadingDocument.args }),
+    ...paneOf(loadingDocument.args),
   },
 };
 
 export const DocumentFailed: Story = {
   args: {
     ...withDocuments,
-    ...paneOf({ themes, ...failedDocument.args }),
+    ...paneOf(failedDocument.args),
   },
 };
 

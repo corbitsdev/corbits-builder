@@ -5,7 +5,6 @@
 import { EnableAiDialog } from "../model-setup.tsx";
 import { ApprovalRoundsPanel } from "./approval-rounds.tsx";
 import { ConceptMockup } from "./design-concepts.tsx";
-import { DesignThemes } from "./design-themes.tsx";
 import { LiveApp } from "./live-app.tsx";
 import { TweakPanel } from "./mockup-tweaks.tsx";
 import { NextStepLine } from "./next-step.tsx";
@@ -29,8 +28,7 @@ export function StageWorkspace(props: StageWorkspaceProps) {
 
 function ReadyRoom(props: ReadyRoomProps) {
   const { projectId } = props;
-  const { view, nextStep, enableAi, liveApp, themes, pageScreen } =
-    useRoom(props);
+  const { view, nextStep, enableAi, liveApp, pageScreen } = useRoom(props);
   return (
     <>
       <RoomView
@@ -39,7 +37,6 @@ function ReadyRoom(props: ReadyRoomProps) {
         page={pageScreen === null ? null : <ScreenQuestion {...pageScreen} />}
         paneParts={{
           liveApp: liveApp === null ? null : <LiveApp {...liveApp} />,
-          themes: themes === null ? null : <DesignThemes {...themes} />,
           conceptMockup: (concept, frame) => (
             <ConceptMockup projectId={projectId} concept={concept} {...frame} />
           ),

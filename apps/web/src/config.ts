@@ -622,29 +622,6 @@ export const wording = {
     /** The pane bar's control that shows what a design concept is going for. */
     conceptDirection: "What this design mockup is going for",
   },
-  /** Prebuilt looks a person previews, tweaks and picks before any design exists. */
-  themes: {
-    tab: "Design Themes",
-    title:
-      "Example mockups of each look. Open one to click through, tweak it and use it for your project.",
-    gallery: "Design themes",
-    open: (label: string) => `Open the ${label} theme`,
-    back: "Back to all design themes",
-    loading: "Loading design themes…",
-    failed: "The design themes could not load.",
-    use: "Use this theme",
-    /** The composer message that asks the coordinator to design the work in one theme. */
-    message: (label: string, looks: readonly string[]) =>
-      looks.length === 0
-        ? `Design it in the ${label} theme.`
-        : `Design it in the ${label} theme with these looks: ${looks.join(", ")}.`,
-    looks: {
-      primary: (value: string) => `primary colour ${value}`,
-      background: (value: string) => `background ${value}`,
-      radius: (rem: number) => `corner radius ${String(rem)}rem`,
-      font: (stack: string) => `font ${stack}`,
-    },
-  },
   /** The approval package viewer: slides, PDF preview, and pinned source manifest. */
   approvalPackage: {
     label: "Approval package",

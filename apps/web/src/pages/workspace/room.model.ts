@@ -500,8 +500,6 @@ export function useRoom({
   enableAi: EnableAiDialogProps;
   /** The app the build plan builds, once one is filed. */
   liveApp: { projectId: string; builder: InFlightRun | undefined } | null;
-  /** The theme gallery, from the point the coordinator may start the design until one exists. */
-  themes: { projectId: string; onUse: (message: string) => void } | null;
   /** The coordinator's open question when its screen is placed over the whole room. */
   pageScreen: ScreenQuestionProps | null;
 } {
@@ -1517,11 +1515,6 @@ export function useRoom({
     sendStaged: () => void sendThroughPage(),
     close: () => setClosedPage(pageQuestion?.signalName ?? null),
   };
-  // The themes join the pane once the requirements say what the app is, so a look can be applied to it.
-  const designReached =
-    artifacts.some((item) => item.kind === "product_requirements") ||
-    options.length > 0 ||
-    inFlight.some((run) => run.concept !== undefined);
   const appFiled = snapshot.artifacts.some((item) => item.kind === "app");
   const firstBuilder = appFiled
     ? undefined
@@ -1811,10 +1804,6 @@ export function useRoom({
         },
     enableAi: { open: enablingAi, onOpenChange: setEnablingAi },
     liveApp,
-    themes:
-      designReached && design === undefined && !archived
-        ? { projectId, onUse: addToComposer }
-        : null,
     pageScreen:
       pageQuestion === undefined
         ? null

@@ -269,7 +269,6 @@ describe("remembered tab", () => {
   const have = {
     liveApp: false,
     manual: false,
-    themes: false,
     draft: false,
     concepts: [] as string[],
     documents: [ready, plan],
