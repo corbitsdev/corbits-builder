@@ -582,10 +582,11 @@ export const wording = {
       optional: "optional",
       approvalRequired: "needs your approval",
       approvalOffered: "asks for your approval",
-      decline: "Skip this",
-      restore: "Bring it back",
+      /** A step's switches and button, each named with the step it changes. */
+      skip: "Skip",
       goAhead: "Go ahead",
       askFirst: "Ask me first",
+      forStep: (control: string, step: string) => `${control}: ${step}`,
       notChanged: "That step could not be changed.",
       /** How far along the plan is, beside its button. */
       progress: (done: number, total: number) =>

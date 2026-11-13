@@ -1,6 +1,12 @@
 import { expect, test } from "bun:test";
+import { isValidElement, type ReactNode } from "react";
 import type { PlanView } from "@corbits-builder/schemas/project";
-import { groupState, panelSteps, planProgress } from "./plan-panel.tsx";
+import {
+  StepControls,
+  groupState,
+  panelSteps,
+  planProgress,
+} from "./plan-panel.tsx";
 
 type Child = Extract<PlanView["steps"][number], { plugin: string }>;
 type State = Child["state"];
@@ -93,4 +99,96 @@ test("any other group keeps its title and takes its state from its steps", () =>
   ]);
   expect(group?.title).toBe("Polish");
   expect(group?.state).toBe("running");
+});
+
+type Control = {
+  children?: ReactNode;
+  label?: string;
+  "aria-label"?: string;
+  checked?: boolean;
+  disabled?: boolean;
+  onCheckedChange?: (checked: boolean) => void;
+  onClick?: () => void;
+};
+
+// Every switch and button in a step's controls, by its accessible name.
+function controls(node: ReactNode): Map<string, Control> {
+  const found = new Map<string, Control>();
+  const walk = (each: ReactNode) => {
+    if (Array.isArray(each)) return each.forEach(walk);
+    if (!isValidElement<Control>(each)) return;
+    const name = each.props.label ?? each.props["aria-label"];
+    if (name !== undefined) found.set(name, each.props);
+    walk(each.props.children);
+  };
+  walk(node);
+  return found;
+}
+
+function stepControls(child: Child) {
+  const sent: unknown[] = [];
+  const found = controls(
+    StepControls({
+      step: child,
+      busy: false,
+      onAskFirst: (askFirst) => sent.push({ askFirst }),
+      onDecline: (declined) => sent.push({ declined }),
+      onGoAhead: () => sent.push("go ahead"),
+    }),
+  );
+  const named = (control: string) => {
+    const props = found.get(`${control}: ${child.title}`);
+    if (props === undefined) throw new Error(`no ${control} on ${child.id}`);
+    return props;
+  };
+  return { found, sent, named };
+}
+
+test("flipping ask me first sends the step's new setting", () => {
+  const off = stepControls(step("design", "waiting"));
+  expect(off.named("Ask me first").checked).toBe(false);
+  off.named("Ask me first").onCheckedChange?.(true);
+  const on = stepControls({ ...step("design", "waiting"), askFirst: true });
+  on.named("Ask me first").onCheckedChange?.(false);
+  expect([...off.sent, ...on.sent]).toEqual([
+    { askFirst: true },
+    { askFirst: false },
+  ]);
+});
+
+test("an optional step is skipped and brought back by its skip switch", () => {
+  const open = stepControls(step("looks", "not_started", true));
+  open.named("Skip").onCheckedChange?.(true);
+  const skipped = stepControls({
+    ...step("looks", "skipped", true),
+    declined: { by: "person", at: "2026-01-01T00:00:00.000Z" },
+  });
+  expect(skipped.named("Skip").checked).toBe(true);
+  expect(skipped.named("Ask me first").disabled).toBe(true);
+  skipped.named("Skip").onCheckedChange?.(false);
+  expect([...open.sent, ...skipped.sent]).toEqual([
+    { declined: true },
+    { declined: false },
+  ]);
+});
+
+test("a step waiting on the person's go-ahead sends it", () => {
+  const { named, sent } = stepControls({
+    ...step("review", "needs_you"),
+    askFirst: true,
+  });
+  named("Go ahead").onClick?.();
+  expect(sent).toEqual(["go ahead"]);
+});
+
+test.each(["done", "running", "failed"] as const)(
+  "a %s step that is not optional has no controls",
+  (state) => {
+    expect(stepControls(step("build", state)).found.size).toBe(0);
+  },
+);
+
+test("an optional step has no controls once it is done or running", () => {
+  expect(stepControls(step("looks", "done", true)).found.size).toBe(0);
+  expect(stepControls(step("looks", "running", true)).found.size).toBe(0);
 });

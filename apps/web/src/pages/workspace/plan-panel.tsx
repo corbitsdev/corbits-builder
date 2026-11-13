@@ -11,7 +11,7 @@ import {
 } from "react";
 import { PanelRightClose } from "lucide-react";
 import type { PlanView } from "@corbits-builder/schemas/project";
-import { Button } from "@corbits/react-ui";
+import { Button, Switch } from "@corbits/react-ui";
 import {
   Steps,
   type StepFields,
@@ -151,6 +151,81 @@ function stepNote(step: StepFields) {
   return notes.length === 0 ? undefined : notes.join(" · ");
 }
 
+/**
+ * A step's switches, "ask me first" and, on an optional step, "skip", and the go-ahead a step waits
+ * on; nothing once the step can no longer change.
+ */
+export function StepControls({
+  step,
+  busy,
+  onAskFirst,
+  onDecline,
+  onGoAhead,
+}: {
+  step: PlanChild;
+  /** This step's change is on its way to the room, so it holds until that lands. */
+  busy: boolean;
+  onAskFirst: (askFirst: boolean) => void;
+  onDecline: (declined: boolean) => void;
+  onGoAhead: () => void;
+}) {
+  const words = wording.conversation.plan;
+  const declined = step.declined !== undefined;
+  const waitingOnGo =
+    step.askFirst && step.goAhead === undefined && step.state === "needs_you";
+  const mayAsk =
+    !declined &&
+    step.cancelled === undefined &&
+    (step.state === "waiting" ||
+      step.state === "not_started" ||
+      step.state === "needs_you");
+  const mayDecline =
+    declined ||
+    (step.optional === true &&
+      step.state !== "done" &&
+      step.state !== "running");
+  if (!waitingOnGo && !mayAsk && !mayDecline) return null;
+  // "Ask me first" stays on a skipped step, switched off, so skipping does not change the row's
+  // height.
+  return (
+    <div className={styles.controls}>
+      <label className={styles.setting}>
+        <Switch
+          checked={step.askFirst}
+          label={words.forStep(words.askFirst, step.title)}
+          disabled={!mayAsk || busy}
+          onCheckedChange={onAskFirst}
+        />
+        {words.askFirst}
+      </label>
+      {mayDecline ? (
+        <label className={styles.setting}>
+          <Switch
+            checked={declined}
+            label={words.forStep(words.skip, step.title)}
+            disabled={busy}
+            onCheckedChange={onDecline}
+          />
+          {words.skip}
+        </label>
+      ) : null}
+      {waitingOnGo ? (
+        <Button
+          type="button"
+          variant="outline"
+          size="sm"
+          className={styles.goAhead}
+          aria-label={words.forStep(words.goAhead, step.title)}
+          disabled={busy}
+          onClick={onGoAhead}
+        >
+          {words.goAhead}
+        </Button>
+      ) : null}
+    </div>
+  );
+}
+
 export function PlanPanel({
   steps,
   drawer,
@@ -194,73 +269,20 @@ export function PlanPanel({
     }
   };
   const stepAction = (step: StepFields) => {
-    const words = wording.conversation.plan;
-    const declined = step.declined !== undefined;
     const saved = actionSteps(steps).find(({ id }) => id === step.id);
-    const waitingOnGo =
-      saved !== undefined &&
-      "askFirst" in saved &&
-      saved.askFirst &&
-      saved.goAhead === undefined &&
-      step.state === "needs_you";
-    const mayAsk =
-      saved !== undefined &&
-      "askFirst" in saved &&
-      !declined &&
-      step.cancelled === undefined &&
-      (step.state === "waiting" ||
-        step.state === "not_started" ||
-        step.state === "needs_you");
-    const mayDecline =
-      declined ||
-      (step.optional === true &&
-        step.state !== "done" &&
-        step.state !== "running");
-    if (!waitingOnGo && !mayAsk && !mayDecline) return null;
+    if (saved === undefined) return null;
     return (
-      <>
-        {waitingOnGo ? (
-          <Button
-            type="button"
-            variant="ghost"
-            size="sm"
-            className={styles.action}
-            disabled={changing !== null}
-            onClick={() => void change(step.id, () => onGoAhead(step.id))}
-          >
-            {words.goAhead}
-          </Button>
-        ) : null}
-        {mayAsk ? (
-          <Button
-            type="button"
-            variant="ghost"
-            size="sm"
-            className={styles.action}
-            aria-pressed={saved.askFirst}
-            disabled={changing !== null}
-            onClick={() =>
-              void change(step.id, () => onAskFirst(step.id, !saved.askFirst))
-            }
-          >
-            {words.askFirst}
-          </Button>
-        ) : null}
-        {mayDecline ? (
-          <Button
-            type="button"
-            variant="ghost"
-            size="sm"
-            className={styles.action}
-            disabled={changing !== null}
-            onClick={() =>
-              void change(step.id, () => onDecline(step.id, !declined))
-            }
-          >
-            {declined ? words.restore : words.decline}
-          </Button>
-        ) : null}
-      </>
+      <StepControls
+        step={saved}
+        busy={changing === step.id}
+        onAskFirst={(askFirst) =>
+          void change(step.id, () => onAskFirst(step.id, askFirst))
+        }
+        onDecline={(declined) =>
+          void change(step.id, () => onDecline(step.id, declined))
+        }
+        onGoAhead={() => void change(step.id, () => onGoAhead(step.id))}
+      />
     );
   };
   const dragTo = (event: PointerEvent<HTMLDivElement>) => {

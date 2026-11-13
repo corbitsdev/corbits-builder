@@ -49,8 +49,41 @@
   font-weight: 600;
 }
 
-.action {
-  margin-inline-start: calc(var(--space-2) * -1);
+/* A step's switches sit on one line under its title, which keeps its height whichever way they
+   are set. */
+.controls {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  column-gap: var(--space-3);
+  min-height: 2.75rem;
+  margin-block-start: calc(var(--space-2) * -1);
+  /* The switch's off track takes the input colour, which is darker than its on track here; a
+     quiet off keeps the switches that are on the ones the eye lands on. */
+  --input: var(--wb-border-strong);
+}
+
+.setting {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2);
+  min-height: 2.75rem;
+  color: var(--wb-muted-foreground);
+  font-size: 0.8125rem;
+  white-space: nowrap;
+  cursor: pointer;
+}
+
+/* The switch dims itself when it cannot change. */
+.setting:has(:disabled) {
+  cursor: default;
+}
+
+/* Compact so it still fits beside both switches in a 320px panel. */
+.goAhead {
+  margin-inline-start: auto;
+  padding-inline: var(--space-2);
+  font-size: 0.8125rem;
 }
 
 .body {
