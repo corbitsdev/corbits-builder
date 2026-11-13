@@ -266,6 +266,13 @@ export async function createHubRuntime(
         withExecutableWorkflowRun(handle.db, target, send, signal),
       resolveSidecarBindings: sidecarCredentials.resolveBindings,
       lookups,
+      // The router arms 5-minute mail-hold timers and has no shutdown that cancels them;
+      // unref them so a hub that has finished closing can exit instead of waiting them out.
+      scheduleTimeout: (handler, ms) => {
+        const timer = setTimeout(handler, ms);
+        timer.unref();
+        return () => clearTimeout(timer);
+      },
     });
     lookups.resyncCredentials = (address) => {
       void pushCredentialReconcile(
