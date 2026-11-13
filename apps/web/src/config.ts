@@ -795,6 +795,13 @@ export const wording = {
     more: "More",
     less: "Less",
     failedUnknown: "the run stopped without a reason",
+    /** A run the person or the coordinator stopped, at the end of its row. */
+    stopped: "Stopped",
+    /** Stops a working specialist, asked once in its row before it does. */
+    stop: "Stop",
+    stopAsk: (role: string) => `Stop the ${role.toLowerCase()}?`,
+    keepGoing: "Keep going",
+    notStopped: "The run could not be stopped.",
   },
   /** Before a message changes a document a specialist is building from. */
   earlierDocument: {

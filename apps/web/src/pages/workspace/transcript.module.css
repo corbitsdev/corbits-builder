@@ -53,14 +53,19 @@
 
 /* A turn arriving. The newest row rises into place. The reserve under a
    settled turn is not a turn; animating it moves the measurement the
-   reserve is computed from. */
-.log [data-slot="conversation-item"]:last-child {
+   reserve is computed from. A specialist's row is an item too, for the map to jump to, but rises
+   only with the turn that holds it. */
+.log
+  > [data-slot="conversation-column"]
+  > [data-slot="conversation-item"]:last-child {
   animation: global(turn-in) var(--duration-standard, 200ms)
     var(--ease-out, ease) both;
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .log [data-slot="conversation-item"]:last-child {
+  .log
+    > [data-slot="conversation-column"]
+    > [data-slot="conversation-item"]:last-child {
     animation: none;
   }
 }

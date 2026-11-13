@@ -7,7 +7,7 @@
  * second rather than on every frame.
  */
 import { useEffect, useRef, useState } from "react";
-import { useQueries } from "@tanstack/react-query";
+import { queryOptions, useQueries } from "@tanstack/react-query";
 import type { PartTool } from "@corbits/react-ui";
 import type { RunStep } from "@corbits-builder/schemas/activity";
 import { readRunSteps } from "../../api/activity.ts";
@@ -18,6 +18,8 @@ import {
 } from "../../api/run-stream.ts";
 import { keys } from "../../queries/keys.ts";
 import { finishedCallOf } from "./conversation-parts.ts";
+import type { RunEnd } from "./dispatch-card.tsx";
+import { resultOf, type CallResult } from "./live-run.ts";
 
 export type RunPreview =
   | { readonly kind: "writing"; readonly text: string }
@@ -135,27 +137,34 @@ function nextSnapshot(
   return partialOf(event) ?? current;
 }
 
+const done = (step: PartTool): PartTool => ({
+  kind: "tool-trace",
+  toolCallId: step.toolCallId,
+  name: step.name,
+  status: "output-available",
+  input: step.input,
+});
+
 /**
- * A run's calls after one frame: a finished call joins once, as running, and the next model call
- * starts only once every call before it returned, so those are done. A call that returned an error
- * settles the same way: the specialist corrects it, and a shown step never leaves the list.
+ * A run's calls after one frame: a finished call joins once, as running, and is done once its
+ * result comes back, or once the next model call starts, which waits on every call before it. A
+ * call that returned an error settles the same way: the specialist corrects it, and a shown step
+ * never leaves the list.
  */
 function nextSteps(
   steps: readonly PartTool[],
   event: RunStreamEvent,
 ): readonly PartTool[] {
   if (event.type === "inference.start")
+    return steps.map((step) => (step.status === "running" ? done(step) : step));
+  if (event.type === "tool.done") {
+    const callId = resultOf(event)?.callId;
     return steps.map((step) =>
-      step.status === "running"
-        ? {
-            kind: "tool-trace",
-            toolCallId: step.toolCallId,
-            name: step.name,
-            status: "output-available",
-            input: step.input,
-          }
+      step.toolCallId === callId && step.status === "running"
+        ? done(step)
         : step,
     );
+  }
   if (event.type !== "inference.tool_call.end") return steps;
   const call = finishedCallOf(event.data);
   if (
@@ -189,22 +198,84 @@ export function joinedSteps(
     ...saved.map((step): PartTool => {
       const seen = streamed.get(step.callId);
       if (seen !== undefined && seen.status !== "running") return seen;
-      return {
-        kind: "tool-trace",
-        toolCallId: step.callId,
-        name: step.name,
-        status: step.returned ? "output-available" : "running",
-        input: step.arguments,
-      };
+      return savedPart(step);
     }),
     ...live.filter((step) => !known.has(step.toolCallId)),
   ];
 }
 
+const savedPart = (step: RunStep): PartTool => ({
+  kind: "tool-trace",
+  toolCallId: step.callId,
+  name: step.name,
+  status: step.result === undefined ? "running" : "output-available",
+  input: step.arguments,
+});
+
+/** What each saved call returned, by its call id. */
+export function savedResults(
+  steps: readonly RunStep[],
+): Map<string, CallResult> {
+  return new Map(
+    steps.flatMap((step): [string, CallResult][] =>
+      step.result === undefined ? [] : [[step.callId, step.result]],
+    ),
+  );
+}
+
+/**
+ * A run's saved calls under the saved replies they led to, by each reply's time: a call stands
+ * under the first reply saved with or after it. The saved conversation keeps only the replies' words,
+ * so this is what lets the coordinator's replies keep their steps after a reload.
+ */
+export function savedTurnSteps(
+  steps: readonly RunStep[],
+  replies: readonly number[],
+): Map<number, PartTool[]> {
+  const sorted = replies.toSorted((left, right) => left - right);
+  const byReply = new Map<number, PartTool[]>();
+  for (const step of steps) {
+    const reply = sorted.find((at) => at >= step.at);
+    if (reply === undefined) continue;
+    byReply.set(reply, [...(byReply.get(reply) ?? []), savedPart(step)]);
+  }
+  return byReply;
+}
+
+/** The calls one run saved, read once: a run's calls only grow, and its stream adds them. */
+export function runStepsQuery(tenantId: string, runId: string) {
+  return queryOptions({
+    queryKey: keys.runSteps(tenantId, runId),
+    queryFn: ({ signal }) => readRunSteps(tenantId, runId, signal),
+    refetchOnWindowFocus: false,
+    // Arguments can carry whole files, so they are not kept across reloads.
+    meta: { persist: false },
+  });
+}
+
+const NO_STEPS: readonly RunStep[] = [];
+
+/** The calls one run saved, and whether the first read of them is still under way. */
+export function useSavedRunSteps(
+  tenantId: string | undefined,
+  runId: string | null,
+): { pending: boolean; steps: readonly RunStep[] } {
+  const named =
+    tenantId === undefined || runId === null ? [] : [{ tenantId, runId }];
+  const [read] = useQueries({
+    queries: named.map((run) => runStepsQuery(run.tenantId, run.runId)),
+  });
+  return {
+    pending: read?.isPending === true,
+    steps: read?.data?.steps ?? NO_STEPS,
+  };
+}
+
 /**
  * The preview of each streamed run while it is named, and the calls of every shown run: those it
  * saved before this room saw it, read once when its card is first shown, then every call its
- * stream added, kept after the stream closes so finished work still lists its steps. A stream the
+ * stream added, kept after the stream closes so finished work still lists its steps. What each call
+ * returned comes the same two ways, and how each shown run ended from its saved record. A stream the
  * hub refuses or drops shows no preview for that run.
  */
 export function useRunStreams(
@@ -214,6 +285,8 @@ export function useRunStreams(
 ): {
   previews: ReadonlyMap<string, RunPreview>;
   steps: ReadonlyMap<string, readonly PartTool[]>;
+  results: ReadonlyMap<string, CallResult>;
+  ended: ReadonlyMap<string, RunEnd>;
 } {
   const [previews, setPreviews] = useState<ReadonlyMap<string, RunPreview>>(
     () => new Map(),
@@ -221,7 +294,11 @@ export function useRunStreams(
   const [steps, setSteps] = useState<ReadonlyMap<string, readonly PartTool[]>>(
     () => new Map(),
   );
+  const [liveResults, setLiveResults] = useState<
+    ReadonlyMap<string, CallResult>
+  >(() => new Map());
   const calls = useRef(new Map<string, readonly PartTool[]>());
+  const returned = useRef(new Map<string, CallResult>());
   const streams = useRef(
     new Map<
       string,
@@ -230,18 +307,11 @@ export function useRunStreams(
   );
   const timer = useRef<number | null>(null);
   const named = runIds.join("\n");
-  const stepsOf = (tenant: string) =>
-    shownRunIds.map((runId) => ({
-      queryKey: keys.runSteps(tenant, runId),
-      queryFn: ({ signal }: { signal: AbortSignal }) =>
-        readRunSteps(tenant, runId, signal),
-      // A run's calls only grow, and its stream adds them while it works.
-      refetchOnWindowFocus: false,
-      // Arguments can carry whole files, so they are not kept across reloads.
-      meta: { persist: false },
-    }));
   const saved = useQueries({
-    queries: tenantId === undefined ? [] : stepsOf(tenantId),
+    queries:
+      tenantId === undefined
+        ? []
+        : shownRunIds.map((runId) => runStepsQuery(tenantId, runId)),
   });
 
   useEffect(() => {
@@ -258,6 +328,7 @@ export function useRunStreams(
       }
       setPreviews(next);
       setSteps(new Map(calls.current));
+      setLiveResults(new Map(returned.current));
     };
     const schedule = () => {
       timer.current ??= window.setTimeout(flush, FLUSH_MS);
@@ -289,6 +360,13 @@ export function useRunStreams(
             runId,
             nextSteps(calls.current.get(runId) ?? [], event),
           );
+          const result =
+            event.type === "tool.done" ? resultOf(event) : undefined;
+          if (result !== undefined)
+            returned.current.set(result.callId, {
+              isError: result.isError,
+              content: result.content,
+            });
           schedule();
         },
         onError: () => {
@@ -311,10 +389,16 @@ export function useRunStreams(
   }, []);
 
   const joined = new Map(steps);
+  const results = new Map<string, CallResult>();
+  const ended = new Map<string, RunEnd>();
   shownRunIds.forEach((runId, index) => {
-    const recorded = saved[index]?.data?.steps;
-    if (recorded !== undefined)
-      joined.set(runId, joinedSteps(recorded, steps.get(runId) ?? []));
+    const record = saved[index]?.data;
+    if (record === undefined) return;
+    joined.set(runId, joinedSteps(record.steps, steps.get(runId) ?? []));
+    for (const [callId, result] of savedResults(record.steps))
+      results.set(callId, result);
+    ended.set(runId, record);
   });
-  return { previews, steps: joined };
+  for (const [callId, result] of liveResults) results.set(callId, result);
+  return { previews, steps: joined, results, ended };
 }

@@ -1,7 +1,7 @@
 import { useState, type ComponentProps } from "react";
 import type { Meta, StoryObj } from "@storybook/react-vite";
 import { expect, fn } from "storybook/test";
-import { checkInput } from "@corbits-builder/plugin";
+import { validateInput } from "@corbits-builder/plugin";
 import pickFonts from "@corbits-builder/designer/pick-fonts";
 import fonts from "@corbits-builder/designer/pick-fonts/data";
 import { Fonts } from "@corbits-builder/designer/pick-fonts/schema";
@@ -11,7 +11,7 @@ const prepare = (
   input: Record<string, unknown>,
   project: Record<string, string>,
 ) => {
-  const checked = checkInput(
+  const checked = validateInput(
     "designer pick-fonts",
     pickFonts,
     input,

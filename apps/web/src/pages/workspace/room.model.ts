@@ -39,6 +39,7 @@ import {
   partsDispatches,
   runDispatch,
   type DispatchRoom,
+  type RunEnd,
 } from "./dispatch-card.tsx";
 import { earlierDocumentRole } from "./earlier-document.ts";
 import { ProductApiError, type ProjectArtifact } from "@corbits-builder/client";
@@ -50,7 +51,13 @@ import { toast } from "sonner";
 import { answerQuestion, sendMessage } from "../../api/conversation.ts";
 import type { QuestionAnswer } from "@intx/types/signals";
 import { subscribeWorkflowRun } from "../../api/run-stream.ts";
-import { useRunStreams } from "./run-preview.ts";
+import {
+  savedResults,
+  savedTurnSteps,
+  useRunStreams,
+  useSavedRunSteps,
+} from "./run-preview.ts";
+import { stopRun } from "../../api/activity.ts";
 import { refusalBody } from "../../api/transport.ts";
 import {
   acceptedMaterials,
@@ -465,6 +472,12 @@ export function useRoomGate({
   // A prefetch cannot wait on the project's status, so this read observes the decisions instead.
   useQuery(openDecisionsQuery(projectId, status === "active"));
   useLiveAppPresence(projectId);
+  // The coordinator's saved calls give its replies their steps back, so the room waits on them
+  // rather than drawing its rows twice.
+  const coordinatorSteps = useSavedRunSteps(
+    project?.tenantId,
+    archived ? null : (room.data?.conversation.runId ?? null),
+  );
 
   if (status === undefined) {
     if (projectRead.isError)
@@ -472,7 +485,7 @@ export function useRoomGate({
     return { state: "loading" };
   }
   const snapshot = room.data;
-  if (!roomSnapshotReady(projectId, snapshot)) {
+  if (!roomSnapshotReady(projectId, snapshot) || coordinatorSteps.pending) {
     if (room.isError)
       return { state: "failed", onRetry: () => void room.refetch() };
     return { state: "loading" };
@@ -606,6 +619,10 @@ export function useRoom({
   const dispatchSeen = useRef<DispatchRoom["seen"]>(new Map());
   // Every specialist run this session saw, so its card keeps its result after the run ends.
   const runCards = useRef(new Map<string, InFlightRun>());
+  // The runs the person stopped here, which read as stopped before they have wound down.
+  const [stoppedHere, setStoppedHere] = useState<ReadonlySet<string>>(
+    () => new Set(),
+  );
   // The project view open over the conversation.
   const [projectOpen, setProjectOpen] = useState(false);
   const [sent, setSent] = useState<SentMessage[]>(() =>
@@ -691,6 +708,7 @@ export function useRoom({
     stepsByAt.current.clear();
     dispatchSeen.current.clear();
     runCards.current.clear();
+    setStoppedHere(new Set());
   }, [projectId, openingMessage]);
 
   // The durable mirror is the committed transcript. The stream fills the gap
@@ -772,24 +790,30 @@ export function useRoom({
 
   for (const [at, parts] of committedSteps(liveRun, mirror))
     stepsByAt.current.set(at, parts);
-  const turns = useMemo(
-    () =>
-      withPendingSends(mirror, sent).map((turn) => {
-        if (turn.parts !== undefined) return turn;
-        const steps =
-          turn.role === "assistant"
-            ? stepsByAt.current.get(turn.at)
-            : undefined;
-        return steps === undefined
-          ? turn
-          : {
-              ...turn,
-              parts: [...steps, { kind: "text" as const, text: turn.text }],
-            };
-      }),
+  // What this session watched the coordinator do wins; a reply from before it has its saved calls.
+  const coordinatorSteps = useSavedRunSteps(runTenantId, runId);
+  const turns = useMemo(() => {
+    const saved = savedTurnSteps(
+      coordinatorSteps.steps,
+      mirror.flatMap((turn) => (turn.role === "assistant" ? [turn.at] : [])),
+    );
+    return withPendingSends(mirror, sent).map((turn) => {
+      if (turn.parts !== undefined || turn.role !== "assistant") return turn;
+      const steps = stepsByAt.current.get(turn.at) ?? saved.get(turn.at);
+      return steps === undefined
+        ? turn
+        : {
+            ...turn,
+            parts: [...steps, { kind: "text" as const, text: turn.text }],
+          };
+    });
     // The steps map only grows as the live run commits, which re-renders with a new mirror.
-    [mirror, sent],
-  );
+  }, [mirror, sent, coordinatorSteps.steps]);
+  // What each of the coordinator's calls returned, saved or as this session watched it.
+  const coordinatorResults = new Map([
+    ...savedResults(coordinatorSteps.steps),
+    ...liveRun.results,
+  ]);
   const mailThreads = snapshot.conversation.threads;
   const specialistUpdates = useMemo(
     () => threadUpdates(mailThreads),
@@ -1358,7 +1382,7 @@ export function useRoom({
   const inFlight = snapshot.inFlight;
   const dispatches = shownTurns.flatMap((turn) =>
     turn.role === "assistant" && turn.parts !== undefined
-      ? partsDispatches(turn.parts, liveRun.results)
+      ? partsDispatches(turn.parts, coordinatorResults)
       : [],
   );
   // A run with no hand-off in this session's view, such as after a reload, still gets its card.
@@ -1379,7 +1403,12 @@ export function useRoom({
     }));
   // Each run at work streams its steps and what it is producing into its card; past a handful, the
   // newest only. Every card with a run loads the steps that run saved before this page saw it.
-  const { previews, steps: runSteps } = useRunStreams(
+  const {
+    previews,
+    steps: runSteps,
+    results: runResults,
+    ended: runsEnded,
+  } = useRunStreams(
     runTenantId,
     inFlight
       .filter((run) => run.state === "working")
@@ -1390,6 +1419,19 @@ export function useRoom({
       (dispatch) => (dispatch.runId === undefined ? [] : [dispatch.runId]),
     ),
   );
+  // A run no longer at work has saved how it ended, which the first read of its steps predates.
+  const atWork = inFlight.map((run) => run.runId).join("\n");
+  const wasAtWork = useRef<readonly string[]>([]);
+  useEffect(() => {
+    const now = atWork.split("\n");
+    if (runTenantId !== undefined)
+      for (const left of wasAtWork.current)
+        if (!now.includes(left))
+          void queryClient.invalidateQueries({
+            queryKey: keys.runSteps(runTenantId, left),
+          });
+    wasAtWork.current = now;
+  }, [atWork, runTenantId]);
   const dispatchRoom: DispatchRoom = {
     artifacts: snapshot.artifacts,
     inFlight,
@@ -1397,6 +1439,13 @@ export function useRoom({
     seen: dispatchSeen.current,
     previews,
     steps: runSteps,
+    ended: new Map([
+      ...runsEnded,
+      ...[...stoppedHere].map((stopped): [string, RunEnd] => [
+        stopped,
+        { status: "cancelled" },
+      ]),
+    ]),
     onOpenDocument: (kind) => {
       // A coder files the app's source, which is read as the running app.
       if (kind === "app") return openProject(LIVE_TAB);
@@ -1411,6 +1460,15 @@ export function useRoom({
           ? DRAFT_TAB
           : conceptTab(dispatch.concept),
       );
+    },
+    onStop: async (stopped) => {
+      try {
+        await stopRun(projectId, stopped);
+        setStoppedHere((before) => new Set(before).add(stopped));
+        reloadRef.current();
+      } catch (cause) {
+        toast.error(humanFault(cause, wording.dispatch.notStopped));
+      }
     },
   };
   for (const dispatch of dispatches) noteDispatch(dispatchRoom, dispatch);
@@ -1715,7 +1773,7 @@ export function useRoom({
           })),
           onOpenDocument: openDocument,
           approvals: shownApprovals,
-          results: liveRun.results,
+          results: new Map([...coordinatorResults, ...runResults]),
           runs: cards,
           live: (dispatch) => dispatchLive(dispatch, dispatchRoom),
           standing: (unit) => workUnitStanding(unit, dispatchRoom),

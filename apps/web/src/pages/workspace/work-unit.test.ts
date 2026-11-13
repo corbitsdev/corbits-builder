@@ -1,6 +1,16 @@
 import { expect, test } from "bun:test";
-import { dispatchesOf, runDispatch } from "./dispatch-card.tsx";
-import { joinedSteps } from "./run-preview.ts";
+import { createElement } from "react";
+import { renderToStaticMarkup } from "react-dom/server";
+import type { RunStep } from "@corbits-builder/schemas/activity";
+import { wording } from "../../config.ts";
+import {
+  dispatchesOf,
+  partsDispatches,
+  runDispatch,
+  type DispatchRoom,
+} from "./dispatch-card.tsx";
+import { joinedSteps, savedResults, savedTurnSteps } from "./run-preview.ts";
+import { WorkUnitStepView } from "./work-unit-step.view.tsx";
 import { specialistUpdate } from "./specialist-updates.ts";
 import { workUnitStanding } from "./work-unit-step.model.ts";
 import { workUnits } from "./work-unit.ts";
@@ -99,13 +109,15 @@ test("a run's saved calls are its steps before its stream says anything", () => 
       callId: "call-read",
       name: "read_file",
       arguments: { path: "docs/brief.md" },
-      returned: true,
+      at: 100,
+      result: { content: "# Brief", isError: false },
     },
     {
       callId: "call-write",
       name: "write_file",
       arguments: { path: "src/app.tsx" },
-      returned: true,
+      at: 100,
+      result: { content: "Wrote 120 bytes", isError: false },
     },
   ];
   const [unit] = workUnits([{ at: 100, dispatch: runDispatch(run) }], []).units;
@@ -135,4 +147,133 @@ test("a run's saved calls are its steps before its stream says anything", () => 
       input: { path: "src/app.tsx" },
     },
   ]);
+});
+
+// The coordinator's saved call that started a coder, as its saved conversation keeps it.
+const buildCall: RunStep = {
+  callId: "call-build",
+  name: "execute",
+  arguments: {
+    plugin: "coder",
+    action: "build",
+    input: { instruction: "Build the app." },
+  },
+  at: 10,
+  result: {
+    content: JSON.stringify({ started: true, runs: [{ runId: "run-build" }] }),
+    isError: false,
+  },
+};
+
+const buildUnit = () => {
+  const parts = savedTurnSteps([buildCall], [10]).get(10) ?? [];
+  const [dispatch] = partsDispatches(parts, savedResults([buildCall]));
+  if (dispatch === undefined) throw new Error("no hand-off");
+  const [unit] = workUnits([{ at: 10, dispatch }], []).units;
+  if (unit === undefined) throw new Error("no work");
+  return unit;
+};
+
+const emptyRoom: DispatchRoom = {
+  artifacts: [],
+  inFlight: [],
+  failed: [],
+  seen: new Map(),
+};
+
+test("after a reload an ended run's row keeps its run id from the saved conversation and lists its steps", () => {
+  const unit = buildUnit();
+  expect(unit.dispatch.runId).toBe("run-build");
+  const { steps } = workUnitStanding(unit, {
+    ...emptyRoom,
+    steps: new Map([
+      [
+        "run-build",
+        joinedSteps(
+          [
+            {
+              callId: "call-test",
+              name: "run_shell",
+              arguments: { command: "bun test" },
+              at: 20,
+              result: { content: "3 pass", isError: false },
+            },
+          ],
+          [],
+        ),
+      ],
+    ]),
+  });
+  expect(steps.map((step) => step.toolCallId)).toEqual(["call-test"]);
+});
+
+const render = (
+  room: DispatchRoom,
+): { html: string; state: string; stop: boolean } => {
+  const standing = workUnitStanding(buildUnit(), room);
+  return {
+    html: renderToStaticMarkup(
+      createElement(WorkUnitStepView, { ...standing, run: () => null }),
+    ),
+    state: standing.status.state,
+    stop: standing.stop !== undefined,
+  };
+};
+
+test("a stopped run reads Stopped and a failed one says it did not finish, both quietly", () => {
+  const stopped = render({
+    ...emptyRoom,
+    ended: new Map([["run-build", { status: "cancelled" }]]),
+  });
+  expect(stopped.state).toBe("stopped");
+  expect(stopped.html).toContain(`>${wording.dispatch.stopped}<`);
+  expect(stopped.html).not.toContain(
+    `>${wording.dispatch.status["output-available"]}<`,
+  );
+
+  const failed = render({
+    ...emptyRoom,
+    ended: new Map([
+      [
+        "run-build",
+        { status: "failed", error: "the sandbox ran out of memory" },
+      ],
+    ]),
+  });
+  expect(failed.state).toBe("failed");
+  expect(failed.html).toContain(`>${wording.dispatch.status.error}<`);
+  expect(failed.html).toContain("the sandbox ran out of memory");
+  expect(failed.html).not.toContain("text-destructive");
+});
+
+test("only a working specialist's row offers Stop", () => {
+  const onStop = async () => {};
+  const working = render({
+    ...emptyRoom,
+    inFlight: [
+      {
+        runId: "run-build",
+        role: "coder",
+        startedAt: new Date(10).toISOString(),
+        status: "running",
+        state: "working",
+        since: new Date(10).toISOString(),
+      },
+    ],
+    onStop,
+  });
+  expect(working.stop).toBe(true);
+  expect(working.html).toContain(`>${wording.dispatch.stop}<`);
+
+  const finished = render({ ...emptyRoom, onStop });
+  expect(finished.state).toBe("finished");
+  expect(finished.stop).toBe(false);
+  expect(finished.html).not.toContain(`>${wording.dispatch.stop}<`);
+
+  const stopped = render({
+    ...emptyRoom,
+    ended: new Map([["run-build", { status: "cancelled" }]]),
+    onStop,
+  });
+  expect(stopped.stop).toBe(false);
 });

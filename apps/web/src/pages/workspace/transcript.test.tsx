@@ -18,7 +18,9 @@ import {
   pendingLiveTurn,
   waitingOnPerson,
 } from "./live-run.ts";
+import { Activity, MessageParts, type PartTool } from "@corbits/react-ui";
 import { RoomThread } from "./transcript.tsx";
+import { WorkUnitStepView } from "./work-unit-step.view.tsx";
 import { workUnitStanding } from "./work-unit-step.model.ts";
 import type { WorkUnit } from "./work-unit.ts";
 
@@ -411,7 +413,11 @@ describe("conversation transcript", () => {
         ]}
       />,
     );
-    expect(html).not.toContain('data-item-id="work:');
+    // Not a card of its own: the row is its own item, for the map, inside the coordinator's list.
+    expect(html).not.toContain('data-item-id="units:');
+    expect(html.indexOf('data-item-id="work:call-1"')).toBeGreaterThan(
+      html.indexOf('data-slot="activity-content"'),
+    );
     const row = wording.dispatch.row(
       wording.activity.role.writer,
       "Writing the constraints",
@@ -425,6 +431,53 @@ describe("conversation transcript", () => {
     expect(html).not.toContain('data-slot="update-names">Constraints<');
     expect(html).toContain(wording.updatesFolded(4));
     expect(html).toContain(`data-slot="update-names">${wording.buildSubject}<`);
+  });
+
+  test("a specialist's step opens onto what came of it", () => {
+    const shell = {
+      kind: "tool-trace" as const,
+      toolCallId: "call-test",
+      name: "run_shell",
+      status: "output-available" as const,
+      input: { command: "bun test" },
+    };
+    const build = {
+      kind: "tool-trace" as const,
+      toolCallId: "call-build",
+      name: "execute",
+      status: "output-available" as const,
+      input: { plugin: "coder", action: "build", input: {} },
+    };
+    const thread = RoomThread({
+      standing,
+      results: new Map([
+        [
+          "call-build",
+          {
+            content: JSON.stringify({ runs: [{ runId: "run-build" }] }),
+            isError: false,
+          },
+        ],
+        ["call-test", { content: "3 pass", isError: false }],
+      ]),
+      turns: [
+        {
+          role: "assistant",
+          text: "Building.",
+          at: 2,
+          parts: [build, { kind: "text", text: "Building." }],
+        },
+      ],
+    });
+    const parts = findElement(thread, MessageParts);
+    const renderStep = parts?.props["renderStep"] as (
+      step: typeof build,
+    ) => ReactNode;
+    const row = findElement(renderStep(build), WorkUnitStepView);
+    const run = row?.props["run"] as (steps: readonly PartTool[]) => ReactNode;
+    const activity = findElement(run([shell]), Activity);
+    const steps = activity?.props["steps"] as readonly PartTool[] | undefined;
+    expect(steps?.[0]?.output).toBe("3 pass");
   });
 
   test("a coordinator stretch has one header, its words first and its cards last", () => {

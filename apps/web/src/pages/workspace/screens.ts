@@ -1,12 +1,13 @@
 /**
- * The plugin screens this interface can draw, by package and action: every screen action of every
- * specialist in the plugins folder. Plugins may share a handle, so a question's handle is resolved
+ * The plugin screens this interface can draw, by package and action: every action of every
+ * specialist in the plugins folder that has a view. Plugins may share a handle, so a question's handle is resolved
  * to the package the project uses. The app entry hands over the plugins' files once, from
  * screen-files.ts, so nothing else that imports this module needs a bundler to load it.
  */
 import type { ComponentType } from "react";
 import {
   isScreen,
+  ScreenActionBuilder,
   SpecialistBuilder,
   type ScreenViewProps,
 } from "@corbits-builder/plugin";
@@ -19,7 +20,8 @@ import {
 /** The plugins' files the interface bundles, by path from this folder. */
 export type ScreenFiles = {
   manifests: Record<string, { name: string; builder?: unknown }>;
-  modules: Record<string, unknown>;
+  definitions: Record<string, unknown>;
+  data: Record<string, unknown>;
   views: Record<
     string,
     ComponentType<ScreenViewProps<unknown, unknown, unknown, HostSupplies>>
@@ -36,19 +38,19 @@ let packages: ReadonlyMap<
   readonly { name: string; isDefault: boolean }[]
 > = new Map();
 
-// What a screen action's manifest names, from the files bundled.
-function named<File>(
-  files: Record<string, File>,
-  folder: string,
-  name: string,
-  path: string,
-) {
-  const file = files[folder + path.replace(/^\.\//, "")];
-  if (file === undefined)
-    throw new Error(
-      `${name} names ${path}, which the interface does not bundle: a screen is src/<action>/screen.ts, its view src/<action>/view.tsx and its data under data/.`,
-    );
-  return file;
+// A bundled file's plugin folder and, for a file of an action's folder, the action.
+const PLUGIN_FILE = /plugins\/([^/]+)\/(?:package\.json|src\/([^/]+)\/[^/]+)$/;
+
+// Each bundled file of one kind, by its plugin folder and action, such as "designer pick-fonts".
+function byAction<File>(files: Record<string, File>) {
+  return new Map<string, File>(
+    Object.entries(files).flatMap(([path, file]) => {
+      const [, folder, action] = PLUGIN_FILE.exec(path) ?? [];
+      return folder !== undefined && action !== undefined
+        ? [[`${folder} ${action}`, file] as const]
+        : [];
+    }),
+  );
 }
 
 const key = (plugin: string, action: string) => `${plugin} ${action}`;
@@ -63,7 +65,15 @@ export const selectionNames = () =>
     .map(([handle]) => selectionName(handle));
 
 /** Makes every screen action in the given files drawable. */
-export function installScreens({ manifests, modules, views }: ScreenFiles) {
+export function installScreens({
+  manifests,
+  definitions,
+  data,
+  views,
+}: ScreenFiles) {
+  const definitionOf = byAction(definitions);
+  const dataOf = byAction(data);
+  const viewOf = byAction(views);
   const sharing = new Map<string, { name: string; isDefault: boolean }[]>();
   installed = new Map(
     Object.entries(manifests).flatMap(
@@ -75,7 +85,7 @@ export function installScreens({ manifests, modules, views }: ScreenFiles) {
           builder.runs !== "specialist"
         )
           return [];
-        const folder = path.slice(0, -"package.json".length);
+        const folder = PLUGIN_FILE.exec(path)?.[1];
         const {
           handle,
           actions,
@@ -85,27 +95,27 @@ export function installScreens({ manifests, modules, views }: ScreenFiles) {
           ...(sharing.get(handle) ?? []),
           { name: packageName, isDefault: isDefault === true },
         ]);
-        return Object.entries(actions).flatMap(([action, declared]) => {
-          if (declared.runs !== "screen") return [];
+        return Object.entries(actions).flatMap(([action, entry]) => {
+          const files = `${folder} ${action}`;
+          const view = viewOf.get(files);
+          if (view === undefined) return [];
           const name = key(packageName, action);
-          const screen = named(modules, folder, name, declared.screen);
+          const declared = ScreenActionBuilder.assert(entry);
+          const screen = definitionOf.get(files);
           if (!isScreen(screen))
-            throw new Error(`${name}'s ${declared.screen} exports no screen.`);
+            throw new Error(
+              `${name}'s src/${action}/definition.ts exports no screen.`,
+            );
+          const shipped = dataOf.get(files);
           let data: unknown;
-          if (declared.data !== undefined) {
+          if (shipped !== undefined) {
             if (!screen.data)
               throw new Error(
-                `${name} names data its screen has no schema for.`,
+                `${name} ships data its screen has no schema for.`,
               );
-            data = screen.data.assert(
-              named(modules, folder, name, declared.data),
-            );
+            data = screen.data.assert(shipped);
           }
-          const host = screenHost(name, declared, {
-            screen,
-            view: named(views, folder, name, declared.view),
-            data,
-          });
+          const host = screenHost(name, declared, { screen, view, data });
           return [[name, { host, page: declared.place === "page" }] as const];
         });
       },

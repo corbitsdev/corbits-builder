@@ -1,6 +1,6 @@
 import { describe, expect, test } from "bun:test";
 import { renderToStaticMarkup } from "react-dom/server";
-import { checkInput } from "@corbits-builder/plugin";
+import { validateInput } from "@corbits-builder/plugin";
 import pickFonts from "@corbits-builder/designer/pick-fonts";
 import fonts from "@corbits-builder/designer/pick-fonts/data";
 import { Fonts, type Font } from "@corbits-builder/designer/pick-fonts/schema";
@@ -15,7 +15,7 @@ const prepare = (
   input: Record<string, unknown>,
   project: Record<string, string> = inList,
 ) => {
-  const checked = checkInput(
+  const checked = validateInput(
     "designer pick-fonts",
     pickFonts,
     input,

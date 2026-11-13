@@ -1,3 +1,4 @@
+import { fileURLToPath } from "node:url";
 import react from "@vitejs/plugin-react";
 import { defaultClientConditions, defineConfig } from "vite";
 import { productName } from "./src/config.ts";
@@ -15,8 +16,13 @@ export default defineConfig({
         html.replace("%PRODUCT_NAME%", productName),
     },
   ],
-  // Interchange ships its packages as source; the hub and tests read them the same way.
-  resolve: { conditions: ["intx-src", ...defaultClientConditions] },
+  resolve: {
+    // Interchange ships its packages as source; the hub and tests read them the same way.
+    conditions: ["intx-src", ...defaultClientConditions],
+    alias: {
+      "@plugins": fileURLToPath(new URL("../../plugins", import.meta.url)),
+    },
+  },
   // main.tsx awaits the persisted query cache before the first render.
   build: { target: "es2022" },
   server: {

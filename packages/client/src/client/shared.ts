@@ -559,6 +559,13 @@ export type ProductApiClient = Readonly<{
     stepId: string,
     signal?: AbortSignal,
   ): Promise<StoredPlan>;
+  /** The person stops a specialist run the coordinator started in the project. */
+  stopRun(
+    tenantId: string,
+    projectId: string,
+    runId: string,
+    signal?: AbortSignal,
+  ): Promise<{ runId: string }>;
   /** The person brings back a plan step they declined. */
   restorePlanStep(
     tenantId: string,

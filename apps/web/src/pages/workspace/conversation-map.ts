@@ -1,7 +1,7 @@
 /**
  * The conversation map's entries for what the agents produced: a filed document, a design or the
  * code, a question or approval put to the person, and work that did not finish. Each is anchored to
- * the item that shows it and named in the words its row uses. The coordinator's replies, its steps
+ * the item that shows it, a specialist's own row for its work, and named in the words its row uses. The coordinator's replies, its steps
  * and work still under way have none.
  */
 import type { ConversationMapTurn } from "@corbits/react-ui";
@@ -15,7 +15,7 @@ import { workPhrase, type WorkUnit } from "./work-unit.ts";
 
 const text = wording.conversation;
 
-/** A piece of work's entry once it filed, finished or failed. */
+/** A piece of work's entry once it filed, finished, failed or was stopped. */
 export function workEntry(
   id: string,
   unit: WorkUnit,
@@ -35,6 +35,8 @@ export function workEntry(
     return entry(phrase);
   if (status.state === "failed")
     return entry(text.mapMarked(phrase, wording.dispatch.status.error));
+  if (status.state === "stopped")
+    return entry(text.mapMarked(phrase, wording.dispatch.stopped));
   return [];
 }
 
@@ -66,10 +68,7 @@ export function approvalEntry(
 const answered = (label: string, settled: boolean) =>
   settled ? text.mapMarked(label, wording.questions.answered) : label;
 
-/**
- * One entry per item: the rail keys its ticks by item id, and work started from one coordinator
- * message shares that message's item, so its first output stands for it.
- */
+/** One entry per item: the rail keys its ticks by item id. */
 export function distinctEntries(
   entries: readonly ConversationMapTurn[],
 ): ConversationMapTurn[] {

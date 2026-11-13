@@ -211,10 +211,17 @@ export type DispatchRoom = {
   readonly previews?: ReadonlyMap<string, RunPreview>;
   /** Each call a streamed run made while the room watched it, in order, by run id. */
   readonly steps?: ReadonlyMap<string, readonly PartTool[]>;
+  /** How each shown run ended, as its saved record or a stop made here says, by run id. */
+  readonly ended?: ReadonlyMap<string, RunEnd>;
   readonly onOpenDocument?: (kind: string) => void;
   /** Opens the project view on what a working designer or coder is making. */
   readonly onWatch?: (dispatch: Dispatch) => void;
+  /** Stops a working specialist's run as the person. */
+  readonly onStop?: (runId: string) => Promise<void>;
 };
+
+/** A run's status as Interchange reports it, with why when it failed. */
+export type RunEnd = { readonly status: string; readonly error?: string };
 
 /** The artifact a hand-off files, by kind. */
 export function targetKind(dispatch: Dispatch): string | undefined {
@@ -250,6 +257,8 @@ export type DispatchStatus =
       readonly kind: string;
     }
   | { readonly state: "finished" }
+  /** The person or the coordinator stopped it. */
+  | { readonly state: "stopped" }
   | { readonly state: "failed"; readonly reason: string };
 
 /** Records the first sighting of a hand-off, so a document filed later reads as its result. */
@@ -325,6 +334,13 @@ export function dispatchStatus(
       state: "failed",
       reason: failure.error?.message ?? text.failedUnknown,
     };
+  // The run's own record outlasts the room's short lists of failed runs, and a stop made here
+  // shows before the run has wound down.
+  const ended =
+    dispatch.runId === undefined ? undefined : room.ended?.get(dispatch.runId);
+  if (ended?.status === "cancelled") return { state: "stopped" };
+  if (ended?.status === "failed")
+    return { state: "failed", reason: ended.error ?? text.failedUnknown };
   const run = room.inFlight.find((item) =>
     dispatch.runId === undefined
       ? item.role === dispatch.role &&

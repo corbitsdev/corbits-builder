@@ -24,6 +24,16 @@
   padding: 0;
 }
 
+/* Asking once before a stop, in the row: the question, then its two answers. */
+.ask {
+  display: flex;
+  flex: none;
+  align-items: center;
+  gap: var(--space-2);
+  color: var(--wb-muted-foreground);
+  font-size: 0.8125rem;
+}
+
 /* Opened, the specialist's own work sits one level in, under its row's words. */
 .work {
   display: flex;
@@ -38,7 +48,7 @@
   overflow: hidden;
   white-space: nowrap;
   text-overflow: ellipsis;
-  color: var(--wb-destructive);
+  color: var(--wb-muted-foreground);
   font-size: 0.875rem;
 }
 

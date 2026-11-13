@@ -12,44 +12,54 @@ import { findRoutableById, type SidecarRouter } from "@intx/hub-sessions";
 import { getLogger } from "@intx/log";
 import { parseInferenceEvent } from "@intx/types/runtime";
 import { ContentBlock } from "@intx/types/runtime-core";
-import type { RunStep } from "@corbits-builder/schemas/activity";
+import type { RunStep, RunSteps } from "@corbits-builder/schemas/activity";
 import type { CoordinatorRepoDirSource } from "./mail/coordinator-question.ts";
 import { isRecord, readCommittedTurns } from "./mail/conversation-turns.ts";
 import { errorCode, requestErrorMetadata } from "./request-error.ts";
 
 const HEARTBEAT_MS = 5_000;
+// A result is kept to its end, as long as a command's report keeps of its output.
+const RESULT_TAIL_CHARS = 4096;
 const MailDelivered = type({
   type: "'mail.delivered'",
   data: { id: "string", direction: "'inbound' | 'outbound'" },
 });
 const log = getLogger(["corbits-builder", "run-stream"]);
 
-/** Each call in saved turns, in the order the run made them, and whether its result came back. */
-function runSteps(turns: readonly unknown[]): RunStep[] {
-  const blocks = turns
-    .filter(isRecord)
-    .flatMap((turn) => (Array.isArray(turn["content"]) ? turn["content"] : []))
-    .flatMap((block) => {
+/**
+ * Each call in saved turns, in the order the run made them, with when its turn was saved and the
+ * text of its result once it came back, kept to its end as a command's output is.
+ */
+export function runSteps(turns: readonly unknown[]): RunStep[] {
+  const blocks = turns.filter(isRecord).flatMap((turn) => {
+    const at = turn["timestamp"];
+    if (typeof at !== "number" || !Array.isArray(turn["content"])) return [];
+    return turn["content"].flatMap((block) => {
       const parsed = ContentBlock(block);
-      return parsed instanceof type.errors ? [] : [parsed];
+      return parsed instanceof type.errors ? [] : [{ at, block: parsed }];
     });
-  const returned = new Set(
-    blocks.flatMap((block) =>
-      block.type === "tool_result" ? [block.callId] : [],
-    ),
-  );
-  return blocks.flatMap((block) =>
-    block.type === "tool_call"
-      ? [
-          {
-            callId: block.id,
-            name: block.name,
-            arguments: block.arguments,
-            returned: returned.has(block.id),
-          },
-        ]
-      : [],
-  );
+  });
+  const results = new Map<string, NonNullable<RunStep["result"]>>();
+  for (const { block } of blocks) {
+    if (block.type !== "tool_result") continue;
+    const content = block.content
+      .flatMap((part) => (part.type === "text" ? [part.text] : []))
+      .join("\n")
+      .slice(-RESULT_TAIL_CHARS);
+    results.set(block.callId, { content, isError: block.isError === true });
+  }
+  return blocks.flatMap(({ at, block }): RunStep[] => {
+    if (block.type !== "tool_call") return [];
+    const step: RunStep = {
+      callId: block.id,
+      name: block.name,
+      arguments: block.arguments,
+      at,
+    };
+    const result = results.get(block.id);
+    if (result !== undefined) step.result = result;
+    return [step];
+  });
 }
 
 export function createWorkflowRunStreamRoutes(deps: {
@@ -153,7 +163,12 @@ export function createWorkflowRunStreamRoutes(deps: {
         );
       }
       const turns = await readCommittedTurns(deps.repoStore, record.address);
-      return c.json({ steps: runSteps(turns ?? []) });
+      const saved: RunSteps = {
+        status: record.status,
+        steps: runSteps(turns ?? []),
+      };
+      if (record.failureMessage !== null) saved.error = record.failureMessage;
+      return c.json(saved);
     },
   );
 

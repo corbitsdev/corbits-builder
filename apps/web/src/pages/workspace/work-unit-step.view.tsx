@@ -29,8 +29,17 @@ export const STEP_STATUS: Record<DispatchStatus["state"], ToolTraceStatus> = {
   approval: "approval-requested",
   ready: "output-available",
   finished: "output-available",
-  failed: "error",
+  // A run that ended early is a quiet state of its row, not an alarm: its words say how it ended.
+  stopped: "output-denied",
+  failed: "output-denied",
 };
+
+/** The words at the end of a row, by where its work stands. */
+function statusLabels(status: DispatchStatus) {
+  if (status.state === "stopped") return { "output-denied": text.stopped };
+  if (status.state === "failed") return { "output-denied": text.status.error };
+  return text.status;
+}
 
 /** A piece of work as its step shows it, by where its hand-off stands. */
 export type WorkUnitStanding = {
@@ -52,6 +61,8 @@ export type WorkUnitStanding = {
   onOpenDocument: ((kind: string) => void) | undefined;
   /** Opens what the work makes as it makes it, offered while it works; absent where nothing shows it. */
   watch: { label: string; open: () => void } | undefined;
+  /** Stops the work once the person confirms it, offered only while it works. */
+  stop: { ask: string; confirm: () => Promise<void> } | undefined;
 };
 
 export type WorkUnitStepViewProps = WorkUnitStanding & {
@@ -72,6 +83,58 @@ function WorkingHeader({ label, since }: { label: string; since: string }) {
       statusLabels={{ running: `${text.status.running} ${elapsed}` }}
       className={styles.row}
     />
+  );
+}
+
+/** Stops the work, asking once in the row first. */
+function StopAction({ stop }: { stop: NonNullable<WorkUnitStanding["stop"]> }) {
+  const [asking, setAsking] = useState(false);
+  const [stopping, setStopping] = useState(false);
+  if (!asking)
+    return (
+      <Button
+        type="button"
+        variant="link"
+        size="sm"
+        className={styles.action}
+        onClick={() => setAsking(true)}
+      >
+        {text.stop}
+      </Button>
+    );
+  const confirm = async () => {
+    setStopping(true);
+    try {
+      await stop.confirm();
+    } finally {
+      setStopping(false);
+      setAsking(false);
+    }
+  };
+  return (
+    <span className={styles.ask} role="group" aria-label={stop.ask}>
+      {stop.ask}
+      <Button
+        type="button"
+        variant="link"
+        size="sm"
+        className={styles.action}
+        disabled={stopping}
+        onClick={() => void confirm()}
+      >
+        {text.stop}
+      </Button>
+      <Button
+        type="button"
+        variant="link"
+        size="sm"
+        className={styles.action}
+        disabled={stopping}
+        onClick={() => setAsking(false)}
+      >
+        {text.keepGoing}
+      </Button>
+    </span>
   );
 }
 
@@ -198,6 +261,7 @@ export function WorkUnitStepView({
   report,
   onOpenDocument,
   watch,
+  stop,
   run,
 }: WorkUnitStepViewProps) {
   const [open, setOpen] = useState(true);
@@ -227,11 +291,12 @@ export function WorkUnitStepView({
         ) : (
           <ToolHeader
             label={label}
-            statusLabels={text.status}
+            statusLabels={statusLabels(status)}
             className={styles.row}
           />
         )}
         <RowAction status={status} watch={watch} onOpen={onOpenDocument} />
+        {stop === undefined ? null : <StopAction stop={stop} />}
       </div>
       {open ? (
         <div className={styles.work}>

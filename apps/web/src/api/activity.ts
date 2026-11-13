@@ -41,3 +41,9 @@ export function readRunSteps(
 ) {
   return productClient().runSteps(tenantId, runId, signal);
 }
+
+/** Stops a specialist run the coordinator started in the project, as the person. */
+export async function stopRun(projectId: string, runId: string) {
+  const tenantId = await workspaceTenantId();
+  return productClient().stopRun(tenantId, projectId, runId);
+}

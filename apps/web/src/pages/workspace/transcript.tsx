@@ -230,6 +230,9 @@ function isBlank(value: unknown): boolean {
   return Object.keys(value).length === 0;
 }
 
+/** The item a specialist's row is, so the conversation map jumps to that row itself. */
+const workItemId = (unit: WorkUnit) => `work:${unit.key}`;
+
 /** A run or filed thing with no hand-off in this session's view, placed at its start or filing. */
 export type PlacedDispatch = {
   readonly at: number;
@@ -747,23 +750,31 @@ export function RoomThread({
     questions,
     results,
   );
-  // A specialist's own steps, one level in, as its row opens onto them.
+  // A specialist's own steps, one level in, as its row opens onto them, each with what it returned.
   const specialistRun = (steps: readonly PartTool[]) => (
-    <Activity steps={steps.map((step) => readableTool(step, undefined))} open>
+    <Activity
+      steps={steps.map((step) => {
+        const result = results.get(step.toolCallId);
+        return readableTool(
+          step,
+          result?.isError === true ? undefined : result,
+        );
+      })}
+      open
+    >
       <ActivityContent renderStep={renderStep} />
     </Activity>
   );
-  // A step that started specialists is each of them; any other is the call itself.
+  // A step that started specialists is each of them, each its own item for the map to jump to;
+  // any other is the call itself.
   const renderWork = (step: ActivityStep): ReactNode => {
     const units =
       step.kind === "tool-trace" ? specialists.get(step.toolCallId) : undefined;
     if (units === undefined) return renderStep(step);
     return units.map((unit) => (
-      <WorkUnitStepView
-        key={unit.key}
-        {...standing(unit)}
-        run={specialistRun}
-      />
+      <ConversationItem key={unit.key} itemId={workItemId(unit)}>
+        <WorkUnitStepView {...standing(unit)} run={specialistRun} />
+      </ConversationItem>
     ));
   };
   // Under a coordinator header, a coordinator's approval card does not repeat the name.
@@ -780,8 +791,8 @@ export function RoomThread({
       });
       return (
         <ConversationItem
-          key={`work:${card.units[0]?.key ?? position}`}
-          itemId={`work:${card.units[0]?.key ?? position}`}
+          key={`units:${card.units[0]?.key ?? position}`}
+          itemId={`units:${card.units[0]?.key ?? position}`}
         >
           <Message from="agent">
             {headed ? null : (
@@ -994,7 +1005,6 @@ export function RoomThread({
     section: Extract<Section, { kind: "coordinator" }>,
     position: number,
   ): ConversationMapTurn[] => {
-    const first = section.turns[0];
     const handed = section.turns
       .flatMap(({ turn }) => readableParts(visibleTurnParts(turn), results))
       .flatMap((part) =>
@@ -1003,23 +1013,13 @@ export function RoomThread({
           : [],
       );
     return [
-      ...(first === undefined
-        ? []
-        : handed.flatMap((unit) =>
-            workEntry(
-              turnItemId(first.turn, first.index),
-              unit,
-              standing(unit),
-            ),
-          )),
+      ...handed.flatMap((unit) =>
+        workEntry(workItemId(unit), unit, standing(unit)),
+      ),
       ...foldUpdates(liveLast(section.cards, live)).flatMap((card, at) => {
         if (card.kind === "units")
           return card.units.flatMap((unit) =>
-            workEntry(
-              `work:${card.units[0]?.key ?? `${String(position)}:${String(at)}`}`,
-              unit,
-              standing(unit),
-            ),
+            workEntry(workItemId(unit), unit, standing(unit)),
           );
         if (card.kind === "questions")
           return questionEntry(

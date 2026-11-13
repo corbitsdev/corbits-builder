@@ -5,7 +5,7 @@ import { createMiddleware } from "hono/factory";
 import type { RequireGrant, TenantEnv } from "@intx/hub-api";
 import { createSidecarRouter, findRoutableById } from "@intx/hub-sessions";
 import type { InferenceEvent } from "@intx/types/runtime";
-import { createWorkflowRunStreamRoutes } from "./run-stream.ts";
+import { createWorkflowRunStreamRoutes, runSteps } from "./run-stream.ts";
 
 type Routable = Awaited<ReturnType<typeof findRoutableById>>;
 
@@ -193,5 +193,56 @@ test("forwards delivered mail and a lost route without mail content", async () =
   expect(received).toEqual([
     { event: "mail", data: { id: "mail-1", direction: "inbound" } },
     { event: "status", data: { routable: false } },
+  ]);
+});
+
+test("a saved step carries when it was made and the end of its result", () => {
+  const long = `${"x".repeat(5000)}done`;
+  const steps = runSteps([
+    {
+      role: "assistant",
+      timestamp: 100,
+      content: [
+        {
+          type: "tool_call",
+          id: "call-1",
+          name: "run_shell",
+          arguments: { command: "bun test" },
+        },
+        {
+          type: "tool_call",
+          id: "call-2",
+          name: "read_file",
+          arguments: { path: "a.ts" },
+        },
+      ],
+    },
+    {
+      role: "tool",
+      timestamp: 200,
+      content: [
+        {
+          type: "tool_result",
+          callId: "call-1",
+          content: [{ type: "text", text: long }],
+          isError: true,
+        },
+      ],
+    },
+  ]);
+  expect(steps).toEqual([
+    {
+      callId: "call-1",
+      name: "run_shell",
+      arguments: { command: "bun test" },
+      at: 100,
+      result: { content: long.slice(-4096), isError: true },
+    },
+    {
+      callId: "call-2",
+      name: "read_file",
+      arguments: { path: "a.ts" },
+      at: 100,
+    },
   ]);
 });

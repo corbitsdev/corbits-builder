@@ -6,8 +6,8 @@
 import { useEffect, useState, type ComponentType } from "react";
 import type { Type } from "arktype";
 import {
-  checkInput,
-  checkOutput,
+  validateInput,
+  validateOutput,
   type ProjectValues,
   type Screen,
   type ScreenActionBuilder,
@@ -166,9 +166,9 @@ export function screenHost<In, Out, Data, Prepared>(
     const shown: ProjectValues | undefined = settled ? {} : project;
     if (shown === undefined)
       return <InlineNote>{text.screenLoading}</InlineNote>;
-    const checked = checkInput(handle, screen, input, data, shown);
+    const checked = validateInput(handle, screen, input, data, shown);
     const answered =
-      output === undefined ? undefined : checkOutput(handle, screen, output);
+      output === undefined ? undefined : validateOutput(handle, screen, output);
     if (!checked.ok || checked.prepared === undefined || answered?.ok === false)
       return <InlineNote>{text.screenUnavailable}</InlineNote>;
 
@@ -183,7 +183,7 @@ export function screenHost<In, Out, Data, Prepared>(
       return false;
     };
     const answerWith = (chosen: Type<Out>["infer"]) => {
-      const result = checkOutput(handle, screen, chosen);
+      const result = validateOutput(handle, screen, chosen);
       if (!result.ok) throw new Error(result.text);
       return send(QuestionAnswer.assert({ output: result.output }));
     };

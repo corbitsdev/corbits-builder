@@ -38,18 +38,26 @@ export const AgentActivity = type({
 export type AgentActivity = typeof AgentActivity.infer;
 
 // A call a run made, as the run's saved conversation keeps it: the tool, the arguments it was
-// given, and whether its result came back.
+// given, when the turn that made it was saved, and its result's text, the end of it when long,
+// once the result came back.
 export const RunStep = type({
   "+": "reject",
   callId: "string > 0",
   name: "string > 0",
   arguments: "Record<string, unknown>",
-  returned: "boolean",
+  at: "number",
+  "result?": { "+": "reject", content: "string", isError: "boolean" },
 });
 export type RunStep = typeof RunStep.infer;
 
-// Every call a run made, in the order it made them.
-export const RunSteps = type({ "+": "reject", steps: RunStep.array() });
+// Every call a run made, in the order it made them, and the run's status as Interchange reports
+// it, with why when it failed.
+export const RunSteps = type({
+  "+": "reject",
+  status: "string > 0",
+  "error?": "string > 0",
+  steps: RunStep.array(),
+});
 export type RunSteps = typeof RunSteps.infer;
 
 export const ProjectActivity = type({

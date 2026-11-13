@@ -28,6 +28,7 @@ export function buildArtifactsMethods(
   | "saveDesignTweaks"
   | "projectPlan"
   | "declinePlanStep"
+  | "stopRun"
   | "restorePlanStep"
   | "goAheadPlanStep"
   | "setPlanStepAskFirst"
@@ -171,6 +172,14 @@ export function buildArtifactsMethods(
     declinePlanStep(tenantId, projectId, stepId, signal) {
       return request(
         `${projectPath(tenantId, projectId)}/plan/steps/${encodeURIComponent(stepId)}/decline`,
+        signal,
+        {},
+        "POST",
+      );
+    },
+    stopRun(tenantId, projectId, runId, signal) {
+      return request(
+        `${projectPath(tenantId, projectId)}/runs/${encodeURIComponent(runId)}/stop`,
         signal,
         {},
         "POST",

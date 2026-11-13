@@ -31,6 +31,7 @@ const args: WorkUnitStepViewProps = {
   report: undefined,
   onOpenDocument: fn(),
   watch: undefined,
+  stop: undefined,
   // The thread draws the steps as its own list of them; the library's list stands in for it here.
   run: (steps) => (
     <Activity steps={steps} open>

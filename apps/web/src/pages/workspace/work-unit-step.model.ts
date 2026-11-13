@@ -42,20 +42,20 @@ export function workUnitStanding(
   noteDispatch(room, dispatch);
   const status = dispatchStatus(dispatch, room);
   const done = status.state === "ready" || status.state === "finished";
+  const ended = done || status.state === "failed" || status.state === "stopped";
   const steps =
     (dispatch.runId === undefined
       ? undefined
       : room.steps?.get(dispatch.runId)) ?? [];
-  const { onWatch } = room;
+  const { onWatch, onStop } = room;
+  const { runId } = dispatch;
+  const role = wording.activity.role[dispatch.role];
   const watchLabel = WATCH[dispatch.role];
   return {
     unitKey: unit.key,
     status,
-    label: text.row(
-      wording.activity.role[dispatch.role],
-      workPhrase(dispatch, status),
-    ),
-    steps: done || status.state === "failed" ? steps.map(settled) : steps,
+    label: text.row(role, workPhrase(dispatch, status)),
+    steps: ended ? steps.map(settled) : steps,
     preview:
       status.state === "working" && dispatch.runId !== undefined
         ? room.previews?.get(dispatch.runId)
@@ -67,5 +67,11 @@ export function workUnitStanding(
       onWatch === undefined || watchLabel === undefined
         ? undefined
         : { label: watchLabel, open: () => onWatch(dispatch) },
+    stop:
+      onStop === undefined ||
+      runId === undefined ||
+      (status.state !== "working" && status.state !== "approval")
+        ? undefined
+        : { ask: text.stopAsk(role), confirm: () => onStop(runId) },
   };
 }

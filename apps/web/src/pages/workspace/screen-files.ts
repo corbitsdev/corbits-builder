@@ -8,18 +8,19 @@ import { installScreens, type ScreenFiles } from "./screens.ts";
 // run in a browser.
 installScreens({
   manifests: import.meta.glob<ScreenFiles["manifests"][string]>(
-    "../../../../../plugins/*/package.json",
+    "@plugins/*/package.json",
     { eager: true, import: "default" },
   ),
-  modules: import.meta.glob(
-    [
-      "../../../../../plugins/*/src/*/screen.ts",
-      "../../../../../plugins/*/data/*.json",
-    ],
-    { eager: true, import: "default" },
-  ),
+  definitions: import.meta.glob("@plugins/*/src/*/definition.ts", {
+    eager: true,
+    import: "default",
+  }),
+  data: import.meta.glob("@plugins/*/src/*/data.json", {
+    eager: true,
+    import: "default",
+  }),
   views: import.meta.glob<ScreenFiles["views"][string]>(
-    "../../../../../plugins/*/src/*/view.tsx",
+    "@plugins/*/src/*/view.tsx",
     { eager: true, import: "default" },
   ),
 });
