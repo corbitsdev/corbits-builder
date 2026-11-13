@@ -1,15 +1,6 @@
 import { designThemeIds } from "@corbits-builder/designer/skills" with { type: "macro" };
 import { HUB_NOTE_LEAD } from "./resume.ts";
 
-// The product standard every generated app is held to. It is product wording, so it lives in
-// config beside the other user-visible text; the components and the stack's docs are skills.
-export const DESIGN_STANDARD = `Product standard
-The app is a product. It has one app shell: a left sidebar or a top bar for navigation, reachable at every width (a drawer from the top bar on a phone). Each screen has a clear hierarchy: one title, one primary action, then its content, built from @corbits/react-ui components on the theme's spacing, type and colour tokens, and everything fits its container. Empty, loading and error states are designed.
-
-Every must in the requirements is on screen with real data, real units and sensible formatting (locale dates, rounded numbers, relative times such as "updated 2 min ago"). Where the requirements name an information item, it is visible without digging. Names beat identifiers: show the city, not coordinates. Say where data comes from and when it was last updated.
-
-Your skills hold the components to build with and where each tool's docs start.`;
-
 // The looks the coordinator draws a varied set of design concepts from. Each starts from a design
 // theme and says how its designer adjusts the theme's tokens. It may also propose a concept of its
 // own that fits the idea better; that one starts from the kit's neutral theme.

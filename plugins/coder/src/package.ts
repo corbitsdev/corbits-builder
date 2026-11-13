@@ -17,7 +17,6 @@ import {
   trimHistory,
 } from "@corbits-builder/hub/workflows/compaction";
 import { nativePackageName } from "@corbits-builder/hub/workflows/package-name";
-import { DESIGN_STANDARD } from "@corbits-builder/hub/config/design";
 import manifest from "../package.json";
 import { createCoderAgent } from "./agent.ts";
 import { startFrom, type StarterName } from "./contract.ts";
@@ -43,20 +42,13 @@ const CODER_MCP: McpToolsOptions = {
   allowWithoutAsk: ["exa.web_search_exa", "exa.web_fetch_exa"],
 };
 
-// What only the coder of a web app, whose starter serves one, gets: the design standard, the
-// component kit's skill and a browser to try the app in.
-const WEB_APP = {
-  standards: [DESIGN_STANDARD],
-  skills: ["react-ui", "stack-docs"],
-};
-const NOT_WEB_APP = { standards: [], skills: ["stack-docs"] };
-
 /**
  * The coder's workflow package for code that starts from one starter, or from none.
  * `packageApproval` is frozen into the definition: "ask" declares install_packages as an ask tool,
  * "allow" declares it plain (AUTH.md, Grant Requirements on Definitions; the definition hash
- * differs, so each is its own approved definition). The starter is frozen in too: its prompt, its
- * tools and the check that finishes it.
+ * differs, so each is its own approved definition). The starter is frozen in too: its tools and
+ * the check that finishes it. Only the coder of a web app, whose starter serves one, gets the
+ * component kit's skill and a browser to try the app in.
  */
 export async function coderPackage(
   name: string,
@@ -64,7 +56,7 @@ export async function coderPackage(
   starter: StarterName | undefined,
 ) {
   const { serves } = startFrom(starter);
-  const { standards, skills } = serves ? WEB_APP : NOT_WEB_APP;
+  const skills = serves ? ["react-ui", "stack-docs"] : ["stack-docs"];
   const compacting = compactingDirector(nativePackageName(name));
   const { source, contextWindow, timeouts, parameters } =
     roleInference("coder");
@@ -82,8 +74,6 @@ export async function coderPackage(
     }),
     id: "coder",
     capabilities: [],
-    standards,
-    starter,
     inference: { ...source, parameters },
     // The project role child supplies the sandboxed workspace and executor.
     tools: [

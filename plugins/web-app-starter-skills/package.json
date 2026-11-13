@@ -1,0 +1,16 @@
+{
+  "name": "@corbits-builder/web-app-starter-skills",
+  "version": "0.1.0-rc.3",
+  "private": true,
+  "description": "How the coder builds a web app on the web-app starter: the design, the order of the work and the product standard.",
+  "license": "SEE LICENSE IN ../../LICENSE.md",
+  "author": "Sawyer Cutler <sawyer@dirtroad.dev>",
+  "type": "module",
+  "builder": {
+    "handle": "web-app-starter-skills",
+    "runs": "skills",
+    "extends": "coder",
+    "when": "For a project started from the web-app starter, with client/, server/ and packages/shared at its root; any other project ignores it.",
+    "skills": "./skills"
+  }
+}

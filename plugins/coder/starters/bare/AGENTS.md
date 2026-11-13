@@ -4,7 +4,7 @@ A single TypeScript package on Bun, with no framework. It starts as a program th
 
 - `src/index.ts` is the entry point: `bun run start` runs it and `bun run build` bundles it into `dist/`. Split the code into modules under `src/` as it grows.
 - Tests sit beside the code they test as `src/<name>.test.ts` and use `bun:test`. Each thing the project does has a test that fails when it breaks.
-- Add a package only when the project needs it, with install_packages.
+- Add a package only when the project needs it, with install_packages. The saved code must install from its `bun.lock` as it is, because the next workspace is prepared with a frozen install, so never edit dependencies in `package.json` by hand; the check fails until `bun.lock` matches.
 
 Whatever the project is (a command-line tool, a library, a script or a service), keep the four scripts in `package.json` working: `start` runs it, `test` runs the tests, `typecheck` checks the types and `build` produces what ships. Change what a script runs when the project needs it, such as a library's build emitting its types.
 

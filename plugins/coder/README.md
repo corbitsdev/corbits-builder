@@ -38,10 +38,11 @@ in the workspace, `install_packages`, Exa search, `read_artifact`,
 - `src/package.ts`: `coderPackage`, which assembles the agent from the hub's
   model, director and tools for one starter, and asks the director to hold a
   reply until `check-stack` passes. `src/packages/` holds one entry per installed package.
-- `src/prompt.ts`: the system prompt: what any coding job asks, with each
-  starter's own part.
+- `src/prompt.ts`: the system prompt, the same for every project. What a
+  starter adds is in its `AGENTS.md` and, for the web-app starter, the
+  `web-app-starter-skills` pack.
 - `src/agent.ts`: `createCoderAgent`, which requires an explicit provider
-  and model and appends the hub's design standard to the prompt.
+  and model.
 - `src/workflow.ts`: `createCoderWorkflow`, a mail-triggered step on a posix
   sidecar that takes one assignment and ends. A later change is a new run
   that clones the saved app.

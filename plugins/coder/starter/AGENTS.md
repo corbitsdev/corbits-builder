@@ -32,6 +32,7 @@ Commands, run from the root:
 - `bun run build` builds the client.
 - `bun run start` serves the built client and the API on `PORT`; `check-app` runs it for you.
 - A package belongs to the one workspace package that imports it: `client`, `server` or `packages/shared`.
+- The saved code must install from its `bun.lock` as it is, because the next workspace is prepared with a frozen install, so never edit dependencies in a `package.json` by hand; the check fails until `bun.lock` matches.
 
 ## Checking the app
 

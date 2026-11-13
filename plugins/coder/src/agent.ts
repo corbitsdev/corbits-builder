@@ -5,8 +5,7 @@ import {
   type DirectorRef,
   type InferencePreference,
 } from "@intx/agent/authoring";
-import type { StarterName } from "./contract.ts";
-import { coderPrompt } from "./prompt.ts";
+import { CODER_PROMPT } from "./prompt.ts";
 import { version } from "../package.json";
 
 export function createCoderAgent<Env extends BaseEnv>(options: {
@@ -15,16 +14,12 @@ export function createCoderAgent<Env extends BaseEnv>(options: {
   readonly tools: readonly AnnotatedToolFactory<Env>[];
   readonly director?: DirectorRef;
   readonly capabilities: readonly string[];
-  readonly standards: readonly string[];
-  readonly starter: StarterName | undefined;
 }) {
   if (!options.inference.provider.trim() || !options.inference.model.trim())
     throw new Error("Coder requires an explicit provider and model");
   return defineAgent({
     id: options.id,
-    systemPrompt: [coderPrompt(options.starter), ...options.standards].join(
-      "\n\n",
-    ),
+    systemPrompt: CODER_PROMPT,
     tools: options.tools,
     ...(options.director ? { director: options.director } : {}),
     capabilities: options.capabilities,
