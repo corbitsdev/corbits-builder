@@ -14,7 +14,9 @@ its runs (`starters`). Its `coder.starters` block names what a first build can
 start from: `web-app` (`starter/`, finished by `check-app`) and `bare`
 (`starters/bare/`, finished by `check-project`). `coder build` takes the
 starter's name, the first build records it as `stack.starter`, and a later
-`coder change` starts the coder that fits it. Each starter has two packages,
+`coder change` starts the coder that fits it. The first build also records the
+starter's `checks` as `stack.checks`, the commands the `builds` check runs in
+order; `build` and `change` may correct them. Each starter has two packages,
 one that asks the person before installing a package and one (`-any-package`)
 that does not: `coder`, `coder-any-package`, `coder-bare` and
 `coder-bare-any-package`. The

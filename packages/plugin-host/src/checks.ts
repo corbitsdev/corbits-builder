@@ -234,25 +234,61 @@ async function networkProof(
   return pass(`${address.text} answered ${times} times in a row`, evidence);
 }
 
+// What a command check runs and each of its commands as shown, in order; or why it runs nothing.
+async function commandSteps(
+  command: Of<"command">["command"],
+  view: ProjectView,
+) {
+  if ("run" in command) {
+    const { setup, run } = command;
+    return {
+      steps: setup ? { setup, run } : { run },
+      shown: (setup ? [setup, run] : [run]).map((argv) => argv.join(" ")),
+    };
+  }
+  const stored = await view.values(command.value);
+  const lines =
+    typeof stored === "string"
+      ? stored
+          .split("\n")
+          .map((line) => line.trim())
+          .filter((line) => line !== "")
+      : [];
+  if (lines.length === 0)
+    return {
+      missing: `the project has not declared its checks yet: its ${command.value} value holds no commands`,
+    };
+  return { steps: { lines }, shown: lines };
+}
+
 async function commandProof(proof: Of<"command">, view: ProjectView) {
   if (view.app.version === undefined) return fail(NO_APP);
-  const { setup, run, timeoutSeconds = COMMAND_SECONDS } = proof.command;
-  const shown = run.join(" ");
-  const ran = await view.app.run(proof.command, timeoutSeconds);
-  if ("error" in ran) return fail(`${shown} could not run: ${ran.error}`);
-  const stepShown = ran.step === "setup" && setup ? setup.join(" ") : shown;
+  const { timeoutSeconds = COMMAND_SECONDS } = proof.command;
+  const planned = await commandSteps(proof.command, view);
+  if ("missing" in planned) return fail(planned.missing);
+  const { steps, shown } = planned;
+  const whole = shown.join(", then ");
+  const ran = await view.app.run(steps, timeoutSeconds);
+  if ("error" in ran) return fail(`${whole} could not run: ${ran.error}`);
+  const ended = ran.step === null ? whole : (shown[ran.step] ?? whole);
   const evidence = [
-    `command: ${stepShown}`,
+    `command: ${ended}`,
     `exit code: ${ran.exitCode ?? "none"}`,
     ...ran.output.trimEnd().split("\n"),
   ];
   if (ran.timedOut)
-    return fail(`${shown} ran past ${timeoutSeconds} seconds`, evidence);
-  if (ran.step === "setup")
-    return fail(`${stepShown} failed, so ${shown} did not run`, evidence);
-  return ran.exitCode === 0
-    ? pass(`${shown} succeeded on the project's code`, evidence)
-    : fail(`${shown} exited ${ran.exitCode ?? "without a code"}`, evidence);
+    return fail(`${whole} ran past ${timeoutSeconds} seconds`, evidence);
+  if (ran.exitCode !== 0) {
+    const skipped = shown.slice((ran.step ?? shown.length) + 1);
+    const failed = `${ended} exited ${ran.exitCode ?? "without a code"}`;
+    return fail(
+      skipped.length === 0
+        ? failed
+        : `${failed}, so ${skipped.join(", then ")} did not run`,
+      evidence,
+    );
+  }
+  return pass(`${whole} succeeded on the project's code`, evidence);
 }
 
 /** Runs a ready-made check, or several combined, against the project as saved. */
@@ -316,7 +352,9 @@ export function proofText(proof: Proof): string {
   if ("http" in proof) return `${address(proof.http)} answers`;
   if ("dns" in proof) return `${address(proof.dns)} resolves`;
   if ("command" in proof)
-    return `${proof.command.run.join(" ")} succeeds on the project's code`;
+    return "run" in proof.command
+      ? `${proof.command.run.join(" ")} succeeds on the project's code`
+      : `the commands in the project value ${proof.command.value} succeed on the project's code`;
   return `${address(proof.health.address)} answers ${proof.health.times} times in a row`;
 }
 

@@ -12,7 +12,7 @@ export const CODER_INPUTS = [
 // What a first build starts from, by name: the folder of files the workspace begins as, the coder
 // package that builds on it, the check that says it is finished, whether it serves a web app to
 // preview, the command that prepares a fresh workspace, and what an agent can do when that command
-// fails. A project whose starter was never recorded, built or imported before starters had
+// fails, and the commands a first build saves as the project's stack.checks. A project whose starter was never recorded, built or imported before starters had
 // names, is a web app.
 export const STARTERS = manifest.coder.starters;
 export type StarterName = keyof typeof STARTERS;

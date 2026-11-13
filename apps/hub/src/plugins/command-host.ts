@@ -1,15 +1,16 @@
 // Runs one command against a saved app version for a check, in the coder's sandbox. srt's sandbox
 // manager is process-global, so each run is a process of its own. stdin carries the app's files and
 // the command; the files go into the workspace named in argv, the command's setup runs when it
-// declares one, and then the command, both with the registry-only network. One JSON line on stdout says how it went, and the
-// process exits. SIGTERM stops the command and its sandbox first.
+// declares one, and then the command, or each of its lines in order until one fails, all with the
+// registry-only network. One JSON line on stdout says how it went, and the process exits. SIGTERM
+// stops the command and its sandbox first.
 import { sep } from "node:path";
 import { type } from "arktype";
 import { AppBundle } from "@corbits-builder/schemas/artifact";
 import { writeBundle } from "../artifacts/design-tools.ts";
 import { bundleFiles } from "../builds/app-snapshot.ts";
 import { buildPackageLayout } from "../builds/package-layout.ts";
-import { createPosixBuildExecutor } from "../builds/posix-sandbox.ts";
+import { createPosixBuildExecutor, quote } from "../builds/posix-sandbox.ts";
 import {
   runInSandbox,
   type SandboxCommand,
@@ -18,18 +19,18 @@ import {
 export const CommandAsk = type({
   "+": "reject",
   bundle: AppBundle,
-  command: {
+  command: type({
     "+": "reject",
     "setup?": "(string > 0)[] >= 1",
     run: "(string > 0)[] >= 1",
-  },
+  }).or({ "+": "reject", lines: "(string > 0)[] >= 1" }),
   timeoutMs: "number.integer > 0",
 });
 export type CommandAsk = typeof CommandAsk.infer;
 
 export const CommandReport = type({
   "+": "reject",
-  step: "'setup' | 'command'",
+  step: "number.integer >= 0 | null",
   exitCode: "number.integer | null",
   output: "string",
   timedOut: "boolean",
@@ -40,6 +41,15 @@ export type CommandReport = typeof CommandReport.infer;
 export const OUTPUT_TAIL_CHARS = 4096;
 // What the sandbox may return of one command before it is stopped.
 const OUTPUT_LIMIT_BYTES = 4 * 1024 * 1024;
+
+// The shell lines a command runs, in order: a program and its arguments quoted so none is read as
+// shell syntax, or a project's own lines as written.
+const commandLines = (command: CommandAsk["command"]) =>
+  "lines" in command
+    ? command.lines
+    : [command.setup, command.run]
+        .filter((argv) => argv !== undefined)
+        .map((argv) => argv.map(quote).join(" "));
 
 async function runCommand(
   workspace: string,
@@ -57,7 +67,7 @@ async function runCommand(
     },
     await buildPackageLayout(),
   );
-  const shown = (step: "setup" | "command", ran: SandboxCommand) => ({
+  const shown = (step: number, ran: SandboxCommand) => ({
     step,
     exitCode: ran.exitCode,
     output: ran.output
@@ -65,13 +75,14 @@ async function runCommand(
       .slice(-OUTPUT_TAIL_CHARS),
     timedOut: ran.timedOut,
   });
+  const lines = commandLines(ask.command);
   try {
-    const { setup, run } = ask.command;
-    if (setup) {
-      const prepared = await runInSandbox(executor, setup, left(), signal);
-      if (prepared.exitCode !== 0) return shown("setup", prepared);
+    for (const [step, line] of lines.entries()) {
+      const ran = await runInSandbox(executor, line, left(), signal);
+      if (ran.exitCode !== 0 || step === lines.length - 1)
+        return shown(step, ran);
     }
-    return shown("command", await runInSandbox(executor, run, left(), signal));
+    throw new Error("a command check runs at least one command");
   } finally {
     await executor.dispose();
   }

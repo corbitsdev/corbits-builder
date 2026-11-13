@@ -4,6 +4,7 @@ import { open, readdir, realpath } from "node:fs/promises";
 import { dirname, join, relative } from "node:path";
 import { HUB_CREDENTIAL_HANDLE } from "@intx/types/credential-delivery";
 import type { RuntimeCapabilities } from "@intx/types/runtime-capabilities";
+import { STARTERS, type StarterName } from "@corbits-builder/coder/contract";
 import {
   AppBundle,
   ArtifactContent,
@@ -276,18 +277,24 @@ export async function readRunDesignTheme(
 }
 
 // Saves the starter a first build's workspace began from as the project's stack.starter, so a
-// later change starts the coder that fits the code. The build action writes it.
+// later change starts the coder that fits the code, and that starter's checks as its stack.checks,
+// the commands the builds check runs. The build action writes both.
 export async function recordStarter(
   capabilities: RuntimeCapabilities,
   scope: { tenantId: string; projectId: string },
-  starter: string,
+  starter: StarterName,
   signal: AbortSignal,
 ) {
   await workflowHttpJson({
     capabilities,
     handle: HUB_CREDENTIAL_HANDLE,
     path: projectPath(scope) + "/run-values",
-    body: { values: { "stack.starter": starter } },
+    body: {
+      values: {
+        "stack.starter": starter,
+        "stack.checks": STARTERS[starter].checks.join("\n"),
+      },
+    },
     maxResponseBytes: 16384,
     signal,
   });

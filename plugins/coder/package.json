@@ -75,7 +75,8 @@
         ],
         "writes": [
           "stack.language",
-          "stack.starter"
+          "stack.starter",
+          "stack.checks"
         ],
         "start": {
           "workflow": "coder",
@@ -103,7 +104,8 @@
           "stack.starter"
         ],
         "writes": [
-          "stack.language"
+          "stack.language",
+          "stack.checks"
         ],
         "start": {
           "workflow": "coder",
@@ -125,16 +127,7 @@
         "all": [
           {
             "command": {
-              "setup": [
-                "bun",
-                "install",
-                "--frozen-lockfile"
-              ],
-              "run": [
-                "bun",
-                "run",
-                "build"
-              ]
+              "value": "stack.checks"
             }
           }
         ],
@@ -165,6 +158,10 @@
       "stack.starter": {
         "about": "What the project's code started from: web-app for a web app with a browser client and a server, bare for anything else. Builder saves it when the first build starts.",
         "type": "text"
+      },
+      "stack.checks": {
+        "about": "The commands, in order, that prove the project's saved code installs, builds and passes its tests, one per line.",
+        "type": "text"
       }
     }
   },
@@ -177,6 +174,10 @@
         "check": "check-app",
         "serves": true,
         "setup": "bun install --frozen-lockfile",
+        "checks": [
+          "bun install --frozen-lockfile",
+          "bun run build"
+        ],
         "setupFailed": "If it says the lockfile is frozen, bring bun.lock up to date with install_packages, naming the packages the output says changed at the versions package.json gives them."
       },
       "bare": {
@@ -186,6 +187,10 @@
         "check": "check-project",
         "serves": false,
         "setup": "bun install --frozen-lockfile",
+        "checks": [
+          "bun install --frozen-lockfile",
+          "bun run build"
+        ],
         "setupFailed": "If it says the lockfile is frozen, bring bun.lock up to date with install_packages, naming the packages the output says changed at the versions package.json gives them."
       }
     }

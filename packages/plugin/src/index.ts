@@ -149,17 +149,23 @@ export const { Proof, Address } = scope({
     },
   },
   Dns: { "+": "reject", dns: "Address" },
-  // A command run against the saved app, passing when it exits 0. run is the program and its
-  // arguments, never a shell line, so no part of it is read as shell syntax. setup, in the same
-  // form, prepares the workspace first, such as installing packages; the check runs nothing else.
-  Command: {
+  // Commands run against the saved app, passing when each exits 0.
+  Command: { "+": "reject", command: "Steps | Lines" },
+  // run is the program and its arguments, never a shell line, so no part of it is read as shell
+  // syntax. setup, in the same form, prepares the workspace first, such as installing packages; the
+  // check runs nothing else.
+  Steps: {
     "+": "reject",
-    command: {
-      "+": "reject",
-      "setup?": "(string > 0)[] >= 1",
-      run: "(string > 0)[] >= 1",
-      "timeoutSeconds?": "1 <= number.integer <= 300",
-    },
+    "setup?": "(string > 0)[] >= 1",
+    run: "(string > 0)[] >= 1",
+    "timeoutSeconds?": "1 <= number.integer <= 300",
+  },
+  // The shell command lines a project value holds, one per line, run in order until one fails:
+  // the project, not the plugin, knows the commands that prove its code.
+  Lines: {
+    "+": "reject",
+    value: "string > 0",
+    "timeoutSeconds?": "1 <= number.integer <= 300",
   },
   All: { "+": "reject", all: "Proof[] >= 1" },
   Any: { "+": "reject", any: "Proof[] >= 1" },
@@ -447,16 +453,22 @@ export const fail = (
   evidence: readonly string[] = [],
 ): CheckOutcome => ({ pass: false, summary, evidence });
 
-/** What a command check runs: setup, when declared, then run, each a program and its arguments. */
-export type CommandSteps = { setup?: string[]; run: string[] };
+/**
+ * What a command check runs: setup, when declared, then run, each a program and its arguments; or
+ * shell command lines, in order.
+ */
+export type CommandSteps =
+  | { setup?: string[]; run: string[] }
+  | { lines: string[] };
 
 /**
- * A command run against the saved app: the step it ended on, its exit code (null when it did not
+ * A command run against the saved app: the index of the command it ended on, in the order they
+ * run, or null when it was stopped before saying; that command's exit code (null when it did not
  * finish), the tail of its output and whether it ran out of time; or why it could not run.
  */
 export type CommandRun =
   | {
-      step: "setup" | "command";
+      step: number | null;
       exitCode: number | null;
       output: string;
       timedOut: boolean;
@@ -479,7 +491,8 @@ export type ProjectView = {
     // record goes stale when the file's content changes or it comes or goes.
     read(path: string): Promise<string | undefined>;
     // Runs a command against the saved version in a sandbox of its own, after its setup when it
-    // declares one: how the step that ended it went, or why it could not run at all.
+    // declares one, or each of its lines in order until one fails: how the step that ended it
+    // went, or why it could not run at all.
     run(command: CommandSteps, timeoutSeconds: number): Promise<CommandRun>;
   };
   documents: {

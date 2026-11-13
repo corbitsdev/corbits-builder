@@ -1,4 +1,4 @@
-import { quote, type createPosixBuildExecutor } from "./posix-sandbox.ts";
+import type { createPosixBuildExecutor } from "./posix-sandbox.ts";
 
 type Executor = Awaited<ReturnType<typeof createPosixBuildExecutor>>;
 
@@ -16,13 +16,10 @@ export type SandboxCommand = {
 const EXIT_HEAD = /^exit code (\d+)\n/;
 const TIMED_OUT = "command timed out";
 
-/**
- * Runs one command in the sandbox's workspace, its arguments quoted for the sandbox's shell so
- * none is read as shell syntax. signal stops it early, which throws.
- */
+/** Runs one shell command line in the sandbox's workspace. signal stops it early, which throws. */
 export async function runInSandbox(
   executor: Executor,
-  argv: readonly string[],
+  command: string,
   timeoutMs: number,
   signal?: AbortSignal,
 ): Promise<SandboxCommand> {
@@ -35,7 +32,7 @@ export async function runInSandbox(
       {
         id: crypto.randomUUID(),
         name: "run_shell",
-        arguments: { command: argv.map(quote).join(" "), timeout: timeoutMs },
+        arguments: { command, timeout: timeoutMs },
       },
       AbortSignal.any([late, ...(signal ? [signal] : [])]),
     );
@@ -60,4 +57,4 @@ export const installPackages = (
   executor: Executor,
   timeoutMs: number,
   signal?: AbortSignal,
-) => runInSandbox(executor, ["bun", "install"], timeoutMs, signal);
+) => runInSandbox(executor, "bun install", timeoutMs, signal);

@@ -48,7 +48,7 @@ async function runHost(
     ]);
     if (stopped)
       return {
-        step: "command",
+        step: null,
         exitCode: null,
         output: stderr.slice(-OUTPUT_TAIL_CHARS),
         timedOut: true,
