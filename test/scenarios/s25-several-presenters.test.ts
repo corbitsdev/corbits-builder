@@ -75,8 +75,8 @@ scenario({
     );
     expect(reports).toHaveLength(4);
     for (const report of reports) {
-      expect(report).toContain('action: "choose"');
-      expect(report).toContain('action: "review"');
+      expect(report).toContain("- The choose screen, when: ");
+      expect(report).toContain("- The review screen, when: ");
     }
   },
 });
