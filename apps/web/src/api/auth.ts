@@ -7,7 +7,7 @@ import type { Workspace } from "@corbits-builder/client";
 import { type } from "arktype";
 import { productName, wording } from "../config.ts";
 import { hubCredentials, hubOrigin } from "./origin.ts";
-import { productClient, timedCall } from "./transport.ts";
+import { productClient } from "./transport.ts";
 import { ApiFailure } from "./types.ts";
 import {
   readStoredPreference,
@@ -180,7 +180,7 @@ let cachedTenantId: string | undefined;
 
 /** The person's workspaces under the install root, oldest first, read from their memberships. */
 export async function listWorkspaces(): Promise<Workspace[]> {
-  return (await timedCall((signal) => productClient().workspaces(signal))).data;
+  return (await productClient().workspaces()).data;
 }
 
 /**
@@ -206,9 +206,7 @@ export function openWorkspace(tenantId: string): void {
 
 /** A new workspace under the install root; the hub picks its slug and makes the person its owner. */
 export async function createWorkspace(name: string): Promise<Workspace> {
-  const created = await timedCall((signal) =>
-    productClient().createWorkspace({ name }, signal),
-  );
+  const created = await productClient().createWorkspace({ name });
   return { id: created.id, name };
 }
 

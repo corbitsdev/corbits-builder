@@ -1,9 +1,9 @@
+import { useState } from "react";
 import type { Meta, StoryObj } from "@storybook/react-vite";
-import type { AskedQuestion } from "@intx/types/runtime-core";
 import { fn } from "storybook/test";
-import { QuestionsCard } from "./questions-card.tsx";
+import { QuestionsCard, type PromptsQuestion } from "./questions-card.tsx";
 
-const asked: AskedQuestion = {
+const asked: PromptsQuestion = {
   questions: [
     {
       id: "c2a9a3f4-1d7e-4c55-9a51-2f0a0b6c1e01",
@@ -37,6 +37,17 @@ const asked: AskedQuestion = {
       multiple: true,
       custom: true,
     },
+    {
+      id: "devices",
+      header: "Devices",
+      question: "Where will people order from?",
+      options: [
+        { label: "Phone", description: "" },
+        { label: "Desktop browser", description: "" },
+      ],
+      multiple: true,
+      custom: false,
+    },
   ],
 };
 
@@ -46,7 +57,6 @@ const meta = {
   args: {
     id: "signal-1",
     asked,
-    layout: "steps",
     state: {
       kind: "open",
       disabled: false,
@@ -54,7 +64,6 @@ const meta = {
       onCancel: fn(() => Promise.resolve(true)),
     },
   },
-  argTypes: { layout: { control: "inline-radio", options: ["steps", "all"] } },
   decorators: [
     (Story) => (
       <div style={{ maxWidth: 640 }}>
@@ -67,30 +76,58 @@ const meta = {
 export default meta;
 type Story = StoryObj<typeof meta>;
 
-/** One question at a time under step tabs ending in Submit. */
-export const OneAtATime: Story = {};
+/** One question at a time, the answered ones above it and the next below. */
+export const Open: Story = {};
 
-export const AllAtOnce: Story = { args: { layout: "all" } };
+/** One question: no position, and the button sends. */
+export const OneQuestion: Story = {
+  args: { asked: { questions: [asked.questions[1]!] } },
+};
 
-/** A pick on each question: the first moves the steps on, so the second shows a ticked row. */
-export const OneAtATimeChosen: Story = {
-  play: async ({ canvas, userEvent }) => {
-    await userEvent.click(
-      canvas.getByRole("option", { name: "Bakery owners (Recommended)" }),
-    );
-    await userEvent.click(canvas.getByRole("option", { name: "Take orders" }));
+/** A question with no options: a field for the person's own words. */
+export const OwnWords: Story = {
+  args: {
+    asked: {
+      questions: [
+        {
+          id: "name",
+          header: "Name",
+          question: "What should the app be called?",
+          options: [],
+          multiple: false,
+          custom: true,
+        },
+      ],
+    },
   },
 };
 
-export const AllAtOnceChosen: Story = {
-  args: { layout: "all" },
-  play: async ({ canvas, userEvent }) => {
-    await userEvent.click(
-      canvas.getByRole("option", { name: "Counter staff" }),
-    );
-    // The kit's checkbox label holds its description too, so its name starts with the label.
-    await userEvent.click(
-      canvas.getByRole("checkbox", { name: /^Take orders/ }),
+/**
+ * The send fails. As in the workspace, the card stays sending until the hub answers; "Fail the
+ * send" refuses it, and the card stays on the last question with the answers kept.
+ */
+export const NotSent: Story = {
+  render: function NotSentCard(args) {
+    const [fail, setFail] = useState<() => void>();
+    const onSend = () =>
+      new Promise<boolean>((resolve) => {
+        setFail(() => () => {
+          setFail(undefined);
+          resolve(false);
+        });
+      });
+    return (
+      <>
+        <QuestionsCard
+          {...args}
+          state={{ kind: "open", disabled: false, onSend, onCancel: onSend }}
+        />
+        {fail !== undefined && (
+          <button type="button" onClick={fail}>
+            Fail the send
+          </button>
+        )}
+      </>
     );
   },
 };
@@ -114,6 +151,7 @@ export const Answered: Story = {
             "Take orders",
             "List the day's orders",
           ],
+          devices: ["Phone"],
         },
       },
     },

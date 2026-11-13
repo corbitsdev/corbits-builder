@@ -1,33 +1,37 @@
 /**
- * The coordinator's open question as a card the person answers. The run log holds the question and,
- * once sent, the answer, so the card reads the same after a reload and settles when the answer lands.
+ * The coordinator's open question as a card the person answers one question at a time. The run log
+ * holds the question and, once sent, the answer, so the card reads the same after a reload and
+ * settles when the answer lands.
  */
 import {
   useEffect,
   useRef,
   useState,
+  type Dispatch,
   type KeyboardEvent,
   type ReactNode,
+  type SetStateAction,
 } from "react";
-import { Check, CornerDownRight } from "lucide-react";
 import {
-  Button,
-  Checkbox,
-  GateBlock,
-  Input,
-  IntakeForm,
-} from "@corbits/react-ui";
+  Check,
+  ChevronDown,
+  ChevronLeft,
+  CornerDownLeft,
+  CornerDownRight,
+  Pencil,
+  Plus,
+} from "lucide-react";
+import { Button, Checkbox, GateBlock, Input } from "@corbits/react-ui";
+import { Tooltip } from "@corbits/react-ui/ui/tooltip";
 import type { AskedQuestion } from "@intx/types/runtime-core";
 import type { QuestionAnswer } from "@intx/types/signals";
-import { wording } from "../../config.ts";
-import type { QuestionsLayout } from "../../questions-layout-setting.ts";
-import { clsx } from "clsx";
 import { type } from "arktype";
-import { Fault } from "../../components.jsx";
 import {
   ScreenActions,
   ScreenCancel,
 } from "@corbits-builder/plugin-ui/screen-actions";
+import { wording } from "../../config.ts";
+import { Fault } from "../../components.jsx";
 import { readJson } from "../../json.ts";
 import styles from "./questions-card.module.css";
 
@@ -37,43 +41,6 @@ const text = wording.questions;
 export type PromptsQuestion = Exclude<AskedQuestion, { plugin: string }>;
 
 type Question = PromptsQuestion["questions"][number];
-
-type Answer = {
-  readonly chosen: readonly string[];
-  readonly other: boolean;
-  readonly otherText: string;
-};
-
-// Picks made before sending survive a reload of this tab, and are dropped once the answer is sent.
-const Draft = type({
-  "[string]": { chosen: "string[]", other: "boolean", otherText: "string" },
-});
-const draftKey = (id: string) => `question-draft:${id}`;
-
-function readDraft(id: string): Record<string, Answer> {
-  try {
-    const raw = sessionStorage.getItem(draftKey(id));
-    return (raw === null ? null : readJson(raw, Draft)) ?? {};
-  } catch (error) {
-    console.warn(
-      "Browser storage is unavailable; picks last until a reload.",
-      error,
-    );
-    return {};
-  }
-}
-
-function writeDraft(id: string, answers: Record<string, Answer> | null): void {
-  try {
-    if (answers === null) sessionStorage.removeItem(draftKey(id));
-    else sessionStorage.setItem(draftKey(id), JSON.stringify(answers));
-  } catch (error) {
-    console.warn(
-      "Browser storage is unavailable; picks last until a reload.",
-      error,
-    );
-  }
-}
 
 export type QuestionsState =
   | {
@@ -86,35 +53,137 @@ export type QuestionsState =
     }
   | { readonly kind: "answered"; readonly answer: QuestionAnswer };
 
-function answerLabels(question: Question, answer: Answer): string[] {
+/** The options picked, by label, plus the person's own words; typing those is the "Something else" answer. */
+type Answer = { readonly chosen: readonly string[]; readonly own: string };
+
+const blank: Answer = { chosen: [], own: "" };
+
+// Picks made before sending survive a reload of this tab, and are dropped once the answer is sent.
+const KeptAnswers = type({ "[string]": { chosen: "string[]", own: "string" } });
+const draftKey = (id: string) => `question-draft:${id}`;
+
+function readKept(id: string): Record<string, Answer> {
+  try {
+    const raw = sessionStorage.getItem(draftKey(id));
+    return (raw === null ? null : readJson(raw, KeptAnswers)) ?? {};
+  } catch (error) {
+    console.warn(
+      "Browser storage is unavailable; picks last until a reload.",
+      error,
+    );
+    return {};
+  }
+}
+
+function writeKept(id: string, answers: Record<string, Answer> | null): void {
+  try {
+    if (answers === null) sessionStorage.removeItem(draftKey(id));
+    else sessionStorage.setItem(draftKey(id), JSON.stringify(answers));
+  } catch (error) {
+    console.warn(
+      "Browser storage is unavailable; picks last until a reload.",
+      error,
+    );
+  }
+}
+
+function answered(answer: Answer): boolean {
+  return answer.chosen.length > 0 || answer.own.trim() !== "";
+}
+
+/**
+ * The options that count. On a pick-one question the person's own words, while there are any,
+ * stand in for the option picked; the pick is kept, so clearing the words brings it back.
+ */
+function chosenOf(question: Question, answer: Answer): readonly string[] {
+  return !question.multiple && answer.own.trim() !== "" ? [] : answer.chosen;
+}
+
+/** The answer as it is sent: the options that count, then the person's own words. */
+export function answerLabels(question: Question, answer: Answer): string[] {
+  const chosen = chosenOf(question, answer);
   const labels = question.options
-    .filter((option) => answer.chosen.includes(option.label))
+    .filter((option) => chosen.includes(option.label))
     .map((option) => option.label);
-  const own = answer.otherText.trim();
-  return answer.other && own !== "" ? [...labels, own] : labels;
+  const own = answer.own.trim();
+  return own === "" ? labels : [...labels, own];
 }
 
-function complete(answer: Answer): boolean {
-  if (answer.other) return answer.otherText.trim() !== "";
-  return answer.chosen.length > 0;
+/** Option `index` picked: the only choice on a pick-one question, toggled on a pick-any one. */
+function pick(question: Question, answer: Answer, index: number): Answer {
+  const value = question.options[index]?.label;
+  if (value === undefined) return answer;
+  if (!question.multiple) return { chosen: [value], own: "" };
+  return {
+    ...answer,
+    chosen: answer.chosen.includes(value)
+      ? answer.chosen.filter((item) => item !== value)
+      : [...answer.chosen, value],
+  };
 }
 
-type AnswerRow = { id: string; prompt: string; answer: string };
-
-function AnswerList({ answers }: { answers: readonly AnswerRow[] }) {
-  return (
-    <dl className={styles.answers}>
-      {answers.map(({ id, prompt, answer }) => (
-        <div key={id}>
-          <dt>{prompt}</dt>
-          <dd>{answer}</dd>
-        </div>
-      ))}
-    </dl>
-  );
+/**
+ * The answer Enter carries on with from an option the person moved to. ↑↓ only move focus, so on a
+ * pick-one question Enter takes that option: what the person sees ringed goes forward.
+ * Words the person typed are never swapped for an option focus merely passes over; picking one
+ * takes a click, Space or its number.
+ */
+export function enterAnswer(
+  question: Question,
+  answer: Answer,
+  focused: number,
+): Answer {
+  if (
+    question.multiple ||
+    answer.own.trim() !== "" ||
+    question.options[focused] === undefined
+  )
+    return answer;
+  return pick(question, answer, focused);
 }
 
-/** The card once answered, the same in either layout: each question with its answer. */
+/** What a key does on the open card, by where focus is. */
+export type KeyIntent =
+  | { kind: "next" }
+  | { kind: "forward" }
+  | { kind: "back" }
+  | { kind: "move"; by: 1 | -1 }
+  | { kind: "pick"; index: number }
+  | { kind: "pickFocused" };
+
+export type KeyTarget = "option" | "own" | "button" | "other";
+
+/**
+ * Enter continues (or sends, on the last question), with the focused option on a pick-one
+ * question; → moves on without ever sending; ← goes back;
+ * ↑↓ move between the options; Space and 1–9 pick. ← → and digits are left to the own-words field
+ * for typing, and Enter to a focused button so Back, Cancel and the answered rows still click.
+ */
+export function keyIntent(
+  key: string,
+  target: KeyTarget,
+): KeyIntent | undefined {
+  const typing = target === "own";
+  if (key === "Enter")
+    return target === "button" ? undefined : { kind: "next" };
+  if (key === "ArrowDown") return { kind: "move", by: 1 };
+  if (key === "ArrowUp" || (key === "Escape" && typing))
+    return { kind: "move", by: -1 };
+  if (typing) return undefined;
+  if (key === "ArrowRight") return { kind: "forward" };
+  if (key === "ArrowLeft") return { kind: "back" };
+  if (key === " " && target === "option") return { kind: "pickFocused" };
+  if (/^[1-9]$/.test(key)) return { kind: "pick", index: Number(key) - 1 };
+  return undefined;
+}
+
+function keyTarget(element: EventTarget): KeyTarget {
+  if (element instanceof HTMLButtonElement) return "button";
+  if (!(element instanceof HTMLInputElement)) return "other";
+  return element.type === "text" ? "own" : "option";
+}
+
+/** The card once answered: each question with its answer, or what the person wrote instead. */
 function Settled({
   asked,
   answer,
@@ -122,21 +191,24 @@ function Settled({
   asked: PromptsQuestion;
   answer: QuestionAnswer;
 }) {
-  const mark = <Check className={clsx(styles.settledMark, styles.settledOk)} />;
   if ("reply" in answer) return <SettledReply reply={answer.reply} />;
   if (!("answers" in answer))
     throw new Error(
       "A question asked as prompts was answered with a screen's output.",
     );
   return (
-    <SettledBox title={text.answered} mark={mark}>
-      <AnswerList
-        answers={asked.questions.map((question) => ({
-          id: question.id,
-          prompt: question.question,
-          answer: (answer.answers[question.id] ?? []).join(", "),
-        }))}
-      />
+    <SettledBox
+      title={text.answered}
+      mark={<Check className={styles.settledMark} data-ok="" aria-hidden />}
+    >
+      <dl className={styles.answers}>
+        {asked.questions.map((question) => (
+          <div key={question.id}>
+            <dt>{question.question}</dt>
+            <dd>{(answer.answers[question.id] ?? []).join(", ")}</dd>
+          </div>
+        ))}
+      </dl>
     </SettledBox>
   );
 }
@@ -146,7 +218,7 @@ export function SettledReply({ reply }: { reply: string }) {
   return (
     <SettledBox
       title={text.answeredInWords}
-      mark={<CornerDownRight className={styles.settledMark} />}
+      mark={<CornerDownRight className={styles.settledMark} aria-hidden />}
     >
       <p className={styles.reply}>{reply}</p>
     </SettledBox>
@@ -160,7 +232,7 @@ function SettledBox({
 }: {
   title: string;
   mark: ReactNode;
-  children?: ReactNode;
+  children: ReactNode;
 }) {
   return (
     <section className={styles.settled} aria-label={title}>
@@ -173,772 +245,514 @@ function SettledBox({
   );
 }
 
-function OtherInput({
+type Mark = "done" | "current" | "upcoming" | "folded";
+
+function ThreadMark({ mark }: { mark: Mark }) {
+  return (
+    <span className={styles.mark} data-mark={mark} aria-hidden>
+      {mark === "done" ? <Check /> : null}
+    </span>
+  );
+}
+
+function AnsweredRow({
   question,
-  value,
+  answer,
   disabled,
-  onChange,
-  onKeyDown,
-  onBlur,
+  onOpen,
 }: {
   question: Question;
-  value: string;
+  answer: Answer;
   disabled: boolean;
-  onChange: (value: string) => void;
-  onKeyDown?: (event: KeyboardEvent<HTMLInputElement>) => void;
-  onBlur?: () => void;
+  onOpen: () => void;
 }) {
+  const labels = answerLabels(question, answer).join(", ");
   return (
-    <Input
-      autoFocus
-      className={styles.otherInput}
+    <li className={styles.row}>
+      <ThreadMark mark="done" />
+      <button
+        type="button"
+        className={styles.answered}
+        disabled={disabled}
+        aria-label={text.changeAnswer(question.question, labels)}
+        onClick={onOpen}
+      >
+        <span className={styles.answeredPrompt}>{question.question}</span>
+        <span className={styles.answeredValue}>{labels}</span>
+        <Pencil className={styles.answeredEdit} aria-hidden />
+      </button>
+    </li>
+  );
+}
+
+/** An option's label, with the line that explains it where the coordinator wrote one. */
+function OptionText({ label, description }: Question["options"][number]) {
+  return (
+    <span className={styles.choiceText}>
+      {label}
+      {description === "" ? null : (
+        <span className={styles.choiceDescription}>{description}</span>
+      )}
+    </span>
+  );
+}
+
+function Choices({
+  name,
+  question,
+  answer,
+  ruleId,
+  disabled,
+  onPick,
+  onOwn,
+}: {
+  name: string;
+  question: Question;
+  answer: Answer;
+  ruleId: string;
+  disabled: boolean;
+  onPick: (index: number) => void;
+  onOwn: (own: string) => void;
+}) {
+  // A question with no options is answered in the person's own words.
+  if (question.options.length === 0)
+    return (
+      <fieldset className={styles.question} disabled={disabled}>
+        <legend className={styles.prompt}>{question.question}</legend>
+        <Input
+          id={name}
+          aria-label={question.question}
+          value={answer.own}
+          onChange={(event) => onOwn(event.target.value)}
+        />
+      </fieldset>
+    );
+  const multi = question.multiple;
+  const chosen = chosenOf(question, answer);
+  const picked = chosen.length;
+  return (
+    <fieldset
+      className={styles.question}
       disabled={disabled}
-      aria-label={`${question.question} ${text.otherAnswer}`}
-      placeholder={text.other}
-      value={value}
-      onChange={(event) => onChange(event.target.value)}
-      {...(onKeyDown === undefined ? {} : { onKeyDown })}
-      {...(onBlur === undefined ? {} : { onBlur })}
-    />
-  );
-}
-
-/** A question with no options: a field for the answer in the person's own words. Enter submits it. */
-function TextField({
-  question,
-  idPrefix,
-  answer,
-  disabled,
-  focus,
-  onChange,
-  onEnter,
-}: {
-  question: Question;
-  idPrefix: string;
-  answer: Answer;
-  disabled: boolean;
-  focus: boolean;
-  onChange: (answer: Answer) => void;
-  onEnter: () => void;
-}) {
-  const id = `${idPrefix}-${question.id}`;
-  return (
-    <div className={styles.question}>
-      <label className={styles.prompt} htmlFor={id}>
-        {question.question}
-      </label>
-      <Input
-        id={id}
-        autoFocus={focus}
-        disabled={disabled}
-        value={answer.otherText}
-        onChange={(event) =>
-          onChange({ chosen: [], other: true, otherText: event.target.value })
-        }
-        onKeyDown={(event) => {
-          if (event.key !== "Enter" || !complete(answer)) return;
-          event.preventDefault();
-          onEnter();
-        }}
-      />
-    </div>
-  );
-}
-
-/** A value for the Other choice that none of the question's own options use. */
-function otherValue(question: Question): string {
-  let value = "other";
-  while (question.options.some((option) => option.label === value))
-    value += "_";
-  return value;
-}
-
-function SingleField({
-  question,
-  idPrefix,
-  answer,
-  disabled,
-  onChange,
-}: {
-  question: Question;
-  idPrefix: string;
-  answer: Answer;
-  disabled: boolean;
-  onChange: (answer: Answer) => void;
-}) {
-  const other = otherValue(question);
-  const allowOther = question.custom;
-  const options = [
-    ...question.options.map(({ label }) => ({ value: label, label })),
-    ...(allowOther ? [{ value: other, label: text.other }] : []),
-  ];
-  return (
-    <div className={styles.question}>
-      <IntakeForm
-        idPrefix={idPrefix}
-        disabled={disabled}
-        fields={[
-          {
-            name: question.id,
-            label: question.question,
-            type: "select",
-            required: true,
-            options,
-          },
-        ]}
-        values={{
-          [question.id]: answer.other ? other : (answer.chosen[0] ?? ""),
-        }}
-        onChange={(values) => {
-          const value = values[question.id];
-          if (typeof value !== "string") return;
-          onChange(
-            allowOther && value === other
-              ? { ...answer, chosen: [], other: true }
-              : {
-                  ...answer,
-                  chosen: value === "" ? [] : [value],
-                  other: false,
-                },
+      aria-describedby={ruleId}
+    >
+      <legend className={styles.prompt}>{question.question}</legend>
+      <p id={ruleId} className={styles.rule}>
+        {multi ? text.pickAny : text.pickOne}
+        {multi && picked > 0 ? (
+          <span className={styles.ruleCount}>
+            {text.selected(picked, question.options.length)}
+          </span>
+        ) : null}
+      </p>
+      <div className={styles.choices} data-kind={multi ? "multi" : "single"}>
+        {question.options.map((option, index) => {
+          const checked = chosen.includes(option.label);
+          if (multi)
+            return (
+              <label
+                key={option.label}
+                className={styles.choice}
+                data-checked={checked ? "" : undefined}
+                // Safari leaves focus where it was on a click; the card's keys need it here.
+                onClick={(event) =>
+                  event.currentTarget.querySelector("input")?.focus()
+                }
+              >
+                <Checkbox
+                  checked={checked}
+                  onCheckedChange={() => onPick(index)}
+                  className={styles.check}
+                />
+                <OptionText {...option} />
+              </label>
+            );
+          return (
+            <label
+              key={option.label}
+              className={styles.choice}
+              data-checked={checked ? "" : undefined}
+            >
+              <input
+                type="radio"
+                name={name}
+                checked={checked}
+                aria-keyshortcuts={String(index + 1)}
+                onChange={() => onPick(index)}
+                onClick={(event) => {
+                  // Safari leaves focus where it was on a click; the card's keys need it here.
+                  event.currentTarget.focus();
+                  // A checked radio fires no change, so a click on the picked answer moves on here.
+                  if (checked) onPick(index);
+                }}
+              />
+              <span className={styles.box} aria-hidden>
+                {checked ? <Check /> : index + 1}
+              </span>
+              <OptionText {...option} />
+            </label>
           );
-        }}
-      />
-      {answer.other ? (
-        <OtherInput
-          question={question}
-          value={answer.otherText}
-          disabled={disabled}
-          onChange={(otherText) => onChange({ ...answer, otherText })}
-        />
-      ) : null}
-    </div>
-  );
-}
-
-function MultiField({
-  question,
-  idPrefix,
-  answer,
-  disabled,
-  onChange,
-}: {
-  question: Question;
-  idPrefix: string;
-  answer: Answer;
-  disabled: boolean;
-  onChange: (answer: Answer) => void;
-}) {
-  return (
-    <fieldset className={styles.question} disabled={disabled}>
-      <legend>{question.question}</legend>
-      {question.options.map((option) => (
-        <Checkbox
-          key={option.label}
-          className={styles.option}
-          label={option.label}
-          {...(option.description === ""
-            ? {}
-            : { description: option.description })}
-          checked={answer.chosen.includes(option.label)}
-          disabled={disabled}
-          onCheckedChange={(checked) =>
-            onChange({
-              ...answer,
-              chosen: checked
-                ? [...answer.chosen, option.label]
-                : answer.chosen.filter((item) => item !== option.label),
-            })
-          }
-        />
-      ))}
-      {question.custom ? (
-        <MultiOther
-          id={`${idPrefix}-${question.id}-other`}
-          question={question}
-          answer={answer}
-          disabled={disabled}
-          onChange={onChange}
-        />
-      ) : null}
+        })}
+        {question.custom ? (
+          <label
+            className={styles.choice}
+            data-checked={answer.own.trim() === "" ? undefined : ""}
+          >
+            <span className={styles.box} aria-hidden>
+              <Plus />
+            </span>
+            <input
+              type="text"
+              className={styles.own}
+              aria-label={text.otherAnswer}
+              placeholder={text.other}
+              value={answer.own}
+              onChange={(event) => onOwn(event.target.value)}
+            />
+          </label>
+        ) : null}
+      </div>
     </fieldset>
   );
 }
 
-/** Other on a multi-choice question: ticked, it becomes the field it names; left empty, it unticks. */
-function MultiOther({
+/** Continue moves on; on the last question it sends instead. */
+function nextLabel(last: boolean, sending: boolean): string {
+  if (!last) return text.next;
+  return sending ? text.sending : text.send;
+}
+
+/** Where the person is: their answers, the open question, and whether the last send failed. */
+type Draft = {
+  readonly answers: readonly Answer[];
+  readonly step: number;
+  readonly failed: boolean;
+  /**
+   * The card takes focus only once the person has stepped or sent, never as it appears, so keys
+   * meant for the composer stay there; from then on focus follows the open question.
+   */
+  readonly focusFollows: boolean;
+};
+
+function OpenCard({
   id,
-  question,
-  answer,
-  disabled,
-  onChange,
+  asked,
+  blocked,
+  onSend,
+  onCancel,
+  draft,
+  onDraft,
 }: {
   id: string;
-  question: Question;
-  answer: Answer;
-  disabled: boolean;
-  onChange: (answer: Answer) => void;
+  asked: PromptsQuestion;
+  /** Closed to answers for now, such as while another message is sending. */
+  blocked: boolean;
+  onSend: (answers: Record<string, string[]>) => Promise<boolean>;
+  onCancel: () => Promise<boolean>;
+  draft: Draft;
+  onDraft: Dispatch<SetStateAction<Draft>>;
 }) {
-  const untick = () => onChange({ ...answer, other: false, otherText: "" });
-  if (!answer.other)
-    return (
-      <Checkbox
-        className={styles.option}
-        label={text.other}
-        checked={false}
-        disabled={disabled}
-        onCheckedChange={() => onChange({ ...answer, other: true })}
-      />
-    );
-  return (
-    <div className={styles.other}>
-      <Checkbox
-        id={id}
-        className={styles.option}
-        checked
-        disabled={disabled}
-        onCheckedChange={untick}
-      />
-      <OtherInput
-        question={question}
-        value={answer.otherText}
-        disabled={disabled}
-        onChange={(otherText) => onChange({ ...answer, otherText })}
-        onBlur={() => {
-          if (answer.otherText.trim() === "") untick();
-        }}
-      />
-    </div>
-  );
-}
+  const { questions } = asked;
+  const { answers, step, failed, focusFollows } = draft;
+  const [earlierShown, setEarlierShown] = useState(false);
+  const [sending, setSending] = useState(false);
+  const card = useRef<HTMLDivElement>(null);
+  const choices = useRef<HTMLDivElement>(null);
+  /** The option the person last moved to with ↑↓, which Enter may carry forward. */
+  const aimed = useRef<HTMLInputElement>(null);
 
-/** One question as a list answered from the keyboard: arrows move, Enter chooses, Space ticks. */
-function StepQuestion({
-  question,
-  idPrefix,
-  answer,
-  disabled,
-  focus,
-  onChange,
-  onDone,
-  onBack,
-}: {
-  question: Question;
-  idPrefix: string;
-  answer: Answer;
-  disabled: boolean;
-  /** Whether the list takes focus as it opens: only once the person is moving through the steps. */
-  focus: boolean;
-  onChange: (answer: Answer) => void;
-  /** Moves on, given the answer this step settled on. */
-  onDone: (answer: Answer) => void;
-  onBack: () => void;
-}) {
-  const multi = question.multiple;
-  const allowOther = question.custom;
-  const count = question.options.length + (allowOther ? 1 : 0);
-  const otherIndex = allowOther ? question.options.length : -1;
-  const [active, setActive] = useState(() => {
-    if (answer.other) return otherIndex;
-    const chosen = question.options.findIndex((option) =>
-      answer.chosen.includes(option.label),
-    );
-    return Math.max(chosen, 0);
-  });
-  const list = useRef<HTMLDivElement>(null);
-  // Focus follows the step as it opens, not each answer within it.
-  const opening = useRef(focus && !answer.other);
-  useEffect(() => {
-    if (opening.current) list.current?.focus();
-  }, []);
-
-  const pick = (index: number): Answer => {
-    if (index === otherIndex && !multi)
-      return { chosen: [], other: true, otherText: answer.otherText };
-    // On a multi-choice question Other ticks like any option, and unticking clears its text.
-    if (index === otherIndex && answer.other)
-      return { ...answer, other: false, otherText: "" };
-    if (index === otherIndex) return { ...answer, other: true };
-    const value = question.options[index]?.label;
-    if (value === undefined) return answer;
-    if (!multi) return { chosen: [value], other: false, otherText: "" };
-    return {
-      ...answer,
-      chosen: answer.chosen.includes(value)
-        ? answer.chosen.filter((item) => item !== value)
-        : [...answer.chosen, value],
-    };
-  };
-  const choose = (index: number) => {
-    const next = pick(index);
-    onChange(next);
-    if (!multi && index !== otherIndex) onDone(next);
-  };
-  const leaveOther = () => {
-    if (answer.otherText.trim() === "")
-      onChange({ ...answer, other: false, otherText: "" });
-    list.current?.focus();
-  };
-
-  const onListKey = (event: KeyboardEvent<HTMLDivElement>) => {
-    if (disabled || event.target !== event.currentTarget) return;
-    const keys: Record<string, () => void> = {
-      ArrowDown: () => setActive((index) => Math.min(index + 1, count - 1)),
-      ArrowUp: () => setActive((index) => Math.max(index - 1, 0)),
-      ArrowLeft: onBack,
-      ArrowRight: () => {
-        if (complete(answer)) onDone(answer);
-      },
-      " ": () => onChange(pick(active)),
-      Enter: () => {
-        // Back on an Other already chosen: its text answers the step, or the field takes focus again.
-        if (active === otherIndex && answer.other) {
-          if (complete(answer)) return onDone(answer);
-          return list.current?.querySelector("input")?.focus();
-        }
-        if (!multi || active === otherIndex) return choose(active);
-        if (complete(answer)) return onDone(answer);
-        const next = pick(active);
-        onChange(next);
-        onDone(next);
-      },
-    };
-    const run = keys[event.key];
-    if (run === undefined) return;
-    event.preventDefault();
-    run();
-  };
-  const onOtherKey = (event: KeyboardEvent<HTMLInputElement>) => {
-    if (event.key === "Enter" && complete(answer)) {
-      event.preventDefault();
-      onDone(answer);
-    }
-    if (event.key === "Escape" || event.key === "ArrowUp") {
-      event.preventDefault();
-      if (event.key === "ArrowUp") setActive(Math.max(otherIndex - 1, 0));
-      leaveOther();
-    }
-  };
-
-  const optionId = (index: number) => `${idPrefix}-${question.id}-${index}`;
-  const chosen = (index: number) => {
-    if (index === otherIndex) return answer.other;
-    const option = question.options[index];
-    return option !== undefined && answer.chosen.includes(option.label);
-  };
-  const rows = [
-    ...question.options,
-    ...(allowOther ? [{ label: text.other, description: "" }] : []),
-  ];
-  return (
-    <div className={styles.question}>
-      <p className={styles.prompt} id={`${idPrefix}-${question.id}`}>
-        {question.question}
-      </p>
-      <div
-        ref={list}
-        role="listbox"
-        tabIndex={disabled ? -1 : 0}
-        className={styles.options}
-        aria-labelledby={`${idPrefix}-${question.id}`}
-        aria-multiselectable={multi}
-        aria-activedescendant={optionId(active)}
-        aria-disabled={disabled}
-        onKeyDown={onListKey}
-      >
-        {rows.map(({ label, description }, index) =>
-          index === otherIndex && answer.other ? (
-            <div
-              key={optionId(index)}
-              id={optionId(index)}
-              role="option"
-              aria-selected
-              className={styles.choice}
-              data-active={active === index ? "" : undefined}
-            >
-              <Check
-                className={styles.choiceMark}
-                onClick={() => {
-                  if (disabled || !multi) return;
-                  onChange(pick(otherIndex));
-                  list.current?.focus();
-                }}
-              />
-              <OtherInput
-                question={question}
-                value={answer.otherText}
-                disabled={disabled}
-                onChange={(otherText) => onChange({ ...answer, otherText })}
-                onKeyDown={onOtherKey}
-                onBlur={() => {
-                  if (answer.otherText.trim() === "")
-                    onChange({ ...answer, other: false, otherText: "" });
-                }}
-              />
-            </div>
-          ) : (
-            <div
-              key={optionId(index)}
-              id={optionId(index)}
-              role="option"
-              aria-selected={chosen(index)}
-              aria-labelledby={`${optionId(index)}-label`}
-              aria-describedby={
-                description === ""
-                  ? undefined
-                  : `${optionId(index)}-description`
-              }
-              className={styles.choice}
-              data-active={active === index ? "" : undefined}
-              onClick={() => {
-                if (disabled) return;
-                setActive(index);
-                if (multi && index !== otherIndex) list.current?.focus();
-                choose(index);
-              }}
-            >
-              {chosen(index) ? (
-                <Check className={styles.choiceMark} />
-              ) : (
-                <span className={styles.choiceMark} />
-              )}
-              <span className={styles.choiceText}>
-                <span id={`${optionId(index)}-label`}>{label}</span>
-                {description !== "" && (
-                  <span
-                    id={`${optionId(index)}-description`}
-                    className={styles.choiceDescription}
-                  >
-                    {description}
-                  </span>
-                )}
-              </span>
-            </div>
-          ),
-        )}
-      </div>
-    </div>
-  );
-}
-
-/** Every answer before it is sent. Enter sends; ← goes back to the last question. */
-function StepReview({
-  questions,
-  answerOf,
-  focus,
-  onBack,
-  onSend,
-  canSend,
-  sending,
-}: {
-  questions: readonly Question[];
-  answerOf: (question: Question) => Answer;
-  focus: boolean;
-  onBack: () => void;
-  onSend: () => void;
-  canSend: boolean;
-  sending: boolean;
-}) {
-  return (
-    <div
-      onKeyDown={(event) => {
-        if (event.key !== "ArrowLeft") return;
-        event.preventDefault();
-        onBack();
-      }}
-    >
-      <AnswerList
-        answers={questions.map((question) => ({
-          id: question.id,
-          prompt: question.question,
-          answer: answerLabels(question, answerOf(question)).join(", "),
-        }))}
-      />
-      <ScreenActions>
-        <Button
-          autoFocus={focus}
-          type="button"
-          size="sm"
-          disabled={!canSend}
-          onClick={onSend}
-        >
-          {sending ? text.sending : text.send}
-        </Button>
-      </ScreenActions>
-    </div>
-  );
-}
-
-/** The keyboard hint a question's step shows. */
-function stepKeys(question: Question): "text" | "multi" | "single" {
-  if (question.options.length === 0) return "text";
-  return question.multiple ? "multi" : "single";
-}
-
-function StepsBody({
-  idPrefix,
-  questions,
-  answerOf,
-  setAnswer,
-  disabled,
-  sending,
-  onSend,
-}: {
-  idPrefix: string;
-  questions: readonly Question[];
-  answerOf: (question: Question) => Answer;
-  setAnswer: (question: Question, answer: Answer) => void;
-  disabled: boolean;
-  sending: boolean;
-  onSend: () => void;
-}) {
-  // A draft kept through a reload resumes at its first unanswered question, or at Submit.
-  const [start] = useState(() => {
-    const unanswered = questions.findIndex((item) => !complete(answerOf(item)));
-    return unanswered < 0 ? questions.length : unanswered;
-  });
-  const [step, setStep] = useState(start);
-  const [moved, setMoved] = useState(false);
-  // The furthest step reached: every question is seen in turn before Submit.
-  const [furthest, setFurthest] = useState(start);
-  const go = (next: number) => {
-    const to = Math.max(0, Math.min(next, questions.length));
-    setMoved(true);
-    setStep(to);
-    setFurthest((current) => Math.max(current, to));
-  };
-  const answeredAll = questions.every((item) => complete(answerOf(item)));
   const question = questions[step];
+  useEffect(() => {
+    // While blocked the options are disabled and take no focus; this runs again once they open.
+    if (
+      !focusFollows ||
+      blocked ||
+      card.current === null ||
+      choices.current === null
+    )
+      return;
+    // Focus comes from inside the card, or from nowhere once a send settled it and failed; never
+    // from wherever the person has moved on to meanwhile.
+    const active = document.activeElement;
+    const free = active === null || active === document.body;
+    if (!free && !card.current.contains(active)) return;
+    // Onto the answer as it stands: the option picked, else the person's own words, else the first.
+    const inputs = [...choices.current.querySelectorAll("input")];
+    const target =
+      inputs.find((input) => input.checked) ??
+      inputs.find(
+        (input) => input.type === "text" && input.value.trim() !== "",
+      ) ??
+      inputs[0];
+    target?.focus();
+  }, [step, focusFollows, blocked]);
+  if (question === undefined) return null;
+
+  const answerOf = (index: number): Answer => answers[index] ?? blank;
+  const answer = answerOf(step);
+  const last = step === questions.length - 1;
+  const ready = answered(answer);
+  const disabled = blocked || sending;
+  const setAnswer = (next: Answer) =>
+    onDraft((current) => ({
+      ...current,
+      answers: current.answers.map((item, index) =>
+        index === step ? next : item,
+      ),
+    }));
+  const go = (to: number) =>
+    onDraft((current) => ({
+      ...current,
+      step: Math.max(0, Math.min(to, questions.length - 1)),
+      focusFollows: true,
+    }));
+  const deliver = async (sent: () => Promise<boolean>) => {
+    setSending(true);
+    onDraft((current) => ({ ...current, failed: false, focusFollows: true }));
+    // Once sent, the card stays sending until the room shows the answer and it settles.
+    if (await sent()) return;
+    setSending(false);
+    onDraft((current) => ({ ...current, failed: true }));
+  };
+  const send = (current: Answer) =>
+    deliver(() =>
+      onSend(
+        Object.fromEntries(
+          questions.map((item, index) => [
+            item.id,
+            answerLabels(item, index === step ? current : answerOf(index)),
+          ]),
+        ),
+      ),
+    );
+  /** On to the next question with `current` as this one's answer, or send on the last. */
+  const next = (current: Answer) => {
+    if (disabled || !answered(current)) return;
+    if (current !== answer) setAnswer(current);
+    if (last) void send(current);
+    else go(step + 1);
+  };
+  // A pick-one question moves on once picked, except the last: only the person sends.
+  const choose = (index: number) => {
+    if (question.options[index] === undefined) return;
+    setAnswer(pick(question, answer, index));
+    if (!question.multiple && !last) go(step + 1);
+  };
+
+  const onKeyDown = (event: KeyboardEvent<HTMLDivElement>) => {
+    if (disabled || event.altKey || event.ctrlKey || event.metaKey) return;
+    // Safari sends the Enter that ends an IME composition after it ends, marked only by keyCode 229.
+    if (event.nativeEvent.isComposing || event.keyCode === 229) return;
+    const intent = keyIntent(event.key, keyTarget(event.target));
+    if (intent === undefined) return;
+    event.preventDefault();
+    // A held key acts once, so it cannot run through the questions and send; ↑↓ may repeat.
+    if (event.repeat && intent.kind !== "move") return;
+    if (choices.current === null) return;
+    const inputs = [...choices.current.querySelectorAll("input")];
+    const at = inputs.findIndex((input) => input === event.target);
+    switch (intent.kind) {
+      case "next":
+        // Only an option the person moved to with ↑↓ goes forward. Where the card put focus itself,
+        // such as the first option after a click, nothing marks it, so Enter keeps the answer as is.
+        return next(
+          event.target === aimed.current
+            ? enterAnswer(question, answer, at)
+            : answer,
+        );
+      case "forward":
+        return ready && !last ? go(step + 1) : undefined;
+      case "back":
+        return step > 0 ? go(step - 1) : undefined;
+      case "pick":
+        return choose(intent.index);
+      case "pickFocused":
+        // Space only picks: on a pick-one question it does not move on the way a click does.
+        return setAnswer(pick(question, answer, at));
+      case "move": {
+        // From the buttons, ↓ enters the options at the first and ↑ at the last.
+        const from = at === -1 && intent.by < 0 ? inputs.length : at;
+        const target =
+          inputs[Math.max(0, Math.min(from + intent.by, inputs.length - 1))];
+        if (target === undefined) return;
+        aimed.current = target;
+        return target.focus();
+      }
+    }
+  };
+
+  const earlier = questions.slice(0, Math.max(0, step - 1));
+  const previous = step > 0 ? step - 1 : undefined;
+  const upcoming = questions[step + 1];
+  const more = questions.length - step - 2;
+  const ruleId = `${id}-${question.id}-rule`;
+  const answeredRow = (index: number) => {
+    const item = questions[index];
+    return item === undefined ? null : (
+      <AnsweredRow
+        key={item.id}
+        question={item}
+        answer={answerOf(index)}
+        disabled={disabled}
+        onOpen={() => go(index)}
+      />
+    );
+  };
+
   return (
-    <>
-      <div role="tablist" aria-label={text.steps} className={styles.steps}>
-        {[...questions.map((item) => item.header), text.submit].map(
-          (name, index) => {
-            const item = questions[index];
-            const done =
-              item !== undefined &&
-              index < furthest &&
-              complete(answerOf(item));
-            return (
+    <GateBlock
+      className={styles.card}
+      gate={{ kind: "form", title: text.title(questions.length) }}
+    >
+      {/* Keys act anywhere in the card, from the options to the buttons, and nowhere else. */}
+      <div ref={card} onKeyDown={onKeyDown}>
+        {questions.length > 1 ? (
+          <p className={styles.position} aria-live="polite">
+            {text.position(step + 1, questions.length)}
+          </p>
+        ) : null}
+        <ol className={styles.thread} aria-label={text.thread}>
+          {earlier.length > 0 ? (
+            <li className={styles.row}>
+              <ThreadMark mark="folded" />
               <button
-                key={`${String(index)}-${name}`}
                 type="button"
-                role="tab"
-                aria-selected={index === step}
-                className={styles.step}
-                data-done={done ? "" : undefined}
-                disabled={disabled || index > furthest}
-                onClick={() => go(index)}
+                className={styles.fold}
+                aria-expanded={earlierShown}
+                onClick={() => setEarlierShown(!earlierShown)}
               >
-                {done ? <Check className={styles.stepMark} /> : null}
-                {name}
+                {text.earlier(earlier.length)}
+                <ChevronDown aria-hidden />
               </button>
-            );
-          },
-        )}
-      </div>
-      {question === undefined ? (
-        <StepReview
-          questions={questions}
-          answerOf={answerOf}
-          focus={moved}
-          onBack={() => go(step - 1)}
-          onSend={onSend}
-          canSend={!disabled && !sending && answeredAll}
-          sending={sending}
-        />
-      ) : (
-        <>
-          {question.options.length === 0 ? (
-            <TextField
-              key={question.id}
-              question={question}
-              idPrefix={idPrefix}
-              answer={answerOf(question)}
-              disabled={disabled}
-              focus={moved}
-              onChange={(answer) => setAnswer(question, answer)}
-              onEnter={() => go(step + 1)}
-            />
-          ) : (
-            <StepQuestion
-              key={question.id}
-              question={question}
-              idPrefix={idPrefix}
-              answer={answerOf(question)}
-              disabled={disabled}
-              focus={moved}
-              onChange={(answer) => setAnswer(question, answer)}
-              onDone={(answer) => {
-                if (complete(answer)) go(step + 1);
-              }}
-              onBack={() => go(step - 1)}
-            />
+            </li>
+          ) : null}
+          {earlierShown ? earlier.map((_, index) => answeredRow(index)) : null}
+          {previous === undefined ? null : answeredRow(previous)}
+          <li className={styles.row} aria-current="step">
+            <ThreadMark mark="current" />
+            <div ref={choices}>
+              <Choices
+                key={question.id}
+                name={`${id}-${question.id}`}
+                question={question}
+                answer={answer}
+                ruleId={ruleId}
+                disabled={disabled}
+                onPick={choose}
+                onOwn={(own) => setAnswer({ ...answer, own })}
+              />
+            </div>
+          </li>
+          {upcoming === undefined ? null : (
+            <li className={styles.row} data-upcoming="">
+              <ThreadMark mark="upcoming" />
+              <span className={styles.upcoming}>
+                {upcoming.question}
+                {more > 0 ? <span>{text.more(more)}</span> : null}
+              </span>
+            </li>
           )}
-          <ScreenActions />
-        </>
-      )}
-      <p className={styles.keys}>
-        {question === undefined
-          ? text.keys.review
-          : text.keys[stepKeys(question)]}
-      </p>
-    </>
+        </ol>
+        <div className={styles.footer}>
+          <ScreenCancel
+            value={{
+              label: text.cancel,
+              disabled,
+              onCancel: () => void deliver(onCancel),
+            }}
+          >
+            <ScreenActions>
+              <Tooltip label={text.backKeys}>
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="sm"
+                  className={styles.back}
+                  data-hidden={step === 0 ? "" : undefined}
+                  disabled={disabled}
+                  aria-keyshortcuts="ArrowLeft"
+                  onClick={() => go(step - 1)}
+                >
+                  <ChevronLeft aria-hidden />
+                  {text.back}
+                </Button>
+              </Tooltip>
+              {failed ? <Fault>{text.notSent}</Fault> : null}
+              <Tooltip label={last ? text.sendKeys : text.nextKeys}>
+                <Button
+                  type="button"
+                  size="sm"
+                  className={styles.next}
+                  aria-disabled={disabled || !ready}
+                  aria-describedby={
+                    question.options.length === 0 ? undefined : ruleId
+                  }
+                  aria-keyshortcuts={last ? "Enter" : "Enter ArrowRight"}
+                  onClick={() => next(answer)}
+                >
+                  {nextLabel(last, sending)}
+                  <CornerDownLeft aria-hidden />
+                </Button>
+              </Tooltip>
+            </ScreenActions>
+          </ScreenCancel>
+        </div>
+      </div>
+    </GateBlock>
   );
+}
+
+/** The answers kept from before a reload; the first question still unanswered opens. */
+function startingDraft(id: string, asked: PromptsQuestion): Draft {
+  const kept = readKept(id);
+  const answers = asked.questions.map((question) => kept[question.id] ?? blank);
+  const unanswered = answers.findIndex((answer) => !answered(answer));
+  return {
+    answers,
+    step: unanswered < 0 ? answers.length - 1 : unanswered,
+    failed: false,
+    focusFollows: false,
+  };
 }
 
 export function QuestionsCard({
   id,
   asked,
   state,
-  layout,
 }: {
   /** The question's signal, so each card's field ids are its own. */
   id: string;
   asked: PromptsQuestion;
   state: QuestionsState;
-  layout: QuestionsLayout;
 }) {
-  const [answers, setAnswers] = useState(() => readDraft(id));
-  const [sending, setSending] = useState(false);
-  const [failed, setFailed] = useState(false);
+  // Held above the open card, so a failed send reopens it as it was.
+  const [draft, setDraft] = useState(() => startingDraft(id, asked));
   const settled = state.kind === "answered";
+  const { questions } = asked;
   useEffect(() => {
-    if (settled) writeDraft(id, null);
-    else if (Object.keys(answers).length > 0) writeDraft(id, answers);
-  }, [id, answers, settled]);
-  if (settled) return <Settled asked={asked} answer={state.answer} />;
-  const answerOf = (question: Question): Answer =>
-    answers[question.id] ?? { chosen: [], other: false, otherText: "" };
-  const setAnswer = (question: Question, next: Answer) =>
-    setAnswers((current) => ({ ...current, [question.id]: next }));
-  const ready = asked.questions.every((question) =>
-    complete(answerOf(question)),
-  );
-  const disabled = state.disabled || sending;
-  const send = async (cancel = false) => {
-    setSending(true);
-    setFailed(false);
-    const sent = cancel
-      ? await state.onCancel()
-      : await state.onSend(
-          Object.fromEntries(
-            asked.questions.map((question) => [
-              question.id,
-              answerLabels(question, answerOf(question)),
-            ]),
-          ),
-        );
-    // Once sent, the card stays sending until the room shows the answer and it settles.
-    if (sent) return;
-    setSending(false);
-    setFailed(true);
-  };
-  const cancel = {
-    label: text.cancel,
-    disabled,
-    onCancel: () => void send(true),
-  };
-  const notSent = failed ? <Fault>{text.notSent}</Fault> : undefined;
-  const gate = {
-    kind: "form" as const,
-    title: text.title(asked.questions.length),
-  };
-  if (layout === "steps")
-    return (
-      <ScreenCancel value={cancel}>
-        <GateBlock className={styles.card} gate={gate} footer={notSent}>
-          <StepsBody
-            idPrefix={id}
-            questions={asked.questions}
-            answerOf={answerOf}
-            setAnswer={setAnswer}
-            disabled={disabled}
-            sending={sending}
-            onSend={() => void send()}
-          />
-        </GateBlock>
-      </ScreenCancel>
-    );
+    if (settled) writeKept(id, null);
+    else if (draft.answers.some(answered))
+      writeKept(
+        id,
+        Object.fromEntries(
+          questions.map((question, index) => [
+            question.id,
+            draft.answers[index] ?? blank,
+          ]),
+        ),
+      );
+  }, [id, questions, draft.answers, settled]);
+  if (state.kind === "answered")
+    return <Settled asked={asked} answer={state.answer} />;
   return (
-    <GateBlock
-      className={styles.card}
-      gate={gate}
-      footer={
-        <>
-          <ScreenCancel value={cancel}>
-            <ScreenActions>
-              <Button
-                type="button"
-                size="sm"
-                disabled={disabled || !ready}
-                onClick={() => void send()}
-              >
-                {sending ? text.sending : text.send}
-              </Button>
-            </ScreenActions>
-          </ScreenCancel>
-          {notSent}
-        </>
-      }
-    >
-      <div className={styles.fields}>
-        {asked.questions.map((question) => {
-          const answer = answerOf(question);
-          const onChange = (next: Answer) => setAnswer(question, next);
-          if (question.options.length === 0)
-            return (
-              <TextField
-                key={question.id}
-                question={question}
-                idPrefix={id}
-                answer={answer}
-                disabled={disabled}
-                focus={false}
-                onChange={onChange}
-                onEnter={() => {
-                  if (ready) void send();
-                }}
-              />
-            );
-          if (question.multiple)
-            return (
-              <MultiField
-                key={question.id}
-                question={question}
-                idPrefix={id}
-                answer={answer}
-                disabled={disabled}
-                onChange={onChange}
-              />
-            );
-          // A select hides each option's description until one is picked, so options that explain
-          // themselves are listed instead.
-          if (question.options.some((option) => option.description !== ""))
-            return (
-              <StepQuestion
-                key={question.id}
-                question={question}
-                idPrefix={id}
-                answer={answer}
-                disabled={disabled}
-                focus={false}
-                onChange={onChange}
-                onDone={onChange}
-                onBack={() => undefined}
-              />
-            );
-          return (
-            <SingleField
-              key={question.id}
-              question={question}
-              idPrefix={id}
-              answer={answer}
-              disabled={disabled}
-              onChange={onChange}
-            />
-          );
-        })}
-      </div>
-    </GateBlock>
+    <OpenCard
+      id={id}
+      asked={asked}
+      blocked={state.disabled}
+      onSend={state.onSend}
+      onCancel={state.onCancel}
+      draft={draft}
+      onDraft={setDraft}
+    />
   );
 }

@@ -140,7 +140,6 @@ import { workUnitStanding } from "./work-unit-step.model.ts";
 import { conceptOfTab, conceptTab } from "./design-concept.ts";
 import { designConcepts, DESIGN_OPTION } from "./design-concepts.model.ts";
 import { useLiveAppPresence } from "./live-app.model.ts";
-import { useQuestionsLayout } from "../../questions-layout-setting.ts";
 import {
   useWorkspaceApprovalsEnabled,
   type OnOff,
@@ -594,7 +593,6 @@ export function useRoom({
     .map(paneArtifact);
   const documents = snapshot.documents;
   const [liveRun, setLiveRun] = useState<LiveRun>(emptyLiveRun);
-  const questionsLayout = useQuestionsLayout();
   // Kept stable, so an open screen reads the project's values once rather than on every render.
   const projectValues = useMemo(
     () => ({
@@ -1793,7 +1791,6 @@ export function useRoom({
           questions: [...snapshot.conversation.earlierQuestions, ...questions],
           onAnswerQuestion: answerCard,
           questionsDisabled: sending || archived,
-          questionsLayout,
           projectValues,
           screenOf,
           screenSupplies: supplies,

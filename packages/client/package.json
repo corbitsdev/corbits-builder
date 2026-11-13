@@ -10,7 +10,6 @@
   },
   "dependencies": {
     "@corbits-builder/schemas": "workspace:*",
-    "@intx/types": "workspace:*",
-    "arktype": "catalog:"
+    "@intx/types": "workspace:*"
   }
 }

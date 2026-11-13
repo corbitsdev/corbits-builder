@@ -13,8 +13,8 @@ import { tenantPath, type ClientDeps, type ProductApiClient } from "./shared";
  *                                 encrypts it; no response ever carries it.
  * 3. `POST /catalog/providers` — the model provider that binds plugin,
  *                                 base URL and credentialId; this is the row
- *                                 the settings/providers read and the deploy
- *                                 composition both resolve.
+ *                                 the hub's model catalog lists and deploys
+ *                                 resolve.
  *
  * Secret handling: the key exists only in the request body of step 2 and in
  * the caller's transient form state. Responses are credential metadata only
@@ -22,12 +22,9 @@ import { tenantPath, type ClientDeps, type ProductApiClient } from "./shared";
  * logs, caches or echoes it.
  */
 
-export type ModelProviderView = Readonly<{
+type ModelProviderView = Readonly<{
   id: string;
-  name: string;
   plugin: string;
-  baseURL: string;
-  credentialId: string | null;
   disabled: boolean;
 }>;
 
@@ -108,34 +105,18 @@ function parseModelProvider(raw: unknown): ModelProviderView | null {
   const row = raw as Record<string, unknown>;
   if (
     typeof row["id"] !== "string" ||
-    typeof row["name"] !== "string" ||
     typeof row["plugin"] !== "string" ||
-    typeof row["baseURL"] !== "string" ||
     typeof row["disabled"] !== "boolean"
   )
     return null;
-  const credentialId = row["credentialId"];
-  return {
-    id: row["id"],
-    name: row["name"],
-    plugin: row["plugin"],
-    baseURL: row["baseURL"],
-    credentialId: typeof credentialId === "string" ? credentialId : null,
-    disabled: row["disabled"],
-  };
+  return { id: row["id"], plugin: row["plugin"], disabled: row["disabled"] };
 }
 
 export function buildCredentialsMethods(
   deps: ClientDeps,
 ): Pick<
   ProductApiClient,
-  | "modelProviders"
-  | "addModelCredential"
-  | "createTenantProvider"
-  | "createTenantCredential"
-  | "startModelLogin"
-  | "modelLogin"
-  | "finishModelLogin"
+  "addModelCredential" | "startModelLogin" | "modelLogin" | "finishModelLogin"
 > {
   const { request } = deps;
   // Reuse one native provider row per plugin so repeated additions do not multiply provider
@@ -177,34 +158,6 @@ export function buildCredentialsMethods(
       .filter((row): row is ModelProviderView => row !== null);
   }
   return {
-    // Direct native provider/credential creates for compositions (deploy
-    // coordinator) that must name rows deterministically instead of reusing
-    // the byok rows. Responses are metadata only; secrets are never returned.
-    async createTenantProvider(tenantId, input, signal) {
-      const row = (await request(
-        `${tenantPath(tenantId)}/providers`,
-        signal,
-        input,
-      )) as {
-        id?: unknown;
-      };
-      if (typeof row?.["id"] !== "string")
-        throw new Error("invalid_native_provider_response");
-      return { id: row["id"] };
-    },
-    async createTenantCredential(tenantId, input, signal) {
-      const row = (await request(
-        `${tenantPath(tenantId)}/credentials`,
-        signal,
-        input,
-      )) as {
-        id?: unknown;
-      };
-      if (typeof row?.["id"] !== "string")
-        throw new Error("invalid_native_credential_response");
-      return { id: row["id"] };
-    },
-    modelProviders,
     // Login with ChatGPT / xAI: the hub runs the PKCE login and stores the tokens as a
     // tenant-owned credential. A new credential name per sign-in, because a tenant-owned login
     // never replaces an existing credential.

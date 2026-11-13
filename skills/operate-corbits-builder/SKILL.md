@@ -8,8 +8,8 @@ description: Drives a running Builder (Corbits Builder) through its HTTP API, fr
 ## Reference
 
 The hub serves its OpenAPI document at `GET /openapi.json`; read it for any
-route below. `createProductApiClient` from `@corbits-builder/client` wraps every
-operation, and
+route below. `createProductApiClient` from `@corbits-builder/client` wraps the
+operations the Builder interface uses, and
 [DEV.md](https://github.com/corbitsdev/corbits-builder/blob/main/docs/DEV.md)
 explains how the pieces fit.
 

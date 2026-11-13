@@ -7,7 +7,6 @@
  * not invent a coordinator turn, and it does not decide an approval on its own.
  */
 import { HUB_NOTE_LEAD, IMPORTED_PROJECT_LEAD, wording } from "../../config.ts";
-import type { QuestionsLayout } from "../../questions-layout-setting.ts";
 import { Fragment, useState, type ReactNode } from "react";
 import { Check, Copy } from "lucide-react";
 import {
@@ -612,9 +611,8 @@ function shownSteps(steps: readonly ActivityStep[], live: boolean): number {
   ).length;
 }
 
-/** The quiet line for a note the hub mailed as the person, or undefined for the person's own words. */
+/** The quiet line for a note the hub mailed as the person. */
 function hubNoteLine(text: string): string | undefined {
-  if (!text.startsWith(HUB_NOTE_LEAD)) return undefined;
   return text.slice(HUB_NOTE_LEAD.length).split("\n\n", 1)[0];
 }
 
@@ -641,6 +639,19 @@ function SpecialistEnded({ text }: { text: string }) {
       )}
     </span>
   );
+}
+
+/**
+ * Some person turns are the hub writing as the person: an import's opening and
+ * a hub note. They read as a divider or a notice, never as a
+ * message, so the map must not count them as turns the person took.
+ */
+type PersonTurnKind = "divider" | "notice" | "message";
+
+function personTurnKind(text: string): PersonTurnKind {
+  if (text.startsWith(IMPORTED_PROJECT_LEAD)) return "divider";
+  if (text.startsWith(HUB_NOTE_LEAD)) return "notice";
+  return "message";
 }
 
 /** What the thread shows and what the person can do in it. */
@@ -692,8 +703,6 @@ export type RoomThreadContent = {
   screenSupplies?: HostSupplies;
   /** Opens the screen the coordinator placed on the page again, while its question is open. */
   onOpenPageScreen?: () => void;
-  /** Whether question cards ask one question at a time or all at once. */
-  questionsLayout?: QuestionsLayout;
 };
 
 export type RoomThreadProps = RoomThreadContent & {
@@ -725,7 +734,6 @@ export function RoomThread({
   screenOf,
   screenSupplies,
   onOpenPageScreen,
-  questionsLayout = "steps",
   children,
 }: RoomThreadProps) {
   const renderTurnText = (part: PartText) => (
@@ -868,12 +876,7 @@ export function RoomThread({
             {headed ? null : (
               <MessageHeader name={wording.speaker.coordinator} />
             )}
-            <QuestionsCard
-              id={signalName}
-              asked={asked}
-              state={state}
-              layout={questionsLayout}
-            />
+            <QuestionsCard id={signalName} asked={asked} state={state} />
           </Message>
         </ConversationItem>
       );
@@ -1040,8 +1043,8 @@ export function RoomThread({
       if (section.kind === "coordinator")
         return agentEntries(section, position);
       if (
-        section.turn.text.trim() === "" ||
-        hubNoteLine(section.turn.text) !== undefined
+        personTurnKind(section.turn.text) !== "message" ||
+        section.turn.text.trim() === ""
       )
         return [];
       const next = sections[position + 1];
@@ -1113,7 +1116,8 @@ export function RoomThread({
           }
           const { turn, index } = section;
           const itemId = turnItemId(turn, index);
-          if (turn.text.startsWith(IMPORTED_PROJECT_LEAD))
+          const entry = personTurnKind(turn.text);
+          if (entry === "divider")
             return (
               <ConversationItem key={itemId} itemId={itemId}>
                 <ConversationDivider>
@@ -1121,8 +1125,7 @@ export function RoomThread({
                 </ConversationDivider>
               </ConversationItem>
             );
-          const hubNote = hubNoteLine(turn.text);
-          if (hubNote !== undefined)
+          if (entry === "notice")
             return (
               <ConversationItem key={itemId} itemId={itemId}>
                 <ConversationNotice>
@@ -1131,7 +1134,7 @@ export function RoomThread({
                       text={turn.text.slice(HUB_NOTE_LEAD.length)}
                     />
                   ) : (
-                    hubNote
+                    hubNoteLine(turn.text)
                   )}
                 </ConversationNotice>
               </ConversationItem>

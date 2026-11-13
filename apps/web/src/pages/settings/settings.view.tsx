@@ -47,9 +47,6 @@ type AppearanceProps = {
   /** Documents show their tips. */
   documentTips: boolean;
   onDocumentTipsChange: (shown: boolean) => void;
-  /** Questions are asked a step at a time rather than all at once. */
-  questionsInSteps: boolean;
-  onQuestionsInStepsChange: (inSteps: boolean) => void;
 };
 
 type AccountProps = {
@@ -64,7 +61,7 @@ export type SettingsViewProps = SettingsSlots & {
   /** The open tab. */
   tab: SettingsTab;
   onTabChange: (tab: SettingsTab) => void;
-  /** The theme, and the document tips and questions layout choices kept in this browser. */
+  /** The theme, and the document tips choice kept in this browser. */
   appearance: AppearanceProps;
   /** Who is signed in; null when nobody is, and the Account section is left out. */
   account: AccountProps | null;
@@ -124,8 +121,6 @@ function Appearance({
   onThemeChange,
   documentTips,
   onDocumentTipsChange,
-  questionsInSteps,
-  onQuestionsInStepsChange,
 }: AppearanceProps) {
   const copy = wording.settings.appearance;
   return (
@@ -152,16 +147,6 @@ function Appearance({
             label={wording.tips.setting}
             checked={documentTips}
             onCheckedChange={onDocumentTipsChange}
-          />
-        </SettingsRow>
-        <SettingsRow
-          label={wording.questions.layoutSetting}
-          hint={wording.questions.layoutHint}
-        >
-          <Switch
-            label={wording.questions.layoutSetting}
-            checked={questionsInSteps}
-            onCheckedChange={onQuestionsInStepsChange}
           />
         </SettingsRow>
       </SettingsSectionBody>

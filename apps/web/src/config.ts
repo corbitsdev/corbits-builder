@@ -78,13 +78,7 @@ export const wording = {
     accountUnreadable: "Your account could not be read.",
   },
   hub: {
-    timedOut: "The hub did not answer in time. Try again.",
-    unreachable: "That request did not reach the hub. Try again.",
     notAnswering: "The hub is not answering",
-    slowTitle: (averageMs: number) =>
-      `${productName} is responding slowly: about ${(averageMs / 1000).toFixed(1)} seconds per action`,
-    slowLead:
-      "Everything on this page waits on it. If it stays slow, restart the app; the hub's log says which requests were slow.",
   },
   boot: {
     starting: "Starting…",
@@ -982,23 +976,30 @@ export const wording = {
       ({ 1: "A question for you", 2: "A couple of questions for you" })[
         count
       ] ?? "A few questions for you",
-    other: "Other",
+    /** Where the open question sits among them, beside the heading. */
+    position: (at: number, count: number) =>
+      `${String(at)} of ${String(count)}`,
+    /** The list of questions, answered ones above the open one. */
+    thread: "Questions",
+    pickOne: "Pick one",
+    pickAny: "Pick any that apply",
+    selected: (picked: number, count: number) =>
+      `${String(picked)} of ${String(count)} selected`,
+    /** The row where the person types their own answer instead. */
+    other: "Something else…",
     otherAnswer: "Your own answer",
-    /** The last step tab, where every answer is shown before it is sent. */
-    submit: "Submit",
-    steps: "Questions",
-    /** The keyboard hint under each step, by the kind of step. */
-    keys: {
-      single: "↑↓ move · Enter choose · ← back · → next",
-      multi: "↑↓ move · Space tick · Enter next · ← back · → next",
-      text: "Enter next",
-      review: "Enter send · ← back",
-    },
-    composerPlaceholder: "Type here to respond to the above question",
-    /** The Settings switch between one question at a time and all at once. */
-    layoutSetting: "Ask questions one at a time",
-    layoutHint:
-      "On, each question is its own step you answer from the keyboard. Off, every question shows at once.",
+    changeAnswer: (prompt: string, answer: string) =>
+      `Change your answer to "${prompt}": ${answer}`,
+    earlier: (count: number) =>
+      count === 1 ? "1 earlier answer" : `${String(count)} earlier answers`,
+    /** After the next question, how many more follow it. */
+    more: (count: number) => `+${String(count)} more`,
+    back: "Back",
+    next: "Continue",
+    backKeys: "Previous question (←)",
+    nextKeys: "Next question (Enter or →)",
+    sendKeys: "Send your answers (Enter)",
+    composerPlaceholder: "Or reply in your own words…",
     send: "Send answers",
     sending: "Sending…",
     /** Closes an open question without choosing; the reply is what the settled card then shows. */
