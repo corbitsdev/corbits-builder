@@ -61,12 +61,26 @@ export function staleRuns<T extends { role: WorkflowRole; bundle: unknown }>(
 }
 
 /**
+ * What an upgrade of a quiet project does. Only a person opening the project replaces an outdated
+ * coordinator: a successor started for a project nobody has open holds an agent slot for nothing,
+ * and a stopped coordinator with no successor misses the hub's notes to it, so the background pass
+ * leaves it running.
+ */
+export function upgradeStep(
+  outdated: { coordinator: boolean; specialists: boolean },
+  opened: boolean,
+): "replace" | "stop_specialists" | "none" {
+  if (outdated.coordinator && opened) return "replace";
+  return outdated.specialists ? "stop_specialists" : "none";
+}
+
+/**
  * Moves a project's agents onto the installed packages once the project is quiet: every agent
  * waiting for input or not yet started, nothing on its way to it, and no approval pending. Interchange drops mail
  * to a stopping run, so nothing stops while anything could still be sent to it. Runs are cancelled
- * natively, so their history stays. An outdated coordinator is replaced at once and its specialists
- * stop with it; an outdated specialist alone stops, and starts again when the coordinator next
- * needs it.
+ * natively, so their history stays. An outdated coordinator is replaced when the person opens the
+ * project, and its specialists stop with it; an outdated specialist alone stops, and starts again
+ * when the coordinator next needs it.
  *
  * A project with no model choice to run on is left for the person: opening it upgrades as them, so
  * the refusal reaches them and their choice is the one the new coordinator runs on.
@@ -224,24 +238,32 @@ export function createAgentUpgrades(deps: {
     const actor = opener ?? { tenantId, principalId: coordinator.principalId };
     // An upgrade that stopped the old coordinator but did not get its successor bound.
     if (!coordinator.active) {
-      if (coordinator.cancellationReason === COORDINATOR_UPGRADED)
-        await deps.startup.ensure(actor, projectId);
+      if (opener && coordinator.cancellationReason === COORDINATOR_UPGRADED)
+        await deps.startup.ensure(opener, projectId);
       return;
     }
     if (!running(coordinator)) return;
     const runs = [coordinator, ...specialists];
     const outdated = staleRuns(runs, await deps.installed(actor, projectId));
-    if (outdated.length === 0 || !(await quiet(runs))) return;
-    if (outdated.includes(coordinator)) {
+    const outdatedSpecialists = outdated.filter((run) => run !== coordinator);
+    const step = upgradeStep(
+      {
+        coordinator: outdated.includes(coordinator),
+        specialists: outdatedSpecialists.length > 0,
+      },
+      opener !== undefined,
+    );
+    if (step === "none" || !(await quiet(runs))) return;
+    if (step === "replace") {
       await stopCoordinator(actor, projectId, coordinator, specialists);
       await deps.startup.ensure(actor, projectId);
       return;
     }
-    for (const run of outdated)
+    for (const run of outdatedSpecialists)
       await deps.cancel(tenantId, run.runId, SPECIALIST_OUTDATED);
     log.info("Outdated specialists stopped", {
       projectId,
-      runIds: outdated.map((run) => run.runId),
+      runIds: outdatedSpecialists.map((run) => run.runId),
     });
   }
 
@@ -279,8 +301,8 @@ export function createAgentUpgrades(deps: {
     if ((await undelivered(runId)) || !(await allIdle(specialists)))
       return "busy";
     await stopCoordinator(actor, projectId, coordinator, specialists);
-    // The old run is stopping, so its deploy is held whatever happens next; the pass starts a
-    // successor that failed to start here.
+    // The old run is stopping, so its deploy is held whatever happens next; the person's next open
+    // starts a successor that failed to start here.
     try {
       await deps.startup.ensure(actor, projectId);
       const [next] = await db

@@ -1,6 +1,6 @@
 import { expect, test } from "bun:test";
 import type { InstalledWorkflows } from "@corbits-builder/schemas/installed-workflows";
-import { staleRuns } from "./upgrade-agents.ts";
+import { staleRuns, upgradeStep } from "./upgrade-agents.ts";
 
 const deployment = (pin: string) => ({
   source: {
@@ -89,4 +89,13 @@ test("a run is stale when its frozen pin is not one installed for its role", () 
     "single-writer",
     "unreadable",
   ]);
+});
+
+test("only a person opening the project replaces an outdated coordinator", () => {
+  const outdated = { coordinator: true, specialists: true };
+  expect(upgradeStep(outdated, true)).toBe("replace");
+  expect(upgradeStep(outdated, false)).toBe("stop_specialists");
+  expect(upgradeStep({ coordinator: true, specialists: false }, false)).toBe(
+    "none",
+  );
 });
