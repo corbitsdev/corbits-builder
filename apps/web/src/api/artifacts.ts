@@ -248,27 +248,6 @@ export async function readProjectValues(
   return read.values;
 }
 
-/** Every declared project value as stored, with what each holds and the types it takes. */
-export async function readDeclaredProjectValues(
-  projectId: string,
-  signal: AbortSignal,
-) {
-  const tenantId = await workspaceTenantId();
-  return productClient().declaredProjectValues(tenantId, projectId, signal);
-}
-
-/** Saves one project value as the person; the hub checks it against its declared type. */
-export async function saveProjectValue(
-  projectId: string,
-  name: string,
-  value: unknown,
-) {
-  const tenantId = await workspaceTenantId();
-  return productClient().saveProjectValues(tenantId, projectId, {
-    [name]: value,
-  });
-}
-
 /** The person approves a filed document at the version they read. */
 export async function approveDocument(
   projectId: string,

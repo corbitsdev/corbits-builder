@@ -49,16 +49,6 @@ scenario({
       values: { "brand.guidelines": { link: address } },
     });
 
-    // Every declared value with what it takes, as the project values tab reads them.
-    const declared = await p.call("GET", values);
-    p.note("every declared value", declared);
-    expect(JSON.stringify(declared.body)).toContain(
-      '"brand.guidelines":{"about"',
-    );
-    expect(JSON.stringify(declared.body)).toContain(
-      '"types":["text","link","file"]',
-    );
-
     await p.say("change the font to Inter");
     await p.heard("Your app now uses Inter.");
     const assignment = p.assignment("coder");

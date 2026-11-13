@@ -29,11 +29,9 @@ export const keys = {
     all: ["userManual"] as const,
     of: (projectId: string) => ["userManual", projectId] as const,
   },
-  /** Every project value the plugins declare, as the project holds it. */
+  /** Project values the room reads for itself. */
   projectValues: {
-    all: ["projectValues"] as const,
-    of: (projectId: string) => ["projectValues", projectId] as const,
-    /** The values that select between plugins sharing a handle; refreshed with the rest when one is saved. */
+    /** The values that select between plugins sharing a handle. */
     selection: (projectId: string) =>
       ["projectValues", projectId, "selection"] as const,
     /** What the project's code started from, which says whether it serves a web app to preview. */

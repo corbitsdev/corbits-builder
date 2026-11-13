@@ -84,11 +84,6 @@ scenario({
     p.note("discover before the selection", before);
     expect(before).toContain(`build-web-app: using Takes an idea`);
 
-    const declared = await p.call("GET", `${p.path}/values`);
-    p.note(
-      "the project's values, as the Project values tab reads them",
-      declared.body,
-    );
     const saved = await p.call("POST", `${p.path}/values`, {
       values: { [SELECTION]: EXPRESS },
     });

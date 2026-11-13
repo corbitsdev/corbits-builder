@@ -337,18 +337,10 @@ export const DesignTweaksReceipt = type({
 export type DesignTweaksReceipt = typeof DesignTweaksReceipt.infer;
 
 // The project values asked for by name, each as stored, any JSON, or null when the project has
-// none yet. Asked for with no names, every declared value comes, with what each holds and the type
-// or types it takes.
+// none yet.
 export const ProjectValues = type({
   "+": "reject",
   values: { "[string]": "unknown" },
-  "declared?": {
-    "[string]": {
-      "+": "reject",
-      about: "string > 0",
-      types: type("string > 0").array().atLeastLength(1),
-    },
-  },
 });
 export type ProjectValues = typeof ProjectValues.infer;
 

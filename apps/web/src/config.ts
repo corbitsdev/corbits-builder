@@ -236,26 +236,6 @@ export const wording = {
         : `Version ${String(version)} was approved on ${new Date(at).toLocaleString()}`,
     failed: "That approval was not recorded.",
   },
-  /** The project view's tab for the named pieces of project data the plugins declare. */
-  projectValues: {
-    tab: "Project values",
-    title: "Values every specialist that reads them is given",
-    loading: "Reading the project values…",
-    failed: "The project values could not load.",
-    notSet: "Not set",
-    save: "Save",
-    saved: (name: string) => `${name} saved.`,
-    notSaved: "That value was not saved.",
-    kind: "What it is",
-    text: "Text",
-    link: "Link",
-    file: "Attached file",
-    linkPlaceholder: "https://",
-    chooseFile: "Choose an attached file",
-    noFiles:
-      "No files are attached yet. Attach one with the paperclip in the message box, then pick it here.",
-    readOnly: "Shown as stored; it has no editor here.",
-  },
   newProject: {
     title: "What do you want to make today?",
     lead: "Build, write, edit or improve anything. Say what you want and the coordinator takes it from there.",

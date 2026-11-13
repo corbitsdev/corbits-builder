@@ -579,19 +579,6 @@ export type ProductApiClient = Readonly<{
     keys: readonly string[],
     signal?: AbortSignal,
   ): Promise<ProjectValues>;
-  /** Every declared project value as stored, with what each holds and the types it takes. */
-  declaredProjectValues(
-    tenantId: string,
-    projectId: string,
-    signal?: AbortSignal,
-  ): Promise<ProjectValues>;
-  /** Saves project values by name, each checked against its declared type; returns them as stored. */
-  saveProjectValues(
-    tenantId: string,
-    projectId: string,
-    values: Readonly<Record<string, unknown>>,
-    signal?: AbortSignal,
-  ): Promise<ProjectValues>;
   /** The person approves a filed document at the version they read, with no question asking. */
   approveDocument(
     tenantId: string,

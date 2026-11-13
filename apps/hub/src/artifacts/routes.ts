@@ -823,7 +823,7 @@ export function mountArtifactRoutes(
       tags: ["Artifacts"],
       operationId: "readProjectValues",
       description:
-        "The project values named in keys, comma separated, each read from its home: the look values from the filed design's styles.css once a design is filed, and before that, like every other declared value, from the project's own store. A value the project has none of yet is null. Without keys, every declared value, with declared saying what each holds and the types it takes.",
+        "The project values named in keys, comma separated, each read from its home: the look values from the filed design's styles.css once a design is filed, and before that, like every other declared value, from the project's own store. A value the project has none of yet is null.",
       security,
       responses: {
         200: {
@@ -834,25 +834,14 @@ export function mountArtifactRoutes(
       },
     }),
     async (c) => {
-      const keys = c.req.query("keys");
+      const names = c.req.query("keys")?.split(",") ?? [];
+      const unknown = undeclaredValue(names);
+      if (unknown !== undefined)
+        throw new ProjectError(400, "unknown_project_value", { key: unknown });
       const state = await service.projectState(
         actorOf(c),
         c.req.param("projectId"),
       );
-      if (keys === undefined)
-        return c.json({
-          values: readProjectValues([...CATALOG.values.keys()], state),
-          declared: Object.fromEntries(
-            [...CATALOG.values].map(([name, declaration]) => [
-              name,
-              { about: declaration.about, types: [declaration.type].flat() },
-            ]),
-          ),
-        });
-      const names = keys.split(",");
-      const unknown = undeclaredValue(names);
-      if (unknown !== undefined)
-        throw new ProjectError(400, "unknown_project_value", { key: unknown });
       return c.json({ values: readProjectValues(names, state) });
     },
   );

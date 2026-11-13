@@ -88,11 +88,7 @@ const manualIds = panelTabIds(TAB_PREFIX, MANUAL_TAB);
 // The tabs that are not filed documents: open while what they show is there. Read at call time,
 // as some of these tabs are named further down.
 const isSideOnly = (id: string) =>
-  id === DRAFT_TAB ||
-  id === LIVE_TAB ||
-  id === MANUAL_TAB ||
-  id === THEMES_TAB ||
-  id === VALUES_TAB;
+  id === DRAFT_TAB || id === LIVE_TAB || id === MANUAL_TAB || id === THEMES_TAB;
 const isSideTab = (id: string) =>
   isSideOnly(id) || conceptOfTab(id) !== undefined;
 
@@ -104,7 +100,6 @@ function selectTab(input: {
   liveApp: boolean;
   manual: boolean;
   themes: boolean;
-  values: boolean;
   selectedId: string | null;
   designPart: DesignPart;
 }): string | null {
@@ -114,7 +109,6 @@ function selectTab(input: {
   if (side === LIVE_TAB && input.liveApp) return LIVE_TAB;
   if (side === MANUAL_TAB && input.manual) return MANUAL_TAB;
   if (side === THEMES_TAB && input.themes) return THEMES_TAB;
-  if (side === VALUES_TAB && input.values) return VALUES_TAB;
   if (input.selectedId === "design" && input.designPart === "mockup")
     return MOCKUP_TAB;
   return input.selectedId;
@@ -166,7 +160,6 @@ export function availableTab(
     liveApp: boolean;
     manual: boolean;
     themes: boolean;
-    values?: boolean;
     draft: boolean;
     concepts: readonly string[];
     documents: readonly PaneDocument[];
@@ -176,7 +169,6 @@ export function availableTab(
   if (id === LIVE_TAB) return have.liveApp ? id : null;
   if (id === MANUAL_TAB) return have.manual ? id : null;
   if (id === THEMES_TAB) return have.themes ? id : null;
-  if (id === VALUES_TAB) return have.values === true ? id : null;
   if (id === DRAFT_TAB) return have.draft ? id : null;
   const concept = conceptOfTab(id);
   if (concept !== undefined) return have.concepts.includes(concept) ? id : null;
@@ -186,8 +178,6 @@ export function availableTab(
 const liveIds = panelTabIds(TAB_PREFIX, LIVE_TAB);
 const THEMES_TAB = "design-themes";
 const themesIds = panelTabIds(TAB_PREFIX, THEMES_TAB);
-const VALUES_TAB = "project-values";
-const valuesIds = panelTabIds(TAB_PREFIX, VALUES_TAB);
 // A pane whose page fills it edge to edge: the app, a mockup, a spreadsheet or the design draft.
 const FILL_PANE = styles.fill;
 const POINTER_TABS = "data-pointer-tabs";
@@ -233,8 +223,6 @@ export type ArtifactPaneSlots = DeliverableSlots & {
   liveApp?: ReactElement | null;
   /** Before a design exists, prebuilt themes to preview, tweak and use through the composer. */
   themes?: ReactElement | null;
-  /** The project values the plugins declare, each with an editor fit for its type. */
-  values?: ReactElement | null;
   /** One concept's mockup, at the device the pane keeps for the concepts. */
   conceptMockup: (
     concept: DesignConcept,
@@ -304,7 +292,6 @@ export function ArtifactPane({
   openTab = null,
   liveApp = null,
   themes = null,
-  values = null,
   conceptMockup,
   documents,
   selectedId,
@@ -353,7 +340,6 @@ export function ArtifactPane({
     liveApp: liveApp !== null,
     manual: manual !== null,
     themes: themes !== null,
-    values: values !== null,
     draft: draftShown,
     concepts: concepts.map((concept) => concept.label),
     documents,
@@ -406,7 +392,6 @@ export function ArtifactPane({
     liveApp: liveApp !== null,
     manual: manual !== null,
     themes: themes !== null,
-    values: values !== null,
     selectedId,
     designPart,
   });
@@ -518,11 +503,7 @@ export function ArtifactPane({
   };
   const outputs = documents.length > 0 || draftShown || concepts.length > 0;
   const hasTabs =
-    outputs ||
-    themes !== null ||
-    liveApp !== null ||
-    manual !== null ||
-    values !== null;
+    outputs || themes !== null || liveApp !== null || manual !== null;
   useEffect(() => {
     if (open && shown?.unread) onSeen(shown.id);
   }, [open, shown?.id, shown?.unread]);
@@ -678,21 +659,6 @@ export function ArtifactPane({
                   </PanelTab>
                 )),
               },
-              // After every document, as it is about the project rather than one piece of work.
-              {
-                rank: FLOW.length + 1,
-                tabs: [
-                  values !== null ? (
-                    <PanelTab
-                      key={VALUES_TAB}
-                      value={VALUES_TAB}
-                      title={wording.projectValues.title}
-                    >
-                      {wording.projectValues.tab}
-                    </PanelTab>
-                  ) : null,
-                ],
-              },
             ]
               .sort((left, right) => left.rank - right.rank)
               .flatMap((entry) => entry.tabs)}
@@ -844,16 +810,6 @@ export function ArtifactPane({
               aria-labelledby={themesIds.tab}
             >
               {themes}
-            </PanelPane>
-          ) : null}
-          {values !== null ? (
-            <PanelPane
-              value={VALUES_TAB}
-              id={valuesIds.pane}
-              role="tabpanel"
-              aria-labelledby={valuesIds.tab}
-            >
-              {values}
             </PanelPane>
           ) : null}
           {concepts.map((concept) => {

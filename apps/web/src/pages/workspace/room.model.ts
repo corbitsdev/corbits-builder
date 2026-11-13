@@ -502,11 +502,6 @@ export function useRoom({
   liveApp: { projectId: string; builder: InFlightRun | undefined } | null;
   /** The theme gallery, from the point the coordinator may start the design until one exists. */
   themes: { projectId: string; onUse: (message: string) => void } | null;
-  /** The project values tab, with the attached files a file value may name; none when archived. */
-  values: {
-    projectId: string;
-    files: readonly { artifactId: string; name: string }[];
-  } | null;
   /** The coordinator's open question when its screen is placed over the whole room. */
   pageScreen: ScreenQuestionProps | null;
 } {
@@ -1820,14 +1815,6 @@ export function useRoom({
       designReached && design === undefined && !archived
         ? { projectId, onUse: addToComposer }
         : null,
-    values: archived
-      ? null
-      : {
-          projectId,
-          files: paneDeliverables
-            .filter((item) => item.kind.startsWith(MATERIAL_TAB))
-            .map((item) => ({ artifactId: item.artifactId, name: item.title })),
-        },
     pageScreen:
       pageQuestion === undefined
         ? null

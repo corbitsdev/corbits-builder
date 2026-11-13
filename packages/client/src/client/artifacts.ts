@@ -32,8 +32,6 @@ export function buildArtifactsMethods(
   | "goAheadPlanStep"
   | "setPlanStepAskFirst"
   | "projectValues"
-  | "declaredProjectValues"
-  | "saveProjectValues"
   | "approveDocument"
   | "chooseDesign"
   | "acceptedMaterials"
@@ -207,14 +205,6 @@ export function buildArtifactsMethods(
         `${projectPath(tenantId, projectId)}/values?${new URLSearchParams({ keys: keys.join(",") })}`,
         signal,
       );
-    },
-    declaredProjectValues(tenantId, projectId, signal) {
-      return request(`${projectPath(tenantId, projectId)}/values`, signal);
-    },
-    saveProjectValues(tenantId, projectId, values, signal) {
-      return request(`${projectPath(tenantId, projectId)}/values`, signal, {
-        values,
-      });
     },
     approveDocument(tenantId, projectId, artifactId, version, signal) {
       return request(
