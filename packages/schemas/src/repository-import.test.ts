@@ -82,10 +82,7 @@ describe("readRepository", () => {
       files: 10,
       bytes: report.app!.bytes,
     });
-    expect(report.warnings).toEqual([
-      expect.stringContaining('no "typecheck" script'),
-      expect.stringContaining("no bun.lock"),
-    ]);
+    expect(report.warnings).toEqual([]);
     expect(file.documents.every((document) => !document.approved)).toBe(true);
     const brief = file.documents.find(
       (document) => document.kind === "problem_brief",
@@ -161,7 +158,6 @@ describe("readRepository", () => {
     expect(report.found.problem_brief).toBe("drafts/problem_brief.md");
     expect(report.found.design).toBe("drafts/design/DESIGN.md");
     expect(report.warnings).toEqual([
-      expect.stringContaining('no "typecheck" script'),
       "product_requirements was to be approved but was not found",
     ]);
     const byKind = Object.fromEntries(
@@ -219,8 +215,7 @@ describe("readRepository", () => {
       "project.json": JSON.stringify(exported),
       "planning/problem_brief.md": "# Stale copy\n",
       "planning/constraints.md": "# Constraints from planning\n",
-      "build/package.json": JSON.stringify({ name: "exported-app" }),
-      "build/new.ts": "",
+      "build/main.go": "package main\n",
     };
     const { file, report } = await readRepository(memory(unpacked), {
       approve: "all",
@@ -238,15 +233,11 @@ describe("readRepository", () => {
     expect(byKind.problem_brief!.content).toBe("brief");
     expect(
       Object.keys(AppBundle.assert(JSON.parse(byKind.app!.content)).files),
-    ).toEqual(["new.ts", "package.json"]);
+    ).toEqual(["main.go"]);
     expect(file.documents.every((document) => document.approved)).toBe(true);
 
     // With no code beside it, the file's own app is what there is.
-    const {
-      "build/package.json": _p,
-      "build/new.ts": _n,
-      ...noCode
-    } = unpacked;
+    const { "build/main.go": _code, ...noCode } = unpacked;
     const again = await readRepository(memory(noCode));
     expect(again.report.found.app).toBe("project.json");
     expect(again.report.app).toEqual({
@@ -256,20 +247,44 @@ describe("readRepository", () => {
     });
   });
 
-  test("a directory with nothing Builder knows is an empty project named after itself", async () => {
+  test("takes a repository's code whatever it is written in", async () => {
     const { file, report } = await readRepository(
-      memory({ "notes.md": "# Notes\n" }),
+      memory({
+        "go.mod": "module example.com/streaks\n",
+        "main.go": "package main\n",
+        "cmd/serve/serve.go": "package serve\n",
+      }),
+      { name: "streaks" },
+    );
+    expect(report.title).toBe("Streaks");
+    expect(report.app).toEqual({
+      root: ".",
+      files: 3,
+      bytes: report.app!.bytes,
+    });
+    const app = file.documents.find((document) => document.kind === "app")!;
+    expect(
+      Object.keys(AppBundle.assert(JSON.parse(app.content)).files),
+    ).toEqual(["cmd/serve/serve.go", "go.mod", "main.go"]);
+  });
+
+  test("a directory holding only Builder's documents has no app", async () => {
+    const { report } = await readRepository(
+      memory({
+        ".gitignore": "*.log\n",
+        "docs/problem_brief.md": "# Brief\n",
+      }),
       { name: "bare-notes" },
     );
     expect(report.title).toBe("Bare notes");
-    expect(file.documents).toEqual([]);
+    expect(report.found).toEqual({ problem_brief: "docs/problem_brief.md" });
     expect(report.app).toBeUndefined();
   });
 });
 
 describe("names", () => {
-  test("titles come from a package name, a directory name, a heading or front matter", () => {
-    expect(humanize("@acme/habit-tracker")).toBe("Habit tracker");
+  test("titles come from a directory name, a heading or front matter", () => {
+    expect(humanize("habit-tracker")).toBe("Habit tracker");
     expect(humanize("my_app.v2")).toBe("My app v2");
     expect(documentTitle("# Heading  \n\ntext", "x")).toBe("Heading");
     expect(documentTitle("no heading", "Fallback")).toBe("Fallback");

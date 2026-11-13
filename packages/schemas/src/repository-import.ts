@@ -8,6 +8,7 @@ import {
   addBundleFile,
   bundleContent,
   excludedFile,
+  holdsApp,
   utf8Length,
 } from "./app-files.ts";
 
@@ -72,12 +73,9 @@ const TEXT_KINDS = Object.keys(TEXT_PATHS) as TextKind[];
 // Where a directory may keep the design bundle: an unpacked export's design/ or a coder
 // workspace's .builder/. Drafts keep it under design/.
 const DESIGN_DIRECTORIES = ["design", ".builder"];
-// Where the app's package.json may sit: the directory itself, an unpacked export's build/ or
-// the seed fixtures' app/.
-const APP_DIRECTORIES = ["", "build", "app"];
 const PROJECT_FILE = "project.json";
-// The scripts the app starter gives a Builder app; the coder and check-app run them.
-const STARTER_SCRIPTS = ["dev", "build", "typecheck"];
+// An unpacked Builder export keeps the app's source under build/, beside its project.json.
+const EXPORT_APP_DIRECTORY = "build";
 const TITLE_MAX = 512;
 // A file whose name says it holds a secret and that is not source code, which the rules above
 // do not already leave out: the person decides, it is only pointed at. Source files named for
@@ -161,12 +159,9 @@ export function documentTitle(content: string, fallback: string): string {
   return title.slice(0, TITLE_MAX);
 }
 
-/** A package name or directory name as a title: "@acme/habit-tracker" becomes "Habit tracker". */
+/** A directory name as a title: "habit-tracker" becomes "Habit tracker". */
 export function humanize(name: string): string {
-  const words = name
-    .replace(/^@[^/]+\//, "")
-    .replace(/[-_.]+/g, " ")
-    .trim();
+  const words = name.replace(/[-_.]+/g, " ").trim();
   return words ? words[0]!.toUpperCase() + words.slice(1) : name;
 }
 
@@ -374,71 +369,81 @@ async function readDocuments(
 
 type AppReading = {
   found?: Found | undefined;
-  root?: string | undefined;
   app?: RepositoryImportReport["app"];
   suggested: RepositoryImportReport["suggested"];
-  warnings: string[];
 };
 
 const count = (bundle: AppBundle) =>
   Object.keys(bundle.files).length +
   (bundle.binary ? Object.keys(bundle.binary).length : 0);
 
-// What a Builder app has that this one lacks, for whoever makes the import to put right.
-function appWarnings(files: Readonly<Record<string, string>>): string[] {
-  const warnings: string[] = [];
-  const manifest = parseJson(files["package.json"]) as
-    | { scripts?: Record<string, string> }
-    | undefined;
-  const scripts = manifest?.scripts ? Object.keys(manifest.scripts) : [];
-  const absent = STARTER_SCRIPTS.filter((name) => !scripts.includes(name));
-  const quoted = (names: readonly string[]) =>
-    names.map((name) => `"${name}"`).join(", ");
-  if (absent.length)
-    warnings.push(
-      `package.json has no ${quoted(absent)} script; Builder's app starter has ${quoted(STARTER_SCRIPTS)} and the coder runs them`,
+// Whether a path of the directory is one Builder read as a document: a text document (with the
+// approaches' .json beside it) or a file under the design's directory.
+function readAsDocument(
+  documents: ReadonlyMap<RepositoryDocumentKind, Found>,
+): (path: string) => boolean {
+  const sources = [...documents.values()].map(({ source }) => source);
+  return (path) =>
+    sources.some(
+      (source) =>
+        source === path ||
+        source === path.replace(/\.json$/, ".md") ||
+        (basename(source) === "DESIGN.md" &&
+          under(source.slice(0, -"/DESIGN.md".length), path)),
     );
-  if (!("bun.lock" in files))
-    warnings.push(
-      "the app has no bun.lock; the coder's sandbox runs bun install --frozen-lockfile, so commit one made with bun install",
-    );
-  return warnings;
 }
 
-// The app is the code as it is now, under the first directory with a package.json, with any
-// files drafted under app/ laid over it, so the directory's files stand over the project file's.
-async function readApp(context: Context): Promise<AppReading> {
-  const { files, drafts, options } = context;
-  const root = APP_DIRECTORIES.find((directory) =>
-    files.has(joined(directory, "package.json")),
-  );
+// The app is the directory's code as it is now, whatever it is written in: every file from the
+// root, or from build/ in an unpacked Builder export, with any files drafted under app/ laid
+// over it, so the directory's files stand over the project file's. Builder's own documents alone
+// are not an app.
+async function readApp(
+  context: Context,
+  isDocument: (path: string) => boolean,
+): Promise<AppReading> {
+  const { files, drafts, projectFile, options } = context;
+  const root = projectFile ? EXPORT_APP_DIRECTORY : "";
+  const ignored =
+    options.gitignore === false ? () => false : await gitignored(files);
+  const exclude = options.exclude ?? new Set<string>();
+  const paths = files
+    .paths()
+    .filter(
+      (path) =>
+        under(root, path) &&
+        !exclude.has(path) &&
+        !excludedPath(within(root, path)) &&
+        !ignored(path),
+    );
   const overlayPaths = drafts.paths().filter((path) => under("app", path));
-  const overlaid = overlayPaths.some((path) => path === "app/package.json");
-  if (root === undefined && !overlaid) {
+  const fromDirectory = holdsApp(
+    paths.filter((path) => !isDocument(path)).map((path) => within(root, path)),
+  );
+  if (
+    !fromDirectory &&
+    !holdsApp(overlayPaths.map((path) => within("app", path)))
+  ) {
     const filed = fromProjectFile(context, "app");
-    if (!filed) return { suggested: [], warnings: [] };
+    if (!filed) return { suggested: [] };
     const bundle = AppBundle.assert(JSON.parse(filed.document.content));
     const bytes = utf8Length(filed.document.content);
     return {
       found: filed,
       app: { root: PROJECT_FILE, files: count(bundle), bytes },
       suggested: [],
-      warnings: [],
     };
   }
-  const ignored =
-    options.gitignore === false ? () => false : await gitignored(files);
-  const exclude = options.exclude ?? new Set<string>();
   const collected: Required<AppBundle> = { files: {}, binary: {} };
   const suggested: RepositoryImportReport["suggested"] = [];
-  if (root !== undefined)
-    for (const path of files.paths()) {
-      if (!under(root, path) || exclude.has(path)) continue;
-      const relative = within(root, path);
-      if (excludedPath(relative) || ignored(path)) continue;
+  if (fromDirectory)
+    for (const path of paths) {
       const reason = suggestedReason(path);
       if (reason) suggested.push({ path, reason });
-      addBundleFile(collected, relative, await files.byPath.get(path)!.bytes());
+      addBundleFile(
+        collected,
+        within(root, path),
+        await files.byPath.get(path)!.bytes(),
+      );
     }
   for (const path of overlayPaths)
     addBundleFile(
@@ -446,7 +451,7 @@ async function readApp(context: Context): Promise<AppReading> {
       within("app", path),
       await drafts.byPath.get(path)!.bytes(),
     );
-  const source = root === undefined ? "drafts/app" : root || ".";
+  const source = fromDirectory ? root || "." : "drafts/app";
   const { bundle, content } = bundleContent(collected);
   return {
     found: {
@@ -458,28 +463,17 @@ async function readApp(context: Context): Promise<AppReading> {
       },
       source,
     },
-    root,
     app: { root: source, files: count(bundle), bytes: utf8Length(content) },
     suggested,
-    warnings: appWarnings(collected.files),
   };
 }
 
-// The title given, else the project file's, else the app's package name, else the directory's.
-async function readTitle(
-  context: Context,
-  root: string | undefined,
-): Promise<string> {
-  const { files, projectFile, options } = context;
+// The title given, else the project file's, else the directory's name.
+function readTitle({ projectFile, options }: Context): string {
   const given = options.title?.trim();
   if (given) return given.slice(0, TITLE_MAX);
   if (projectFile) return projectFile.title;
-  const manifestPath =
-    root === undefined ? "package.json" : joined(root, "package.json");
-  const manifest = parseJson(await files.text(manifestPath));
-  const name = (manifest as { name?: unknown } | undefined)?.name;
-  const source = typeof name === "string" && name.trim() ? name : options.name;
-  return humanize(source?.trim() || "Project").slice(0, TITLE_MAX);
+  return humanize(options.name?.trim() || "Project").slice(0, TITLE_MAX);
 }
 
 /** Reads a directory's files as a Builder project file and reports what it holds and lacks. */
@@ -495,11 +489,11 @@ export async function readRepository(
   };
   context.projectFile = await readProjectFile(context.files);
   const documents = await readDocuments(context);
-  const app = await readApp(context);
+  const app = await readApp(context, readAsDocument(documents));
   if (app.found) documents.set("app", app.found);
-  const title = await readTitle(context, app.root);
+  const title = readTitle(context);
   const approve = options.approve;
-  const warnings = [...app.warnings];
+  const warnings: string[] = [];
   if (approve !== undefined && approve !== "all")
     for (const kind of approve)
       if (!documents.has(kind))
