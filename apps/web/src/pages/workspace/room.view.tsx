@@ -247,9 +247,7 @@ export function RoomView({
                       }
                       onClick={() => setPlanShown(!planShown)}
                     >
-                      <span className={styles.label}>
-                        {wording.conversation.plan.title}
-                      </span>
+                      <span>{wording.conversation.plan.title}</span>
                       <span className={styles.meter} aria-hidden="true">
                         {progress.marks.map(({ id, mark }) => (
                           <span key={id} data-mark={mark} />

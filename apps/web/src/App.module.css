@@ -397,7 +397,9 @@
     box-shadow: var(--wb-pane-shadow);
   }
 
+  /* The open rail leaves the grid, so the canvas holds its own column. */
   .canvas {
+    grid-column: 2;
     padding: var(--space-4) var(--space-4) var(--space-8);
   }
 

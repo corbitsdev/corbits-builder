@@ -12,7 +12,12 @@ import {
 import { PanelRightClose } from "lucide-react";
 import type { PlanView } from "@corbits-builder/schemas/project";
 import { Button } from "@corbits/react-ui";
-import { Steps, type StepFields } from "@corbits-builder/plugin-ui/steps";
+import {
+  Steps,
+  type StepFields,
+  type StepItem,
+  type StepState,
+} from "@corbits-builder/plugin-ui/steps";
 import { wording } from "../../config.ts";
 import {
   useStoredPreference,
@@ -52,10 +57,12 @@ export function usePlanCollapsed(): readonly [
   ];
 }
 
-/** Where a top-level step stands, as the plan's button marks it. */
+type PlanChild = Exclude<PlanStep, { steps: unknown }>;
+
+/** Where a step stands, as the plan's button marks it. */
 export type PlanMark = "done" | "failed" | "needs_you" | "running" | "open";
 
-function markOf(step: PlanStep): PlanMark {
+function markOf(step: PlanChild): PlanMark {
   if (
     step.state === "done" ||
     step.state === "failed" ||
@@ -66,22 +73,64 @@ function markOf(step: PlanStep): PlanMark {
   return "open";
 }
 
+// A skipped or cancelled step will not happen, so it is neither done nor still to do.
+const dropped = (step: PlanChild) =>
+  step.state === "skipped" || step.state === "cancelled";
+
+const actionSteps = (steps: readonly PlanStep[]): PlanChild[] =>
+  steps.flatMap((step) => ("steps" in step ? step.steps : [step]));
+
 /**
- * How far along the plan is: a mark per top-level step, how many are done, and the step state
- * that should draw the person to the plan (a failure before a step waiting on them), or null
- * while the plan has no steps.
+ * How far along the plan is, over the steps the panel lists (a group's steps, not the group): a
+ * mark per step still in play, how many are done, and the step state that should draw the person
+ * to the plan (a failure before a step waiting on them), or null while the plan has no steps.
  */
 export function planProgress(steps: readonly PlanStep[]) {
   if (steps.length === 0) return null;
-  const marks = steps.map((step) => ({ id: step.id, mark: markOf(step) }));
+  const counted = actionSteps(steps).filter((step) => !dropped(step));
+  const marks = counted.map((step) => ({ id: step.id, mark: markOf(step) }));
   const has = (mark: PlanMark) => marks.some((each) => each.mark === mark);
   const alerts = ["failed", "needs_you"] as const;
   return {
     marks,
     done: marks.filter((each) => each.mark === "done").length,
-    total: steps.length,
+    total: marks.length,
     alert: alerts.find(has) ?? null,
   };
+}
+
+/**
+ * Where a group stands, from its steps: a failure or a step waiting on the person first, then
+ * done once every step is done or will not happen, not started while none has begun, and
+ * otherwise under way.
+ */
+export function groupState(steps: readonly PlanChild[]): StepState {
+  const states = steps.filter((step) => !dropped(step)).map(markOf);
+  if (states.includes("failed")) return "failed";
+  if (states.includes("needs_you")) return "needs_you";
+  if (states.every((state) => state === "done")) return "done";
+  if (states.every((state) => state === "open")) return "not_started";
+  return "running";
+}
+
+/**
+ * The plan as the panel lists it. A ready-made plan's group carries only the plan's long
+ * description as its title, so its steps stand on their own under the panel's heading; any other
+ * group keeps its title, with where it stands worked out from its steps.
+ */
+export function panelSteps(steps: readonly PlanStep[]): StepItem[] {
+  return steps.flatMap((step): StepItem[] => {
+    if (!("steps" in step)) return [step];
+    if (step.plan !== undefined) return step.steps;
+    return [
+      {
+        id: step.id,
+        title: step.title,
+        state: groupState(step.steps),
+        steps: step.steps,
+      },
+    ];
+  });
 }
 
 function hasRunningClock(steps: readonly PlanStep[]) {
@@ -147,9 +196,7 @@ export function PlanPanel({
   const stepAction = (step: StepFields) => {
     const words = wording.conversation.plan;
     const declined = step.declined !== undefined;
-    const saved = steps
-      .flatMap((each) => ("steps" in each ? each.steps : [each]))
-      .find(({ id }) => id === step.id);
+    const saved = actionSteps(steps).find(({ id }) => id === step.id);
     const waitingOnGo =
       saved !== undefined &&
       "askFirst" in saved &&
@@ -280,7 +327,7 @@ export function PlanPanel({
       </header>
       <div className={styles.body}>
         <Steps
-          steps={steps}
+          steps={panelSteps(steps)}
           label={wording.conversation.plan.steps}
           now={ticking ? now : undefined}
           note={stepNote}

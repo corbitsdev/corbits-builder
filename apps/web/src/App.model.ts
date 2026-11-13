@@ -52,7 +52,7 @@ import {
   subscribeToHistory,
   writeProjectUrl,
 } from "./routes.ts";
-import { useSidebar, writeSidebar } from "./sidebar-setting.ts";
+import { useSidebar } from "./sidebar-setting.ts";
 import { singleFlight } from "./single-flight.ts";
 import type {
   AppViewProps,
@@ -220,7 +220,7 @@ export function useApp(): AppScreen {
     setView(settingsFrom === "settings" ? "projects" : settingsFrom);
   };
 
-  const collapsed = useSidebar() === "collapsed";
+  const sidebar = useSidebar();
   const [auth, setAuth] = useState<HubAuthState>("unknown");
   const [sessionReadFailed, setSessionReadFailed] = useState(false);
 
@@ -561,13 +561,22 @@ export function useApp(): AppScreen {
     view: {
       current: PLACES[view],
       rail: {
-        collapsed,
-        onToggleCollapsed: () =>
-          writeSidebar(collapsed ? "expanded" : "collapsed"),
-        onNewProject: () => navigate("projects"),
-        onLibrary: () => navigate("library"),
-        onBack: closeSettings,
+        collapsed: sidebar.collapsed,
+        onToggleCollapsed: sidebar.toggle,
+        onNewProject: () => {
+          sidebar.leave();
+          navigate("projects");
+        },
+        onLibrary: () => {
+          sidebar.leave();
+          navigate("library");
+        },
+        onBack: () => {
+          sidebar.leave();
+          closeSettings();
+        },
         onSettings: () => {
+          sidebar.leave();
           if (view === "settings") closeSettings();
           else navigate("settings");
         },
@@ -576,7 +585,10 @@ export function useApp(): AppScreen {
           title: item.title,
           open: inProject && item.id === openProjectSummary.id,
         })),
-        onOpenProject: (projectId) => openProject(projectId),
+        onOpenProject: (projectId) => {
+          sidebar.leave();
+          openProject(projectId);
+        },
       },
       hub: { state: offline ? "notAnswering" : "answering" },
       setupFault: error,
