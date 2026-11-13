@@ -1,7 +1,7 @@
 /**
  * What a specialist run is doing, from its own run stream: each tool call it makes, in order, and
  * what it is producing right now, the long text a tool call is writing, else the model's words,
- * else that it is thinking. Each frame repeats the whole snapshot so far, so a late subscriber
+ * else its reasoning so far. Each frame repeats the whole snapshot so far, so a late subscriber
  * catches up on the preview on its first frame; the stream does not replay calls made before it
  * opened, so those are read once from the run's saved conversation. Both are read a few times a
  * second rather than on every frame.
@@ -23,7 +23,7 @@ import { resultOf, type CallResult } from "./live-run.ts";
 
 export type RunPreview =
   | { readonly kind: "writing"; readonly text: string }
-  | { readonly kind: "thinking" };
+  | { readonly kind: "thinking"; readonly text: string };
 
 type Snapshot = NonNullable<ReturnType<typeof partialOf>>;
 
@@ -31,8 +31,10 @@ type Snapshot = NonNullable<ReturnType<typeof partialOf>>;
 const LONG_ARGUMENT = 80;
 const FLUSH_MS = 250;
 const LIVE_STEPS_POLL_MS = 3_000;
-// Specialist runs whose streams the room holds open at once.
-const STREAMED_RUNS = 6;
+// Specialist runs whose streams the room holds open at once. Over HTTP/1.1 a browser holds six
+// connections to the hub's origin; the coordinator's stream and the dev reload stream take two, and
+// every read of the room needs one left free, or the streams past the sixth never open.
+const STREAMED_RUNS = 3;
 // Frames after which a run's state in the room's own read can have moved.
 const MOVED = new Set([
   "inference.start",
@@ -119,7 +121,11 @@ function longArgument(partialArguments: unknown): string | undefined {
     : undefined;
 }
 
-/** What one inference snapshot shows: the newest call's long argument, else the words, else thinking. */
+/**
+ * What one inference snapshot shows: the newest call's long argument, else the words, else the
+ * reasoning so far. Reasoning a provider sends only encrypted arrives as thinking with no text, and
+ * is still thinking.
+ */
 export function previewOf(partial: Snapshot): RunPreview | undefined {
   const calls = partial.toolCalls ?? [];
   for (const call of [...calls].reverse()) {
@@ -128,8 +134,8 @@ export function previewOf(partial: Snapshot): RunPreview | undefined {
   }
   if (partial.text !== undefined && partial.text.trim() !== "")
     return { kind: "writing", text: partial.text };
-  if (partial.thinking !== undefined && partial.thinking.trim() !== "")
-    return { kind: "thinking" };
+  if (partial.thinking !== undefined)
+    return { kind: "thinking", text: partial.thinking };
   return undefined;
 }
 

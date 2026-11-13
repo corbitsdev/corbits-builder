@@ -187,8 +187,9 @@ function RowAction({
 const FOLLOW_PX = 24;
 
 /**
- * What the run is writing as it arrives, about eight lines tall, the newest kept in view; else that
- * it is thinking, or waiting with nothing streaming in, so a working row never opens onto nothing.
+ * What the run is writing as it arrives, about eight lines tall, the newest kept in view; else the
+ * newest two lines of its reasoning, or that it is thinking when its reasoning has no words to show;
+ * else that it is waiting with nothing streaming in, so a working row never opens onto nothing.
  */
 function Preview({ preview }: { preview: RunPreview | undefined }) {
   const box = useRef<HTMLDivElement>(null);
@@ -201,8 +202,15 @@ function Preview({ preview }: { preview: RunPreview | undefined }) {
   }, [shown]);
   if (preview === undefined)
     return <p className={styles.thinking}>{text.waitingForStep}</p>;
-  if (preview.kind === "thinking")
+  if (preview.kind === "thinking" && preview.text.trim() === "")
     return <p className={styles.thinking}>{text.thinkingThrough}</p>;
+  if (preview.kind === "thinking")
+    return (
+      // Off, so a live region around the conversation does not read out every word as it arrives.
+      <div className={styles.reasoning} aria-live="off">
+        <p className={styles.reasoningText}>{preview.text}</p>
+      </div>
+    );
   return (
     <div
       ref={box}

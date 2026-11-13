@@ -17,6 +17,7 @@ import {
 import { committedSteps, emptyLiveRun, foldLiveRun } from "./live-run.ts";
 import {
   joinedSteps,
+  previewOf,
   runStepsQuery,
   savedResults,
   savedTurnSteps,
@@ -342,6 +343,87 @@ test("a run is streamed as soon as its record says it has not ended, before the 
       new Set(["run-parked"]),
     ),
   ).toEqual(["run-new"]);
+});
+
+test("past a few live runs only the newest stream, so the page keeps a connection free for its reads", () => {
+  const live = ["run-1", "run-2", "run-3", "run-4", "run-5"].map((runId) => ({
+    runId,
+    status: "running",
+  }));
+  expect(streamedRuns(live, new Set())).toEqual(["run-3", "run-4", "run-5"]);
+});
+
+test("a run's reasoning is its preview until it writes words or a long argument", () => {
+  expect(previewOf({ text: "", thinking: "Comparing the two fonts" })).toEqual({
+    kind: "thinking",
+    text: "Comparing the two fonts",
+  });
+  expect(
+    previewOf({ text: "Arial it is.", thinking: "Comparing the two fonts" }),
+  ).toEqual({ kind: "writing", text: "Arial it is." });
+  const body = "body { font-family: Arial; }\n".repeat(4);
+  expect(
+    previewOf({
+      text: "",
+      thinking: "Comparing the two fonts",
+      toolCalls: [
+        {
+          id: "call-write",
+          name: "write_file",
+          partialArguments: JSON.stringify({ path: "a.css", content: body }),
+        },
+      ],
+    }),
+  ).toEqual({ kind: "writing", text: body });
+});
+
+test("reasoning that arrives with no words, as encrypted reasoning does, still reads as thinking", () => {
+  expect(previewOf({ text: "", thinking: "" })).toEqual({
+    kind: "thinking",
+    text: "",
+  });
+});
+
+const workingRoom: DispatchRoom = {
+  ...emptyRoom,
+  inFlight: [
+    {
+      runId: "run-build",
+      role: "coder",
+      startedAt: new Date(10).toISOString(),
+      status: "running",
+      state: "working",
+      since: new Date(10).toISOString(),
+    },
+  ],
+};
+
+test("a working specialist's row shows its reasoning as plain words, or that it is thinking when there are none", () => {
+  const summary = render({
+    ...workingRoom,
+    previews: new Map([
+      ["run-build", { kind: "thinking", text: "**Picking** <b>Arial</b>" }],
+    ]),
+  });
+  expect(summary.html).toContain("**Picking** &lt;b&gt;Arial&lt;/b&gt;");
+  expect(summary.html).not.toContain('aria-live="polite"');
+
+  const encrypted = render({
+    ...workingRoom,
+    previews: new Map([["run-build", { kind: "thinking", text: "" }]]),
+  });
+  expect(encrypted.html).toContain(`>${wording.dispatch.thinkingThrough}<`);
+});
+
+test("a specialist's row never shows the coordinator's reasoning", () => {
+  const { html } = render({
+    ...workingRoom,
+    previews: new Map([
+      ["run-coordinator", { kind: "thinking", text: "Who should build it" }],
+    ]),
+  });
+  expect(html).not.toContain("Who should build it");
+  expect(html).toContain(`>${wording.dispatch.waitingForStep}<`);
 });
 
 test("a working run's saved calls are read again until it ends, so a call made before its stream opened shows", () => {

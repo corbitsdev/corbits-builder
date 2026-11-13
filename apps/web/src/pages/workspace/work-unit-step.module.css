@@ -129,3 +129,23 @@
   color: var(--wb-muted-foreground);
   font-size: 0.8125rem;
 }
+
+/* The model's reasoning as it streams: always two lines tall, so the row holds still while words
+   arrive. Short text sits at the top; longer text keeps its newest two lines, cut off above. */
+.reasoning {
+  height: calc(2 * 1.5 * 0.8125rem);
+  overflow: hidden;
+  color: var(--wb-muted-foreground);
+  font-size: 0.8125rem;
+  line-height: 1.5;
+}
+
+.reasoningText {
+  display: flex;
+  max-height: 100%;
+  flex-direction: column;
+  justify-content: flex-end;
+  margin: 0;
+  overflow: hidden;
+  overflow-wrap: anywhere;
+}
