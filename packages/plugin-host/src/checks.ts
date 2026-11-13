@@ -236,19 +236,20 @@ async function networkProof(
 
 async function commandProof(proof: Of<"command">, view: ProjectView) {
   if (view.app.version === undefined) return fail(NO_APP);
-  const { run, timeoutSeconds = COMMAND_SECONDS } = proof.command;
+  const { setup, run, timeoutSeconds = COMMAND_SECONDS } = proof.command;
   const shown = run.join(" ");
-  const ran = await view.app.run(run, timeoutSeconds);
+  const ran = await view.app.run(proof.command, timeoutSeconds);
   if ("error" in ran) return fail(`${shown} could not run: ${ran.error}`);
+  const stepShown = ran.step === "setup" && setup ? setup.join(" ") : shown;
   const evidence = [
-    `command: ${ran.step === "install" ? "bun install" : shown}`,
+    `command: ${stepShown}`,
     `exit code: ${ran.exitCode ?? "none"}`,
     ...ran.output.trimEnd().split("\n"),
   ];
   if (ran.timedOut)
     return fail(`${shown} ran past ${timeoutSeconds} seconds`, evidence);
-  if (ran.step === "install")
-    return fail(`bun install failed, so ${shown} did not run`, evidence);
+  if (ran.step === "setup")
+    return fail(`${stepShown} failed, so ${shown} did not run`, evidence);
   return ran.exitCode === 0
     ? pass(`${shown} succeeded on the project's code`, evidence)
     : fail(`${shown} exited ${ran.exitCode ?? "without a code"}`, evidence);

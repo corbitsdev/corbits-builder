@@ -251,7 +251,7 @@ export const AppBundle = type({
   "+": "reject",
   files: type({ "[string]": "string" }).narrow(
     (files, ctx) =>
-      "package.json" in files || ctx.mustBe("a bundle with package.json"),
+      Object.keys(files).length > 0 || ctx.mustBe("a bundle with a file"),
   ),
   "binary?": { "[string]": "string" },
 });
@@ -287,8 +287,7 @@ export const AppSnapshotState = type({
   ready: "false",
   code: "'forbidden' | 'coder_run_not_found' | 'app_workspace_unavailable'",
   "runId?": "string > 0",
-  "reason?":
-    "'not_on_local_sidecar' | 'workspace_missing' | 'package_json_missing'",
+  "reason?": "'not_on_local_sidecar' | 'workspace_missing' | 'workspace_empty'",
 });
 export type AppSnapshotState = typeof AppSnapshotState.infer;
 // Versions newest first.

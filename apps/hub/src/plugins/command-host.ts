@@ -1,7 +1,7 @@
 // Runs one command against a saved app version for a check, in the coder's sandbox. srt's sandbox
 // manager is process-global, so each run is a process of its own. stdin carries the app's files and
-// the command; the files go into the workspace named in argv, the app's packages are installed, and
-// the command runs with the registry-only network. One JSON line on stdout says how it went, and the
+// the command; the files go into the workspace named in argv, the command's setup runs when it
+// declares one, and then the command, both with the registry-only network. One JSON line on stdout says how it went, and the
 // process exits. SIGTERM stops the command and its sandbox first.
 import { sep } from "node:path";
 import { type } from "arktype";
@@ -11,8 +11,6 @@ import { bundleFiles } from "../builds/app-snapshot.ts";
 import { buildPackageLayout } from "../builds/package-layout.ts";
 import { createPosixBuildExecutor } from "../builds/posix-sandbox.ts";
 import {
-  INSTALL_TIMEOUT_MS,
-  installPackages,
   runInSandbox,
   type SandboxCommand,
 } from "../builds/sandbox-command.ts";
@@ -20,14 +18,18 @@ import {
 export const CommandAsk = type({
   "+": "reject",
   bundle: AppBundle,
-  argv: "(string > 0)[] >= 1",
+  command: {
+    "+": "reject",
+    "setup?": "(string > 0)[] >= 1",
+    run: "(string > 0)[] >= 1",
+  },
   timeoutMs: "number.integer > 0",
 });
 export type CommandAsk = typeof CommandAsk.infer;
 
 export const CommandReport = type({
   "+": "reject",
-  step: "'install' | 'command'",
+  step: "'setup' | 'command'",
   exitCode: "number.integer | null",
   output: "string",
   timedOut: "boolean",
@@ -55,7 +57,7 @@ async function runCommand(
     },
     await buildPackageLayout(),
   );
-  const shown = (step: "install" | "command", ran: SandboxCommand) => ({
+  const shown = (step: "setup" | "command", ran: SandboxCommand) => ({
     step,
     exitCode: ran.exitCode,
     output: ran.output
@@ -64,16 +66,12 @@ async function runCommand(
     timedOut: ran.timedOut,
   });
   try {
-    const installed = await installPackages(
-      executor,
-      Math.min(INSTALL_TIMEOUT_MS, left()),
-      signal,
-    );
-    if (installed.exitCode !== 0) return shown("install", installed);
-    return shown(
-      "command",
-      await runInSandbox(executor, ask.argv, left(), signal),
-    );
+    const { setup, run } = ask.command;
+    if (setup) {
+      const prepared = await runInSandbox(executor, setup, left(), signal);
+      if (prepared.exitCode !== 0) return shown("setup", prepared);
+    }
+    return shown("command", await runInSandbox(executor, run, left(), signal));
   } finally {
     await executor.dispose();
   }

@@ -18,7 +18,7 @@ import {
   type ArtifactContent,
 } from "@corbits-builder/schemas/artifact";
 import { unpackDesign, writeBundle } from "../artifacts/design-tools.ts";
-import { bundleFiles } from "./app-snapshot.ts";
+import { bundleFiles, workspaceHoldsApp } from "./app-snapshot.ts";
 import type { AppRepository } from "./app-repository.ts";
 import {
   INPUTS_DIRECTORY,
@@ -352,7 +352,7 @@ export async function prepareWorkspace(
   if (!app) throw new Error("app_workspace_needs_its_repository");
   await app.repository.prepare(app.signal);
   let started: StarterName | undefined;
-  if (!(await exists(join(workspace, "package.json")))) {
+  if (!(await workspaceHoldsApp(workspace))) {
     const filedApp = await read("app");
     if (filedApp)
       await writeBundle(

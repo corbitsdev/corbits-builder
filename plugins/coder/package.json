@@ -125,6 +125,11 @@
         "all": [
           {
             "command": {
+              "setup": [
+                "bun",
+                "install",
+                "--frozen-lockfile"
+              ],
               "run": [
                 "bun",
                 "run",

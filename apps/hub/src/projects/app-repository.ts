@@ -32,6 +32,7 @@ import {
   bundleContent,
   EXCLUDED_DIRECTORIES,
   excludedFile,
+  holdsApp,
 } from "../builds/app-snapshot.ts";
 
 const TOKEN_LIFETIME_MS = 4 * 60 * 60 * 1000;
@@ -259,7 +260,7 @@ export async function appRepositoryMain(dir: string) {
       }
     };
     await walk(tree, "");
-    return "package.json" in collected.files
+    return holdsApp(Object.keys(collected.files))
       ? bundleContent(collected)
       : undefined;
   };

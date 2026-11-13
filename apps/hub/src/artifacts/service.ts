@@ -140,7 +140,11 @@ import {
 } from "./design-draft.ts";
 import type { LiveApps } from "../live-app/runner.ts";
 import { isStarterName, STARTERS } from "@corbits-builder/coder/contract";
-import { appContent, bundleFiles } from "../builds/app-snapshot.ts";
+import {
+  appContent,
+  bundleFiles,
+  workspaceHoldsApp,
+} from "../builds/app-snapshot.ts";
 import { MAX_DESIGN_BYTES } from "./design-tools.ts";
 import { DESIGN_STYLES, setThemeTokens } from "./design-tweaks.ts";
 import type { ProjectState } from "./project-values.ts";
@@ -585,8 +589,7 @@ export function createArtifactService(
       return unavailable("not_on_local_sidecar");
     const dir = warmStepWorkspace(sidecarDataDir, run.address, run.stepId);
     if (!(await isDirectory(dir))) return unavailable("workspace_missing");
-    if (!(await Bun.file(join(dir, "package.json")).exists()))
-      return unavailable("package_json_missing");
+    if (!(await workspaceHoldsApp(dir))) return unavailable("workspace_empty");
     return { runId: run.runId, dir };
   }
 
@@ -681,7 +684,7 @@ export function createArtifactService(
   // the saved app; undefined while the project has no app files at all.
   async function appSource(actor: Actor, projectId: string) {
     for (const { dir } of await liveWorkspaces(actor, "coder"))
-      if (await Bun.file(join(dir, "package.json")).exists()) {
+      if (await workspaceHoldsApp(dir)) {
         const login = await readDemoLogin(dir);
         return {
           key: dir,

@@ -15,6 +15,7 @@ import {
   addBundleFile,
   bundleContent,
   excludedFile,
+  holdsApp,
 } from "@corbits-builder/schemas/app-files";
 import { WorkflowHttpError, workflowHttpJson } from "../workflows/http-json.ts";
 import { spliceDesignScreens } from "./starter.ts";
@@ -27,6 +28,7 @@ export {
   bundleContent,
   bundleFiles,
   excludedFile,
+  holdsApp,
 } from "@corbits-builder/schemas/app-files";
 
 // Byte-order marks stay in the text, so a file reads back exactly as it was.
@@ -36,6 +38,16 @@ export const linkOrGone = (error: unknown) =>
   error instanceof Error &&
   "code" in error &&
   (error.code === "ELOOP" || error.code === "ENOENT");
+
+/** Whether a workspace holds an app yet; one not made yet holds none. */
+export async function workspaceHoldsApp(workspace: string) {
+  try {
+    return holdsApp(await readdir(workspace));
+  } catch (error) {
+    if (linkOrGone(error)) return false;
+    throw error;
+  }
+}
 
 // A path's real location is still the one the walk reached it by: no directory on its way was
 // swapped for a symlink since it was listed.

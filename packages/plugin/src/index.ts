@@ -150,11 +150,13 @@ export const { Proof, Address } = scope({
   },
   Dns: { "+": "reject", dns: "Address" },
   // A command run against the saved app, passing when it exits 0. run is the program and its
-  // arguments, never a shell line, so no part of it is read as shell syntax.
+  // arguments, never a shell line, so no part of it is read as shell syntax. setup, in the same
+  // form, prepares the workspace first, such as installing packages; the check runs nothing else.
   Command: {
     "+": "reject",
     command: {
       "+": "reject",
+      "setup?": "(string > 0)[] >= 1",
       run: "(string > 0)[] >= 1",
       "timeoutSeconds?": "1 <= number.integer <= 300",
     },
@@ -445,13 +447,16 @@ export const fail = (
   evidence: readonly string[] = [],
 ): CheckOutcome => ({ pass: false, summary, evidence });
 
+/** What a command check runs: setup, when declared, then run, each a program and its arguments. */
+export type CommandSteps = { setup?: string[]; run: string[] };
+
 /**
  * A command run against the saved app: the step it ended on, its exit code (null when it did not
  * finish), the tail of its output and whether it ran out of time; or why it could not run.
  */
 export type CommandRun =
   | {
-      step: "install" | "command";
+      step: "setup" | "command";
       exitCode: number | null;
       output: string;
       timedOut: boolean;
@@ -473,9 +478,9 @@ export type ProjectView = {
     // A text file's content, cut at the host's size cap; undefined when there is no such file. The
     // record goes stale when the file's content changes or it comes or goes.
     read(path: string): Promise<string | undefined>;
-    // Runs a command against the saved version in a sandbox of its own, after installing its
-    // packages: how the step that ended it went, or why it could not run at all.
-    run(argv: readonly string[], timeoutSeconds: number): Promise<CommandRun>;
+    // Runs a command against the saved version in a sandbox of its own, after its setup when it
+    // declares one: how the step that ended it went, or why it could not run at all.
+    run(command: CommandSteps, timeoutSeconds: number): Promise<CommandRun>;
   };
   documents: {
     // The kinds of document filed in the project.

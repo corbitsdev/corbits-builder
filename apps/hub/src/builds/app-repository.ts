@@ -27,6 +27,7 @@ import { errorCode, requestErrorMetadata } from "../request-error.ts";
 import {
   excludedFile as excludedSnapshotFile,
   linkOrGone,
+  workspaceHoldsApp,
 } from "./app-snapshot.ts";
 import {
   mediatedHttpJson,
@@ -537,7 +538,7 @@ export function createAppRepository(options: {
   async function attach(signal: AbortSignal, starting: boolean) {
     if (await exists(gitdir)) return;
     const { url, secret } = await pushAccess(signal);
-    const seeded = await exists(join(workspace, "package.json"));
+    const seeded = await workspaceHoldsApp(workspace);
     // A clone given up on keeps writing, so it writes beside the git directory until it completes.
     const staging = `${gitdir}.${crypto.randomUUID()}`;
     const cloning = git.clone({
@@ -783,7 +784,7 @@ export function createAppRepository(options: {
       serial(() => prepare(signal))
         .catch(async (error: unknown) => {
           failed(error);
-          if (await exists(join(workspace, "package.json"))) return;
+          if (await workspaceHoldsApp(workspace)) return;
           await mkdir(dirname(unattached), { recursive: true });
           await writeFile(unattached, "");
         })

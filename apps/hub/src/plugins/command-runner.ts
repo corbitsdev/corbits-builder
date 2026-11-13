@@ -3,6 +3,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { type } from "arktype";
+import type { CommandSteps } from "@corbits-builder/plugin";
 import type { AppBundle } from "@corbits-builder/schemas/artifact";
 import { parseJson } from "../lib/json.ts";
 import { hostEnv } from "../live-app/runner.ts";
@@ -77,7 +78,7 @@ export function createCommandRunner() {
     async run(
       projectId: string,
       bundle: AppBundle,
-      argv: readonly string[],
+      command: CommandSteps,
       timeoutMs: number,
     ): Promise<CommandReport> {
       if (running.has(projectId)) return { error: COMMAND_BUSY };
@@ -89,7 +90,7 @@ export function createCommandRunner() {
           await mkdir(workspace);
           return await runHost(workspace, {
             bundle,
-            argv: [...argv],
+            command,
             timeoutMs,
           });
         } finally {

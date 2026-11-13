@@ -28,6 +28,12 @@ export const excludedFile = (name: string) => {
   return lower !== ".env.example" && EXCLUDED_FILE.test(lower);
 };
 
+// An app repository begins with a commit holding only a .gitignore, which a fresh workspace checks
+// out, so a workspace or a repository holds an app once it holds any other path, whatever the app
+// is written in.
+export const holdsApp = (paths: readonly string[]) =>
+  paths.some((path) => path !== ".gitignore");
+
 // Byte-order marks stay in the text, so a file reads back exactly as it was.
 const utf8 = new TextDecoder("utf-8", { fatal: true, ignoreBOM: true });
 const encoder = new TextEncoder();

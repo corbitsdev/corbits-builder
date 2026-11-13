@@ -6,7 +6,11 @@ import type { DB } from "@intx/db";
 import { workflowRun, workflowRunLaunchSpec } from "@intx/db/schema";
 import type { TenantEnv } from "@intx/hub-api";
 import { getLogger } from "@intx/log";
-import type { CheckOutcome, CommandRun } from "@corbits-builder/plugin";
+import type {
+  CheckOutcome,
+  CommandRun,
+  CommandSteps,
+} from "@corbits-builder/plugin";
 import {
   isCheckAction,
   type Catalog,
@@ -78,7 +82,7 @@ export type Stored = {
   readDocument(filed: { artifactId: string; version: number }): Promise<string>;
   runCommand(
     bundle: AppBundle,
-    argv: readonly string[],
+    command: CommandSteps,
     timeoutSeconds: number,
   ): Promise<CommandRun>;
 };
@@ -156,12 +160,12 @@ export function savedProject({
         read: async (path) =>
           inApp(`file:${path}`, app?.bundle.files[path]?.slice(0, READ_CHARS)),
         // A command reads the whole app, so its record goes stale with any change to it.
-        run: async (argv, timeoutSeconds) =>
+        run: async (command, timeoutSeconds) =>
           inApp(
             "app",
             app === undefined
               ? { error: NO_APP }
-              : await runCommand(app.bundle, argv, timeoutSeconds),
+              : await runCommand(app.bundle, command, timeoutSeconds),
           ),
       },
       documents: {
@@ -300,8 +304,8 @@ export function createChecks(deps: {
       readDocument: async ({ artifactId, version }) =>
         (await artifacts.read(actor, projectId, { artifactId, version }))
           .content,
-      runCommand: (bundle, argv, timeoutSeconds) =>
-        commands.run(projectId, bundle, argv, timeoutSeconds * 1000),
+      runCommand: (bundle, command, timeoutSeconds) =>
+        commands.run(projectId, bundle, command, timeoutSeconds * 1000),
     });
 
   const once = async (

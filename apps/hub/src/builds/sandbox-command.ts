@@ -55,7 +55,7 @@ export async function runInSandbox(
   };
 }
 
-/** Installs the workspace's packages, as the live app and a command check both do first. */
+/** Installs the workspace's packages, as the live app does before it starts. */
 export const installPackages = (
   executor: Executor,
   timeoutMs: number,
