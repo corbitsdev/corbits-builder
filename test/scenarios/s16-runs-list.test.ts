@@ -1,13 +1,18 @@
 import { expect } from "bun:test";
+import { type } from "arktype";
+import { ProjectRuns } from "@corbits-builder/schemas/artifact";
 import { coderWorks, writerFiles } from "./specialists.ts";
 import {
+  bound,
   call,
   calls,
   execute,
+  keep,
   ok,
   results,
   say,
   scenario,
+  startedRun,
   turn,
   user,
 } from "./runner.ts";
@@ -15,10 +20,19 @@ import {
 const writerReport = "The security review is filed.";
 const coderReport = "The settings page is tidy.";
 
+// What runs wait returns: the runs that ended and those still working.
+const Waited = type({
+  ended: type({ runId: "string" }).array(),
+  working: "string[]",
+  "+": "ignore",
+});
+
+const listed = (text: string) => ProjectRuns.assert(JSON.parse(text)).runs;
+
 scenario({
   name: "s16-runs-list",
   title:
-    "runs list while a writer and a coder work, and again after both reported",
+    "runs list while a writer and a coder work, runs wait on both returns when the writer ends, and runs list again after both reported",
   start: "weather-app",
   coordinator: [
     turn(
@@ -36,13 +50,21 @@ scenario({
       ),
     ),
     turn(
-      results(ok("c_write", "execute"), ok("c_code", "execute")),
+      results(
+        keep(ok("c_write", "execute"), { writer: "runs.0.runId" }),
+        keep(ok("c_code", "execute"), { coder: "runs.0.runId" }),
+      ),
       call("c_list_working", "runs", { operation: "list" }),
     ),
     turn(
       results(ok("c_list_working", "runs")),
-      say("A writer and a coder are at work."),
+      call("c_wait", "runs", {
+        operation: "wait",
+        runIds: [bound("writer"), bound("coder")],
+        seconds: 60,
+      }),
     ),
+    turn(results(ok("c_wait", "runs")), say("The writer ended first.")),
     turn(user(writerReport), say("The security review is in.")),
     turn(
       user(coderReport),
@@ -64,7 +86,7 @@ scenario({
       role: "coder",
       turns: coderWorks({
         assignedWith: "settings page",
-        seconds: 20,
+        seconds: 25,
         report: coderReport,
       }),
     },
@@ -73,22 +95,34 @@ scenario({
     await p.heard("The project is imported.");
     await p.say("Write a security review and tidy the settings page.");
     await p.heard("Both have reported.");
-    const working = p.resultOf("c_list_working").text;
-    const ended = p.resultOf("c_list_ended").text;
+    const writer = startedRun(p.resultOf("c_write").text);
+    const coder = startedRun(p.resultOf("c_code").text);
+    const working = listed(p.resultOf("c_list_working").text);
+    const waited = Waited.assert(JSON.parse(p.resultOf("c_wait").text));
+    const ended = listed(p.resultOf("c_list_ended").text);
     p.note("runs list while both work", working);
+    p.note("runs wait returned", waited);
     p.note("runs list after both reported", ended);
+    expect(working.map(({ runId }) => runId)).toEqual(
+      expect.arrayContaining([writer, coder]),
+    );
+    // The wait returned once the writer ended, with the coder still at work.
+    expect(waited.ended.map(({ runId }) => runId)).toEqual([writer]);
+    expect(waited.working).toEqual([coder]);
+    expect(ended.map(({ runId }) => runId)).toEqual(
+      expect.arrayContaining([writer, coder]),
+    );
     const settled = await p.until("both runs to end", async () => {
-      const listed = await p.call("GET", `${p.path}/runs`);
-      const text = JSON.stringify(listed.body);
-      return text.includes('"running"') || text.includes('"deployed"')
+      const read = await p.call("GET", `${p.path}/runs`);
+      const statuses = ProjectRuns.assert(read.body)
+        .runs.filter(({ runId }) => runId === writer || runId === coder)
+        .map(({ status }) => status);
+      return statuses.some(
+        (status) => status === "running" || status === "deployed",
+      )
         ? undefined
-        : listed.body;
+        : statuses;
     });
-    p.note("the hub's runs once both ended", settled);
-    expect(working).toContain('"plugin":"writer"');
-    expect(working).toContain('"plugin":"coder"');
-    expect(ended).toContain('"status":"completed"');
-    // A coder's reply is held until the hub's done checks pass, so they are its last activity.
-    expect(ended).toContain('"lastActivity":"run_done_checks"');
+    expect(settled).toEqual(["completed", "completed"]);
   },
 });

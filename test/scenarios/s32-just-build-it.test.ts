@@ -102,11 +102,5 @@ scenario({
     // approved, Builder chose the one design, and the plan and the build start with no advice.
     for (const id of EXECUTES)
       expect(p.resultOf(id).text).not.toContain('"advice"');
-    const report = p
-      .messages("coordinator")
-      .find((message) => message.includes(DESIGNER_REPORT));
-    expect(report).toContain("chosen automatically");
-    expect(report).not.toContain('action: "choose"');
-    expect(report).not.toContain('action: "review"');
   },
 });

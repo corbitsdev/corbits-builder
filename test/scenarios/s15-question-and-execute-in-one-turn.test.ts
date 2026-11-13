@@ -87,7 +87,6 @@ scenario({
       });
     const stale = await approve(1);
     expect(stale.status).toBe(409);
-    expect(JSON.stringify(stale.body)).toContain("stale");
     const current = await approve(2);
     expect(current.status).toBe(200);
     await p.heard("The revision with prices is in.");

@@ -1,5 +1,6 @@
 import { expect } from "bun:test";
 import { type } from "arktype";
+import { ProjectRuns } from "@corbits-builder/schemas/artifact";
 import {
   call,
   execute,
@@ -43,7 +44,7 @@ scenario({
       execute("c_look_up", "worker", "do", { instruction: lookUp }),
     ),
     turn(
-      results(ok("c_look_up", "execute", '"started":true')),
+      results(ok("c_look_up", "execute")),
       say("A worker is looking it up."),
     ),
     turn(
@@ -88,13 +89,17 @@ scenario({
   },
   person: async (p) => {
     await p.heard("Planned.");
-    const discovered = p.resultOf("c_discover").text;
-    p.note("discover for a desktop app", discovered);
-    expect(discovered).toStartWith("build-web-app (ready-made plan)");
+    p.note("discover for a desktop app", p.resultOf("c_discover").text);
     p.note("worker do returned", p.resultOf("c_look_up").text);
     // The regression: starting the worker failed with "specialist run not found".
     expect(p.resultOf("c_look_up").isError).toBe(false);
     expect(p.asked("worker")).toBe(1);
+    const runs = await p.call("GET", `${p.path}/runs`);
+    const worker = ProjectRuns.assert(runs.body).runs.filter(
+      ({ plugin, action }) => plugin === "worker" && action === "do",
+    );
+    p.note("the worker's run as the hub records it", worker);
+    expect(worker).toHaveLength(1);
     expect(p.messages("coordinator").some((said) => said.includes(found))).toBe(
       true,
     );

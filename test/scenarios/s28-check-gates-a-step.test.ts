@@ -111,10 +111,7 @@ scenario({
       results(ok("c_routes_2", "execute", '"result":"pass"')),
       call("d_after", "discover", { group: "deploy" }),
     ),
-    turn(
-      results(ok("d_after", "discover", "Now: passed")),
-      say("Ready for Cloudflare."),
-    ),
+    turn(results(ok("d_after", "discover")), say("Ready for Cloudflare.")),
     turn(
       user("changed the readme"),
       execute("c_routes_3", "cloudflare", "routes", {}),

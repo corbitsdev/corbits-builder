@@ -38,6 +38,7 @@
     "typecheck": "bun run --cwd apps/web css-types && bun check --no-script && bun check --no-script -p packages/client && bun check --no-script -p packages/pdf && bun check --no-script -p packages/slidedeck && bun check --no-script -p packages/zip && bun check --no-script -p apps/web",
     "test": "bun --conditions=intx-src test ./apps/hub ./apps/web/src ./packages ./plugins ./workflows ./test/integration",
     "test:e2e": "bun --env-file=.env.hub --conditions=intx-src test ./test/e2e",
+    "test:scenarios": "bun test/scenarios/run.ts",
     "vendor:verify": "bun scripts/verify-vendor.ts",
     "pins:verify": "bun scripts/verify-pins.ts",
     "skills:react-ui": "bun scripts/react-ui-api.ts"

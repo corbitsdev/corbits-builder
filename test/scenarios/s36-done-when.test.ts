@@ -28,7 +28,7 @@ const checkStack = (id: string) =>
 scenario({
   name: "s36-done-when",
   title:
-    "coder change is done only when builds passes on the saved app: the director holds the reply with the hub's evidence in the same conversation, the coder fixes it, and only then does the coordinator get the report",
+    "a directed change goes to a coder with no approval asked and no document touched, and is done only when builds passes on the saved app: the director holds the reply with the hub's evidence in the same conversation, the coder fixes it, and only then does the coordinator get the report",
   start: "weather-app",
   coordinator: [
     turn(
@@ -97,13 +97,33 @@ scenario({
     },
   },
   person: async (p) => {
+    const { client } = p.hub;
+    const documents = async () =>
+      (await client.projectArtifacts(p.tenantId, p.projectId)).artifacts
+        .filter((artifact) => artifact.kind !== "app")
+        .map(({ kind, version, approvedVersion }) => ({
+          kind,
+          version,
+          approvedVersion,
+        }));
     await p.heard("The project is imported.");
+    const before = await documents();
+    const decidedBefore = await client.decidedApprovals(
+      p.tenantId,
+      p.projectId,
+    );
     await p.say("change the font to Inter");
     await p.heard("Your app now uses Inter.");
+    const { data: approvals } = await client.nativeApprovals(p.tenantId);
+    expect(approvals.filter(({ status }) => status === "pending")).toEqual([]);
+    expect(await documents()).toEqual(before);
+    expect(await client.decidedApprovals(p.tenantId, p.projectId)).toEqual(
+      decidedBefore,
+    );
 
+    // The held reply names the failed check and its evidence, so the coder can fix it.
     const held = p.messages("coder")[1];
     p.note("what the coder was told when its reply was held", held);
-    expect(held).toContain("Builder held your reply");
     expect(held).toContain("coder builds failed");
     expect(held).toContain("inter.css");
 

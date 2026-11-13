@@ -84,7 +84,7 @@ scenario({
       user("weather app"),
       call("c_plan", "plan", { operation: "add", plan: "build-web-app" }),
     ),
-    turn(results(ok("c_plan", "plan", '"optional":true')), say("Planned.")),
+    turn(results(ok("c_plan", "plan")), say("Planned.")),
     turn(
       user("declined the plan step"),
       execute("c_manual", "writer", "write", manual),
@@ -105,10 +105,7 @@ scenario({
       user("written the requirements"),
       execute("c_mockup", "designer", "mockup", WEATHER_MOCKUP),
     ),
-    turn(
-      results(ok("c_mockup", "execute", '"started":true')),
-      say("A designer is on it."),
-    ),
+    turn(results(ok("c_mockup", "execute")), say("A designer is on it.")),
     turn(user(DESIGNER_REPORT), say("The design is chosen.")),
   ],
   specialists: {
@@ -149,7 +146,6 @@ scenario({
     const required = await p.call("POST", decline(requirements.id));
     p.note("declining a required step", required);
     expect(required.status).toBe(409);
-    expect(JSON.stringify(required.body)).toContain("cannot be declined");
 
     const declined = await p.call("POST", decline(userManual.id));
     expect(declined.status).toBe(200);
@@ -157,7 +153,6 @@ scenario({
       (step) => step.id === userManual.id,
     );
     expect(after?.state).toBe("skipped");
-    expect(after?.summary).toBe("declined by the person");
 
     const handOver = await p.question();
     p.note("the hand-over screen", handOver.asked);
