@@ -172,10 +172,11 @@ export function useWorkingPreferences({
     pickedRef.current[id] = pick;
     setPicked({ ...pickedRef.current });
     const before = queue.current;
-    queue.current = (async () => {
+    async function saveAfterEarlierSaves() {
       await before;
       await saveToHub(id, pick);
-    })();
+    }
+    queue.current = saveAfterEarlierSaves();
   };
 
   return {
