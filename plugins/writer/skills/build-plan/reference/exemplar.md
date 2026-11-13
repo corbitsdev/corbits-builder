@@ -8,24 +8,25 @@ the project uses, the person asked for or you chose.
 ```markdown
 ## In short
 
-- **Approach A on the suggested web stack**: one server with its own database
-  serving the member and staff screens.
+- **The suggested web stack**: one server with its own database and a React
+  client.
 - **Six phases**; the designed screens show in the preview from phase 2, on labelled sample data until phase 5.
 - The riskiest part is **the timetable import**; the fallback is entering
   classes by hand on the timetable screen.
 
-## Approach and stack
+## Stack
 
-Approach A, chosen in the approaches document, on the web starter's stack: a
-server with a small database and a React client. It holds bookings in one
-place, which a full class refusing the next booking needs (FR-2), and runs
-on one small server inside the budget (the constraints).
+The web starter's stack, a server with a small database and a React client,
+for the approach chosen in the product requirements (Approach). It holds
+bookings in one place, which FR-2 needs, and runs on one small server
+inside the budget (Bounds).
 
 ## Components and interfaces
 
 - Server: classes, members and bookings tables; routes `GET /api/classes`,
   `POST /api/bookings`, `DELETE /api/bookings/:id`, `GET /api/rosters/:classId`.
-- Client: Timetable, My bookings, Roster and Import screens.
+- Client: a page under `client/src/pages` for the Timetable screen (IR-1)
+  and for My bookings, Roster and Import.
 - Email: a confirmation per booking through the gym's email service (IR-2).
 
 ## Data flow
@@ -76,10 +77,7 @@ running app on the screen the checklist names.
 
 ## Acceptance checklist
 
-- [ ] AC-1: On Timetable, a member books a class with space; it appears on
-      My bookings.
-- [ ] AC-2: On Timetable, a class at capacity shows "Full" in place of
-      Book.
-- [ ] AC-3: On My bookings, inside two hours of the class, Cancel is
-      unavailable and says why.
+- [ ] AC-1: On Timetable, book a class with space, then open My bookings.
+- [ ] AC-2: On Timetable, find a class at capacity.
+- [ ] AC-3: On My bookings, open a booking inside two hours of its class.
 ```

@@ -14,15 +14,15 @@ project's own documents.
 - The riskiest part is **reading dates from HEIC photos**; the fallback is
   listing those photos as skipped.
 
-## Approach and stack
+## Stack
 
-A single Go program using the standard library and one EXIF reader. One
-file to copy onto either laptop meets NFR-2, and Go renames 2,000 files in
-well under the ten seconds NFR-1 allows.
+A single Go program using the standard library and one EXIF reader, for the
+approach chosen in the product requirements (Approach). One file to copy
+onto either laptop meets NFR-2, and Go meets NFR-1 with room to spare.
 
 ## Components and interfaces
 
-- `main.go`: parses `photo-dates <folder> [--dry-run]` and `undo` (IR-1).
+- `main.go`: parses the commands and flags in IR-1.
 - `dates.go`: reads each photo's capture date from its EXIF data (IR-2).
 - `plan.go`: turns dates into new names, adding suffixes on clashes (FR-2).
 - `.photo-dates-undo.json` in the folder: the last run's old and new names.
@@ -62,10 +62,7 @@ then tried at the command line on that folder.
 
 ## Acceptance checklist
 
-- [ ] AC-1: Run `photo-dates testdata/trip`; every file is renamed to its
-      capture date and the count is printed.
-- [ ] AC-2: The two same-second photos end as `..._09-31-05.jpg` and
-      `..._09-31-05-1.jpg`.
-- [ ] AC-3: Run with `--dry-run`; the renames print and every file keeps its
-      name.
+- [ ] AC-1: Run `photo-dates testdata/trip`.
+- [ ] AC-2: After that run, list the two same-second photos.
+- [ ] AC-3: Run `photo-dates testdata/trip --dry-run` on a fresh copy.
 ```

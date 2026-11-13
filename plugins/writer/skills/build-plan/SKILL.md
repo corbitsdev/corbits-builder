@@ -1,6 +1,6 @@
 ---
 name: build-plan
-description: Use when writing or revising a build_plan for anything being built - the plan a builder executes without asking - the approach and a stack that fits, components and interfaces, data flow, ordered phases with files, requirement ids and checkable exits, install and run, test plan, risks with fallbacks, and the acceptance checklist the builder ticks off.
+description: Use when writing or revising a build_plan for anything being built - the plan a builder executes without asking - a stack that fits, components and interfaces, data flow, ordered phases with files, requirement ids and checkable exits, install and run, test plan, risks with fallbacks, and the acceptance checklist the builder ticks off.
 ---
 
 # Build plan
@@ -8,10 +8,17 @@ description: Use when writing or revising a build_plan for anything being built 
 The build plan is written for whoever builds it, usually a coding agent,
 specific enough that the build never has to reopen a decision. It fits
 anything being built: an app, a command-line tool, an API or library, a
-data pipeline. When requirements are filed, it cites them by id (FR-1,
-NFR-2, AC-3) wherever a phase, a component or a check exists to meet one,
-and carries each requirement by its id. When the work starts from the
-person's request alone, it says what it delivers in their terms.
+data pipeline. When the work starts from the person's request alone, it
+says what it delivers in their terms.
+
+## What the requirements already say
+
+When requirements are filed, the plan adds how to build the thing and
+repeats nothing they decided. It refers to them by the document's title and
+the item's id (FR-1, NFR-2, IR-1, AC-3) wherever a phase, a component or a
+check exists to meet one. The approach, each requirement's wording, the
+list of screens or commands and what each acceptance criterion expects stay
+in the requirements; the reader opens them by the id.
 
 ## The stack
 
@@ -26,16 +33,17 @@ person's request alone, it says what it delivers in their terms.
 
 ## Sections, in order
 
-1. `## In short`: two to four one-line bullets: the approach and stack, the
-   number of phases, the riskiest part and its fallback. **Bold the words
-   that carry the meaning.**
-2. `## Approach and stack`: the approach, the one chosen in an approaches
-   document when there is one, the stack, and why both fit what was asked
-   and any constraints.
+1. `## In short`: two to four one-line bullets: the stack, the number of
+   phases, the riskiest part and its fallback. **Bold the words that carry
+   the meaning.**
+2. `## Stack`: the stack and why it fits the approach and the constraints.
+   Name the approach by where the requirements chose it, in one clause;
+   describe it only when no requirements are filed.
 3. `## Components and interfaces`: each part, what it owns, and what passes
-   between parts: routes, tables and screens for a web app; modules,
-   commands and files for a command-line tool; endpoints and schemas for an
-   API; stages and datasets for a pipeline.
+   between parts: routes and tables for a web app; modules and files for a
+   command-line tool; endpoints and schemas for an API; stages and datasets
+   for a pipeline. A screen or command the requirements list is named by
+   its id, with the part that serves it.
 4. `## Data flow`: where each piece of data comes from, how it moves
    between outside sources and the parts, and where it is kept.
 5. `## Phases`: in order, each with its files, the requirement ids it
@@ -64,10 +72,12 @@ person's request alone, it says what it delivers in their terms.
    documents leave open, and the fallback for each. Name here any
    requirement the plan does not reach or believes is wrong.
 9. `## Acceptance checklist`: a Markdown task list, one unchecked `- [ ] `
-   line per acceptance criterion, led by its AC id, or per thing the person
-   asked for when no requirements are filed, saying what a person does and
-   what they then see: on which screen, at which command or against which
-   endpoint. The builder confirms each one and reports it by id.
+   line per acceptance criterion, led by its AC id and saying only how to
+   try it: on which screen, at which command or against which endpoint.
+   What it must then show is the criterion's own wording in the
+   requirements. When no requirements are filed, one line per thing the
+   person asked for, saying what a person does and what they then see. The
+   builder confirms each one and reports it by id.
 
 ## What makes it good
 
@@ -75,11 +85,11 @@ person's request alone, it says what it delivers in their terms.
   endpoints the thing has; each phase is small enough that its exit is
   observable.
 - Cite a requirement by its id and leave its wording to the requirements
-  document.
+  document. A sentence the requirements already hold is a sentence to cut.
 - Use what the project, its starter and its stack already provide, and name
   it.
 - The checklist covers every acceptance criterion, each line a short
-  action and a visible result.
+  action a person can carry out.
 
 `read_skill build-plan file reference/exemplar.md` shows the shape for a
 web app, and `reference/exemplar-cli.md` for a command-line tool; follow
