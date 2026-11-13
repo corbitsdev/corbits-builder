@@ -79,7 +79,7 @@ function Choose({
   submit,
   submitting,
   host,
-}: Props & { host: Host; page: PageControls<ChooseOutput> }) {
+}: Props & { host: Host; page: PageControls }) {
   const Frame = host.mockupFrame;
   const comments = draft.comments ?? NONE;
   const picked = host.designConcepts.find(

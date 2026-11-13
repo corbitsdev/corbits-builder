@@ -525,6 +525,35 @@ export function saidOf(phrase: string, thing: string | undefined) {
 // A filed artifact at the version the person was shown, such as a document they approved.
 export type Shown = { artifactId: string; version: number };
 
+// The names of Out's fields that hold a Value, so a decision naming any other fails the type check.
+type FieldOf<Out, Value> = {
+  [Name in keyof Out]-?: NonNullable<Out[Name]> extends Value ? Name : never;
+}[keyof Out] &
+  string;
+
+// A screen whose answer accepts what it shows or sends it back with the person's feedback. The host
+// draws every control that answers it: accept while nothing is pending and nothing is typed, else the
+// prompt box's own Send, with accepting kept behind a confirmation. accept is what accepting is
+// called. sendBack, where feedback goes back as the screen's output, names the output's field the
+// typed note goes in, the field holding the pending items, and what one and several of them are
+// called; without it, what the person types answers in their own words.
+export type Decision<Out> = {
+  accept: string;
+  sendBack?: {
+    note: FieldOf<Out, string>;
+    items: FieldOf<Out, readonly unknown[]>;
+    one: string;
+    many: string;
+  };
+};
+
+// What a screen with a decision offers now: the answer accepting gives, or why it cannot be accepted
+// yet; and, where its decision sends back as output, that output with the pending items and no note.
+export type Offer<Output> = {
+  accept: { output: Output } | { unavailable: string };
+  sendBack?: Output;
+};
+
 export type Screen<In, Out, Data, Prepared> = {
   input: Type<In>;
   output: Type<Out>;
@@ -553,6 +582,7 @@ export type Screen<In, Out, Data, Prepared> = {
   // What the answer approves, each at the version the person was shown; the manifest's returns
   // says which facts that may make true.
   approves?: (output: Type<Out>["infer"]) => readonly Shown[];
+  decision?: Decision<Type<Out>["infer"]>;
 };
 
 export const defineScreen = <In, Out, Data, Prepared>(
@@ -700,16 +730,7 @@ export const isCheck = (value: unknown): value is Check<unknown> =>
 export const Instruction = SpecialistInstruction.and("string >= 40");
 
 // What a screen placed on the page shares with the prompt box the person still types in.
-export type PageControls<Output> = {
-  // What the prompt box sends in place of a reply, built with the typed text as its message; null
-  // while there is nothing to send, so typing answers in words. reply is what the prompt box asks
-  // while it is staged, in place of the screen's own says.reply, such as how much it carries.
-  stage(
-    compose: ((message: string | undefined) => Output) | null,
-    reply?: string,
-  ): void;
-  // Sends what is staged with the prompt box's text, as its Send does.
-  sendStaged(): void;
+export type PageControls = {
   // Back to the conversation without answering; the screen keeps its draft until reopened.
   close(): void;
 };
@@ -727,7 +748,9 @@ export type ScreenViewProps<Input, Output, Prepared, Host = unknown> = {
   submitting: boolean;
   answer: Output | undefined;
   host?: Host;
-  page?: PageControls<Output> | undefined;
+  page?: PageControls | undefined;
+  // How a screen with a decision tells the host what it offers, each time that changes.
+  offer?: (offer: Offer<Output>) => void;
 };
 
 export type Refused = { ok: false; refusal: Refusal; text: string };

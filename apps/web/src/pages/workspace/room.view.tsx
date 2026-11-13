@@ -90,6 +90,8 @@ export type RoomComposer = {
   /** The answers the coordinator's last message offers, each sent as it is. */
   suggestedReplies: readonly string[];
   onReply: (reply: string) => void;
+  /** What Send says, beside it and as its name, while an open screen has feedback to send with nothing typed. */
+  sendLabel: string | null;
 };
 
 /** What sits under the conversation: the composer, or why the person cannot write yet. */
@@ -430,6 +432,7 @@ function RoomComposerView({
   onCancelCaution,
   suggestedReplies,
   onReply,
+  sendLabel,
   answersShell,
 }: RoomComposer & { answersShell: AnswersShell }) {
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -502,7 +505,9 @@ function RoomComposerView({
               value={text}
               onValueChange={onTextChange}
               onSubmit={send}
-              canSubmit={text.trim() !== "" || files.length > 0}
+              canSubmit={
+                text.trim() !== "" || files.length > 0 || sendLabel !== null
+              }
               status={busy ? "submitted" : "ready"}
               disabled={disabled || needsProvider}
             >
@@ -578,7 +583,17 @@ function RoomComposerView({
                     <Sparkles size={14} aria-hidden="true" />
                   </UiButton>
                 ) : (
-                  <PromptInputSubmit className="ms-auto" />
+                  <>
+                    {sendLabel === null ? null : (
+                      <span className={styles.sendLabel} aria-hidden="true">
+                        {sendLabel}
+                      </span>
+                    )}
+                    <PromptInputSubmit
+                      className={sendLabel === null ? "ms-auto" : undefined}
+                      aria-label={sendLabel ?? undefined}
+                    />
+                  </>
                 )}
               </PromptInputToolbar>
             </PromptInput>

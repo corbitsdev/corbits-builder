@@ -1080,6 +1080,11 @@ export const wording = {
     /** In the conversation while a screen placed over the room is open but closed for now. */
     pageScreenOpen: "Waiting for your review.",
     pageScreenReopen: "Open",
+    /** Beside Send, and its name, while a screen's decision has items to send back, such as "2 comments". */
+    sendBack: (items: string) => `Send feedback · ${items}`,
+    /** What the prompt box asks meanwhile. */
+    sendBackReply: (items: string) =>
+      `Add a note (optional). ${items} will be sent.`,
   },
   /** Why the mockup review cannot record an approval of the design it shows. */
   designReview: {

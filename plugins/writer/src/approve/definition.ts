@@ -35,6 +35,7 @@ export default defineScreen({
       },
     },
   },
+  decision: { accept: "Approve" },
   approves: (output) =>
     output.approved.map(({ artifactId, version }) => ({ artifactId, version })),
 });

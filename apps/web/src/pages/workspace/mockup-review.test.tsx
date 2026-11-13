@@ -22,11 +22,7 @@ const comment = {
     box,
   },
 };
-const page = {
-  stage: () => undefined,
-  sendStaged: () => undefined,
-  close: () => undefined,
-};
+const page = { close: () => undefined };
 
 const review = (
   design: ReviewedDesign | null,
@@ -55,23 +51,15 @@ const review = (
     />,
   );
 
-const button = (html: string, name: string) =>
-  new RegExp(`<button[^>]*>${name}</button>`).exec(html)?.[0] ?? "";
-const NO_COMMENTS = text.requestChanges(0);
-const disabled = (html: string, name: string) =>
-  button(html, name).includes('disabled=""');
-
 describe("mockup review", () => {
-  test("a live draft cannot be approved, and says why", () => {
+  test("the review draws the mockup and answers nothing itself", () => {
     const html = review({
       files,
-      version: "draft",
-      approval: { unavailable: "The designer is still working." },
+      version: 3,
+      approval: { option: "design-option-1" },
     });
     expect(html).toContain('data-slot="gui-frame"');
-    expect(disabled(html, text.approve)).toBe(true);
-    expect(html).toContain("The designer is still working.");
-    expect(disabled(html, NO_COMMENTS)).toBe(true);
+    expect(html).not.toContain(">Approve<");
   });
 
   test("the last round's comments are listed to read, not to remove", () => {

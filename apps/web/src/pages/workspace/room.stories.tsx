@@ -80,6 +80,7 @@ const composer: RoomComposer & { kind: "composer" } = {
   onCancelCaution: fn(),
   suggestedReplies: [],
   onReply: fn(),
+  sendLabel: null,
 };
 
 // One of the pane's own stories as the room takes it: what the pane shows, and its parts.

@@ -1,7 +1,8 @@
 /**
  * The mockup review: the design's mockup in the host's sandboxed frame with a numbered pin on each
- * place the person tagged, their comments beside it, and a bar to move between screens, tag a place,
- * approve or request changes. Settles to one line in the conversation once answered.
+ * place the person tagged, their comments beside it, and a bar to move between screens and tag a
+ * place. The host answers it from the screen's decision: approve, or send the comments back.
+ * Settles to one line in the conversation once answered.
  */
 import {
   useEffect,
@@ -14,7 +15,7 @@ import {
 } from "react";
 import { MapPin, Monitor, Smartphone, X } from "lucide-react";
 import { Button, Textarea } from "@corbits/react-ui";
-import type { PageControls, ScreenViewProps } from "@corbits-builder/plugin";
+import type { Offer, ScreenViewProps } from "@corbits-builder/plugin";
 import { ScreenActions } from "@corbits-builder/plugin-ui/screen-actions";
 import { ScreenSettled } from "@corbits-builder/plugin-ui/screen-card";
 import { Output, type At, type Comment, type Input } from "./schema.ts";
@@ -93,9 +94,6 @@ export const text = {
   tag: "Tag",
   startHint: "Turn on Tag, then click a place in the mockup to pin a comment.",
   tagHint: "Click a place to pin a comment.",
-  approve: "Approve",
-  requestChanges: (count: number) =>
-    count === 0 ? "Request changes" : `Request changes · ${plural(count)}`,
   comments: "Comments",
   noComments: "No comments yet.",
   lastRound: "Last round",
@@ -106,10 +104,6 @@ export const text = {
   remove: (pin: number) => `Remove comment ${String(pin)}`,
   pin: (pin: number, said: string | undefined) =>
     said === undefined ? `Pin ${String(pin)}` : `Pin ${String(pin)}: ${said}`,
-  reply: (count: number) =>
-    count === 0
-      ? "Say what should change, or tag a place in the mockup."
-      : `Add a note (optional). ${plural(count)} will be sent.`,
   noDesign: "There is no design to review yet.",
   asked: "Approve the design?",
   approved: (version: number | "draft") =>
@@ -235,16 +229,24 @@ export function framePins(state: Pins, shown: Place | null): FramePin[] {
     });
 }
 
-/** Asking for changes: the comments, and what the person typed in the prompt box, if anything. */
-export const changes = (
-  version: ReviewOutput["version"],
+/** What the review offers the host: approving the design with the comments, or sending them back. */
+export const offerOf = (
+  { version, approval }: ReviewedDesign,
   comments: Said[],
-  message: string | undefined,
-): ReviewOutput => {
-  const output: ReviewOutput = { decision: "changes", version, comments };
-  if (message !== undefined) output.message = message;
-  return output;
-};
+): Offer<ReviewOutput> => ({
+  accept:
+    "option" in approval
+      ? {
+          output: {
+            decision: "approved",
+            version,
+            option: approval.option,
+            comments,
+          },
+        }
+      : approval,
+  sendBack: { decision: "changes", version, comments },
+});
 
 export function MockupReview(props: Props) {
   const { answer, host } = props;
@@ -259,24 +261,19 @@ export function MockupReview(props: Props) {
         }
       />
     );
-  if (host === undefined || host.design === null || props.page === undefined)
+  if (host === undefined || host.design === null)
     return <p className={styles.hint}>{text.noDesign}</p>;
-  return (
-    <Review {...props} host={host} design={host.design} page={props.page} />
-  );
+  return <Review {...props} host={host} design={host.design} />;
 }
 
 function Review({
   input,
-  submit,
-  submitting,
+  offer,
   host,
   design,
-  page,
 }: Props & {
   host: Host;
   design: ReviewedDesign;
-  page: PageControls<ReviewOutput>;
 }) {
   const Frame = host.mockupFrame;
   const frame = useRef<FrameHandle>(null);
@@ -287,22 +284,14 @@ function Review({
   const [state, dispatch] = useReducer(pinned, NO_PINS);
   const comments = useMemo(() => outgoing(state), [state]);
   const pins = useMemo(() => framePins(state, shown), [state, shown]);
-  const { version, approval } = design;
   const lastRound =
     host.earlierAnswer === undefined
       ? []
       : Output.assert(host.earlierAnswer).comments;
 
-  // The host hands a new page each render; staging follows the comments, not the render.
-  const latestPage = useRef(page);
-  latestPage.current = page;
   useEffect(() => {
-    latestPage.current.stage(
-      (message) => changes(version, comments, message),
-      text.reply(comments.length),
-    );
-  }, [comments, version]);
-  useEffect(() => () => latestPage.current.stage(null), []);
+    offer?.(offerOf(design, comments));
+  }, [offer, design, comments]);
 
   const select = (pin: number) => {
     dispatch({ kind: "select", pin });
@@ -513,35 +502,7 @@ function Review({
             {text.tag}
           </button>
         </div>
-        <ScreenActions
-          note={"unavailable" in approval ? approval.unavailable : undefined}
-        >
-          <Button
-            type="button"
-            size="sm"
-            disabled={submitting || "unavailable" in approval}
-            onClick={() => {
-              if ("option" in approval)
-                void submit({
-                  decision: "approved",
-                  version,
-                  option: approval.option,
-                  comments,
-                });
-            }}
-          >
-            {text.approve}
-          </Button>
-          <Button
-            type="button"
-            size="sm"
-            variant="outline"
-            disabled={submitting || comments.length === 0}
-            onClick={page.sendStaged}
-          >
-            {text.requestChanges(comments.length)}
-          </Button>
-        </ScreenActions>
+        <ScreenActions />
       </div>
     </section>
   );

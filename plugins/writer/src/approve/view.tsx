@@ -1,10 +1,11 @@
 /**
  * The ask to approve the documents, as one card in the conversation: what is asked, each document
- * as the shared document block shows any filed document, one Approve for them all, and a way to
- * ask for changes instead, which is the prompt box. Settles to one line once answered.
+ * as the shared document block shows any filed document. The host answers it from the screen's
+ * decision: one Approve for them all, or what the person types in the prompt box. Settles to one
+ * line once answered.
  */
-import { Button } from "@corbits/react-ui";
-import type { ScreenViewProps } from "@corbits-builder/plugin";
+import { useEffect, useMemo } from "react";
+import type { Offer, ScreenViewProps } from "@corbits-builder/plugin";
 import {
   DocumentBlock,
   documentBlockText,
@@ -30,7 +31,6 @@ export type ShownDocument = {
 
 export type Host = {
   documents: { list: readonly ShownDocument[]; open(kind: string): void };
-  focusReply: () => void;
 };
 
 type Props = ScreenViewProps<
@@ -51,8 +51,7 @@ export const text = {
       : `Approve these ${String(others.length + 1)} documents?`,
   approved: "already approved",
   notFiled: (kind: string) => `${kind} is not filed yet.`,
-  approve: "Approve",
-  askForChanges: "Ask for changes",
+  unfiled: "Each document is approved once it is filed.",
   orType: "Or type what should change in the message box below.",
   noDocuments: "The documents cannot be shown here.",
   settled: (approved: readonly { title: string; version: number }[]) => {
@@ -68,13 +67,49 @@ export const text = {
   },
 };
 
-export function ApproveDocuments({
-  input,
-  submit,
-  submitting,
-  answer,
-  host,
-}: Props) {
+const NONE: readonly ShownDocument[] = [];
+
+/** The documents asked for that are filed, and the kinds asked for that are not. */
+export function filedOf(
+  list: readonly ShownDocument[],
+  kinds: readonly string[],
+) {
+  const filed = list.filter((document) => kinds.includes(document.kind));
+  const missing = kinds.filter(
+    (kind) => !filed.some((document) => document.kind === kind),
+  );
+  return { filed, missing };
+}
+
+/** What the card offers the host: approving every document asked for at the version shown, once all are filed. */
+export const offerOf = (
+  filed: readonly ShownDocument[],
+  missing: readonly string[],
+): Offer<typeof Output.infer> =>
+  missing.length > 0
+    ? { accept: { unavailable: text.unfiled } }
+    : {
+        accept: {
+          output: {
+            approved: filed.map(({ kind, artifactId, version }) => ({
+              kind,
+              artifactId,
+              version,
+            })),
+          },
+        },
+      };
+
+export function ApproveDocuments({ input, answer, host, offer }: Props) {
+  const list = host?.documents.list;
+  // Kept while the documents and kinds are, so the offer follows them, not each render.
+  const { filed, missing } = useMemo(
+    () => filedOf(list ?? NONE, input.kinds),
+    [list, input.kinds],
+  );
+  useEffect(() => {
+    offer?.(offerOf(filed, missing));
+  }, [offer, filed, missing]);
   if (answer !== undefined) {
     const titles = new Map(
       host?.documents.list.map((document) => [document.kind, document.title]),
@@ -93,43 +128,11 @@ export function ApproveDocuments({
   }
   if (host === undefined)
     return <p className={styles.hint}>{text.noDocuments}</p>;
-  const { list, open } = host.documents;
-  const filed = list.filter((document) => input.kinds.includes(document.kind));
-  const missing = input.kinds.filter(
-    (kind) => !filed.some((document) => document.kind === kind),
-  );
+  const { open } = host.documents;
   return (
     <ScreenCard
       title={text.ask(input.kinds)}
-      actions={
-        <ScreenActions note={text.orType}>
-          <Button
-            type="button"
-            size="sm"
-            disabled={submitting || missing.length > 0}
-            onClick={() =>
-              void submit({
-                approved: filed.map(({ kind, artifactId, version }) => ({
-                  kind,
-                  artifactId,
-                  version,
-                })),
-              })
-            }
-          >
-            {text.approve}
-          </Button>
-          <Button
-            type="button"
-            size="sm"
-            variant="outline"
-            disabled={submitting}
-            onClick={host.focusReply}
-          >
-            {text.askForChanges}
-          </Button>
-        </ScreenActions>
-      }
+      actions={<ScreenActions note={text.orType} />}
     >
       <ul className={styles.documents} data-slot="approve-documents">
         {filed.map((document) => (

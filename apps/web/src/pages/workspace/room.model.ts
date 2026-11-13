@@ -169,7 +169,6 @@ import { MockupFrame } from "./mockup-frame.tsx";
 import type {
   ChoosableConcept,
   HostSupplies,
-  PageHost,
   ReviewedDesign,
   ScreenQuestionProps,
   ShownDocument,
@@ -606,12 +605,16 @@ export function useRoom({
   const [closedPage, setClosedPage] = useState<string | null>(null);
   const pageOpen =
     pageQuestion !== undefined && closedPage !== pageQuestion.signalName;
-  // What the open page screen sends when the person presses Send, given what they typed.
-  const pageSend = useRef<
+  // What the open screen's decision sends back when the person presses Send, given what they typed.
+  const stagedSend = useRef<
     ((message: string | undefined) => Promise<boolean>) | null
   >(null);
-  // What the prompt box asks while the page screen has something staged, when the screen says.
-  const [pageReply, setPageReply] = useState<string>();
+  // The items that send carries, such as "2 comments", which Send sends with nothing typed.
+  const [stagedItems, setStagedItems] = useState<string | null>(null);
+  const stagedReply =
+    stagedItems === null
+      ? undefined
+      : wording.questions.sendBackReply(stagedItems);
   // The coder's filed app source is the resume point for a later coder, not a document to read.
   const artifacts = snapshot.artifacts
     .filter((item) => item.kind !== "app")
@@ -1306,16 +1309,16 @@ export function useRoom({
     onUndo: (message) => void undoTypedYes(message),
     onDropped: restoreToComposer,
   });
-  const sendThroughPage = async () => {
-    const staged = pageSend.current;
-    if (staged === null || sending) return;
+  const sendStaged = async (
+    staged: (message: string | undefined) => Promise<boolean>,
+  ) => {
+    if (sending) return;
     const message = value.trim();
     if (await staged(message.length === 0 ? undefined : message)) setValue("");
   };
   // A change to a document a specialist is already building from waits for one more yes.
   const send = () => {
-    if (pageQuestion !== undefined && pageSend.current !== null)
-      return void sendThroughPage();
+    if (stagedSend.current !== null) return void sendStaged(stagedSend.current);
     if (files.length > 0) return void sendFiles();
     if (typedYes.hold(value)) return setValue("");
     // Without a read of who is at work there is no one to warn about.
@@ -1626,14 +1629,15 @@ export function useRoom({
       list: shownDocuments,
       open: openDocument,
     },
-    focusReply: () => composerRef.current?.focus(),
-  };
-  const pageHost: PageHost = {
-    stage: (staged, reply) => {
-      pageSend.current = staged;
-      setPageReply(staged === null ? undefined : reply);
+    reply: {
+      drafted: value.trim().length > 0,
+      stage: (staged) => {
+        stagedSend.current = staged?.send ?? null;
+        setStagedItems(staged?.pending ?? null);
+      },
     },
-    sendStaged: () => void sendThroughPage(),
+  };
+  const pageHost = {
     close: () => setClosedPage(pageQuestion?.signalName ?? null),
   };
   const appFiled = snapshot.artifacts.some((item) => item.kind === "app");
@@ -1739,7 +1743,7 @@ export function useRoom({
         approvalOpen: openApproval !== undefined,
         questionsOpen: openQuestion !== undefined,
         screenReply:
-          pageReply ??
+          stagedReply ??
           (openQuestion !== undefined && "plugin" in openQuestion.asked
             ? screenWords(
                 openQuestion.asked.plugin,
@@ -1775,6 +1779,8 @@ export function useRoom({
       },
       suggestedReplies: replies,
       onReply: (reply) => void deliver(reply),
+      sendLabel:
+        stagedItems === null ? null : wording.questions.sendBack(stagedItems),
     };
   };
   const answerCard = async (signalName: string, answer: QuestionAnswer) => {

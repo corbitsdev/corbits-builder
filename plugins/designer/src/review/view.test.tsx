@@ -1,11 +1,10 @@
 import { describe, expect, test } from "bun:test";
 import {
-  changes,
   framePins,
   NO_PINS,
+  offerOf,
   outgoing,
   pinned,
-  text,
   type PinEvent,
   type Pins,
   type Spot,
@@ -85,22 +84,42 @@ describe("pinning a comment", () => {
   });
 });
 
-describe("requesting changes", () => {
-  test("a typed reply sends the same comments as the button, with the text", () => {
+describe("what the review offers", () => {
+  test("approving and sending back carry the same comments", () => {
     const state = run(
       ...comment(search, "Bigger."),
       ...comment(card, "Fewer words."),
     );
     const comments = outgoing(state);
-    const button = changes(2, comments, undefined);
-    const typed = changes(2, comments, "Also try a darker blue.");
-    expect(typed.comments).toEqual(button.comments);
-    expect(typed.message).toBe("Also try a darker blue.");
-    expect(button.message).toBeUndefined();
-    expect(text.requestChanges(comments.length)).toBe(
-      `Request changes · ${String(button.comments.length)} comments`,
+    const offer = offerOf(
+      { files: {}, version: 2, approval: { option: "design-option-1" } },
+      comments,
     );
-    expect(text.reply(comments.length)).toContain("2 comments will be sent");
+    expect(offer.accept).toEqual({
+      output: {
+        decision: "approved",
+        version: 2,
+        option: "design-option-1",
+        comments,
+      },
+    });
+    expect(offer.sendBack).toEqual({
+      decision: "changes",
+      version: 2,
+      comments,
+    });
+  });
+
+  test("a live draft offers no approval, and says why", () => {
+    const offer = offerOf(
+      {
+        files: {},
+        version: "draft",
+        approval: { unavailable: "Still drawing." },
+      },
+      [],
+    );
+    expect(offer.accept).toEqual({ unavailable: "Still drawing." });
   });
 
   test("words still being written are sent, and counted", () => {

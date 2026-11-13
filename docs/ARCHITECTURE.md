@@ -62,6 +62,20 @@ action's `definition.ts`, what a person reads of it: a started action's
 chose. A plugin's package hands the hub's tool bundles what its workspace runs,
 such as its check commands and its skills.
 
+A screen whose answer is "accept this, or send it back with feedback" declares
+that once, as its definition's `decision`, and the interface draws every control
+that answers it; the view only offers, through its `offer` prop, the answer
+accepting gives (or why it cannot yet) and, where feedback goes back as output,
+that output with its pending items. With nothing pending and nothing typed,
+accept is the action; otherwise the prompt box's own Send sends the feedback,
+with the count beside it, and accepting becomes "… anyway" behind an in-place
+confirmation that names what it would discard. The designer's mockup review
+declares `{ accept: "Approve", sendBack: { note: "message", items: "comments",
+one: "comment", many: "comments" } }`, so a typed note and its pinned comments
+go back as one output; the writer's document approval declares
+`{ accept: "Approve" }`, so what the person types answers in their own words. A
+screen with no `decision` draws its own actions.
+
 - **Coordinator**: one per project, long-lived. Talks to the person, writes the
   problem brief, hands off work and asks for decisions.
 - **Writer**: one bounded write of one document of a named kind.

@@ -1,5 +1,10 @@
 import { describe, expect, test } from "bun:test";
-import { validateInput, validateOutput } from "@corbits-builder/plugin";
+import {
+  validateInput,
+  validateOutput,
+  type Decision,
+} from "@corbits-builder/plugin";
+import { Output } from "./schema.ts";
 import screen from "./definition.ts";
 
 const check = (output: unknown) =>
@@ -66,4 +71,20 @@ test("the coordinator passes only a note; the design is the host's", () => {
   expect(take({})).toBe(true);
   expect(take({ note: "The search link is bigger now." })).toBe(true);
   expect(take({ design: "v2" })).toBe(false);
+});
+
+type SendBack = NonNullable<Decision<typeof Output.infer>["sendBack"]>;
+
+describe("the review's decision", () => {
+  test("names only fields its output has, each holding what it is for", () => {
+    // @ts-expect-error the output has no field called note
+    const note: SendBack["note"] = "note";
+    // @ts-expect-error message holds words, not the pending items
+    const items: SendBack["items"] = "message";
+    expect([note, items]).toHaveLength(2);
+    expect(screen.decision?.sendBack).toMatchObject({
+      note: "message",
+      items: "comments",
+    });
+  });
 });

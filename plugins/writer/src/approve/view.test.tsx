@@ -1,7 +1,12 @@
 import { describe, expect, test } from "bun:test";
-import { isValidElement, type ReactNode } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
-import { ApproveDocuments, text, type ShownDocument } from "./view.tsx";
+import {
+  ApproveDocuments,
+  filedOf,
+  offerOf,
+  text,
+  type ShownDocument,
+} from "./view.tsx";
 
 // A kind no list in Builder knows, as a writer may file any document.
 const manual: ShownDocument = {
@@ -11,49 +16,21 @@ const manual: ShownDocument = {
   version: 1,
 };
 
-type Submit = Parameters<typeof ApproveDocuments>[0]["submit"];
-
-const props = (
-  document: ShownDocument,
-  submit: Submit = async () => undefined,
-  focusReply: () => void = () => undefined,
-) => ({
-  input: { kinds: [document.kind] },
-  project: {},
-  prepared: { kinds: [document.kind] },
-  facts: [],
-  draft: {},
-  setDraft: () => undefined,
-  submit,
-  submitting: false,
-  answer: undefined,
-  host: {
-    documents: { list: [document], open: () => undefined },
-    focusReply,
-  },
-});
-
 const card = (document: ShownDocument) =>
-  renderToStaticMarkup(<ApproveDocuments {...props(document)} />);
-
-type Pressable = {
-  children?: ReactNode;
-  actions?: ReactNode;
-  onClick?: () => void;
-};
-
-// The element whose own words are `label`, found through children and a card's actions.
-function control(node: ReactNode, label: string): Pressable | undefined {
-  if (Array.isArray(node))
-    return node
-      .map((child: ReactNode) => control(child, label))
-      .find((found) => found !== undefined);
-  if (!isValidElement<Pressable>(node)) return undefined;
-  if (node.props.children === label) return node.props;
-  return (
-    control(node.props.actions, label) ?? control(node.props.children, label)
+  renderToStaticMarkup(
+    <ApproveDocuments
+      input={{ kinds: [document.kind] }}
+      project={{}}
+      prepared={{ kinds: [document.kind] }}
+      facts={[]}
+      draft={{}}
+      setDraft={() => undefined}
+      submit={async () => undefined}
+      submitting={false}
+      answer={undefined}
+      host={{ documents: { list: [document], open: () => undefined } }}
+    />,
   );
-}
 
 describe("approving a document of any kind", () => {
   test("the card names the document from the document itself", () => {
@@ -69,38 +46,21 @@ describe("approving a document of any kind", () => {
   });
 
   test("approving answers with the document at the version shown", () => {
-    const answers: unknown[] = [];
-    const view = ApproveDocuments(
-      props({ ...manual, version: 3, summary: "- Tides." }, async (answer) => {
-        answers.push(answer);
-      }),
+    const { filed, missing } = filedOf(
+      [{ ...manual, version: 3, summary: "- Tides." }],
+      [manual.kind],
     );
-    control(view, text.approve)?.onClick?.();
-    expect(answers).toEqual([
-      {
+    expect(offerOf(filed, missing).accept).toEqual({
+      output: {
         approved: [
           { kind: manual.kind, artifactId: manual.artifactId, version: 3 },
         ],
       },
-    ]);
+    });
   });
 
-  test("asking for changes puts the person in the prompt box and answers nothing", () => {
-    const answers: unknown[] = [];
-    let focused = 0;
-    const view = ApproveDocuments(
-      props(
-        manual,
-        async (answer) => {
-          answers.push(answer);
-        },
-        () => {
-          focused += 1;
-        },
-      ),
-    );
-    control(view, text.askForChanges)?.onClick?.();
-    expect(focused).toBe(1);
-    expect(answers).toEqual([]);
+  test("a document not yet filed cannot be approved", () => {
+    const { filed, missing } = filedOf([manual], [manual.kind, "build_plan"]);
+    expect("unavailable" in offerOf(filed, missing).accept).toBe(true);
   });
 });

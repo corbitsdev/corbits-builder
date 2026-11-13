@@ -11,6 +11,7 @@ export default defineScreen({
       label: () => "Review the mockup",
       chose: (output) =>
         output.decision === "approved" ? "Approved" : "Changes asked for",
+      reply: "Say what should change, or tag a place in the mockup.",
     },
     summary:
       'Opens the design\'s clickable mockup over the whole page, where the person tries it, comments on places in it, and approves the design or asks for changes. Builder shows the newest design itself, the live draft while a designer works; do not pass it. The answer is { decision: "approved" }, and Builder has then filed the approved option as the design. Or it is { decision: "changes", comments, message } for the designer, each comment naming the place it points at.',
@@ -21,6 +22,15 @@ export default defineScreen({
         about:
           "A short line telling the person what to look at in this version, such as what changed since their last comments. Leave out when there is nothing to point at.",
       },
+    },
+  },
+  decision: {
+    accept: "Approve",
+    sendBack: {
+      note: "message",
+      items: "comments",
+      one: "comment",
+      many: "comments",
     },
   },
   approves: (output) =>

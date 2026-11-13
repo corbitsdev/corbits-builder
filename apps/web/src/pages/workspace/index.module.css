@@ -160,6 +160,14 @@
   gap: var(--space-1);
 }
 
+/* Says what Send carries while a screen has feedback staged, so the one send control names its load. */
+.sendLabel {
+  margin-inline-start: auto;
+  color: var(--wb-muted-foreground);
+  font-size: 0.8125rem;
+  white-space: nowrap;
+}
+
 .replies {
   display: flex;
   flex-wrap: wrap;

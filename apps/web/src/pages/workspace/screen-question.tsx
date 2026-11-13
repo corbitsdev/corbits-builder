@@ -3,11 +3,14 @@
  * drawn: its view gets the project's values it reads, the checked input and the draft. Its output
  * answers the question through the hub, which saves the values it writes and records what it approves.
  */
-import { useEffect, useState, type ComponentType } from "react";
+import { useEffect, useRef, useState, type ComponentType } from "react";
 import type { Type } from "arktype";
 import {
   validateInput,
   validateOutput,
+  type Decision,
+  type Offer,
+  type PageControls,
   type ProjectValues,
   type Screen,
   type ScreenActionBuilder,
@@ -15,7 +18,11 @@ import {
 } from "@corbits-builder/plugin";
 import { QuestionAnswer } from "@intx/types/signals";
 import { Button } from "@corbits/react-ui";
-import { ScreenCancel } from "@corbits-builder/plugin-ui/screen-actions";
+import {
+  ScreenCancel,
+  ScreenDecision,
+  type DecisionControls,
+} from "@corbits-builder/plugin-ui/screen-actions";
 import { wording } from "../../config.ts";
 import { Fault, InlineNote } from "../../components.jsx";
 import type { DesignFiles } from "./design-bundle.ts";
@@ -60,10 +67,25 @@ export type HostSupplies = {
   earlierAnswer: unknown;
   /** The project's filed documents, and a way to open one over the room by its kind. */
   documents: { list: readonly ShownDocument[]; open(kind: string): void };
-  /** Puts the person in the prompt box, where what they type answers the open question in words. */
-  focusReply: () => void;
   /** The filed design concepts the person has yet to choose between, in the order they were asked about. */
   designConcepts: readonly ChoosableConcept[];
+  /** The room's prompt box, which a screen's decision sends back through; the host's own, no view's. */
+  reply: ReplyBox;
+};
+
+/** What the prompt box sends in place of the person's words while a screen has feedback staged. */
+export type Staged = {
+  /** Sends the feedback with what was typed, if anything; whether it reached the hub. */
+  send: (message: string | undefined) => Promise<boolean>;
+  /** The items it carries, such as "2 comments", which Send sends with nothing typed; null while none. */
+  pending: string | null;
+};
+
+/** The room's prompt box as a screen's decision reads and stages it. */
+export type ReplyBox = {
+  /** The box holds more than whitespace. */
+  drafted: boolean;
+  stage(staged: Staged | null): void;
 };
 
 /** A filed design concept, and the design option choosing it approves, if any. */
@@ -80,20 +102,58 @@ const SUPPLIED: ReadonlySet<string> = new Set<keyof HostSupplies>([
   "mockupFrame",
   "earlierAnswer",
   "documents",
-  "focusReply",
   "designConcepts",
 ]);
 
-/** How a screen placed on the page reaches the room's prompt box. */
-export type PageHost = {
-  /** What Send in the prompt box does in place of a reply, given the typed text, and what the box asks meanwhile. */
-  stage(
-    send: ((message: string | undefined) => Promise<boolean>) | null,
-    reply?: string,
-  ): void;
-  sendStaged(): void;
-  close(): void;
-};
+/** The pending items an offer would send back, in the decision's words; null while there are none. */
+export function pendingItems<Out>(
+  decision: Decision<Out>,
+  sendBack: Out | undefined,
+): string | null {
+  if (
+    decision.sendBack === undefined ||
+    sendBack === undefined ||
+    sendBack === null
+  )
+    return null;
+  const { items, one, many } = decision.sendBack;
+  const held = sendBack[items];
+  const count = Array.isArray(held) ? held.length : 0;
+  if (count === 0) return null;
+  return count === 1 ? `1 ${one}` : `${String(count)} ${many}`;
+}
+
+/** The controls a screen's decision gets from what its view offers and the prompt box holds. */
+export function decisionControls<Out>(
+  decision: Decision<Out>,
+  offer: Offer<Out> | undefined,
+  room: { drafted: boolean; busy: boolean; accept: (output: Out) => void },
+): DecisionControls {
+  const accept = offer?.accept;
+  const accepted =
+    accept !== undefined && "output" in accept ? accept.output : undefined;
+  return {
+    accept: decision.accept,
+    onAccept: accepted === undefined ? null : () => room.accept(accepted),
+    unavailable:
+      accept !== undefined && "unavailable" in accept
+        ? accept.unavailable
+        : undefined,
+    pending: pendingItems(decision, offer?.sendBack),
+    drafted: room.drafted,
+    busy: room.busy,
+  };
+}
+
+/** The answer sending back gives: the offered output, with the typed note in the decision's field. */
+export function sentBack<Out>(
+  note: string,
+  sendBack: Out,
+  message: string | undefined,
+): Out {
+  if (message === undefined) return sendBack;
+  return Object.assign({}, sendBack, { [note]: message });
+}
 
 export type ScreenHostProps = {
   input: Record<string, unknown>;
@@ -102,7 +162,7 @@ export type ScreenHostProps = {
   disabled: boolean;
   onAnswer: (answer: QuestionAnswer) => Promise<boolean>;
   host: HostSupplies;
-  page?: PageHost | undefined;
+  page?: PageControls | undefined;
 };
 
 /** One plugin's screen action, by its name such as "designer pick-fonts", typed end to end, behind props every screen shares. */
@@ -144,7 +204,28 @@ export function screenHost<In, Out, Data, Prepared>(
     const [draft, setDraft] = useState<Partial<Type<Out>["infer"]>>({});
     const [submitting, setSubmitting] = useState(false);
     const [fault, setFault] = useState<string>();
+    const [offer, setOffer] = useState<Offer<Type<Out>["infer"]>>();
     const settled = output !== undefined;
+    const { decision } = screen;
+    const pending =
+      decision === undefined ? null : pendingItems(decision, offer?.sendBack);
+    // The prompt box sends the feedback back only where the decision sends it back as output.
+    const staging =
+      !settled &&
+      decision?.sendBack !== undefined &&
+      offer?.sendBack !== undefined;
+    // The room hands a new prompt box and this render a new answer each time; staging follows what is pending.
+    const box = useRef(host.reply);
+    box.current = host.reply;
+    const sendBack = useRef<(message: string | undefined) => Promise<boolean>>(
+      () => Promise.resolve(false),
+    );
+    useEffect(() => {
+      if (!staging) return;
+      const reply = box.current;
+      reply.stage({ send: (message) => sendBack.current(message), pending });
+      return () => reply.stage(null);
+    }, [staging, pending]);
 
     useEffect(() => {
       if (settled) return;
@@ -196,6 +277,19 @@ export function screenHost<In, Out, Data, Prepared>(
     const submit = async (chosen: Type<Out>["infer"]) => {
       await answerWith(chosen);
     };
+    const note = decision?.sendBack?.note;
+    const offered = offer?.sendBack;
+    if (note !== undefined && offered !== undefined)
+      sendBack.current = (message) =>
+        answerWith(sentBack(note, offered, message));
+    const controls =
+      decision === undefined
+        ? null
+        : decisionControls(decision, offer, {
+            drafted: host.reply.drafted,
+            busy: submitting || disabled,
+            accept: (output) => void submit(output),
+          });
     return (
       <ScreenCancel
         value={{
@@ -204,35 +298,24 @@ export function screenHost<In, Out, Data, Prepared>(
           onCancel: () => void send({ reply: text.cancelReply }),
         }}
       >
-        <View
-          input={checked.input}
-          project={shown}
-          prepared={checked.prepared}
-          facts={projectFacts}
-          draft={draft}
-          setDraft={(change) =>
-            setDraft((current) => Object.assign({}, current, change))
-          }
-          submit={submit}
-          submitting={submitting || disabled}
-          answer={answered?.output}
-          host={host}
-          page={
-            page === undefined
-              ? undefined
-              : {
-                  close: page.close,
-                  sendStaged: page.sendStaged,
-                  stage: (compose, reply) =>
-                    page.stage(
-                      compose === null
-                        ? null
-                        : (message) => answerWith(compose(message)),
-                      reply,
-                    ),
-                }
-          }
-        />
+        <ScreenDecision value={controls}>
+          <View
+            input={checked.input}
+            project={shown}
+            prepared={checked.prepared}
+            facts={projectFacts}
+            draft={draft}
+            setDraft={(change) =>
+              setDraft((current) => Object.assign({}, current, change))
+            }
+            submit={submit}
+            submitting={submitting || disabled}
+            answer={answered?.output}
+            host={host}
+            page={page}
+            offer={setOffer}
+          />
+        </ScreenDecision>
         {fault === undefined ? null : <Fault>{fault}</Fault>}
       </ScreenCancel>
     );
@@ -247,7 +330,7 @@ export type ScreenQuestionProps = {
   disabled: boolean;
   onAnswer: ScreenHostProps["onAnswer"];
   supplies: HostSupplies | undefined;
-  page?: PageHost | undefined;
+  page?: PageControls | undefined;
 };
 
 /** The screen, or a plain notice when it has no view or no project to read. */

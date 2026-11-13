@@ -26,3 +26,9 @@
   font-size: 0.8125rem;
   color: var(--wb-muted-foreground);
 }
+
+/* The confirmation's question, at the buttons' size, so the row keeps its height as it opens. */
+.ask {
+  font-size: 0.875rem;
+  white-space: nowrap;
+}
