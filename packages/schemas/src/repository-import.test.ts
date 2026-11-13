@@ -280,12 +280,33 @@ describe("readRepository", () => {
     expect(report.found).toEqual({ problem_brief: "docs/problem_brief.md" });
     expect(report.app).toBeUndefined();
   });
+
+  test("a directory holding only notes has no app", async () => {
+    const { report } = await readRepository(
+      memory({ "notes.md": "# Notes\n", "README.md": "# Readme\n" }),
+      { name: "notes" },
+    );
+    expect(report.app).toBeUndefined();
+  });
+
+  test("a README beside code is part of the app", async () => {
+    const { report } = await readRepository(
+      memory({ "README.md": "# Readme\n", "main.go": "package main\n" }),
+      { name: "notes" },
+    );
+    expect(report.app).toEqual({
+      root: ".",
+      files: 2,
+      bytes: report.app!.bytes,
+    });
+  });
 });
 
 describe("names", () => {
   test("titles come from a directory name, a heading or front matter", () => {
     expect(humanize("habit-tracker")).toBe("Habit tracker");
     expect(humanize("my_app.v2")).toBe("My app v2");
+    expect(humanize("@acme/shop")).toBe("Shop");
     expect(documentTitle("# Heading  \n\ntext", "x")).toBe("Heading");
     expect(documentTitle("no heading", "Fallback")).toBe("Fallback");
     expect(

@@ -77,6 +77,8 @@ const PROJECT_FILE = "project.json";
 // An unpacked Builder export keeps the app's source under build/, beside its project.json.
 const EXPORT_APP_DIRECTORY = "build";
 const TITLE_MAX = 512;
+// Markdown or plain text at the root: notes, not code.
+const ROOT_NOTE = /^[^/]+\.(md|txt)$/i;
 // A file whose name says it holds a secret and that is not source code, which the rules above
 // do not already leave out: the person decides, it is only pointed at. Source files named for
 // what they handle (password.ts, token.go) are the app's own.
@@ -159,9 +161,12 @@ export function documentTitle(content: string, fallback: string): string {
   return title.slice(0, TITLE_MAX);
 }
 
-/** A directory name as a title: "habit-tracker" becomes "Habit tracker". */
+/** A package or directory name as a title: "@acme/habit-tracker" becomes "Habit tracker". */
 export function humanize(name: string): string {
-  const words = name.replace(/[-_.]+/g, " ").trim();
+  const words = name
+    .replace(/^@[^/]+\//, "")
+    .replace(/[-_.]+/g, " ")
+    .trim();
   return words ? words[0]!.toUpperCase() + words.slice(1) : name;
 }
 
@@ -417,7 +422,10 @@ async function readApp(
     );
   const overlayPaths = drafts.paths().filter((path) => under("app", path));
   const fromDirectory = holdsApp(
-    paths.filter((path) => !isDocument(path)).map((path) => within(root, path)),
+    paths
+      .filter((path) => !isDocument(path))
+      .map((path) => within(root, path))
+      .filter((path) => !ROOT_NOTE.test(path)),
   );
   if (
     !fromDirectory &&
