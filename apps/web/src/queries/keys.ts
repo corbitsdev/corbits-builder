@@ -34,9 +34,8 @@ export const keys = {
     /** The values that select between plugins sharing a handle. */
     selection: (projectId: string) =>
       ["projectValues", projectId, "selection"] as const,
-    /** What the project's code started from, which says whether it serves a web app to preview. */
-    starter: (projectId: string) =>
-      ["projectValues", projectId, "starter"] as const,
+    /** How the project's program starts, which says whether it serves a web app to preview. */
+    run: (projectId: string) => ["projectValues", projectId, "run"] as const,
   },
   liveApp: {
     all: ["liveApp"] as const,

@@ -1,3 +1,4 @@
+import { AppRun } from "@corbits-builder/schemas/installed-workflows";
 import manifest from "../package.json";
 
 // The filed documents a coder works from, read-only in its workspace when the project has them.
@@ -10,9 +11,9 @@ export const CODER_INPUTS = [
 ] as const;
 
 // What a first build can start from, by name: the folder of files the hub writes onto the
-// project's repository before the coder starts, whether that code serves a web app, how it runs
-// while it is worked on, the command that prepares a fresh workspace, what an agent can do when
-// that command fails, and the commands the hub saves as the project's stack.checks.
+// project's repository before the coder starts, how its program starts so a person can open it,
+// the command that prepares a fresh workspace, what an agent can do when that command fails, and
+// the commands the hub saves as the project's stack.checks.
 export const STARTERS = manifest.coder.starters;
 export type StarterName = keyof typeof STARTERS;
 
@@ -22,24 +23,37 @@ export const isStarterName = (name: unknown): name is StarterName =>
 export const STARTER_NAMES = Object.keys(STARTERS).filter(isStarterName);
 
 /**
- * What code that began from a starter declares of itself, by the project's stack.starter: the
- * command that prepares a fresh workspace, what to do when it fails, whether it serves a web app,
- * and how it runs. Code that began from none declares nothing.
+ * How code that began from a starter, by the project's stack.starter, prepares a fresh workspace:
+ * the command and what to do when it fails. Code that began from none declares nothing.
  */
 export function declaredStack(starter: unknown) {
   if (!isStarterName(starter)) return undefined;
-  const { setup, setupFailed, serves } = STARTERS[starter];
-  const run = declaredRun(starter);
-  return run
-    ? { setup, setupFailed, serves, run }
-    : { setup, setupFailed, serves };
+  const { setup, setupFailed } = STARTERS[starter];
+  return { setup, setupFailed };
 }
 
-/** How code that began from the starter runs while it is worked on, or undefined when it declares none. */
-export function declaredRun(starter: unknown) {
-  if (!isStarterName(starter)) return undefined;
+/** The project values a first build saves for the starter it begins from, or clears for none. */
+export function starterValues(starter: StarterName | null) {
+  if (starter === null)
+    return { "stack.starter": null, "stack.checks": null, "stack.run": null };
   const facts = STARTERS[starter];
-  return "run" in facts ? facts.run : undefined;
+  return {
+    "stack.starter": starter,
+    "stack.checks": facts.checks.join("\n"),
+    "stack.run": "run" in facts ? facts.run : null,
+  };
+}
+
+/**
+ * How the project's program starts so a person can open it, from the project's stack.run, whatever
+ * its stack: undefined when it has none, so it serves nothing, else the run or why it is not one.
+ */
+export function declaredRun(
+  values: Readonly<Record<string, unknown>> | undefined,
+) {
+  const run = values?.["stack.run"];
+  if (run === undefined || run === null) return undefined;
+  return AppRun(run);
 }
 
 // A coder started from the person's words alone: a change to an imported project that has filed no

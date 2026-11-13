@@ -382,8 +382,8 @@ export function createSidecarCodingTools(policy: {
       let setupFailure: string | undefined;
       // Writes the ready marker while setup has not yet succeeded.
       let markReady: (() => Promise<void>) | undefined;
-      // How the project's code runs while it is worked on, and whether it serves a web app the
-      // agent opens, checks and reports on, as the hub said when the workspace started.
+      // The web app the project serves, from its stack.run, which the agent opens, checks and
+      // reports on, as the hub said when the workspace started.
       let declared: Running | undefined;
       let browser:
         | {
@@ -402,9 +402,8 @@ export function createSidecarCodingTools(policy: {
             signal,
           );
           const workspace = await realpath(env.toolCwd);
-          const run = design ? undefined : scope.stack?.run;
-          const serves = run !== undefined && scope.stack?.serves === true;
-          declared = run && { run, page: serves };
+          const run = design ? undefined : scope.run;
+          declared = run && { run, page: true };
           const app =
             policy.workspace === "app"
               ? (opened ??= createAppRepository({
@@ -422,7 +421,12 @@ export function createSidecarCodingTools(policy: {
             (kind) => readFiledDocument(env.capabilities, scope, kind, signal),
             () => readRunDesignTheme(env.capabilities, scope, signal),
             () => readPreviousDesignDraft(env.capabilities, scope, signal),
-            app && { repository: app, signal, stack: scope.stack },
+            app && {
+              repository: app,
+              signal,
+              stack: scope.stack,
+              serves: run !== undefined,
+            },
           );
           repository = app;
           repository?.schedule("Start");
@@ -440,7 +444,7 @@ export function createSidecarCodingTools(policy: {
               ...(policy.workspace === "app"
                 ? { readOnly: [".builder", INPUTS_DIRECTORY] }
                 : { readOnly: [INPUTS_DIRECTORY] }),
-              ...(serves ? { pageWatcher: WATCH_PAGE } : {}),
+              ...(run ? { pageWatcher: WATCH_PAGE } : {}),
             },
           );
           try {
@@ -536,7 +540,7 @@ export function createSidecarCodingTools(policy: {
             if (!next && !executor.appState())
               return {
                 callId: call.id,
-                content: `nothing runs: the project declares no program of its own, so give ${APP_STATUS_TOOL} the command that starts one.`,
+                content: `nothing runs: the project has no stack.run, so it serves nothing to open. Give ${APP_STATUS_TOOL} the command that starts its program.`,
                 isError: true,
               };
             const app = await startUntilReady(executor, next, signal);

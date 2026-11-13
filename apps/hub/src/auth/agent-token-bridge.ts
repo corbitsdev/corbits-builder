@@ -6,7 +6,7 @@ import {
 } from "@corbits-builder/schemas/installed-workflows";
 import { CheckRun } from "@corbits-builder/schemas/artifact";
 import { project, projectCoordinator, runAction } from "../db/schema.ts";
-import { declaredStack } from "@corbits-builder/coder/contract";
+import { declaredRun, declaredStack } from "@corbits-builder/coder/contract";
 import { readJson } from "../lib/json.ts";
 import { verifyAgentToken } from "@corbits/agent-token";
 import { sha256 } from "@intx/crypto";
@@ -386,6 +386,15 @@ export function createAgentTokenBridge(
         .select({ values: project.values })
         .from(project)
         .where(eq(project.id, binding.projectId));
+      let run = declaredRun(projectRow?.values);
+      // A stack.run that is not a run serves nothing here, so the coder still starts and can report one.
+      if (run instanceof type.errors) {
+        log.warn("The project's stack.run is not a run: {issues}", {
+          projectId: binding.projectId,
+          issues: run.summary,
+        });
+        run = undefined;
+      }
       return c.json({
         tenantId: row.id,
         domain: row.domain,
@@ -394,6 +403,7 @@ export function createAgentTokenBridge(
         workflows: scopeWorkflows(installed),
         openNetwork: opensNetwork(preferences.value),
         stack: declaredStack(projectRow?.values["stack.starter"]),
+        run,
         build: await buildLayout(),
       });
     }

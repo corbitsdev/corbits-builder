@@ -8,6 +8,12 @@ import type {
   ListAssetBlobsParams,
   PopulateAssetParams,
 } from "@intx/hub-sessions";
+import { type } from "arktype";
+import {
+  declaredRun,
+  STARTERS,
+  starterValues,
+} from "@corbits-builder/coder/contract";
 import { WORKFLOW_PACKAGES } from "../plugins/catalog.ts";
 import {
   appRepositoryMain,
@@ -92,6 +98,27 @@ test("the coder is one package that knows no starter, and the hub writes a first
   built.main.set("main.ts", "export {};\n");
   await seedStarter(built, "asset", "bare");
   expect([...built.main.keys()]).toEqual([".gitignore", "main.ts"]);
+});
+
+test("a project serves a web app by its stack.run, whatever it started from", () => {
+  // A first build from the web starter saves the starter's run as the project's stack.run.
+  expect(starterValues("web-app")).toMatchObject({
+    "stack.starter": "web-app",
+    "stack.run": STARTERS["web-app"].run,
+  });
+  expect(declaredRun(starterValues("web-app"))).toEqual(
+    STARTERS["web-app"].run,
+  );
+  expect(declaredRun(starterValues("bare"))).toBeUndefined();
+  expect(declaredRun(starterValues(null))).toBeUndefined();
+
+  // Code that began from no starter serves the app its coder reported.
+  const reported = { command: "python3 -m http.server $PORT", port: "PORT" };
+  expect(declaredRun({ "stack.run": reported })).toEqual(reported);
+  expect(declaredRun({ "stack.checks": "make test" })).toBeUndefined();
+  expect(
+    declaredRun({ "stack.run": { command: "make serve" } }),
+  ).toBeInstanceOf(type.errors);
 });
 
 test("a coder run installs any package without asking only when its person turned that on", () => {

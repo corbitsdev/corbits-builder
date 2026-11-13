@@ -59,7 +59,8 @@
         ],
         "writes": [
           "stack.language",
-          "stack.checks"
+          "stack.checks",
+          "stack.run"
         ],
         "start": {
           "workflow": "coder",
@@ -83,7 +84,8 @@
         ],
         "writes": [
           "stack.language",
-          "stack.checks"
+          "stack.checks",
+          "stack.run"
         ],
         "start": {
           "workflow": "coder",
@@ -132,12 +134,16 @@
         "type": "text"
       },
       "stack.starter": {
-        "about": "The starter the project's code started from, when it started from one: web-app for a web app with a browser client and a server, bare for a TypeScript project on Bun that is not a web app. Builder saves it, with the starter's checks as stack.checks, when a first build names a starter, and writes the starter's files as the project's first code before the coder starts; code that started from an empty project has none.",
+        "about": "The starter the project's code started from, when it started from one: web-app for a web app with a browser client and a server, bare for a TypeScript project on Bun that is not a web app. Builder saves it, with the starter's checks as stack.checks and how it starts as stack.run, when a first build names a starter, and writes the starter's files as the project's first code before the coder starts; code that started from an empty project has none.",
         "type": "text"
       },
       "stack.checks": {
         "about": "The commands, in order, that prove the project's saved code installs, builds and passes its tests, one per line.",
         "type": "text"
+      },
+      "stack.run": {
+        "about": "How the project's program starts so a person can open it in a browser, as { \"command\": the command that starts it, \"port\": the environment variable naming the port it answers on, \"waitFor\": a line it prints once it is ready, if any, \"extraPorts\": any other variables it needs a free port in }. A project without one serves nothing to open.",
+        "type": "json"
       }
     }
   },
@@ -146,7 +152,6 @@
       "web-app": {
         "about": "A web app people use in a browser: a React client, a Bun server and a shared package.",
         "folder": "starter",
-        "serves": true,
         "run": {
           "command": "bun run dev",
           "port": "CLIENT_PORT",
@@ -164,7 +169,6 @@
       "bare": {
         "about": "A TypeScript project on Bun that is not a web app, such as a command-line tool, a library, a script or a service: one package with tests and no framework.",
         "folder": "starters/bare",
-        "serves": false,
         "setup": "bun install --frozen-lockfile",
         "checks": [
           "bun install --frozen-lockfile",

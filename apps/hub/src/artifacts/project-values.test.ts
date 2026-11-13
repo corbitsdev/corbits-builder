@@ -134,7 +134,7 @@ test("a run's misspelt value is refused with the names its action saves", async 
       {
         path: "stack_language",
         message:
-          "is not a value coder build saves; did you mean `stack.language`? It saves only `stack.language`, `stack.checks`.",
+          "is not a value coder build saves; did you mean `stack.language`? It saves only `stack.language`, `stack.checks`, `stack.run`.",
       },
     ],
   });

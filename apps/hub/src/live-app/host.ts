@@ -2,8 +2,9 @@
 // srt's sandbox manager is process-global, so each app is a process of its own. Each stdin line
 // names the source: a directory to follow (a build workspace, read here and never by the app) or
 // a filed bundle. Its files are mirrored into the app's own workspace, packages are installed when
-// they change, and the program its starter declares (the second argument) serves every later change. The app's state goes to stdout as one
-// JSON object per line whenever it changes. Closing stdin or SIGTERM ends it.
+// they change, and the program the project's stack.run declares (the second argument) serves every
+// later change. The app's state goes to stdout as one JSON object per line whenever it changes.
+// Closing stdin or SIGTERM ends it.
 import { createHash } from "node:crypto";
 import { existsSync, watch, type FSWatcher } from "node:fs";
 import { readFile, rename, rm, writeFile } from "node:fs/promises";

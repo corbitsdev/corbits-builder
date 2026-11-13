@@ -145,7 +145,7 @@ import type { LiveApps } from "../live-app/runner.ts";
 import {
   declaredRun,
   isStarterName,
-  STARTERS,
+  starterValues,
 } from "@corbits-builder/coder/contract";
 import {
   appContent,
@@ -700,9 +700,8 @@ export function createArtifactService(
     };
   }
 
-  // The project's current files and how its starter runs them, or the app's state when there are
-  // none to run. Code whose starter serves no web app, such as a command-line tool, or that began
-  // from no starter and so declares no way to run, has nothing to run here.
+  // The project's current files and how its stack.run starts them, or the app's state when there
+  // are none to run. A project with no stack.run, such as a command-line tool, serves nothing here.
   async function runnableApp(
     actor: Actor,
     projectId: string,
@@ -715,11 +714,10 @@ export function createArtifactService(
       .select({ values: project.values })
       .from(project)
       .where(eq(project.id, projectId));
-    const starter = row?.values["stack.starter"];
-    if (!isStarterName(starter) || !STARTERS[starter].serves)
-      throw new ProjectError(409, "no_web_app", { starter });
-    const run = declaredRun(starter);
-    if (!run) throw new ProjectError(409, "no_web_app", { starter });
+    const run = declaredRun(row?.values);
+    if (!run) throw new ProjectError(409, "no_web_app");
+    if (run instanceof type.errors)
+      throw new ProjectError(409, "invalid_stack_run", { issues: run });
     if (!liveApps) throw new ProjectError(503, "live_app_unavailable");
     const current = await appSource(actor, projectId);
     if (current) return { app: current, run };
@@ -2624,8 +2622,8 @@ export function createArtifactService(
     },
 
     // A first build's coder, just deployed, begins from the starter it names, or from none: the
-    // project's stack.starter and stack.checks are saved as that starter's, or cleared, before its
-    // assignment. Its first push access writes the starter's files onto the app repository.
+    // project's stack.starter, stack.checks and stack.run are saved as that starter's, or cleared,
+    // before its assignment. Its first push access writes the starter's files onto the app repository.
     async recordStarter(actor: Actor, projectId: string, raw: unknown) {
       const input = type({
         "+": "reject",
@@ -2654,13 +2652,7 @@ export function createArtifactService(
         throw new ProjectError(404, "coder_run_not_found", {
           runId: input.runId,
         });
-      await storeValues(projectId, {
-        "stack.starter": input.starter,
-        "stack.checks":
-          input.starter === null
-            ? null
-            : STARTERS[input.starter].checks.join("\n"),
-      });
+      await storeValues(projectId, starterValues(input.starter));
       return input;
     },
 

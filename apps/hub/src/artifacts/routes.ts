@@ -1258,7 +1258,7 @@ export function mountArtifactRoutes(
       tags: ["Artifacts"],
       operationId: "recordRun",
       description:
-        "Records data against a run a plugin's starter just deployed, before its assignment: the concept it works on (its design is filed as that concept's design_option), the sources a presentation pins, or the starter a first build's coder begins from, or null for none (saved as the project's stack.starter and stack.checks, and written onto the app repository when the coder first asks for push access).",
+        "Records data against a run a plugin's starter just deployed, before its assignment: the concept it works on (its design is filed as that concept's design_option), the sources a presentation pins, or the starter a first build's coder begins from, or null for none (saved as the project's stack.starter, stack.checks and stack.run, and written onto the app repository when the coder first asks for push access).",
       security,
       requestBody: {
         required: true,
@@ -1362,7 +1362,7 @@ export function mountArtifactRoutes(
         },
         409: {
           description:
-            "The project's code serves no web app to run, as its stack.starter says (no_web_app)",
+            "The project serves no web app to run, as it has no stack.run (no_web_app), or its stack.run is not a run (invalid_stack_run)",
         },
         503: {
           description:
@@ -1395,7 +1395,7 @@ export function mountArtifactRoutes(
         },
         409: {
           description:
-            "The project's code serves no web app to run, as its stack.starter says (no_web_app)",
+            "The project serves no web app to run, as it has no stack.run (no_web_app), or its stack.run is not a run (invalid_stack_run)",
         },
         503: {
           description:

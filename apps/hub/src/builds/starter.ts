@@ -332,6 +332,7 @@ export async function prepareWorkspace(
     repository: AppRepository;
     signal: AbortSignal;
     stack: WorkflowProjectScope["stack"];
+    serves: boolean;
   },
 ): Promise<{
   setup:
@@ -354,7 +355,7 @@ export async function prepareWorkspace(
         bundleFiles(AppBundle.assert(JSON.parse(filedApp.content))),
       );
   }
-  await writeInputs(kind, workspace, read, app.stack?.serves === true);
+  await writeInputs(kind, workspace, read, app.serves);
   const marker = join(dirname(workspace), ".workspace-ready");
   const setup =
     !app.stack || (await exists(marker))
