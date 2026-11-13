@@ -4,7 +4,7 @@ For a project started from the web-app starter, with `client/`, `server/` and `p
 
 ## The design
 
-When a design is chosen it is in `.builder`, read-only: `.builder/DESIGN.md` and the mockup in `.builder/designs` set the look, screens, states and flows the app matches. Read `.builder/DESIGN.md` before writing code. The design's tokens head `DESIGN.md` as front matter; `.builder/designs/styles.css` holds their exact CSS in its `:root` and `.dark` blocks, which go into the client's global CSS after the `@corbits/react-ui` theme import. With no design chosen, use the starter's `@corbits/react-ui` theme for the look. The react-ui skill holds the props of every `@corbits/react-ui` component, grouped by kind, and the stack-docs skill says where each tool's docs start.
+When a design is chosen it is in `.builder`, read-only: `.builder/DESIGN.md` and the mockup in `.builder/designs` set the look, screens, states and flows the app matches. Read `.builder/DESIGN.md` before writing code. The design's tokens head `DESIGN.md` as front matter; `.builder/designs/styles.css` holds their exact CSS in its `:root` and `.dark` blocks, which go into the client's global CSS after the `@corbits/react-ui` theme import. With no design chosen, use the starter's `@corbits/react-ui` theme for the look. This pack's `react-ui/SKILL.md` leads to the props of every `@corbits/react-ui` component, grouped by kind, and `stack-docs/SKILL.md` says where each tool's docs start.
 
 When the design and the build plan disagree, follow the design for how it looks and the plan for how it is built.
 

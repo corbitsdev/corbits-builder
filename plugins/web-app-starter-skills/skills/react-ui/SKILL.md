@@ -1,8 +1,3 @@
----
-name: react-ui
-description: Use before hand-writing any UI - which @corbits/react-ui component to use for app shell, pages, forms, tables, stats, charts, status, empty and loading states; install, theme tokens, dark mode and extra packages.
----
-
 # @corbits/react-ui (0.5.1)
 
 The client starter pins `@corbits/react-ui` 0.5.1. Components take props and
@@ -30,16 +25,6 @@ kit's documentation, props included.
   (conversation, agent runs, media and artifacts).
 - `reference/theming.md`: install, stylesheet choice, tokens, dark mode,
   fonts, subpath imports and extra packages.
-
-## In a design mockup
-
-The mockup lives in `.builder`: `DESIGN.md`, `designs/styles.css`,
-`designs/index.html` (the app shell and navigation) and one
-`designs/screens/<name>.html` file per screen. It is plain HTML and CSS: pick the kit
-component for each part from these references, write its markup by hand with
-the tokens and base component classes in `styles.css`, and name the component
-in the `DESIGN.md` components table so the coder builds it from the kit. The
-import rules below are for the app.
 
 ## Import rules
 

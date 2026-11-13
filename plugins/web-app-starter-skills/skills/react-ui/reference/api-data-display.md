@@ -7,6 +7,7 @@ Props per exported component, from the installed declarations. `?` marks optiona
 ## ui/animated-number
 
 ### AnimatedNumber — A number that counts to its new value instead of snapping.
+
 value: number
 decimals?: number — Decimal places for the default formatting.
 format?: ((value: number) => string)
@@ -16,6 +17,7 @@ className?: string
 ## ui/avatar
 
 ### Avatar — Initials avatar with optional tenant monogram badge.
+
 initials: string — One or two characters shown when no image is provided.
 label: string
 tone?: AvatarTone
@@ -27,6 +29,7 @@ tenantMonogram?: string — Tenant monogram badge overlaid on the corner.
 className?: string
 
 ### AvatarStack — Overlapping avatar stack for thread participants and channel members.
+
 items: readonly AvatarStackItem[]
 max?: number — Cap visible avatars; remainder becomes a +N chip.
 size?: AvatarSize
@@ -36,11 +39,13 @@ className?: string
 ## ui/badge
 
 ### Badge +native
+
 tone?: "neutral" | "accent" | "info" | "success" | "warning" | "danger" | "shared" | "access" | null
 
 ## ui/bar-chart
 
 ### BarChart — One value per category, as horizontal bars.
+
 title: string
 description?: string
 data: readonly BarDatum[]
@@ -51,11 +56,13 @@ className?: string
 ## ui/block-card
 
 ### BlockCard — The generative-UI block frame: a bordered, square-cornered card with a pulse-dot header.
+
 title: string
 children: ReactNode
 className?: string
 
 ### RiskBadge — A risk callout for a block whose action carries consequence — approve this order cancellation, run this migration.
+
 level: RiskLevel
 label: string
 note?: string
@@ -64,6 +71,7 @@ className?: string
 ## ui/category-bars
 
 ### CategoryBars — Dense horizontal category ranking for cost-by-model / calls-by-tool style tables.
+
 title: string
 description?: string
 data: readonly CategoryBarDatum[]
@@ -74,6 +82,7 @@ className?: string
 ## ui/chart-frame
 
 ### ChartFrame — The frame every chart here sits in: a caption, a legend, the plot, and the same data as a table.
+
 title: string — Names the chart.
 description?: string
 legend?: readonly ChartLegendEntry[] — Omit for a single series — one swatch restating the title is wasted space.
@@ -84,6 +93,7 @@ className?: string
 ## ui/csv-table
 
 ### CsvTable — CSV text, rendered as a table when that is honest and as raw text when it is not.
+
 text?: string
 sheets?: readonly CsvTableSheet[] — Several sheets of one workbook, switched by tabs under the grid.
 caption?: string
@@ -100,6 +110,7 @@ onSelectionChange?: ((selection: CsvSelection | null) => void)
 ## ui/empty-state
 
 ### EmptyState — Nothing to show, said properly.
+
 title: string — What is not here, as a statement: "No workflows yet".
 description?: ReactNode — Why, or what to do about it.
 icon?: ReactNode
@@ -109,6 +120,7 @@ className?: string
 ## ui/gate-block
 
 ### GateBlock — Presentational chrome for a pending gate: a run parked on a human decision.
+
 gate: GateShellModel
 children?: ReactNode — The interactive payload — a review list, choice buttons, a form.
 footer?: ReactNode
@@ -117,6 +129,7 @@ className?: string
 ## ui/live-run-banner
 
 ### LiveRunBanner — The one-line status strip above a live run's steps: awaiting gets the accent tone that marks "this needs you" everywhere else in the registry, running gets the info tone.
+
 awaiting?: boolean
 message?: string
 elapsed?: string
@@ -125,16 +138,19 @@ className?: string
 ## ui/live-status-line
 
 ### LiveStatusLine — The single "what's happening now" line under a stepper.
+
 label: string
 className?: string
 
 ### LiveStatusSlot — Layout-stable wrapper for `LiveStatusLine`: a `null` label collapses the slot's height instead of the line disappearing instantly, so the body below it doesn't jump at every gate-to-processing boundary.
+
 label: string | null — `null` animates the line out and renders nothing.
 className?: string
 
 ## ui/progress-checklist
 
 ### ProgressChecklist — A list of steps and how far along they are — a long operation reporting itself while the user waits.
+
 steps: readonly ChecklistStep[]
 label?: string
 className?: string
@@ -142,6 +158,7 @@ className?: string
 ## ui/quote-card
 
 ### QuoteCard — A quote, rotated once per page load.
+
 quotes: readonly Quote[] — Yours.
 storageKey?: string — A key in `localStorage` for the last-shown index, so the card advances once per visit instead of showing the same line forever.
 className?: string
@@ -149,6 +166,7 @@ className?: string
 ## ui/rich-empty-state
 
 ### RichEmptyState — The onboarding-grade empty state: icon, message, and suggested actions on a bordered surface of its own.
+
 icon?: ReactNode
 title: string — What is not here, as a statement: "No skills installed yet".
 description: ReactNode — Why, and what this surface will look like once it is populated.
@@ -160,6 +178,7 @@ className?: string
 ## ui/shimmer-text
 
 ### ShimmerText — A shimmer sweep over inline text: a brighter band slides through the words to signal "still going" without the words themselves changing.
+
 children: string
 role?: "status" — Omit when an ancestor already carries the live region.
 className?: string
@@ -171,11 +190,13 @@ className?: string
 ## ui/sort-header-button
 
 ### SortHeaderButton +native — The control inside a sortable column header.
+
 direction: SortDirection | null
 
 ## ui/sortable-table
 
 ### SortableTable — A table you can sort by clicking a header.
+
 caption: string
 rows: readonly T[]
 columns: readonly SortableColumn<T>[]
@@ -187,6 +208,7 @@ className?: string
 ## ui/sparkline
 
 ### Sparkline — A trend, at the size of a word.
+
 values: readonly number[]
 summary: string — What the shape means, in words — "Up 12% over 30 days".
 className?: string
@@ -194,11 +216,13 @@ className?: string
 ## ui/stat-grid
 
 ### StatGrid — The KPI band: a fixed responsive grid of `StatGridItem`s.
+
 children: ReactNode
 columns?: StatGridColumns — Responsive column count; defaults to four-up on wide screens.
 className?: string
 
 ### StatGridItem — One KPI: caption label, headline number, optional delta, trend and small print.
+
 label: string
 value: string — Pre-formatted.
 sub?: ReactNode — Small print under the number — a rate, a share, a caveat.
@@ -215,6 +239,7 @@ className?: string
 ## ui/status-dot
 
 ### StatusDot
+
 label: string — Names the state for assistive tech.
 live?: boolean — Adds a ring that pulses outward: this state is live and still changing.
 tone?: StatusDotTone
@@ -224,10 +249,12 @@ className?: string
 ## ui/step-list
 
 ### StepListRow — One step row — a mark carrying its own glyph and colour, a name, and the status spelled out in text so it never depends on colour alone.
+
 step: StepListItem
 className?: string
 
 ### StepList — A run's steps and how far along each one is.
+
 steps: readonly StepListItem[]
 label?: string — Names the list.
 className?: string
@@ -251,6 +278,7 @@ className?: string
 ## ui/time-series-chart
 
 ### TimeSeriesChart — Several series over one shared x axis.
+
 title: string
 description?: string
 labels: readonly string[] — The shared x axis — pre-formatted period labels.
@@ -262,6 +290,7 @@ className?: string
 ## ui/token-mosaic
 
 ### TokenMosaic — Shares of a whole as one stacked strip, with a legend that names and quantifies every segment.
+
 parts: readonly { readonly label: string; readonly value: number; }[] — Shares of one whole, in a stable order — colour is assigned by position.
 label: string — What the whole is — "Token usage by class".
 className?: string
@@ -269,6 +298,7 @@ className?: string
 ## ui/trace-waterfall
 
 ### TraceWaterfall — Run-trace timeline: one row per span with a duration, and optional token count.
+
 title: string
 description?: string
 spans: readonly TraceSpan[]

@@ -1,0 +1,16 @@
+{
+  "name": "@corbits-builder/chat-bot-skills",
+  "version": "0.1.0-rc.3",
+  "private": true,
+  "description": "How the coder builds a bot for a team chat workspace without the real platform: the library, how it connects, the person's set-up, the checks and trying it on recorded events.",
+  "license": "SEE LICENSE IN ../../LICENSE.md",
+  "author": "Sawyer Cutler <sawyer@dirtroad.dev>",
+  "type": "module",
+  "builder": {
+    "handle": "chat-bot-skills",
+    "runs": "skills",
+    "extends": "coder",
+    "when": "For a bot or app that lives in a team chat workspace; any other project ignores it.",
+    "skills": "./skills"
+  }
+}
