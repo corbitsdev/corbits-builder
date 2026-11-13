@@ -1,7 +1,7 @@
 /**
  * A piece of work as one step in the coordinator's list, the same step from start to end: the
  * specialist, what it does and where it stands as its row, with what the person can open beside it;
- * opened, its own steps one level in, each added as it happens, then what it is writing, why it
+ * opened, what it was asked to do, its own steps one level in, each added as it happens, then what it is writing, why it
  * stopped, or its report. It opens once and only the person folds it, so its end does not move the
  * page.
  */
@@ -44,6 +44,8 @@ export type WorkUnitStanding = {
   steps: readonly PartTool[];
   /** What the run is producing right now, from its own stream, while it works and frames arrive. */
   preview: RunPreview | undefined;
+  /** What the coordinator asked it to do; absent when the hand-off carried no instruction. */
+  instruction: string | undefined;
   /** What the specialist reported last, shown under its steps once the work is done. */
   report: string | undefined;
   /** Opens the document the work filed; absent where nothing can open it. */
@@ -151,7 +153,7 @@ function Preview({ preview }: { preview: RunPreview | undefined }) {
   );
 }
 
-/** The specialist's last report, two lines until the person asks for the rest. */
+/** Text held to a few lines until the person asks for the rest: a specialist's report, or its goal. */
 function Report({ source }: { source: string }) {
   const box = useRef<HTMLDivElement>(null);
   const [open, setOpen] = useState(false);
@@ -192,6 +194,7 @@ export function WorkUnitStepView({
   label,
   steps,
   preview,
+  instruction,
   report,
   onOpenDocument,
   watch,
@@ -200,6 +203,7 @@ export function WorkUnitStepView({
   const [open, setOpen] = useState(true);
   // The library shows a toggle only for a row with input, so a row with nothing to open has none.
   const hasWork =
+    instruction !== undefined ||
     steps.length > 0 ||
     report !== undefined ||
     status.state === "failed" ||
@@ -231,6 +235,12 @@ export function WorkUnitStepView({
       </div>
       {open ? (
         <div className={styles.work}>
+          {instruction === undefined ? null : (
+            <div className={styles.goal}>
+              <span className={styles.goalLabel}>{text.askedTo}</span>
+              <Report source={instruction} />
+            </div>
+          )}
           {run(steps)}
           {status.state === "working" ? <Preview preview={preview} /> : null}
           {status.state === "failed" ? (

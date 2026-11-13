@@ -55,6 +55,19 @@
   overflow-wrap: anywhere;
 }
 
+/* What the specialist was asked to do, first in the opened row, three lines until opened. */
+.goal {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+  min-width: 0;
+}
+
+.goalLabel {
+  color: var(--wb-muted-foreground);
+  font-size: 0.8125rem;
+}
+
 /* A finished specialist's last report, two lines until opened. */
 .report {
   display: flex;
@@ -74,6 +87,10 @@
   max-height: calc(2 * 1.5em);
   overflow: hidden;
   color: var(--wb-muted-foreground);
+}
+
+.goal .reportText {
+  max-height: calc(3 * 1.5em);
 }
 
 .reportText[data-open] {

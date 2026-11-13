@@ -60,6 +60,7 @@ export function workUnitStanding(
       status.state === "working" && dispatch.runId !== undefined
         ? room.previews?.get(dispatch.runId)
         : undefined,
+    instruction: dispatch.instruction,
     report: done ? unit.updates.at(-1)?.text : undefined,
     onOpenDocument: room.onOpenDocument,
     watch:

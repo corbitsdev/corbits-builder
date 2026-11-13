@@ -27,6 +27,7 @@ const args: WorkUnitStepViewProps = {
   label: "Writer · Writing the constraints",
   steps: [],
   preview: undefined,
+  instruction: undefined,
   report: undefined,
   onOpenDocument: fn(),
   watch: undefined,
