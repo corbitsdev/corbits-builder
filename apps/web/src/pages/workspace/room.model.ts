@@ -15,6 +15,7 @@ import {
   queryOptions,
   skipToken,
   usePrefetchQuery,
+  useQueries,
   useQuery,
   useQueryClient,
 } from "@tanstack/react-query";
@@ -52,7 +53,9 @@ import { answerQuestion, sendMessage } from "../../api/conversation.ts";
 import type { QuestionAnswer } from "@intx/types/signals";
 import { subscribeWorkflowRun } from "../../api/run-stream.ts";
 import {
+  runStepsQuery,
   savedResults,
+  savedRunIds,
   savedTurnSteps,
   useRunStreams,
   useSavedRunSteps,
@@ -187,8 +190,6 @@ const BIND_POLL_MS = 1_000;
 const BIND_WAIT_MS = 15_000;
 // After a run closes, the mirror's commit can trail its last frame.
 const SETTLE_RELOAD_MS = [1_000, 3_000, 7_000, 15_000];
-// Specialist runs whose streams the room holds open at once.
-const STREAMED_RUNS = 6;
 
 function acceptedMaterialsQuery(projectId: string) {
   return queryOptions({
@@ -477,6 +478,16 @@ export function useRoomGate({
     project?.tenantId,
     archived ? null : (room.data?.conversation.runId ?? null),
   );
+  // The saved records of the runs those calls started say how each ended, so a row is drawn ended.
+  const tenantId = project?.tenantId;
+  const startedRuns = useQueries({
+    queries:
+      tenantId === undefined
+        ? []
+        : savedRunIds(coordinatorSteps.steps).map((started) =>
+            runStepsQuery(tenantId, started, false),
+          ),
+  });
 
   if (status === undefined) {
     if (projectRead.isError)
@@ -484,7 +495,11 @@ export function useRoomGate({
     return { state: "loading" };
   }
   const snapshot = room.data;
-  if (!roomSnapshotReady(projectId, snapshot) || coordinatorSteps.pending) {
+  if (
+    !roomSnapshotReady(projectId, snapshot) ||
+    coordinatorSteps.pending ||
+    startedRuns.some((read) => read.isPending)
+  ) {
     if (room.isError)
       return { state: "failed", onRetry: () => void room.refetch() };
     return { state: "loading" };
@@ -1399,8 +1414,9 @@ export function useRoom({
       at: Date.parse(run.startedAt),
       dispatch: runDispatch(run),
     }));
-  // Each run at work streams its steps and what it is producing into its card; past a handful, the
-  // newest only. Every card with a run loads the steps that run saved before this page saw it.
+  // Every card with a run streams its steps and what it is producing from the moment the call that
+  // started it returns, rather than once the room's next read lists it at work, and a step it takes
+  // reads the room again so its state moves with it.
   const {
     previews,
     steps: runSteps,
@@ -1408,16 +1424,17 @@ export function useRoom({
     ended: runsEnded,
   } = useRunStreams(
     runTenantId,
-    inFlight
-      .filter((run) => run.state === "working")
-      .toSorted((a, b) => Date.parse(b.startedAt) - Date.parse(a.startedAt))
-      .slice(0, STREAMED_RUNS)
-      .map((run) => run.runId),
     [...dispatches, ...unseenRuns.map(({ dispatch }) => dispatch)].flatMap(
       (dispatch) => (dispatch.runId === undefined ? [] : [dispatch.runId]),
     ),
+    new Set(
+      inFlight.flatMap((run) =>
+        run.state === "waiting" && run.since !== undefined ? [run.runId] : [],
+      ),
+    ),
+    () => reloadRef.current(),
   );
-  // A run no longer at work has saved how it ended, which the first read of its steps predates.
+  // A run no longer at work has saved how it ended, which the last read of its record predates.
   const atWork = inFlight.map((run) => run.runId).join("\n");
   const wasAtWork = useRef<readonly string[]>([]);
   useEffect(() => {
@@ -1444,6 +1461,12 @@ export function useRoom({
         { status: "cancelled" },
       ]),
     ]),
+    screens: [...snapshot.conversation.earlierQuestions, ...questions].flatMap(
+      ({ at, asked, answer }) =>
+        answer !== undefined && "plugin" in asked && asked.action !== undefined
+          ? [{ at, action: `${asked.plugin} ${asked.action}` }]
+          : [],
+    ),
     onOpenDocument: (kind) => {
       // A coder files the app's source, which is read as the running app.
       if (kind === "app") return openProject(LIVE_TAB);

@@ -56,6 +56,10 @@ describe("conversation map", () => {
       inFlight: [],
       failed: [],
       seen: new Map(),
+      ended: new Map([
+        ["run-calm", { status: "completed" }],
+        ["run-bold", { status: "completed" }],
+      ]),
     };
     const html = renderToStaticMarkup(
       <RoomThread
@@ -113,5 +117,76 @@ describe("conversation map", () => {
       "work:call-mockups:Bold",
     ]);
     for (const id of ticks) expect(html).toContain(`data-item-id="${id}"`);
+  });
+
+  test("each question names what it asked and what came of it", () => {
+    const html = renderToStaticMarkup(
+      <RoomThread
+        standing={(unit) => workUnitStanding(unit, room)}
+        turns={[{ role: "person", text: "Make a todo app", at: 1 }]}
+        questions={[
+          {
+            at: 10,
+            signalName: "approve-requirements",
+            asked: {
+              plugin: "writer",
+              action: "approve",
+              input: { kinds: ["product_requirements"] },
+            },
+            answer: { output: { approved: [] } },
+          },
+          {
+            at: 20,
+            signalName: "approve-plan",
+            asked: {
+              plugin: "writer",
+              action: "approve",
+              input: { kinds: ["build_plan"] },
+            },
+            answer: { output: { approved: [] } },
+          },
+          {
+            at: 30,
+            signalName: "fonts",
+            asked: { plugin: "designer", action: "pick-fonts", input: {} },
+            answer: {
+              output: {
+                primary: { name: "Arial" },
+                secondary: { name: "Bitter" },
+              },
+            },
+          },
+          {
+            at: 40,
+            signalName: "looks",
+            asked: {
+              questions: [
+                {
+                  id: "q1",
+                  question: "How many looks would you like to compare?",
+                  header: "How many looks?",
+                  options: [],
+                  multiple: false,
+                  custom: true,
+                },
+              ],
+            },
+            answer: { answers: { q1: ["Two"] } },
+          },
+        ]}
+      />,
+    );
+    const ticks = [
+      ...html.matchAll(
+        /data-slot="conversation-map-tick"[^>]*aria-label="([^"]*)"/g,
+      ),
+    ].map((match) => match[1]);
+    expect(ticks).toEqual([
+      "Make a todo app",
+      "Approve the requirements · Approved",
+      "Approve the build plan · Approved",
+      "Pick the fonts · Arial and Bitter",
+      "How many looks? · Answered",
+    ]);
   });
 });

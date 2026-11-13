@@ -25,17 +25,183 @@ export const HUB_NOTE_LEAD = "Hub note, not from the person: ";
 const megabytes = (bytes: number) =>
   `${String(Math.floor(bytes / 1_048_576))} MB`;
 
-// The coordinator's runs and plan calls, by operation; a call still streaming names none yet.
-const RUNS_OPERATION: Record<string, string> = {
-  list: "checking on the work in progress",
-  wait: "waiting for the work to finish",
-  stop: "stopping the work",
+/** A step's row while it works and once done, given what it touches when the call names it. */
+type StepPhrase = {
+  readonly working: (subject?: string) => string;
+  readonly done: (subject?: string) => string;
 };
-const PLAN_OPERATION: Record<string, string> = {
-  show: "looking at the plan",
-  set: "updating the plan",
-  add: "updating the plan",
-  remove: "updating the plan",
+
+const fixed = (working: string, done: string): StepPhrase => ({
+  working: () => working,
+  done: () => done,
+});
+
+// "Reading src/app.ts", else "Reading a file" when the call names nothing.
+const naming = (
+  verbs: readonly [string, string],
+  alone: readonly [string, string],
+): StepPhrase => ({
+  working: (subject) =>
+    subject === undefined ? alone[0] : `${verbs[0]} ${subject}`,
+  done: (subject) =>
+    subject === undefined ? alone[1] : `${verbs[1]} ${subject}`,
+});
+
+// The coordinator's runs and plan calls, by operation; a call still streaming names none yet.
+const RUNS_OPERATION: Record<string, StepPhrase> = {
+  list: fixed(
+    "Checking on the work in progress",
+    "Checked on the work in progress",
+  ),
+  wait: fixed(
+    "Waiting for the work to finish",
+    "Waited for the work to finish",
+  ),
+  stop: fixed("Stopping the work", "Stopped the work"),
+};
+const PLAN_OPERATION: Record<string, StepPhrase> = {
+  show: fixed("Looking at the plan", "Looked at the plan"),
+  set: fixed("Updating the plan", "Updated the plan"),
+  add: fixed("Updating the plan", "Updated the plan"),
+  remove: fixed("Updating the plan", "Updated the plan"),
+};
+const byOperation = (
+  operations: Record<string, StepPhrase>,
+  other: StepPhrase,
+): StepPhrase => ({
+  working: (operation) => (operations[operation ?? ""] ?? other).working(),
+  done: (operation) => (operations[operation ?? ""] ?? other).done(),
+});
+
+// Every tool a specialist or the coordinator can call. A file tool's subject is its path, a
+// document's its kind in words, an install's its packages and report_values' the names it saves.
+const STEPS: Record<string, StepPhrase> = {
+  read_file: naming(["Reading", "Read"], ["Reading a file", "Read a file"]),
+  write_file: naming(["Writing", "Wrote"], ["Writing a file", "Wrote a file"]),
+  edit_file: naming(["Editing", "Edited"], ["Editing a file", "Edited a file"]),
+  search_files: naming(
+    ["Looking for files matching", "Looked for files matching"],
+    ["Looking through the files", "Looked through the files"],
+  ),
+  grep: {
+    working: (subject) =>
+      subject === undefined
+        ? "Searching the code"
+        : `Searching the code for “${subject}”`,
+    done: (subject) =>
+      subject === undefined
+        ? "Searched the code"
+        : `Searched the code for “${subject}”`,
+  },
+  run_shell: naming(["Running", "Ran"], ["Running a command", "Ran a command"]),
+  app_status: {
+    working: (command) =>
+      command === undefined ? "Checking the app" : "Starting the app",
+    done: (command) =>
+      command === undefined ? "Checked the app" : "Started the app",
+  },
+  install_packages: naming(
+    ["Installing", "Installed"],
+    ["Installing packages", "Installed packages"],
+  ),
+  run_done_checks: fixed("Running the final checks", "Ran the final checks"),
+  check_design: fixed("Checking the design", "Checked the design"),
+  file_design_option: fixed(
+    "Filing the design option",
+    "Filed the design option",
+  ),
+  read_skill: {
+    working: (guide) =>
+      guide === undefined
+        ? "Studying a guide"
+        : `Studying the ${guide.replaceAll("-", " ")} guide`,
+    done: (guide) =>
+      guide === undefined
+        ? "Studied a guide"
+        : `Studied the ${guide.replaceAll("-", " ")} guide`,
+  },
+  read_artifact: naming(
+    ["Reading the", "Read the"],
+    ["Checking the project's documents", "Checked the project's documents"],
+  ),
+  write_artifact: naming(
+    ["Filing the", "Filed the"],
+    ["Filing a document", "Filed a document"],
+  ),
+  report_values: naming(
+    ["Saving the", "Saved the"],
+    ["Saving what it learned", "Saved what it learned"],
+  ),
+  write_deck: fixed("Building the slide deck", "Built the slide deck"),
+  check_deck: fixed("Checking the slide deck", "Checked the slide deck"),
+  file_package: fixed(
+    "Filing the approval package",
+    "Filed the approval package",
+  ),
+  mail_send: fixed("Sending a note", "Sent a note"),
+  mail_reply: fixed("Replying", "Replied"),
+  mail_read: fixed("Reading a note", "Read a note"),
+  mail_search: fixed("Reading notes", "Read notes"),
+  mail_wait: fixed("Waiting for a reply", "Got a reply"),
+  exec: fixed("Rewriting a step", "Rewrote a step"),
+  discover: fixed("Choosing how to do this", "Chose how to do this"),
+  execute: fixed("Handing work to a specialist", "Handed work to a specialist"),
+  question: fixed("Asking you a question", "Asked you a question"),
+  runs: byOperation(
+    RUNS_OPERATION,
+    fixed(
+      "Checking on the work in progress",
+      "Checked on the work in progress",
+    ),
+  ),
+  plan: byOperation(
+    PLAN_OPERATION,
+    fixed("Working on the plan", "Worked on the plan"),
+  ),
+};
+
+// The coder's browser, which only reaches its own running app.
+const BROWSER_STEPS: Record<string, StepPhrase> = {
+  navigate: fixed("Opening the app's page", "Opened the app's page"),
+  navigate_back: fixed("Going back a page", "Went back a page"),
+  tabs: fixed("Switching tabs", "Switched tabs"),
+  close: fixed("Closing the browser", "Closed the browser"),
+  snapshot: fixed("Looking at the page", "Looked at the page"),
+  find: fixed(
+    "Looking for something on the page",
+    "Looked for something on the page",
+  ),
+  click: fixed("Clicking on the page", "Clicked on the page"),
+  type: fixed("Typing into the page", "Typed into the page"),
+  fill_form: fixed("Filling in a form", "Filled in a form"),
+  select_option: fixed("Picking an option", "Picked an option"),
+  press_key: fixed("Pressing a key", "Pressed a key"),
+  hover: fixed("Pointing at the page", "Pointed at the page"),
+  drag: fixed("Dragging on the page", "Dragged on the page"),
+  handle_dialog: fixed("Answering a pop-up", "Answered a pop-up"),
+  evaluate: fixed("Running a script on the page", "Ran a script on the page"),
+  emulate_media: fixed(
+    "Trying the page in another display mode",
+    "Tried the page in another display mode",
+  ),
+  wait_for: fixed("Waiting for the page", "Waited for the page"),
+  resize: fixed("Resizing the window", "Resized the window"),
+  console_messages: fixed(
+    "Reading the page's console",
+    "Read the page's console",
+  ),
+  network_requests: fixed(
+    "Checking the page's requests",
+    "Checked the page's requests",
+  ),
+  network_request: fixed("Looking at a request", "Looked at a request"),
+  take_screenshot: fixed("Taking a screenshot", "Took a screenshot"),
+  run_code_unsafe: fixed(
+    "Running code in the browser",
+    "Ran code in the browser",
+  ),
+  file_upload: fixed("Uploading a file", "Uploaded a file"),
+  drop: fixed("Dropping a file onto the page", "Dropped a file onto the page"),
 };
 
 /** What a started specialist does, while it works and once done; `thing` names its document or concept. */
@@ -402,6 +568,22 @@ export const wording = {
       `${name} v${String(version)}`,
     /** A map entry with where it ended: "Pick a font · Answered". */
     mapMarked: (label: string, mark: string) => `${label} · ${mark}`,
+    /** A plugin screen's map entry, by plugin and action, and what the person's answer chose. */
+    mapScreen: {
+      approve: (documents: string) => `Approve the ${documents}`,
+      approved: "Approved",
+      review: "Review the mockup",
+      changesAsked: "Changes asked for",
+      choose: "Choose a look",
+      chose: (look: string) => `Chose ${look}`,
+      looks: "How many looks to compare",
+      fonts: "Pick the fonts",
+      colours: "Pick the colours",
+      pair: (first: string, second: string) => `${first} and ${second}`,
+      handOver: "Who decides the approvals",
+      decides: (who: "person" | "builder") =>
+        who === "person" ? "You decide" : `${productName} decides`,
+    },
     empty: "Nothing in the conversation yet",
     emptyLead:
       "Replies show here, and each saved document opens from where it was saved.",
@@ -526,10 +708,6 @@ export const wording = {
     thinking: "thinking",
     /** The line while the coordinator works before it has said anything. */
     thinkingNow: "Thinking…",
-    instruction: "Instruction",
-    /** An opened step: what it was given and what came back. */
-    input: "Details",
-    output: "Result",
     /** A step's state at the end of its row. */
     status: {
       pending: "Queued",
@@ -547,85 +725,49 @@ export const wording = {
       runningMany: (count: number) => `Doing ${String(count)} things at once`,
       failed: (count: number) => `${String(count)} did not finish`,
     },
-    /** What a tool call is doing, by tool name, given its one identifying argument. */
-    tool: {
-      read_file: (subject?: string) =>
-        subject ? `reading ${subject}` : "reading a file",
-      write_file: (subject?: string) =>
-        subject ? `writing ${subject}` : "writing a file",
-      edit_file: (subject?: string) =>
-        subject ? `editing ${subject}` : "editing a file",
-      search_files: (subject?: string) =>
-        subject
-          ? `looking for files matching ${subject}`
-          : "looking through files",
-      grep: (subject?: string) =>
-        subject ? `searching for “${subject}”` : "searching the code",
-      run_shell: (subject?: string) =>
-        subject ? `running ${subject}` : "running a command",
-      read_skill: (subject?: string) =>
-        subject
-          ? `studying the ${subject.replaceAll("-", " ")} guide`
-          : "studying a guide",
-      read_artifact: (subject?: string) =>
-        subject ? `reading the ${subject}` : "checking the project documents",
-      write_artifact: (subject?: string) =>
-        subject ? `filing the ${subject}` : "filing a document",
-      install_packages: (subject?: string) =>
-        subject ? `installing ${subject}` : "installing packages",
-      app_status: () => "checking the preview",
-      mail_send: () => "sending a note",
-      mail_reply: () => "replying",
-      mail_read: () => "reading a note",
-      mail_search: () => "reading notes",
-      mail_wait: () => "waiting for a reply",
-      write_deck: () => "building the slide deck",
-      check_deck: () => "checking the slide deck",
-      file_package: () => "filing the approval package",
-      exec: () => "rewriting a tool call",
-      discover: () => "choosing how to do this",
-      execute: () => "handing work to a specialist",
-      question: () => "asking you a question",
-      runs: (operation?: string) =>
-        RUNS_OPERATION[operation ?? ""] ?? "checking on the work in progress",
-      plan: (operation?: string) =>
-        PLAN_OPERATION[operation ?? ""] ?? "working on the plan",
-    } as Record<string, (subject?: string) => string>,
-    /** A file step's row by the file's real path, as it works and once done. */
-    fileStep: {
-      read_file: {
-        working: (path: string) => `Reading ${path}`,
-        done: (path: string) => `Read ${path}`,
-      },
-      write_file: {
-        working: (path: string) => `Writing ${path}`,
-        done: (path: string) => `Wrote ${path}`,
-      },
-      edit_file: {
-        working: (path: string) => `Editing ${path}`,
-        done: (path: string) => `Edited ${path}`,
-      },
-    } as Record<
-      string,
-      { working: (path: string) => string; done: (path: string) => string }
-    >,
-    /** What a file step's result says it did. */
-    fileResult: {
-      wrote: (bytes: number) => `${bytes.toLocaleString("en")} bytes written`,
-      replaced: (count: number) =>
-        count === 1
-          ? "1 occurrence replaced"
-          : `${String(count)} occurrences replaced`,
-    },
-    /** An opened command or file step: what it ran or touched, and what came of it. */
+    /** A step's row by tool name; a tool with none reads as its name in words. */
+    step: STEPS,
+    /** A browser tool's row, by the name after the browser's own prefix. */
+    browserStep: BROWSER_STEPS,
+    otherTool: (name: string) =>
+      name.replace(/^browser\.browser_/, "").replaceAll(/[_.]/g, " "),
+    /** A command that runs the project's own checks, by what it does rather than its name. */
+    checks: fixed("Running the project's checks", "Ran the project's checks"),
+    /** The word before a command shown as itself: "Ran" `bun test`. */
+    ran: (done: boolean) => (done ? "Ran" : "Running"),
+    /** An opened step: the command it ran and what that printed, else what came of it in words. */
     command: "Command",
     commandOutput: "Output",
-    file: "File",
-    /** What a call returned, in plain words, for a tool whose raw result means nothing to a person. */
-    toolResult: {
-      exec: "The assistant wrote this step in a form Builder can't run, so it was asked to write it again.",
-    } as Record<string, string>,
-    otherTool: (name: string) => `using ${name.replaceAll("_", " ")}`,
+    output: "Result",
+    exitCode: (code: number) => `Exit code ${String(code)}`,
+    /** What came of a step, in a line, where its raw result means nothing to a person. */
+    detail: {
+      changedIn: (count: number) => `Changed in ${String(count)} places`,
+      lines: (count: number) =>
+        count === 1 ? "1 line" : `${String(count)} lines`,
+      matchingLines: (count: number) =>
+        count === 1 ? "1 matching line" : `${String(count)} matching lines`,
+      matchingFiles: (count: number) =>
+        count === 1 ? "1 file matched" : `${String(count)} files matched`,
+      nothingMatched: "Nothing matched",
+      version: (version: number) => `Version ${String(version)}`,
+      document: (title: string, version: number) =>
+        `${title}, version ${String(version)}`,
+      part: (part: number, parts: number) =>
+        `part ${String(part)} of ${String(parts)}`,
+      documents: (count: number) =>
+        count === 1 ? "1 document" : `${String(count)} documents`,
+      unchanged: "Nothing changed since the version already filed",
+      slides: (count: number) =>
+        count === 1 ? "1 slide" : `${String(count)} slides`,
+      deckPassed: "The slide deck passed its checks",
+      running: (url: string) => `Running at ${url}`,
+      notRunning: "Not running",
+      checksNotRun: (why: string) => `The checks did not run: ${why}`,
+      filed: (version: number) => `Filed as version ${String(version)}`,
+      rewritten:
+        "The assistant wrote this step in a form Builder can't run, so it was asked to write it again.",
+    },
     elapsed: (minutes: number, seconds: number) =>
       minutes === 0 ? `${seconds}s` : `${minutes}m`,
   },
@@ -752,6 +894,14 @@ export const wording = {
         working: (thing) =>
           thing ? `Making the ${thing} mockup` : "Making a mockup",
         done: (thing) => (thing ? `Made the ${thing} mockup` : "Made a mockup"),
+      },
+      "designer pick-fonts": {
+        working: () => "Picking the fonts",
+        done: () => "Picked the fonts",
+      },
+      "designer pick-colours": {
+        working: () => "Picking the colours",
+        done: () => "Picked the colours",
       },
       "worker do": {
         working: () => "Working on it",
@@ -1006,9 +1156,9 @@ export const wording = {
     cancel: "Cancel",
     cancelReply: "Cancelled without choosing.",
     notSent: "Your answers were not sent. Your choices are kept; try again.",
-    /** The settled card's heading, over each question and its answer. */
+    /** How the conversation map marks an answered question. */
     answered: "Answered",
-    /** The settled card when the person wrote back instead of choosing, over what they wrote. */
+    /** What a settled question says was asked when the person wrote back instead of choosing. */
     answeredInWords: "Answered in your own words",
     /** In place of a plugin's screen the interface has no view for, or whose input it refuses. */
     screenUnavailable:

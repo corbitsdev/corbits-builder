@@ -129,3 +129,10 @@
   display: inline;
   cursor: pointer;
 }
+
+/* What came of a step in plain words: the interface's own face, not the code face of its box. */
+.words {
+  font-family: var(--wb-font-ui);
+  font-size: 0.8125rem;
+  line-height: 1.25rem;
+}

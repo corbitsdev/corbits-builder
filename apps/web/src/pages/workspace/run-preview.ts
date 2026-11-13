@@ -18,7 +18,7 @@ import {
 } from "../../api/run-stream.ts";
 import { keys } from "../../queries/keys.ts";
 import { finishedCallOf } from "./conversation-parts.ts";
-import type { RunEnd } from "./dispatch-card.tsx";
+import { partsDispatches, type RunEnd } from "./dispatch-card.tsx";
 import { resultOf, type CallResult } from "./live-run.ts";
 
 export type RunPreview =
@@ -30,6 +30,16 @@ type Snapshot = NonNullable<ReturnType<typeof partialOf>>;
 // A tool argument this long, or running over lines, is the work itself rather than a name or a path.
 const LONG_ARGUMENT = 80;
 const FLUSH_MS = 250;
+const LIVE_STEPS_POLL_MS = 3_000;
+// Specialist runs whose streams the room holds open at once.
+const STREAMED_RUNS = 6;
+// Frames after which a run's state in the room's own read can have moved.
+const MOVED = new Set([
+  "inference.start",
+  "inference.done",
+  "inference.error",
+  "tool.done",
+]);
 
 const ESCAPES: Record<string, string> = {
   '"': '"',
@@ -223,6 +233,13 @@ export function savedResults(
   );
 }
 
+/** The specialist runs the saved calls started, as the hub answered each call. */
+export function savedRunIds(steps: readonly RunStep[]): string[] {
+  return partsDispatches(steps.map(savedPart), savedResults(steps)).flatMap(
+    (dispatch) => (dispatch.runId === undefined ? [] : [dispatch.runId]),
+  );
+}
+
 /**
  * A run's saved calls under the saved replies they led to, by each reply's time: a call stands
  * under the first reply saved with or after it. The saved conversation keeps only the replies' words,
@@ -242,15 +259,44 @@ export function savedTurnSteps(
   return byReply;
 }
 
-/** The calls one run saved, read once: a run's calls only grow, and its stream adds them. */
-export function runStepsQuery(tenantId: string, runId: string) {
+/** Interchange's statuses of a run that has not ended. */
+export const runLive = (status: string | undefined) =>
+  status === "deployed" || status === "running";
+
+/**
+ * The calls one run saved and its status, read again while it is watched and has not ended: its
+ * stream does not replay the calls made before it opened, and only this record says when the run
+ * ended. A run parked between turns is not watched, so it is not read again until it moves.
+ */
+export function runStepsQuery(
+  tenantId: string,
+  runId: string,
+  watched: boolean,
+) {
   return queryOptions({
     queryKey: keys.runSteps(tenantId, runId),
     queryFn: ({ signal }) => readRunSteps(tenantId, runId, signal),
+    refetchInterval: (query) =>
+      watched && runLive(query.state.data?.status) ? LIVE_STEPS_POLL_MS : false,
     refetchOnWindowFocus: false,
     // Arguments can carry whole files, so they are not kept across reloads.
     meta: { persist: false },
   });
+}
+
+/**
+ * The shown runs to stream, oldest first: each whose saved record says it has not ended, save those
+ * parked between turns, past a handful the newest only. The room's list of runs at work lags a run
+ * just started, so it does not decide.
+ */
+export function streamedRuns(
+  shown: readonly { runId: string; status: string | undefined }[],
+  parked: ReadonlySet<string>,
+): string[] {
+  return shown
+    .filter(({ runId, status }) => runLive(status) && !parked.has(runId))
+    .map(({ runId }) => runId)
+    .slice(-STREAMED_RUNS);
 }
 
 const NO_STEPS: readonly RunStep[] = [];
@@ -263,7 +309,7 @@ export function useSavedRunSteps(
   const named =
     tenantId === undefined || runId === null ? [] : [{ tenantId, runId }];
   const [read] = useQueries({
-    queries: named.map((run) => runStepsQuery(run.tenantId, run.runId)),
+    queries: named.map((run) => runStepsQuery(run.tenantId, run.runId, false)),
   });
   return {
     pending: read?.isPending === true,
@@ -272,16 +318,18 @@ export function useSavedRunSteps(
 }
 
 /**
- * The preview of each streamed run while it is named, and the calls of every shown run: those it
- * saved before this room saw it, read once when its card is first shown, then every call its
- * stream added, kept after the stream closes so finished work still lists its steps. What each call
- * returned comes the same two ways, and how each shown run ended from its saved record. A stream the
- * hub refuses or drops shows no preview for that run.
+ * The preview of each streamed run, and the calls of every shown run: those it saved, read while it
+ * has not ended, then every call its stream added, kept after the stream closes so finished work
+ * still lists its steps. Every shown run its record calls live is streamed from the moment it is
+ * shown, past a handful the newest only, save those parked between turns; a frame that moves its
+ * state calls `onMoved`. What each call returned comes the same two ways, and how each shown run
+ * ended from its saved record. A stream the hub refuses or drops shows no preview for that run.
  */
 export function useRunStreams(
   tenantId: string | undefined,
-  runIds: readonly string[],
   shownRunIds: readonly string[],
+  parked: ReadonlySet<string>,
+  onMoved: () => void,
 ): {
   previews: ReadonlyMap<string, RunPreview>;
   steps: ReadonlyMap<string, readonly PartTool[]>;
@@ -306,13 +354,23 @@ export function useRunStreams(
     >(),
   );
   const timer = useRef<number | null>(null);
-  const named = runIds.join("\n");
+  const moved = useRef(onMoved);
+  moved.current = onMoved;
   const saved = useQueries({
     queries:
       tenantId === undefined
         ? []
-        : shownRunIds.map((runId) => runStepsQuery(tenantId, runId)),
+        : shownRunIds.map((runId) =>
+            runStepsQuery(tenantId, runId, !parked.has(runId)),
+          ),
   });
+  const named = streamedRuns(
+    shownRunIds.map((runId, index) => ({
+      runId,
+      status: saved[index]?.data?.status,
+    })),
+    parked,
+  ).join("\n");
 
   useEffect(() => {
     const open = streams.current;
@@ -367,6 +425,7 @@ export function useRunStreams(
               isError: result.isError,
               content: result.content,
             });
+          if (MOVED.has(event.type)) moved.current();
           schedule();
         },
         onError: () => {

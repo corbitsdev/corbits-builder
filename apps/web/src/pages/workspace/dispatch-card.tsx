@@ -213,6 +213,11 @@ export type DispatchRoom = {
   readonly steps?: ReadonlyMap<string, readonly PartTool[]>;
   /** How each shown run ended, as its saved record or a stop made here says, by run id. */
   readonly ended?: ReadonlyMap<string, RunEnd>;
+  /** Each screen the coordinator opened and the person answered, by its plugin action. */
+  readonly screens?: readonly {
+    readonly at: number;
+    readonly action: string;
+  }[];
   readonly onOpenDocument?: (kind: string) => void;
   /** Opens the project view on what a working designer or coder is making. */
   readonly onWatch?: (dispatch: Dispatch) => void;
@@ -347,19 +352,19 @@ export function dispatchStatus(
         (dispatch.concept ?? null) === (item.concept ?? null)
       : item.runId === dispatch.runId,
   );
-  // A run started before this session saw it and now ended is done; nothing else says more.
-  if (run === undefined)
-    return dispatch.runId === undefined
-      ? { state: "starting" }
-      : { state: "finished" };
+  // Only the run's own record says it ended: the list of runs at work lags a run just started, and
+  // the coordinator's call returns as soon as the run is deployed.
+  if (run === undefined) {
+    if (ended?.status !== "completed") return { state: "starting" };
+    return filed === undefined ? { state: "finished" } : readyOf(filed);
+  }
   if (run.state === "approval") return { state: "approval" };
   if (run.state === "working")
     return { state: "working", since: run.since ?? run.startedAt };
+  // A run that has not begun its first turn has filed nothing, whatever is already filed.
+  if (run.since === undefined) return { state: "starting" };
   // A parked run that filed its document is done with it, whenever this session first saw it.
-  if (filed !== undefined) return readyOf(filed);
-  return run.since === undefined
-    ? { state: "starting" }
-    : { state: "finished" };
+  return filed === undefined ? { state: "finished" } : readyOf(filed);
 }
 
 /** The hand-off's run is still starting, at work or held on an approval, so its work is current. */
@@ -425,9 +430,17 @@ export function filedDispatches(
       return [];
     }
     const key = `filed:${item.artifactId}`;
+    const at = Date.parse(item.filedAt);
+    // With no run to name it, a thing filed from a screen's answer is that screen's action.
+    const screen = room.screens?.findLast(
+      (opened) =>
+        opened.at <= at &&
+        opened.action.startsWith(`${role} `) &&
+        text.action[opened.action] !== undefined,
+    );
     return [
       {
-        at: Date.parse(item.filedAt),
+        at,
         dispatch: {
           key,
           call: key,
@@ -435,6 +448,7 @@ export function filedDispatches(
           role,
           pending: false,
           filed: true,
+          ...(screen === undefined ? {} : { action: screen.action }),
           ...(writes ? { kind: item.kind } : {}),
           ...(item.kind === "design_option" ? { concept: item.title } : {}),
         },

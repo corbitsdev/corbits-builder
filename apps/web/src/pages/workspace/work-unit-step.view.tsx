@@ -216,6 +216,31 @@ function Preview({ preview }: { preview: RunPreview | undefined }) {
   );
 }
 
+/**
+ * Says whether the text overflows its box now and again whenever the box or the text in it changes
+ * size: the same words wrap onto more lines in a narrower column, and fewer in a wider one or once
+ * the page's font arrives.
+ */
+export function watchClipping<
+  Box extends { scrollHeight: number; clientHeight: number },
+>(
+  box: Box,
+  onClipped: (clipped: boolean) => void,
+  onResize: (box: Box, measure: () => void) => () => void,
+): () => void {
+  const measure = () => onClipped(box.scrollHeight > box.clientHeight);
+  measure();
+  return onResize(box, measure);
+}
+
+/** Calls `measure` whenever the element or one of its children changes size, until stopped. */
+function resized(element: HTMLElement, measure: () => void): () => void {
+  const observer = new ResizeObserver(measure);
+  observer.observe(element);
+  for (const child of Array.from(element.children)) observer.observe(child);
+  return () => observer.disconnect();
+}
+
 /** Text held to a few lines until the person asks for the rest: a specialist's report, or its goal. */
 function Report({ source }: { source: string }) {
   const box = useRef<HTMLDivElement>(null);
@@ -223,8 +248,8 @@ function Report({ source }: { source: string }) {
   const [clipped, setClipped] = useState(false);
   useLayoutEffect(() => {
     const element = box.current;
-    if (element !== null && !open)
-      setClipped(element.scrollHeight > element.clientHeight);
+    if (element === null || open) return;
+    return watchClipping(element, setClipped, resized);
   }, [source, open]);
   return (
     <div className={styles.report}>

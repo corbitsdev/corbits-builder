@@ -100,10 +100,13 @@ export function foldLiveRun(
 ): { run: LiveRun; reload: boolean } {
   const reload = reloadAfter.has(event.type);
   if (event.type === "message.run.started") {
+    // Tool work after the last words never commits, so it goes; tool work before words stays, as
+    // those words may commit only after this run starts and the work is theirs.
+    const words = run.segments.findLastIndex((item) => item.text.length > 0);
     return {
       run: {
         ...run,
-        segments: run.segments.filter((item) => item.text.length > 0),
+        segments: run.segments.slice(0, words + 1),
         ended: false,
         running: true,
       },

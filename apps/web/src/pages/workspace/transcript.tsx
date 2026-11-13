@@ -43,16 +43,7 @@ import {
   type PartTool,
   type ToolApprovalStatus,
 } from "@corbits/react-ui";
-import {
-  commandLine,
-  commandOf,
-  descriptionOf,
-  filePhrase,
-  fileResult,
-  toolPhrase,
-  toolResult,
-  toolSubject,
-} from "./agent-activity.tsx";
+import { commandLine, readStep, type Step } from "./agent-activity.tsx";
 import { DOCUMENT_LINK, Markdown } from "@corbits-builder/plugin-ui/markdown";
 import { toast } from "sonner";
 import styles from "./transcript.module.css";
@@ -162,71 +153,28 @@ function ChatProse({
   return <Markdown source={source} openDocument={onOpenDocument} />;
 }
 
-function instructionOf(input: unknown): string | undefined {
-  if (typeof input !== "object" || input === null) return undefined;
-  const instruction = (input as Record<string, unknown>)["instruction"];
-  return typeof instruction === "string" && instruction.trim() !== ""
-    ? instruction
-    : undefined;
-}
-
-/** A step that ran a command, or touched a file, opens onto that rather than the call's arguments. */
-type ReadableTool = PartTool & { readonly step?: "command" | "file" };
+/** A step as its row reads, and the face its opened output shows in. */
+type ReadableTool = PartTool & { readonly face: Step["face"] };
 
 /**
- * A call named by what it did, so the activity's live line and steps read like
- * a person at work. A command reads as itself, or as its own description, and
- * opens onto its output; a file call names the file's path and opens onto it
- * and what was done to it. Any other call opens onto its instruction, else its
- * arguments, and what it returned. With nothing to show, the row has no toggle.
+ * A call named by what it did, so the activity's live line and steps read like a person at work.
+ * It opens onto the command it ran and what that printed, or onto what came of it in plain words;
+ * never onto its arguments or a raw result. With nothing to show, the row has no toggle.
  */
 function readableTool(
   part: PartTool,
   result: CallResult | undefined,
 ): ReadableTool {
   const { input, output: _output, ...call } = part;
-  const command = commandOf(input);
-  if (command !== undefined) {
-    const output = result?.content;
-    return {
-      ...call,
-      name: descriptionOf(input) ?? commandLine(command),
-      step: "command",
-      input: command,
-      ...(typeof output !== "string" || isBlank(output) ? {} : { output }),
-    };
-  }
-  const path = toolSubject(input);
   const settled = part.status === "output-available" || part.status === "error";
-  const file =
-    path === undefined ? undefined : filePhrase(part.name, path, settled);
-  if (file !== undefined) {
-    const summary =
-      result === undefined ? undefined : fileResult(result.content);
-    return {
-      ...call,
-      name: file,
-      step: "file",
-      input: path,
-      ...(summary === undefined ? {} : { output: summary }),
-    };
-  }
-  const output =
-    result === undefined ? undefined : toolResult(part.name, result.content);
+  const step = readStep(part.name, input, settled, result?.content);
   return {
     ...call,
-    name: toolPhrase(part.name, toolSubject(input)),
-    ...(isBlank(input) ? {} : { input: instructionOf(input) ?? input }),
-    ...(isBlank(output) ? {} : { output }),
+    name: step.label,
+    face: step.face,
+    input: step.command,
+    output: step.output,
   };
-}
-
-/** Nothing to show: a call with no arguments or no result gets no row to open. */
-function isBlank(value: unknown): boolean {
-  if (value === undefined || value === null) return true;
-  if (typeof value === "string") return value.trim() === "";
-  if (typeof value !== "object") return false;
-  return Object.keys(value).length === 0;
 }
 
 /** The item a specialist's row is, so the conversation map jumps to that row itself. */
@@ -475,51 +423,37 @@ function readableParts(
   });
 }
 
-/** A command step: the command as its row, in its own type, and its output once it has one. */
-function CommandLine({ part }: { part: PartTool }) {
-  const command = typeof part.input === "string" ? part.input : "";
-  const label =
-    part.name === commandLine(command) ? (
-      <code className={styles.command} title={command}>
-        {part.name}
-      </code>
-    ) : (
-      <span title={command}>{part.name}</span>
-    );
+/** A step's row: its words, or a command shown as itself after "Ran". */
+function StepLabel({ part }: { part: PartTool }) {
+  const command = typeof part.input === "string" ? part.input : undefined;
+  if (command === undefined || part.name !== commandLine(command))
+    return part.name;
   return (
-    <Tool part={{ ...part, name: "" }}>
-      <ToolHeader label={label} statusLabels={wording.activity.status} />
-      {part.output === undefined ? (
-        <ToolInput title={wording.activity.command} />
-      ) : null}
-      <ToolOutput title={wording.activity.commandOutput} />
-    </Tool>
+    <span title={command}>
+      {wording.activity.ran(part.status === "output-available")}{" "}
+      <code className={styles.command}>{part.name}</code>
+    </span>
   );
 }
 
-/** What an opened step was given: a file's path, an instruction in words, else the arguments. */
-function StepInput({ part }: { part: PartTool }) {
-  if ("step" in part && part.step === "file")
-    return <ToolInput title={wording.activity.file} />;
-  if (typeof part.input === "string")
-    return (
-      <ToolInput
-        title={wording.activity.instruction}
-        render={(value) => <Markdown source={String(value)} />}
-      />
-    );
-  return <ToolInput title={wording.activity.input} />;
-}
+const renderWords = (value: unknown) => (
+  <span className={styles.words}>{String(value)}</span>
+);
 
-/** The library's tool call, labelled in words rather than by its raw name. */
+/** The library's tool call, labelled in words, opening onto its command and output or a line of words. */
 function ToolLine({ part }: { part: PartTool }) {
-  if ("step" in part && part.step === "command")
-    return <CommandLine part={part} />;
+  const code = "face" in part && part.face === "code";
   return (
     <Tool part={{ ...part, name: "" }}>
-      <ToolHeader label={part.name} statusLabels={wording.activity.status} />
-      <StepInput part={part} />
-      <ToolOutput title={wording.activity.output} />
+      <ToolHeader
+        label={<StepLabel part={part} />}
+        statusLabels={wording.activity.status}
+      />
+      <ToolInput title={wording.activity.command} />
+      <ToolOutput
+        title={code ? wording.activity.commandOutput : wording.activity.output}
+        render={code ? undefined : renderWords}
+      />
     </Tool>
   );
 }
