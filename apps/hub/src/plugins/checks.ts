@@ -273,12 +273,7 @@ export function createChecks(deps: {
 
   const note = async (projectId: string, origin: string, content: string) => {
     const coordinator = await coordinatorOf(db, projectId);
-    if (!coordinator) {
-      log.warn("Check note not delivered: no coordinator running", {
-        projectId,
-      });
-      return;
-    }
+    if (!coordinator) return;
     try {
       await createHubMail(
         db,
