@@ -143,6 +143,20 @@ export const List: Story = {
   },
 };
 
+export const LongTitles: Story = {
+  args: {
+    layout: "rows",
+    projects: [
+      {
+        ...invoices,
+        title:
+          "Build an internal tool for approving purchase requests. Staff submit a request with an amount and a reason, their manager approves or rejects it, and anything over $5,000 also needs finance approval.",
+      },
+      { ...recipes, title: "RecipeBox".repeat(40) },
+    ],
+  },
+};
+
 export const FilteredToBuilding: Story = {
   args: { filter: "building", projects: [bakery, invoices] },
 };
