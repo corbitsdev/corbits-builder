@@ -1,7 +1,14 @@
 import { join } from "node:path";
 import { designThemeIds } from "@corbits-builder/designer/skills" with { type: "macro" };
 
-export const MAX_DESIGN_BYTES = 256 * 1024;
+// A guard against a runaway design, not a target size. When real mockups need more room, raising
+// it is a change to this constant alone.
+export const MAX_DESIGN_BYTES = 4 * 1024 * 1024;
+
+export const designSizeHint = (bytes: number, largest: string) =>
+  `The design is ${bytes} bytes; the limit is ${MAX_DESIGN_BYTES} bytes (${MAX_DESIGN_BYTES / (1024 * 1024)} MiB). Largest files: ${largest}.`;
+export const designTrimNote =
+  "Trim repeated markup or unused assets in those files, then run check_design again.";
 
 export const designChangedDuringCheck =
   "check failed: the design changed during checking. Run check_design again to validate and save.";

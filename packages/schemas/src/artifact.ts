@@ -22,8 +22,8 @@ const content = type("string > 0").atMostLength(256 * 1024);
 export const DocumentContent = content;
 export const MAX_APPROVAL_PACKAGE_BYTES = 4 * 1024 * 1024;
 
-// A filed approval package runs up to MAX_APPROVAL_PACKAGE_BYTES, which the hub checks in bytes,
-// and a filed app is as large as the app is; the hub holds every other kind to DocumentContent.
+// The hub checks design and approval-package limits in bytes; apps have no size limit.
+// Text documents are held to DocumentContent.
 export const ArtifactKindWrite = type({
   "+": "reject",
   kind: WritableArtifactKind,

@@ -9,6 +9,7 @@ import { createNoopCredentialCipher } from "@intx/crypto";
 import { createRunTokenStore } from "@intx/db";
 import { grant } from "@intx/db/schema";
 import type { DesignDraft } from "@corbits-builder/schemas/artifact";
+import { MAX_DESIGN_BYTES } from "@corbits-builder/hub/config/design";
 import { startInProcessHub } from "./support/in-process-hub.ts";
 
 let hub: Awaited<ReturnType<typeof startInProcessHub>>;
@@ -136,3 +137,48 @@ test.each([
     }).toEqual(expected);
   },
 );
+
+test("the hub files a design at the byte limit, rejects one byte more, and keeps the text-document cap", async () => {
+  const continued = await previousDraft([{ left: "é".repeat(160_000) }], -2);
+  expect(Buffer.byteLength(continued.files["DESIGN.md"]!)).toBeGreaterThan(
+    256 * 1024,
+  );
+  // Two files of half the limit each, so their markup tips the draft over it.
+  await expect(
+    previousDraft([{ left: "é".repeat(MAX_DESIGN_BYTES / 4) }], -2),
+  ).rejects.toThrow("design_draft_too_large");
+  const { path } = await hub.seedProject("Design size");
+  const files = {
+    "DESIGN.md": "# Design",
+    "designs/index.html": "<main>Design</main>",
+    "designs/data.txt": "",
+  };
+  const remaining =
+    MAX_DESIGN_BYTES - Buffer.byteLength(JSON.stringify({ files }));
+  files["designs/data.txt"] =
+    "é".repeat(Math.floor(remaining / 2)) + "x".repeat(remaining % 2);
+  const content = JSON.stringify({ files });
+  const written = await hub.call("POST", `${path}/artifacts`, {
+    kind: "design",
+    title: "Large",
+    content,
+  });
+  expect(written.ok).toBe(true);
+  files["designs/data.txt"] += "x";
+  const refused = hub.call("POST", `${path}/artifacts`, {
+    kind: "design",
+    title: "Too large",
+    content: JSON.stringify({ files }),
+  });
+  await expect(refused).rejects.toThrow("design_too_large");
+  await expect(refused).rejects.toThrow(
+    `designs/data.txt (${remaining + 1} bytes)`,
+  );
+  await expect(
+    hub.call("POST", `${path}/artifacts`, {
+      kind: "problem_brief",
+      title: "Too long",
+      content: "x".repeat(256 * 1024 + 1),
+    }),
+  ).rejects.toThrow("invalid_artifact_write");
+});
