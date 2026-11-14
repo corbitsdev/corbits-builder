@@ -105,35 +105,6 @@ export function isInputPark(event: ConversationEvent): boolean {
   return event.type === "SignalAwaited" && event.body["parkKind"] === "input";
 }
 
-/** The asking prose the hub's projection attached to the park, when it provided one. */
-export function parkProse(
-  park: ConversationEvent,
-): { prose: string; source?: { kind: string; agentKey?: string } } | undefined {
-  if (!isInputPark(park)) return undefined;
-  const question = park.body["question"];
-  if (typeof question !== "object" || question === null) return undefined;
-  const record = question as { prose?: unknown; source?: unknown };
-  if (typeof record.prose !== "string" || record.prose.trim() === "")
-    return undefined;
-  const source =
-    typeof record.source === "object" && record.source !== null
-      ? (record.source as { kind?: unknown; agentKey?: unknown })
-      : undefined;
-  return {
-    prose: record.prose,
-    ...(source && typeof source.kind === "string"
-      ? {
-          source: {
-            kind: source.kind,
-            ...(typeof source.agentKey === "string"
-              ? { agentKey: source.agentKey }
-              : {}),
-          },
-        }
-      : {}),
-  };
-}
-
 function receivedCorrelationId(event: ConversationEvent): string | undefined {
   if (event.type !== "SignalReceived") return undefined;
   const payload = event.body["payload"] as

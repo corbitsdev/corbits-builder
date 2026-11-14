@@ -50,28 +50,18 @@ function approvalWait(
 }
 
 function parkWait(
-  park: { seq: number; body: Record<string, unknown> },
+  park: { seq: number },
   projectId: string,
   runId: string,
 ): Omit<Wait, "projectTitle"> {
-  const question = park.body["question"];
-  const prose =
-    typeof question === "object" &&
-    question !== null &&
-    typeof (question as { prose?: unknown }).prose === "string"
-      ? (question as { prose: string }).prose
-      : undefined;
   return {
     id: `${projectId}:${String(park.seq)}:input-park`,
     projectId,
     runId,
     stage: null,
     title: wording.wait.question,
-    consequence: prose ?? wording.wait.askedInConversation,
-    park: {
-      seq: park.seq,
-      ...(prose === undefined ? {} : { question: prose }),
-    },
+    consequence: wording.wait.askedInConversation,
+    park: { seq: park.seq },
   };
 }
 
