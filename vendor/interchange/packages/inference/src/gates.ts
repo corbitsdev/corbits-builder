@@ -1,7 +1,7 @@
 // Gate management for the agent reactor.
 //
 // Gates block the reactor until an external condition resolves. Each gate has
-// a type, an ID, and a mandatory timeout. The gate manager owns all active
+// a type, an ID, and an optional timeout. The gate manager owns all active
 // gates and exposes methods to register, clear, and time out gates.
 //
 // (INFERENCE.md § Gates, Gate Timeouts, Gate Behavior During Suspension)
@@ -11,24 +11,25 @@ import type { GateType } from "@intx/types/runtime";
 export type GateRecord = {
   gateId: string;
   type: GateType;
-  timeoutAt: number;
+  timeoutAt: number | undefined;
   correlationId: string | undefined;
   resolve: (reason: "resolved" | "timeout" | "shutdown") => void;
   onCleared: (
     gateId: string,
     reason: "resolved" | "timeout" | "shutdown",
   ) => void;
-  timer: ReturnType<typeof setTimeout>;
+  timer: ReturnType<typeof setTimeout> | undefined;
 };
 
 export type GateSnapshot = {
   gateId: string;
   type: GateType;
-  timeoutAt: number;
+  timeoutAt: number | undefined;
 };
 
 /**
- * Manages active gates. All gates must have a positive timeout.
+ * Manages active gates. A gate with a timeout must have a positive one; a gate
+ * registered without one holds until it is cleared.
  */
 export function createGateManager() {
   const gates = new Map<string, GateRecord>();
@@ -36,14 +37,14 @@ export function createGateManager() {
   function register(
     gateId: string,
     type: GateType,
-    timeoutMs: number,
+    timeoutMs: number | undefined,
     correlationId: string | undefined,
     onCleared: (
       gateId: string,
       reason: "resolved" | "timeout" | "shutdown",
     ) => void,
   ): Promise<"resolved" | "timeout" | "shutdown"> {
-    if (timeoutMs <= 0) {
+    if (timeoutMs !== undefined && timeoutMs <= 0) {
       throw new Error(
         `Gate "${gateId}" must have a positive timeout (got ${timeoutMs})`,
       );
@@ -53,7 +54,6 @@ export function createGateManager() {
       throw new Error(`Gate "${gateId}" is already registered`);
     }
 
-    const timeoutAt = Date.now() + timeoutMs;
     let resolveGate!: (reason: "resolved" | "timeout" | "shutdown") => void;
 
     const promise = new Promise<"resolved" | "timeout" | "shutdown">(
@@ -62,13 +62,18 @@ export function createGateManager() {
       },
     );
 
-    const timer = setTimeout(() => {
-      if (gates.has(gateId)) {
-        gates.delete(gateId);
-        resolveGate("timeout");
-        onCleared(gateId, "timeout");
-      }
-    }, timeoutMs);
+    let timeoutAt: number | undefined;
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    if (timeoutMs !== undefined) {
+      timeoutAt = Date.now() + timeoutMs;
+      timer = setTimeout(() => {
+        if (gates.has(gateId)) {
+          gates.delete(gateId);
+          resolveGate("timeout");
+          onCleared(gateId, "timeout");
+        }
+      }, timeoutMs);
+    }
 
     gates.set(gateId, {
       gateId,

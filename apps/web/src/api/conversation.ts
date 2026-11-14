@@ -9,6 +9,7 @@
  * and its releasing signal) from the events.
  */
 import type { ConversationEvents } from "@corbits-builder/schemas/conversation";
+import type { QuestionAnswer } from "@intx/types/signals";
 import { wording } from "../config.ts";
 import { productClient } from "./transport.ts";
 import {
@@ -46,6 +47,26 @@ export async function readConversationEvents(
 
 export type SendReceipt = { runId: string; address: string; messageId: string };
 
+async function coordinatorRun(projectId: string) {
+  const client = productClient();
+  const project = await client.project(await workspaceTenantId(), projectId);
+  if (project.coordinatorRunId === null)
+    throw new ApiFailure(
+      {
+        code: "coordinator_unavailable",
+        message: wording.conversation.noCoordinator,
+        correlationId: "-",
+        retryable: false,
+      },
+      409,
+    );
+  return {
+    client,
+    tenantId: project.tenantId,
+    runId: project.coordinatorRunId,
+  };
+}
+
 /**
  * Sends one person message as native mail to the project's coordinator run
  * and composes the 202 receipt into the `ChatMessage` the thread renders:
@@ -60,23 +81,8 @@ export async function sendMessage(
   receipt: SendReceipt;
   message: ChatMessage;
 }> {
-  const client = productClient();
-  const project = await client.project(await workspaceTenantId(), projectId);
-  if (project.coordinatorRunId === null)
-    throw new ApiFailure(
-      {
-        code: "coordinator_unavailable",
-        message: wording.conversation.noCoordinator,
-        correlationId: "-",
-        retryable: false,
-      },
-      409,
-    );
-  const receipt = await client.sendMessage(
-    project.tenantId,
-    project.coordinatorRunId,
-    { content },
-  );
+  const { client, tenantId, runId } = await coordinatorRun(projectId);
+  const receipt = await client.sendMessage(tenantId, runId, { content });
   return {
     receipt,
     message: {
@@ -100,6 +106,13 @@ export type PendingQuestion = {
   answeredByYou: boolean;
   correlationId?: string;
 };
+
+const RUN_ENDS = new Set(["RunCompleted", "RunFailed", "RunCancelled"]);
+
+/** A coordinator run that ended answers nothing more, so its open question waits on no one. */
+export function runEnded(events: readonly ConversationEvent[]): boolean {
+  return events.some((event) => RUN_ENDS.has(event.type));
+}
 
 export function isInputPark(event: ConversationEvent): boolean {
   return event.type === "SignalAwaited" && event.body["parkKind"] === "input";
@@ -170,4 +183,16 @@ export function latestQuestion(
     answeredByYou,
     ...(correlationId === undefined ? {} : { correlationId }),
   };
+}
+
+// --- The coordinator's questions ----------------------------------------------
+
+/** Answers the coordinator's open question; the run takes it as the question call's result. */
+export async function answerQuestion(
+  projectId: string,
+  signalName: string,
+  answer: QuestionAnswer,
+): Promise<void> {
+  const { client, tenantId, runId } = await coordinatorRun(projectId);
+  await client.answerQuestion(tenantId, runId, signalName, answer);
 }

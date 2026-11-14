@@ -710,10 +710,11 @@ export function toParkedApprovalOps(
   pendingOperations: PendingOperation[],
 ): ParkedApprovalOp[] {
   return pendingOperations
-    .filter((op) => op.kind === "approval")
+    .filter((op) => op.kind === "approval" || op.kind === "question")
     .map((op) => ({
       correlationId: op.correlationId,
       ...(op.timeoutAt !== undefined ? { timeoutAtMs: op.timeoutAt } : {}),
+      ...(op.question !== undefined ? { question: op.question } : {}),
     }));
 }
 

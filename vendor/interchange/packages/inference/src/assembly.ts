@@ -31,6 +31,7 @@ import {
   type AuthzExtensionOptions,
 } from "./authz-extension";
 import type { CorrelationValidator } from "./correlation";
+import { createQuestionExtension, questionTool } from "./question";
 import type { Dependencies } from "./harness";
 import {
   createReactor,
@@ -80,9 +81,11 @@ export type ReactorAssemblyConfig = {
   authorize?: AuthzExtensionOptions["authorize"];
   /**
    * Tool definitions forwarded to the authz extension so it can build the
-   * approver-facing snapshot at an `ask` suspension. Only consumed when
-   * `authorize` is also supplied. Omitting it puts the authz extension in its
-   * no-snapshot mode; the production edge always supplies the resolved set.
+   * approver-facing snapshot at an `ask` suspension, and checked for the
+   * question tool. The authz extension consumes it only when `authorize` is
+   * also supplied. Omitting it puts the authz extension in its no-snapshot mode
+   * and leaves out the question pause; the production edge always supplies the
+   * resolved set.
    */
   toolDefinitions?: readonly ToolDefinition[];
   auditStore?: AuditStore;
@@ -177,8 +180,7 @@ export function createReactorAssembly(
       : onEvent;
 
   // Authz is composed in front of any caller-supplied before-tool extensions
-  // so policy enforcement runs first. Without authz, the caller's list (if
-  // any) is passed through unchanged.
+  // so policy enforcement runs first.
   const authzExtension =
     authorize !== undefined
       ? createAuthzExtension({
@@ -190,10 +192,19 @@ export function createReactorAssembly(
         })
       : undefined;
 
-  const composedBeforeToolExtensions: BeforeToolExtension[] | undefined =
-    authzExtension !== undefined
-      ? [authzExtension, ...(callerBeforeToolExtensions ?? [])]
-      : callerBeforeToolExtensions;
+  // A question asks the person rather than acting, so it pauses ahead of authz
+  // and needs no grant. Only an agent that lists the question tool gets the
+  // pause; for any other, a call named `question` goes to its own tools. The
+  // tool is matched by name: a bundled workflow carries its own copy of this
+  // module, so the definition it lists is never this module's object.
+  const composedBeforeToolExtensions: BeforeToolExtension[] = [];
+  if (toolDefinitions?.some((tool) => tool.name === questionTool.name)) {
+    composedBeforeToolExtensions.push(createQuestionExtension());
+  }
+  if (authzExtension !== undefined) {
+    composedBeforeToolExtensions.push(authzExtension);
+  }
+  composedBeforeToolExtensions.push(...(callerBeforeToolExtensions ?? []));
 
   // The size-cap transform is always prepended so oversized payloads spill
   // before any caller transform sees them. Caller transforms run after and
@@ -255,9 +266,7 @@ export function createReactorAssembly(
     onEvent: composedOnEvent,
     deps,
     toolResultTransforms: composedToolResultTransforms,
-    ...(composedBeforeToolExtensions !== undefined
-      ? { beforeToolExtensions: composedBeforeToolExtensions }
-      : {}),
+    beforeToolExtensions: composedBeforeToolExtensions,
     ...(contextTransforms !== undefined ? { contextTransforms } : {}),
     ...(compactors !== undefined ? { compactors } : {}),
     ...(composedAfterCheckpoint !== undefined

@@ -1,11 +1,10 @@
 /**
- * The coordinator's ask_questions call as a card the person answers one question at a time. The
- * answers go back as the person's next message, the way the composer sends one; the card holds no
- * state of its own past that message, so a later person turn is what marks it answered.
+ * The coordinator's open question as a card the person answers one question at a time. The run log
+ * holds the question and, once sent, the answer, so the card reads the same after a reload and
+ * settles when the answer lands.
  */
 import {
   useEffect,
-  useId,
   useRef,
   useState,
   type Dispatch,
@@ -16,55 +15,84 @@ import {
   Check,
   ChevronDown,
   ChevronLeft,
+  CirclePause,
   CornerDownLeft,
   CornerDownRight,
   Pencil,
   Plus,
 } from "lucide-react";
-import { Button, Checkbox, GateBlock, type PartTool } from "@corbits/react-ui";
+import { Button, Checkbox, GateBlock } from "@corbits/react-ui";
 import { Tooltip } from "@corbits/react-ui/ui/tooltip";
-import {
-  AskQuestions,
-  askQuestionsIssue,
-  type Question,
-} from "@corbits-builder/schemas/questions";
+import type { AskedQuestion } from "@intx/types/runtime-core";
+import type { QuestionAnswer } from "@intx/types/signals";
+import { type } from "arktype";
 import { wording } from "../../config.ts";
-import type { CallResult } from "./live-run.ts";
 import { Fault } from "../../components.jsx";
+import { readJson } from "../../json.ts";
 import styles from "./questions-card.module.css";
 
 const text = wording.questions;
 
-export const ASK_QUESTIONS = "ask_questions";
-
-/** The questions a finished call asked, or undefined when it is not one the hub accepted. */
-export function askedQuestions(
-  part: PartTool,
-  result: CallResult | undefined,
-): AskQuestions | undefined {
-  if (part.name !== ASK_QUESTIONS || part.status !== "output-available")
-    return undefined;
-  if (result?.isError === true || !AskQuestions.allows(part.input))
-    return undefined;
-  return askQuestionsIssue(part.input) === undefined ? part.input : undefined;
-}
+type Question = AskedQuestion["questions"][number];
 
 export type QuestionsState =
   | {
       readonly kind: "open";
       readonly disabled: boolean;
-      readonly onSend: (reply: string) => Promise<boolean>;
+      /** Sends each question's answer under its id. */
+      readonly onSend: (answers: Record<string, string[]>) => Promise<boolean>;
     }
-  | { readonly kind: "answered"; readonly reply: string }
-  | { readonly kind: "replaced" };
+  | { readonly kind: "answered"; readonly answer: QuestionAnswer }
+  /** Its coordinator stopped before the person answered, so nothing can answer it now. */
+  | { readonly kind: "closed" };
 
-/** The options picked, plus the person's own words; typing those is the "Something else" answer. */
+/** The options picked, by label, plus the person's own words; typing those is the "Something else" answer. */
 type Answer = { readonly chosen: readonly string[]; readonly own: string };
 
-/** The coordinator's recommended answer picked to start with; a question it recommends nothing for starts blank. */
+const blank: Answer = { chosen: [], own: "" };
+
+// Picks made before sending survive a reload of this tab, and are dropped once the answer is sent.
+const KeptAnswers = type({ "[string]": { chosen: "string[]", own: "string" } });
+const draftKey = (id: string) => `question-draft:${id}`;
+
+function readKept(id: string): Record<string, Answer> {
+  try {
+    const raw = sessionStorage.getItem(draftKey(id));
+    return (raw === null ? null : readJson(raw, KeptAnswers)) ?? {};
+  } catch (error) {
+    console.warn(
+      "Browser storage is unavailable; picks last until a reload.",
+      error,
+    );
+    return {};
+  }
+}
+
+function writeKept(id: string, answers: Record<string, Answer> | null): void {
+  try {
+    if (answers === null) sessionStorage.removeItem(draftKey(id));
+    else sessionStorage.setItem(draftKey(id), JSON.stringify(answers));
+  } catch (error) {
+    console.warn(
+      "Browser storage is unavailable; picks last until a reload.",
+      error,
+    );
+  }
+}
+
+/** The coordinator marks the option it recommends by ending its label with this. */
+const recommendedSuffix = "(Recommended)";
+
+/**
+ * The recommended answer picked to start with, the first such option on a pick-one question; a
+ * question it recommends nothing for starts blank.
+ */
 function startingAnswer(question: Question): Answer {
-  if (question.preselected === undefined) return { chosen: [], own: "" };
-  return { chosen: question.preselected, own: "" };
+  const recommended = question.options
+    .filter((option) => option.label.endsWith(recommendedSuffix))
+    .map((option) => option.label);
+  const chosen = question.multiple ? recommended : recommended.slice(0, 1);
+  return { chosen, own: "" };
 }
 
 function answered(answer: Answer): boolean {
@@ -76,16 +104,14 @@ function answered(answer: Answer): boolean {
  * stand in for the option picked; the pick is kept, so clearing the words brings it back.
  */
 function chosenOf(question: Question, answer: Answer): readonly string[] {
-  return question.kind === "single" && answer.own.trim() !== ""
-    ? []
-    : answer.chosen;
+  return !question.multiple && answer.own.trim() !== "" ? [] : answer.chosen;
 }
 
-/** The answer as the reply carries it: the options that count, then the person's own words. */
+/** The answer as it is sent: the options that count, then the person's own words. */
 export function answerLabels(question: Question, answer: Answer): string[] {
   const chosen = chosenOf(question, answer);
   const labels = question.options
-    .filter((option) => chosen.includes(option.value))
+    .filter((option) => chosen.includes(option.label))
     .map((option) => option.label);
   const own = answer.own.trim();
   return own === "" ? labels : [...labels, own];
@@ -93,9 +119,9 @@ export function answerLabels(question: Question, answer: Answer): string[] {
 
 /** Option `index` picked: the only choice on a pick-one question, toggled on a pick-any one. */
 function pick(question: Question, answer: Answer, index: number): Answer {
-  const value = question.options[index]?.value;
+  const value = question.options[index]?.label;
   if (value === undefined) return answer;
-  if (question.kind === "single") return { chosen: [value], own: "" };
+  if (!question.multiple) return { chosen: [value], own: "" };
   return {
     ...answer,
     chosen: answer.chosen.includes(value)
@@ -106,8 +132,7 @@ function pick(question: Question, answer: Answer, index: number): Answer {
 
 /**
  * The answer Enter carries on with from an option the person moved to. ↑↓ only move focus, so on a
- * pick-one question Enter takes that option: what the person sees ringed goes forward, not the
- * recommendation.
+ * pick-one question Enter takes that option: what the person sees ringed goes forward.
  * Words the person typed are never swapped for an option focus merely passes over; picking one
  * takes a click, Space or its number.
  */
@@ -117,7 +142,7 @@ export function enterAnswer(
   focused: number,
 ): Answer {
   if (
-    question.kind !== "single" ||
+    question.multiple ||
     answer.own.trim() !== "" ||
     question.options[focused] === undefined
   )
@@ -166,80 +191,58 @@ function keyTarget(element: EventTarget): KeyTarget {
   return element.type === "text" ? "own" : "option";
 }
 
-/** Each question with its answer as the person's reply carries it, by the line the card composed. */
-function repliedAnswers(
-  questions: readonly Question[],
-  reply: string,
-): AnswerRow[] {
-  const lines = reply.split("\n");
-  return questions.flatMap((question) => {
-    const lead = text.answerLine(question.prompt, []);
-    const line = lines.find((candidate) => candidate.startsWith(lead));
-    return line === undefined
-      ? []
-      : [
-          {
-            id: question.id,
-            prompt: question.prompt,
-            answer: line.slice(lead.length),
-          },
-        ];
-  });
-}
-
-type AnswerRow = { id: string; prompt: string; answer: string };
-
-/**
- * The card once done: a one-line receipt. The answers are the person's reply right below it, so
- * the list stays folded until asked for.
- */
-function Settled({ ask, reply }: { ask: AskQuestions; reply?: string }) {
-  const [shown, setShown] = useState(false);
-  const listId = useId();
-  if (reply === undefined)
-    return (
-      <section className={styles.settled} aria-label={text.replaced}>
-        <p className={styles.settledTitle}>
-          <CornerDownRight className={styles.settledMark} aria-hidden />
-          {text.replaced}
-        </p>
-      </section>
-    );
-  const answers = repliedAnswers(ask.questions, reply);
-  const title = answers.length === 0 ? text.answeredInChat : text.answered;
+/** The card once answered: each question with its answer, or what the person wrote instead. */
+function Settled({
+  asked,
+  answer,
+}: {
+  asked: AskedQuestion;
+  answer: QuestionAnswer;
+}) {
+  const reply = "reply" in answer;
+  const title = reply ? text.answeredInWords : text.answered;
   return (
     <section className={styles.settled} aria-label={title}>
       <p className={styles.settledTitle}>
-        <Check className={styles.settledMark} data-ok="" aria-hidden />
-        {title}
-        {answers.length === 0 ? null : (
-          <>
-            <span className={styles.settledCount}>
-              {text.answerCount(answers.length)}
-            </span>
-            <button
-              type="button"
-              className={styles.settledToggle}
-              aria-expanded={shown}
-              aria-controls={shown ? listId : undefined}
-              onClick={() => setShown(!shown)}
-            >
-              {shown ? text.hide : text.show}
-              <ChevronDown aria-hidden />
-            </button>
-          </>
+        {reply ? (
+          <CornerDownRight className={styles.settledMark} aria-hidden />
+        ) : (
+          <Check className={styles.settledMark} data-ok="" aria-hidden />
         )}
+        {title}
       </p>
-      {shown ? (
-        <dl id={listId} className={styles.answers}>
-          {answers.map(({ id, prompt, answer }) => (
-            <div key={id}>
-              <dt>{prompt}</dt>
-              <dd>{answer}</dd>
+      {reply ? (
+        <p className={styles.reply}>{answer.reply}</p>
+      ) : (
+        <dl className={styles.answers}>
+          {asked.questions.map((question) => (
+            <div key={question.id}>
+              <dt>{question.question}</dt>
+              <dd>{(answer.answers[question.id] ?? []).join(", ")}</dd>
             </div>
           ))}
         </dl>
-      ) : null}
+      )}
+    </section>
+  );
+}
+
+/** The card once its coordinator stopped unanswered: each question, which no answer reaches now. */
+function Closed({ asked }: { asked: AskedQuestion }) {
+  return (
+    <section className={styles.settled} aria-label={text.closed}>
+      <p className={styles.settledTitle}>
+        <CirclePause className={styles.settledMark} aria-hidden />
+        {text.closed}
+      </p>
+      <dl className={styles.answers}>
+        {asked.questions.map((question) => (
+          <div key={question.id}>
+            <dt>{question.question}</dt>
+            <dd className={styles.notAnswered}>{text.notAnswered}</dd>
+          </div>
+        ))}
+      </dl>
     </section>
   );
 }
@@ -273,14 +276,26 @@ function AnsweredRow({
         type="button"
         className={styles.answered}
         disabled={disabled}
-        aria-label={text.changeAnswer(question.prompt, labels)}
+        aria-label={text.changeAnswer(question.question, labels)}
         onClick={onOpen}
       >
-        <span className={styles.answeredPrompt}>{question.prompt}</span>
+        <span className={styles.answeredPrompt}>{question.question}</span>
         <span className={styles.answeredValue}>{labels}</span>
         <Pencil className={styles.answeredEdit} aria-hidden />
       </button>
     </li>
+  );
+}
+
+/** An option's label, with the line that explains it where the coordinator wrote one. */
+function OptionText({ label, description }: Question["options"][number]) {
+  return (
+    <span className={styles.choiceText}>
+      {label}
+      {description === "" ? null : (
+        <span className={styles.choiceDescription}>{description}</span>
+      )}
+    </span>
   );
 }
 
@@ -301,31 +316,35 @@ function Choices({
   onPick: (index: number) => void;
   onOwn: (own: string) => void;
 }) {
-  const multi = question.kind === "multi";
+  const multi = question.multiple;
+  // A question with no options takes only the person's words, in a field of its own.
+  const typed = question.options.length === 0;
   const chosen = chosenOf(question, answer);
   const picked = chosen.length;
   return (
     <fieldset
       className={styles.question}
       disabled={disabled}
-      aria-describedby={ruleId}
+      aria-describedby={typed ? undefined : ruleId}
     >
-      <legend className={styles.prompt}>{question.prompt}</legend>
-      <p id={ruleId} className={styles.rule}>
-        {multi ? text.pickAny : text.pickOne}
-        {multi && picked > 0 ? (
-          <span className={styles.ruleCount}>
-            {text.selected(picked, question.options.length)}
-          </span>
-        ) : null}
-      </p>
-      <div className={styles.choices} data-kind={question.kind}>
+      <legend className={styles.prompt}>{question.question}</legend>
+      {typed ? null : (
+        <p id={ruleId} className={styles.rule}>
+          {multi ? text.pickAny : text.pickOne}
+          {multi && picked > 0 ? (
+            <span className={styles.ruleCount}>
+              {text.selected(picked, question.options.length)}
+            </span>
+          ) : null}
+        </p>
+      )}
+      <div className={styles.choices} data-kind={multi ? "multi" : "single"}>
         {question.options.map((option, index) => {
-          const checked = chosen.includes(option.value);
+          const checked = chosen.includes(option.label);
           if (multi)
             return (
               <label
-                key={option.value}
+                key={option.label}
                 className={styles.choice}
                 data-checked={checked ? "" : undefined}
                 // Safari leaves focus where it was on a click; the card's keys need it here.
@@ -338,12 +357,12 @@ function Choices({
                   onCheckedChange={() => onPick(index)}
                   className={styles.check}
                 />
-                {option.label}
+                <OptionText {...option} />
               </label>
             );
           return (
             <label
-              key={option.value}
+              key={option.label}
               className={styles.choice}
               data-checked={checked ? "" : undefined}
             >
@@ -356,30 +375,32 @@ function Choices({
                 onClick={(event) => {
                   // Safari leaves focus where it was on a click; the card's keys need it here.
                   event.currentTarget.focus();
-                  // A checked radio fires no change, so a click on the recommended answer moves on here.
+                  // A checked radio fires no change, so a click on the picked answer moves on here.
                   if (checked) onPick(index);
                 }}
               />
               <span className={styles.box} aria-hidden>
                 {checked ? <Check /> : index + 1}
               </span>
-              {option.label}
+              <OptionText {...option} />
             </label>
           );
         })}
-        {question.allowOther === true ? (
+        {question.custom ? (
           <label
             className={styles.choice}
             data-checked={answer.own.trim() === "" ? undefined : ""}
           >
-            <span className={styles.box} aria-hidden>
-              <Plus />
-            </span>
+            {typed ? null : (
+              <span className={styles.box} aria-hidden>
+                <Plus />
+              </span>
+            )}
             <input
               type="text"
               className={styles.own}
               aria-label={text.otherAnswer}
-              placeholder={text.other}
+              placeholder={typed ? text.typed : text.other}
               value={answer.own}
               onChange={(event) => onOwn(event.target.value)}
             />
@@ -410,21 +431,21 @@ type Draft = {
 
 function OpenCard({
   id,
-  ask,
+  asked,
   blocked,
   onSend,
   draft,
   onDraft,
 }: {
   id: string;
-  ask: AskQuestions;
+  asked: AskedQuestion;
   /** Closed to answers for now, such as while another message is sending. */
   blocked: boolean;
-  onSend: (reply: string) => Promise<boolean>;
+  onSend: (answers: Record<string, string[]>) => Promise<boolean>;
   draft: Draft;
   onDraft: Dispatch<SetStateAction<Draft>>;
 }) {
-  const { questions } = ask;
+  const { questions } = asked;
   const { answers, step, failed, focusFollows } = draft;
   const [earlierShown, setEarlierShown] = useState(false);
   const [sending, setSending] = useState(false);
@@ -460,8 +481,7 @@ function OpenCard({
   }, [step, focusFollows, blocked]);
   if (question === undefined) return null;
 
-  const answerOf = (index: number): Answer =>
-    answers[index] ?? { chosen: [], own: "" };
+  const answerOf = (index: number): Answer => answers[index] ?? blank;
   const answer = answerOf(step);
   const last = step === questions.length - 1;
   const ready = answered(answer);
@@ -482,17 +502,18 @@ function OpenCard({
   const send = async (current: Answer) => {
     setSending(true);
     onDraft((draft) => ({ ...draft, failed: false, focusFollows: true }));
-    const reply = questions
-      .map((item, index) =>
-        text.answerLine(
-          item.prompt,
+    const sent = await onSend(
+      Object.fromEntries(
+        questions.map((item, index) => [
+          item.id,
           answerLabels(item, index === step ? current : answerOf(index)),
-        ),
-      )
-      .join("\n");
-    const sent = await onSend(reply);
+        ]),
+      ),
+    );
+    // Once sent, the card stays sending until the run log shows the answer and it settles.
+    if (sent) return;
     setSending(false);
-    onDraft((draft) => ({ ...draft, failed: !sent }));
+    onDraft((draft) => ({ ...draft, failed: true }));
   };
   /** On to the next question with `current` as this one's answer, or send on the last. */
   const next = (current: Answer) => {
@@ -505,7 +526,7 @@ function OpenCard({
   const choose = (index: number) => {
     if (question.options[index] === undefined) return;
     setAnswer(pick(question, answer, index));
-    if (question.kind === "single" && !last) go(step + 1);
+    if (!question.multiple && !last) go(step + 1);
   };
 
   const onKeyDown = (event: KeyboardEvent<HTMLDivElement>) => {
@@ -555,6 +576,8 @@ function OpenCard({
   const upcoming = questions[step + 1];
   const more = questions.length - step - 2;
   const ruleId = `${id}-${question.id}-rule`;
+  // A question with no options shows no rule to point at.
+  const ruled = question.options.length > 0;
   const answeredRow = (index: number) => {
     const item = questions[index];
     return item === undefined ? null : (
@@ -616,7 +639,7 @@ function OpenCard({
             <li className={styles.row} data-upcoming="">
               <ThreadMark mark="upcoming" />
               <span className={styles.upcoming}>
-                {upcoming.prompt}
+                {upcoming.question}
                 {more > 0 ? <span>{text.more(more)}</span> : null}
               </span>
             </li>
@@ -645,7 +668,7 @@ function OpenCard({
               size="sm"
               className={styles.next}
               aria-disabled={disabled || !ready}
-              aria-describedby={ruleId}
+              aria-describedby={ruled ? ruleId : undefined}
               aria-keyshortcuts={last ? "Enter" : "Enter ArrowRight"}
               onClick={() => next(answer)}
             >
@@ -659,30 +682,58 @@ function OpenCard({
   );
 }
 
-export function QuestionsCard({
-  id,
-  ask,
-  state,
-}: {
-  /** The call's id, so each card's field ids are its own. */
-  id: string;
-  ask: AskQuestions;
-  state: QuestionsState;
-}) {
-  // Held above the open card: sending settles it at once, and a failed send reopens it as it was.
-  const [draft, setDraft] = useState<Draft>(() => ({
-    answers: ask.questions.map(startingAnswer),
-    step: 0,
+/** The answers kept from before a reload; the first question still unanswered opens. */
+function startingDraft(id: string, asked: AskedQuestion): Draft {
+  const kept = readKept(id);
+  const answers = asked.questions.map(
+    (question) => kept[question.id] ?? startingAnswer(question),
+  );
+  // A recommendation is only a starting point, so it does not count as the person's answer here.
+  const unanswered = asked.questions.findIndex(
+    (question) => !answered(kept[question.id] ?? blank),
+  );
+  return {
+    answers,
+    step: unanswered < 0 ? answers.length - 1 : unanswered,
     failed: false,
     focusFollows: false,
-  }));
+  };
+}
+
+export function QuestionsCard({
+  id,
+  asked,
+  state,
+}: {
+  /** The question's signal, so each card's field ids are its own. */
+  id: string;
+  asked: AskedQuestion;
+  state: QuestionsState;
+}) {
+  // Held above the open card, so a failed send reopens it as it was.
+  const [draft, setDraft] = useState(() => startingDraft(id, asked));
+  const settled = state.kind !== "open";
+  const { questions } = asked;
+  useEffect(() => {
+    if (settled) writeKept(id, null);
+    else if (draft.answers.some(answered))
+      writeKept(
+        id,
+        Object.fromEntries(
+          questions.map((question, index) => [
+            question.id,
+            draft.answers[index] ?? blank,
+          ]),
+        ),
+      );
+  }, [id, questions, draft.answers, settled]);
   if (state.kind === "answered")
-    return <Settled ask={ask} reply={state.reply} />;
-  if (state.kind === "replaced") return <Settled ask={ask} />;
+    return <Settled asked={asked} answer={state.answer} />;
+  if (state.kind === "closed") return <Closed asked={asked} />;
   return (
     <OpenCard
       id={id}
-      ask={ask}
+      asked={asked}
       blocked={state.disabled}
       onSend={state.onSend}
       draft={draft}

@@ -1878,11 +1878,13 @@ export function createWorkflowSupervisor(
               ? { snapshot: payload.data.snapshot }
               : {}),
           });
-        } else {
-          // A `signal-relay` park is relayed down into the body child by the
-          // section runtime and is never hub-registered, so it does not ride
-          // `park.notify`. One arriving here is a protocol violation; log and
-          // drop rather than mis-registering it as an approval.
+        } else if (payload.data.parkKind !== "question") {
+          // A question is held in the run log alone, so it needs only the park
+          // generation below. A `signal-relay` park is relayed down into the
+          // body child by the section runtime and is never hub-registered, so
+          // it does not ride `park.notify`. One arriving here is a protocol
+          // violation; log and drop rather than mis-registering it as an
+          // approval.
           logger.error`park.notify for run ${payload.data.runId} carried parkKind=${payload.data.parkKind}, which is not a hub-registered kind; dropping`;
         }
         // A park of ANY kind suspends the run, so a dispatch loop waiting on

@@ -206,6 +206,24 @@
   background: color-mix(in oklab, var(--primary) 10%, var(--background));
 }
 
+.choiceText {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+
+.choiceDescription {
+  font-size: 0.8125rem;
+  color: var(--muted-foreground);
+}
+
+/* A row with a description keeps its box on the label's line, not between the two. */
+.choice:has(.choiceDescription) {
+  align-items: flex-start;
+  padding-block: var(--space-2);
+}
+
 /* The hidden radio and the borderless own-words field show focus on their row; the library's
    checkbox draws its own ring. */
 .choice:has(input:not([type="checkbox"]):focus-visible) {
@@ -324,19 +342,22 @@
   border-radius: calc(var(--radius) + 2px);
 }
 
+/* The mark sits on the title's first line, so a title that wraps keeps it there. */
 .settledTitle {
   display: flex;
-  align-items: center;
+  align-items: flex-start;
   gap: var(--space-2);
   margin: 0;
   font-size: 0.875rem;
   font-weight: 500;
+  line-height: 1.25rem;
 }
 
 .settledMark {
   flex: none;
   width: 1rem;
   height: 1rem;
+  margin-top: 0.125rem;
   color: var(--muted-foreground);
 }
 
@@ -344,32 +365,11 @@
   color: var(--ok);
 }
 
-.settledCount {
-  font-size: 0.75rem;
-  font-weight: 400;
-  color: var(--muted-foreground);
-}
-
-.settledToggle {
-  display: inline-flex;
-  align-items: center;
-  gap: var(--space-1);
-  margin-left: auto;
-  padding: 0;
-  border: 0;
-  background: none;
-  font-size: 0.75rem;
-  color: var(--muted-foreground);
-  cursor: pointer;
-}
-
-.settledToggle svg {
-  width: 0.875rem;
-  height: 0.875rem;
-}
-
-.settledToggle[aria-expanded="true"] svg {
-  transform: rotate(180deg);
+.reply {
+  margin: var(--space-3) 0 0;
+  font-size: 0.875rem;
+  overflow-wrap: anywhere;
+  white-space: pre-wrap;
 }
 
 .answers {
@@ -387,4 +387,9 @@
 .answers dd {
   margin: 0;
   overflow-wrap: anywhere;
+}
+
+/* An absence, faded like the questions still to come, so it never reads as an answer. */
+.answers .notAnswered {
+  color: color-mix(in oklab, var(--muted-foreground) 70%, transparent);
 }

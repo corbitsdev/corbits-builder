@@ -126,7 +126,8 @@ export function createProjectNextStep(
       if (event === null) return "starting";
       if (event.type !== "SignalAwaited") return "working";
       const kind = event.body["parkKind"];
-      return kind === "input" || kind === "signal-relay" ? "idle" : "approval";
+      if (kind === "input" || kind === "signal-relay") return "idle";
+      return kind === "question" ? "question" : "approval";
     } catch (error) {
       logUnreadable(run, error);
       return "unknown";
@@ -401,7 +402,7 @@ export function mountProjectNextStepRoutes(
       tags: ["Projects"],
       operationId: "readProjectRunStates",
       description:
-        "Each live run of the project and its state from its latest committed event: working, idle (parked on input), approval (parked on an approval), starting (no event yet) or unknown (its history could not be read).",
+        "Each live run of the project and its state from its latest committed event: working, idle (parked on input), approval (parked on an approval), question (parked on a question to the person), starting (no event yet) or unknown (its history could not be read).",
       security,
       responses: {
         200: {

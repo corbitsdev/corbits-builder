@@ -30,6 +30,8 @@ import {
   type SidecarAllocationStatus,
   type WorkflowDeploymentStatus,
 } from "@intx/types";
+import { AskedQuestion } from "@intx/types/runtime-core";
+import { QuestionAnswer } from "@intx/types/signals";
 import { WorkflowDefinitionSource } from "@intx/types/workflow-sources";
 import {
   createWorkflowRunReader,
@@ -247,6 +249,26 @@ export function createWorkflowRoutes({
       domain: tenantDomain,
     });
     return readDurableWorkflowRunLifecycle(repoStore, deploymentAddress, runId);
+  }
+
+  // The question the run's log shows still waiting on `name`, if any.
+  async function openQuestion(
+    anchorRunId: string,
+    tenantDomain: string,
+    runId: string,
+    name: string,
+  ) {
+    const events = await runReader.readRunEvents(
+      workflowRunRepoId(anchorRunId, tenantDomain),
+      WORKFLOW_RUN_REF,
+      runId,
+    );
+    const onName = events.filter((event) => event.body["signalName"] === name);
+    if (onName.some((event) => event.type === "SignalReceived"))
+      return undefined;
+    const awaited = onName.find((event) => event.type === "SignalAwaited");
+    const asked = AskedQuestion(awaited?.body["question"]);
+    return asked instanceof type.errors ? undefined : asked;
   }
 
   app.post(
@@ -469,15 +491,15 @@ export function createWorkflowRoutes({
     requireGrant(idResource("workflow-run", "runId"), "manage"),
     describeRoute({
       tags: ["Workflows"],
-      summary: "Deliver a signal to a workflow run",
+      summary: "Deliver a signal or a question's answer to a workflow run",
       description:
-        "Delivers a caller-supplied, stable signal to the named run of a workflow deployment. The signalId must be supplied by the caller; the run state machine dedups on it. An onTrigger body await is addressed by correlationId from that relay's SignalAwaited together with the author signalName. Omit correlationId to address a name-FIFO await, such as a loop or a top-level gate.",
+        "Delivers a caller-supplied, stable signal to the named run of a workflow deployment. The signalId must be supplied by the caller; the run state machine dedups on it. An onTrigger body await is addressed by correlationId from that relay's SignalAwaited together with the author signalName. Omit correlationId to address a name-FIFO await, such as a loop or a top-level gate. An open question is answered on the reserved signalName its SignalAwaited shows, without correlationId, with a payload of { answers } naming every question's id or { reply }.",
       responses: {
         202: {
           description: "Signal accepted for delivery",
         },
         400: jsonResponse(
-          "Reserved signal name or a runId that is not the deployment's addressable run",
+          "Reserved signal name other than an open question, a malformed answer or one carrying correlationId, or a runId that is not the deployment's addressable run",
           ErrorResponse,
         ),
         404: jsonResponse("Workflow deployment not found", ErrorResponse),
@@ -535,19 +557,6 @@ export function createWorkflowRoutes({
         return errorResponse(c, "not_found", "Workflow deployment not found");
       }
 
-      // A reserved control-plane channel name (`signalName(correlationId)`) is
-      // the hub's own approval/input plane. Delivering on it through this route
-      // would let a caller answer a pending approval directly -- bypassing the
-      // approval co-write and its authorization -- so reject it. Author signals
-      // to a workflow use free-form names.
-      if (correlationIdFromSignalName(body.signalName) !== undefined) {
-        return errorResponse(
-          c,
-          "reserved_signal_name",
-          "signalName names a reserved control-plane channel; deliver author-named signals only",
-        );
-      }
-
       // Only the deployment's single addressable run may be signaled. A
       // synthetic body-child run id (or any other id) is not addressable: a
       // signal for a section body is delivered to the parent deployment run and
@@ -558,6 +567,55 @@ export function createWorkflowRoutes({
           "unaddressable_run",
           "runId is not the addressable run of this deployment",
         );
+      }
+
+      // A reserved control-plane channel name (`signalName(correlationId)`) is
+      // the hub's own approval/input plane. Delivering on it through this route
+      // would let a caller answer a pending approval directly -- bypassing the
+      // approval co-write and its authorization -- so reject it. Author signals
+      // to a workflow use free-form names. The one exception is an open
+      // question: it has no approval to bypass, and this is where it is answered.
+      if (correlationIdFromSignalName(body.signalName) !== undefined) {
+        const asked = await openQuestion(
+          anchorRunId,
+          tenant.domain,
+          runId,
+          body.signalName,
+        );
+        if (asked === undefined) {
+          return errorResponse(
+            c,
+            "reserved_signal_name",
+            "signalName names a reserved control-plane channel; deliver author-named signals only",
+          );
+        }
+        // The question waits on its name alone; an answer addressed by
+        // correlationId would queue where the waiting step never reads it.
+        if (body.correlationId !== undefined) {
+          return errorResponse(
+            c,
+            "invalid_request",
+            "An answer to a question is addressed by signalName alone; omit correlationId",
+          );
+        }
+        const answer = QuestionAnswer(body.payload);
+        if (answer instanceof type.errors) {
+          return errorResponse(
+            c,
+            "invalid_request",
+            `Not an answer to the question: ${answer.summary}`,
+          );
+        }
+        if (
+          "answers" in answer &&
+          asked.questions.some(({ id }) => answer.answers[id] === undefined)
+        ) {
+          return errorResponse(
+            c,
+            "invalid_request",
+            "The answer must name every question's id",
+          );
+        }
       }
 
       const durableLifecycle = await readRunLifecycle(

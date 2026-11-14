@@ -45,7 +45,8 @@ export type SessionManifest = typeof SessionManifest.infer;
 export const ScenarioManifest = type({
   "+": "reject",
   scenario: "string > 0",
-  recordedFromCommit: "string > 0",
+  // A hand-written fixture was recorded from no commit.
+  "recordedFromCommit?": "string > 0",
   runs: SessionManifest.array(),
 });
 export type ScenarioManifest = typeof ScenarioManifest.infer;
@@ -697,12 +698,11 @@ export type ScenarioRunFixtureSpec = Readonly<{
 
 export async function writeScenarioFixture(
   root: string,
-  meta: { scenario: string; recordedFromCommit: string },
+  meta: { scenario: string },
   runs: readonly ScenarioRunFixtureSpec[],
 ): Promise<void> {
   const manifest: ScenarioManifest = {
     scenario: meta.scenario,
-    recordedFromCommit: meta.recordedFromCommit,
     runs: runs.map((run) => ({
       runKey: run.runKey,
       role: run.role,

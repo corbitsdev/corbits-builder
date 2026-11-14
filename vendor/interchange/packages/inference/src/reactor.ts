@@ -41,7 +41,7 @@ import type {
 } from "@intx/types/runtime";
 
 import { getLogger } from "@intx/log";
-import { ApprovalDecision, signalKindToGateType } from "@intx/types/signals";
+import { ApprovalDecision, QuestionAnswer } from "@intx/types/signals";
 import { PerCallInferenceOptions } from "@intx/types/runtime-core";
 import type { CredentialMaterialResolver } from "@intx/types";
 import { canonicalJsonStringify } from "@intx/types/wire-definition-hash";
@@ -531,6 +531,8 @@ export function createReactor(config: ReactorConfig): Reactor {
   //     the resumed run answers the parked call with a real tool result. The
   //     correlated message body is the decision, not conversation content, so
   //     it is NOT appended to history.
+  //   tool_result — the parked call is answered without running: a denied
+  //     approval with an error, an answered question with the answer.
   //   gate-cleared — the async-tool path (a pending marker awaiting an inbound
   //     response). The gate clears normally, driving the director to re-infer,
   //     and the correlated message body IS appended to history so the model
@@ -538,19 +540,20 @@ export function createReactor(config: ReactorConfig): Reactor {
   type ResumeDispatch =
     | { mode: "redispatch"; calls: ToolCall[] }
     | { mode: "gate-cleared" }
-    | { mode: "error_result"; result: ToolResult };
+    | { mode: "tool_result"; result: ToolResult };
 
-  // Decide how a correlated approval-kind pending operation resumes, granting
-  // any one-shot bypass synchronously so no delivery can interleave between the
-  // grant and the re-dispatch enqueued by the caller. An operation that carries
-  // a `suspendedCall` is an ask-flow suspension: the approver's decision routes
-  // it down the re-dispatch rail. An operation without one is an async-tool
-  // pending marker, which resumes on the normal gate-cleared rail.
+  // Decide how a correlated pending operation resumes, granting any one-shot
+  // bypass synchronously so no delivery can interleave between the grant and
+  // the re-dispatch enqueued by the caller. An operation that carries a
+  // `suspendedCall` is a parked call: an approver's decision routes an approval
+  // down the re-dispatch or tool-result rail, and a person's answer routes a
+  // question down the tool-result rail. An operation without one is an
+  // async-tool pending marker, which resumes on the normal gate-cleared rail.
   //
   // The nested switch is total: the outer `assertNever(op.kind)` rejects a
-  // future SignalKind at compile time, and the inner `assertNever` rejects a
-  // future decision outcome. A malformed decision body fails loud at the parse
-  // boundary before the switch.
+  // future pending-operation kind at compile time, and the inner `assertNever`
+  // rejects a future decision outcome. A malformed decision or answer body
+  // fails loud at its parse.
   function resumePendingOperation(
     op: PendingOperation,
     message: InboundMessage,
@@ -562,7 +565,7 @@ export function createReactor(config: ReactorConfig): Reactor {
 
     if (message.content === undefined) {
       throw new Error(
-        `Correlated approval decision for ${op.correlationId} has no body to parse`,
+        `Correlated ${op.kind} decision for ${op.correlationId} has no body to parse`,
       );
     }
     let raw: unknown;
@@ -570,19 +573,19 @@ export function createReactor(config: ReactorConfig): Reactor {
       raw = JSON.parse(message.content);
     } catch (cause) {
       throw new Error(
-        `Correlated approval decision for ${op.correlationId} is not valid JSON`,
+        `Correlated ${op.kind} decision for ${op.correlationId} is not valid JSON`,
         { cause },
-      );
-    }
-    const decision = ApprovalDecision(raw);
-    if (decision instanceof type.errors) {
-      throw new Error(
-        `Correlated approval decision for ${op.correlationId} is malformed: ${decision.summary}`,
       );
     }
 
     switch (op.kind) {
-      case "approval":
+      case "approval": {
+        const decision = ApprovalDecision(raw);
+        if (decision instanceof type.errors) {
+          throw new Error(
+            `Correlated approval decision for ${op.correlationId} is malformed: ${decision.summary}`,
+          );
+        }
         switch (decision.outcome) {
           case "approved":
             // Authorize the exact parked call to run once, then re-dispatch it.
@@ -602,13 +605,57 @@ export function createReactor(config: ReactorConfig): Reactor {
               "denied by approver" +
               (decision.message !== undefined ? `: ${decision.message}` : "");
             return {
-              mode: "error_result",
+              mode: "tool_result",
               result: { callId: suspendedCall.id, content, isError: true },
             };
           }
           default:
             return assertNever(decision.outcome);
         }
+      }
+      case "question": {
+        // The person's answer is the question call's result; the call never runs.
+        const answer = QuestionAnswer(raw);
+        if (answer instanceof type.errors) {
+          throw new Error(
+            `Correlated question answer for ${op.correlationId} is malformed: ${answer.summary}`,
+          );
+        }
+        if ("reply" in answer) {
+          return {
+            mode: "tool_result",
+            result: {
+              callId: suspendedCall.id,
+              content: answer,
+              isError: false,
+            },
+          };
+        }
+        if (op.question === undefined) {
+          throw new Error(
+            `Question ${op.correlationId} was answered but its prompts were not kept`,
+          );
+        }
+        // The person answered by the ids the runtime gave each prompt; the
+        // model never saw those, so it reads the answers against its own words.
+        const answers = op.question.questions.map((prompt) => {
+          const picked = answer.answers[prompt.id];
+          if (picked === undefined) {
+            throw new Error(
+              `Answer to question ${op.correlationId} leaves out ${prompt.id}`,
+            );
+          }
+          return { question: prompt.question, answer: picked };
+        });
+        return {
+          mode: "tool_result",
+          result: {
+            callId: suspendedCall.id,
+            content: { answers },
+            isError: false,
+          },
+        };
+      }
       default:
         return assertNever(op.kind);
     }
@@ -688,10 +735,10 @@ export function createReactor(config: ReactorConfig): Reactor {
         );
         break;
       }
-      case "error_result": {
-        // The approver denied the call. Clear the gate SILENTLY (like the
-        // approved redispatch) so it cannot also trip onGateCleared and enqueue
-        // a second continuation. The synthetic error result answers the parked
+      case "tool_result": {
+        // A denied approval or an answered question. Clear the gate SILENTLY
+        // (like the approved redispatch) so it cannot also trip onGateCleared
+        // and enqueue a second continuation. The result answers the parked
         // call; the director appends it and re-infers once.
         if (gate !== undefined) {
           gates.clearSilently(gate.gateId);
@@ -960,7 +1007,10 @@ export function createReactor(config: ReactorConfig): Reactor {
           await suspendOnGate({
             gateType: decision.gate.type,
             gateId: decision.gate.gateId,
-            timeoutMs: Math.max(1, decision.gate.timeoutAt - Date.now()),
+            timeoutMs:
+              decision.gate.timeoutAt === undefined
+                ? undefined
+                : Math.max(1, decision.gate.timeoutAt - Date.now()),
             correlationId: decision.gate.correlationId,
             pendingOp: decision.pendingOp,
           });
@@ -1284,7 +1334,7 @@ export function createReactor(config: ReactorConfig): Reactor {
   async function suspendOnGate(args: {
     gateType: GateType;
     gateId: string;
-    timeoutMs: number;
+    timeoutMs: number | undefined;
     correlationId: string | undefined;
     pendingOp: PendingOperation | undefined;
   }): Promise<void> {
@@ -1351,6 +1401,9 @@ export function createReactor(config: ReactorConfig): Reactor {
         ...(pendingOp?.approvalSnapshot !== undefined
           ? { approvalSnapshot: pendingOp.approvalSnapshot }
           : {}),
+        ...(pendingOp?.question !== undefined
+          ? { question: pendingOp.question }
+          : {}),
       },
     });
 
@@ -1369,9 +1422,8 @@ export function createReactor(config: ReactorConfig): Reactor {
   // the persisted absolute deadline (`timeoutAt`) against the current clock, so
   // the deadline is preserved across the restart rather than restarted; a
   // deadline already in the past clamps to 1ms so the gate fires on the next
-  // tick. An operation persisted without a `timeoutAt` (hold-indefinitely) has
-  // no deadline to preserve; the gate manager cannot express an indefinite
-  // hold, so it is armed with the session-level `gateTimeout` — the same
+  // tick. A question holds with no timer. Any other operation persisted without
+  // a `timeoutAt` is armed with the session-level `gateTimeout` — the same
   // effective timeout the director-suspend fallback uses — rather than a
   // silent zero. This does not run through `suspendOnGate`: rehydration must
   // not re-emit `reactor.gate.blocked` (the suspension already happened before
@@ -1381,14 +1433,16 @@ export function createReactor(config: ReactorConfig): Reactor {
   // run's own suspension.
   function rehydrateGates(ops: PendingOperation[]): void {
     for (const op of ops) {
-      const timeoutMs =
-        op.timeoutAt !== undefined
-          ? Math.max(1, op.timeoutAt - Date.now())
-          : gateTimeout;
+      let timeoutMs: number | undefined = gateTimeout;
+      if (op.timeoutAt !== undefined) {
+        timeoutMs = Math.max(1, op.timeoutAt - Date.now());
+      } else if (op.kind === "question") {
+        timeoutMs = undefined;
+      }
       correlations.register(op);
       void gates.register(
         op.gateId,
-        signalKindToGateType(op.kind),
+        op.kind,
         timeoutMs,
         op.correlationId,
         onGateCleared,
@@ -1462,9 +1516,9 @@ export function createReactor(config: ReactorConfig): Reactor {
           message === undefined ? undefined : deliveredInference.get(message);
       }
 
-      // A parked approval that ended without running its tool (rejected or
-      // timed out) carries a synthetic error result answering the parked call.
-      // Land it in history before the director decides so the tool_result turn
+      // A parked call that ended without running its tool (an approval
+      // rejected or timed out, or a question answered) carries a result
+      // answering the parked call. Land it in history before the director decides so the tool_result turn
       // closes the dangling tool_use and the re-inference the director returns
       // sees a well-formed sequence. No tool ran, so no tool.done and no
       // counter change accompany it.

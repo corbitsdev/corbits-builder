@@ -4,6 +4,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { type } from "arktype";
 import type { NativeApproval, ProjectArtifact } from "@corbits-builder/client";
+import { AskedQuestion } from "@intx/types/runtime-core";
 import { startTestHub, type TestHubHandle } from "./support/hub.ts";
 import {
   formatOpenAISseResponse,
@@ -114,6 +115,15 @@ function createEventSignal(recordedModel: RecordedModelServer): {
   };
 }
 
+function isQuestionPark(event: {
+  type: string;
+  body: Record<string, unknown>;
+}): boolean {
+  return (
+    event.type === "SignalAwaited" && event.body["parkKind"] === "question"
+  );
+}
+
 function findPendingToolApproval(
   approvals: readonly NativeApproval[],
   toolName: string,
@@ -165,6 +175,8 @@ async function withPipelineScenario(
     projectTenantId: string;
     projectId: string;
     coordinatorRunId: string;
+    /** Wakes the waits on a coordinator run that replaced the first one, too. */
+    follow: (runId: string) => void;
     runStage: <T>(name: string, fn: () => Promise<T>) => Promise<T>;
     waitFor: <T>(
       stage: string,
@@ -203,7 +215,7 @@ async function withPipelineScenario(
 
   try {
     hub = await startTestHub(recordedModel);
-    const { client, workspaceTenantId } = hub;
+    const { client, workspaceTenantId, subscribeRunStream } = hub;
 
     const createStart = performance.now();
     const createReceipt = await client.mutateProject(
@@ -233,13 +245,11 @@ async function withPipelineScenario(
     );
     stageTimingsMs["create"] = Math.round(performance.now() - createStart);
 
-    const unsubscribeStream = hub.subscribeRunStream(
-      projectTenantId,
-      coordinatorRunId,
-      () => {
+    const follow = (runId: string) =>
+      subscribeRunStream(projectTenantId, runId, () => {
         events.notify();
-      },
-    );
+      });
+    const streams = [follow(coordinatorRunId)];
 
     async function waitFor<T>(
       stage: string,
@@ -268,6 +278,9 @@ async function withPipelineScenario(
         projectTenantId,
         projectId: options.projectId,
         coordinatorRunId,
+        follow: (runId) => {
+          streams.push(follow(runId));
+        },
         runStage: async (name, fn) => {
           const start = performance.now();
           const result = await fn();
@@ -457,7 +470,7 @@ async function withPipelineScenario(
         }),
       );
     } finally {
-      unsubscribeStream();
+      for (const unsubscribe of streams) unsubscribe();
     }
   } finally {
     events.dispose();
@@ -669,7 +682,6 @@ describe("Builder E2E pipeline replay", () => {
           fixtureDir,
           {
             scenario: "weather-executive-approval-package",
-            recordedFromCommit: "bbfb75d",
           },
           [
             {
@@ -1126,6 +1138,371 @@ describe("Builder E2E pipeline replay", () => {
                 finalArtifacts,
                 fakeCredentialSecret,
                 1,
+              );
+            });
+          },
+        );
+      } finally {
+        await rm(fixtureDir, { recursive: true, force: true });
+      }
+    },
+    STAGE_DEADLINE_MS,
+  );
+
+  test(
+    "pauses the coordinator on its question until the person answers by id, then continues with the answers",
+    async () => {
+      const fixtureDir = await mkdtemp(
+        join(tmpdir(), "builder-e2e-question-fixture-"),
+      );
+      const coordinatorTools = ["question", "read_artifact", "write_artifact"];
+      const audience = {
+        questions: [
+          {
+            header: "Audience",
+            question: "Who takes the orders?",
+            options: [
+              {
+                label: "The owner (Recommended)",
+                description: "One person runs the list.",
+              },
+              {
+                label: "Counter staff",
+                description: "Whoever is on shift.",
+              },
+            ],
+          },
+        ],
+      };
+      const onItsOwn = (callId: string) => ({
+        callId,
+        toolName: "question",
+        isError: true,
+        contains: "must be the only tool call",
+      });
+      try {
+        await writeScenarioFixture(
+          fixtureDir,
+          { scenario: "bakery-orders-question" },
+          [
+            {
+              runKey: "coordinator-1",
+              role: "coordinator",
+              stage: "documents",
+              sourceRunId: "run_coord_question_1",
+              exchanges: withRequiredTools(coordinatorTools, [
+                {
+                  sse: formatOpenAISseResponse({
+                    toolCalls: [
+                      {
+                        id: "coord_pair_a",
+                        name: "question",
+                        arguments: audience,
+                      },
+                      {
+                        id: "coord_pair_b",
+                        name: "question",
+                        arguments: audience,
+                      },
+                    ],
+                  }),
+                  expect: {
+                    lastMessageRole: "user",
+                    userTextContains: "Bakery Orders",
+                    toolResults: [],
+                  },
+                },
+                {
+                  sse: formatOpenAISseResponse({
+                    toolCalls: [
+                      {
+                        id: "coord_question",
+                        name: "question",
+                        arguments: audience,
+                      },
+                    ],
+                  }),
+                  expect: {
+                    lastMessageRole: "tool",
+                    toolResults: [
+                      onItsOwn("coord_pair_a"),
+                      onItsOwn("coord_pair_b"),
+                    ],
+                  },
+                },
+                {
+                  sse: formatOpenAISseResponse({
+                    text: "Counter staff it is. One more thing.",
+                    toolCalls: [
+                      {
+                        id: "coord_pickup",
+                        name: "question",
+                        arguments: {
+                          questions: [
+                            {
+                              header: "Pickup",
+                              question: "When do customers collect?",
+                              options: [],
+                            },
+                          ],
+                        },
+                      },
+                    ],
+                  }),
+                  expect: {
+                    lastMessageRole: "tool",
+                    toolResults: [
+                      {
+                        callId: "coord_question",
+                        toolName: "question",
+                        isError: false,
+                        keys: ["answers"],
+                        contains: "Counter staff",
+                      },
+                    ],
+                  },
+                },
+                {
+                  sse: formatOpenAISseResponse({
+                    text: "Mornings only, noted; I will write the brief for counter staff.",
+                  }),
+                  expect: {
+                    lastMessageRole: "tool",
+                    toolResults: [
+                      {
+                        callId: "coord_pickup",
+                        toolName: "question",
+                        isError: false,
+                        keys: ["reply"],
+                        contains: "Mornings only",
+                      },
+                    ],
+                  },
+                },
+              ]),
+            },
+            {
+              // The coordinator that replaces the first learns what the person answered.
+              runKey: "coordinator-2",
+              role: "coordinator",
+              stage: "replacement",
+              sourceRunId: "run_coord_question_2",
+              exchanges: withRequiredTools(coordinatorTools, [
+                {
+                  sse: formatOpenAISseResponse({
+                    text: "Picking up with counter staff and morning collection.",
+                  }),
+                  expect: {
+                    lastMessageRole: "user",
+                    userTextContains:
+                      "You asked: Who takes the orders? / Person answered: Counter staff",
+                    toolResults: [],
+                  },
+                },
+              ]),
+            },
+          ],
+        );
+
+        await withPipelineScenario(
+          {
+            fixtureDir,
+            projectId: "bakery-orders",
+            title: "Bakery Orders",
+            problemStatement: "Build Bakery Orders for our shop.",
+          },
+          async (driver) => {
+            const { hub, projectTenantId, projectId, coordinatorRunId } =
+              driver;
+            const { client } = hub;
+            const questionParks = async () => {
+              const { events } = await client.conversationEvents(
+                projectTenantId,
+                projectId,
+              );
+              return events.filter(isQuestionPark);
+            };
+            const waitForQuestion = (count: number, description: string) =>
+              driver.waitFor("question", description, async () => {
+                const parks = await questionParks();
+                if (parks.length < count) return undefined;
+                const park = parks[count - 1]!;
+                const [asked] = AskedQuestion.assert(
+                  park.body["question"],
+                ).questions;
+                if (asked === undefined)
+                  throw new Error("the parked question carries no prompt");
+                return {
+                  signalName: type("string > 0").assert(
+                    park.body["signalName"],
+                  ),
+                  asked,
+                };
+              });
+            // The signal route as any caller reaches it, so a refused body is seen as the hub
+            // answers it.
+            const deliver = async (
+              signalName: string,
+              payload: unknown,
+              correlationId?: string,
+            ) => {
+              const response = await fetch(
+                new URL(
+                  `/api/tenants/${encodeURIComponent(projectTenantId)}/workflows/${encodeURIComponent(coordinatorRunId)}/signals`,
+                  hub.baseUrl,
+                ),
+                {
+                  method: "POST",
+                  headers: {
+                    Cookie: hub.sessionCookie,
+                    Origin: hub.baseUrl,
+                    "Content-Type": "application/json",
+                  },
+                  body: JSON.stringify({
+                    runId: coordinatorRunId,
+                    signalName,
+                    signalId: signalName,
+                    correlationId,
+                    payload,
+                  }),
+                },
+              );
+              if (response.ok) return { status: response.status };
+              const { error } = type({ error: { code: "string" } }).assert(
+                await response.json(),
+              );
+              return { status: response.status, code: error.code };
+            };
+
+            const asked = await driver.runStage("question", async () => {
+              const first = await waitForQuestion(
+                1,
+                "the coordinator's open question in its run log",
+              );
+              expect(first.asked.header).toBe("Audience");
+
+              const { runs } = await client.projectRunStates(
+                projectTenantId,
+                projectId,
+              );
+              expect(
+                runs.find((run) => run.runId === coordinatorRunId)?.state,
+              ).toBe("question");
+
+              const counterStaff = { [first.asked.id]: ["Counter staff"] };
+              // Only the open question's own ids answer it; an answer addressed by correlationId or
+              // carrying both answers and a reply is refused and leaves the question open.
+              expect(
+                await deliver(first.signalName, {
+                  answers: { "not-a-question": ["Counter staff"] },
+                }),
+              ).toEqual({ status: 400, code: "invalid_request" });
+              expect(
+                await deliver(
+                  first.signalName,
+                  { answers: counterStaff },
+                  "question-answer",
+                ),
+              ).toEqual({ status: 400, code: "invalid_request" });
+              expect(
+                await deliver(first.signalName, {
+                  answers: counterStaff,
+                  reply: "Counter staff",
+                }),
+              ).toEqual({ status: 400, code: "invalid_request" });
+
+              await client.answerQuestion(
+                projectTenantId,
+                coordinatorRunId,
+                first.signalName,
+                { answers: counterStaff },
+              );
+              const pickup = await waitForQuestion(
+                2,
+                "the coordinator's second question after the first was answered",
+              );
+              expect(pickup.asked.header).toBe("Pickup");
+
+              // An answered question takes no second answer.
+              expect(
+                await deliver(first.signalName, { answers: counterStaff }),
+              ).toEqual({ status: 400, code: "reserved_signal_name" });
+
+              await client.answerQuestion(
+                projectTenantId,
+                coordinatorRunId,
+                pickup.signalName,
+                { reply: "Mornings only" },
+              );
+              await driver.waitForAssistantTurn(
+                "question",
+                "Mornings only, noted",
+              );
+
+              const { events } = await client.conversationEvents(
+                projectTenantId,
+                projectId,
+              );
+              const payloads = events
+                .filter((event) => event.type === "SignalReceived")
+                .filter((event) =>
+                  [first.signalName, pickup.signalName].includes(
+                    String(event.body["signalName"]),
+                  ),
+                )
+                .map((event) => event.body["payload"]);
+              expect(payloads).toEqual([
+                { answers: counterStaff },
+                { reply: "Mornings only" },
+              ]);
+              return { first, pickup, counterStaff };
+            });
+
+            await driver.runStage("replacement", async () => {
+              const { first, pickup, counterStaff } = asked;
+              // Archiving stops the coordinator and restoring starts a new one, as an upgrade or a
+              // restart after a failure does.
+              await client.archiveProject(hub.workspaceTenantId, projectId);
+              await client.restoreProject(hub.workspaceTenantId, projectId);
+              const { coordinatorRunId: replacement } = await client.project(
+                hub.workspaceTenantId,
+                projectId,
+              );
+              expect(replacement).not.toBe(coordinatorRunId);
+              const next = NonEmptyString.assert(replacement);
+              driver.follow(next);
+
+              // The new run's log holds none of them, yet the person's thread keeps both questions
+              // as they were answered.
+              const conversation = await client.conversationEvents(
+                projectTenantId,
+                projectId,
+              );
+              expect(conversation.runId).toBe(next);
+              expect(
+                conversation.earlierQuestions?.map(
+                  ({ signalName, answer }) => ({
+                    signalName,
+                    answer,
+                  }),
+                ),
+              ).toEqual([
+                {
+                  signalName: first.signalName,
+                  answer: { answers: counterStaff },
+                },
+                {
+                  signalName: pickup.signalName,
+                  answer: { reply: "Mornings only" },
+                },
+              ]);
+
+              await client.sendMessage(projectTenantId, next, {
+                content: "Carry on.",
+              });
+              await driver.waitForAssistantTurn(
+                "replacement",
+                "Picking up with counter staff",
               );
             });
           },

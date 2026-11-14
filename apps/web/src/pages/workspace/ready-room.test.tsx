@@ -29,7 +29,13 @@ function room(queryClient: QueryClient): string {
 }
 
 const emptyRoom: RoomSnapshot = {
-  conversation: { events: null, turns: [], threads: [], runId: null },
+  conversation: {
+    events: null,
+    turns: [],
+    threads: [],
+    runId: null,
+    earlierQuestions: [],
+  },
   artifacts: [],
   inFlight: [],
   failed: [],

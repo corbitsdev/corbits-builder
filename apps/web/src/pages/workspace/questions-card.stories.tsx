@@ -1,41 +1,53 @@
 import { useState } from "react";
 import type { Meta, StoryObj } from "@storybook/react-vite";
-import type { AskQuestions } from "@corbits-builder/schemas/questions";
+import type { AskedQuestion } from "@intx/types/runtime-core";
 import { fn } from "storybook/test";
-import { wording } from "../../config.ts";
 import { QuestionsCard } from "./questions-card.tsx";
 
-const ask: AskQuestions = {
+const asked: AskedQuestion = {
   questions: [
     {
-      id: "audience",
-      prompt: "Who is it for?",
-      kind: "single",
+      id: "c2a9a3f4-1d7e-4c55-9a51-2f0a0b6c1e01",
+      header: "Audience",
+      question: "Who is it for?",
       options: [
-        { value: "owners", label: "Bakery owners" },
-        { value: "staff", label: "Counter staff" },
+        {
+          label: "Bakery owners (Recommended)",
+          description: "They take the orders and plan the day's baking.",
+        },
+        {
+          label: "Counter staff",
+          description: "They serve customers at the counter.",
+        },
       ],
-      preselected: ["owners"],
+      multiple: false,
+      custom: true,
     },
     {
-      id: "first_version",
-      prompt: "What must the first version do?",
-      kind: "multi",
+      id: "7b1e9d20-5f3c-4a8e-b6d2-93c4e5f6a702",
+      header: "First version",
+      question: "What must the first version do?",
       options: [
-        { value: "take", label: "Take orders" },
-        { value: "list", label: "List the day's orders" },
-        { value: "remind", label: "Remind customers" },
+        {
+          label: "Take orders",
+          description: "Customers order online instead of by phone.",
+        },
+        { label: "List the day's orders", description: "" },
+        { label: "Remind customers", description: "" },
       ],
-      allowOther: true,
+      multiple: true,
+      custom: true,
     },
     {
-      id: "devices",
-      prompt: "Where will people order from?",
-      kind: "multi",
+      id: "e4d8c1b2-9a7f-4e36-8c5d-1b2a3c4d5e03",
+      header: "Devices",
+      question: "Where will people order from?",
       options: [
-        { value: "phone", label: "Phone" },
-        { value: "desktop", label: "Desktop browser" },
+        { label: "Phone", description: "" },
+        { label: "Desktop browser", description: "" },
       ],
+      multiple: true,
+      custom: false,
     },
   ],
 };
@@ -44,8 +56,8 @@ const meta = {
   title: "Screens/Workspace/QuestionsCard",
   component: QuestionsCard,
   args: {
-    id: "call-1",
-    ask,
+    id: "signal-1",
+    asked,
     state: {
       kind: "open",
       disabled: false,
@@ -69,22 +81,39 @@ export const Open: Story = {};
 
 /** One question: no position, and the button sends. */
 export const OneQuestion: Story = {
-  args: { ask: { questions: [ask.questions[1]!] } },
+  args: { asked: { questions: [asked.questions[1]!] } },
 };
 
-type PendingSend = { readonly reply: string; readonly fail: () => void };
+/** A question with nothing to pick: the person types their answer in a field of its own. */
+export const TypedAnswer: Story = {
+  args: {
+    asked: {
+      questions: [
+        {
+          id: "3f6a2c91-8e4b-4d07-a5c2-7b9e1d0f4a04",
+          header: "Name",
+          question: "What should the app be called?",
+          options: [],
+          multiple: false,
+          custom: true,
+        },
+      ],
+    },
+  },
+};
+
+type PendingSend = { readonly fail: () => void };
 
 /**
- * The send fails. As in the workspace, the reply shows as sent at once, which settles the card;
- * "Fail the send" takes it back off, and the card reopens on the last question with the answers kept.
+ * The send fails. As in the workspace, the card stays sending until the answer lands; "Fail the
+ * send" refuses it, and the card reopens on the last question with the answers kept.
  */
 export const NotSent: Story = {
   render: function NotSentCard(args) {
     const [pending, setPending] = useState<PendingSend>();
-    const onSend = (reply: string) =>
+    const onSend = () =>
       new Promise<boolean>((resolve) => {
         setPending({
-          reply,
           fail: () => {
             setPending(undefined);
             resolve(false);
@@ -95,11 +124,7 @@ export const NotSent: Story = {
       <>
         <QuestionsCard
           {...args}
-          state={
-            pending === undefined
-              ? { kind: "open", disabled: false, onSend }
-              : { kind: "answered", reply: pending.reply }
-          }
+          state={{ kind: "open", disabled: false, onSend }}
         />
         {pending !== undefined && (
           <button type="button" onClick={pending.fail}>
@@ -121,22 +146,28 @@ export const Answered: Story = {
   args: {
     state: {
       kind: "answered",
-      reply: [
-        wording.questions.answerLine("Who is it for?", ["Bakery owners"]),
-        wording.questions.answerLine("What must the first version do?", [
-          "Take orders",
-          "List the day's orders",
-        ]),
-      ].join("\n"),
+      answer: {
+        answers: {
+          "c2a9a3f4-1d7e-4c55-9a51-2f0a0b6c1e01": [
+            "Bakery owners (Recommended)",
+          ],
+          "7b1e9d20-5f3c-4a8e-b6d2-93c4e5f6a702": [
+            "Take orders",
+            "List the day's orders",
+          ],
+          "e4d8c1b2-9a7f-4e36-8c5d-1b2a3c4d5e03": ["Phone"],
+        },
+      },
     },
   },
 };
 
-/** Answered in the person's own words, so the card shows no answers. */
-export const AnsweredInChat: Story = {
+/** The person wrote back instead of choosing; the card keeps what they wrote. */
+export const AnsweredInOwnWords: Story = {
   args: {
-    state: { kind: "answered", reply: "Actually, let's build a game." },
+    state: {
+      kind: "answered",
+      answer: { reply: "Actually, let's build a game." },
+    },
   },
 };
-
-export const Replaced: Story = { args: { state: { kind: "replaced" } } };

@@ -11,6 +11,7 @@ import {
 test("the hub's handoff note never shows as the person's message", () => {
   const context = resumeContext({
     turns: [{ role: "person", text: "Build a weather app", at: 1 }],
+    questions: [],
     awaiting: [],
     withApp: false,
   });

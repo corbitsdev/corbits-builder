@@ -1,4 +1,6 @@
 import { type } from "arktype";
+import { AskedQuestion } from "@intx/types/runtime-core";
+import { QuestionAnswer } from "@intx/types/signals";
 
 // These are the native mail request/acceptance and committed-event wire shapes.
 // No client-side principal, target run or trigger identity is accepted.
@@ -68,6 +70,14 @@ const conversationThread = type({
   participants: type("string > 0").array(),
   turns: turnList,
 });
+/** A question the coordinator paused on, from its wait in the run log, with the answer once one arrived. */
+const parkedQuestion = type({
+  at: "number",
+  signalName: "string",
+  asked: AskedQuestion,
+  "answer?": QuestionAnswer,
+});
+export type ParkedQuestion = typeof parkedQuestion.infer;
 export const ConversationEvents = type({
   runId: "string | null",
   events: type({
@@ -77,7 +87,41 @@ export const ConversationEvents = type({
   }).array(),
   "turns?": turnList,
   "threads?": conversationThread.array(),
+  // The project's earlier coordinator runs' questions; `events` holds only the live run's.
+  "earlierQuestions?": parkedQuestion.array(),
 });
 export type ConversationEvents = typeof ConversationEvents.infer;
 export type ConversationTextTurn = typeof conversationTextTurn.infer;
 export type ConversationThread = typeof conversationThread.infer;
+
+/**
+ * Every question the coordinator asked in a run, oldest first, from its committed events. A question
+ * whose stored wording does not parse is left out; an answer that does not parse leaves its question
+ * unanswered. The agent received the first signal on a name, so a later one never replaces it.
+ */
+export function parkedQuestions(
+  events: ConversationEvents["events"],
+): ParkedQuestion[] {
+  const questions: ParkedQuestion[] = [];
+  const received = new Set<string>();
+  for (const { type: kind, body } of events) {
+    const signalName = body["signalName"];
+    if (typeof signalName !== "string") continue;
+    if (kind === "SignalAwaited" && body["parkKind"] === "question") {
+      const asked = AskedQuestion(body["question"]);
+      if (!(asked instanceof type.errors))
+        questions.push({
+          at: Date.parse(String(body["at"])),
+          signalName,
+          asked,
+        });
+    }
+    if (kind !== "SignalReceived" || received.has(signalName)) continue;
+    received.add(signalName);
+    const parked = questions.find((item) => item.signalName === signalName);
+    const answer = QuestionAnswer(body["payload"]);
+    if (parked !== undefined && !(answer instanceof type.errors))
+      parked.answer = answer;
+  }
+  return questions;
+}

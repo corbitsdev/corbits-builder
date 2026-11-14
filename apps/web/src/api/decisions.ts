@@ -1,12 +1,14 @@
 /**
- * The decision queue: `Wait`s fed from the two things a person's move can
+ * The decision queue: `Wait`s fed from the things a person's move can
  * wait on:
  *
  *  1. a pending native approval (the coordinator's own tool call, read off
- *     `GET /api/tenants/:t/approvals`), and
+ *     `GET /api/tenants/:t/approvals`),
  *  2. the coordinator's open input park (`SignalAwaited` with
  *     `parkKind: "input"` in the project's committed conversation events),
- *     which is the person's move in the conversation.
+ *     which is the person's move in the conversation, and
+ *  3. the coordinator's open question (`parkKind: "question"` in the same
+ *     events), which its card answers.
  *
  * The hub keeps no numbered stages, so waits carry `stage: null`. A project
  * is its own child tenant, so every pending approval in that tenant is the
@@ -17,7 +19,12 @@ import { wording } from "../config.ts";
 import { productClient } from "./transport.ts";
 import type { Wait } from "./types.ts";
 import { askOf } from "./ask.ts";
-import { isInputPark, readConversationEvents } from "./conversation.ts";
+import { parkedQuestions } from "@corbits-builder/schemas/conversation";
+import {
+  isInputPark,
+  readConversationEvents,
+  runEnded,
+} from "./conversation.ts";
 import { workspaceTenantId } from "./auth.ts";
 
 function approvalWait(
@@ -107,6 +114,22 @@ export async function openDecisions(onlyProjectId?: string): Promise<Wait[]> {
       );
     if (park !== undefined && !released)
       projectWaits.push(parkWait(park, record.projectId, conversation.runId));
+    const question = runEnded(conversation.events)
+      ? undefined
+      : parkedQuestions(conversation.events).find(
+          ({ answer }) => answer === undefined,
+        );
+    if (question !== undefined)
+      projectWaits.push({
+        id: `${question.signalName}:question`,
+        projectId: record.projectId,
+        runId: conversation.runId,
+        stage: null,
+        title: wording.wait.question,
+        consequence: question.asked.questions
+          .map((prompt) => prompt.question)
+          .join(" "),
+      });
     for (const wait of projectWaits)
       waits.push({ ...wait, projectTitle: record.title });
   }

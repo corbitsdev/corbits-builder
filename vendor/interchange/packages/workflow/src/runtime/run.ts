@@ -9,7 +9,11 @@
 // body.
 
 import { correlationIdFromSignalName, signalName } from "@intx/types/signals";
-import type { ApprovalSnapshot, ControlParkKind } from "@intx/types/runtime";
+import type {
+  ApprovalSnapshot,
+  AskedQuestion,
+  ControlParkKind,
+} from "@intx/types/runtime";
 
 import type {
   ActionPrimitive,
@@ -704,6 +708,7 @@ async function executeRunBody(
     stepId: string;
     correlationId: string;
     timeoutAtMs?: number;
+    question?: AskedQuestion;
   }[] = [];
   if (state.phase === "running") {
     for (const [stepId, stepState] of state.steps) {
@@ -736,14 +741,14 @@ async function executeRunBody(
       }
       // A crashed-mid-invocation step (agent step or action). Before settling
       // it as a terminal failure, check whether the reactor durably recorded an
-      // approval suspension for this step-attempt that never reached the log as
+      // approval or question suspension for this step-attempt that never reached the log as
       // a flushed `SignalAwaited` -- the crash-mid-park window: `StepStarted`
       // durable, `SignalAwaited` buffered but not flushed, so the reduced phase
       // is `in-flight` rather than `awaiting-signal`. If so the step is
       // recoverable: the suspension decision is durable in the reactor's
       // pending-operation store even though the workflow log lost it, so the
       // reconstruction loop below re-commits the missing `SignalAwaited` rather
-      // than failing the run. Otherwise (no binding, or no pending approval op)
+      // than failing the run. Otherwise (no binding, or no pending op)
       // it is a genuine crash mid-agent-turn and settles terminal, the
       // pre-recovery behavior. Both settlings happen AFTER this loop --
       // committing inline would leave `state` stale and merely relocate the
@@ -758,11 +763,11 @@ async function executeRunBody(
               })
             : [];
         // A step-attempt parks on at most one control-plane suspension. More
-        // than one durable pending approval op is a corrupt store, not a state
+        // than one durable pending op is a corrupt store, not a state
         // the runtime can reconcile by picking one -- fail loud.
         if (parkedOps.length > 1) {
           throw new Error(
-            `crashed step ${stepId} (attempt ${String(stepState.currentAttempt)}) has ${String(parkedOps.length)} durable pending approval operations; a step-attempt parks on at most one control-plane suspension`,
+            `crashed step ${stepId} (attempt ${String(stepState.currentAttempt)}) has ${String(parkedOps.length)} durable pending approval or question operations; a step-attempt parks on at most one control-plane suspension`,
           );
         }
         const parked = parkedOps[0];
@@ -772,6 +777,9 @@ async function executeRunBody(
             correlationId: parked.correlationId,
             ...(parked.timeoutAtMs !== undefined
               ? { timeoutAtMs: parked.timeoutAtMs }
+              : {}),
+            ...(parked.question !== undefined
+              ? { question: parked.question }
               : {}),
           });
         } else {
@@ -806,7 +814,7 @@ async function executeRunBody(
     }
   }
 
-  // Recover each crash-mid-park approval step by committing the `SignalAwaited`
+  // Recover each crash-mid-park approval or question step by committing the `SignalAwaited`
   // the crash prevented from flushing, reconstructed from the reactor's durable
   // pending operation. This advances the step to `awaiting-signal`, converting
   // the crash-mid-park residual into the ordinary crash-after-park residual the
@@ -820,14 +828,19 @@ async function executeRunBody(
   // convert, and omit the field entirely for the indefinite-hold parks that are
   // the norm.
   //
-  // This recovery is APPROVAL-only: `recoverableParks` come from the reactor's
-  // durable approval pending-op store, which reconstructs an approval park. An
-  // "input" park has no equivalent durable pending-op yet, so a crash in its
-  // pre-flush window (StepStarted flushed, SignalAwaited not) leaves it in
+  // This recovery covers approvals and questions: `recoverableParks` come from
+  // the reactor's durable pending-op store, and a question's rebuilt wait
+  // carries the question it logged. An "input" park has no equivalent durable
+  // pending-op yet, so a crash in its pre-flush window (StepStarted flushed, SignalAwaited not) leaves it in
   // `crashedInFlight` and it settles as a terminal StepFailed below rather than
   // re-parking. The durable input substrate that closes this window is future
   // work; input-park crash-safety today holds only for the post-flush window.
-  for (const { stepId, correlationId, timeoutAtMs } of recoverableParks) {
+  for (const {
+    stepId,
+    correlationId,
+    timeoutAtMs,
+    question,
+  } of recoverableParks) {
     const awaited: WorkflowEvent = {
       kind: "SignalAwaited",
       seq: state.lastSeq + 1,
@@ -837,6 +850,7 @@ async function executeRunBody(
       ...(timeoutAtMs !== undefined
         ? { timeoutAt: new Date(timeoutAtMs).toISOString() }
         : {}),
+      ...(question !== undefined ? { parkKind: "question", question } : {}),
     };
     state = await commitDurable(env, runId, awaited);
   }
@@ -1910,15 +1924,19 @@ async function runStep(
         const decision = await parkOnSignal(
           env,
           runId,
-          {
-            stepId: step.id,
-            signalName: signalName(result.suspend.correlationId),
-            // An invoker can only suspend as an approval (the input park is
-            // minted by the trigger-budget re-arm above, never by an
-            // invoker), and the approval arm carries a mandatory snapshot.
-            parkKind: result.suspend.kind,
-            approvalSnapshot: result.suspend.approvalSnapshot,
-          },
+          result.suspend.kind === "approval"
+            ? {
+                stepId: step.id,
+                signalName: signalName(result.suspend.correlationId),
+                parkKind: "approval",
+                approvalSnapshot: result.suspend.approvalSnapshot,
+              }
+            : {
+                stepId: step.id,
+                signalName: signalName(result.suspend.correlationId),
+                parkKind: "question",
+                question: result.suspend.question,
+              },
           parkState,
           stepAbort.signal,
         );
@@ -5513,6 +5531,7 @@ async function parkOnSignalResult(
     signalName: string;
     timeout?: number;
     approvalSnapshot?: ApprovalSnapshot;
+    question?: AskedQuestion;
     /**
      * The control-plane park kind for a reserved-channel suspend. `"approval"`
      * requires a snapshot and notifies the host; `"input"` is snapshot-less
@@ -5590,6 +5609,7 @@ async function parkOnSignalResult(
       // Record the park kind so recovery can distinguish an input park from an
       // approval one after a crash/reconnect (see parked-correlations).
       ...(opts.parkKind !== undefined ? { parkKind: opts.parkKind } : {}),
+      ...(opts.question !== undefined ? { question: opts.question } : {}),
     };
     const claim = opts.claimsRunInputChannel;
     state = await commit(
@@ -5613,7 +5633,16 @@ async function parkOnSignalResult(
     // `correlationIdFromSignalName` returns `undefined` and no notify fires.
     const correlationId = correlationIdFromSignalName(opts.signalName);
     if (correlationId !== undefined) {
-      if (opts.parkKind === "input") {
+      if (opts.parkKind === "question") {
+        // A question is answered through the run log alone and never reaches
+        // the hub; the supervisor only learns that the run parked, so the mail
+        // that started this turn is consumed.
+        parkToNotify = {
+          runId,
+          correlationId,
+          parkKind: "question",
+        };
+      } else if (opts.parkKind === "input") {
         // An input park carries no snapshot and does NOT notify the hub.
         // The supervisor (not the hub) owns the next input delivery, so
         // the child forwards the correlationId upstream so the supervisor
@@ -6548,6 +6577,11 @@ function openChildParks(
     if (parkKind === "signal-relay") {
       throw new Error(
         `child step ${event.stepId} awaits reserved name ${event.signalName} as a signal-relay`,
+      );
+    }
+    if (parkKind === "question") {
+      throw new Error(
+        `child step ${event.stepId} asks a question, which a parent run cannot relay`,
       );
     }
     parks.push({

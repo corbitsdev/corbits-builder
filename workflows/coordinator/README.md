@@ -16,8 +16,8 @@ the hub's:
 - `deploy_writer`, `design_app`, `deploy_coder`, `instruct_coder`: start or
   steer the [writer][writer], [designer][designer] and [coder][coder].
 - `review_artifact`: a second opinion from the [reviewer][reviewer].
-- `request_approval`, `ask_questions`: approval and question cards for the
-  person.
+- `request_approval`, `question`: approval and question cards for the
+  person; `question` is Interchange's and waits for the answer.
 - `read_skill`: the problem-brief skill from the writer package.
 
 ## Layout

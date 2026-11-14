@@ -14,6 +14,7 @@ import type {
 } from "@intx/types";
 import type {
   ApprovalSnapshot,
+  AskedQuestion,
   ControlParkKind,
   PerCallInferenceOptions,
 } from "@intx/types/runtime";
@@ -207,22 +208,28 @@ export interface StepInvokeRequest {
  * as mandatory), so a snapshot-less approval is unrepresentable here rather
  * than resting on the runtime guard alone.
  *
- * An invoker can ONLY suspend as an approval. The `"input"` control-plane
- * park (a long-lived step awaiting its next trigger) is minted exclusively by
- * the RUNTIME's trigger-budget re-arm -- never by an invoker -- which is what
- * keeps the finite-budget respawn seed sound: every input `SignalAwaited` in
- * the durable log is a runtime re-arm, so counting them counts turns
- * serviced. Offering an input arm here would let a host invoker emit input
- * parks that inflate that count.
+ * An invoker can ONLY suspend as an approval or a question. The `"input"`
+ * control-plane park (a long-lived step awaiting its next trigger) is minted
+ * exclusively by the RUNTIME's trigger-budget re-arm -- never by an invoker --
+ * which is what keeps the finite-budget respawn seed sound: every input
+ * `SignalAwaited` in the durable log is a runtime re-arm, so counting them
+ * counts turns serviced. Offering an input arm here would let a host invoker
+ * emit input parks that inflate that count.
  */
 export type StepInvokeResult =
   | { output: unknown }
   | {
-      suspend: {
-        correlationId: string;
-        kind: "approval";
-        approvalSnapshot: ApprovalSnapshot;
-      };
+      suspend:
+        | {
+            correlationId: string;
+            kind: "approval";
+            approvalSnapshot: ApprovalSnapshot;
+          }
+        | {
+            correlationId: string;
+            kind: "question";
+            question: AskedQuestion;
+          };
     };
 
 /**
@@ -634,6 +641,8 @@ export type ParkedApprovalOp = {
    * The runtime converts it to the ISO string a `SignalAwaited` carries.
    */
   timeoutAtMs?: number;
+  /** Set when the parked call is a question, so the rebuilt wait still shows it. */
+  question?: AskedQuestion;
 };
 
 /**
