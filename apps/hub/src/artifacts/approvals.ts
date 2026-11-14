@@ -58,18 +58,27 @@ export async function approvedVersion(
 /**
  * The approval a revision carries from the version it replaced: only when the run that wrote it was
  * started on the person's own words and the replaced version is the approved one. It names that
- * person and their words as the decision, never an Approve they pressed; undefined otherwise.
+ * person and points at their words in the coordinator's run log as the decision, never an Approve
+ * they pressed; undefined otherwise.
  */
 export function carriedApproval(
-  run: { request: string | null; requestedBy: string | null } | undefined,
+  run:
+    | {
+        requestedBy: string | null;
+        requestRunId: string | null;
+        requestSignalId: string | null;
+      }
+    | undefined,
   replaced: { version: number; approved: number | undefined },
 ) {
-  if (!run?.request || !run.requestedBy) return undefined;
+  if (!run?.requestedBy || !run.requestRunId || !run.requestSignalId)
+    return undefined;
   if (replaced.approved !== replaced.version) return undefined;
   return {
     principalId: run.requestedBy,
     carriedFrom: replaced.version,
-    request: run.request,
+    requestRunId: run.requestRunId,
+    requestSignalId: run.requestSignalId,
   };
 }
 

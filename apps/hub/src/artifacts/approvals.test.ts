@@ -1,20 +1,25 @@
 import { expect, test } from "bun:test";
 import { carriedApproval } from "./approvals.ts";
 
-const asked = { request: "Make headings Fraunces", requestedBy: "person-1" };
+const asked = {
+  requestedBy: "person-1",
+  requestRunId: "coordinator-run",
+  requestSignalId: "<m2@example.com>",
+};
 
-test("a revision started on the person's words keeps the approval of the version it replaced", () => {
+test("a revision started on the person's words keeps the approval of the version it replaced, pointing at those words", () => {
   expect(carriedApproval(asked, { version: 1, approved: 1 })).toEqual({
     principalId: "person-1",
     carriedFrom: 1,
-    request: "Make headings Fraunces",
+    requestRunId: "coordinator-run",
+    requestSignalId: "<m2@example.com>",
   });
 });
 
 test("a revision started on anything but the person's words carries no approval", () => {
   expect(
     carriedApproval(
-      { request: null, requestedBy: null },
+      { requestedBy: null, requestRunId: null, requestSignalId: null },
       { version: 1, approved: 1 },
     ),
   ).toBeUndefined();

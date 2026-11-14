@@ -7,7 +7,7 @@ import { declineNote } from "../config/decline.ts";
 import { designChosenNote } from "../config/design.ts";
 import { resumeMessage } from "../config/resume.ts";
 import {
-  personRequest,
+  personSignal,
   readDurableConversationTurns,
   unsavedPersonTurns,
 } from "./conversation-turns.ts";
@@ -257,13 +257,15 @@ const answered = (seq: number, payload: unknown) => [
     type: "SignalReceived",
     body: {
       signalName: "question-1",
+      // The hub answers a parked question on its own channel, as caller-mail.ts sends it.
+      signalId: "question-1",
       at: "2026-11-04T10:00:01.000Z",
       payload,
     },
   },
 ];
 
-test("the person's own message the coordinator was last handed is their request", () => {
+test("the person's own message the coordinator was last handed is found by its message id", () => {
   const events = [
     received(1, "2026-11-04T09:59:00.000Z", specialist, "Filed v1."),
     received(
@@ -273,7 +275,8 @@ test("the person's own message the coordinator was last handed is their request"
       "Make headings Fraunces\r\n",
     ),
   ];
-  expect(personRequest(events)).toBe("Make headings Fraunces");
+  // The mail's message id, under which the run log keeps the person's words.
+  expect(personSignal(events)).toBe("<m2@example.com>");
 });
 
 test("a specialist's result or a hub note handed last is not the person's request", () => {
@@ -284,13 +287,13 @@ test("a specialist's result or a hub note handed last is not the person's reques
     "Make headings Fraunces",
   );
   expect(
-    personRequest([
+    personSignal([
       asked,
       received(2, "2026-11-04T10:00:00.000Z", specialist, "Filed v2."),
     ]),
   ).toBeUndefined();
   expect(
-    personRequest([
+    personSignal([
       asked,
       received(
         2,
@@ -300,17 +303,17 @@ test("a specialist's result or a hub note handed last is not the person's reques
       ),
     ]),
   ).toBeUndefined();
-  expect(personRequest([])).toBeUndefined();
+  expect(personSignal([])).toBeUndefined();
 });
 
-test("what the person writes or chooses answering the coordinator is their request, a screen's choice is not", () => {
+test("what the person writes or chooses answering the coordinator is where their request is kept, a screen's choice is not", () => {
   expect(
-    personRequest(answered(1, { reply: "Only the headings, please" })),
-  ).toBe("Only the headings, please");
-  expect(personRequest(answered(1, { answers: { scope: ["Yes"] } }))).toBe(
-    "Add accounts and payments to the menu app? Yes",
+    personSignal(answered(1, { reply: "Only the headings, please" })),
+  ).toBe("question-1");
+  expect(personSignal(answered(1, { answers: { scope: ["Yes"] } }))).toBe(
+    "question-1",
   );
   expect(
-    personRequest(answered(1, { output: { approved: [] } })),
+    personSignal(answered(1, { output: { approved: [] } })),
   ).toBeUndefined();
 });

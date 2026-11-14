@@ -34,8 +34,8 @@ function harness() {
 test("an agent cannot say a run was started on the person's request: the hub reads that itself", async () => {
   const { app, recorded } = harness();
   for (const claim of [
-    { request: "Make headings Fraunces" },
     { requestedBy: "person-1" },
+    { requestRunId: "coordinator-run", requestSignalId: "<m2@example.com>" },
     { carriedFrom: 1 },
   ]) {
     const response = await app.request("/project-1/run-actions", {

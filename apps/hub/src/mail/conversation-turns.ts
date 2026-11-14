@@ -178,40 +178,32 @@ const mailText = (mail: Mail) =>
     .join("");
 
 /**
- * The person's own words that a coordinator run was last handed, from its committed events: mail
- * they sent, or what they wrote or chose answering a question it asked them. Undefined when the
- * last thing it received came from anyone else: a specialist's mail, a hub note, or a screen's
- * answer, which records its own decision.
+ * The id under which a coordinator run's log keeps the last thing it was handed, when that came
+ * from the person: mail they sent, or what they wrote or chose answering a question it asked them.
+ * Undefined when it came from anyone else: a specialist's mail, a hub note, or a screen's answer,
+ * which records its own decision.
  */
-export function personRequest(
+export function personSignal(
   events: ConversationEvents["events"],
 ): string | undefined {
   const received = events.findLast(
     ({ type: kind }) => kind === "SignalReceived",
   );
-  if (received === undefined) return undefined;
+  const signalId = received?.body["signalId"];
+  if (received === undefined || typeof signalId !== "string") return undefined;
   const payload = received.body["payload"];
   if (isMail(payload)) {
     const { from } = payload.headers;
     if (from === undefined || runSent(from)) return undefined;
     const text = withoutResumeContext(deliveredText(mailText(payload)));
     if (!text?.trim() || text.startsWith(HUB_NOTE_LEAD)) return undefined;
-    return text.trim();
+    return signalId;
   }
-  const parked = parkedQuestions(events).find(
+  const answer = parkedQuestions(events).find(
     ({ signalName }) => signalName === received.body["signalName"],
-  );
-  const answer = parked?.answer;
-  if (parked === undefined || answer === undefined) return undefined;
-  if ("reply" in answer) return answer.reply;
-  if (!("answers" in answer) || !("questions" in parked.asked))
-    return undefined;
-  return parked.asked.questions
-    .map(
-      ({ id, question }) =>
-        `${question} ${(answer.answers[id] ?? []).join(", ")}`,
-    )
-    .join("\n");
+  )?.answer;
+  if (answer === undefined || "output" in answer) return undefined;
+  return signalId;
 }
 
 /**

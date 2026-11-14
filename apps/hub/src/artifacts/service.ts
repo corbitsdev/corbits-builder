@@ -112,7 +112,7 @@ import {
 } from "../db/schema.ts";
 import type { AgentActivityTracker } from "./activity.ts";
 import { approvedVersion, carriedApproval } from "./approvals.ts";
-import { personRequest } from "../mail/conversation-turns.ts";
+import { personSignal } from "../mail/conversation-turns.ts";
 import type { Actor } from "../lib/actor.ts";
 import { parseJson } from "../lib/json.ts";
 import { authorizeProject } from "../projects/authorization.ts";
@@ -470,8 +470,8 @@ export function createArtifactService(
     return row;
   }
 
-  // The person's own words that the project's coordinator was last handed, when the caller is that
-  // coordinator, and the person it runs for; read from the coordinator's run log, never from the
+  // Where the project's coordinator's run log keeps the person's words it was last handed, when the
+  // caller is that coordinator, and the person it runs for; read from that log, never from the
   // caller. Undefined when anyone else handed it the last thing it received.
   async function callerRequest(actor: Actor, projectId: string) {
     const [coordinator] = await rawDB
@@ -491,16 +491,19 @@ export function createArtifactService(
         ),
       );
     if (!coordinator?.address) return undefined;
-    const request = personRequest(
+    const signalId = personSignal(
       await runs.readRunEvents(
         workflowRunRepoIdForAddress(coordinator.address),
         WORKFLOW_RUN_REF,
         coordinator.runId,
       ),
     );
-    return request === undefined
-      ? undefined
-      : { request, requestedBy: coordinator.person };
+    if (signalId === undefined) return undefined;
+    return {
+      requestedBy: coordinator.person,
+      requestRunId: coordinator.runId,
+      requestSignalId: signalId,
+    };
   }
 
   // A document the calling run revised keeps the approval of the version it replaced when the run
@@ -514,8 +517,9 @@ export function createArtifactService(
   ) {
     const [run] = await rawDB
       .select({
-        request: runAction.request,
         requestedBy: runAction.requestedBy,
+        requestRunId: runAction.requestRunId,
+        requestSignalId: runAction.requestSignalId,
       })
       .from(runAction)
       .where(
@@ -535,7 +539,8 @@ export function createArtifactService(
       projectId,
       principalId: carried.principalId,
       carriedFrom: carried.carriedFrom,
-      request: carried.request,
+      requestRunId: carried.requestRunId,
+      requestSignalId: carried.requestSignalId,
     });
   }
 
@@ -1712,8 +1717,9 @@ export function createArtifactService(
           action: input.action,
           planStep: input.step ?? null,
           record: input.record ?? null,
-          request: asked?.request ?? null,
           requestedBy: asked?.requestedBy ?? null,
+          requestRunId: asked?.requestRunId ?? null,
+          requestSignalId: asked?.requestSignalId ?? null,
         })
         .onConflictDoNothing();
       await storeValues(projectId, values);
