@@ -8,98 +8,59 @@
  *     `parkKind: "input"` in the project's committed conversation events),
  *     which is the person's move in the conversation.
  *
- * The hub keeps no numbered stages, so waits carry `stage: null`. A project
- * is its own child tenant, so every pending approval in that tenant is the
- * project's: the coordinator's deploys and the coder's package requests.
+ * A project is its own child tenant, so every pending approval in that tenant
+ * is the project's: the coordinator's deploys and the coder's package requests.
  */
 import type { ApprovalScope, NativeApproval } from "@corbits-builder/client";
-import { wording } from "../config.ts";
 import { productClient } from "./transport.ts";
 import type { Wait } from "./types.ts";
 import { askOf } from "./ask.ts";
 import { isInputPark, readConversationEvents } from "./conversation.ts";
 import { workspaceTenantId } from "./auth.ts";
 
-function approvalWait(
-  approval: NativeApproval,
-  projectId: string,
-  tenantId: string,
-): Omit<Wait, "projectTitle"> {
+function approvalWait(approval: NativeApproval, tenantId: string): Wait {
   const toolName =
     typeof approval.toolDefinition["name"] === "string"
       ? approval.toolDefinition["name"]
       : undefined;
-  const ask = askOf(toolName, approval.toolArguments);
-  const installs = ask.packages;
   return {
-    id: `${approval.id}:approval`,
-    projectId,
     tenantId,
     runId: approval.anchorRunId,
-    stage: null,
-    title:
-      installs === undefined ? wording.wait.permission : wording.wait.install,
-    consequence:
-      installs === undefined
-        ? wording.wait.wantsToRun(toolName)
-        : wording.wait.wantsToInstall(installs),
     approvalId: approval.id,
     createdAt: approval.createdAt,
-    ...ask,
+    ...askOf(toolName, approval.toolArguments),
   };
 }
 
-function parkWait(
-  park: { seq: number },
-  projectId: string,
-  runId: string,
-): Omit<Wait, "projectTitle"> {
-  return {
-    id: `${projectId}:${String(park.seq)}:input-park`,
-    projectId,
-    runId,
-    stage: null,
-    title: wording.wait.question,
-    consequence: wording.wait.askedInConversation,
-    park: { seq: park.seq },
-  };
+function parkWait(park: { seq: number }, runId: string): Wait {
+  return { runId, park: { seq: park.seq } };
 }
 
-export async function openDecisions(onlyProjectId?: string): Promise<Wait[]> {
+export async function openDecisions(projectId: string): Promise<Wait[]> {
   const client = productClient();
   const tenantId = await workspaceTenantId();
   const { projects } = await client.projects(tenantId, { status: "active" });
-  const targetProjects =
-    onlyProjectId === undefined
-      ? projects
-      : projects.filter((record) => record.projectId === onlyProjectId);
+  const record = projects.find((project) => project.projectId === projectId);
+  if (record === undefined) return [];
 
-  const waits: Wait[] = [];
-  for (const record of targetProjects) {
-    const [conversation, { data: approvals }] = await Promise.all([
-      readConversationEvents(record.projectId),
-      client.nativeApprovals(record.tenantId),
-    ]);
-    if (conversation.runId === null) continue;
-    const pending = approvals.filter(
-      (approval) => approval.status === "pending",
+  const [conversation, { data: approvals }] = await Promise.all([
+    readConversationEvents(projectId),
+    client.nativeApprovals(record.tenantId),
+  ]);
+  if (conversation.runId === null) return [];
+  const waits = approvals
+    .filter((approval) => approval.status === "pending")
+    .map((approval) => approvalWait(approval, record.tenantId));
+  // Only the latest input park is the person's move; earlier parks that a
+  // later SignalReceived released are not waiting on anything.
+  const park = [...conversation.events].reverse().find(isInputPark);
+  const released =
+    park !== undefined &&
+    conversation.events.some(
+      (event) => event.seq > park.seq && event.type === "SignalReceived",
     );
-    const projectWaits: Omit<Wait, "projectTitle">[] = pending.map((approval) =>
-      approvalWait(approval, record.projectId, record.tenantId),
-    );
-    // Only the latest input park is the person's move; earlier parks that a
-    // later SignalReceived released are not waiting on anything.
-    const park = [...conversation.events].reverse().find(isInputPark);
-    const released =
-      park !== undefined &&
-      conversation.events.some(
-        (event) => event.seq > park.seq && event.type === "SignalReceived",
-      );
-    if (park !== undefined && !released)
-      projectWaits.push(parkWait(park, record.projectId, conversation.runId));
-    for (const wait of projectWaits)
-      waits.push({ ...wait, projectTitle: record.title });
-  }
+  if (park !== undefined && !released)
+    waits.push(parkWait(park, conversation.runId));
   return waits;
 }
 

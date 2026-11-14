@@ -27,21 +27,11 @@ export class ApiFailure extends Error {
   }
 }
 
-/**
- * Something a person's move is waiting on. The hub keeps no stage ledger, so
- * `stage` is null and the bell and gate name "the project" instead.
- */
+/** Something a person's move is waiting on: a pending approval or the coordinator's open input park. */
 export type Wait = {
-  id: string;
-  projectId: string;
-  projectTitle?: string;
   /** The project's own child tenant, where its native approvals live. */
   tenantId?: string;
   runId: string;
-  /** Always null: the hub keeps no stage ledger. */
-  stage: number | null;
-  title: string;
-  consequence: string;
   /** The native approval this wait resolves, when it is one. */
   approvalId?: string;
   /** When the native approval was raised, so its card sits where it happened. */

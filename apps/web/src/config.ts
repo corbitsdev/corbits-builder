@@ -394,18 +394,6 @@ export const wording = {
     making: "What are you making…",
     reply: "What do you want to say…",
   },
-  /** What a person's move is waiting on, as the bell and gate name it. */
-  wait: {
-    permission: "The coordinator asks permission to continue",
-    install: "The builder asks to install packages",
-    wantsToRun: (toolName: string | undefined) =>
-      `Wants to run: ${toolName ?? "a step"}`,
-    wantsToInstall: (packages: readonly string[]) =>
-      `Wants to install: ${packages.join(", ")}`,
-    question: "The coordinator is waiting on you",
-    askedInConversation:
-      "The coordinator asked a question in the conversation.",
-  },
   speaker: {
     coder: "App builder",
     coordinator: "Coordinator",
