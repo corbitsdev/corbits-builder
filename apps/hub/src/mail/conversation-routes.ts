@@ -22,10 +22,7 @@ import { getLogger } from "@intx/log";
 import { requestErrorMetadata } from "../request-error.ts";
 import { parseJson } from "../lib/json.ts";
 import {
-  createCoordinatorQuestionProseReader,
   type CoordinatorRepoDirSource,
-} from "./coordinator-question.ts";
-import {
   isRecord,
   projectRunTurns,
   unsavedPersonTurns,
@@ -58,7 +55,7 @@ export function createConversationRoutes(
       operationId: "readProjectConversationEvents",
       tags: ["Conversation"],
       description:
-        "Read the current registered coordinator's committed native runtime events. While no coordinator is registered (one is starting or replacing another), runId is null, events is empty and turns still carry the conversation of the project's earlier coordinator runs. These events are not a rendered conversation transcript by themselves. When present, turns are the person's thread across every coordinator run of the project, in timestamp order: person and coordinator text from the committed durable conversation mirror, plus participant mail from other workflow runs on a retained mail thread that includes a person. threads are the retained native mail threads among workflow runs only, keyed by References root. A still-open input park also carries the coordinator's asking prose when the run's committed durable conversation mirror provides it (body.question, sourced from the coordinator's turn); parks without real prose stay verbatim. Native workflow read authority is required in addition to project read.",
+        "Read the current registered coordinator's committed native runtime events. While no coordinator is registered (one is starting or replacing another), runId is null, events is empty and turns still carry the conversation of the project's earlier coordinator runs. These events are not a rendered conversation transcript by themselves. When present, turns are the person's thread across every coordinator run of the project, in timestamp order: person and coordinator text from the committed durable conversation mirror, plus participant mail from other workflow runs on a retained mail thread that includes a person. threads are the retained native mail threads among workflow runs only, keyed by References root. Native workflow read authority is required in addition to project read.",
       security: [{ sessionCookie: [] }, { deviceBearer: [] }],
       parameters: ["tenantId", "projectId"].map((name) => ({
         name,
@@ -195,9 +192,6 @@ export function createConversationRoutes(
         const response = await dispatch(new Request(target.href, c.req.raw));
         response.headers.set("cache-control", "no-store");
         if (!response.ok || repoStore === undefined) return response;
-        // The input park carries no wording; when the durable conversation
-        // mirror provides asking prose, it rides the pending park. A missing
-        // mirror is an empty turn list, not a failed read.
         try {
           const raw = await response.text();
           const passThrough = (body: string) =>
@@ -207,18 +201,7 @@ export function createConversationRoutes(
             });
           const payload = parseJson(raw);
           if (payload === undefined) return passThrough(raw);
-          const { address } = current;
           const events = (payload as { events?: unknown })["events"];
-          if (Array.isArray(events)) {
-            const readProse = createCoordinatorQuestionProseReader({
-              repoStore,
-            });
-            const park = latestPendingPark(events);
-            if (park !== undefined) {
-              const question = await readProse({ address, park });
-              if (question !== undefined) park["question"] = question;
-            }
-          }
           if (isRecord(payload)) {
             const live = await read(repoStore, current);
             const turns = [
@@ -251,34 +234,4 @@ export function createConversationRoutes(
     },
   );
   return app;
-}
-
-/**
- * The open question's park: the latest `SignalAwaited` input park that no
- * later `SignalReceived` has released. Released parks keep their verbatim
- * bodies, so wording is attributed only to the question the coordinator is
- * waiting on.
- */
-function latestPendingPark(
-  events: unknown[],
-): Record<string, unknown> | undefined {
-  for (let index = events.length - 1; index >= 0; index -= 1) {
-    const event = events[index];
-    if (typeof event !== "object" || event === null) continue;
-    const { type, body } = event as { type?: unknown; body?: unknown };
-    if (type !== "SignalAwaited" || typeof body !== "object" || body === null)
-      continue;
-    const park = body as Record<string, unknown>;
-    if (park["parkKind"] !== "input") continue;
-    const released = events
-      .slice(index + 1)
-      .some(
-        (later) =>
-          typeof later === "object" &&
-          later !== null &&
-          (later as { type?: unknown }).type === "SignalReceived",
-      );
-    if (!released) return park;
-  }
-  return undefined;
 }

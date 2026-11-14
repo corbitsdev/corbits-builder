@@ -25,12 +25,15 @@ import { personTurnText } from "../config/specialist-ended.ts";
 import { declinedWords } from "../config/decline.ts";
 import { readCoordinatorMailThreads } from "./conversation-threads.ts";
 import { withCommittedAgentState } from "./committed-agent-state.ts";
-import type { CoordinatorRepoDirSource } from "./coordinator-question.ts";
 import { getLogger } from "@intx/log";
 import { errorCode, requestErrorMetadata } from "../request-error.ts";
 import { parseJson } from "../lib/json.ts";
 
 const log = getLogger(["corbits-builder", "hub", "conversation-turns"]);
+
+export type CoordinatorRepoDirSource = {
+  getRepoDir(repoId: { kind: "workflow-run"; id: string }): string;
+};
 
 // The mirror stores every inbound message under the inference role `user`,
 // whether a person or a workflow run sent it; the envelope's sender tells them apart.

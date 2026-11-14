@@ -58,12 +58,8 @@ export type Wait = {
   packages?: readonly string[];
   /** The design concepts a design_app approval starts. */
   concepts?: readonly { readonly label: string; readonly direction: string }[];
-  /**
-   * The coordinator's open input park: the person's move in the
-   * conversation. `parkProse` on the carrying event is the question to show;
-   * an absent prose renders the park body verbatim.
-   */
-  park?: { seq: number; question?: string };
+  /** The coordinator's open input park: the person's move in the conversation. */
+  park?: { seq: number };
 };
 
 /** A project-list summary. `stage` is the hub's, from native state. */
