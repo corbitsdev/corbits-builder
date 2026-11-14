@@ -84,6 +84,29 @@ export const OneQuestion: Story = {
   },
 };
 
+/** A question with nothing to pick: the person types their answer in a field of its own. */
+export const TypedAnswer: Story = {
+  args: {
+    question: {
+      at: 0,
+      signalName: "call-1",
+      asked: {
+        questions: [
+          {
+            id: "name",
+            header: "Name",
+            question: "What should the app be called?",
+            options: [],
+            multiple: false,
+            custom: true,
+          },
+        ],
+      },
+      status: "open",
+    },
+  },
+};
+
 type PendingSend = { readonly fail: () => void };
 
 /**
@@ -153,5 +176,17 @@ export const AnsweredInChat: Story = {
 export const Closed: Story = {
   args: {
     question: { at: 0, signalName: "call-1", asked: ask, status: "closed" },
+  },
+};
+
+/** One question closed: the title speaks of it alone. */
+export const ClosedOneQuestion: Story = {
+  args: {
+    question: {
+      at: 0,
+      signalName: "call-1",
+      asked: { questions: [ask.questions[0]!] },
+      status: "closed",
+    },
   },
 };

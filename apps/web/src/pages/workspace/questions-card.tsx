@@ -4,7 +4,6 @@
  */
 import {
   useEffect,
-  useId,
   useRef,
   useState,
   type Dispatch,
@@ -15,8 +14,8 @@ import {
   Check,
   ChevronDown,
   ChevronLeft,
+  CirclePause,
   CornerDownLeft,
-  CornerDownRight,
   Pencil,
   Plus,
 } from "lucide-react";
@@ -48,6 +47,13 @@ function startingAnswer(question: Question): Answer {
     .map((option) => option.label);
   const chosen = question.multiple ? recommended : recommended.slice(0, 1);
   return { chosen, own: "" };
+}
+
+/** A label as the person's answer reads back: the coordinator's recommendation is not theirs to repeat. */
+function shownLabel(label: string): string {
+  return label.endsWith(recommendedSuffix)
+    ? label.slice(0, -recommendedSuffix.length).trimEnd()
+    : label;
 }
 
 function answered(answer: Answer): boolean {
@@ -148,27 +154,16 @@ function keyTarget(element: EventTarget): KeyTarget {
 }
 
 /**
- * The card once done: a one-line receipt with the answers folded until asked for. What the person
- * wrote back instead of choosing shows under it, since it reaches the run log, not the conversation.
+ * The card once done: each question with its answer. What the person wrote back instead of choosing
+ * shows in their place, since it reaches the run log, not the conversation.
  */
 function Settled({
   ask,
   answer,
 }: {
   ask: AskedQuestion;
-  answer?: QuestionAnswer;
+  answer: QuestionAnswer;
 }) {
-  const [shown, setShown] = useState(false);
-  const listId = useId();
-  if (answer === undefined)
-    return (
-      <section className={styles.settled} aria-label={text.closed}>
-        <p className={styles.settledTitle}>
-          <CornerDownRight className={styles.settledMark} aria-hidden />
-          {text.closed}
-        </p>
-      </section>
-    );
   if ("reply" in answer)
     return (
       <section className={styles.settled} aria-label={text.answeredInChat}>
@@ -185,30 +180,45 @@ function Settled({
       <p className={styles.settledTitle}>
         <Check className={styles.settledMark} data-ok="" aria-hidden />
         {text.answered}
-        <span className={styles.settledCount}>
-          {text.answerCount(questions.length)}
-        </span>
-        <button
-          type="button"
-          className={styles.settledToggle}
-          aria-expanded={shown}
-          aria-controls={shown ? listId : undefined}
-          onClick={() => setShown(!shown)}
-        >
-          {shown ? text.hide : text.show}
-          <ChevronDown aria-hidden />
-        </button>
       </p>
-      {shown ? (
-        <dl id={listId} className={styles.answers}>
-          {questions.map((question) => (
+      <dl className={styles.answers}>
+        {questions.map((question) => {
+          const given = answer.answers[question.id];
+          return (
             <div key={question.id}>
               <dt>{question.question}</dt>
-              <dd>{answer.answers[question.id]?.join(", ")}</dd>
+              {given !== undefined && given.length > 0 ? (
+                <dd>{given.map(shownLabel).join(", ")}</dd>
+              ) : (
+                <dd className={styles.notAnswered}>{text.notAnswered}</dd>
+              )}
             </div>
-          ))}
-        </dl>
-      ) : null}
+          );
+        })}
+      </dl>
+    </section>
+  );
+}
+
+/** The card once its coordinator stopped unanswered: each question, which no answer reaches now. */
+function Closed({ ask }: { ask: AskedQuestion }) {
+  return (
+    <section
+      className={styles.settled}
+      aria-label={text.closed(ask.questions.length)}
+    >
+      <p className={styles.settledTitle}>
+        <CirclePause className={styles.settledMark} aria-hidden />
+        {text.closed(ask.questions.length)}
+      </p>
+      <dl className={styles.answers}>
+        {ask.questions.map((question) => (
+          <div key={question.id}>
+            <dt>{question.question}</dt>
+            <dd className={styles.notAnswered}>{text.notAnswered}</dd>
+          </div>
+        ))}
+      </dl>
     </section>
   );
 }
@@ -234,7 +244,7 @@ function AnsweredRow({
   disabled: boolean;
   onOpen: () => void;
 }) {
-  const labels = answerLabels(question, answer).join(", ");
+  const labels = answerLabels(question, answer).map(shownLabel).join(", ");
   return (
     <li className={styles.row}>
       <ThreadMark mark="done" />
@@ -283,23 +293,26 @@ function Choices({
   onOwn: (own: string) => void;
 }) {
   const multi = question.multiple;
+  const typed = question.options.length === 0;
   const chosen = chosenOf(question, answer);
   const picked = chosen.length;
   return (
     <fieldset
       className={styles.question}
       disabled={disabled}
-      aria-describedby={ruleId}
+      aria-describedby={typed ? undefined : ruleId}
     >
       <legend className={styles.prompt}>{question.question}</legend>
-      <p id={ruleId} className={styles.rule}>
-        {multi ? text.pickAny : text.pickOne}
-        {multi && picked > 0 ? (
-          <span className={styles.ruleCount}>
-            {text.selected(picked, question.options.length)}
-          </span>
-        ) : null}
-      </p>
+      {typed ? null : (
+        <p id={ruleId} className={styles.rule}>
+          {multi ? text.pickAny : text.pickOne}
+          {multi && picked > 0 ? (
+            <span className={styles.ruleCount}>
+              {text.selected(picked, question.options.length)}
+            </span>
+          ) : null}
+        </p>
+      )}
       <div className={styles.choices} data-kind={multi ? "multi" : "single"}>
         {question.options.map((option, index) => {
           const checked = chosen.includes(option.label);
@@ -353,14 +366,16 @@ function Choices({
             className={styles.choice}
             data-checked={answer.own.trim() === "" ? undefined : ""}
           >
-            <span className={styles.box} aria-hidden>
-              <Plus />
-            </span>
+            {typed ? null : (
+              <span className={styles.box} aria-hidden>
+                <Plus />
+              </span>
+            )}
             <input
               type="text"
               className={styles.own}
               aria-label={text.otherAnswer}
-              placeholder={text.other}
+              placeholder={typed ? text.typed : text.other}
               value={answer.own}
               onChange={(event) => onOwn(event.target.value)}
             />
@@ -578,7 +593,8 @@ function OpenCard({
           {earlierShown ? earlier.map((_, index) => answeredRow(index)) : null}
           {previous === undefined ? null : answeredRow(previous)}
           <li className={styles.row} aria-current="step">
-            <ThreadMark mark="current" />
+            {/* A lone question has no steps to mark; the empty cell keeps the column. */}
+            {questions.length > 1 ? <ThreadMark mark="current" /> : <span />}
             <div ref={choices}>
               <Choices
                 key={question.id}
@@ -625,7 +641,9 @@ function OpenCard({
               size="sm"
               className={styles.next}
               aria-disabled={disabled || !ready}
-              aria-describedby={ruleId}
+              aria-describedby={
+                question.options.length === 0 ? undefined : ruleId
+              }
               aria-keyshortcuts={last ? "Enter" : "Enter ArrowRight"}
               onClick={() => next(answer)}
             >
@@ -672,9 +690,8 @@ export function QuestionsCard({
       );
     case "answered":
       return <Settled ask={asked} answer={question.answer} />;
-    // A closed question's coordinator stopped waiting before the person answered.
     case "closed":
-      return <Settled ask={asked} />;
+      return <Closed ask={asked} />;
     default:
       return question satisfies never;
   }

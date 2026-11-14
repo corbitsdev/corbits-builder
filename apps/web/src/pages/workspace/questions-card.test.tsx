@@ -102,7 +102,36 @@ describe("questions card", () => {
     expect(html).toContain(`>${text.send}<`);
   });
 
-  test("an answered card is one line, its answers folded", () => {
+  test("a question with no options asks for typed words, not a pick", () => {
+    const html = renderToStaticMarkup(
+      <QuestionsCard
+        question={{
+          at: 0,
+          signalName: "call-1",
+          asked: {
+            questions: [
+              {
+                id: "name",
+                header: "Name",
+                question: "What should the app be called?",
+                options: [],
+                multiple: false,
+                custom: true,
+              },
+            ],
+          },
+          status: "open",
+        }}
+        disabled={false}
+        onSend={send}
+      />,
+    );
+    expect(html).toContain(`placeholder="${text.typed}"`);
+    expect(html).not.toContain(text.pickOne);
+    expect(html).not.toContain("aria-describedby");
+  });
+
+  test("an answered card lists each question with its answer", () => {
     const html = renderToStaticMarkup(
       <QuestionsCard
         question={{
@@ -117,9 +146,22 @@ describe("questions card", () => {
       />,
     );
     expect(html).toContain(`aria-label="${text.answered}"`);
-    expect(html).toContain(text.answerCount(3));
-    expect(html).toContain('aria-expanded="false"');
-    expect(html).not.toContain("<dl");
+    expect(html).toContain("<dt>Who is it for?</dt><dd>Small teams</dd>");
+  });
+
+  test("a closed card lists each question as not answered and takes no answer", () => {
+    const html = renderToStaticMarkup(
+      <QuestionsCard
+        question={{ at: 0, signalName: "call-1", asked: ask, status: "closed" }}
+        disabled={false}
+        onSend={send}
+      />,
+    );
+    expect(html).toContain(text.closed(3));
+    expect(html).toMatch(
+      new RegExp(`<dt>Who is it for\\?</dt><dd[^>]*>${text.notAnswered}</dd>`),
+    );
+    expect(html).not.toContain("<input");
   });
 
   test("a card answered in the person's own words shows what they wrote, not answers", () => {
@@ -138,7 +180,7 @@ describe("questions card", () => {
     );
     expect(html).toContain(text.answeredInChat);
     expect(html).toContain("Actually, let&#x27;s build a game.");
-    expect(html).not.toContain(text.show);
+    expect(html).not.toContain("<dl");
   });
 });
 

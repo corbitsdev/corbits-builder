@@ -109,6 +109,9 @@ result. Anything the person types while a question is open is their answer. A
 document's open questions carry over into such a card. Questions are never
 modelled as approvals.
 
+A question whose run ended before it was answered stays in the chat, closed to
+answers.
+
 ### The app repository and live preview
 
 Each project has one git repository for its app, and its main branch is the

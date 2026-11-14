@@ -1278,6 +1278,14 @@ describe("Builder E2E pipeline replay", () => {
                 throw new Error("the question carries no prompt");
               expect(audienceQuestion.header).toBe("Audience");
 
+              const { runs } = await client.projectRunStates(
+                projectTenantId,
+                projectId,
+              );
+              expect(
+                runs.find((run) => run.runId === coordinatorRunId)?.state,
+              ).toBe("question");
+
               const counterStaff = { [audienceQuestion.id]: ["Counter staff"] };
               await client.answerQuestion(
                 projectTenantId,

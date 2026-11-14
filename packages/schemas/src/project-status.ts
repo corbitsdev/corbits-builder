@@ -2,10 +2,10 @@ import { type } from "arktype";
 import { WorkflowRole } from "./roles.ts";
 
 // A live run by its latest committed event. idle: parked on input, waiting for mail. approval:
-// parked on an approval, waiting on the person. starting: no address or no event yet. unknown: its
-// event log could not be read.
+// parked on an approval, waiting on the person. question: parked on a question to the person.
+// starting: no address or no event yet. unknown: its event log could not be read.
 export const RunState = type(
-  "'working' | 'idle' | 'approval' | 'starting' | 'unknown'",
+  "'working' | 'idle' | 'approval' | 'question' | 'starting' | 'unknown'",
 );
 export type RunState = typeof RunState.infer;
 
