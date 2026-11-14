@@ -24,7 +24,7 @@ The design is done when:
 Set the :root and .dark tokens in designs/styles.css, update the shell and navigation links in designs/index.html, and write each screen in designs/screens/<name>.html, in the order the requirements list them when there are requirements, before writing DESIGN.md.
 
 ## Filing
-check_design checks all of the above, lists what to fix and, once the mockup passes, files it for the person to compare.
+check_design checks all of the above, lists what to fix and, once the mockup passes, files it for the person to compare. Each check opens every screen at both widths, so it is the slow step: fix everything on its list, and anything of the same kind it says there is more of, before you run it again.
 
 ## Reply
 Your reply ends the task and goes to the coordinator, who tells the person. Once the design is filed, give your design brief as it ended up, in a few plain sentences with no headings or lists: the screens and what each is for, the theme you used or created and why, and the assumptions you made. A question only the person can answer goes in that reply; their answer comes with a later task.
