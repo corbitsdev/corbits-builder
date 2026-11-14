@@ -9,6 +9,8 @@ import {
   type ProductApiClient,
 } from "./shared";
 
+export type ProjectImportOptions = { file: ProjectExport };
+
 export function buildProjectsMethods(
   deps: ClientDeps,
 ): Pick<
@@ -90,7 +92,7 @@ export function buildProjectsMethods(
         await request(`${projectPath(tenantId, projectId)}/export`, signal),
       );
     },
-    async importProject(tenantId, file, signal) {
+    async importProject(tenantId, { file }, signal) {
       return ProjectImportReceipt.assert(
         await request(
           `${tenantPath(tenantId)}/projects/import`,

@@ -20,6 +20,7 @@ import {
 } from "./client/shared";
 
 export type { MePrincipalsPage, MePrincipal, Workspace } from "./client/auth";
+export type { ProjectImportOptions } from "./client/projects";
 export type {
   ApprovalScope,
   NativeApproval,

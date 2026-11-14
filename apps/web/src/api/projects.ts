@@ -11,11 +11,13 @@ import {
   listAppVersions,
   readableFailure,
 } from "./artifacts.ts";
-import { ProductApiError } from "@corbits-builder/client";
+import {
+  ProductApiError,
+  type ProjectImportOptions,
+} from "@corbits-builder/client";
 import {
   type ExportSection,
   exportSection,
-  ProjectExport,
   type ProjectSummary as ProjectSummaryRow,
 } from "@corbits-builder/schemas/project";
 import {
@@ -295,13 +297,11 @@ export async function readImportFile(file: Blob): Promise<ProjectImport> {
 
 /** Starts a new project from an exported file; the hub files its documents first. */
 export async function importProject(
-  file: unknown,
+  options: ProjectImportOptions,
 ): Promise<{ projectId: string }> {
-  const parsed = ProjectExport(file);
-  if (parsed instanceof type.errors) throw invalidImport();
   const tenantId = await workspaceTenantId();
   try {
-    return await productClient().importProject(tenantId, parsed);
+    return await productClient().importProject(tenantId, options);
   } catch (cause) {
     throw await creationFailure(cause);
   }

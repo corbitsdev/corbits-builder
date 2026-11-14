@@ -1,3 +1,4 @@
+import type { ProjectImportOptions } from "./projects";
 import type { TenantRolePage } from "./roles";
 import type { PreferenceRegistry } from "@corbits-builder/schemas/preferences";
 import type {
@@ -311,7 +312,7 @@ export type ProductApiClient = Readonly<{
   ): Promise<ProjectExport>;
   importProject(
     tenantId: string,
-    file: ProjectExport,
+    options: ProjectImportOptions,
     signal?: AbortSignal,
   ): Promise<ProjectImportReceipt>;
   artifact(
