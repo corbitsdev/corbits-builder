@@ -7,15 +7,15 @@ import {
   type WorkspaceApprovalsViewProps,
 } from "./workspace-approvals.view.tsx";
 
-// Holds what the section asks its host to keep: the switch and the reviewer being entered.
+// Holds what the section asks its host to keep: the open dialog and the reviewer being entered.
 function Section(args: WorkspaceApprovalsViewProps) {
-  const [required, setRequired] = useState(args.required);
+  const [adding, setAdding] = useState(args.adding);
   const [reviewer, setReviewer] = useState(args.reviewer);
   return (
     <WorkspaceApprovalsView
       {...args}
-      required={required}
-      onRequiredChange={setRequired}
+      adding={adding}
+      onAddingChange={setAdding}
       reviewer={reviewer}
       onReviewerChange={setReviewer}
     />
@@ -34,13 +34,13 @@ const meta = {
   title: "Screens/Settings/WorkspaceApprovals",
   component: WorkspaceApprovalsView,
   args: {
-    required: true,
-    onRequiredChange: fn(),
     reviewers: [],
     onRemoveReviewer: fn(),
     personas: ["Project owner", "Budget approver", "Technical approver", "CTO"],
     reviewer: blank,
     onReviewerChange: fn(),
+    adding: false,
+    onAddingChange: fn(),
     canAdd: false,
     onAddReviewer: fn(),
   },
@@ -51,9 +51,6 @@ export default meta;
 type Story = StoryObj<typeof meta>;
 
 export const NoReviewers: Story = {};
-
-/** Approval packages are bypassed; the saved reviewers stay. */
-export const NotRequired: Story = { args: { required: false } };
 
 export const SavedReviewers: Story = {
   args: {
@@ -73,6 +70,7 @@ export const SavedReviewers: Story = {
 /** "Other…" opens a field for a persona of the person's own. */
 export const EnteringCustomPersona: Story = {
   args: {
+    adding: true,
     reviewer: {
       ...blank,
       name: "Priya Nair",

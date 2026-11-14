@@ -303,6 +303,7 @@
 /* ---- Canvas ---- */
 
 .canvas {
+  grid-column: 2;
   display: flex;
   margin: var(--space-2) var(--space-2) var(--space-2) 0;
   border-radius: var(--radius-panel);

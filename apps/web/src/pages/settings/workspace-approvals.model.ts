@@ -1,6 +1,6 @@
 /**
- * What the workspace approvals section does: reads and writes the approval switch and the saved
- * reviewers this browser keeps, and holds the reviewer being entered until it is added.
+ * What the saved reviewers do: reads and writes the reviewers this browser keeps, and holds the
+ * reviewer being entered in the dialog until it is added.
  */
 import { useState } from "react";
 import { wording } from "../../config.ts";
@@ -10,17 +10,15 @@ import {
   allReviewerPersonas,
   removeWorkspaceReviewer,
   useCustomReviewerPersonas,
-  useWorkspaceApprovalsEnabled,
   useWorkspaceReviewers,
-  writeWorkspaceApprovalsEnabled,
 } from "../../workspace-approvals-setting.ts";
 import type { ReviewerDraft } from "../approval-fields.tsx";
 import type { WorkspaceApprovalsViewProps } from "./workspace-approvals.view.tsx";
 
 export function useWorkspaceApprovals(): WorkspaceApprovalsViewProps {
-  const approvalsEnabled = useWorkspaceApprovalsEnabled();
   const reviewers = useWorkspaceReviewers();
   const customPersonas = useCustomReviewerPersonas();
+  const [adding, setAdding] = useState(false);
   const [reviewer, setReviewer] = useState<ReviewerDraft>({
     name: "",
     persona: wording.approvalRound.reviewerPersonas[0],
@@ -54,16 +52,17 @@ export function useWorkspaceApprovals(): WorkspaceApprovalsViewProps {
       goal: "",
       email: "",
     });
+    setAdding(false);
   };
 
   return {
-    required: approvalsEnabled === "on",
-    onRequiredChange: (on) => writeWorkspaceApprovalsEnabled(on ? "on" : "off"),
     reviewers,
     onRemoveReviewer: removeWorkspaceReviewer,
     personas: allReviewerPersonas(customPersonas, reviewers),
     reviewer,
     onReviewerChange: setReviewer,
+    adding,
+    onAddingChange: setAdding,
     canAdd,
     onAddReviewer: addReviewer,
   };

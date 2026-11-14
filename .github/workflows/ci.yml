@@ -68,6 +68,7 @@ jobs:
             e2e:
               - *shared
               - "apps/hub/**"
+              - "apps/web/**"
               - "packages/**"
               - "workflows/**"
               - "test/e2e/**"
@@ -165,7 +166,9 @@ jobs:
       - if: env.RUN == 'true'
         uses: ./.github/actions/setup
       - if: env.RUN == 'true'
-        run: bun --conditions=intx-src test ./test/e2e/custom-provider.test.ts ./test/e2e/oauth-model-login.test.ts ./test/e2e/specialist-end-notices.test.ts ./test/e2e/support/recorded-model.test.ts
+        run: bunx playwright install --with-deps chromium
+      - if: env.RUN == 'true'
+        run: bun --conditions=intx-src test ./test/e2e/custom-provider.test.ts ./test/e2e/oauth-model-login.test.ts ./test/e2e/specialist-end-notices.test.ts ./test/e2e/settings.test.ts ./test/e2e/support/recorded-model.test.ts
         env:
           E2E_DB_HOST: 127.0.0.1
           E2E_DB_PORT: 5432

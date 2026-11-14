@@ -1,0 +1,308 @@
+/* Segments: the chosen one is filled, the rest are quiet text in the same frame. */
+.segments {
+  display: inline-flex;
+  flex-wrap: wrap;
+  max-width: 100%;
+  flex-shrink: 0;
+  gap: 2px;
+  padding: 3px;
+  border: 1px solid var(--border);
+  /* Concentric with the segments inside: their radius plus the frame's padding. */
+  border-radius: calc(var(--radius-control) + 3px);
+  background: var(--background);
+}
+
+.segment {
+  height: 34px;
+  padding: 0 var(--space-3);
+  border: 0;
+  border-radius: var(--radius-control);
+  background: transparent;
+  color: var(--muted-foreground);
+  font-size: 14px;
+  font-weight: 500;
+  line-height: 20px;
+  white-space: nowrap;
+}
+
+.segment:hover:not(:disabled) {
+  color: var(--foreground);
+}
+
+/* The global disabled fill would make every segment look chosen until the
+   preference is read; the chosen rule below wins over this one. */
+.segment:disabled {
+  background: transparent;
+  color: var(--muted-foreground);
+}
+
+.segment[aria-checked="true"] {
+  background: var(--muted);
+  color: var(--foreground);
+  font-weight: 600;
+}
+
+.boldWidth {
+  display: inline-grid;
+  min-width: 0;
+  max-width: 100%;
+}
+
+/* An invisible bold copy sets the width; it has no height and nothing to read. */
+.boldWidth::after {
+  content: attr(data-label) / "";
+  height: 0;
+  overflow: hidden;
+  visibility: hidden;
+  font-weight: 600;
+}
+
+/* Scale: the rail fills up to the chosen stop, and the stop names sit under it. */
+.scale {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  width: 100%;
+  min-width: 0;
+}
+
+.ends,
+.stops {
+  display: flex;
+  justify-content: space-between;
+  gap: var(--space-2);
+  white-space: nowrap;
+}
+
+.ends {
+  font-size: 12px;
+  line-height: 16px;
+  color: var(--muted-foreground);
+}
+
+.ends > :first-child::before {
+  content: "← ";
+}
+
+.ends > :last-child::after {
+  content: " →";
+}
+
+.stops {
+  white-space: normal;
+  font-size: 14px;
+  line-height: 20px;
+  color: var(--muted-foreground);
+}
+
+.stops > [data-chosen] {
+  color: var(--foreground);
+  font-weight: 600;
+}
+
+/* At phone widths the stop names' longest words only just fit, and renderers
+   that round glyph widths (Linux Chromium) push them past the row. */
+@container (max-width: 240px) {
+  .stops {
+    gap: var(--space-1);
+    font-size: 13px;
+    line-height: 18px;
+  }
+}
+
+/* The rail and stops run between the centres of the thumb's two end positions. */
+.track {
+  --thumb: 20px;
+  position: relative;
+  height: 24px;
+}
+
+.track::before {
+  content: "";
+  position: absolute;
+  top: 10px;
+  left: calc(var(--thumb) / 2);
+  right: calc(var(--thumb) / 2);
+  height: 4px;
+  border-radius: 2px;
+  background: linear-gradient(
+    to right,
+    var(--primary) calc(var(--at) * 100%),
+    var(--muted) calc(var(--at) * 100%)
+  );
+}
+
+.stop {
+  position: absolute;
+  top: 8px;
+  left: calc(var(--thumb) / 2 + (100% - var(--thumb)) * var(--stop) - 4px);
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--border-strong);
+}
+
+.stop[data-reached] {
+  background: var(--primary);
+}
+
+.track > input {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  margin: 0;
+  appearance: none;
+  background: transparent;
+}
+
+.track > input:focus-visible {
+  outline: none;
+}
+
+.track > input::-webkit-slider-runnable-track {
+  height: 100%;
+  background: transparent;
+}
+
+.track > input::-moz-range-track {
+  background: transparent;
+}
+
+.track > input::-webkit-slider-thumb {
+  appearance: none;
+  width: var(--thumb);
+  height: var(--thumb);
+  margin-top: 2px;
+  border: 2px solid var(--primary);
+  border-radius: 50%;
+  background: var(--background);
+  box-shadow: var(--wb-shadow);
+}
+
+.track > input::-moz-range-thumb {
+  box-sizing: border-box;
+  width: var(--thumb);
+  height: var(--thumb);
+  border: 2px solid var(--primary);
+  border-radius: 50%;
+  background: var(--background);
+  box-shadow: var(--wb-shadow);
+}
+
+.track > input:focus-visible::-webkit-slider-thumb {
+  outline: 2px solid var(--wb-ring);
+  outline-offset: 2px;
+}
+
+.track > input:focus-visible::-moz-range-thumb {
+  outline: 2px solid var(--wb-ring);
+  outline-offset: 2px;
+}
+
+.track:has(> input:disabled) {
+  opacity: 0.6;
+}
+
+/* Pictures: the chosen one is ringed in the primary colour and its radio filled. */
+.pictures {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-3);
+}
+
+.pictureOption {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  text-align: left;
+}
+
+.pictureOption:disabled {
+  background: transparent;
+}
+
+.picture {
+  position: relative;
+  display: block;
+  width: 120px;
+  height: 70px;
+  overflow: hidden;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-control);
+}
+
+.pictureOption[aria-checked="true"] .picture {
+  border-color: var(--primary);
+  box-shadow: 0 0 0 1px var(--primary);
+}
+
+.caption {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-1);
+  font-size: 13px;
+  line-height: 1.4;
+  color: var(--muted-foreground);
+}
+
+.pictureOption[aria-checked="true"] .caption {
+  color: var(--foreground);
+  font-weight: 600;
+}
+
+.radio {
+  width: 12px;
+  height: 12px;
+  border: 1.5px solid var(--border-strong);
+  border-radius: 50%;
+  background: var(--background);
+}
+
+.pictureOption[aria-checked="true"] .radio {
+  border: 4px solid var(--primary);
+}
+
+/* A theme picture: a title bar and three lines of text on the theme's page. */
+.page {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 10px 8px;
+  background: var(--background);
+}
+
+/* A light page keeps the library's light palette while the app is dark: the
+   library scopes `.dark` to any element, but has no such light scope. */
+.page:not(:global(.dark)) {
+  --background: #ffffff;
+  --muted: #eceff1;
+  --muted-foreground: #5c5555;
+}
+
+.page > span {
+  height: 4px;
+  border-radius: 2px;
+  background: var(--muted);
+}
+
+.page > span:first-child {
+  width: 49px;
+  margin-bottom: 3px;
+  background: var(--muted-foreground);
+}
+
+.page[data-half] {
+  left: 50%;
+  padding-left: 0;
+  border-radius: 0;
+}
+
+.page[data-half] > span:first-child {
+  visibility: hidden;
+}

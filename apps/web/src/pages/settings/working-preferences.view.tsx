@@ -1,35 +1,34 @@
 /**
- * The working preferences section as it looks: one row per preference, a switch or a list of
- * choices, with how its last change went beside it.
+ * The working preferences as they look: a group under each heading, a row per preference with what
+ * its choice means, chosen with segments or, where the choices have an order, a scale.
  */
 import { wording } from "../../config.ts";
-import { Section, Switch } from "@corbits/react-ui";
-import { useEffect, useState } from "react";
-import { Banner, QuietSelect, QuietState } from "../../components.jsx";
-import { SettingsRow, SettingsRowValue } from "./settings-row.tsx";
-import { SettingsSectionBody } from "./settings-section.tsx";
+import type { PreferenceGroup } from "@corbits-builder/schemas/preferences";
+import { useEffect, useState, type ReactNode } from "react";
+import { Banner, QuietState } from "../../components.jsx";
+import { SettingsRow } from "./settings-row.tsx";
+import { SettingsGroup } from "./settings-section.tsx";
+import { ChoiceScale, ChoiceSegments } from "./preference-choice.tsx";
 
 export type PreferenceRow = {
   id: string;
   label: string;
+  group: PreferenceGroup;
+  /** What the preference decides. */
   hint: string | undefined;
+  options: readonly { readonly id: string; readonly label: string }[];
+  /** The id of the option chosen. */
+  choice: string;
+  /** Set when the options have an order: they are a scale between these two words. */
+  ends: { readonly start: string; readonly end: string } | null;
   /** How saving its last change went; null when it has not been changed. */
   save: "saving" | "saved" | "failed" | null;
-  /** It cannot be changed yet: its choice has not been read, or a change is being saved. */
+  /** It cannot be changed yet: its choice has not been read. */
   disabled: boolean;
-} & (
-  | { kind: "switch"; on: boolean }
-  | {
-      kind: "list";
-      options: readonly { readonly id: string; readonly label: string }[];
-      /** The id of the option chosen. */
-      choice: string;
-    }
-);
+};
 
 export type WorkingPreferencesViewProps = {
   preferences: readonly PreferenceRow[];
-  onSwitch: (id: string, on: boolean) => void;
   onChoose: (id: string, choice: string) => void;
   /** Why the preferences could not be read. */
   fault: string | null;
@@ -37,6 +36,8 @@ export type WorkingPreferencesViewProps = {
   focusPreference: string | null;
   /** Goes up each time they are sent, so being sent to the same preference jumps again. */
   focusSeq: number;
+  /** The saved reviewers, closing the stakeholder approvals group. */
+  reviewers: ReactNode;
 };
 
 const SAVE_TONES = {
@@ -45,13 +46,19 @@ const SAVE_TONES = {
   failed: "error",
 } as const;
 
+type GroupHeading = { title: string; lead: string; tag?: string };
+
+const GROUPS = Object.keys(
+  wording.settings.preferences.groups,
+) as PreferenceGroup[];
+
 export function WorkingPreferencesView({
   preferences,
-  onSwitch,
   onChoose,
   fault,
   focusPreference,
   focusSeq,
+  reviewers,
 }: WorkingPreferencesViewProps) {
   const [highlightedId, setHighlightedId] = useState<string | null>(
     focusPreference,
@@ -117,54 +124,63 @@ export function WorkingPreferencesView({
 
   const copy = wording.settings.preferences;
   return (
-    <Section title={copy.section} description={copy.lead}>
-      <SettingsSectionBody>
-        {preferences.map((preference) => {
-          const id = `preference-${preference.id}`;
-          return (
-            <SettingsRow
-              key={preference.id}
-              id={`preference-row-${preference.id}`}
-              highlighted={highlightedId === preference.id}
-              label={preference.label}
-              htmlFor={id}
-              {...(preference.hint ? { hint: preference.hint } : {})}
-            >
-              <SettingsRowValue>
-                {preference.save ? (
-                  <QuietState tone={SAVE_TONES[preference.save]}>
-                    {copy[preference.save]}
-                  </QuietState>
-                ) : null}
-                {preference.kind === "switch" ? (
-                  <Switch
-                    id={id}
-                    checked={preference.on}
-                    onCheckedChange={(on) => onSwitch(preference.id, on)}
-                    disabled={preference.disabled}
-                  />
-                ) : (
-                  <QuietSelect
-                    id={id}
-                    value={preference.choice}
-                    onChange={(event) =>
-                      onChoose(preference.id, event.target.value)
-                    }
-                    disabled={preference.disabled}
-                  >
-                    {preference.options.map((option) => (
-                      <option key={option.id} value={option.id}>
-                        {option.label}
-                      </option>
-                    ))}
-                  </QuietSelect>
-                )}
-              </SettingsRowValue>
-            </SettingsRow>
-          );
-        })}
-        {fault ? <Banner tone="error" title={fault} /> : null}
-      </SettingsSectionBody>
-    </Section>
+    <>
+      {fault ? <Banner tone="error" title={fault} /> : null}
+      {GROUPS.map((group) => {
+        const members = preferences.filter(
+          (preference) => preference.group === group,
+        );
+        // Until the hub answers, a group with none of its preferences stays out of the way.
+        if (members.length === 0) return null;
+        const heading: GroupHeading = copy.groups[group];
+        return (
+          <SettingsGroup
+            key={group}
+            title={heading.title}
+            tag={heading.tag}
+            lead={heading.lead}
+          >
+            {members.map((preference) => {
+              const control = {
+                id: `preference-${preference.id}`,
+                label: preference.label,
+                options: preference.options,
+                choice: preference.choice,
+                onChoose: (option: string) => onChoose(preference.id, option),
+                disabled: preference.disabled,
+              };
+              return (
+                <SettingsRow
+                  key={preference.id}
+                  id={`preference-row-${preference.id}`}
+                  layout="columns"
+                  highlighted={highlightedId === preference.id}
+                  label={preference.label}
+                  aside={<SaveNote save={preference.save} />}
+                  hint={preference.hint}
+                  htmlFor={control.id}
+                >
+                  {preference.ends ? (
+                    <ChoiceScale {...control} ends={preference.ends} />
+                  ) : (
+                    <ChoiceSegments {...control} />
+                  )}
+                </SettingsRow>
+              );
+            })}
+            {group === "approvals" ? reviewers : null}
+          </SettingsGroup>
+        );
+      })}
+    </>
   );
+}
+
+/** How a preference's last change saved. */
+function SaveNote({ save }: { save: PreferenceRow["save"] }) {
+  return save ? (
+    <QuietState tone={SAVE_TONES[save]}>
+      {wording.settings.preferences[save]}
+    </QuietState>
+  ) : null;
 }

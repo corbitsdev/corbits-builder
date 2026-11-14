@@ -10,8 +10,6 @@ import providers from "./providers.stories.tsx";
 import { SettingsView, type SettingsViewProps } from "./settings.view.tsx";
 import { WorkingPreferencesView } from "./working-preferences.view.tsx";
 import workingPreferences from "./working-preferences.stories.tsx";
-import { WorkspaceApprovalsView } from "./workspace-approvals.view.tsx";
-import workspaceApprovals from "./workspace-approvals.stories.tsx";
 
 // Holds what the page asks its host to keep: the open tab and the look.
 function Page(args: SettingsViewProps) {
@@ -50,7 +48,6 @@ const meta = {
     profiles: <ProfilesView {...profiles.args} />,
     collaborators: <CollaboratorsView {...collaborators.args} />,
     workingPreferences: <WorkingPreferencesView {...workingPreferences.args} />,
-    workspaceApprovals: <WorkspaceApprovalsView {...workspaceApprovals.args} />,
     appearance: {
       theme: "system",
       onThemeChange: fn(),

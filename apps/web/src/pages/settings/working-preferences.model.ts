@@ -1,17 +1,16 @@
 /**
  * What the working preferences section does: reads the person's working preferences from the
- * hub's registry, where the hub keeps them and delivers them to every role they apply to, and
- * saves each change as it is made.
+ * hub's registry, where the hub keeps them and delivers them to every role they apply to, and saves
+ * each change as it is made.
  */
 import { wording } from "../../config.ts";
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { toast } from "sonner";
 import { useQueryClient } from "@tanstack/react-query";
 import { keys } from "../../queries/keys.ts";
 import {
   useWorkspaceApprovalsEnabled,
   writeWorkspaceApprovalsEnabled,
-  type OnOff,
 } from "../../workspace-approvals-setting.ts";
 import { productClient } from "../../api/transport.ts";
 import { workspaceTenantId } from "../../api/auth.ts";
@@ -26,72 +25,86 @@ export type WorkingPreferencesProps = {
   focusSeq?: number;
 };
 
-type SaveState = "saving" | "saved" | "failed";
+type Registry = PreferenceRegistry["preferences"];
 
-type PreferenceItem = {
-  readonly id: string;
-  readonly label: string;
-  readonly hint?: string;
-  readonly options: readonly { readonly id: string; readonly label: string }[];
-  readonly default: string;
+type SavedPreferences = { value: Preferences | null; version: number };
+type PickedChoice = { choice: string };
+
+const { fallback } = wording.settings.preferences;
+
+/** The hub's preferences, and the ones it offers before they are read or when they cannot be. */
+function listPreferences(hub: Registry | null): Registry {
+  if (!hub) return fallback;
+  const fromFallback = fallback.filter(
+    (item) => !hub.some((entry) => entry.id === item.id),
+  );
+  return [...hub, ...fromFallback];
+}
+
+const writeApprovals = (choice: string) =>
+  writeWorkspaceApprovalsEnabled(choice === "yes" ? "on" : "off");
+
+/** Writes a choice this browser keeps; the hub may keep the same one as well. */
+const writeInBrowser: Readonly<Record<string, (choice: string) => void>> = {
+  experimental_approvals: writeApprovals,
 };
 
-function mergeExperimentalPreferences(
-  loaded: PreferenceRegistry["preferences"] | null,
-): readonly PreferenceItem[] {
-  if (loaded === null) {
-    return wording.settings.preferences.experimental;
-  }
-  const extras = wording.settings.preferences.experimental.filter(
-    (exp) => !loaded.some((item) => item.id === exp.id),
-  );
-  return [...loaded, ...extras];
+function useBrowserChoices(): Readonly<Record<string, string>> {
+  const approvals = useWorkspaceApprovalsEnabled();
+  return { experimental_approvals: approvals === "on" ? "yes" : "no" };
 }
 
-/** A preference whose only choices are Off and On, shown as a switch. */
-function isOnOff(preference: PreferenceItem): boolean {
-  return preference.options.map((option) => option.id).join() === "no,yes";
-}
-
-function resolvePreferenceChoice(
-  preference: PreferenceItem,
-  fieldValue: Preferences | null | undefined,
-  approvalsEnabled: OnOff,
-): string {
-  if (preference.id === "experimental_approvals") {
-    return approvalsEnabled === "on" ? "yes" : "no";
-  }
-  return fieldValue?.[preference.id] ?? preference.default;
-}
-
-function syncExperimentalPreference(id: string, choice: string): boolean {
-  if (id === "experimental_approvals") {
-    writeWorkspaceApprovalsEnabled(choice === "yes" ? "on" : "off");
-    return true;
-  }
-  return false;
+function message(cause: unknown): string {
+  return cause instanceof Error ? cause.message : String(cause);
 }
 
 export function useWorkingPreferences({
   focusPreference,
   focusSeq = 0,
-}: WorkingPreferencesProps): WorkingPreferencesViewProps {
+}: WorkingPreferencesProps): Omit<WorkingPreferencesViewProps, "reviewers"> {
   const queryClient = useQueryClient();
-  const approvalsEnabled = useWorkspaceApprovalsEnabled();
-  const [registry, setRegistry] = useState<
-    PreferenceRegistry["preferences"] | null
-  >(null);
-  const [field, setField] = useState<{
-    value: Preferences | null;
-    version: number;
+  const inBrowser = useBrowserChoices();
+  const [registry, setRegistry] = useState<Registry | null>(null);
+  const [fault, setFault] = useState<string | null>(null);
+  const [save, setSave] = useState<{
+    id: string;
+    state: "saving" | "saved" | "failed";
   } | null>(null);
-  const [error, setError] = useState<string | null>(null);
-  const [save, setSave] = useState<{ id: string; state: SaveState } | null>(
-    null,
+  const [picked, setPicked] = useState<Readonly<Record<string, PickedChoice>>>(
+    {},
   );
+  const pickedRef = useRef<Record<string, PickedChoice>>({});
+
+  // The hub's record. Saves read the ref, so each builds on the version the one before it left.
+  const [saved, setSaved] = useState<SavedPreferences | null>(null);
+  const savedRef = useRef<SavedPreferences | null>(null);
+  const keepSaved = (next: SavedPreferences) => {
+    savedRef.current = next;
+    setSaved(next);
+    const approvals = next.value?.["experimental_approvals"];
+    if (
+      approvals !== undefined &&
+      pickedRef.current["experimental_approvals"] === undefined
+    )
+      writeApprovals(approvals);
+  };
+
+  // Compare picks by identity: choosing A, then B, then A is still three separate picks.
+  const dropPick = (id: string, pick: PickedChoice) => {
+    if (pickedRef.current[id] !== pick) return;
+    delete pickedRef.current[id];
+    setPicked({ ...pickedRef.current });
+    const settled =
+      savedRef.current?.value?.[id] ??
+      registry?.find((entry) => entry.id === id)?.default;
+    if (settled !== undefined) writeInBrowser[id]?.(settled);
+  };
+
+  const queue = useRef<Promise<void>>(Promise.resolve());
+
   useEffect(() => {
     let cancelled = false;
-    async function loadPreferences() {
+    async function load() {
       try {
         const tenantId = await workspaceTenantId();
         const [read, record] = await Promise.all([
@@ -100,37 +113,22 @@ export function useWorkingPreferences({
         ]);
         if (cancelled) return;
         setRegistry(read.preferences);
-        const loadedField = record.fields.preferences ?? {
-          value: null,
-          version: 0,
-        };
-        setField(loadedField);
-        const approvalsVal = loadedField.value?.["experimental_approvals"];
-        if (approvalsVal === "yes" || approvalsVal === "no") {
-          writeWorkspaceApprovalsEnabled(approvalsVal === "yes" ? "on" : "off");
-        }
+        const loaded = record.fields.preferences ?? { value: null, version: 0 };
+        keepSaved(loaded);
       } catch (cause) {
-        if (!cancelled) {
-          setRegistry((prev) => (prev === null ? [] : prev));
-          setError(cause instanceof Error ? cause.message : String(cause));
-        }
+        if (cancelled) return;
+        setFault(message(cause));
       }
     }
-    void loadPreferences();
+    void load();
     return () => {
       cancelled = true;
     };
   }, []);
-  const choose = async (id: string, choice: string) => {
-    const isExperimental = syncExperimentalPreference(id, choice);
-    const inHubRegistry =
-      registry !== null && registry.some((entry) => entry.id === id);
-    if (!field || (isExperimental && !inHubRegistry)) {
-      if (isExperimental) {
-        setSave({ id, state: "saved" });
-      }
-      return;
-    }
+
+  const saveToHub = async (id: string, pick: PickedChoice) => {
+    const base = savedRef.current;
+    if (pickedRef.current[id] !== pick || !base) return;
     setSave({ id, state: "saving" });
     try {
       const receipt = await productClient().savePersonalSettings(
@@ -140,45 +138,65 @@ export function useWorkingPreferences({
           idempotencyKey: crypto.randomUUID(),
           fields: {
             preferences: {
-              value: { ...field.value, [id]: choice },
-              baseVersion: field.version,
+              value: { ...base.value, [id]: pick.choice },
+              baseVersion: base.version,
             },
           },
         },
       );
-      setField(receipt.record.fields.preferences ?? field);
+      keepSaved(receipt.record.fields.preferences ?? base);
+      dropPick(id, pick);
       void queryClient.invalidateQueries({ queryKey: keys.preferences });
-      const conflicted = receipt.conflicts.length > 0;
-      setSave({ id, state: conflicted ? "failed" : "saved" });
-      if (conflicted) toast.error(wording.message.stepFailed);
+      if (receipt.conflicts.length > 0) {
+        setSave({ id, state: "failed" });
+        toast.error(wording.message.stepFailed);
+      } else {
+        setSave({ id, state: "saved" });
+      }
     } catch (cause) {
+      dropPick(id, pick);
       setSave({ id, state: "failed" });
-      toast.error(cause instanceof Error ? cause.message : String(cause));
+      toast.error(message(cause));
     }
   };
+
+  const choose = (id: string, choice: string) => {
+    const write = writeInBrowser[id];
+    write?.(choice);
+    const inHub = registry?.some((entry) => entry.id === id) ?? false;
+    if (!inHub || !savedRef.current) {
+      if (write) setSave({ id, state: "saved" });
+      return;
+    }
+    const pick = { choice };
+    pickedRef.current[id] = pick;
+    setPicked({ ...pickedRef.current });
+    const before = queue.current;
+    async function saveAfterEarlierSaves() {
+      await before;
+      await saveToHub(id, pick);
+    }
+    queue.current = saveAfterEarlierSaves();
+  };
+
   return {
-    preferences: mergeExperimentalPreferences(registry).map((preference) => {
-      const isExperimental = preference.id === "experimental_approvals";
-      const state = save?.id === preference.id ? save.state : null;
-      const choice = resolvePreferenceChoice(
-        preference,
-        field?.value,
-        approvalsEnabled,
-      );
-      return {
-        id: preference.id,
-        label: preference.label,
-        hint: preference.hint,
-        save: state,
-        disabled: (!field && !isExperimental) || state === "saving",
-        ...(isOnOff(preference)
-          ? { kind: "switch" as const, on: choice === "yes" }
-          : { kind: "list" as const, options: preference.options, choice }),
-      };
-    }),
-    onSwitch: (id, on) => void choose(id, on ? "yes" : "no"),
-    onChoose: (id, choice) => void choose(id, choice),
-    fault: error,
+    preferences: listPreferences(registry).map((preference) => ({
+      id: preference.id,
+      label: preference.label,
+      group: preference.group,
+      hint: preference.hint,
+      options: preference.options,
+      choice:
+        inBrowser[preference.id] ??
+        picked[preference.id]?.choice ??
+        saved?.value?.[preference.id] ??
+        preference.default,
+      ends: preference.ends ?? null,
+      save: save?.id === preference.id ? save.state : null,
+      disabled: !saved && !(preference.id in inBrowser),
+    })),
+    onChoose: choose,
+    fault,
     focusPreference: focusPreference ?? null,
     focusSeq,
   };

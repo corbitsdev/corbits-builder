@@ -76,6 +76,20 @@ Tests are load-bearing only: invariants and end-to-end behaviour through the
 real API ([CONTRIBUTING.md](https://github.com/corbitsdev/corbits-builder/blob/main/CONTRIBUTING.md#rules-worth-knowing),
 [test/AGENTS.md](https://github.com/corbitsdev/corbits-builder/blob/main/test/AGENTS.md)).
 
+The Settings browser tests build the web app and use the real hub with an
+isolated test database. Install Chromium once, then run them with the same
+`E2E_DB_*` settings as the other end-to-end tests:
+
+```sh
+bunx playwright install chromium
+bun --env-file=.env.hub --conditions=intx-src test test/e2e/settings.test.ts
+```
+
+`PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH` can point to an existing Chromium
+installation instead. The tests cover every registered preference option,
+saved choices after a reload, failed saves and conflicts, rapid changes,
+browser-only settings, reviewers, keyboard controls and narrow layouts.
+
 ## Other scripts
 
 | Script                    | What it does                                                                                                                                                                             |
