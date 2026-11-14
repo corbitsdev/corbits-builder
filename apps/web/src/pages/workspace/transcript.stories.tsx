@@ -1,7 +1,6 @@
 import type { Meta, StoryObj } from "@storybook/react-vite";
-import type { AskQuestions } from "@corbits-builder/schemas/questions";
+import type { AskedQuestion } from "@corbits-builder/schemas/conversation";
 import { fn } from "storybook/test";
-import { ASK_QUESTIONS } from "./questions-card.tsx";
 import { RoomThread, type TranscriptTurn } from "./transcript.tsx";
 import workUnit from "./work-unit-message.stories.tsx";
 
@@ -25,16 +24,18 @@ const opening: readonly TranscriptTurn[] = [
   },
 ];
 
-const ask: AskQuestions = {
+const ask: AskedQuestion = {
   questions: [
     {
       id: "audience",
-      prompt: "Who uses it first?",
-      kind: "single",
+      header: "Audience",
+      question: "Who uses it first?",
       options: [
-        { value: "owner", label: "The owner" },
-        { value: "staff", label: "Counter staff" },
+        { label: "The owner", description: "" },
+        { label: "Counter staff", description: "" },
       ],
+      multiple: false,
+      custom: false,
     },
   ],
 };
@@ -48,7 +49,7 @@ const meta = {
     onOpenDocument: fn(),
     onDecide: fn(),
     onRequestChanges: fn(),
-    onAnswerQuestions: fn(() => Promise.resolve(true)),
+    onAnswerQuestion: fn(() => Promise.resolve(true)),
     standing: () => workUnit.args,
   },
   parameters: { layout: "fullscreen" },
@@ -109,21 +110,12 @@ export const AskingForApproval: Story = {
 
 export const AskingQuestions: Story = {
   args: {
-    turns: [
-      ...opening,
+    questions: [
       {
-        role: "assistant",
-        text: "",
         at: 4,
-        parts: [
-          {
-            kind: "tool-trace",
-            toolCallId: "call-questions",
-            name: ASK_QUESTIONS,
-            status: "output-available",
-            input: ask,
-          },
-        ],
+        signalName: "signal:question-1",
+        asked: ask,
+        status: "open",
       },
     ],
   },

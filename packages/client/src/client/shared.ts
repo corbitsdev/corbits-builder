@@ -61,6 +61,7 @@ import type {
   ConversationMessage,
   ConversationReceipt,
   ConversationEvents,
+  QuestionAnswer,
 } from "@corbits-builder/schemas/conversation";
 import type {
   CreateInvitation,
@@ -239,6 +240,14 @@ export type ProductApiClient = Readonly<{
     projectId: string,
     signal?: AbortSignal,
   ): Promise<ConversationEvents>;
+  /** Answers the coordinator's open question, by the ids the run gave its prompts. */
+  answerQuestion(
+    projectTenantId: string,
+    coordinatorRunId: string,
+    signalName: string,
+    answer: QuestionAnswer,
+    signal?: AbortSignal,
+  ): Promise<void>;
   mePrincipals(
     query?: { cursor?: string; limit?: number },
     signal?: AbortSignal,

@@ -1,5 +1,6 @@
 import { ConversationReceipt } from "@corbits-builder/schemas/conversation";
 import {
+  ProductApiError,
   projectPath,
   tenantPath,
   type ClientDeps,
@@ -8,8 +9,11 @@ import {
 
 export function buildConversationMethods(
   deps: ClientDeps,
-): Pick<ProductApiClient, "sendMessage" | "conversationEvents"> {
-  const { request } = deps;
+): Pick<
+  ProductApiClient,
+  "sendMessage" | "conversationEvents" | "answerQuestion"
+> {
+  const { request, baseUrl, headers, fetchRequest, options } = deps;
   return {
     async sendMessage(projectTenantId, coordinatorRunId, message, signal) {
       return ConversationReceipt.assert(
@@ -19,6 +23,39 @@ export function buildConversationMethods(
           message,
         ),
       );
+    },
+    // The run's own signal channel for the question.
+    async answerQuestion(
+      projectTenantId,
+      coordinatorRunId,
+      signalName,
+      answer,
+      signal,
+    ) {
+      const requestHeaders = new Headers(headers);
+      requestHeaders.set("Content-Type", "application/json");
+      const response = await fetchRequest(
+        new Request(
+          new URL(
+            `${tenantPath(projectTenantId)}/workflows/${encodeURIComponent(coordinatorRunId)}/signals`,
+            baseUrl,
+          ).href,
+          {
+            method: "POST",
+            headers: requestHeaders,
+            cache: "no-store",
+            credentials: options.credentials ?? "same-origin",
+            body: JSON.stringify({
+              runId: coordinatorRunId,
+              signalName,
+              signalId: signalName,
+              payload: answer,
+            }),
+            signal: signal ?? null,
+          },
+        ),
+      );
+      if (!response.ok) throw new ProductApiError(response);
     },
     conversationEvents(tenantId, projectId, signal) {
       return request(

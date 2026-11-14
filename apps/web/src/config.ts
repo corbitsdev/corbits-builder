@@ -1015,10 +1015,8 @@ export const wording = {
     show: "Show",
     hide: "Hide",
     answeredInChat: "Answered in the conversation",
-    replaced: "Replaced by the questions that followed",
-    /** One list item of the person's reply per question: "- Who signs in? — Staff, Guests". */
-    answerLine: (prompt: string, answers: readonly string[]) =>
-      `- ${prompt} — ${answers.join(", ")}`,
+    /** A question whose coordinator stopped before it was answered, so it takes no answer now. */
+    closed: "This question is no longer open",
   },
   archivedProject: {
     title: "This project is archived",

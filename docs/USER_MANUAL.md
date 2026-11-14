@@ -144,10 +144,11 @@ question, Enter continues with the option you moved to, and a number key picks
 the option in that place and moves on, except on the last question. → goes to
 the next question and ← goes back.
 
-After you send, the card shows "Answers sent" with **Show** to list them. If you
-reply in the conversation instead, the card says "Answered in the
-conversation." If the coordinator asks newer questions first, the old card says
-"Replaced by the questions that followed."
+The card stays open until you answer, even if you reload the page. After you
+send, the card shows "Answers sent" with **Show** to list them. If you reply in
+the conversation instead, the card says "Answered in the conversation" and
+shows what you wrote. If the coordinator stops before you answer, the card says
+"This question is no longer open."
 
 ## 4. Documents and approvals
 

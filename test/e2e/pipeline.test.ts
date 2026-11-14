@@ -3,7 +3,11 @@ import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { type } from "arktype";
-import type { NativeApproval, ProjectArtifact } from "@corbits-builder/client";
+import {
+  ProductApiError,
+  type NativeApproval,
+  type ProjectArtifact,
+} from "@corbits-builder/client";
 import { startTestHub, type TestHubHandle } from "./support/hub.ts";
 import {
   formatOpenAISseResponse,
@@ -1127,6 +1131,195 @@ describe("Builder E2E pipeline replay", () => {
                 fakeCredentialSecret,
                 1,
               );
+            });
+          },
+        );
+      } finally {
+        await rm(fixtureDir, { recursive: true, force: true });
+      }
+    },
+    STAGE_DEADLINE_MS,
+  );
+
+  test(
+    "pauses the coordinator on its question until the person answers by id, then continues with the answers",
+    async () => {
+      const fixtureDir = await mkdtemp(
+        join(tmpdir(), "builder-e2e-question-fixture-"),
+      );
+      const coordinatorTools = ["question", "read_artifact", "write_artifact"];
+      const audience = {
+        questions: [
+          {
+            header: "Audience",
+            question: "Who takes the orders?",
+            options: [
+              {
+                label: "The owner (Recommended)",
+                description: "One person runs the list.",
+              },
+              {
+                label: "Counter staff",
+                description: "Whoever is on shift.",
+              },
+            ],
+          },
+        ],
+      };
+      try {
+        await writeScenarioFixture(
+          fixtureDir,
+          { scenario: "bakery-orders-question", recordedFromCommit: "960ee2c" },
+          [
+            {
+              runKey: "coordinator-1",
+              role: "coordinator",
+              stage: "documents",
+              sourceRunId: "run_coord_question_1",
+              exchanges: withRequiredTools(coordinatorTools, [
+                {
+                  sse: formatOpenAISseResponse({
+                    toolCalls: [
+                      {
+                        id: "coord_question",
+                        name: "question",
+                        arguments: audience,
+                      },
+                    ],
+                  }),
+                  expect: {
+                    lastMessageRole: "user",
+                    userTextContains: "Bakery Orders",
+                    toolResults: [],
+                  },
+                },
+                {
+                  sse: formatOpenAISseResponse({
+                    text: "Counter staff it is. One more thing.",
+                    toolCalls: [
+                      {
+                        id: "coord_pickup",
+                        name: "question",
+                        arguments: {
+                          questions: [
+                            {
+                              header: "Pickup",
+                              question: "When do customers collect?",
+                              options: [],
+                            },
+                          ],
+                        },
+                      },
+                    ],
+                  }),
+                  expect: {
+                    lastMessageRole: "tool",
+                    toolResults: [
+                      {
+                        callId: "coord_question",
+                        toolName: "question",
+                        isError: false,
+                        keys: ["answers"],
+                        contains: "Counter staff",
+                      },
+                    ],
+                  },
+                },
+                {
+                  sse: formatOpenAISseResponse({
+                    text: "Mornings only, noted; I will write the brief for counter staff.",
+                  }),
+                  expect: {
+                    lastMessageRole: "tool",
+                    toolResults: [
+                      {
+                        callId: "coord_pickup",
+                        toolName: "question",
+                        isError: false,
+                        keys: ["reply"],
+                        contains: "Mornings only",
+                      },
+                    ],
+                  },
+                },
+              ]),
+            },
+          ],
+        );
+
+        await withPipelineScenario(
+          {
+            fixtureDir,
+            projectId: "bakery-orders",
+            title: "Bakery Orders",
+            problemStatement: "Build Bakery Orders for our shop.",
+          },
+          async (driver) => {
+            const { hub, projectTenantId, projectId, coordinatorRunId } =
+              driver;
+            const { client } = hub;
+            const waitForQuestion = (count: number, description: string) =>
+              driver.waitFor("question", description, async () => {
+                const { questions } = await client.conversationEvents(
+                  projectTenantId,
+                  projectId,
+                );
+                return questions[count - 1];
+              });
+
+            await driver.runStage("question", async () => {
+              const first = await waitForQuestion(
+                1,
+                "the coordinator's open question",
+              );
+              expect(first.status).toBe("open");
+              const [audienceQuestion] = first.asked.questions;
+              if (audienceQuestion === undefined)
+                throw new Error("the question carries no prompt");
+              expect(audienceQuestion.header).toBe("Audience");
+
+              const counterStaff = { [audienceQuestion.id]: ["Counter staff"] };
+              await client.answerQuestion(
+                projectTenantId,
+                coordinatorRunId,
+                first.signalName,
+                { answers: counterStaff },
+              );
+              const pickup = await waitForQuestion(
+                2,
+                "the coordinator's second question after the first was answered",
+              );
+              expect(pickup.asked.questions[0]?.header).toBe("Pickup");
+
+              // An answered question takes no second answer.
+              await expect(
+                client.answerQuestion(
+                  projectTenantId,
+                  coordinatorRunId,
+                  first.signalName,
+                  { answers: counterStaff },
+                ),
+              ).rejects.toBeInstanceOf(ProductApiError);
+
+              await client.answerQuestion(
+                projectTenantId,
+                coordinatorRunId,
+                pickup.signalName,
+                { reply: "Mornings only" },
+              );
+              await driver.waitForAssistantTurn(
+                "question",
+                "Mornings only, noted",
+              );
+
+              const { questions } = await client.conversationEvents(
+                projectTenantId,
+                projectId,
+              );
+              expect(questions).toMatchObject([
+                { status: "answered", answer: { answers: counterStaff } },
+                { status: "answered", answer: { reply: "Mornings only" } },
+              ]);
             });
           },
         );

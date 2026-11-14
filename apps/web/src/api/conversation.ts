@@ -5,10 +5,12 @@
  * coordinator run's own projection, not a rendered transcript, and a send is
  * native run mail that returns Interchange's 202 acceptance receipt. The
  * thread renders `ChatMessage`, so `send` composes its receipt into that
- * shape and `events` derives the latest person-input question (an input park
- * and its releasing signal) from the events.
+ * shape.
  */
-import type { ConversationEvents } from "@corbits-builder/schemas/conversation";
+import type {
+  ConversationEvents,
+  QuestionAnswer,
+} from "@corbits-builder/schemas/conversation";
 import { wording } from "../config.ts";
 import { productClient } from "./transport.ts";
 import {
@@ -46,6 +48,24 @@ export async function readConversationEvents(
 
 export type SendReceipt = { runId: string; address: string; messageId: string };
 
+async function coordinatorRun(projectId: string) {
+  const project = await productClient().project(
+    await workspaceTenantId(),
+    projectId,
+  );
+  if (project.coordinatorRunId === null)
+    throw new ApiFailure(
+      {
+        code: "coordinator_unavailable",
+        message: wording.conversation.noCoordinator,
+        correlationId: "-",
+        retryable: false,
+      },
+      409,
+    );
+  return { tenantId: project.tenantId, runId: project.coordinatorRunId };
+}
+
 /**
  * Sends one person message as native mail to the project's coordinator run
  * and composes the 202 receipt into the `ChatMessage` the thread renders:
@@ -60,23 +80,10 @@ export async function sendMessage(
   receipt: SendReceipt;
   message: ChatMessage;
 }> {
-  const client = productClient();
-  const project = await client.project(await workspaceTenantId(), projectId);
-  if (project.coordinatorRunId === null)
-    throw new ApiFailure(
-      {
-        code: "coordinator_unavailable",
-        message: wording.conversation.noCoordinator,
-        correlationId: "-",
-        retryable: false,
-      },
-      409,
-    );
-  const receipt = await client.sendMessage(
-    project.tenantId,
-    project.coordinatorRunId,
-    { content },
-  );
+  const { tenantId, runId } = await coordinatorRun(projectId);
+  const receipt = await productClient().sendMessage(tenantId, runId, {
+    content,
+  });
   return {
     receipt,
     message: {
@@ -89,56 +96,18 @@ export async function sendMessage(
   };
 }
 
-// --- The input-park question fold ---------------------------------------------
-
-export type QuestionState = "pending" | "answered" | "input-received";
-
-export type PendingQuestion = {
-  park: ConversationEvent;
-  received?: ConversationEvent;
-  state: QuestionState;
-  answeredByYou: boolean;
-  correlationId?: string;
-};
-
 export function isInputPark(event: ConversationEvent): boolean {
   return event.type === "SignalAwaited" && event.body["parkKind"] === "input";
 }
 
-function receivedCorrelationId(event: ConversationEvent): string | undefined {
-  if (event.type !== "SignalReceived") return undefined;
-  const payload = event.body["payload"] as
-    | { headers?: { messageId?: unknown } }
-    | undefined;
-  const messageId = payload?.headers?.messageId;
-  return typeof messageId === "string" ? messageId : undefined;
-}
+// --- The coordinator's questions ----------------------------------------------
 
-/**
- * The latest question to the person: the last input park plus whichever
- * committed signal released it. Correlation comes only from accepted 202
- * message ids.
- */
-export function latestQuestion(
-  events: ConversationEvent[],
-  yourAnswerMessageIds: readonly string[],
-): PendingQuestion | undefined {
-  const park = [...events].reverse().find(isInputPark);
-  if (park === undefined) return undefined;
-  const received = events
-    .filter((event) => event.seq > park.seq)
-    .sort((a, b) => a.seq - b.seq)
-    .find((event) => event.type === "SignalReceived");
-  if (received === undefined)
-    return { park, state: "pending", answeredByYou: false };
-  const correlationId = receivedCorrelationId(received);
-  const answeredByYou =
-    correlationId !== undefined && yourAnswerMessageIds.includes(correlationId);
-  return {
-    park,
-    received,
-    state: answeredByYou ? "answered" : "input-received",
-    answeredByYou,
-    ...(correlationId === undefined ? {} : { correlationId }),
-  };
+/** Answers the coordinator's open question; the run takes it as the question call's result. */
+export async function answerQuestion(
+  projectId: string,
+  signalName: string,
+  answer: QuestionAnswer,
+): Promise<void> {
+  const { tenantId, runId } = await coordinatorRun(projectId);
+  await productClient().answerQuestion(tenantId, runId, signalName, answer);
 }
