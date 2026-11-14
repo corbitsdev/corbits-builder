@@ -1,0 +1,81 @@
+name: UI visual evidence
+
+on:
+  pull_request:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: visual-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
+jobs:
+  changes:
+    runs-on: ubuntu-24.04
+    permissions:
+      pull-requests: read
+    outputs:
+      visual: ${{ steps.filter.outputs.visual }}
+    steps:
+      - uses: dorny/paths-filter@ceb8a2b8f2d89434be7ff52d3de7ec3738c5cc9d # v4.0.3
+        id: filter
+        with:
+          filters: |
+            visual:
+              - 'apps/web/**'
+              - 'packages/**'
+              - 'patches/**'
+              - 'vendor/**'
+              - 'bun.lock'
+              - 'bunfig.toml'
+              - 'package.json'
+              - 'tsconfig*.json'
+              - '.github/**'
+              - 'scripts/visual/**'
+
+  capture:
+    name: UI screenshots
+    needs: changes
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    env:
+      RUN: ${{ needs.changes.outputs.visual == 'true' }}
+      BASE_SHA: ${{ github.event.pull_request.base.sha }}
+      HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+      STORYBOOK_DISABLE_TELEMETRY: "1"
+    steps:
+      - if: env.RUN == 'true'
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ github.event.pull_request.head.sha }}
+          persist-credentials: false
+      - if: env.RUN == 'true'
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ github.event.pull_request.base.sha }}
+          path: .tmp/visual-base
+          persist-credentials: false
+      - if: env.RUN == 'true'
+        uses: ./.github/actions/setup
+      - if: env.RUN == 'true'
+        name: Build both exact revisions and capture
+        shell: bash
+        run: |
+          set -o pipefail
+          mkdir -p test-results/visual
+          start=$SECONDS
+          bun run test:visual
+          bun install --cwd .tmp/visual-base --frozen-lockfile
+          bun run --cwd .tmp/visual-base/apps/web build-storybook 2>&1 | tee test-results/visual/base-build.log
+          bun run --cwd apps/web build-storybook 2>&1 | tee test-results/visual/head-build.log
+          bunx --no-install playwright install --with-deps chromium
+          bun scripts/visual/capture.ts .tmp/visual-base/apps/web/storybook-static apps/web/storybook-static test-results/visual "$BASE_SHA" "$HEAD_SHA" 2>&1 | tee test-results/visual/capture.log
+          echo "Build, browser setup and capture: $((SECONDS - start)) seconds" >> "$GITHUB_STEP_SUMMARY"
+      - if: ${{ !cancelled() && env.RUN == 'true' }}
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: ui-visual-evidence
+          path: test-results/visual/
+          if-no-files-found: error
+          retention-days: 30

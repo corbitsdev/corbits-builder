@@ -153,3 +153,110 @@ bun run dev:seed -- --stage=ready_to_build --tenant=<workspaceTenantId>
 - Each role's prompt: `workflows/<role>/src/`. Its `defineTool` tools:
   `apps/hub/src/` (`artifacts/`, `projects/`, `builds/`, `skills/`).
 - Interchange docs: [Interchange's](https://github.com/faremeter/interchange) `docs/` folder at the commit in `vendor/VENDORED_REVISION`.
+
+## Pull request visual evidence
+
+`UI screenshots` builds Storybook at the PR event's exact base and head SHAs,
+then uses the head revision's pinned Playwright Chromium to capture both builds.
+It never starts Builder's hub, database or agents. It runs for `apps/web/**`,
+workspace packages, vendor/patch changes, dependency manifests/lockfiles,
+Storybook configuration and capture/CI infrastructure. All registered stories
+are captured, rather than trying to infer affected stories. Functional and e2e
+tests remain separate; screenshots do not verify authentication, routing or
+persistence. CL-12281 owns the broader frontend/backend CI split.
+
+Register a deterministic state with a `visual` tag on a story or its metadata:
+
+```ts
+export const SignIn: Story = { tags: ["visual"] };
+```
+
+Storybook's inherited tags work too; `!visual` opts a story out of an inherited
+tag. Keep the story's title/export stable (or set an explicit metadata `id`)
+to preserve its ID. The capture set is the union of tagged IDs from both
+revisions: a newly registered existing story still gets a before image. A
+missing ID is explicitly added/removed; a renamed ID is removal plus addition.
+Removing only a tag still captures that ID for the transition PR.
+
+Stories use plain fixture args and the existing view components. Avoid live
+requests, unpredictable IDs and time-dependent fixture content. The runner
+blocks external network requests, fixes Date and seeds Math.random, sets en-US
+and UTC, uses bundled fonts, waits for Storybook 11's finished render phase
+(including loaders/play), checks root visibility and the theme, waits for fonts
+and images, disables screenshot animations and requires two stable captures.
+Do not hide an expected render error with an empty story. Async states should
+finish their loaders/play functions before capture; timers that update content
+later are not a reliable fixture. Any runtime/console error, failed HTTP asset,
+missing font/image or unstable/blank render fails capture. Changes in pixels
+never fail CI. Pixelmatch uses a 0.1 threshold and ignores antialiasing-only
+changes; inspect the actual images as well as highlighted differences.
+
+Each story has four variants: 1440×1000 desktop and 390×844 mobile, each in
+light and dark mode, at device scale 1. Images include the full page. Both
+revisions use the same browser/OS, viewport, theme and rendering controls.
+Each revision supplies its own bundled fonts so deliberate font changes remain
+visible. The initial captures are sign-in, sign-up and the project library.
+
+### Reviewing the report
+
+One bot comment per PR lists changed/added/removed captures and links to the
+`ui-visual-evidence` Actions artifact. Download and extract the ZIP, then open
+`index.html`: changed pairs are expanded and unchanged pairs collapsed. PNGs,
+highlighted differences, Markdown/JSON reports and build/capture logs are also
+included. Artifacts expire after 30 days. GitHub sign-in/repository access is
+required to download them. Images are **not inline in the PR comment**; this
+was an explicit scope decision to avoid personal tokens and image hosting.
+
+PR code runs with read-only repository access and no publishing secrets. A
+separate `workflow_run` publisher executes only default-branch code, installs
+no packages and restores no caches. It validates the originating workflow,
+run, current PR head repository/SHA, artifact and report, reads only bounded
+JSON from the ZIP without extracting it, and updates its marked bot comment.
+Publishers are serialized; superseded heads, attempts and runs cannot replace
+newer results. Forks use the same path after GitHub's normal approval of
+external workflows. A changed base SHA requires a fresh capture rather than
+posting mismatched evidence. The publisher does not run until its workflow
+exists on the default branch; its first live comment must therefore be verified
+after merge. No `pull_request_target` workflow runs contributed code.
+
+### Local capture and validation
+
+Build each revision in a separate checkout with its own frozen dependencies:
+
+```sh
+# In each checkout:
+bun install --frozen-lockfile
+bun run --cwd apps/web build-storybook
+
+# In the proposed checkout (the runner and browser are shared by both builds):
+bunx --no-install playwright install chromium
+bun scripts/visual/capture.ts /absolute/base/apps/web/storybook-static \
+  apps/web/storybook-static test-results/visual BASE_FULL_SHA HEAD_FULL_SHA
+```
+
+Use the exact SHAs of those checkouts, not a moving branch name. The report
+records both; uncommitted edits require rebuilding and must be described as
+local validation rather than evidence for a committed SHA.
+
+```sh
+bun run test:visual
+bun scripts/visual/verify-browser.ts apps/web/storybook-static
+```
+
+The browser validation uses temporary copies of the real Storybook build to
+check identical images, an intentional border change, added/removed IDs and
+runtime/blank-render failures across the variants. Its optional second argument
+copies the changed report to a directory for inspection. Run it when changing
+the runner or upgrading Storybook/Playwright: the render-phase integration was
+verified against Storybook 11.0.0-beta.0 and Playwright 1.64.1. See the official
+[Storybook CI](https://storybook.js.org/docs/writing-tests/in-ci),
+[tags](https://storybook.js.org/docs/11/writing-stories/tags),
+[Playwright screenshots](https://playwright.dev/docs/screenshots) and
+[Actions artifacts](https://docs.github.com/en/actions/tutorials/store-and-share-data)
+documentation. No Vitest addon or baseline approval service is involved.
+
+CI records build/browser/capture elapsed seconds in its job summary, and the
+report records capture/comparison time. Use the run's timestamps for total CI
+time, including setup; the under-five-minute goal is a target, not a measured
+guarantee. The ten-minute job timeout catches hangs without treating a slow
+runner as a pixel regression.

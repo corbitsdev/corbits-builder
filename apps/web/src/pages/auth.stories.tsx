@@ -26,9 +26,9 @@ const meta = {
 export default meta;
 type Story = StoryObj<typeof meta>;
 
-export const SignIn: Story = {};
+export const SignIn: Story = { tags: ["visual"] };
 
-export const SignUp: Story = { args: { mode: "sign-up" } };
+export const SignUp: Story = { tags: ["visual"], args: { mode: "sign-up" } };
 
 /** The hub is checking the credentials; the form and the switch wait. */
 export const SigningIn: Story = { args: { busy: true } };

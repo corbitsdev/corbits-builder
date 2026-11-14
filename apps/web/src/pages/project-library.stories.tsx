@@ -130,7 +130,7 @@ const meta = {
 export default meta;
 type Story = StoryObj<typeof meta>;
 
-export const Tiles: Story = {};
+export const Tiles: Story = { tags: ["visual"] };
 
 /** One line per project; the covers shrink to a swatch of their pattern. */
 export const List: Story = {
