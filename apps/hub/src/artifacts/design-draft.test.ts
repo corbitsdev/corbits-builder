@@ -29,12 +29,12 @@ import {
   designThemes,
 } from "@corbits-builder/designer/skills" with { type: "macro" };
 import { DesignBundle } from "@corbits-builder/schemas/artifact";
+import { checkDesignDefinition } from "../config/design.ts";
 import {
   CHECK_DESIGN_TOOL,
-  checkDesignDefinition,
-  createDesignCheck,
+  createDesignSubmission,
   touchesDesigns,
-} from "../builds/design-check.ts";
+} from "../builds/design-submission.ts";
 import { designPath, type CodingSidecarEnv } from "../builds/sidecar-tools.ts";
 import {
   prepareWorkspace,
@@ -49,7 +49,7 @@ import {
   manualPictureRefs,
   manualPictures,
 } from "./design-draft.ts";
-import { createDesignTools } from "./design-tools.ts";
+import { fileDesignOption } from "./design-tools.ts";
 
 const STARTER = designStarterFiles();
 const MODERN_SLEEK = designThemes()["modern-sleek"]!;
@@ -114,15 +114,10 @@ test("the draft serves only regular files inside .builder/designs", async () => 
   }
 });
 
-test("file_design_option packs per-screen files and drops the untouched starter home screen", async () => {
+test("check_design packs per-screen files and drops the untouched starter home screen", async () => {
   const workspace = await realpath(
     await mkdtemp(join(tmpdir(), "sb-design-file-")),
   );
-  const check = createDesignCheck(workspace, async () => ({
-    exitCode: 0,
-    output:
-      "check passed: served .builder/designs and opened /, /#/overview, /#/orders at 1280 and 390 px with no errors",
-  }));
   try {
     for (const [path, text] of Object.entries(STARTER)) {
       const target = join(workspace, path);
@@ -214,12 +209,14 @@ test("file_design_option packs per-screen files and drops the untouched starter 
     const capabilities = {
       resolve: () => ({ resolve: async () => ({ kind: "http", fetch }) }),
     } as unknown as RuntimeCapabilities;
-    const tools = createDesignTools()({
-      toolCwd: workspace,
-      capabilities,
-    } as never);
+    const tools = createDesignSubmission(
+      workspace,
+      async () => ({ exitCode: 0, output: "check passed: opened all screens" }),
+      (submission, signal) =>
+        fileDesignOption(capabilities, submission, signal),
+    );
     const result = await tools.run(
-      { id: "call-1", name: "file_design_option", arguments: {} },
+      { id: "call-1", name: "check_design", arguments: {} },
       new AbortController().signal,
     );
     expect(result.isError).toBeUndefined();
@@ -234,7 +231,6 @@ test("file_design_option packs per-screen files and drops the untouched starter 
     );
     expect(parsed.files["DESIGN.md"]).toContain("colors:");
   } finally {
-    check.dispose();
     await rm(workspace, { recursive: true, force: true });
   }
 });
@@ -379,11 +375,6 @@ test("designer agent writes per-screen files, is held by checkBeforeDone until c
         }
       : undefined,
   );
-  const check = createDesignCheck(workspace, async () => ({
-    exitCode: 0,
-    output:
-      "check passed: served .builder/designs and opened /, /#/overview, /#/orders at 1280 and 390 px with no errors",
-  }));
   const designCodingTools = defineTool<CodingSidecarEnv>({
     id: "@corbits-builder/coding/test-design",
     requires: ["toolCwd"],
@@ -396,6 +387,15 @@ test("designer agent writes per-screen files, is held by checkBeforeDone until c
     ],
     factory: (env) => {
       const native = posix(env);
+      const submission = createDesignSubmission(
+        workspace,
+        async () => ({
+          exitCode: 0,
+          output: "check passed: opened all screens",
+        }),
+        (prepared, signal) =>
+          fileDesignOption(env.capabilities, prepared, signal),
+      );
       return {
         definitions: [
           ...native.definitions.filter((tool) =>
@@ -419,8 +419,7 @@ test("designer agent writes per-screen files, is held by checkBeforeDone until c
               : rawCall;
           if (call.name === CHECK_DESIGN_TOOL) {
             await syncDesignScreensOnDisk(workspace);
-            const { checklist } = await check.current(signal);
-            return { callId: call.id, content: checklist };
+            return submission.run(call, signal);
           }
           const result = await native.run(call, signal);
           const path = call.arguments?.["path"];
@@ -433,6 +432,7 @@ test("designer agent writes per-screen files, is held by checkBeforeDone until c
           return result;
         },
         dispose: async () => {
+          submission.dispose();
           await native.dispose?.();
         },
       };
@@ -513,7 +513,7 @@ test("designer agent writes per-screen files, is held by checkBeforeDone until c
     }),
     standards: [],
     inference: { provider: "anthropic", model: "claude-sonnet-4-6" },
-    tools: [createDesignTools(), designCodingTools],
+    tools: [designCodingTools],
   });
 
   const shell = STARTER[".builder/designs/index.html"]!.replaceAll(
@@ -562,12 +562,6 @@ test("designer agent writes per-screen files, is held by checkBeforeDone until c
         type: "tool_use",
         id: "call-check",
         name: CHECK_DESIGN_TOOL,
-        input: {},
-      },
-      {
-        type: "tool_use",
-        id: "call-file",
-        name: "file_design_option",
         input: {},
       },
     ],
@@ -683,7 +677,6 @@ test("designer agent writes per-screen files, is held by checkBeforeDone until c
     expect(parsed.files["DESIGN.md"]).toContain("colors:");
   } finally {
     await agent.close();
-    check.dispose();
     await rm(root, { recursive: true, force: true });
   }
 });

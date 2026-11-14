@@ -11,7 +11,7 @@ This package only declares data. It imports `@intx/agent/authoring` and
 [hub's designer entry][entry] imports it, supplies the model, director and
 tools, and builds it into the workflow the [coordinator][coordinator] starts
 with `design_app`, one designer per design concept and pass. Its tools are file
-reads and writes in its workspace, `check_design`, `file_design_option` and
+reads and writes in its workspace, `check_design` and
 `mail`; it has no shell. The hub also reads this package's starter, themes
 and skills through its macros.
 

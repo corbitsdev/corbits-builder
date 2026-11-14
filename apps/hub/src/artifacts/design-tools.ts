@@ -1,28 +1,15 @@
-import { type } from "arktype";
-import { mkdir, readFile, realpath, rm, writeFile } from "node:fs/promises";
+import { mkdir, rm, writeFile } from "node:fs/promises";
 import { dirname, join, sep } from "node:path";
-import { defineTool, type BaseEnv } from "@intx/agent/authoring";
 import { HUB_CREDENTIAL_HANDLE } from "@intx/types/credential-delivery";
 import type { RuntimeCapabilities } from "@intx/types/runtime-capabilities";
-import { DesignBundle } from "@corbits-builder/schemas/artifact";
 import {
-  designCheckFor,
-  registerDesignFiler,
-  type FiledDesignArtifact,
-} from "../builds/design-check.ts";
-import { withoutUnusedStarterHome } from "./design-draft.ts";
-import { withDesignTokens } from "./design-tokens.ts";
-import { DESIGN_STYLES } from "./design-tweaks.ts";
+  DesignBundle,
+  type ArtifactRef,
+} from "@corbits-builder/schemas/artifact";
+import type { PreparedDesignSubmission } from "./design-draft.ts";
 import { resolveWorkflowProjectScope } from "../workflows/project-scope.ts";
 import { workflowHttpJson } from "../workflows/http-json.ts";
-import { failure, HubArtifactReceipt } from "./tools.ts";
-
-interface DesignToolEnv extends BaseEnv {
-  toolCwd: string;
-  capabilities: RuntimeCapabilities;
-}
-
-export const MAX_DESIGN_BYTES = 256 * 1024;
+import { HubArtifactReceipt } from "./tools.ts";
 
 // Writes a bundle's files under root, skipping any path that would land outside it.
 export async function writeBundle<T extends string | Uint8Array>(
@@ -49,154 +36,34 @@ export async function unpackDesign(content: string, workspace: string) {
   return writeBundle(root, files);
 }
 
-async function readDesignFolder(workspace: string) {
-  const files: Record<string, string> = {};
-  for await (const path of new Bun.Glob("**/*").scan({
-    cwd: join(workspace, ".builder"),
-  }))
-    files[path] = await readFile(join(workspace, ".builder", path), "utf8");
-  return withoutUnusedStarterHome(files);
-}
-
-// Files the designer's .builder folder as its design concept's option. The person decides on the
-// design once, by choosing among the filed options, never while a designer is still working.
-export function createDesignTools() {
-  const definitions = [
-    {
-      name: "file_design_option",
-      description:
-        "File the .builder folder (DESIGN.md and designs/) as the next version of your design concept's option. The person compares it with the other concepts' options and picks the one to build. The hub assigns its id, version and sha256 and returns them.",
-      inputSchema: {
-        type: "object",
-        properties: {},
-        additionalProperties: false,
+export async function fileDesignOption(
+  capabilities: RuntimeCapabilities,
+  submission: PreparedDesignSubmission,
+  signal: AbortSignal,
+): Promise<ArtifactRef> {
+  const scope = await resolveWorkflowProjectScope(
+    capabilities,
+    "designer",
+    signal,
+  );
+  const projectPath =
+    "/api/tenants/" +
+    encodeURIComponent(scope.tenantId) +
+    "/projects/" +
+    encodeURIComponent(scope.projectId);
+  const { artifact } = HubArtifactReceipt.assert(
+    await workflowHttpJson({
+      capabilities,
+      handle: HUB_CREDENTIAL_HANDLE,
+      path: projectPath + "/artifacts",
+      body: {
+        kind: "design_option",
+        title: submission.title,
+        content: submission.content,
       },
-    },
-  ];
-  return defineTool<DesignToolEnv>({
-    id: "@corbits-builder/artifacts/design-tools",
-    credentials: [{ handle: HUB_CREDENTIAL_HANDLE }],
-    requires: ["toolCwd", "capabilities"],
-    definitions: [{ name: "file_design_option" }],
-    factory: (env) => {
-      let lastFiled:
-        | { content: string; artifact: FiledDesignArtifact }
-        | undefined;
-      const fileOption = async (
-        signal: AbortSignal,
-      ): Promise<FiledDesignArtifact> => {
-        const files = await readDesignFolder(env.toolCwd);
-        const doc = files["DESIGN.md"];
-        const styles = files[DESIGN_STYLES];
-        if (doc === undefined || styles === undefined)
-          throw new Error(
-            `invalid_design: .builder needs DESIGN.md and ${DESIGN_STYLES}`,
-          );
-        try {
-          files["DESIGN.md"] = withDesignTokens(doc, styles);
-        } catch (error) {
-          throw new Error(
-            `invalid_design: ${error instanceof Error ? error.message : String(error)}`,
-          );
-        }
-        const bundle = DesignBundle({ files });
-        if (bundle instanceof type.errors)
-          throw new Error("invalid_design: " + bundle.summary);
-        const content = JSON.stringify(bundle);
-        const bytes = Buffer.byteLength(content);
-        if (bytes > MAX_DESIGN_BYTES)
-          throw new Error(
-            `design_too_large: ${bytes} bytes; the limit is ${MAX_DESIGN_BYTES}`,
-          );
-        if (lastFiled?.content === content) return lastFiled.artifact;
-        const scope = await resolveWorkflowProjectScope(
-          env.capabilities,
-          "designer",
-          signal,
-        );
-        const projectPath =
-          "/api/tenants/" +
-          encodeURIComponent(scope.tenantId) +
-          "/projects/" +
-          encodeURIComponent(scope.projectId);
-        const title = doc.match(/^#\s+(.+)$/m)?.[1]?.trim() ?? "Design";
-        const { artifact } = HubArtifactReceipt.assert(
-          await workflowHttpJson({
-            capabilities: env.capabilities,
-            handle: HUB_CREDENTIAL_HANDLE,
-            path: projectPath + "/artifacts",
-            body: {
-              kind: "design_option",
-              title: title.slice(0, 512),
-              content,
-            },
-            maxResponseBytes: 16384,
-            signal,
-          }),
-        );
-        lastFiled = { content, artifact };
-        return artifact;
-      };
-      registerDesignFiler(env.toolCwd, fileOption);
-      return {
-        definitions,
-        run: async (call, signal) => {
-          if (call.name !== "file_design_option")
-            return {
-              callId: call.id,
-              content: "unknown_design_tool",
-              isError: true,
-            };
-          try {
-            const workspace = await realpath(env.toolCwd);
-            registerDesignFiler(workspace, fileOption);
-            // The person reviews only a mockup that passed check-app as it is filed.
-            const check = designCheckFor(workspace);
-            if (!check)
-              return {
-                callId: call.id,
-                content:
-                  "design_unchecked: check-app has not run on the design yet",
-                isError: true,
-              };
-            const checked = await check.current(signal);
-            if (!checked.passed) {
-              if (checked.filingError !== undefined) {
-                if (
-                  checked.filingError instanceof Error &&
-                  /^(?:invalid_design|design_too_large):/.test(
-                    checked.filingError.message,
-                  )
-                )
-                  return {
-                    callId: call.id,
-                    content: checked.filingError.message,
-                    isError: true,
-                  };
-                return failure(call.id, checked.filingError);
-              }
-              return {
-                callId: call.id,
-                content: `design_check_failed: the design is filed once it passes check-app.\n${checked.checklist}`,
-                isError: true,
-              };
-            }
-            const artifact = checked.artifact ?? (await fileOption(signal));
-            return { callId: call.id, content: JSON.stringify(artifact) };
-          } catch (error) {
-            if (
-              error instanceof Error &&
-              /^(?:invalid_design|design_too_large):/.test(error.message)
-            )
-              return {
-                callId: call.id,
-                content: error.message,
-                isError: true,
-              };
-            return failure(call.id, error);
-          }
-        },
-      };
-    },
-  });
+      maxResponseBytes: 16384,
+      signal,
+    }),
+  );
+  return artifact;
 }

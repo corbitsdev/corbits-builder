@@ -126,16 +126,16 @@ import {
   readUserManual,
   manualPictures,
   warmStepWorkspace,
+  serializeDesign,
 } from "./design-draft.ts";
 import type { LiveApps } from "../live-app/runner.ts";
 import { appContent, bundleFiles } from "../builds/app-snapshot.ts";
-import { MAX_DESIGN_BYTES } from "./design-tools.ts";
 import { DESIGN_STYLES, setThemeTokens } from "./design-tweaks.ts";
 import {
   coordinatorTweaksNote,
   designerTweaksNote,
 } from "../config/design-tweaks.ts";
-import { designChosenNote } from "../config/design.ts";
+import { designChosenNote, MAX_DESIGN_BYTES } from "../config/design.ts";
 import { loadSettings } from "../settings/policy.ts";
 import {
   agentDecidesApprovals,
@@ -703,7 +703,7 @@ export function createArtifactService(
 
   function designDraftOf(files: Record<string, string>) {
     const draft = DesignDraft.assert({ files });
-    if (Buffer.byteLength(JSON.stringify(draft)) > MAX_DESIGN_BYTES)
+    if (serializeDesign(draft.files).bytes > MAX_DESIGN_BYTES)
       throw new ProjectError(409, "design_draft_too_large");
     return draft;
   }
@@ -1582,7 +1582,7 @@ export function createArtifactService(
         throw new ProjectError(409, "design_concept_unknown");
       if (input.kind === "design" && concept)
         throw new ProjectError(409, "design_concept_option", {
-          hint: "this designer works on a design concept; file_design_option files it",
+          hint: "this designer works on a design concept; check_design validates and files it",
         });
       const title = concept ?? input.title;
       const [existing] = concept

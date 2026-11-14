@@ -211,11 +211,10 @@ const ranShell = (call: TaskCall, pattern: RegExp) =>
 
 // Run 36's coder passed check-app, kept editing, broke the app and would have replied done; a reply
 // counts as done only when no file changed after the last passing check. check_design is the
-// designer's check-app; file_design_option files only a design it passed as it stands.
+// designer's check-app and files the design when it passes.
 function unchecked(turns: readonly ConversationTurn[]): boolean {
   for (const call of taskCalls(turns)) {
     if (call.check) return call.isError || !call.check.checkPassed;
-    if (call.name === "file_design_option") return call.isError;
     if (WRITE_TOOLS.has(call.name) || ranShell(call, SHELL_WRITE)) return true;
   }
   return false;
@@ -225,7 +224,6 @@ const filed = (call: TaskCall) =>
   !call.isError &&
   (call.name === "write_artifact" ||
     call.name === "file_package" ||
-    call.name === "file_design_option" ||
     call.check?.filed === true);
 
 // A writer on 2026-10-30 replied with the whole approaches document as text and never filed it;
@@ -285,7 +283,7 @@ function holdReply(
     return "Files changed after the last passing check-app, so the work is not done yet.";
   if (config.fileBeforeDone && unfiled(turns)) {
     if (config.checkBeforeDone)
-      return "The design option is not filed yet; check_design or file_design_option files it.";
+      return "The design option is not filed yet; check_design validates and files it.";
     return "The document is not filed yet; write_artifact files it.";
   }
   // The person may have asked to wait, so the approval is a reminder once rather than a rule.

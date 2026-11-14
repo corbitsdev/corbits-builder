@@ -49,14 +49,14 @@ import {
 import { installedPackages } from "./package-install.ts";
 import { undeclaredImports } from "./import-scan.ts";
 import { typeProbe } from "./type-probe.ts";
+import { fileDesignOption } from "../artifacts/design-tools.ts";
+import { checkDesignDefinition, DESIGNS } from "../config/design.ts";
 import {
   CHECK_DESIGN_TOOL,
-  checkDesignDefinition,
-  createDesignCheck,
-  DESIGNS,
+  createDesignSubmission,
   touchesDesigns,
-  type DesignCheck,
-} from "./design-check.ts";
+  type DesignSubmission,
+} from "./design-submission.ts";
 
 // A model retries a refused absolute path verbatim until the doom guard ends the run, as with the
 // workspace path with "/" typed for "-", or "/builder" meaning ".builder". Naming the workspace path
@@ -247,7 +247,7 @@ export function createSidecarCodingTools(policy: {
           workspace,
           signal,
         );
-      let designCheck: DesignCheck | undefined;
+      let designSubmission: DesignSubmission | undefined;
       // The project's app repository, once the workspace is prepared. Every call that can change
       // files versions the workspace in the background; the builder waits on a push only for a
       // passing check, which is filed once it is saved.
@@ -344,8 +344,11 @@ export function createSidecarCodingTools(policy: {
             throw error;
           }
           if (design)
-            designCheck = createDesignCheck(workspace, (signal) =>
-              executor.command("check-app", [DESIGNS], signal),
+            designSubmission = createDesignSubmission(
+              workspace,
+              (signal) => executor.command("check-app", [DESIGNS], signal),
+              (submission, signal) =>
+                fileDesignOption(env.capabilities, submission, signal),
             );
           return executor;
         } catch (error) {
@@ -573,15 +576,9 @@ export function createSidecarCodingTools(policy: {
           if (browserNames.has(call.name)) return runBrowser(call, signal);
           if (design && call.name === CHECK_DESIGN_TOOL) {
             await open(signal);
-            if (!designCheck) throw new Error("design_check_missing");
+            if (!designSubmission) throw new Error("design_submission_missing");
             await syncDesignScreensOnDisk(await realpath(env.toolCwd));
-            const { checklist, passed, artifact } =
-              await designCheck.current(signal);
-            const detail: CheckDetail = {
-              checkPassed: passed,
-              filed: artifact !== undefined,
-            };
-            return { callId: call.id, content: checklist, detail };
+            return designSubmission.run(call, signal);
           }
           if (!offered(call.name))
             return {
@@ -644,7 +641,7 @@ export function createSidecarCodingTools(policy: {
         },
         dispose: async () => {
           await opened?.close(AbortSignal.timeout(VERSION_CLOSE_MS));
-          designCheck?.dispose();
+          designSubmission?.dispose();
           await native.dispose?.();
           await browser?.tools.then(
             (tools) => tools.dispose?.(),

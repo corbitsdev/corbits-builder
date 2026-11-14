@@ -1,10 +1,13 @@
-import { constants } from "node:fs";
-import { open, realpath } from "node:fs/promises";
+import { constants, existsSync } from "node:fs";
+import { open, readFile, realpath } from "node:fs/promises";
 import { dirname, join } from "node:path";
 import { type } from "arktype";
 import { workflowRunRepoIdForAddress } from "@intx/hub-sessions";
 import { hasCode } from "@intx/types";
-import type { UserManual } from "@corbits-builder/schemas/artifact";
+import {
+  DesignBundle,
+  type UserManual,
+} from "@corbits-builder/schemas/artifact";
 import { packApp } from "../builds/app-snapshot.ts";
 import {
   spliceDesignScreens,
@@ -14,6 +17,8 @@ import {
 } from "../builds/starter.ts";
 import { parseJson } from "../lib/json.ts";
 import { ProjectError } from "../projects/errors.ts";
+import { MAX_DESIGN_BYTES } from "../config/design.ts";
+import { withDesignTokens } from "./design-tokens.ts";
 import { DESIGN_STYLES } from "./design-tweaks.ts";
 
 const hasInlineNonHomeScreen = (index: string | undefined) => {
@@ -58,6 +63,82 @@ export function withoutUnusedStarterHome(
   const { "designs/screens/home.html": _, ...rest } = next;
   return rest;
 }
+
+export function serializeDesign(files: Record<string, string>) {
+  const content = JSON.stringify({ files });
+  return { content, bytes: Buffer.byteLength(content) };
+}
+
+// Keep raw bytes so change detection also sees edits that normalization would remove.
+export async function readDesignFiles(workspace: string) {
+  const files: Record<string, Buffer> = {};
+  const builder = join(workspace, ".builder");
+  // Without the folder there is nothing to read; preparation names the files it needs.
+  if (!existsSync(builder)) return files;
+  const paths = new Bun.Glob("**/*").scan({ cwd: builder });
+  for (const path of (await Array.fromAsync(paths)).sort())
+    files[path] = await readFile(join(builder, path));
+  return files;
+}
+
+// Prose in angle brackets, like <App name>; HTML tags carry attributes and code is stripped first.
+const PLACEHOLDER = /<[A-Za-z][^<>=`"]*\s[^<>=`"]*>/g;
+
+export function prepareDesignSubmission(
+  collected: Readonly<Record<string, Buffer>>,
+) {
+  const files = withoutUnusedStarterHome(
+    Object.fromEntries(
+      Object.entries(collected).map(([path, bytes]) => [
+        path,
+        bytes.toString("utf8"),
+      ]),
+    ),
+  );
+  const doc = files["DESIGN.md"];
+  const styles = files[DESIGN_STYLES];
+  if (
+    doc === undefined ||
+    styles === undefined ||
+    files["designs/index.html"] === undefined
+  )
+    throw new Error(
+      `invalid_design: .builder needs DESIGN.md, designs/index.html and ${DESIGN_STYLES}`,
+    );
+  const prose = doc.replace(/```[\s\S]*?```/g, "").replace(/`[^`\n]*`/g, "");
+  const placeholders = [
+    ...new Set(
+      Array.from(prose.matchAll(PLACEHOLDER), ([match]) =>
+        match.replace(/\s+/g, " ").slice(0, 40),
+      ),
+    ),
+  ];
+  if (placeholders.length > 0)
+    throw new Error(
+      `invalid_design: DESIGN.md still has ${placeholders.length} template placeholder(s): ${placeholders.slice(0, 5).join(", ")}`,
+    );
+  try {
+    files["DESIGN.md"] = withDesignTokens(doc, styles);
+  } catch (error) {
+    throw new Error(
+      `invalid_design: ${error instanceof Error ? error.message : String(error)}`,
+    );
+  }
+  const bundle = DesignBundle({ files });
+  if (bundle instanceof type.errors)
+    throw new Error("invalid_design: " + bundle.summary);
+  const serialized = serializeDesign(bundle.files);
+  if (serialized.bytes > MAX_DESIGN_BYTES)
+    throw new Error(
+      `design_too_large: ${serialized.bytes} bytes; the limit is ${MAX_DESIGN_BYTES}`,
+    );
+  const title = doc.match(/^#\s+(.+)$/m)?.[1]?.trim() ?? "Design";
+  return { content: serialized.content, title: title.slice(0, 512) };
+}
+
+export type PreparedDesignSubmission = ReturnType<
+  typeof prepareDesignSubmission
+>;
 
 const isStarterPages = (files: Readonly<Record<string, string>>) => {
   const index = files["designs/index.html"];

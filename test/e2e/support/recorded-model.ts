@@ -181,7 +181,7 @@ export function classifyRole(
   if (tools.has("deploy_writer") || tools.has("request_approval")) {
     return "coordinator";
   }
-  if (tools.has("file_design_option") || tools.has("check_design")) {
+  if (tools.has("check_design")) {
     return "designer";
   }
   if (tools.has("app_status") || tools.has("install_packages")) {
