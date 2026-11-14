@@ -33,7 +33,9 @@ type Checked = {
 
 /**
  * What is true of a project, from its filed artifacts, how the person chose to work and its checks.
- * A fact a check returns holds while that check's latest record is a pass or the person's skip and
+ * A document stays approved once the person approved any version of it: whether a later version is
+ * put to them again is the coordinator's call. A design is chosen only at its current version. A
+ * fact a check returns holds while that check's latest record is a pass or the person's skip and
  * everything it read is still what the project has saved.
  */
 export function projectFacts(project: {
@@ -44,13 +46,14 @@ export function projectFacts(project: {
   const facts = new Set<Fact>();
   const agentDecides = agentDecidesApprovals(project.preferences);
   for (const { kind, version, approvedVersion } of project.artifacts) {
-    const approved = approvedVersion === version;
     if (kind === "app") facts.add("app_exists");
-    if (kind === "design" && approved) facts.add("design_chosen");
+    if (kind === "design" && approvedVersion === version)
+      facts.add("design_chosen");
     if (kind === "design_option") facts.add("filed:design_option");
     if (!isDocumentKind(kind)) continue;
     facts.add(`filed:${kind}`);
-    if (approved || agentDecides) facts.add(`approved:${kind}`);
+    if (approvedVersion !== undefined || agentDecides)
+      facts.add(`approved:${kind}`);
   }
   for (const { result, current, returns } of project.checks)
     if (current && result !== "fail")
@@ -59,17 +62,18 @@ export function projectFacts(project: {
 }
 
 /**
- * The go-ahead facts the person's own answers made true: each document they approved at its current
- * version and the design chosen. An approval left to Builder is not among them, so a ready-made plan's
+ * The go-ahead facts the person's own answers made true: each document they approved a version of
+ * and the design chosen at its current version. An approval left to Builder is not among them, so a ready-made plan's
  * step whose approval is required still waits for the person. A design Builder chose for a single
  * concept is recorded as chosen, so it counts.
  */
 export function personFacts(artifacts: readonly Filed[]): ReadonlySet<Fact> {
   const facts = new Set<Fact>();
   for (const { kind, version, approvedVersion } of artifacts) {
-    if (approvedVersion !== version) continue;
-    if (kind === "design") facts.add("design_chosen");
-    if (isDocumentKind(kind)) facts.add(`approved:${kind}`);
+    if (kind === "design" && approvedVersion === version)
+      facts.add("design_chosen");
+    if (isDocumentKind(kind) && approvedVersion !== undefined)
+      facts.add(`approved:${kind}`);
   }
   return facts;
 }

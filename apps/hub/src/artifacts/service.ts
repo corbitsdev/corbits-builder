@@ -111,8 +111,7 @@ import {
   runAction,
 } from "../db/schema.ts";
 import type { AgentActivityTracker } from "./activity.ts";
-import { approvedVersion, carriedApproval } from "./approvals.ts";
-import { personSignal } from "../mail/conversation-turns.ts";
+import { approvedVersion } from "./approvals.ts";
 import type { Actor } from "../lib/actor.ts";
 import { parseJson } from "../lib/json.ts";
 import { authorizeProject } from "../projects/authorization.ts";
@@ -468,80 +467,6 @@ export function createArtifactService(
         ),
       );
     return row;
-  }
-
-  // Where the project's coordinator's run log keeps the person's words it was last handed, when the
-  // caller is that coordinator, and the person it runs for; read from that log, never from the
-  // caller. Undefined when anyone else handed it the last thing it received.
-  async function callerRequest(actor: Actor, projectId: string) {
-    const [coordinator] = await rawDB
-      .select({
-        runId: workflowRun.id,
-        address: workflowRun.address,
-        person: projectCoordinator.registeredBy,
-      })
-      .from(projectCoordinator)
-      .innerJoin(workflowRun, eq(workflowRun.id, projectCoordinator.runId))
-      .innerJoin(principal, eq(principal.refId, projectCoordinator.runId))
-      .where(
-        and(
-          eq(projectCoordinator.projectId, projectId),
-          eq(projectCoordinator.active, true),
-          eq(principal.id, actor.principalId),
-        ),
-      );
-    if (!coordinator?.address) return undefined;
-    const signalId = personSignal(
-      await runs.readRunEvents(
-        workflowRunRepoIdForAddress(coordinator.address),
-        WORKFLOW_RUN_REF,
-        coordinator.runId,
-      ),
-    );
-    if (signalId === undefined) return undefined;
-    return {
-      requestedBy: coordinator.person,
-      requestRunId: coordinator.runId,
-      requestSignalId: signalId,
-    };
-  }
-
-  // A document the calling run revised keeps the approval of the version it replaced when the run
-  // was started on the person's own words.
-  async function carryApproval(
-    actor: Actor,
-    projectId: string,
-    runId: string,
-    replaced: { id: string; version: number },
-    revision: ArtifactRef,
-  ) {
-    const [run] = await rawDB
-      .select({
-        requestedBy: runAction.requestedBy,
-        requestRunId: runAction.requestRunId,
-        requestSignalId: runAction.requestSignalId,
-      })
-      .from(runAction)
-      .where(
-        and(eq(runAction.runId, runId), eq(runAction.tenantId, actor.tenantId)),
-      );
-    const carried = carriedApproval(run, {
-      version: replaced.version,
-      approved: await approvedVersion(db, actor.tenantId, replaced.id),
-    });
-    if (carried === undefined) return;
-    await rawDB.insert(artifactImportApproval).values({
-      artifactId: revision.artifactId,
-      kind: revision.kind,
-      version: revision.version,
-      sha256: revision.sha256,
-      tenantId: actor.tenantId,
-      projectId,
-      principalId: carried.principalId,
-      carriedFrom: carried.carriedFrom,
-      requestRunId: carried.requestRunId,
-      requestSignalId: carried.requestSignalId,
-    });
   }
 
   // The specialist run the calling principal is, with the plugin action it was started for.
@@ -1205,10 +1130,7 @@ export function createArtifactService(
           approved === undefined
             ? []
             : await rawDB
-                .select({
-                  at: artifactImportApproval.createdAt,
-                  carriedFrom: artifactImportApproval.carriedFrom,
-                })
+                .select({ at: artifactImportApproval.createdAt })
                 .from(artifactImportApproval)
                 .where(
                   and(
@@ -1228,9 +1150,6 @@ export function createArtifactService(
           ...(record === undefined
             ? {}
             : { approvedAt: record.at.toISOString() }),
-          ...(record === undefined || record.carriedFrom === null
-            ? {}
-            : { carriedFrom: record.carriedFrom }),
           ...(openQuestionCount ? { openQuestionCount } : {}),
         });
       }
@@ -1706,7 +1625,6 @@ export function createArtifactService(
         throw new ProjectError(404, "specialist_run_not_found", {
           runId: input.runId,
         });
-      const asked = await callerRequest(actor, projectId);
       await rawDB
         .insert(runAction)
         .values({
@@ -1717,9 +1635,6 @@ export function createArtifactService(
           action: input.action,
           planStep: input.step ?? null,
           record: input.record ?? null,
-          requestedBy: asked?.requestedBy ?? null,
-          requestRunId: asked?.requestRunId ?? null,
-          requestSignalId: asked?.requestSignalId ?? null,
         })
         .onConflictDoNothing();
       await storeValues(projectId, values);
@@ -2373,18 +2288,6 @@ export function createArtifactService(
           version: written.version,
           sha256: written.contentSha256!,
         };
-        if (
-          isDocumentKind(input.kind) &&
-          active?.kind === "workflow" &&
-          active.refId
-        )
-          await carryApproval(
-            actor,
-            projectId,
-            active.refId,
-            existing,
-            artifact,
-          );
       } else {
         const created = await db.transaction((tx) =>
           createArtifact(tx, {

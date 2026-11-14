@@ -356,14 +356,13 @@ export function agentDecidesApprovals(choices: Preferences | null): boolean {
   return resolvePreferences(choices)["agent_decides_approvals"] === "yes";
 }
 
-/** The filed documents waiting on the person's approval at their current version. */
+/** The filed documents waiting on the person's approval: those they have approved no version of. */
 export function awaitingApproval<
   T extends { kind: string; version: number; approvedVersion?: number },
 >(filed: readonly T[], preferences: Preferences): T[] {
   if (agentDecidesApprovals(preferences)) return [];
   return filed.filter(
-    (item) =>
-      isDocumentKind(item.kind) && item.approvedVersion !== item.version,
+    (item) => isDocumentKind(item.kind) && item.approvedVersion === undefined,
   );
 }
 

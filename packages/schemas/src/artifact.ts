@@ -411,9 +411,6 @@ export const ArtifactListItem = type({
   "approvedVersion?": "number.integer > 0",
   // When the person recorded that approval, where the record says.
   "approvedAt?": "string > 0",
-  // The version whose approval the approved one carries, when the person asked for the change
-  // themselves rather than approving the result.
-  "carriedFrom?": "number.integer > 0",
   // How many open questions the current version leaves for the person; none when absent.
   "openQuestionCount?": "number.integer > 0",
 });
@@ -546,7 +543,7 @@ export const ArtifactList = type({
   artifacts: ArtifactListItem.array(),
   inFlight: InFlightRun.array(),
   failed: FailedRun.array(),
-  // The kinds of filed documents whose current version waits on the person's approval.
+  // The kinds of filed documents the person has approved no version of.
   awaitingApproval: type("string > 0").array(),
   // Whether the app's first build is done: a version filed after a coder's passing check.
   appBuilt: "boolean",

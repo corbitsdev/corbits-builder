@@ -204,11 +204,11 @@
       "filed:approaches": "the approaches are filed",
       "filed:product_requirements": "the product requirements are filed",
       "filed:build_plan": "the build plan is filed",
-      "approved:problem_brief": "the person approved the current version of the problem brief, or leaves approvals to you",
-      "approved:constraints": "the person approved the current version of the constraints, or leaves approvals to you",
-      "approved:approaches": "the person approved the current version of the approaches, or leaves approvals to you",
-      "approved:product_requirements": "the person approved the current version of the product requirements, or leaves approvals to you",
-      "approved:build_plan": "the person approved the current version of the build plan, or leaves approvals to you"
+      "approved:problem_brief": "the person approved a version of the problem brief, or leaves approvals to you",
+      "approved:constraints": "the person approved a version of the constraints, or leaves approvals to you",
+      "approved:approaches": "the person approved a version of the approaches, or leaves approvals to you",
+      "approved:product_requirements": "the person approved a version of the product requirements, or leaves approvals to you",
+      "approved:build_plan": "the person approved a version of the build plan, or leaves approvals to you"
     },
     "values": {
       "brand.guidelines": {

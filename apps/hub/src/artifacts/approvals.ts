@@ -56,33 +56,6 @@ export async function approvedVersion(
 }
 
 /**
- * The approval a revision carries from the version it replaced: only when the run that wrote it was
- * started on the person's own words and the replaced version is the approved one. It names that
- * person and points at their words in the coordinator's run log as the decision, never an Approve
- * they pressed; undefined otherwise.
- */
-export function carriedApproval(
-  run:
-    | {
-        requestedBy: string | null;
-        requestRunId: string | null;
-        requestSignalId: string | null;
-      }
-    | undefined,
-  replaced: { version: number; approved: number | undefined },
-) {
-  if (!run?.requestedBy || !run.requestRunId || !run.requestSignalId)
-    return undefined;
-  if (replaced.approved !== replaced.version) return undefined;
-  return {
-    principalId: run.requestedBy,
-    carriedFrom: replaced.version,
-    requestRunId: run.requestRunId,
-    requestSignalId: run.requestSignalId,
-  };
-}
-
-/**
  * The packages a coder run installs without asking: those each document declares in the version
  * the person approved, read from that version, so a revision not yet approved adds none. A run
  * whose install_packages is denied, or that holds none, is given none, so a document never widens

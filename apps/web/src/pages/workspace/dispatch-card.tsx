@@ -242,8 +242,6 @@ export type DispatchStatus =
       readonly title: string;
       readonly version: number;
       readonly kind: string;
-      /** This version stays approved because the person asked for the change themselves. */
-      readonly carried: boolean;
     }
   | { readonly state: "finished" }
   /** The person or the coordinator stopped it. */
@@ -284,8 +282,6 @@ const readyOf = (filed: ProjectArtifact): DispatchStatus => ({
   kind: openedKind(filed),
   title: filed.title,
   version: filed.version,
-  carried:
-    filed.carriedFrom !== undefined && filed.approvedVersion === filed.version,
 });
 
 /** Where a hand-off stands, from native run records and the filed documents. */

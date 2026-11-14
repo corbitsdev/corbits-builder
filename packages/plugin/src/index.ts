@@ -695,7 +695,7 @@ export type ProjectView = {
   };
   // A project value as stored, null while the project has none.
   values(name: string): Promise<unknown>;
-  // Whether the person approved the current version of a document kind.
+  // Whether the person approved a version of a document kind.
   approvals(kind: string): Promise<boolean>;
   facts(): Promise<ReadonlySet<Fact>>;
   // Runs a ready-made check, or several combined, against this view.

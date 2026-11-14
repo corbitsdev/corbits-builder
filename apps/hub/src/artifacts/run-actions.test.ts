@@ -31,25 +31,20 @@ function harness() {
   return { app, recorded };
 }
 
-test("an agent cannot say a run was started on the person's request: the hub reads that itself", async () => {
+test("a run's start with a field the route does not take is refused, not silently dropped", async () => {
   const { app, recorded } = harness();
-  for (const claim of [
-    { requestedBy: "person-1" },
-    { requestRunId: "coordinator-run", requestSignalId: "<m2@example.com>" },
-    { carriedFrom: 1 },
-  ]) {
-    const response = await app.request("/project-1/run-actions", {
-      method: "POST",
-      headers: { "content-type": "application/json" },
-      body: JSON.stringify({
-        runId: "run-1",
-        plugin: "writer",
-        action: "write-requirements",
-        ...claim,
-      }),
-    });
-    expect(response.status).toBe(400);
-    expect(await response.json()).toMatchObject({ code: "invalid_run_action" });
-  }
+  const response = await app.request("/project-1/run-actions", {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({
+      runId: "run-1",
+      plugin: "writer",
+      action: "write-requirements",
+      // A misspelt step would otherwise leave the run tied to no plan step.
+      stepId: "step-1",
+    }),
+  });
+  expect(response.status).toBe(400);
+  expect(await response.json()).toMatchObject({ code: "invalid_run_action" });
   expect(recorded).toEqual([]);
 });

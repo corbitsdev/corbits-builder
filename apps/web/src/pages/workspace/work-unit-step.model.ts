@@ -90,7 +90,6 @@ export function workUnitStanding(
             kind: status.kind,
             title: status.title,
             version: status.version,
-            note: status.carried ? text.keptApproved : undefined,
             summary: room.summaries?.get(status.kind),
             onOpen: onOpenDocument,
           }

@@ -6,22 +6,19 @@ import { reconstructDurableConversation } from "@intx/workflow-host";
 import { deriveWorkflowRunRepoId } from "@intx/workflow-deploy";
 import { extractAddrSpec } from "@intx/mime";
 import { isRunAddress } from "@intx/types/agent-address";
-import { isMail, type Mail } from "@intx/types/runtime";
+import { isMail } from "@intx/types/runtime";
 import { ApprovalDecision } from "@intx/types/signals";
 import { type } from "arktype";
 import {
   clippedTurnText,
   deliveredText,
   maxConversationTurns,
-  parkedQuestions,
-  type ConversationEvents,
   type ConversationTextTurn,
   type ConversationThread,
 } from "@corbits-builder/schemas/conversation";
 
 import {
   approvalDecisionLine,
-  HUB_NOTE_LEAD,
   withoutResumeContext,
 } from "../config/resume.ts";
 import { declinedWords } from "../config/decline.ts";
@@ -159,51 +156,20 @@ export function unsavedPersonTurns(
     const mail = body["payload"];
     if (!(at > latestSaved) || !isMail(mail)) continue;
     if (mail.headers.from !== undefined && runSent(mail.headers.from)) continue;
-    const text = personText(mailText(mail));
+    const text = personText(
+      mail.parts
+        .flatMap((part) =>
+          part.disposition !== "attachment" &&
+          part.contentType.startsWith("text/plain") &&
+          part.text !== undefined
+            ? [part.text]
+            : [],
+        )
+        .join(""),
+    );
     if (text !== undefined) unsaved.push({ role: "person", text, at });
   }
   return unsaved;
-}
-
-// What a mail's sender wrote, without its attachments.
-const mailText = (mail: Mail) =>
-  mail.parts
-    .flatMap((part) =>
-      part.disposition !== "attachment" &&
-      part.contentType.startsWith("text/plain") &&
-      part.text !== undefined
-        ? [part.text]
-        : [],
-    )
-    .join("");
-
-/**
- * The id under which a coordinator run's log keeps the last thing it was handed, when that came
- * from the person: mail they sent, or what they wrote or chose answering a question it asked them.
- * Undefined when it came from anyone else: a specialist's mail, a hub note, or a screen's answer,
- * which records its own decision.
- */
-export function personSignal(
-  events: ConversationEvents["events"],
-): string | undefined {
-  const received = events.findLast(
-    ({ type: kind }) => kind === "SignalReceived",
-  );
-  const signalId = received?.body["signalId"];
-  if (received === undefined || typeof signalId !== "string") return undefined;
-  const payload = received.body["payload"];
-  if (isMail(payload)) {
-    const { from } = payload.headers;
-    if (from === undefined || runSent(from)) return undefined;
-    const text = withoutResumeContext(deliveredText(mailText(payload)));
-    if (!text?.trim() || text.startsWith(HUB_NOTE_LEAD)) return undefined;
-    return signalId;
-  }
-  const answer = parkedQuestions(events).find(
-    ({ signalName }) => signalName === received.body["signalName"],
-  )?.answer;
-  if (answer === undefined || "output" in answer) return undefined;
-  return signalId;
 }
 
 /**

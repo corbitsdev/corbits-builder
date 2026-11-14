@@ -152,11 +152,8 @@ export const artifactApproval = pgTable(
   ],
 );
 
-// Importing a project file, choosing a design option and asking for a change to an approved
-// document are the person's own decisions, so no native approval exists to reference; the row
-// names that person instead. A change they asked for carries the approval of the version it
-// replaced, carriedFrom, and points at their words in the coordinator's run log as the decision;
-// it is never an Approve they pressed.
+// Importing a project file and choosing a design option are the person's own
+// decisions, so no native approval exists to reference; the row names that person instead.
 export const artifactImportApproval = pgTable(
   "sb_artifact_import_approval",
   {
@@ -173,9 +170,6 @@ export const artifactImportApproval = pgTable(
       .references(() => principal.id),
     kind: text("kind").notNull(),
     sha256: text("sha256").notNull(),
-    carriedFrom: integer("carried_from"),
-    requestRunId: text("request_run_id").references(() => workflowRun.id),
-    requestSignalId: text("request_signal_id"),
     createdAt: timestamp("created_at", { withTimezone: true })
       .notNull()
       .defaultNow(),
@@ -276,13 +270,6 @@ export const runAction = pgTable(
     record: jsonb("record"),
     // What stopped the run when it reported a block, or Builder did for it; null for none.
     blocked: jsonb("blocked").$type<RunBlock>(),
-    // Where the coordinator's run log keeps the person's words it was last handed when it started
-    // the run, as that run and the signal's id, and that person; read by the hub, never sent by the
-    // caller. Null when the last thing it was handed came from anyone else, such as a specialist's
-    // result or a hub note.
-    requestedBy: text("requested_by").references(() => principal.id),
-    requestRunId: text("request_run_id").references(() => workflowRun.id),
-    requestSignalId: text("request_signal_id"),
     createdAt: timestamp("created_at", { withTimezone: true })
       .notNull()
       .defaultNow(),

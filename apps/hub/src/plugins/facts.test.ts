@@ -1,5 +1,5 @@
 import { expect, test } from "bun:test";
-import { projectFacts } from "./facts.ts";
+import { personFacts, projectFacts } from "./facts.ts";
 
 const filed = (kind: string, version: number, approvedVersion?: number) =>
   approvedVersion === undefined
@@ -15,17 +15,24 @@ test("a project with nothing filed has no facts", () => {
   expect(facts([])).toEqual([]);
 });
 
-test("requirements count as approved only at the version the person approved", () => {
+test("requirements stay approved once the person approved a version: a later version does not reopen the gate", () => {
   expect(facts([filed("product_requirements", 2)])).toEqual([
     "filed:product_requirements",
   ]);
+  // v2 filed after the person approved v1: still approved, for the plan and for the person's own go-ahead.
   expect(facts([filed("product_requirements", 2, 1)])).toEqual([
-    "filed:product_requirements",
-  ]);
-  expect(facts([filed("product_requirements", 2, 2)])).toEqual([
     "approved:product_requirements",
     "filed:product_requirements",
   ]);
+  expect([...personFacts([filed("product_requirements", 2, 1)])]).toEqual([
+    "approved:product_requirements",
+  ]);
+  expect([...personFacts([filed("product_requirements", 2)])]).toEqual([]);
+});
+
+test("a design is chosen only at its current version, so a newer design is not chosen by the person", () => {
+  expect([...personFacts([filed("design", 2, 1)])]).toEqual([]);
+  expect(facts([filed("design", 2, 1)])).toEqual([]);
 });
 
 test("when the person leaves approvals to the agent, every filed document counts as approved", () => {

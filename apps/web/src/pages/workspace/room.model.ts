@@ -299,15 +299,21 @@ export function tabbedArtifacts(
   );
 }
 
-/** A filed artifact as its tab shows it, unread while this viewer has not opened its version. */
-function paneDocument(item: ProjectArtifact, seen: SeenVersions): PaneDocument {
+/**
+ * A filed artifact as its tab shows it, at its newest version, unread while this viewer has not
+ * opened that version.
+ */
+export function paneDocument(
+  item: ProjectArtifact,
+  seen: SeenVersions,
+): PaneDocument {
   return {
     id: item.kind,
     title: item.title,
     status:
       item.approvedVersion === undefined
         ? wording.documentStatus.drafted(item.version)
-        : wording.documentStatus.approved(item.approvedVersion),
+        : wording.documentStatus.approved(item.version),
     unread: seen[item.artifactId] !== item.version,
     removable: item.kind.startsWith(MATERIAL_TAB),
     ...(isDocumentKind(item.kind)

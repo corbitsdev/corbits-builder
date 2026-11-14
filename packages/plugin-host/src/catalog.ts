@@ -641,7 +641,7 @@ function factWords(
     if (pattern === undefined) throw new Error(`No plugin describes ${fact}`);
     return pattern.state === "filed"
       ? `the ${pattern.kind} document is filed`
-      : `the person approved the current version of the ${pattern.kind} document, or leaves approvals to you`;
+      : `the person approved a version of the ${pattern.kind} document, or leaves approvals to you`;
   };
 }
 

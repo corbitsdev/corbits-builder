@@ -297,7 +297,7 @@ test("on build-web-app's steps, coder build waits for the person's go-ahead whil
       "coder build was not started. The project does not have what it needs yet.",
       "",
       'The plan step "Build the app" asks for the person\'s go-ahead first:',
-      "  - the person approved the current version of the build plan, or leaves approvals to you (writer approve makes this true)",
+      "  - the person approved a version of the build plan, or leaves approvals to you (writer approve makes this true)",
       "  - the person chose a design from the design options (designer review or designer choose makes this true)",
       "",
       "Start what makes these true first, or ask the person, then call execute again.",
@@ -360,34 +360,13 @@ test("designer mockup starts a designer with nothing filed, unless its build-web
   const refused = await following.execute(designerMockup);
   expect(refused.isError).toBe(true);
   expect(refused.content).toContain(
-    'The plan step "Design the look" asks for the person\'s go-ahead first:\n  - the person approved the current version of the product requirements',
+    'The plan step "Design the look" asks for the person\'s go-ahead first:\n  - the person approved a version of the product requirements',
   );
   expect(following.deployed).toEqual([]);
 
   following.state.artifacts = [filed("product_requirements", true)];
   expect((await following.execute(designerMockup)).isError).toBeUndefined();
   expect(following.deployed).toHaveLength(1);
-});
-
-test("a revision the hub lists as approved, carried by the person's request, opens no approval screen; one it does not asks again", async () => {
-  const carried = project([
-    { kind: "product_requirements", version: 2, approvedVersion: 2 },
-  ]);
-  await carried.plan({ operation: "add", plan: "build-web-app" });
-  expect(await carried.pause(designerMockup)).toBeUndefined();
-  expect((await carried.execute(designerMockup)).isError).toBeUndefined();
-  expect(carried.deployed).toHaveLength(1);
-
-  const revisedUnasked = project([
-    { kind: "product_requirements", version: 2, approvedVersion: 1 },
-  ]);
-  await revisedUnasked.plan({ operation: "add", plan: "build-web-app" });
-  expect(await revisedUnasked.pause(designerMockup)).toEqual({
-    plugin: "writer",
-    action: "approve",
-    input: { kinds: ["product_requirements"] },
-    resume: "rerun",
-  });
 });
 
 test("execute on build-web-app is turned to plan add, which puts the plan's steps on the project's plan and has it followed", async () => {
@@ -415,7 +394,7 @@ test("execute on build-web-app is turned to plan add, which puts the plan's step
       "  designer looks (optional, the person may decline it): can start now",
       "  designer mockup: can start now",
       '  writer write-build-plan: can start now; the step "Write the build plan" suggests first: a design option is filed',
-      '  coder build: needs the person\'s go-ahead, which the step "Build the app" asks for: the person approved the current version of the build plan, or leaves approvals to you and the person chose a design from the design options',
+      '  coder build: needs the person\'s go-ahead, which the step "Build the app" asks for: the person approved a version of the build plan, or leaves approvals to you and the person chose a design from the design options',
       '  writer write (optional, the person may decline it): can start now; the step "Write the user manual" suggests first: the project has code, built or imported',
     ].join("\n"),
   );
@@ -436,7 +415,7 @@ test("execute on build-web-app is turned to plan add, which puts the plan's step
   );
 });
 
-test("on build-web-app, the build plan is drafted while the person reviews a filed design, and the build still waits for their choice and the approved plan", async () => {
+test("on build-web-app, the build plan is drafted while the person reviews a filed design, and the build waits for their choice and an approved plan, not a re-approval of its revision", async () => {
   const reviewing = project([
     filed("product_requirements", true),
     filed("design_option"),
@@ -447,21 +426,19 @@ test("on build-web-app, the build plan is drafted while the person reviews a fil
   });
   expect(added.content).toContain("  writer write-build-plan: can start now\n");
   expect(added.content).toContain(
-    '  coder build: needs the person\'s go-ahead, which the step "Build the app" asks for: the person approved the current version of the build plan, or leaves approvals to you and the person chose a design from the design options',
+    '  coder build: needs the person\'s go-ahead, which the step "Build the app" asks for: the person approved a version of the build plan, or leaves approvals to you and the person chose a design from the design options',
   );
 
-  // A plan revised after the design changed is a new version, which the build waits on again.
+  // A plan revised after the person approved it is a new version; the build does not wait on it
+  // again and no approval screen opens. Putting it to them again is the coordinator's call.
   reviewing.state.artifacts = [
     filed("product_requirements", true),
     filed("design", true),
     { kind: "build_plan", version: 2, approvedVersion: 1 },
   ];
-  const revised = await reviewing.execute(coderBuild);
-  expect(revised.isError).toBe(true);
-  expect(revised.content).toContain(
-    "  - the person approved the current version of the build plan",
-  );
-  expect(reviewing.deployed).toEqual([]);
+  expect(await reviewing.pause(coderBuild)).toBeUndefined();
+  expect((await reviewing.execute(coderBuild)).isError).toBeUndefined();
+  expect(reviewing.deployed).toHaveLength(1);
 });
 
 test("build-web-app asks how many looks before the mockup step; the answer sets the preference and does the step, and handing approvals over skips it", async () => {

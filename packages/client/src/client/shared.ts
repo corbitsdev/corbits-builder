@@ -122,8 +122,6 @@ export type ProjectArtifact = {
   approvedVersion?: number;
   /** When the person recorded that approval, where the record says. */
   approvedAt?: string;
-  /** The version whose approval the approved one carries, when the person asked for the change. */
-  carriedFrom?: number;
 };
 
 export type ProductApiClient = Readonly<{

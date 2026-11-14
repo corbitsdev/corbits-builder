@@ -114,7 +114,7 @@ export function savedProject({
   });
   const approvedNow = (kind: string) => {
     const filed = byKind.get(kind);
-    return filed !== undefined && filed.approvedVersion === filed.version;
+    return filed?.approvedVersion !== undefined;
   };
   const now: Now = (key) => {
     const [what = "", name = ""] = key.split(/:(.*)/);
