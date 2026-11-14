@@ -161,6 +161,7 @@ export function useProjects({
                 approved: false,
               })),
             },
+        ...(profile === undefined ? {} : { profile }),
       });
       toast.success(`Imported ${name}.`, {
         id: importing,

@@ -9,7 +9,7 @@ import {
   type ProductApiClient,
 } from "./shared";
 
-export type ProjectImportOptions = { file: ProjectExport };
+export type ProjectImportOptions = { file: ProjectExport; profile?: string };
 
 export function buildProjectsMethods(
   deps: ClientDeps,
@@ -92,10 +92,12 @@ export function buildProjectsMethods(
         await request(`${projectPath(tenantId, projectId)}/export`, signal),
       );
     },
-    async importProject(tenantId, { file }, signal) {
+    async importProject(tenantId, { file, profile }, signal) {
+      const query =
+        profile === undefined ? "" : `?profile=${encodeURIComponent(profile)}`;
       return ProjectImportReceipt.assert(
         await request(
-          `${tenantPath(tenantId)}/projects/import`,
+          `${tenantPath(tenantId)}/projects/import${query}`,
           signal,
           ProjectExport.assert(file),
         ),
