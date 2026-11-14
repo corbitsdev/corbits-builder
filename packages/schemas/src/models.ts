@@ -144,11 +144,21 @@ export type Tiers = typeof Tiers.infer;
 
 export const ProfileId = type(/^[a-z][a-z0-9_]{0,63}$/);
 
+// A profile may assign a role to a different tier without changing the tier bindings.
+export const RoleTiers = type(
+  Object.fromEntries(
+    ModelRole.select("unit").map((role) => [role.unit, Tier]),
+  ) as Record<ModelRole, typeof Tier>,
+)
+  .partial()
+  .onUndeclaredKey("reject");
+
 export const CustomProfile = type({
   "+": "reject",
   id: ProfileId,
   label: name,
   tiers: Tiers,
+  "roleTiers?": RoleTiers,
 });
 export type CustomProfile = typeof CustomProfile.infer;
 
@@ -237,6 +247,7 @@ export const ModelCatalog = type({
     label: name,
     hint: name,
     tiers: Tiers,
+    "roleTiers?": RoleTiers,
     // Every provider its tiers run on has a connection that answered.
     available: "boolean",
   }).array(),

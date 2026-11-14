@@ -139,7 +139,7 @@ Browser tools reach only the app running in the same sandbox.
 A **provider** is a connected source of models: an API key (Anthropic, OpenAI,
 Google Gemini, xAI) or a subscription login (ChatGPT, xAI). A **profile** maps
 four **tiers** (Low, Medium, High, Max) to one model and reasoning effort each.
-Each role runs on a fixed tier, set in configuration:
+Each role has a default tier, set in configuration:
 
 | Role        | Tier   |
 | ----------- | ------ |
@@ -148,6 +148,12 @@ Each role runs on a fixed tier, set in configuration:
 | Designer    | High   |
 | App builder | High   |
 | Reviewer    | Low    |
+
+A profile can override a role's tier without changing its model and effort
+bindings. The xAI profiles assign writer and designer to Low, and coordinator,
+reviewer and app builder to Medium. Presenter keeps its default Medium tier.
+These assignments are frozen with the project's profile, so existing projects
+keep the assignments they started with.
 
 Every provider ships a ready-made profile, and a person can make their own. A
 person chooses only a profile, never a model per role. A project resolves its

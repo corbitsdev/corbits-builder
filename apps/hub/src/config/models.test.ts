@@ -1,6 +1,8 @@
 import { expect, test } from "bun:test";
+import { StoredModelChoice } from "@corbits-builder/schemas/models";
 import {
   MODEL_PROVIDERS,
+  workflowBindings,
   frozenModelChoice,
   invalidModelChoice,
   resolveModelChoice,
@@ -103,4 +105,31 @@ test("invalidModelChoice refuses activating a profile whose provider is not conn
       ["anthropic"],
     ),
   ).toBeUndefined();
+});
+
+test("a saved profile keeps role overrides while older projects retain their assignments", () => {
+  const choice = { profile: "xai_default" };
+  const selected = resolveModelChoice(MODEL_PROVIDERS, choice, ["xai"]);
+  if ("refused" in selected) throw new Error(selected.refused);
+  const saved = StoredModelChoice.assert(
+    JSON.parse(JSON.stringify(selected.choice)),
+  );
+  const expected = workflowBindings(MODEL_PROVIDERS, choice);
+  expect(workflowBindings(MODEL_PROVIDERS, saved)).toEqual(expected);
+  expect(frozenModelChoice(MODEL_PROVIDERS, saved)).toEqual(saved);
+
+  // An older project's shipped id must not opt it into newly introduced overrides.
+  const profile = saved.custom![0]!;
+  const older = StoredModelChoice.assert({
+    profile: profile.id,
+    custom: [{ id: profile.id, label: profile.label, tiers: profile.tiers }],
+  });
+  const kept = frozenModelChoice(MODEL_PROVIDERS, older)!;
+  expect(kept).toEqual(older);
+  expect(workflowBindings(MODEL_PROVIDERS, kept).writer).toEqual(
+    profile.tiers.medium,
+  );
+  expect(workflowBindings(MODEL_PROVIDERS, saved).writer).toEqual(
+    profile.tiers.low,
+  );
 });

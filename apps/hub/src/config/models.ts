@@ -311,6 +311,7 @@ type Profile = Readonly<{
   label: string;
   hint: string;
   tiers: Readonly<Tiers>;
+  roleTiers?: NonNullable<CustomProfile["roleTiers"]>;
 }>;
 
 // A provider's shipped profile, `<name>_default`: each tier's model and reasoning effort.
@@ -320,8 +321,9 @@ function shipped(
   label: string,
   hint: string,
   tiers: Readonly<Record<Tier, readonly [model: string, effort: Effort]>>,
+  roleTiers?: CustomProfile["roleTiers"],
 ): Profile {
-  return {
+  const profile: CustomProfile & { hint: string } = {
     id: `${name}_default`,
     label: `${label} Default`,
     hint,
@@ -332,7 +334,18 @@ function shipped(
       ]),
     ) as Tiers,
   };
+  if (roleTiers !== undefined) profile.roleTiers = roleTiers;
+  return profile;
 }
+
+// Both xAI profiles share agent assignments while keeping their full reasoning ladders.
+const GROK_ROLE_TIERS = {
+  coordinator: "medium",
+  writer: "low",
+  designer: "low",
+  builder: "medium",
+  reviewer: "medium",
+} as const satisfies NonNullable<CustomProfile["roleTiers"]>;
 
 // The shipped profiles, one per provider. A person picks one in Settings or makes their own; a
 // project keeps the bindings it started with. The xAI API's max tier reaches Grok as xhigh, its
@@ -390,25 +403,27 @@ export const PROFILES: readonly Profile[] = [
     "xai",
     "xai",
     "xAI",
-    "Grok 4.7 throughout, from low effort up to high.",
+    "Grok 4.7 throughout. Writer and designer use Low; coordinator, reviewer and app builder use Medium. All four tiers remain available.",
     {
       low: ["grok-4.7", "low"],
       medium: ["grok-4.7", "medium"],
       high: ["grok-4.7", "high"],
       max: ["grok-4.7", "max"],
     },
+    GROK_ROLE_TIERS,
   ),
   shipped(
     "xai_api",
     "xai-api",
     "xAI API",
-    "Grok 4.7 throughout, from low effort up to xhigh.",
+    "Grok 4.7 throughout. Writer and designer use Low; coordinator, reviewer and app builder use Medium. Max uses xhigh effort.",
     {
       low: ["grok-4.7", "low"],
       medium: ["grok-4.7", "medium"],
       high: ["grok-4.7", "high"],
       max: ["grok-4.7", "max"],
     },
+    GROK_ROLE_TIERS,
   ),
 ];
 /** Why a binding cannot run: an unlisted or unconnected provider, an unlisted model, or no limits. */
@@ -539,10 +554,13 @@ export function pickedModelChoice(
 
 /** The choice a project keeps: its profile with every tier written out. */
 function frozen(profile: CustomProfile): ModelChoice {
-  return {
-    profile: profile.id,
-    custom: [{ id: profile.id, label: profile.label, tiers: profile.tiers }],
+  const saved: CustomProfile = {
+    id: profile.id,
+    label: profile.label,
+    tiers: profile.tiers,
   };
+  if (profile.roleTiers !== undefined) saved.roleTiers = profile.roleTiers;
+  return { profile: profile.id, custom: [saved] };
 }
 
 /** The frozen choice of a runnable choice; null when this server cannot run it. */
@@ -564,7 +582,10 @@ export function workflowBindings(
   if (!profile)
     throw new Error(`model_choice_unrunnable:${choice.profile ?? ""}`);
   return Object.fromEntries(
-    MODEL_ROLES.map((role) => [role.workflow, profile.tiers[role.tier]]),
+    MODEL_ROLES.map((role) => [
+      role.workflow,
+      profile.tiers[profile.roleTiers?.[role.id] ?? role.tier],
+    ]),
   ) as Record<WorkflowRole, RoleBinding>;
 }
 
