@@ -9,6 +9,7 @@ export class WorkflowHttpError extends Error {
       | "credential_kind"
       | "body_missing"
       | "response_too_large"
+      | "unreachable"
       | "unspecified" = "unspecified",
     // Public API code only. Refusal bodies stay off the model audit.
     readonly refusalCode?: string,
@@ -16,13 +17,34 @@ export class WorkflowHttpError extends Error {
     readonly issues?: readonly { path: string; message: string }[],
     // A hub route's own curated hint for a request the caller was allowed to make.
     readonly hint?: string,
+    options?: ErrorOptions,
   ) {
     super(
-      status === undefined
-        ? "workflow_http_unavailable:" + reason
-        : "workflow_http_unavailable:http_" + status,
+      workflowHttpMessage(status, reason, refusalCode, issues, hint),
+      options,
     );
   }
+}
+
+// A refusal reads as the hub's code and why, the way every tool refusal reads to a model; only a
+// hub that could not be reached, or failed, is unavailable.
+function workflowHttpMessage(
+  status: number | undefined,
+  reason: string,
+  refusalCode: string | undefined,
+  issues: readonly { path: string; message: string }[] | undefined,
+  hint: string | undefined,
+) {
+  if (status === undefined) return "workflow_http_unavailable:" + reason;
+  if (status < 400 || status >= 500)
+    return "workflow_http_unavailable:http_" + status;
+  const code = refusalCode ?? "hub_refused";
+  const explanation = hint ?? `the hub refused the call (HTTP ${status})`;
+  const parts = [`${code}: ${explanation}`];
+  if (issues) {
+    for (const issue of issues) parts.push(`${issue.path} ${issue.message}`);
+  }
+  return parts.join("; ");
 }
 
 // A Builder tool whose hub call was refused because the run's token or grants are gone tags its
@@ -32,19 +54,23 @@ export class WorkflowHttpError extends Error {
 const AccessRefused = type({ accessRefused: "true" });
 
 /** The detail an access-refused tool result carries, or nothing for any other failure. */
-export const accessRefusal = (error: unknown) =>
-  error instanceof WorkflowHttpError &&
-  (error.status === 401 ||
-    (error.status === 403 && error.refusalCode === "forbidden"))
-    ? { detail: { accessRefused: true } }
-    : {};
+export function accessRefusal(error: unknown) {
+  if (!(error instanceof WorkflowHttpError)) return {};
+  if (
+    error.status === 401 ||
+    (error.status === 403 && error.refusalCode === "forbidden")
+  ) {
+    return { detail: { accessRefused: true } };
+  }
+  return {};
+}
 
 /** Whether a tool result's detail says the hub refused the call for access. */
 export const accessRefused = (detail: unknown) =>
   !(AccessRefused(detail) instanceof type.errors);
 
 // Resolve the native mediated handle for every call so rotation remains live.
-// Refusal bodies are never exposed to the model or copied into its audit.
+// Of a refusal's body only its code, hint and field issues reach the model and its audit.
 export async function workflowHttpJson(options: {
   capabilities: RuntimeCapabilities;
   handle: string;
@@ -71,20 +97,34 @@ export async function mediatedHttpJson(options: {
   timeoutMs?: number;
 }): Promise<unknown> {
   const { credential } = options;
-  const response = await credential.fetch(options.path, {
-    method: options.body === undefined ? "GET" : "POST",
-    credentials: "omit",
-    ...(options.body === undefined
-      ? {}
-      : {
-          headers: { "content-type": "application/json" },
-          body: JSON.stringify(options.body),
-        }),
-    signal: AbortSignal.any([
-      options.signal,
-      AbortSignal.timeout(options.timeoutMs ?? 15_000),
-    ]),
-  });
+  let response: Response;
+  try {
+    const request: RequestInit = {
+      method: "GET",
+      credentials: "omit",
+      signal: AbortSignal.any([
+        options.signal,
+        AbortSignal.timeout(options.timeoutMs ?? 15_000),
+      ]),
+    };
+    if (options.body !== undefined) {
+      request.method = "POST";
+      request.headers = { "content-type": "application/json" };
+      request.body = JSON.stringify(options.body);
+    }
+    response = await credential.fetch(options.path, request);
+  } catch (error) {
+    // The caller's own cancellation is not the hub's failure.
+    if (options.signal.aborted) throw error;
+    throw new WorkflowHttpError(
+      undefined,
+      "unreachable",
+      undefined,
+      undefined,
+      undefined,
+      { cause: error },
+    );
+  }
   if (!response.ok) {
     let refusalCode: string | undefined;
     let issues: { path: string; message: string }[] | undefined;
@@ -104,22 +144,21 @@ export async function mediatedHttpJson(options: {
       const code = parsed.code ?? parsed.error?.code;
       if (typeof code === "string" && /^[a-z0-9_]+$/.test(code))
         refusalCode = code;
-      if (Array.isArray(parsed.issues))
-        issues = parsed.issues.flatMap((issue: unknown) =>
-          issue &&
-          typeof issue === "object" &&
-          "path" in issue &&
-          "message" in issue &&
-          typeof issue.path === "string" &&
-          typeof issue.message === "string"
-            ? [
-                {
-                  path: issue.path.slice(0, 200),
-                  message: issue.message.slice(0, 200),
-                },
-              ]
-            : [],
-        );
+      if (Array.isArray(parsed.issues)) {
+        issues = [];
+        for (const issue of parsed.issues) {
+          if (!issue || typeof issue !== "object") continue;
+          if (
+            typeof issue.path !== "string" ||
+            typeof issue.message !== "string"
+          )
+            continue;
+          issues.push({
+            path: issue.path.slice(0, 200),
+            message: issue.message.slice(0, 200),
+          });
+        }
+      }
     } catch (error) {
       if (!(error instanceof SyntaxError)) throw error;
       // A refusal body that is not JSON carries no code.
