@@ -118,6 +118,7 @@ import {
 } from "../workflows/spawn-role.ts";
 import {
   demoLogin,
+  designSize,
   editDesignStyles,
   readAcceptance,
   readDemoLogin,
@@ -129,7 +130,7 @@ import {
 } from "./design-draft.ts";
 import type { LiveApps } from "../live-app/runner.ts";
 import { appContent, bundleFiles } from "../builds/app-snapshot.ts";
-import { MAX_DESIGN_BYTES } from "./design-tools.ts";
+import { MAX_DESIGN_BYTES } from "../config/design.ts";
 import { DESIGN_STYLES, setThemeTokens } from "./design-tweaks.ts";
 import {
   coordinatorTweaksNote,
@@ -255,6 +256,16 @@ function validateArtifactWriteContent(
       throw new ProjectError(400, "invalid_" + input.kind, {
         issues: typeIssues(bundle, "content"),
       });
+    if (input.kind === "design" || input.kind === "design_option") {
+      const size = designSize(bundle.files, input.content);
+      if (size.over)
+        throw new ProjectError(413, "design_too_large", {
+          bytes: size.bytes,
+          limit: MAX_DESIGN_BYTES,
+          hint: size.hint,
+        });
+      return bundled;
+    }
   }
   // An app is as large as it is.
   if (input.kind === "approval_package") {
@@ -703,8 +714,13 @@ export function createArtifactService(
 
   function designDraftOf(files: Record<string, string>) {
     const draft = DesignDraft.assert({ files });
-    if (Buffer.byteLength(JSON.stringify(draft)) > MAX_DESIGN_BYTES)
-      throw new ProjectError(409, "design_draft_too_large");
+    const size = designSize(files);
+    if (size.over)
+      throw new ProjectError(409, "design_draft_too_large", {
+        bytes: size.bytes,
+        limit: MAX_DESIGN_BYTES,
+        hint: size.hint,
+      });
     return draft;
   }
 

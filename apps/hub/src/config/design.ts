@@ -1,5 +1,11 @@
 import { designThemeIds } from "@corbits-builder/designer/skills" with { type: "macro" };
 
+// A runaway-design guard, not a target size; raise it if real mockups need more room.
+export const MAX_DESIGN_BYTES = 4 * 1024 * 1024;
+
+export const designSizeHint = (bytes: number, largest: string) =>
+  `The design is ${bytes} bytes; the limit is ${MAX_DESIGN_BYTES} bytes (${MAX_DESIGN_BYTES / (1024 * 1024)} MiB). Largest files: ${largest}. Trim repeated markup or unused assets in those files, then run check_design again.`;
+
 // The product standard every generated app is held to. It is product wording, so it lives in
 // config beside the other user-visible text; the components and the stack's docs are skills.
 export const DESIGN_STANDARD = `Product standard

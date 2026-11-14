@@ -49,6 +49,7 @@ import {
   manualPictureRefs,
   manualPictures,
 } from "./design-draft.ts";
+import { MAX_DESIGN_BYTES } from "../config/design.ts";
 import { createDesignTools } from "./design-tools.ts";
 
 const STARTER = designStarterFiles();
@@ -114,7 +115,7 @@ test("the draft serves only regular files inside .builder/designs", async () => 
   }
 });
 
-test("file_design_option packs per-screen files and drops the untouched starter home screen", async () => {
+test("check and filing accept a large design, then reject an oversized edit with its largest file", async () => {
   const workspace = await realpath(
     await mkdtemp(join(tmpdir(), "sb-design-file-")),
   );
@@ -144,6 +145,11 @@ test("file_design_option packs per-screen files and drops the untouched starter 
     await writeFile(
       join(workspace, ".builder", "designs", "screens", "orders.html"),
       '<section data-screen="orders"><div data-state="populated"><h1>Orders</h1></div></section>\n<dialog class="dialog" id="new-order-dialog"></dialog>\n<div class="toast" id="shipped-toast" data-open="false">Shipped</div>',
+    );
+
+    await writeFile(
+      join(workspace, ".builder/designs/data.txt"),
+      "é".repeat(160_000),
     );
 
     const bundle = await readDesignBundle(workspace);
@@ -233,6 +239,23 @@ test("file_design_option packs per-screen files and drops the untouched starter 
       'id="new-order-dialog"',
     );
     expect(parsed.files["DESIGN.md"]).toContain("colors:");
+    expect(Buffer.byteLength(filedBody!.content)).toBeGreaterThan(256 * 1024);
+    const before = filedBody;
+    await writeFile(
+      join(workspace, ".builder/designs/data.txt"),
+      "é".repeat(MAX_DESIGN_BYTES / 2),
+    );
+    const oversized = await tools.run(
+      { id: "call-2", name: "file_design_option", arguments: {} },
+      new AbortController().signal,
+    );
+    expect(oversized.isError).toBe(true);
+    expect(oversized.content).toContain("design_too_large:");
+    expect(oversized.content).toContain(`limit is ${MAX_DESIGN_BYTES} bytes`);
+    expect(oversized.content).toContain(
+      `designs/data.txt (${MAX_DESIGN_BYTES} bytes)`,
+    );
+    expect(filedBody).toBe(before);
   } finally {
     check.dispose();
     await rm(workspace, { recursive: true, force: true });
