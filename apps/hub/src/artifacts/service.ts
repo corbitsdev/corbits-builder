@@ -127,6 +127,7 @@ import {
   manualPictures,
   warmStepWorkspace,
   serializeDesign,
+  designSizeIssue,
 } from "./design-draft.ts";
 import type { LiveApps } from "../live-app/runner.ts";
 import { appContent, bundleFiles } from "../builds/app-snapshot.ts";
@@ -135,7 +136,7 @@ import {
   coordinatorTweaksNote,
   designerTweaksNote,
 } from "../config/design-tweaks.ts";
-import { designChosenNote, MAX_DESIGN_BYTES } from "../config/design.ts";
+import { designChosenNote } from "../config/design.ts";
 import { loadSettings } from "../settings/policy.ts";
 import {
   agentDecidesApprovals,
@@ -255,6 +256,13 @@ function validateArtifactWriteContent(
       throw new ProjectError(400, "invalid_" + input.kind, {
         issues: typeIssues(bundle, "content"),
       });
+    if (input.kind !== "app") {
+      const issue = designSizeIssue(
+        bundle.files,
+        Buffer.byteLength(input.content),
+      );
+      if (issue) throw new ProjectError(413, "design_too_large", issue);
+    }
   }
   // An app is as large as it is.
   if (input.kind === "approval_package") {
@@ -265,7 +273,7 @@ function validateArtifactWriteContent(
         limit: MAX_APPROVAL_PACKAGE_BYTES,
       });
     parseApprovalPackageBundle(input.content);
-  } else if (input.kind !== "app") {
+  } else if (!bundled) {
     const document = DocumentContent(input.content);
     if (document instanceof type.errors)
       throw new ProjectError(400, "invalid_artifact_write", {
@@ -703,8 +711,11 @@ export function createArtifactService(
 
   function designDraftOf(files: Record<string, string>) {
     const draft = DesignDraft.assert({ files });
-    if (serializeDesign(draft.files).bytes > MAX_DESIGN_BYTES)
-      throw new ProjectError(409, "design_draft_too_large");
+    const issue = designSizeIssue(
+      draft.files,
+      serializeDesign(draft.files).bytes,
+    );
+    if (issue) throw new ProjectError(409, "design_draft_too_large", issue);
     return draft;
   }
 

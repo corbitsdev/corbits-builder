@@ -98,7 +98,7 @@ test("AUDIENCE_PERSONAS defines ceo, cto, investor, client and end_user with the
   expect(message).toContain('"personaId": "ceo"');
 });
 
-test("deploy_presenter requires approved documents and pins source refs and filed design tokens", async () => {
+test("deploy_presenter requires approved documents and pins source refs and filed design tokens, from a design larger than its result cap", async () => {
   const sha = (char: string) => char.repeat(64);
   const documents: Record<string, unknown>[] = [
     {
@@ -133,6 +133,8 @@ test("deploy_presenter requires approved documents and pins source refs and file
       approvedVersion: 4,
     },
   ];
+  const maxResultBytes = 65536;
+  let fullTextBytes = 0;
   const deployed: unknown[] = [];
   const sealedAssignments: unknown[] = [];
   const mailed: string[] = [];
@@ -171,9 +173,12 @@ test("deploy_presenter requires approved documents and pins source refs and file
                   '---\nname: "Calm Notebook"\n---\n\n# Calm Notebook',
                 "designs/index.html": "<main>Mockup</main>",
                 "designs/styles.css": ":root { --primary: #2563eb; }",
+                "designs/screens/orders.html": "<p>Order</p>".repeat(
+                  maxResultBytes,
+                ),
               },
             })
-          : `Full text of ${String(found["title"])}`;
+          : `Full text of ${String(found["title"])}`.padEnd(fullTextBytes);
       return Response.json({
         artifactId: found["artifactId"],
         kind: found["kind"],
@@ -210,7 +215,7 @@ test("deploy_presenter requires approved documents and pins source refs and file
       designer: deployment,
       presenter: deployment,
     },
-    maxResultBytes: 65536,
+    maxResultBytes,
   })({ capabilities } as never);
 
   const callArgs = {
@@ -272,6 +277,16 @@ test("deploy_presenter requires approved documents and pins source refs and file
   expect(mailed[0]).toContain("Full text of Build Plan");
   expect(mailed[0]).toContain("--primary: #2563eb;");
   expect(mailed[0]).toContain('"artifactId": "id-design"');
+
+  // Only the design is read past the cap; any other document larger than it is refused.
+  fullTextBytes = maxResultBytes;
+  const oversized = await tools.run(
+    { id: "call-3", name: "deploy_presenter", arguments: callArgs },
+    new AbortController().signal,
+  );
+  expect(oversized.isError).toBe(true);
+  expect(oversized.content).toContain("response_too_large");
+  expect(mailed).toHaveLength(1);
 });
 
 test("file_package refuses until check_deck passes on the current deck, then files approval_package with pinned sources", async () => {

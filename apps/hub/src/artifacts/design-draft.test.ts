@@ -49,6 +49,7 @@ import {
   manualPictureRefs,
   manualPictures,
 } from "./design-draft.ts";
+import { MAX_DESIGN_BYTES } from "../config/design.ts";
 import { fileDesignOption } from "./design-tools.ts";
 
 const STARTER = designStarterFiles();
@@ -230,6 +231,64 @@ test("check_design packs per-screen files and drops the untouched starter home s
       'id="new-order-dialog"',
     );
     expect(parsed.files["DESIGN.md"]).toContain("colors:");
+  } finally {
+    await rm(workspace, { recursive: true, force: true });
+  }
+});
+
+test("check_design files a design past the old 256 KiB cap and refuses one over the limit, naming its largest file", async () => {
+  const workspace = await realpath(
+    await mkdtemp(join(tmpdir(), "sb-design-size-")),
+  );
+  try {
+    for (const [path, text] of Object.entries(STARTER)) {
+      const target = join(workspace, path);
+      await mkdir(dirname(target), { recursive: true });
+      await writeFile(target, text);
+    }
+    await writeFile(
+      join(workspace, ".builder", "DESIGN.md"),
+      MODERN_SLEEK["DESIGN.md"]!,
+    );
+    await writeFile(
+      join(workspace, ".builder", "designs", "styles.css"),
+      MODERN_SLEEK["designs/styles.css"]!,
+    );
+    const data = join(workspace, ".builder", "designs", "data.txt");
+    await writeFile(data, "é".repeat(160_000));
+    const filed: string[] = [];
+    const tools = createDesignSubmission(
+      workspace,
+      async () => ({ exitCode: 0, output: "check passed: opened all screens" }),
+      async (submission) => {
+        filed.push(submission.content);
+        return {
+          artifactId: "design-1",
+          kind: "design_option",
+          version: filed.length,
+          sha256: "a".repeat(64),
+        };
+      },
+    );
+    const check = () =>
+      tools.run(
+        { id: "call", name: "check_design", arguments: {} },
+        new AbortController().signal,
+      );
+
+    expect((await check()).detail).toEqual({ checkPassed: true, filed: true });
+    expect(Buffer.byteLength(filed[0]!)).toBeGreaterThan(256 * 1024);
+
+    await writeFile(data, "é".repeat(MAX_DESIGN_BYTES / 2));
+    const oversized = await check();
+    expect(oversized.detail).toEqual({ checkPassed: false, filed: false });
+    expect(oversized.content).toContain("design_too_large:");
+    expect(oversized.content).toContain(`limit is ${MAX_DESIGN_BYTES} bytes`);
+    expect(oversized.content).toContain(
+      `designs/data.txt (${MAX_DESIGN_BYTES} bytes)`,
+    );
+    expect(oversized.content).toContain("run check_design again");
+    expect(filed).toHaveLength(1);
   } finally {
     await rm(workspace, { recursive: true, force: true });
   }

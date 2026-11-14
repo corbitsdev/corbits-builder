@@ -414,16 +414,30 @@ export function createDeployTools(options?: {
             preferences: list.preferences,
           };
         };
-        const readSource = async (ref: Ref) => {
-          const { kind, title, content } = ArtifactContent.assert(
-            await hub(
-              projectPath +
+        const readArtifact = async (ref: Ref, maxResponseBytes: number) =>
+          ArtifactContent.assert(
+            await workflowHttpJson({
+              capabilities: env.capabilities,
+              handle: HUB_CREDENTIAL_HANDLE,
+              path:
+                projectPath +
                 "/artifacts/" +
                 encodeURIComponent(ref.artifactId) +
                 "?version=" +
                 String(ref.version),
-            ),
+              maxResponseBytes,
+              signal,
+            }),
           );
+        // A filed design runs to MAX_DESIGN_BYTES, past the cap on the hub's other replies. Every
+        // other document keeps the cap, so a large material never lands whole in a model's context.
+        const readDesign = (ref: Ref) =>
+          readArtifact(ref, Number.POSITIVE_INFINITY);
+        const readSource = (byKind: Map<string, Ref>) => async (ref: Ref) => {
+          const { kind, title, content } =
+            byKind.get("design")?.artifactId === ref.artifactId
+              ? await readDesign(ref)
+              : await readArtifact(ref, options.maxResultBytes);
           if (kind !== "design") return { kind, title, content };
           // A writer reads the design's DESIGN.md; the screens stay in the bundle the coder gets.
           const { files } = DesignBundle.assert(JSON.parse(content));
@@ -685,7 +699,7 @@ export function createDeployTools(options?: {
                         DEFAULT_STACK
                       : input.instruction,
                 },
-                readSource,
+                readSource(byKind),
                 target,
               ),
             );
@@ -709,7 +723,7 @@ export function createDeployTools(options?: {
                   output: { expectedVersion: target.version },
                   instruction: input.instruction,
                 },
-                readSource,
+                readSource(byKind),
               ),
             );
           } else if (call.name === "deploy_coder") {
@@ -855,7 +869,7 @@ export function createDeployTools(options?: {
             const documents = await Promise.all(
               selectedKinds.map(async (kind) => {
                 const ref = required(byKind, kind);
-                const loaded = await readSource(ref);
+                const loaded = await readSource(byKind)(ref);
                 return {
                   artifactId: ref.artifactId,
                   kind,
@@ -871,15 +885,7 @@ export function createDeployTools(options?: {
             if (designRef) {
               if (approved.get("design") !== designRef.version)
                 throw notApproved("design", designRef.version);
-              const rawDesign = ArtifactContent.assert(
-                await hub(
-                  projectPath +
-                    "/artifacts/" +
-                    encodeURIComponent(designRef.artifactId) +
-                    "?version=" +
-                    String(designRef.version),
-                ),
-              );
+              const rawDesign = await readDesign(designRef);
               const { files } = DesignBundle.assert(
                 JSON.parse(rawDesign.content),
               );

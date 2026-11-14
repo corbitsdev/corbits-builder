@@ -17,7 +17,11 @@ import {
 } from "../builds/starter.ts";
 import { parseJson } from "../lib/json.ts";
 import { ProjectError } from "../projects/errors.ts";
-import { MAX_DESIGN_BYTES } from "../config/design.ts";
+import {
+  MAX_DESIGN_BYTES,
+  designSizeHint,
+  designTrimNote,
+} from "../config/design.ts";
 import { withDesignTokens } from "./design-tokens.ts";
 import { DESIGN_STYLES } from "./design-tweaks.ts";
 
@@ -67,6 +71,21 @@ export function withoutUnusedStarterHome(
 export function serializeDesign(files: Record<string, string>) {
   const content = JSON.stringify({ files });
   return { content, bytes: Buffer.byteLength(content) };
+}
+
+export function designSizeIssue(files: Record<string, string>, bytes: number) {
+  if (bytes <= MAX_DESIGN_BYTES) return undefined;
+  const largest = Object.entries(files)
+    .map(([path, text]) => ({ path, bytes: Buffer.byteLength(text) }))
+    .sort((a, b) => b.bytes - a.bytes)
+    .slice(0, 3)
+    .map((file) => `${file.path} (${file.bytes} bytes)`)
+    .join(", ");
+  return {
+    bytes,
+    limit: MAX_DESIGN_BYTES,
+    hint: designSizeHint(bytes, largest),
+  };
 }
 
 // Keep raw bytes so change detection also sees edits that normalization would remove.
@@ -128,10 +147,9 @@ export function prepareDesignSubmission(
   if (bundle instanceof type.errors)
     throw new Error("invalid_design: " + bundle.summary);
   const serialized = serializeDesign(bundle.files);
-  if (serialized.bytes > MAX_DESIGN_BYTES)
-    throw new Error(
-      `design_too_large: ${serialized.bytes} bytes; the limit is ${MAX_DESIGN_BYTES}`,
-    );
+  const issue = designSizeIssue(bundle.files, serialized.bytes);
+  if (issue)
+    throw new Error(`design_too_large: ${issue.hint} ${designTrimNote}`);
   const title = doc.match(/^#\s+(.+)$/m)?.[1]?.trim() ?? "Design";
   return { content: serialized.content, title: title.slice(0, 512) };
 }
@@ -194,8 +212,6 @@ export async function readDesignDraft(workspace: string) {
   return withoutUnusedStarterHome(files);
 }
 
-const MAX_DESIGN_DOC_BYTES = 256 * 1024;
-
 // A designer's draft with its DESIGN.md, keyed as a design bundle keys them, so a later designer
 // can continue it; undefined until the mockup has its first change.
 export async function readDesignBundle(workspace: string) {
@@ -204,7 +220,7 @@ export async function readDesignBundle(workspace: string) {
   const doc = await readWorkspaceText(
     workspace,
     join(".builder", "DESIGN.md"),
-    MAX_DESIGN_DOC_BYTES,
+    MAX_DESIGN_BYTES,
   );
   if (doc === null) throw new ProjectError(409, "design_doc_too_large");
   return doc === undefined ? files : { ...files, "DESIGN.md": doc };
@@ -362,8 +378,6 @@ export async function readAcceptance(workspace: string) {
   return markdown;
 }
 
-const MAX_STYLES_BYTES = 256 * 1024;
-
 // Rewrites the designer's .builder/designs/styles.css where it lies, creating it when missing. The
 // designs folder must be the workspace's own and the file is opened without following a symlink.
 export async function editDesignStyles(
@@ -377,7 +391,7 @@ export async function editDesignStyles(
   )
     throw new ProjectError(409, "design_workspace_unsafe");
   const path = join(".builder", DESIGN_STYLES);
-  const css = await readWorkspaceText(workspace, path, MAX_STYLES_BYTES);
+  const css = await readWorkspaceText(workspace, path, MAX_DESIGN_BYTES);
   if (css === null) throw new ProjectError(409, "design_styles_too_large");
   const file = await open(
     join(workspace, path),
