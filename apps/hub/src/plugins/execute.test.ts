@@ -369,6 +369,27 @@ test("designer mockup starts a designer with nothing filed, unless its build-web
   expect(following.deployed).toHaveLength(1);
 });
 
+test("a revision the hub lists as approved, carried by the person's request, opens no approval screen; one it does not asks again", async () => {
+  const carried = project([
+    { kind: "product_requirements", version: 2, approvedVersion: 2 },
+  ]);
+  await carried.plan({ operation: "add", plan: "build-web-app" });
+  expect(await carried.pause(designerMockup)).toBeUndefined();
+  expect((await carried.execute(designerMockup)).isError).toBeUndefined();
+  expect(carried.deployed).toHaveLength(1);
+
+  const revisedUnasked = project([
+    { kind: "product_requirements", version: 2, approvedVersion: 1 },
+  ]);
+  await revisedUnasked.plan({ operation: "add", plan: "build-web-app" });
+  expect(await revisedUnasked.pause(designerMockup)).toEqual({
+    plugin: "writer",
+    action: "approve",
+    input: { kinds: ["product_requirements"] },
+    resume: "rerun",
+  });
+});
+
 test("execute on build-web-app is turned to plan add, which puts the plan's steps on the project's plan and has it followed", async () => {
   const idea = project([filed("product_requirements", true)]);
   const refused = await idea.execute({ plugin: "build-web-app" });

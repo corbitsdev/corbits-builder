@@ -152,8 +152,10 @@ export const artifactApproval = pgTable(
   ],
 );
 
-// Importing a project file and choosing a design option are the person's own
-// decisions, so no native approval exists to reference; the row names that person instead.
+// Importing a project file, choosing a design option and asking for a change to an approved
+// document are the person's own decisions, so no native approval exists to reference; the row
+// names that person instead. A change they asked for carries the approval of the version it
+// replaced, carriedFrom, with their words as the decision; it is never an Approve they pressed.
 export const artifactImportApproval = pgTable(
   "sb_artifact_import_approval",
   {
@@ -170,6 +172,8 @@ export const artifactImportApproval = pgTable(
       .references(() => principal.id),
     kind: text("kind").notNull(),
     sha256: text("sha256").notNull(),
+    carriedFrom: integer("carried_from"),
+    request: text("request"),
     createdAt: timestamp("created_at", { withTimezone: true })
       .notNull()
       .defaultNow(),
@@ -270,6 +274,11 @@ export const runAction = pgTable(
     record: jsonb("record"),
     // What stopped the run when it reported a block, or Builder did for it; null for none.
     blocked: jsonb("blocked").$type<RunBlock>(),
+    // The person's own words that the coordinator was last handed when it started the run, read by
+    // the hub from the coordinator's run log, and that person; null when the last thing it was
+    // handed came from anyone else, such as a specialist's result or a hub note.
+    request: text("request"),
+    requestedBy: text("requested_by").references(() => principal.id),
     createdAt: timestamp("created_at", { withTimezone: true })
       .notNull()
       .defaultNow(),

@@ -794,3 +794,62 @@ test("a finished row whose run filed a design shows no document block", () => {
   expect(standing.document).toBeUndefined();
   expect(html).not.toContain('data-slot="document-block"');
 });
+
+// A writer's revision of the requirements at v2, with the approval the hub lists for it.
+const revisedRow = (
+  approvedVersion: number,
+  carriedFrom: number | undefined,
+) => {
+  const [unit] = workUnits(
+    [
+      {
+        at: 10,
+        dispatch: {
+          key: "call-writer",
+          call: "call-writer",
+          tool: "execute",
+          role: "writer",
+          kind: "product_requirements",
+          instruction: "Make the headings Fraunces.",
+          runId: "run-writer",
+          pending: false,
+          filed: true,
+        },
+      },
+    ],
+    [],
+  ).units;
+  if (unit === undefined) throw new Error("no work");
+  const filed = {
+    artifactId: "33333333-3333-4333-8333-333333333333",
+    kind: "product_requirements",
+    title: "Product requirements",
+    version: 2,
+    sha256: "0".repeat(64),
+    filedAt: new Date(20).toISOString(),
+    approvedVersion,
+  };
+  const standing = workUnitStanding(unit, {
+    ...emptyRoom,
+    artifacts: [carriedFrom === undefined ? filed : { ...filed, carriedFrom }],
+    onOpenDocument: () => {},
+  });
+  return {
+    standing,
+    html: renderToStaticMarkup(
+      createElement(WorkUnitStepView, { ...standing, run: () => null }),
+    ),
+  };
+};
+
+test("a revision the person asked for reads as changed as they asked and still approved, beside its version", () => {
+  const { standing, html } = revisedRow(2, 1);
+  expect(standing.document?.note).toBe(wording.dispatch.keptApproved);
+  expect(html).toContain(`v2 · ${wording.dispatch.keptApproved}`);
+});
+
+test("a revision approved by nothing it carries has no such line", () => {
+  expect(revisedRow(1, undefined).standing.document?.note).toBeUndefined();
+  // A carry from an older version no longer covers a newer one filed after it.
+  expect(revisedRow(1, 1).standing.document?.note).toBeUndefined();
+});

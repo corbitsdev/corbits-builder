@@ -4,8 +4,10 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { $ } from "bun";
 import { declineNote } from "../config/decline.ts";
+import { designChosenNote } from "../config/design.ts";
 import { resumeMessage } from "../config/resume.ts";
 import {
+  personRequest,
   readDurableConversationTurns,
   unsavedPersonTurns,
 } from "./conversation-turns.ts";
@@ -224,4 +226,91 @@ test("a person's received message reads as a turn until the coordinator saves it
       { role: "person", text: "Second", at: savedAt + 6001 },
     ]),
   ).toEqual([]);
+});
+
+const specialist =
+  "run_04ba732b8686649f77a2797393bafbc5@sunny-harbor-panda.localhost";
+
+// The coordinator asked the person a question, and this is what came back on its channel.
+const answered = (seq: number, payload: unknown) => [
+  {
+    seq,
+    type: "SignalAwaited",
+    body: {
+      signalName: "question-1",
+      parkKind: "question",
+      at: "2026-11-04T10:00:00.000Z",
+      question: {
+        questions: [
+          {
+            id: "scope",
+            question: "Add accounts and payments to the menu app?",
+            header: "Scope",
+            options: [{ label: "Yes", description: "Plan it in." }],
+          },
+        ],
+      },
+    },
+  },
+  {
+    seq: seq + 1,
+    type: "SignalReceived",
+    body: {
+      signalName: "question-1",
+      at: "2026-11-04T10:00:01.000Z",
+      payload,
+    },
+  },
+];
+
+test("the person's own message the coordinator was last handed is their request", () => {
+  const events = [
+    received(1, "2026-11-04T09:59:00.000Z", specialist, "Filed v1."),
+    received(
+      2,
+      "2026-11-04T10:00:00.000Z",
+      person,
+      "Make headings Fraunces\r\n",
+    ),
+  ];
+  expect(personRequest(events)).toBe("Make headings Fraunces");
+});
+
+test("a specialist's result or a hub note handed last is not the person's request", () => {
+  const asked = received(
+    1,
+    "2026-11-04T09:59:00.000Z",
+    person,
+    "Make headings Fraunces",
+  );
+  expect(
+    personRequest([
+      asked,
+      received(2, "2026-11-04T10:00:00.000Z", specialist, "Filed v2."),
+    ]),
+  ).toBeUndefined();
+  expect(
+    personRequest([
+      asked,
+      received(
+        2,
+        "2026-11-04T10:00:00.000Z",
+        person,
+        designChosenNote("Warm", 2),
+      ),
+    ]),
+  ).toBeUndefined();
+  expect(personRequest([])).toBeUndefined();
+});
+
+test("what the person writes or chooses answering the coordinator is their request, a screen's choice is not", () => {
+  expect(
+    personRequest(answered(1, { reply: "Only the headings, please" })),
+  ).toBe("Only the headings, please");
+  expect(personRequest(answered(1, { answers: { scope: ["Yes"] } }))).toBe(
+    "Add accounts and payments to the menu app? Yes",
+  );
+  expect(
+    personRequest(answered(1, { output: { approved: [] } })),
+  ).toBeUndefined();
 });

@@ -411,6 +411,9 @@ export const ArtifactListItem = type({
   "approvedVersion?": "number.integer > 0",
   // When the person recorded that approval, where the record says.
   "approvedAt?": "string > 0",
+  // The version whose approval the approved one carries, when the person asked for the change
+  // themselves rather than approving the result.
+  "carriedFrom?": "number.integer > 0",
   // How many open questions the current version leaves for the person; none when absent.
   "openQuestionCount?": "number.integer > 0",
 });
@@ -466,6 +469,7 @@ export const RunAction = type({
 // keeps for the run: a record, as the action's definition declares one, and project values the
 // action writes.
 export const RunActionStart = RunAction.merge({
+  "+": "reject",
   "record?": "unknown",
   "values?": { "[string]": "unknown" },
 });

@@ -842,6 +842,8 @@ export const wording = {
         `installing ${packages.join(", ")}`,
       tool: (tool: string) => `its use of ${tool}`,
     },
+    /** After a document's version when the person asked for the change and it stays approved. */
+    keptApproved: "changed as you asked, still approved",
     /** Opens the document the run filed; named in full for a screen reader and on hover. */
     open: "Open",
     openNamed: (document: string, version: number) =>

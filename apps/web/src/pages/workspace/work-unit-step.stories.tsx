@@ -92,6 +92,7 @@ export const Ready: Story = {
       title: "Constraints",
       version: 1,
       kind: "constraints",
+      carried: false,
     },
     label: "Writer · Wrote the constraints",
     steps: done,
@@ -105,6 +106,32 @@ export const Ready: Story = {
     },
     report:
       "Filed the **constraints**: one counter tablet, no customer accounts.",
+  },
+};
+
+/** A revision the person asked for of a document they had approved: it stays approved, no card waits. */
+export const RevisedAsAsked: Story = {
+  args: {
+    status: {
+      state: "ready",
+      title: "Product requirements",
+      version: 2,
+      kind: "product_requirements",
+      carried: true,
+    },
+    label: "Writer · Wrote the product requirements",
+    steps: done,
+    document: {
+      kind: "product_requirements",
+      title: "Product requirements",
+      version: 2,
+      note: "changed as you asked, still approved",
+      summary:
+        "- Headings use **Fraunces**; body text stays **Inter**.\n- Nothing else changes.",
+      onOpen: fn(),
+    },
+    report:
+      "Changed what you asked:\n- Headings now use Fraunces instead of Inter.\n- The type scale notes the new heading font.",
   },
 };
 
