@@ -282,6 +282,7 @@ export function ProjectLibraryView({
           aria-label={wording.library.filterLabel}
         >
           <FilterChip
+            className={styles.filter}
             selected={filter === null}
             onClick={() => onFilterChange(null)}
           >
@@ -290,6 +291,7 @@ export function ProjectLibraryView({
           {FILTERS.map((item) => (
             <FilterChip
               key={item}
+              className={styles.filter}
               selected={filter === item}
               {...(status === "ready" ? { count: counts[item] } : {})}
               onClick={() => onFilterChange(item)}
