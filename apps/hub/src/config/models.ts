@@ -272,8 +272,8 @@ function shipped(
 }
 
 // The shipped profiles, one per provider. A person picks one in Settings or makes their own; a
-// project keeps the bindings it started with. The xAI API's max tier reaches Grok as xhigh, its
-// reasoning quirk; the xAI login's max tier sends high.
+// project keeps the bindings it started with. Grok runs at low effort on every tier: at higher
+// effort its thinking took several times as long as other providers' for the same work.
 export const PROFILES: readonly Profile[] = [
   shipped(
     "anthropic",
@@ -323,28 +323,22 @@ export const PROFILES: readonly Profile[] = [
       max: ["gemini-4-argon", "max"],
     },
   ),
-  shipped(
-    "xai",
-    "xai",
-    "xAI",
-    "Grok 4.7 throughout, from low effort up to high.",
-    {
-      low: ["grok-4.7", "low"],
-      medium: ["grok-4.7", "medium"],
-      high: ["grok-4.7", "high"],
-      max: ["grok-4.7", "max"],
-    },
-  ),
+  shipped("xai", "xai", "xAI", "Grok 4.7 throughout, at low effort.", {
+    low: ["grok-4.7", "low"],
+    medium: ["grok-4.7", "low"],
+    high: ["grok-4.7", "low"],
+    max: ["grok-4.7", "low"],
+  }),
   shipped(
     "xai_api",
     "xai-api",
     "xAI API",
-    "Grok 4.7 throughout, from low effort up to xhigh.",
+    "Grok 4.7 throughout, at low effort.",
     {
       low: ["grok-4.7", "low"],
-      medium: ["grok-4.7", "medium"],
-      high: ["grok-4.7", "high"],
-      max: ["grok-4.7", "max"],
+      medium: ["grok-4.7", "low"],
+      high: ["grok-4.7", "low"],
+      max: ["grok-4.7", "low"],
     },
   ),
 ];
