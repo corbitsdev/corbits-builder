@@ -1,5 +1,5 @@
 import { constants } from "node:fs";
-import { open, realpath } from "node:fs/promises";
+import { open, readFile, realpath } from "node:fs/promises";
 import { dirname, join } from "node:path";
 import { type } from "arktype";
 import { workflowRunRepoIdForAddress } from "@intx/hub-sessions";
@@ -14,6 +14,8 @@ import {
 } from "../builds/starter.ts";
 import { parseJson } from "../lib/json.ts";
 import { ProjectError } from "../projects/errors.ts";
+import { MAX_DESIGN_BYTES, designSizeHint } from "../config/design.ts";
+import { withDesignTokens } from "./design-tokens.ts";
 import { DESIGN_STYLES } from "./design-tweaks.ts";
 
 const hasInlineNonHomeScreen = (index: string | undefined) => {
@@ -113,8 +115,6 @@ export async function readDesignDraft(workspace: string) {
   return withoutUnusedStarterHome(files);
 }
 
-const MAX_DESIGN_DOC_BYTES = 256 * 1024;
-
 // A designer's draft with its DESIGN.md, keyed as a design bundle keys them, so a later designer
 // can continue it; undefined until the mockup has its first change.
 export async function readDesignBundle(workspace: string) {
@@ -123,10 +123,53 @@ export async function readDesignBundle(workspace: string) {
   const doc = await readWorkspaceText(
     workspace,
     join(".builder", "DESIGN.md"),
-    MAX_DESIGN_DOC_BYTES,
+    MAX_DESIGN_BYTES,
   );
   if (doc === null) throw new ProjectError(409, "design_doc_too_large");
   return doc === undefined ? files : { ...files, "DESIGN.md": doc };
+}
+
+// Check and filing read the same bundle, including spliced screens and generated design tokens.
+export async function readDesignFiles(workspace: string) {
+  const files: Record<string, string> = {};
+  for await (const path of new Bun.Glob("**/*").scan({
+    cwd: join(workspace, ".builder"),
+  }))
+    files[path] = await readFile(join(workspace, ".builder", path), "utf8");
+  const packed = withoutUnusedStarterHome(files);
+  const doc = packed["DESIGN.md"];
+  const styles = packed[DESIGN_STYLES];
+  if (doc === undefined || styles === undefined)
+    throw new Error(
+      `invalid_design: .builder needs DESIGN.md and ${DESIGN_STYLES}`,
+    );
+  try {
+    packed["DESIGN.md"] = withDesignTokens(doc, styles);
+  } catch (error) {
+    if (error instanceof Error)
+      throw new Error("invalid_design: " + error.message, { cause: error });
+    throw error;
+  }
+  return packed;
+}
+
+// Measure the serialized UTF-8 payload, including JSON escaping and the duplicated screen markup.
+export function designSize(
+  files: Readonly<Record<string, string>>,
+  content = JSON.stringify({ files }),
+) {
+  const bytes = Buffer.byteLength(content);
+  const largest = Object.entries(files)
+    .map(([path, text]) => ({ path, bytes: Buffer.byteLength(text) }))
+    .sort((a, b) => b.bytes - a.bytes)
+    .slice(0, 3)
+    .map((file) => `${file.path} (${file.bytes} bytes)`)
+    .join(", ");
+  return {
+    bytes,
+    over: bytes > MAX_DESIGN_BYTES,
+    hint: designSizeHint(bytes, largest),
+  };
 }
 
 const MAX_ACCEPTANCE_BYTES = 64 * 1024;
@@ -281,8 +324,6 @@ export async function readAcceptance(workspace: string) {
   return markdown;
 }
 
-const MAX_STYLES_BYTES = 256 * 1024;
-
 // Rewrites the designer's .builder/designs/styles.css where it lies, creating it when missing. The
 // designs folder must be the workspace's own and the file is opened without following a symlink.
 export async function editDesignStyles(
@@ -296,7 +337,7 @@ export async function editDesignStyles(
   )
     throw new ProjectError(409, "design_workspace_unsafe");
   const path = join(".builder", DESIGN_STYLES);
-  const css = await readWorkspaceText(workspace, path, MAX_STYLES_BYTES);
+  const css = await readWorkspaceText(workspace, path, MAX_DESIGN_BYTES);
   if (css === null) throw new ProjectError(409, "design_styles_too_large");
   const file = await open(
     join(workspace, path),

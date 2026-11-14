@@ -2,6 +2,7 @@ import { createHash } from "node:crypto";
 import { readFile, realpath } from "node:fs/promises";
 import { join, relative, resolve, sep } from "node:path";
 import { hasCode } from "@intx/types";
+import { designSize, readDesignFiles } from "../artifacts/design-draft.ts";
 import { withDesignTokens } from "../artifacts/design-tokens.ts";
 import { DESIGN_STYLES } from "../artifacts/design-tweaks.ts";
 
@@ -98,6 +99,8 @@ export async function validateDesignWorkspace(
   } catch (error) {
     return `invalid_design: ${error instanceof Error ? error.message : String(error)}`;
   }
+  const size = designSize(await readDesignFiles(workspace));
+  if (size.over) return "design_too_large: " + size.hint;
   return undefined;
 }
 

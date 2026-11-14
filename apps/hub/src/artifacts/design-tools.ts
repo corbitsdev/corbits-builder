@@ -1,5 +1,5 @@
 import { type } from "arktype";
-import { mkdir, readFile, realpath, rm, writeFile } from "node:fs/promises";
+import { mkdir, realpath, rm, writeFile } from "node:fs/promises";
 import { dirname, join, sep } from "node:path";
 import { defineTool, type BaseEnv } from "@intx/agent/authoring";
 import { HUB_CREDENTIAL_HANDLE } from "@intx/types/credential-delivery";
@@ -10,9 +10,7 @@ import {
   registerDesignFiler,
   type FiledDesignArtifact,
 } from "../builds/design-check.ts";
-import { withoutUnusedStarterHome } from "./design-draft.ts";
-import { withDesignTokens } from "./design-tokens.ts";
-import { DESIGN_STYLES } from "./design-tweaks.ts";
+import { designSize, readDesignFiles } from "./design-draft.ts";
 import { resolveWorkflowProjectScope } from "../workflows/project-scope.ts";
 import { workflowHttpJson } from "../workflows/http-json.ts";
 import { failure, HubArtifactReceipt } from "./tools.ts";
@@ -21,8 +19,6 @@ interface DesignToolEnv extends BaseEnv {
   toolCwd: string;
   capabilities: RuntimeCapabilities;
 }
-
-export const MAX_DESIGN_BYTES = 256 * 1024;
 
 // Writes a bundle's files under root, skipping any path that would land outside it.
 export async function writeBundle<T extends string | Uint8Array>(
@@ -47,15 +43,6 @@ export async function unpackDesign(content: string, workspace: string) {
   const root = join(workspace, ".builder");
   await rm(root, { recursive: true, force: true });
   return writeBundle(root, files);
-}
-
-async function readDesignFolder(workspace: string) {
-  const files: Record<string, string> = {};
-  for await (const path of new Bun.Glob("**/*").scan({
-    cwd: join(workspace, ".builder"),
-  }))
-    files[path] = await readFile(join(workspace, ".builder", path), "utf8");
-  return withoutUnusedStarterHome(files);
 }
 
 // Files the designer's .builder folder as its design concept's option. The person decides on the
@@ -85,29 +72,13 @@ export function createDesignTools() {
       const fileOption = async (
         signal: AbortSignal,
       ): Promise<FiledDesignArtifact> => {
-        const files = await readDesignFolder(env.toolCwd);
-        const doc = files["DESIGN.md"];
-        const styles = files[DESIGN_STYLES];
-        if (doc === undefined || styles === undefined)
-          throw new Error(
-            `invalid_design: .builder needs DESIGN.md and ${DESIGN_STYLES}`,
-          );
-        try {
-          files["DESIGN.md"] = withDesignTokens(doc, styles);
-        } catch (error) {
-          throw new Error(
-            `invalid_design: ${error instanceof Error ? error.message : String(error)}`,
-          );
-        }
+        const files = await readDesignFiles(env.toolCwd);
         const bundle = DesignBundle({ files });
         if (bundle instanceof type.errors)
           throw new Error("invalid_design: " + bundle.summary);
         const content = JSON.stringify(bundle);
-        const bytes = Buffer.byteLength(content);
-        if (bytes > MAX_DESIGN_BYTES)
-          throw new Error(
-            `design_too_large: ${bytes} bytes; the limit is ${MAX_DESIGN_BYTES}`,
-          );
+        const size = designSize(files, content);
+        if (size.over) throw new Error("design_too_large: " + size.hint);
         if (lastFiled?.content === content) return lastFiled.artifact;
         const scope = await resolveWorkflowProjectScope(
           env.capabilities,
@@ -119,7 +90,8 @@ export function createDesignTools() {
           encodeURIComponent(scope.tenantId) +
           "/projects/" +
           encodeURIComponent(scope.projectId);
-        const title = doc.match(/^#\s+(.+)$/m)?.[1]?.trim() ?? "Design";
+        const title =
+          files["DESIGN.md"]!.match(/^#\s+(.+)$/m)?.[1]?.trim() ?? "Design";
         const { artifact } = HubArtifactReceipt.assert(
           await workflowHttpJson({
             capabilities: env.capabilities,
