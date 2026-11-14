@@ -1293,7 +1293,6 @@ export async function extractWeatherAppFixture(options?: {
     "edit_file",
     "grep",
     "check_design",
-    "file_design_option",
     "mail_reply",
     "mail_search",
   ];
@@ -1369,13 +1368,7 @@ export async function extractWeatherAppFixture(options?: {
         },
       },
       {
-        toolCalls: [
-          {
-            id: "des_file_option",
-            name: "file_design_option",
-            arguments: {},
-          },
-        ],
+        text: designerFinalText,
         expect: {
           lastMessageRole: "tool",
           requiredTools: designerTools,
@@ -1385,21 +1378,6 @@ export async function extractWeatherAppFixture(options?: {
               toolName: "check_design",
               isError: false,
               contains: "check passed",
-            },
-          ],
-        },
-      },
-      {
-        text: designerFinalText,
-        expect: {
-          lastMessageRole: "tool",
-          requiredTools: designerTools,
-          toolResults: [
-            {
-              callId: "des_file_option",
-              toolName: "file_design_option",
-              isError: false,
-              keys: ["artifactId", "kind", "version", "sha256"],
             },
           ],
         },

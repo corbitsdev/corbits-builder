@@ -17,11 +17,12 @@ import {
   designStarterFiles,
   designThemes,
 } from "@corbits-builder/designer/skills" with { type: "macro" };
-import { createDesignTools } from "../artifacts/design-tools.ts";
+import { fileDesignOption } from "../artifacts/design-tools.ts";
 import {
   CHECK_DESIGN_TOOL,
-  createDesignCheck,
-} from "../builds/design-check.ts";
+  createDesignSubmission,
+} from "../builds/design-submission.ts";
+import { designCheckRunning } from "../config/design.ts";
 import { REPETITION_ABORT } from "../inference/repetition.ts";
 import { trimHistory } from "./compaction.ts";
 import { compactingDirector } from "./director.ts";
@@ -278,7 +279,7 @@ test("designer director holds replies until the latest edits pass check_design a
       ? infer2.options.systemPrompt
       : undefined;
   expect(prompt2).toContain(
-    "The design option is not filed yet; check_design or file_design_option files it.",
+    "The design option is not filed yet; check_design validates and files it.",
   );
 
   // 3. Passing check_design that auto-filed the design option -> reply is accepted without extra turn.
@@ -322,6 +323,54 @@ test("designer director holds replies until the latest edits pass check_design a
     source: cycleSource,
   });
   expect(accepted.some((action) => action.type === "reply")).toBe(true);
+
+  // 4. A second check_design in the same turn, refused while the first ran, does not hold the reply.
+  const overlappingTurns: ConversationTurn[] = [
+    ...uncheckedTurns.slice(0, -1),
+    {
+      role: "assistant",
+      content: [
+        {
+          type: "tool_call",
+          id: "call-check",
+          name: CHECK_DESIGN_TOOL,
+          arguments: {},
+        },
+        {
+          type: "tool_call",
+          id: "call-check-2",
+          name: CHECK_DESIGN_TOOL,
+          arguments: {},
+        },
+      ],
+      timestamp: 3,
+    },
+    {
+      role: "user",
+      content: [
+        {
+          type: "tool_result",
+          callId: "call-check",
+          content: [{ type: "text", text: "check passed" }],
+          detail: { checkPassed: true, filed: true },
+        },
+        {
+          type: "tool_result",
+          callId: "call-check-2",
+          content: [{ type: "text", text: designCheckRunning }],
+        },
+      ],
+      timestamp: 4,
+    },
+    replyTurn,
+  ];
+  const acceptedOverlap = await decideWithTurns(overlappingTurns, {
+    type: "inference.done",
+    turn: replyTurn,
+    usage: state.tokenUsage,
+    source: cycleSource,
+  });
+  expect(acceptedOverlap.some((action) => action.type === "reply")).toBe(true);
 });
 
 test("coordinator director reminds once after an approval that opened a step, unless the reply asks the person", async () => {
@@ -655,11 +704,6 @@ test("check_design validates DESIGN.md and .dark in styles.css and auto-files th
   const workspace = await realpath(
     await mkdtemp(join(tmpdir(), "sb-design-autocheck-")),
   );
-  const check = createDesignCheck(workspace, async () => ({
-    exitCode: 0,
-    output:
-      "check passed: served .builder/designs and opened /, /#/home at 1280 and 390 px with no errors",
-  }));
   try {
     for (const [path, text] of Object.entries(starter)) {
       const target = join(workspace, path);
@@ -722,16 +766,21 @@ test("check_design validates DESIGN.md and .dark in styles.css and auto-files th
     const capabilities = {
       resolve: () => ({ resolve: async () => ({ kind: "http", fetch }) }),
     } as unknown as RuntimeCapabilities;
-    const tools = createDesignTools()({
-      toolCwd: workspace,
-      capabilities,
-    } as never);
+    const tools = createDesignSubmission(
+      workspace,
+      async () => ({ exitCode: 0, output: "check passed: opened all screens" }),
+      (submission, signal) =>
+        fileDesignOption(capabilities, submission, signal),
+    );
     const signal = new AbortController().signal;
 
     // 1. Starter DESIGN.md with template placeholders fails check_design even when check-app exits 0.
-    const placeholderCheck = await check.current(signal);
-    expect(placeholderCheck.passed).toBe(false);
-    expect(placeholderCheck.checklist).toContain(
+    const placeholderCheck = await tools.run(
+      { id: "check", name: CHECK_DESIGN_TOOL, arguments: {} },
+      signal,
+    );
+    expect(placeholderCheck.detail).toMatchObject({ checkPassed: false });
+    expect(placeholderCheck.content).toContain(
       "check failed: invalid_design: DESIGN.md still has",
     );
     expect(postCount).toBe(0);
@@ -749,9 +798,12 @@ test("check_design validates DESIGN.md and .dark in styles.css and auto-files th
       join(workspace, ".builder", "designs", "styles.css"),
       stylesWithoutDark,
     );
-    const missingDarkCheck = await check.current(signal);
-    expect(missingDarkCheck.passed).toBe(false);
-    expect(missingDarkCheck.checklist).toContain(
+    const missingDarkCheck = await tools.run(
+      { id: "check", name: CHECK_DESIGN_TOOL, arguments: {} },
+      signal,
+    );
+    expect(missingDarkCheck.detail).toMatchObject({ checkPassed: false });
+    expect(missingDarkCheck.content).toContain(
       "check failed: invalid_design: styles.css has no .dark rule",
     );
     expect(postCount).toBe(0);
@@ -761,26 +813,28 @@ test("check_design validates DESIGN.md and .dark in styles.css and auto-files th
       join(workspace, ".builder", "designs", "styles.css"),
       modernSleek["designs/styles.css"]!,
     );
-    const passedCheck = await check.current(signal);
-    expect(passedCheck.passed).toBe(true);
-    expect(passedCheck.checklist).toContain("check passed:");
-    expect(passedCheck.checklist).toContain("Filed design_option:");
+    const passedCheck = await tools.run(
+      { id: "check", name: CHECK_DESIGN_TOOL, arguments: {} },
+      signal,
+    );
+    expect(passedCheck.detail).toMatchObject({ checkPassed: true });
+    expect(passedCheck.content).toContain("check passed:");
+    expect(passedCheck.content).toContain("Filed design_option:");
     expect(postCount).toBe(1);
 
-    // 4. Calling file_design_option on the same unchanged files reuses the filed receipt without a second POST.
+    // 4. Calling check_design on the same unchanged files reuses the filed receipt without a second POST.
     const filedResult = await tools.run(
-      { id: "call-file", name: "file_design_option", arguments: {} },
+      { id: "call-file", name: "check_design", arguments: {} },
       signal,
     );
     expect(filedResult.isError).toBeUndefined();
     expect(postCount).toBe(1);
-    expect(JSON.parse(String(filedResult.content))).toMatchObject({
-      artifactId: "design-1",
-      kind: "design_option",
-      version: 1,
+    expect(filedResult).toEqual({
+      callId: "call-file",
+      content: passedCheck.content,
+      detail: passedCheck.detail,
     });
   } finally {
-    check.dispose();
     await rm(workspace, { recursive: true, force: true });
   }
 });

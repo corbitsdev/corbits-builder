@@ -1,4 +1,22 @@
+import { join } from "node:path";
 import { designThemeIds } from "@corbits-builder/designer/skills" with { type: "macro" };
+
+export const MAX_DESIGN_BYTES = 256 * 1024;
+
+export const designChangedDuringCheck =
+  "check failed: the design changed during checking. Run check_design again to validate and save.";
+export const designCheckRunning =
+  "Not started: a design check is already running. Wait for its result before checking again.";
+
+export const DESIGNS = join(".builder", "designs");
+// check-app also reads the design document beside the mockup.
+export const DESIGN_DOC = join(".builder", "DESIGN.md");
+
+export const checkDesignDefinition = {
+  name: "check_design",
+  description: `Runs check-app on the design as it is now: it serves ${DESIGNS} in a headless browser, opens its screens at desktop and phone widths, checks that ${DESIGN_DOC} is filled in, and that the look is moved off the kit's starting point. Call this once the screens and ${DESIGN_DOC} are written; when it reads "check passed", it also files the .builder folder as your design concept's option.`,
+  inputSchema: { type: "object", properties: {}, additionalProperties: false },
+};
 
 // The product standard every generated app is held to. It is product wording, so it lives in
 // config beside the other user-visible text; the components and the stack's docs are skills.
@@ -144,7 +162,7 @@ export const designConceptAssignment = (concept: {
   label: string;
   direction: string;
 }) =>
-  `Design concept: ${concept.label}. ${lookOf(concept)}\nThe person compares this concept with any others before they pick the one to build. file_design_option files it as this concept's option.\n\n`;
+  `Design concept: ${concept.label}. ${lookOf(concept)}\nThe person compares this concept with any others before they pick the one to build. check_design validates and saves it as this concept's option.\n\n`;
 
 // The person's own ideas for the look, carried to each designer in their words.
 export const designLookIdeas = (ideas: string) =>

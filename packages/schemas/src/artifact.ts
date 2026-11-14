@@ -8,7 +8,7 @@ const text = type("string > 0").atMostLength(512);
 const sha256 = /^[a-f0-9]{64}$/;
 
 // Documents a model writes as text. A design concept's option is filed from the designer's
-// workspace by file_design_option, the design by the person's choice among the options, and the
+// workspace by check_design, the design by the person's choice among the options, and the
 // app from the coder's workspace each time check-app passes.
 export const WriterDocumentKind = type(
   "'constraints' | 'approaches' | 'product_requirements' | 'build_plan'",

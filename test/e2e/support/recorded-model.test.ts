@@ -225,9 +225,7 @@ describe("recorded-model server", () => {
         new Set(["deploy_writer", "deploy_presenter", "request_approval"]),
       ),
     ).toBe("coordinator");
-    expect(
-      classifyRole(baseReq, new Set(["check_design", "file_design_option"])),
-    ).toBe("designer");
+    expect(classifyRole(baseReq, new Set(["check_design"]))).toBe("designer");
     expect(
       classifyRole(baseReq, new Set(["app_status", "install_packages"])),
     ).toBe("coder");

@@ -5,7 +5,6 @@ import {
   createSidecarCodingTools,
   type CodingSidecarEnv,
 } from "../../builds/sidecar-tools.ts";
-import { createDesignTools } from "../../artifacts/design-tools.ts";
 import { roleInference } from "../role-inference.ts";
 import { compactingDirector } from "../director.ts";
 import { dropDegenerateTurn, trimHistory } from "../compaction.ts";
@@ -27,7 +26,6 @@ const agent = createDesignerAgent<CodingSidecarEnv & MailToolEnv>({
   standards: [],
   inference: { ...source, parameters },
   tools: [
-    createDesignTools(),
     mail,
     createSidecarCodingTools({ approval: "allow", workspace: "design" }),
   ],
