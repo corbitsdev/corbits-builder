@@ -629,7 +629,7 @@ export type RoomThreadContent = {
   approvalError?: string;
   /** A typed yes counting down on the card it will approve. */
   typedYes?: { held: TypedYes; onUndo: () => void };
-  /** The coordinator's questions from its run log. */
+  /** The coordinator's questions from its run logs, earlier runs' and this one's. */
   questions?: readonly ConversationQuestion[];
   /** Answers an open question by its signal. */
   onAnswerQuestion?: (

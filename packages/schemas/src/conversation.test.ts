@@ -40,16 +40,21 @@ const audience = {
   ],
 };
 const smallTeams = { answers: { "q-audience": ["Small teams"] } };
-const statuses = (events: Parameters<typeof coordinatorQuestions>[0]) =>
-  coordinatorQuestions(events).map(({ status }) => status);
+const statuses = (
+  events: Parameters<typeof coordinatorQuestions>[0],
+  live = true,
+) => coordinatorQuestions(events, live).map(({ status }) => status);
 
 test("a stored question that does not parse is skipped, and an answer that does not parse closes its question", () => {
-  const questions = coordinatorQuestions([
-    asked("question-1", { questions: [] }),
-    answered("question-1", smallTeams),
-    asked("question-2", audience),
-    answered("question-2", { answers: "Small teams" }),
-  ]);
+  const questions = coordinatorQuestions(
+    [
+      asked("question-1", { questions: [] }),
+      answered("question-1", smallTeams),
+      asked("question-2", audience),
+      answered("question-2", { answers: "Small teams" }),
+    ],
+    true,
+  );
   expect(questions).toEqual([
     {
       at: Date.parse("2026-11-10T10:00:00.000Z"),
@@ -61,11 +66,14 @@ test("a stored question that does not parse is skipped, and an answer that does 
 });
 
 test("a second answer to a question does not replace the first, which the agent received", () => {
-  const [question] = coordinatorQuestions([
-    asked("question-1", audience),
-    answered("question-1", smallTeams),
-    answered("question-1", { reply: "Everyone" }),
-  ]);
+  const [question] = coordinatorQuestions(
+    [
+      asked("question-1", audience),
+      answered("question-1", smallTeams),
+      answered("question-1", { reply: "Everyone" }),
+    ],
+    true,
+  );
   expect(question).toMatchObject({ status: "answered", answer: smallTeams });
 });
 
@@ -81,6 +89,19 @@ test("an unanswered question is open until the run ends, then closed", () => {
       "answered",
       "closed",
     ]);
+});
+
+test("an earlier run's question is never open", () => {
+  expect(
+    statuses(
+      [
+        asked("question-1", audience),
+        answered("question-1", smallTeams),
+        asked("question-2", audience),
+      ],
+      false,
+    ),
+  ).toEqual(["answered", "closed"]);
 });
 
 test("another step's later event does not close an open question", () => {

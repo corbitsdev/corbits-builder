@@ -109,8 +109,12 @@ result. Anything the person types while a question is open is their answer. A
 document's open questions carry over into such a card. Questions are never
 modelled as approvals.
 
-A question whose run ended before it was answered stays in the chat, closed to
-answers.
+A replaced coordinator (an upgrade, a restart after a failure) starts a new run,
+so the hub also reads the project's earlier runs' questions from their own run
+logs: the conversation route returns them ahead of the current run's, and the
+new coordinator's briefing lists each one with the person's answer, or as left
+unanswered. A question whose run ended before it was answered stays in the chat,
+closed to answers.
 
 ### The app repository and live preview
 

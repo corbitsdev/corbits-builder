@@ -150,6 +150,8 @@ send, the card shows "Your answers" with each question and your answer. If you
 reply in the conversation instead, the card says "Answered in your own words"
 and shows what you wrote. If the coordinator stops before you answer, the card
 says "This question is no longer open" and lists its questions as not answered.
+The card stays in the conversation when a new coordinator takes over, and the
+new coordinator is told the question was left unanswered.
 
 ## 4. Documents and approvals
 
