@@ -4,10 +4,7 @@
  * its only route for it is tenant-scoped, and the sign-in screens and the page
  * title render before any authenticated request.
  */
-import type {
-  PreferenceGroup,
-  PreferenceRegistry,
-} from "@corbits-builder/schemas/preferences";
+import type { PreferenceGroup } from "@corbits-builder/schemas/preferences";
 
 export const productName = "Builder";
 
@@ -1212,32 +1209,12 @@ export const wording = {
         approvals: {
           title: "Stakeholder approvals",
           tag: "Experimental",
-          lead: "Saved in this browser",
+          lead: "Share approval packages with reviewers",
         },
       } satisfies Record<
         PreferenceGroup,
         { title: string; lead: string; tag?: string }
       >,
-      /** The hub's own, offered before its registry is read, so they can be set without it. */
-      fallback: [
-        {
-          id: "experimental_approvals",
-          label: "Approval packages",
-          hint: "Whether projects share approval packages with reviewers.",
-          group: "approvals",
-          options: [
-            {
-              id: "no",
-              label: "Not used",
-            },
-            {
-              id: "yes",
-              label: "Share with reviewers",
-            },
-          ],
-          default: "no",
-        },
-      ] satisfies PreferenceRegistry["preferences"],
     },
     approvals: {
       reviewers: "Saved reviewers",

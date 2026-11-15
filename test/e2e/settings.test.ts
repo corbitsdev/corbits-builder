@@ -346,7 +346,7 @@ test("a failed save restores each preference and a later retry can save", async 
   }
 }, 90_000);
 
-test("browser choices persist without sending personal-settings saves", async () => {
+test("appearance choices stay in the browser while approvals save to the hub", async () => {
   const page = await browser.newPage();
   try {
     await openSettings(page);
@@ -386,6 +386,19 @@ test("browser choices persist without sending personal-settings saves", async ()
       }
     }
     expect(saves).toEqual([]);
+    await choose(page, "experimental_approvals", "yes");
+    expect(saves.length).toBeGreaterThan(0);
+    const otherBrowser = await browser.newPage();
+    try {
+      await openSettings(otherBrowser);
+      await browserExpect(
+        otherBrowser
+          .locator("#preference-row-experimental_approvals")
+          .getByRole("radio", { name: "Share with reviewers", exact: true }),
+      ).toBeChecked();
+    } finally {
+      await otherBrowser.close();
+    }
   } finally {
     await page.close();
   }
@@ -570,6 +583,35 @@ test("settings tabs open, and sign-out ends the local session even when the hub 
       page.getByRole("heading", { name: "Welcome back", exact: true }),
     ).toBeVisible();
   } finally {
+    await page.close();
+  }
+}, 30_000);
+
+test("approvals cannot be chosen before personal settings load", async () => {
+  const page = await browser.newPage();
+  const release = Promise.withResolvers<void>();
+  const requested = Promise.withResolvers<void>();
+  try {
+    await page.route("**/settings/me", async (route) => {
+      requested.resolve();
+      await release.promise;
+      await route.continue();
+    });
+    await page.addInitScript(() =>
+      sessionStorage.setItem("sb.model-setup.later", "1"),
+    );
+    await page.goto(`${server.url}?view=settings&tab=preferences`);
+    await requested.promise;
+    await browserExpect(
+      page.getByRole("button", { name: "Add reviewer", exact: true }),
+    ).toBeVisible();
+    await browserExpect(
+      page.locator("#preference-row-experimental_approvals"),
+    ).toHaveCount(0);
+    release.resolve();
+    await choose(page, "experimental_approvals", "no");
+  } finally {
+    release.resolve();
     await page.close();
   }
 }, 30_000);

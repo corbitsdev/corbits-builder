@@ -124,10 +124,7 @@ import {
   type DesignChoiceProps,
 } from "./design-concepts.model.ts";
 import { useLiveAppPresence } from "./live-app.model.ts";
-import {
-  useWorkspaceApprovalsEnabled,
-  type OnOff,
-} from "../../workspace-approvals-setting.ts";
+import { usePreference } from "../../queries/preferences.ts";
 import {
   markSeen,
   useSeenVersions,
@@ -251,7 +248,7 @@ const APPROVAL_PACKAGE = "approval_package";
  */
 export function tabbedArtifacts(
   artifacts: readonly ProjectArtifact[],
-  approvals: OnOff,
+  approvals: "on" | "off",
 ): ProjectArtifact[] {
   return artifacts.filter(
     (item) =>
@@ -509,7 +506,8 @@ export function useRoom({
     .map(paneArtifact);
   const documents = snapshot.documents;
   const [liveRun, setLiveRun] = useState<LiveRun>(emptyLiveRun);
-  const stakeholderApprovals = useWorkspaceApprovalsEnabled();
+  const stakeholderApprovals =
+    usePreference("experimental_approvals") === "yes" ? "on" : "off";
   const seen = useSeenVersions();
   const [approvalBusy, setApprovalBusy] = useState(false);
   const [approvalError, setApprovalError] = useState<string | null>(null);

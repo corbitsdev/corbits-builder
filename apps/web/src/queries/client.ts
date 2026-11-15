@@ -38,7 +38,7 @@ const persistOptions: PersistQueryClientOptions = {
   maxAge: CACHE_LIFETIME_MS,
   // Saved data is read back without checking its shape, so a change to what a cached read
   // holds needs a new value here, or pages render the old shape and break.
-  buster: "room-question-status",
+  buster: "hub-preferences-record",
   // A query that still has data is kept after a failed refetch. One marked
   // `meta: { persist: false }` only matters while this page waits on it.
   dehydrateOptions: {
