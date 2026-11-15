@@ -1,4 +1,4 @@
-import { join, resolve } from "node:path";
+import { join, relative, resolve } from "node:path";
 import { type } from "arktype";
 import { Builder, type ModelSetting, type Role } from "@corbits-builder/plugin";
 import type { Found } from "./folder.ts";
@@ -12,22 +12,26 @@ export type Catalog = {
   packages: ReadonlyMap<string, string>;
 };
 
-function declare<T>(
-  into: Map<string, T>,
-  what: string,
-  plugin: string,
-  name: string,
-  value: T,
-) {
-  if (into.has(name))
-    throw new Error(`${plugin} declares ${what} ${name}, as another does`);
-  into.set(name, value);
-}
-
 export async function loadCatalog(found: readonly Found[]): Promise<Catalog> {
   const roles = new Map<string, Role>();
   const settings = new Map<string, ModelSetting>();
   const packages = new Map<string, string>();
+  const declaredBy = new Map<string, string>();
+  function declare<T>(
+    into: Map<string, T>,
+    what: string,
+    plugin: string,
+    name: string,
+    value: T,
+  ) {
+    const earlier = declaredBy.get(`${what} ${name}`);
+    if (earlier)
+      throw new Error(
+        `${plugin} declares ${what} ${name}, which ${earlier} already declares`,
+      );
+    declaredBy.set(`${what} ${name}`, plugin);
+    into.set(name, value);
+  }
   for (const { root, manifest } of found) {
     const checked = Manifest(manifest);
     if (checked instanceof type.errors)
@@ -40,6 +44,10 @@ export async function loadCatalog(found: readonly Found[]): Promise<Catalog> {
         declare(settings, "the model setting", name, setting, declared);
     for (const [pkg, { entry }] of Object.entries(builder.packages)) {
       const path = resolve(root, entry);
+      if (relative(root, path).startsWith(".."))
+        throw new Error(
+          `${name}'s package ${pkg} has its entry outside the plugin, at ${entry}`,
+        );
       if (!(await Bun.file(path).exists()))
         throw new Error(`${name}'s package ${pkg} has no entry at ${entry}`);
       declare(packages, "the workflow package", name, pkg, path);

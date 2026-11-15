@@ -55,3 +55,30 @@ test("a plugin whose role runs on no declared setting, or whose package has no e
     "@example/tester's package tester has no entry at ./src/missing.ts",
   );
 });
+
+test("a package entry outside its plugin's folder is refused", async () => {
+  const plugins = await pluginsFolder({
+    roles,
+    settings,
+    packages: { tester: { entry: "../../outside.ts" } },
+  });
+  await expect(loadCatalog(await readPluginFolder(plugins))).rejects.toThrow(
+    "@example/tester's package tester has its entry outside the plugin, at ../../outside.ts",
+  );
+});
+
+test("a role two plugins declare is refused, naming both", async () => {
+  const plugins = await pluginsFolder({ roles, settings, packages });
+  const [tester] = await readPluginFolder(plugins);
+  await expect(
+    loadCatalog([
+      tester!,
+      {
+        root: tester!.root,
+        manifest: { name: "@example/second", builder: { roles, packages: {} } },
+      },
+    ]),
+  ).rejects.toThrow(
+    "@example/second declares the role tester, which @example/tester already declares",
+  );
+});
