@@ -14,7 +14,7 @@ afterEach(() => {
 
 test("children exported before their turn share its trace and parent id", async () => {
   process.env.OTEL_RESOURCE_ATTRIBUTES =
-    "deployment.environment.name=test,service.instance.id=instance,vcs.ref.head.revision=commit";
+    "deployment.environment.name=test,service.instance.id=instance,vcs.ref.head.revision=commit,service.version=from-the-environment";
   const exporter = new InMemorySpanExporter();
   const output = createRunExport({}, exporter);
   expect(output).toBeDefined();

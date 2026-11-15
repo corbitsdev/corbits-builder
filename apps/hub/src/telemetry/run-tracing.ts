@@ -37,8 +37,8 @@ export function createRunTracing(options: {
     const context = known.get(runId);
     if (context) return context;
     const found = await describeRun(runId);
-    // A run seen before its project row exists is asked about again on its next event.
-    if (found.projectId === undefined) return found;
+    // A run seen before its row exists is asked about again on its next event.
+    if (found.tenantId === undefined) return found;
     known.set(runId, found);
     if (known.size > MAX_KNOWN_RUNS) {
       const oldest = known.keys().next().value;

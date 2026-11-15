@@ -52,12 +52,15 @@ export function createRunExport(
         return hexId(16, current.traceKey, current.key);
       },
     },
-    resource: resourceFromAttributes({
-      [ATTR_SERVICE_VERSION]: version,
-      [ATTR_SERVICE_NAME]:
-        environment.OTEL_SERVICE_NAME ||
-        createProductConfig(environment).naming.productName,
-    }).merge(detectResources({ detectors: [envDetector] })),
+    // The hub's own name and version are merged last, so the deployment's attributes cannot hide them.
+    resource: detectResources({ detectors: [envDetector] }).merge(
+      resourceFromAttributes({
+        [ATTR_SERVICE_VERSION]: version,
+        [ATTR_SERVICE_NAME]:
+          environment.OTEL_SERVICE_NAME ||
+          createProductConfig(environment).naming.productName,
+      }),
+    ),
     spanProcessors: [
       new BatchSpanProcessor(exporter ?? new OTLPTraceExporter()),
     ],
