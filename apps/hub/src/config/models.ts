@@ -17,6 +17,11 @@ import {
   type ModelLimits,
 } from "../inference/model-limits.ts";
 
+export type Timeouts = {
+  totalTimeoutMs?: number;
+  inactivityTimeoutMs?: number;
+};
+
 type CommonEntry = {
   // What a role binding names. Kept apart from the plugin so two entries can share a wire protocol.
   id: string;
@@ -25,8 +30,9 @@ type CommonEntry = {
   label: string;
   hint: string;
   baseURL: string;
-  // Override Interchange's per-call cap when a provider needs longer reasoning steps.
-  totalTimeoutMs?: number;
+  // Overrides of Interchange's per-call caps, for a provider that needs longer reasoning steps: the
+  // whole call, and how long the model may send nothing while it thinks.
+  timeouts?: Timeouts;
   // The adapter quirks every offering of this provider carries.
   quirks?: Readonly<Record<string, unknown>>;
   // The catalog capabilities every offering of this provider declares, for what its models take as input.
@@ -55,6 +61,15 @@ type CustomEntry = Readonly<
 >;
 
 export type ProviderEntry = ShippedEntry | CustomEntry;
+
+// xAI asks clients to allow at least 15 minutes per call, and Grok can send nothing for minutes while
+// it thinks, so both the whole call and a silent stretch get that long instead of Interchange's
+// defaults of ten minutes and two.
+const XAI_CALL_TIMEOUT_MS = 15 * 60_000;
+const XAI_TIMEOUTS: Timeouts = {
+  totalTimeoutMs: XAI_CALL_TIMEOUT_MS,
+  inactivityTimeoutMs: XAI_CALL_TIMEOUT_MS,
+};
 
 // The model providers a person can connect. Adding a provider is one entry here with at least one
 // model; adding a model is one entry in its `models` and one limits record. A provider no role can
@@ -120,7 +135,7 @@ export const MODEL_PROVIDERS: readonly ShippedEntry[] = [
   },
   {
     id: "xai-api",
-    totalTimeoutMs: 15 * 60_000,
+    timeouts: XAI_TIMEOUTS,
     plugin: "openai-responses",
     kind: "api_key",
     quirks: { reasoning: { maxEffort: "xhigh" } },
@@ -165,7 +180,7 @@ export const MODEL_PROVIDERS: readonly ShippedEntry[] = [
   },
   {
     id: "xai",
-    totalTimeoutMs: 15 * 60_000,
+    timeouts: XAI_TIMEOUTS,
     plugin: "xai",
     kind: "login",
     label: "xAI",

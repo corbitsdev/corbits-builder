@@ -6,14 +6,22 @@ import {
   limitsRole,
   modelProvider,
   type ModelDirectory,
+  type Timeouts,
 } from "../config/models.ts";
+
+// A provider that sets no limits of its own runs on Interchange's.
+const INTERCHANGE_DEFAULTS: Timeouts = {};
 
 export const RoleInference = type({
   "+": "reject",
   source: { "+": "reject", provider: "string > 0", model: "string > 0" },
   contextWindow: "number.integer > 0",
   // Not per-call parameters: Interchange's step selector rejects them, so the director sets them.
-  timeouts: { "+": "reject", "totalTimeoutMs?": "number.integer > 0" },
+  timeouts: {
+    "+": "reject",
+    "totalTimeoutMs?": "number.integer > 0",
+    "inactivityTimeoutMs?": "number.integer > 0",
+  },
   parameters: {
     "+": "reject",
     "effort?": Effort,
@@ -42,10 +50,7 @@ export function resolveRoleInference(
   return {
     source: { provider: plugin, model: bound.model },
     contextWindow: limits.contextWindow,
-    timeouts:
-      provider.totalTimeoutMs !== undefined
-        ? { totalTimeoutMs: provider.totalTimeoutMs }
-        : {},
+    timeouts: provider.timeouts ?? INTERCHANGE_DEFAULTS,
     parameters: {
       ...(limits.efforts.includes(bound.effort)
         ? { effort: bound.effort }

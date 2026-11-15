@@ -14,7 +14,7 @@ const roles: WorkflowRole[] = [
   "presenter",
 ];
 
-test("every role gives both xAI connections 15 minutes and keeps per-call parameters Interchange accepts", () => {
+test("every role gives both xAI connections their longer timeouts and keeps per-call parameters Interchange accepts", () => {
   for (const provider of MODEL_PROVIDERS) {
     for (const model of provider.models) {
       for (const role of roles) {
@@ -32,7 +32,10 @@ test("every role gives both xAI connections 15 minutes and keeps per-call parame
           type.errors,
         );
         if (provider.id === "xai" || provider.id === "xai-api") {
-          expect(parsed.timeouts).toEqual({ totalTimeoutMs: 900_000 });
+          expect(parsed.timeouts).toEqual({
+            totalTimeoutMs: 900_000,
+            inactivityTimeoutMs: 900_000,
+          });
         } else {
           expect(parsed.timeouts).toEqual({});
         }

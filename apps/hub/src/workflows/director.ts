@@ -8,6 +8,7 @@ import type {
   ReactorDirector,
   RetryPolicy,
 } from "@intx/types/runtime";
+import type { Timeouts } from "../config/models.ts";
 import { REPETITION_ABORT } from "../inference/repetition.ts";
 import { readCheckDetail, type CheckDetail } from "../builds/check-detail.ts";
 import { accessRefused } from "./http-json.ts";
@@ -101,7 +102,6 @@ const backoffRetryPolicy: RetryPolicy = ({ error, attempt, elapsedMs }) => {
   if (retryAfterMs === undefined) return { kind: "retry", delayMs };
   return { kind: "retry", delayMs: Math.max(delayMs, retryAfterMs) };
 };
-type Timeouts = { totalTimeoutMs?: number };
 
 const withBackoff =
   (timeouts: Timeouts) =>
@@ -331,7 +331,11 @@ export const compactingDirector = (packageName: string) =>
       "fileBeforeDone?": "boolean",
       "startAfterApproval?": "boolean",
       "replyOnFailure?": "boolean",
-      timeouts: { "+": "reject", "totalTimeoutMs?": "number.integer > 0" },
+      timeouts: {
+        "+": "reject",
+        "totalTimeoutMs?": "number.integer > 0",
+        "inactivityTimeoutMs?": "number.integer > 0",
+      },
     }),
     factory: (config, env, agent) => {
       const inner = defaultDirectorFactory({}, env, agent) as ReactorDirector;
