@@ -104,3 +104,55 @@ test.skipIf(
   },
   60_000,
 );
+
+test.skipIf(
+  !SandboxManager.isSupportedPlatform() ||
+    SandboxManager.checkDependencies({ command: rgPath }).errors.length > 0,
+)(
+  "a restarted app keeps its ports and its address",
+  async () => {
+    const root = await mkdtemp(join(tmpdir(), "builder-sandbox-test-"));
+    let executor:
+      | Awaited<ReturnType<typeof createPosixBuildExecutor>>
+      | undefined;
+    try {
+      const workspace = join(root, "workspace");
+      await mkdir(workspace);
+      await writeFile(
+        join(workspace, "package.json"),
+        JSON.stringify({
+          scripts: { dev: 'echo "ports $PORT $CLIENT_PORT" && sleep 0.2' },
+        }),
+      );
+      executor = await createPosixBuildExecutor(
+        workspace,
+        { commandTimeoutMs: 10_000, maxToolResultBytes: 10_000 },
+        await buildPackageLayout(),
+        { app: true },
+      );
+      const app = executor;
+      const ended = async () => {
+        let state = app.appState();
+        while (state === undefined || state.running) {
+          await Bun.sleep(50);
+          state = app.appState();
+        }
+        return state;
+      };
+      const ports = (state: { log: string[] }) =>
+        state.log.find((line) => line.startsWith("ports "));
+      await app.app();
+      const first = await ended();
+      expect(ports(first)).toBeDefined();
+
+      await app.app();
+      const restarted = await ended();
+      expect(ports(restarted)).toBe(ports(first));
+      expect(restarted.url).toBe(first.url);
+    } finally {
+      await executor?.dispose();
+      await rm(root, { recursive: true, force: true });
+    }
+  },
+  60_000,
+);

@@ -347,6 +347,21 @@ async function freePort(): Promise<number> {
   return port;
 }
 
+async function isPortFree(port: number): Promise<boolean> {
+  try {
+    const probe = Bun.serve({
+      hostname: "127.0.0.1",
+      port,
+      fetch: () => new Response(),
+    });
+    await probe.stop(true);
+    return true;
+  } catch {
+    // Binding is the test: a refused bind is the answer, not a failure.
+    return false;
+  }
+}
+
 async function isReachable(url: string): Promise<boolean> {
   try {
     await fetch(url);
@@ -654,6 +669,9 @@ export async function createPosixBuildExecutor(
     let devAppStarting: Promise<DevApp> | undefined;
     let restarting: Promise<DevApp> | undefined;
     let restartedAt = 0;
+    // The app keeps its ports across restarts, as the browser and the address the agent tested
+    // with outlive any one process.
+    let appPorts: [number, number] | undefined;
     const commands = new Set<Bun.Subprocess>();
     let disposed = false;
     let running = false;
@@ -769,10 +787,17 @@ export async function createPosixBuildExecutor(
       const launchDevApp = async () => {
         try {
           await stopApp();
-          const [port, clientPort] = await Promise.all([
+          // Another program may have taken a kept port while the app was down; the app would then
+          // fail to start on every relaunch, so both are picked again.
+          if (
+            appPorts &&
+            !(await Promise.all(appPorts.map(isPortFree))).every(Boolean)
+          )
+            appPorts = undefined;
+          const [port, clientPort] = (appPorts ??= await Promise.all([
             freePort(),
             freePort(),
-          ]);
+          ]));
           await appRelay.reserve();
           const command = await wrapShell(
             `${appRelay.serve(clientPort)}exec ${quote(executable)} run dev`,
@@ -1152,7 +1177,7 @@ export async function createPosixBuildExecutor(
       /**
        * Starts `bun run dev` in the workspace under the same sandbox and keeps it running until
        * dispose, so the agent can use its app while it builds. Calling it again returns the same
-       * app, restarted when it or one of its halves has exited.
+       * app, restarted on the same ports when it or one of its halves has exited.
        */
       app: startApp,
       /** The coder's browser server's URL, started on first use and again whenever it has exited. */
