@@ -1,28 +1,22 @@
-import { useRef, useState, type SetStateAction } from "react";
+import { useEffect, useState, type SetStateAction } from "react";
 
-type UnsentStorage = () => Pick<Storage, "getItem" | "setItem" | "removeItem">;
-
-export function readUnsent(
-  key: string,
-  storage: UnsentStorage = () => sessionStorage,
-): string {
+export function readUnsent(key: string): string {
   try {
-    const stored = storage().getItem(key);
+    const stored = sessionStorage.getItem(key);
     return stored === null ? "" : stored;
-  } catch {
-    // A private window can refuse storage; the input then starts empty and works in memory.
+  } catch (error) {
+    console.warn(
+      `Browser storage is unavailable; "${key}" starts empty for this window.`,
+      error,
+    );
     return "";
   }
 }
 
-export function writeUnsent(
-  key: string,
-  value: string,
-  storage: UnsentStorage = () => sessionStorage,
-): void {
+export function writeUnsent(key: string, value: string): void {
   try {
-    if (value === "") storage().removeItem(key);
-    else storage().setItem(key, value);
+    if (value === "") sessionStorage.removeItem(key);
+    else sessionStorage.setItem(key, value);
   } catch {
     // A private window can refuse storage; the input still works in memory.
   }
@@ -36,13 +30,8 @@ export function useUnsent(
   key: string,
 ): [string, (value: SetStateAction<string>) => void] {
   const [value, setValue] = useState(() => readUnsent(key));
-  const latest = useRef(value);
-  return [
-    value,
-    (next) => {
-      latest.current = typeof next === "function" ? next(latest.current) : next;
-      writeUnsent(key, latest.current);
-      setValue(latest.current);
-    },
-  ];
+  useEffect(() => {
+    writeUnsent(key, value);
+  }, [key, value]);
+  return [value, setValue];
 }

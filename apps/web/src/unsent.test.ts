@@ -1,5 +1,15 @@
-import { expect, test } from "bun:test";
+import { afterEach, expect, spyOn, test } from "bun:test";
 import { readUnsent, writeUnsent } from "./unsent.ts";
+
+const originalStorage = Object.getOwnPropertyDescriptor(
+  globalThis,
+  "sessionStorage",
+);
+afterEach(() => {
+  if (originalStorage)
+    Object.defineProperty(globalThis, "sessionStorage", originalStorage);
+  else Reflect.deleteProperty(globalThis, "sessionStorage");
+});
 
 function fakeStorage() {
   const items = new Map<string, string>();
@@ -17,13 +27,14 @@ function fakeStorage() {
 
 test("unsent text is read back for its own key and forgotten once it is empty", () => {
   const storage = fakeStorage();
-  const access = () => storage;
-  writeUnsent("unsent:composer:one", "  unfinished message\n", access);
-  expect(readUnsent("unsent:composer:one", access)).toBe(
-    "  unfinished message\n",
-  );
-  expect(readUnsent("unsent:composer:two", access)).toBe("");
-  writeUnsent("unsent:composer:one", "", access);
+  Object.defineProperty(globalThis, "sessionStorage", {
+    configurable: true,
+    value: storage,
+  });
+  writeUnsent("unsent:composer:one", "  unfinished message\n");
+  expect(readUnsent("unsent:composer:one")).toBe("  unfinished message\n");
+  expect(readUnsent("unsent:composer:two")).toBe("");
+  writeUnsent("unsent:composer:one", "");
   expect(storage.items.size).toBe(0);
 });
 
@@ -31,6 +42,17 @@ test("storage that refuses every call leaves the input empty and usable", () => 
   const refuse = () => {
     throw new Error("Storage unavailable");
   };
-  expect(readUnsent("draft", refuse)).toBe("");
-  expect(() => writeUnsent("draft", "still writing", refuse)).not.toThrow();
+  Object.defineProperty(globalThis, "sessionStorage", {
+    configurable: true,
+    get: refuse,
+  });
+  const warn = spyOn(console, "warn").mockImplementation(() => {});
+  try {
+    expect(readUnsent("draft")).toBe("");
+    expect(warn).toHaveBeenCalledTimes(1);
+    expect(() => writeUnsent("draft", "still writing")).not.toThrow();
+    expect(warn).toHaveBeenCalledTimes(1);
+  } finally {
+    warn.mockRestore();
+  }
 });

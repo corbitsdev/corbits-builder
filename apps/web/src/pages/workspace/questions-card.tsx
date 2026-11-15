@@ -26,6 +26,8 @@ import type {
   ConversationQuestion,
   QuestionAnswer,
 } from "@corbits-builder/schemas/conversation";
+import { type } from "arktype";
+import { useUnsent } from "../../unsent.ts";
 import { wording } from "../../config.ts";
 import { Fault } from "../../components.jsx";
 import styles from "./questions-card.module.css";
@@ -36,6 +38,28 @@ type Question = AskedQuestion["questions"][number];
 
 /** The options picked, by label, plus the person's own words; typing those is the "Something else" answer. */
 type Answer = { readonly chosen: readonly string[]; readonly own: string };
+
+const SavedAnswers = type({ chosen: "string[]", own: "string" }).array();
+
+function readAnswers(
+  raw: string,
+  questions: readonly Question[],
+): readonly Answer[] {
+  if (raw !== "") {
+    try {
+      const parsed: unknown = JSON.parse(raw);
+      const result = SavedAnswers(parsed);
+      if (
+        !(result instanceof type.errors) &&
+        result.length === questions.length
+      )
+        return result;
+    } catch (error) {
+      if (!(error instanceof SyntaxError)) throw error;
+    }
+  }
+  return questions.map(startingAnswer);
+}
 
 /** The coordinator marks the option it recommends by ending its label with this. */
 const recommendedSuffix = "(Recommended)";
@@ -392,9 +416,8 @@ function nextLabel(last: boolean, sending: boolean): string {
   return sending ? text.sending : text.send;
 }
 
-/** Where the person is: their answers, the open question, and whether the last send failed. */
+/** The open question and the card’s temporary interaction state. */
 type Draft = {
-  readonly answers: readonly Answer[];
   readonly step: number;
   readonly failed: boolean;
   /**
@@ -409,6 +432,8 @@ function OpenCard({
   ask,
   blocked,
   onSend,
+  answers,
+  onAnswers,
   draft,
   onDraft,
 }: {
@@ -417,11 +442,13 @@ function OpenCard({
   /** Closed to answers for now, such as while another message is sending. */
   blocked: boolean;
   onSend: (answers: Record<string, string[]>) => Promise<boolean>;
+  answers: readonly Answer[];
+  onAnswers: (answers: readonly Answer[]) => void;
   draft: Draft;
   onDraft: Dispatch<SetStateAction<Draft>>;
 }) {
   const { questions } = ask;
-  const { answers, step, failed, focusFollows } = draft;
+  const { step, failed, focusFollows } = draft;
   const [earlierShown, setEarlierShown] = useState(false);
   const [sending, setSending] = useState(false);
   const card = useRef<HTMLDivElement>(null);
@@ -463,12 +490,7 @@ function OpenCard({
   const ready = answered(answer);
   const disabled = blocked || sending;
   const setAnswer = (next: Answer) =>
-    onDraft((current) => ({
-      ...current,
-      answers: current.answers.map((item, index) =>
-        index === step ? next : item,
-      ),
-    }));
+    onAnswers(answers.map((item, index) => (index === step ? next : item)));
   const go = (to: number) =>
     onDraft((current) => ({
       ...current,
@@ -669,9 +691,10 @@ export function QuestionsCard({
   onSend: (answers: Record<string, string[]>) => Promise<boolean>;
 }) {
   const { signalName, asked } = question;
+  const [saved, setSaved] = useUnsent(`unsent:questions:${signalName}`);
+  const answers = readAnswers(saved, asked.questions);
   // Held above the open card: sending settles it at once, and a failed send reopens it as it was.
   const [draft, setDraft] = useState<Draft>(() => ({
-    answers: asked.questions.map(startingAnswer),
     step: 0,
     failed: false,
     focusFollows: false,
@@ -683,7 +706,13 @@ export function QuestionsCard({
           id={signalName}
           ask={asked}
           blocked={disabled}
-          onSend={onSend}
+          onSend={async (answers) => {
+            const sent = await onSend(answers);
+            if (sent) setSaved("");
+            return sent;
+          }}
+          answers={answers}
+          onAnswers={(answers) => setSaved(JSON.stringify(answers))}
           draft={draft}
           onDraft={setDraft}
         />
