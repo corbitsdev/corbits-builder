@@ -97,6 +97,9 @@ import {
 } from "./auth/coordinator-routes.ts";
 import { createWorkflowServices } from "./provisioning/workflow-services.ts";
 import { createWorkflowRunStreamRoutes } from "./run-stream.ts";
+import { parseAddress } from "@intx/types/agent-address";
+import { createRunExport } from "./telemetry/run-export.ts";
+import { createRunSpans } from "./telemetry/run-spans.ts";
 import { createAgentActivity } from "./artifacts/activity.ts";
 import { requestErrorMetadata } from "./request-error.ts";
 import { createLiveAppProxy } from "./live-app/proxy.ts";
@@ -369,6 +372,37 @@ export async function createHubRuntime(
     );
     const sidecarWebSocket = createSidecarWebSocket(sidecarRouter);
     const agentActivity = createAgentActivity(sidecarRouter.events);
+    const runExport = createRunExport(rawEnvironment);
+    let disposeRunExport: (() => void) | undefined;
+    if (runExport) {
+      const runSpans = createRunSpans({
+        captureContent:
+          rawEnvironment.OTEL_INSTRUMENTATION_GENAI_CAPTURE_MESSAGE_CONTENT ===
+          "true",
+      });
+      disposeRunExport = sidecarRouter.events.on(
+        "agent.event",
+        ({ agentAddress, event }) => {
+          try {
+            const address = parseAddress(agentAddress);
+            if (!address) return;
+            const runId = address.localPart.split("-")[0];
+            if (!runId) return;
+            runExport.send(
+              runSpans.accept(
+                { address: agentAddress, runId },
+                event,
+                Date.now(),
+              ),
+            );
+          } catch (error) {
+            log.error("Agent trace event handling failed", {
+              errorType: error instanceof Error ? error.name : typeof error,
+            });
+          }
+        },
+      );
+    }
     const getSession: GetSession = async (headers) => {
       const hub = hubRequestSession(headers);
       if (hub) return hub;
@@ -683,6 +717,8 @@ export async function createHubRuntime(
         liveApps.runner.close();
         liveApps.proxy.close();
         agentActivity.dispose();
+        disposeRunExport?.();
+        await runExport?.shutdown();
         sidecarWebSocket.close();
         await workflows.drain();
         sessions.dispose();
