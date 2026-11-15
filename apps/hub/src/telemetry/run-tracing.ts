@@ -12,7 +12,7 @@ const log = getLogger(["corbits-builder", "telemetry"]);
 
 export type RunContext = Pick<
   RunSpanAgent,
-  "tenantId" | "projectId" | "role" | "effort"
+  "tenantId" | "projectId" | "role" | "effort" | "profile" | "packageVersion"
 >;
 
 const MAX_KNOWN_RUNS = 1000;
@@ -66,6 +66,8 @@ export function createRunTracing(options: {
             projectId: context.projectId,
             role: context.role,
             effort: context.effort,
+            profile: context.profile,
+            packageVersion: context.packageVersion,
           },
           event,
           at,

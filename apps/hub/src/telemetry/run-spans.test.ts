@@ -12,6 +12,8 @@ const agent = {
   projectId: "project_a",
   role: "designer",
   effort: "high",
+  profile: "openai_default",
+  packageVersion: "0.35.0",
 };
 const secret = "distinctive-content-keep-private";
 const events = [
@@ -115,6 +117,8 @@ describe("run spans", () => {
         "corbits.project.id": agent.projectId,
         "corbits.agent.role": agent.role,
         "corbits.model.effort": agent.effort,
+        "corbits.model.profile": agent.profile,
+        "corbits.agent.package.version": agent.packageVersion,
         "corbits.run.id": agent.runId,
         "corbits.agent.address": agent.address,
       });

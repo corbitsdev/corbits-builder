@@ -1,11 +1,20 @@
-import { expect, test } from "bun:test";
+import { afterEach, expect, test } from "bun:test";
 import { SpanStatusCode } from "@opentelemetry/api";
 import { InMemorySpanExporter } from "@opentelemetry/sdk-trace-base";
 import { version } from "../../package.json";
 import { createRunExport } from "./run-export.ts";
 import { createRunSpans } from "./run-spans.ts";
 
+const resourceAttributes = process.env.OTEL_RESOURCE_ATTRIBUTES;
+afterEach(() => {
+  if (resourceAttributes === undefined)
+    delete process.env.OTEL_RESOURCE_ATTRIBUTES;
+  else process.env.OTEL_RESOURCE_ATTRIBUTES = resourceAttributes;
+});
+
 test("children exported before their turn share its trace and parent id", async () => {
+  process.env.OTEL_RESOURCE_ATTRIBUTES =
+    "deployment.environment.name=test,service.instance.id=instance,vcs.ref.head.revision=commit";
   const exporter = new InMemorySpanExporter();
   const output = createRunExport({}, exporter);
   expect(output).toBeDefined();
@@ -15,6 +24,8 @@ test("children exported before their turn share its trace and parent id", async 
     address: "run-step@example.com",
     runId: "run",
     projectId: "project",
+    profile: "openai_default",
+    packageVersion: "0.34.0-sha-12345678",
   };
   tracker.accept(
     agent,
@@ -60,6 +71,12 @@ test("children exported before their turn share its trace and parent id", async 
   await output.flush();
   const [child, model, turn] = exporter.getFinishedSpans();
   expect(exporter.getFinishedSpans()).toHaveLength(3);
+  for (const span of exporter.getFinishedSpans()) {
+    expect(span.attributes["corbits.model.profile"]).toBe(agent.profile);
+    expect(span.attributes["corbits.agent.package.version"]).toBe(
+      agent.packageVersion,
+    );
+  }
   for (const span of [child, model]) {
     expect(span?.spanContext().traceId).toBe(turn?.spanContext().traceId);
     expect(span?.parentSpanContext?.spanId).toBe(turn?.spanContext().spanId);
@@ -70,5 +87,10 @@ test("children exported before their turn share its trace and parent id", async 
   expect(turn?.parentSpanContext).toBeUndefined();
   expect(turn?.attributes["session.id"]).toBe("project");
   expect(turn?.resource.attributes["service.version"]).toBe(version);
+  expect(turn?.resource.attributes).toMatchObject({
+    "deployment.environment.name": "test",
+    "service.instance.id": "instance",
+    "vcs.ref.head.revision": "commit",
+  });
   await output.shutdown();
 });

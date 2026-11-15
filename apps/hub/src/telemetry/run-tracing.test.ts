@@ -40,7 +40,12 @@ test("events of one run are traced in arrival order and its project is asked for
   const { run, emit, accepted } = tracing(async () => {
     asked += 1;
     await Bun.sleep(asked === 1 ? 20 : 0);
-    return { tenantId: "tenant_a", projectId: "project_a" };
+    return {
+      tenantId: "tenant_a",
+      projectId: "project_a",
+      profile: "openai_default",
+      packageVersion: "0.35.0",
+    };
   });
   emit("first");
   emit("second");
@@ -54,6 +59,10 @@ test("events of one run are traced in arrival order and its project is asked for
   expect(accepted.every((entry) => entry.agent.projectId === "project_a")).toBe(
     true,
   );
+  for (const { agent } of accepted) {
+    expect(agent.profile).toBe("openai_default");
+    expect(agent.packageVersion).toBe("0.35.0");
+  }
   expect(asked).toBe(1);
 });
 

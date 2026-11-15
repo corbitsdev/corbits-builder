@@ -24,6 +24,8 @@ export type RunSpanAgent = {
   projectId?: string | undefined;
   role?: string | undefined;
   effort?: string | undefined;
+  profile?: string | undefined;
+  packageVersion?: string | undefined;
 };
 
 function agentAttributes(agent: RunSpanAgent): FinishedSpan["attributes"] {
@@ -40,6 +42,10 @@ function agentAttributes(agent: RunSpanAgent): FinishedSpan["attributes"] {
   if (agent.role !== undefined) attributes["corbits.agent.role"] = agent.role;
   if (agent.effort !== undefined)
     attributes["corbits.model.effort"] = agent.effort;
+  if (agent.profile !== undefined)
+    attributes["corbits.model.profile"] = agent.profile;
+  if (agent.packageVersion !== undefined)
+    attributes["corbits.agent.package.version"] = agent.packageVersion;
   return attributes;
 }
 

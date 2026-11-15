@@ -5,7 +5,11 @@ import {
   BatchSpanProcessor,
   type SpanExporter,
 } from "@opentelemetry/sdk-trace-base";
-import { resourceFromAttributes } from "@opentelemetry/resources";
+import {
+  detectResources,
+  envDetector,
+  resourceFromAttributes,
+} from "@opentelemetry/resources";
 import { OTLPTraceExporter } from "@opentelemetry/exporter-trace-otlp-http";
 import { version } from "../../package.json";
 import {
@@ -53,7 +57,7 @@ export function createRunExport(
       [ATTR_SERVICE_NAME]:
         environment.OTEL_SERVICE_NAME ||
         createProductConfig(environment).naming.productName,
-    }),
+    }).merge(detectResources({ detectors: [envDetector] })),
     spanProcessors: [
       new BatchSpanProcessor(exporter ?? new OTLPTraceExporter()),
     ],
