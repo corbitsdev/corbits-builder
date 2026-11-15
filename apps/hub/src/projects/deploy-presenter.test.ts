@@ -89,12 +89,12 @@ test("AUDIENCE_PERSONAS defines ceo, cto, investor, client and end_user with the
         title: "Problem Brief",
         version: 2,
         sha256: "a".repeat(64),
-        content: "# Problem Brief\nCut onboarding time in half.",
+        path: ".inputs/problem_brief.md",
       },
     ],
   });
   expect(message).toContain("Approve Q3 staffing and budget");
-  expect(message).toContain("Cut onboarding time in half.");
+  expect(message).toContain(".inputs/problem_brief.md");
   expect(message).toContain('"personaId": "ceo"');
 });
 
@@ -272,21 +272,21 @@ test("deploy_presenter requires approved documents and pins source refs and file
   });
   expect(mailed).toHaveLength(1);
   expect(mailed[0]).toContain("Approve budget and phase 1 kickoff");
-  expect(mailed[0]).toContain("Full text of Problem Brief");
-  expect(mailed[0]).toContain("Full text of Approaches");
-  expect(mailed[0]).toContain("Full text of Build Plan");
+  expect(mailed[0]).toContain("/problem_brief.md");
+  expect(mailed[0]).toContain("/approaches.md");
+  expect(mailed[0]).toContain("/build_plan.md");
+  expect(mailed[0]).not.toContain("Full text of");
   expect(mailed[0]).toContain("--primary: #2563eb;");
   expect(mailed[0]).toContain('"artifactId": "id-design"');
 
-  // Only the design is read past the cap; any other document larger than it is refused.
   fullTextBytes = maxResultBytes;
   const oversized = await tools.run(
     { id: "call-3", name: "deploy_presenter", arguments: callArgs },
     new AbortController().signal,
   );
-  expect(oversized.isError).toBe(true);
-  expect(oversized.content).toContain("response_too_large");
-  expect(mailed).toHaveLength(1);
+  expect(oversized.isError).toBeUndefined();
+  expect(mailed).toHaveLength(2);
+  expect(mailed[1]).not.toContain("Full text of");
 });
 
 test("file_package refuses until check_deck passes on the current deck, then files approval_package with pinned sources", async () => {

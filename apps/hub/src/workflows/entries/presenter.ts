@@ -9,7 +9,7 @@ import { createSkillTools } from "../../skills/tools.ts";
 import { roleInference } from "../role-inference.ts";
 import { compactingDirector } from "../director.ts";
 import { dropDegenerateTurn, trimHistory } from "../compaction.ts";
-import { savedResultTools } from "../saved-result-tools.ts";
+import { createInputFileTools } from "../input-file-tools.ts";
 import { nativePackageName } from "../package-name.ts";
 
 const compacting = compactingDirector(nativePackageName("presenter"));
@@ -30,7 +30,7 @@ const agent = createPresenterAgent<PackageToolEnv & MailToolEnv>({
     createPackageTools(),
     mail,
     createSkillTools(["presenting"]),
-    savedResultTools,
+    createInputFileTools("presenter"),
   ],
 });
 const workflow = createPresenterWorkflow({

@@ -146,7 +146,7 @@ export type PresenterSourceRef = Readonly<{
 
 export type PresenterSourceDocument = PresenterSourceRef &
   Readonly<{
-    content: string;
+    path: string;
   }>;
 
 export type PresenterDesignTokens = PresenterSourceRef &
@@ -250,7 +250,7 @@ export function presenterAssignmentMessage(
   const docsSection = input.documents
     .map(
       (doc) =>
-        `## Selected Document: ${doc.title} (kind: ${doc.kind}, artifactId: ${doc.artifactId}, version: ${String(doc.version)}, sha256: ${doc.sha256})\n\n${doc.content}`,
+        `## Selected Document: ${doc.title} (kind: ${doc.kind}, artifactId: ${doc.artifactId}, version: ${String(doc.version)}, sha256: ${doc.sha256})\n\n${doc.path}`,
     )
     .join("\n\n");
   sections.push(docsSection);
