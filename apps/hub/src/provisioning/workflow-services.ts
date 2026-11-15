@@ -98,6 +98,11 @@ export async function createWorkflowServices(options: {
       export: "createOpenAIResponsesAdapter",
     },
     {
+      provider: "anthropic",
+      specifier: new URL("../inference/anthropic.ts", import.meta.url).href,
+      export: "createAnthropicAdapter",
+    },
+    {
       provider: "openai-compatible",
       specifier: new URL("../inference/openai-compatible.ts", import.meta.url)
         .href,
