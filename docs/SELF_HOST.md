@@ -173,3 +173,24 @@ unknown level stops startup. Set `OTEL_EXPORTER_OTLP_ENDPOINT` (or
 `OTEL_EXPORTER_OTLP_LOGS_ENDPOINT`) to also export logs over OpenTelemetry,
 with the standard `OTEL_EXPORTER_OTLP_PROTOCOL`, `OTEL_EXPORTER_OTLP_HEADERS`
 and `OTEL_SERVICE_NAME` (default: the product name).
+
+## Traces
+
+Set `OTEL_EXPORTER_OTLP_ENDPOINT` (or `OTEL_EXPORTER_OTLP_TRACES_ENDPOINT` to
+send traces without logs) and the hub exports what every agent does as
+OpenTelemetry traces: one trace per agent turn, with a span for each model call
+and each tool call. Spans use OpenTelemetry's generative AI names, so tools such
+as Langfuse read the model, token counts and tool names without extra setup.
+Each span also says which project, agent role, model profile, reasoning effort
+and agent package version produced it, and a project's turns share one session.
+With no endpoint set, nothing is exported.
+
+- `OTEL_EXPORTER_OTLP_HEADERS` carries the receiver's credentials.
+- `OTEL_RESOURCE_ATTRIBUTES` names the deployment on every trace, for example
+  `deployment.environment.name=staging,service.instance.id=builder-1,vcs.ref.head.revision=<commit>`.
+- `OTEL_INSTRUMENTATION_GENAI_CAPTURE_MESSAGE_CONTENT=true` also sends each
+  model reply and each tool's arguments and result. Leave it off unless the
+  receiver may hold project content.
+
+For Langfuse, the endpoint is `<langfuse>/api/public/otel` and the headers are
+`Authorization=Basic <base64 of public key:secret key>,x-langfuse-ingestion-version=4`.
