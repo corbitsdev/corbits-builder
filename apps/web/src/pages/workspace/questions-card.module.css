@@ -206,6 +206,24 @@
   background: color-mix(in oklab, var(--primary) 10%, var(--background));
 }
 
+.choiceText {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+
+.choiceDescription {
+  font-size: 0.8125rem;
+  color: var(--muted-foreground);
+}
+
+/* A row with a description keeps its box on the label's line, not between the two. */
+.choice:has(.choiceDescription) {
+  align-items: flex-start;
+  padding-block: var(--space-2);
+}
+
 /* The hidden radio and the borderless own-words field show focus on their row; the library's
    checkbox draws its own ring. */
 .choice:has(input:not([type="checkbox"]):focus-visible) {
@@ -370,6 +388,13 @@
 
 .settledToggle[aria-expanded="true"] svg {
   transform: rotate(180deg);
+}
+
+.reply {
+  margin: var(--space-3) 0 0;
+  font-size: 0.875rem;
+  overflow-wrap: anywhere;
+  white-space: pre-wrap;
 }
 
 .answers {

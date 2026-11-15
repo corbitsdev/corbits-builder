@@ -14,13 +14,13 @@ import { ProjectId } from "@corbits-builder/schemas/project";
 import {
   ConversationEvents,
   maxConversationTurns,
+  coordinatorQuestions,
 } from "@corbits-builder/schemas/conversation";
 import { project, projectCoordinator } from "../db/schema.ts";
 import { reportAuthorization } from "../projects/authorization.ts";
 import { ProjectError, projectResource } from "../projects/errors.ts";
 import { getLogger } from "@intx/log";
 import { requestErrorMetadata } from "../request-error.ts";
-import { parseJson } from "../lib/json.ts";
 import {
   type CoordinatorRepoDirSource,
   isRecord,
@@ -55,7 +55,7 @@ export function createConversationRoutes(
       operationId: "readProjectConversationEvents",
       tags: ["Conversation"],
       description:
-        "Read the current registered coordinator's committed native runtime events. While no coordinator is registered (one is starting or replacing another), runId is null, events is empty and turns still carry the conversation of the project's earlier coordinator runs. These events are not a rendered conversation transcript by themselves. When present, turns are the person's thread across every coordinator run of the project, in timestamp order: person and coordinator text from the committed durable conversation mirror, plus participant mail from other workflow runs on a retained mail thread that includes a person. threads are the retained native mail threads among workflow runs only, keyed by References root. Native workflow read authority is required in addition to project read.",
+        "Read the current registered coordinator's committed native runtime events. While no coordinator is registered (one is starting or replacing another), runId is null, events and questions are empty and turns still carry the conversation of the project's earlier coordinator runs. These events are not a rendered conversation transcript by themselves. When present, turns are the person's thread across every coordinator run of the project, in timestamp order: person and coordinator text from the committed durable conversation mirror, plus participant mail from other workflow runs on a retained mail thread that includes a person. threads are the retained native mail threads among workflow runs only, keyed by References root. questions are the project's questions to the person, oldest first, each with a status. Native workflow read authority is required in addition to project read.",
       security: [{ sessionCookie: [] }, { deviceBearer: [] }],
       parameters: ["tenantId", "projectId"].map((name) => ({
         name,
@@ -155,7 +155,7 @@ export function createConversationRoutes(
         if (selected.run === undefined) {
           // Without the mirror store there are no turns to read, as for a bound coordinator.
           if (repoStore === undefined)
-            return c.json({ runId: null, events: [] });
+            return c.json({ runId: null, events: [], questions: [] });
           let turns;
           try {
             turns = (await priorTurns(repoStore)).sort(
@@ -177,6 +177,7 @@ export function createConversationRoutes(
             runId: null,
             events: [],
             turns: turns.slice(-maxConversationTurns),
+            questions: [],
           });
         }
         const current = selected.run;
@@ -191,18 +192,15 @@ export function createConversationRoutes(
         target.search = "";
         const response = await dispatch(new Request(target.href, c.req.raw));
         response.headers.set("cache-control", "no-store");
-        if (!response.ok || repoStore === undefined) return response;
+        if (!response.ok) return response;
         try {
-          const raw = await response.text();
-          const passThrough = (body: string) =>
-            new Response(body, {
-              status: response.status,
-              headers: response.headers,
-            });
-          const payload = parseJson(raw);
-          if (payload === undefined) return passThrough(raw);
-          const events = (payload as { events?: unknown })["events"];
-          if (isRecord(payload)) {
+          const payload: unknown = JSON.parse(await response.text());
+          if (!isRecord(payload))
+            throw new Error("Native run events are not a JSON object");
+          const events = ConversationEvents.get("events").assert(
+            payload["events"],
+          );
+          if (repoStore !== undefined) {
             const live = await read(repoStore, current);
             const turns = [
               ...live.turns,
@@ -213,7 +211,11 @@ export function createConversationRoutes(
             if (live.threads !== undefined) payload["threads"] = live.threads;
             payload["turns"] = turns.slice(-maxConversationTurns);
           }
-          return passThrough(JSON.stringify(payload));
+          payload["questions"] = coordinatorQuestions(events);
+          return new Response(JSON.stringify(payload), {
+            status: response.status,
+            headers: response.headers,
+          });
         } catch (error) {
           log.error(
             "Conversation projection failed",

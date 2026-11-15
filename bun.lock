@@ -168,6 +168,7 @@
       "name": "@corbits-builder/schemas",
       "version": "0.1.0-rc.3",
       "dependencies": {
+        "@intx/types": "workspace:*",
         "arktype": "catalog:",
         "ignore": "5.3.2",
       },
