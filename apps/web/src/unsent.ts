@@ -22,10 +22,6 @@ export function writeUnsent(key: string, value: string): void {
   }
 }
 
-/**
- * Text a person has typed but not sent, kept for this browser tab so a reload does not lose it.
- * Setting it to the empty string, as sending does, forgets it.
- */
 export function useUnsent(
   key: string,
 ): [string, (value: SetStateAction<string>) => void] {

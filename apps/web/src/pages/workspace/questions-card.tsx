@@ -416,7 +416,6 @@ function nextLabel(last: boolean, sending: boolean): string {
   return sending ? text.sending : text.send;
 }
 
-/** The open question and the card’s temporary interaction state. */
 type Draft = {
   readonly step: number;
   readonly failed: boolean;
