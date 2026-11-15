@@ -8,7 +8,7 @@ import {
   findAudiencePersona,
   formatPersonaGuidance,
   presenterAssignmentMessage,
-} from "../config/personas.ts";
+} from "@corbits-builder/presenter/personas";
 import {
   experimentalApprovals,
   preferenceGuidance,
@@ -518,7 +518,7 @@ test("presenter workflow entry binds Medium tier inference and approval_package 
   process.env.BUILDER_ROLE_INFERENCE = JSON.stringify(
     resolveRoleInference(MODEL_PROVIDERS, "presenter", bindings.presenter),
   );
-  const entry = await import("../workflows/entries/presenter.ts");
+  const entry = await import("@corbits-builder/presenter/packages/presenter");
   expect(entry.director).toBeDefined();
   expect(entry.default.steps.present).toMatchObject({ triggers: 1 });
   expect(entry.default.grantRequirements).toEqual([

@@ -15,11 +15,22 @@ function contentVersion(base: string, bundle: string): string {
   return `${base}-sha-${createHash("sha256").update(bundle).digest("hex").slice(0, 8)}`;
 }
 
-// Each package is an entry under entries/ built on what its role's model binding resolved to.
-const PACKAGES = Object.entries(WORKFLOW_PACKAGES).map(([name, role]) => ({
-  name,
-  role,
-}));
+const PLUGINS_FOLDER = resolve(import.meta.dir, "../../../../plugins");
+
+// Each package is the module named for it under a plugin's src/packages/, or under entries/ for a
+// role no plugin holds, built on what its role's model binding resolved to.
+const PACKAGES = Object.entries(WORKFLOW_PACKAGES).map(([name, role]) => {
+  const [plugin, ...others] = new Bun.Glob(
+    `*/src/packages/${name}.ts`,
+  ).scanSync({ cwd: PLUGINS_FOLDER, absolute: true });
+  if (others.length > 0)
+    throw new Error("workflow_package_entry_ambiguous:" + name);
+  return {
+    name,
+    role,
+    entry: plugin ?? join(import.meta.dir, "entries", name + ".ts"),
+  };
+});
 
 export async function buildWorkflowPackages(
   destination: string,
@@ -30,14 +41,14 @@ export async function buildWorkflowPackages(
   const output = resolve(destination);
   await mkdir(output, { recursive: true });
   const manifest = [];
-  for (const { name, role } of PACKAGES) {
+  for (const { name, role, entry } of PACKAGES) {
     const result = await Bun.build({
       define: {
         "process.env.BUILDER_ROLE_INFERENCE": JSON.stringify(
           JSON.stringify(inference[role]),
         ),
       },
-      entrypoints: [join(import.meta.dir, "entries", name + ".ts")],
+      entrypoints: [entry],
       target: "bun",
       format: "esm",
       minify: true,

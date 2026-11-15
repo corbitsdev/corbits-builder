@@ -1,0 +1,20 @@
+{
+  "name": "@corbits-builder/writer",
+  "version": "0.7.1",
+  "private": true,
+  "license": "SEE LICENSE IN ../../LICENSE.md",
+  "author": "Sawyer Cutler <sawyer@dirtroad.dev>",
+  "type": "module",
+  "exports": {
+    "./skills": "./src/skills.ts",
+    "./task": "./src/task.ts",
+    "./packages/*": "./src/packages/*.ts"
+  },
+  "dependencies": {
+    "@corbits-builder/hub": "workspace:*",
+    "@corbits-builder/schemas": "workspace:*",
+    "@intx/agent": "workspace:*",
+    "@intx/workflow": "workspace:*",
+    "arktype": "catalog:"
+  }
+}

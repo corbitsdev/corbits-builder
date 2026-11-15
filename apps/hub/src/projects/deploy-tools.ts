@@ -60,10 +60,10 @@ import {
   formatPersonasCatalog,
   presenterAssignmentMessage,
   type PresenterDesignTokens,
-} from "../config/personas.ts";
+} from "@corbits-builder/presenter/personas";
 import { DESIGN_STYLES } from "../artifacts/design-tweaks.ts";
 import { workflowHttpJson, WorkflowHttpError } from "../workflows/http-json.ts";
-import { assignmentToWriterMessage } from "../workflows/writer-task.ts";
+import { assignmentToWriterMessage } from "@corbits-builder/writer/task";
 import { coderTaskMessage } from "@corbits-builder/coder/contract";
 
 export const DEPLOY_TOOLS = "@corbits-builder/deploy/tools";

@@ -23,10 +23,10 @@ The roles:
 - **Coordinator** (`workflows/coordinator`): one long-running workflow per
   project. It talks with the person, writes the problem brief and starts the
   other roles.
-- **Writer** (`workflows/writer`): writes one document.
+- **Writer** (`plugins/writer`): writes one document.
 - **Reviewer** (`workflows/reviewer`): reviews one document.
-- **Designer** (`workflows/designer`): builds the clickable design.
-- **Coder** (`workflows/coder`): builds the app in a sandbox from its
+- **Designer** (`plugins/designer`): builds the clickable design.
+- **Coder** (`plugins/coder`): builds the app in a sandbox from its
   starter.
 
 Each role runs on the tier its profile assigns

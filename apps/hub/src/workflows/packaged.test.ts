@@ -36,17 +36,26 @@ test("production entries expose concrete native workflows without callback crede
   process.env.BUILDER_ROLE_INFERENCE = JSON.stringify(inference.coordinator);
   const coordinator = (await import("./entries/coordinator.ts")).default;
   const writers = [
-    (await import("./entries/writer-constraints.ts")).default,
-    (await import("./entries/writer-approaches.ts")).default,
-    (await import("./entries/writer-product-requirements.ts")).default,
-    (await import("./entries/writer-build-plan.ts")).default,
+    (await import("@corbits-builder/writer/packages/writer-constraints"))
+      .default,
+    (await import("@corbits-builder/writer/packages/writer-approaches"))
+      .default,
+    (
+      await import("@corbits-builder/writer/packages/writer-product-requirements")
+    ).default,
+    (await import("@corbits-builder/writer/packages/writer-build-plan"))
+      .default,
   ];
   const reviewer = (await import("./entries/reviewer.ts")).default;
-  const coder = (await import("./entries/coder.ts")).default;
-  const coderAnyPackage = (await import("./entries/coder-any-package.ts"))
+  const coder = (await import("@corbits-builder/coder/packages/coder")).default;
+  const coderAnyPackage = (
+    await import("@corbits-builder/coder/packages/coder-any-package")
+  ).default;
+  const designer = (await import("@corbits-builder/designer/packages/designer"))
     .default;
-  const designer = (await import("./entries/designer.ts")).default;
-  const presenter = (await import("./entries/presenter.ts")).default;
+  const presenter = (
+    await import("@corbits-builder/presenter/packages/presenter")
+  ).default;
   expect(coordinator.steps.coordinate).toMatchObject({ triggers: "unbounded" });
   for (const writer of writers)
     expect(writer.steps.write).toMatchObject({ triggers: 1 });
