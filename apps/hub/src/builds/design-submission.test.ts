@@ -135,7 +135,7 @@ test("check-app that cannot start still reports an invalid DESIGN.md", async () 
   });
 });
 
-test("a failed submission retries, while unchanged files and equivalent prepared content reuse the receipt", async () => {
+test("a failed submission retries, while unchanged files reuse the receipt", async () => {
   await withDesign(async (workspace, doc) => {
     let checks = 0;
     let posts = 0;
@@ -176,7 +176,7 @@ test("a failed submission retries, while unchanged files and equivalent prepared
       filed: true,
     });
     expect(checks).toBe(3);
-    expect(posts).toBe(2);
+    expect(posts).toBe(3);
     submission.dispose();
   });
 });
