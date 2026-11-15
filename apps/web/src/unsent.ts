@@ -1,57 +1,26 @@
-/**
- * Text a person has typed but not sent, kept for this browser tab so a reload does not lose it.
- * When storage is unavailable it lives in memory until the page reloads.
- */
+/** Text a person has typed but not sent, kept for this browser tab so a reload does not lose it. */
 import { useCallback, useSyncExternalStore, type SetStateAction } from "react";
+import { createBrowserStore } from "./browser-store.ts";
 
-const listeners = new Set<() => void>();
-const inMemory = new Map<string, string>();
-
-function subscribe(listener: () => void): () => void {
-  listeners.add(listener);
-  return () => {
-    listeners.delete(listener);
-  };
-}
+const store = createBrowserStore(
+  () => sessionStorage,
+  "until this page reloads",
+);
 
 export function readUnsent(key: string): string {
-  const held = inMemory.get(key);
-  if (held !== undefined) return held;
-  try {
-    const stored = sessionStorage.getItem(key);
-    return stored === null ? "" : stored;
-  } catch (error) {
-    console.warn(
-      `Browser storage is unavailable; "${key}" lasts until this page reloads.`,
-      error,
-    );
-    inMemory.set(key, "");
-    return "";
-  }
+  const stored = store.read(key);
+  return stored === null ? "" : stored;
 }
 
 export function writeUnsent(key: string, value: string): void {
-  try {
-    if (value === "") sessionStorage.removeItem(key);
-    else sessionStorage.setItem(key, value);
-    inMemory.delete(key);
-  } catch (error) {
-    // Typing writes on every keystroke, so a refusal is reported the first time only.
-    if (!inMemory.has(key))
-      console.warn(
-        `Browser storage refused "${key}"; it lasts until this page reloads.`,
-        error,
-      );
-    inMemory.set(key, value);
-  }
-  for (const listener of listeners) listener();
+  store.write(key, value === "" ? null : value);
 }
 
 export function useUnsent(
   key: string,
 ): [string, (value: SetStateAction<string>) => void] {
   const read = () => readUnsent(key);
-  const value = useSyncExternalStore(subscribe, read, read);
+  const value = useSyncExternalStore(store.subscribe, read, read);
   const set = useCallback(
     (next: SetStateAction<string>) =>
       writeUnsent(
