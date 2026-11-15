@@ -25,6 +25,20 @@ export const starterFiles = (): Record<string, string> =>
     ),
   );
 
+// What the starter is made of, in the starter's own words, so a build plan never describes a
+// starter that has since changed.
+export const starterStack = (): string => {
+  const starter: { description?: unknown } = JSON.parse(
+    readFileSync(
+      join(import.meta.dir, "..", "starter", "package.json"),
+      "utf8",
+    ),
+  );
+  if (typeof starter.description !== "string" || starter.description === "")
+    throw new Error("The starter's package.json has no description");
+  return starter.description;
+};
+
 export const checkScript = (): string =>
   readFileSync(join(import.meta.dir, "..", "check", "check-app.ts"), "utf8");
 
