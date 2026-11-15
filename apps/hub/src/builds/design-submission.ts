@@ -98,8 +98,6 @@ export function createDesignSubmission(
       if (!Bun.deepEquals(await readDesignFiles(workspace), files, true))
         return { passed: false, checklist: designChangedDuringCheck };
       signal.throwIfAborted();
-      // The hub answers content it already holds with that version, so raw edits that normalize to
-      // filed content are still checked but add none.
       const artifact = await file(submission, signal);
       const result: Submitted = {
         passed: true,
