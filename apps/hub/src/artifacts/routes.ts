@@ -341,7 +341,7 @@ export function mountArtifactRoutes(
       tags: ["Artifacts"],
       operationId: "attachMaterials",
       description:
-        "Files each multipart `file` as a material artifact titled by its filename (the same filename again is its next version), then mails the files to the project's coordinator as native attachments with `message`, or a note naming them. A type the coordinator model does not read is refused with material_type_not_accepted; Interchange's attachment codes (too_many_attachments, oversize_attachment, oversize_total, disallowed_mime_type, invalid_attachment_name) come back unchanged.",
+        "Uploads one or more files to the project as materials and sends them to the coordinator, with your `message` or, if you leave it out, a short note listing the files. Uploading a file with the same name as an existing material saves it as a new version of that material. The upload is rejected with material_type_not_accepted if the coordinator's model can't read the file type, and with Interchange's attachment error codes if the files are too large or too many.",
       security,
       requestBody: {
         required: true,
@@ -536,7 +536,7 @@ export function mountArtifactRoutes(
       tags: ["Artifacts"],
       operationId: "readLiveApp",
       description:
-        "The project's app as the hub runs it while the project is open, from the project's current files: the build workspace's while a coder builds, else the saved app (the app repository's main, or the latest filed version of a project without one). Reading never starts it. A running app is served at url, an origin of its own on this host whose every request needs the same session and project read access as this route.",
+        "Returns the status of the project's running app and, if it is running, the URL where you can open it. While a coder is building, this is the coder's work in progress; otherwise it is the last saved app. This route never starts the app; call keepLiveApp for that. Opening the URL requires the same sign-in and read access to the project as this route.",
       security,
       responses: {
         200: {
@@ -595,7 +595,7 @@ export function mountArtifactRoutes(
       tags: ["Artifacts"],
       operationId: "snapshotApp",
       description:
-        "Files the newest coder run's workspace, whether that run is live or ended, as the next version of the project's app, whatever its check or approval state. Its .gitignore is honored and installs, build output, environment files and the builder's own files are left out; files that are not text are kept. When the latest version already holds exactly these files, nothing is filed and that version is named.",
+        "Saves the files from the most recent coder run as a new version of the project's app, even if the app has not passed its checks or been approved. Files ignored by .gitignore, installed packages, build output and environment files are left out; images and other non-text files are included. If nothing has changed since the latest version, no new version is saved and the latest one is returned.",
       security,
       responses: {
         200: {
@@ -746,7 +746,7 @@ export function mountArtifactRoutes(
       tags: ["Artifacts"],
       operationId: "exportProjectArchive",
       description:
-        "The project as a zip named after it. sections (comma-separated planning, design, build; all when absent) picks planning/ (each document as <kind>.md and the person's materials), design/ (the design's files and each option's under options/<label>/) and build/ (the app's source). project.json, the file import reads, is always in it. The app in build/ is the filed version named by version, else the saved app.",
+        "Downloads the project as a zip file named after the project. Use `sections` to choose which folders to include: planning, design, build, or several separated by commas. Leave it out to get all three. The zip always includes project.json, the file the import route reads. The build folder contains the saved app unless you ask for a specific one with `version`.",
       security,
       parameters: [
         {
