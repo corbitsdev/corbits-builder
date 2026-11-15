@@ -8,6 +8,7 @@ import type {
   ReactorDirector,
   RetryPolicy,
 } from "@intx/types/runtime";
+import type { Timeouts } from "../config/models.ts";
 import { REPETITION_ABORT } from "../inference/repetition.ts";
 import { readCheckDetail, type CheckDetail } from "../builds/check-detail.ts";
 import { accessRefused } from "./http-json.ts";
@@ -101,7 +102,6 @@ const backoffRetryPolicy: RetryPolicy = ({ error, attempt, elapsedMs }) => {
   if (retryAfterMs === undefined) return { kind: "retry", delayMs };
   return { kind: "retry", delayMs: Math.max(delayMs, retryAfterMs) };
 };
-type Timeouts = { totalTimeoutMs?: number };
 
 const withBackoff =
   (timeouts: Timeouts) =>
@@ -131,10 +131,14 @@ const withRetryPolicy = (
       failRun &&
       event.type === "inference.error" &&
       TRANSIENT_ERRORS.has(event.error.category)
-    )
+    ) {
+      // Interchange's timeout message already names the limit that was hit and its length.
+      if (event.error.category === "timeout")
+        throw new Error(`model_timed_out: ${event.error.message}`);
       throw new Error(
         `model_unavailable: ${event.error.category}: ${event.error.message}`,
       );
+    }
     const actions = await director.decide(event, state, caps);
     const stamp = withBackoff(timeouts);
     return Array.isArray(actions) ? actions.map(stamp) : stamp(actions);
@@ -331,7 +335,11 @@ export const compactingDirector = (packageName: string) =>
       "fileBeforeDone?": "boolean",
       "startAfterApproval?": "boolean",
       "replyOnFailure?": "boolean",
-      timeouts: { "+": "reject", "totalTimeoutMs?": "number.integer > 0" },
+      timeouts: {
+        "+": "reject",
+        "totalTimeoutMs?": "number.integer > 0",
+        "inactivityTimeoutMs?": "number.integer > 0",
+      },
     }),
     factory: (config, env, agent) => {
       const inner = defaultDirectorFactory({}, env, agent) as ReactorDirector;

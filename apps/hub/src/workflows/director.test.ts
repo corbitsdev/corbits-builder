@@ -164,6 +164,13 @@ test("a model error that outlasts the retries fails a specialist and is the coor
   expect(reply?.type === "reply" ? reply.content : "").toContain("overloaded");
 });
 
+test("a model call that hits a time limit fails a specialist as a timeout naming the limit", async () => {
+  const limit = "inference call exceeded total timeout (900000 ms wall-clock)";
+  await expect(
+    decide(director(false), failed({ category: "timeout", message: limit })),
+  ).rejects.toThrow(`model_timed_out: ${limit}`);
+});
+
 test("designer director holds replies until the latest edits pass check_design and file a design option", async () => {
   const subject = compactingDirector("@corbits-builder/designer-test").factory(
     {
