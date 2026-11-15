@@ -28,13 +28,7 @@ import {
   PromptInputToolbar,
 } from "@corbits/react-ui";
 import { wording } from "../../config.ts";
-import {
-  Banner,
-  BannerAction,
-  Fault,
-  InlineNote,
-  QuietButton,
-} from "../../components.jsx";
+import { Banner, BannerAction, Fault } from "../../components.jsx";
 import { Composer } from "../../composer.tsx";
 import { Dictated } from "../../dictation.jsx";
 import { useShellReply } from "../../flourish.tsx";
@@ -259,15 +253,21 @@ function Dock({
 }) {
   if (dock.kind === "archived")
     return (
-      <div>
-        <InlineNote>
-          {wording.archivedProject.notice}{" "}
-          <QuietButton disabled={dock.restoring} onClick={dock.onRestore}>
+      <div className={styles.archived}>
+        <div className={styles.caution}>
+          <p>{wording.archivedProject.notice}</p>
+          <UiButton
+            type="button"
+            size="sm"
+            variant="outline"
+            disabled={dock.restoring}
+            onClick={dock.onRestore}
+          >
             {dock.restoring
               ? wording.archivedProject.restoring
               : wording.archivedProject.restore}
-          </QuietButton>
-        </InlineNote>
+          </UiButton>
+        </div>
         {dock.fault === null ? null : <Fault>{dock.fault}</Fault>}
       </div>
     );
