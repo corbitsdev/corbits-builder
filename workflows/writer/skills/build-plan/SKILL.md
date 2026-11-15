@@ -18,7 +18,7 @@ one, and carries each requirement by its id.
 2. `## Approach and stack`: the chosen approach from the approaches
    document, the stack, and why both fit the constraints.
 3. `## Components and interfaces`: each part of the app, what it owns, and
-   the routes, tables and screens between parts.
+   the routes, data stores and screens between parts.
 4. `## Data flow`: where each piece of data comes from, how it moves
    between outside sources, the server and the screens, and where it is
    kept.
@@ -47,7 +47,7 @@ one, and carries each requirement by its id.
 
 ## What makes it good
 
-- Name concrete files, routes, tables and screens; each phase is small
+- Name concrete files, routes, data stores and screens; each phase is small
   enough that its exit is observable.
 - Cite a requirement by its id and leave its wording to the requirements
   document.

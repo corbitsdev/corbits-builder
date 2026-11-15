@@ -7,8 +7,8 @@ project's own documents and the instruction's stack.
 ```markdown
 ## In short
 
-- **Approach A on the default stack**: one server with its own database
-  serving the member and staff screens.
+- **Approach A on the default stack**: one server keeping its own data
+  and serving the member and staff screens.
 - **Six phases**; the designed screens show in the preview from phase 2, on labelled sample data until phase 5.
 - The riskiest part is **the timetable import**; the fallback is entering
   classes by hand on the timetable screen.
@@ -16,13 +16,13 @@ project's own documents and the instruction's stack.
 ## Approach and stack
 
 Approach A, chosen in the approaches document, on the starter's stack: a
-server with a small database and a React client. It holds bookings in one
+server that keeps its data as validated JSON files and a React client. It holds bookings in one
 place, which a full class refusing the next booking needs (FR-2), and runs
 on one small server inside the budget (the constraints).
 
 ## Components and interfaces
 
-- Server: classes, members and bookings tables; routes `GET /api/classes`,
+- Server: classes, members and bookings stores; routes `GET /api/classes`,
   `POST /api/bookings`, `DELETE /api/bookings/:id`, `GET /api/rosters/:classId`.
 - Client: Timetable, My bookings, Roster and Import screens.
 - Email: a confirmation per booking through the gym's email service (IR-2).
@@ -30,9 +30,9 @@ on one small server inside the budget (the constraints).
 ## Data flow
 
 The timetable arrives once from the gym's .xlsx through the Import screen
-into the classes table (IR-3). A booking goes from the Timetable screen to
-`POST /api/bookings`, which checks capacity inside one transaction (FR-2)
-and sends the confirmation email (IR-2). Rosters read the bookings table.
+into the classes store (IR-3). A booking goes from the Timetable screen to
+`POST /api/bookings`, which checks capacity and saves the booking in one store update (FR-2)
+and sends the confirmation email (IR-2). Rosters read the bookings store.
 
 ## Phases
 
@@ -71,7 +71,7 @@ running app on the screen the checklist names.
 - An unusual timetable row fails to import. Fallback: the import lists
   skipped rows and staff add those classes by hand.
 - Two members book the last place at once. Fallback: the capacity check
-  and insert share one transaction, so the second booking is refused.
+  and the save share one store update, so the second booking is refused.
 
 ## Acceptance checklist
 
