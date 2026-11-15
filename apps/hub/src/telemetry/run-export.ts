@@ -3,6 +3,7 @@ import { ROOT_CONTEXT, trace, SpanStatusCode } from "@opentelemetry/api";
 import {
   BasicTracerProvider,
   BatchSpanProcessor,
+  type SpanExporter,
 } from "@opentelemetry/sdk-trace-base";
 import { resourceFromAttributes } from "@opentelemetry/resources";
 import { OTLPTraceExporter } from "@opentelemetry/exporter-trace-otlp-http";
@@ -23,8 +24,10 @@ const hexId = (length: 16 | 32, ...parts: string[]) =>
 
 export function createRunExport(
   environment: Readonly<Record<string, string | undefined>>,
+  exporter?: SpanExporter,
 ) {
   if (
+    exporter === undefined &&
     !environment.OTEL_EXPORTER_OTLP_ENDPOINT &&
     !environment.OTEL_EXPORTER_OTLP_TRACES_ENDPOINT
   )
@@ -46,7 +49,9 @@ export function createRunExport(
         environment.OTEL_SERVICE_NAME ||
         createProductConfig(environment).naming.productName,
     }),
-    spanProcessors: [new BatchSpanProcessor(new OTLPTraceExporter())],
+    spanProcessors: [
+      new BatchSpanProcessor(exporter ?? new OTLPTraceExporter()),
+    ],
   });
   const tracer = provider.getTracer("corbits-builder");
   return {
@@ -84,6 +89,9 @@ export function createRunExport(
           current = undefined;
         }
       }
+    },
+    async flush(): Promise<void> {
+      await provider.forceFlush();
     },
     async shutdown(): Promise<void> {
       await provider.shutdown();

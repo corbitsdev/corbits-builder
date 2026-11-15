@@ -99,7 +99,7 @@ import { createWorkflowServices } from "./provisioning/workflow-services.ts";
 import { createWorkflowRunStreamRoutes } from "./run-stream.ts";
 import { parseAddress } from "@intx/types/agent-address";
 import { createRunExport } from "./telemetry/run-export.ts";
-import { createRunSpans } from "./telemetry/run-spans.ts";
+import { createRunSpans, runIdFromLocalPart } from "./telemetry/run-spans.ts";
 import { createAgentActivity } from "./artifacts/activity.ts";
 import { requestErrorMetadata } from "./request-error.ts";
 import { createLiveAppProxy } from "./live-app/proxy.ts";
@@ -380,28 +380,26 @@ export async function createHubRuntime(
           rawEnvironment.OTEL_INSTRUMENTATION_GENAI_CAPTURE_MESSAGE_CONTENT ===
           "true",
       });
-      disposeRunExport = sidecarRouter.events.on(
+      const unsubscribe = sidecarRouter.events.on(
         "agent.event",
         ({ agentAddress, event }) => {
-          try {
-            const address = parseAddress(agentAddress);
-            if (!address) return;
-            const runId = address.localPart.split("-")[0];
-            if (!runId) return;
-            runExport.send(
-              runSpans.accept(
-                { address: agentAddress, runId },
-                event,
-                Date.now(),
-              ),
-            );
-          } catch (error) {
-            log.error("Agent trace event handling failed", {
-              errorType: error instanceof Error ? error.name : typeof error,
-            });
-          }
+          const address = parseAddress(agentAddress);
+          if (!address) return;
+          const runId = runIdFromLocalPart(address.localPart);
+          if (!runId) return;
+          runExport.send(
+            runSpans.accept(
+              { address: agentAddress, runId },
+              event,
+              Date.now(),
+            ),
+          );
         },
       );
+      disposeRunExport = () => {
+        unsubscribe();
+        runExport.send(runSpans.shutdown(Date.now()));
+      };
     }
     const getSession: GetSession = async (headers) => {
       const hub = hubRequestSession(headers);

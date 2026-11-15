@@ -6,6 +6,9 @@ import {
   ATTR_GEN_AI_PROVIDER_NAME,
   ATTR_GEN_AI_RESPONSE_MODEL,
   ATTR_GEN_AI_USAGE_INPUT_TOKENS,
+  ATTR_GEN_AI_USAGE_CACHE_CREATION_INPUT_TOKENS,
+  ATTR_GEN_AI_USAGE_CACHE_READ_INPUT_TOKENS,
+  ATTR_SESSION_ID,
   ATTR_GEN_AI_USAGE_OUTPUT_TOKENS,
   ATTR_GEN_AI_TOOL_NAME,
   ATTR_GEN_AI_TOOL_CALL_ID,
@@ -26,6 +29,19 @@ export type FinishedSpan = {
   error?: string;
 };
 
+const MAX_SPANS = 1000;
+
+export function runIdFromLocalPart(local: string): string {
+  const separator = local.indexOf("-");
+  return separator === -1 ? local : local.slice(0, separator);
+}
+
+function finish(span: FinishedSpan, at: number, error: string): FinishedSpan {
+  span.endTime = at;
+  span.error = error;
+  return span;
+}
+
 export function createRunSpans(options: { captureContent: boolean }) {
   const agents = new Map<
     string,
@@ -38,7 +54,33 @@ export function createRunSpans(options: { captureContent: boolean }) {
       idleSince: number;
     }
   >();
+  const close = (
+    address: string,
+    at: number,
+    error?: string,
+  ): FinishedSpan[] => {
+    const state = agents.get(address);
+    if (!state) return [];
+    agents.delete(address);
+    const spans: FinishedSpan[] = [];
+    for (const span of state.open.values())
+      spans.push(finish(span, at, error ?? "Turn ended before work completed"));
+    state.turn.endTime = at;
+    if (error !== undefined) state.turn.error = error;
+    else if (spans.length > 0)
+      state.turn.error = "Turn ended before work completed";
+    spans.push(state.turn);
+    return spans;
+  };
   return {
+    shutdown(at: number): FinishedSpan[] {
+      const spans: FinishedSpan[] = [];
+      for (const address of agents.keys())
+        spans.push(
+          ...close(address, at, "Hub shut down before turn completed"),
+        );
+      return spans;
+    },
     accept(
       agent: { address: string; runId: string },
       raw: unknown,
@@ -47,7 +89,11 @@ export function createRunSpans(options: { captureContent: boolean }) {
       const event = parseInferenceEvent(raw);
       if (event instanceof type.errors) return [];
       if (event.type === "message.run.started") {
-        agents.delete(agent.address);
+        const spans = close(
+          agent.address,
+          at,
+          "Turn replaced before completion",
+        );
         agents.set(agent.address, {
           turn: {
             traceKey: event.data.messageRunId,
@@ -57,6 +103,7 @@ export function createRunSpans(options: { captureContent: boolean }) {
             startTime: at,
             endTime: at,
             attributes: {
+              [ATTR_SESSION_ID]: agent.runId,
               "corbits.run.id": agent.runId,
               "corbits.agent.address": agent.address,
             },
@@ -64,27 +111,27 @@ export function createRunSpans(options: { captureContent: boolean }) {
           open: new Map(),
           idleSince: at,
         });
-        if (agents.size > 1000) {
+        if (agents.size > MAX_SPANS) {
           const oldest = agents.keys().next().value;
-          if (oldest !== undefined) agents.delete(oldest);
+          if (oldest !== undefined)
+            spans.push(...close(oldest, at, "Turn evicted before completion"));
         }
-        return [];
+        return spans;
       }
       const state = agents.get(agent.address);
       if (!state) return [];
       if (event.type === "message.run.ended") {
         if (event.data.messageRunId !== state.turn.traceKey) return [];
-        agents.delete(agent.address);
-        state.turn.endTime = at;
+        let error: string | undefined;
         if (event.data.status === "failed")
-          state.turn.error = event.data.error?.message ?? event.data.status;
-        return [state.turn];
+          error = event.data.error?.message ?? event.data.status;
+        return close(agent.address, at, error);
       }
       let opened: FinishedSpan | undefined;
       switch (event.type) {
         case "inference.start":
           opened = {
-            ...state.turn,
+            traceKey: state.turn.traceKey,
             name: `chat ${event.data.model}`,
             kind: "model",
             key: `model:${event.seq}`,
@@ -92,7 +139,8 @@ export function createRunSpans(options: { captureContent: boolean }) {
             startTime: state.idleSince,
             endTime: at,
             attributes: {
-              ...state.turn.attributes,
+              "corbits.run.id": agent.runId,
+              "corbits.agent.address": agent.address,
               [ATTR_GEN_AI_OPERATION_NAME]: "chat",
               [ATTR_GEN_AI_REQUEST_MODEL]: event.data.model,
             },
@@ -100,7 +148,7 @@ export function createRunSpans(options: { captureContent: boolean }) {
           break;
         case "tool.start":
           opened = {
-            ...state.turn,
+            traceKey: state.turn.traceKey,
             name: `execute_tool ${event.data.call.name}`,
             kind: "tool",
             key: `tool:${event.data.call.id}`,
@@ -108,7 +156,8 @@ export function createRunSpans(options: { captureContent: boolean }) {
             startTime: at,
             endTime: at,
             attributes: {
-              ...state.turn.attributes,
+              "corbits.run.id": agent.runId,
+              "corbits.agent.address": agent.address,
               [ATTR_GEN_AI_OPERATION_NAME]: "execute_tool",
               [ATTR_GEN_AI_TOOL_NAME]: event.data.call.name,
               [ATTR_GEN_AI_TOOL_CALL_ID]: event.data.call.id,
@@ -139,6 +188,12 @@ export function createRunSpans(options: { captureContent: boolean }) {
               event.data.usage.input;
             model.attributes[ATTR_GEN_AI_USAGE_OUTPUT_TOKENS] =
               event.data.usage.output;
+            if (event.data.usage.cacheRead !== undefined)
+              model.attributes[ATTR_GEN_AI_USAGE_CACHE_READ_INPUT_TOKENS] =
+                event.data.usage.cacheRead;
+            if (event.data.usage.cacheWrite !== undefined)
+              model.attributes[ATTR_GEN_AI_USAGE_CACHE_CREATION_INPUT_TOKENS] =
+                event.data.usage.cacheWrite;
             if (options.captureContent)
               model.attributes[ATTR_GEN_AI_OUTPUT_MESSAGES] = JSON.stringify([
                 {
@@ -169,10 +224,15 @@ export function createRunSpans(options: { captureContent: boolean }) {
       }
       if (opened) {
         state.open.set(opened.key, opened);
-        // The turn itself occupies one of the 1000 open span slots.
-        if (state.open.size > 999) {
+        // Bound unfinished children separately from tracked turns.
+        if (state.open.size > MAX_SPANS) {
           const oldest = state.open.keys().next().value;
-          if (oldest !== undefined) state.open.delete(oldest);
+          if (oldest !== undefined) {
+            const span = state.open.get(oldest);
+            state.open.delete(oldest);
+            if (span)
+              return [finish(span, at, "Span evicted before completion")];
+          }
         }
       }
       return [];
