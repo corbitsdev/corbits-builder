@@ -493,7 +493,8 @@ test("an older failed save cannot discard a newer click of the same option", asy
 }, 30_000);
 
 test("a registry read failure leaves browser settings usable", async () => {
-  const page = await browser.newPage();
+  const context = await browser.newContext();
+  const page = await context.newPage();
   try {
     await page.route("**/settings/preferences", (route) =>
       route.fulfill({ status: 503, body: "Unavailable" }),
@@ -511,8 +512,23 @@ test("a registry read failure leaves browser settings usable", async () => {
       local.getByRole("radio", { name: "Hidden", exact: true }),
     ).toBeChecked();
     await browserExpect(
-      page.getByRole("button", { name: "Add reviewer", exact: true }),
-    ).toBeEnabled();
+      page.getByText("Service Unavailable", { exact: true }),
+    ).toBeVisible();
+    const dark = page
+      .getByRole("radiogroup", { name: "Theme", exact: true })
+      .getByRole("radio", { name: "Dark", exact: true });
+    await dark.click();
+    await browserExpect(dark).toBeChecked();
+    await browserExpect(page.locator("html")).toHaveClass(/dark/);
+    await page.reload();
+    await browserExpect(
+      page.getByText("Service Unavailable", { exact: true }),
+    ).toBeVisible();
+    await browserExpect(dark).toBeChecked();
+    await browserExpect(page.locator("html")).toHaveClass(/dark/);
+    await browserExpect(
+      local.getByRole("radio", { name: "Hidden", exact: true }),
+    ).toBeChecked();
     await page.unroute("**/settings/preferences");
     await page.reload();
     await browserExpect(
@@ -522,7 +538,37 @@ test("a registry read failure leaves browser settings usable", async () => {
       page.locator("#preference-row-replies").getByRole("radio").first(),
     ).toBeEnabled();
   } finally {
-    await page.close();
+    await context.close();
+  }
+}, 30_000);
+
+test("approvals cannot be chosen before personal settings load", async () => {
+  const context = await browser.newContext();
+  const page = await context.newPage();
+  const release = Promise.withResolvers<void>();
+  const requested = Promise.withResolvers<void>();
+  try {
+    await page.route("**/settings/me", async (route) => {
+      requested.resolve();
+      await release.promise;
+      await route.continue();
+    });
+    await page.addInitScript(() =>
+      sessionStorage.setItem("sb.model-setup.later", "1"),
+    );
+    await page.goto(`${server.url}?view=settings&tab=preferences`);
+    await requested.promise;
+    await browserExpect(
+      page.getByRole("radiogroup", { name: "Theme", exact: true }),
+    ).toBeVisible();
+    await browserExpect(
+      page.locator("#preference-row-experimental_approvals"),
+    ).toHaveCount(0);
+    release.resolve();
+    await choose(page, "experimental_approvals", "no");
+  } finally {
+    release.resolve();
+    await context.close();
   }
 }, 30_000);
 
@@ -583,35 +629,6 @@ test("settings tabs open, and sign-out ends the local session even when the hub 
       page.getByRole("heading", { name: "Welcome back", exact: true }),
     ).toBeVisible();
   } finally {
-    await page.close();
-  }
-}, 30_000);
-
-test("approvals cannot be chosen before personal settings load", async () => {
-  const page = await browser.newPage();
-  const release = Promise.withResolvers<void>();
-  const requested = Promise.withResolvers<void>();
-  try {
-    await page.route("**/settings/me", async (route) => {
-      requested.resolve();
-      await release.promise;
-      await route.continue();
-    });
-    await page.addInitScript(() =>
-      sessionStorage.setItem("sb.model-setup.later", "1"),
-    );
-    await page.goto(`${server.url}?view=settings&tab=preferences`);
-    await requested.promise;
-    await browserExpect(
-      page.getByRole("button", { name: "Add reviewer", exact: true }),
-    ).toBeVisible();
-    await browserExpect(
-      page.locator("#preference-row-experimental_approvals"),
-    ).toHaveCount(0);
-    release.resolve();
-    await choose(page, "experimental_approvals", "no");
-  } finally {
-    release.resolve();
     await page.close();
   }
 }, 30_000);

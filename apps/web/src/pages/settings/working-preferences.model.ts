@@ -68,6 +68,7 @@ export function useWorkingPreferences({
           },
         },
       );
+      await queryClient.cancelQueries({ queryKey: preferencesQuery.queryKey });
       queryClient.setQueryData(preferencesQuery.queryKey, {
         registry: current.registry,
         saved: receipt.record.fields.preferences ?? base,
