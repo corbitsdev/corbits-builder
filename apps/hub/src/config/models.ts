@@ -64,7 +64,7 @@ export type ProviderEntry = ShippedEntry | CustomEntry;
 
 // xAI asks clients to allow at least 15 minutes per call, and Grok can send nothing for minutes while
 // it thinks, so both the whole call and a silent stretch get that long instead of Interchange's
-// defaults of ten minutes and two.
+// defaults of ten minutes and two. With the two equal, the whole-call limit is the one that fires.
 const XAI_CALL_TIMEOUT_MS = 15 * 60_000;
 const XAI_TIMEOUTS: Timeouts = {
   totalTimeoutMs: XAI_CALL_TIMEOUT_MS,

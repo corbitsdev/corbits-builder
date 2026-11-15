@@ -131,10 +131,14 @@ const withRetryPolicy = (
       failRun &&
       event.type === "inference.error" &&
       TRANSIENT_ERRORS.has(event.error.category)
-    )
+    ) {
+      // Interchange's timeout message already names the limit that was hit and its length.
+      if (event.error.category === "timeout")
+        throw new Error(`model_timed_out: ${event.error.message}`);
       throw new Error(
         `model_unavailable: ${event.error.category}: ${event.error.message}`,
       );
+    }
     const actions = await director.decide(event, state, caps);
     const stamp = withBackoff(timeouts);
     return Array.isArray(actions) ? actions.map(stamp) : stamp(actions);
