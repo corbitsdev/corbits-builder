@@ -220,7 +220,6 @@ export const wording = {
     failed:
       "Downloaded the app's saved code. The latest changes could not be included.",
     refused: "Request failed. Try again.",
-    // Refusals with something more useful to say than the general line.
     refusals: {
       app_repository_unreadable: `${productName} cannot read this project's saved app right now.`,
     } as Record<string, string | undefined>,
