@@ -97,9 +97,9 @@ import {
 } from "./auth/coordinator-routes.ts";
 import { createWorkflowServices } from "./provisioning/workflow-services.ts";
 import { createWorkflowRunStreamRoutes } from "./run-stream.ts";
-import { parseAddress } from "@intx/types/agent-address";
 import { createRunExport } from "./telemetry/run-export.ts";
-import { createRunSpans, runIdFromLocalPart } from "./telemetry/run-spans.ts";
+import { createRunSpans } from "./telemetry/run-spans.ts";
+import { createRunTracing } from "./telemetry/run-tracing.ts";
 import { createAgentActivity } from "./artifacts/activity.ts";
 import { requestErrorMetadata } from "./request-error.ts";
 import { createLiveAppProxy } from "./live-app/proxy.ts";
@@ -374,57 +374,18 @@ export async function createHubRuntime(
     const sidecarWebSocket = createSidecarWebSocket(sidecarRouter);
     const agentActivity = createAgentActivity(sidecarRouter.events);
     const runExport = createRunExport(rawEnvironment);
-    let disposeRunExport: (() => Promise<void>) | undefined;
-    if (runExport) {
-      const runSpans = createRunSpans({
-        captureContent:
-          rawEnvironment.OTEL_INSTRUMENTATION_GENAI_CAPTURE_MESSAGE_CONTENT ===
-          "true",
-      });
-      // Each run's project, role and effort are looked up once; the oldest is forgotten past this.
-      const MAX_TRACED_RUNS = 1000;
-      const metadata = new Map<string, ReturnType<typeof runTelemetry>>();
-      const unsubscribe = sidecarRouter.events.on(
-        "agent.event",
-        ({ agentAddress, event }) => {
-          const address = parseAddress(agentAddress);
-          if (!address) return;
-          const runId = runIdFromLocalPart(address.localPart);
-          if (!runId) return;
-          const at = Date.now();
-          let lookup = metadata.get(runId);
-          if (!lookup) {
-            lookup = runTelemetry(handle.db, runId).catch((error) => {
-              log.warn(
-                "Agent trace metadata lookup failed",
-                requestErrorMetadata(error),
-              );
-              return {};
-            });
-            metadata.set(runId, lookup);
-            if (metadata.size > MAX_TRACED_RUNS) {
-              const oldest = metadata.keys().next().value;
-              if (oldest !== undefined) metadata.delete(oldest);
-            }
-          }
-          // Reactions to the same promise run in registration order, including while it resolves.
-          void lookup.then((context) => {
-            runExport.send(
-              runSpans.accept(
-                { address: agentAddress, runId, ...context },
-                event,
-                at,
-              ),
-            );
-          });
-        },
-      );
-      disposeRunExport = async () => {
-        unsubscribe();
-        await Promise.all(metadata.values());
-        runExport.send(runSpans.shutdown(Date.now()));
-      };
-    }
+    const runTracing = runExport
+      ? createRunTracing({
+          events: sidecarRouter.events,
+          runSpans: createRunSpans({
+            captureContent:
+              rawEnvironment.OTEL_INSTRUMENTATION_GENAI_CAPTURE_MESSAGE_CONTENT ===
+              "true",
+          }),
+          runExport,
+          describeRun: (runId) => runTelemetry(handle.db, runId),
+        })
+      : undefined;
     const getSession: GetSession = async (headers) => {
       const hub = hubRequestSession(headers);
       if (hub) return hub;
@@ -739,7 +700,7 @@ export async function createHubRuntime(
         liveApps.runner.close();
         liveApps.proxy.close();
         agentActivity.dispose();
-        await disposeRunExport?.();
+        await runTracing?.dispose();
         await runExport?.shutdown();
         sidecarWebSocket.close();
         await workflows.drain();

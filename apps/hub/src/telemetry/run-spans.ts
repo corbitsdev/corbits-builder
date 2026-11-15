@@ -20,10 +20,10 @@ import {
 export type RunSpanAgent = {
   address: string;
   runId: string;
-  tenantId?: string;
-  projectId?: string;
-  role?: string;
-  effort?: string;
+  tenantId?: string | undefined;
+  projectId?: string | undefined;
+  role?: string | undefined;
+  effort?: string | undefined;
 };
 
 function agentAttributes(agent: RunSpanAgent): FinishedSpan["attributes"] {
@@ -124,9 +124,7 @@ export function createRunSpans(options: { captureContent: boolean }) {
             key: "turn",
             startTime: at,
             endTime: at,
-            attributes: {
-              ...agentAttributes(agent),
-            },
+            attributes: agentAttributes(agent),
           },
           open: new Map(),
           idleSince: at,
@@ -158,12 +156,10 @@ export function createRunSpans(options: { captureContent: boolean }) {
             parentKey: state.turn.key,
             startTime: state.idleSince,
             endTime: at,
-            attributes: {
-              ...agentAttributes(agent),
-              [ATTR_GEN_AI_OPERATION_NAME]: "chat",
-              [ATTR_GEN_AI_REQUEST_MODEL]: event.data.model,
-            },
+            attributes: agentAttributes(agent),
           };
+          opened.attributes[ATTR_GEN_AI_OPERATION_NAME] = "chat";
+          opened.attributes[ATTR_GEN_AI_REQUEST_MODEL] = event.data.model;
           break;
         case "tool.start":
           opened = {
@@ -174,13 +170,11 @@ export function createRunSpans(options: { captureContent: boolean }) {
             parentKey: state.turn.key,
             startTime: at,
             endTime: at,
-            attributes: {
-              ...agentAttributes(agent),
-              [ATTR_GEN_AI_OPERATION_NAME]: "execute_tool",
-              [ATTR_GEN_AI_TOOL_NAME]: event.data.call.name,
-              [ATTR_GEN_AI_TOOL_CALL_ID]: event.data.call.id,
-            },
+            attributes: agentAttributes(agent),
           };
+          opened.attributes[ATTR_GEN_AI_OPERATION_NAME] = "execute_tool";
+          opened.attributes[ATTR_GEN_AI_TOOL_NAME] = event.data.call.name;
+          opened.attributes[ATTR_GEN_AI_TOOL_CALL_ID] = event.data.call.id;
           if (options.captureContent)
             opened.attributes[ATTR_GEN_AI_TOOL_CALL_ARGUMENTS] = JSON.stringify(
               event.data.call.arguments,

@@ -7,6 +7,10 @@ import { workflowBindings } from "../config/models.ts";
 import { modelDirectory } from "../settings/custom-providers.ts";
 import { loadSettings } from "../settings/policy.ts";
 import type { RunSpanAgent } from "../telemetry/run-spans.ts";
+import { getLogger } from "@intx/log";
+import { requestErrorMetadata } from "../request-error.ts";
+
+const log = getLogger(["corbits-builder", "telemetry"]);
 
 export async function runTelemetry(
   db: DB["db"],
@@ -34,13 +38,17 @@ export async function runTelemetry(
   if (run.role !== null) metadata.role = run.role;
   if (run.projectId === null) return metadata;
   metadata.projectId = run.projectId;
-  const { models } = await loadSettings(db, run.tenantId, run.projectId);
-  if (run.role !== null && models.value !== null) {
-    const bindings = workflowBindings(
-      await modelDirectory(db, run.tenantId),
-      models.value,
-    );
-    metadata.effort = bindings[run.role].effort;
+  if (run.role === null) return metadata;
+  // A profile that cannot run has no effort to report; the run is still traced with what is known.
+  try {
+    const { models } = await loadSettings(db, run.tenantId, run.projectId);
+    if (models.value !== null)
+      metadata.effort = workflowBindings(
+        await modelDirectory(db, run.tenantId),
+        models.value,
+      )[run.role].effort;
+  } catch (error) {
+    log.warn("Run effort could not be read", requestErrorMetadata(error));
   }
   return metadata;
 }
