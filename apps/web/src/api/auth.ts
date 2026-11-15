@@ -45,7 +45,7 @@ async function hubAuth(
     throw new ApiFailure(
       {
         code: "host_unreachable",
-        message: wording.auth.hubUnreachable,
+        message: wording.auth.unreachable,
         correlationId: "-",
         retryable: true,
       },
@@ -89,7 +89,7 @@ export async function getHubSession(): Promise<HubSession> {
     throw new ApiFailure(
       {
         code: "session_unreadable",
-        message: messageOf(parsed, `HTTP ${String(response.status)}`),
+        message: messageOf(parsed, wording.auth.accountUnreadable),
         correlationId: "-",
         retryable: response.status >= 500,
       },

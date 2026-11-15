@@ -89,7 +89,7 @@ export function CollaboratorsView({
         </SettingsRow>
         <SettingsRow
           label="Workspace roles"
-          hint="What an invitation can grant. Names and grants come from the hub."
+          hint="What an invitation can grant."
         >
           <SettingsRowValue>
             {names(
@@ -167,9 +167,8 @@ export function CollaboratorsView({
           </SettingsRow>
         ) : null}
         <InlineNote>
-          A full member directory is not part of this workspace yet: the hub
-          lists your own memberships, not every principal, so only you and open
-          invitations are shown.
+          A full member directory is not part of this workspace yet, so only you
+          and open invitations are shown.
         </InlineNote>
       </SettingsSectionBody>
     </Section>

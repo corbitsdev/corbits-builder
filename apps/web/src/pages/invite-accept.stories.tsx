@@ -1,4 +1,5 @@
 import type { Meta, StoryObj } from "@storybook/react-vite";
+import { wording } from "../config.ts";
 import { fn } from "storybook/test";
 import { InvitationAcceptView } from "./invite-accept.view.tsx";
 
@@ -36,7 +37,7 @@ export const Unreadable: Story = {
   args: {
     invitation: {
       status: "unreadable",
-      reason: "The hub refused the request: HTTP 404, invitation_not_found.",
+      reason: wording.appVersion.refused,
     },
   },
 };

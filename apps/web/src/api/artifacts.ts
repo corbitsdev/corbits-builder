@@ -89,7 +89,6 @@ async function refusal(cause: unknown) {
   return { status: cause.response.status, code, body: record };
 }
 
-/** Any failure as one a person can read: the hub's status and code, never a parser's message. */
 export async function readableFailure(cause: unknown): Promise<unknown> {
   if (cause instanceof ApiFailure) return cause;
   const failure = await refusal(cause);
@@ -97,9 +96,7 @@ export async function readableFailure(cause: unknown): Promise<unknown> {
     return new ApiFailure(
       {
         code: failure.code,
-        message:
-          versionText.refusals[failure.code] ??
-          versionText.refused(failure.status, failure.code),
+        message: versionText.refusals[failure.code] ?? versionText.refused,
         correlationId: "-",
         retryable: false,
       },
@@ -152,7 +149,7 @@ export async function currentAppVersion(
     const failure = await refusal(cause);
     if (!failure) throw cause;
     return {
-      note: versionText.failed(failure.status, failure.code),
+      note: versionText.failed,
       current: false,
     };
   }

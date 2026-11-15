@@ -1,4 +1,5 @@
 import type { Meta, StoryObj } from "@storybook/react-vite";
+import { wording } from "../config.ts";
 import { useState } from "react";
 import { fn } from "storybook/test";
 import { Button } from "../components.jsx";
@@ -123,7 +124,7 @@ export const ExportCheckFailed: Story = {
     exportDialog: (
       <ExportDialogView
         {...exporting}
-        failure="Only the planning documents can be offered: the hub is unreachable."
+        failure={`Only the planning documents can be offered: ${wording.auth.unreachable}`}
         sections={[
           { section: "planning", available: true, chosen: true },
           { section: "design", available: false, chosen: false },

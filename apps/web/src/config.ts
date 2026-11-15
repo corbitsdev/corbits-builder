@@ -49,22 +49,21 @@ export const wording = {
     createAccount: "Create an account",
     passwordTooShort: (min: number) =>
       `Use at least ${String(min)} characters for the password.`,
-    hubUnreachable: "The hub is unreachable.",
+    unreachable: "Connection failed. Try again.",
     signIn: {
       failed: "Could not sign in.",
-      noUser: "The hub accepted the sign in but did not return a user.",
+      noUser: "There was a problem signing in. Try again.",
     },
     signUp: {
       failed: "Could not create the account.",
-      noUser:
-        "The hub accepted the create the account but did not return a user.",
+      noUser: "There was a problem creating your account. Try again.",
     },
     signOutFailed: "Could not sign out.",
     noWorkspace: "You are not a member of any workspace yet.",
     accountUnreadable: "Your account could not be read.",
   },
   hub: {
-    notAnswering: "The hub is not answering",
+    notAnswering: "Connection failed. Trying again…",
   },
   boot: {
     starting: "Starting…",
@@ -218,16 +217,13 @@ export const wording = {
       "Downloaded the app's saved code. You can view this project but not save a new version of its code.",
     elsewhere:
       "Downloaded the app's saved code. The app builder's working copy cannot be read from here, so its current code is not in it.",
-    failed: (status: number, code: string) =>
-      `Saving the app builder's current code failed (HTTP ${String(status)}, ${code}), so this is the app's saved code without it.`,
-    refused: (status: number, code: string) =>
-      `The hub refused the request: HTTP ${String(status)}, ${code}.`,
-    // Refusals a person reads in plain words instead of by status and code.
+    failed:
+      "Downloaded the app's saved code. The latest changes could not be included.",
+    refused: "Request failed. Try again.",
     refusals: {
       app_repository_unreadable: `${productName} cannot read this project's saved app right now.`,
     } as Record<string, string | undefined>,
-    unreadable:
-      "The hub's answer could not be read; it may be an older hub that has not been restarted.",
+    unreadable: "Something went wrong. Reload the page.",
   },
   exportProject: {
     title: "Export the project",
@@ -721,7 +717,7 @@ export const wording = {
     open: "Open",
     failed: (reason: string) => `Did not finish: ${reason}`,
     failedUnknown: "the run stopped without a reason",
-    refusedUnknown: "the hub refused it",
+    refusedUnknown: "the request failed",
   },
   /** Before a message changes a document a specialist is building from. */
   earlierDocument: {
