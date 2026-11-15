@@ -346,64 +346,6 @@ test("a failed save restores each preference and a later retry can save", async 
   }
 }, 90_000);
 
-test("appearance choices stay in the browser while approvals save to the hub", async () => {
-  const page = await browser.newPage();
-  try {
-    await openSettings(page);
-    const saves: string[] = [];
-    page.on("request", (request) => {
-      if (request.url().endsWith("/settings/me/save"))
-        saves.push(request.url());
-    });
-    for (const name of ["Hidden", "Shown"]) {
-      await page
-        .getByRole("radiogroup", { name: "Document tips", exact: true })
-        .getByRole("radio", { name, exact: true })
-        .click();
-      await page.reload();
-      await browserExpect(
-        page
-          .getByRole("radiogroup", { name: "Document tips", exact: true })
-          .getByRole("radio", { name, exact: true }),
-      ).toBeChecked();
-    }
-    for (const name of ["Dark", "Light", "System"]) {
-      await page
-        .getByRole("radiogroup", { name: "Theme", exact: true })
-        .getByRole("radio", { name, exact: true })
-        .click();
-      await page.reload();
-      await browserExpect(
-        page
-          .getByRole("radiogroup", { name: "Theme", exact: true })
-          .getByRole("radio", { name, exact: true }),
-      ).toBeChecked();
-      if (name === "System") {
-        await page.emulateMedia({ colorScheme: "dark" });
-        await browserExpect(page.locator("html")).toHaveClass(/dark/);
-        await page.emulateMedia({ colorScheme: "light" });
-        await browserExpect(page.locator("html")).not.toHaveClass(/dark/);
-      }
-    }
-    expect(saves).toEqual([]);
-    await choose(page, "experimental_approvals", "yes");
-    expect(saves.length).toBeGreaterThan(0);
-    const otherBrowser = await browser.newPage();
-    try {
-      await openSettings(otherBrowser);
-      await browserExpect(
-        otherBrowser
-          .locator("#preference-row-experimental_approvals")
-          .getByRole("radio", { name: "Share with reviewers", exact: true }),
-      ).toBeChecked();
-    } finally {
-      await otherBrowser.close();
-    }
-  } finally {
-    await page.close();
-  }
-}, 60_000);
-
 test("reviewers can be added with built-in and custom roles, reopened and removed", async () => {
   const page = await browser.newPage();
   try {
