@@ -64,7 +64,7 @@ export const wording = {
     accountUnreadable: "Your account could not be read.",
   },
   hub: {
-    notAnswering: "Connection failed. Trying again…",
+    notAnswering: "The hub is not answering",
   },
   boot: {
     starting: "Starting…",
