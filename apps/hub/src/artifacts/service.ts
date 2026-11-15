@@ -513,6 +513,36 @@ export function createArtifactService(
     return undefined;
   }
 
+  // An app's snapshots sit beside its main line, so it is compared with that line; and its title
+  // is whatever its last writer called it, so only a design's title counts as a change.
+  async function unchangedWrite(
+    existing: { id: string; version: number },
+    kind: string,
+    title: string,
+    content: string,
+  ): Promise<ArtifactRef | undefined> {
+    if (kind !== "app" && kind !== "design" && kind !== "design_option")
+      return undefined;
+    const held =
+      kind === "app"
+        ? (await mainLineVersion(existing.id))?.version
+        : existing.version;
+    if (held === undefined) return undefined;
+    const stored = await getArtifactVersion(db, existing.id, held);
+    if (
+      !stored?.contentSha256 ||
+      stored.content !== content ||
+      (kind !== "app" && stored.title !== title)
+    )
+      return undefined;
+    return {
+      artifactId: existing.id,
+      kind,
+      version: stored.version,
+      sha256: stored.contentSha256,
+    };
+  }
+
   // The work an app repository does for a project, its refusals logged with why and answered as
   // the hub's.
   async function inAppRepository<T>(projectId: string, work: Promise<T>) {
@@ -1609,22 +1639,10 @@ export function createArtifactService(
               limit: 1,
             })
           ).rows;
-      if (existing && input.kind === "app") {
-        const held = (await mainLineVersion(existing.id))?.version;
-        const stored =
-          held === undefined
-            ? undefined
-            : await getArtifactVersion(db, existing.id, held);
-        if (stored?.contentSha256 && stored.content === input.content)
-          return {
-            artifact: {
-              artifactId: existing.id,
-              kind: "app",
-              version: stored.version,
-              sha256: stored.contentSha256,
-            },
-          };
-      }
+      const unchanged =
+        existing &&
+        (await unchangedWrite(existing, input.kind, title, input.content));
+      if (unchanged) return { artifact: unchanged };
       if (existing) {
         const written = await writeArtifactVersion(db, {
           scope: actor,

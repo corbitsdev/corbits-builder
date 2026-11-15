@@ -63,7 +63,6 @@ export function createDesignSubmission(
   let lastSuccess:
     | {
         files: Awaited<ReturnType<typeof readDesignFiles>>;
-        content: string;
         result: Submitted;
       }
     | undefined;
@@ -99,17 +98,13 @@ export function createDesignSubmission(
       if (!Bun.deepEquals(await readDesignFiles(workspace), files, true))
         return { passed: false, checklist: designChangedDuringCheck };
       signal.throwIfAborted();
-      // Raw edits can normalize to already-filed content; still check them, but don't create a version.
-      const artifact =
-        lastSuccess?.content === submission.content
-          ? lastSuccess.result.artifact
-          : await file(submission, signal);
+      const artifact = await file(submission, signal);
       const result: Submitted = {
         passed: true,
         artifact,
         checklist: checklist(checked.output, { artifact }),
       };
-      lastSuccess = { files, content: submission.content, result };
+      lastSuccess = { files, result };
       return result;
     } catch (error) {
       signal.throwIfAborted();

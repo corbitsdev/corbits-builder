@@ -182,3 +182,25 @@ test("the hub files a design at the byte limit, rejects one byte more, and keeps
     }),
   ).rejects.toThrow("invalid_artifact_write");
 });
+
+test("the hub files a design again only when its content changed", async () => {
+  const { path } = await hub.seedProject("Design versions");
+  const file = async (heading: string) =>
+    (
+      await hub.json<{ artifact: { version: number } }>(
+        hub.call("POST", `${path}/artifacts`, {
+          kind: "design",
+          title: "Design",
+          content: JSON.stringify({
+            files: {
+              "DESIGN.md": heading,
+              "designs/index.html": "<main>Design</main>",
+            },
+          }),
+        }),
+      )
+    ).artifact.version;
+  const first = await file("# One");
+  expect(await file("# One")).toBe(first);
+  expect(await file("# Two")).toBe(first + 1);
+});
