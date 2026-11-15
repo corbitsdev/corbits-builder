@@ -219,6 +219,8 @@ export function createProjectRoutes(
     describeRoute({
       tags: ["Projects"],
       operationId: "importProject",
+      description:
+        "Creates a new project from a project.json file exported from another project, and starts its coordinator. Each document in the file is saved as version 1, and documents that were approved in the original are marked as approved by you. Each entry in `materials` is saved as a material. A file in the older solutions-builder.project format is converted first, and any document type this app does not have is saved as a material instead.",
       security: [{ sessionCookie: [] }, { deviceBearer: [] }],
       parameters: [
         {
@@ -241,7 +243,7 @@ export function createProjectRoutes(
       responses: {
         200: {
           description:
-            "A new project with each document filed as version 1 of its kind; documents marked approved are recorded as the caller's approval of that version. Each of materials is filed as a material under its title. An original Solution Builder file (format solutions-builder.project) is converted first, its text documents and source files with no kind here becoming materials; omitted names its kinds with a document left out",
+            "The new project's id. For a converted file, `omitted` lists the document types that were left out.",
           content: {
             "application/json": { schema: resolver(ProjectImportReceipt) },
           },

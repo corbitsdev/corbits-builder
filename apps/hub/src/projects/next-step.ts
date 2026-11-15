@@ -379,7 +379,7 @@ export function mountProjectNextStepRoutes(
       tags: ["Projects"],
       operationId: "readProjectNextStep",
       description:
-        "Who is at work in the project, what waits on the person, the app's state and the person's one next step, derived only from native state: run status and each live run's latest committed event (a run parked on input is idle), pending approval records of live runs, the hub's live app and the latest filed app version. failedSpecialist is the specialist whose newest run failed, when one has. Never from model text.",
+        "Returns a summary of where the project stands: who is working on it right now, what is waiting on the person, the state of the app, and the one thing the person should do next. If a specialist's most recent run failed, `failedSpecialist` names it. The summary is worked out from the project's runs, approvals and app, never from anything a model wrote.",
       security,
       responses: {
         200: {
