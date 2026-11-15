@@ -168,7 +168,8 @@ jobs:
       - if: env.RUN == 'true'
         run: bunx playwright install --with-deps chromium
       - if: env.RUN == 'true'
-        run: bun --conditions=intx-src test ./test/e2e/custom-provider.test.ts ./test/e2e/oauth-model-login.test.ts ./test/e2e/specialist-end-notices.test.ts ./test/e2e/settings.test.ts ./test/e2e/support/recorded-model.test.ts
+        # pipeline.test.ts runs in the e2e-pipeline job, which installs the sandbox libraries it needs.
+        run: bun --conditions=intx-src test ./test/e2e --path-ignore-patterns=test/e2e/pipeline.test.ts
         env:
           E2E_DB_HOST: 127.0.0.1
           E2E_DB_PORT: 5432
