@@ -7,7 +7,11 @@ import {
 } from "@opentelemetry/sdk-trace-base";
 import { resourceFromAttributes } from "@opentelemetry/resources";
 import { OTLPTraceExporter } from "@opentelemetry/exporter-trace-otlp-http";
-import { ATTR_SERVICE_NAME } from "@opentelemetry/semantic-conventions";
+import { version } from "../../package.json";
+import {
+  ATTR_SERVICE_NAME,
+  ATTR_SERVICE_VERSION,
+} from "@opentelemetry/semantic-conventions";
 import { getLogger } from "@intx/log";
 import { createProductConfig } from "../config/index.ts";
 import type { FinishedSpan } from "./run-spans.ts";
@@ -45,6 +49,7 @@ export function createRunExport(
       },
     },
     resource: resourceFromAttributes({
+      [ATTR_SERVICE_VERSION]: version,
       [ATTR_SERVICE_NAME]:
         environment.OTEL_SERVICE_NAME ||
         createProductConfig(environment).naming.productName,

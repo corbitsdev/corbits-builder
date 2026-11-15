@@ -109,6 +109,7 @@ import {
   coordinatorAskReader,
   createDeclineNote,
 } from "./projects/decline-note.ts";
+import { runTelemetry } from "./projects/run-telemetry.ts";
 import { version } from "../package.json";
 
 const log = getLogger(["corbits-builder", "hub"]);
@@ -373,13 +374,16 @@ export async function createHubRuntime(
     const sidecarWebSocket = createSidecarWebSocket(sidecarRouter);
     const agentActivity = createAgentActivity(sidecarRouter.events);
     const runExport = createRunExport(rawEnvironment);
-    let disposeRunExport: (() => void) | undefined;
+    let disposeRunExport: (() => Promise<void>) | undefined;
     if (runExport) {
       const runSpans = createRunSpans({
         captureContent:
           rawEnvironment.OTEL_INSTRUMENTATION_GENAI_CAPTURE_MESSAGE_CONTENT ===
           "true",
       });
+      // Each run's project, role and effort are looked up once; the oldest is forgotten past this.
+      const MAX_TRACED_RUNS = 1000;
+      const metadata = new Map<string, ReturnType<typeof runTelemetry>>();
       const unsubscribe = sidecarRouter.events.on(
         "agent.event",
         ({ agentAddress, event }) => {
@@ -387,17 +391,37 @@ export async function createHubRuntime(
           if (!address) return;
           const runId = runIdFromLocalPart(address.localPart);
           if (!runId) return;
-          runExport.send(
-            runSpans.accept(
-              { address: agentAddress, runId },
-              event,
-              Date.now(),
-            ),
-          );
+          const at = Date.now();
+          let lookup = metadata.get(runId);
+          if (!lookup) {
+            lookup = runTelemetry(handle.db, runId).catch((error) => {
+              log.warn(
+                "Agent trace metadata lookup failed",
+                requestErrorMetadata(error),
+              );
+              return {};
+            });
+            metadata.set(runId, lookup);
+            if (metadata.size > MAX_TRACED_RUNS) {
+              const oldest = metadata.keys().next().value;
+              if (oldest !== undefined) metadata.delete(oldest);
+            }
+          }
+          // Reactions to the same promise run in registration order, including while it resolves.
+          void lookup.then((context) => {
+            runExport.send(
+              runSpans.accept(
+                { address: agentAddress, runId, ...context },
+                event,
+                at,
+              ),
+            );
+          });
         },
       );
-      disposeRunExport = () => {
+      disposeRunExport = async () => {
         unsubscribe();
+        await Promise.all(metadata.values());
         runExport.send(runSpans.shutdown(Date.now()));
       };
     }
@@ -715,7 +739,7 @@ export async function createHubRuntime(
         liveApps.runner.close();
         liveApps.proxy.close();
         agentActivity.dispose();
-        disposeRunExport?.();
+        await disposeRunExport?.();
         await runExport?.shutdown();
         sidecarWebSocket.close();
         await workflows.drain();

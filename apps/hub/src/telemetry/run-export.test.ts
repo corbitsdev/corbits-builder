@@ -1,6 +1,7 @@
 import { expect, test } from "bun:test";
 import { SpanStatusCode } from "@opentelemetry/api";
 import { InMemorySpanExporter } from "@opentelemetry/sdk-trace-base";
+import { version } from "../../package.json";
 import { createRunExport } from "./run-export.ts";
 import { createRunSpans } from "./run-spans.ts";
 
@@ -10,7 +11,11 @@ test("children exported before their turn share its trace and parent id", async 
   expect(output).toBeDefined();
   if (!output) throw new Error("Exporter was not created");
   const tracker = createRunSpans({ captureContent: false });
-  const agent = { address: "run-step@example.com", runId: "run" };
+  const agent = {
+    address: "run-step@example.com",
+    runId: "run",
+    projectId: "project",
+  };
   tracker.accept(
     agent,
     {
@@ -63,6 +68,7 @@ test("children exported before their turn share its trace and parent id", async 
   expect(model?.status.code).toBe(SpanStatusCode.ERROR);
   expect(turn?.status.code).toBe(SpanStatusCode.ERROR);
   expect(turn?.parentSpanContext).toBeUndefined();
-  expect(turn?.attributes["session.id"]).toBe("run");
+  expect(turn?.attributes["session.id"]).toBe("project");
+  expect(turn?.resource.attributes["service.version"]).toBe(version);
   await output.shutdown();
 });

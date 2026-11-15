@@ -5,7 +5,14 @@ import {
   type FinishedSpan,
 } from "./run-spans.ts";
 
-const agent = { address: "run_a-step@example.com", runId: "run_a" };
+const agent = {
+  address: "run_a-step@example.com",
+  runId: "run_a",
+  tenantId: "tenant_a",
+  projectId: "project_a",
+  role: "designer",
+  effort: "high",
+};
 const secret = "distinctive-content-keep-private";
 const events = [
   {
@@ -103,11 +110,52 @@ describe("run spans", () => {
     });
     for (const span of spans)
       expect(span.attributes).toMatchObject({
+        "session.id": agent.projectId,
+        "corbits.tenant.id": agent.tenantId,
+        "corbits.project.id": agent.projectId,
+        "corbits.agent.role": agent.role,
+        "corbits.model.effort": agent.effort,
         "corbits.run.id": agent.runId,
         "corbits.agent.address": agent.address,
       });
     expect(tracker.accept(agent, events[1], 200)).toEqual([]);
     expect(tracker.accept(agent, events[2], 201)).toEqual([]);
+  });
+
+  test("keeps all project agents in one session and exports unknown projects", () => {
+    const tracker = createRunSpans({ captureContent: false });
+    for (const role of [
+      "coordinator",
+      "designer",
+      "writer",
+      "reviewer",
+      "coder",
+      "presenter",
+    ]) {
+      const participant = { ...agent, address: role, runId: role, role };
+      const spans = events.flatMap((event, index) =>
+        tracker.accept(participant, event, index),
+      );
+      expect(spans).toHaveLength(3);
+      for (const span of spans) {
+        expect(span.attributes["session.id"]).toBe(agent.projectId);
+        expect(span.attributes["corbits.run.id"]).toBe(role);
+        expect(span.attributes["corbits.agent.role"]).toBe(role);
+        expect(span.attributes["corbits.model.effort"]).toBe(agent.effort);
+      }
+    }
+    const unknown = { address: "unknown", runId: "unknown" };
+    const spans = events.flatMap((event, index) =>
+      tracker.accept(unknown, event, index),
+    );
+    expect(spans).toHaveLength(3);
+    for (const span of spans) {
+      expect(span.attributes["corbits.run.id"]).toBe(unknown.runId);
+      expect(span.attributes["session.id"]).toBeUndefined();
+      expect(span.attributes["corbits.project.id"]).toBeUndefined();
+      expect(span.attributes["corbits.agent.role"]).toBeUndefined();
+      expect(span.attributes["corbits.model.effort"]).toBeUndefined();
+    }
   });
 
   test("extracts bare run ids and step addresses", () => {

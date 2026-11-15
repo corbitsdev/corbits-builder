@@ -17,6 +17,32 @@ import {
   ATTR_GEN_AI_TOOL_CALL_RESULT,
 } from "@opentelemetry/semantic-conventions/incubating";
 
+export type RunSpanAgent = {
+  address: string;
+  runId: string;
+  tenantId?: string;
+  projectId?: string;
+  role?: string;
+  effort?: string;
+};
+
+function agentAttributes(agent: RunSpanAgent): FinishedSpan["attributes"] {
+  const attributes: FinishedSpan["attributes"] = {
+    "corbits.run.id": agent.runId,
+    "corbits.agent.address": agent.address,
+  };
+  if (agent.tenantId !== undefined)
+    attributes["corbits.tenant.id"] = agent.tenantId;
+  if (agent.projectId !== undefined) {
+    attributes[ATTR_SESSION_ID] = agent.projectId;
+    attributes["corbits.project.id"] = agent.projectId;
+  }
+  if (agent.role !== undefined) attributes["corbits.agent.role"] = agent.role;
+  if (agent.effort !== undefined)
+    attributes["corbits.model.effort"] = agent.effort;
+  return attributes;
+}
+
 export type FinishedSpan = {
   traceKey: string;
   name: string;
@@ -81,11 +107,7 @@ export function createRunSpans(options: { captureContent: boolean }) {
         );
       return spans;
     },
-    accept(
-      agent: { address: string; runId: string },
-      raw: unknown,
-      at: number,
-    ): FinishedSpan[] {
+    accept(agent: RunSpanAgent, raw: unknown, at: number): FinishedSpan[] {
       const event = parseInferenceEvent(raw);
       if (event instanceof type.errors) return [];
       if (event.type === "message.run.started") {
@@ -103,9 +125,7 @@ export function createRunSpans(options: { captureContent: boolean }) {
             startTime: at,
             endTime: at,
             attributes: {
-              [ATTR_SESSION_ID]: agent.runId,
-              "corbits.run.id": agent.runId,
-              "corbits.agent.address": agent.address,
+              ...agentAttributes(agent),
             },
           },
           open: new Map(),
@@ -139,9 +159,7 @@ export function createRunSpans(options: { captureContent: boolean }) {
             startTime: state.idleSince,
             endTime: at,
             attributes: {
-              [ATTR_SESSION_ID]: agent.runId,
-              "corbits.run.id": agent.runId,
-              "corbits.agent.address": agent.address,
+              ...agentAttributes(agent),
               [ATTR_GEN_AI_OPERATION_NAME]: "chat",
               [ATTR_GEN_AI_REQUEST_MODEL]: event.data.model,
             },
@@ -157,9 +175,7 @@ export function createRunSpans(options: { captureContent: boolean }) {
             startTime: at,
             endTime: at,
             attributes: {
-              [ATTR_SESSION_ID]: agent.runId,
-              "corbits.run.id": agent.runId,
-              "corbits.agent.address": agent.address,
+              ...agentAttributes(agent),
               [ATTR_GEN_AI_OPERATION_NAME]: "execute_tool",
               [ATTR_GEN_AI_TOOL_NAME]: event.data.call.name,
               [ATTR_GEN_AI_TOOL_CALL_ID]: event.data.call.id,
