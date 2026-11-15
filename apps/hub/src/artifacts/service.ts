@@ -514,7 +514,8 @@ export function createArtifactService(
   }
 
   // The version already holding what a write of an app or a design would file, so repeating the
-  // write adds none. An app is compared with its main line, a design with its newest version.
+  // write adds none. An app is compared with its main line, a design with its newest version. An
+  // app's title is whatever its last writer called it, so only a design's title counts as a change.
   async function unchangedWrite(
     existing: { id: string; version: number },
     kind: string,
@@ -532,7 +533,7 @@ export function createArtifactService(
     if (
       !stored?.contentSha256 ||
       stored.content !== content ||
-      stored.title !== title
+      (kind !== "app" && stored.title !== title)
     )
       return undefined;
     return {
@@ -1505,7 +1506,8 @@ export function createArtifactService(
       };
     },
 
-    // One artifact per kind per project, written at its next version. The hub
+    // One artifact per kind per project, written at its next version unless an app or a design
+    // already holds this content. The hub
     // assigns ids and versions; the caller names only the kind.
     async write(
       actor: Actor,

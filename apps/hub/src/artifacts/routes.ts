@@ -149,7 +149,8 @@ export function mountArtifactRoutes(
       },
       responses: {
         200: {
-          description: "Next version of the project's artifact of this kind",
+          description:
+            "The version of the project's artifact of this kind that now holds this content: the next one, or the current one when an app or a design is filed again unchanged",
           content: {
             "application/json": { schema: resolver(ArtifactReceipt) },
           },
