@@ -202,16 +202,21 @@ export function createRunSpans(options: { captureContent: boolean }) {
               event.data.source.provider;
             model.attributes[ATTR_GEN_AI_RESPONSE_MODEL] =
               event.data.source.model;
-            model.attributes[ATTR_GEN_AI_USAGE_INPUT_TOKENS] =
-              event.data.usage.input;
-            model.attributes[ATTR_GEN_AI_USAGE_OUTPUT_TOKENS] =
-              event.data.usage.output;
-            if (event.data.usage.cacheRead !== undefined)
+            // Interchange counts cached tokens apart from input; the convention counts them in it.
+            let inputTokens = event.data.usage.input;
+            if (event.data.usage.cacheRead !== undefined) {
+              inputTokens += event.data.usage.cacheRead;
               model.attributes[ATTR_GEN_AI_USAGE_CACHE_READ_INPUT_TOKENS] =
                 event.data.usage.cacheRead;
-            if (event.data.usage.cacheWrite !== undefined)
+            }
+            if (event.data.usage.cacheWrite !== undefined) {
+              inputTokens += event.data.usage.cacheWrite;
               model.attributes[ATTR_GEN_AI_USAGE_CACHE_CREATION_INPUT_TOKENS] =
                 event.data.usage.cacheWrite;
+            }
+            model.attributes[ATTR_GEN_AI_USAGE_INPUT_TOKENS] = inputTokens;
+            model.attributes[ATTR_GEN_AI_USAGE_OUTPUT_TOKENS] =
+              event.data.usage.output;
             if (options.captureContent)
               model.attributes[ATTR_GEN_AI_OUTPUT_MESSAGES] = JSON.stringify([
                 {

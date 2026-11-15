@@ -89,7 +89,7 @@ describe("run spans", () => {
         "gen_ai.request.model": "requested",
         "gen_ai.response.model": "actual",
         "gen_ai.provider.name": "provider",
-        "gen_ai.usage.input_tokens": 12,
+        "gen_ai.usage.input_tokens": 24,
         "gen_ai.usage.output_tokens": 34,
         "gen_ai.usage.cache_read.input_tokens": 5,
         "gen_ai.usage.cache_creation.input_tokens": 7,
