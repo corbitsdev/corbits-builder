@@ -77,7 +77,10 @@ export async function keepLiveApp(projectId: string, signal?: AbortSignal) {
   return productClient().keepLiveApp(tenantId, projectId, signal);
 }
 
-/** A hub refusal's status, code and body, whatever the body holds; undefined for other failures. */
+/**
+ * A hub refusal's status, code and body, whatever the body holds; undefined for other failures.
+ * The status and code go to the console, since the message a person reads leaves them out.
+ */
 async function refusal(cause: unknown) {
   if (!(cause instanceof ProductApiError)) return undefined;
   const body = await refusalBody(cause);
@@ -86,10 +89,13 @@ async function refusal(cause: unknown) {
   ) as Record<string, unknown>;
   const code =
     typeof record["code"] === "string" ? record["code"] : "no readable code";
+  console.warn(
+    `The request was refused: HTTP ${String(cause.response.status)}, ${code}.`,
+  );
   return { status: cause.response.status, code, body: record };
 }
 
-/** Any failure as one a person can read: the hub's status and code, never a parser's message. */
+/** Any failure as one a person can read, never a status, a code or a parser's message. */
 export async function readableFailure(cause: unknown): Promise<unknown> {
   if (cause instanceof ApiFailure) return cause;
   const failure = await refusal(cause);
@@ -97,9 +103,7 @@ export async function readableFailure(cause: unknown): Promise<unknown> {
     return new ApiFailure(
       {
         code: failure.code,
-        message:
-          versionText.refusals[failure.code] ??
-          versionText.refused(failure.status, failure.code),
+        message: versionText.refusals[failure.code] ?? versionText.refused,
         correlationId: "-",
         retryable: false,
       },
@@ -152,7 +156,7 @@ export async function currentAppVersion(
     const failure = await refusal(cause);
     if (!failure) throw cause;
     return {
-      note: versionText.failed(failure.status, failure.code),
+      note: versionText.failed,
       current: false,
     };
   }

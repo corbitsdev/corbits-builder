@@ -92,8 +92,8 @@ export function InvitationAcceptView({
     answer = (
       <Banner tone="warning" title="Sign in first">
         <p>
-          Accepting needs an account on this hub. Sign in or create one, then
-          come back to this link.
+          Accepting needs an account. Sign in or create one, then come back to
+          this link.
         </p>
         <Button variant="primary" onClick={onSignIn}>
           {wording.action.signIn}

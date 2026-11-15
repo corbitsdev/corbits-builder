@@ -1,4 +1,5 @@
 import type { Meta, StoryObj } from "@storybook/react-vite";
+import { wording } from "../config.ts";
 import { fn } from "storybook/test";
 import { EnableAiDialogView, ModelSetupView } from "./model-setup.view.tsx";
 
@@ -42,14 +43,14 @@ export const Unreadable: Story = {
     providers: {
       ...providers,
       tiles: null,
-      fault: "The hub is unreachable.",
+      fault: wording.auth.unreachable,
     },
   },
 };
 
 /** A refetch failed; the tiles the last read left stay under the fault. */
 export const UnreadableAfterARead: Story = {
-  args: { providers: { ...providers, fault: "The hub is unreachable." } },
+  args: { providers: { ...providers, fault: wording.auth.unreachable } },
 };
 
 /** The person is signing in on the provider's tab; every tile waits. */

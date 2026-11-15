@@ -10,6 +10,7 @@ import { toast } from "sonner";
 import { ProductApiError } from "@corbits-builder/client";
 import type { Invitation } from "@corbits-builder/schemas/invitation";
 import { productClient } from "../api/transport.ts";
+import { readableFailure } from "../api/artifacts.ts";
 import { getHubSession, type HubUser } from "../api/auth.ts";
 import { navigate } from "../routes.ts";
 import type { InvitationAcceptViewProps } from "./invite-accept.view.tsx";
@@ -59,8 +60,11 @@ export function useInvitationAccept({
             );
         }
       } catch (cause) {
+        const failure = await readableFailure(cause);
         if (!cancelled)
-          setFailed(cause instanceof Error ? cause.message : String(cause));
+          setFailed(
+            failure instanceof Error ? failure.message : String(failure),
+          );
       }
     }
     void load();
@@ -75,7 +79,8 @@ export function useInvitationAccept({
       const result = await productClient().acceptInvitation(invitationId);
       setAccepted(result);
     } catch (cause) {
-      toast.error(cause instanceof Error ? cause.message : String(cause));
+      const failure = await readableFailure(cause);
+      toast.error(failure instanceof Error ? failure.message : String(failure));
     } finally {
       setBusy(false);
     }
