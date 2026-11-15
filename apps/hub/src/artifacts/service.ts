@@ -1507,8 +1507,7 @@ export function createArtifactService(
     },
 
     // One artifact per kind per project, written at its next version unless an app or a design
-    // already holds this content. The hub
-    // assigns ids and versions; the caller names only the kind.
+    // already holds this content. The hub assigns ids and versions; the caller names only the kind.
     async write(
       actor: Actor,
       projectId: string,
