@@ -7,27 +7,20 @@ const store = createBrowserStore(
   "until this page reloads",
 );
 
-export function readUnsent(key: string): string {
-  const stored = store.read(key);
-  return stored === null ? "" : stored;
-}
-
-export function writeUnsent(key: string, value: string): void {
-  store.write(key, value === "" ? null : value);
-}
-
 export function useUnsent(
   key: string,
 ): [string, (value: SetStateAction<string>) => void] {
-  const read = () => readUnsent(key);
+  const read = useCallback(() => {
+    const stored = store.read(key);
+    return stored === null ? "" : stored;
+  }, [key]);
   const value = useSyncExternalStore(store.subscribe, read, read);
   const set = useCallback(
-    (next: SetStateAction<string>) =>
-      writeUnsent(
-        key,
-        typeof next === "function" ? next(readUnsent(key)) : next,
-      ),
-    [key],
+    (next: SetStateAction<string>) => {
+      const value = typeof next === "function" ? next(read()) : next;
+      store.write(key, value === "" ? null : value);
+    },
+    [key, read],
   );
   return [value, set];
 }

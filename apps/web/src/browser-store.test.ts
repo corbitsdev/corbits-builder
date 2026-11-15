@@ -1,5 +1,5 @@
 import { afterEach, expect, spyOn, test } from "bun:test";
-import { readUnsent, writeUnsent } from "./unsent.ts";
+import { createBrowserStore } from "./browser-store.ts";
 
 const originalStorage = Object.getOwnPropertyDescriptor(
   globalThis,
@@ -25,33 +25,34 @@ function fakeStorage() {
   };
 }
 
-test("unsent text is read back for its own key and forgotten once it is empty", () => {
+test("a value is read back for its own key and forgotten when written as null", () => {
   const storage = fakeStorage();
   Object.defineProperty(globalThis, "sessionStorage", {
     configurable: true,
     value: storage,
   });
-  writeUnsent("unsent:composer:one", "  unfinished message\n");
-  expect(readUnsent("unsent:composer:one")).toBe("  unfinished message\n");
-  expect(readUnsent("unsent:composer:two")).toBe("");
-  writeUnsent("unsent:composer:one", "");
+  const store = createBrowserStore(() => sessionStorage, "until reload");
+  store.write("one", "  unfinished message\n");
+  expect(store.read("one")).toBe("  unfinished message\n");
+  expect(store.read("two")).toBeNull();
+  store.write("one", null);
   expect(storage.items.size).toBe(0);
 });
 
-test("storage that refuses every call keeps the text in memory and says so once", () => {
-  const refuse = () => {
-    throw new Error("Storage unavailable");
-  };
+test("storage that refuses every call keeps the value in memory and says so once", () => {
   Object.defineProperty(globalThis, "sessionStorage", {
     configurable: true,
-    get: refuse,
+    get: () => {
+      throw new Error("Storage unavailable");
+    },
   });
+  const store = createBrowserStore(() => sessionStorage, "until reload");
   const warn = spyOn(console, "warn").mockImplementation(() => {});
   try {
-    expect(readUnsent("draft")).toBe("");
-    writeUnsent("draft", "still writing");
-    writeUnsent("draft", "still writing more");
-    expect(readUnsent("draft")).toBe("still writing more");
+    expect(store.read("draft")).toBeNull();
+    store.write("draft", "still writing");
+    store.write("draft", "still writing more");
+    expect(store.read("draft")).toBe("still writing more");
     expect(warn).toHaveBeenCalledTimes(1);
   } finally {
     warn.mockRestore();
