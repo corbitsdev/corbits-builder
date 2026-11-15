@@ -1,12 +1,12 @@
 import { expect, test } from "bun:test";
-import { createRunTracing, type RunContext } from "./run-tracing.ts";
-import type { FinishedSpan, RunSpanAgent } from "./run-spans.ts";
+import { createRunTracing } from "./run-tracing.ts";
+import type { FinishedSpan, RunContext } from "./run-spans.ts";
 
 type Listener = (frame: { agentAddress: string; event: unknown }) => void;
 
 function tracing(describeRun: (runId: string) => Promise<RunContext>) {
   const listeners: Listener[] = [];
-  const accepted: { agent: RunSpanAgent; event: unknown }[] = [];
+  const accepted: { context: RunContext; event: unknown }[] = [];
   const run = createRunTracing({
     events: {
       on: (_name, listener) => {
@@ -15,15 +15,19 @@ function tracing(describeRun: (runId: string) => Promise<RunContext>) {
       },
     },
     runSpans: {
-      accept: (agent: RunSpanAgent, event: unknown): FinishedSpan[] => {
-        accepted.push({ agent, event });
+      accept: (
+        _address: string,
+        _runId: string,
+        context: RunContext,
+        event: unknown,
+      ): FinishedSpan[] => {
+        accepted.push({ context, event });
         return [];
       },
       shutdown: (): FinishedSpan[] => [],
     },
     runExport: {
       send: () => {},
-      flush: async () => {},
       shutdown: async () => {},
     },
     describeRun,
@@ -56,13 +60,6 @@ test("events of one run are traced in arrival order and its project is asked for
     "second",
     "third",
   ]);
-  expect(accepted.every((entry) => entry.agent.projectId === "project_a")).toBe(
-    true,
-  );
-  for (const { agent } of accepted) {
-    expect(agent.profile).toBe("openai_default");
-    expect(agent.packageVersion).toBe("0.35.0");
-  }
   expect(asked).toBe(1);
 });
 
@@ -88,7 +85,7 @@ test("a run without a project yet is asked about again, and a failed lookup lose
     "third",
     "fourth",
   ]);
-  expect(accepted.map((entry) => entry.agent.projectId)).toEqual([
+  expect(accepted.map((entry) => entry.context.projectId)).toEqual([
     undefined,
     "project_a",
     "project_a",

@@ -7,7 +7,7 @@ import { workflowRoleSql } from "../workflows/spawn-role.ts";
 import { workflowBindings } from "../config/models.ts";
 import { modelDirectory } from "../settings/custom-providers.ts";
 import { loadSettings } from "../settings/policy.ts";
-import type { RunContext } from "../telemetry/run-tracing.ts";
+import type { RunContext } from "../telemetry/run-spans.ts";
 import { getLogger } from "@intx/log";
 import { requestErrorMetadata } from "../request-error.ts";
 

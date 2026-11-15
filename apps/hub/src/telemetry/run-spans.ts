@@ -17,9 +17,7 @@ import {
   ATTR_GEN_AI_TOOL_CALL_RESULT,
 } from "@opentelemetry/semantic-conventions/incubating";
 
-export type RunSpanAgent = {
-  address: string;
-  runId: string;
+export type RunContext = {
   tenantId?: string | undefined;
   projectId?: string | undefined;
   role?: string | undefined;
@@ -28,24 +26,29 @@ export type RunSpanAgent = {
   packageVersion?: string | undefined;
 };
 
-function agentAttributes(agent: RunSpanAgent): FinishedSpan["attributes"] {
+function agentAttributes(
+  address: string,
+  runId: string,
+  context: RunContext,
+): FinishedSpan["attributes"] {
   const attributes: FinishedSpan["attributes"] = {
-    "corbits.run.id": agent.runId,
-    "corbits.agent.address": agent.address,
+    "corbits.run.id": runId,
+    "corbits.agent.address": address,
   };
-  if (agent.tenantId !== undefined)
-    attributes["corbits.tenant.id"] = agent.tenantId;
-  if (agent.projectId !== undefined) {
-    attributes[ATTR_SESSION_ID] = agent.projectId;
-    attributes["corbits.project.id"] = agent.projectId;
+  if (context.tenantId !== undefined)
+    attributes["corbits.tenant.id"] = context.tenantId;
+  if (context.projectId !== undefined) {
+    attributes[ATTR_SESSION_ID] = context.projectId;
+    attributes["corbits.project.id"] = context.projectId;
   }
-  if (agent.role !== undefined) attributes["corbits.agent.role"] = agent.role;
-  if (agent.effort !== undefined)
-    attributes["corbits.model.effort"] = agent.effort;
-  if (agent.profile !== undefined)
-    attributes["corbits.model.profile"] = agent.profile;
-  if (agent.packageVersion !== undefined)
-    attributes["corbits.agent.package.version"] = agent.packageVersion;
+  if (context.role !== undefined)
+    attributes["corbits.agent.role"] = context.role;
+  if (context.effort !== undefined)
+    attributes["corbits.model.effort"] = context.effort;
+  if (context.profile !== undefined)
+    attributes["corbits.model.profile"] = context.profile;
+  if (context.packageVersion !== undefined)
+    attributes["corbits.agent.package.version"] = context.packageVersion;
   return attributes;
 }
 
@@ -62,11 +65,6 @@ export type FinishedSpan = {
 };
 
 const MAX_SPANS = 1000;
-
-export function runIdFromLocalPart(local: string): string {
-  const separator = local.indexOf("-");
-  return separator === -1 ? local : local.slice(0, separator);
-}
 
 function finish(span: FinishedSpan, at: number, error: string): FinishedSpan {
   span.endTime = at;
@@ -113,16 +111,18 @@ export function createRunSpans(options: { captureContent: boolean }) {
         );
       return spans;
     },
-    accept(agent: RunSpanAgent, raw: unknown, at: number): FinishedSpan[] {
+    accept(
+      address: string,
+      runId: string,
+      context: RunContext,
+      raw: unknown,
+      at: number,
+    ): FinishedSpan[] {
       const event = parseInferenceEvent(raw);
       if (event instanceof type.errors) return [];
       if (event.type === "message.run.started") {
-        const spans = close(
-          agent.address,
-          at,
-          "Turn replaced before completion",
-        );
-        agents.set(agent.address, {
+        const spans = close(address, at, "Turn replaced before completion");
+        agents.set(address, {
           turn: {
             traceKey: event.data.messageRunId,
             name: "agent turn",
@@ -130,7 +130,7 @@ export function createRunSpans(options: { captureContent: boolean }) {
             key: "turn",
             startTime: at,
             endTime: at,
-            attributes: agentAttributes(agent),
+            attributes: agentAttributes(address, runId, context),
           },
           open: new Map(),
           idleSince: at,
@@ -142,14 +142,14 @@ export function createRunSpans(options: { captureContent: boolean }) {
         }
         return spans;
       }
-      const state = agents.get(agent.address);
+      const state = agents.get(address);
       if (!state) return [];
       if (event.type === "message.run.ended") {
         if (event.data.messageRunId !== state.turn.traceKey) return [];
         let error: string | undefined;
         if (event.data.status === "failed")
           error = event.data.error?.message ?? event.data.status;
-        return close(agent.address, at, error);
+        return close(address, at, error);
       }
       let opened: FinishedSpan | undefined;
       switch (event.type) {
@@ -162,7 +162,7 @@ export function createRunSpans(options: { captureContent: boolean }) {
             parentKey: state.turn.key,
             startTime: state.idleSince,
             endTime: at,
-            attributes: agentAttributes(agent),
+            attributes: agentAttributes(address, runId, context),
           };
           opened.attributes[ATTR_GEN_AI_OPERATION_NAME] = "chat";
           opened.attributes[ATTR_GEN_AI_REQUEST_MODEL] = event.data.model;
@@ -176,7 +176,7 @@ export function createRunSpans(options: { captureContent: boolean }) {
             parentKey: state.turn.key,
             startTime: at,
             endTime: at,
-            attributes: agentAttributes(agent),
+            attributes: agentAttributes(address, runId, context),
           };
           opened.attributes[ATTR_GEN_AI_OPERATION_NAME] = "execute_tool";
           opened.attributes[ATTR_GEN_AI_TOOL_NAME] = event.data.call.name;
@@ -245,18 +245,7 @@ export function createRunSpans(options: { captureContent: boolean }) {
           return [tool];
         }
       }
-      if (opened) {
-        state.open.set(opened.key, opened);
-        if (state.open.size > MAX_SPANS) {
-          const oldest = state.open.keys().next().value;
-          if (oldest !== undefined) {
-            const span = state.open.get(oldest);
-            state.open.delete(oldest);
-            if (span)
-              return [finish(span, at, "Span evicted before completion")];
-          }
-        }
-      }
+      if (opened) state.open.set(opened.key, opened);
       return [];
     },
   };

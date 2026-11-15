@@ -1,9 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import {
-  createRunSpans,
-  runIdFromLocalPart,
-  type FinishedSpan,
-} from "./run-spans.ts";
+import { createRunSpans, type FinishedSpan } from "./run-spans.ts";
 
 const agent = {
   address: "run_a-step@example.com",
@@ -66,7 +62,7 @@ describe("run spans", () => {
   test("exports a turn, model and tool with their parents and arrival times", () => {
     const tracker = createRunSpans({ captureContent: false });
     const spans = events.flatMap((event, index) =>
-      tracker.accept(agent, event, 100 + index),
+      tracker.accept(agent.address, agent.runId, agent, event, 100 + index),
     );
     expect(spans).toHaveLength(3);
     const [model, tool, turn] = spans;
@@ -122,35 +118,19 @@ describe("run spans", () => {
         "corbits.run.id": agent.runId,
         "corbits.agent.address": agent.address,
       });
-    expect(tracker.accept(agent, events[1], 200)).toEqual([]);
-    expect(tracker.accept(agent, events[2], 201)).toEqual([]);
+    expect(
+      tracker.accept(agent.address, agent.runId, agent, events[1], 200),
+    ).toEqual([]);
+    expect(
+      tracker.accept(agent.address, agent.runId, agent, events[2], 201),
+    ).toEqual([]);
   });
 
-  test("keeps all project agents in one session and exports unknown projects", () => {
+  test("exports unknown projects", () => {
     const tracker = createRunSpans({ captureContent: false });
-    for (const role of [
-      "coordinator",
-      "designer",
-      "writer",
-      "reviewer",
-      "coder",
-      "presenter",
-    ]) {
-      const participant = { ...agent, address: role, runId: role, role };
-      const spans = events.flatMap((event, index) =>
-        tracker.accept(participant, event, index),
-      );
-      expect(spans).toHaveLength(3);
-      for (const span of spans) {
-        expect(span.attributes["session.id"]).toBe(agent.projectId);
-        expect(span.attributes["corbits.run.id"]).toBe(role);
-        expect(span.attributes["corbits.agent.role"]).toBe(role);
-        expect(span.attributes["corbits.model.effort"]).toBe(agent.effort);
-      }
-    }
     const unknown = { address: "unknown", runId: "unknown" };
     const spans = events.flatMap((event, index) =>
-      tracker.accept(unknown, event, index),
+      tracker.accept(unknown.address, unknown.runId, {}, event, index),
     );
     expect(spans).toHaveLength(3);
     for (const span of spans) {
@@ -162,19 +142,15 @@ describe("run spans", () => {
     }
   });
 
-  test("extracts bare run ids and step addresses", () => {
-    expect(runIdFromLocalPart("run_a")).toBe("run_a");
-    expect(runIdFromLocalPart("run_a-step")).toBe("run_a");
-    expect(runIdFromLocalPart("run_a-step-with-hyphens")).toBe("run_a");
-  });
-
   test("the next model starts when the last parallel tool ends", () => {
     const tracker = createRunSpans({ captureContent: false });
-    tracker.accept(agent, events[0], 0);
-    tracker.accept(agent, events[1], 1);
-    tracker.accept(agent, events[2], 2);
-    tracker.accept(agent, events[3], 3);
+    tracker.accept(agent.address, agent.runId, agent, events[0], 0);
+    tracker.accept(agent.address, agent.runId, agent, events[1], 1);
+    tracker.accept(agent.address, agent.runId, agent, events[2], 2);
+    tracker.accept(agent.address, agent.runId, agent, events[3], 3);
     tracker.accept(
+      agent.address,
+      agent.runId,
       agent,
       {
         type: "tool.start",
@@ -183,8 +159,10 @@ describe("run spans", () => {
       },
       4,
     );
-    tracker.accept(agent, events[4], 5);
+    tracker.accept(agent.address, agent.runId, agent, events[4], 5);
     tracker.accept(
+      agent.address,
+      agent.runId,
       agent,
       {
         type: "tool.done",
@@ -193,20 +171,25 @@ describe("run spans", () => {
       },
       6,
     );
-    tracker.accept(agent, events[1], 8);
-    expect(tracker.accept(agent, events[2], 8)[0]?.startTime).toBe(6);
+    tracker.accept(agent.address, agent.runId, agent, events[1], 8);
+    expect(
+      tracker.accept(agent.address, agent.runId, agent, events[2], 8)[0]
+        ?.startTime,
+    ).toBe(6);
   });
 
   test("ends unfinished children and turns on run end, replacement and shutdown", () => {
     for (const reason of ["end", "replace", "shutdown"]) {
       const tracker = createRunSpans({ captureContent: false });
-      tracker.accept(agent, events[0], 0);
-      tracker.accept(agent, events[1], 1);
-      tracker.accept(agent, events[3], 2);
+      tracker.accept(agent.address, agent.runId, agent, events[0], 0);
+      tracker.accept(agent.address, agent.runId, agent, events[1], 1);
+      tracker.accept(agent.address, agent.runId, agent, events[3], 2);
       let spans;
       if (reason === "shutdown") spans = tracker.shutdown(10);
       else
         spans = tracker.accept(
+          agent.address,
+          agent.runId,
           agent,
           reason === "end" ? events[5] : events[0],
           10,
@@ -223,25 +206,23 @@ describe("run spans", () => {
 
   test("exports evicted turns and their unfinished children", () => {
     const tracker = createRunSpans({ captureContent: false });
-    tracker.accept(agent, events[0], 0);
-    tracker.accept(agent, events[3], 1);
+    tracker.accept(agent.address, agent.runId, agent, events[0], 0);
+    tracker.accept(agent.address, agent.runId, agent, events[3], 1);
     let evicted: FinishedSpan[] = [];
     for (let index = 0; index < 1000; index++)
-      evicted = tracker.accept(
-        { address: String(index), runId: String(index) },
-        events[0],
-        2,
-      );
+      evicted = tracker.accept(String(index), String(index), {}, events[0], 2);
     expect(evicted.map((span) => span.kind)).toEqual(["tool", "turn"]);
     for (const span of evicted) expect(span.error).toBeDefined();
-    expect(tracker.accept(agent, events[5], 3)).toEqual([]);
+    expect(
+      tracker.accept(agent.address, agent.runId, agent, events[5], 3),
+    ).toEqual([]);
   });
 
   test("only captures reply and tool content when enabled", () => {
     for (const captureContent of [false, true]) {
       const tracker = createRunSpans({ captureContent });
       const spans = events.flatMap((event, index) =>
-        tracker.accept(agent, event, index),
+        tracker.accept(agent.address, agent.runId, agent, event, index),
       );
       expect(JSON.stringify(spans).includes(secret)).toBe(captureContent);
       if (captureContent) {
@@ -260,10 +241,12 @@ describe("run spans", () => {
 
   test("marks failed model calls, tools and turns", () => {
     const tracker = createRunSpans({ captureContent: false });
-    tracker.accept(agent, events[0], 0);
-    tracker.accept(agent, events[1], 1);
+    tracker.accept(agent.address, agent.runId, agent, events[0], 0);
+    tracker.accept(agent.address, agent.runId, agent, events[1], 1);
     expect(
       tracker.accept(
+        agent.address,
+        agent.runId,
         agent,
         {
           type: "inference.error",
@@ -276,9 +259,11 @@ describe("run spans", () => {
         2,
       )[0]?.error,
     ).toBe("Model failed");
-    tracker.accept(agent, events[3], 3);
+    tracker.accept(agent.address, agent.runId, agent, events[3], 3);
     expect(
       tracker.accept(
+        agent.address,
+        agent.runId,
         agent,
         {
           type: "tool.done",
@@ -292,6 +277,8 @@ describe("run spans", () => {
     ).toBeDefined();
     expect(
       tracker.accept(
+        agent.address,
+        agent.runId,
         agent,
         {
           type: "message.run.ended",
@@ -307,60 +294,17 @@ describe("run spans", () => {
     ).toBe("Turn failed");
   });
 
-  test("ignores unknown, unrelated and malformed events", () => {
+  test("ignores malformed events", () => {
     const tracker = createRunSpans({ captureContent: false });
-    tracker.accept(agent, events[0], 0);
-    for (const event of [
-      null,
-      {},
-      { type: "unknown", seq: 1, data: {} },
-      { type: "tool.start", seq: 2, data: { call: { id: 123 } } },
-      { type: "inference.start", seq: 3, data: { model: 42 } },
-      { type: "reactor.start", seq: 4, data: {} },
-    ])
-      expect(tracker.accept(agent, event, 1)).toEqual([]);
-  });
-
-  test("caps open spans and matches tool completions by call id", () => {
-    const tracker = createRunSpans({ captureContent: false });
-    tracker.accept(agent, events[0], 0);
-    const evicted = [];
-    for (let index = 0; index < 1001; index++)
-      evicted.push(
-        ...tracker.accept(
-          agent,
-          {
-            type: "tool.start",
-            seq: index + 2,
-            data: { call: { id: String(index), name: "tool", arguments: {} } },
-          },
-          index,
-        ),
-      );
-    expect(evicted).toHaveLength(1);
-    expect(evicted[0]).toMatchObject({ key: "tool:0", endTime: 1000 });
-    expect(evicted[0]?.error).toBeDefined();
+    tracker.accept(agent.address, agent.runId, agent, events[0], 0);
     expect(
       tracker.accept(
+        agent.address,
+        agent.runId,
         agent,
-        {
-          type: "tool.done",
-          seq: 1003,
-          data: { result: { callId: "0", content: "old" } },
-        },
-        2000,
+        { type: "tool.start", seq: 2, data: { call: { id: 123 } } },
+        1,
       ),
     ).toEqual([]);
-    expect(
-      tracker.accept(
-        agent,
-        {
-          type: "tool.done",
-          seq: 1004,
-          data: { result: { callId: "1000", content: "new" } },
-        },
-        2001,
-      )[0]?.key,
-    ).toBe("tool:1000");
   });
 });

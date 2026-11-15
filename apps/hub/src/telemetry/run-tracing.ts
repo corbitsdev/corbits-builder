@@ -2,18 +2,14 @@ import { getLogger } from "@intx/log";
 import { parseAddress } from "@intx/types/agent-address";
 import { requestErrorMetadata } from "../request-error.ts";
 import type { createRunExport } from "./run-export.ts";
-import {
-  runIdFromLocalPart,
-  type createRunSpans,
-  type RunSpanAgent,
-} from "./run-spans.ts";
+import type { createRunSpans, RunContext } from "./run-spans.ts";
 
 const log = getLogger(["corbits-builder", "telemetry"]);
 
-export type RunContext = Pick<
-  RunSpanAgent,
-  "tenantId" | "projectId" | "role" | "effort" | "profile" | "packageVersion"
->;
+function runIdFromLocalPart(local: string): string {
+  const separator = local.indexOf("-");
+  return separator === -1 ? local : local.slice(0, separator);
+}
 
 const MAX_KNOWN_RUNS = 1000;
 
@@ -57,22 +53,7 @@ export function createRunTracing(options: {
     await previous;
     try {
       const context = await contextOf(runId);
-      runExport.send(
-        runSpans.accept(
-          {
-            address,
-            runId,
-            tenantId: context.tenantId,
-            projectId: context.projectId,
-            role: context.role,
-            effort: context.effort,
-            profile: context.profile,
-            packageVersion: context.packageVersion,
-          },
-          event,
-          at,
-        ),
-      );
+      runExport.send(runSpans.accept(address, runId, context, event, at));
     } catch (error) {
       log.error("Agent trace event failed", requestErrorMetadata(error));
     }

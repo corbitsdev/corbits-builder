@@ -102,9 +102,6 @@ export function createRunExport(
         }
       }
     },
-    async flush(): Promise<void> {
-      await provider.forceFlush();
-    },
     async shutdown(): Promise<void> {
       await provider.shutdown();
     },
