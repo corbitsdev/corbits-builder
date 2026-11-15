@@ -26,6 +26,8 @@ import type {
   ConversationQuestion,
   QuestionAnswer,
 } from "@corbits-builder/schemas/conversation";
+import { type } from "arktype";
+import { useUnsent } from "../../unsent.ts";
 import { wording } from "../../config.ts";
 import { Fault } from "../../components.jsx";
 import styles from "./questions-card.module.css";
@@ -36,6 +38,32 @@ type Question = AskedQuestion["questions"][number];
 
 /** The options picked, by label, plus the person's own words; typing those is the "Something else" answer. */
 type Answer = { readonly chosen: readonly string[]; readonly own: string };
+
+/** What a reload brings back: the answers so far and the question the person was on. */
+type Progress = { readonly step: number; readonly answers: readonly Answer[] };
+
+const SavedProgress = type({
+  step: "number.integer >= 0",
+  answers: type({ chosen: "string[]", own: "string" }).array(),
+});
+
+function readProgress(raw: string, questions: readonly Question[]): Progress {
+  if (raw !== "") {
+    try {
+      const parsed: unknown = JSON.parse(raw);
+      const result = SavedProgress(parsed);
+      if (
+        !(result instanceof type.errors) &&
+        result.answers.length === questions.length &&
+        result.step < questions.length
+      )
+        return result;
+    } catch (error) {
+      if (!(error instanceof SyntaxError)) throw error;
+    }
+  }
+  return { step: 0, answers: questions.map(startingAnswer) };
+}
 
 /** The coordinator marks the option it recommends by ending its label with this. */
 const recommendedSuffix = "(Recommended)";
@@ -392,10 +420,7 @@ function nextLabel(last: boolean, sending: boolean): string {
   return sending ? text.sending : text.send;
 }
 
-/** Where the person is: their answers, the open question, and whether the last send failed. */
 type Draft = {
-  readonly answers: readonly Answer[];
-  readonly step: number;
   readonly failed: boolean;
   /**
    * The card takes focus only once the person has stepped or sent, never as it appears, so keys
@@ -409,6 +434,10 @@ function OpenCard({
   ask,
   blocked,
   onSend,
+  step,
+  answers,
+  onStep,
+  onAnswer,
   draft,
   onDraft,
 }: {
@@ -417,11 +446,15 @@ function OpenCard({
   /** Closed to answers for now, such as while another message is sending. */
   blocked: boolean;
   onSend: (answers: Record<string, string[]>) => Promise<boolean>;
+  step: number;
+  answers: readonly Answer[];
+  onStep: (to: number) => void;
+  onAnswer: (at: number, answer: Answer) => void;
   draft: Draft;
   onDraft: Dispatch<SetStateAction<Draft>>;
 }) {
   const { questions } = ask;
-  const { answers, step, failed, focusFollows } = draft;
+  const { failed, focusFollows } = draft;
   const [earlierShown, setEarlierShown] = useState(false);
   const [sending, setSending] = useState(false);
   const card = useRef<HTMLDivElement>(null);
@@ -462,19 +495,11 @@ function OpenCard({
   const last = step === questions.length - 1;
   const ready = answered(answer);
   const disabled = blocked || sending;
-  const setAnswer = (next: Answer) =>
-    onDraft((current) => ({
-      ...current,
-      answers: current.answers.map((item, index) =>
-        index === step ? next : item,
-      ),
-    }));
-  const go = (to: number) =>
-    onDraft((current) => ({
-      ...current,
-      step: Math.max(0, Math.min(to, questions.length - 1)),
-      focusFollows: true,
-    }));
+  const setAnswer = (next: Answer) => onAnswer(step, next);
+  const go = (to: number) => {
+    onStep(Math.max(0, Math.min(to, questions.length - 1)));
+    onDraft((current) => ({ failed: current.failed, focusFollows: true }));
+  };
   const send = async (current: Answer) => {
     setSending(true);
     onDraft((draft) => ({ ...draft, failed: false, focusFollows: true }));
@@ -669,10 +694,15 @@ export function QuestionsCard({
   onSend: (answers: Record<string, string[]>) => Promise<boolean>;
 }) {
   const { signalName, asked } = question;
+  const [saved, setSaved] = useUnsent(`unsent:questions:${signalName}`);
+  const progress = readProgress(saved, asked.questions);
+  // Each change starts from what is saved, so a pick and the step after it in one tick both land.
+  const update = (change: (current: Progress) => Progress) =>
+    setSaved((raw) =>
+      JSON.stringify(change(readProgress(raw, asked.questions))),
+    );
   // Held above the open card: sending settles it at once, and a failed send reopens it as it was.
   const [draft, setDraft] = useState<Draft>(() => ({
-    answers: asked.questions.map(startingAnswer),
-    step: 0,
     failed: false,
     focusFollows: false,
   }));
@@ -683,7 +713,24 @@ export function QuestionsCard({
           id={signalName}
           ask={asked}
           blocked={disabled}
-          onSend={onSend}
+          onSend={async (answers) => {
+            const sent = await onSend(answers);
+            if (sent) setSaved("");
+            return sent;
+          }}
+          step={progress.step}
+          answers={progress.answers}
+          onStep={(to) =>
+            update((current) => ({ step: to, answers: current.answers }))
+          }
+          onAnswer={(at, answer) =>
+            update((current) => ({
+              step: current.step,
+              answers: current.answers.map((item, index) =>
+                index === at ? answer : item,
+              ),
+            }))
+          }
           draft={draft}
           onDraft={setDraft}
         />

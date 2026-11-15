@@ -4,45 +4,17 @@
  * unavailable the choice lives in memory until the window closes.
  */
 import { useSyncExternalStore } from "react";
+import { createBrowserStore } from "./browser-store.ts";
 
-const listeners = new Set<() => void>();
-const inMemory = new Map<string, string | null>();
+const store = createBrowserStore(
+  () => localStorage,
+  "until this window closes",
+);
 
-function subscribe(listener: () => void): () => void {
-  listeners.add(listener);
-  window.addEventListener("storage", listener);
-  return () => {
-    listeners.delete(listener);
-    window.removeEventListener("storage", listener);
-  };
-}
-
-export function readStoredPreference(key: string): string | null {
-  if (inMemory.has(key)) return inMemory.get(key) ?? null;
-  try {
-    return localStorage.getItem(key);
-  } catch (error) {
-    console.warn(
-      `Browser storage is unavailable; "${key}" keeps its default for this window.`,
-      error,
-    );
-    inMemory.set(key, null);
-    return null;
-  }
-}
+export const readStoredPreference = store.read;
 
 export function writeStoredPreference(key: string, value: string): void {
-  try {
-    localStorage.setItem(key, value);
-    inMemory.delete(key);
-  } catch (error) {
-    console.warn(
-      `Browser storage refused "${key}"; the choice lasts until this window closes.`,
-      error,
-    );
-    inMemory.set(key, value);
-  }
-  for (const listener of listeners) listener();
+  store.write(key, value);
 }
 
 /** The stored value as `parse` reads it, or `fallback` when nothing valid is stored. */
@@ -55,5 +27,5 @@ export function useStoredPreference<T extends string>(
     const raw = readStoredPreference(key);
     return (raw === null ? null : parse(raw)) ?? fallback;
   };
-  return useSyncExternalStore(subscribe, read, () => fallback);
+  return useSyncExternalStore(store.subscribe, read, () => fallback);
 }

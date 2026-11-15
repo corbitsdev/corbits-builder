@@ -1,4 +1,4 @@
-import { describe, expect, test } from "bun:test";
+import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import { renderToStaticMarkup } from "react-dom/server";
 import type { AskedQuestion } from "@corbits-builder/schemas/conversation";
 import { wording } from "../../config.ts";
@@ -8,6 +8,28 @@ import {
   enterAnswer,
   keyIntent,
 } from "./questions-card.tsx";
+
+const originalStorage = Object.getOwnPropertyDescriptor(
+  globalThis,
+  "sessionStorage",
+);
+const stored = new Map<string, string>();
+beforeEach(() => {
+  stored.clear();
+  Object.defineProperty(globalThis, "sessionStorage", {
+    configurable: true,
+    value: {
+      getItem: (key: string) => stored.get(key) ?? null,
+      setItem: (key: string, value: string) => stored.set(key, value),
+      removeItem: (key: string) => stored.delete(key),
+    },
+  });
+});
+afterEach(() => {
+  if (originalStorage)
+    Object.defineProperty(globalThis, "sessionStorage", originalStorage);
+  else Reflect.deleteProperty(globalThis, "sessionStorage");
+});
 
 const text = wording.questions;
 
@@ -52,6 +74,70 @@ const answers = {
 };
 
 describe("questions card", () => {
+  test("a fresh card restores saved picks, typed words and the open question for its signal", () => {
+    stored.set(
+      "unsent:questions:call-1",
+      JSON.stringify({
+        step: 1,
+        answers: [
+          { chosen: ["Just me"], own: "" },
+          { chosen: ["Track tasks"], own: "Export reports" },
+          { chosen: [], own: "" },
+        ],
+      }),
+    );
+    const render = (signalName: string) =>
+      renderToStaticMarkup(
+        <QuestionsCard
+          question={{
+            at: 0,
+            signalName,
+            asked: ask,
+            status: "open",
+          }}
+          disabled={false}
+          onSend={send}
+        />,
+      );
+    for (let mount = 0; mount < 2; mount++) {
+      const html = render("call-1");
+      expect(html).toMatch(/type="checkbox"[^>]*checked=""/);
+      expect(html).toContain('value="Export reports"');
+      expect(html).toContain('aria-disabled="false"');
+      expect(html).toContain(wording.questions.position(2, 3));
+    }
+    const other = render("call-2");
+    expect(other).not.toContain('value="Export reports"');
+    expect(other).toContain(wording.questions.position(1, 3));
+  });
+
+  test("invalid saved JSON or answer shapes start with the recommended answer", () => {
+    for (const saved of [
+      "{",
+      JSON.stringify({
+        step: 0,
+        answers: ask.questions.map(() => ({ chosen: 3, own: "words" })),
+      }),
+      JSON.stringify({
+        step: 7,
+        answers: ask.questions.map(() => ({ chosen: [], own: "" })),
+      }),
+      "[]",
+      "null",
+    ]) {
+      stored.set("unsent:questions:call-1", saved);
+      const html = renderToStaticMarkup(
+        <QuestionsCard
+          question={{ at: 0, signalName: "call-1", asked: ask, status: "open" }}
+          disabled={false}
+          onSend={send}
+        />,
+      );
+      expect(html).toContain('checked=""');
+      expect(html).toContain('aria-disabled="false"');
+    }
+  });
+
   test("the heading counts the questions", () => {
     expect(text.title(1)).toBe("A question for you");
     expect(text.title(2)).toBe("A couple of questions for you");

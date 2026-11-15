@@ -10,6 +10,7 @@
  * its room and starts its coordinator; `useRoom` works on the loaded snapshot.
  */
 import { wording } from "../../config.ts";
+import { useUnsent } from "../../unsent.ts";
 import { useEffect, useMemo, useRef, useState } from "react";
 import {
   queryOptions,
@@ -540,7 +541,7 @@ export function useRoom({
   const [sent, setSent] = useState<SentMessage[]>(() =>
     openingDraft(projectId, openingMessage),
   );
-  const [value, setValue] = useState("");
+  const [value, setValue] = useUnsent(`unsent:composer:${projectId}`);
   const [sending, setSending] = useState(false);
   const [sendFailed, setSendFailed] = useState(false);
   const [sendFault, setSendFault] = useState<string | null>(null);
