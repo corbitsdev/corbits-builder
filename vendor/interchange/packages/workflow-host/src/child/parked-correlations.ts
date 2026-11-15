@@ -146,6 +146,8 @@ export async function collectParkedApprovalCorrelations(
       // `controlParkKindOf` is the single point that reads a reserved-channel
       // park's kind; an absent kind is a legacy approval, not an input park.
       const parkKind = controlParkKindOf(awaited);
+      // A question lives in the run log only; the hub has nothing to re-register.
+      if (parkKind === "question") continue;
       if (parkKind === "input") {
         out.push({
           runId: run.runId,

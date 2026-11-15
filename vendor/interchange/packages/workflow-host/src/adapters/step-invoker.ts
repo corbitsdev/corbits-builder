@@ -684,14 +684,23 @@ function wrapAuthorize(
  */
 function stepResultFromSend(result: SendResult): StepInvokeResult {
   if (result.type === "suspended") {
-    // The reactor parks only on a tool/authz gate -- an APPROVAL. It never
-    // parks awaiting the next mail (that "input" park is the workflow-host's
-    // decision to re-arm a conversational step, not a reactor outcome), so a
-    // suspended `SendResult` is always an approval and MUST carry a snapshot.
-    // A snapshot-less suspend (e.g. a director `caps.suspend` wired with no
-    // tool definitions) is not a supported approval; classify the failure here
-    // at the producer rather than emitting an ambiguous suspend that the
-    // runtime would have to reject three hops downstream.
+    if (result.question !== undefined) {
+      return {
+        suspend: {
+          correlationId: result.correlationId,
+          kind: "question",
+          question: result.question,
+        },
+      };
+    }
+    // Otherwise the reactor parked on a tool/authz gate -- an APPROVAL. It
+    // never parks awaiting the next mail (that "input" park is the
+    // workflow-host's decision to re-arm a conversational step, not a reactor
+    // outcome), so it MUST carry a snapshot. A snapshot-less suspend (e.g. a
+    // director `caps.suspend` wired with no tool definitions) is not a
+    // supported approval; classify the failure here at the producer rather
+    // than emitting an ambiguous suspend that the runtime would have to reject
+    // three hops downstream.
     if (result.approvalSnapshot === undefined) {
       throw new Error(
         `reactor suspended on correlation ${result.correlationId} with no ` +
@@ -719,7 +728,8 @@ function stepResultFromSend(result: SendResult): StepInvokeResult {
  *   header reaches the reactor's `tryCorrelate` and matches the rehydrated
  *   gate. The object form is load-bearing -- a plain string would drop the
  *   correlation id and the resumed cycle would never match. An approval
- *   decision is never a mail-derived `Mail`, so it stays on this branch.
+ *   decision is never a mail-derived `Mail`, so it stays on this branch. A
+ *   `"question"` resume takes the same branch, carrying the person's answer.
  * - A mail-derived `Mail` (first invocation or `"input"` resume): project its
  *   parts into a real `InboundMessage` (text and/or attachments), resolving
  *   each non-text part's bytes through the reader.

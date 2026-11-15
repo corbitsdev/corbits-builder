@@ -9,7 +9,7 @@
 // legal in which states. See the design spec section 4 for the full
 // narrative of the cancellation, signal, and timer invariants.
 
-import type { ControlParkKind } from "@intx/types/runtime";
+import type { AskedQuestion, ControlParkKind } from "@intx/types/runtime";
 
 export type RunId = string;
 export type StepId = string;
@@ -125,6 +125,8 @@ export interface SignalAwaited extends EventBase {
    * every reserved-channel park before this change was an approval.
    */
   parkKind?: ControlParkKind;
+  /** The question a `"question"` park waits on; the run log is its only record. */
+  question?: AskedQuestion;
   /**
    * Addresses this park by id. A delivery pairs only when this id and
    * `signalName` both match. Absent on a name-FIFO park: plain gates, loop

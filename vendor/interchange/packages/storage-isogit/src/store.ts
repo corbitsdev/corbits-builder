@@ -1,6 +1,7 @@
 import git from "isomorphic-git";
 import {
   ApprovalSnapshot,
+  AskedQuestion,
   ContentBlock,
   TokenUsage,
   ToolCall,
@@ -73,12 +74,13 @@ const ConversationTurnSchema = type({
 
 const PendingOperationSchema = type({
   correlationId: "string",
-  kind: "'approval'",
+  kind: "'approval' | 'question'",
   registeredAt: "number",
   gateId: "string",
   "timeoutAt?": "number",
   "suspendedCall?": ToolCall,
   "approvalSnapshot?": ApprovalSnapshot,
+  "question?": AskedQuestion,
 });
 
 // The persisted schema and the in-memory PendingOperation type are two
@@ -100,6 +102,11 @@ const _persistedApprovalSnapshot = (
   op: typeof PendingOperationSchema.infer,
 ): ApprovalSnapshot | undefined => op.approvalSnapshot;
 void _persistedApprovalSnapshot;
+
+const _persistedQuestion = (
+  op: typeof PendingOperationSchema.infer,
+): AskedQuestion | undefined => op.question;
+void _persistedQuestion;
 
 const MetadataSchema = type({
   pendingOperations: PendingOperationSchema.array(),

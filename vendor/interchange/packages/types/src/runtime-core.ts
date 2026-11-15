@@ -9,7 +9,7 @@
 import { type } from "arktype";
 import type { AuditRecord, ErrorRecord } from "./audit";
 import { WireGrantRule } from "./grant-wire";
-import type { SignalKind } from "./signals";
+import { QuestionAnswer, type SignalKind } from "./signals";
 
 // ---------------------------------------------------------------------------
 // Cryptographic Identity (ARCHITECTURE.md § Cryptographic Identity,
@@ -724,6 +724,134 @@ export const ApprovalSnapshot = type({
 export type ApprovalSnapshot = typeof ApprovalSnapshot.infer;
 
 /**
+ * One prompt for a person. `options` may be empty for a free-text prompt, which
+ * then needs `custom`; `multiple` allows several picks; `custom` lets the
+ * person type their own answer.
+ */
+const QuestionPrompt = type({
+  question: "0 < string <= 500",
+  header: "0 < string <= 100",
+  options: type({
+    "+": "reject",
+    label: "0 < string <= 200",
+    description: "string <= 500",
+  })
+    .array()
+    .atMostLength(8),
+  multiple: "boolean = false",
+  custom: "boolean = true",
+}).narrow((prompt, ctx) => {
+  if (prompt.options.length === 0 && !prompt.custom) {
+    return ctx.mustBe("a question with options or a typed answer");
+  }
+  const labels = prompt.options.map((option) => option.label);
+  const repeated = labels.find((label, i) => labels.indexOf(label) !== i);
+  if (repeated !== undefined) {
+    return ctx.mustBe(
+      `a question whose option labels differ; "${repeated}" appears more than once`,
+    );
+  }
+  return true;
+});
+
+/** The name of the tool an agent calls to ask a person questions. */
+export const QUESTION_TOOL_NAME = "question";
+
+/** The arguments of a `question` call, as the model writes them. */
+export const QuestionArguments = type({
+  "+": "reject",
+  questions: QuestionPrompt.onUndeclaredKey("reject")
+    .array()
+    .atLeastLength(1)
+    .atMostLength(5),
+});
+export type QuestionArguments = typeof QuestionArguments.infer;
+
+/**
+ * A paused `question` call as people see it: each prompt carries the id the
+ * runtime gave it, and the person's answer names those ids.
+ */
+export const AskedQuestion = type({
+  "+": "reject",
+  questions: QuestionPrompt.and({ id: "string > 0" })
+    .onUndeclaredKey("reject")
+    .array()
+    .atLeastLength(1)
+    .atMostLength(5),
+});
+export type AskedQuestion = typeof AskedQuestion.infer;
+
+/** A question a workflow run asked, and where it stands in the run's log. */
+export type RunQuestion = {
+  signalName: string;
+  at: string;
+  asked: AskedQuestion;
+} & (
+  | { status: "open" }
+  | { status: "answered"; answer: QuestionAnswer }
+  | { status: "closed" }
+);
+
+/** The persisted `SignalAwaited` body of a `"question"` park. */
+const QuestionAwaited = type({
+  stepId: "string",
+  signalName: "string",
+  at: "string",
+  parkKind: "'question'",
+  question: AskedQuestion,
+});
+
+/**
+ * Every question a workflow run asked, oldest first, read from the run's
+ * persisted events in log order. A question is a `SignalAwaited` with
+ * `parkKind: "question"`, listed once per signal name; one whose stored
+ * wording does not parse as an {@link AskedQuestion} is left out.
+ *
+ * - `"answered"` -- the first `SignalReceived` on its signal name carries a
+ *   payload that parses as a {@link QuestionAnswer}; that first answer wins.
+ * - `"open"` -- no `SignalReceived` on its name, and the asking step's last
+ *   event is this `SignalAwaited`. A `TimerSet` naming the step is skipped:
+ *   it arms a deadline (the park's timeout, or a retry backoff after a failure
+ *   already logged) and does not end the park.
+ * - `"closed"` -- otherwise: the step moved on (completed, failed or timed
+ *   out, cancelled, retried), or the first `SignalReceived` on its name
+ *   carries no answer.
+ */
+export function runQuestions(
+  events: readonly { type: string; body: Record<string, unknown> }[],
+): RunQuestion[] {
+  const questions: RunQuestion[] = [];
+  for (const event of events) {
+    if (event.type !== "SignalAwaited") continue;
+    const awaited = QuestionAwaited(event.body);
+    if (awaited instanceof type.errors) continue;
+    const { stepId, signalName, at, question: asked } = awaited;
+    if (questions.some((q) => q.signalName === signalName)) continue;
+    const received = events.find(
+      (e) => e.type === "SignalReceived" && e.body["signalName"] === signalName,
+    );
+    if (received !== undefined) {
+      const answer = QuestionAnswer(received.body["payload"]);
+      questions.push(
+        answer instanceof type.errors
+          ? { signalName, at, asked, status: "closed" }
+          : { signalName, at, asked, status: "answered", answer },
+      );
+      continue;
+    }
+    // Other steps keep writing while this one is parked, so read the asking
+    // step's own last event.
+    const last = events.findLast(
+      (e) => e.body["stepId"] === stepId && e.type !== "TimerSet",
+    );
+    const open =
+      last?.type === "SignalAwaited" && last.body["signalName"] === signalName;
+    questions.push({ signalName, at, asked, status: open ? "open" : "closed" });
+  }
+  return questions;
+}
+
+/**
  * The kind of a control-plane park: a step suspended awaiting an external
  * event. `"approval"` and `"input"` park on a reserved
  * `signalName(correlationId)` channel; `"signal-relay"` parks on an
@@ -739,6 +867,10 @@ export type ApprovalSnapshot = typeof ApprovalSnapshot.infer;
  *   concept -- deliberately NOT a {@link SignalKind}, so it never touches the
  *   approval-routing machinery (IPC register frames, the hub co-write, the
  *   approval columns).
+ * - `"question"` -- the step parked on a `question` tool call. The question
+ *   rides in the run log's `SignalAwaited` and the answer arrives on the same
+ *   channel; nothing is registered with the hub and the reactor sets no timer
+ *   (a workflow step's own timeout still ends the wait).
  * - `"signal-relay"` -- an onTrigger section container parked on an
  *   author-named signal so a body child's `awaitSignal` on that name is
  *   serviced through the deployment run: the external signal is delivered to
@@ -756,6 +888,7 @@ export type ApprovalSnapshot = typeof ApprovalSnapshot.infer;
 export const ControlParkKind = type.enumerated(
   "approval",
   "input",
+  "question",
   "signal-relay",
 );
 export type ControlParkKind = typeof ControlParkKind.infer;
@@ -1314,6 +1447,7 @@ export type InferenceError = typeof InferenceError.infer;
  */
 export const GateType = type.enumerated(
   "approval",
+  "question",
   "payment",
   "credential",
   "budget",
@@ -1340,7 +1474,8 @@ export type ForkMode = typeof ForkMode.infer;
  */
 export type PendingOperation = {
   correlationId: string;
-  kind: SignalKind;
+  /** The gate the call is parked on, set by whatever paused it. */
+  kind: SignalKind | "question";
   registeredAt: number;
   gateId: string;
   /**
@@ -1366,6 +1501,8 @@ export type PendingOperation = {
    * markers. Threaded through the suspend hops to the hub co-write.
    */
   approvalSnapshot?: ApprovalSnapshot;
+  /** The prompts of a `kind: "question"` operation, for the person who answers. */
+  question?: AskedQuestion;
 };
 
 /**
@@ -1392,7 +1529,11 @@ export type ReactorState = {
   turns: ConversationTurn[];
   activeForks: { forkId: string; mode: ForkMode }[];
   pendingOperations: PendingOperation[];
-  activeGates: { gateId: string; type: GateType; timeoutAt: number }[];
+  activeGates: {
+    gateId: string;
+    type: GateType;
+    timeoutAt: number | undefined;
+  }[];
   tokenUsage: TokenUsage;
   lastCycleUsage: TokenUsage | null;
   lastCycleSource: LastCycleSource | null;
@@ -1543,7 +1684,8 @@ export interface ReactorDirector {
  * - `suspend` — the call is parked awaiting an external decision. The reactor
  *   registers `gate`, persists `pendingOp`, and does not answer the call: it
  *   is neither run nor error-completed. `gate.timeoutAt` is the absolute
- *   deadline (epoch ms) so the reactor can compute the remaining time; the
+ *   deadline (epoch ms) so the reactor can compute the remaining time, and
+ *   absent when the call waits until it is resolved; the
  *   `correlationId` on both `gate` and `pendingOp` ties an inbound resolution
  *   back to the suspension.
  */
@@ -1556,7 +1698,7 @@ export type BeforeToolDecision =
         type: GateType;
         gateId: string;
         correlationId: string;
-        timeoutAt: number;
+        timeoutAt?: number;
       };
       pendingOp: PendingOperation;
     };

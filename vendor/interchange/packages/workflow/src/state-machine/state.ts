@@ -52,7 +52,8 @@ export interface StepState {
 /**
  * Resolve a control-plane park's kind to a definite value.
  *
- * An explicit `parkKind` (`"input"` or `"signal-relay"`) is returned verbatim.
+ * An explicit `parkKind` (`"input"`, `"question"` or `"signal-relay"`) is
+ * returned verbatim.
  * `parkKind` is ABSENT in two cases: a plain `awaitSignal` gate (not a
  * control-plane park at all), and a reserved-channel park committed before the
  * kind was recorded. Callers reach the absent path only on a reserved
@@ -68,6 +69,7 @@ export function controlParkKindOf(awaitingSignal: {
   parkKind?: ControlParkKind;
 }): ControlParkKind {
   if (awaitingSignal.parkKind === "input") return "input";
+  if (awaitingSignal.parkKind === "question") return "question";
   if (awaitingSignal.parkKind === "signal-relay") return "signal-relay";
   return "approval";
 }

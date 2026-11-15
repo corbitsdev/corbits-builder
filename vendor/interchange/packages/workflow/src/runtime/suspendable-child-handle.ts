@@ -168,6 +168,14 @@ export function createSuspendableChildHandle(
           kind: "input-park",
           correlationId: park.correlationId,
         });
+      } else if (park.parkKind === "question") {
+        events.push({
+          kind: "error",
+          error: new Error(
+            `suspendable body ${childRunId} asks a question ` +
+              `(${park.correlationId}), which a parent run cannot relay`,
+          ),
+        });
       } else {
         events.push({
           kind: "error",
