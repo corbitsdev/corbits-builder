@@ -337,8 +337,6 @@ export function createSidecarCodingTools(policy: {
                 );
               await setup.done();
             }
-            // The coder's app is live from its first call, so it can open it whenever it wants.
-            if (policy.workspace === "app") await executor.app();
           } catch (error) {
             await executor.dispose();
             throw error;

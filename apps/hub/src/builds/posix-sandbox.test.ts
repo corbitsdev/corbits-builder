@@ -1,5 +1,12 @@
 import { expect, test } from "bun:test";
-import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
+import {
+  access,
+  mkdir,
+  mkdtemp,
+  readFile,
+  rm,
+  writeFile,
+} from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { SandboxManager } from "@anthropic-ai/sandbox-runtime";
@@ -149,6 +156,111 @@ test.skipIf(
       const restarted = await ended();
       expect(ports(restarted)).toBe(ports(first));
       expect(restarted.url).toBe(first.url);
+    } finally {
+      await executor?.dispose();
+      await rm(root, { recursive: true, force: true });
+    }
+  },
+  60_000,
+);
+
+test.skipIf(
+  !SandboxManager.isSupportedPlatform() ||
+    SandboxManager.checkDependencies({ command: rgPath }).errors.length > 0,
+)(
+  "a clean workspace exit neither reports a crash nor restarts after an edit or status request",
+  async () => {
+    const root = await mkdtemp(join(tmpdir(), "builder-sandbox-test-"));
+    let executor:
+      | Awaited<ReturnType<typeof createPosixBuildExecutor>>
+      | undefined;
+    try {
+      const workspace = join(root, "workspace");
+      await mkdir(workspace);
+      await writeFile(
+        join(workspace, "package.json"),
+        JSON.stringify({
+          scripts: {
+            dev: "echo started >> starts.txt; echo '@app/shared build: Exited with code 0'; exec sleep 300",
+          },
+        }),
+      );
+      executor = await createPosixBuildExecutor(
+        workspace,
+        { commandTimeoutMs: 10_000, maxToolResultBytes: 10_000 },
+        await buildPackageLayout(),
+        { app: true },
+      );
+      await executor.app();
+      const deadline = Date.now() + 5000;
+      while (
+        !executor
+          .appState()
+          ?.log.some((line) => line.includes("Exited with code 0")) &&
+        Date.now() < deadline
+      )
+        await Bun.sleep(50);
+      expect(executor.appState()?.log.join("\n")).toContain(
+        "Exited with code 0",
+      );
+      expect(executor.appState()?.stopped).toBeUndefined();
+      await writeFile(
+        join(workspace, "source.ts"),
+        "export const changed = true;",
+      );
+      await Bun.sleep(300);
+      await executor.app();
+      expect(executor.appState()?.running).toBe(true);
+      expect(await readFile(join(workspace, "starts.txt"), "utf8")).toBe(
+        "started\n",
+      );
+    } finally {
+      await executor?.dispose();
+      await rm(root, { recursive: true, force: true });
+    }
+  },
+  60_000,
+);
+
+test.skipIf(
+  !SandboxManager.isSupportedPlatform() ||
+    SandboxManager.checkDependencies({ command: rgPath }).errors.length > 0,
+)(
+  "workspace tools leave the app unstarted until its first status request",
+  async () => {
+    const root = await mkdtemp(join(tmpdir(), "builder-sandbox-test-"));
+    let executor:
+      | Awaited<ReturnType<typeof createPosixBuildExecutor>>
+      | undefined;
+    try {
+      const workspace = join(root, "workspace");
+      await mkdir(workspace);
+      await writeFile(
+        join(workspace, "package.json"),
+        JSON.stringify({ scripts: { dev: "touch started; exec sleep 300" } }),
+      );
+      executor = await createPosixBuildExecutor(
+        workspace,
+        { commandTimeoutMs: 10_000, maxToolResultBytes: 10_000 },
+        await buildPackageLayout(),
+        { app: true },
+      );
+      const result = await executor.run(
+        { id: "read", name: "read_file", arguments: { path: "package.json" } },
+        new AbortController().signal,
+      );
+      expect(result.isError).not.toBe(true);
+      expect(executor.appState()).toBeUndefined();
+      expect(await Bun.file(join(workspace, "started")).exists()).toBe(false);
+      await executor.app();
+      const deadline = Date.now() + 5000;
+      while (
+        !(await Bun.file(join(workspace, "started")).exists()) &&
+        Date.now() < deadline
+      )
+        await Bun.sleep(50);
+      await access(join(workspace, "started"));
+      expect(executor.appState()?.running).toBe(true);
     } finally {
       await executor?.dispose();
       await rm(root, { recursive: true, force: true });
