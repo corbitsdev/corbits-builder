@@ -1021,8 +1021,7 @@ export const wording = {
     notAnswered: "Not answered",
   },
   archivedProject: {
-    title: "This project is archived",
-    lead: "Its documents, design, and app stay open to read and download. Restore it to work on it again.",
+    notice: "This project is archived.",
     restore: "Restore",
     restoring: "Restoring…",
     restoreFailed: "The project could not be restored.",

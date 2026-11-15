@@ -253,13 +253,13 @@ function Dock({
 }) {
   if (dock.kind === "archived")
     return (
-      <Banner title={wording.archivedProject.title}>
-        <p>{wording.archivedProject.lead}</p>
-        {dock.fault === null ? null : <Fault>{dock.fault}</Fault>}
-        <BannerAction>
+      <div className={styles.archived}>
+        <div className={styles.caution}>
+          <p>{wording.archivedProject.notice}</p>
           <UiButton
             type="button"
             size="sm"
+            variant="outline"
             disabled={dock.restoring}
             onClick={dock.onRestore}
           >
@@ -267,8 +267,9 @@ function Dock({
               ? wording.archivedProject.restoring
               : wording.archivedProject.restore}
           </UiButton>
-        </BannerAction>
-      </Banner>
+        </div>
+        {dock.fault === null ? null : <Fault>{dock.fault}</Fault>}
+      </div>
     );
   if (dock.kind === "modelNeeded")
     return (
