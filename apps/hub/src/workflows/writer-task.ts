@@ -1,9 +1,9 @@
+import { INPUTS_DIRECTORY } from "@corbits-builder/schemas/app-files";
+import type { ArtifactListItem } from "@corbits-builder/schemas/artifact";
 import { NativeSpecialistAssignment } from "@corbits-builder/schemas/native-specialist";
 import { SourceRef } from "@corbits-builder/schemas";
-import {
-  writerTaskMessage,
-  type WorkerDocument,
-} from "@corbits-builder/writer/contract";
+import { inputFileName } from "./input-file-tools.ts";
+import { writerTaskMessage } from "@corbits-builder/writer/contract";
 
 type Source = typeof SourceRef.infer;
 
@@ -14,28 +14,32 @@ function sourceToken(ref: Source): string {
 
 type Assignment = typeof NativeSpecialistAssignment.infer;
 
-type SourceDocument = { kind: string; title: string; content: string };
-
-// The documents travel in the assignment, read by the hub at the referenced versions, so the writer
-// has nothing to look up (a writer given a read tool re-read kinds hunting for "the requester's answers").
-export async function assignmentToWriterMessage(
+export function assignmentToWriterMessage(
   assignment: Assignment,
-  read: (ref: Source) => Promise<SourceDocument>,
+  available: readonly Pick<ArtifactListItem, "artifactId" | "kind" | "title">[],
   current?: Source,
-): Promise<string> {
+): string {
   const checked = NativeSpecialistAssignment.assert(assignment);
-  const refs = [
-    checked.briefRef,
-    ...checked.sourceRefs,
-    ...(current ? [current] : []),
-  ];
-  const documents: WorkerDocument[] = await Promise.all(
-    refs.map(async (ref) => ({ ref: sourceToken(ref), ...(await read(ref)) })),
-  );
-  return writerTaskMessage({
+  const refs = [checked.briefRef, ...checked.sourceRefs];
+  if (current) refs.push(current);
+  const documents = refs.map((ref) => {
+    const document = available.find(
+      (item) => item.artifactId === ref.artifactId,
+    );
+    if (!document) throw new Error("writer_source_not_filed");
+    return {
+      ref: sourceToken(ref),
+      kind: document.kind,
+      title: document.title,
+      path: INPUTS_DIRECTORY + "/" + inputFileName(document),
+    };
+  });
+  const input = {
     task: checked.instruction,
     documents,
     artifact: checked.kind,
-    ...(current === undefined ? {} : { replaces: sourceToken(current) }),
-  });
+  };
+  if (current)
+    return writerTaskMessage({ ...input, replaces: sourceToken(current) });
+  return writerTaskMessage(input);
 }

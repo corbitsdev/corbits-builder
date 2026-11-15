@@ -1,3 +1,5 @@
+import { inputFileName } from "../workflows/input-file-tools.ts";
+import { INPUTS_DIRECTORY } from "@corbits-builder/schemas/app-files";
 import {
   projectScopeFailure,
   resolveWorkflowProjectScope,
@@ -382,6 +384,7 @@ export function createDeployTools(options?: {
           }
           return {
             byKind,
+            documents: list.artifacts,
             materials,
             approved,
             openQuestions,
@@ -406,27 +409,8 @@ export function createDeployTools(options?: {
               signal,
             }),
           );
-        // A filed design runs to MAX_DESIGN_BYTES, past the cap on the hub's other replies. Every
-        // other document keeps the cap, so a large material never lands whole in a model's context.
         const readDesign = (ref: Ref) =>
           readArtifact(ref, Number.POSITIVE_INFINITY);
-        const readSource = (byKind: Map<string, Ref>) => async (ref: Ref) => {
-          const { kind, title, content } =
-            byKind.get("design")?.artifactId === ref.artifactId
-              ? await readDesign(ref)
-              : await readArtifact(ref, options.maxResultBytes);
-          if (kind !== "design") return { kind, title, content };
-          // A writer reads the design's DESIGN.md; the screens stay in the bundle the coder gets.
-          const { files } = DesignBundle.assert(JSON.parse(content));
-          const screens = Object.keys(files).filter((path) =>
-            path.startsWith("designs/"),
-          );
-          return {
-            kind,
-            title,
-            content: files["DESIGN.md"] + "\n\nScreens: " + screens.join(", "),
-          };
-        };
         // This handler runs only after the native approval resolved, so the
         // versions it is about to hand off are the ones the person approved.
         const recordApproval = (
@@ -661,7 +645,7 @@ export function createDeployTools(options?: {
               options.workflows[WRITER_PACKAGES[input.kind]],
               preferences,
               "writer-" + input.kind,
-              await assignmentToWriterMessage(
+              assignmentToWriterMessage(
                 {
                   projectId: options.projectId,
                   deliverableId: input.kind,
@@ -677,13 +661,13 @@ export function createDeployTools(options?: {
                         STARTER_STACK
                       : input.instruction,
                 },
-                readSource(byKind),
+                state.documents,
                 target,
               ),
             );
           } else if (call.name === "review_artifact") {
             const input = validArguments(ReviewArtifact, call.arguments);
-            const { byKind, preferences } = await listed();
+            const { byKind, preferences, documents } = await listed();
             const briefRef = required(byKind, "problem_brief");
             const target = required(byKind, input.kind);
             result = await deploy(
@@ -691,7 +675,7 @@ export function createDeployTools(options?: {
               options.workflows.reviewer,
               preferences,
               "reviewer-" + input.kind,
-              await assignmentToWriterMessage(
+              assignmentToWriterMessage(
                 {
                   projectId: options.projectId,
                   deliverableId: input.kind,
@@ -701,7 +685,7 @@ export function createDeployTools(options?: {
                   output: { expectedVersion: target.version },
                   instruction: input.instruction,
                 },
-                readSource(byKind),
+                documents,
               ),
             );
           } else if (call.name === "deploy_coder") {
@@ -834,7 +818,12 @@ export function createDeployTools(options?: {
             );
           } else if (call.name === "deploy_presenter") {
             const input = validArguments(DeployPresenter, call.arguments);
-            const { byKind, approved, preferences } = await listed();
+            const {
+              byKind,
+              approved,
+              preferences,
+              documents: available,
+            } = await listed();
             const selectedKinds = [...new Set(input.kinds)];
             for (const kind of selectedKinds) {
               const ref = required(byKind, kind);
@@ -844,20 +833,21 @@ export function createDeployTools(options?: {
               )
                 throw notApproved(kind, ref.version);
             }
-            const documents = await Promise.all(
-              selectedKinds.map(async (kind) => {
-                const ref = required(byKind, kind);
-                const loaded = await readSource(byKind)(ref);
-                return {
-                  artifactId: ref.artifactId,
-                  kind,
-                  title: loaded.title,
-                  version: ref.version,
-                  sha256: ref.sha256,
-                  content: loaded.content,
-                };
-              }),
-            );
+            const documents = selectedKinds.map((kind) => {
+              const ref = required(byKind, kind);
+              const document = available.find(
+                (item) => item.artifactId === ref.artifactId,
+              );
+              if (!document) throw notFiled(kind);
+              return {
+                artifactId: ref.artifactId,
+                kind,
+                title: document.title,
+                version: ref.version,
+                sha256: ref.sha256,
+                path: INPUTS_DIRECTORY + "/" + inputFileName(document),
+              };
+            });
             const designRef = byKind.get("design");
             let design: PresenterDesignTokens | undefined;
             if (designRef) {
