@@ -15,5 +15,19 @@
     "@intx/agent": "workspace:*",
     "@intx/tools-mail": "workspace:*",
     "@intx/workflow": "workspace:*"
+  },
+  "builder": {
+    "roles": [
+      {
+        "name": "presenter",
+        "model": "presenter",
+        "limits": "presenter"
+      }
+    ],
+    "packages": {
+      "presenter": {
+        "entry": "./src/packages/presenter.ts"
+      }
+    }
   }
 }

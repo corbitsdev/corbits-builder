@@ -7,6 +7,7 @@ import {
   invalidModelChoice,
   resolveModelChoice,
 } from "./models.ts";
+import { ROLES } from "../plugins/catalog.ts";
 
 test("a project runs on the only connected provider's profile, a chosen one, or none", () => {
   expect(
@@ -114,8 +115,8 @@ test("a saved profile keeps role overrides while older projects retain their ass
   const saved = StoredModelChoice.assert(
     JSON.parse(JSON.stringify(selected.choice)),
   );
-  const expected = workflowBindings(MODEL_PROVIDERS, choice);
-  expect(workflowBindings(MODEL_PROVIDERS, saved)).toEqual(expected);
+  const expected = workflowBindings(MODEL_PROVIDERS, choice, ROLES);
+  expect(workflowBindings(MODEL_PROVIDERS, saved, ROLES)).toEqual(expected);
   expect(frozenModelChoice(MODEL_PROVIDERS, saved)).toEqual(saved);
 
   // An older project's shipped id must not opt it into newly introduced overrides.
@@ -126,10 +127,10 @@ test("a saved profile keeps role overrides while older projects retain their ass
   });
   const kept = frozenModelChoice(MODEL_PROVIDERS, older)!;
   expect(kept).toEqual(older);
-  expect(workflowBindings(MODEL_PROVIDERS, kept).writer).toEqual(
+  expect(workflowBindings(MODEL_PROVIDERS, kept, ROLES).writer).toEqual(
     profile.tiers.medium,
   );
-  expect(workflowBindings(MODEL_PROVIDERS, saved).writer).toEqual(
+  expect(workflowBindings(MODEL_PROVIDERS, saved, ROLES).writer).toEqual(
     profile.tiers.low,
   );
 });

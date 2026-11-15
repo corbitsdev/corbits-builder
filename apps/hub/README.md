@@ -19,8 +19,12 @@ use a few of its package exports.
 - `src/config/`: user-visible wording, model tiers and other settings.
 - `src/projects/`, `src/artifacts/`, `src/settings/`, `src/invitations/`,
   `src/audit/`: services and routes for each product area.
-- `src/workflows/`: the bundling that turns `plugins/*` and `workflows/*`
-  into packages; `entries/` holds the coordinator's and reviewer's modules.
+- `src/plugins/`: the catalog, read once from the `builder` block of each
+  `plugins/*` package and of this package, which declares the coordinator's and
+  reviewer's roles and the model settings.
+- `src/workflows/`: the bundling that turns each package the catalog declares
+  into a workflow package; `entries/` holds the coordinator's and reviewer's
+  modules.
 - `src/builds/`, `src/live-app/`: the coder's sandbox, tools, starter app
   and live preview.
 - `src/sidecar/`, `src/provisioning/`: where agent sidecars run.

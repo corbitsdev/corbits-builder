@@ -2,6 +2,7 @@ import { createHash } from "node:crypto";
 import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
 import { join, resolve } from "node:path";
 import { tmpdir } from "node:os";
+import { packageEntry } from "../plugins/catalog.ts";
 import { nativePackageName } from "./package-name.ts";
 import type { RoleInference } from "./role-inference.ts";
 import {
@@ -15,22 +16,11 @@ function contentVersion(base: string, bundle: string): string {
   return `${base}-sha-${createHash("sha256").update(bundle).digest("hex").slice(0, 8)}`;
 }
 
-const PLUGINS_FOLDER = resolve(import.meta.dir, "../../../../plugins");
-
-// Each package is the module named for it under a plugin's src/packages/, or under entries/ for a
-// role no plugin holds, built on what its role's model binding resolved to.
-const PACKAGES = Object.entries(WORKFLOW_PACKAGES).map(([name, role]) => {
-  const [plugin, ...others] = new Bun.Glob(
-    `*/src/packages/${name}.ts`,
-  ).scanSync({ cwd: PLUGINS_FOLDER, absolute: true });
-  if (others.length > 0)
-    throw new Error("workflow_package_entry_ambiguous:" + name);
-  return {
-    name,
-    role,
-    entry: plugin ?? join(import.meta.dir, "entries", name + ".ts"),
-  };
-});
+const PACKAGES = Object.entries(WORKFLOW_PACKAGES).map(([name, role]) => ({
+  name,
+  role,
+  entry: packageEntry(name),
+}));
 
 export async function buildWorkflowPackages(
   destination: string,

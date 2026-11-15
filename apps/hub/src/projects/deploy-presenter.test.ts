@@ -511,9 +511,12 @@ test("presenter workflow entry binds Medium tier inference and approval_package 
     await import("../config/models.ts");
   const { resolveRoleInference } =
     await import("../workflows/role-inference.ts");
-  const bindings = workflowBindings(MODEL_PROVIDERS, {
-    profile: "anthropic_default",
-  });
+  const { ROLES } = await import("../plugins/catalog.ts");
+  const bindings = workflowBindings(
+    MODEL_PROVIDERS,
+    { profile: "anthropic_default" },
+    ROLES,
+  );
   expect(bindings.presenter).toEqual(bindings.writer);
   process.env.BUILDER_ROLE_INFERENCE = JSON.stringify(
     resolveRoleInference(MODEL_PROVIDERS, "presenter", bindings.presenter),

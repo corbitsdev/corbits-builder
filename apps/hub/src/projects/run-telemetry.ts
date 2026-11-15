@@ -5,6 +5,7 @@ import { workflowRun, workflowRunLaunchSpec } from "@intx/db/schema";
 import { project } from "../db/schema.ts";
 import { workflowRoleSql } from "../workflows/spawn-role.ts";
 import { workflowBindings } from "../config/models.ts";
+import { ROLES } from "../plugins/catalog.ts";
 import { modelDirectory } from "../settings/custom-providers.ts";
 import { loadSettings } from "../settings/policy.ts";
 import type { RunContext } from "../telemetry/run-spans.ts";
@@ -61,6 +62,7 @@ export async function runTelemetry(
       metadata.effort = workflowBindings(
         await modelDirectory(db, run.tenantId),
         models.value,
+        ROLES,
       )[run.role].effort;
     }
   } catch (error) {

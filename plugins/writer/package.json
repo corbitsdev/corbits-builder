@@ -16,5 +16,28 @@
     "@intx/agent": "workspace:*",
     "@intx/workflow": "workspace:*",
     "arktype": "catalog:"
+  },
+  "builder": {
+    "roles": [
+      {
+        "name": "writer",
+        "model": "writer",
+        "limits": "document"
+      }
+    ],
+    "packages": {
+      "writer-constraints": {
+        "entry": "./src/packages/writer-constraints.ts"
+      },
+      "writer-approaches": {
+        "entry": "./src/packages/writer-approaches.ts"
+      },
+      "writer-product-requirements": {
+        "entry": "./src/packages/writer-product-requirements.ts"
+      },
+      "writer-build-plan": {
+        "entry": "./src/packages/writer-build-plan.ts"
+      }
+    }
   }
 }

@@ -17,5 +17,22 @@
     "@intx/agent": "workspace:*",
     "@intx/tools-mail": "workspace:*",
     "@intx/workflow": "workspace:*"
+  },
+  "builder": {
+    "roles": [
+      {
+        "name": "coder",
+        "model": "builder",
+        "limits": "coding"
+      }
+    ],
+    "packages": {
+      "coder": {
+        "entry": "./src/packages/coder.ts"
+      },
+      "coder-any-package": {
+        "entry": "./src/packages/coder-any-package.ts"
+      }
+    }
   }
 }

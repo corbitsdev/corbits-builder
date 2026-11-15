@@ -37,6 +37,7 @@ import {
   offeringQuirks,
 } from "../inference/oauth-login-quirks.ts";
 import { projectModelChoice } from "../projects/model-choice.ts";
+import { ROLES } from "../plugins/catalog.ts";
 import { ProjectError } from "../projects/errors.ts";
 import { buildWorkflowPackages } from "./build-packages.ts";
 import { nativePackageName } from "./package-name.ts";
@@ -317,14 +318,6 @@ async function offeringId(
 }
 
 type Built = Awaited<ReturnType<typeof builtPackages>>;
-const ROLES = [
-  "coordinator",
-  "writer",
-  "reviewer",
-  "coder",
-  "designer",
-  "presenter",
-] as const;
 
 /** A stored descriptor is current only while it pins this build's packages and each package's offering still serves its role's source. */
 async function isCurrent(
@@ -427,12 +420,13 @@ export async function installForTenant(
   const bindings = workflowBindings(
     directory,
     await projectModelChoice(ports.db, actor, projectId, directory),
+    ROLES,
   );
   const built = await builtPackages(
     Object.fromEntries(
-      ROLES.map((role) => [
-        role,
-        resolveRoleInference(directory, role, bindings[role]),
+      ROLES.map(({ name, limits }) => [
+        name,
+        resolveRoleInference(directory, limits, bindings[name]),
       ]),
     ) as Inference,
   );
@@ -450,7 +444,7 @@ export async function installForTenant(
   )
     return existing;
   const offerings = new Map<string, string>();
-  for (const role of ROLES) {
+  for (const { name: role } of ROLES) {
     const key = bindings[role].provider + "\u0000" + bindings[role].model;
     if (!offerings.has(key))
       offerings.set(

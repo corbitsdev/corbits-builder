@@ -1,0 +1,16 @@
+{
+  "name": "@corbits-builder/plugin",
+  "version": "0.1.0-rc.3",
+  "private": true,
+  "description": "What a plugin's package.json may declare in its builder block.",
+  "license": "SEE LICENSE IN ../../LICENSE.md",
+  "author": "Sawyer Cutler <sawyer@dirtroad.dev>",
+  "type": "module",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "dependencies": {
+    "@corbits-builder/schemas": "workspace:*",
+    "arktype": "catalog:"
+  }
+}

@@ -15,5 +15,19 @@
     "@intx/agent": "workspace:*",
     "@intx/tools-mail": "workspace:*",
     "@intx/workflow": "workspace:*"
+  },
+  "builder": {
+    "roles": [
+      {
+        "name": "designer",
+        "model": "designer",
+        "limits": "design"
+      }
+    ],
+    "packages": {
+      "designer": {
+        "entry": "./src/packages/designer.ts"
+      }
+    }
   }
 }

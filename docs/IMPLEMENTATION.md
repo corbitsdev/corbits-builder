@@ -127,6 +127,8 @@ Environment files, installs and build output never leave the workspace.
 | `plugins/designer`        | `@corbits-builder/designer`    | The designer, its starter, themes and skills.                    |
 | `plugins/coder`           | `@corbits-builder/coder`       | The coder, its app starter and `check-app`.                      |
 | `packages/schemas`        | `@corbits-builder/schemas`     | Types and schemas shared by the hub, client and workflows.       |
+| `packages/plugin`         | `@corbits-builder/plugin`      | What a plugin's `builder` block may declare.                     |
+| `packages/plugin-host`    | `@corbits-builder/plugin-host` | Reads a plugins folder and checks what each plugin declares.     |
 | `vendor/interchange`      |                                | Interchange at the pinned revision.                              |
 | `deploy/`                 |                                | The Dockerfile and Compose files.                                |
 | `scripts/`                |                                | Dev and verification scripts.                                    |
