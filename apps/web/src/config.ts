@@ -18,8 +18,9 @@ import {
   updatesFolded,
   buildSubject,
 } from "./config/activity.ts";
+import { productName } from "./config/product.ts";
 
-export const productName = "Builder";
+export { productName };
 
 /**
  * The lead of the opening message the hub sends a newly imported project's
