@@ -2,6 +2,8 @@ import type { Meta, StoryObj } from "@storybook/react-vite";
 import { createRef, useState } from "react";
 import { fn } from "storybook/test";
 import { wording } from "../../config.ts";
+import { AppView } from "../../App.view.tsx";
+import app from "../../App.stories.tsx";
 import type { ArtifactPaneProps } from "./artifact-pane.tsx";
 import documentPane, {
   AppAndManual as appAndManual,
@@ -310,6 +312,19 @@ export const Archived: Story = {
     },
     nextStep: null,
   },
+};
+
+export const ArchivedHubNotAnswering: Story = {
+  ...Archived,
+  render: (args) => (
+    <AppView
+      {...app.args}
+      current="project"
+      hub={{ state: "notAnswering" }}
+      setupFault="Failed to fetch"
+      page={<RoomView {...args} />}
+    />
+  ),
 };
 
 export const ArchivedRestoring: Story = {

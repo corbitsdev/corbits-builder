@@ -113,7 +113,7 @@ export function AppView({
           >
             <HubNotice hub={hub} />
 
-            {setupFault ? (
+            {hub.state === "answering" && setupFault ? (
               <Banner tone="error" title={wording.workspace.setupIncomplete}>
                 {setupFault}
               </Banner>
