@@ -33,7 +33,7 @@ import {
   type ArtifactRef,
 } from "@corbits-builder/schemas/artifact";
 import { Preferences } from "@corbits-builder/schemas/preferences";
-import { DEFAULT_STACK } from "../config/packages.ts";
+import { starterStack } from "@corbits-builder/coder/assets" with { type: "macro" };
 import {
   APP_CHANGE_NOTE,
   CODER_INPUTS,
@@ -65,6 +65,7 @@ import { assignmentToWriterMessage } from "../workflows/writer-task.ts";
 import { coderTaskMessage } from "@corbits-builder/coder/contract";
 
 export const DEPLOY_TOOLS = "@corbits-builder/deploy/tools";
+const STARTER_STACK = starterStack();
 const CODER_DOCUMENTS = [...CODER_INPUTS, "design"] as const;
 // A placeholder instruction repeated across turns ends the coordinator in a doom loop; a length
 // floor the schema states gives it a refusal to act on instead.
@@ -672,7 +673,8 @@ export function createDeployTools(options?: {
                     input.kind === "build_plan"
                       ? input.instruction +
                         "\n\nDefault stack unless the person asked otherwise: " +
-                        DEFAULT_STACK
+                        "the coder's starter. " +
+                        STARTER_STACK
                       : input.instruction,
                 },
                 readSource(byKind),

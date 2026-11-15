@@ -1,6 +1,7 @@
 {
   "name": "app",
   "private": true,
+  "description": "A Bun workspace with client/ (Vite, React, React Router, TanStack Query, Tailwind CSS v4 and @corbits/react-ui), server/ (Hono on Bun, with data people enter kept as validated JSON files under server/data through createStore, and data the app ships with under server/src/data) and packages/shared (zod schemas both sides use).",
   "workspaces": [
     "client",
     "server",
