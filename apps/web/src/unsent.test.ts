@@ -38,7 +38,7 @@ test("unsent text is read back for its own key and forgotten once it is empty", 
   expect(storage.items.size).toBe(0);
 });
 
-test("storage that refuses every call leaves the input empty and usable", () => {
+test("storage that refuses every call keeps the text in memory and says so once", () => {
   const refuse = () => {
     throw new Error("Storage unavailable");
   };
@@ -49,8 +49,9 @@ test("storage that refuses every call leaves the input empty and usable", () => 
   const warn = spyOn(console, "warn").mockImplementation(() => {});
   try {
     expect(readUnsent("draft")).toBe("");
-    expect(warn).toHaveBeenCalledTimes(1);
-    expect(() => writeUnsent("draft", "still writing")).not.toThrow();
+    writeUnsent("draft", "still writing");
+    writeUnsent("draft", "still writing more");
+    expect(readUnsent("draft")).toBe("still writing more");
     expect(warn).toHaveBeenCalledTimes(1);
   } finally {
     warn.mockRestore();
