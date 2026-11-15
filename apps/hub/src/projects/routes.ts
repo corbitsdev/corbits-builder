@@ -227,6 +227,12 @@ export function createProjectRoutes(
           required: true,
           schema: { type: "string" },
         },
+        {
+          name: "profile",
+          in: "query",
+          required: false,
+          schema: { type: "string" },
+        },
       ],
       requestBody: {
         required: true,
@@ -272,6 +278,7 @@ export function createProjectRoutes(
         const kinds = file.documents.map((document) => document.kind);
         if (new Set(kinds).size !== kinds.length)
           throw new ProjectError(400, "duplicate_document_kind");
+        const profile = c.req.query("profile");
         const projectId = `i-${crypto.randomUUID().replaceAll("-", "")}`;
         const created = await service.mutate(
           caller(c),
@@ -281,7 +288,10 @@ export function createProjectRoutes(
             mutationId: crypto.randomUUID(),
             idempotencyKey: crypto.randomUUID(),
             command: "create_project",
-            payload: { title: file.title },
+            payload: {
+              title: file.title,
+              ...(profile === undefined ? {} : { profile }),
+            },
           },
         );
         try {

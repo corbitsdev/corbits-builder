@@ -237,6 +237,21 @@ test("custom providers install on their API, keep each key on its origin, and re
     });
     expect(saved.savedFields).toEqual(["models"]);
 
+    // Import hands its profile to project creation, which refuses one it does not know.
+    expect(
+      await refusal(
+        client.importProject(tenantId, {
+          file: {
+            format: "corbits-builder.project",
+            version: 1,
+            title: "Imported",
+            documents: [],
+          },
+          profile: "unknown_profile",
+        }),
+      ),
+    ).toMatchObject({ status: 400, code: "model_profile_unknown" });
+
     // The install a project start runs, on the project settings row create_project writes. A
     // second install finds the first current and leaves the workspace config as it was.
     const handle = createDB(readDatabaseConfig(environment));
