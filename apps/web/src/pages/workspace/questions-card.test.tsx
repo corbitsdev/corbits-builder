@@ -74,10 +74,17 @@ const answers = {
 };
 
 describe("questions card", () => {
-  test("a fresh card restores saved picks and typed words for its signal", () => {
+  test("a fresh card restores saved picks, typed words and the open question for its signal", () => {
     stored.set(
       "unsent:questions:call-1",
-      JSON.stringify([{ chosen: ["Track tasks"], own: "Export reports" }]),
+      JSON.stringify({
+        step: 1,
+        answers: [
+          { chosen: ["Just me"], own: "" },
+          { chosen: ["Track tasks"], own: "Export reports" },
+          { chosen: [], own: "" },
+        ],
+      }),
     );
     const render = (signalName: string) =>
       renderToStaticMarkup(
@@ -85,7 +92,7 @@ describe("questions card", () => {
           question={{
             at: 0,
             signalName,
-            asked: { questions: [ask.questions[1]!] },
+            asked: ask,
             status: "open",
           }}
           disabled={false}
@@ -97,16 +104,24 @@ describe("questions card", () => {
       expect(html).toMatch(/type="checkbox"[^>]*checked=""/);
       expect(html).toContain('value="Export reports"');
       expect(html).toContain('aria-disabled="false"');
+      expect(html).toContain(wording.questions.position(2, 3));
     }
     const other = render("call-2");
     expect(other).not.toContain('value="Export reports"');
-    expect(other).toContain('aria-disabled="true"');
+    expect(other).toContain(wording.questions.position(1, 3));
   });
 
   test("invalid saved JSON or answer shapes start with the recommended answer", () => {
     for (const saved of [
       "{",
-      JSON.stringify(ask.questions.map(() => ({ chosen: 3, own: "words" }))),
+      JSON.stringify({
+        step: 0,
+        answers: ask.questions.map(() => ({ chosen: 3, own: "words" })),
+      }),
+      JSON.stringify({
+        step: 7,
+        answers: ask.questions.map(() => ({ chosen: [], own: "" })),
+      }),
       "[]",
       "null",
     ]) {
