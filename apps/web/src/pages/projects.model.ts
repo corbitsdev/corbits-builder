@@ -151,8 +151,8 @@ export function useProjects({
     const importing = toast.loading(`Importing ${name}…`);
     setActivity("importing");
     try {
-      const created = await importProject(
-        withApprovals
+      const created = await importProject({
+        file: withApprovals
           ? file
           : {
               ...file,
@@ -161,7 +161,7 @@ export function useProjects({
                 approved: false,
               })),
             },
-      );
+      });
       toast.success(`Imported ${name}.`, {
         id: importing,
         ...(omitted.length > 0
