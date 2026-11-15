@@ -356,8 +356,8 @@ async function isPortFree(port: number): Promise<boolean> {
     });
     await probe.stop(true);
     return true;
-  } catch {
-    // Binding is the test: a refused bind is the answer, not a failure.
+  } catch (error) {
+    if (!(hasCode(error) && error.code === "EADDRINUSE")) throw error;
     return false;
   }
 }
