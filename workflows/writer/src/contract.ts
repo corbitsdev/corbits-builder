@@ -1,13 +1,13 @@
 import { type } from "arktype";
 
-// The first message is the whole assignment: the task, the documents it builds on in full, the one
+// The first message is the whole assignment: the task, the paths of the documents it builds on, the one
 // kind to write, and, when that kind is already filed, the version this one replaces.
 const Document = type({
   "+": "reject",
   ref: "string > 0",
   kind: "string > 0",
   title: "string > 0",
-  content: "string",
+  path: "string > 0",
 });
 const WorkerTask = type({
   "+": "reject",

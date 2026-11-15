@@ -12,8 +12,8 @@ This package only declares data. It imports `@intx/agent/authoring` and
 tools, and builds one workflow per document kind; the
 [coordinator][coordinator]'s `deploy_writer` starts the one for the kind it
 asks for. The writer's tools are the hub's `write_artifact`, which saves only
-its own kind's fields, and `read_skill`; it has no read tool, because its task
-carries every document it needs in full.
+its own kind's fields, `read_skill`, `read_file` and `search_files`. Its task names the source
+documents placed in the inputs folder.
 
 ## Layout
 

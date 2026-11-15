@@ -1,3 +1,4 @@
+import { sourceDocument } from "../workflows/source-document.ts";
 import {
   projectScopeFailure,
   resolveWorkflowProjectScope,
@@ -382,6 +383,7 @@ export function createDeployTools(options?: {
           }
           return {
             byKind,
+            documents: list.artifacts,
             materials,
             approved,
             openQuestions,
@@ -415,17 +417,7 @@ export function createDeployTools(options?: {
             byKind.get("design")?.artifactId === ref.artifactId
               ? await readDesign(ref)
               : await readArtifact(ref, options.maxResultBytes);
-          if (kind !== "design") return { kind, title, content };
-          // A writer reads the design's DESIGN.md; the screens stay in the bundle the coder gets.
-          const { files } = DesignBundle.assert(JSON.parse(content));
-          const screens = Object.keys(files).filter((path) =>
-            path.startsWith("designs/"),
-          );
-          return {
-            kind,
-            title,
-            content: files["DESIGN.md"] + "\n\nScreens: " + screens.join(", "),
-          };
+          return sourceDocument({ kind, title, content });
         };
         // This handler runs only after the native approval resolved, so the
         // versions it is about to hand off are the ones the person approved.
@@ -661,7 +653,7 @@ export function createDeployTools(options?: {
               options.workflows[WRITER_PACKAGES[input.kind]],
               preferences,
               "writer-" + input.kind,
-              await assignmentToWriterMessage(
+              assignmentToWriterMessage(
                 {
                   projectId: options.projectId,
                   deliverableId: input.kind,
@@ -677,13 +669,13 @@ export function createDeployTools(options?: {
                         STARTER_STACK
                       : input.instruction,
                 },
-                readSource(byKind),
+                state.documents,
                 target,
               ),
             );
           } else if (call.name === "review_artifact") {
             const input = validArguments(ReviewArtifact, call.arguments);
-            const { byKind, preferences } = await listed();
+            const { byKind, preferences, documents } = await listed();
             const briefRef = required(byKind, "problem_brief");
             const target = required(byKind, input.kind);
             result = await deploy(
@@ -691,7 +683,7 @@ export function createDeployTools(options?: {
               options.workflows.reviewer,
               preferences,
               "reviewer-" + input.kind,
-              await assignmentToWriterMessage(
+              assignmentToWriterMessage(
                 {
                   projectId: options.projectId,
                   deliverableId: input.kind,
@@ -701,7 +693,7 @@ export function createDeployTools(options?: {
                   output: { expectedVersion: target.version },
                   instruction: input.instruction,
                 },
-                readSource(byKind),
+                documents,
               ),
             );
           } else if (call.name === "deploy_coder") {

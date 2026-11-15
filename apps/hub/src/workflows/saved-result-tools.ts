@@ -4,6 +4,14 @@ import { createBlobReader } from "@intx/types/runtime";
 
 const SAVED_RESULT = "tool-output://";
 
+// Models sometimes drop the third slash, making the call id parse as a host.
+export function savedResultPath(path: string): string | undefined {
+  if (!path.startsWith(SAVED_RESULT)) return undefined;
+  return path.startsWith(`${SAVED_RESULT}/`)
+    ? path
+    : path.replace(SAVED_RESULT, `${SAVED_RESULT}/`);
+}
+
 // Named read_file because the trimming note and Interchange's size-cap note both tell the agent to
 // read_file a tool-output:/// URI. It reads only those URIs, so an agent without a workspace gets no
 // file access from it; the workdir is a required cwd that is never read.
@@ -50,11 +58,7 @@ export const savedResultTools = defineTool({
               "read_file here reads only a saved result: pass the tool-output:///... URI its note gives.",
             isError: true,
           };
-        // Models drop a slash from tool-output:///<callId> and retry it verbatim, and the URI parser
-        // reads the callId after two slashes as a host.
-        const uri = path.startsWith(`${SAVED_RESULT}/`)
-          ? path
-          : path.replace(SAVED_RESULT, `${SAVED_RESULT}/`);
+        const uri = savedResultPath(path);
         return posix.run(
           { ...call, arguments: { ...call.arguments, path: uri } },
           signal,
