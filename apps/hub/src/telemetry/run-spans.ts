@@ -139,6 +139,7 @@ export function createRunSpans(options: { captureContent: boolean }) {
             startTime: state.idleSince,
             endTime: at,
             attributes: {
+              [ATTR_SESSION_ID]: agent.runId,
               "corbits.run.id": agent.runId,
               "corbits.agent.address": agent.address,
               [ATTR_GEN_AI_OPERATION_NAME]: "chat",
@@ -156,6 +157,7 @@ export function createRunSpans(options: { captureContent: boolean }) {
             startTime: at,
             endTime: at,
             attributes: {
+              [ATTR_SESSION_ID]: agent.runId,
               "corbits.run.id": agent.runId,
               "corbits.agent.address": agent.address,
               [ATTR_GEN_AI_OPERATION_NAME]: "execute_tool",
