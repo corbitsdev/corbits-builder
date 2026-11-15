@@ -108,7 +108,7 @@ async function relayStderr(
 
 export type BuildPackageLayout = Awaited<ReturnType<typeof buildPackageLayout>>;
 // The workspace's dev app: its address, whether it runs and its recent output. stopped names the
-// workspace whose dev script failed while the rest kept running, as `bun --filter` names it.
+// workspace whose dev script exited while the rest kept running, as `bun --filter` names it.
 export type DevApp = {
   url: string;
   running: boolean;
@@ -122,8 +122,8 @@ export interface BuildExecutionPolicy {
 }
 export class BuildExecutionError extends Error {}
 const quote = (value: string) => `'${value.replaceAll("'", "'\\''")}'`;
-// `bun --filter`'s line when one workspace's script fails: "@app/server dev: Exited with code 1".
-const PART_EXITED = /^(\S+) \S+: Exited with code [1-9]\d*$/;
+// `bun --filter`'s line when one workspace's script ends: "@app/server dev: Exited with code 1".
+const PART_EXITED = /^(\S+) \S+: Exited with code \d+$/;
 const PART_LINE = /^(\S+) \S+: (.*)$/;
 // Changes the app makes itself, or that a restart would not pick up.
 export const IGNORED_CHANGES =
