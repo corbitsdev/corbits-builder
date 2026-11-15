@@ -50,7 +50,7 @@ beforeAll(async () => {
   registry = PreferenceRegistry.assert(
     await (await hub.call("GET", `${path}/preferences`)).json(),
   );
-  // Forward the test person's session to the real hub, without running agents or sidecars.
+  // This proxy uses a fixed test session, so sign-out only verifies returning to the sign-in screen.
   server = Bun.serve({
     hostname: "127.0.0.1",
     port: 0,
@@ -563,7 +563,7 @@ test("keyboard choices keep focus and save the selected option", async () => {
   }
 }, 30_000);
 
-test("settings tabs open, and sign-out ends the local session even when the hub fails", async () => {
+test("settings tabs open, and sign-out returns to the sign-in screen even when the hub fails", async () => {
   const page = await browser.newPage();
   try {
     await openSettings(page);
