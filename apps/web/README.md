@@ -16,7 +16,7 @@ serves the built `dist/` on its own origin.
 ## Layout
 
 - `src/main.tsx`, `src/App.tsx`: the entry and the top-level screens.
-- `src/config.ts`: the product name and every piece of user-visible wording.
+- `src/config.ts` and `src/config/`: the product name and every piece of user-visible wording, one file per area.
 - `src/pages/`: sign-in, the project library, settings and providers;
   `pages/workspace/` is the open project (conversation, documents, design
   concepts, live app).
@@ -30,7 +30,7 @@ serves the built `dist/` on its own origin.
 
 `bun run dev` starts the hub and this interface with live reload; the dev
 server reads `UI_PORT` and `UI_HUB_ORIGIN` from `.env.web`, copied from
-`.env.web.example`. Put new user-visible wording in `src/config.ts`.
+`.env.web.example`. Put new user-visible wording in the area's file under `src/config/`, or in `src/config.ts` for an area not yet moved there.
 `bun run lint`, `bun run format:check`, `bun run typecheck` and `bun run test`
 check it with the rest of the repo. Setup is in [CONTRIBUTING.md][setup].
 
