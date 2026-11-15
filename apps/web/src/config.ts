@@ -993,6 +993,8 @@ export const wording = {
     /** The row where the person types their own answer instead. */
     other: "Something else…",
     otherAnswer: "Your own answer",
+    /** The field of a question with no options to pick from. */
+    typed: "Type your answer…",
     changeAnswer: (prompt: string, answer: string) =>
       `Change your answer to "${prompt}": ${answer}`,
     earlier: (count: number) =>
@@ -1008,15 +1010,15 @@ export const wording = {
     send: "Send answers",
     sending: "Sending…",
     notSent: "Your answers were not sent. Your choices are kept; try again.",
-    /** The settled card's one line; its answers fold under Show. */
-    answered: "Answers sent",
-    answerCount: (count: number) =>
-      count === 1 ? "1 answer" : `${String(count)} answers`,
-    show: "Show",
-    hide: "Hide",
-    answeredInChat: "Answered in the conversation",
+    /** The settled card's heading, over each question and its answer; it sits under the coordinator's name, so it says whose. */
+    answered: "Your answers",
+    answeredInChat: "Answered in your own words",
     /** A question whose coordinator stopped before it was answered, so it takes no answer now. */
-    closed: "This question is no longer open",
+    closed: (count: number) =>
+      count === 1
+        ? "This question is no longer open"
+        : "These questions are no longer open",
+    notAnswered: "Not answered",
   },
   archivedProject: {
     title: "This project is archived",
