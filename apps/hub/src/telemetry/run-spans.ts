@@ -242,7 +242,6 @@ export function createRunSpans(options: { captureContent: boolean }) {
       }
       if (opened) {
         state.open.set(opened.key, opened);
-        // Bound unfinished children separately from tracked turns.
         if (state.open.size > MAX_SPANS) {
           const oldest = state.open.keys().next().value;
           if (oldest !== undefined) {
