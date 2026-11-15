@@ -169,6 +169,8 @@ async function withPipelineScenario(
     projectTenantId: string;
     projectId: string;
     coordinatorRunId: string;
+    /** Wakes the waits on a coordinator run that replaced the first one, too. */
+    follow: (runId: string) => void;
     runStage: <T>(name: string, fn: () => Promise<T>) => Promise<T>;
     waitFor: <T>(
       stage: string,
@@ -207,7 +209,7 @@ async function withPipelineScenario(
 
   try {
     hub = await startTestHub(recordedModel);
-    const { client, workspaceTenantId } = hub;
+    const { client, workspaceTenantId, subscribeRunStream } = hub;
 
     const createStart = performance.now();
     const createReceipt = await client.mutateProject(
@@ -237,13 +239,11 @@ async function withPipelineScenario(
     );
     stageTimingsMs["create"] = Math.round(performance.now() - createStart);
 
-    const unsubscribeStream = hub.subscribeRunStream(
-      projectTenantId,
-      coordinatorRunId,
-      () => {
+    const follow = (runId: string) =>
+      subscribeRunStream(projectTenantId, runId, () => {
         events.notify();
-      },
-    );
+      });
+    const streams = [follow(coordinatorRunId)];
 
     async function waitFor<T>(
       stage: string,
@@ -272,6 +272,9 @@ async function withPipelineScenario(
         projectTenantId,
         projectId: options.projectId,
         coordinatorRunId,
+        follow: (runId) => {
+          streams.push(follow(runId));
+        },
         runStage: async (name, fn) => {
           const start = performance.now();
           const result = await fn();
@@ -461,7 +464,7 @@ async function withPipelineScenario(
         }),
       );
     } finally {
-      unsubscribeStream();
+      for (const unsubscribe of streams) unsubscribe();
     }
   } finally {
     events.dispose();
@@ -1244,6 +1247,26 @@ describe("Builder E2E pipeline replay", () => {
                 },
               ]),
             },
+            {
+              // The coordinator that replaces the first learns what the person answered.
+              runKey: "coordinator-2",
+              role: "coordinator",
+              stage: "replacement",
+              sourceRunId: "run_coord_question_2",
+              exchanges: withRequiredTools(coordinatorTools, [
+                {
+                  sse: formatOpenAISseResponse({
+                    text: "Picking up with counter staff and morning collection.",
+                  }),
+                  expect: {
+                    lastMessageRole: "user",
+                    userTextContains:
+                      "You asked: Who takes the orders? / Person answered: Counter staff",
+                    toolResults: [],
+                  },
+                },
+              ]),
+            },
           ],
         );
 
@@ -1267,7 +1290,7 @@ describe("Builder E2E pipeline replay", () => {
                 return questions[count - 1];
               });
 
-            await driver.runStage("question", async () => {
+            const asked = await driver.runStage("question", async () => {
               const first = await waitForQuestion(
                 1,
                 "the coordinator's open question",
@@ -1328,6 +1351,50 @@ describe("Builder E2E pipeline replay", () => {
                 { status: "answered", answer: { answers: counterStaff } },
                 { status: "answered", answer: { reply: "Mornings only" } },
               ]);
+              return { first, pickup, counterStaff };
+            });
+
+            await driver.runStage("replacement", async () => {
+              const { first, pickup, counterStaff } = asked;
+              // Archiving stops the coordinator and restoring starts a new one, as an upgrade or a
+              // restart after a failure does.
+              await client.archiveProject(hub.workspaceTenantId, projectId);
+              await client.restoreProject(hub.workspaceTenantId, projectId);
+              const { coordinatorRunId: replacement } = await client.project(
+                hub.workspaceTenantId,
+                projectId,
+              );
+              expect(replacement).not.toBe(coordinatorRunId);
+              const next = NonEmptyString.assert(replacement);
+              driver.follow(next);
+
+              // The new run's log holds none of them, yet the person's thread keeps both questions
+              // as they were answered, neither open.
+              const conversation = await client.conversationEvents(
+                projectTenantId,
+                projectId,
+              );
+              expect(conversation.runId).toBe(next);
+              expect(conversation.questions).toMatchObject([
+                {
+                  signalName: first.signalName,
+                  status: "answered",
+                  answer: { answers: counterStaff },
+                },
+                {
+                  signalName: pickup.signalName,
+                  status: "answered",
+                  answer: { reply: "Mornings only" },
+                },
+              ]);
+
+              await client.sendMessage(projectTenantId, next, {
+                content: "Carry on.",
+              });
+              await driver.waitForAssistantTurn(
+                "replacement",
+                "Picking up with counter staff",
+              );
             });
           },
         );

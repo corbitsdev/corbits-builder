@@ -108,14 +108,15 @@ export type ConversationThread = typeof conversationThread.infer;
 const runEnds = new Set(["RunCompleted", "RunFailed", "RunCancelled"]);
 
 /**
- * The live coordinator run's questions as the conversation response carries them, each status as
- * Interchange's {@link runQuestions} decides it, except that a run that has ended has no open
- * question, and `at` is in epoch milliseconds.
+ * A coordinator run's questions as the conversation response carries them, each status as
+ * Interchange's {@link runQuestions} decides it, except that a run that has ended or is not `live`
+ * (the project's current coordinator run) has no open question, and `at` is in epoch milliseconds.
  */
 export function coordinatorQuestions(
   events: ConversationEvents["events"],
+  live: boolean,
 ): ConversationQuestion[] {
-  const ended = events.some(({ type: kind }) => runEnds.has(kind));
+  const settled = !live || events.some(({ type: kind }) => runEnds.has(kind));
   return runQuestions(events).map((question): ConversationQuestion => {
     const at = Date.parse(question.at);
     const { signalName, asked } = question;
@@ -131,7 +132,7 @@ export function coordinatorQuestions(
       at,
       signalName,
       asked,
-      status: ended ? "closed" : question.status,
+      status: settled ? "closed" : question.status,
     };
   });
 }

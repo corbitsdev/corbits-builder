@@ -1,4 +1,7 @@
-import type { ConversationTextTurn } from "@corbits-builder/schemas/conversation";
+import type {
+  ConversationQuestion,
+  ConversationTextTurn,
+} from "@corbits-builder/schemas/conversation";
 import type { ApprovalDecision } from "@intx/types/signals";
 import { IMPORTED_PROJECT_LEAD } from "./import.ts";
 import { SPECIALIST_ENDED_LEAD } from "./specialist-ended.ts";
@@ -32,16 +35,58 @@ const turnLine = ({ role, text }: ConversationTextTurn): string => {
   return "Person: " + clip(text);
 };
 
+// The coordinator's text replies never hold its questions: they and the person's answers live only
+// in the run log, so they are stated here or a resumed coordinator re-decides what was settled.
+function questionLine(question: ConversationQuestion): string {
+  const { asked } = question;
+  const prompts = asked.questions.map((item) => item.question).join(" / ");
+  switch (question.status) {
+    case "open":
+    case "closed":
+      return clip(
+        `You asked: ${prompts} / Left unanswered: ask it again rather than assume an answer.`,
+      );
+    case "answered": {
+      const { answer } = question;
+      if ("reply" in answer)
+        return clip(
+          `You asked: ${prompts} / Person replied instead: ${answer.reply}`,
+        );
+      const { answers } = answer;
+      return clip(
+        asked.questions
+          .map(({ id, question: prompt }) => {
+            const given = answers[id];
+            return given === undefined || given.length === 0
+              ? `You asked: ${prompt} / Left unanswered: ask it again rather than assume an answer.`
+              : `You asked: ${prompt} / Person answered: ${given.join(", ")}`;
+          })
+          .join("\n"),
+      );
+    }
+    default:
+      return question satisfies never;
+  }
+}
+
 /** The held context for a resumed coordinator, or undefined when there is nothing to carry. */
 export function resumeContext(state: {
   turns: readonly ConversationTextTurn[];
+  questions: readonly ConversationQuestion[];
   awaiting: readonly string[];
   withApp: boolean;
 }): string | undefined {
+  const said = [
+    ...state.turns.map((turn) => ({ at: turn.at, line: turnLine(turn) })),
+    ...state.questions.map((question) => ({
+      at: question.at,
+      line: questionLine(question),
+    })),
+  ].sort((left, right) => left.at - right.at);
   const lines: string[] = [];
   let size = 0;
-  for (let index = state.turns.length - 1; index >= 0; index -= 1) {
-    const line = turnLine(state.turns[index]!);
+  for (let index = said.length - 1; index >= 0; index -= 1) {
+    const { line } = said[index]!;
     size += line.length;
     if (size > CONTEXT_CHARS) break;
     lines.unshift(line);

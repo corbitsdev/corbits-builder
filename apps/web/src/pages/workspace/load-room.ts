@@ -33,7 +33,7 @@ export type RoomSnapshot = {
     turns: ConversationTurn[];
     threads: ConversationThread[];
     runId: string | null;
-    /** The coordinator run's questions, answered or not. */
+    /** Every coordinator run's questions, answered or not, earlier runs first. */
     questions: ConversationQuestion[];
   };
   artifacts: ProjectArtifact[];

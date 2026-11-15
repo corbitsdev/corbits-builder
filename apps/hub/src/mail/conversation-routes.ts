@@ -4,6 +4,7 @@ import { describeRoute, resolver } from "hono-openapi";
 import { type } from "arktype";
 import { type DB } from "@intx/db";
 import { workflowRun } from "@intx/db/schema";
+import { type WorkflowRunReader } from "@intx/hub-sessions";
 import {
   createResolveTenant,
   requireAuth,
@@ -21,6 +22,7 @@ import { reportAuthorization } from "../projects/authorization.ts";
 import { ProjectError, projectResource } from "../projects/errors.ts";
 import { getLogger } from "@intx/log";
 import { requestErrorMetadata } from "../request-error.ts";
+import { earlierRunQuestions } from "./earlier-questions.ts";
 import {
   type CoordinatorRepoDirSource,
   isRecord,
@@ -35,6 +37,7 @@ const log = getLogger(["corbits-builder", "hub", "conversation"]);
 export function createConversationRoutes(
   db: DB["db"],
   dispatch: (request: Request) => Response | Promise<Response>,
+  runReader: WorkflowRunReader,
   options?: {
     repoStore?: CoordinatorRepoDirSource;
     /** The retained native mail store the hub archives workflow mail into. */
@@ -155,12 +158,19 @@ export function createConversationRoutes(
         if (selected.run === undefined) {
           // Without the mirror store there are no turns to read, as for a bound coordinator.
           if (repoStore === undefined)
-            return c.json({ runId: null, events: [], questions: [] });
+            return c.json({
+              runId: null,
+              events: [],
+              questions: await earlierRunQuestions(runReader, selected.prior),
+            });
           let turns;
+          let questions;
           try {
+            const earlier = earlierRunQuestions(runReader, selected.prior);
             turns = (await priorTurns(repoStore)).sort(
               (left, right) => left.at - right.at,
             );
+            questions = await earlier;
           } catch (error) {
             log.error(
               "Conversation projection failed",
@@ -177,7 +187,7 @@ export function createConversationRoutes(
             runId: null,
             events: [],
             turns: turns.slice(-maxConversationTurns),
-            questions: [],
+            questions,
           });
         }
         const current = selected.run;
@@ -200,6 +210,7 @@ export function createConversationRoutes(
           const events = ConversationEvents.get("events").assert(
             payload["events"],
           );
+          const earlier = earlierRunQuestions(runReader, selected.prior);
           if (repoStore !== undefined) {
             const live = await read(repoStore, current);
             const turns = [
@@ -211,7 +222,10 @@ export function createConversationRoutes(
             if (live.threads !== undefined) payload["threads"] = live.threads;
             payload["turns"] = turns.slice(-maxConversationTurns);
           }
-          payload["questions"] = coordinatorQuestions(events);
+          payload["questions"] = [
+            ...(await earlier),
+            ...coordinatorQuestions(events, true),
+          ];
           return new Response(JSON.stringify(payload), {
             status: response.status,
             headers: response.headers,

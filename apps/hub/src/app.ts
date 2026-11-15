@@ -517,10 +517,15 @@ export async function createHubRuntime(
     app.route("/api/invitations", invitations.recipient);
     app.route(
       "/api/tenants/:tenantId/projects",
-      createConversationRoutes(handle.db, (request) => app.fetch(request), {
-        repoStore: agentRepoStore.repoStore,
-        mailDirectory: reportMailDirectory,
-      }),
+      createConversationRoutes(
+        handle.db,
+        (request) => app.fetch(request),
+        createWorkflowRunReader(agentRepoStore.repoStore),
+        {
+          repoStore: agentRepoStore.repoStore,
+          mailDirectory: reportMailDirectory,
+        },
+      ),
     );
     app.route(
       "/api/tenants/:tenantId/projects",

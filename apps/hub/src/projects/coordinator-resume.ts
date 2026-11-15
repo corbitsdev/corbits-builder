@@ -7,6 +7,7 @@ import { createArtifactService } from "../artifacts/service.ts";
 import { resumeContext, resumeMessage } from "../config/resume.ts";
 import { projectCoordinator } from "../db/schema.ts";
 import { readDurableConversationTurns } from "../mail/conversation-turns.ts";
+import { earlierRunQuestions } from "../mail/earlier-questions.ts";
 import { awaitingApproval } from "./deploy-tools.ts";
 import { getLogger } from "@intx/log";
 import { requestErrorMetadata } from "../request-error.ts";
@@ -58,7 +59,7 @@ export function createCoordinatorResumeContext(deps: {
       .limit(1);
     if (mailed) return undefined;
     const prior = await db
-      .select({ address: workflowRun.address })
+      .select({ runId: workflowRun.id, address: workflowRun.address })
       .from(projectCoordinator)
       .innerJoin(workflowRun, eq(workflowRun.id, projectCoordinator.runId))
       .where(
@@ -79,6 +80,12 @@ export function createCoordinatorResumeContext(deps: {
             approvalDecisions: "decision",
           })),
         );
+    const questions = await earlierRunQuestions(
+      deps.runs,
+      prior.flatMap(({ runId: priorRunId, address }) =>
+        address ? [{ runId: priorRunId, address }] : [],
+      ),
+    );
     turns.sort((left, right) => left.at - right.at);
     const actor = { tenantId, principalId: bound.principalId };
     const { artifacts: filed, preferences } = await artifacts.list(
@@ -87,6 +94,7 @@ export function createCoordinatorResumeContext(deps: {
     );
     return resumeContext({
       turns,
+      questions,
       awaiting: awaitingApproval(filed, preferences).map(
         (artifact) => artifact.title,
       ),
