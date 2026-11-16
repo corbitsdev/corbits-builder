@@ -3,9 +3,13 @@
 // the workspace it declares, and, for a workspace with a browser, the browser's tools.
 import { mcpTools } from "@corbits/mcp/interchange/client";
 import { ROLE_TAG } from "@corbits-builder/plugin";
-import type { AgentTools } from "@corbits-builder/plugin/tools";
+import type { AgentTools, ToolEnv } from "@corbits-builder/plugin/tools";
 import { AgentPackage } from "@corbits-builder/plugin-host/catalog";
-import { defineAgent } from "@intx/agent/authoring";
+import {
+  defineAgent,
+  toolFactoryMeta,
+  type AnnotatedToolFactory,
+} from "@intx/agent/authoring";
 import type { GrantRequirement } from "@intx/types";
 import { defineWorkflow, step } from "@intx/workflow/definition";
 import {
@@ -27,6 +31,23 @@ import { createInputFileTools } from "./input-file-tools.ts";
 import { nativePackageName } from "./package-name.ts";
 import { roleInference } from "./role-inference.ts";
 import { savedResultTools } from "./saved-result-tools.ts";
+
+// The host owns reporting unexpected plugin failures and returning their refusals to the agent.
+function hostPluginTool(factory: AnnotatedToolFactory<ToolEnv>) {
+  const wrapped = (env: ToolEnv) => {
+    const bundle = factory(env);
+    const run = bundle.run.bind(bundle);
+    bundle.run = async (call, signal) => {
+      try {
+        return await run(call, signal);
+      } catch (error) {
+        return failure(call.id, error);
+      }
+    };
+    return bundle;
+  };
+  return Object.assign(wrapped, toolFactoryMeta(factory));
+}
 
 // The longest writer step in stored runs took 276 s; ten minutes leaves room for a slower model.
 const STEP_TIMEOUT_MS = 600_000;
@@ -108,7 +129,7 @@ factories.push(createBlockedTools(role.name));
 // build-packages.ts defines the path, so the bundler inlines the plugin's tools module here.
 if (process.env.BUILDER_TOOLS !== undefined) {
   const brought: AgentTools = (await import(process.env.BUILDER_TOOLS)).default;
-  factories.push(...brought({ role: role.name, failure }));
+  factories.push(...brought({ role: role.name }).map(hostPluginTool));
 }
 // Interchange refuses a repeated tool name only when the agent starts; naming both sources here
 // fails the build instead.

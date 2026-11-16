@@ -73,9 +73,6 @@ test("file_package refuses until check_deck passes on the current deck, then fil
   } as unknown as RuntimeCapabilities;
   const [packageTools] = tools({
     role: "presenter",
-    failure: (_, error) => {
-      throw error;
-    },
   });
   if (packageTools === undefined) throw new Error("package_tools_missing");
   const runner = packageTools({
