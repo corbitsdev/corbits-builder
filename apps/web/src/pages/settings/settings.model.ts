@@ -125,6 +125,18 @@ export function useSettings({
     ...preferencesQuery,
     enabled: activeTab === "preferences",
   });
+  let preferencesLoad: SettingsViewProps["preferencesLoad"] = {
+    state: "loading",
+  };
+  if (preferences.data !== undefined) {
+    preferencesLoad = { state: "ready" };
+  } else if (preferences.error) {
+    preferencesLoad = {
+      state: "failed",
+      fault: preferences.error.message,
+      onRetry: () => void preferences.refetch(),
+    };
+  }
   const { mode, setMode } = useTheme();
   const tips = useDocumentTips();
   const [signingOut, setSigningOut] = useState(false);
@@ -140,15 +152,7 @@ export function useSettings({
     view: {
       tab: activeTab,
       onTabChange: setActiveTab,
-      preferencesLoad: preferences.data
-        ? { state: "ready" }
-        : preferences.error
-          ? {
-              state: "failed",
-              fault: preferences.error.message,
-              onRetry: () => void preferences.refetch(),
-            }
-          : { state: "loading" },
+      preferencesLoad,
       appearance: {
         theme: mode,
         onThemeChange: setMode,
