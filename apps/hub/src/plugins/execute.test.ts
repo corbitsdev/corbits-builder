@@ -165,8 +165,9 @@ const designerMockup = {
     lookIdeas: "Friendly and warm, left to you.",
     concepts: [
       {
-        label: "Warm and organic",
-        direction: "Greens, rounded type, soft radii.",
+        label: "Friendly",
+        direction:
+          "Dog owners booking on their phones want something warm and simple.",
       },
     ],
     audience: "Dog owners booking walks for the week.",
@@ -333,7 +334,7 @@ test("designer mockup starts a designer with nothing filed, unless its build-web
     started: true,
     plugin: "designer",
     action: "mockup",
-    runs: [{ runId: "run-1", concept: "Warm and organic" }],
+    runs: [{ runId: "run-1", concept: "Friendly" }],
     presents: ["designer choose", "designer review"],
   });
   expect(alone.deployed).toHaveLength(1);

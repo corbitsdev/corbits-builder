@@ -1,192 +1,179 @@
-# Northline wholesale design (Modern and sleek theme)
+# Sleek modern design (Sleek modern theme)
 
 ## Summary
 
-A sample app in the Modern and sleek look: a small coffee roaster's
-wholesale desk, where the owner sees what needs attention today and works
-through café orders. It should feel quiet and exact, like a tool a
-careful person keeps open all day.
-
-Mockup: `.builder/designs/index.html`. Open it from disk.
+A theme for customer-facing web apps and dashboards: portals, account
+areas, booking and ordering sites, analytics a customer opens once a day.
+It should feel polished, light and confident, like a well-funded product:
+plenty of air, a few large figures that answer the first question, and
+nothing that looks like an admin screen. This page is the theme's
+foundations: read all of it before you draw, and follow it unless the task
+says otherwise.
 
 ## Direction
 
-- The person's words for the look and feel: "modern and sleek".
-- Idea: crisp neutrals, one confident accent, generous whitespace, tight
-  sans-serif type and subtle depth. Nothing competes with the figures.
-- Colour: cobalt `#2747d6` as the one accent, on cool zinc neutrals. The
-  accent marks the primary action, the selected row and links in progress;
-  everything else is grey.
-- Type: the system sans stack (`system-ui`, San Francisco, Segoe UI,
-  Roboto). Headings are tracked tight (-0.02em), figures are tabular.
-- Signature: the lead figure on the overview sits on a solid ink card while
-  the others stay white, so the one number that matters this week reads
-  first.
-- Icons: lucide, 16px, 2px stroke.
+- Idea: restrained cool neutrals, near-black ink for the main action, one
+  violet accent for focus, selection and the lead figure, and soft layered
+  shadows instead of borders. Roomy, centred, calm.
+- Colour: ink `#16161b` fills the primary button; violet `#4b3df2` on its
+  pale tint `#efedff` marks the current selection, the lead stat and links
+  in text; the focus ring is violet `#6b5cff`. Status has its own colours
+  and never borrows the violet.
+- Type: Avenir Next (Segoe UI Variable Display on Windows, Roboto on
+  Android) for everything, tabular figures throughout. Large tight
+  headings, quiet small labels.
+- Signature: a row of stat cards above every list, the first one tinted
+  violet with the number that matters most; content held to a 1200px
+  column in the middle of the page.
 
-## App shell
+## Palette and roles
 
-- Navigation: `TopBar`, since the app has two destinations and wide tables
-  need the full width.
-- Destinations, in order: Overview (house), Orders (package).
-- Shell parts: product mark and name, the destinations, `ThemeToggle` at the
-  right.
-- At 1280px: one bar, content at most 1200px wide. At 768px: the same bar.
-  At 360px: the destinations wrap to a second row under the name.
+| Role             | Light                  | Dark                   | Use                                         |
+| ---------------- | ---------------------- | ---------------------- | ------------------------------------------- |
+| background       | `#f6f6f7`              | `#0c0c0f`              | the page behind cards                       |
+| card             | `#ffffff`              | `#16161b`              | cards, the top bar, tables, dialogs         |
+| foreground       | `#121216`              | `#f2f2f5`              | headings, body text, figures                |
+| muted-foreground | `#6a6a75`              | `#a3a3ae`              | labels, column headers, secondary lines     |
+| border           | `#e6e6ea`              | `#2a2a31`              | row dividers and the bar's bottom line only |
+| primary          | `#16161b` on white     | `#f2f2f5` on `#121216` | the one primary button per screen           |
+| accent           | `#efedff` on `#4b3df2` | `#24203f` on `#b8b0ff` | current nav item, lead stat, selection      |
+| success          | `#e5f5ec` on `#187043` | `#10301f` on `#8fdcae` | in stock, paid, done                        |
+| warning          | `#fff2d9` on `#8f5200` | `#36270c` on `#f2c46d` | low, due soon, needs attention              |
+| destructive      | `#cc2f2f` with white   | `#f07878` on `#0c0c0f` | out, failed, delete                         |
 
-## Tokens
+Contrast pairs that must hold (WCAG AA or better): foreground on
+background (17:1), muted-foreground on card (5.3:1) and on background
+(4.9:1), white on primary (18:1), accent foreground on its tint (5.6:1),
+each status foreground on its tint (5.4:1 or better), white on destructive
+(5.2:1). Never put muted text on a tint.
 
-Paste these blocks into the client's global CSS after the
-`@corbits/react-ui` theme import. Names match the kit.
+## Type scale
 
-```css
-:root {
-  --background: #fafafa;
-  --foreground: #18181b;
-  --card: #ffffff;
-  --card-foreground: #18181b;
-  --popover: #ffffff;
-  --popover-foreground: #18181b;
-  --primary: #2747d6;
-  --primary-foreground: #ffffff;
-  --primary-active: #1d37b0;
-  --secondary: #f1f1f3;
-  --secondary-foreground: #18181b;
-  --muted: #f1f1f3;
-  --muted-foreground: #5f5f68;
-  --accent: #eef1fd;
-  --accent-foreground: #1d37b0;
-  --destructive: #c42b2b;
-  --destructive-foreground: #ffffff;
-  --success: #e3f4ea;
-  --success-foreground: #17603a;
-  --warning: #fdf1dc;
-  --warning-foreground: #8a5300;
-  --border: #e4e4e7;
-  --input: #c9c9cf;
-  --ring: #2747d6;
-  --radius: 0.625rem;
-  --font-sans:
-    system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial,
-    sans-serif;
-}
-.dark {
-  --background: #0b0b0d;
-  --foreground: #f4f4f5;
-  --card: #151518;
-  --card-foreground: #f4f4f5;
-  --popover: #1c1c20;
-  --popover-foreground: #f4f4f5;
-  --primary: #7089ff;
-  --primary-foreground: #0b0b0d;
-  --primary-active: #8ea1ff;
-  --secondary: #222227;
-  --secondary-foreground: #f4f4f5;
-  --muted: #1c1c20;
-  --muted-foreground: #a1a1aa;
-  --accent: #1d2240;
-  --accent-foreground: #b9c5ff;
-  --destructive: #f07272;
-  --destructive-foreground: #0b0b0d;
-  --success: #12301f;
-  --success-foreground: #8fdcae;
-  --warning: #36270c;
-  --warning-foreground: #f2c46d;
-  --border: #27272c;
-  --input: #3f3f46;
-  --ring: #7089ff;
-}
-@media (prefers-color-scheme: dark) {
-  :root:not(.dark):not(.light) {
-    /* same as .dark */
-  }
-}
-```
+- Families: `--font-sans: "Avenir Next", "Segoe UI Variable Display",
+  "Segoe UI", Roboto, "Helvetica Neue", system-ui, sans-serif`;
+  `--font-mono: ui-monospace, "SF Mono", "Cascadia Mono", Menlo, Consolas,
+  monospace`. A mockup cannot load outside fonts, so the theme names faces
+  that ship with each operating system: Avenir Next on Apple devices,
+  Segoe UI on Windows, Roboto on Android. The app may later self-host a
+  neutral geometric grotesk with tabular figures, such as Inter.
+- Scale (rem): 2 page title (600, -0.02em, line 2.5), 2.5 stat figure (600,
+  -0.02em), 1.25 empty-state heading (600), 1 card heading (600), 0.875
+  body (400, line 1.25rem), 0.8125 label and secondary line (500), 0.75
+  column header and badge (500).
+- Figures: `font-variant-numeric: tabular-nums` on the whole page. Codes
+  and references stay in the sans at 0.8125rem in muted foreground; the
+  mono face is only for something a person copies, such as an API key.
+- Column headers are sentence case, never uppercase.
 
-Changed from kit defaults: every colour (cool zinc neutrals and a cobalt
-accent instead of the kit's orange), `--radius` to 0.625rem and
-`--font-sans` to the system stack.
+## Spacing and density
 
-| Role           | Token                | Tailwind class                       |
-| -------------- | -------------------- | ------------------------------------ |
-| Page           | `--background`       | `bg-background`                      |
-| Text           | `--foreground`       | `text-foreground`                    |
-| Secondary text | `--muted-foreground` | `text-muted-foreground`              |
-| Divider        | `--border`           | `border-border`                      |
-| Main action    | `--primary`          | `bg-primary text-primary-foreground` |
-| Selected row   | `--accent`           | `bg-accent text-accent-foreground`   |
+- A 4px grid: 4, 8, 12, 16, 20, 24, 32, 40, 64. The page has 40px above the
+  title and 24px between sections; card padding 24 on a desk, 16 on a
+  phone.
+- Relaxed density: a table row is about 56px with a two-line cell (name
+  over code), so a screen shows 10 to 12 records. That is right for a
+  customer who scans a few things, not for someone working through
+  hundreds.
 
-Type scale: 12/16, 13/18, 14/20, 16/24, 28/36, 32/40.
-Weights: 400, 500, 600.
-Spacing: 4, 8, 12, 16, 20, 24, 40, 64px.
-Radii: `--radius-sm` 8px, `--radius` 10px, `--radius-lg` 14px, pills 9999px.
-Shadows: a hairline ring on cards; `--shadow-popover` on dialogs and toasts.
-Motion: `--duration-micro` 150ms, `--duration-standard` 200ms, `--ease-out`.
+## Radii and elevation
+
+- `--radius: 0.75rem`, `--radius-sm: 0.5rem` for buttons and inputs,
+  `--radius-lg: 1rem` for cards. Badges and nav pills fully rounded.
+- Elevation is the signature: cards carry a layered soft shadow (a 1px
+  hairline of shadow, a 2px lift and a long faint blur) and no border.
+  Dialogs and menus carry a deeper shadow. No gradients except the fade
+  behind the phone's docked action.
+
+## Layout
+
+- Wide screens (1024px and up): a 64px white top bar across the page with
+  the product mark and name, the main destinations as rounded pills in the
+  middle-left, and on the right any scope picker (such as which site or
+  account) and the person's avatar. No sidebar. Content sits in a centred
+  column at most 1200px wide; forms in a 680px card.
+- Narrow screens (under 768px): the bar is 56px with the mark, a Menu
+  button that opens the destinations as a sheet, and the avatar. The page
+  has 16px side margins. The screen's primary action docks at the bottom,
+  full width and 48px high, over a fade of the background; the header's
+  action buttons are hidden.
+- Navigation lists only top-level destinations (for example Overview,
+  Orders, Customers, Settings). A record, a form, sign-in and the account
+  page are reached from where they belong: a row opens its record, an
+  action opens its form, the avatar opens account and sign-out.
+- Page header: the title, one line of context in muted text (a count, a
+  period), and on the right one outline button and the primary button.
+- Stats: under the header, a row of three stat cards (label, large figure,
+  one muted line of context). The first is the lead stat on the violet
+  tint. On a phone the lead spans the row and the other two sit side by
+  side without their context line.
+- Lists of records: a toolbar (a 40px search field and a segmented filter
+  with counts such as All 12, Low 3, Out 1) above one card holding a table:
+  the first cell is the name in 600 over its code and category in muted
+  text, then one right-aligned column per measure, a level bar when a
+  quantity has a target, a status badge, and a chevron that shows the row
+  opens. On a phone the table becomes a list of rows in the same card: name
+  over a muted line of the measures, and the key figure in 600 with its
+  badge on the right.
+- A record's page: a muted breadcrumb, the header with name and one line
+  of facts, then two columns on a desk (the main column and a 360px facts
+  card): the main column has a card of key figures in a two-up split with
+  a notice line under it, then a card of recent changes as rows with a
+  tinted icon tile, what happened, who and when. On a phone the columns
+  stack and the facts card comes last.
+- Forms: a card 680px wide with the title and a lede sentence inside it,
+  fields stacked with labels above, short related fields in pairs, choices
+  between a few places or plans as selectable tiles that show a current
+  figure, and Cancel (quiet) then the primary button at the end, aligned
+  right. Beside it on a desk, a 340px card shows what the form will change
+  ("After this delivery": the before and after figures). On a phone the
+  summary card goes under the form and the primary button is full width.
+- Empty, loading and error: empty is a centred block inside the card with
+  a 52px rounded icon tile, a 1.25rem heading that names what is missing,
+  one or two sentences on what to try, and an outline and a primary button;
+  loading is the card with skeleton rows in the table's shape; an error is
+  a notice in the destructive tint at the top of the card with what
+  happened and what to do, and field errors under their field.
 
 ## Components
 
-| Mockup class      | Kit component              | Used for              |
-| ----------------- | -------------------------- | --------------------- |
-| `.button`         | `Button`                   | primary actions       |
-| `.button-outline` | `Button variant="outline"` | secondary actions     |
-| `.input`          | `Input`                    | search and form text  |
-| `.card`           | `Card`                     | stats and panels      |
-| `.table`          | `Table`                    | the orders list       |
-| `.badge`          | `Badge`                    | order and alert state |
-| `.dialog`         | `Dialog`                   | new order             |
-| `.toast`          | `toast` from sonner        | confirmations         |
+- Buttons: 40px high on a desk, 48px when docked on a phone. Primary is ink
+  with white text; secondary is outline (white with a hairline border);
+  tertiary is a ghost button or a 0.8125rem violet text link. An icon
+  leads the label only when it helps (Plus for add, Download for export).
+- Inputs: 40px, radius-sm, `--input` hairline, focus ring violet 3px at
+  low opacity; the search field has its icon inside on the left.
+- Segmented filter: a muted track with the selected option as a white
+  raised pill; each option carries its count.
+- Tables: no vertical lines and no header fill; column headers in muted
+  sentence case; rows divided by hairlines; the hovered row on
+  `--muted`; numbers right-aligned.
+- Badges: pill, 24px, a small dot in the status colour before the word,
+  on the status tint ("In stock", "Low", "Out"). Always a word.
+- Level bar: a 6px rounded track with the fill in the status colour and a
+  tick at the target.
+- Icons: lucide at 16px, 1.75px stroke.
 
-## Screens
+## Wording
 
-### Overview
+Friendly, short and confident, written to the customer: "Record delivery",
+"No parts match "gate valve"", "Back above the reorder point of 40". Sentence
+case everywhere. Dates as "Nov 18", times as "9:42 AM".
 
-- Route: `/` (mockup `#/overview`)
-- Purpose: see what needs attention today.
-- Layout, top to bottom: date and greeting with Review orders, three stat
-  cards with the lead figure on ink, the Needs attention list.
-- Shows: open orders, shipments today, revenue this week in dollars, and
-  alerts with a badge, a sentence and a relative time.
-- 1280px: three stats in a row. 768px: the same. 360px: stats stack.
-- States:
-  - populated: as described.
-- Test ids: `overview-title`, `overview-orders-button`,
-  `overview-open-total`, `overview-shipping-total`,
-  `overview-revenue-total`, `overview-attention-list`.
+## Do and do not
 
-### Orders
+- Do lead every list with three stat cards, the lead one tinted. Do not
+  open a screen straight onto a bare table.
+- Do keep the list's measures in their own right-aligned columns on a
+  desk. Do not run "North 5 · Dock 14" into a sentence on a wide screen;
+  that line is only for the phone row.
+- Do separate cards with shadow and space. Do not draw borders around
+  cards or between sections.
+- Do keep one ink primary button per screen and dock it on a phone. Do not
+  stretch it across the desktop column.
+- Do keep the top bar on a desk. Do not add a sidebar; this theme's
+  products have a handful of destinations.
 
-- Route: `/orders` (mockup `#/orders`)
-- Purpose: find an order and move it along.
-- Layout, top to bottom: title and New order, then the list with search
-  beside the selected order's detail.
-- Shows: order number, café, total and status; the detail adds dates,
-  address, line items and actions.
-- 1280px: list and a 360px detail side by side. 768px: detail under the
-  list. 360px: the table scrolls sideways inside its card.
-- States:
-  - populated: five orders, the first selected.
-  - empty: "No orders yet" with Add an order by hand.
-  - loading and error: three skeleton rows; a card that says the
-    connection dropped, with Try again.
-- Test ids: `orders-title`, `orders-new-button`, `orders-search-input`,
-  `orders-list`, `orders-detail`, `orders-ship-button`.
+## Tokens
 
-## Flows
-
-### F1 Ship an order
-
-1. On `/orders`, pick the order in the list.
-2. Read its lines in the detail and press Mark as shipped.
-3. Result: a toast confirms the café gets the tracking link.
-
-### F2 Add an order by hand
-
-1. On `/orders`, press New order.
-2. Fill in the café and the coffee, then Save order.
-3. Result: the order heads the list.
-
-## Interaction notes
-
-- Search filters the list as the person types; no match shows a sentence.
-- Selecting a row moves the accent highlight and fills the detail.
-- Marking an order shipped shows a toast for 4000ms.
+The exact values are in `designs/styles.css` (`:root` and `.dark`), with the
+names the kit uses.

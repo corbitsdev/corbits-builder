@@ -2,7 +2,6 @@ import { type } from "arktype";
 import {
   StartRefusal,
   defineStarter,
-  lookOf,
   type Started,
   type StarterProject,
 } from "@corbits-builder/plugin";
@@ -12,6 +11,7 @@ import {
   conceptAssignment,
   DESIGNER_INPUTS,
   designerBusy,
+  fullTheme,
 } from "./contract.ts";
 
 const { design, actions } = manifest.builder;
@@ -39,7 +39,7 @@ const NO_GUIDANCE =
   "Nothing tells the designer what to design: the project has no filed product requirements and no app, and this call gives no audience and screens. Supply one of these: start writer write-requirements and design once the requirements are filed; or, when the person wants a mockup without requirements, pass audience (who uses it and what for) and screens (each screen and what it is for), asking the person for what the conversation has not said.";
 
 const noTheme = (labels: readonly string[]) =>
-  `No theme for ${labels.join(", ")}: none of the designer's looks has that label, the project has none of the person's brand guidelines, fonts or colours saved, and this call does not set createTheme. Supply one of these: use one of the looks by its exact label (${design.looks.map(({ label }) => label).join(", ")}); save the person's brand on the project first, such as with designer pick-fonts or pick-colours; or, when the person asked for a look of their own or this is another pass on such a concept, call again with createTheme: true.`;
+  `No theme for ${labels.join(", ")}: a designer starts only from a full theme, and none of the designer's themes has that label, the project has none of the person's brand guidelines, fonts or colours saved, and this call does not set createTheme. Supply one of these: use one of the themes by its exact label (${design.looks.map(({ label }) => label).join(", ")}); save the person's brand on the project first, such as with designer pick-fonts or pick-colours; or, when the person asked for a look of their own or this is another pass on such a concept, call again with createTheme: true.`;
 
 const saved = (value: unknown) =>
   value !== null && value !== undefined && value !== "";
@@ -55,7 +55,7 @@ const Input = type({
 
 /**
  * What a designer cannot start without, each with the ways to supply it: a theme for every concept,
- * from one of the looks, the person's brand saved on the project or a request to create one; and
+ * from one of the themes, the person's brand saved on the project or a request to create one; and
  * guidance on what to design, from filed requirements, an existing app or the call's audience and
  * screens. Neither is a fact alone, so the start asks for them rather than the action's requires.
  */
@@ -71,7 +71,7 @@ async function lacking(input: typeof Input.infer, project: StarterProject) {
   const unthemed = branded
     ? []
     : input.concepts
-        .filter(({ label }) => lookOf(design, label) === undefined)
+        .filter(({ label }) => fullTheme(label) === undefined)
         .map(({ label }) => label);
   return [
     ...(guided ? [] : [NO_GUIDANCE]),

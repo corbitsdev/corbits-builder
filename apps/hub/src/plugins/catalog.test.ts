@@ -193,8 +193,6 @@ test("the coordinator reads every look the designer declares, by label and direc
 });
 
 test("a look's label names its theme, and a label that is none of the looks names none", () => {
-  expect(CATALOG.design?.themeOf("Rounded enterprise")?.id).toBe(
-    "modern-sleek",
-  );
+  expect(CATALOG.design?.themeOf("Workbench")?.id).toBe("workbench");
   expect(CATALOG.design?.themeOf("Quiet ledger")).toBeUndefined();
 });

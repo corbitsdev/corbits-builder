@@ -20,7 +20,7 @@ export default defineWorkflow({
       done: "Made the {thing} mockup",
     },
     summary:
-      "Has a designer make a clickable, responsive HTML mockup of an interface for each concept, such as a web app, a mobile app's screens, a dashboard or a marketing page. Each is filed as a design option for the person to compare and choose from. A designer needs a theme and guidance to start: each concept is one of the looks below, or the project has the person's brand guidelines, fonts or colours saved, or createTheme asks for its theme to be made; and the project has filed requirements or an app, or audience and screens say what to design.",
+      "Has a designer make a clickable, responsive HTML mockup of an interface for each concept, such as a web app, a mobile app's screens, a dashboard or a marketing page. Each is filed as a design option for the person to compare and choose from. A designer needs a theme and guidance to start: each concept is one of the themes below, or the project has the person's brand guidelines, fonts or colours saved, or createTheme asks for its theme to be made; and the project has filed requirements or an app, or audience and screens say what to design.",
     when: "The person wants to see how an interface could look: a mockup, design options to compare, or another pass on a design option.",
     unless:
       "They want something already built changed, or to pick fonts or colours on a screen.",
@@ -36,7 +36,7 @@ export default defineWorkflow({
       concepts: { about: conceptsAbout(manifest.builder.design.looks) },
       createTheme: {
         about:
-          "true when the person asked for a look of their own that none of the looks is, or described their brand in the conversation: a concept that is none of the looks then has its designer create its theme from the concept's direction and the person's words. Set it again on a later pass of such a concept. Leave it out otherwise.",
+          "true when the person asked for a look of their own that none of the themes is, or described their brand in the conversation: a concept that is none of the themes then has its designer create its theme, through the Create a theme skill, from the concept's direction and the person's words. Set it again on a later pass of such a concept. Leave it out otherwise.",
       },
       audience: {
         about:
