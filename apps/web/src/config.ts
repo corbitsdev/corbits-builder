@@ -1189,6 +1189,7 @@ export const wording = {
       unconfirmed: "License: see upstream",
     },
     preferences: {
+      loading: "Reading your preferences…",
       lead: "New projects start with these. What you say in a project wins.",
       saving: "Saving…",
       saved: "Saved",

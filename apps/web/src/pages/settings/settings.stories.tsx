@@ -44,6 +44,7 @@ const meta = {
   args: {
     tab: "providers",
     onTabChange: fn(),
+    preferencesLoad: { state: "ready" },
     providers: <ProvidersSectionView {...providers.args} />,
     profiles: <ProfilesView {...profiles.args} />,
     collaborators: <CollaboratorsView {...collaborators.args} />,
@@ -81,3 +82,18 @@ export const PreferencesSignedOut: Story = {
 export const Collaborators: Story = { args: { tab: "collaborators" } };
 
 export const About: Story = { args: { tab: "about" } };
+
+export const PreferencesLoading: Story = {
+  args: { tab: "preferences", preferencesLoad: { state: "loading" } },
+};
+
+export const PreferencesReadFailed: Story = {
+  args: {
+    tab: "preferences",
+    preferencesLoad: {
+      state: "failed",
+      fault: "Service Unavailable",
+      onRetry: fn(),
+    },
+  },
+};
