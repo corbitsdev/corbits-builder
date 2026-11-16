@@ -5,6 +5,7 @@ import { keys } from "./keys.ts";
 
 export const preferencesQuery = queryOptions({
   queryKey: keys.preferences,
+  meta: { persist: false },
   queryFn: async () => {
     const tenantId = await workspaceTenantId();
     const [registry, record] = await Promise.all([
