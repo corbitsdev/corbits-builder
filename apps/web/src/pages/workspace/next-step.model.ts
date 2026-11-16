@@ -5,8 +5,7 @@
 import { queryOptions, useQuery } from "@tanstack/react-query";
 import type { ProjectNextAction } from "@corbits-builder/schemas/project-status";
 import { readProjectNextStep } from "../../api/activity.ts";
-import { productClient } from "../../api/transport.ts";
-import { workspaceTenantId } from "../../api/auth.ts";
+import { usePreference } from "../../queries/preferences.ts";
 import { keys } from "../../queries/keys.ts";
 import { wording } from "../../config.ts";
 import type { NextStepLineViewProps } from "./next-step.view.tsx";
@@ -35,34 +34,12 @@ export function useProjectNextStep(projectId: string, enabled = true) {
   return useQuery({ ...projectNextStepQuery(projectId), enabled });
 }
 
-function useNextStepLineOn() {
-  const preferences = useQuery({
-    queryKey: keys.preferences,
-    queryFn: async () => {
-      const tenantId = await workspaceTenantId();
-      const [registry, record] = await Promise.all([
-        productClient().preferenceRegistry(tenantId),
-        productClient().personalSettings(tenantId),
-      ]);
-      const chosen = record.fields.preferences?.value;
-      return Object.fromEntries(
-        registry.preferences.map((entry) => [
-          entry.id,
-          chosen?.[entry.id] ?? entry.default,
-        ]),
-      );
-    },
-    staleTime: Infinity,
-  });
-  return preferences.data?.[NEXT_STEP_LINE] === "yes";
-}
-
 /** The line to show, or null while the preference is off or the hub has not said where things stand. */
 export function useNextStepLine({
   projectId,
   actions,
 }: NextStepLineProps): NextStepLineViewProps | null {
-  const on = useNextStepLineOn();
+  const on = usePreference(NEXT_STEP_LINE) === "yes";
   const status = useProjectNextStep(projectId, on);
   if (!on || status.data === undefined) return null;
   const { working, now, next } = status.data;

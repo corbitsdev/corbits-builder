@@ -1,7 +1,3 @@
-/**
- * Workspace-level stakeholder approval settings and saved workspace reviewers,
- * chosen in Settings or while sharing a package and synced across tabs.
- */
 import { useSyncExternalStore } from "react";
 import type { WorkspaceReviewer } from "@corbits-builder/client";
 import { wording } from "./config.ts";
@@ -10,30 +6,8 @@ import {
   writeStoredPreference,
 } from "./stored-preference.ts";
 
-const APPROVALS_ENABLED_KEY = "builder-workspace-approvals-enabled";
 const WORKSPACE_REVIEWERS_KEY = "builder-workspace-reviewers";
 const CUSTOM_PERSONAS_KEY = "builder-workspace-custom-personas";
-
-export type OnOff = "on" | "off";
-
-const parseDefaultOff = (raw: string | null): OnOff =>
-  raw === "on" ? "on" : "off";
-
-const readApprovalsEnabled = (): OnOff =>
-  parseDefaultOff(readStoredPreference(APPROVALS_ENABLED_KEY));
-
-export function useWorkspaceApprovalsEnabled(): OnOff {
-  return useSyncExternalStore(
-    subscribeReviewers,
-    readApprovalsEnabled,
-    readApprovalsEnabled,
-  );
-}
-
-export function writeWorkspaceApprovalsEnabled(choice: OnOff): void {
-  writeStoredPreference(APPROVALS_ENABLED_KEY, choice);
-  notifyReviewers();
-}
 
 let cachedReviewersRaw: string | null = null;
 let cachedReviewersList: readonly WorkspaceReviewer[] = [];

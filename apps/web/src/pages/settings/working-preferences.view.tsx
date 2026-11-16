@@ -28,7 +28,8 @@ export type PreferenceRow = {
 };
 
 export type WorkingPreferencesViewProps = {
-  preferences: readonly PreferenceRow[];
+  /** Null until the registry has been read; an empty list is a loaded registry with no rows. */
+  preferences: readonly PreferenceRow[] | null;
   onChoose: (id: string, choice: string) => void;
   /** Why the preferences could not be read. */
   fault: string | null;
@@ -63,8 +64,8 @@ export function WorkingPreferencesView({
   const [highlightedId, setHighlightedId] = useState<string | null>(
     focusPreference,
   );
-  // More rows arrive once the hub's preferences are read and move the one sent to, so it jumps again.
-  const rows = preferences.length;
+  // A deep-linked row can only be focused once its registry has arrived.
+  const rows = preferences?.length;
   useEffect(() => {
     if (!focusPreference || typeof document === "undefined") return;
     setHighlightedId(focusPreference);
@@ -123,6 +124,9 @@ export function WorkingPreferencesView({
   }, [rows, focusPreference, focusSeq]);
 
   const copy = wording.settings.preferences;
+  if (preferences === null) {
+    return fault ? <Banner tone="error" title={fault} /> : null;
+  }
   return (
     <>
       {fault ? <Banner tone="error" title={fault} /> : null}
@@ -130,7 +134,6 @@ export function WorkingPreferencesView({
         const members = preferences.filter(
           (preference) => preference.group === group,
         );
-        // Until the hub answers, a group with none of its preferences stays out of the way.
         if (members.length === 0) return null;
         const heading: GroupHeading = copy.groups[group];
         return (

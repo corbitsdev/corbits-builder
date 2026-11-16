@@ -14,6 +14,7 @@ import * as actualArtifacts from "../../api/artifacts.ts";
 import * as actualConversation from "../../api/conversation.ts";
 import { WhatsNewDialog } from "../../App.view.tsx";
 import { wording } from "../../config.ts";
+import { preferencesQuery } from "../../queries/preferences.ts";
 import { queryClient } from "../../queries/client.ts";
 import { Settings } from "../settings/settings.tsx";
 import { WorkspaceApprovals } from "../settings/workspace-approvals.tsx";
@@ -1156,7 +1157,22 @@ describe("approval rounds panel", () => {
     expect(approvalsHtml).toContain("Enable in Settings");
   });
 
-  test("opens Settings directly to the Preferences tab and renders Approval packages off by default", () => {
+  test("opens Settings directly to the Preferences tab and renders Approval packages from the hub", () => {
+    queryClient.setQueryData(preferencesQuery.queryKey, {
+      registry: [
+        {
+          id: "experimental_approvals",
+          label: "Approval packages",
+          group: "approvals",
+          options: [
+            { id: "no", label: "Not used" },
+            { id: "yes", label: "Share with reviewers" },
+          ],
+          default: "no",
+        },
+      ],
+      saved: { value: { experimental_approvals: "yes" }, version: 1 },
+    });
     const html = renderToStaticMarkup(
       <ThemeProvider>
         <QueryClientProvider client={queryClient}>
@@ -1172,9 +1188,10 @@ describe("approval rounds panel", () => {
     expect(html).not.toContain("Slide Decks");
     expect(html).toContain("Approval packages");
     expect(html).toMatch(
-      /id="preference-experimental_approvals"[^>]*aria-checked="true"[^>]*><span[^>]*>Not used</,
+      /id="preference-experimental_approvals"[^>]*aria-checked="true"[^>]*><span[^>]*>Share with reviewers</,
     );
     expect(html).not.toContain('id="preference-experimental_slide_decks"');
     expect(html).toContain('data-highlighted=""');
+    queryClient.removeQueries({ queryKey: preferencesQuery.queryKey });
   });
 });
