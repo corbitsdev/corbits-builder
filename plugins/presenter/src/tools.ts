@@ -2,13 +2,12 @@ import { createHash } from "node:crypto";
 import { mkdir, readFile, realpath, writeFile } from "node:fs/promises";
 import { dirname, join } from "node:path";
 import { type } from "arktype";
-import { defineTool, type BaseEnv } from "@intx/agent/authoring";
+import { defineTool } from "@intx/agent/authoring";
 import { HUB_CREDENTIAL_HANDLE } from "@intx/types/credential-delivery";
-import type { RuntimeCapabilities } from "@intx/types/runtime-capabilities";
 import { Deck, DeckError, validateDeck } from "@corbits/slidedeck";
 import { resolveWorkflowProjectScope } from "@corbits-builder/plugin/project-scope";
 import { workflowHttpJson } from "@corbits-builder/plugin/http-json";
-import { defineTools } from "@corbits-builder/plugin/tools";
+import { defineTools, type ToolEnv } from "@corbits-builder/plugin/tools";
 import {
   DECK_JSON,
   DECK_PDF,
@@ -19,11 +18,6 @@ import {
 import { HubArtifactReceipt } from "@corbits-builder/schemas/artifact";
 
 export { DECK_JSON, DECK_PDF, DECK_PPTX };
-
-export interface PackageToolEnv extends BaseEnv {
-  toolCwd: string;
-  capabilities: RuntimeCapabilities;
-}
 
 export const DECK_CHECK = join(".builder", "deck-check.json");
 export const PACKAGE_ASSIGNMENT = join(".builder", "package-assignment.json");
@@ -502,7 +496,7 @@ function createPackageTools(role: string) {
       inputSchema: { ...FilePackageArgs.toJsonSchema() },
     },
   ];
-  return defineTool<PackageToolEnv>({
+  return defineTool<ToolEnv>({
     id: "@corbits-builder/artifacts/package-tools",
     credentials: [{ handle: HUB_CREDENTIAL_HANDLE }],
     requires: ["toolCwd", "capabilities"],
