@@ -1,4 +1,4 @@
-import { afterAll, beforeAll, expect, test } from "bun:test";
+import { afterAll, beforeAll, beforeEach, expect, test } from "bun:test";
 import { type } from "arktype";
 import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
@@ -10,7 +10,10 @@ import {
   type Page,
 } from "@playwright/test";
 import { PreferenceRegistry } from "@corbits-builder/schemas/preferences";
-import { SettingsRecord } from "@corbits-builder/schemas/settings";
+import {
+  SettingsReceipt,
+  SettingsRecord,
+} from "@corbits-builder/schemas/settings";
 import { startInProcessHub } from "./support/in-process-hub.ts";
 
 let hub: Awaited<ReturnType<typeof startInProcessHub>>;
@@ -47,7 +50,7 @@ beforeAll(async () => {
   registry = PreferenceRegistry.assert(
     await (await hub.call("GET", `${path}/preferences`)).json(),
   );
-  // Forward the test person's session to the real hub, without running agents or sidecars.
+  // This proxy uses a fixed test session, so sign-out only verifies returning to the sign-in screen.
   server = Bun.serve({
     hostname: "127.0.0.1",
     port: 0,
@@ -78,6 +81,23 @@ beforeAll(async () => {
   const executablePath = process.env["PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH"];
   browser = await chromium.launch(executablePath ? { executablePath } : {});
 }, 120_000);
+
+beforeEach(async () => {
+  const before = await readPreferences();
+  const response = await hub.call("POST", `${path}/me/save`, {
+    command: "save_settings",
+    idempotencyKey: crypto.randomUUID(),
+    fields: {
+      preferences: {
+        value: {},
+        baseVersion: before.version,
+      },
+    },
+  });
+  const receipt = SettingsReceipt.assert(await response.json());
+  expect(receipt.conflicts).toEqual([]);
+  expect(receipt.record.fields.preferences!.value).toEqual({});
+});
 
 afterAll(async () => {
   await browser?.close();
@@ -252,6 +272,8 @@ test("rapid changes save one at a time and keep the most recent choices", async 
   const page = await browser.newPage();
   try {
     await openSettings(page);
+    await choose(page, "replies", "detailed");
+    await choose(page, "technical", "yes");
     let release = () => {};
     const gate = new Promise<void>((resolve) => {
       release = resolve;
@@ -541,7 +563,7 @@ test("keyboard choices keep focus and save the selected option", async () => {
   }
 }, 30_000);
 
-test("settings tabs open, and sign-out ends the local session even when the hub fails", async () => {
+test("settings tabs open, and sign-out returns to the sign-in screen even when the hub fails", async () => {
   const page = await browser.newPage();
   try {
     await openSettings(page);
