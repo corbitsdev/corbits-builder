@@ -1,4 +1,4 @@
-import { expect, test } from "bun:test";
+import { afterEach, expect, test } from "bun:test";
 import { resolve } from "node:path";
 import {
   experimentalApprovals,
@@ -9,6 +9,12 @@ import { COORDINATOR } from "../workflows/coordinator-role.ts";
 
 // The presenter is a declared agent, built from the one entry every declared agent shares.
 const AGENT_ENTRY = "../workflows/agent-package.ts";
+const previousTools = process.env.BUILDER_TOOLS;
+
+afterEach(() => {
+  if (previousTools === undefined) delete process.env.BUILDER_TOOLS;
+  else process.env.BUILDER_TOOLS = previousTools;
+});
 
 test("presenter workflow entry binds Medium tier inference and approval_package write grant", async () => {
   const { MODEL_PROVIDERS, tierBinding } = await import("../config/models.ts");

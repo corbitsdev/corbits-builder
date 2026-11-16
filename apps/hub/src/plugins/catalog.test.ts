@@ -44,6 +44,26 @@ test("a plugin whose builder block has no groups stops the hub, naming its folde
   await expect(loading).rejects.toThrow("groups");
 });
 
+test("an agent tools module without a proper default export stops the hub, naming the plugin and the file", async () => {
+  const { builder } = await Bun.file(
+    join(PLUGINS_FOLDER, "presenter", "package.json"),
+  ).json();
+  const found = withBuilder("presenter", builder);
+  const module = found.module;
+  for (const exported of [undefined, {}]) {
+    found.module = async (path) =>
+      path === "./src/tools.ts" ? exported : module(path);
+    await expect(
+      loadCatalog(
+        [...folders.filter(({ folder }) => folder !== "presenter"), found],
+        HOST,
+      ),
+    ).rejects.toThrow(
+      "presenter's agent presenter tools module ./src/tools.ts has no defineTools factory as its default export",
+    );
+  }
+});
+
 test("an action that still says what kind it is stops the hub, naming the field to remove", async () => {
   await expect(
     loadCatalog(

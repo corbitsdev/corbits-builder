@@ -131,17 +131,6 @@ if (process.env.BUILDER_TOOLS !== undefined) {
   const brought: AgentTools = (await import(process.env.BUILDER_TOOLS)).default;
   factories.push(...brought({ role: role.name }).map(hostPluginTool));
 }
-// Interchange refuses a repeated tool name only when the agent starts; naming both sources here
-// fails the build instead.
-const definedBy = new Map<string, string>();
-for (const factory of factories)
-  for (const { name } of factory.definitions) {
-    const other = definedBy.get(name);
-    if (other !== undefined)
-      throw new Error(`${name} is defined by both ${other} and ${factory.id}`);
-    definedBy.set(name, factory.id);
-  }
-
 // A reply waits for its workspace's finish check: check-stack in an app, check_design in a mockup.
 let checkBeforeDone: string | null = null;
 if (workspace?.kind === "app") checkBeforeDone = FINISH_CHECK;

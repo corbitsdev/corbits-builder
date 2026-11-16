@@ -463,6 +463,9 @@ export async function manifestFiles(found: Found) {
       ...Object.values(builder.agents ?? {}).flatMap(({ workspace }) =>
         workspace === undefined ? [] : [workspace],
       ),
+      ...Object.values(builder.agents ?? {}).flatMap(({ tools }) =>
+        tools === undefined ? [] : [tools],
+      ),
     ],
     texts: prompts.filter(isText),
     folders: [
@@ -1298,10 +1301,16 @@ async function agentPackages(
         declared.workspace === undefined
           ? null
           : Workspace.assert(await found.module(declared.workspace));
-      if (declared.tools !== undefined && !(await found.has(declared.tools)))
-        throw new Error(
-          `${builder.handle}'s agent ${name} has no tools module inside plugins/${found.folder} at ${declared.tools}`,
-        );
+      if (declared.tools !== undefined) {
+        if (!(await found.has(declared.tools)))
+          throw new Error(
+            `${builder.handle}'s agent ${name} has no tools module inside plugins/${found.folder} at ${declared.tools}`,
+          );
+        if (typeof (await found.module(declared.tools)) !== "function")
+          throw new Error(
+            `${builder.handle}'s agent ${name} tools module ${declared.tools} has no defineTools factory as its default export`,
+          );
+      }
       const agent: AgentPackage = {
         name,
         prompt: await agentPrompt(found, builder.handle, name, declared),
