@@ -293,7 +293,8 @@ export type Design = {
 export const selectionName = (handle: string) => `plugins.${handle}`;
 
 // A declared agent as the host builds its workflow package: the prompt's text, the role it plays,
-// what its declaration says, each skill's files by path with SKILL.md first, and what the actions
+// what its declaration says, its tools module's path in the plugins folder, each skill's files by
+// path with SKILL.md first, and what the actions
 // that start it name: the screens that show its finished work, and the checks the hub runs on the
 // saved result before its reply counts as done.
 export const AgentPackage = type({
@@ -304,6 +305,7 @@ export const AgentPackage = type({
   skills: { "[string]": { "[string]": "string" } },
   files: WriterDocumentKind.or("null"),
   workspace: Workspace.or("null"),
+  tools: "string | null",
   fileBeforeDone: "boolean",
   presents: "string | null",
   done: type({
@@ -417,7 +419,7 @@ const isText = (prompt: string) => prompt.endsWith(".md");
 
 /**
  * The files a manifest leads to: the modules the catalog imports, the texts it reads, the folders
- * it lays out, and which of its actions' files and package entries are there.
+ * it lays out, and which of its actions' files, package entries and agents' tools modules are there.
  */
 export async function manifestFiles(found: Found) {
   if (RunsSkills.allows(found.manifest))
@@ -434,9 +436,12 @@ export async function manifestFiles(found: Found) {
     const { definition, view, data } = actionFiles(action);
     return [definition, view, data];
   });
-  const entries = Object.values(builder.packages ?? {}).map(
-    ({ entry }) => entry,
-  );
+  const entries = [
+    ...Object.values(builder.packages ?? {}).map(({ entry }) => entry),
+    ...Object.values(builder.agents ?? {}).flatMap(({ tools }) =>
+      tools === undefined ? [] : [tools],
+    ),
+  ];
   const prompts = Object.values(builder.agents ?? {}).map(
     ({ prompt }) => prompt,
   );
@@ -1293,6 +1298,10 @@ async function agentPackages(
         declared.workspace === undefined
           ? null
           : Workspace.assert(await found.module(declared.workspace));
+      if (declared.tools !== undefined && !(await found.has(declared.tools)))
+        throw new Error(
+          `${builder.handle}'s agent ${name} has no tools module inside plugins/${found.folder} at ${declared.tools}`,
+        );
       const agent: AgentPackage = {
         name,
         prompt: await agentPrompt(found, builder.handle, name, declared),
@@ -1303,6 +1312,10 @@ async function agentPackages(
             : bySkill(await found.files(declared.skills)),
         files: declared.files ?? null,
         workspace,
+        tools:
+          declared.tools === undefined
+            ? null
+            : join(found.folder, declared.tools),
         fileBeforeDone:
           starting.length > 0 &&
           starting.every(({ builder }) =>

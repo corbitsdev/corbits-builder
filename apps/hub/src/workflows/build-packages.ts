@@ -67,10 +67,15 @@ export async function buildWorkflowPackages(
         JSON.stringify(resolved),
       ),
     };
-    if ("agent" in built)
+    if ("agent" in built) {
       define["process.env.BUILDER_AGENT"] = JSON.stringify(
         JSON.stringify(built.agent),
       );
+      define["process.env.BUILDER_TOOLS"] =
+        built.agent.tools === null
+          ? "undefined"
+          : JSON.stringify(resolve(PLUGINS_FOLDER, built.agent.tools));
+    }
     if ("agent" in built && hasBrowser(built.agent))
       define["process.env.BUILDER_BROWSER"] = JSON.stringify(browser);
     const result = await Bun.build({

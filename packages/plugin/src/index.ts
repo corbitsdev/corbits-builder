@@ -381,8 +381,9 @@ export const defineWorkspace = (workspace: Workspace) => workspace;
 // handle's unless stated, whose tools and model it runs with; skills a folder of the plugin whose
 // skills it reads with read_skill, one folder each; files the one document kind its write_artifact
 // files, with that kind's own fields, when it files no other; workspace a module whose default
-// export is the workspace it works in, as defineWorkspace makes one. Its reply waits until it has filed
-// its document when every action that starts it returns a filed fact.
+// export is the workspace it works in, as defineWorkspace makes one; tools a module whose default
+// export is the tools it brings, as defineTools makes them. Its reply waits until it has filed its
+// document when every action that starts it returns a filed fact.
 export const AgentBuilder = type({
   "+": "reject",
   prompt: "string > 0",
@@ -390,6 +391,7 @@ export const AgentBuilder = type({
   "skills?": "string > 0",
   "files?": WriterDocumentKind,
   "workspace?": "string > 0",
+  "tools?": "string > 0",
 });
 export type AgentBuilder = typeof AgentBuilder.infer;
 

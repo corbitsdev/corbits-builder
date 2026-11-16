@@ -176,6 +176,7 @@
       "version": "0.1.0-rc.3",
       "dependencies": {
         "@corbits-builder/schemas": "workspace:*",
+        "@intx/agent": "workspace:*",
         "@intx/types": "workspace:*",
         "arktype": "catalog:",
       },
