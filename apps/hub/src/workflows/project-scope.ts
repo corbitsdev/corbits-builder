@@ -36,3 +36,25 @@ export function projectScopeFailure(callId: string, error: unknown) {
       : "workflow_project_scope_unavailable";
   return { callId, content: code, isError: true, ...accessRefusal(error) };
 }
+
+// A hub call the hub refused, as the tool's error result: the refusal's code, or refusedCode when the
+// hub named none.
+export function toolFailure(
+  callId: string,
+  error: unknown,
+  refusedCode: string,
+) {
+  if (error instanceof WorkflowHttpError && error.status)
+    return {
+      callId,
+      content: JSON.stringify({
+        code: error.refusalCode ?? refusedCode,
+        status: error.status,
+        ...(error.issues.length ? { issues: error.issues } : {}),
+        ...(error.hint ? { hint: error.hint } : {}),
+      }),
+      isError: true,
+      ...accessRefusal(error),
+    };
+  return projectScopeFailure(callId, error);
+}

@@ -15,9 +15,9 @@ import { defineWorkflow, step } from "@intx/workflow/definition";
 import {
   createArtifactTools,
   createWriterArtifactTools,
-  failure,
 } from "../artifacts/tools.ts";
 import { CHECK_DESIGN_TOOL } from "../builds/design-submission.ts";
+import { toolFailure } from "./project-scope.ts";
 import {
   BrowserTools,
   createSidecarCodingTools,
@@ -41,7 +41,7 @@ function hostPluginTool(factory: AnnotatedToolFactory<ToolEnv>) {
       try {
         return await run(call, signal);
       } catch (error) {
-        return failure(call.id, error);
+        return toolFailure(call.id, error, "tool_call_refused");
       }
     };
     return bundle;

@@ -19,7 +19,7 @@ import { noopAuditStore, permissiveAuthorize } from "@intx/agent/testing";
 import { createIsogitStore } from "@intx/storage-isogit/node";
 import { createRuntimeCapabilities } from "@intx/types/runtime-capabilities";
 import { WorkflowHttpError } from "@corbits-builder/plugin/http-json";
-import { failure } from "../artifacts/tools.ts";
+import { toolFailure } from "./project-scope.ts";
 import { CATALOG, PLUGINS_FOLDER } from "../plugins/catalog.ts";
 
 // The package a plugin's declared writer is built as, on a model that never answers.
@@ -160,9 +160,10 @@ test("the host returns a plugin tool's hub refusal unchanged", async () => {
       new AbortController().signal,
     );
     expect(result).toEqual(
-      failure(
+      toolFailure(
         "refused",
         new WorkflowHttpError(403, "unspecified", "forbidden", issues, hint),
+        "tool_call_refused",
       ),
     );
     expect(result.isError).toBe(true);
