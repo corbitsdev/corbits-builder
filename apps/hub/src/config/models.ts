@@ -10,6 +10,7 @@ import type {
   Tiers,
 } from "@corbits-builder/schemas/models";
 import type { WorkflowRole } from "@corbits-builder/schemas/installed-workflows";
+import type { InferenceError } from "@intx/types/runtime";
 import {
   customModelLimits,
   modelLimits,
@@ -519,6 +520,31 @@ export const MODEL_CHOICE_REFUSALS: Readonly<
     "More than one model provider is connected. Choose a model profile in Settings, Profiles, and the coordinator can start.",
   model_profile_custom:
     "Only custom providers are connected, and they have no ready-made profile. Make a profile for your custom models in Settings, Profiles, and the coordinator can start.",
+};
+
+const MODEL_CALL_FAILED =
+  "The model call failed, so I could not answer. Send your message again; if it keeps failing, check the provider in Settings, Providers.";
+
+// What a coordinator replies when its model call fails, in place of the provider's own message.
+export const MODEL_FAILURE_REPLIES: Readonly<
+  Record<InferenceError["category"] | "sign_in_rejected" | "repeated", string>
+> = {
+  repeated:
+    "The model kept repeating itself, so I stopped it. Send your message again.",
+  sign_in_rejected:
+    "Your model provider rejected its sign-in, so I could not answer. Reconnect the provider in Settings, Providers, then send your message again.",
+  credential_failure:
+    "Your model provider refused access to this model. Choose a model your account can use in Settings, then send your message again.",
+  quota_exhausted:
+    "Your model provider says a usage or rate limit is reached, so I could not answer. Wait a moment and send your message again, or check your plan with the provider.",
+  retryable:
+    "The model provider could not be reached or had a problem, so I could not answer. Send your message again; if it keeps failing, check the provider in Settings, Providers.",
+  context_overflow:
+    "This conversation has grown past what the model can read at once, so I could not answer. Start a new project or ask for a shorter task.",
+  fatal: MODEL_CALL_FAILED,
+  aborted: MODEL_CALL_FAILED,
+  timeout: MODEL_CALL_FAILED,
+  protocol_mismatch: MODEL_CALL_FAILED,
 };
 
 /**
