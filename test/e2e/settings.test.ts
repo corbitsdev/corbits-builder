@@ -268,6 +268,36 @@ test("every registered preference option saves through the hub and survives reop
   }
 }, 120_000);
 
+test("a preference changed just before a reload shows the new choice", async () => {
+  const page = await browser.newPage();
+  try {
+    await openSettings(page);
+    await choose(page, "replies", "detailed");
+    await page.waitForTimeout(2_000);
+    // Hold open the window in which the disk copy is older than the hub's.
+    await page.evaluate(() => {
+      Object.defineProperty(
+        Reflect.get(globalThis, "IDBObjectStore").prototype,
+        "put",
+        {
+          value() {
+            throw new Error("Cache write paused");
+          },
+        },
+      );
+    });
+    await choose(page, "replies", "concise");
+    await page.reload();
+    await browserExpect(
+      page
+        .locator("#preference-row-replies")
+        .getByRole("radio", { name: "Concise", exact: true }),
+    ).toBeChecked();
+  } finally {
+    await page.close();
+  }
+}, 30_000);
+
 test("rapid changes save one at a time and keep the most recent choices", async () => {
   const page = await browser.newPage();
   try {
