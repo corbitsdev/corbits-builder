@@ -9,6 +9,7 @@ import type {
   RetryPolicy,
 } from "@intx/types/runtime";
 import type { Timeouts } from "../config/models.ts";
+import { SIGN_IN_REJECTED } from "../config/specialist-ended.ts";
 import { REPETITION_ABORT } from "../inference/repetition.ts";
 import { readCheckDetail, type CheckDetail } from "../builds/check-detail.ts";
 import { accessRefused } from "./http-json.ts";
@@ -127,14 +128,21 @@ const withRetryPolicy = (
   timeouts: Timeouts,
 ): ReactorDirector => ({
   decide: async (event, state, caps) => {
+    // Interchange files a 403 as a credential failure too; only a 401 refuses the sign-in itself.
+    const signInRejected =
+      event.type === "inference.error" &&
+      event.error.category === "credential_failure" &&
+      event.error.statusCode === 401;
     if (
       failRun &&
       event.type === "inference.error" &&
-      TRANSIENT_ERRORS.has(event.error.category)
+      (TRANSIENT_ERRORS.has(event.error.category) || signInRejected)
     ) {
       // Interchange's timeout message already names the limit that was hit and its length.
       if (event.error.category === "timeout")
         throw new Error(`model_timed_out: ${event.error.message}`);
+      if (signInRejected)
+        throw new Error(`${SIGN_IN_REJECTED} ${event.error.message}`);
       throw new Error(
         `model_unavailable: ${event.error.category}: ${event.error.message}`,
       );

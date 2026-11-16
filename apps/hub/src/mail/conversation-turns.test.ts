@@ -157,11 +157,26 @@ test("a specialist-ended notice reads back without its coordinator-only part", a
     status: "failed",
     reason: { message: "provider refused the request" },
   });
-  const dir = await runRepo([{ from: person, text: notice }]);
+  const signInRejected = specialistEndedMessage({
+    role: "writer",
+    status: "failed",
+    reason: {
+      message:
+        "reactor error: Director exception: model_credentials_rejected: invalid api key",
+    },
+  });
+  const dir = await runRepo([
+    { from: person, text: notice },
+    { from: person, text: signInRejected },
+  ]);
   expect(await personTexts(dir, "note")).toEqual([
     {
       role: "person",
       text: "Status update: The writer stopped before finishing.",
+    },
+    {
+      role: "person",
+      text: "Status update: The work stopped because your model provider rejected its sign-in. Reconnect the provider in Settings, Providers, then send your request again.",
     },
   ]);
 });
