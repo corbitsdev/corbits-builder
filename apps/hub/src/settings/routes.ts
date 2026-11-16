@@ -52,7 +52,7 @@ import {
   updateCustomProvider,
 } from "./custom-providers.ts";
 import { readJson } from "../lib/json.ts";
-import { catalog } from "../plugins/catalog.ts";
+import { CATALOG } from "../plugins/catalog.ts";
 import { connectedProviders } from "../projects/model-choice.ts";
 import {
   createAvailabilityProbe,
@@ -321,7 +321,7 @@ export function createSettingsRoutes(
                 name: `${entry.label}${index === 0 ? "" : ` ${index + 1}`}`,
               })),
           })),
-        roles: Array.from(catalog.settings, ([id, setting]) => ({
+        roles: Array.from(CATALOG.settings, ([id, setting]) => ({
           id,
           label: setting.label,
           hint: setting.hint,

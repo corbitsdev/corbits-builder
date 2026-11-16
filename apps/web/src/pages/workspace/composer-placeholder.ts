@@ -6,15 +6,12 @@ import type {
   ProjectStatus,
   ProjectWorker,
 } from "@corbits-builder/schemas/project-status";
-import type { WorkflowRole } from "@corbits-builder/schemas/installed-workflows";
 import { wording } from "../../config.ts";
 
 const copy = wording.composer;
-const roleLabel: Partial<Record<WorkflowRole, string>> = copy.role;
+const roleLabel: Partial<Record<string, string>> = copy.role;
 
-function passAlongRole(
-  working: readonly ProjectWorker[],
-): WorkflowRole | undefined {
+function passAlongRole(working: readonly ProjectWorker[]): string | undefined {
   return (
     working.find((item) => item.state === "working")?.role ??
     working.find((item) => item.state === "starting")?.role

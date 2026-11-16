@@ -18,7 +18,6 @@ import {
   workflowRunRepoIdForAddress,
   type WorkflowRunReader,
 } from "@intx/hub-sessions";
-import type { WorkflowRole } from "@corbits-builder/schemas/installed-workflows";
 import {
   LiveRunStates,
   ProjectStatus,
@@ -41,7 +40,7 @@ const UNREADABLE_LOG_MS = 5 * 60 * 1000;
 
 type ProjectRun = {
   runId: string;
-  role: WorkflowRole;
+  role: string;
   status: string;
   address: string | null;
   createdAt: Date;
@@ -53,7 +52,7 @@ type ProjectRun = {
 function newestFailedSpecialist(
   runs: readonly ProjectRun[],
 ): ProjectRun | undefined {
-  const newest = new Map<WorkflowRole, ProjectRun>();
+  const newest = new Map<string, ProjectRun>();
   for (const run of runs) if (!newest.has(run.role)) newest.set(run.role, run);
   return [...newest.values()].find(
     (run) => run.role !== "coordinator" && run.status === "failed",

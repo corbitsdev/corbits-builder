@@ -22,10 +22,7 @@ import {
   NativeSpecialistDeployment,
 } from "@corbits-builder/schemas/native-specialist";
 import { SourceRef } from "@corbits-builder/schemas";
-import type {
-  WorkflowProjectScope,
-  WorkflowRole,
-} from "@corbits-builder/schemas/installed-workflows";
+import type { WorkflowProjectScope } from "@corbits-builder/schemas/installed-workflows";
 import {
   ArtifactContent,
   DesignBundle,
@@ -531,7 +528,7 @@ export function createDeployTools(options?: {
         // response is enough to send the assignment, which carries the person's preferences that
         // apply to the receiving role.
         const deploy = async (
-          role: WorkflowRole,
+          role: string,
           workflowSpec: NativeSpecialistDeployment | undefined,
           preferences: Preferences,
           correlationId: string,

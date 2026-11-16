@@ -2,7 +2,6 @@ import { expect, test } from "bun:test";
 import { type } from "arktype";
 import type { RuntimeCapabilities } from "@intx/types/runtime-capabilities";
 import { WriterDocumentKind } from "@corbits-builder/schemas/artifact";
-import type { WorkflowRole } from "@corbits-builder/schemas/installed-workflows";
 import {
   createArtifactTools,
   createCoordinatorArtifactTools,
@@ -65,10 +64,7 @@ const FlatToolSchema = type({
   "anyOf?": "never",
 });
 
-function harness(
-  role: WorkflowRole,
-  tools: ReturnType<typeof createArtifactTools>,
-) {
+function harness(role: string, tools: ReturnType<typeof createArtifactTools>) {
   const written: unknown[] = [];
   const fetch = async (path: string, init: RequestInit) => {
     if (path === "/api/workflow-project-scope")

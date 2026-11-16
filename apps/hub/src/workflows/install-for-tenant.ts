@@ -25,11 +25,10 @@ import {
 } from "@corbits-builder/schemas/installed-workflows";
 import type { Preferences } from "@corbits-builder/schemas/preferences";
 import type { RoleBinding } from "@corbits-builder/schemas/models";
-import type { WorkflowRole } from "@corbits-builder/schemas/installed-workflows";
 import {
   modelProvider,
   providerOfRow,
-  workflowBindings,
+  tierBinding,
   type ModelDirectory,
 } from "../config/models.ts";
 import { modelDirectory } from "../settings/custom-providers.ts";
@@ -39,7 +38,12 @@ import {
 } from "../inference/oauth-login-quirks.ts";
 import { projectModelChoice } from "../projects/model-choice.ts";
 import { resolvePreferences } from "../config/preferences.ts";
-import { catalog } from "../plugins/catalog.ts";
+import {
+  CATALOG,
+  roleModel,
+  runRole,
+  WORKFLOW_PACKAGES,
+} from "../plugins/catalog.ts";
 import { ProjectError } from "../projects/errors.ts";
 import { buildWorkflowPackages } from "./build-packages.ts";
 import { nativePackageName } from "./package-name.ts";
@@ -59,8 +63,9 @@ type InstallForTenantPorts = {
   >;
 };
 
-type Bindings = (role: WorkflowRole) => RoleBinding;
-type Inference = Record<WorkflowRole, RoleInference>;
+// The model binding a role runs on, by the role's name.
+type Bindings = (role: string) => RoleBinding;
+type Inference = Record<string, RoleInference>;
 type Source = Pick<RoleBinding, "provider" | "model">;
 
 // One build per set of resolved role inference: it is inlined, so it is part of the bundle.
@@ -106,16 +111,20 @@ export function scopeWorkflows(
 ): WorkflowProjectScope["workflows"] {
   const chosen = resolvePreferences(preferences);
   const workflows: WorkflowProjectScope["workflows"] = {};
-  for (const [name, { declared }] of catalog.packages) {
-    if (declared.role === "coordinator" || declared.replaces) continue;
-    const substitution = catalog.substitutions.get(name);
+  const replacing = new Set(
+    [...CATALOG.substitutions.values()].map((each) => each.package),
+  );
+  for (const [name, role] of WORKFLOW_PACKAGES) {
+    if (role === "coordinator" || replacing.has(name)) continue;
+    const substitution = CATALOG.substitutions.get(name);
     const selected =
       substitution && chosen[substitution.when] === "yes"
         ? substitution.package
         : name;
-    workflows[name] = installed.packages[selected]!.deployment;
+    workflows[name] = installed.packages[selected]!;
     // Frozen coordinators from before the writer split require this name; remove after all are retired.
-    if (declared.legacyAlias) workflows[declared.legacyAlias] = workflows[name];
+    const alias = CATALOG.aliases.get(name);
+    if (alias) workflows[alias] = workflows[name];
   }
   return workflows;
 }
@@ -360,6 +369,8 @@ async function offeringId(
 }
 
 type Built = Awaited<ReturnType<typeof builtPackages>>;
+// The roles the installed packages play.
+const ROLES = [...new Set(WORKFLOW_PACKAGES.values())];
 
 /** A stored descriptor is current only while it pins this build's packages and each package's offering still serves its role's source. */
 async function isCurrent(
@@ -373,24 +384,21 @@ async function isCurrent(
   const pins = new Set(
     built.map((item) => item.packageName + "@" + item.version),
   );
-  if (Object.keys(installed.packages).length !== catalog.packages.size)
+  const packages = [...WORKFLOW_PACKAGES];
+  if (
+    Object.keys(installed.packages).length !== packages.length ||
+    !packages.every(([name]) => {
+      const pin = installed.packages[name]?.pin;
+      return pin !== undefined && pins.has(pin);
+    })
+  )
     return false;
-  const stored = [];
-  for (const [
-    name,
-    {
-      declared: { role },
-    },
-  ] of catalog.packages) {
-    const found = installed.packages[name];
-    if (found?.role !== role || !pins.has(found.deployment.pin)) return false;
-    stored.push(found);
-  }
   const visible = await listVisibleOfferings(db, tenantId);
-  for (const { role, deployment } of stored) {
+  for (const [name, role] of packages) {
     const row = visible.find(
       (candidate) =>
-        candidate.offering.id === deployment.defaultSourceOfferingId,
+        candidate.offering.id ===
+        installed.packages[name]?.defaultSourceOfferingId,
     );
     if (!row || !(await servesSource(db, directory, row, bindings(role))))
       return false;
@@ -467,16 +475,20 @@ export async function installForTenant(
     .from(tenant)
     .where(eq(tenant.id, actor.tenantId));
   const directory = await modelDirectory(ports.db, actor.tenantId);
-  const bindings = workflowBindings(
+  const choice = await projectModelChoice(
+    ports.db,
+    actor,
+    projectId,
     directory,
-    await projectModelChoice(ports.db, actor, projectId, directory),
-    catalog.roles,
   );
+  // Each role runs on the model setting it names.
+  const bindings: Bindings = (role) =>
+    tierBinding(directory, choice, roleModel(runRole(role)));
   const built = await builtPackages(
     Object.fromEntries(
-      Array.from(catalog.roles.values()).map(({ role: { name, limits } }) => [
-        name,
-        resolveRoleInference(directory, limits, bindings(name)),
+      ROLES.map((role) => [
+        role,
+        resolveRoleInference(directory, runRole(role).limits, bindings(role)),
       ]),
     ),
   );
@@ -500,18 +512,19 @@ export async function installForTenant(
   )
     return existing;
   const offerings = new Map<string, string>();
-  for (const {
-    role: { name: role },
-  } of catalog.roles.values()) {
-    const key = bindings(role).provider + "\u0000" + bindings(role).model;
+  for (const role of ROLES) {
+    const binding = bindings(role);
+    const key = binding.provider + "\u0000" + binding.model;
     if (!offerings.has(key))
       offerings.set(
         key,
-        await offeringId(ports.db, directory, actor.tenantId, bindings(role)),
+        await offeringId(ports.db, directory, actor.tenantId, binding),
       );
   }
-  const offeringFor = (role: WorkflowRole) =>
-    offerings.get(bindings(role).provider + "\u0000" + bindings(role).model)!;
+  const offeringFor = (role: string) => {
+    const binding = bindings(role);
+    return offerings.get(binding.provider + "\u0000" + binding.model)!;
+  };
   const published: { assetId: string; entry: string; pin: string }[] = [];
   for (const item of built) {
     const assetId = await registryAsset(ports, actor, item.assetName);
@@ -535,7 +548,7 @@ export async function installForTenant(
       pin: item.packageName + "@" + item.version,
     });
   }
-  const deployment = (name: string, role: WorkflowRole) => {
+  const deployment = (name: string, role: string) => {
     const receipt = published.find((item) => item.pin.startsWith(name + "@"));
     if (!receipt) throw new Error("required_workflow_package_missing");
     return {
@@ -553,17 +566,10 @@ export async function installForTenant(
   const descriptor = InstalledWorkflows.assert({
     schemaVersion: 3,
     packages: Object.fromEntries(
-      Array.from(catalog.packages).map(
-        ([
-          name,
-          {
-            declared: { role },
-          },
-        ]) => [
-          name,
-          { role, deployment: deployment(nativePackageName(name), role) },
-        ],
-      ),
+      [...WORKFLOW_PACKAGES].map(([name, role]) => [
+        name,
+        deployment(nativePackageName(name), role),
+      ]),
     ),
   });
   await ports.db.transaction(async (tx) => {

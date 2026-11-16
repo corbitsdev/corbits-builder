@@ -16,7 +16,6 @@ import {
   type DocumentWrite,
   type WriterDocumentKind,
 } from "@corbits-builder/schemas/artifact";
-import type { WorkflowRole } from "@corbits-builder/schemas/installed-workflows";
 import { stripApprovalPackageBinaries } from "./approval-package.ts";
 import { unpackDesign } from "./design-tools.ts";
 import {
@@ -116,7 +115,7 @@ interface ArtifactToolSet {
 // A writer's or reviewer's task carries every document it needs in full; a read tool sends
 // writers looking for documents that do not exist.
 export function createArtifactTools(
-  role: WorkflowRole,
+  role: string,
   { unpacksDesign }: { unpacksDesign: boolean },
 ) {
   return artifactTools(role, { definitions: [readDefinition], unpacksDesign });
@@ -140,7 +139,7 @@ export function createWriterArtifactTools(kind: WriterDocumentKind) {
 }
 
 function artifactTools(
-  role: WorkflowRole,
+  role: string,
   { definitions, save, unpacksDesign }: ArtifactToolSet,
 ): AnnotatedToolFactory<ArtifactToolEnv> {
   return defineTool<ArtifactToolEnv>({

@@ -1,6 +1,5 @@
 import { type } from "arktype";
 import { Effort, type RoleBinding } from "@corbits-builder/schemas/models";
-import type { WorkflowRole } from "@corbits-builder/schemas/installed-workflows";
 import { sharedRoles, type AgentRole } from "../inference/model-limits.ts";
 import {
   bindingLimits,
@@ -68,7 +67,7 @@ export function resolveRoleInference(
 
 // build-packages.ts inlines what the project's profile resolved for this role, so the frozen
 // definition carries it; an entry imported directly reads the one its importer set.
-export function roleInference(role: WorkflowRole): RoleInference {
+export function roleInference(role: string): RoleInference {
   const inlined = process.env.BUILDER_ROLE_INFERENCE;
   if (!inlined) throw new Error(`role_inference_required:${role}`);
   return RoleInference.assert(JSON.parse(inlined));

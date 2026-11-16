@@ -1,33 +1,19 @@
 import { type } from "arktype";
 import { NativeSpecialistDeployment } from "./native-specialist.ts";
 import { ProjectId } from "./project.ts";
-import { WorkflowRole } from "./roles.ts";
-export { WorkflowRole } from "./roles.ts";
+import { RoleName } from "./roles.ts";
+export { RoleName } from "./roles.ts";
 
 export const INSTALLED_WORKFLOWS_KEY = "sb.installedWorkflows";
 
+// Each installed workflow package by name, the coordinator's among them. Which packages there are,
+// and the role each plays, comes from the plugins the hub loads.
 export const InstalledWorkflows = type({
   "+": "reject",
   schemaVersion: "3",
-  packages: {
-    "[string]": {
-      "+": "reject",
-      role: WorkflowRole,
-      deployment: NativeSpecialistDeployment,
-    },
-  },
+  packages: { "[string]": NativeSpecialistDeployment },
 });
 export type InstalledWorkflows = typeof InstalledWorkflows.infer;
-
-/** Every installed package a run of the role may run on. */
-export function roleDeployments(
-  installed: InstalledWorkflows,
-  role: WorkflowRole,
-) {
-  return Object.values(installed.packages)
-    .filter((installedPackage) => installedPackage.role === role)
-    .map(({ deployment }) => deployment);
-}
 
 // Returned only to an authenticated native run. Scope comes from the protected
 // coordinator association/native deployment invoker, never a tool argument.
@@ -36,7 +22,7 @@ export const WorkflowProjectScope = type({
   tenantId: "string > 0",
   projectId: ProjectId,
   domain: "string > 0",
-  role: WorkflowRole,
+  role: RoleName,
   workflows: { "[string]": NativeSpecialistDeployment },
   // Whether the project's build sandboxes reach any public host rather than only the npm registry.
   openNetwork: "boolean",

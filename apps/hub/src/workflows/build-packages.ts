@@ -4,10 +4,9 @@ import { createHash } from "node:crypto";
 import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
 import { join, resolve } from "node:path";
 import { tmpdir } from "node:os";
-import { catalog } from "../plugins/catalog.ts";
+import { CATALOG } from "../plugins/catalog.ts";
 import { nativePackageName } from "./package-name.ts";
 import type { RoleInference } from "./role-inference.ts";
-import type { WorkflowRole } from "@corbits-builder/schemas/installed-workflows";
 
 // The version follows the bundle bytes, so a rebuilt workflow publishes beside the old one instead of
 // colliding with a tarball the registry already holds.
@@ -29,19 +28,13 @@ export function assertPackageRole(
 export async function buildWorkflowPackages(
   destination: string,
   base: string,
-  inference: Record<WorkflowRole, RoleInference>,
+  inference: Readonly<Record<string, RoleInference>>,
 ) {
   if (!/^\d+\.\d+\.\d+$/.test(base)) throw new Error("invalid_package_version");
   const output = resolve(destination);
   await mkdir(output, { recursive: true });
   const manifest = [];
-  for (const [
-    name,
-    {
-      path: entry,
-      declared: { role },
-    },
-  ] of catalog.packages) {
+  for (const [name, { role, entry }] of CATALOG.packages) {
     const roleInference = inference[role];
     if (!roleInference) throw new Error(`No inference for the role ${role}`);
     const result = await Bun.build({

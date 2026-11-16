@@ -507,16 +507,16 @@ test("file_package refuses until check_deck passes on the current deck, then fil
 });
 
 test("presenter workflow entry binds Medium tier inference and approval_package write grant", async () => {
-  const { MODEL_PROVIDERS, workflowBindings } =
-    await import("../config/models.ts");
+  const { MODEL_PROVIDERS, tierBinding } = await import("../config/models.ts");
   const { resolveRoleInference } =
     await import("../workflows/role-inference.ts");
-  const { catalog } = await import("../plugins/catalog.ts");
-  const bindings = workflowBindings(
-    MODEL_PROVIDERS,
-    { profile: "anthropic_default" },
-    catalog.roles,
-  );
+  const { roleModel, runRole } = await import("../plugins/catalog.ts");
+  const bindings = (role: string) =>
+    tierBinding(
+      MODEL_PROVIDERS,
+      { profile: "anthropic_default" },
+      roleModel(runRole(role)),
+    );
   expect(bindings("presenter")).toEqual(bindings("writer"));
   process.env.BUILDER_ROLE_INFERENCE = JSON.stringify(
     resolveRoleInference(MODEL_PROVIDERS, "presenter", bindings("presenter")),

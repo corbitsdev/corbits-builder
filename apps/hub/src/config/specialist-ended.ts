@@ -1,5 +1,4 @@
-import type { WorkflowRole } from "@corbits-builder/schemas/installed-workflows";
-import { roleOf, catalog } from "../plugins/catalog.ts";
+import { CATALOG, runRole } from "../plugins/catalog.ts";
 import { SIGN_IN_REJECTED } from "../workflows/director.ts";
 
 // The hub's mail to a coordinator whose specialist stopped before it delivered its result. It
@@ -16,13 +15,13 @@ const SIGN_IN_REJECTED_LINE =
   "The work stopped because your model provider rejected its sign-in. Reconnect the provider in Settings, Providers, then send your request again.";
 
 const NOTICE_LINES = new Set(
-  Array.from(catalog.roles.values()).flatMap(({ role: { ended } }) =>
+  CATALOG.roles.flatMap(({ ended }) =>
     ended ? [ended.failed, ended.cancelled] : [],
   ),
 ).add(SIGN_IN_REJECTED_LINE);
 
 export function specialistEndedMessage(ended: {
-  role: WorkflowRole;
+  role: string;
   kind?: string;
   status: Outcome;
   reason?: { message: string; code?: string };
@@ -31,7 +30,7 @@ export function specialistEndedMessage(ended: {
   const reason = ended.reason
     ? ` Recorded reason${ended.reason.code ? ` (${ended.reason.code})` : ""}: ${ended.reason.message}`
     : "";
-  const lines = roleOf(ended.role).ended!;
+  const lines = runRole(ended.role).ended!;
   const task = lines.task.replaceAll("{kind}", ended.kind ?? "assigned");
   // Interchange records only the text of the director's error, behind prefixes of its own.
   const personLine = ended.reason?.message.includes(SIGN_IN_REJECTED)

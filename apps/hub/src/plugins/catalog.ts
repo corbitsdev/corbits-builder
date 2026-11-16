@@ -4,7 +4,6 @@ import {
   readPlugin,
   readPluginFolder,
 } from "@corbits-builder/plugin-host/folder";
-import type { WorkflowRole } from "@corbits-builder/schemas/installed-workflows";
 import { sharedRoles, type AgentRole } from "../inference/model-limits.ts";
 import { PREFERENCES } from "../config/preferences.ts";
 import { PROFILES } from "../config/models.ts";
@@ -14,7 +13,7 @@ import type { RoleTiers } from "@corbits-builder/schemas/models";
 const HUB_FOLDER = resolve(import.meta.dir, "../..");
 const PLUGINS_FOLDER = resolve(import.meta.dir, "../../../../plugins");
 
-export const catalog = await loadCatalog(
+export const CATALOG = await loadCatalog(
   [await readPlugin(HUB_FOLDER), ...(await readPluginFolder(PLUGINS_FOLDER))],
   new Set(
     PREFERENCES.filter(
@@ -29,21 +28,34 @@ export const catalog = await loadCatalog(
 const isBudget = (name: string): name is AgentRole =>
   Object.hasOwn(sharedRoles, name);
 
-for (const { role } of catalog.roles.values()) {
+for (const role of CATALOG.roles) {
   if (!isBudget(role.limits))
     throw new Error(
       `The role ${role.name} has limits ${role.limits}, no budget`,
     );
 }
 
-export function roleOf(name: WorkflowRole) {
-  const found = catalog.roles.get(name);
-  if (!found) throw new Error(`No plugin declares the role ${name}`);
-  return found.role;
+/** The role a run plays, by name, as the plugin that declares it says. */
+export function runRole(name: string) {
+  const role = CATALOG.role(name);
+  if (!role) throw new Error(`role_unknown:${name}`);
+  return role;
 }
 
+/** The model setting a role runs on and its tier, as declared. */
+export function roleModel(role: { model: string }) {
+  const setting = CATALOG.settings.get(role.model);
+  if (!setting) throw new Error(`model_setting_unknown:${role.model}`);
+  return { setting: role.model, tier: setting.tier };
+}
+
+// Every workflow package Builder installs and the name of the role its runs play.
+export const WORKFLOW_PACKAGES: ReadonlyMap<string, string> = new Map(
+  [...CATALOG.packages].map(([name, { role }]) => [name, role] as const),
+);
+
 export const undeclaredSetting = (roleTiers: RoleTiers | undefined) =>
-  roleTiers && Object.keys(roleTiers).find((id) => !catalog.settings.has(id));
+  roleTiers && Object.keys(roleTiers).find((id) => !CATALOG.settings.has(id));
 
 for (const { id, roleTiers } of PROFILES) {
   const undeclared = undeclaredSetting(roleTiers);

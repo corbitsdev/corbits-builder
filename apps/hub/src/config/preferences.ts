@@ -1,4 +1,3 @@
-import type { WorkflowRole } from "@corbits-builder/schemas/installed-workflows";
 import type {
   PreferenceGroup,
   PreferenceRegistry,
@@ -18,7 +17,7 @@ type PreferenceEntry = Readonly<{
   ends?: Readonly<{ start: string; end: string }>;
   default: string;
   // The roles whose hub-built context carries this preference.
-  roles: "all" | readonly WorkflowRole[];
+  roles: "all" | readonly string[];
 }>;
 
 const productName = productConfig.naming.productName;
@@ -349,10 +348,7 @@ export function resolvePreferences(chosen: Preferences | null): Preferences {
 }
 
 /** The block a specialist's hub-built assignment carries, empty when no preference applies. */
-export function preferenceBlock(
-  choices: Preferences,
-  role: WorkflowRole,
-): string {
+export function preferenceBlock(choices: Preferences, role: string): string {
   const lines = preferenceGuidance(choices, role);
   return lines.length
     ? "\n\nHow the person wants to work:\n" +
@@ -363,7 +359,7 @@ export function preferenceBlock(
 /** The guidance lines one role works by. */
 export function preferenceGuidance(
   choices: Preferences,
-  role: WorkflowRole,
+  role: string,
 ): string[] {
   return PREFERENCES.filter(
     (entry) => entry.roles === "all" || entry.roles.includes(role),

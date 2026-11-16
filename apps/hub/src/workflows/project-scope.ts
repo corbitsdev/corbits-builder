@@ -1,9 +1,6 @@
 import { HUB_CREDENTIAL_HANDLE } from "@intx/types/credential-delivery";
 import type { RuntimeCapabilities } from "@intx/types/runtime-capabilities";
-import {
-  WorkflowProjectScope,
-  type WorkflowRole,
-} from "@corbits-builder/schemas/installed-workflows";
+import { WorkflowProjectScope } from "@corbits-builder/schemas/installed-workflows";
 import { getLogger } from "@intx/log";
 import { requestErrorMetadata } from "../request-error.ts";
 import {
@@ -34,7 +31,7 @@ export function projectScopeFailure(callId: string, error: unknown) {
 
 export async function resolveWorkflowProjectScope(
   capabilities: RuntimeCapabilities,
-  role: WorkflowRole,
+  role: string,
   signal: AbortSignal,
 ) {
   const scope = HubProjectScope.assert(

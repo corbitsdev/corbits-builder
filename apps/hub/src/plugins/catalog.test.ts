@@ -7,27 +7,11 @@ import {
   readPlugin,
   readPluginFolder,
 } from "@corbits-builder/plugin-host/folder";
-import {
-  InstalledWorkflows,
-  roleDeployments,
-} from "@corbits-builder/schemas/installed-workflows";
 
 const folders: string[] = [];
 afterEach(async () => {
   for (const folder of folders.splice(0))
     await rm(folder, { recursive: true, force: true });
-});
-
-const deployment = (name: string) => ({
-  source: {
-    kind: "asset" as const,
-    assetId: "asset",
-    package: { format: "tarball" as const },
-  },
-  entry: "dist/workflow.mjs",
-  pin: `@corbits-builder/${name}-native@1.0.0-sha-new`,
-  sourceOfferingIds: ["offering"],
-  defaultSourceOfferingId: "offering",
 });
 
 test("a plugin added by its folder alone is installed beside the others and its runs resolve to its package", async () => {
@@ -70,18 +54,10 @@ test("a plugin added by its folder alone is installed beside the others and its 
     ],
     new Set(["install_any_package"]),
   );
-  const installed = InstalledWorkflows.assert({
-    schemaVersion: 3,
-    packages: Object.fromEntries(
-      [...catalog.packages].map(([name, { declared }]) => [
-        name,
-        { role: declared.role, deployment: deployment(name) },
-      ]),
-    ),
-  });
-  expect(roleDeployments(installed, "tester")).toEqual([deployment("tester")]);
-  expect(roleDeployments(installed, "coder")).toEqual([
-    deployment("coder"),
-    deployment("coder-any-package"),
-  ]);
+  const playing = (role: string) =>
+    [...catalog.packages]
+      .filter(([, brought]) => brought.role === role)
+      .map(([name]) => name);
+  expect(playing("tester")).toEqual(["tester"]);
+  expect(playing("coder")).toEqual(["coder", "coder-any-package"]);
 });

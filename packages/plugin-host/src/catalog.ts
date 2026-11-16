@@ -11,12 +11,20 @@ import type { Found } from "./folder.ts";
 
 const Manifest = type({ name: "string > 0", builder: Builder });
 
+// A workflow package a plugin brings: the role its runs play and its entry's real path.
+export type PluginPackage = { role: string; entry: string };
+
 export type Catalog = {
-  roles: ReadonlyMap<string, { role: Role; setting: ModelSetting }>;
+  // Each workflow package a plugin brings, by name.
+  packages: ReadonlyMap<string, PluginPackage>;
+  // Every role the plugins declare, and one of them by name.
+  roles: readonly Role[];
+  role(name: string): Role | undefined;
+  settings: ReadonlyMap<string, ModelSetting>;
   filers: ReadonlyMap<string, string>;
   substitutions: ReadonlyMap<string, { package: string; when: string }>;
-  settings: ReadonlyMap<string, ModelSetting>;
-  packages: ReadonlyMap<string, { path: string; declared: WorkflowPackage }>;
+  // The older name a package is also scoped under, by package name.
+  aliases: ReadonlyMap<string, string>;
 };
 
 export async function loadCatalog(
@@ -25,10 +33,8 @@ export async function loadCatalog(
 ): Promise<Catalog> {
   const roles = new Map<string, Role>();
   const settings = new Map<string, ModelSetting>();
-  const packages = new Map<
-    string,
-    { path: string; declared: WorkflowPackage }
-  >();
+  const declarations = new Map<string, WorkflowPackage>();
+  const packages = new Map<string, PluginPackage>();
   const filers = new Map<string, string>();
   const declaredBy = new Map<string, string>();
   function declare<T>(
@@ -74,36 +80,33 @@ export async function loadCatalog(
           `${name}'s package ${pkg} has its entry outside the plugin, at ${entry}`,
         );
       declare(packages, "the workflow package", name, pkg, {
-        path: realEntry,
-        declared,
+        role,
+        entry: realEntry,
       });
+      declarations.set(pkg, declared);
       if (files) declare(filers, "the filer of", name, files, pkg);
     }
   }
-  const running = new Map<string, { role: Role; setting: ModelSetting }>();
-  for (const role of roles.values()) {
-    const setting = settings.get(role.model);
-    if (!setting)
+  for (const role of roles.values())
+    if (!settings.has(role.model))
       throw new Error(
         `The role ${role.name} runs on ${role.model}, a model setting no plugin declares`,
       );
-    running.set(role.name, { role, setting });
-  }
   const substitutions = new Map<string, { package: string; when: string }>();
-  const aliases = new Set<string>();
-  for (const [name, { declared }] of packages) {
+  const aliases = new Map<string, string>();
+  for (const [name, declared] of declarations) {
     const alias = declared.legacyAlias;
     if (alias) {
       if (
         packages.has(alias) ||
-        aliases.has(alias) ||
+        [...aliases.values()].includes(alias) ||
         declared.role !== alias ||
         declared.replaces
       )
         throw new Error(
           `The package ${name} has an ambiguous or different-role alias ${alias}`,
         );
-      aliases.add(alias);
+      aliases.set(name, alias);
     }
     const replacement = declared.replaces;
     if (!replacement) continue;
@@ -111,7 +114,7 @@ export async function loadCatalog(
       throw new Error(
         `Another package already replaces ${replacement.package}`,
       );
-    const target = packages.get(replacement.package)?.declared;
+    const target = declarations.get(replacement.package);
     if (
       !target ||
       target.role !== declared.role ||
@@ -130,5 +133,13 @@ export async function loadCatalog(
       when: replacement.when,
     });
   }
-  return { roles: running, settings, packages, filers, substitutions };
+  return {
+    packages,
+    roles: [...roles.values()],
+    role: (name) => roles.get(name),
+    settings,
+    filers,
+    substitutions,
+    aliases,
+  };
 }

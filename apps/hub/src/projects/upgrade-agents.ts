@@ -8,11 +8,8 @@ import {
   type WorkflowRunReader,
 } from "@intx/hub-sessions";
 import { getLogger } from "@intx/log";
-import {
-  roleDeployments,
-  type InstalledWorkflows,
-  type WorkflowRole,
-} from "@corbits-builder/schemas/installed-workflows";
+import type { InstalledWorkflows } from "@corbits-builder/schemas/installed-workflows";
+import { WORKFLOW_PACKAGES } from "../plugins/catalog.ts";
 import { spawnedWorkflowRole } from "../workflows/spawn-role.ts";
 import { MODEL_CHOICE_REFUSALS } from "../config/models.ts";
 import { SPECIALIST_OUTDATED } from "../config/agent-upgrade.ts";
@@ -44,7 +41,7 @@ const pinOf = (bundle: unknown) => {
 };
 
 /** The runs whose frozen package is not the one installed for their role, or has no readable pin. */
-export function staleRuns<T extends { role: WorkflowRole; bundle: unknown }>(
+export function staleRuns<T extends { role: string; bundle: unknown }>(
   runs: readonly T[],
   installed: InstalledWorkflows,
 ): T[] {
@@ -52,8 +49,9 @@ export function staleRuns<T extends { role: WorkflowRole; bundle: unknown }>(
     const pin = pinOf(run.bundle);
     return (
       pin === undefined ||
-      !roleDeployments(installed, run.role).some(
-        (deployment) => deployment.pin === pin,
+      ![...WORKFLOW_PACKAGES].some(
+        ([name, role]) =>
+          role === run.role && installed.packages[name]?.pin === pin,
       )
     );
   });

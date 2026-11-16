@@ -46,13 +46,15 @@ const packages = { tester: { entry: "./src/tester.ts", role: "tester" } };
 test("a plugin added by its folder declares its role, model setting and package", async () => {
   const plugins = await pluginsFolder({ roles, settings, packages });
   const catalog = await loadCatalog(await readPluginFolder(plugins), new Set());
-  expect(catalog.roles.get("tester")).toEqual({
-    role: tester,
-    setting: { label: "Tester", hint: "Tests the app.", tier: "low" },
+  expect(catalog.role("tester")).toEqual(tester);
+  expect(catalog.settings.get("testing")).toEqual({
+    label: "Tester",
+    hint: "Tests the app.",
+    tier: "low",
   });
   expect(catalog.packages.get("tester")).toEqual({
-    path: await realpath(join(plugins, "tester", "src", "tester.ts")),
-    declared: packages.tester,
+    role: "tester",
+    entry: await realpath(join(plugins, "tester", "src", "tester.ts")),
   });
 });
 

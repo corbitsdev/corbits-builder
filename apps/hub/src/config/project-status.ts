@@ -1,8 +1,7 @@
-import type { WorkflowRole } from "@corbits-builder/schemas/installed-workflows";
-import { roleOf } from "../plugins/catalog.ts";
+import { runRole } from "../plugins/catalog.ts";
 
 // What the person reads about where their project stands and what they do next.
-const called = (role: WorkflowRole) => roleOf(role).called;
+const called = (role: string) => runRole(role).called;
 
 const capital = (text: string) => text.charAt(0).toUpperCase() + text.slice(1);
 const list = (items: readonly string[]) =>
@@ -18,12 +17,12 @@ const APPROVAL: Record<string, string> = {
 
 export const projectStatusWording = {
   archived: "This project is archived.",
-  working: (roles: readonly WorkflowRole[]) =>
+  working: (roles: readonly string[]) =>
     roles.length === 0
       ? "Nobody is working."
       : `${capital(list(roles.map(called)))} ${roles.length === 1 ? "is" : "are"} working.`,
-  starting: (role: WorkflowRole) => `${capital(called(role))} is starting.`,
-  unknown: (role: WorkflowRole) =>
+  starting: (role: string) => `${capital(called(role))} is starting.`,
+  unknown: (role: string) =>
     `Whether ${called(role)} is working is unknown: its history could not be read.`,
   app: {
     not_started: "No app yet.",
@@ -44,12 +43,12 @@ export const projectStatusWording = {
     tool === "request_approval" && kinds.length > 0
       ? `Approve the ${list(kinds.map((kind) => kind.replaceAll("_", " ")))}`
       : (APPROVAL[tool] ?? "Decide on the open approval"),
-  stopped: (role: WorkflowRole, reason: string | undefined) =>
+  stopped: (role: string, reason: string | undefined) =>
     `${capital(called(role))} stopped${reason === undefined ? "." : `: ${reason}`}`,
   next: {
     archived: "Restore the project to work on it",
     resumeCoordinator: "Start the coordinator again",
-    wait: (role: WorkflowRole) =>
+    wait: (role: string) =>
       role === "coordinator"
         ? "Wait for the coordinator's reply"
         : `Wait for ${called(role)} to finish`,

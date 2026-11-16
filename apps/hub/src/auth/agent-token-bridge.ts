@@ -1,7 +1,4 @@
-import {
-  type InstalledWorkflows,
-  type WorkflowRole,
-} from "@corbits-builder/schemas/installed-workflows";
+import type { InstalledWorkflows } from "@corbits-builder/schemas/installed-workflows";
 import { projectCoordinator } from "../db/schema.ts";
 import { verifyAgentToken } from "@corbits/agent-token";
 import { sha256 } from "@intx/crypto";
@@ -32,7 +29,7 @@ import {
   installedFrom,
   scopeWorkflows,
 } from "../workflows/install-for-tenant.ts";
-import { catalog } from "../plugins/catalog.ts";
+import { CATALOG } from "../plugins/catalog.ts";
 import { nativePackageName } from "../workflows/package-name.ts";
 import { readJson } from "../lib/json.ts";
 import { coordinatorUpgrading } from "@corbits-builder/schemas/conversation";
@@ -128,7 +125,7 @@ async function startsWriter(request: Request) {
       : undefined;
   return (
     typeof pin === "string" &&
-    Array.from(catalog.filers.values()).some((name) =>
+    Array.from(CATALOG.filers.values()).some((name) =>
       pin.startsWith(nativePackageName(name) + "@"),
     )
   );
@@ -332,7 +329,7 @@ export function createAgentTokenBridge(
     if (runtimeScope) {
       if (!nativeBearer || c.req.method !== "GET") return denied();
       let binding = await registry.boundRun(identity.runId);
-      let role: WorkflowRole = "coordinator";
+      let role: string = "coordinator";
       if (!binding) {
         const launch = await db.query.workflowRunLaunchSpec.findFirst({
           where: eq(workflowRunLaunchSpec.anchorRunId, identity.runId),

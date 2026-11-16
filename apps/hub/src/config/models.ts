@@ -8,7 +8,6 @@ import type {
   Tier,
   Tiers,
 } from "@corbits-builder/schemas/models";
-import type { WorkflowRole } from "@corbits-builder/schemas/installed-workflows";
 import type { InferenceError } from "@intx/types/runtime";
 import {
   customModelLimits,
@@ -552,22 +551,17 @@ export function frozenModelChoice(
   return profile ? frozen(profile) : null;
 }
 
-export function workflowBindings(
+/**
+ * The binding a model setting runs on, from a choice this server can run: the tier the setting
+ * names, unless the profile assigns that setting another.
+ */
+export function tierBinding(
   directory: ModelDirectory,
   choice: ModelChoice,
-  roles: ReadonlyMap<
-    string,
-    { role: { model: string }; setting: { tier: Tier } }
-  >,
-): (role: WorkflowRole) => RoleBinding {
+  model: Readonly<{ setting: string; tier: Tier }>,
+): RoleBinding {
   const profile = chosenProfile(directory, choice);
   if (!profile)
     throw new Error(`model_choice_unrunnable:${choice.profile ?? ""}`);
-  return (name) => {
-    const role = roles.get(name);
-    if (!role) throw new Error(`No plugin declares the role ${name}`);
-    return profile.tiers[
-      profile.roleTiers?.[role.role.model] ?? role.setting.tier
-    ];
-  };
+  return profile.tiers[profile.roleTiers?.[model.setting] ?? model.tier];
 }

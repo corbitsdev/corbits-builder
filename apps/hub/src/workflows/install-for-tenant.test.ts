@@ -5,7 +5,7 @@ import {
   INSTALLED_WORKFLOWS_KEY,
 } from "@corbits-builder/schemas/installed-workflows";
 import { NativeSpecialistDeployment } from "@corbits-builder/schemas/native-specialist";
-import { catalog } from "../plugins/catalog.ts";
+import { WORKFLOW_PACKAGES } from "../plugins/catalog.ts";
 import { installedFrom, scopeWorkflows } from "./install-for-tenant.ts";
 
 const deployment = (name: string) => ({
@@ -23,14 +23,7 @@ const deployment = (name: string) => ({
 const installed = InstalledWorkflows.assert({
   schemaVersion: 3,
   packages: Object.fromEntries(
-    Array.from(catalog.packages).map(
-      ([
-        name,
-        {
-          declared: { role },
-        },
-      ]) => [name, { role, deployment: deployment(name) }],
-    ),
+    [...WORKFLOW_PACKAGES.keys()].map((name) => [name, deployment(name)]),
   ),
 });
 
@@ -61,10 +54,7 @@ test("a project's coder asks before installing packages unless its person turned
 test("a stored version 2 record is installed again", () => {
   const stored = Object.fromEntries([
     ["schemaVersion", 2],
-    ...Array.from(catalog.packages.keys()).map((name) => [
-      name,
-      deployment(name),
-    ]),
+    ...[...WORKFLOW_PACKAGES.keys()].map((name) => [name, deployment(name)]),
   ]);
   expect(installedFrom({ [INSTALLED_WORKFLOWS_KEY]: stored })).toEqual({
     status: "older",

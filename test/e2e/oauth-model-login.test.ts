@@ -355,7 +355,7 @@ test("ChatGPT and xAI logins are providers a profile binds roles to, and install
         const row = visible.find(
           (entry) =>
             entry.offering.id ===
-            installed.packages[role]!.deployment.defaultSourceOfferingId,
+            installed.packages[role]!.defaultSourceOfferingId,
         )!;
         return {
           plugin: row.provider.plugin,
@@ -382,8 +382,8 @@ test("ChatGPT and xAI logins are providers a profile binds roles to, and install
         handle.db,
         tenantId,
         [
-          installed.packages["coder"]!.deployment.defaultSourceOfferingId,
-          installed.packages["coordinator"]!.deployment.defaultSourceOfferingId,
+          installed.packages["coder"]!.defaultSourceOfferingId,
+          installed.packages["coordinator"]!.defaultSourceOfferingId,
         ],
         cipher,
       );
