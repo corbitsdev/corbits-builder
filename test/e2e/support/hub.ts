@@ -138,7 +138,7 @@ export async function signUpSessionCookie(
 }
 
 export async function startTestHub(
-  recordedModel: RecordedModelServer,
+  recordedModel: Pick<RecordedModelServer, "url">,
 ): Promise<TestHubHandle> {
   const database = await createTestDatabase();
 
