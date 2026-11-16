@@ -16,15 +16,16 @@ function Section(args: WorkingPreferencesViewProps) {
     <WorkingPreferencesView
       {...args}
       preferences={preferences}
-      onChoose={(id, choice) =>
+      onChoose={(id, choice) => {
+        if (preferences === null) return;
         setPreferences(
           preferences.map((preference) =>
             preference.id === id
               ? { ...preference, choice, save: "saved" }
               : preference,
           ),
-        )
-      }
+        );
+      }}
     />
   );
 }
@@ -142,14 +143,9 @@ type Story = StoryObj<typeof meta>;
 
 export const Loaded: Story = {};
 
-/** Until the hub answers, only the preferences it offers in advance are listed. */
-export const Loading: Story = {
-  args: { preferences: [approvals] },
-};
-
 export const Unreadable: Story = {
   args: {
-    preferences: [approvals],
+    preferences: null,
     fault: "The hub could not be reached.",
   },
 };

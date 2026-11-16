@@ -51,8 +51,8 @@ export function useWorkingPreferences({
 
   const saveToHub = async (id: string, pick: PickedChoice) => {
     const current = queryClient.getQueryData(preferencesQuery.queryKey);
-    const base = current?.saved;
-    if (pickedRef.current[id] !== pick || !base || !current) return;
+    if (pickedRef.current[id] !== pick || !current) return;
+    const base = current.saved;
     setSave({ id, state: "saving" });
     try {
       const receipt = await productClient().savePersonalSettings(
@@ -101,20 +101,23 @@ export function useWorkingPreferences({
   };
 
   return {
-    preferences: (registry ?? []).map((preference) => ({
-      id: preference.id,
-      label: preference.label,
-      group: preference.group,
-      hint: preference.hint,
-      options: preference.options,
-      choice:
-        picked[preference.id]?.choice ??
-        saved?.value?.[preference.id] ??
-        preference.default,
-      ends: preference.ends ?? null,
-      save: save?.id === preference.id ? save.state : null,
-      disabled: !saved,
-    })),
+    preferences:
+      registry === undefined
+        ? null
+        : registry.map((preference) => ({
+            id: preference.id,
+            label: preference.label,
+            group: preference.group,
+            hint: preference.hint,
+            options: preference.options,
+            choice:
+              picked[preference.id]?.choice ??
+              saved?.value?.[preference.id] ??
+              preference.default,
+            ends: preference.ends ?? null,
+            save: save?.id === preference.id ? save.state : null,
+            disabled: !saved,
+          })),
     onChoose: choose,
     fault: preferences.error ? message(preferences.error) : null,
     focusPreference: focusPreference ?? null,
