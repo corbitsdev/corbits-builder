@@ -8,6 +8,7 @@
   "exports": {
     ".": "./src/index.ts",
     "./http-json": "./src/http-json.ts",
+    "./project-scope": "./src/project-scope.ts",
     "./tools": "./src/tools.ts"
   },
   "dependencies": {

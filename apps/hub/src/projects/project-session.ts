@@ -20,7 +20,7 @@ import {
   designConceptCeiling,
   preferenceBlock,
 } from "../config/preferences.ts";
-import { resolveWorkflowProjectScope } from "../workflows/project-scope.ts";
+import { resolveWorkflowProjectScope } from "@corbits-builder/plugin/project-scope";
 import { CATALOG, WORKFLOW_PACKAGES } from "../plugins/catalog.ts";
 import {
   workflowHttpJson,

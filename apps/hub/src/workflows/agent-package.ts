@@ -8,10 +8,10 @@ import { AgentPackage } from "@corbits-builder/plugin-host/catalog";
 import { defineAgent } from "@intx/agent/authoring";
 import type { GrantRequirement } from "@intx/types";
 import { defineWorkflow, step } from "@intx/workflow/definition";
-import { createPackageTools } from "../artifacts/package-tools.ts";
 import {
   createArtifactTools,
   createWriterArtifactTools,
+  failure,
 } from "../artifacts/tools.ts";
 import { CHECK_DESIGN_TOOL } from "../builds/design-submission.ts";
 import {
@@ -74,7 +74,6 @@ if (tools.includes("web"))
       allowWithoutAsk: ["exa.web_search_exa", "exa.web_fetch_exa"],
     }),
   );
-if (tools.includes("deck")) factories.push(createPackageTools(role.name));
 if (workspace?.kind === "app")
   factories.push(
     createSidecarCodingTools({
@@ -109,7 +108,7 @@ factories.push(createBlockedTools(role.name));
 // build-packages.ts defines the path, so the bundler inlines the plugin's tools module here.
 if (process.env.BUILDER_TOOLS !== undefined) {
   const brought: AgentTools = (await import(process.env.BUILDER_TOOLS)).default;
-  factories.push(...brought({ role: role.name }));
+  factories.push(...brought({ role: role.name, failure }));
 }
 // Interchange refuses a repeated tool name only when the agent starts; naming both sources here
 // fails the build instead.
@@ -193,10 +192,10 @@ export default defineWorkflow({
   grantRequirements,
   mailAccept: { invoker: true },
   triggers: [{ type: "mail", to: name }],
-  // A workspace or a deck needs a POSIX sidecar to run in.
+  // A workspace, or a tool that works in a folder, needs a POSIX sidecar to run in.
   sidecarPlacement: {
     capabilities:
-      works || tools.includes("deck")
+      works || factories.some(({ requires }) => requires.includes("toolCwd"))
         ? [{ capability: "runtime:posix", effect: "require" }]
         : [],
   },

@@ -6,8 +6,9 @@ import { defineTool, type BaseEnv } from "@intx/agent/authoring";
 import { HUB_CREDENTIAL_HANDLE } from "@intx/types/credential-delivery";
 import type { RuntimeCapabilities } from "@intx/types/runtime-capabilities";
 import { Deck, DeckError, validateDeck } from "@corbits/slidedeck";
-import { resolveWorkflowProjectScope } from "../workflows/project-scope.ts";
+import { resolveWorkflowProjectScope } from "@corbits-builder/plugin/project-scope";
 import { workflowHttpJson } from "@corbits-builder/plugin/http-json";
+import { defineTools, type ToolFailure } from "@corbits-builder/plugin/tools";
 import {
   DECK_JSON,
   DECK_PDF,
@@ -15,7 +16,6 @@ import {
   checkDeckInWorkspace,
   writeDeckToWorkspace,
 } from "./deck-tools.ts";
-import { failure } from "./tools.ts";
 import { HubArtifactReceipt } from "@corbits-builder/schemas/artifact";
 
 export { DECK_JSON, DECK_PDF, DECK_PPTX };
@@ -469,7 +469,7 @@ function deriveDeckTitle(
 }
 
 // The deck and approval package tools of a run of the named role.
-export function createPackageTools(role: string) {
+function createPackageTools(role: string, failure: ToolFailure) {
   const definitions = [
     {
       name: "write_deck",
@@ -655,3 +655,7 @@ export function createPackageTools(role: string) {
     }),
   });
 }
+
+export default defineTools(({ role, failure }) => [
+  createPackageTools(role, failure),
+]);

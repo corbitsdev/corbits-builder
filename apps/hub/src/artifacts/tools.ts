@@ -27,10 +27,8 @@ import { COORDINATOR } from "../workflows/coordinator-role.ts";
 import { savesValues } from "../plugins/catalog.ts";
 import { stripApprovalPackageBinaries } from "./approval-package.ts";
 import { unpackDesign } from "./design-tools.ts";
-import {
-  projectScopeFailure,
-  resolveWorkflowProjectScope,
-} from "../workflows/project-scope.ts";
+import { resolveWorkflowProjectScope } from "@corbits-builder/plugin/project-scope";
+import { projectScopeFailure } from "../workflows/project-scope.ts";
 import {
   accessRefusal,
   workflowHttpJson,

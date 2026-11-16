@@ -10,10 +10,8 @@ import { INPUTS_DIRECTORY } from "@corbits-builder/schemas/app-files";
 import { HubArtifactList } from "../artifacts/tools.ts";
 import { sourceDocument } from "./source-document.ts";
 import { workflowHttpJson } from "@corbits-builder/plugin/http-json";
-import {
-  projectScopeFailure,
-  resolveWorkflowProjectScope,
-} from "./project-scope.ts";
+import { resolveWorkflowProjectScope } from "@corbits-builder/plugin/project-scope";
+import { projectScopeFailure } from "./project-scope.ts";
 import { savedResultPath } from "./saved-result-tools.ts";
 import {
   ArtifactContent,

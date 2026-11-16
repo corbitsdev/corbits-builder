@@ -276,11 +276,11 @@ export type CheckActionBuilder = typeof CheckActionBuilder.infer;
 // The hub's tools a role's agent gets, by name. read_artifact lists and reads the project's
 // documents, with report_values when an action that starts the role writes project values;
 // write_artifact adds filing a document of any kind; web is Exa's web search and page fetch;
-// input_files reads and searches the documents its assignment names; deck writes, checks and files
-// a slide deck and its approval package. A role that writes code or designs also gets the workspace
-// it works in. Every agent has read_file, for reading back a trimmed tool result.
+// input_files reads and searches the documents its assignment names. A role that writes code or
+// designs also gets the workspace it works in. Every agent has read_file, for reading back a
+// trimmed tool result.
 export const AgentTool = type(
-  "'read_artifact' | 'write_artifact' | 'web' | 'input_files' | 'deck'",
+  "'read_artifact' | 'write_artifact' | 'web' | 'input_files'",
 );
 export type AgentTool = typeof AgentTool.infer;
 

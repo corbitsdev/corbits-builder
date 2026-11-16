@@ -72,7 +72,6 @@
         "@corbits/mcp": "0.4.1",
         "@corbits/oauth-core": "0.3.4",
         "@corbits/openai-responses": "0.2.4",
-        "@corbits/slidedeck": "workspace:*",
         "@corbits/xai-provider": "0.1.6",
         "@corbits/zip": "workspace:*",
         "@intx/agent": "workspace:*",
@@ -302,7 +301,13 @@
       "dependencies": {
         "@corbits-builder/plugin": "workspace:*",
         "@corbits-builder/schemas": "workspace:*",
+        "@corbits/slidedeck": "workspace:*",
+        "@intx/agent": "workspace:*",
+        "@intx/types": "workspace:*",
         "arktype": "catalog:",
+      },
+      "devDependencies": {
+        "@corbits/zip": "workspace:*",
       },
     },
     "plugins/project": {

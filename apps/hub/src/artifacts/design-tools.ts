@@ -7,7 +7,7 @@ import {
   HubArtifactReceipt,
 } from "@corbits-builder/schemas/artifact";
 import type { PreparedDesignSubmission } from "./design-draft.ts";
-import { resolveWorkflowProjectScope } from "../workflows/project-scope.ts";
+import { resolveWorkflowProjectScope } from "@corbits-builder/plugin/project-scope";
 import { workflowHttpJson } from "@corbits-builder/plugin/http-json";
 
 // Writes a bundle's files under root, skipping any path that would land outside it.
