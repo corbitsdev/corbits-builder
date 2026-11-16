@@ -23,7 +23,7 @@ import {
   PictureChoice,
   ThemePicture,
 } from "./preference-choice.tsx";
-import { Button } from "../../components.jsx";
+import { Banner, BannerAction, Button, QuietState } from "../../components.jsx";
 import { openSourceNotices } from "../../open-source.ts";
 import { Credit } from "../../flourish.tsx";
 import styles from "./settings.module.css";
@@ -78,6 +78,11 @@ export type SettingsViewProps = SettingsSlots & {
   /** The open tab. */
   tab: SettingsTab;
   onTabChange: (tab: SettingsTab) => void;
+  /** Keep lower sections out of the first paint until the hub-backed groups are known. */
+  preferencesLoad:
+    | { state: "loading" }
+    | { state: "failed"; fault: string; onRetry: () => void }
+    | { state: "ready" };
   /** The theme and the document tips choice kept in this browser. */
   appearance: AppearanceProps;
   /** Who is signed in; null when nobody is, and the Account section is left out. */
@@ -91,6 +96,7 @@ export function SettingsView({
   profiles,
   collaborators,
   workingPreferences,
+  preferencesLoad,
   appearance,
   account,
 }: SettingsViewProps) {
@@ -110,9 +116,29 @@ export function SettingsView({
     return (
       <>
         <p className={styles.lead}>{wording.settings.preferences.lead}</p>
-        {workingPreferences}
-        <Appearance {...appearance} />
-        {account ? <Account {...account} /> : null}
+        {preferencesLoad.state === "loading" ? (
+          <div role="status">
+            <QuietState tone="loading">
+              {wording.settings.preferences.loading}
+            </QuietState>
+          </div>
+        ) : (
+          <>
+            {preferencesLoad.state === "failed" ? (
+              <Banner tone="error" title={preferencesLoad.fault}>
+                <BannerAction>
+                  <Button variant="outline" onClick={preferencesLoad.onRetry}>
+                    {wording.action.retry}
+                  </Button>
+                </BannerAction>
+              </Banner>
+            ) : (
+              workingPreferences
+            )}
+            <Appearance {...appearance} />
+            {account ? <Account {...account} /> : null}
+          </>
+        )}
       </>
     );
   };

@@ -494,7 +494,7 @@ test("a registry read failure leaves browser settings usable", async () => {
       local.getByRole("radio", { name: "Hidden", exact: true }),
     ).toBeChecked();
     await page.unroute("**/settings/preferences");
-    await page.reload();
+    await page.getByRole("button", { name: "Retry", exact: true }).click();
     await browserExpect(
       local.getByRole("radio", { name: "Hidden", exact: true }),
     ).toBeChecked();
@@ -506,30 +506,74 @@ test("a registry read failure leaves browser settings usable", async () => {
   }
 }, 30_000);
 
-test("approvals cannot be chosen before personal settings load", async () => {
+test.each(["preferences", "me"])(
+  "an empty cache holds the preferences body until %s loads",
+  async (endpoint) => {
+    const context = await browser.newContext();
+    const page = await context.newPage();
+    const release = Promise.withResolvers<void>();
+    const requested = Promise.withResolvers<void>();
+    try {
+      await page.route(`**/settings/${endpoint}`, async (route) => {
+        requested.resolve();
+        await release.promise;
+        await route.continue();
+      });
+      await page.addInitScript(() =>
+        sessionStorage.setItem("sb.model-setup.later", "1"),
+      );
+      await page.goto(`${server.url}?view=settings&tab=preferences`);
+      await requested.promise;
+      await browserExpect(
+        page.getByText("Reading your preferences…", { exact: true }),
+      ).toBeVisible();
+      await browserExpect(
+        page.getByRole("radiogroup", { name: "Theme", exact: true }),
+      ).toHaveCount(0);
+      await browserExpect(
+        page.getByRole("button", { name: "Sign out", exact: true }),
+      ).toHaveCount(0);
+      await browserExpect(
+        page.locator("#preference-row-experimental_approvals"),
+      ).toHaveCount(0);
+      release.resolve();
+      await choose(page, "experimental_approvals", "no");
+    } finally {
+      release.resolve();
+      await context.close();
+    }
+  },
+  30_000,
+);
+
+test("returning to Preferences keeps cached content during a delayed refresh", async () => {
   const context = await browser.newContext();
   const page = await context.newPage();
   const release = Promise.withResolvers<void>();
   const requested = Promise.withResolvers<void>();
   try {
-    await page.route("**/settings/me", async (route) => {
+    await page.clock.install();
+    await openSettings(page);
+    const row = page.locator("#preference-row-replies");
+    const before = await row.boundingBox();
+    await page.getByRole("tab", { name: "Profiles", exact: true }).click();
+    await page.clock.fastForward(6_000);
+    await page.route("**/settings/preferences", async (route) => {
       requested.resolve();
       await release.promise;
       await route.continue();
     });
-    await page.addInitScript(() =>
-      sessionStorage.setItem("sb.model-setup.later", "1"),
-    );
-    await page.goto(`${server.url}?view=settings&tab=preferences`);
+    await page.getByRole("tab", { name: "Preferences", exact: true }).click();
     await requested.promise;
+    await browserExpect(row).toBeVisible();
+    await browserExpect(
+      page.getByText("Reading your preferences…", { exact: true }),
+    ).toHaveCount(0);
+    expect(await row.boundingBox()).toEqual(before);
     await browserExpect(
       page.getByRole("radiogroup", { name: "Theme", exact: true }),
     ).toBeVisible();
-    await browserExpect(
-      page.locator("#preference-row-experimental_approvals"),
-    ).toHaveCount(0);
     release.resolve();
-    await choose(page, "experimental_approvals", "no");
   } finally {
     release.resolve();
     await context.close();

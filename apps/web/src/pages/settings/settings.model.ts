@@ -5,6 +5,8 @@
 import { wording } from "../../config.ts";
 import { useTheme } from "@corbits/react-ui";
 import { useEffect, useState } from "react";
+import { useQuery } from "@tanstack/react-query";
+import { preferencesQuery } from "../../queries/preferences.ts";
 import {
   useDocumentTips,
   writeDocumentTips,
@@ -119,6 +121,10 @@ export function useSettings({
     effectiveFocus,
     focusSeq,
   );
+  const preferences = useQuery({
+    ...preferencesQuery,
+    enabled: activeTab === "preferences",
+  });
   const { mode, setMode } = useTheme();
   const tips = useDocumentTips();
   const [signingOut, setSigningOut] = useState(false);
@@ -134,6 +140,15 @@ export function useSettings({
     view: {
       tab: activeTab,
       onTabChange: setActiveTab,
+      preferencesLoad: preferences.data
+        ? { state: "ready" }
+        : preferences.error
+          ? {
+              state: "failed",
+              fault: preferences.error.message,
+              onRetry: () => void preferences.refetch(),
+            }
+          : { state: "loading" },
       appearance: {
         theme: mode,
         onThemeChange: setMode,
