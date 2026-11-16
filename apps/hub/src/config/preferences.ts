@@ -396,10 +396,6 @@ export function designConceptCeiling(): number {
 }
 
 /** Whether the project's coder adds new packages without a person's approval. */
-export function installsAnyPackage(choices: Preferences | null): boolean {
-  return resolvePreferences(choices)["install_any_package"] === "yes";
-}
-
 /** Whether the project's build sandboxes reach any public host rather than only the npm registry. */
 export function opensNetwork(choices: Preferences | null): boolean {
   return resolvePreferences(choices)["internet_while_building"] === "yes";

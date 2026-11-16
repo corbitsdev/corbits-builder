@@ -21,12 +21,19 @@
       {
         "name": "presenter",
         "model": "presenter",
-        "limits": "presenter"
+        "limits": "presenter",
+        "called": "the presenter",
+        "ended": {
+          "failed": "The presenter stopped before finishing.",
+          "cancelled": "The presentation was stopped.",
+          "task": "The presenter building the approval package"
+        }
       }
     ],
     "packages": {
       "presenter": {
-        "entry": "./src/packages/presenter.ts"
+        "entry": "./src/packages/presenter.ts",
+        "role": "presenter"
       }
     }
   }

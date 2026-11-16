@@ -102,7 +102,8 @@ export function failure(callId: string, error: unknown) {
   return projectScopeFailure(callId, error);
 }
 
-// The tools a role gets, and for a role that writes, the kind it files and the fields it checks.
+// The tools a run gets, and for a run that writes, the kind it files and the fields it checks. A run
+// that builds in a workspace reads the design unpacked into it.
 interface ArtifactToolSet {
   definitions: readonly (typeof readDefinition)[];
   save?: {
@@ -111,26 +112,24 @@ interface ArtifactToolSet {
       | typeof BriefWrite
       | (typeof WriterDocumentFields)[WriterDocumentKind];
   };
+  unpacksDesign: boolean;
 }
 
 // A writer's or reviewer's task carries every document it needs in full; a read tool sends
 // writers looking for documents that do not exist.
-const TOOLS_BY_ROLE: Record<
-  Exclude<WorkflowRole, "writer">,
-  ArtifactToolSet
-> = {
-  coordinator: {
+export function createArtifactTools(
+  role: WorkflowRole,
+  { unpacksDesign }: { unpacksDesign: boolean },
+) {
+  return artifactTools(role, { definitions: [readDefinition], unpacksDesign });
+}
+
+export function createCoordinatorArtifactTools() {
+  return artifactTools("coordinator", {
     definitions: [readDefinition, briefWriteDefinition],
     save: { kind: "problem_brief", fields: BriefWrite },
-  },
-  reviewer: { definitions: [readDefinition] },
-  coder: { definitions: [readDefinition] },
-  designer: { definitions: [readDefinition] },
-  presenter: { definitions: [readDefinition] },
-};
-
-export function createArtifactTools(role: Exclude<WorkflowRole, "writer">) {
-  return artifactTools(role, TOOLS_BY_ROLE[role]);
+    unpacksDesign: false,
+  });
 }
 
 // A writer is deployed for one kind and saves only that kind.
@@ -138,18 +137,18 @@ export function createWriterArtifactTools(kind: WriterDocumentKind) {
   return artifactTools("writer", {
     definitions: [writerWriteDefinition(kind)],
     save: { kind, fields: WriterDocumentFields[kind] },
+    unpacksDesign: false,
   });
 }
 
 function artifactTools(
   role: WorkflowRole,
-  { definitions, save }: ArtifactToolSet,
+  { definitions, save, unpacksDesign }: ArtifactToolSet,
 ): AnnotatedToolFactory<ArtifactToolEnv> {
   return defineTool<ArtifactToolEnv>({
     id: "@corbits-builder/artifacts/tools",
     credentials: [{ handle: HUB_CREDENTIAL_HANDLE }],
-    // The coder's read of the design unpacks it into its workspace.
-    requires: role === "coder" ? ["capabilities", "toolCwd"] : ["capabilities"],
+    requires: unpacksDesign ? ["capabilities", "toolCwd"] : ["capabilities"],
     definitions: definitions.map(({ name }) => ({ name })),
     factory: (env) => {
       // Filing the same document again makes a new identical version each time until the doom
@@ -188,12 +187,12 @@ function artifactTools(
                 signal,
               });
             if (call.name === "write_artifact" && save) {
-              // The coordinator's writers own every kind but the brief, so the documents the person
-              // decides on come from them.
+              // The brief's writer leaves every other kind to the writers, so the documents the
+              // person decides on come from them.
               const rawKind = (call.arguments as { kind?: unknown } | undefined)
                 ?.kind;
               if (
-                role === "coordinator" &&
+                save.kind === "problem_brief" &&
                 typeof rawKind === "string" &&
                 rawKind !== "problem_brief"
               )
@@ -257,7 +256,7 @@ function artifactTools(
               "toolCwd" in env && typeof env.toolCwd === "string"
                 ? env.toolCwd
                 : undefined;
-            if (role === "coder" && document.kind === "design" && workspace) {
+            if (unpacksDesign && document.kind === "design" && workspace) {
               const files = await unpackDesign(document.content, workspace);
               // DESIGN.md runs past the host's tool-output cap, and a cut copy sends the coder
               // re-reading until the doom guard fails the run; read_file pages through it.

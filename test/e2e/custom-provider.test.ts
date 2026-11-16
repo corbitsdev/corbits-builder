@@ -288,7 +288,8 @@ test("custom providers install on their API, keep each key on its origin, and re
       const pinned = (role: "coder" | "reviewer") => {
         const offering = visible.find(
           (entry) =>
-            entry.offering.id === installed[role].defaultSourceOfferingId,
+            entry.offering.id ===
+            installed.packages[role]!.deployment.defaultSourceOfferingId,
         )!;
         return {
           model: offering.model.canonicalName,

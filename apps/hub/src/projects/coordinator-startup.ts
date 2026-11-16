@@ -9,7 +9,10 @@ import {
   WorkflowProvisioningError,
   type AssetService,
 } from "@intx/hub-sessions";
-import type { InstalledWorkflows } from "@corbits-builder/schemas/installed-workflows";
+import {
+  roleDeployments,
+  type InstalledWorkflows,
+} from "@corbits-builder/schemas/installed-workflows";
 import type { NativeSpecialistDeployment } from "@corbits-builder/schemas/native-specialist";
 import { createCoordinatorRegistry } from "../auth/coordinator-registry.ts";
 import { COORDINATOR_CAPACITY_FULL } from "../config/coordinator-start.ts";
@@ -165,10 +168,12 @@ async function attach(
     let created: { runId: string };
     try {
       const installed = await ports.installed(actor, projectId);
+      const [deployment] = roleDeployments(installed, "coordinator");
+      if (!deployment) throw startFailed();
       created = await ports.deploy({
         tenantId: actor.tenantId,
         principalId: actor.principalId,
-        deployment: installed.coordinator,
+        deployment,
       });
     } catch (error) {
       if (error instanceof ProjectError) throw error;

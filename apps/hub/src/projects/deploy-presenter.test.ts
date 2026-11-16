@@ -517,9 +517,9 @@ test("presenter workflow entry binds Medium tier inference and approval_package 
     { profile: "anthropic_default" },
     ROLES,
   );
-  expect(bindings.presenter).toEqual(bindings.writer);
+  expect(bindings("presenter")).toEqual(bindings("writer"));
   process.env.BUILDER_ROLE_INFERENCE = JSON.stringify(
-    resolveRoleInference(MODEL_PROVIDERS, "presenter", bindings.presenter),
+    resolveRoleInference(MODEL_PROVIDERS, "presenter", bindings("presenter")),
   );
   const entry = await import("@corbits-builder/presenter/packages/presenter");
   expect(entry.director).toBeDefined();

@@ -10,12 +10,12 @@ import {
   trimHistory,
 } from "@corbits-builder/hub/workflows/compaction";
 import { createInputFileTools } from "@corbits-builder/hub/workflows/input-file-tools";
-import { WRITER_PACKAGES } from "@corbits-builder/schemas/installed-workflows";
+import { writerPackageFor } from "./task.ts";
 import { nativePackageName } from "@corbits-builder/hub/workflows/package-name";
 
 /** The writer's workflow package for one document kind, whose write_artifact saves only that kind. */
 export function writerPackage(kind: WriterDocumentKind) {
-  const name = WRITER_PACKAGES[kind];
+  const name = writerPackageFor(kind);
   const compacting = compactingDirector(nativePackageName(name));
   const { source, contextWindow, timeouts, parameters } =
     roleInference("writer");

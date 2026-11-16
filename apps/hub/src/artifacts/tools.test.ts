@@ -3,7 +3,11 @@ import { type } from "arktype";
 import type { RuntimeCapabilities } from "@intx/types/runtime-capabilities";
 import { WriterDocumentKind } from "@corbits-builder/schemas/artifact";
 import type { WorkflowRole } from "@corbits-builder/schemas/installed-workflows";
-import { createArtifactTools, createWriterArtifactTools } from "./tools.ts";
+import {
+  createArtifactTools,
+  createCoordinatorArtifactTools,
+  createWriterArtifactTools,
+} from "./tools.ts";
 
 const deployment = {
   source: {
@@ -122,10 +126,7 @@ function harness(
 }
 
 test("coordinator write_artifact exposes only problem_brief without approaches", async () => {
-  const coordinator = harness(
-    "coordinator",
-    createArtifactTools("coordinator"),
-  );
+  const coordinator = harness("coordinator", createCoordinatorArtifactTools());
   const definition = coordinator.definitions.find(
     (item) => item.name === "write_artifact",
   );
@@ -169,9 +170,8 @@ test("coordinator write_artifact exposes only problem_brief without approaches",
 
 test("every role's artifact tool definitions declare top-level type: object", () => {
   const tools = [
-    ...(["coordinator", "reviewer", "coder", "designer"] as const).map((role) =>
-      harness(role, createArtifactTools(role)),
-    ),
+    harness("coordinator", createCoordinatorArtifactTools()),
+    harness("coder", createArtifactTools("coder", { unpacksDesign: true })),
     ...WRITER_KINDS.map((kind) =>
       harness("writer", createWriterArtifactTools(kind)),
     ),

@@ -4,12 +4,11 @@ import {
   readPlugin,
   readPluginFolder,
 } from "@corbits-builder/plugin-host/folder";
-import {
-  WORKFLOW_PACKAGES,
-  WorkflowRole,
-} from "@corbits-builder/schemas/installed-workflows";
-import { ModelRole } from "@corbits-builder/schemas/models";
+import type { WorkflowRole } from "@corbits-builder/schemas/installed-workflows";
 import { sharedRoles, type AgentRole } from "../inference/model-limits.ts";
+import { PREFERENCES } from "../config/preferences.ts";
+import { PROFILES } from "../config/models.ts";
+import type { RoleTiers } from "@corbits-builder/schemas/models";
 
 // From this file rather than the working directory, so every way of starting the hub finds them.
 const HUB_FOLDER = resolve(import.meta.dir, "../..");
@@ -22,20 +21,6 @@ const CATALOG = await loadCatalog([
   ...(await readPluginFolder(PLUGINS_FOLDER)),
 ]);
 
-// Stored records name every role and model setting their schemas know, so each must be declared.
-function declaresAll(
-  what: string,
-  declared: readonly string[],
-  known: { select(kind: "unit"): readonly { unit: unknown }[] },
-) {
-  const missing = known
-    .select("unit")
-    .map(({ unit }) => String(unit))
-    .filter((name) => !declared.includes(name));
-  if (missing.length > 0)
-    throw new Error(`No plugin declares ${what} ${missing.join(", ")}`);
-}
-
 const isBudget = (name: string): name is AgentRole =>
   Object.hasOwn(sharedRoles, name);
 
@@ -45,40 +30,51 @@ export const ROLES = [...CATALOG.roles.values()].map(({ role, setting }) => {
       `The role ${role.name} has limits ${role.limits}, no budget`,
     );
   return {
-    name: WorkflowRole.assert(role.name),
-    setting: ModelRole.assert(role.model),
+    name: role.name,
+    setting: role.model,
     tier: setting.tier,
     limits: role.limits,
+    called: role.called,
+    ended: role.ended,
   };
 });
-declaresAll(
-  "the role",
-  ROLES.map(({ name }) => name),
-  WorkflowRole,
-);
+
+/** The declared role of the name, read from a stored or incoming record. */
+export function roleOf(name: WorkflowRole) {
+  const role = ROLES.find((each) => each.name === name);
+  if (!role) throw new Error(`No plugin declares the role ${name}`);
+  return role;
+}
 
 /** Every model setting, in the order Settings lists them. */
 export const SETTINGS = [...CATALOG.settings].map(
-  ([id, { label, hint, tier }]) => ({
-    id: ModelRole.assert(id),
-    label,
-    hint,
-    tier,
-  }),
-);
-declaresAll(
-  "the model setting",
-  SETTINGS.map(({ id }) => id),
-  ModelRole,
+  ([id, { label, hint, tier }]) => ({ id, label, hint, tier }),
 );
 
-for (const name of CATALOG.packages.keys())
-  if (!Object.hasOwn(WORKFLOW_PACKAGES, name))
-    throw new Error(`${name} is not a workflow package the hub installs`);
+/** The model setting a stored or incoming profile names, when no plugin declares it. */
+export const undeclaredSetting = (roleTiers: RoleTiers | undefined) =>
+  roleTiers && Object.keys(roleTiers).find((id) => !CATALOG.settings.has(id));
 
-export function packageEntry(name: string): string {
-  const entry = CATALOG.packages.get(name);
-  if (entry === undefined)
-    throw new Error(`No plugin declares the workflow package ${name}`);
-  return entry;
+for (const { id, roleTiers } of PROFILES) {
+  const undeclared = undeclaredSetting(roleTiers);
+  if (undeclared)
+    throw new Error(`The profile ${id} names ${undeclared}, no model setting`);
 }
+
+/** Every workflow package the hub installs, in the order the plugins declare them. */
+export const PACKAGES = [...CATALOG.packages].map(
+  ([name, { path, declared }]) => {
+    const when = declared.replaces?.when;
+    if (when !== undefined && !PREFERENCES.some(({ id }) => id === when))
+      throw new Error(
+        `The package ${name} replaces while ${when}, no preference`,
+      );
+    return {
+      name,
+      entry: path,
+      role: declared.role,
+      files: declared.files,
+      replaces: declared.replaces,
+    };
+  },
+);

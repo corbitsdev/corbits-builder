@@ -10,7 +10,7 @@ import type { WorkflowRole } from "@corbits-builder/schemas/installed-workflows"
 import { wording } from "../../config.ts";
 
 const copy = wording.composer;
-const roleLabel: Record<WorkflowRole, string> = copy.role;
+const roleLabel: Partial<Record<WorkflowRole, string>> = copy.role;
 
 function passAlongRole(
   working: readonly ProjectWorker[],
@@ -35,7 +35,8 @@ export function composerPlaceholder(input: {
   const status = input.status;
   if (status === undefined) return copy.reply;
   const role = passAlongRole(status.working);
-  if (role !== undefined) return copy.passAlong(roleLabel[role]);
+  const label = role === undefined ? undefined : roleLabel[role];
+  if (label !== undefined) return copy.passAlong(label);
   if (status.app.state === "running") return copy.change;
   if (status.app.state === "failed" || status.failedSpecialist !== undefined)
     return copy.fix;

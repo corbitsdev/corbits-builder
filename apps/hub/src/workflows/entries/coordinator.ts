@@ -1,6 +1,6 @@
 import { createCoordinatorAgent } from "@corbits-builder/coordinator/agent";
 import { createCoordinatorWorkflow } from "@corbits-builder/coordinator";
-import { createArtifactTools } from "../../artifacts/tools.ts";
+import { createCoordinatorArtifactTools } from "../../artifacts/tools.ts";
 import { createDeployTools } from "../../projects/deploy-tools.ts";
 import { createSkillTools } from "../../skills/tools.ts";
 import { roleInference } from "../role-inference.ts";
@@ -26,7 +26,7 @@ const agent = createCoordinatorAgent({
   capabilities: [],
   inference: { ...source, parameters },
   tools: [
-    createArtifactTools("coordinator"),
+    createCoordinatorArtifactTools(),
     createDeployTools(),
     createSkillTools(["problem-brief"]),
     savedResultTools,

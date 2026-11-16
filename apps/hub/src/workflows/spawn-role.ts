@@ -1,19 +1,11 @@
 import { sql, type SQLWrapper } from "drizzle-orm";
-import type {
-  SpawnedRole,
-  WorkflowRole,
-} from "@corbits-builder/schemas/installed-workflows";
+import type { WorkflowRole } from "@corbits-builder/schemas/installed-workflows";
+import { ROLES } from "../plugins/catalog.ts";
 
-// A workflow's role is its one step carrying a role's version tag; untagged steps such as the
-// blocked notice do not count. A step's role is its first tag here, in this order.
-const ROLE_TAGS: readonly (readonly [tag: string, role: WorkflowRole])[] = [
-  ["writer.version", "writer"],
-  ["reviewer.version", "reviewer"],
-  ["coder.version", "coder"],
-  ["designer.version", "designer"],
-  ["presenter.version", "presenter"],
-  ["coordinator.version", "coordinator"],
-];
+// A workflow's role is its one step carrying a role's version tag, <role>.version; untagged steps
+// such as the blocked notice do not count. A step's role is its first tag in the order the plugins
+// declare their roles.
+const ROLE_TAGS = ROLES.map(({ name }) => [`${name}.version`, name] as const);
 
 function stepRole(step: unknown): WorkflowRole | undefined {
   if (typeof step !== "object" || step === null) return undefined;
@@ -51,13 +43,13 @@ export function workflowRoleSql(bundle: SQLWrapper) {
 
 export function spawnedWorkflowStep(
   bundle: unknown,
-): { stepId: string; role: SpawnedRole } | undefined {
+): { stepId: string; role: WorkflowRole } | undefined {
   const step = workflowStep(bundle);
   return step && step.role !== "coordinator"
     ? { stepId: step.stepId, role: step.role }
     : undefined;
 }
 
-export function spawnedWorkflowRole(bundle: unknown): SpawnedRole | undefined {
+export function spawnedWorkflowRole(bundle: unknown): WorkflowRole | undefined {
   return spawnedWorkflowStep(bundle)?.role;
 }

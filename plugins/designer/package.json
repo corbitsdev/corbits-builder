@@ -21,12 +21,19 @@
       {
         "name": "designer",
         "model": "designer",
-        "limits": "design"
+        "limits": "design",
+        "called": "the designer",
+        "ended": {
+          "failed": "The designer stopped before finishing.",
+          "cancelled": "The design was stopped.",
+          "task": "The designer working on the app's design"
+        }
       }
     ],
     "packages": {
       "designer": {
-        "entry": "./src/packages/designer.ts"
+        "entry": "./src/packages/designer.ts",
+        "role": "designer"
       }
     }
   }

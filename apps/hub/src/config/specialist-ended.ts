@@ -1,4 +1,6 @@
-import type { SpawnedRole } from "@corbits-builder/schemas/installed-workflows";
+import type { WorkflowRole } from "@corbits-builder/schemas/installed-workflows";
+import { roleOf, ROLES } from "../plugins/catalog.ts";
+import { SIGN_IN_REJECTED } from "../workflows/director.ts";
 
 // The hub's mail to a coordinator whose specialist stopped before it delivered its result. It
 // reaches the coordinator as the person's message. The fixed lead and the plain first paragraph are
@@ -10,63 +12,33 @@ const COORDINATOR_ONLY = "\n\n";
 
 type Outcome = "failed" | "cancelled";
 
-const PERSON_LINES: Record<SpawnedRole, Record<Outcome, string>> = {
-  writer: {
-    failed: "The writer stopped before finishing.",
-    cancelled: "The writer was stopped.",
-  },
-  reviewer: {
-    failed: "The reviewer stopped before finishing.",
-    cancelled: "The review was stopped.",
-  },
-  coder: {
-    failed: "The app builder stopped before finishing.",
-    cancelled: "The build was stopped.",
-  },
-  designer: {
-    failed: "The designer stopped before finishing.",
-    cancelled: "The design was stopped.",
-  },
-  presenter: {
-    failed: "The presenter stopped before finishing.",
-    cancelled: "The presentation was stopped.",
-  },
-};
-
-// What the director throws when the provider refuses a specialist's sign-in, read back from the run.
-export const SIGN_IN_REJECTED = "model_credentials_rejected:";
-
 const SIGN_IN_REJECTED_LINE =
   "The work stopped because your model provider rejected its sign-in. Reconnect the provider in Settings, Providers, then send your request again.";
 
+// Every role's ended lines, so a notice is told from words a person typed.
 const NOTICE_LINES = new Set(
-  Object.values(PERSON_LINES).flatMap((lines) => Object.values(lines)),
+  ROLES.flatMap(({ ended }) => (ended ? [ended.failed, ended.cancelled] : [])),
 ).add(SIGN_IN_REJECTED_LINE);
 
-const TASKS: Record<SpawnedRole, (kind: string | undefined) => string> = {
-  writer: (kind) => `The writer writing the ${kind ?? "assigned"} document`,
-  reviewer: (kind) =>
-    `The reviewer checking the ${kind ?? "assigned"} document`,
-  coder: () => "The coder building the app",
-  designer: () => "The designer working on the app's design",
-  presenter: () => "The presenter building the approval package",
-};
-
 export function specialistEndedMessage(ended: {
-  role: SpawnedRole;
+  role: WorkflowRole;
   kind?: string;
   status: Outcome;
   reason?: { message: string; code?: string };
 }): string {
-  // Interchange records only the text of the director's error, behind prefixes of its own.
-  const personLine = ended.reason?.message.includes(SIGN_IN_REJECTED)
-    ? SIGN_IN_REJECTED_LINE
-    : PERSON_LINES[ended.role][ended.status];
   const how = ended.status === "failed" ? "failed" : "was stopped";
   const reason = ended.reason
     ? ` Recorded reason${ended.reason.code ? ` (${ended.reason.code})` : ""}: ${ended.reason.message}`
     : "";
-  return `${SPECIALIST_ENDED_LEAD}${personLine}${COORDINATOR_ONLY}${TASKS[ended.role](ended.kind)} ${how} before finishing, so no result is coming from it.${reason}`;
+  const lines = roleOf(ended.role).ended;
+  if (!lines)
+    throw new Error(`The role ${ended.role} declares no ended notice`);
+  const task = lines.task.replaceAll("{kind}", ended.kind ?? "assigned");
+  // Interchange records only the text of the director's error, behind prefixes of its own.
+  const personLine = ended.reason?.message.includes(SIGN_IN_REJECTED)
+    ? SIGN_IN_REJECTED_LINE
+    : lines[ended.status];
+  return `${SPECIALIST_ENDED_LEAD}${personLine}${COORDINATOR_ONLY}${task} ${how} before finishing, so no result is coming from it.${reason}`;
 }
 
 /** A person-sent turn as the person may read it: a specialist-ended notice loses its coordinator-only part. */

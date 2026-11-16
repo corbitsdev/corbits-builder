@@ -63,7 +63,7 @@ export async function runTelemetry(
         await modelDirectory(db, run.tenantId),
         models.value,
         ROLES,
-      )[run.role].effort;
+      )(run.role).effort;
     }
   } catch (error) {
     log.warn("Run effort could not be read", requestErrorMetadata(error));

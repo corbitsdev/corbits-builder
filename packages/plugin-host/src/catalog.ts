@@ -1,6 +1,11 @@
 import { join, relative, resolve } from "node:path";
 import { type } from "arktype";
-import { Builder, type ModelSetting, type Role } from "@corbits-builder/plugin";
+import {
+  Builder,
+  type ModelSetting,
+  type Role,
+  type WorkflowPackage,
+} from "@corbits-builder/plugin";
 import type { Found } from "./folder.ts";
 
 const Manifest = type({ name: "string > 0", builder: Builder });
@@ -9,13 +14,19 @@ const Manifest = type({ name: "string > 0", builder: Builder });
 export type Catalog = {
   roles: ReadonlyMap<string, { role: Role; setting: ModelSetting }>;
   settings: ReadonlyMap<string, ModelSetting>;
-  packages: ReadonlyMap<string, string>;
+  // Each package as its plugin declares it, with the path its entry resolves to.
+  packages: ReadonlyMap<string, { path: string; declared: WorkflowPackage }>;
 };
 
 export async function loadCatalog(found: readonly Found[]): Promise<Catalog> {
   const roles = new Map<string, Role>();
   const settings = new Map<string, ModelSetting>();
-  const packages = new Map<string, string>();
+  const packages = new Map<
+    string,
+    { path: string; declared: WorkflowPackage }
+  >();
+  // Only one package saves each document kind, so a writer deployed for a kind is never ambiguous.
+  const filers = new Map<string, string>();
   const declaredBy = new Map<string, string>();
   function declare<T>(
     into: Map<string, T>,
@@ -42,7 +53,12 @@ export async function loadCatalog(found: readonly Found[]): Promise<Catalog> {
     if (builder.settings)
       for (const [setting, declared] of Object.entries(builder.settings))
         declare(settings, "the model setting", name, setting, declared);
-    for (const [pkg, { entry }] of Object.entries(builder.packages)) {
+    for (const [pkg, declared] of Object.entries(builder.packages)) {
+      const { entry, role, files } = declared;
+      if (!builder.roles.some((own) => own.name === role))
+        throw new Error(
+          `${name}'s package ${pkg} plays the role ${role}, which ${name} does not declare`,
+        );
       const path = resolve(root, entry);
       if (relative(root, path).startsWith(".."))
         throw new Error(
@@ -50,7 +66,8 @@ export async function loadCatalog(found: readonly Found[]): Promise<Catalog> {
         );
       if (!(await Bun.file(path).exists()))
         throw new Error(`${name}'s package ${pkg} has no entry at ${entry}`);
-      declare(packages, "the workflow package", name, pkg, path);
+      declare(packages, "the workflow package", name, pkg, { path, declared });
+      if (files) declare(filers, "the filer of", name, files, pkg);
     }
   }
   const running = new Map<string, { role: Role; setting: ModelSetting }>();

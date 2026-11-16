@@ -553,7 +553,7 @@ export function frozenModelChoice(
   return profile ? frozen(profile) : null;
 }
 
-/** The binding each workflow runs on, from a choice this server can run. */
+/** The binding each role's runs run on, from a choice this server can run. */
 export function workflowBindings(
   directory: ModelDirectory,
   choice: ModelChoice,
@@ -562,14 +562,13 @@ export function workflowBindings(
     setting: ModelRole;
     tier: Tier;
   }>[],
-): Record<WorkflowRole, RoleBinding> {
+): (role: WorkflowRole) => RoleBinding {
   const profile = chosenProfile(directory, choice);
   if (!profile)
     throw new Error(`model_choice_unrunnable:${choice.profile ?? ""}`);
-  return Object.fromEntries(
-    roles.map((role) => [
-      role.name,
-      profile.tiers[profile.roleTiers?.[role.setting] ?? role.tier],
-    ]),
-  ) as Record<WorkflowRole, RoleBinding>;
+  return (name) => {
+    const role = roles.find((each) => each.name === name);
+    if (!role) throw new Error(`No plugin declares the role ${name}`);
+    return profile.tiers[profile.roleTiers?.[role.setting] ?? role.tier];
+  };
 }

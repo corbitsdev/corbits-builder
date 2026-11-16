@@ -48,7 +48,7 @@ export async function coderPackage(
     inference: { ...source, parameters },
     // The project role child supplies the sandboxed workspace and executor.
     tools: [
-      createArtifactTools("coder"),
+      createArtifactTools("coder", { unpacksDesign: true }),
       mail,
       createSkillTools(["react-ui", "stack-docs"]),
       web,

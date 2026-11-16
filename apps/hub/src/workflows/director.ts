@@ -9,7 +9,6 @@ import type {
   RetryPolicy,
 } from "@intx/types/runtime";
 import { MODEL_FAILURE_REPLIES, type Timeouts } from "../config/models.ts";
-import { SIGN_IN_REJECTED } from "../config/specialist-ended.ts";
 import { REPETITION_ABORT } from "../inference/repetition.ts";
 import { readCheckDetail, type CheckDetail } from "../builds/check-detail.ts";
 import { accessRefused } from "./http-json.ts";
@@ -76,6 +75,9 @@ const MAX_EMPTY_TURNS = 3;
 
 // After this many held replies the reply goes out as it is, so a model that cannot pass is not held forever.
 const MAX_UNCHECKED_REPLIES = 3;
+
+// What a run fails with when the provider refuses its sign-in; the hub reads it back from the run.
+export const SIGN_IN_REJECTED = "model_credentials_rejected:";
 
 const TRANSIENT_ERRORS: ReadonlySet<InferenceError["category"]> = new Set([
   "retryable",

@@ -1,9 +1,22 @@
 import { INPUTS_DIRECTORY } from "@corbits-builder/schemas/app-files";
-import type { ArtifactListItem } from "@corbits-builder/schemas/artifact";
+import type {
+  ArtifactListItem,
+  WriterDocumentKind,
+} from "@corbits-builder/schemas/artifact";
 import { NativeSpecialistAssignment } from "@corbits-builder/schemas/native-specialist";
 import { SourceRef } from "@corbits-builder/schemas";
 import { inputFileName } from "@corbits-builder/hub/workflows/input-file-tools";
 import { writerTaskMessage } from "./contract.ts";
+import { builder } from "../package.json";
+
+/** The writer package that saves the document kind, as this plugin's manifest declares it. */
+export function writerPackageFor(kind: WriterDocumentKind): string {
+  const found = Object.entries(builder.packages).find(
+    ([, declared]) => "files" in declared && declared.files === kind,
+  );
+  if (!found) throw new Error(`No writer package saves ${kind}`);
+  return found[0];
+}
 
 type Source = typeof SourceRef.infer;
 

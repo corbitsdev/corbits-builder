@@ -93,12 +93,19 @@
       {
         "name": "coordinator",
         "model": "coordinator",
-        "limits": "coordinator"
+        "limits": "coordinator",
+        "called": "the coordinator"
       },
       {
         "name": "reviewer",
         "model": "reviewer",
-        "limits": "document"
+        "limits": "document",
+        "called": "a reviewer",
+        "ended": {
+          "failed": "The reviewer stopped before finishing.",
+          "cancelled": "The review was stopped.",
+          "task": "The reviewer checking the {kind} document"
+        }
       }
     ],
     "settings": {
@@ -135,10 +142,12 @@
     },
     "packages": {
       "coordinator": {
-        "entry": "./src/workflows/entries/coordinator.ts"
+        "entry": "./src/workflows/entries/coordinator.ts",
+        "role": "coordinator"
       },
       "reviewer": {
-        "entry": "./src/workflows/entries/reviewer.ts"
+        "entry": "./src/workflows/entries/reviewer.ts",
+        "role": "reviewer"
       }
     }
   }

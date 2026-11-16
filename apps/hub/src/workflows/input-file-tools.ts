@@ -106,7 +106,7 @@ async function filedDocuments(
   );
 }
 export function createInputFileTools(
-  role: "writer" | "reviewer" | "presenter",
+  role: WorkflowRole,
   fetchDocuments: (
     env: InputFileEnv,
     signal: AbortSignal,

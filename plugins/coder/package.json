@@ -23,15 +23,27 @@
       {
         "name": "coder",
         "model": "builder",
-        "limits": "coding"
+        "limits": "coding",
+        "called": "the app builder",
+        "ended": {
+          "failed": "The app builder stopped before finishing.",
+          "cancelled": "The build was stopped.",
+          "task": "The coder building the app"
+        }
       }
     ],
     "packages": {
       "coder": {
-        "entry": "./src/packages/coder.ts"
+        "entry": "./src/packages/coder.ts",
+        "role": "coder"
       },
       "coder-any-package": {
-        "entry": "./src/packages/coder-any-package.ts"
+        "entry": "./src/packages/coder-any-package.ts",
+        "role": "coder",
+        "replaces": {
+          "package": "coder",
+          "when": "install_any_package"
+        }
       }
     }
   }

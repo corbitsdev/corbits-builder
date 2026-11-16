@@ -2,8 +2,7 @@ import { expect, test } from "bun:test";
 import { NativeSpecialistDeployment } from "@corbits-builder/schemas/native-specialist";
 import { MODEL_PROVIDERS, workflowBindings } from "../config/models.ts";
 import { ROLES } from "../plugins/catalog.ts";
-import { resolveRoleInference, type RoleInference } from "./role-inference.ts";
-import type { WorkflowRole } from "@corbits-builder/schemas/installed-workflows";
+import { resolveRoleInference } from "./role-inference.ts";
 
 const bindings = workflowBindings(
   MODEL_PROVIDERS,
@@ -13,9 +12,9 @@ const bindings = workflowBindings(
 const inference = Object.fromEntries(
   ROLES.map(({ name, limits }) => [
     name,
-    resolveRoleInference(MODEL_PROVIDERS, limits, bindings[name]),
+    resolveRoleInference(MODEL_PROVIDERS, limits, bindings(name)),
   ]),
-) as Record<WorkflowRole, RoleInference>;
+);
 
 test("native specialist accepts installed tarballs only with an exact package pin", () => {
   const deployment: NativeSpecialistDeployment = {
@@ -36,7 +35,7 @@ test("native specialist accepts installed tarballs only with an exact package pi
 });
 
 test("production entries expose concrete native workflows without callback credentials", async () => {
-  process.env.BUILDER_ROLE_INFERENCE = JSON.stringify(inference.coordinator);
+  process.env.BUILDER_ROLE_INFERENCE = JSON.stringify(inference["coordinator"]);
   const coordinator = (await import("./entries/coordinator.ts")).default;
   const writers = [
     (await import("@corbits-builder/writer/packages/writer-constraints"))

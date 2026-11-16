@@ -20,9 +20,9 @@ import {
 import {
   InstalledWorkflows,
   INSTALLED_WORKFLOWS_KEY,
-  WORKFLOW_PACKAGES,
-  type WorkflowPackage,
+  type WorkflowProjectScope,
 } from "@corbits-builder/schemas/installed-workflows";
+import type { Preferences } from "@corbits-builder/schemas/preferences";
 import type { RoleBinding } from "@corbits-builder/schemas/models";
 import type { WorkflowRole } from "@corbits-builder/schemas/installed-workflows";
 import {
@@ -37,7 +37,8 @@ import {
   offeringQuirks,
 } from "../inference/oauth-login-quirks.ts";
 import { projectModelChoice } from "../projects/model-choice.ts";
-import { ROLES } from "../plugins/catalog.ts";
+import { resolvePreferences } from "../config/preferences.ts";
+import { PACKAGES, ROLES } from "../plugins/catalog.ts";
 import { ProjectError } from "../projects/errors.ts";
 import { buildWorkflowPackages } from "./build-packages.ts";
 import { nativePackageName } from "./package-name.ts";
@@ -55,7 +56,7 @@ type InstallForTenantPorts = {
   >;
 };
 
-type Bindings = Record<WorkflowRole, RoleBinding>;
+type Bindings = (role: WorkflowRole) => RoleBinding;
 type Inference = Record<WorkflowRole, RoleInference>;
 type Source = Pick<RoleBinding, "provider" | "model">;
 
@@ -96,7 +97,31 @@ function minted(prefix: "mdl_" | "mof_"): string {
   );
 }
 
-function installedFrom(config: unknown): InstalledWorkflows | null {
+/** The packages any run in the project may deploy, a replacement under the name it replaces while it applies. */
+export function scopeWorkflows(
+  installed: InstalledWorkflows,
+  preferences: Preferences | null,
+): WorkflowProjectScope["workflows"] {
+  const chosen = resolvePreferences(preferences);
+  const workflows = Object.fromEntries(
+    Object.entries(installed.packages).map(([name, { deployment }]) => [
+      name,
+      deployment,
+    ]),
+  );
+  for (const { name, replaces } of PACKAGES) {
+    const deployment = installed.packages[name]?.deployment;
+    if (
+      deployment &&
+      replaces &&
+      (replaces.when === undefined || chosen[replaces.when] === "yes")
+    )
+      workflows[replaces.package] = deployment;
+  }
+  return workflows;
+}
+
+export function installedFrom(config: unknown): InstalledWorkflows | null {
   if (!config || typeof config !== "object" || Array.isArray(config))
     return null;
   if (!(INSTALLED_WORKFLOWS_KEY in config)) return null;
@@ -331,18 +356,20 @@ async function isCurrent(
   const pins = new Set(
     built.map((item) => item.packageName + "@" + item.version),
   );
-  const packages = Object.entries(WORKFLOW_PACKAGES) as [
-    WorkflowPackage,
-    WorkflowRole,
-  ][];
-  if (!packages.every(([name]) => pins.has(installed[name].pin))) return false;
+  if (Object.keys(installed.packages).length !== PACKAGES.length) return false;
+  const stored = [];
+  for (const { name, role } of PACKAGES) {
+    const found = installed.packages[name];
+    if (found?.role !== role || !pins.has(found.deployment.pin)) return false;
+    stored.push(found);
+  }
   const visible = await listVisibleOfferings(db, tenantId);
-  for (const [name, role] of packages) {
+  for (const { role, deployment } of stored) {
     const row = visible.find(
       (candidate) =>
-        candidate.offering.id === installed[name].defaultSourceOfferingId,
+        candidate.offering.id === deployment.defaultSourceOfferingId,
     );
-    if (!row || !(await servesSource(db, directory, row, bindings[role])))
+    if (!row || !(await servesSource(db, directory, row, bindings(role))))
       return false;
   }
   return true;
@@ -426,9 +453,9 @@ export async function installForTenant(
     Object.fromEntries(
       ROLES.map(({ name, limits }) => [
         name,
-        resolveRoleInference(directory, limits, bindings[name]),
+        resolveRoleInference(directory, limits, bindings(name)),
       ]),
-    ) as Inference,
+    ),
   );
   const existing = installedFrom(row?.config);
   if (
@@ -445,15 +472,15 @@ export async function installForTenant(
     return existing;
   const offerings = new Map<string, string>();
   for (const { name: role } of ROLES) {
-    const key = bindings[role].provider + "\u0000" + bindings[role].model;
+    const key = bindings(role).provider + "\u0000" + bindings(role).model;
     if (!offerings.has(key))
       offerings.set(
         key,
-        await offeringId(ports.db, directory, actor.tenantId, bindings[role]),
+        await offeringId(ports.db, directory, actor.tenantId, bindings(role)),
       );
   }
   const offeringFor = (role: WorkflowRole) =>
-    offerings.get(bindings[role].provider + "\u0000" + bindings[role].model)!;
+    offerings.get(bindings(role).provider + "\u0000" + bindings(role).model)!;
   const published: { assetId: string; entry: string; pin: string }[] = [];
   for (const item of built) {
     const assetId = await registryAsset(ports, actor, item.assetName);
@@ -493,11 +520,11 @@ export async function installForTenant(
     };
   };
   const descriptor = InstalledWorkflows.assert({
-    schemaVersion: 2,
-    ...Object.fromEntries(
-      Object.entries(WORKFLOW_PACKAGES).map(([name, role]) => [
+    schemaVersion: 3,
+    packages: Object.fromEntries(
+      PACKAGES.map(({ name, role }) => [
         name,
-        deployment(nativePackageName(name), role),
+        { role, deployment: deployment(nativePackageName(name), role) },
       ]),
     ),
   });

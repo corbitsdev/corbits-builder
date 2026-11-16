@@ -1,5 +1,5 @@
 import { type } from "arktype";
-import { SpawnedRole } from "./roles.ts";
+import { WorkflowRole } from "./roles.ts";
 import { Preferences } from "./preferences.ts";
 import { OpenQuestions } from "./questions.ts";
 import { ApproachesMeta } from "./approaches.ts";
@@ -361,7 +361,7 @@ export type RunProgress = typeof RunProgress.infer;
 export const InFlightRun = type({
   "+": "reject",
   runId: "string > 0",
-  role: SpawnedRole,
+  role: WorkflowRole,
   startedAt: "string > 0",
   // Interchange's run status: deployed until its first assignment arrives, then running.
   status: "'deployed' | 'running'",
@@ -379,7 +379,7 @@ export type InFlightRun = typeof InFlightRun.infer;
 export const FailedRun = type({
   "+": "reject",
   runId: "string > 0",
-  role: SpawnedRole,
+  role: WorkflowRole,
   endedAt: "string > 0",
   "error?": { "+": "reject", message: "string", "code?": "string" },
 });

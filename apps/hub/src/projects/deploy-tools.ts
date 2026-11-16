@@ -22,9 +22,9 @@ import {
   NativeSpecialistDeployment,
 } from "@corbits-builder/schemas/native-specialist";
 import { SourceRef } from "@corbits-builder/schemas";
-import {
-  WRITER_PACKAGES,
-  type WorkflowProjectScope,
+import type {
+  WorkflowProjectScope,
+  WorkflowRole,
 } from "@corbits-builder/schemas/installed-workflows";
 import {
   ArtifactContent,
@@ -63,7 +63,10 @@ import {
 } from "@corbits-builder/presenter/personas";
 import { DESIGN_STYLES } from "../artifacts/design-tweaks.ts";
 import { workflowHttpJson, WorkflowHttpError } from "../workflows/http-json.ts";
-import { assignmentToWriterMessage } from "@corbits-builder/writer/task";
+import {
+  assignmentToWriterMessage,
+  writerPackageFor,
+} from "@corbits-builder/writer/task";
 import { coderTaskMessage } from "@corbits-builder/coder/contract";
 
 export const DEPLOY_TOOLS = "@corbits-builder/deploy/tools";
@@ -505,7 +508,7 @@ export function createDeployTools(options?: {
           return [
             ...DOCUMENT_ORDER.filter(
               (kind) =>
-                kind in WRITER_PACKAGES &&
+                WriterDocumentKind.allows(kind) &&
                 open(state.byKind.has(kind), "writer", writerGate(state, kind)),
             ),
             ...(!state.designOptions &&
@@ -528,7 +531,7 @@ export function createDeployTools(options?: {
         // response is enough to send the assignment, which carries the person's preferences that
         // apply to the receiving role.
         const deploy = async (
-          role: "writer" | "reviewer" | "coder" | "designer" | "presenter",
+          role: WorkflowRole,
           workflowSpec: NativeSpecialistDeployment | undefined,
           preferences: Preferences,
           correlationId: string,
@@ -642,7 +645,7 @@ export function createDeployTools(options?: {
               .map(([, ref]) => ref);
             result = await deploy(
               "writer",
-              options.workflows[WRITER_PACKAGES[input.kind]],
+              options.workflows[writerPackageFor(input.kind)],
               preferences,
               "writer-" + input.kind,
               assignmentToWriterMessage(

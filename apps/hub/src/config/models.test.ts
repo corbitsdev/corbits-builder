@@ -1,5 +1,8 @@
 import { expect, test } from "bun:test";
-import { StoredModelChoice } from "@corbits-builder/schemas/models";
+import {
+  StoredModelChoice,
+  type ModelChoice,
+} from "@corbits-builder/schemas/models";
 import {
   MODEL_PROVIDERS,
   workflowBindings,
@@ -115,8 +118,11 @@ test("a saved profile keeps role overrides while older projects retain their ass
   const saved = StoredModelChoice.assert(
     JSON.parse(JSON.stringify(selected.choice)),
   );
-  const expected = workflowBindings(MODEL_PROVIDERS, choice, ROLES);
-  expect(workflowBindings(MODEL_PROVIDERS, saved, ROLES)).toEqual(expected);
+  const bindings = (kept: ModelChoice) =>
+    ROLES.map(({ name }) =>
+      workflowBindings(MODEL_PROVIDERS, kept, ROLES)(name),
+    );
+  expect(bindings(saved)).toEqual(bindings(choice));
   expect(frozenModelChoice(MODEL_PROVIDERS, saved)).toEqual(saved);
 
   // An older project's shipped id must not opt it into newly introduced overrides.
@@ -127,10 +133,10 @@ test("a saved profile keeps role overrides while older projects retain their ass
   });
   const kept = frozenModelChoice(MODEL_PROVIDERS, older)!;
   expect(kept).toEqual(older);
-  expect(workflowBindings(MODEL_PROVIDERS, kept, ROLES).writer).toEqual(
+  expect(workflowBindings(MODEL_PROVIDERS, kept, ROLES)("writer")).toEqual(
     profile.tiers.medium,
   );
-  expect(workflowBindings(MODEL_PROVIDERS, saved, ROLES).writer).toEqual(
+  expect(workflowBindings(MODEL_PROVIDERS, saved, ROLES)("writer")).toEqual(
     profile.tiers.low,
   );
 });

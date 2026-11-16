@@ -1337,10 +1337,10 @@ export function useRoom({
             : dispatch.runId === run.runId,
         ),
     )
-    .map((run) => ({
-      at: Date.parse(run.startedAt),
-      dispatch: runDispatch(run, handoffKind(run)),
-    }));
+    .flatMap((run) => {
+      const dispatch = runDispatch(run, handoffKind(run));
+      return dispatch ? [{ at: Date.parse(run.startedAt), dispatch }] : [];
+    });
   const design = artifacts.find((item) => item.kind === "design");
   // Concepts stay to compare until the chosen one is filed as the design, or a new round starts.
   const concepts =

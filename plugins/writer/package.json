@@ -22,21 +22,38 @@
       {
         "name": "writer",
         "model": "writer",
-        "limits": "document"
+        "limits": "document",
+        "called": "a writer",
+        "ended": {
+          "failed": "The writer stopped before finishing.",
+          "cancelled": "The writer was stopped.",
+          "task": "The writer writing the {kind} document"
+        }
       }
     ],
     "packages": {
       "writer-constraints": {
-        "entry": "./src/packages/writer-constraints.ts"
+        "entry": "./src/packages/writer-constraints.ts",
+        "role": "writer",
+        "files": "constraints",
+        "replaces": {
+          "package": "writer"
+        }
       },
       "writer-approaches": {
-        "entry": "./src/packages/writer-approaches.ts"
+        "entry": "./src/packages/writer-approaches.ts",
+        "role": "writer",
+        "files": "approaches"
       },
       "writer-product-requirements": {
-        "entry": "./src/packages/writer-product-requirements.ts"
+        "entry": "./src/packages/writer-product-requirements.ts",
+        "role": "writer",
+        "files": "product_requirements"
       },
       "writer-build-plan": {
-        "entry": "./src/packages/writer-build-plan.ts"
+        "entry": "./src/packages/writer-build-plan.ts",
+        "role": "writer",
+        "files": "build_plan"
       }
     }
   }

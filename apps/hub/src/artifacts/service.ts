@@ -72,7 +72,7 @@ import {
   type AppVersion,
   type AppVersionList,
 } from "@corbits-builder/schemas/artifact";
-import type { SpawnedRole } from "@corbits-builder/schemas/installed-workflows";
+import type { WorkflowRole } from "@corbits-builder/schemas/installed-workflows";
 import { OpenQuestions } from "@corbits-builder/schemas/questions";
 import {
   ApproachesMeta,
@@ -412,7 +412,7 @@ export function createArtifactService(
 
   // The role's runs, newest first, each with its warm step, the design concept it works on, if
   // any, whether it is live and when it ended: the live runs, or with ended, every run.
-  async function roleRuns(actor: Actor, role: SpawnedRole, ended: boolean) {
+  async function roleRuns(actor: Actor, role: WorkflowRole, ended: boolean) {
     const runs = await rawDB
       .select({
         runId: workflowRun.id,
@@ -456,7 +456,7 @@ export function createArtifactService(
 
   // The workspaces of the role's live runs that the hub deployed on its local sidecar, newest
   // first, each with the design concept its run works on, if any.
-  async function liveWorkspaces(actor: Actor, role: SpawnedRole) {
+  async function liveWorkspaces(actor: Actor, role: WorkflowRole) {
     if (!sidecarDataDir) return [];
     return (await roleRuns(actor, role, false)).flatMap(
       ({ runId, address, stepId, concept }) =>
@@ -1220,7 +1220,7 @@ export function createArtifactService(
           rawDB,
           directory,
           actor.tenantId,
-          workflowBindings(directory, choice, ROLES).coordinator,
+          workflowBindings(directory, choice, ROLES)("coordinator"),
         ));
       return acceptedMaterials(offering?.capabilities ?? []);
     },
