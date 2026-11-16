@@ -14,67 +14,39 @@ import type { RoleTiers } from "@corbits-builder/schemas/models";
 const HUB_FOLDER = resolve(import.meta.dir, "../..");
 const PLUGINS_FOLDER = resolve(import.meta.dir, "../../../../plugins");
 
-// The coordinator and reviewer live in the hub, and stored profiles name the model settings, so the
-// hub's own package.json declares them in the same builder block a plugin uses.
-const CATALOG = await loadCatalog([
-  await readPlugin(HUB_FOLDER),
-  ...(await readPluginFolder(PLUGINS_FOLDER)),
-]);
+export const catalog = await loadCatalog(
+  [await readPlugin(HUB_FOLDER), ...(await readPluginFolder(PLUGINS_FOLDER))],
+  new Set(
+    PREFERENCES.filter(
+      ({ options }) =>
+        options.length === 2 &&
+        options.some(({ id }) => id === "yes") &&
+        options.some(({ id }) => id === "no"),
+    ).map(({ id }) => id),
+  ),
+);
 
 const isBudget = (name: string): name is AgentRole =>
   Object.hasOwn(sharedRoles, name);
 
-export const ROLES = [...CATALOG.roles.values()].map(({ role, setting }) => {
+for (const { role } of catalog.roles.values()) {
   if (!isBudget(role.limits))
     throw new Error(
       `The role ${role.name} has limits ${role.limits}, no budget`,
     );
-  return {
-    name: role.name,
-    setting: role.model,
-    tier: setting.tier,
-    limits: role.limits,
-    called: role.called,
-    ended: role.ended,
-  };
-});
-
-/** The declared role of the name, read from a stored or incoming record. */
-export function roleOf(name: WorkflowRole) {
-  const role = ROLES.find((each) => each.name === name);
-  if (!role) throw new Error(`No plugin declares the role ${name}`);
-  return role;
 }
 
-/** Every model setting, in the order Settings lists them. */
-export const SETTINGS = [...CATALOG.settings].map(
-  ([id, { label, hint, tier }]) => ({ id, label, hint, tier }),
-);
+export function roleOf(name: WorkflowRole) {
+  const found = catalog.roles.get(name);
+  if (!found) throw new Error(`No plugin declares the role ${name}`);
+  return found.role;
+}
 
-/** The model setting a stored or incoming profile names, when no plugin declares it. */
 export const undeclaredSetting = (roleTiers: RoleTiers | undefined) =>
-  roleTiers && Object.keys(roleTiers).find((id) => !CATALOG.settings.has(id));
+  roleTiers && Object.keys(roleTiers).find((id) => !catalog.settings.has(id));
 
 for (const { id, roleTiers } of PROFILES) {
   const undeclared = undeclaredSetting(roleTiers);
   if (undeclared)
     throw new Error(`The profile ${id} names ${undeclared}, no model setting`);
 }
-
-/** Every workflow package the hub installs, in the order the plugins declare them. */
-export const PACKAGES = [...CATALOG.packages].map(
-  ([name, { path, declared }]) => {
-    const when = declared.replaces?.when;
-    if (when !== undefined && !PREFERENCES.some(({ id }) => id === when))
-      throw new Error(
-        `The package ${name} replaces while ${when}, no preference`,
-      );
-    return {
-      name,
-      entry: path,
-      role: declared.role,
-      files: declared.files,
-      replaces: declared.replaces,
-    };
-  },
-);

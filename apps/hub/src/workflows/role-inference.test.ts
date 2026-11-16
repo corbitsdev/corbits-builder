@@ -3,12 +3,14 @@ import { type } from "arktype";
 import { PerCallInferenceOptions } from "@intx/types/runtime-core";
 import { MODEL_PROVIDERS } from "../config/models.ts";
 import { RoleInference, resolveRoleInference } from "./role-inference.ts";
-import { ROLES } from "../plugins/catalog.ts";
+import { catalog } from "../plugins/catalog.ts";
 
 test("every role gives both xAI connections their longer timeouts and keeps per-call parameters Interchange accepts", () => {
   for (const provider of MODEL_PROVIDERS) {
     for (const model of provider.models) {
-      for (const { limits } of ROLES) {
+      for (const {
+        role: { limits },
+      } of catalog.roles.values()) {
         const inference = resolveRoleInference(MODEL_PROVIDERS, limits, {
           provider: provider.id,
           model: model.id,

@@ -7,15 +7,14 @@ import { NativeSpecialistAssignment } from "@corbits-builder/schemas/native-spec
 import { SourceRef } from "@corbits-builder/schemas";
 import { inputFileName } from "@corbits-builder/hub/workflows/input-file-tools";
 import { writerTaskMessage } from "./contract.ts";
-import { builder } from "../package.json";
+import { writerPackages } from "@corbits-builder/hub/plugins/bundle" with { type: "macro" };
 
-/** The writer package that saves the document kind, as this plugin's manifest declares it. */
+const filers = writerPackages();
+
 export function writerPackageFor(kind: WriterDocumentKind): string {
-  const found = Object.entries(builder.packages).find(
-    ([, declared]) => "files" in declared && declared.files === kind,
-  );
+  const found = filers[kind];
   if (!found) throw new Error(`No writer package saves ${kind}`);
-  return found[0];
+  return found;
 }
 
 type Source = typeof SourceRef.infer;

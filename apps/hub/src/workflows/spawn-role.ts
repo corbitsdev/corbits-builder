@@ -1,44 +1,42 @@
 import { sql, type SQLWrapper } from "drizzle-orm";
 import type { WorkflowRole } from "@corbits-builder/schemas/installed-workflows";
-import { ROLES } from "../plugins/catalog.ts";
+import { catalog } from "../plugins/catalog.ts";
 
-// A workflow's role is its one step carrying a role's version tag, <role>.version; untagged steps
-// such as the blocked notice do not count. A step's role is its first tag in the order the plugins
-// declare their roles.
-const ROLE_TAGS = ROLES.map(({ name }) => [`${name}.version`, name] as const);
-
-function stepRole(step: unknown): WorkflowRole | undefined {
-  if (typeof step !== "object" || step === null) return undefined;
-  const tags = (step as { agent?: { tags?: unknown } }).agent?.tags;
-  if (typeof tags !== "object" || tags === null) return undefined;
-  const record = tags as Record<string, unknown>;
-  return ROLE_TAGS.find(([tag]) => typeof record[tag] === "string")?.[1];
+function stepRoles(step: unknown): WorkflowRole[] {
+  if (typeof step !== "object" || step === null || !("agent" in step))
+    return [];
+  const agent = step.agent;
+  if (typeof agent !== "object" || agent === null || !("tags" in agent))
+    return [];
+  const tags = agent.tags;
+  if (typeof tags !== "object" || tags === null) return [];
+  return Object.entries(tags)
+    .filter(
+      ([tag, value]) =>
+        typeof value === "string" &&
+        tag.endsWith(".version") &&
+        catalog.roles.has(tag.slice(0, -8)),
+    )
+    .map(([tag]) => tag.slice(0, -8));
 }
 
-function workflowStep(
+export function workflowStep(
   bundle: unknown,
 ): { stepId: string; role: WorkflowRole } | undefined {
   if (typeof bundle !== "object" || bundle === null) return undefined;
   const steps = (bundle as { projection?: { steps?: unknown } }).projection
     ?.steps;
   if (typeof steps !== "object" || steps === null) return undefined;
-  const tagged = Object.entries(steps).flatMap(([stepId, step]) => {
-    const role = stepRole(step);
-    return role ? [{ stepId, role }] : [];
-  });
+  const tagged = Object.entries(steps).flatMap(([stepId, step]) =>
+    stepRoles(step).map((role) => ({ stepId, role })),
+  );
   return tagged.length === 1 ? tagged[0] : undefined;
 }
 
 /** The same rule in SQL, so a frozen bundle is read where it is stored. */
 export function workflowRoleSql(bundle: SQLWrapper) {
-  const cases = sql.join(
-    ROLE_TAGS.map(
-      ([tag, role]) =>
-        sql`when jsonb_typeof(role_step.tags -> ${tag}::text) = 'string' then ${role}::text`,
-    ),
-    sql` `,
-  );
-  return sql<WorkflowRole | null>`(select case when count(*) = 1 then min(role_steps.role) end from (select case ${cases} end as role from jsonb_path_query(${bundle}, '$.projection.steps.*.agent.tags') as role_step(tags)) as role_steps where role_steps.role is not null)`;
+  const tags = Array.from(catalog.roles.keys(), (name) => `${name}.version`);
+  return sql<WorkflowRole | null>`(select case when count(*) = 1 then min(left(role_tag.name, -8)) end from jsonb_path_query(${bundle}, '$.projection.steps.*.agent.tags') as role_step(tags), jsonb_each(role_step.tags) as role_tag(name, value) where role_tag.name in ${tags} and jsonb_typeof(role_tag.value) = 'string')`;
 }
 
 export function spawnedWorkflowStep(

@@ -145,7 +145,7 @@ import {
 } from "../config/preferences.ts";
 import { awaitingApproval } from "../projects/deploy-tools.ts";
 import { frozenModelChoice, workflowBindings } from "../config/models.ts";
-import { ROLES } from "../plugins/catalog.ts";
+import { catalog } from "../plugins/catalog.ts";
 import { modelDirectory } from "../settings/custom-providers.ts";
 import { materialRemovedNote, materialsNote } from "../config/materials.ts";
 import { servingOffering } from "../workflows/install-for-tenant.ts";
@@ -1220,7 +1220,7 @@ export function createArtifactService(
           rawDB,
           directory,
           actor.tenantId,
-          workflowBindings(directory, choice, ROLES)("coordinator"),
+          workflowBindings(directory, choice, catalog.roles)("coordinator"),
         ));
       return acceptedMaterials(offering?.capabilities ?? []);
     },

@@ -120,8 +120,6 @@ export type ModelProvider = typeof ModelProvider.infer;
 
 export const Effort = type("'low' | 'medium' | 'high' | 'max'");
 export type Effort = typeof Effort.infer;
-// The name of a model setting. Which settings there are is the plugins' to declare, so the hub
-// checks a name against its catalog where it reads one.
 export const ModelRole = type("string > 0");
 export type ModelRole = typeof ModelRole.infer;
 export const Tier = type("'low' | 'medium' | 'high' | 'max'");
@@ -144,7 +142,6 @@ export type Tiers = typeof Tiers.infer;
 
 export const ProfileId = type(/^[a-z][a-z0-9_]{0,63}$/);
 
-// A profile may assign a model setting to a different tier without changing the tier bindings.
 export const RoleTiers = type({ "[string]": Tier });
 export type RoleTiers = typeof RoleTiers.infer;
 

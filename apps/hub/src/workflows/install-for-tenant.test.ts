@@ -5,7 +5,7 @@ import {
   INSTALLED_WORKFLOWS_KEY,
 } from "@corbits-builder/schemas/installed-workflows";
 import { NativeSpecialistDeployment } from "@corbits-builder/schemas/native-specialist";
-import { PACKAGES } from "../plugins/catalog.ts";
+import { catalog } from "../plugins/catalog.ts";
 import { installedFrom, scopeWorkflows } from "./install-for-tenant.ts";
 
 const deployment = (name: string) => ({
@@ -23,10 +23,14 @@ const deployment = (name: string) => ({
 const installed = InstalledWorkflows.assert({
   schemaVersion: 3,
   packages: Object.fromEntries(
-    PACKAGES.map(({ name, role }) => [
-      name,
-      { role, deployment: deployment(name) },
-    ]),
+    Array.from(catalog.packages).map(
+      ([
+        name,
+        {
+          declared: { role },
+        },
+      ]) => [name, { role, deployment: deployment(name) }],
+    ),
   ),
 });
 
@@ -54,15 +58,45 @@ test("a project's coder asks before installing packages unless its person turned
   ).toEqual(deployment("coder-any-package"));
 });
 
-// A tenant whose record was stored before packages were keyed by name has it installed again, as
-// one with no record does, rather than being refused or read as some other package.
 test("a stored version 2 record is installed again", () => {
   const stored = Object.fromEntries([
     ["schemaVersion", 2],
-    ...PACKAGES.map(({ name }) => [name, deployment(name)]),
+    ...Array.from(catalog.packages.keys()).map((name) => [
+      name,
+      deployment(name),
+    ]),
   ]);
-  expect(installedFrom({ [INSTALLED_WORKFLOWS_KEY]: stored })).toBeNull();
-  expect(installedFrom({ [INSTALLED_WORKFLOWS_KEY]: installed })).toEqual(
+  expect(installedFrom({ [INSTALLED_WORKFLOWS_KEY]: stored })).toEqual({
+    status: "older",
+  });
+  expect(installedFrom({ [INSTALLED_WORKFLOWS_KEY]: installed })).toEqual({
+    status: "current",
     installed,
-  );
+  });
+});
+
+test("project scope contains exactly the released deployments for either install preference", () => {
+  for (const choice of ["no", "yes"]) {
+    expect(scopeWorkflows(installed, { install_any_package: choice })).toEqual({
+      writer: deployment("writer-constraints"),
+      "writer-constraints": deployment("writer-constraints"),
+      "writer-approaches": deployment("writer-approaches"),
+      "writer-product-requirements": deployment("writer-product-requirements"),
+      "writer-build-plan": deployment("writer-build-plan"),
+      reviewer: deployment("reviewer"),
+      designer: deployment("designer"),
+      presenter: deployment("presenter"),
+      coder: deployment(choice === "yes" ? "coder-any-package" : "coder"),
+    });
+  }
+});
+
+test("installed records distinguish absence, older versions and malformed data", () => {
+  expect(installedFrom(null)).toEqual({ status: "missing" });
+  expect(
+    installedFrom({ [INSTALLED_WORKFLOWS_KEY]: { schemaVersion: 2 } }),
+  ).toEqual({ status: "older" });
+  expect(
+    installedFrom({ [INSTALLED_WORKFLOWS_KEY]: { schemaVersion: 3 } }),
+  ).toEqual({ status: "malformed" });
 });

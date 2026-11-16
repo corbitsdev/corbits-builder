@@ -4,7 +4,6 @@ import type {
   CustomProfile,
   Effort,
   ModelChoice,
-  ModelRole,
   RoleBinding,
   Tier,
   Tiers,
@@ -553,22 +552,22 @@ export function frozenModelChoice(
   return profile ? frozen(profile) : null;
 }
 
-/** The binding each role's runs run on, from a choice this server can run. */
 export function workflowBindings(
   directory: ModelDirectory,
   choice: ModelChoice,
-  roles: readonly Readonly<{
-    name: WorkflowRole;
-    setting: ModelRole;
-    tier: Tier;
-  }>[],
+  roles: ReadonlyMap<
+    string,
+    { role: { model: string }; setting: { tier: Tier } }
+  >,
 ): (role: WorkflowRole) => RoleBinding {
   const profile = chosenProfile(directory, choice);
   if (!profile)
     throw new Error(`model_choice_unrunnable:${choice.profile ?? ""}`);
   return (name) => {
-    const role = roles.find((each) => each.name === name);
+    const role = roles.get(name);
     if (!role) throw new Error(`No plugin declares the role ${name}`);
-    return profile.tiers[profile.roleTiers?.[role.setting] ?? role.tier];
+    return profile.tiers[
+      profile.roleTiers?.[role.role.model] ?? role.setting.tier
+    ];
   };
 }

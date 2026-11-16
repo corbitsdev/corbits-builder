@@ -1,16 +1,16 @@
 import { expect, test } from "bun:test";
 import { NativeSpecialistDeployment } from "@corbits-builder/schemas/native-specialist";
 import { MODEL_PROVIDERS, workflowBindings } from "../config/models.ts";
-import { ROLES } from "../plugins/catalog.ts";
+import { catalog } from "../plugins/catalog.ts";
 import { resolveRoleInference } from "./role-inference.ts";
 
 const bindings = workflowBindings(
   MODEL_PROVIDERS,
   { profile: "anthropic_default" },
-  ROLES,
+  catalog.roles,
 );
 const inference = Object.fromEntries(
-  ROLES.map(({ name, limits }) => [
+  Array.from(catalog.roles.values()).map(({ role: { name, limits } }) => [
     name,
     resolveRoleInference(MODEL_PROVIDERS, limits, bindings(name)),
   ]),

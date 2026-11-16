@@ -1,3 +1,4 @@
+import { getLogger } from "@intx/log";
 import { and, eq } from "drizzle-orm";
 import { type } from "arktype";
 import { mkdtemp, rm } from "node:fs/promises";
@@ -38,12 +39,14 @@ import {
 } from "../inference/oauth-login-quirks.ts";
 import { projectModelChoice } from "../projects/model-choice.ts";
 import { resolvePreferences } from "../config/preferences.ts";
-import { PACKAGES, ROLES } from "../plugins/catalog.ts";
+import { catalog } from "../plugins/catalog.ts";
 import { ProjectError } from "../projects/errors.ts";
 import { buildWorkflowPackages } from "./build-packages.ts";
 import { nativePackageName } from "./package-name.ts";
 import { resolveRoleInference, type RoleInference } from "./role-inference.ts";
 import type { Actor } from "../lib/actor.ts";
+
+const log = getLogger(["corbits-builder", "hub", "install-for-tenant"]);
 
 const PACKAGE_VERSION = "1.0.0";
 const HUB = { kind: "hub" } as const;
@@ -97,36 +100,50 @@ function minted(prefix: "mdl_" | "mof_"): string {
   );
 }
 
-/** The packages any run in the project may deploy, a replacement under the name it replaces while it applies. */
 export function scopeWorkflows(
   installed: InstalledWorkflows,
   preferences: Preferences | null,
 ): WorkflowProjectScope["workflows"] {
   const chosen = resolvePreferences(preferences);
-  const workflows = Object.fromEntries(
-    Object.entries(installed.packages).map(([name, { deployment }]) => [
-      name,
-      deployment,
-    ]),
-  );
-  for (const { name, replaces } of PACKAGES) {
-    const deployment = installed.packages[name]?.deployment;
-    if (
-      deployment &&
-      replaces &&
-      (replaces.when === undefined || chosen[replaces.when] === "yes")
-    )
-      workflows[replaces.package] = deployment;
+  const workflows: WorkflowProjectScope["workflows"] = {};
+  for (const [name, { declared }] of catalog.packages) {
+    if (declared.role === "coordinator" || declared.replaces) continue;
+    const substitution = catalog.substitutions.get(name);
+    const selected =
+      substitution && chosen[substitution.when] === "yes"
+        ? substitution.package
+        : name;
+    workflows[name] = installed.packages[selected]!.deployment;
+    // Frozen coordinators from before the writer split require this name; remove after all are retired.
+    if (declared.legacyAlias) workflows[declared.legacyAlias] = workflows[name];
   }
   return workflows;
 }
 
-export function installedFrom(config: unknown): InstalledWorkflows | null {
-  if (!config || typeof config !== "object" || Array.isArray(config))
-    return null;
-  if (!(INSTALLED_WORKFLOWS_KEY in config)) return null;
-  const parsed = InstalledWorkflows(config[INSTALLED_WORKFLOWS_KEY]);
-  return parsed instanceof type.errors ? null : parsed;
+export function installedFrom(
+  config: unknown,
+):
+  | { status: "current"; installed: InstalledWorkflows }
+  | { status: "missing" | "older" | "malformed" } {
+  if (config === null || config === undefined) return { status: "missing" };
+  if (typeof config !== "object" || Array.isArray(config))
+    return { status: "malformed" };
+  if (!(INSTALLED_WORKFLOWS_KEY in config)) return { status: "missing" };
+  const record = config[INSTALLED_WORKFLOWS_KEY];
+  if (
+    record &&
+    typeof record === "object" &&
+    "schemaVersion" in record &&
+    Number.isInteger(record.schemaVersion) &&
+    typeof record.schemaVersion === "number" &&
+    record.schemaVersion < 3 &&
+    record.schemaVersion > 0
+  )
+    return { status: "older" };
+  const parsed = InstalledWorkflows(record);
+  return parsed instanceof type.errors
+    ? { status: "malformed" }
+    : { status: "current", installed: parsed };
 }
 
 async function buildAndRead(key: string, inference: Inference) {
@@ -356,9 +373,15 @@ async function isCurrent(
   const pins = new Set(
     built.map((item) => item.packageName + "@" + item.version),
   );
-  if (Object.keys(installed.packages).length !== PACKAGES.length) return false;
+  if (Object.keys(installed.packages).length !== catalog.packages.size)
+    return false;
   const stored = [];
-  for (const { name, role } of PACKAGES) {
+  for (const [
+    name,
+    {
+      declared: { role },
+    },
+  ] of catalog.packages) {
     const found = installed.packages[name];
     if (found?.role !== role || !pins.has(found.deployment.pin)) return false;
     stored.push(found);
@@ -447,17 +470,23 @@ export async function installForTenant(
   const bindings = workflowBindings(
     directory,
     await projectModelChoice(ports.db, actor, projectId, directory),
-    ROLES,
+    catalog.roles,
   );
   const built = await builtPackages(
     Object.fromEntries(
-      ROLES.map(({ name, limits }) => [
+      Array.from(catalog.roles.values()).map(({ role: { name, limits } }) => [
         name,
         resolveRoleInference(directory, limits, bindings(name)),
       ]),
     ),
   );
-  const existing = installedFrom(row?.config);
+  const record = installedFrom(row?.config);
+  const existing = record.status === "current" ? record.installed : null;
+  if (record.status !== "current")
+    log.info("Reinstalling workflow packages: stored record is {reason}", {
+      reason: record.status,
+      tenantId: actor.tenantId,
+    });
   if (
     existing &&
     (await isCurrent(
@@ -471,7 +500,9 @@ export async function installForTenant(
   )
     return existing;
   const offerings = new Map<string, string>();
-  for (const { name: role } of ROLES) {
+  for (const {
+    role: { name: role },
+  } of catalog.roles.values()) {
     const key = bindings(role).provider + "\u0000" + bindings(role).model;
     if (!offerings.has(key))
       offerings.set(
@@ -522,10 +553,17 @@ export async function installForTenant(
   const descriptor = InstalledWorkflows.assert({
     schemaVersion: 3,
     packages: Object.fromEntries(
-      PACKAGES.map(({ name, role }) => [
-        name,
-        { role, deployment: deployment(nativePackageName(name), role) },
-      ]),
+      Array.from(catalog.packages).map(
+        ([
+          name,
+          {
+            declared: { role },
+          },
+        ]) => [
+          name,
+          { role, deployment: deployment(nativePackageName(name), role) },
+        ],
+      ),
     ),
   });
   await ports.db.transaction(async (tx) => {
@@ -535,7 +573,8 @@ export async function installForTenant(
       .where(eq(tenant.id, actor.tenantId))
       .for("update");
     if (!current) throw startFailed();
-    const stored = installedFrom(current.config);
+    const record = installedFrom(current.config);
+    const stored = record.status === "current" ? record.installed : null;
     if (
       stored &&
       (await isCurrent(

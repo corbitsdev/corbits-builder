@@ -6,8 +6,6 @@ export { WorkflowRole } from "./roles.ts";
 
 export const INSTALLED_WORKFLOWS_KEY = "sb.installedWorkflows";
 
-// Each installed workflow package by name, with the role its runs play. Which packages there are
-// is the plugins' to declare; a record of an earlier version is installed again.
 export const InstalledWorkflows = type({
   "+": "reject",
   schemaVersion: "3",
@@ -39,7 +37,6 @@ export const WorkflowProjectScope = type({
   projectId: ProjectId,
   domain: "string > 0",
   role: WorkflowRole,
-  // Every package a run in the project may deploy, by the name it is deployed under.
   workflows: { "[string]": NativeSpecialistDeployment },
   // Whether the project's build sandboxes reach any public host rather than only the npm registry.
   openNetwork: "boolean",

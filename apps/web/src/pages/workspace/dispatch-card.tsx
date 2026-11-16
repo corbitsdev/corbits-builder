@@ -23,7 +23,6 @@ const RUN_TOOL = {
   presenter: "deploy_presenter",
 };
 
-// The roles a hand-off starts, which this interface has wording for.
 type Role = keyof typeof RUN_TOOL;
 const isDispatchRole = (role: string): role is Role =>
   Object.hasOwn(RUN_TOOL, role);
@@ -381,10 +380,6 @@ export function subjectOf(dispatch: Dispatch): string | undefined {
   return text.subject[dispatch.tool];
 }
 
-/**
- * A run at work the conversation has no hand-off for, such as one started before a reload. A role
- * no hand-off tool starts has none.
- */
 export function runDispatch(
   run: InFlightRun,
   kind: string | undefined,

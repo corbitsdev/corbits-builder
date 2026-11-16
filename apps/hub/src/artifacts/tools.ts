@@ -102,8 +102,6 @@ export function failure(callId: string, error: unknown) {
   return projectScopeFailure(callId, error);
 }
 
-// The tools a run gets, and for a run that writes, the kind it files and the fields it checks. A run
-// that builds in a workspace reads the design unpacked into it.
 interface ArtifactToolSet {
   definitions: readonly (typeof readDefinition)[];
   save?: {
@@ -187,8 +185,6 @@ function artifactTools(
                 signal,
               });
             if (call.name === "write_artifact" && save) {
-              // The brief's writer leaves every other kind to the writers, so the documents the
-              // person decides on come from them.
               const rawKind = (call.arguments as { kind?: unknown } | undefined)
                 ?.kind;
               if (

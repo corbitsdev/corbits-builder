@@ -46,6 +46,11 @@ test("a plugin added by its folder alone is installed beside the others and its 
             model: "testing",
             limits: "document",
             called: "the tester",
+            ended: {
+              failed: "Stopped.",
+              cancelled: "Cancelled.",
+              task: "The tester",
+            },
           },
         ],
         settings: {
@@ -55,13 +60,16 @@ test("a plugin added by its folder alone is installed beside the others and its 
       },
     }),
   );
-  const catalog = await loadCatalog([
-    await readPlugin(resolve(import.meta.dir, "../..")),
-    ...(await readPluginFolder(
-      resolve(import.meta.dir, "../../../../plugins"),
-    )),
-    ...(await readPluginFolder(plugins)),
-  ]);
+  const catalog = await loadCatalog(
+    [
+      await readPlugin(resolve(import.meta.dir, "../..")),
+      ...(await readPluginFolder(
+        resolve(import.meta.dir, "../../../../plugins"),
+      )),
+      ...(await readPluginFolder(plugins)),
+    ],
+    new Set(["install_any_package"]),
+  );
   const installed = InstalledWorkflows.assert({
     schemaVersion: 3,
     packages: Object.fromEntries(

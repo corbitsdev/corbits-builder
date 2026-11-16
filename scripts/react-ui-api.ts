@@ -1,5 +1,4 @@
 // Regenerates the react-ui component API reference from the installed @corbits/react-ui
-// declarations: one file per component group under plugins/designer/skills/react-ui/reference.
 // Run: bun run skills:react-ui
 import { readdirSync, readFileSync, writeFileSync } from "node:fs";
 import { dirname, join, resolve } from "node:path";

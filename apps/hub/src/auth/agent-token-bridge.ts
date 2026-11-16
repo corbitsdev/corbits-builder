@@ -1,7 +1,5 @@
-import { type } from "arktype";
 import {
-  InstalledWorkflows,
-  INSTALLED_WORKFLOWS_KEY,
+  type InstalledWorkflows,
   type WorkflowRole,
 } from "@corbits-builder/schemas/installed-workflows";
 import { projectCoordinator } from "../db/schema.ts";
@@ -30,8 +28,11 @@ import { createCoordinatorRegistry } from "./coordinator-registry.ts";
 import { projectResource } from "../projects/errors.ts";
 import { spawnedWorkflowRole } from "../workflows/spawn-role.ts";
 import { buildPackageLayout } from "../builds/package-layout.ts";
-import { scopeWorkflows } from "../workflows/install-for-tenant.ts";
-import { PACKAGES } from "../plugins/catalog.ts";
+import {
+  installedFrom,
+  scopeWorkflows,
+} from "../workflows/install-for-tenant.ts";
+import { catalog } from "../plugins/catalog.ts";
 import { nativePackageName } from "../workflows/package-name.ts";
 import { readJson } from "../lib/json.ts";
 import { coordinatorUpgrading } from "@corbits-builder/schemas/conversation";
@@ -127,9 +128,8 @@ async function startsWriter(request: Request) {
       : undefined;
   return (
     typeof pin === "string" &&
-    PACKAGES.some(
-      ({ name, files }) =>
-        files !== undefined && pin.startsWith(nativePackageName(name) + "@"),
+    Array.from(catalog.filers.values()).some((name) =>
+      pin.startsWith(nativePackageName(name) + "@"),
     )
   );
 }
@@ -360,17 +360,16 @@ export function createAgentTokenBridge(
         where: eq(tenant.id, identity.tenantId),
       });
       if (!row) return denied();
-      const config = row.config as Record<string, unknown> | null;
-      const stored = InstalledWorkflows(config?.[INSTALLED_WORKFLOWS_KEY]);
+      const stored = installedFrom(row.config);
       const installed =
-        stored instanceof type.errors
+        stored.status !== "current"
           ? upgrades &&
             binding.run.principalId &&
             (await upgrades.install(
               { tenantId: row.id, principalId: binding.run.principalId },
               binding.projectId,
             ))
-          : stored;
+          : stored.installed;
       if (!installed) return denied();
       const { preferences } = await loadSettings(
         db,

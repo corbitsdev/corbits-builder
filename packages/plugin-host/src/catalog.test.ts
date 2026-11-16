@@ -1,5 +1,12 @@
 import { afterEach, expect, test } from "bun:test";
-import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
+import {
+  mkdir,
+  mkdtemp,
+  realpath,
+  rm,
+  symlink,
+  writeFile,
+} from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { loadCatalog } from "./catalog.ts";
@@ -28,6 +35,7 @@ const tester = {
   model: "testing",
   limits: "document",
   called: "the tester",
+  ended: { failed: "Stopped.", cancelled: "Cancelled.", task: "The tester" },
 };
 const roles = [tester];
 const settings = {
@@ -37,20 +45,22 @@ const packages = { tester: { entry: "./src/tester.ts", role: "tester" } };
 
 test("a plugin added by its folder declares its role, model setting and package", async () => {
   const plugins = await pluginsFolder({ roles, settings, packages });
-  const catalog = await loadCatalog(await readPluginFolder(plugins));
+  const catalog = await loadCatalog(await readPluginFolder(plugins), new Set());
   expect(catalog.roles.get("tester")).toEqual({
     role: tester,
     setting: { label: "Tester", hint: "Tests the app.", tier: "low" },
   });
   expect(catalog.packages.get("tester")).toEqual({
-    path: join(plugins, "tester", "src", "tester.ts"),
+    path: await realpath(join(plugins, "tester", "src", "tester.ts")),
     declared: packages.tester,
   });
 });
 
 test("a plugin whose role runs on no declared setting, or whose package has no entry or plays a role it does not declare, is refused", async () => {
   const unset = await pluginsFolder({ roles, packages });
-  await expect(loadCatalog(await readPluginFolder(unset))).rejects.toThrow(
+  await expect(
+    loadCatalog(await readPluginFolder(unset), new Set()),
+  ).rejects.toThrow(
     "The role tester runs on testing, a model setting no plugin declares",
   );
   const missing = await pluginsFolder({
@@ -58,7 +68,9 @@ test("a plugin whose role runs on no declared setting, or whose package has no e
     settings,
     packages: { tester: { entry: "./src/missing.ts", role: "tester" } },
   });
-  await expect(loadCatalog(await readPluginFolder(missing))).rejects.toThrow(
+  await expect(
+    loadCatalog(await readPluginFolder(missing), new Set()),
+  ).rejects.toThrow(
     "@example/tester's package tester has no entry at ./src/missing.ts",
   );
   const unplayed = await pluginsFolder({
@@ -66,7 +78,9 @@ test("a plugin whose role runs on no declared setting, or whose package has no e
     settings,
     packages: { tester: { entry: "./src/tester.ts", role: "reviewer" } },
   });
-  await expect(loadCatalog(await readPluginFolder(unplayed))).rejects.toThrow(
+  await expect(
+    loadCatalog(await readPluginFolder(unplayed), new Set()),
+  ).rejects.toThrow(
     "@example/tester's package tester plays the role reviewer, which @example/tester does not declare",
   );
 });
@@ -75,10 +89,13 @@ test("a package entry outside its plugin's folder is refused", async () => {
   const plugins = await pluginsFolder({
     roles,
     settings,
-    packages: { tester: { entry: "../../outside.ts", role: "tester" } },
+    packages: { tester: { entry: "../outside.ts", role: "tester" } },
   });
-  await expect(loadCatalog(await readPluginFolder(plugins))).rejects.toThrow(
-    "@example/tester's package tester has its entry outside the plugin, at ../../outside.ts",
+  await writeFile(join(plugins, "outside.ts"), "");
+  await expect(
+    loadCatalog(await readPluginFolder(plugins), new Set()),
+  ).rejects.toThrow(
+    "@example/tester's package tester has its entry outside the plugin, at ../outside.ts",
   );
 });
 
@@ -86,14 +103,98 @@ test("a role two plugins declare is refused, naming both", async () => {
   const plugins = await pluginsFolder({ roles, settings, packages });
   const [tester] = await readPluginFolder(plugins);
   await expect(
-    loadCatalog([
-      tester!,
-      {
-        root: tester!.root,
-        manifest: { name: "@example/second", builder: { roles, packages: {} } },
-      },
-    ]),
+    loadCatalog(
+      [
+        tester!,
+        {
+          root: tester!.root,
+          manifest: {
+            name: "@example/second",
+            builder: { roles, packages: {} },
+          },
+        },
+      ],
+      new Set(),
+    ),
   ).rejects.toThrow(
     "@example/second declares the role tester, which @example/tester already declares",
   );
+});
+
+test("every non-coordinator role needs ended wording at catalog load", async () => {
+  const plugins = await pluginsFolder({
+    roles: [
+      {
+        name: "tester",
+        model: "testing",
+        limits: "document",
+        called: "tester",
+      },
+    ],
+    settings,
+    packages,
+  });
+  await expect(
+    loadCatalog(await readPluginFolder(plugins), new Set()),
+  ).rejects.toThrow("@example/tester's role tester needs ended wording");
+});
+test("a symlink cannot take a package entry outside its plugin", async () => {
+  const plugins = await pluginsFolder({ roles, settings, packages });
+  await writeFile(join(plugins, "outside.ts"), "");
+  await rm(join(plugins, "tester/src/tester.ts"));
+  await symlink(
+    join(plugins, "outside.ts"),
+    join(plugins, "tester/src/tester.ts"),
+  );
+  await expect(
+    loadCatalog(await readPluginFolder(plugins), new Set()),
+  ).rejects.toThrow("outside the plugin");
+});
+test("substitutions require a unique same-role target and a boolean preference", async () => {
+  for (const [extra, when, reason] of [
+    [
+      {
+        second: {
+          entry: "./src/tester.ts",
+          role: "tester",
+          replaces: { package: "tester", when: "enabled" },
+        },
+      },
+      "enabled",
+      "already replaces tester",
+    ],
+    [
+      { other: { entry: "./src/tester.ts", role: "other" } },
+      "enabled",
+      "same role",
+    ],
+    [{}, "questions", "yes/no preference"],
+  ] as const) {
+    const declarations: Record<string, unknown> = {
+      tester: packages.tester,
+      replacement: {
+        entry: "./src/tester.ts",
+        role: "tester",
+        replaces: { package: "other" in extra ? "other" : "tester", when },
+      },
+    };
+    Object.assign(declarations, extra);
+    const plugins = await pluginsFolder({
+      roles: [
+        tester,
+        {
+          name: "other",
+          model: "testing",
+          limits: "document",
+          called: "other",
+          ended: tester.ended,
+        },
+      ],
+      settings,
+      packages: declarations,
+    });
+    await expect(
+      loadCatalog(await readPluginFolder(plugins), new Set(["enabled"])),
+    ).rejects.toThrow(reason);
+  }
 });

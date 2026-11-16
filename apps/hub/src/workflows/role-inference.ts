@@ -1,7 +1,7 @@
 import { type } from "arktype";
 import { Effort, type RoleBinding } from "@corbits-builder/schemas/models";
 import type { WorkflowRole } from "@corbits-builder/schemas/installed-workflows";
-import type { AgentRole } from "../inference/model-limits.ts";
+import { sharedRoles, type AgentRole } from "../inference/model-limits.ts";
 import {
   bindingLimits,
   modelProvider,
@@ -37,7 +37,7 @@ export type RoleInference = typeof RoleInference.infer;
  */
 export function resolveRoleInference(
   directory: ModelDirectory,
-  output: AgentRole,
+  output: string,
   bound: RoleBinding,
 ): RoleInference {
   const provider = modelProvider(directory, bound.provider);
@@ -46,6 +46,9 @@ export function resolveRoleInference(
   const limits = bindingLimits(directory, bound.provider, bound.model);
   if (!limits)
     throw new Error(`model_limits_required:${bound.provider}:${bound.model}`);
+  const isBudget = (name: string): name is AgentRole =>
+    Object.hasOwn(sharedRoles, name);
+  if (!isBudget(output)) throw new Error(`No budget ${output}`);
   const budget = limits.roles[output];
   return {
     source: { provider: plugin, model: bound.model },

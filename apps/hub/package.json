@@ -6,6 +6,7 @@
   "author": "Sawyer Cutler <sawyer@dirtroad.dev>",
   "type": "module",
   "exports": {
+    "./plugins/bundle": "./src/plugins/bundle.ts",
     "./app": "./src/app.ts",
     "./artifacts/package-tools": "./src/artifacts/package-tools.ts",
     "./artifacts/service": "./src/artifacts/service.ts",

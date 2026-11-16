@@ -18,17 +18,8 @@ type PreferenceEntry = Readonly<{
   ends?: Readonly<{ start: string; end: string }>;
   default: string;
   // The roles whose hub-built context carries this preference.
-  roles: readonly WorkflowRole[];
+  roles: "all" | readonly WorkflowRole[];
 }>;
-
-const ALL_ROLES = [
-  "coordinator",
-  "writer",
-  "designer",
-  "coder",
-  "reviewer",
-  "presenter",
-] as const;
 
 const productName = productConfig.naming.productName;
 
@@ -111,7 +102,7 @@ export const PREFERENCES: readonly PreferenceEntry[] = [
       },
     ],
     default: "no",
-    roles: ALL_ROLES,
+    roles: "all",
   },
   {
     id: "next_step_line",
@@ -374,15 +365,15 @@ export function preferenceGuidance(
   choices: Preferences,
   role: WorkflowRole,
 ): string[] {
-  return PREFERENCES.filter((entry) => entry.roles.includes(role)).flatMap(
-    (entry) => {
-      const option =
-        entry.options.find((candidate) => candidate.id === choices[entry.id]) ??
-        entry.options.find((candidate) => candidate.id === entry.default)!;
-      const guidance = option.guidance.trim();
-      return guidance ? [`${entry.topic}: ${option.label}. ${guidance}`] : [];
-    },
-  );
+  return PREFERENCES.filter(
+    (entry) => entry.roles === "all" || entry.roles.includes(role),
+  ).flatMap((entry) => {
+    const option =
+      entry.options.find((candidate) => candidate.id === choices[entry.id]) ??
+      entry.options.find((candidate) => candidate.id === entry.default)!;
+    const guidance = option.guidance.trim();
+    return guidance ? [`${entry.topic}: ${option.label}. ${guidance}`] : [];
+  });
 }
 
 /** The most design concepts at work at once: the largest count the preference offers. What the

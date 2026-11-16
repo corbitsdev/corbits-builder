@@ -1,8 +1,10 @@
+import { pathToFileURL } from "node:url";
+import { workflowStep } from "./spawn-role.ts";
 import { createHash } from "node:crypto";
 import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
 import { join, resolve } from "node:path";
 import { tmpdir } from "node:os";
-import { PACKAGES } from "../plugins/catalog.ts";
+import { catalog } from "../plugins/catalog.ts";
 import { nativePackageName } from "./package-name.ts";
 import type { RoleInference } from "./role-inference.ts";
 import type { WorkflowRole } from "@corbits-builder/schemas/installed-workflows";
@@ -11,6 +13,17 @@ import type { WorkflowRole } from "@corbits-builder/schemas/installed-workflows"
 // colliding with a tarball the registry already holds.
 function contentVersion(base: string, bundle: string): string {
   return `${base}-sha-${createHash("sha256").update(bundle).digest("hex").slice(0, 8)}`;
+}
+
+export function assertPackageRole(
+  workflow: unknown,
+  role: string,
+  name: string,
+) {
+  if (workflowStep({ projection: workflow })?.role !== role)
+    throw new Error(
+      `The package ${name} declares role ${role}, but its agent tags disagree`,
+    );
 }
 
 export async function buildWorkflowPackages(
@@ -22,7 +35,13 @@ export async function buildWorkflowPackages(
   const output = resolve(destination);
   await mkdir(output, { recursive: true });
   const manifest = [];
-  for (const { name, role, entry } of PACKAGES) {
+  for (const [
+    name,
+    {
+      path: entry,
+      declared: { role },
+    },
+  ] of catalog.packages) {
     const roleInference = inference[role];
     if (!roleInference) throw new Error(`No inference for the role ${role}`);
     const result = await Bun.build({
@@ -52,7 +71,10 @@ export async function buildWorkflowPackages(
     const filename = name + "-native-" + version + ".tgz";
     try {
       await mkdir(join(staging, "package", "dist"), { recursive: true });
-      await writeFile(join(staging, "package", "dist", "workflow.mjs"), bundle);
+      const builtEntry = join(staging, "package", "dist", "workflow.mjs");
+      await writeFile(builtEntry, bundle);
+      const definition = await import(pathToFileURL(builtEntry).href);
+      assertPackageRole(definition.default, role, name);
       await writeFile(
         join(staging, "package", "package.json"),
         JSON.stringify({

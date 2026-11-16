@@ -1,5 +1,5 @@
 import type { WorkflowRole } from "@corbits-builder/schemas/installed-workflows";
-import { roleOf, ROLES } from "../plugins/catalog.ts";
+import { roleOf, catalog } from "../plugins/catalog.ts";
 import { SIGN_IN_REJECTED } from "../workflows/director.ts";
 
 // The hub's mail to a coordinator whose specialist stopped before it delivered its result. It
@@ -15,9 +15,10 @@ type Outcome = "failed" | "cancelled";
 const SIGN_IN_REJECTED_LINE =
   "The work stopped because your model provider rejected its sign-in. Reconnect the provider in Settings, Providers, then send your request again.";
 
-// Every role's ended lines, so a notice is told from words a person typed.
 const NOTICE_LINES = new Set(
-  ROLES.flatMap(({ ended }) => (ended ? [ended.failed, ended.cancelled] : [])),
+  Array.from(catalog.roles.values()).flatMap(({ role: { ended } }) =>
+    ended ? [ended.failed, ended.cancelled] : [],
+  ),
 ).add(SIGN_IN_REJECTED_LINE);
 
 export function specialistEndedMessage(ended: {
@@ -30,9 +31,7 @@ export function specialistEndedMessage(ended: {
   const reason = ended.reason
     ? ` Recorded reason${ended.reason.code ? ` (${ended.reason.code})` : ""}: ${ended.reason.message}`
     : "";
-  const lines = roleOf(ended.role).ended;
-  if (!lines)
-    throw new Error(`The role ${ended.role} declares no ended notice`);
+  const lines = roleOf(ended.role).ended!;
   const task = lines.task.replaceAll("{kind}", ended.kind ?? "assigned");
   // Interchange records only the text of the director's error, behind prefixes of its own.
   const personLine = ended.reason?.message.includes(SIGN_IN_REJECTED)

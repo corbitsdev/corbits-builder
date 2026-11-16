@@ -36,9 +36,7 @@
         "entry": "./src/packages/writer-constraints.ts",
         "role": "writer",
         "files": "constraints",
-        "replaces": {
-          "package": "writer"
-        }
+        "legacyAlias": "writer"
       },
       "writer-approaches": {
         "entry": "./src/packages/writer-approaches.ts",
