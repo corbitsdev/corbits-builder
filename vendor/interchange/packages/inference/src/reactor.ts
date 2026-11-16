@@ -1637,6 +1637,14 @@ export function createReactor(config: ReactorConfig): Reactor {
       // Handle reply — emit the content for the harness/supervisor to send.
       const replyAction = normalized.find((a) => a.type === "reply");
       if (replyAction !== undefined && replyAction.type === "reply") {
+        // Failed inference records no turn, so keep the director's reply in history.
+        if (event.type === "inference.error") {
+          stateManager.appendTurn({
+            role: "assistant",
+            content: [{ type: "text", text: replyAction.content }],
+            timestamp: Date.now(),
+          });
+        }
         // Flush any pending cycle work before signaling the reply so the
         // emitted checkpointHash matches the visible state.
         await commitCycle();
