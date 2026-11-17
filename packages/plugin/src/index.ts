@@ -276,11 +276,11 @@ export type CheckActionBuilder = typeof CheckActionBuilder.infer;
 // The hub's tools a role's agent gets, by name. read_artifact lists and reads the project's
 // documents, with report_values when an action that starts the role writes project values;
 // write_artifact adds filing a document of any kind; web is Exa's web search and page fetch;
-// input_files reads and searches the documents its assignment names; deck writes, checks and files
-// a slide deck and its approval package. A role that writes code or designs also gets the workspace
-// it works in. Every agent has read_file, for reading back a trimmed tool result.
+// input_files reads and searches the documents its assignment names. A role that writes code or
+// designs also gets the workspace it works in. Every agent has read_file, for reading back a
+// trimmed tool result.
 export const AgentTool = type(
-  "'read_artifact' | 'write_artifact' | 'web' | 'input_files' | 'deck'",
+  "'read_artifact' | 'write_artifact' | 'web' | 'input_files'",
 );
 export type AgentTool = typeof AgentTool.infer;
 
@@ -381,8 +381,9 @@ export const defineWorkspace = (workspace: Workspace) => workspace;
 // handle's unless stated, whose tools and model it runs with; skills a folder of the plugin whose
 // skills it reads with read_skill, one folder each; files the one document kind its write_artifact
 // files, with that kind's own fields, when it files no other; workspace a module whose default
-// export is the workspace it works in, as defineWorkspace makes one. Its reply waits until it has filed
-// its document when every action that starts it returns a filed fact.
+// export is the workspace it works in, as defineWorkspace makes one; tools a module whose default
+// export is the tools it brings, as defineTools makes them. Its reply waits until it has filed its
+// document when every action that starts it returns a filed fact.
 export const AgentBuilder = type({
   "+": "reject",
   prompt: "string > 0",
@@ -390,6 +391,7 @@ export const AgentBuilder = type({
   "skills?": "string > 0",
   "files?": WriterDocumentKind,
   "workspace?": "string > 0",
+  "tools?": "string > 0",
 });
 export type AgentBuilder = typeof AgentBuilder.infer;
 
@@ -404,15 +406,15 @@ export const SpecialistBuilder = Common.merge({
   // The workflow packages the host builds and installs from this plugin, by package name: entry is
   // the module whose default export is the workflow and whose named exports are its directors, and
   // role the one of the plugin's roles its runs play, its handle's unless stated.
-  "packages?": {
+  packages: type({
     "[string]": { "+": "reject", entry: "string > 0", "role?": "string > 0" },
-  },
+  }).default(() => ({})),
   // The module that starts each workflow its actions' start blocks name, by that name; its default
   // export is a starter, as plugin-host's defineStarter makes one.
   "starters?": { "[string]": "string > 0" },
   // The agents the host builds and installs for this plugin with no code of its own, by package
   // name; an action starts one with start: { agent }.
-  "agents?": { "[string]": AgentBuilder },
+  agents: type({ "[string]": AgentBuilder }).default(() => ({})),
   // The code a first build of the project can start from, by name.
   "appStarters?": { "[string]": AppStarter },
   // What its design workspaces start from and the looks they offer.

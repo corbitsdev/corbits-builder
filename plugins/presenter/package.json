@@ -9,7 +9,13 @@
   "dependencies": {
     "@corbits-builder/plugin": "workspace:*",
     "@corbits-builder/schemas": "workspace:*",
+    "@corbits/slidedeck": "workspace:*",
+    "@intx/agent": "workspace:*",
+    "@intx/types": "workspace:*",
     "arktype": "catalog:"
+  },
+  "devDependencies": {
+    "@corbits/zip": "workspace:*"
   },
   "builder": {
     "handle": "presenter",
@@ -28,7 +34,6 @@
         "model": "presenter",
         "limits": "presenter",
         "tools": [
-          "deck",
           "input_files"
         ],
         "status": {
@@ -64,7 +69,8 @@
     "agents": {
       "presenter": {
         "prompt": "./prompt.md",
-        "skills": "./skills"
+        "skills": "./skills",
+        "tools": "./src/tools.ts"
       }
     },
     "starters": {

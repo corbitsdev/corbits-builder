@@ -1,21 +1,16 @@
-import { HUB_CREDENTIAL_HANDLE } from "@intx/types/credential-delivery";
-import type { RuntimeCapabilities } from "@intx/types/runtime-capabilities";
-import {
+import type {
+  InstalledWorkflows,
   WorkflowProjectScope,
-  type InstalledWorkflows,
 } from "@corbits-builder/schemas/installed-workflows";
 import { getLogger } from "@intx/log";
 import { requestErrorMetadata } from "../request-error.ts";
 import {
   accessRefusal,
   WorkflowHttpError,
-  workflowHttpJson,
 } from "@corbits-builder/plugin/http-json";
 
 const log = getLogger(["corbits-builder", "hub", "workflow-project-scope"]);
 const SAFE_CODE = /^[a-z0-9_:]+$/;
-// A deployed agent keeps the bundle it started with; a field a newer hub adds must not refuse its scope.
-const HubProjectScope = WorkflowProjectScope.onDeepUndeclaredKey("ignore");
 
 /** The packages any run in the project may deploy: every installed one but the coordinator's. */
 export function scopeWorkflows(
@@ -42,20 +37,24 @@ export function projectScopeFailure(callId: string, error: unknown) {
   return { callId, content: code, isError: true, ...accessRefusal(error) };
 }
 
-export async function resolveWorkflowProjectScope(
-  capabilities: RuntimeCapabilities,
-  role: string,
-  signal: AbortSignal,
+// A hub call the hub refused, as the tool's error result: the refusal's code, or refusedCode when the
+// hub named none.
+export function toolFailure(
+  callId: string,
+  error: unknown,
+  refusedCode: string,
 ) {
-  const scope = HubProjectScope.assert(
-    await workflowHttpJson({
-      capabilities,
-      handle: HUB_CREDENTIAL_HANDLE,
-      path: "/api/workflow-project-scope",
-      maxResponseBytes: 16384,
-      signal,
-    }),
-  );
-  if (scope.role !== role) throw new Error("workflow_project_role_refused");
-  return scope;
+  if (error instanceof WorkflowHttpError && error.status)
+    return {
+      callId,
+      content: JSON.stringify({
+        code: error.refusalCode ?? refusedCode,
+        status: error.status,
+        ...(error.issues.length ? { issues: error.issues } : {}),
+        ...(error.hint ? { hint: error.hint } : {}),
+      }),
+      isError: true,
+      ...accessRefusal(error),
+    };
+  return projectScopeFailure(callId, error);
 }

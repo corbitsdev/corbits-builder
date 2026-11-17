@@ -10,7 +10,17 @@ import {
   type WorkflowRuntimeEnv,
 } from "@intx/workflow";
 import { createObservedSignalChannel } from "@intx/workflow/testing";
-import { CATALOG } from "../plugins/catalog.ts";
+import { mkdtemp, rm } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { join, resolve } from "node:path";
+import type { AnnotatedToolFactory } from "@intx/agent/authoring";
+import type { ToolEnv } from "@corbits-builder/plugin/tools";
+import { noopAuditStore, permissiveAuthorize } from "@intx/agent/testing";
+import { createIsogitStore } from "@intx/storage-isogit/node";
+import { createRuntimeCapabilities } from "@intx/types/runtime-capabilities";
+import { WorkflowHttpError } from "@corbits-builder/plugin/http-json";
+import { toolFailure } from "./project-scope.ts";
+import { CATALOG, PLUGINS_FOLDER } from "../plugins/catalog.ts";
 
 // The package a plugin's declared writer is built as, on a model that never answers.
 const writer = CATALOG.packages.get("writer-document");
@@ -96,4 +106,80 @@ test("a stalled write fails once on its timeout and fails the run", async () => 
     },
   });
   expect(events.at(-1)?.kind).toBe("RunFailed");
+});
+
+test("the host returns a plugin tool's hub refusal unchanged", async () => {
+  const presenter = CATALOG.packages.get("presenter");
+  if (presenter === undefined || !("agent" in presenter))
+    throw new Error("presenter_agent_missing");
+  if (presenter.agent.tools === null)
+    throw new Error("presenter_tools_missing");
+  const previousAgent = process.env.BUILDER_AGENT;
+  const previousTools = process.env.BUILDER_TOOLS;
+  const workspace = await mkdtemp(join(tmpdir(), "plugin-refusal-"));
+  const issues = [{ path: "grant", message: "Write access is required." }];
+  const hint = "The run no longer has access.";
+  let calls = 0;
+  try {
+    process.env.BUILDER_AGENT = JSON.stringify(presenter.agent);
+    process.env.BUILDER_TOOLS = resolve(PLUGINS_FOLDER, presenter.agent.tools);
+    const { default: loaded } = await import(`${ENTRY}?plugin-refusal`);
+    const factory: AnnotatedToolFactory<ToolEnv> | undefined =
+      loaded.steps.work.agent.toolFactories.find(
+        (factory: AnnotatedToolFactory<ToolEnv>) =>
+          factory.definitions.some(({ name }) => name === "file_package"),
+      );
+    if (factory === undefined) throw new Error("package_tools_missing");
+    const runner = factory({
+      sources: [],
+      defaultSource: "test",
+      storage: await createIsogitStore(workspace),
+      workdir: workspace,
+      toolCwd: workspace,
+      audit: noopAuditStore(),
+      authorize: permissiveAuthorize(),
+      directors: createDefaultDirectorRegistry(),
+      capabilities: createRuntimeCapabilities({
+        credentials: {
+          resolve: async () => ({
+            kind: "http",
+            dispose: async () => undefined,
+            fetch: async () => {
+              calls += 1;
+              return Response.json(
+                { code: "forbidden", issues, hint },
+                { status: 403 },
+              );
+            },
+          }),
+        },
+      }),
+    });
+    const result = await runner.run(
+      { id: "refused", name: "file_package", arguments: {} },
+      new AbortController().signal,
+    );
+    expect(result).toEqual(
+      toolFailure(
+        "refused",
+        new WorkflowHttpError(403, "unspecified", "forbidden", issues, hint),
+        "tool_call_refused",
+      ),
+    );
+    expect(result.isError).toBe(true);
+    expect(JSON.parse(String(result.content))).toEqual({
+      code: "forbidden",
+      status: 403,
+      issues,
+      hint,
+    });
+    expect(result.detail).toEqual({ accessRefused: true });
+    expect(calls).toBe(1);
+  } finally {
+    if (previousAgent === undefined) delete process.env.BUILDER_AGENT;
+    else process.env.BUILDER_AGENT = previousAgent;
+    if (previousTools === undefined) delete process.env.BUILDER_TOOLS;
+    else process.env.BUILDER_TOOLS = previousTools;
+    await rm(workspace, { recursive: true, force: true });
+  }
 });

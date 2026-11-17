@@ -2,12 +2,12 @@ import { createHash } from "node:crypto";
 import { mkdir, readFile, realpath, writeFile } from "node:fs/promises";
 import { dirname, join } from "node:path";
 import { type } from "arktype";
-import { defineTool, type BaseEnv } from "@intx/agent/authoring";
+import { defineTool } from "@intx/agent/authoring";
 import { HUB_CREDENTIAL_HANDLE } from "@intx/types/credential-delivery";
-import type { RuntimeCapabilities } from "@intx/types/runtime-capabilities";
 import { Deck, DeckError, validateDeck } from "@corbits/slidedeck";
-import { resolveWorkflowProjectScope } from "../workflows/project-scope.ts";
+import { resolveWorkflowProjectScope } from "@corbits-builder/plugin/project-scope";
 import { workflowHttpJson } from "@corbits-builder/plugin/http-json";
+import { defineTools, type ToolEnv } from "@corbits-builder/plugin/tools";
 import {
   DECK_JSON,
   DECK_PDF,
@@ -15,15 +15,9 @@ import {
   checkDeckInWorkspace,
   writeDeckToWorkspace,
 } from "./deck-tools.ts";
-import { failure } from "./tools.ts";
 import { HubArtifactReceipt } from "@corbits-builder/schemas/artifact";
 
 export { DECK_JSON, DECK_PDF, DECK_PPTX };
-
-export interface PackageToolEnv extends BaseEnv {
-  toolCwd: string;
-  capabilities: RuntimeCapabilities;
-}
 
 export const DECK_CHECK = join(".builder", "deck-check.json");
 export const PACKAGE_ASSIGNMENT = join(".builder", "package-assignment.json");
@@ -469,7 +463,7 @@ function deriveDeckTitle(
 }
 
 // The deck and approval package tools of a run of the named role.
-export function createPackageTools(role: string) {
+function createPackageTools(role: string) {
   const definitions = [
     {
       name: "write_deck",
@@ -502,7 +496,7 @@ export function createPackageTools(role: string) {
       inputSchema: { ...FilePackageArgs.toJsonSchema() },
     },
   ];
-  return defineTool<PackageToolEnv>({
+  return defineTool<ToolEnv>({
     id: "@corbits-builder/artifacts/package-tools",
     credentials: [{ handle: HUB_CREDENTIAL_HANDLE }],
     requires: ["toolCwd", "capabilities"],
@@ -514,144 +508,135 @@ export function createPackageTools(role: string) {
     factory: (env) => ({
       definitions,
       run: async (call, signal) => {
-        try {
-          const workspace = await realpath(env.toolCwd);
-          if (call.name === "write_deck") {
-            return await runWriteDeck(workspace, call.id, call.arguments);
-          }
-          if (call.name === "check_deck") {
-            return await runCheckDeck(workspace, call.id);
-          }
-          if (call.name !== "file_package") {
-            return {
-              callId: call.id,
-              content: "unknown_package_tool",
-              isError: true,
-            };
-          }
-          const rawArgs =
-            call.arguments && typeof call.arguments === "object"
-              ? call.arguments
-              : { title: undefined };
-          const args = FilePackageArgs(rawArgs);
-          if (args instanceof type.errors) {
-            return {
-              callId: call.id,
-              content: `invalid_arguments: ${args.summary}`,
-              isError: true,
-            };
-          }
-          const scope = await resolveWorkflowProjectScope(
-            env.capabilities,
-            role,
-            signal,
-          );
-          const deckText = await readTextIfPresent(join(workspace, DECK_JSON));
-          const pptxBytes = await readBytesIfPresent(
-            join(workspace, DECK_PPTX),
-          );
-          const pdfBytes = await readBytesIfPresent(join(workspace, DECK_PDF));
-          if (!deckText || !pptxBytes?.byteLength || !pdfBytes?.byteLength) {
-            return {
-              callId: call.id,
-              content:
-                "deck_check_failed: .builder/deck.json, .builder/deck.pptx and .builder/deck.pdf must exist before filing",
-              isError: true,
-            };
-          }
-          const checkStatus = await verifyDeckCheckPassed(
-            workspace,
-            deckText,
-            pptxBytes,
-            pdfBytes,
-          );
-          if (!checkStatus.ok) {
-            return {
-              callId: call.id,
-              content: checkStatus.message,
-              isError: true,
-            };
-          }
-          let parsedDeck: unknown;
-          try {
-            parsedDeck = JSON.parse(deckText);
-          } catch (error) {
-            return {
-              callId: call.id,
-              content: `deck_check_failed: invalid JSON in ${DECK_JSON} (${error instanceof Error ? error.message : String(error)})`,
-              isError: true,
-            };
-          }
-          const validated = validateDeck(parsedDeck);
-          if (!validated.ok) {
-            return {
-              callId: call.id,
-              content: `deck_check_failed: ${validated.issues.map((issue) => `${issue.path}: ${issue.message}`).join("; ")}`,
-              isError: true,
-            };
-          }
-          const resolved = await resolveAssignment(workspace, args);
-          if (!resolved.ok) {
-            return {
-              callId: call.id,
-              content: resolved.message,
-              isError: true,
-            };
-          }
-          const { assignment } = resolved;
-          const pptxBase64 = pptxBytes.toString("base64");
-          const pdfBase64 = pdfBytes.toString("base64");
-          const sources = assignment.sources.map((source) => ({
-            artifactId: source.artifactId,
-            kind: source.kind,
-            title: source.title,
-            version: source.version,
-            sha256: source.sha256,
-          }));
-          const payloadContent = JSON.stringify({
-            manifest: {
-              audience: assignment.audience,
-              decisionNeeded: assignment.decisionNeeded,
-              tone: assignment.tone?.trim()
-                ? assignment.tone.trim()
-                : "concise",
-              length: assignment.length?.trim()
-                ? assignment.length.trim()
-                : "short",
-              sources,
-            },
-            deck: validated.deck,
-            pptxBase64,
-            pdfBase64,
-          });
-          const title = deriveDeckTitle(validated.deck, assignment).slice(
-            0,
-            512,
-          );
-          const projectPath =
-            "/api/tenants/" +
-            encodeURIComponent(scope.tenantId) +
-            "/projects/" +
-            encodeURIComponent(scope.projectId);
-          const { artifact } = HubArtifactReceipt.assert(
-            await workflowHttpJson({
-              capabilities: env.capabilities,
-              handle: HUB_CREDENTIAL_HANDLE,
-              path: projectPath + "/artifacts",
-              body: {
-                kind: "approval_package",
-                title,
-                content: payloadContent,
-              },
-              maxResponseBytes: 16384,
-              signal,
-            }),
-          );
-          return { callId: call.id, content: JSON.stringify(artifact) };
-        } catch (error) {
-          return failure(call.id, error);
+        const workspace = await realpath(env.toolCwd);
+        if (call.name === "write_deck") {
+          return await runWriteDeck(workspace, call.id, call.arguments);
         }
+        if (call.name === "check_deck") {
+          return await runCheckDeck(workspace, call.id);
+        }
+        if (call.name !== "file_package") {
+          return {
+            callId: call.id,
+            content: "unknown_package_tool",
+            isError: true,
+          };
+        }
+        const rawArgs =
+          call.arguments && typeof call.arguments === "object"
+            ? call.arguments
+            : { title: undefined };
+        const args = FilePackageArgs(rawArgs);
+        if (args instanceof type.errors) {
+          return {
+            callId: call.id,
+            content: `invalid_arguments: ${args.summary}`,
+            isError: true,
+          };
+        }
+        const scope = await resolveWorkflowProjectScope(
+          env.capabilities,
+          role,
+          signal,
+        );
+        const deckText = await readTextIfPresent(join(workspace, DECK_JSON));
+        const pptxBytes = await readBytesIfPresent(join(workspace, DECK_PPTX));
+        const pdfBytes = await readBytesIfPresent(join(workspace, DECK_PDF));
+        if (!deckText || !pptxBytes?.byteLength || !pdfBytes?.byteLength) {
+          return {
+            callId: call.id,
+            content:
+              "deck_check_failed: .builder/deck.json, .builder/deck.pptx and .builder/deck.pdf must exist before filing",
+            isError: true,
+          };
+        }
+        const checkStatus = await verifyDeckCheckPassed(
+          workspace,
+          deckText,
+          pptxBytes,
+          pdfBytes,
+        );
+        if (!checkStatus.ok) {
+          return {
+            callId: call.id,
+            content: checkStatus.message,
+            isError: true,
+          };
+        }
+        let parsedDeck: unknown;
+        try {
+          parsedDeck = JSON.parse(deckText);
+        } catch (error) {
+          return {
+            callId: call.id,
+            content: `deck_check_failed: invalid JSON in ${DECK_JSON} (${error instanceof Error ? error.message : String(error)})`,
+            isError: true,
+          };
+        }
+        const validated = validateDeck(parsedDeck);
+        if (!validated.ok) {
+          return {
+            callId: call.id,
+            content: `deck_check_failed: ${validated.issues.map((issue) => `${issue.path}: ${issue.message}`).join("; ")}`,
+            isError: true,
+          };
+        }
+        const resolved = await resolveAssignment(workspace, args);
+        if (!resolved.ok) {
+          return {
+            callId: call.id,
+            content: resolved.message,
+            isError: true,
+          };
+        }
+        const { assignment } = resolved;
+        const pptxBase64 = pptxBytes.toString("base64");
+        const pdfBase64 = pdfBytes.toString("base64");
+        const sources = assignment.sources.map((source) => ({
+          artifactId: source.artifactId,
+          kind: source.kind,
+          title: source.title,
+          version: source.version,
+          sha256: source.sha256,
+        }));
+        const payloadContent = JSON.stringify({
+          manifest: {
+            audience: assignment.audience,
+            decisionNeeded: assignment.decisionNeeded,
+            tone: assignment.tone?.trim() ? assignment.tone.trim() : "concise",
+            length: assignment.length?.trim()
+              ? assignment.length.trim()
+              : "short",
+            sources,
+          },
+          deck: validated.deck,
+          pptxBase64,
+          pdfBase64,
+        });
+        const title = deriveDeckTitle(validated.deck, assignment).slice(0, 512);
+        const projectPath =
+          "/api/tenants/" +
+          encodeURIComponent(scope.tenantId) +
+          "/projects/" +
+          encodeURIComponent(scope.projectId);
+        const { artifact } = HubArtifactReceipt.assert(
+          await workflowHttpJson({
+            capabilities: env.capabilities,
+            handle: HUB_CREDENTIAL_HANDLE,
+            path: projectPath + "/artifacts",
+            body: {
+              kind: "approval_package",
+              title,
+              content: payloadContent,
+            },
+            maxResponseBytes: 16384,
+            signal,
+          }),
+        );
+        return { callId: call.id, content: JSON.stringify(artifact) };
       },
     }),
   });
 }
+
+export default defineTools(({ role }) => [createPackageTools(role)]);

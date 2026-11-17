@@ -11,7 +11,7 @@ import {
   COMMAND_SECONDS,
 } from "@corbits-builder/plugin-host/checks";
 import { CHECK_MS, CheckRan } from "@corbits-builder/schemas/artifact";
-import { resolveWorkflowProjectScope } from "../workflows/project-scope.ts";
+import { resolveWorkflowProjectScope } from "@corbits-builder/plugin/project-scope";
 import {
   WorkflowHttpError,
   workflowHttpJson,

@@ -293,7 +293,8 @@ export type Design = {
 export const selectionName = (handle: string) => `plugins.${handle}`;
 
 // A declared agent as the host builds its workflow package: the prompt's text, the role it plays,
-// what its declaration says, each skill's files by path with SKILL.md first, and what the actions
+// what its declaration says, its tools module's path in the plugins folder, each skill's files by
+// path with SKILL.md first, and what the actions
 // that start it name: the screens that show its finished work, and the checks the hub runs on the
 // saved result before its reply counts as done.
 export const AgentPackage = type({
@@ -304,6 +305,7 @@ export const AgentPackage = type({
   skills: { "[string]": { "[string]": "string" } },
   files: WriterDocumentKind.or("null"),
   workspace: Workspace.or("null"),
+  tools: "string | null",
   fileBeforeDone: "boolean",
   presents: "string | null",
   done: type({
@@ -417,7 +419,7 @@ const isText = (prompt: string) => prompt.endsWith(".md");
 
 /**
  * The files a manifest leads to: the modules the catalog imports, the texts it reads, the folders
- * it lays out, and which of its actions' files and package entries are there.
+ * it lays out, and which of its actions' files, package entries and agents' tools modules are there.
  */
 export async function manifestFiles(found: Found) {
   if (RunsSkills.allows(found.manifest))
@@ -434,12 +436,13 @@ export async function manifestFiles(found: Found) {
     const { definition, view, data } = actionFiles(action);
     return [definition, view, data];
   });
-  const entries = Object.values(builder.packages ?? {}).map(
-    ({ entry }) => entry,
-  );
-  const prompts = Object.values(builder.agents ?? {}).map(
-    ({ prompt }) => prompt,
-  );
+  const entries = [
+    ...Object.values(builder.packages).map(({ entry }) => entry),
+    ...Object.values(builder.agents).flatMap(({ tools }) =>
+      tools === undefined ? [] : [tools],
+    ),
+  ];
+  const prompts = Object.values(builder.agents).map(({ prompt }) => prompt);
   const present = (
     await Promise.all(
       [...files, ...entries].map(async (path) =>
@@ -455,13 +458,16 @@ export async function manifestFiles(found: Found) {
       ),
       ...Object.values(builder.starters ?? {}),
       ...prompts.filter((prompt) => !isText(prompt)),
-      ...Object.values(builder.agents ?? {}).flatMap(({ workspace }) =>
+      ...Object.values(builder.agents).flatMap(({ workspace }) =>
         workspace === undefined ? [] : [workspace],
+      ),
+      ...Object.values(builder.agents).flatMap(({ tools }) =>
+        tools === undefined ? [] : [tools],
       ),
     ],
     texts: prompts.filter(isText),
     folders: [
-      ...Object.values(builder.agents ?? {}).flatMap(({ skills }) =>
+      ...Object.values(builder.agents).flatMap(({ skills }) =>
         skills === undefined ? [] : [skills],
       ),
       ...Object.values(builder.appStarters ?? {}).map(({ folder }) => folder),
@@ -965,10 +971,7 @@ function installAction(
   const { summary, when, unless, fields } = workflow.describe;
   checkFacts(name, facts, known, (field) => Object.hasOwn(fields, field));
   const { start } = builder;
-  if (
-    startsAgent(start) &&
-    !Object.hasOwn(specialist.agents ?? {}, start.agent)
-  )
+  if (startsAgent(start) && !Object.hasOwn(specialist.agents, start.agent))
     throw new Error(
       `${name} starts the agent ${start.agent}, which ${handle} does not declare`,
     );
@@ -1282,7 +1285,7 @@ async function agentPackages(
   actions: Manifested["actions"],
 ) {
   return Promise.all(
-    Object.entries(builder.agents ?? {}).map(async ([name, declared]) => {
+    Object.entries(builder.agents).map(async ([name, declared]) => {
       const starting = [...actions].flatMap(([action, entry]) =>
         entry.kind === "workflow" && startedBy(entry.builder.start) === name
           ? [{ action, builder: entry.builder }]
@@ -1293,6 +1296,16 @@ async function agentPackages(
         declared.workspace === undefined
           ? null
           : Workspace.assert(await found.module(declared.workspace));
+      if (declared.tools !== undefined) {
+        if (!(await found.has(declared.tools)))
+          throw new Error(
+            `${builder.handle}'s agent ${name} has no tools module inside plugins/${found.folder} at ${declared.tools}`,
+          );
+        if (typeof (await found.module(declared.tools)) !== "function")
+          throw new Error(
+            `${builder.handle}'s agent ${name} tools module ${declared.tools} has no defineTools factory as its default export`,
+          );
+      }
       const agent: AgentPackage = {
         name,
         prompt: await agentPrompt(found, builder.handle, name, declared),
@@ -1303,6 +1316,10 @@ async function agentPackages(
             : bySkill(await found.files(declared.skills)),
         files: declared.files ?? null,
         workspace,
+        tools:
+          declared.tools === undefined
+            ? null
+            : join(found.folder, declared.tools),
         fileBeforeDone:
           starting.length > 0 &&
           starting.every(({ builder }) =>
@@ -1465,13 +1482,13 @@ async function pluginPackages(manifests: readonly Manifested[]) {
   const owners = new Map<string, string>();
   for (const { found, builder, about, actions } of manifests) {
     if (builder.runs !== "specialist") continue;
-    for (const [name, { entry }] of Object.entries(builder.packages ?? {}))
+    for (const [name, { entry }] of Object.entries(builder.packages))
       if (!(await found.has(entry)))
         throw new Error(
           `${about.package}'s workflow package ${name} has no entry inside plugins/${found.folder} at ${entry}`,
         );
     for (const [name, brought] of [
-      ...Object.entries(builder.packages ?? {}).map(
+      ...Object.entries(builder.packages).map(
         ([name, { entry, role }]) =>
           [
             name,

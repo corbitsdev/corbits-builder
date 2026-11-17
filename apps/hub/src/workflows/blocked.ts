@@ -8,10 +8,8 @@ import type { RuntimeCapabilities } from "@intx/types/runtime-capabilities";
 import { RunBlock } from "@corbits-builder/schemas/activity";
 import { describedSchema } from "@corbits-builder/plugin-host/coordinator";
 import { workflowHttpJson } from "@corbits-builder/plugin/http-json";
-import {
-  projectScopeFailure,
-  resolveWorkflowProjectScope,
-} from "./project-scope.ts";
+import { resolveWorkflowProjectScope } from "@corbits-builder/plugin/project-scope";
+import { projectScopeFailure } from "./project-scope.ts";
 
 export const REPORT_BLOCKED = "report_blocked";
 export const END_BLOCKED_RUN = "end_blocked_run";
