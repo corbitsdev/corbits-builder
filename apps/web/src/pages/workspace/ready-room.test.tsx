@@ -138,6 +138,7 @@ describe("project room", () => {
     const shared: readonly unknown[] = [
       keys.modelCatalog[0],
       keys.preferences[0],
+      keys.workspaceTenant[0],
     ];
     const unscoped = queryClient
       .getQueryCache()

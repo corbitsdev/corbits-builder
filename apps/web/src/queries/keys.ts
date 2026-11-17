@@ -6,6 +6,7 @@
  */
 export const keys = {
   workspaces: ["workspaces"] as const,
+  workspaceTenant: ["workspaceTenant"] as const,
   designDraft: {
     all: ["designDraft"] as const,
     of: (projectId: string, concept?: string) =>
