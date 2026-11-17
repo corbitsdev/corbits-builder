@@ -796,6 +796,10 @@ function declaredCredentials(manifests: readonly Manifested[]) {
   const firsts = new Map<string, string>();
   for (const { builder, about } of manifests) {
     if (builder.runs !== "specialist") continue;
+    // A plugin is named to a person by its own agent, as the page names it while it works.
+    const named =
+      builder.roles?.find((role) => role.name === builder.handle)?.label ??
+      builder.handle;
     for (const [name, { about: what, origin, sends }] of Object.entries(
       builder.credentials ?? {},
     )) {
@@ -806,14 +810,14 @@ function declaredCredentials(manifests: readonly Manifested[]) {
           about: what,
           origin,
           sends,
-          plugins: [about.label],
+          plugins: [named],
         });
         firsts.set(name, about.package);
       } else if (earlier.origin !== origin || !sameSends(earlier.sends, sends))
         throw new Error(
           `${about.package} and ${firsts.get(name)} both declare the credential ${name}, sent to a different origin or a different way`,
         );
-      else earlier.plugins.push(about.label);
+      else earlier.plugins.push(named);
     }
   }
   return [...credentials.values()];
