@@ -47,11 +47,14 @@ export type ApprovalDecision = typeof ApprovalDecision.infer;
 /**
  * What a person sends back to a parked question: an answer per question id,
  * or a reply they typed instead. It becomes the `question` call's result.
+ * A screen is answered with its output, or a reply.
  */
 export const QuestionAnswer = type({
   "+": "reject",
   answers: "Record<string, (string > 0)[]>",
-}).or({ "+": "reject", reply: "string > 0" });
+})
+  .or({ "+": "reject", reply: "string > 0" })
+  .or({ "+": "reject", output: "Record<string, unknown>" });
 export type QuestionAnswer = typeof QuestionAnswer.infer;
 
 /**

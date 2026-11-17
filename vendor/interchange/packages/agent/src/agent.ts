@@ -43,6 +43,7 @@
 
 import {
   createReactorAssembly,
+  type CallCheck,
   type Dependencies,
   type ReactorEmittedEvent,
 } from "@intx/inference";
@@ -361,6 +362,22 @@ function resolveTools<EnvReq extends BaseEnv>(
   };
 
   return { definitions, runner, bundles: constructed };
+}
+
+// Each bundle checks only the calls to its own tools; with no bundle that
+// checks, no check is composed.
+function bundleCallCheck(
+  bundles: readonly ToolBundle[],
+): CallCheck | undefined {
+  if (!bundles.some((bundle) => bundle.checkCall !== undefined)) {
+    return undefined;
+  }
+  return async (call) => {
+    const owner = bundles.find((bundle) =>
+      bundle.definitions.some((definition) => definition.name === call.name),
+    );
+    return owner?.checkCall?.(call);
+  };
 }
 
 function resolveDirector<EnvReq extends BaseEnv>(
@@ -715,6 +732,7 @@ export async function createAgent<EnvReq extends BaseEnv>(
       auditStore,
       authorize,
       toolDefinitions: resolvedTools.definitions,
+      checkCall: bundleCallCheck(resolvedTools.bundles),
       onShutdown: async () => {
         try {
           await flushErrors();

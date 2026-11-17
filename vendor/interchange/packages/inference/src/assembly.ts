@@ -32,6 +32,7 @@ import {
 } from "./authz-extension";
 import type { CorrelationValidator } from "./correlation";
 import { createQuestionExtension, questionTool } from "./question";
+import { createCallCheckExtension, type CallCheck } from "./question";
 import type { Dependencies } from "./harness";
 import {
   createReactor,
@@ -89,6 +90,8 @@ export type ReactorAssemblyConfig = {
    */
   toolDefinitions?: readonly ToolDefinition[];
   auditStore?: AuditStore;
+  /** Asks the host about a call after authz, before it runs; see `CallCheck`. */
+  checkCall?: CallCheck | undefined;
   beforeToolExtensions?: BeforeToolExtension[];
   toolResultTransforms?: ToolResultTransform[];
   contextTransforms?: ContextTransform[];
@@ -143,6 +146,7 @@ export function createReactorAssembly(
     authorize,
     toolDefinitions,
     auditStore,
+    checkCall,
     beforeToolExtensions: callerBeforeToolExtensions,
     toolResultTransforms: callerToolResultTransforms,
     contextTransforms,
@@ -204,6 +208,9 @@ export function createReactorAssembly(
   }
   if (toolDefinitions?.some((tool) => tool.name === questionTool.name)) {
     composedBeforeToolExtensions.push(createQuestionExtension());
+  }
+  if (checkCall !== undefined) {
+    composedBeforeToolExtensions.push(createCallCheckExtension(checkCall));
   }
   composedBeforeToolExtensions.push(...(callerBeforeToolExtensions ?? []));
 
