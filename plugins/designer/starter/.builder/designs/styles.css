@@ -223,7 +223,7 @@ a {
   color: var(--muted-foreground);
 }
 
-/* Shell: at four or more screens the nav is a sidebar, a drawer from .menu-button under 768px */
+/* Shell: at four or more links the nav is a sidebar, a drawer from .menu-button under 768px */
 .app-name {
   font-weight: 600;
   text-decoration: none;

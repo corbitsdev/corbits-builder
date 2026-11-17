@@ -4,7 +4,7 @@ import { withDesignTokens } from "./design-tokens.ts";
 test("filed tokens come from styles.css and replace the front matter already there", async () => {
   const css = await Bun.file(
     new URL(
-      "../../../../plugins/designer/themes/retro/designs/styles.css",
+      "../../../../plugins/designer/themes/workbench/designs/styles.css",
       import.meta.url,
     ),
   ).text();
@@ -14,8 +14,8 @@ test("filed tokens come from styles.css and replace the front matter already the
   );
   expect(design).toStartWith('---\nname: "Ledger design"\ncolors:\n');
   expect(design).not.toContain("Stale");
-  expect(design).toContain('  radius-sm: "8px"\n');
-  expect(design).toContain("  font-display:\n    fontFamily: ");
+  expect(design).toContain('  radius-sm: "4px"\n');
+  expect(design).toContain("  font-sans:\n    fontFamily: ");
   expect(design).toMatch(/\n {2}dark-background: "#[\da-f]+"\n/);
   expect(design).toEndWith("---\n\n# Ledger design\n");
 });

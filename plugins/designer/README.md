@@ -29,7 +29,7 @@ this plugin's starter and themes through its manifest.
   field. The manifest keeps only what the folder cannot say, such as what the
   action reads and returns and which workflow it starts.
 - `src/start.ts`: the starter. It refuses a call that has no theme for a
-  concept (one of the looks, the person's brand saved, or `createTheme`) or no
+  concept (one of the themes, the person's brand saved, or `createTheme`) or no
   guidance (filed requirements, an app, or `audience` and `screens`), refuses a
   concept whose designer is still at work, starts one designer for each of the
   others, and writes each run's assignment from whatever documents are filed,
@@ -39,7 +39,9 @@ this plugin's starter and themes through its manifest.
   `design.looks`.
 - `skills/create-theme/SKILL.md`: the Create a theme skill. Both skills are
   appended to the designer's system prompt in `src/prompt.ts`.
-- `src/contract.ts`: the documents a designer can read and its assignment text.
+- `src/contract.ts`: the documents a designer can read, its assignment text,
+  and `fullTheme`, the one place that decides whether a concept names a full
+  theme, whose whole `DESIGN.md` then goes into the assignment.
 - `src/prompt.ts`: the system prompt, as its default export, which the manifest
   names as the agent's prompt. The hub builds the agent from it and the role:
   a designer works in a design workspace on a posix sidecar, and its reply
@@ -53,9 +55,12 @@ this plugin's starter and themes through its manifest.
   `.builder/designs/index.html`, `.builder/designs/screens/home.html` and
   `.builder/designs/styles.css`, and a `README.md` for the designer that is not filed with the
   design.
-- `themes/`: the three design themes (`modern-sleek`, `retro`,
-  `liquid-glass`), each a sample `DESIGN.md` and `designs/` bundle: its
-  stylesheet, which seeds the workspace, and a sample app to preview it.
+- `themes/`: the design themes a person can preview and pick, each a
+  `DESIGN.md` of the theme's foundations (palette, type, spacing, layout on
+  wide and narrow screens, how records, forms, navigation, buttons, empty
+  states and status are drawn, and do and do not rules) and a `designs/`
+  bundle: its stylesheet, which seeds the workspace, and a sample app to
+  preview it.
 - `src/skills.ts`: Bun macros that inline the starter, themes and skills
   where the plugin's own code reads them.
 

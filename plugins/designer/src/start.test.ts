@@ -45,8 +45,8 @@ function projectWith(
 }
 
 const LOOK = {
-  label: "Rounded enterprise",
-  direction: "Friendly large radii and a calm mid-blue primary.",
+  label: "Workbench",
+  direction: "Café owners work through takings and bills in tables.",
 };
 const OWN = {
   label: "Quiet ledger",
@@ -70,15 +70,16 @@ const refusal = async (promise: Promise<unknown>) => {
   throw new Error("the designer started");
 };
 
-describe("a look by its label", () => {
-  test("starts from the theme of the look it names", async () => {
+describe("a theme by its label", () => {
+  test("gives the designer the whole theme it names", async () => {
     const { project, assignments } = projectWith([
       "filed:product_requirements",
     ]);
     await start({ ...task, concepts: [LOOK] }, project);
     expect(assignments.get(LOOK.label)).toContain(
-      "starts from the Modern and sleek theme",
+      "Its look is the Workbench theme",
     );
+    expect(assignments.get(LOOK.label)).toContain("## Layout");
   });
 
   test("a label that is none of the looks is told to create its theme", async () => {
@@ -118,7 +119,7 @@ describe("the start gate", () => {
   });
 
   const themes: [string, Record<string, unknown>, string[]][] = [
-    ["a declared look", { concepts: [LOOK] }, []],
+    ["a theme", { concepts: [LOOK] }, []],
     ["the person's brand saved", { concepts: [OWN] }, ["look.color-primary"]],
     ["a request to create one", { concepts: [OWN], createTheme: true }, []],
   ];

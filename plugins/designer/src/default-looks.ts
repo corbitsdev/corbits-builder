@@ -3,16 +3,16 @@ import type { DesignBuilder } from "@corbits-builder/plugin";
 type Look = DesignBuilder["looks"][number];
 
 const CONCEPTS =
-  "The looks to design, each a label and a direction naming its colours, type and radii: one for a single suggested design, several clearly different ones to explore, at most five at a time. When the person has handed approvals over to Builder, give exactly one: that one design is made and used without asking them. A concept designed before gets a fresh designer that changes its latest draft.";
+  "The designs to make, each a label and a direction: one for a single suggested design, several clearly different ones to explore, at most five at a time. When the person has handed approvals over to Builder, give exactly one: that one design is made and used without asking them. A concept designed before gets a fresh designer that changes its latest draft.";
 
 /**
- * What the coordinator reads of the mockup's concepts: with the looks the plugin declares, each by
- * the exact label that starts its designer from a ready theme.
+ * What the coordinator reads of the mockup's concepts: with the looks the plugin declares, each a
+ * theme by the exact label that starts its designer from it.
  */
 export function conceptsAbout(looks: readonly Look[]) {
   if (looks.length === 0) return CONCEPTS;
   return [
-    `${CONCEPTS} Use these looks by their exact labels, with a direction shaped by the person's ideas; a label of yours that is none of them has no ready theme, so give one only when the person asked for a look of their own or the project has their brand, and see createTheme:`,
+    `${CONCEPTS} Each label is one of these themes by its exact label, chosen for who uses the product and the work they do there, and its direction says in a sentence why it suits them, which the person reads beside the design. The theme carries the whole look, so write no colours, type or layout. A label that is none of them has no theme yet: give one only when the person asked for a look of their own or gave their brand, with createTheme, and its direction is that brand or idea in their words:`,
     ...looks.map(({ label, direction }) => `- ${label}: ${direction}`),
   ].join("\n");
 }
@@ -25,32 +25,21 @@ const directionOf = (designDoc: string) =>
     ?.trim();
 
 /**
- * The designer's looks skill: each look it offers with the theme it starts from, and what each
- * theme is for, as the theme's own DESIGN.md says it.
+ * The designer's looks skill: each theme it offers, with what it is for as the theme's own DESIGN.md
+ * says it.
  */
 export function looksSkill(
   design: DesignBuilder,
   themeDocs: Readonly<Record<string, string>>,
 ) {
-  const labelOf = (theme: string) =>
-    design.looks.find(({ id }) => id === theme)?.label ?? theme;
-  const themes = [
-    ...new Set(design.looks.flatMap(({ theme }) => (theme ? [theme] : []))),
-  ].flatMap((theme) => {
-    const direction = directionOf(themeDocs[theme] ?? "");
-    return direction ? [`### ${labelOf(theme)} theme\n\n${direction}`] : [];
+  const themes = design.looks.flatMap(({ label, theme }) => {
+    const doc = theme && themeDocs[theme];
+    const direction = doc && directionOf(doc);
+    return direction ? [`### ${label} theme\n\n${direction}`] : [];
   });
   return [
     "## Skill: Looks",
-    "These are the looks Builder offers a person by name. When your concept is one of them, its theme's stylesheet is already in designs/styles.css: keep the theme's character and change only the tokens the direction names. When the task leaves the look to you, pick the look that suits who uses the product and the work they do there, and say why in your design brief. A look that is none of these has no ready theme: create one with the Create a theme skill before you draw.",
-    "Each look, with the theme it starts from:",
-    design.looks
-      .map(
-        ({ label, theme, direction }) =>
-          `- ${label}${theme ? ` (${labelOf(theme)} theme)` : ""}: ${direction}`,
-      )
-      .join("\n"),
-    "What each theme is for, from its own design:",
+    "These are the themes Builder offers a person by name, each with what it is for. When your concept is one of them, its stylesheet is already in designs/styles.css and its full foundations are in your task: follow them. A look that is none of them has no ready theme: create one with the Create a theme skill before you draw.",
     ...themes,
   ].join("\n\n");
 }

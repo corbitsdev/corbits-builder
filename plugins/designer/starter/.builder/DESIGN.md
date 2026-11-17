@@ -18,7 +18,7 @@ browser screen.>
 
 - <screen name>: `designs/screens/<name>.html`, `/<path>`, <what it is
   for, in a few words>
-- <one line for every screen, in the navigation's order>
+- <one line for every screen>
 
 ### <screen name>
 

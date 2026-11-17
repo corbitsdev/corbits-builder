@@ -207,81 +207,33 @@
       "looks": [
         {
           "id": "modern-sleek",
-          "label": "Modern and sleek",
+          "label": "Sleek modern",
           "theme": "modern-sleek",
-          "direction": "Crisp cool neutrals, one cobalt accent, generous whitespace, system sans-serif type and subtle depth."
+          "direction": "Cool neutrals, ink for the main action and one violet accent, soft layered shadows instead of borders, a top bar, stat cards and roomy tables in a centred column; for customer-facing apps and dashboards."
         },
         {
-          "id": "rounded-enterprise",
-          "label": "Rounded enterprise",
-          "theme": "modern-sleek",
-          "direction": "Friendly large radii (--radius about 1rem), a calm mid-blue primary and soft cool greys."
-        },
-        {
-          "id": "boxy-enterprise",
-          "label": "Boxy enterprise",
-          "theme": "modern-sleek",
-          "direction": "Square corners (--radius 0), a deep navy primary and a sober, high-contrast palette of near-black text on white with hairline grey borders."
-        },
-        {
-          "id": "dark-technical",
-          "label": "Dark and technical",
-          "theme": "modern-sleek",
-          "direction": "A dark canvas in both :root and .dark (near-black background, slate cards), a neon cyan primary and --font-sans set to ui-monospace, monospace."
-        },
-        {
-          "id": "bold-colourful",
-          "label": "Bold and colourful",
-          "theme": "retro",
-          "direction": "Saturated colour: an electric magenta primary, bright yellow secondary and cyan accent on a white background."
-        },
-        {
-          "id": "liquid-glass",
-          "label": "Liquid glass",
-          "theme": "liquid-glass",
-          "direction": "iOS-like frosted surfaces with background blur over vivid solid colour fields blurred into soft light, fluid curves and system type."
-        },
-        {
-          "id": "pastel-soft",
-          "label": "Pastel and soft",
-          "theme": "modern-sleek",
-          "direction": "Muted pastel tints for the primary, secondary and accent, an off-white background, gentle contrast and large radii (--radius about 1rem)."
+          "id": "workbench",
+          "label": "Workbench",
+          "theme": "workbench",
+          "direction": "Warm paper-white surfaces, ink text, one deep teal accent, strict status colours, Avenir Next with tabular mono figures, dense tables for records."
         },
         {
           "id": "editorial",
           "label": "Editorial",
-          "theme": "modern-sleek",
-          "direction": "Magazine-like: --font-sans set to ui-serif, Georgia, serif, an ink-black primary on a warm off-white background and restrained colour."
+          "theme": "editorial",
+          "direction": "Warm paper, ink and one rubric red, a display serif over an old-style text serif, a centred masthead, rules instead of boxes, typeset catalogues and records that read as articles; for guides, catalogues and reference."
         },
         {
-          "id": "warm-organic",
-          "label": "Warm and organic",
-          "theme": "retro",
-          "direction": "Earthy tones: a terracotta or olive primary, a cream background, soft brown borders and --font-sans set to Optima, Candara, \"Segoe UI\", sans-serif."
+          "id": "friendly",
+          "label": "Friendly",
+          "theme": "friendly",
+          "direction": "Warm cream, white cards with big radii and one coral, a large humanist sans, records as cards with icon tiles and big numbers, a bottom tab bar and floating action on a phone; for consumer and personal apps."
         },
         {
-          "id": "minimal-monochrome",
-          "label": "Minimal monochrome",
-          "theme": "modern-sleek",
-          "direction": "Black, white and greys only: a near-black primary with white text on it, grey secondary and accent."
-        },
-        {
-          "id": "retro",
-          "label": "Retro",
-          "theme": "retro",
-          "direction": "A nostalgic cream, tomato, mustard and teal palette, chunky ink outlines, 70s display type and tactile, toy-like controls."
-        },
-        {
-          "id": "trading-desk",
-          "label": "Dense trading desk",
-          "theme": "modern-sleek",
-          "direction": "For experts: a dark slate canvas in both :root and .dark, a muted blue primary, small radii (--radius 0.25rem), and --success and --destructive kept for gains and losses."
-        },
-        {
-          "id": "enthusiast-forum",
-          "label": "Enthusiast forum",
-          "theme": "retro",
-          "direction": "A long-running hobby forum: a faded navy primary on parchment, small radii (--radius 0.25rem) and --font-sans set to \"Arial Narrow\", \"Roboto Condensed\", sans-serif."
+          "id": "console",
+          "label": "Console",
+          "theme": "console",
+          "direction": "Dark in both modes, monospace for every figure, a condensed sans for labels, colour only for state and one acid lime action, KPI tiles with sparklines and a live event stream beside a dense table; for monitoring, data and developer tools."
         }
       ]
     },
