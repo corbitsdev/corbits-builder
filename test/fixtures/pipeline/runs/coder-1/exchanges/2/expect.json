@@ -7,9 +7,7 @@
     "read_file",
     "run_shell",
     "app_status",
-    "install_packages",
-    "mail_reply",
-    "mail_search"
+    "install_packages"
   ],
   "toolResults": [
     {

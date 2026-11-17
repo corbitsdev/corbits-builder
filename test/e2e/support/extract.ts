@@ -1276,7 +1276,7 @@ export async function extractWeatherAppFixture(options?: {
         expect: {
           lastMessageRole: "user",
           userTextContains: '"artifact":"review"',
-          requiredTools: ["mail_search", "mail_reply", "mail_send"],
+          requiredTools: [],
           toolResults: [],
         },
       },
@@ -1294,8 +1294,6 @@ export async function extractWeatherAppFixture(options?: {
     "edit_file",
     "grep",
     "check_design",
-    "mail_reply",
-    "mail_search",
   ];
 
   const designerRun: RunSpec = {
@@ -1409,8 +1407,6 @@ export async function extractWeatherAppFixture(options?: {
     "run_shell",
     "app_status",
     "install_packages",
-    "mail_reply",
-    "mail_search",
   ];
 
   const writeCalls: ToolCallSpec[] = appFiles.map((file, idx) => ({
