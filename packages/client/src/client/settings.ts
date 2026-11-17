@@ -19,6 +19,7 @@ export function buildSettingsMethods(
   | "settings"
   | "saveSettings"
   | "preferenceRegistry"
+  | "pluginCredentials"
   | "modelCatalog"
   | "testProvider"
   | "createCustomProvider"
@@ -41,6 +42,12 @@ export function buildSettingsMethods(
     },
     preferenceRegistry(tenantId, signal) {
       return request(`${tenantPath(tenantId)}/settings/preferences`, signal);
+    },
+    pluginCredentials(tenantId, signal) {
+      return request(
+        `${tenantPath(tenantId)}/settings/plugin-credentials`,
+        signal,
+      );
     },
     modelCatalog(tenantId, signal) {
       return request(`${tenantPath(tenantId)}/settings/models`, signal);

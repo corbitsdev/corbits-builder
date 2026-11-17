@@ -19,6 +19,7 @@ import {
   SettingsRecord,
   SettingsReceipt,
   SettingsProviders,
+  PluginCredentials,
   type ProviderAvailability,
 } from "@corbits-builder/schemas/settings";
 import { PreferenceRegistry } from "@corbits-builder/schemas/preferences";
@@ -241,6 +242,23 @@ export function createSettingsRoutes(
       },
     }),
     (c) => c.json(preferenceRegistry()),
+  );
+  app.get(
+    "/plugin-credentials",
+    describeRoute({
+      tags: ["Settings"],
+      operationId: "pluginCredentials",
+      responses: {
+        200: {
+          description:
+            "Each credential name installed plugins declare, with the plugins that declare it; no key",
+          content: {
+            "application/json": { schema: resolver(PluginCredentials) },
+          },
+        },
+      },
+    }),
+    (c) => c.json({ credentials: CATALOG.credentials }),
   );
   app.get(
     "/models",

@@ -13,27 +13,16 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@corbits/react-ui/ui/dialog";
-import {
-  Menu,
-  MenuContent,
-  MenuItem,
-  MenuSeparator,
-  MenuTrigger,
-} from "@corbits/react-ui/ui/menu";
 import { InfoTooltip, Tooltip } from "@corbits/react-ui/ui/tooltip";
-import { ChevronDown, Ellipsis, X } from "lucide-react";
+import { ChevronDown, X } from "lucide-react";
 import { useRef, useState, type KeyboardEvent, type ReactNode } from "react";
-import {
-  Button,
-  DangerMenuItem,
-  QuietButton,
-  QuietState,
-} from "../../components.jsx";
+import { Button, QuietButton, QuietState } from "../../components.jsx";
 import { ProviderLogo } from "./provider-logos.tsx";
 import { ProviderFormBody } from "./provider-form.tsx";
 import {
   SettingsInput,
   SettingsRow,
+  SettingsRowActions,
   SettingsRowValue,
 } from "./settings-row.tsx";
 import styles from "./custom-providers.module.css";
@@ -607,12 +596,15 @@ export function CustomProviderRowView({
             {copy.custom.modelCount(modelCount)}
             <ChevronDown aria-hidden="true" size={12} />
           </QuietButton>
-          <CustomProviderActions
-            name={name}
+          <SettingsRowActions
+            label={copy.custom.options(name)}
+            editLabel={copy.custom.edit}
+            dangerLabel={copy.custom.remove}
+            confirmLabel={copy.custom.confirmRemove}
             editable={editable}
-            removing={removing}
+            busy={removing}
             onEdit={onEdit}
-            onRemove={onRemove}
+            onConfirm={onRemove}
           />
           {editor}
         </SettingsRowValue>
@@ -671,62 +663,6 @@ export function CustomProviderModelsView({
         </Button>
       </SettingsRow>
     </>
-  );
-}
-
-/** One custom provider's options menu: edit its connection, or remove it. */
-function CustomProviderActions({
-  name,
-  editable,
-  removing,
-  onEdit,
-  onRemove,
-}: {
-  name: string;
-  editable: boolean;
-  removing: boolean;
-  onEdit: () => void;
-  onRemove: () => void;
-}) {
-  // Removing takes two clicks, both in the menu, as deleting a project does.
-  const [confirming, setConfirming] = useState(false);
-  return (
-    <Menu
-      onOpenChange={(open) => {
-        if (!open) setConfirming(false);
-      }}
-    >
-      <MenuTrigger asChild>
-        <UiButton
-          variant="ghost"
-          size="icon"
-          aria-label={copy.custom.options(name)}
-        >
-          <Ellipsis aria-hidden="true" />
-        </UiButton>
-      </MenuTrigger>
-      <MenuContent align="end">
-        <MenuItem disabled={removing || !editable} onSelect={onEdit}>
-          {copy.custom.edit}
-        </MenuItem>
-        <MenuSeparator />
-        {confirming ? (
-          <DangerMenuItem disabled={removing} onSelect={onRemove}>
-            {copy.custom.confirmRemove}
-          </DangerMenuItem>
-        ) : (
-          <DangerMenuItem
-            disabled={removing}
-            onSelect={(event) => {
-              event.preventDefault();
-              setConfirming(true);
-            }}
-          >
-            {copy.custom.remove}
-          </DangerMenuItem>
-        )}
-      </MenuContent>
-    </Menu>
   );
 }
 

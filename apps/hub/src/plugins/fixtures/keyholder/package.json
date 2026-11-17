@@ -13,7 +13,7 @@
     "unless": "They want something else.",
     "credentials": {
       "keyholder-api": {
-        "about": "Your Keyholder API key",
+        "about": "Keyholder API key",
         "origin": "http://127.0.0.1:4010",
         "sends": {
           "header": "x-api-key",

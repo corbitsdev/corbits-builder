@@ -10,6 +10,7 @@ import type {
   ProviderTestResult,
 } from "@corbits-builder/schemas/models";
 import type {
+  PluginCredentials,
   SettingsSave,
   SettingsRecord,
   SettingsReceipt,
@@ -186,6 +187,10 @@ export type ProductApiClient = Readonly<{
     tenantId: string,
     signal?: AbortSignal,
   ): Promise<PreferenceRegistry>;
+  pluginCredentials(
+    tenantId: string,
+    signal?: AbortSignal,
+  ): Promise<PluginCredentials>;
   modelCatalog(tenantId: string, signal?: AbortSignal): Promise<ModelCatalog>;
   testProvider(
     tenantId: string,

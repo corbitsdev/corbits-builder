@@ -82,7 +82,12 @@
   flex-wrap: wrap;
   gap: var(--space-3);
   flex-shrink: 0;
-  max-width: min(420px, 100%);
+  max-width: min(440px, 100%);
+}
+
+/* Buttons keep the interface face; mono is for the values themselves. */
+.value [data-slot="button"] {
+  font-family: var(--font-sans);
 }
 
 .value a {
@@ -133,6 +138,11 @@
   .value {
     flex-shrink: 1;
     justify-content: flex-start;
+  }
+
+  /* A row's lone field takes the whole line, so its buttons stay together under it. */
+  .value > .input:not([data-size]) {
+    width: 100%;
   }
 
   .input[data-size="token"] {

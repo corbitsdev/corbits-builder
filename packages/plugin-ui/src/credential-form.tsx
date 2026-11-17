@@ -44,6 +44,7 @@ const SCOPES: readonly { id: Scope; label: string }[] = [
 ];
 
 const Providers = paginatedSchema(ProviderResponse);
+const Credentials = paginatedSchema(CredentialResponse);
 
 async function refusal(response: Response): Promise<Error> {
   const code = String(response.status);
@@ -60,7 +61,7 @@ async function refusal(response: Response): Promise<Error> {
 
 async function send(
   path: string,
-  method: "GET" | "POST" | "PATCH",
+  method: "GET" | "POST" | "PATCH" | "DELETE",
   body: object | undefined,
 ): Promise<Response> {
   const init: RequestInit = { method, credentials: "same-origin" };
@@ -91,45 +92,105 @@ function secretOf(sends: CredentialDeclaration["sends"], key: string): string {
   return JSON.stringify(material);
 }
 
-async function saveCredential(
-  { name, declaration, tenants }: Omit<CredentialFormProps, "onSaved">,
-  scope: Scope,
-  key: string,
+const credentialPath = (tenant: string, id: string) =>
+  `${encodeURIComponent(tenant)}/credentials/${encodeURIComponent(id)}`;
+
+/** Every credential the tenant holds itself, read page by page; never a secret. */
+export async function heldCredentials(tenant: string) {
+  const path = `${encodeURIComponent(tenant)}/credentials`;
+  let page = Credentials.assert(await json(path, "GET", undefined));
+  const held = page.data;
+  while (page.nextCursor !== null) {
+    page = Credentials.assert(
+      await json(
+        `${path}?cursor=${encodeURIComponent(page.nextCursor)}`,
+        "GET",
+        undefined,
+      ),
+    );
+    held.push(...page.data);
+  }
+  return held;
+}
+
+export async function revokeCredential(
+  tenant: string,
+  id: string,
 ): Promise<void> {
+  const response = await send(credentialPath(tenant, id), "DELETE", undefined);
+  if (!response.ok) throw await refusal(response);
+}
+
+type Sending = Pick<CredentialDeclaration, "origin" | "sends">;
+
+/** The workspace's provider a credential is saved under, created or brought in line with how its
+ * plugin sends it; its id. */
+async function syncProvider(
+  name: string,
+  { origin, sends }: Sending,
+  workspaceTenant: string,
+): Promise<string> {
   // The provider and the credential share one name.
   const provider = credentialProvider(name);
-  const workspace = encodeURIComponent(tenants.workspace);
-  const plugin = declaration.sends === "bearer" ? "http" : "http-header";
-  const apiBaseUrl = declaration.origin;
+  const workspace = encodeURIComponent(workspaceTenant);
+  const plugin = sends === "bearer" ? "http" : "http-header";
   // The inherited listing is the unpaged one; a provider named here in the workspace shadows any above it.
   const listed = Providers.assert(
     await json(`${workspace}/providers`, "GET", undefined),
   );
   const existing = listed.data.find(
-    (row) => row.name === provider && row.tenantId === tenants.workspace,
+    (row) => row.name === provider && row.tenantId === workspaceTenant,
   );
-  if (
-    existing &&
-    (existing.plugin !== plugin || existing.apiBaseUrl !== apiBaseUrl)
-  )
-    await json(
-      `${workspace}/providers/${encodeURIComponent(existing.id)}`,
-      "PATCH",
-      { plugin, apiBaseUrl },
-    );
-  const providerId =
-    existing?.id ??
-    ProviderResponse.assert(
+  if (!existing)
+    return ProviderResponse.assert(
       await json(`${workspace}/providers`, "POST", {
         name: provider,
         plugin,
-        apiBaseUrl,
+        apiBaseUrl: origin,
       }),
     ).id;
+  if (existing.plugin !== plugin || existing.apiBaseUrl !== origin)
+    await json(
+      `${workspace}/providers/${encodeURIComponent(existing.id)}`,
+      "PATCH",
+      { plugin, apiBaseUrl: origin },
+    );
+  return existing.id;
+}
 
+async function rotate(
+  owner: string,
+  id: string,
+  sends: CredentialDeclaration["sends"],
+  key: string,
+): Promise<void> {
+  await json(credentialPath(owner, id), "PATCH", {
+    secret: secretOf(sends, key),
+    status: "active",
+  });
+}
+
+/** Puts a new key in a credential its owner tenant holds, sent the way its plugin declares. */
+export async function replaceCredential(
+  tenants: { owner: string; workspace: string },
+  id: string,
+  name: string,
+  sending: Sending,
+  key: string,
+): Promise<void> {
+  await syncProvider(name, sending, tenants.workspace);
+  await rotate(tenants.owner, id, sending.sends, key);
+}
+
+async function saveCredential(
+  { name, declaration, tenants }: Omit<CredentialFormProps, "onSaved">,
+  scope: Scope,
+  key: string,
+): Promise<void> {
+  const providerId = await syncProvider(name, declaration, tenants.workspace);
+  const provider = credentialProvider(name);
   const owner = tenants[scope];
   const credentials = `${encodeURIComponent(owner)}/credentials`;
-  const secret = secretOf(declaration.sends, key);
   const resolved = await send(
     `${credentials}/resolve/${encodeURIComponent(provider)}`,
     "GET",
@@ -139,10 +200,7 @@ async function saveCredential(
     const held = CredentialResponse.assert(await resolved.json());
     // Resolution walks up the tenants; only a credential this tenant holds is replaced.
     if (held.tenantId === owner) {
-      await json(`${credentials}/${encodeURIComponent(held.id)}`, "PATCH", {
-        secret,
-        status: "active",
-      });
+      await rotate(owner, held.id, declaration.sends, key);
       return;
     }
   } else if (resolved.status !== 404) throw await refusal(resolved);
@@ -150,7 +208,7 @@ async function saveCredential(
     providerId,
     name: provider,
     type: "api_key",
-    secret,
+    secret: secretOf(declaration.sends, key),
   });
 }
 

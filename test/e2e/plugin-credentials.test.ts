@@ -4,6 +4,7 @@ import { join } from "node:path";
 import { eq } from "drizzle-orm";
 import { workflowRun } from "@intx/db/schema";
 import { CredentialResponse, ProviderResponse } from "@intx/types";
+import type { ScriptedProject } from "./support/scripted-project.ts";
 
 const KEY = "e2e-only-keyholder-key-0123456789";
 const ANSWERED = "Keyholder checked the request.";
@@ -43,6 +44,34 @@ manifest.builder.credentials["keyholder-api"].origin = ORIGIN;
 await writeFile(join(INSTALLED, "package.json"), JSON.stringify(manifest));
 const { call, execute, ok, openProject, results, say, turn, user } =
   await import("./support/scripted-project.ts");
+
+// What the form sends with the person's session: the provider in the workspace, the key in the
+// project.
+const saveKey = async ({ hub, tenantId, call }: ScriptedProject) => {
+  const provider = ProviderResponse.assert(
+    (
+      await call("POST", `/api/tenants/${hub.workspaceTenantId}/providers`, {
+        name: NAME,
+        plugin: "http-header",
+        apiBaseUrl: ORIGIN,
+      })
+    ).body,
+  );
+  return CredentialResponse.assert(
+    (
+      await call("POST", `/api/tenants/${tenantId}/credentials`, {
+        providerId: provider.id,
+        name: NAME,
+        type: "api_key",
+        secret: JSON.stringify({
+          header: "x-api-key",
+          prefix: "Token",
+          value: KEY,
+        }),
+      })
+    ).body,
+  );
+};
 
 afterAll(async () => {
   await upstream.stop(true);
@@ -96,36 +125,15 @@ test("an action whose plugin's key is missing opens the plugin's form, and once 
     });
     expect(project.asked("keyholder")).toBe(0);
 
-    // What the form sends with the person's session: the provider in the workspace, the key in
-    // the project.
-    const credentials = `/api/tenants/${tenantId}/credentials`;
     expect(
-      (await project.call("GET", `${credentials}/resolve/${NAME}`)).status,
-    ).toBe(404);
-    const provider = ProviderResponse.assert(
       (
         await project.call(
-          "POST",
-          `/api/tenants/${hub.workspaceTenantId}/providers`,
-          { name: NAME, plugin: "http-header", apiBaseUrl: ORIGIN },
+          "GET",
+          `/api/tenants/${tenantId}/credentials/resolve/${NAME}`,
         )
-      ).body,
-    );
-    const saved = CredentialResponse.assert(
-      (
-        await project.call("POST", credentials, {
-          providerId: provider.id,
-          name: NAME,
-          type: "api_key",
-          secret: JSON.stringify({
-            header: "x-api-key",
-            prefix: "Token",
-            value: KEY,
-          }),
-        })
-      ).body,
-    );
-    expect(saved.tenantId).toBe(tenantId);
+      ).status,
+    ).toBe(404);
+    expect((await saveKey(project)).tenantId).toBe(tenantId);
 
     expect(
       (await project.answer(form.signalName, { output: { saved: true } }))
@@ -154,6 +162,49 @@ test("an action whose plugin's key is missing opens the plugin's form, and once 
     expect(
       JSON.stringify(await hub.client.conversationEvents(tenantId, projectId)),
     ).not.toContain(KEY);
+    await project.finish();
+  } finally {
+    await project.close();
+  }
+}, 600_000);
+
+test("once its key is gone from Interchange, the coordinator asks for it again", async () => {
+  const again = "Check my Keyholder key again.";
+  const project = await openProject({
+    start: { idea: "Check my Keyholder API key.", title: "Keyholder" },
+    runs: {
+      coordinator: {
+        role: "coordinator",
+        turns: [
+          turn(user("Keyholder API key"), say("Tell me when to check it.")),
+          turn(
+            user(again),
+            execute("c_key", "keyholder", "use-key", {
+              instruction: INSTRUCTION,
+            }),
+          ),
+        ],
+      },
+    },
+  });
+  try {
+    const credentials = `/api/tenants/${project.tenantId}/credentials`;
+    await project.heard("Tell me when to check it.");
+    const saved = await saveKey(project);
+    expect(
+      (await project.call("GET", `${credentials}/resolve/${NAME}`)).status,
+    ).toBe(200);
+    expect(
+      (await project.call("DELETE", `${credentials}/${saved.id}`)).status,
+    ).toBe(204);
+
+    // A revoke that left the key would start the specialist, which has no scripted run.
+    await project.say(again);
+    expect((await project.question()).asked).toEqual({
+      plugin: "keyholder",
+      action: "key-form",
+      input: {},
+    });
     await project.finish();
   } finally {
     await project.close();

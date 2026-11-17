@@ -25,6 +25,7 @@ import {
   Workspace,
   type AgentBuilder,
   type AppStarter,
+  type CredentialDeclaration,
   type FiledVersion,
   type Kept,
   type Starter,
@@ -325,6 +326,12 @@ export type PluginPackage =
  * The installed plugins as one project sees them: one plugin per handle, the one its selection names
  * of those that share a handle, else their default.
  */
+// A credential name as the installed plugins declare it, with the labels of those that do.
+export type PluginCredential = Pick<
+  CredentialDeclaration,
+  "about" | "origin" | "sends"
+> & { name: string; plugins: string[] };
+
 export type Catalog = {
   plugins: readonly Plugin[];
   // The screens an execute call can show.
@@ -337,6 +344,8 @@ export type Catalog = {
   // Every project value by name: each one a plugin declares, and the selection of each handle
   // several plugins share.
   values: ReadonlyMap<string, ValueDeclaration>;
+  // Every credential name an installed plugin declares, whichever of a shared handle a project uses.
+  credentials: readonly PluginCredential[];
   // Each workflow package a plugin brings, by name, with the name of the role its runs play: its
   // entry's path in the plugins folder, or the agent it declares, which the host builds.
   packages: ReadonlyMap<string, PluginPackage>;
@@ -769,6 +778,49 @@ function declaredValues(manifests: readonly Manifested[]) {
         );
     }
   return values;
+}
+
+const sameSends = (
+  a: CredentialDeclaration["sends"],
+  b: CredentialDeclaration["sends"],
+) =>
+  a === "bearer" || b === "bearer"
+    ? a === b
+    : a.header === b.header && a.prefix === b.prefix;
+
+// Each credential name the installed plugins declare, with the labels of the plugins that declare
+// it. Plugins share a name only as one key, sent to one origin one way, since a person saves it once
+// for all of them.
+function declaredCredentials(manifests: readonly Manifested[]) {
+  const credentials = new Map<string, PluginCredential>();
+  const firsts = new Map<string, string>();
+  for (const { builder, about } of manifests) {
+    if (builder.runs !== "specialist") continue;
+    // A plugin is named to a person by its own agent, as the page names it while it works.
+    const named =
+      builder.roles.find((role) => role.name === builder.handle)?.label ??
+      builder.handle;
+    for (const [name, { about: what, origin, sends }] of Object.entries(
+      builder.credentials,
+    )) {
+      const earlier = credentials.get(name);
+      if (!earlier) {
+        credentials.set(name, {
+          name,
+          about: what,
+          origin,
+          sends,
+          plugins: [named],
+        });
+        firsts.set(name, about.package);
+      } else if (earlier.origin !== origin || !sameSends(earlier.sends, sends))
+        throw new Error(
+          `${about.package} and ${firsts.get(name)} both declare the credential ${name}, sent to a different origin or a different way`,
+        );
+      else earlier.plugins.push(named);
+    }
+  }
+  return [...credentials.values()];
 }
 
 function installScreen(
@@ -1627,6 +1679,7 @@ export async function loadCatalog(
     found.filter((each) => RunsSkills.allows(each.manifest)).map(packOf),
     manifests,
   );
+  const credentials = declaredCredentials(manifests);
   const made = checkMade(manifests);
   const known = new Set([...host.facts, ...made.keys()]);
   const factText = factWords(manifests, host.facts, made);
@@ -1675,6 +1728,7 @@ export async function loadCatalog(
         using.find((plugin) => plugin.builder.handle === handle),
       factText,
       values,
+      credentials,
       packages,
       roles: [...roles.values()],
       role: (name) => roles.get(name),

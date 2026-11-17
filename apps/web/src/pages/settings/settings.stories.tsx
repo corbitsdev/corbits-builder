@@ -7,6 +7,8 @@ import { ProfilesView } from "./profiles.view.tsx";
 import profiles from "./profiles.stories.tsx";
 import { ProvidersSectionView } from "./providers.view.tsx";
 import providers from "./providers.stories.tsx";
+import { SecretsSectionView } from "./secrets.view.tsx";
+import secrets from "./secrets.stories.tsx";
 import { SettingsView, type SettingsViewProps } from "./settings.view.tsx";
 import { WorkingPreferencesView } from "./working-preferences.view.tsx";
 import workingPreferences from "./working-preferences.stories.tsx";
@@ -48,6 +50,7 @@ const meta = {
     providers: <ProvidersSectionView {...providers.args} />,
     profiles: <ProfilesView {...profiles.args} />,
     collaborators: <CollaboratorsView {...collaborators.args} />,
+    secrets: <SecretsSectionView {...secrets.args} />,
     workingPreferences: <WorkingPreferencesView {...workingPreferences.args} />,
     appearance: {
       theme: "system",
@@ -80,6 +83,8 @@ export const PreferencesSignedOut: Story = {
 };
 
 export const Collaborators: Story = { args: { tab: "collaborators" } };
+
+export const Secrets: Story = { args: { tab: "secrets" } };
 
 export const About: Story = { args: { tab: "about" } };
 

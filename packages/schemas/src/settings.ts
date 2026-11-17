@@ -99,3 +99,21 @@ export const SettingsProviders = type({
   }).array(),
 });
 export type SettingsProviders = typeof SettingsProviders.infer;
+// Each credential name the installed plugins declare: what it is, the origin it is sent to and how,
+// and the plugins that declare it, by label. No key is in it.
+export const PluginCredentials = type({
+  "+": "reject",
+  credentials: type({
+    "+": "reject",
+    name: "string > 0",
+    about: "string > 0",
+    origin: "string > 0",
+    sends: type("'bearer'").or({
+      "+": "reject",
+      header: "string > 0",
+      "prefix?": "string > 0",
+    }),
+    plugins: type("string > 0").array(),
+  }).array(),
+});
+export type PluginCredentials = typeof PluginCredentials.infer;
