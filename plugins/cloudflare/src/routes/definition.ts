@@ -14,8 +14,10 @@ export default defineCheck({
   async run(view) {
     const config = await view.check(file("wrangler.toml"));
     if (!config.pass) return config;
-    const lines = (await view.app.read("wrangler.toml"))?.split("\n") ?? [];
-    const routes = lines.filter((line) => ROUTE.test(line));
+    const text = await view.app.read("wrangler.toml");
+    if (text === undefined)
+      throw new Error("wrangler.toml passed the file check but cannot be read");
+    const routes = text.split("\n").filter((line) => ROUTE.test(line));
     if (routes.length === 0)
       return fail("wrangler.toml declares no route", [
         "wrangler.toml has no route =, routes = or [[routes]]",
