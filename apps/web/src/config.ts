@@ -1114,6 +1114,26 @@ export const wording = {
     conversationLead:
       "Restore the project to see its conversation and continue it.",
   },
+  secrets: {
+    lead: "Keys your plugins use.",
+    none: "No secrets saved",
+    noneHint: "A plugin asks for its key the first time it needs one.",
+    loading: "Reading your secrets…",
+    workspace: "Workspace",
+    workspaceNote: "Every project",
+    projectNote: "This project only",
+    usedBy: (plugins: readonly string[]) =>
+      plugins.length === 0
+        ? "No plugin uses it"
+        : `Used by ${plugins.join(", ")}`,
+    options: (label: string) => `Options for ${label}`,
+    replace: "Replace",
+    revoke: "Revoke…",
+    confirmRevoke: "Yes, revoke it",
+    save: "Save",
+    saving: "Saving…",
+    cancel: "Cancel",
+  },
   providers: {
     section: "Providers",
     lead: "Where the models come from. Keys are kept encrypted and never shown again.",
@@ -1264,6 +1284,7 @@ export const wording = {
       profiles: "Profiles",
       preferences: "Preferences",
       collaborators: "Collaborators",
+      secrets: "Secrets",
       about: "About",
     },
     about: {

@@ -1,4 +1,14 @@
-import type { ComponentProps, ReactNode } from "react";
+import { useState, type ComponentProps, type ReactNode } from "react";
+import { Button as UiButton } from "@corbits/react-ui";
+import {
+  Menu,
+  MenuContent,
+  MenuItem,
+  MenuSeparator,
+  MenuTrigger,
+} from "@corbits/react-ui/ui/menu";
+import { Ellipsis } from "lucide-react";
+import { DangerMenuItem } from "../../components.jsx";
 import styles from "./settings-row.module.css";
 
 /** A row's left column: its name in bold, then its hint, or one line per hint in a list. */
@@ -112,5 +122,72 @@ export function SettingsInput({
       data-slot="settings-input"
       data-size={size}
     />
+  );
+}
+
+/** A row's options menu: edit it, or a destructive action that takes a second click to confirm. */
+export function SettingsRowActions({
+  label,
+  editLabel,
+  dangerLabel,
+  confirmLabel,
+  editable,
+  busy,
+  autoFocus,
+  onEdit,
+  onConfirm,
+}: {
+  /** Names the menu's button for a screen reader. */
+  label: string;
+  editLabel: string;
+  dangerLabel: string;
+  confirmLabel: string;
+  editable: boolean;
+  /** Its last action is on its way to the hub; the items wait. */
+  busy: boolean;
+  autoFocus?: boolean;
+  onEdit: () => void;
+  onConfirm: () => void;
+}) {
+  // The destructive action takes two clicks, both in the menu, as deleting a project does.
+  const [confirming, setConfirming] = useState(false);
+  return (
+    <Menu
+      onOpenChange={(open) => {
+        if (!open) setConfirming(false);
+      }}
+    >
+      <MenuTrigger asChild>
+        <UiButton
+          variant="ghost"
+          size="icon"
+          aria-label={label}
+          autoFocus={autoFocus}
+        >
+          <Ellipsis aria-hidden="true" />
+        </UiButton>
+      </MenuTrigger>
+      <MenuContent align="end">
+        <MenuItem disabled={busy || !editable} onSelect={onEdit}>
+          {editLabel}
+        </MenuItem>
+        <MenuSeparator />
+        {confirming ? (
+          <DangerMenuItem disabled={busy} onSelect={onConfirm}>
+            {confirmLabel}
+          </DangerMenuItem>
+        ) : (
+          <DangerMenuItem
+            disabled={busy}
+            onSelect={(event) => {
+              event.preventDefault();
+              setConfirming(true);
+            }}
+          >
+            {dangerLabel}
+          </DangerMenuItem>
+        )}
+      </MenuContent>
+    </Menu>
   );
 }

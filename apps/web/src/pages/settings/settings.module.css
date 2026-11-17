@@ -41,13 +41,6 @@
   outline: none;
 }
 
-.lead {
-  margin: 0;
-  font-size: 13px;
-  line-height: 1.4;
-  color: var(--muted-foreground);
-}
-
 /* At phone width the canvas's own padding is the gutter. */
 @media (max-width: 560px) {
   .page {

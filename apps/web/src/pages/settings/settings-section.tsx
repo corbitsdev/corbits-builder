@@ -29,6 +29,11 @@ export function SettingsGroup({
   );
 }
 
+/** What a tab holds, in a line above its groups. */
+export function SettingsLead({ children }: { children: ReactNode }) {
+  return <p className={styles.lead}>{children}</p>;
+}
+
 /** A section's rows, with the banners, notes and paragraphs between them. */
 export function SettingsSectionBody({ children }: { children: ReactNode }) {
   return (
