@@ -2,6 +2,7 @@ import { setTimeout as sleep } from "node:timers/promises";
 import { isDeepStrictEqual } from "node:util";
 import { type } from "arktype";
 import {
+  credentialProvider,
   wrongFields,
   Approval,
   type Fact,
@@ -21,6 +22,7 @@ import {
   type Plugin,
   type ReadyPlanPlugin,
   type ScreenAction,
+  type SpecialistPlugin,
   type WorkflowAction,
 } from "./catalog.ts";
 import {
@@ -158,6 +160,8 @@ export type Project = StarterProject & {
   plan(): Promise<{ steps: readonly SavedPlanStep[] }>;
   // Replaces the plan; a step saved with its id keeps the person's marks on it.
   savePlan(steps: readonly PlanStepWrite[]): Promise<unknown>;
+  // Whether a credential of this name that deploy can use reaches the project, saved in its tenant or one above it.
+  hasCredential(name: string): Promise<boolean>;
 };
 
 // The one place the search is chosen.
@@ -778,6 +782,7 @@ async function executing(
   | { refused: string }
   | { screen: ScreenAction; input: Record<string, unknown> }
   | {
+      plugin: SpecialistPlugin;
       action: WorkflowAction | CheckAction;
       checked: unknown;
       stepId: string | undefined;
@@ -843,7 +848,7 @@ async function executing(
     gatingSteps(action, plan.steps).filter(({ id }) => id === stepId),
     checked.input,
   );
-  return { action, checked: checked.input, stepId, ready };
+  return { plugin, action, checked: checked.input, stepId, ready };
 }
 
 /** A screen an execute call waits on: its answer is the call's result, or the call then runs. */
@@ -893,8 +898,33 @@ export async function executePause(
       }
     );
   }
-  const { action, ready } = call;
+  const { plugin, action, ready } = call;
   if (!isWorkflowAction(action) || ready.own.length > 0) return undefined;
+  const credentials = Object.entries(plugin.builder.credentials ?? {});
+  const saved = await Promise.all(
+    credentials.map(([name]) =>
+      project.hasCredential(credentialProvider(name)),
+    ),
+  );
+  const missing = credentials.find((_, index) => !saved[index]);
+  if (missing) {
+    const form = catalog.screens.find(
+      (screen) =>
+        screen.plugin === action.plugin && screen.action === missing[1].screen,
+    );
+    if (!form)
+      throw new Error(
+        `${action.plugin}'s credential ${missing[0]} names no screen ${missing[1].screen}`,
+      );
+    return (
+      (await screenRefusal(catalog, project, form, {})) ?? {
+        plugin: form.plugin,
+        action: form.action,
+        input: {},
+        resume: "rerun",
+      }
+    );
+  }
   const awaited = ready.steps.flatMap(({ goAhead }) => goAhead);
   if (awaited.length === 0) return undefined;
   const approving = catalog.screens.filter((screen) =>
