@@ -2,7 +2,7 @@
 // the role it plays, which build-packages.ts inlines with what the actions that start it name and
 // the workspace it declares, and, for a workspace with a browser, the browser's tools.
 import { mcpTools } from "@corbits/mcp/interchange/client";
-import { ROLE_TAG } from "@corbits-builder/plugin";
+import { credentialProvider, ROLE_TAG } from "@corbits-builder/plugin";
 import type { AgentTools, ToolEnv } from "@corbits-builder/plugin/tools";
 import { AgentPackage } from "@corbits-builder/plugin-host/catalog";
 import {
@@ -10,7 +10,8 @@ import {
   toolFactoryMeta,
   type AnnotatedToolFactory,
 } from "@intx/agent/authoring";
-import type { GrantRequirement } from "@intx/types";
+import type { CredentialBinding, GrantRequirement } from "@intx/types";
+import { HUB_CREDENTIAL_HANDLE } from "@intx/types/credential-delivery";
 import { defineWorkflow, step } from "@intx/workflow/definition";
 import {
   createArtifactTools,
@@ -64,6 +65,7 @@ const {
   fileBeforeDone,
   presents,
   done,
+  credentials,
 } = AgentPackage.assert(JSON.parse(inlined));
 const { tools } = role;
 const compacting = compactingDirector(nativePackageName(name));
@@ -126,10 +128,28 @@ if (tools.includes("input_files"))
   factories.push(createInputFileTools(role.name));
 else if (!works) factories.push(savedResultTools);
 factories.push(createBlockedTools(role.name));
+// Deploy binds the hub's own handle itself.
+const credentialBindings: CredentialBinding[] = [];
 // build-packages.ts defines the path, so the bundler inlines the plugin's tools module here.
 if (process.env.BUILDER_TOOLS !== undefined) {
   const brought: AgentTools = (await import(process.env.BUILDER_TOOLS)).default;
-  factories.push(...brought({ role: role.name }).map(hostPluginTool));
+  for (const factory of brought({ role: role.name }).map(hostPluginTool)) {
+    factories.push(factory);
+    if (factory.credentials === undefined) continue;
+    for (const { handle } of factory.credentials) {
+      if (handle === HUB_CREDENTIAL_HANDLE) continue;
+      if (!credentials.includes(handle))
+        throw new Error(
+          `plugin_tool_credential_undeclared: ${factory.id} ${handle}`,
+        );
+      credentialBindings.push({
+        package: factory.id,
+        handle,
+        provider: credentialProvider(handle),
+        locator: "tenant",
+      });
+    }
+  }
 }
 // A reply waits for its workspace's finish check: check-stack in an app, check_design in a mockup.
 let checkBeforeDone: string | null = null;
@@ -200,6 +220,7 @@ else if (role.filesDocuments)
 export default defineWorkflow({
   id: `corbits-builder-${name}`,
   grantRequirements,
+  credentialBindings,
   mailAccept: { invoker: true },
   triggers: [{ type: "mail", to: name }],
   // A workspace, or a tool that works in a folder, needs a POSIX sidecar to run in.

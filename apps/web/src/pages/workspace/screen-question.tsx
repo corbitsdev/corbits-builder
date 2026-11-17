@@ -75,7 +75,11 @@ export type HostSupplies = {
   designConcepts: readonly ChoosableConcept[];
   /** The room's prompt box, which a screen's decision sends back through; the host's own, no view's. */
   reply: ReplyBox;
+  /** The project's and its workspace's tenants, where a credential is saved; null until both are read. */
+  tenants: Tenants | null;
 };
+
+export type Tenants = { project: string; workspace: string };
 
 export type ViewResources = {
   design: HostSupplies["design"];
@@ -83,6 +87,7 @@ export type ViewResources = {
   earlierAnswer: unknown;
   documents: { list: readonly ShownDocument[] };
   designConcepts: readonly ChoosableConcept[];
+  tenants: Tenants;
 };
 
 /** What the prompt box sends in place of the person's words while a screen has feedback staged. */
@@ -115,6 +120,7 @@ const SUPPLIED: ReadonlySet<string> = new Set<keyof HostSupplies>([
   "earlierAnswer",
   "documents",
   "designConcepts",
+  "tenants",
 ]);
 
 /** The pending items an offer would send back, in the decision's words; null while there are none. */
@@ -294,7 +300,8 @@ export function screenHost<In, Out, Data, Prepared>(
     if (unreadable) return <InlineNote>{text.screenUnavailable}</InlineNote>;
     // Once answered, the project already holds the answer, so the settled screen draws from it alone.
     const shown: ProjectValues | undefined = settled ? {} : project;
-    if (shown === undefined)
+    const { tenants } = host;
+    if (shown === undefined || tenants === null)
       return <InlineNote>{text.screenLoading}</InlineNote>;
     const checked = validateInput(handle, screen, input, data, shown);
     const answered =
@@ -328,6 +335,7 @@ export function screenHost<In, Out, Data, Prepared>(
             earlierAnswer: host.earlierAnswer,
             documents: { list: host.documents.list },
             designConcepts: host.designConcepts,
+            tenants,
           },
         }}
         draft={answering.draft ?? {}}

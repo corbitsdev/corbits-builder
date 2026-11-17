@@ -81,6 +81,7 @@ import {
   restoreProject,
   startProjectCoordinator,
 } from "../../api/projects.ts";
+import { workspaceTenantId } from "../../api/auth.ts";
 import type { ChatMessage, Wait } from "../../api/types.ts";
 import {
   deliveredText,
@@ -587,6 +588,10 @@ export function useRoom({
   const mirror = snapshot.conversation.turns;
   const runId = archived ? null : snapshot.conversation.runId;
   const selectionKeys = selectionNames();
+  const workspaceRead = useQuery({
+    queryKey: keys.workspaceTenant,
+    queryFn: workspaceTenantId,
+  });
   const selection = useQuery({
     queryKey: keys.projectValues.selection(projectId),
     retry: false,
@@ -1645,6 +1650,10 @@ export function useRoom({
         setStagedItems(staged?.pending ?? null);
       },
     },
+    tenants:
+      runTenantId === undefined || workspaceRead.data === undefined
+        ? null
+        : { project: runTenantId, workspace: workspaceRead.data },
   };
   const pageHost = {
     close: () => setClosedPage(pageQuestion?.signalName ?? null),

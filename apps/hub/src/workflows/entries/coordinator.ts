@@ -35,6 +35,7 @@ const workflow = createCoordinatorWorkflow({
     { resource: "sb-project:*", action: "manage", source: "invoker" },
     { resource: "sb-artifact:*", action: "write", source: "invoker" },
     { resource: "workflow:*", action: "create", source: "invoker" },
+    { resource: "credential:*", action: "read", source: "invoker" },
   ],
 });
 // The directors module of this package: the director the agent names and the compactors it uses.

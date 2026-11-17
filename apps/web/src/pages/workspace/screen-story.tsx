@@ -78,6 +78,7 @@ export const storySupplies: HostSupplies = {
     },
   ],
   reply: { drafted: false, stage: () => undefined },
+  tenants: { project: "tenant-project", workspace: "tenant-workspace" },
 };
 
 /** One plugin's screen action, hosted as the interface hosts it. */

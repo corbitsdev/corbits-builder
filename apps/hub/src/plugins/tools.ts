@@ -1,4 +1,5 @@
 import { defineTool, type AnnotatedToolFactory } from "@intx/agent/authoring";
+import { CredentialResponse } from "@intx/types";
 import { HUB_CREDENTIAL_HANDLE } from "@intx/types/credential-delivery";
 import { questionTool } from "@intx/inference";
 import { QUESTION_TOOL_NAME, type ToolCall } from "@intx/types/runtime-core";
@@ -9,6 +10,7 @@ import {
   ProjectValues,
 } from "@corbits-builder/schemas/artifact";
 import type { Filed } from "@corbits-builder/plugin";
+import { WorkflowHttpError } from "@corbits-builder/plugin/http-json";
 import {
   checkedDiscover,
   describedSchema,
@@ -243,6 +245,21 @@ function project(session: ProjectSession): Project {
       PlanView.assert(await session.hub(session.projectPath + "/plan")),
     savePlan: (steps) =>
       session.hub(session.projectPath + "/plan", { steps }, undefined, "PUT"),
+    hasCredential: async (name) => {
+      try {
+        const found = CredentialResponse.assert(
+          await session.hub(
+            `/api/tenants/${encodeURIComponent(session.options.tenantId)}/credentials/resolve/${encodeURIComponent(name)}`,
+          ),
+        );
+        // Resolution matches a row by name alone; deploy takes only an active one the tenant owns.
+        return found.status === "active" && found.principalId === null;
+      } catch (error) {
+        if (error instanceof WorkflowHttpError && error.status === 404)
+          return false;
+        throw error;
+      }
+    },
     working: async () => (await session.listed()).inFlight,
     startAlone: ({ workflow, correlation, assignment, busy, keep }) =>
       session.startAlone(

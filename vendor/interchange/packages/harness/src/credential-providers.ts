@@ -15,6 +15,7 @@ import type {
   CredentialShapeContext,
   HttpMediatedCredential,
 } from "@intx/types";
+import { type } from "arktype";
 
 /** Resolves a provider identifier to the plugin that shapes its handles. */
 export interface CredentialProviderRegistry {
@@ -151,12 +152,91 @@ export function createHttpCredentialProvider(
 }
 
 /**
+ * Shapes an origin-pinned HTTP handle from a JSON header credential, reading
+ * and validating the current material on every request so rotations apply.
+ */
+export function createHeaderCredentialProvider(
+  opts?: HttpCredentialProviderOptions,
+): CredentialProvider {
+  const fetchImpl: FetchLike = opts?.fetch ?? globalThis.fetch;
+  const secretShape = type({
+    header: /^[!#$%&'*+.^_`|~0-9A-Za-z-]+$/,
+    "prefix?": "string",
+    value: "string > 0",
+  });
+
+  return {
+    key: "http-header",
+    shape(context: CredentialShapeContext): HttpMediatedCredential {
+      const pinnedOrigin = new URL(context.origin).origin;
+
+      return {
+        kind: "http",
+        async fetch(
+          input: string | URL | Request,
+          init?: RequestInit,
+        ): Promise<Response> {
+          const target = resolveTargetUrl(input, pinnedOrigin);
+          if (target.origin !== pinnedOrigin) {
+            throw new Error(
+              `http-header credential is pinned to ${pinnedOrigin}; refusing cross-origin request to ${target.origin}`,
+            );
+          }
+
+          const { secret } = context.readCurrentMaterial();
+          let parsed: unknown;
+          try {
+            parsed = JSON.parse(secret);
+          } catch {
+            // Parser diagnostics can contain secret material.
+            throw new Error("Invalid http-header credential secret");
+          }
+          const material = secretShape(parsed);
+          if (material instanceof type.errors) {
+            throw new Error("Invalid http-header credential secret");
+          }
+          const value =
+            material.prefix === undefined
+              ? material.value
+              : `${material.prefix} ${material.value}`;
+
+          if (input instanceof Request) {
+            const headers = new Headers(input.headers);
+            try {
+              headers.set(material.header, value);
+            } catch {
+              // Headers diagnostics can also contain secret material.
+              throw new Error("Invalid http-header credential header value");
+            }
+            return fetchImpl(
+              new Request(input, { headers, redirect: "manual" }),
+            );
+          }
+
+          const headers = new Headers(init?.headers);
+          try {
+            headers.set(material.header, value);
+          } catch {
+            throw new Error("Invalid http-header credential header value");
+          }
+          return fetchImpl(target, { ...init, headers, redirect: "manual" });
+        },
+        dispose(): void {
+          // An http handle allocates no resources; nothing to release.
+        },
+      };
+    },
+  };
+}
+
+/**
  * The built-in credential providers every host registers. A single `http`
  * provider today; a host composes additional providers by extending the list
  * passed to `createCredentialProviderRegistry`.
+ * The list also includes `http-header` for JSON-configured header credentials.
  */
 export function builtinCredentialProviders(): CredentialProvider[] {
-  return [createHttpCredentialProvider()];
+  return [createHttpCredentialProvider(), createHeaderCredentialProvider()];
 }
 
 /**

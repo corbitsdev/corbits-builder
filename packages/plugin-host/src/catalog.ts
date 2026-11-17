@@ -294,9 +294,9 @@ export const selectionName = (handle: string) => `plugins.${handle}`;
 
 // A declared agent as the host builds its workflow package: the prompt's text, the role it plays,
 // what its declaration says, its tools module's path in the plugins folder, each skill's files by
-// path with SKILL.md first, and what the actions
+// path with SKILL.md first, what the actions
 // that start it name: the screens that show its finished work, and the checks the hub runs on the
-// saved result before its reply counts as done.
+// saved result before its reply counts as done; and the credentials its plugin's tools may use.
 export const AgentPackage = type({
   "+": "reject",
   name: "string > 0",
@@ -313,6 +313,7 @@ export const AgentPackage = type({
     plugin: "string > 0",
     checks: type("string > 0").array().atLeastLength(1),
   }).or("null"),
+  credentials: "string[]",
 });
 export type AgentPackage = typeof AgentPackage.infer;
 
@@ -558,12 +559,18 @@ async function declaredAction(
 async function manifested(found: Found) {
   const { builder, about } = manifestOf(found);
   const actions = new Map<string, Declared>();
-  if (builder.runs === "specialist")
+  if (builder.runs === "specialist") {
     for (const [action, entry] of Object.entries(builder.actions))
       actions.set(
         action,
         await declaredAction(found, builder.handle, action, entry),
       );
+    for (const [provider, { screen }] of Object.entries(builder.credentials))
+      if (actions.get(screen)?.kind !== "screen")
+        throw new Error(
+          `${builder.handle}'s credential ${provider} shows its form on ${screen}, which is not a screen of ${builder.handle}`,
+        );
+  }
   return { found, builder, about, actions };
 }
 type Manifested = Awaited<ReturnType<typeof manifested>>;
@@ -1327,6 +1334,7 @@ async function agentPackages(
           ),
         presents: startedPresents(builder.handle, name, starting, actions),
         done: startedDone(builder.handle, name, starting, workspace),
+        credentials: Object.keys(builder.credentials),
       };
       return [name, { role: role.name, agent }] as const;
     }),
