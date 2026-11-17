@@ -164,6 +164,20 @@ test("a model error that outlasts the retries fails a specialist and is the coor
   expect(reply?.type === "reply" ? reply.content : "").toContain("overloaded");
 });
 
+test("a refused model is still a specialist's reply, not a rejected sign-in", async () => {
+  const refused: InferenceError = {
+    category: "credential_failure",
+    message: "invalid api key",
+    statusCode: 403,
+  };
+  const reply = (await decide(director(false), failed(refused))).find(
+    (action) => action.type === "reply",
+  );
+  expect(reply?.type === "reply" ? reply.content : "").toContain(
+    "invalid api key",
+  );
+});
+
 test("a model call that hits a time limit fails a specialist as a timeout naming the limit", async () => {
   const limit = "inference call exceeded total timeout (900000 ms wall-clock)";
   await expect(

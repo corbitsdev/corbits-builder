@@ -33,9 +33,15 @@ const PERSON_LINES: Record<SpawnedRole, Record<Outcome, string>> = {
   },
 };
 
+// What the director throws when the provider refuses a specialist's sign-in, read back from the run.
+export const SIGN_IN_REJECTED = "model_credentials_rejected:";
+
+const SIGN_IN_REJECTED_LINE =
+  "The work stopped because your model provider rejected its sign-in. Reconnect the provider in Settings, Providers, then send your request again.";
+
 const NOTICE_LINES = new Set(
   Object.values(PERSON_LINES).flatMap((lines) => Object.values(lines)),
-);
+).add(SIGN_IN_REJECTED_LINE);
 
 const TASKS: Record<SpawnedRole, (kind: string | undefined) => string> = {
   writer: (kind) => `The writer writing the ${kind ?? "assigned"} document`,
@@ -52,11 +58,15 @@ export function specialistEndedMessage(ended: {
   status: Outcome;
   reason?: { message: string; code?: string };
 }): string {
+  // Interchange records only the text of the director's error, behind prefixes of its own.
+  const personLine = ended.reason?.message.includes(SIGN_IN_REJECTED)
+    ? SIGN_IN_REJECTED_LINE
+    : PERSON_LINES[ended.role][ended.status];
   const how = ended.status === "failed" ? "failed" : "was stopped";
   const reason = ended.reason
     ? ` Recorded reason${ended.reason.code ? ` (${ended.reason.code})` : ""}: ${ended.reason.message}`
     : "";
-  return `${SPECIALIST_ENDED_LEAD}${PERSON_LINES[ended.role][ended.status]}${COORDINATOR_ONLY}${TASKS[ended.role](ended.kind)} ${how} before finishing, so no result is coming from it.${reason}`;
+  return `${SPECIALIST_ENDED_LEAD}${personLine}${COORDINATOR_ONLY}${TASKS[ended.role](ended.kind)} ${how} before finishing, so no result is coming from it.${reason}`;
 }
 
 /** A person-sent turn as the person may read it: a specialist-ended notice loses its coordinator-only part. */
