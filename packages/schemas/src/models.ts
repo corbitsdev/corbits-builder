@@ -120,8 +120,6 @@ export type ModelProvider = typeof ModelProvider.infer;
 
 export const Effort = type("'low' | 'medium' | 'high' | 'max'");
 export type Effort = typeof Effort.infer;
-export const ModelRole = type("string > 0");
-export type ModelRole = typeof ModelRole.infer;
 export const Tier = type("'low' | 'medium' | 'high' | 'max'");
 export type Tier = typeof Tier.infer;
 export const RoleBinding = type({
@@ -142,8 +140,9 @@ export type Tiers = typeof Tiers.infer;
 
 export const ProfileId = type(/^[a-z][a-z0-9_]{0,63}$/);
 
+// A profile may run a model setting on a different tier without changing the tier bindings. Plugins
+// declare the settings, so they are keyed by name.
 export const RoleTiers = type({ "[string]": Tier });
-export type RoleTiers = typeof RoleTiers.infer;
 
 export const CustomProfile = type({
   "+": "reject",
@@ -163,7 +162,17 @@ export const ModelChoice = type({
 });
 export type ModelChoice = typeof ModelChoice.infer;
 
-type LegacyRoles = Partial<Record<ModelRole, RoleBinding>>;
+// The model settings a choice stored before profiles had tiers bound, by the names it stored.
+const LEGACY_SETTINGS = [
+  "coordinator",
+  "writer",
+  "designer",
+  "builder",
+  "reviewer",
+] as const;
+type LegacyRoles = Partial<
+  Record<(typeof LEGACY_SETTINGS)[number], RoleBinding>
+>;
 const legacyTiers = (roles: LegacyRoles) => ({
   low: roles.reviewer,
   medium: roles.coordinator,
@@ -193,14 +202,7 @@ function migrated(raw: Record<string, unknown>): unknown {
     shipped?.[1] && !made.some((entry) => entry.id === profile)
       ? `${shipped[1]}_default`
       : profile;
-  const roles: readonly ModelRole[] = [
-    "coordinator",
-    "writer",
-    "designer",
-    "builder",
-    "reviewer",
-  ];
-  if (roles.every((role) => overrides[role])) {
+  if (LEGACY_SETTINGS.every((setting) => overrides[setting])) {
     const label = made.find((entry) => entry.id === id)?.label ?? id;
     return {
       profile: id,
@@ -218,9 +220,10 @@ export const StoredModelChoice = type("Record<string, unknown>").pipe(
 export const ModelCatalog = type({
   "+": "reject",
   providers: ModelProvider.array(),
+  // Each model setting the installed roles run on, and the tier of the profile it runs on.
   roles: type({
     "+": "reject",
-    id: ModelRole,
+    id: name,
     label: name,
     hint: name,
     tier: Tier,

@@ -26,6 +26,14 @@ export function buildArtifactsMethods(
   | "downloadApp"
   | "exportProjectArchive"
   | "saveDesignTweaks"
+  | "projectPlan"
+  | "declinePlanStep"
+  | "stopRun"
+  | "restorePlanStep"
+  | "goAheadPlanStep"
+  | "setPlanStepAskFirst"
+  | "projectValues"
+  | "approveDocument"
   | "chooseDesign"
   | "acceptedMaterials"
   | "attachMaterials"
@@ -156,6 +164,62 @@ export function buildArtifactsMethods(
         `${projectPath(tenantId, projectId)}/design-tweaks`,
         signal,
         input,
+      );
+    },
+    projectPlan(tenantId, projectId, signal) {
+      return request(`${projectPath(tenantId, projectId)}/plan`, signal);
+    },
+    declinePlanStep(tenantId, projectId, stepId, signal) {
+      return request(
+        `${projectPath(tenantId, projectId)}/plan/steps/${encodeURIComponent(stepId)}/decline`,
+        signal,
+        {},
+        "POST",
+      );
+    },
+    stopRun(tenantId, projectId, runId, signal) {
+      return request(
+        `${projectPath(tenantId, projectId)}/runs/${encodeURIComponent(runId)}/stop`,
+        signal,
+        {},
+        "POST",
+      );
+    },
+    restorePlanStep(tenantId, projectId, stepId, signal) {
+      return request(
+        `${projectPath(tenantId, projectId)}/plan/steps/${encodeURIComponent(stepId)}/undecline`,
+        signal,
+        {},
+        "POST",
+      );
+    },
+    goAheadPlanStep(tenantId, projectId, stepId, signal) {
+      return request(
+        `${projectPath(tenantId, projectId)}/plan/steps/${encodeURIComponent(stepId)}/go`,
+        signal,
+        {},
+        "POST",
+      );
+    },
+    setPlanStepAskFirst(tenantId, projectId, stepId, askFirst, signal) {
+      return request(
+        `${projectPath(tenantId, projectId)}/plan/steps/${encodeURIComponent(stepId)}/ask-first`,
+        signal,
+        { askFirst },
+        "POST",
+      );
+    },
+    projectValues(tenantId, projectId, keys, signal) {
+      return request(
+        `${projectPath(tenantId, projectId)}/values?${new URLSearchParams({ keys: keys.join(",") })}`,
+        signal,
+      );
+    },
+    approveDocument(tenantId, projectId, artifactId, version, signal) {
+      return request(
+        `${projectPath(tenantId, projectId)}/artifacts/${encodeURIComponent(artifactId)}/approval`,
+        signal,
+        { version },
       );
     },
     chooseDesign(tenantId, projectId, input, signal) {

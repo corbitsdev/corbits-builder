@@ -1,0 +1,45 @@
+.block {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+  min-width: 0;
+}
+
+/* One run of text, so the version follows the last word of a title that wraps. */
+.row {
+  min-width: 0;
+  margin: 0;
+}
+
+.title {
+  font-weight: 500;
+  color: var(--wb-foreground);
+  overflow-wrap: anywhere;
+}
+
+.meta {
+  margin-inline-start: var(--space-2);
+  color: var(--wb-muted-foreground);
+}
+
+/* The document's own In short bullets, quieter than its title; the words it bolds keep full ink. */
+.summary {
+  min-width: 0;
+  color: var(--wb-muted-foreground);
+  overflow-wrap: anywhere;
+}
+
+.summary > [data-slot="prose"] {
+  font-size: 0.9375rem;
+  line-height: 1.6;
+}
+
+.summary strong {
+  font-weight: 500;
+  color: var(--wb-foreground);
+}
+
+/* Sits at the start of the column rather than stretched across it, so only its words take a press. */
+.open {
+  align-self: flex-start;
+}

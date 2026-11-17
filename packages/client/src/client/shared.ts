@@ -39,11 +39,13 @@ import type {
   DesignChoiceReceipt,
   DesignTweaks,
   DesignTweaksReceipt,
+  DocumentApprovalReceipt,
   FailedRun,
   InFlightRun,
   LiveApp,
   MaterialReceipt,
   MaterialRemovedReceipt,
+  ProjectValues,
 } from "@corbits-builder/schemas/artifact";
 import type {
   ApprovalRound,
@@ -52,7 +54,11 @@ import type {
   StartApprovalRound,
   TriageDecisionInput,
 } from "@corbits-builder/schemas/approval-round";
-import type { ProjectActivity } from "@corbits-builder/schemas/activity";
+import type {
+  ProjectActivity,
+  RunSteps,
+} from "@corbits-builder/schemas/activity";
+import type { PlanView, StoredPlan } from "@corbits-builder/schemas/project";
 import type {
   LiveRunStates,
   ProjectStatus,
@@ -112,7 +118,11 @@ export type ProjectArtifact = {
   title: string;
   version: number;
   sha256: string;
+  /** When the current version was filed. */
+  filedAt: string;
   approvedVersion?: number;
+  /** When the person recorded that approval, where the record says. */
+  approvedAt?: string;
 };
 
 export type ProductApiClient = Readonly<{
@@ -161,6 +171,17 @@ export type ProductApiClient = Readonly<{
     signal?: AbortSignal,
   ): Promise<DecidedApprovalList>;
 
+  settings(
+    tenantId: string,
+    projectId?: string,
+    signal?: AbortSignal,
+  ): Promise<SettingsRecord>;
+  saveSettings(
+    tenantId: string,
+    projectId: string | undefined,
+    input: SettingsSave,
+    signal?: AbortSignal,
+  ): Promise<SettingsReceipt>;
   preferenceRegistry(
     tenantId: string,
     signal?: AbortSignal,
@@ -240,10 +261,16 @@ export type ProductApiClient = Readonly<{
     projectId: string,
     signal?: AbortSignal,
   ): Promise<ConversationEvents>;
-  /** Answers the coordinator's open question, by the ids the run gave its prompts. */
+  /** Every call a workflow run made, from its saved conversation. */
+  runSteps(
+    tenantId: string,
+    runId: string,
+    signal?: AbortSignal,
+  ): Promise<RunSteps>;
+  /** Answers the coordinator's open question: prompts by the ids the run gave them, or a screen. */
   answerQuestion(
-    projectTenantId: string,
-    coordinatorRunId: string,
+    tenantId: string,
+    projectId: string,
     signalName: string,
     answer: QuestionAnswer,
     signal?: AbortSignal,
@@ -408,6 +435,63 @@ export type ProductApiClient = Readonly<{
     input: DesignTweaks,
     signal?: AbortSignal,
   ): Promise<DesignTweaksReceipt>;
+  /** The project's saved plan, an empty list where it has none. */
+  projectPlan(
+    tenantId: string,
+    projectId: string,
+    signal?: AbortSignal,
+  ): Promise<PlanView>;
+  /** The person declines an optional plan step; it stays in the plan as skipped. Refused for a required step. */
+  declinePlanStep(
+    tenantId: string,
+    projectId: string,
+    stepId: string,
+    signal?: AbortSignal,
+  ): Promise<StoredPlan>;
+  /** The person stops a specialist run the coordinator started in the project. */
+  stopRun(
+    tenantId: string,
+    projectId: string,
+    runId: string,
+    signal?: AbortSignal,
+  ): Promise<{ runId: string }>;
+  /** The person brings back a plan step they declined. */
+  restorePlanStep(
+    tenantId: string,
+    projectId: string,
+    stepId: string,
+    signal?: AbortSignal,
+  ): Promise<StoredPlan>;
+  /** The person gives the go-ahead on a plan step they asked to be consulted on. Refused for a step not set to ask first. */
+  goAheadPlanStep(
+    tenantId: string,
+    projectId: string,
+    stepId: string,
+    signal?: AbortSignal,
+  ): Promise<StoredPlan>;
+  /** The person turns "ask me first" on or off for a plan step; turning it on clears an earlier go-ahead. */
+  setPlanStepAskFirst(
+    tenantId: string,
+    projectId: string,
+    stepId: string,
+    askFirst: boolean,
+    signal?: AbortSignal,
+  ): Promise<StoredPlan>;
+  /** The named project values as stored, null where the project has none yet. */
+  projectValues(
+    tenantId: string,
+    projectId: string,
+    keys: readonly string[],
+    signal?: AbortSignal,
+  ): Promise<ProjectValues>;
+  /** The person approves a filed document at the version they read, with no question asking. */
+  approveDocument(
+    tenantId: string,
+    projectId: string,
+    artifactId: string,
+    version: number,
+    signal?: AbortSignal,
+  ): Promise<DocumentApprovalReceipt>;
   /** The person chooses a filed design option at its version; it becomes the approved design. */
   chooseDesign(
     tenantId: string,

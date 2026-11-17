@@ -1,0 +1,13 @@
+{
+  "name": "@corbits-builder/app-checks",
+  "version": "0.1.0-rc.3",
+  "private": true,
+  "description": "The check scripts a coding or design workspace runs, which the plugins that declare such a workspace ship.",
+  "license": "SEE LICENSE IN ../../LICENSE.md",
+  "author": "Sawyer Cutler <sawyer@dirtroad.dev>",
+  "type": "module",
+  "exports": {
+    ".": "./src/index.ts",
+    "./steps": "./check/steps.ts"
+  }
+}

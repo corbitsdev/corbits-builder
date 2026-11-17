@@ -7,13 +7,33 @@ export { RoleName } from "./roles.ts";
 export const INSTALLED_WORKFLOWS_KEY = "sb.installedWorkflows";
 
 // Each installed workflow package by name, the coordinator's among them. Which packages there are,
-// and the role each plays, comes from the plugins the hub loads.
+// and the role each plays, comes from the hub's coordinator and the plugins it loads.
 export const InstalledWorkflows = type({
   "+": "reject",
   schemaVersion: "3",
   packages: { "[string]": NativeSpecialistDeployment },
 });
 export type InstalledWorkflows = typeof InstalledWorkflows.infer;
+
+export const PortVariable = type(/^[A-Z][A-Z0-9_]*$/);
+// A program that keeps running while a project is worked on, as a starter's run and a project's
+// stack.run declare it: its command, a line it prints once it is ready, the environment variable
+// given the free port it answers on, and any others it needs a free port in, such as an API a dev
+// server sends requests on to.
+export const AppRun = type({
+  "+": "reject",
+  command: "string > 0",
+  "waitFor?": "string > 0",
+  port: PortVariable,
+  "extraPorts?": PortVariable.array(),
+});
+export type AppRun = typeof AppRun.infer;
+
+export const SandboxToolchains = type({
+  paths: type("string > 0").array(),
+  dataDir: "string > 0",
+});
+export type SandboxToolchains = typeof SandboxToolchains.infer;
 
 // Returned only to an authenticated native run. Scope comes from the protected
 // coordinator association/native deployment invoker, never a tool argument.
@@ -23,9 +43,25 @@ export const WorkflowProjectScope = type({
   projectId: ProjectId,
   domain: "string > 0",
   role: RoleName,
+  // Every installed package a run in the project may deploy, by name.
   workflows: { "[string]": NativeSpecialistDeployment },
   // Whether the project's build sandboxes reach any public host rather than only the npm registry.
   openNetwork: "boolean",
+  // Toolchain folders the hub's operator lets every build sandbox read but never write.
+  toolchains: SandboxToolchains,
+  // How the project's code prepares a fresh workspace, from the starter it began from: the command
+  // and what to do when it fails. Code that began from no starter declares nothing.
+  "stack?": {
+    "+": "reject",
+    setup: "string > 0",
+    setupFailed: "string > 0",
+  },
+  // Whether the run builds the project's code for the first time, which writes its checks; a change
+  // keeps the checks the code has.
+  firstBuild: "boolean",
+  // The web app the project serves, from its stack.run: how it starts so a person can open it.
+  // A project without one serves nothing.
+  "run?": AppRun,
   // Where the hub keeps the sandbox child and its runtime; a tool bundle runs
   // out of a package store and cannot resolve them relative to itself.
   build: {

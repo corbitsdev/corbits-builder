@@ -1,7 +1,292 @@
-import { type } from "arktype";
+import { scope, type, type ArkErrors, type Type } from "arktype";
 import { WriterDocumentKind } from "@corbits-builder/schemas/artifact";
+import { AppRun } from "@corbits-builder/schemas/installed-workflows";
 import { Tier } from "@corbits-builder/schemas/models";
+import { SpecialistInstruction } from "@corbits-builder/schemas/native-specialist";
 
+// Something true of the project that Builder works out from what it stores, such as "app_exists". A
+// workflow's fact may name one of its input fields, as "filed:{kind}", for the value passed there.
+// What an action requires may also name a fact that must not hold, as "!app_exists".
+export type Fact = string;
+
+const Facts = type("string > 0").array();
+// Alternatives, each the facts that together let a plugin start or a screen open.
+const Requires = Facts.atLeastLength(1).array().atLeastLength(1);
+
+// What a link value holds: an http or https address the person gave. Kept as an object so a value
+// that may be text or a link says which it is.
+export const LinkValue = type({
+  "+": "reject",
+  link: type("string.url")
+    .and(/^https?:\/\//i)
+    .describe("an http or https address"),
+});
+
+// What a file value holds: a file the person attached to the project, by the id its material was
+// filed under, and its name, which Builder fills in from the material.
+export const FileValue = type({
+  "+": "reject",
+  file: "string > 0",
+  "name?": "string > 0",
+});
+
+const ValueType = type("'text' | 'json' | 'link' | 'file'");
+export type ValueType = typeof ValueType.infer;
+
+// A named piece of project data a plugin brings, such as "brand.guidelines": what it holds, in one
+// line, and what Builder checks a saved value against. text is a string; json is any JSON value;
+// link and file are as above. A list of types takes a value of any one of them. pattern is a
+// regular expression a text value must match.
+export const ValueDeclaration = type({
+  "+": "reject",
+  about: "string > 0",
+  type: ValueType.or(ValueType.array().atLeastLength(2)),
+  "pattern?": "string > 0",
+  // A text value whose home, once the project has a filed design, is a token of the design's
+  // styles rather than the project's own store: the token's name and, for a token that lists
+  // several values, as a font lists its fallbacks, that the value leads the list and the rest stay.
+  "style?": {
+    "+": "reject",
+    token: /^[a-z][a-z0-9-]*$/,
+    "leads?": "true",
+  },
+});
+export type ValueDeclaration = typeof ValueDeclaration.infer;
+
+// Code a first build can start from: what it is, the plugin's folder of files written as the
+// project's first code, how its program starts so a person can open it, the command that prepares a
+// fresh workspace and what an agent can do when that fails, and the commands that prove the code.
+// A project with code but no recorded starter, built before projects recorded one, started from
+// the one starter that says legacyDefault.
+export const AppStarter = type({
+  "+": "reject",
+  about: "string > 0",
+  folder: "string > 0",
+  "run?": AppRun,
+  setup: "string > 0",
+  setupFailed: "string > 0",
+  checks: type("string > 0").array().atLeastLength(1),
+  "legacyDefault?": "true",
+});
+export type AppStarter = typeof AppStarter.infer;
+
+// The project values that record the starter a project's code began from, its checks and how its
+// program starts, each null for code that began from none.
+export const STACK_VALUES = ["stack.starter", "stack.checks", "stack.run"];
+
+/** The project values a project's code records for the starter it began from, or for none. */
+export function starterValues(
+  started: { name: string; starter: AppStarter } | null,
+): Record<string, unknown> {
+  if (started === null)
+    return Object.fromEntries(STACK_VALUES.map((name) => [name, null]));
+  const { name, starter } = started;
+  return {
+    "stack.starter": name,
+    "stack.checks": starter.checks.join("\n"),
+    "stack.run": starter.run ?? null,
+  };
+}
+
+/**
+ * How the project's program starts so a person can open it, from the project's stack.run, whatever
+ * its stack: undefined when it has none, so it serves nothing, else the run or why it is not one.
+ */
+export function declaredRun(
+  values: Readonly<Record<string, unknown>> | undefined,
+) {
+  const run = values?.["stack.run"];
+  if (run === undefined || run === null) return undefined;
+  return AppRun(run);
+}
+
+// A look a design can start from: its id, what a person calls it, the theme of the plugin's themes
+// it starts from, when it starts from one, and how its designer adjusts that theme's tokens.
+const DesignLook = type({
+  "+": "reject",
+  id: "string > 0",
+  label: "string > 0",
+  "theme?": "string > 0",
+  direction: "string > 0",
+});
+
+// What a plugin that drafts designs brings for the host to show and seed them with: the folder a
+// design workspace starts from, the folder of themes, one sample design per folder named for its
+// id, and the looks the coordinator draws a varied set of design concepts from. Starter and themes
+// are optional: with neither, a designer writes from scratch.
+export const DesignBuilder = type({
+  "+": "reject",
+  "starter?": "string > 0",
+  "themes?": "string > 0",
+  looks: DesignLook.array().atLeastLength(1),
+});
+export type DesignBuilder = typeof DesignBuilder.infer;
+
+/** The look a concept, by its label, starts from, when one of the declared looks has that label. */
+export const lookOf = (design: DesignBuilder, label: string) =>
+  design.looks.find(
+    (look) => look.label.toLowerCase() === label.trim().toLowerCase(),
+  );
+
+const Common = type({
+  // Several plugins may share a handle, and a project uses one of them: the one the person selects,
+  // else the one that says it is the default. Exactly one of them must.
+  handle: "string > 0",
+  "default?": "true",
+  groups: "string[] > 0",
+  when: "string > 0",
+  unless: "string > 0",
+  // How a person would ask for it, in their words.
+  "examples?": "string[]",
+  "triggers?": "string[]",
+  // Each fact this plugin's work is about, in plain words, as refusals and discover say it; "!fact"
+  // words the fact not holding.
+  "facts?": { "[string]": "string > 0" },
+  // The project values this plugin brings, by namespaced name; any plugin may then read them.
+  "values?": { "[string]": ValueDeclaration },
+});
+
+// What a plugin's manifest says of one action: only what its folder cannot. An action is the folder
+// src/<action>/, whose definition.ts default export holds its input, its guidance and, for a screen,
+// how its input is validated and prepared; with a view.tsx there the action is shown to the person,
+// with check proofs it is a check, and otherwise it starts work. A data.json there is data it ships.
+
+// Something put in front of the person: the coordinator opens it with question, naming the plugin
+// and the action, and the person's answer is the question's result. The project values it saves
+// are the ones its definition's writes maps from the answer.
+export const ScreenActionBuilder = type({
+  "+": "reject",
+  // What the project must have before the screen can draw anything, as a workflow action requires.
+  "requires?": Requires,
+  // Project values, by their registered names, that Builder supplies to the screen.
+  "reads?": "string[]",
+  // The facts the person's answer can make true, each recorded from what the definition's approves
+  // names; a templated fact names an input field, so the person approves only what was asked.
+  "returns?": Facts,
+  // "page" draws the screen over the whole room with the prompt box still in reach; without it the
+  // screen draws in the conversation.
+  "place?": "'page'",
+  // What the host itself supplies the view, by the names its registry knows: data too large or too
+  // live for the input or project values, or a part only the host may draw.
+  "host?": "string[]",
+});
+export type ScreenActionBuilder = typeof ScreenActionBuilder.infer;
+
+// Another agent does the work in its own run, with the facts it needs to start and the facts its
+// finished work makes.
+export const WorkflowActionBuilder = type({
+  "+": "reject",
+  "requires?": Requires,
+  returns: Facts,
+  // The installed workflow the host starts, and what that workflow's starter takes besides the input;
+  // or an agent the plugin declares, which the host starts with its default starter.
+  start: type({ workflow: "string > 0", "[string]": "unknown" }).or({
+    "+": "reject",
+    agent: "string > 0",
+  }),
+  // Project values, by name, that Builder puts in the run's assignment.
+  "reads?": "string[]",
+  // Project values, by name, that the run's agent may save with report_values as it learns them.
+  "writes?": "string[] > 0",
+  // The screen actions of the same plugin that can show the finished work to the person; each
+  // screen's when says which fits.
+  "presents?": "string[] > 0",
+  // The check actions of the same plugin that must pass on the saved result before the run counts
+  // as finished; the agent's director runs them through the hub when the agent replies, and holds
+  // the reply with a failure's evidence until they pass. The workflow's package passes them to it.
+  "done?": "string[] > 0",
+});
+export type WorkflowActionBuilder = typeof WorkflowActionBuilder.infer;
+
+// The ready-made checks, each a plain description the host evaluates against the project as saved.
+export const { Proof } = scope({
+  Text: { "+": "reject", path: "string > 0", text: "string > 0" },
+  // A key path into a JSON file, such as "scripts.deploy", and the value it holds there.
+  Key: {
+    "+": "reject",
+    path: "string > 0",
+    key: "string > 0",
+    equals: "unknown",
+  },
+  Equals: { "+": "reject", name: "string > 0", equals: "unknown" },
+  File: { "+": "reject", file: "string > 0" },
+  FileContains: { "+": "reject", fileContains: "Text | Key" },
+  Filed: { "+": "reject", filed: "string > 0" },
+  Approved: { "+": "reject", approved: "string > 0" },
+  DesignChosen: { "+": "reject", designChosen: "true" },
+  Value: { "+": "reject", value: "string > 0 | Equals" },
+  // Commands run against the saved app, passing when each exits 0.
+  Command: { "+": "reject", command: "Steps | Lines" },
+  // run is the program and its arguments, never a shell line, so no part of it is read as shell
+  // syntax. setup, in the same form, prepares the workspace first, such as installing packages; the
+  // check runs nothing else.
+  Steps: {
+    "+": "reject",
+    "setup?": "(string > 0)[] >= 1",
+    run: "(string > 0)[] >= 1",
+    "timeoutSeconds?": "1 <= number.integer <= 300",
+  },
+  // The shell command lines a project value holds, one per line, run in order until one fails:
+  // the project, not the plugin, knows the commands that prove its code.
+  Lines: {
+    "+": "reject",
+    value: "string > 0",
+    "timeoutSeconds?": "1 <= number.integer <= 300",
+  },
+  All: { "+": "reject", all: "Proof[] >= 1" },
+  Any: { "+": "reject", any: "Proof[] >= 1" },
+  Not: { "+": "reject", not: "Proof" },
+  Proof:
+    "File | FileContains | Filed | Approved | DesignChosen | Value | Command | All | Any | Not",
+}).export();
+export type Proof = typeof Proof.infer;
+
+// How long a check runs: once, unless stated; again every few seconds until it passes or the time
+// is up; or once, waiting on the person, who may run it again or skip it.
+const Speed = type("'person'").or({
+  "+": "reject",
+  retry: {
+    "+": "reject",
+    everySeconds: "1 <= number.integer <= 60",
+    forSeconds: "1 <= number.integer <= 3600",
+  },
+});
+
+// Proves one thing about the project as saved and records whether it holds, with evidence: every
+// ready-made check in all, any ready-made check in any, or, with neither, the code its definition
+// runs, as defineCheck makes one.
+export const CheckActionBuilder = type({
+  "+": "reject",
+  "requires?": Requires,
+  returns: Facts,
+  "all?": Proof.array().atLeastLength(1),
+  "any?": Proof.array().atLeastLength(1),
+  "speed?": Speed,
+  // When the hub runs the check again by itself: never, only when asked, unless stated; or on each
+  // saved change to something its latest record read.
+  "rerun?": "'never' | 'change'",
+}).narrow(
+  (action, ctx) =>
+    action.all === undefined ||
+    action.any === undefined ||
+    ctx.mustBe("a check with all or any, not both"),
+);
+export type CheckActionBuilder = typeof CheckActionBuilder.infer;
+
+// The hub's tools a role's agent gets, by name. read_artifact lists and reads the project's
+// documents, with report_values when an action that starts the role writes project values;
+// write_artifact adds filing a document of any kind; web is Exa's web search and page fetch;
+// input_files reads and searches the documents its assignment names; deck writes, checks and files
+// a slide deck and its approval package. A role that writes code or designs also gets the workspace
+// it works in. Every agent has read_file, for reading back a trimmed tool result.
+export const AgentTool = type(
+  "'read_artifact' | 'write_artifact' | 'web' | 'input_files' | 'deck'",
+);
+export type AgentTool = typeof AgentTool.infer;
+
+// A model setting a role runs on: what a person reads of it in Settings, and the tier of the
+// person's profile it runs on. Roles share a setting by naming the same one; each plugin whose role
+// runs on it declares it, alike, so none depends on another being installed.
 export const ModelSetting = type({
   "+": "reject",
   label: "string > 0",
@@ -10,35 +295,858 @@ export const ModelSetting = type({
 });
 export type ModelSetting = typeof ModelSetting.infer;
 
+// An output budget a role runs with: the tokens one turn may write and the temperature it samples
+// at, when it sets one. thinking is its cap on a model that spends long thinking from the same cap,
+// for turns that think through a lot before they write. Plugins share one as they share a setting.
+export const OutputBudget = type({
+  "+": "reject",
+  maxOutputTokens: "number.integer > 0",
+  "temperature?": "number >= 0",
+  "thinking?": "number.integer > 0",
+});
+export type OutputBudget = typeof OutputBudget.infer;
+
+// A specialist's role, declared once by its plugin; whatever needs to know about a run's role reads
+// it from here, never from the role's name. label is what a person reads; model names the model
+// setting it runs on, which roles may share; limits names the output budget it runs with; tools are
+// the hub's tools its agent gets; slot is the one-run-at-a-time slot it takes, its own name unless it
+// shares another's; status says what it does when the action it runs says nothing better; and
+// preferences are the ids of the person's preferences its assignment carries. The rest are what the
+// hub and the interface ask of a role.
 export const Role = type({
   "+": "reject",
   name: "string > 0",
+  label: "string > 0",
   model: "string > 0",
   limits: "string > 0",
-  called: "string > 0",
-  "ended?": {
-    "+": "reject",
-    failed: "string > 0",
-    cancelled: "string > 0",
-    task: "string > 0",
-  },
+  tools: AgentTool.array(),
+  "slot?": "string > 0",
+  status: { "+": "reject", working: "string > 0", done: "string > 0" },
+  "preferences?": "string[]",
+  // The document kinds its work builds from, so a message naming one is passed along to it.
+  "buildsFrom?": "string[]",
+  // The kind its finished work is filed as, when that is always the same.
+  "files?": "string > 0",
+  // It files a document of whatever kind its task names.
+  "filesDocuments?": "boolean",
+  // It writes the project's code, in a workspace that holds the app.
+  "writesCode?": "boolean",
+  // It drafts the project's design in its workspace.
+  "designs?": "boolean",
 });
 export type Role = typeof Role.infer;
 
-export const WorkflowPackage = type({
-  "+": "reject",
-  entry: "string > 0",
-  role: "string > 0",
-  "files?": WriterDocumentKind,
-  "legacyAlias?": "'writer'",
-  "replaces?": { "+": "reject", package: "string > 0", when: "string > 0" },
-});
-export type WorkflowPackage = typeof WorkflowPackage.infer;
+// The agent tag every specialist's agent carries, naming its role, by which the hub tells its runs.
+export const ROLE_TAG = "role";
 
-export const Builder = type({
+/** A role a plugin's manifest declares, by name, its handle's unless stated. */
+export function declaredRole(
+  builder: { handle: string; roles?: readonly unknown[] },
+  name = builder.handle,
+): Role {
+  const declared = (builder.roles ?? [])
+    .map((each) => Role.assert(each))
+    .find((role) => role.name === name);
+  if (!declared) throw new Error(`${builder.handle} declares no role ${name}`);
+  return declared;
+}
+
+// The workspace an agent works in on a POSIX sidecar, as a plugin's module declares it: an app
+// workspace holds the project's code, a design workspace its mockup. commands are the check scripts
+// the workspace runs by name, commandModules the modules they share by the path they import, and,
+// for an app, pageWatcher the script that watches a served app's page, kit a digest of the component
+// kit its code builds with, browser whether the agent gets a browser, and packageInstall whether
+// installing a package asks the person.
+export const Workspace = type({
   "+": "reject",
-  roles: Role.array().atLeastLength(1),
-  "settings?": { "[string]": ModelSetting },
-  packages: { "[string]": WorkflowPackage },
+  kind: "'app'",
+  commands: { "[string]": "string" },
+  commandModules: { "[string]": "string" },
+  pageWatcher: "string",
+  kit: "string",
+  browser: "boolean",
+  packageInstall: "'ask' | 'allow'",
+}).or({
+  "+": "reject",
+  kind: "'design'",
+  commands: { "[string]": "string" },
+  commandModules: { "[string]": "string" },
 });
-export type Builder = typeof Builder.infer;
+export type Workspace = typeof Workspace.infer;
+
+export const defineWorkspace = (workspace: Workspace) => workspace;
+
+// An agent the host builds from its declaration alone: prompt is a markdown file in the plugin, or a
+// module whose default export is the prompt's text; role the one of the plugin's roles it plays, its
+// handle's unless stated, whose tools and model it runs with; skills a folder of the plugin whose
+// skills it reads with read_skill, one folder each; files the one document kind its write_artifact
+// files, with that kind's own fields, when it files no other; workspace a module whose default
+// export is the workspace it works in, as defineWorkspace makes one. Its reply waits until it has filed
+// its document when every action that starts it returns a filed fact.
+export const AgentBuilder = type({
+  "+": "reject",
+  prompt: "string > 0",
+  "role?": "string > 0",
+  "skills?": "string > 0",
+  "files?": WriterDocumentKind,
+  "workspace?": "string > 0",
+});
+export type AgentBuilder = typeof AgentBuilder.infer;
+
+// A specialist the coordinator composes into its plan, and the actions it can be started on.
+export const SpecialistBuilder = Common.merge({
+  runs: "'specialist'",
+  // The roles this plugin's runs play; no other plugin may declare one of the same name.
+  "roles?": Role.array(),
+  // The model settings and output budgets its roles name, by name.
+  "settings?": { "[string]": ModelSetting },
+  "budgets?": { "[string]": OutputBudget },
+  // The workflow packages the host builds and installs from this plugin, by package name: entry is
+  // the module whose default export is the workflow and whose named exports are its directors, and
+  // role the one of the plugin's roles its runs play, its handle's unless stated.
+  "packages?": {
+    "[string]": { "+": "reject", entry: "string > 0", "role?": "string > 0" },
+  },
+  // The module that starts each workflow its actions' start blocks name, by that name; its default
+  // export is a starter, as plugin-host's defineStarter makes one.
+  "starters?": { "[string]": "string > 0" },
+  // The agents the host builds and installs for this plugin with no code of its own, by package
+  // name; an action starts one with start: { agent }.
+  "agents?": { "[string]": AgentBuilder },
+  // The code a first build of the project can start from, by name.
+  "appStarters?": { "[string]": AppStarter },
+  // What its design workspaces start from and the looks they offer.
+  "design?": DesignBuilder,
+  // Each action by its folder's name; its folder says which kind it is, and so which builder its
+  // entry is checked against.
+  actions: { "[string]": "object" },
+});
+export type SpecialistBuilder = typeof SpecialistBuilder.infer;
+
+// When a ready-made plan's step waits for the person's go-ahead: required always waits for the
+// person's own answer, even when they left approvals to Builder; optional waits only while they
+// decide approvals.
+const ApprovalWhen = type("'required' | 'optional'");
+
+// How a step asks for the person's go-ahead: of names the document kinds they approve, and
+// "design" for the design they choose; when says when it waits.
+export const Approval = type({
+  "+": "reject",
+  of: type("string > 0").array().atLeastLength(1),
+  when: ApprovalWhen,
+});
+export type Approval = typeof Approval.infer;
+
+// One step of a ready-made plan: a plugin action, the facts the plan suggests having first, and,
+// so the project's plan can hold it, a title and the input it starts on. An optional step is one
+// the person may decline. approval is the one way a step asks for the person's go-ahead; a step
+// without it asks for none.
+export const ReadyPlanStepBuilder = type({
+  "+": "reject",
+  plugin: "string > 0",
+  action: "string > 0",
+  requires: Facts,
+  "optional?": "boolean",
+  "approval?": Approval,
+  "title?": "string > 0",
+  "input?": "Record<string, unknown>",
+});
+export type ReadyPlanStepBuilder = typeof ReadyPlanStepBuilder.infer;
+
+// A ready-made plan: guidance for reaching a goal through other plugins' actions. Adding it puts
+// each step on the project's plan with its approval and the facts it requires, and the saved step
+// gates the work from then on.
+export const ReadyPlanBuilder = Common.merge({
+  runs: "'plan'",
+  guidance: "string > 0",
+  steps: ReadyPlanStepBuilder.array().atLeastLength(1),
+  // The fact that ends the plan. A plan with none is followed until the coordinator leaves it.
+  "ends?": "string > 0",
+});
+export type ReadyPlanBuilder = typeof ReadyPlanBuilder.infer;
+
+// Guidance a specialist's agent reads when its work calls for it: the markdown files in skills,
+// which the host lays into the agent's workspace and lists in its assignment, one line per pack.
+// extends names the specialist, or the pack this one narrows, as a framework's pack narrows a web
+// app pack, so a new framework is a new pack without a change to the one it narrows. The
+// coordinator never sees a pack.
+export const SkillsBuilder = type({
+  handle: "string > 0",
+  runs: "'skills'",
+  extends: "string > 0",
+  // The specialist's actions it serves; without it, every action the pack it narrows serves.
+  "actions?": "string[] > 0",
+  when: "string > 0",
+  skills: "string > 0",
+});
+export type SkillsBuilder = typeof SkillsBuilder.infer;
+
+// One field of an input or answer that is wrong: its problem, then what it takes, as its choices or,
+// for a field with none, the rule its about states.
+export type WrongField = {
+  field: string;
+  problem: string;
+  about?: string;
+  choices?: Record<string, string>;
+  // The sentence after the choices, for a field that also takes something besides them.
+  otherwise?: string;
+};
+
+// Every wrong field at once, so an agent fixing one is never refused again for the next.
+export type Refusal = { wrong: readonly WrongField[] };
+
+export type Field = {
+  about: string;
+  choices?: Record<string, string>;
+  otherwise?: string;
+};
+
+// The project's values a plugin reads, by name; undefined where the project has none yet.
+export type ProjectValues = Readonly<Record<string, unknown>>;
+
+export type Describe<Fields extends PropertyKey> = {
+  summary: string;
+  when: string;
+  unless: string;
+  fields: { [name in Fields]-?: Field };
+};
+
+// What a person reads of a started action while it works and once done, such as "Writing the
+// build plan". {thing} stands for the document or concept its work is about; a phrase that names
+// one reads as its role's status while none is known.
+export type Says = { doing: string; done: string };
+
+// What a person reads of a screen in the conversation's map: its label from the input it was
+// opened with, and what an answer chose.
+export type ScreenSays<In, Out> = {
+  label: (input: In) => string;
+  chose?: (output: Out) => string | undefined;
+  // What the prompt box asks while the screen waits, where what the person types answers it in words.
+  reply?: string;
+};
+
+/** A phrase with the thing named, or without one, where it names none. */
+export function saidOf(phrase: string, thing: string | undefined) {
+  if (!phrase.includes("{thing}")) return phrase;
+  return thing === undefined ? undefined : phrase.replaceAll("{thing}", thing);
+}
+
+// A filed artifact at the version the person was shown, such as a document they approved.
+export type Shown = { artifactId: string; version: number };
+
+// The names of Out's fields that hold a Value, so a decision naming any other fails the type check.
+type FieldOf<Out, Value> = {
+  [Name in keyof Out]-?: NonNullable<Out[Name]> extends Value ? Name : never;
+}[keyof Out] &
+  string;
+
+// A screen whose answer accepts what it shows or sends it back with the person's feedback. The host
+// draws every control that answers it: accept while nothing is pending and nothing is typed, else the
+// prompt box's own Send, with accepting kept behind a confirmation. accept is what accepting is
+// called. sendBack, where feedback goes back as the screen's output, names the output's field the
+// typed note goes in, the field holding the pending items, and what one and several of them are
+// called; without it, what the person types answers in their own words.
+export type Decision<Out> = {
+  accept: string;
+  sendBack?: {
+    note: FieldOf<Out, string>;
+    items: FieldOf<Out, readonly unknown[]>;
+    one: string;
+    many: string;
+  };
+};
+
+// What a screen with a decision offers now: the answer accepting gives, or why it cannot be accepted
+// yet; and, where its decision sends back as output, that output with the pending items and no note.
+export type Offer<Output> = {
+  accept: { output: Output } | { unavailable: string };
+  sendBack?: Output;
+};
+
+export type Screen<In, Out, Data, Prepared> = {
+  input: Type<In>;
+  output: Type<Out>;
+  data?: Type<Data>;
+  // The fields of an input its schema takes that the screen still cannot show, each with what is
+  // wrong; none when it can.
+  validate?: (
+    input: Type<In>["infer"],
+    data: Type<Data>["infer"],
+    project: ProjectValues,
+  ) => readonly WrongField[];
+  // What the view gets from a valid input.
+  prepare?: (
+    input: Type<In>["infer"],
+    data: Type<Data>["infer"],
+    project: ProjectValues,
+  ) => Prepared;
+  describe: Describe<keyof Type<In>["inferIn"]> & {
+    says?: ScreenSays<Type<In>["infer"], Type<Out>["infer"]>;
+  };
+  // Each project value the answer saves, by its registered name, taken from the screen's output.
+  writes?: Record<string, (output: Type<Out>["infer"]) => string>;
+  // Each of the person's preferences the answer sets for the project, by its id, to the option
+  // taken from the screen's output.
+  prefers?: Record<string, (output: Type<Out>["infer"]) => string>;
+  // What the answer approves, each at the version the person was shown; the manifest's returns
+  // says which facts that may make true.
+  approves?: (output: Type<Out>["infer"]) => readonly Shown[];
+  decision?: Decision<Type<Out>["infer"]>;
+};
+
+export const defineScreen = <In, Out, Data, Prepared>(
+  screen: Screen<In, Out, Data, Prepared>,
+) => screen;
+
+// A workflow action's input and how the coordinator fills it, and the record its start may keep
+// for each run, which the host stores against the run when this schema takes it.
+export type Workflow<In> = {
+  input: Type<In>;
+  describe: Describe<keyof Type<In>["inferIn"]> & { says?: Says };
+  record?: Type;
+};
+
+export const defineWorkflow = <In>(workflow: Workflow<In>) => workflow;
+
+/** Each run a workflow action started, and each part of it that did not start, with why. */
+export type Started = {
+  runs: { runId: string; concept?: string }[];
+  notStarted: { concept: string; reason: string }[];
+};
+
+/** A refusal the coordinator reads as it stands, such as a starter's reason for starting nothing. */
+export class StartRefusal extends Error {}
+
+/** A run at work in the project, of any role, with the concept it works on when it has one. */
+export type Working = {
+  runId: string;
+  role: string;
+  state: "working" | "waiting" | "approval";
+  concept?: string;
+};
+
+/** One version of a document filed in the project. */
+export type FiledVersion = {
+  artifactId: string;
+  version: number;
+  sha256: string;
+};
+
+/** The project as it stands when a run's assignment is written. */
+export type Filed = {
+  // The current version of each filed document, by kind.
+  versions: ReadonlyMap<string, FiledVersion>;
+  // The version of the filed document of a kind the person approved, or undefined for none.
+  approved(kind: string): number | undefined;
+  // A filed document at a version, as an assignment names it: its title and the path where it sits
+  // in the run's inputs folder, which the run reads with read_file.
+  document(version: FiledVersion): {
+    kind: string;
+    title: string;
+    path: string;
+  };
+  // A filed design at a version: its title, its DESIGN.md tokens and its stylesheet when it has one.
+  design(
+    version: FiledVersion,
+  ): Promise<{ title: string; tokens: string; styles?: string }>;
+  // The opening that names each filed document of these kinds and, with design, the chosen design,
+  // where each sits read-only in the run's workspace; undefined when none of them is filed.
+  startHere(kinds: readonly string[], design: boolean): string | undefined;
+};
+
+/**
+ * One of several looks at the same work that the person compares before choosing one: its label
+ * and the direction its run takes.
+ */
+export type Concept = { label: string; direction: string };
+
+/** The latest record of a check in the project, as the host keeps it. */
+export type CheckStanding = {
+  plugin: string;
+  action: string;
+  result: "pass" | "fail" | "skipped";
+  summary: string;
+  createdAt: string;
+  // Whether what it looked at is still what the project has saved.
+  current: boolean;
+};
+
+/**
+ * What a start keeps for a run before its assignment: a record of the run, of the shape the action's
+ * definition declares, stored against the run for whatever reads it back by the run; and project
+ * values the action writes, saved as the run's own report_values would save them.
+ */
+export type Kept = {
+  record?: unknown;
+  values?: Readonly<Record<string, unknown>>;
+};
+
+/** What a starter may do in the project it starts work in, which only the host can do. */
+export type StarterProject = {
+  // The code a first build can start from, by name, as each plugin that brings one declares it.
+  appStarters: ReadonlyMap<string, AppStarter>;
+  // What is true of the project, from what the host stores; the go-ahead facts that the person's own
+  // answers made true, not counting approvals left to Builder; whether the person decides approvals
+  // rather than leaving them to Builder, the latest record of each check, and how the person chose
+  // to work: each preference's choice by its id.
+  state(): Promise<{
+    facts: ReadonlySet<Fact>;
+    personFacts: ReadonlySet<Fact>;
+    asksApprovals: boolean;
+    checks: readonly CheckStanding[];
+    preferences: Readonly<Record<string, string>>;
+  }>;
+  // Each named project value as stored, null where the project has none yet.
+  values(names: readonly string[]): Promise<Readonly<Record<string, unknown>>>;
+  // The runs at work in the project, whoever started them.
+  working(): Promise<readonly Working[]>;
+  // What the coordinator can do to free a start that these runs hold back, named as it lists them.
+  heldBack(runIds: string): string;
+  // Deploys the installed workflow, one run of its role at a time: busy refuses while another is
+  // starting, or is still at work once a replied one had time to end. assignment writes the run's
+  // first message from the project as it then stands; the host adds the values block and the
+  // person's preferences. keep, when given, is kept for the run as deploy keeps it.
+  startAlone(run: {
+    workflow: string;
+    correlation: string;
+    assignment(filed: Filed): string | Promise<string>;
+    busy(live?: Working): Error;
+    keep?: ((filed: Filed) => Kept | Promise<Kept>) | undefined;
+  }): Promise<{ runId: string }>;
+  // Deploys the installed workflow, as many runs at a time as are started; assignment writes the
+  // run's first message from the project as it then stands, and the host adds the values block and
+  // the person's preferences. keep, when given, says what the host keeps for the run before the run
+  // gets its assignment, from the same project as the assignment saw it.
+  deploy(run: {
+    workflow: string;
+    correlation: string;
+    assignment(filed: Filed): string | Promise<string>;
+    keep?: (filed: Filed) => Kept | Promise<Kept>;
+  }): Promise<{ runId: string }>;
+  // Deploys the installed workflow once for each concept, each concept one run's at a time and
+  // recorded as that run's, within the host's ceiling on concepts at work. A concept's run starts
+  // once its replied one had time to end; busy refuses it while another is starting, or while live
+  // still works on it. Each concept reports its run, or why it did not start.
+  startConcepts(run: {
+    workflow: string;
+    correlation: string;
+    concepts: readonly Concept[];
+    assignment(filed: Filed, concept: Concept): string;
+    busy(concept: string, live?: Working): Error;
+  }): Promise<
+    readonly (
+      | { concept: string; runId: string }
+      | { concept: string; error: string }
+    )[]
+  >;
+};
+
+/** A starter a plugin brings, which starts its run in the project with the action's skill packs. */
+export type Starter = {
+  // Why a start block is wrong for this starter, or undefined when it takes it.
+  check(start: WorkflowActionBuilder["start"]): string | undefined;
+  // The input fields it reads, which every action it starts must take.
+  reads: readonly string[];
+  run(
+    start: unknown,
+    input: unknown,
+    project: StarterProject,
+    skills: string,
+  ): Promise<Started>;
+};
+
+/**
+ * A starter of one workflow: start is the start block it takes, input the fields of the action's
+ * checked input it reads, and run starts the work in the project with the index of the action's
+ * skill packs for the assignment.
+ */
+export function defineStarter<Start extends Type, Input extends Type<object>>(
+  start: Start,
+  input: Input,
+  run: (
+    start: Start["infer"],
+    input: Input["infer"],
+    project: StarterProject,
+    skills: string,
+  ) => Promise<Started>,
+): Starter {
+  return {
+    check(raw: unknown) {
+      const checked = start(raw);
+      return checked instanceof type.errors ? checked.summary : undefined;
+    },
+    reads: input.props.map(({ key }) => String(key)),
+    run: (raw, checked, project, skills) =>
+      run(start.assert(raw), input.assert(checked), project, skills),
+  };
+}
+
+/** The coordinator's instruction as a run's task, or, without one, to build what its documents describe. */
+export function taskMessage(task: string | undefined): string {
+  return task?.trim() || "Build what these documents describe.";
+}
+
+// The ready-made checks by name, for custom code to combine and run with view.check.
+export const file = (path: string): Proof => ({ file: path });
+export const fileContains = (
+  path: string,
+  holds: string | { key: string; equals: unknown },
+): Proof => ({
+  fileContains:
+    typeof holds === "string"
+      ? { path, text: holds }
+      : { path, key: holds.key, equals: holds.equals },
+});
+export const filed = (kind: string): Proof => ({ filed: kind });
+export const approved = (kind: string): Proof => ({ approved: kind });
+export const designChosen = (): Proof => ({ designChosen: true });
+// Set, or with equals, holding that JSON value.
+export const value = (name: string, equals?: unknown): Proof => ({
+  value: equals === undefined ? name : { name, equals },
+});
+export const command = (run: string[], timeoutSeconds?: number): Proof => ({
+  command: timeoutSeconds === undefined ? { run } : { run, timeoutSeconds },
+});
+export const all = (...proofs: Proof[]): Proof => ({ all: proofs });
+export const any = (...proofs: Proof[]): Proof => ({ any: proofs });
+export const not = (proof: Proof): Proof => ({ not: proof });
+
+/** Whether a check held, in a line, with the lines of evidence that show it. */
+export type CheckOutcome = {
+  pass: boolean;
+  summary: string;
+  evidence: readonly string[];
+};
+
+export const pass = (
+  summary: string,
+  evidence: readonly string[] = [],
+): CheckOutcome => ({ pass: true, summary, evidence });
+export const fail = (
+  summary: string,
+  evidence: readonly string[] = [],
+): CheckOutcome => ({ pass: false, summary, evidence });
+
+/**
+ * What a command check runs: setup, when declared, then run, each a program and its arguments; or
+ * shell command lines, in order.
+ */
+export type CommandSteps =
+  | { setup?: string[]; run: string[] }
+  | { lines: string[] };
+
+/**
+ * A command run against the saved app: the index of the command it ended on, in the order they
+ * run, or null when it was stopped before saying; that command's exit code (null when it did not
+ * finish), the tail of its output and whether it ran out of time; or why it could not run.
+ */
+export type CommandRun =
+  | {
+      step: number | null;
+      exitCode: number | null;
+      output: string;
+      timedOut: boolean;
+    }
+  | { error: string };
+
+/**
+ * The project as saved, read-only, as a check sees it: never a run's work in progress. Each read is
+ * recorded, so a pass goes stale once what it read changes.
+ */
+export type ProjectView = {
+  app: {
+    // The saved version: a commit of the app repository, or a filed version; undefined while the
+    // project has no app. Reading it ties the check to the whole app, as a check that cannot name
+    // the paths it depends on is, so any new version makes its record stale.
+    version: string | undefined;
+    // Whether a path is in the app; the record goes stale when that changes.
+    has(path: string): Promise<boolean>;
+    // A text file's content, cut at the host's size cap; undefined when there is no such file. The
+    // record goes stale when the file's content changes or it comes or goes.
+    read(path: string): Promise<string | undefined>;
+    // Runs a command against the saved version in a sandbox of its own, after its setup when it
+    // declares one, or each of its lines in order until one fails: how the step that ended it
+    // went, or why it could not run at all.
+    run(command: CommandSteps, timeoutSeconds: number): Promise<CommandRun>;
+  };
+  documents: {
+    // The kinds of document filed in the project.
+    kinds(): Promise<readonly string[]>;
+    // A filed document's content at its current version, undefined when none of the kind is filed.
+    read(kind: string): Promise<string | undefined>;
+  };
+  // A project value as stored, null while the project has none.
+  values(name: string): Promise<unknown>;
+  // Whether the person approved a version of a document kind.
+  approvals(kind: string): Promise<boolean>;
+  facts(): Promise<ReadonlySet<Fact>>;
+  // Runs a ready-made check, or several combined, against this view.
+  check(proof: Proof): Promise<CheckOutcome>;
+};
+
+/**
+ * A check's definition: when to run it, what a failure means and what to do next, and, for a check
+ * whose manifest declares no proofs, its own code: what it proves, the input it takes and how it
+ * decides from the project as saved.
+ */
+export type Check<In> = {
+  describe: { summary?: string; when: string; unless?: string; failed: string };
+  input?: Type<In>;
+  run?(view: ProjectView, input: In): CheckOutcome | Promise<CheckOutcome>;
+};
+
+export const defineCheck = <In = Record<string, never>>(check: Check<In>) =>
+  check;
+
+/** Whether a module's default export is a check's definition, as defineCheck makes it. */
+export const isCheck = (value: unknown): value is Check<unknown> =>
+  isRecord(value) &&
+  isRecord(value["describe"]) &&
+  typeof value["describe"]["when"] === "string" &&
+  value["describe"]["fields"] === undefined &&
+  (value["run"] === undefined || typeof value["run"] === "function") &&
+  (value["input"] === undefined || typeof value["input"] === "function");
+
+// What a specialist is told to do. A placeholder instruction repeated across turns ends the
+// coordinator in a doom loop; a length floor the schema states gives it a refusal to act on instead.
+export const Instruction = SpecialistInstruction.and("string >= 40");
+
+// What a screen placed on the page shares with the prompt box the person still types in.
+export type PageControls = {
+  // Back to the conversation without answering; the screen keeps its draft until reopened.
+  close(): void;
+};
+
+// What the interface hands a screen's view. Plain props, so this package needs no React. host
+// holds what the manifest names under host, and page is there for a screen placed on the page.
+export type ScreenViewProps<Input, Output, Prepared, Host = unknown> = {
+  input: Input;
+  project: ProjectValues;
+  prepared: Prepared;
+  facts: readonly Fact[];
+  draft: Partial<Output>;
+  setDraft(change: Partial<Output>): void;
+  submit(output: Output): Promise<void>;
+  submitting: boolean;
+  answer: Output | undefined;
+  host?: Host;
+  page?: PageControls | undefined;
+  // How a screen with a decision tells the host what it offers, each time that changes.
+  offer?: (offer: Offer<Output>) => void;
+};
+
+export type Refused = { ok: false; refusal: Refusal; text: string };
+
+// What did not happen, as the refusal's first words: "was not shown" for a screen.
+const SHOWN = "was not shown";
+const STARTED = "was not started";
+
+const refused = (
+  handle: string,
+  outcome: string,
+  refusal: Refusal,
+  input: unknown,
+): Refused => ({
+  ok: false,
+  refusal,
+  text: refusalText(handle, outcome, refusal, input),
+});
+
+const isRecord = (value: unknown): value is Record<string, unknown> =>
+  typeof value === "object" && value !== null && !Array.isArray(value);
+
+/** Whether a module's default export is a workflow action's definition, as defineWorkflow makes one. */
+export const isWorkflow = (value: unknown): value is Workflow<unknown> =>
+  isRecord(value) &&
+  typeof value["input"] === "function" &&
+  isRecord(value["describe"]) &&
+  typeof value["describe"]["summary"] === "string" &&
+  typeof value["describe"]["when"] === "string" &&
+  typeof value["describe"]["unless"] === "string" &&
+  isRecord(value["describe"]["fields"]);
+
+/** Whether a module's default export is a screen, as defineScreen makes one. */
+export const isScreen = (
+  value: unknown,
+): value is Screen<unknown, unknown, unknown, unknown> =>
+  isRecord(value) && typeof value["output"] === "function" && isWorkflow(value);
+
+/** Each field a schema's errors name, with the first problem each has. */
+export function wrongFields(errors: ArkErrors) {
+  const wrong = new Map<string, string>();
+  for (const error of errors) {
+    const [head = "input", ...inside] = error.path;
+    const field = String(head);
+    if (!wrong.has(field))
+      wrong.set(
+        field,
+        inside.length > 0
+          ? `${inside.join(".")} ${error.problem}`
+          : error.problem,
+      );
+  }
+  return [...wrong].map(([field, problem]) => ({ field, problem }));
+}
+
+function schemaRefusal(
+  fields: Record<string, Field | undefined>,
+  errors: ArkErrors,
+): Refusal {
+  return {
+    wrong: wrongFields(errors).map(({ field, problem }) => {
+      const wrong: WrongField = { field, problem };
+      const described = fields[field];
+      if (described?.choices) wrong.choices = described.choices;
+      else if (described) wrong.about = described.about;
+      if (described?.otherwise) wrong.otherwise = described.otherwise;
+      return wrong;
+    }),
+  };
+}
+
+// Only fields with no error of their own count as fine, so the agent is never told a wrong one was.
+function fineFields(raw: unknown, errors: ArkErrors) {
+  if (!isRecord(raw)) return {};
+  const failing = new Set(errors.map((error) => String(error.path[0])));
+  return Object.fromEntries(
+    Object.entries(raw).filter(([name]) => !failing.has(name)),
+  );
+}
+
+export function validateInput<In, Out, Data, Prepared>(
+  handle: string,
+  screen: Screen<In, Out, Data, Prepared>,
+  rawInput: unknown,
+  data: Type<Data>["infer"],
+  project: ProjectValues,
+):
+  | { ok: true; input: Type<In>["infer"]; prepared: Prepared | undefined }
+  | Refused {
+  const input = screen.input(rawInput);
+  if (input instanceof type.errors)
+    return refused(
+      handle,
+      SHOWN,
+      schemaRefusal(screen.describe.fields, input),
+      fineFields(rawInput, input),
+    );
+  const wrong = screen.validate?.(input, data, project) ?? [];
+  if (wrong.length > 0) return refused(handle, SHOWN, { wrong }, input);
+  return { ok: true, input, prepared: screen.prepare?.(input, data, project) };
+}
+
+export function validateOutput<In, Out, Data, Prepared>(
+  handle: string,
+  screen: Screen<In, Out, Data, Prepared>,
+  rawOutput: unknown,
+): { ok: true; output: Type<Out>["infer"] } | Refused {
+  const output = screen.output(rawOutput);
+  if (output instanceof type.errors)
+    return refused(
+      handle,
+      SHOWN,
+      schemaRefusal({}, output),
+      fineFields(rawOutput, output),
+    );
+  return { ok: true, output };
+}
+
+export function validateWorkflowInput<In>(
+  handle: string,
+  workflow: Workflow<In>,
+  rawInput: unknown,
+): { ok: true; input: Type<In>["infer"] } | Refused {
+  const input = workflow.input(rawInput);
+  if (input instanceof type.errors)
+    return refused(
+      handle,
+      STARTED,
+      schemaRefusal(workflow.describe.fields, input),
+      fineFields(rawInput, input),
+    );
+  return { ok: true, input };
+}
+
+function columns(rows: Record<string, string>, indent: string) {
+  const width = Math.max(...Object.keys(rows).map((name) => name.length)) + 2;
+  return Object.entries(rows).map(
+    ([name, about]) => `${indent}${name.padEnd(width)}${about}`,
+  );
+}
+
+export function guidanceText<In, Out, Data, Prepared>(
+  handle: string,
+  screen: Screen<In, Out, Data, Prepared>,
+  reads: readonly string[],
+) {
+  const { summary, when, unless, fields } = screen.describe;
+  const lines = [
+    `${handle}: ${summary}`,
+    `Use it when: ${when}`,
+    `Not when: ${unless}`,
+  ];
+  if (reads.length > 0)
+    lines.push(
+      `Builder gives the screen the project's ${reads.join(", ")} itself; do not pass them.`,
+    );
+  lines.push("", inputText(fields));
+  return lines.join("\n");
+}
+
+// The input a plugin takes, field by field, as its guidance shows it.
+export function inputText(fields: Record<string, Field>) {
+  const lines = ["Input:"];
+  const entries = Object.entries(fields);
+  const width = Math.max(...entries.map(([name]) => name.length)) + 2;
+  for (const [name, field] of entries) {
+    lines.push(`  ${name.padEnd(width)}${field.about}`);
+    if (field.choices) lines.push(...columns(field.choices, "    "));
+    if (field.otherwise) lines.push(`    ${field.otherwise}`);
+  }
+  return lines.join("\n");
+}
+
+const wrongNames = ({ wrong }: Refusal) => [
+  ...new Set(wrong.map(({ field }) => field)),
+];
+
+/** How many fields are wrong, as a sentence: "One field is wrong." */
+export function wrongCount(refusal: Refusal) {
+  const { length } = wrongNames(refusal);
+  return length === 1 ? "One field is wrong." : `${length} fields are wrong.`;
+}
+
+/** Each wrong field with its problem and what it takes, a line or more each. */
+export function wrongText({ wrong }: Refusal) {
+  return wrong.flatMap(({ field, problem, about, choices, otherwise }) => {
+    const lines = [`${field}: ${problem}`];
+    if (choices) lines.push("  Use one of:", ...columns(choices, "    "));
+    if (about) lines.push(`  It takes: ${about}`);
+    if (otherwise) lines.push(`  ${otherwise}`);
+    return lines;
+  });
+}
+
+export function refusalText(
+  handle: string,
+  outcome: string,
+  refusal: Refusal,
+  input: unknown,
+) {
+  const lines = [
+    `${handle} ${outcome}. ${wrongCount(refusal)}`,
+    "",
+    ...wrongText(refusal),
+    "",
+  ];
+  const names = wrongNames(refusal);
+  const fine = Object.entries(isRecord(input) ? input : {})
+    .filter(([name]) => !names.includes(name))
+    .map(([name, value]) => `${name} ${JSON.stringify(value)}`);
+  if (fine.length > 0)
+    lines.push(`Your other fields were fine: ${fine.join(", ")}.`);
+  lines.push(
+    `Call again with the same input and ${names.join(" and ")} corrected.`,
+  );
+  return lines.join("\n");
+}

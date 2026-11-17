@@ -1,5 +1,6 @@
 import { type } from "arktype";
 import { RoleName } from "./roles.ts";
+import { RunBlock } from "./activity.ts";
 import { Preferences } from "./preferences.ts";
 import { OpenQuestions } from "./questions.ts";
 import { ApproachesMeta } from "./approaches.ts";
@@ -7,17 +8,32 @@ import { ApproachesMeta } from "./approaches.ts";
 const text = type("string > 0").atMostLength(512);
 const sha256 = /^[a-f0-9]{64}$/;
 
-// Documents a model writes as text. A design concept's option is filed from the designer's
-// workspace by check_design, the design by the person's choice among the options, and the
-// app from the coder's workspace each time check-app passes.
-export const WriterDocumentKind = type(
-  "'constraints' | 'approaches' | 'product_requirements' | 'build_plan'",
-);
+// The documents with a writer, fields and a template of their own.
+export const WriterDocumentKind = type("'product_requirements' | 'build_plan'");
 export type WriterDocumentKind = typeof WriterDocumentKind.infer;
-const DocumentKind = WriterDocumentKind.or("'problem_brief'");
-const WritableArtifactKind = DocumentKind.or(
-  "'design' | 'design_option' | 'app' | 'approval_package'",
-);
+// What no model writes as text. A design concept's option is filed from the designer's workspace
+// by check_design, the design by the person's choice among the options, the app from the
+// coder's workspace each time check-app passes, and the approval package by file_package.
+const BUNDLE_KINDS = [
+  "design",
+  "design_option",
+  "app",
+  "approval_package",
+] as const;
+// A file the person attached to the project, filed under its filename; attaching the same name
+// again files its next version. A text file's content is its text, any other file's a base64
+// data: URL.
+export const MATERIAL_KIND = "material";
+// Any kind a model writes as text: a short slug, the known kinds among them. A kind the hub does not
+// know is simply a document, filed, versioned, reviewed and approved like the known ones. A pattern
+// rather than a narrow, so a tool's input schema carries it.
+export const DocumentKind = type(
+  new RegExp(
+    `^(?!(?:${[...BUNDLE_KINDS, MATERIAL_KIND].join("|")})$)[a-z][a-z0-9_]{0,63}$`,
+  ),
+).describe("a document kind: a short lowercase slug such as build_plan");
+export const isDocumentKind = (kind: string) => DocumentKind.allows(kind);
+const WritableArtifactKind = DocumentKind.or(type.enumerated(...BUNDLE_KINDS));
 const content = type("string > 0").atMostLength(256 * 1024);
 export const DocumentContent = content;
 export const MAX_APPROVAL_PACKAGE_BYTES = 4 * 1024 * 1024;
@@ -33,14 +49,6 @@ export const ArtifactKindWrite = type({
   "approaches?": ApproachesMeta,
 });
 export type ArtifactKindWrite = typeof ArtifactKindWrite.infer;
-export const BriefWrite = type({
-  "+": "reject",
-  kind: "'problem_brief'",
-  title: text,
-  content,
-  "openQuestions?": OpenQuestions,
-});
-export type BriefWrite = typeof BriefWrite.infer;
 const documentFields = {
   title: text,
   content,
@@ -50,17 +58,6 @@ const documentFields = {
 // kind the writer repeats from its task must match. A flat object, since some providers read only a
 // tool schema's top-level properties and send nothing for a union.
 export const WriterDocumentFields = {
-  constraints: type({
-    "+": "reject",
-    "kind?": "'constraints'",
-    ...documentFields,
-  }),
-  approaches: type({
-    "+": "reject",
-    "kind?": "'approaches'",
-    ...documentFields,
-    "approaches?": ApproachesMeta,
-  }),
   product_requirements: type({
     "+": "reject",
     "kind?": "'product_requirements'",
@@ -72,6 +69,12 @@ export const WriterDocumentFields = {
     ...documentFields,
   }),
 };
+// The fields a writer of any document saves, under the kind its task names.
+export const AnyDocumentFields = type({
+  "+": "reject",
+  kind: DocumentKind,
+  ...documentFields,
+});
 export const DocumentWrite = type({
   "+": "reject",
   kind: DocumentKind,
@@ -100,6 +103,23 @@ export const ApprovalPackageManifest = type({
   sources: ApprovalPackageSource.array().atLeastLength(1),
 });
 export type ApprovalPackageManifest = typeof ApprovalPackageManifest.infer;
+
+// The record a run that files approval packages keeps: the assignment it was given, whose audience,
+// decision and pinned sources every package it files must match; whatever else it holds stays.
+export const PackageAssignmentRecord = type({
+  "+": "ignore",
+  assignment: {
+    "+": "ignore",
+    audience: "string > 0",
+    decisionNeeded: "string > 0",
+    "tone?": "string",
+    "length?": "string",
+    sources: ApprovalPackageSource.onUndeclaredKey("ignore")
+      .array()
+      .atLeastLength(1),
+  },
+});
+export type PackageAssignmentRecord = typeof PackageAssignmentRecord.infer;
 
 export const ApprovalPackageBundle = type({
   "+": "reject",
@@ -131,7 +151,7 @@ export const DesignConcept = type({
 });
 export type DesignConcept = typeof DesignConcept.infer;
 
-// The coordinator records the concept a designer run it just deployed works on.
+// The coordinator records the concept a run it just deployed works on.
 export const DesignConceptRecord = type({
   "+": "reject",
   runId: "string > 0",
@@ -187,6 +207,7 @@ export const DesignTweaks = type({
     "background?": color,
     "radius?": length,
     "font-sans?": fontList,
+    "font-mono?": fontList,
   }).narrow(
     (tokens, ctx) =>
       Object.keys(tokens).length > 0 || ctx.mustBe("at least one token"),
@@ -238,7 +259,7 @@ export const AppBundle = type({
   "+": "reject",
   files: type({ "[string]": "string" }).narrow(
     (files, ctx) =>
-      "package.json" in files || ctx.mustBe("a bundle with package.json"),
+      Object.keys(files).length > 0 || ctx.mustBe("a bundle with a file"),
   ),
   "binary?": { "[string]": "string" },
 });
@@ -274,8 +295,7 @@ export const AppSnapshotState = type({
   ready: "false",
   code: "'forbidden' | 'coder_run_not_found' | 'app_workspace_unavailable'",
   "runId?": "string > 0",
-  "reason?":
-    "'not_on_local_sidecar' | 'workspace_missing' | 'package_json_missing'",
+  "reason?": "'not_on_local_sidecar' | 'workspace_missing' | 'workspace_empty'",
 });
 export type AppSnapshotState = typeof AppSnapshotState.infer;
 // Versions newest first.
@@ -295,7 +315,15 @@ export const ArtifactRef = type({
 });
 export type ArtifactRef = typeof ArtifactRef.infer;
 
-export const ArtifactReceipt = type({ "+": "reject", artifact: ArtifactRef });
+// designChosen: the filed design option is the project's design, chosen by Builder because the
+// person handed approvals over.
+export const ArtifactReceipt = type({
+  "+": "reject",
+  artifact: ArtifactRef,
+  "designChosen?": "true",
+});
+
+export const HubArtifactReceipt = ArtifactReceipt.onDeepUndeclaredKey("ignore");
 
 // A snapshot names the version that now holds the workspace; filed is false when the latest
 // version already held exactly these files.
@@ -308,14 +336,32 @@ export const AppSnapshotReceipt = type({
 export type AppSnapshotReceipt = typeof AppSnapshotReceipt.infer;
 
 // Where saved look tokens landed: the live designer's workspace, the filed design's next
-// version, or both; and which runs were told.
+// version, or both; and which runs were told, by the role each plays.
 export const DesignTweaksReceipt = type({
   "+": "reject",
   updated: type("'workspace' | 'version'").array().atLeastLength(1),
   "artifact?": ArtifactRef,
-  notified: "('coordinator' | 'designer')[]",
+  notified: RoleName.array(),
 });
 export type DesignTweaksReceipt = typeof DesignTweaksReceipt.infer;
+
+// The project values asked for by name, each as stored, any JSON, or null when the project has
+// none yet.
+export const ProjectValues = type({
+  "+": "reject",
+  values: { "[string]": "unknown" },
+});
+export type ProjectValues = typeof ProjectValues.infer;
+
+// Project values to save by name; the hub checks each against the type its declaration names.
+export const ProjectValuesWrite = type({
+  "+": "reject",
+  values: type({ "[string]": "unknown" }).narrow(
+    (values, ctx) =>
+      Object.keys(values).length > 0 || ctx.mustBe("at least one value"),
+  ),
+});
+export type ProjectValuesWrite = typeof ProjectValuesWrite.infer;
 
 // The person's choice of a filed design option at the version they saw; the hub files it as the
 // design and records the person's approval of exactly that design version.
@@ -333,6 +379,23 @@ export const DesignChoiceReceipt = type({
 });
 export type DesignChoiceReceipt = typeof DesignChoiceReceipt.infer;
 
+// The person approves a filed document at the version they read, with no question asking for it.
+export const DocumentApproval = type({
+  "+": "reject",
+  version: "number.integer > 0",
+});
+export type DocumentApproval = typeof DocumentApproval.infer;
+
+// The approval recorded, and the open question it answered when it covered all that one asked for.
+export const DocumentApprovalReceipt = type({
+  "+": "reject",
+  artifactId: "string > 0",
+  kind: "string > 0",
+  version: "number.integer > 0",
+  "answered?": "string > 0",
+});
+export type DocumentApprovalReceipt = typeof DocumentApprovalReceipt.infer;
+
 export const ArtifactListItem = type({
   "+": "reject",
   artifactId: "string > 0",
@@ -342,6 +405,8 @@ export const ArtifactListItem = type({
   sha256,
   filedAt: "string > 0",
   "approvedVersion?": "number.integer > 0",
+  // When the person recorded that approval, where the record says.
+  "approvedAt?": "string > 0",
   // How many open questions the current version leaves for the person; none when absent.
   "openQuestionCount?": "number.integer > 0",
 });
@@ -384,12 +449,100 @@ export const FailedRun = type({
   "error?": { "+": "reject", message: "string", "code?": "string" },
 });
 export type FailedRun = typeof FailedRun.infer;
+// The plugin action the coordinator started a specialist run for, recorded before its assignment,
+// with the id of the plan step it does when the coordinator could tell which.
+export const RunAction = type({
+  "+": "reject",
+  runId: "string > 0",
+  plugin: "string > 0",
+  action: "string > 0",
+  "step?": "string > 0",
+});
+// A run's action as the coordinator records it on starting the run, with what the action's start
+// keeps for the run: a record, as the action's definition declares one, and project values the
+// action writes.
+export const RunActionStart = RunAction.merge({
+  "+": "reject",
+  "record?": "unknown",
+  "values?": { "[string]": "unknown" },
+});
+// A run the coordinator started in the project, at work or ended lately.
+export const ProjectRun = RunAction.merge({
+  "concept?": "string > 0",
+  // Interchange's run status.
+  status: "'deployed' | 'running' | 'completed' | 'failed' | 'cancelled'",
+  // While it runs, as inFlight says it: working, waiting between turns, or held on an approval; or
+  // starting, before its first turn.
+  "state?": "'starting' | 'working' | 'waiting' | 'approval'",
+  startedAt: "string > 0",
+  "endedAt?": "string > 0",
+  // Its latest tool call as tool and what it was given, and when it last acted, as far as the hub saw.
+  "lastActivity?": "string > 0",
+  "lastActivityAt?": "string > 0",
+  // Why a failed run stopped.
+  "error?": "string > 0",
+  // What stopped a run that was blocked.
+  "blocked?": RunBlock,
+});
+export type ProjectRun = typeof ProjectRun.infer;
+export const ProjectRuns = type({ "+": "reject", runs: ProjectRun.array() });
+// How long one run of a check may take on the hub, attempts of a retrying check each.
+export const CHECK_MS = 30_000;
+
+// A check of a plugin to run on its input, against the project as saved.
+export const CheckRun = type({
+  "+": "reject",
+  plugin: "string > 0",
+  action: "string > 0",
+  "input?": "object",
+});
+// What running a check answers: its result, or for one that keeps trying, the id of the record its
+// result will be written to.
+export const CheckRan = type({
+  "+": "reject",
+  ran: "true",
+  checkId: "string > 0",
+  plugin: "string > 0",
+  action: "string > 0",
+  result: "'pass' | 'fail'",
+  summary: "string > 0",
+  evidence: "string[]",
+}).or({
+  "+": "reject",
+  started: "true",
+  checkId: "string > 0",
+  plugin: "string > 0",
+  action: "string > 0",
+});
+// The latest record of one check of the project, for one input.
+export const CheckRecord = type({
+  "+": "reject",
+  checkId: "string > 0",
+  plugin: "string > 0",
+  action: "string > 0",
+  input: "object",
+  result: "'pass' | 'fail' | 'skipped'",
+  summary: "string > 0",
+  evidence: "string[]",
+  // What it read, each at the version it read: the app, each document, approval and value.
+  versions: { "[string]": "string | number | boolean | null" },
+  // Whether each of those is still what the project has saved.
+  current: "boolean",
+  // The facts a pass or skip of it makes true while it is current.
+  returns: "string[]",
+  // A person's principal, the coordinator's run, or the hub.
+  triggeredBy: "string > 0",
+  "skippedBy?": "string > 0",
+  createdAt: "string > 0",
+});
+export type CheckRecord = typeof CheckRecord.infer;
+export const CheckList = type({ "+": "reject", checks: CheckRecord.array() });
 export const ArtifactList = type({
   "+": "reject",
   artifacts: ArtifactListItem.array(),
   inFlight: InFlightRun.array(),
   failed: FailedRun.array(),
-  // The kinds of filed documents whose current version waits on the person's approval.
+  // The kinds of filed documents the person has approved no version of.
   awaitingApproval: type("string > 0").array(),
   // Whether the app's first build is done: a version filed after a coder's passing check.
   appBuilt: "boolean",
@@ -459,11 +612,6 @@ export const DecidedApprovalList = type({
   approvals: DecidedApproval.array(),
 });
 export type DecidedApprovalList = typeof DecidedApprovalList.infer;
-
-// A file the person attached to the project, filed under its filename; attaching the same name
-// again files its next version. A text file's content is its text, any other file's a base64
-// data: URL.
-export const MATERIAL_KIND = "material";
 
 export const MaterialReceipt = type({
   "+": "reject",

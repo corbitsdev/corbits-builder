@@ -1,0 +1,28 @@
+{
+  "name": "@corbits-builder/plugin-ui",
+  "version": "0.1.0-rc.3",
+  "private": true,
+  "description": "The building blocks a plugin's screen view draws with, on the interface's own components and tokens, so every screen reads alike.",
+  "license": "SEE LICENSE IN ../../LICENSE.md",
+  "author": "Sawyer Cutler <sawyer@dirtroad.dev>",
+  "type": "module",
+  "exports": {
+    "./comparison": "./src/comparison.tsx",
+    "./document-block": "./src/document-block.tsx",
+    "./markdown": "./src/markdown.tsx",
+    "./screen": "./src/screen.ts",
+    "./screen-actions": "./src/screen-actions.tsx",
+    "./screen-card": "./src/screen-card.tsx",
+    "./steps": "./src/steps.tsx"
+  },
+  "dependencies": {
+    "@corbits/react-ui": "0.5.1",
+    "lucide-react": "0.545.0",
+    "react": "19.3.0"
+  },
+  "devDependencies": {
+    "@types/react": "19.3.0",
+    "@types/react-dom": "19.3.0",
+    "react-dom": "19.3.0"
+  }
+}

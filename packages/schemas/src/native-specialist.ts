@@ -1,12 +1,11 @@
 import { type } from "arktype";
-import { SourceRef } from "./source-ref.ts";
-import { ProjectId } from "./project.ts";
 
-export const NativeDocumentKind = type(
-  "'constraints' | 'approaches' | 'product_requirements' | 'build_plan' | 'engineering_review'",
-);
-export type NativeDocumentKind = typeof NativeDocumentKind.infer;
 export const SPECIALIST_RESULT_TYPE = "sb.specialist.result";
+
+// Builder's note to the coordinator, after a specialist's own words in its reply. The coordinator
+// reads the reply whole; what the person is shown of it ends where this begins.
+export const COORDINATOR_NOTE_LEAD =
+  "\n\nBuilder's note to the coordinator, not written by the specialist: ";
 
 // Source identity is resolved at project bootstrap, never composed per assignment.
 export const NativeSpecialistDeployment = type({
@@ -25,15 +24,5 @@ export const NativeSpecialistDeployment = type({
 export type NativeSpecialistDeployment =
   typeof NativeSpecialistDeployment.infer;
 
-export const NativeSpecialistAssignment = type({
-  "+": "reject",
-  projectId: ProjectId,
-  deliverableId: ProjectId,
-  kind: NativeDocumentKind,
-  briefRef: SourceRef,
-  sourceRefs: SourceRef.array(),
-  output: { "+": "reject", expectedVersion: "number.integer >= 0" },
-  instruction: type("string > 0").atMostLength(16384),
-});
-export type NativeSpecialistAssignment =
-  typeof NativeSpecialistAssignment.infer;
+// What a specialist's assignment may say it is to do.
+export const SpecialistInstruction = type("string > 0").atMostLength(16384);

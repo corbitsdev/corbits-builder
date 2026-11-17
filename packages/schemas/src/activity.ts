@@ -37,6 +37,52 @@ export const AgentActivity = type({
 });
 export type AgentActivity = typeof AgentActivity.infer;
 
+// A call a run made, as the run's saved conversation keeps it: the tool, the arguments it was
+// given, when the turn that made it was saved, and its result's text, the end of it when long,
+// once the result came back.
+export const RunStep = type({
+  "+": "reject",
+  callId: "string > 0",
+  name: "string > 0",
+  arguments: "Record<string, unknown>",
+  at: "number",
+  "result?": { "+": "reject", content: "string", isError: "boolean" },
+});
+export type RunStep = typeof RunStep.infer;
+
+// What stopped a specialist run it could not get past, in its own words or Builder's: what stops the
+// work and what was tried.
+export const RunBlock = type({
+  "+": "reject",
+  reason: "0 < string <= 2000",
+  tried: "0 < string <= 2000",
+});
+export type RunBlock = typeof RunBlock.infer;
+
+// Every call a run made, in the order it made them, and the run's status as Interchange reports
+// it, with why when it failed and what blocked it when it was blocked.
+export const RunSteps = type({
+  "+": "reject",
+  status: "string > 0",
+  "error?": "string > 0",
+  "blocked?": RunBlock,
+  steps: RunStep.array(),
+});
+export type RunSteps = typeof RunSteps.infer;
+
+// What the hub's run of the checks a finished reply waits on came to: each check's result and the
+// commit the saved app was at, or why the checks could not be run.
+export const DoneChecks = type({
+  "commit?": "string > 0",
+  results: type({
+    check: "string > 0",
+    result: "'pass' | 'fail'",
+    summary: "string",
+    evidence: "string[]",
+  }).array(),
+}).or({ unrun: "string > 0" });
+export type DoneChecks = typeof DoneChecks.infer;
+
 export const ProjectActivity = type({
   "+": "reject",
   agents: AgentActivity.array(),

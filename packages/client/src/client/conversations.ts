@@ -1,6 +1,5 @@
 import { ConversationReceipt } from "@corbits-builder/schemas/conversation";
 import {
-  ProductApiError,
   projectPath,
   tenantPath,
   type ClientDeps,
@@ -11,9 +10,9 @@ export function buildConversationMethods(
   deps: ClientDeps,
 ): Pick<
   ProductApiClient,
-  "sendMessage" | "conversationEvents" | "answerQuestion"
+  "sendMessage" | "conversationEvents" | "runSteps" | "answerQuestion"
 > {
-  const { request, baseUrl, headers, fetchRequest, options } = deps;
+  const { request } = deps;
   return {
     async sendMessage(projectTenantId, coordinatorRunId, message, signal) {
       return ConversationReceipt.assert(
@@ -24,42 +23,22 @@ export function buildConversationMethods(
         ),
       );
     },
-    // The run's own signal channel for the question.
-    async answerQuestion(
-      projectTenantId,
-      coordinatorRunId,
-      signalName,
-      answer,
-      signal,
-    ) {
-      const requestHeaders = new Headers(headers);
-      requestHeaders.set("Content-Type", "application/json");
-      const response = await fetchRequest(
-        new Request(
-          new URL(
-            `${tenantPath(projectTenantId)}/workflows/${encodeURIComponent(coordinatorRunId)}/signals`,
-            baseUrl,
-          ).href,
-          {
-            method: "POST",
-            headers: requestHeaders,
-            cache: "no-store",
-            credentials: options.credentials ?? "same-origin",
-            body: JSON.stringify({
-              runId: coordinatorRunId,
-              signalName,
-              signalId: signalName,
-              payload: answer,
-            }),
-            signal: signal ?? null,
-          },
-        ),
-      );
-      if (!response.ok) throw new ProductApiError(response);
+    // The hub checks and records what a screen's answer does, then delivers it to the run.
+    async answerQuestion(tenantId, projectId, signalName, answer, signal) {
+      await request(`${projectPath(tenantId, projectId)}/answers`, signal, {
+        signalName,
+        answer,
+      });
     },
     conversationEvents(tenantId, projectId, signal) {
       return request(
         `${projectPath(tenantId, projectId)}/conversation/events`,
+        signal,
+      );
+    },
+    runSteps(tenantId, runId, signal) {
+      return request(
+        `${tenantPath(tenantId)}/workflows/runs/${encodeURIComponent(runId)}/steps`,
         signal,
       );
     },
